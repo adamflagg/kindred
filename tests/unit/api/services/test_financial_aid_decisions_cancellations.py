@@ -29,7 +29,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundRef,
 )
-from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent, EnrollmentState
+from api.services.financial_aid_cancellations import CANCEL_REASONS, TODO_CANCEL_REASON, CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     cancel_event,
@@ -40,7 +40,7 @@ from api.services.financial_aid_decisions_service import (
     DecisionRefusedError,
     FinancialAidDecisionsService,
 )
-from bunking.financial_aid.decisions import PAST_DATE_GAPS, DecisionEvent
+from bunking.financial_aid.decisions import GRID_GAPS, PAST_DATE_GAPS, DecisionEvent
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -234,7 +234,7 @@ async def test_a_withdrawn_request_with_posted_aid_live_on_a_cancelled_enrollmen
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0)
     _enrol(store, 2)
-    assert (await _row(store)).to_reverse is False
+    assert (await _row(store)).to_reverse is True  # owner ruling (a): whatever its enrollment says
     store.enrollments.clear()
     _enrol(store, 32)
     row = await _row(store)
@@ -281,24 +281,45 @@ async def test_a_season_before_2027_counts_the_cancellation_but_asks_for_no_reas
 
 
 @pytest.mark.asyncio
-async def test_a_past_read_names_the_cancellation_fields_it_leaves_empty() -> None:
+async def test_a_past_row_fills_included_and_the_to_dos_as_of_the_day_and_names_to_reverse_by_the_ledger() -> None:
+    """A past row carries its cancellation as of the day (Decision 11), so Included and the to-do ("Cancelled: give
+    a reason") are rebuilt from it. To reverse reads the ledger, which a past date doesn't, so it stays empty with
+    its own reason."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     log_seeded(store, T0 - timedelta(days=30))
-    _enrol(store, 32)
-    out = await _service(store).grid(YEAR, as_of=date(2027, 3, 1))
+    _enrol(store, 32, on=date(2027, 3, 5))
+    out = await _service(store).grid(YEAR, as_of=date(2027, 3, 8))
     row = next(r for r in out.rows if r.request_id == EMMA)
-    assert (row.cancellation, row.to_reverse, row.todos) == (None, None, None)
+    assert row.cancellation is not None
+    assert (row.included, row.to_reverse) == (False, None)
+    assert [t.code for t in row.todos or []] == [TODO_CANCEL_REASON]
+    assert row.todos == (await _row(store)).todos  # the same to-do today's row carries
     named = {g.figure: g.reason for g in out.not_rebuilt}
-    assert {f: named[f] for f in ("cancellation", "to_reverse", "todos")} == {
-        f: PAST_DATE_GAPS[f] for f in ("cancellation", "to_reverse", "todos")
+    assert "included" not in named
+    assert "todos" not in named
+    assert not {"included", "todos"} & set(GRID_GAPS)
+    assert {f: named[f] for f in ("cancellation", "to_reverse")} == {
+        f: PAST_DATE_GAPS[f] for f in ("cancellation", "to_reverse")
     }
+    assert "ledger" in PAST_DATE_GAPS["to_reverse"]
+    assert PAST_DATE_GAPS["to_reverse"] != PAST_DATE_GAPS["cancellation"]
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_of_an_uncancelled_request_is_included_with_no_to_do() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    log_seeded(store, T0 - timedelta(days=30))
+    row = next(r for r in (await _service(store).grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    assert (row.included, row.todos) == (True, [])
 
 
 @pytest.mark.asyncio
 async def test_a_past_budget_names_the_cancellation_gap_its_round_2_asks_carry() -> None:
-    """D21: CampMinder's cancellations aren't rebuilt as of a date, so a past budget can still count a
-    Round 2 ask today's read dropped. It says so, as the past grid does."""
+    """D21 and the owner ruling of 2026-10-02 (⚠, relayed by the lead): a past budget leaves out of Round 2 asks
+    so far a request CampMinder had cancelled by then, as today's read does, and still names the cancellation gap
+    (a registration whose status changed after the day can't be seen)."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     log_seeded(store, T0 - timedelta(days=30))
@@ -333,7 +354,7 @@ async def test_a_past_budget_names_the_cancellation_gap_its_round_2_asks_carry()
     out = await service.budget(YEAR, as_of=date(2027, 3, 8))
     past = next(p for p in out.pools if p.pool == "camp_pool")
     assert live.demand.round2_asked == 0
-    assert past.demand.round2_asked == 900
+    assert past.demand.round2_asked == 0  # owner ruling 2026-10-02: every cancellation leaves Round 2 asks so far
     named = {g.figure: g.reason for g in out.not_rebuilt}
     assert named.get("cancellation") == PAST_DATE_GAPS["cancellation"]
 
@@ -662,3 +683,159 @@ async def test_the_accepted_tick_reads_only_the_registrations_of_the_requests_it
     )
     assert out.written == 1
     assert store.enrollment_reads == [(frozenset({1000021}), frozenset())]
+
+
+def _appeal(store: FakeDecisionsStore) -> None:
+    """Emma: Round 1 posted Mar 4, a Round 2 ask of 900 the same day."""
+    log_seeded(store, T0 - timedelta(days=30))
+    early = T0 - timedelta(days=5)
+    store.events += [
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=EMMA,
+            round=1,
+            kind="post",
+            created=early,
+            amount=Decimal(1500),
+            effective_on=date(2027, 3, 4),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        ),
+        DecisionEvent(
+            id="ev0000000000002",
+            request_id=EMMA,
+            round=2,
+            kind="ask",
+            created=early,
+            amount=Decimal(900),
+            effective_on=date(2027, 3, 4),
+        ),
+    ]
+
+
+async def _asked(store: FakeDecisionsStore, as_of: date | None = None) -> float | None:
+    out = await _service(store).budget(YEAR, as_of=as_of)
+    return next(p for p in out.pools if p.pool == "camp_pool").demand.round2_asked
+
+
+@pytest.mark.asyncio
+async def test_round_2_asks_so_far_counts_an_active_request_and_leaves_out_both_cancellations() -> None:
+    active = FakeDecisionsStore()
+    seed_request(active, EMMA)
+    _appeal(active)
+    assert await _asked(active) == 900.0
+    assert await _asked(active, date(2027, 3, 8)) == 900.0
+    by_campminder = FakeDecisionsStore()
+    seed_request(by_campminder, EMMA)
+    _appeal(by_campminder)
+    _enrol(by_campminder, 32, on=date(2027, 3, 5))
+    assert await _asked(by_campminder) == 0.0  # live already left it out (10b-2 Decision 14): pinned, not new
+    assert await _asked(by_campminder, date(2027, 3, 8)) == 0.0  # the ruling: the past read now agrees
+    in_kindred = FakeDecisionsStore()
+    seed_request(in_kindred, EMMA)
+    _appeal(in_kindred)
+    _cancel_in_kindred(in_kindred)
+    assert await _asked(in_kindred) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_a_campminder_cancellation_after_the_day_still_counts_that_days_round_2_ask() -> None:
+    """3c-2's rule: CampMinder's cancel counts as of the date by its earliest cancel date on or before the day."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=date(2027, 3, 10))
+    assert await _asked(store, date(2027, 3, 8)) == 900.0
+    assert await _asked(store) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_live_is_unchanged_for_every_other_reader() -> None:
+    """The ruling narrows forward demand only. `live` feeds hold release, reconciliation, the scenario snapshot and
+    pricing Decision 13: a CampMinder-cancelled request stays not live on today's read and, on a past date where
+    the cancellation gap reaches it, stays priced live then, exactly as before."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=date(2027, 3, 5))
+    service = _service(store)
+    today = await service.season(YEAR)
+    past = await service.past_season(YEAR, date(2027, 3, 8), "campminder")
+    assert (today.priced[EMMA].live, EMMA in today.cancelled_in_campminder) == (False, True)
+    assert (past.priced[EMMA].live, past.gapped[EMMA], EMMA in past.cancelled_in_campminder) == (
+        True,
+        "cancellation",
+        True,
+    )
+
+
+def test_the_cancellation_gap_says_round_2_asks_leave_the_request_out() -> None:
+    assert "Round 2 asks so far" in PAST_DATE_GAPS["cancellation"]
+
+
+@pytest.mark.asyncio
+async def test_a_past_grid_row_carries_the_cancellation_round_2_asks_left_out() -> None:
+    """Decision 11 (lead ruling, plan review option (b)): ⚠6(b)'s Appeals list reads the row's `cancellation`, so a
+    past row carries the one the figure used: CampMinder's by the day (earliest cancel date on or before it) first,
+    else Kindred's as recorded by then."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=date(2027, 3, 5))
+    service = _service(store)
+    then = next(r for r in (await service.grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    assert then.cancellation is not None
+    assert (then.cancellation.by, then.cancellation.on) == ("campminder", date(2027, 3, 5))
+    earlier = next(r for r in (await service.grid(YEAR, as_of=date(2027, 3, 4))).rows if r.request_id == EMMA)
+    assert earlier.cancellation is None  # not cancelled yet on Mar 4
+
+
+@pytest.mark.asyncio
+async def test_a_past_grid_row_carries_a_kindred_cancellation_recorded_by_then() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    store.cancel_events.append(
+        CancelEvent(
+            "can000000000002", EMMA, "cancel", T0 - timedelta(days=2), reason="schedule", in_kindred=True, actor=ACTOR
+        )
+    )
+    row = next(r for r in (await _service(store).grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    assert row.cancellation is not None
+    assert (row.cancellation.by, row.cancellation.on, row.cancellation.reason) == (
+        "kindred",
+        date(2027, 3, 7),
+        "schedule",
+    )
+    assert await _asked(store, date(2027, 3, 8)) == 0.0  # and the figure leaves it out too (not live then)
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_with_two_cancelled_registrations_shows_the_latest_date_on_or_before_the_day() -> None:
+    """Lead ruling: a past read and today's agree (enrollment_cancelled shows the latest cancel date)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=date(2027, 3, 5))
+    _enrol(store, 32, on=date(2027, 3, 7))
+    service = _service(store)
+    then = next(r for r in (await service.grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    now = next(r for r in (await service.grid(YEAR)).rows if r.request_id == EMMA)
+    assert then.cancellation is not None
+    assert now.cancellation is not None
+    assert then.cancellation.on == now.cancellation.on == date(2027, 3, 7)
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_never_shows_a_cancel_date_after_the_day() -> None:
+    """An undated cancelled registration counts as cancelled by the day; one dated after it adds no date."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=None)
+    _enrol(store, 32, on=date(2027, 3, 20))
+    row = next(r for r in (await _service(store).grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    assert row.cancellation is not None
+    assert row.cancellation.by == "campminder"
+    assert row.cancellation.on is None

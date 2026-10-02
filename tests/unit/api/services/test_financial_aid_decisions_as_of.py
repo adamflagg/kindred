@@ -563,6 +563,7 @@ async def test_round_2_asks_are_named_only_when_an_unrebuilt_request_empties_the
     assert "round2_asked" in named
     camp = next(p for p in out.pools if p.pool == "camp_pool")
     assert (camp.demand.round2_asks, camp.demand.round2_asked) == (None, None)
+    assert (camp.demand.round2_held, camp.demand.round2_held_asked) == (None, None)
 
 
 _GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS}
@@ -823,3 +824,40 @@ async def test_a_past_row_whose_payer_shares_cant_be_replayed_has_no_payer_count
     (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
     assert row.payer_count is None
     assert row.payer_shares == []
+
+
+@pytest.mark.asyncio
+async def test_a_masked_pool_masks_its_counts_with_its_figures() -> None:
+    """A gap request masks Needs an offer and Pending approval in its pool; their counts go with them."""
+    store = _seeded(EMMA)
+    live = await _service(store).budget(YEAR)
+    past = await _service(store).budget(YEAR, as_of=MAR_9)
+    live_r1 = next(c for c in next(p for p in live.pools if p.pool == "camp_pool").rounds if c.round == 1)
+    past_r1 = next(c for c in next(p for p in past.pools if p.pool == "camp_pool").rounds if c.round == 1)
+    assert live_r1.needs_offer_count is not None
+    assert live_r1.needs_offer_count.requests == 1
+    assert (past_r1.needs_offer, past_r1.needs_offer_count, past_r1.pending_approval_count) == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_masked_pool_keeps_its_type_lines_posted_part_only() -> None:
+    store = _seeded(EMMA)
+    _post_at(store, EMMA, _day(3, 5))
+    past = await _service(store).budget(YEAR, as_of=MAR_9)
+    camp = next(p for p in past.pools if p.pool == "camp_pool")
+    (line,) = camp.decision_types
+    assert (line.key, line.posted, line.amount, line.own, line.requests) == (None, 1500.0, None, None, None)
+    assert (camp.below.outside_grants, camp.below.outside_grants_requests) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_masked_pool_masks_the_new_demand_counts_with_their_figures() -> None:
+    past = await _service(_seeded(EMMA)).budget(YEAR, as_of=MAR_9)
+    demand = next(p for p in past.pools if p.pool == "camp_pool").demand
+    assert (demand.round1_unmet, demand.round1_unmet_requests, demand.round1_held, demand.round1_held_asked) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert (demand.round2_held, demand.round2_held_asked) == (None, None)

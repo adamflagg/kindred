@@ -62,6 +62,7 @@ from api.schemas.financial_aid_decisions import (
     CostOverrideIn,
     CostOverrideOut,
     CountOut,
+    DecisionTypeLineOut,
     DecisionWriteOut,
     EditorPreviewOut,
     ForwardDemandOut,
@@ -86,6 +87,7 @@ from api.schemas.financial_aid_decisions import (
     SessionCandidateOut,
     ShareConfirmationOut,
     TodoOut,
+    UnconfirmedOut,
     UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
@@ -106,11 +108,11 @@ from api.services.financial_aid_cancellations import (
     CancelState,
     EnrollmentState,
     cancellations_by_request,
+    cancelled_days,
     enrollment_cancelled,
     first_cancelled_on,
     fold_cancellations,
     needs_reason,
-    withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REVERT, effective_values
 from api.services.financial_aid_grant_placements import (
@@ -124,6 +126,7 @@ from api.services.financial_aid_grant_placements import (
 from api.services.financial_aid_grants_register import (
     Placement,
     RegisterRow,
+    counts_as_outside,
     grant_inputs_by_request,
     outside_grants_by_request,
 )
@@ -131,6 +134,7 @@ from api.services.financial_aid_intake_plan import application_fields, request_f
 from api.services.financial_aid_intake_repository import application_record, request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
+    STATUS_DUPLICATE,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
     ApplicationRecord,
@@ -153,6 +157,8 @@ from api.services.financial_aid_reconciliation import (
     apply_clawback,
     as_recorded,
     build_ledger,
+    camp_date,
+    clawback_eligible,
     confirmation,
     dollars,
     ledger_note,
@@ -161,6 +167,7 @@ from api.services.financial_aid_reconciliation import (
     override_split,
     placeable,
     request_scope,
+    round_ledger,
     undone_rounds,
 )
 from api.services.financial_aid_request_overrides import (
@@ -204,6 +211,7 @@ from bunking.financial_aid.decisions import (
     PoolBudget,
     PricedRequest,
     RequestToPrice,
+    RoundLedger,
     RoundState,
     SeasonBudget,
     apply_event,
@@ -223,6 +231,7 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+_CLOSED_REVERSIBLE: Final = frozenset({STATUS_WITHDRAWN, STATUS_DUPLICATE})
 
 
 def is_included(status: str | None, *, cancelled: bool) -> bool:
@@ -278,7 +287,7 @@ class DecisionChangedError(FinancialAidError, ValueError):
 
     def __init__(self, rows: Sequence[ChangedRowOut]) -> None:
         super().__init__(
-            "A decided amount moved since it was shown, so nothing was posted: check the rows and tick again"
+            "A decided amount moved since it was shown, so nothing was posted: check the amount and tick again"
         )
         self.rows = list(rows)
 
@@ -368,10 +377,13 @@ class Season:
     gapped: Mapping[str, str] = field(default_factory=dict)
     grants_unplaced: bool = False
     deleted: frozenset[str] = frozenset()  # past read: requests deleted since, which can't be shown or priced
-    # Sub-project 10b-2: the cancelled live requests (D101). Empty on a past read (not rebuilt).
+    # Sub-project 10b-2: the cancelled live requests (D101); on a past read, as of the day (Decision 11).
     cancellations: Mapping[str, Cancellation] = field(default_factory=dict)
-    # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
-    # with posted camp aid still live (D54's forgotten reversal). Empty on a past read.
+    # Owner ruling 2026-10-02 (⚠, via the lead): the requests whose registration CampMinder cancelled (by the day, on a
+    # past read: 3c-2's rule). Read ONLY by forward demand (season_budget's not_demand); never widens `live`.
+    cancelled_in_campminder: frozenset[str] = frozenset()
+    # Decision 15, widened by owner ruling (a): cancelled with live camp aid placed on it, or withdrawn with
+    # posted camp aid still live (D54's forgotten reversal). Empty on a past read.
     to_reverse: frozenset[str] = frozenset()
     # Slice 1: each request as pricing read it, so the editor's preview re-prices one request with a typed
     # amount on exactly the inputs the season used. Empty on a past read.
@@ -642,6 +654,13 @@ def _candidates(request: RequestRecord, sessions: Mapping[int, SessionRow]) -> l
     ]
 
 
+def _total_decided(priced: PricedRequest) -> float | None:
+    """A request's total decided: every round with a decided amount. A clawed-back round stays in Decided (a
+    declined offer was still decided) and leaves Posted. The grid row and the editor preview share this."""
+    decided = [v.decided for v in priced.rounds if v.decided is not None]
+    return money(sum(decided, ZERO)) if decided else None
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -678,8 +697,6 @@ def grid_row(
         )
         for v in priced.rounds
     ]
-    # A clawed-back round stays in Decided (a declined offer was still decided) and leaves Posted.
-    decided = [v.decided for v in priced.rounds if v.decided is not None]
     posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None and not v.clawed_back]
     return GridRowOut(
         request_id=request.id,
@@ -695,7 +712,7 @@ def grid_row(
         tier=result.final_tier if result is not None else None,
         cost=_money(result.cost) if result is not None else None,
         rounds=views,
-        total_decided=money(sum(decided, ZERO)) if decided else None,
+        total_decided=_total_decided(priced),
         total_posted=money(sum(posted, ZERO)) if posted else None,
         holds=[_issue(i) for i in priced.holds],
         released_holds=[
@@ -721,6 +738,18 @@ def _count(count: Count) -> CountOut:
     return CountOut(families=count.families, requests=count.requests)
 
 
+def _unconfirmed(cell: Cell) -> UnconfirmedOut | None:
+    if cell.unconfirmed is None or cell.unconfirmed_count is None:
+        return None
+    return UnconfirmedOut(
+        count=cell.unconfirmed_count.requests, families=cell.unconfirmed_count.families, amount=money(cell.unconfirmed)
+    )
+
+
+def _maybe_count(count: Count | None) -> CountOut | None:
+    return _count(count) if count is not None else None
+
+
 def _cell(cell: Cell) -> CellOut:
     return CellOut(
         allocated=_money(cell.allocated),
@@ -729,6 +758,9 @@ def _cell(cell: Cell) -> CellOut:
         needs_offer=money(cell.needs_offer),
         pending_approval=money(cell.pending_approval),
         remaining=_money(cell.remaining),
+        needs_offer_count=_count(cell.needs_offer_count),
+        pending_approval_count=_count(cell.pending_approval_count),
+        unconfirmed=_unconfirmed(cell),
     )
 
 
@@ -744,13 +776,31 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             outside_grants=money(pool.below.outside_grants),
             outside_budget=money(pool.below.outside_budget),
             outside_budget_posted=money(pool.below.outside_budget_posted),
+            outside_grants_requests=_count(pool.below.outside_grants_requests),
         ),
         demand=ForwardDemandOut(
             round2_asks=_count(pool.demand.round2_asks),
             round2_asked=money(pool.demand.round2_asked),
             round2_computed=money(pool.demand.round2_computed),
             round1_unmet=money(pool.demand.round1_unmet),
+            round1_unmet_requests=_count(pool.demand.round1_unmet_requests),
+            round2_held=_count(pool.demand.round2_held),
+            round2_held_asked=money(pool.demand.round2_held_asked),
+            round1_held=_count(pool.demand.round1_held),
+            round1_held_asked=money(pool.demand.round1_held_asked),
         ),
+        decision_types=[
+            DecisionTypeLineOut(
+                key=t.key,
+                label=t.label,
+                counts_toward_budget=t.counts_toward_budget,
+                amount=money(t.amount),
+                posted=money(t.posted),
+                own=money(t.own),
+                requests=_count(t.requests),
+            )
+            for t in pool.decision_types
+        ],
     )
 
 
@@ -768,6 +818,8 @@ def budget_out(year: int, rules: RulesVersion | None, budget: SeasonBudget) -> B
                 accepted=_count(c.accepted),
                 held=_count(c.held),
                 pending_approval=_count(c.pending_approval),
+                awaiting_sync=_maybe_count(c.awaiting_sync),
+                not_reconciled=_maybe_count(c.not_reconciled),
             )
             for n, c in sorted(budget.strip.items())
         ],
@@ -907,6 +959,40 @@ def _cancelled_in_campminder(
     )
 
 
+def _past_cancellations(
+    requests: Mapping[str, RequestRecord],
+    today: Sequence[RequestRecord],
+    enrollments: Sequence[EnrollmentState],
+    sessions: Sequence[SessionRow],
+    day: date,
+    kindred: Mapping[str, CancelState],
+    cancelled_now: frozenset[str],
+) -> dict[str, Cancellation]:
+    """Decision 11: each request's cancellation as of `day`, built by the rule the past figures use, so 6(b)'s
+    Appeals list (which reads the row's cancellation) agrees with Round 2 asks so far. CampMinder's first, dated by
+    its latest cancelled registration on or before the day (`_cancelled_in_campminder`'s rule, under the record as
+    it stood then or as it is now); else Kindred's as recorded by then. As cancellations_by_request orders them."""
+    session_types = {s.cm_id: s.session_type for s in sessions}
+    now = {r.id: r for r in today}
+    out: dict[str, Cancellation] = {}
+    for request_id, record in requests.items():
+        state = kindred.get(request_id, CancelState())
+        if request_id in cancelled_now:
+            days = [
+                on
+                for r in (record, now.get(request_id))
+                if r is not None
+                for on in cancelled_days(r, enrollments, session_types)
+                if on is not None and on <= day
+            ]
+            # The latest, as today's row shows (enrollment_cancelled), so a past read and today's agree.
+            out[request_id] = Cancellation("campminder", max(days) if days else None, state.reason, state.note)
+        elif state.in_kindred and record.status in _LIVE:
+            on = camp_date(state.at) if state.at is not None else None
+            out[request_id] = Cancellation("kindred", on, state.reason, state.note)
+    return out
+
+
 def _pricing_gap(
     request: RequestRecord,
     *,
@@ -1000,7 +1086,11 @@ def _masked(pool: str, gapped: frozenset[str] | None) -> bool:
 
 
 def _past_cell[C: CellOut](cell: C, *, priced: bool, posted: bool) -> C:
-    update: dict[str, Any] = {} if priced else {"needs_offer": None, "pending_approval": None}
+    update: dict[str, Any] = (
+        {}
+        if priced
+        else {"needs_offer": None, "pending_approval": None, "needs_offer_count": None, "pending_approval_count": None}
+    )
     if not (priced and posted):
         update["remaining"] = None
     return cell.model_copy(update=update)
@@ -1011,11 +1101,36 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
     Needs an offer, Pending approval, Remaining, the held figures, outside grants, outside the budget
     and the computed demand stay empty. Remaining also needs Posted (`posted`), and Round 2 asks so far
     every request's status (`asks`)."""
-    demand: dict[str, Any] = {} if priced else {"round2_computed": None, "round1_unmet": None}
+    demand: dict[str, Any] = (
+        {}
+        if priced
+        else {
+            "round2_computed": None,
+            "round1_unmet": None,
+            "round1_unmet_requests": None,
+            "round1_held": None,
+            "round1_held_asked": None,
+            "round2_held": None,
+            "round2_held_asked": None,
+        }
+    )
     if not asks:
-        demand |= {"round2_asks": None, "round2_asked": None}
+        demand |= {"round2_asks": None, "round2_asked": None, "round2_held": None, "round2_held_asked": None}
     below: dict[str, Any] = (
-        {} if priced else {"held": None, "held_asked": None, "outside_grants": None, "outside_budget": None}
+        {}
+        if priced
+        else {
+            "held": None,
+            "held_asked": None,
+            "outside_grants": None,
+            "outside_grants_requests": None,
+            "outside_budget": None,
+        }
+    )
+    types = (
+        pool.decision_types
+        if priced
+        else [t.model_copy(update={"amount": None, "own": None, "requests": None}) for t in pool.decision_types]
     )
     return pool.model_copy(
         update={
@@ -1023,6 +1138,7 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
             "total": _past_cell(pool.total, priced=priced, posted=posted),
             "below": pool.below.model_copy(update=below),
             "demand": pool.demand.model_copy(update=demand),
+            "decision_types": types,
         }
     )
 
@@ -1055,6 +1171,10 @@ def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
                 "rounds": [cell(c) for c in p.rounds],
                 "total": cell(p.total),
                 "below": p.below.model_copy(update={"outside_budget_posted": None}),
+                "decision_types": [
+                    t.model_copy(update={"posted": None, "amount": None, "own": None, "requests": None})
+                    for t in p.decision_types
+                ],
             }
         )
 
@@ -1309,18 +1429,24 @@ class FinancialAidDecisionsService:
             live = request.status in _LIVE
             lines = ledger.lines(request.id) if live else ledger.closed_lines(request.id)
             item, day = apply_clawback(
-                priced[request.id], rounds.get(request.id, {}), lines, family_lines=ledger.family_lines(scope)
+                priced[request.id],
+                rounds.get(request.id, {}),
+                lines,
+                eligible=clawback_eligible(request.status, cancelled=request.id in cancellations),
+                family_lines=ledger.family_lines(scope),
             )
             if day is not None:
                 reversed_on[request.id] = day
             note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
             priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
-        withdrawn = withdrawn_on_cancelled_enrollments(side.requests, enrollments, sessions)
+        # Owner ruling (a), 2026-10-02: a withdrawn or confirmed-duplicate request whose camp aid is still live in
+        # CampMinder is To reverse whatever its enrollment says (and once that money is reversed it reads clawed back:
+        # clawback_eligible). A duplicate_pending one is neither: it stays in Duplicates with its money Posted.
         to_reverse = frozenset(
             r.id
             for r in side.requests
             if (r.id in cancellations and any(line.live() for line in ledger.lines(r.id)))
-            or (r.id in withdrawn and any(line.live() for line in ledger.closed_lines(r.id)))
+            or (r.status in _CLOSED_REVERSIBLE and any(line.live() for line in ledger.closed_lines(r.id)))
         )
         season = Season(
             year=year,
@@ -1336,6 +1462,7 @@ class FinancialAidDecisionsService:
             shares=shares_of,
             undone=undone_rounds(events),
             cancellations=cancellations,
+            cancelled_in_campminder=frozenset(rid for rid, c in cancellations.items() if c.by == "campminder"),
             to_reverse=to_reverse,
             inputs=items,
             camp_lines=tuple(camp_lines),
@@ -1448,7 +1575,8 @@ class FinancialAidDecisionsService:
         # both axes). CampMinder's is read from today's registrations, dated by their current status: a request
         # whose registration CampMinder had cancelled by the day isn't priced as live then (the cancellation
         # gap); one whose status changed since (re-enrolled, cancelled again, removed) can't be seen.
-        in_kindred = {rid for rid, state in fold_cancellations(cancel_events, as_of=at).items() if state.in_kindred}
+        kindred_states = fold_cancellations(cancel_events, as_of=at)
+        in_kindred = {rid for rid, state in kindred_states.items() if state.in_kindred}
         cancelled_now = _cancelled_in_campminder(requests, today, enrollments, sessions, day)
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
@@ -1532,6 +1660,10 @@ class FinancialAidDecisionsService:
                 rounds,
                 priced,
                 (shares_of, bad_shares, bad_share_households),
+                # As live's cancellations_by_request and _past_cancellations: a Kindred cancellation counts
+                # only on a request live then, so a pending duplicate's money stays Posted on both reads.
+                cancelled=frozenset(r for r in in_kindred if r in requests and requests[r].status in _LIVE)
+                | cancelled_now,
                 notes=year >= FIRST_TICKED_SEASON,
             )
             gaps = (*gaps, *ledger_gaps)
@@ -1569,6 +1701,10 @@ class FinancialAidDecisionsService:
             grants_unplaced=grants_unplaced,
             deleted=deleted,
             cost_overrides=cost_overrides,
+            cancelled_in_campminder=cancelled_now,
+            cancellations=_past_cancellations(
+                requests, today, enrollments, sessions, day, kindred_states, cancelled_now
+            ),
         )
 
     @staticmethod
@@ -1582,9 +1718,11 @@ class FinancialAidDecisionsService:
         priced: dict[str, PricedRequest],
         shares_as_of: tuple[dict[str, tuple[PayerShareRecord, ...]], frozenset[str], frozenset[int]],
         *,
+        cancelled: frozenset[str],
         notes: bool = False,
     ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
-        """Clawbacks as of `at`, and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
+        """Clawbacks as of `at` (only a cancelled-by-then or closed request is clawed back, `clawback_eligible`;
+        `cancelled` is the requests cancelled by the day, in Kindred or CampMinder), and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
         to `priced` in place; the gaps and the requests whose posted money is left empty (their shares or
         placements can't be replayed). On the campminder axis the lines cut on CampMinder's post and reversal
         dates; on recorded, also on when Kindred had recorded each line and its reversal (as_recorded, ruling
@@ -1628,7 +1766,12 @@ class FinancialAidDecisionsService:
             lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
             scope = request_scope(request, shares_of.get(request_id, ()))
             item, _ = apply_clawback(
-                priced[request_id], rounds.get(request_id, {}), lines, at=at, family_lines=ledger.family_lines(scope)
+                priced[request_id],
+                rounds.get(request_id, {}),
+                lines,
+                eligible=clawback_eligible(request.status, cancelled=request_id in cancelled),
+                at=at,
+                family_lines=ledger.family_lines(scope),
             )
             note = ledger_note(item, lines, ledger.family_unplaced(scope), at=at) if notes else None
             priced[request_id] = replace(item, notes=(*item.notes, note)) if note is not None else item
@@ -1673,17 +1816,26 @@ class FinancialAidDecisionsService:
         day = self._past_day(as_of)
         return await self.season(year) if day is None else await self.past_season(year, day, axis)
 
-    def _budget(self, season: Season) -> SeasonBudget:
+    def _budget(self, season: Season, *, confirmed: bool = False) -> SeasonBudget:
         # The register's money, not the calculator's inputs: a pays-after-camp-aid grant (D143) never
         # reaches the calculator but is still outside money below the line (D125).
         by_request = outside_grants_by_request(season.register)
         off = sum(
-            (row.amount for row in season.register if row.counts and row.funder_type == "outside" and not row.requests),
+            (
+                row.amount
+                for row in season.register
+                if counts_as_outside(row.counts, row.funder_type) and not row.requests
+            ),
             ZERO,
         )
         document = season.rules.document if season.rules is not None else None
         return season_budget(
-            season.priced.values(), document, outside_grants=by_request, outside_grants_off_requests=off
+            season.priced.values(),
+            document,
+            outside_grants=by_request,
+            outside_grants_off_requests=off,
+            not_demand=season.cancelled_in_campminder,
+            ledger=self._round_ledgers(season) if confirmed else None,
         )
 
     def budget_of(self, season: Season) -> SeasonBudget:
@@ -1711,18 +1863,20 @@ class FinancialAidDecisionsService:
         rows = [self.row_of(season, (families, campers), rid) for rid in season.priced]
         if season.as_of is not None:
             # 3c-2: a row is exact unless a gap reaches its request; then it keeps 3c-1's figures. Every past
-            # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS).
+            # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS). Included
+            # and the to-do read the row's cancellation as of the day (Decision 11), so they are filled, except for
+            # a request whose status can't be replayed (request_history), where they stay empty with its status.
             rows = [
                 row.model_copy(
                     update={
                         "queues": None,
-                        # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
-                        "cancellation": None,
                         "to_reverse": None,
                         "appeal_refusal": None,
-                        "included": None,
-                        "todos": None,
-                        "request_status": None if row.request_id in season.unrebuilt else row.request_status,
+                        **(
+                            {"included": None, "todos": None, "request_status": None}
+                            if row.request_id in season.unrebuilt
+                            else {}
+                        ),
                     }
                 )
                 for row in rows
@@ -1800,6 +1954,26 @@ class FinancialAidDecisionsService:
         )
 
     @staticmethod
+    def _round_ledgers(season: Season) -> dict[str, dict[int, RoundLedger]] | None:
+        """Owner ruling ⚠10: each request's posted rounds against CampMinder's live net. None (not computed) on a read
+        that loaded no ledger (a past date) and before the first ticked season, exactly as _confirmation."""
+        if not season.ledger.read or season.year < FIRST_TICKED_SEASON:
+            return None
+        ledger = season.ledger
+        out: dict[str, dict[int, RoundLedger]] = {}
+        for request_id, request in season.requests.items():
+            lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
+            out[request_id] = round_ledger(
+                season.priced[request_id],
+                season.rounds.get(request_id, {}),
+                lines,
+                season.shares.get(request_id, ()),
+                request.household_cm_id,
+                synced_at=ledger.synced_at,
+            )
+        return out
+
+    @staticmethod
     def _confirmation(season: Season, request_id: str) -> Confirmation | None:
         """The request's confirmation state (D59); None on a read that loaded no ledger (a past date),
         and before the first ticked season (nothing then was ticked, SP10b Decision 9)."""
@@ -1822,7 +1996,7 @@ class FinancialAidDecisionsService:
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:
         season = await self._season_for(year, as_of, as_of_axis)
-        out = budget_out(year, season.rules, self._budget(season))
+        out = budget_out(year, season.rules, self._budget(season, confirmed=True))
         return out if season.as_of is None else past_budget(out, season)
 
     async def remaining(
@@ -2101,6 +2275,7 @@ class FinancialAidDecisionsService:
                 if s.household_cm_id in split
             ],
             pending_approval=pending,
+            total_decided=_total_decided(after),
         )
 
     async def tick_posted(self, year: int, body: PostedIn, actor: str) -> DecisionWriteOut:

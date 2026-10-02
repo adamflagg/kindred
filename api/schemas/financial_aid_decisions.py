@@ -224,9 +224,10 @@ class GridRowOut(BaseModel):
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
     confirmation: ConfirmationOut | None = None
-    # Sub-project 10b-2. None on a past read: cancellations aren't rebuilt as of a date (not_rebuilt).
+    # Sub-project 10b-2. On a past read, as of the day (Decision 11); a registration whose status changed since
+    # reads by today's status (not_rebuilt's cancellation).
     cancellation: CancellationOut | None = None
-    to_reverse: bool | None = False  # cancelled with camp aid still live in CampMinder (spec §6.2, D54)
+    to_reverse: bool | None = False  # cancelled, withdrawn or duplicate with camp aid still live in CampMinder
     todos: list[TodoOut] | None = Field(default_factory=list)
     # Slice 1: the views the row is in. None on a past read: membership reads figures a past date leaves empty.
     queues: list[QueueOut] | None = Field(default_factory=list)
@@ -261,6 +262,15 @@ class CountOut(BaseModel):
     requests: int
 
 
+class UnconfirmedOut(BaseModel):
+    """Owner ruling ⚠10 (2026-10-02): the part of this cell's Posted CampMinder's live camp aid doesn't cover yet,
+    filled oldest round first, per payer share. The amber line: "count not yet confirmed · amount"."""
+
+    count: int  # requests (a total cell counts each request once)
+    families: int
+    amount: float
+
+
 class CellOut(BaseModel):
     allocated: float | None
     posted: float | None  # None: a past read whose posted money can't be replayed exactly
@@ -268,6 +278,9 @@ class CellOut(BaseModel):
     needs_offer: float | None
     pending_approval: float | None
     remaining: float | None
+    needs_offer_count: CountOut | None = None  # None with its figure: a past read masks both together
+    pending_approval_count: CountOut | None = None
+    unconfirmed: UnconfirmedOut | None = None  # None: no ledger read (a past date), or before 2027
 
 
 class RoundCellOut(CellOut):
@@ -280,6 +293,8 @@ class BelowTheLineOut(BaseModel):
     outside_grants: float | None
     outside_budget: float | None
     outside_budget_posted: float | None
+    # Decision 13: the requests the outside grants offset (masked with outside_grants on a past date).
+    outside_grants_requests: CountOut | None = None
 
 
 class ForwardDemandOut(BaseModel):
@@ -287,6 +302,24 @@ class ForwardDemandOut(BaseModel):
     round2_asked: float | None
     round2_computed: float | None
     round1_unmet: float | None
+    round1_unmet_requests: CountOut | None = None
+    round2_held: CountOut | None = None
+    round2_held_asked: float | None = None
+    round1_held: CountOut | None = None
+    round1_held_asked: float | None = None
+
+
+class DecisionTypeLineOut(BaseModel):
+    """Main spec §12.1: one line per named decision type, in or out of the budget, and one for rounds with none.
+    The lines add up to the pool's Posted + Needs an offer + Pending approval (in) and outside the budget (out)."""
+
+    key: str | None
+    label: str
+    counts_toward_budget: bool
+    amount: float | None  # None: a past date where a gap masks the pool, or posted money can't be replayed
+    posted: float | None
+    own: float | None
+    requests: CountOut | None
 
 
 class PoolBudgetOut(BaseModel):
@@ -296,6 +329,7 @@ class PoolBudgetOut(BaseModel):
     total: CellOut
     below: BelowTheLineOut
     demand: ForwardDemandOut
+    decision_types: list[DecisionTypeLineOut] = Field(default_factory=list)
 
 
 class RoundCountsOut(BaseModel):
@@ -305,6 +339,8 @@ class RoundCountsOut(BaseModel):
     accepted: CountOut | None
     held: CountOut | None
     pending_approval: CountOut | None
+    awaiting_sync: CountOut | None = None
+    not_reconciled: CountOut | None = None
 
 
 class BudgetResponse(BaseModel):
@@ -475,7 +511,8 @@ class EditorPreviewOut(BaseModel):
     the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
     move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
     finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
-    already pending."""
+    already pending. `total_decided` is the request's total decided after the edit, defined as the grid row's
+    (every round, a clawed-back one included): the figure the row will carry once the edit is saved."""
 
     award: float | None
     trace: list[TraceStep]
@@ -483,6 +520,7 @@ class EditorPreviewOut(BaseModel):
     stage_after_label: str | None  # its words (ROUND_STATUS_LABELS), so the screen keeps no map of its own
     shares: list[PreviewShareOut]
     pending_approval: bool
+    total_decided: float | None = None
 
 
 class AcceptedIn(BaseModel):

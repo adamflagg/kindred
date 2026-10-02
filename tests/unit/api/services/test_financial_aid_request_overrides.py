@@ -138,13 +138,13 @@ async def test_a_legacy_include_override_row_excludes_nothing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_past_read_leaves_included_empty_and_names_it() -> None:
+async def test_a_past_read_fills_included_and_no_longer_names_it() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     log_seeded(store, datetime(2027, 1, 5, 17, 0, tzinfo=UTC))
     grid = await _service(store).grid(YEAR, as_of=date(2027, 3, 1))
-    assert grid.rows[0].included is None
-    assert "included" in [gap.figure for gap in grid.not_rebuilt]
+    assert grid.rows[0].included is True
+    assert "included" not in [gap.figure for gap in grid.not_rebuilt]
 
 
 NOTE = "Partial session agreed with the family"

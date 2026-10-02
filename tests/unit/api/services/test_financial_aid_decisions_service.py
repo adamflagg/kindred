@@ -549,6 +549,10 @@ async def test_a_tick_whose_amount_moved_writes_nothing_and_names_the_row() -> N
         await _service(store).tick_posted(YEAR, _tick((EMMA, 1, "1400")), ACTOR)
     assert raised.value.rows == [ChangedRowOut(request_id=EMMA, round=1, confirmed=1400.0, decided_now=1500.0)]
     assert store.operations == []
+    # The household page ticks one amount and has no rows to check, so the message must not point at rows.
+    assert str(raised.value) == (
+        "A decided amount moved since it was shown, so nothing was posted: check the amount and tick again"
+    )
 
 
 @pytest.mark.asyncio

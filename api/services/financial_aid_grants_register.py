@@ -567,13 +567,20 @@ def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[Grant
     return dict(out)
 
 
+def counts_as_outside(counts: bool, funder_type: str) -> bool:
+    """The one test of whether a grant is outside money that counts: the band's rule (D77), shared by the
+    per-request sum below, the budget's off-request sum and the household page's per-grant in_band flag so they
+    cannot disagree."""
+    return counts and funder_type == "outside"
+
+
 def outside_grants_by_request(rows: Iterable[RegisterRow]) -> dict[str, Decimal]:
     """The OUTSIDE grants that count, per request, summed: the budget's below-the-line money. Unlike
     the calculator bridge it keeps a pays-after-camp-aid grant (D143): that is still outside money
     (D125), it just never lowers the award."""
     out: dict[str, Decimal] = defaultdict(Decimal)
     for row in rows:
-        if row.counts and row.funder_type == "outside":
+        if counts_as_outside(row.counts, row.funder_type):
             for share in row.requests:
                 out[share.request_id] += share.amount
     return dict(out)

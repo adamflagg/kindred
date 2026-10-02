@@ -11,7 +11,7 @@ from typing import Any
 from bunking.financial_aid.calculator import CalcIssue, GrantInput
 from bunking.financial_aid.decisions import RoundState
 from bunking.financial_aid.decisions.budget import season_budget
-from bunking.financial_aid.decisions.pricing import RequestToPrice, lock_snapshot, price_request
+from bunking.financial_aid.decisions.pricing import RequestToPrice, lock_snapshot, posted_view, price_request
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
 RULES = fictional_rules()
@@ -363,3 +363,53 @@ def test_moving_a_decision_type_to_another_round_after_posting_moves_no_posted_m
     assert figures(rules) == (Decimal(0), Decimal(3250), Decimal(250), Decimal(600))
     moved = with_lever(rules, "awards.decision_types.discretionary.round", 2)
     assert figures(moved) == figures(rules)
+
+
+def test_the_round_carrying_a_named_decision_names_its_type() -> None:
+    keyed = RoundState(round=3, discretionary=Decimal(250), discretionary_type="discretionary")
+    priced = price_request(item(rounds={3: keyed}), RULES)
+    assert [(v.round, v.decision_type) for v in priced.rounds] == [(1, None), (3, "discretionary")]
+    assert all(v.decision_type is None for v in price_request(item(), RULES).rounds)
+
+
+RETIRED = RoundState(
+    round=2,
+    posted=True,
+    locked_amount=Decimal(650),
+    locked_at=T0,
+    snapshot={
+        "pool": "camp_pool",
+        "counts_toward_budget": True,
+        "decision_type": "retired_program",
+        "decision_round": 2,
+        "top_up": "250",
+        "discretionary": "0",
+    },
+)
+
+
+def test_a_posted_round_keeps_the_type_its_lock_recorded_after_the_rules_drop_it() -> None:
+    """Decision 12, D43: the lock's snapshot names the type, so a later rules version can't move posted money."""
+    view = posted_view(RETIRED, None, None, "camp_pool")
+    assert (view.decision_type, view.extra) == ("retired_program", Decimal(250))
+    other = replace(RETIRED, snapshot={**(RETIRED.snapshot or {}), "decision_round": 3})
+    assert posted_view(other, None, None, "camp_pool").decision_type is None  # the type's money sits in Round 3
+
+
+def test_a_lock_without_decision_round_takes_the_rules_type_only_for_its_own_round() -> None:
+    """The fallback for an older lock: the rules' type when it sits in this round, else no type."""
+    decision = RULES.awards.decision_types["discretionary"]
+    old = RoundState(
+        round=decision.round,
+        posted=True,
+        locked_amount=Decimal(650),
+        locked_at=T0,
+        snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+    )
+    here = posted_view(old, decision, None, "camp_pool", decision_key="discretionary")
+    assert here.decision_type == "discretionary"
+    elsewhere = posted_view(
+        replace(old, round=decision.round + 1), decision, None, "camp_pool", decision_key="discretionary"
+    )
+    assert elsewhere.decision_type is None
+    assert posted_view(old, None, None, "camp_pool", decision_key="discretionary").decision_type is None

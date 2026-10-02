@@ -5,8 +5,17 @@ The fixture's budget: 500,000; Camp 80% (reserves: Round 2 10%, Round 3 5%), Wee
 from dataclasses import replace
 from decimal import Decimal
 
-from bunking.financial_aid.decisions import PricedRequest, RoundStatus, RoundView
-from bunking.financial_aid.decisions.budget import NO_POOL, Count, PoolBudget, SeasonBudget, allocations, season_budget
+from bunking.financial_aid.decisions import PricedRequest, RoundLedger, RoundStatus, RoundView
+from bunking.financial_aid.decisions.budget import (
+    NO_POOL,
+    Cell,
+    Count,
+    PoolBudget,
+    SeasonBudget,
+    allocations,
+    season_budget,
+)
+from bunking.financial_aid.decisions.pricing import posted_view
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, with_lever, with_levers
 
 ZERO = Decimal(0)
@@ -317,3 +326,227 @@ def test_a_past_reads_unrebuilt_round_lists_the_pool_it_sits_in() -> None:
     nowhere = pool_of(budget, NO_POOL)
     assert (nowhere.total.posted, nowhere.total.accepted) == (ZERO, ZERO)
     assert [p.pool for p in budget.pools][-1] == NO_POOL
+
+
+def test_a_request_left_out_of_demand_adds_no_round_2_ask_and_keeps_its_money() -> None:
+    """Lead relay 2026-10-02 (owner ⚠ approved): forward demand leaves out a request CampMinder cancelled. Only
+    demand: its posted money still counts (that is D54's job), and `live` is not read differently."""
+    appeal = priced("e", 1000001, view(1, "posted", locked="1500"), view(2, "needs_offer", ask="900", decided="400"))
+    kept = season_budget([appeal], RULES, outside_grants={})
+    left = season_budget([appeal], RULES, outside_grants={}, not_demand=frozenset({"e"}))
+    assert (kept.total.demand.round2_asks, kept.total.demand.round2_asked) == (Count(1, 1), Decimal(900))
+    assert (left.total.demand.round2_asks, left.total.demand.round2_asked) == (Count(0, 0), ZERO)
+    assert left.total.total.posted == kept.total.total.posted == Decimal(1500)
+    assert left.total.total.needs_offer == kept.total.total.needs_offer == Decimal(400)
+
+
+def _cell(budget: SeasonBudget, pool: str, n: int) -> Cell:
+    holder = budget.total if pool == "*" else pool_of(budget, pool)
+    return holder.rounds[n]
+
+
+def test_unconfirmed_posted_sits_in_each_rounds_locked_pool_and_in_the_totals() -> None:
+    """⚠10: per pool × round, using each round's locked pool."""
+    emma = priced(
+        "e",
+        1000001,
+        view(1, "posted", locked="1500", pool="camp_pool"),
+        view(2, "posted", locked="500", pool="weekend_pool"),
+    )
+    ledger = {"e": {1: RoundLedger(ZERO, False), 2: RoundLedger(Decimal(500), True)}}
+    budget = season_budget([emma], RULES, outside_grants={}, ledger=ledger)
+    assert (_cell(budget, "camp_pool", 1).unconfirmed, _cell(budget, "camp_pool", 1).unconfirmed_count) == (
+        ZERO,
+        Count(0, 0),
+    )
+    assert (_cell(budget, "weekend_pool", 2).unconfirmed, _cell(budget, "weekend_pool", 2).unconfirmed_count) == (
+        Decimal(500),
+        Count(1, 1),
+    )
+    assert (budget.total.rounds[2].unconfirmed, budget.total.total.unconfirmed) == (Decimal(500), Decimal(500))
+    assert budget.total.total.unconfirmed_count == Count(1, 1)
+    assert (budget.strip[2].awaiting_sync, budget.strip[2].not_reconciled) == (Count(1, 1), Count(0, 0))
+
+
+def test_the_strips_two_counts_split_each_rounds_unconfirmed_count() -> None:
+    """Decision 3: awaiting sync + not reconciled = the round's amber count, request for request."""
+    rows = [
+        priced("a", 1000001, view(1, "posted", locked="1500")),
+        priced("b", 1000002, view(1, "posted", locked="1500")),
+        priced("c", 1000003, view(1, "posted", locked="1500")),
+    ]
+    ledger = {
+        "a": {1: RoundLedger(Decimal(1500), True)},
+        "b": {1: RoundLedger(Decimal(210), False)},
+        "c": {1: RoundLedger(ZERO, True)},  # ticked after the sync, but CampMinder already holds it: confirmed
+    }
+    budget = season_budget(rows, RULES, outside_grants={}, ledger=ledger)
+    awaiting, unreconciled = budget.strip[1].awaiting_sync, budget.strip[1].not_reconciled
+    amber = budget.total.rounds[1].unconfirmed_count
+    assert (awaiting, unreconciled) == (Count(1, 1), Count(1, 1))
+    assert awaiting is not None
+    assert unreconciled is not None
+    assert amber is not None
+    assert awaiting.requests + unreconciled.requests == amber.requests
+    assert budget.total.rounds[1].unconfirmed == Decimal(1710)
+
+
+def test_a_round_outside_the_budget_or_clawed_back_has_no_unconfirmed_part() -> None:
+    outside = priced("o", 1000001, view(1, "posted", locked="900", counts=False))
+    clawed = priced("c", 1000002, replace(view(1, "posted", locked="1500"), clawed_back=True))
+    ledger = {"o": {1: RoundLedger(Decimal(900), False)}, "c": {1: RoundLedger(Decimal(1500), False)}}
+    budget = season_budget([outside, clawed], RULES, outside_grants={}, ledger=ledger)
+    assert (budget.total.total.unconfirmed, budget.strip[1].not_reconciled) == (ZERO, Count(0, 0))
+
+
+def test_with_no_ledger_read_the_figures_are_not_computed() -> None:
+    budget = season_budget([priced("e", 1000001, view(1, "posted", locked="1500"))], RULES, outside_grants={})
+    assert (budget.total.rounds[1].unconfirmed, budget.total.total.unconfirmed_count) == (None, None)
+    assert (budget.strip[1].awaiting_sync, budget.strip[1].not_reconciled) == (None, None)
+
+
+def test_a_request_unconfirmed_in_two_rounds_is_one_request_in_the_total_cell() -> None:
+    emma = priced("e", 1000001, view(1, "posted", locked="1500"), view(2, "posted", locked="500"))
+    ledger = {"e": {1: RoundLedger(Decimal(1500), False), 2: RoundLedger(Decimal(500), False)}}
+    budget = season_budget([emma], RULES, outside_grants={}, ledger=ledger)
+    assert budget.total.total.unconfirmed_count == Count(1, 1)
+    assert budget.total.total.unconfirmed == Decimal(2000)
+
+
+def test_each_cell_counts_who_needs_an_offer_and_who_waits_for_approval() -> None:
+    rows = [
+        priced("a", 1000001, view(1, "needs_offer", decided="1500"), view(2, "needs_offer", ask="900", decided="400")),
+        priced("b", 1000001, view(1, "needs_offer", decided="1200")),  # a sibling: same family
+        priced("c", 1000002, view(1, "posted", locked="1500"), view(3, "pending_approval", pending="650")),
+    ]
+    camp = pool_of(season_budget(rows, RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[1].needs_offer, camp.rounds[1].needs_offer_count) == (Decimal(2700), Count(1, 2))
+    assert camp.rounds[2].needs_offer_count == Count(1, 1)
+    assert (camp.rounds[3].pending_approval, camp.rounds[3].pending_approval_count) == (Decimal(650), Count(1, 1))
+    assert camp.total.needs_offer_count == Count(1, 2)  # request "a" is counted once across its two rounds
+    assert camp.total.pending_approval_count == Count(1, 1)
+
+
+def _typed(round_view: RoundView, key: str) -> RoundView:
+    return replace(round_view, decision_type=key)
+
+
+SEASON = [
+    priced("plain", 1000001, view(1, "posted", locked="1500"), view(2, "needs_offer", ask="900", decided="400")),
+    priced(
+        "topped",
+        1000002,
+        view(1, "posted", locked="1500"),
+        _typed(view(2, "posted", locked="650", extra="250"), "appeal_top_up"),
+    ),
+    priced("disc", 1000003, _typed(view(3, "posted", locked="250", counts=False), "discretionary")),
+    priced("pending", 1000004, _typed(view(3, "pending_approval", pending="300"), "discretionary")),
+    priced("held", 1000005, view(1, "held", ask="2000")),
+    # Counts nowhere (D54): its money was reversed, so no line, cell or total may carry it.
+    priced("clawed", 1000006, replace(view(1, "posted", locked="1500"), clawed_back=True)),
+    # A non-counting type's needs-an-offer round: wholly outside the budget, never in a posted or inside figure.
+    priced("outside", 1000007, _typed(view(3, "needs_offer", decided="400", counts=False), "discretionary")),
+]
+
+
+def test_one_line_per_decision_type_in_the_rules_order_then_rounds_with_none() -> None:
+    lines = season_budget(SEASON, RULES, outside_grants={}).total.decision_types
+    assert [(t.key, t.label, t.counts_toward_budget) for t in lines] == [
+        ("appeal_top_up", "Appeal top-up", True),
+        ("discretionary", "Discretionary", True),
+        ("discretionary", "Discretionary", False),
+        (None, "No named decision type", True),
+    ]
+    top_up = lines[0]
+    assert (top_up.amount, top_up.posted, top_up.own, top_up.requests) == (
+        Decimal(650),
+        Decimal(650),
+        Decimal(250),
+        Count(1, 1),
+    )
+    none = lines[3]  # plain's Round 1 (posted) and Round 2 (needs an offer), and topped's Round 1 (posted)
+    assert (none.amount, none.posted, none.requests) == (Decimal(3400), Decimal(3000), Count(2, 2))
+    assert none.own == ZERO  # no type, so no decision money of its own: the whole line is plain rounds
+
+
+def test_the_lines_add_up_to_the_budgets_own_figures() -> None:
+    """Main spec §12.1: every decision row is counted, in or out of the budget, so nothing goes missing."""
+    budget = season_budget(SEASON, RULES, outside_grants={})
+    for pool in (*budget.pools, budget.total):
+        inside = [t for t in pool.decision_types if t.counts_toward_budget]
+        outside = [t for t in pool.decision_types if not t.counts_toward_budget]
+        total = pool.total
+        assert sum((t.amount for t in inside), ZERO) == total.posted + total.needs_offer + total.pending_approval
+        assert sum((t.posted for t in inside), ZERO) == total.posted
+        assert sum((t.amount for t in outside), ZERO) == pool.below.outside_budget
+        assert sum((t.posted for t in outside), ZERO) == pool.below.outside_budget_posted
+
+
+def test_a_clawed_back_request_adds_nothing_and_an_outside_needs_offer_joins_its_types_outside_line() -> None:
+    clawed = next(r for r in SEASON if r.request_id == "clawed")
+    without = season_budget([r for r in SEASON if r is not clawed], RULES, outside_grants={})
+    with_it = season_budget(SEASON, RULES, outside_grants={})
+    assert with_it.total.decision_types == without.total.decision_types
+    assert with_it.total.total == without.total.total
+    outside = next(t for t in with_it.total.decision_types if t.key == "discretionary" and not t.counts_toward_budget)
+    assert (outside.amount, outside.posted) == (Decimal(650), Decimal(250))  # the disc round's 250 plus 400 to offer
+
+
+def test_a_type_the_rules_no_longer_name_keeps_its_line_and_key() -> None:
+    """Decision 12: reachable through a real posted lock (posted_view reads the snapshot)."""
+    from tests.unit.bunking.financial_aid.test_decision_pricing import RETIRED
+
+    gone = priced("g", 1000001, posted_view(RETIRED, None, None, "camp_pool"))
+    (line,) = season_budget([gone], RULES, outside_grants={}).total.decision_types
+    assert (line.key, line.label, line.amount, line.own) == (
+        "retired_program",
+        "retired_program",
+        Decimal(650),
+        Decimal(250),
+    )
+
+
+def test_the_outside_grants_line_counts_the_requests_it_offsets() -> None:
+    """Decision 13: "Outside grants offsetting awards (41 campers)"."""
+    rows = [
+        priced("a", 1000001, view(1, "needs_offer", decided="1500")),
+        priced("b", 1000001, view(1, "needs_offer", decided="1200")),
+        priced("c", 1000002, view(1, "needs_offer", decided="900")),
+    ]
+    below = season_budget(
+        rows, RULES, outside_grants={"a": Decimal(400), "b": Decimal(0), "c": Decimal(250)}
+    ).total.below
+    assert (below.outside_grants, below.outside_grants_requests) == (Decimal(650), Count(2, 2))
+
+
+def test_forward_demand_counts_unmet_round_1_and_splits_out_the_held() -> None:
+    rows = [
+        priced("short", 1000001, view(1, "posted", ask="2000", locked="1500")),  # 500 unmet
+        priced("met", 1000002, view(1, "posted", ask="1500", locked="1500")),  # nothing unmet: not counted
+        priced("held1", 1000003, view(1, "held", ask="1800")),
+        priced("appeal", 1000004, view(1, "posted", locked="1500"), view(2, "needs_offer", ask="900", decided="400")),
+        priced("held2", 1000005, view(1, "posted", locked="1500"), view(2, "held", ask="700")),
+    ]
+    demand = season_budget(rows, RULES, outside_grants={}).total.demand
+    assert (demand.round1_unmet, demand.round1_unmet_requests) == (Decimal(2300), Count(2, 2))
+    assert (demand.round1_held, demand.round1_held_asked) == (Count(1, 1), Decimal(1800))
+    assert (demand.round2_asks, demand.round2_asked) == (Count(2, 2), Decimal(1600))  # unchanged: held included
+    assert (demand.round2_held, demand.round2_held_asked) == (Count(1, 1), Decimal(700))
+
+
+def test_a_held_round_1_with_no_ask_is_no_demand_but_still_lists_its_pool() -> None:
+    """Decision 7: the held count is requests whose part is above $0, so a $0 ask is neither counted nor added."""
+    budget = season_budget(
+        [priced("zero", 1000001, view(1, "held", ask="0", pool="other_pool"))], RULES, outside_grants={}
+    )
+    demand = pool_of(budget, "other_pool").demand
+    assert (demand.round1_held, demand.round1_held_asked) == (Count(), ZERO)
+    assert (demand.round1_unmet, demand.round1_unmet_requests) == (ZERO, Count())
+
+
+def test_a_pool_reached_only_by_demand_is_still_listed_as_before() -> None:
+    """The refactor keeps which pools are listed: a pool no money reaches, but a $0 appeal does, still shows (the old
+    per-figure dicts created its key)."""
+    appeal = priced("a", 1000001, view(2, "not_decided", ask="0", pool="other_pool"))
+    budget = season_budget([appeal], RULES, outside_grants={})
+    assert pool_of(budget, "other_pool").demand.round2_asks == Count(1, 1)

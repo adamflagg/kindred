@@ -22,10 +22,12 @@ from typing import Any, Final, Protocol
 
 from api.schemas.financial_aid import HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
+from api.schemas.financial_aid_grants import GrantRowOut
 from api.schemas.financial_aid_household_page import (
     ConfirmationStateOut,
     HistoryEntryOut,
     HouseholdCardOut,
+    HouseholdGrantRowOut,
     HouseholdMoneyOut,
     HouseholdPageResponse,
     HouseholdRequestOut,
@@ -44,7 +46,7 @@ from api.services.financial_aid_decisions_service import (
     PricingRules,
     is_included,
 )
-from api.services.financial_aid_grants_register import RegisterRow, outside_grants_by_request
+from api.services.financial_aid_grants_register import RegisterRow, counts_as_outside, outside_grants_by_request
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
 from api.services.financial_aid_intake_types import PayerShareRecord
 from api.services.financial_aid_ledger_service import (
@@ -54,6 +56,7 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     posting_line,
 )
+from api.services.financial_aid_payer_shares import share_status
 from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
@@ -72,14 +75,18 @@ _UNDECIDED: Final = frozenset({"held", "not_decided", "pending_approval"})
 REPRODUCED = "reproduced"
 
 
-def _share_state(row: GridRowOut, household_cm_id: int) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
+def _share_state(
+    row: GridRowOut, household_cm_id: int, adds_up: bool
+) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
     """A payer's money in CampMinder and its state: its own share's when the request is split (main spec
-    §11), else the request's (one payer)."""
+    §11), else the request's: one payer, or a reversed request (nothing is left in CampMinder for any payer).
+    Shares that don't add up to 100% (the same test `split` makes, so it yields no parts either) have no share
+    of their own to show, one payer or several: the request's whole figure is never one payer's."""
     c = row.confirmation
     if c is None:
         return None, None
     if not c.shares:
-        return dollars(c.in_campminder), c.status
+        return (dollars(c.in_campminder), c.status) if adds_up else (None, None)
     share = next((s for s in c.shares if s.household_cm_id == household_cm_id), None)
     if share is None:
         return None, None
@@ -90,9 +97,10 @@ def share_lines(row: GridRowOut, shares: Sequence[PayerShareRecord], chips: Mapp
     shares = payers(row.request_id, row.household_cm_id, shares)
     decided = split(dollars(row.total_decided), shares, row.household_cm_id)
     posted = split(dollars(row.total_posted), shares, row.household_cm_id)
+    adds_up = share_status(shares) == "complete"
     out = []
     for share in sorted(shares, key=lambda s: (chips.get(s.household_cm_id, len(chips) + 1), s.household_cm_id)):
-        held, status = _share_state(row, share.household_cm_id)
+        held, status = _share_state(row, share.household_cm_id, adds_up)
         mine_decided = decided.get(share.household_cm_id)
         mine_posted = posted.get(share.household_cm_id)
         out.append(
@@ -133,14 +141,32 @@ def band_grants_by_request(register: Iterable[RegisterRow]) -> dict[str, Decimal
     outside grants on the request, live lines plus open commitments (D116, D55; Expected never, D56), INCLUDING a
     last-dollar grantor's (D77's "live outside-grant lines", D143), as the budget's below-the-line money does.
     The other reading (§5.8's gloss "the same grants the calculator subtracts") is `grant_inputs_by_request`,
-    which leaves that grant out. Flipping it is this function and
-    test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_zero."""
+    which leaves that grant out. Flipping it is this function,
+    test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_zero, and the grant rows' in_band
+    flag (grant_rows_with_band_flag, test_a_last_dollar_grant_is_in_the_band_as_the_band_counts_it)."""
     return outside_grants_by_request(register)
+
+
+def grant_rows_with_band_flag(grants: Iterable[GrantRowOut], rows: Sequence[GridRowOut]) -> list[HouseholdGrantRowOut]:
+    """Each grant row with in_band: whether the band counted it. Same rule as band_grants_by_request
+    (counts_as_outside) and totals (included requests only), so a counted grant on a withdrawn or duplicate
+    request reads False. The band takes a grant per request share: a grant split over a live and a withdrawn
+    request reads True, and only its live share is in the band."""
+    live = {row.request_id for row in rows if included(row)}
+    return [
+        HouseholdGrantRowOut(
+            **g.model_dump(),
+            in_band=counts_as_outside(g.counts, g.funder_type) and any(s.request_id in live for s in g.requests),
+        )
+        for g in grants
+    ]
 
 
 def _band_states(row: GridRowOut) -> list[tuple[ConfirmationStatusOut, Decimal]]:
     """A request's confirmation for the band: its own state, or, when it is confirmed and split, each payer
-    share's (D59: one payer short is not "confirmed"), as Today and the household cards count it."""
+    share's (D59: one payer short is not "confirmed"), as Today and the household cards count it. A request whose
+    shares don't add up to 100% counts once here, as the request's own state, as Today counts it; no household
+    card counts it, having no share of its own to show (_share_state)."""
     c = row.confirmation
     if c is None:
         return []
@@ -586,7 +612,7 @@ class HouseholdPageService:
                 )
                 for d in incomes
             ],
-            grants=grant_rows,
+            grants=grant_rows_with_band_flag(grant_rows, rows),
             expected=[e for e in grants.expected if e.household_cm_id in households],
             postings=[
                 posting_line(p, accepted)

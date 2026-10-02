@@ -182,6 +182,44 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.5",
         rulings=("D26", "D58", "D59"),
     ),
+    Definition(
+        key="round2_asks",
+        term="Round 2 asks so far",
+        text=(
+            "Round 2 asks so far: the appeals keyed so far on live requests (not cancelled, in Kindred or in "
+            "CampMinder, withdrawn or a duplicate), counted, with their total ask, held appeals' asks included, and "
+            "the total computed for those decided or posted. It knows only the appeals keyed so far. Shown below "
+            "the line, never counted in Remaining."
+        ),
+        spec="§5.9",
+        rulings=("D82",),
+    ),
+    Definition(
+        key="round1_unmet",
+        term="Round 1 unmet ask, not yet appealed",
+        text=(
+            "Round 1 unmet ask, not yet appealed: Σ (the family's Round 1 ask − its Round 1 decided award) over "
+            "live requests with no Round 2 ask keyed yet, plus held Round 1 requests' asks, per pool. It is demand "
+            "that can still come back as appeals: shown below the line, never counted in Remaining. Rounds outside "
+            "the budget don't count, offers that were clawed back don't count, and each family's gap is floored at "
+            "$0, so one family's overage never offsets another's unmet ask."
+        ),
+        spec="§5.9",
+        rulings=("D82",),
+    ),
+    Definition(
+        key="unconfirmed",
+        term="Not yet confirmed",
+        text=(
+            "Not yet confirmed, the amber line under Posted: the part of each posted round's locked amount that "
+            "CampMinder's live camp aid on the request doesn't cover yet. The live net fills the request's posted "
+            "rounds oldest round first, each payer share from its own household's lines. Money beyond the locked "
+            "total confirms nothing more and stays in Requests › Not reconciled. Remaining still subtracts all of "
+            "Posted."
+        ),
+        spec="§7.2",
+        rulings=("D59", "D153"),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -196,6 +234,9 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "pending_approval",
         "remaining",
         "below_the_line",
+        "round2_asks",
+        "round1_unmet",
+        "unconfirmed",
     ),
     "money-ledger": ("in_campminder_net", "posted"),
 }

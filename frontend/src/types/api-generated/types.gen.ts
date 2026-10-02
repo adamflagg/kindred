@@ -1158,6 +1158,7 @@ export type BelowTheLineOut = {
    * Outside Budget Posted
    */
   outside_budget_posted: number | null
+  outside_grants_requests?: CountOut | null
 }
 
 /**
@@ -2184,6 +2185,9 @@ export type CellOut = {
    * Remaining
    */
   remaining: number | null
+  needs_offer_count?: CountOut | null
+  pending_approval_count?: CountOut | null
+  unconfirmed?: UnconfirmedOut | null
 }
 
 /**
@@ -3290,6 +3294,40 @@ export type DecisionTypeOutput = {
 }
 
 /**
+ * DecisionTypeLineOut
+ *
+ * Main spec §12.1: one line per named decision type, in or out of the budget, and one for rounds with none.
+ * The lines add up to the pool's Posted + Needs an offer + Pending approval (in) and outside the budget (out).
+ */
+export type DecisionTypeLineOut = {
+  /**
+   * Key
+   */
+  key: string | null
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Amount
+   */
+  amount: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * Own
+   */
+  own: number | null
+  requests: CountOut | null
+}
+
+/**
  * DecisionWriteOut
  *
  * What a write did. A write that changed nothing wrote nothing: operation_id is then "".
@@ -3664,7 +3702,8 @@ export type DuplicateMark = {
  * the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
  * move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
  * finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
- * already pending.
+ * already pending. `total_decided` is the request's total decided after the edit, defined as the grid row's
+ * (every round, a clawed-back one included): the figure the row will carry once the edit is saved.
  */
 export type EditorPreviewOut = {
   /**
@@ -3699,6 +3738,10 @@ export type EditorPreviewOut = {
    * Pending Approval
    */
   pending_approval: boolean
+  /**
+   * Total Decided
+   */
+  total_decided?: number | null
 }
 
 /**
@@ -4225,6 +4268,17 @@ export type ForwardDemandOut = {
    * Round1 Unmet
    */
   round1_unmet: number | null
+  round1_unmet_requests?: CountOut | null
+  round2_held?: CountOut | null
+  /**
+   * Round2 Held Asked
+   */
+  round2_held_asked?: number | null
+  round1_held?: CountOut | null
+  /**
+   * Round1 Held Asked
+   */
+  round1_held_asked?: number | null
 }
 
 /**
@@ -5573,6 +5627,116 @@ export type HouseholdEnrollment = {
 }
 
 /**
+ * HouseholdGrantRowOut
+ *
+ * A register row as the household page shows it, with whether the band counted it.
+ */
+export type HouseholdGrantRowOut = {
+  /**
+   * Kind
+   */
+  kind: 'ledger' | 'commitment'
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Commitment Id
+   */
+  commitment_id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name: string
+  /**
+   * Camper Basis
+   */
+  camper_basis: 'ledger' | 'placed' | 'sole_camper' | 'commitment' | 'household' | 'none'
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Program Family
+   */
+  program_family: string
+  /**
+   * Grantor Key
+   */
+  grantor_key: string
+  /**
+   * Grantor Name
+   */
+  grantor_name: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Funder Type
+   */
+  funder_type: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Recorded On
+   */
+  recorded_on: string
+  /**
+   * Is Reversed
+   */
+  is_reversed: boolean
+  /**
+   * Reversal Date
+   */
+  reversal_date: string
+  /**
+   * Cancelled
+   */
+  cancelled: boolean
+  /**
+   * Counts
+   */
+  counts: boolean
+  /**
+   * Fulfils Commitment Id
+   */
+  fulfils_commitment_id: string
+  /**
+   * Requests
+   */
+  requests: Array<RequestShareOut>
+  /**
+   * In Band
+   *
+   * True when the household band counts this grant (same rule as the band: it counts, its funder is outside, and it sits on at least one included request, i.e. live and not cancelled, so a grant on a withdrawn or duplicate request is left out). The band counts per request share: a grant split over an included and an excluded request reads true, and only its share on the included request is in the band
+   */
+  in_band: boolean
+}
+
+/**
  * HouseholdJourneyResponse
  *
  * A household's year-over-year family-camp record, newest year first.
@@ -5933,7 +6097,7 @@ export type HouseholdPageResponse = {
   /**
    * Grants
    */
-  grants: Array<GrantRowOut>
+  grants: Array<HouseholdGrantRowOut>
   /**
    * Expected
    */
@@ -9815,6 +9979,10 @@ export type PoolBudgetOut = {
   total: CellOut
   below: BelowTheLineOut
   demand: ForwardDemandOut
+  /**
+   * Decision Types
+   */
+  decision_types?: Array<DecisionTypeLineOut>
 }
 
 /**
@@ -12458,6 +12626,9 @@ export type RoundCellOut = {
    * Remaining
    */
   remaining: number | null
+  needs_offer_count?: CountOut | null
+  pending_approval_count?: CountOut | null
+  unconfirmed?: UnconfirmedOut | null
   /**
    * Round
    */
@@ -12477,6 +12648,8 @@ export type RoundCountsOut = {
   accepted: CountOut | null
   held: CountOut | null
   pending_approval: CountOut | null
+  awaiting_sync?: CountOut | null
+  not_reconciled?: CountOut | null
 }
 
 /**
@@ -15369,6 +15542,27 @@ export type UnclassifiedSource = {
    * Postings
    */
   postings: number
+  /**
+   * Amount
+   */
+  amount: number
+}
+
+/**
+ * UnconfirmedOut
+ *
+ * Owner ruling ⚠10 (2026-10-02): the part of this cell's Posted CampMinder's live camp aid doesn't cover yet,
+ * filled oldest round first, per payer share. The amber line: "count not yet confirmed · amount".
+ */
+export type UnconfirmedOut = {
+  /**
+   * Count
+   */
+  count: number
+  /**
+   * Families
+   */
+  families: number
   /**
    * Amount
    */

@@ -32,7 +32,7 @@ def test_the_household_band_cites_its_five_figures() -> None:
 @pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: d.key)
 def test_each_definition_cites_its_spec_section_and_rulings(definition: Definition) -> None:
     assert re.fullmatch(r"[a-z][a-z0-9_]*", definition.key)
-    assert re.fullmatch(r"§5\.\d+", definition.spec)
+    assert re.fullmatch(r"§[57]\.\d+", definition.spec)
     assert definition.rulings
     assert all(re.fullmatch(r"D\d+", r) for r in definition.rulings)
 
@@ -76,3 +76,34 @@ def test_the_budget_surface_cites_the_budgets_own_posted() -> None:
     assert "posted" not in SURFACES["season-rounds-budget"]
     assert BY_KEY["budget_posted"].spec == "§5.3"
     assert BY_KEY["budget_posted"].term == "Posted"
+
+
+def test_rounds_and_budget_adds_forward_demand_and_the_confirmed_share_after_its_first_seven() -> None:
+    """Appended, so notes 1–7 keep their numbers; §5.9 (D82) and the owner's ⚠10 ruling (D59, D153)."""
+    keys = SURFACES["season-rounds-budget"]
+    assert keys[:7] == (
+        "allocated",
+        "budget_posted",
+        "accepted",
+        "needs_offer",
+        "pending_approval",
+        "remaining",
+        "below_the_line",
+    )
+    assert keys[7:] == ("round2_asks", "round1_unmet", "unconfirmed")
+    assert "held appeals' asks included" in BY_KEY["round2_asks"].text
+    assert "oldest round first" in BY_KEY["unconfirmed"].text
+
+
+def test_the_unconfirmed_note_cites_the_reconciliation_section() -> None:
+    """The confirmed share is spec §7.2's reconciliation, not §5.3's budget posted."""
+    assert BY_KEY["unconfirmed"].spec == "§7.2"
+
+
+def test_the_round_1_unmet_note_names_the_three_rules_the_figure_applies() -> None:
+    """Rounds outside the budget and clawed-back offers are skipped, and each family's gap is floored at $0 (the
+    behaviour is pinned in test_decision_budget.py)."""
+    text = BY_KEY["round1_unmet"].text
+    assert "Rounds outside the budget don't count" in text
+    assert "offers that were clawed back don't count" in text
+    assert "each family's gap is floored at $0" in text

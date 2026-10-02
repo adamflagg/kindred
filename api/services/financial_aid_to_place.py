@@ -48,6 +48,7 @@ from api.services.financial_aid_reconciliation import (
     apply_clawback,
     build_ledger,
     camp_date,
+    clawback_eligible,
     ledger_ticks,
     live_net,
     locked_total,
@@ -406,6 +407,9 @@ def reclaw(season: Season, ledger: SeasonLedger, request_ids: Iterable[str]) -> 
             fresh,
             season.rounds.get(request_id, {}),
             ledger.lines(request_id),
+            eligible=clawback_eligible(
+                season.requests[request_id].status, cancelled=request_id in season.cancellations
+            ),
             family_lines=ledger.family_lines(scope),
         )
         out.append(item)

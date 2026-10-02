@@ -15,7 +15,7 @@ service's _PRICING_GAPS), and names what each gap leaves empty (PAST_DATE_GAPS).
 
 The fold is not the whole past Posted figure: the decisions service then applies sub-project 10b's
 clawback as of the date (D54), so a posted round whose money CampMinder had reversed by then counts
-nowhere, and where a request's payer shares or line placements can't be replayed its posted money is
+nowhere on a request cancelled or closed by then (clawback_eligible), and where a request's payer shares or line placements can't be replayed its posted money is
 left empty and named (POSTED_GAPS).
 """
 
@@ -31,6 +31,7 @@ from bunking.financial_aid.decisions.pricing import (
     PricedRequest,
     RoundView,
     named_decision,
+    named_decision_key,
     posted_view,
     round_exists,
 )
@@ -50,20 +51,29 @@ _POOL_EMPTY: Final = (
 )
 _CANCELLED: Final = (
     "CampMinder keeps only each registration's current status, dated (its enrollment date), so a past date "
-    "shows no cancellation by CampMinder. A request live then whose registration CampMinder had cancelled on "
+    "reads CampMinder's cancellation by that status date. A request live then whose registration CampMinder had cancelled on "
     "or before that day, by that status date, can't be priced as live: only its posted rounds, asks and "
     "manual hold show" + _POOL_EMPTY + ". A registration whose status changed after that day (re-enrolled, "
     "back to waitlisted or applied, cancelled again later, which re-dates it, or removed from CampMinder) "
-    "reads by today's status, so its request is priced and counted as live then"
+    "reads by today's status, so its request is priced and counted as live then. A request CampMinder had "
+    "cancelled by that day is left out of Round 2 asks so far, as today's read leaves it out"
 )
-_CANCELLED_TODAY: Final = "Reads CampMinder's cancellations, which a past date doesn't show (see cancellation)"
+_TO_REVERSE: Final = (
+    "To reverse is cancelled, withdrawn or duplicate money still live in CampMinder's ledger, and a past date doesn't "
+    "read the ledger, so it can't be rebuilt"
+)
 
 
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
+    "unconfirmed": (
+        "How much of Posted the ledger had confirmed by that date isn't rebuilt: when each ledger sync ran, and "
+        "which CampMinder lines it had read then, aren't recorded by date"
+    ),
+    "awaiting_sync": "Which ticks were awaiting a ledger sync on that date isn't rebuilt (see unconfirmed)",
+    "not_reconciled": "Which posted rounds the ledger hadn't confirmed on that date isn't rebuilt (see unconfirmed)",
     "cancellation": _CANCELLED,
-    "to_reverse": _CANCELLED_TODAY,
-    "todos": _CANCELLED_TODAY,
+    "to_reverse": _TO_REVERSE,
     "queues": "Which Requests views a row is in reads its confirmation and cancellation",
     "round2_asks": _ROUND2,
     "round2_asked": _ROUND2,
@@ -72,7 +82,8 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         "These requests' change history can't be replayed to that date, so only their posted rounds show, and "
         "every pool's Needs an offer, Pending approval, Remaining, Held and the Held asks, outside grants, outside "
         "the budget and computed demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the "
-        "strip's Needs an offer, Pending approval and Held, and Round 2 asks so far (round2_asks)"
+        "strip's Needs an offer, Pending approval and Held, and Round 2 asks so far (round2_asks); their Included "
+        "and to-dos stay empty with their status"
     ),
     "request_deleted": (
         "Deleted since; its history can't be replayed, so it isn't shown, and every pool's Needs an offer, "
@@ -103,7 +114,6 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         + _POOL_EMPTY
         + ", and so does money on no request. A grant line CampMinder deleted before the log began can't be seen"
     ),
-    "included": "Whether a request is included reads its cancellation, which a past date doesn't rebuild",
     "appeal_refusal": "Whether an appeal can be keyed now; nothing is keyed into a past date",
     "ledger_classification": (
         "Which CampMinder lines count as the camp's own aid (a line's funder-type reclassification) and Go's "
@@ -138,23 +148,27 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "confirmation",
     "cancellation",
     "to_reverse",
-    "todos",
     "queues",
     "appeal_refusal",
-    "included",
 )
-BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation",)
+# A past budget never rebuilds the ledger figures either (no ledger is read for a past day).
+BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation", "unconfirmed", "awaiting_sync", "not_reconciled")
 REMAINING_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 # Named only when a past read empties them (a request's posted money can't be replayed): not always-on.
 POSTED_GAPS: Final[tuple[str, ...]] = ("posted", "accepted", "outside_budget_posted")
 
 
 def _view(
-    n: int, state: RoundState, decision: DecisionType | None, r1_ask: Decimal | None, pool: str | None
+    n: int,
+    state: RoundState,
+    decision: DecisionType | None,
+    r1_ask: Decimal | None,
+    pool: str | None,
+    decision_key: str | None = None,
 ) -> RoundView:
     ask = r1_ask if n == 1 else state.ask
     if state.posted:
-        return posted_view(state, decision, ask, pool)
+        return posted_view(state, decision, ask, pool, decision_key=decision_key)
     counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     return RoundView(
         round=n,
@@ -190,8 +204,9 @@ def price_as_of(
     see PAST_DATE_GAPS["pool_unknown"]); `program_key` the program it resolved to. A posted round keeps its lock's own pool."""
     states = {n: rounds.get(n, RoundState(round=n)) for n in ROUNDS}
     decision = named_decision(rounds, rules) if rules is not None else None
+    decision_key = named_decision_key(rounds) if decision is not None else None
     views = tuple(
-        _view(n, states[n], decision, r1_ask, pool)
+        _view(n, states[n], decision, r1_ask, pool, decision_key)
         for n in ROUNDS
         if round_exists(states[n]) and (states[n].posted or live)
     )

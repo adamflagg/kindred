@@ -172,6 +172,18 @@ class HistoryEntryOut(BaseModel):
     after: dict[str, Any] | None
 
 
+class HouseholdGrantRowOut(GrantRowOut):
+    """A register row as the household page shows it, with whether the band counted it."""
+
+    in_band: bool = Field(
+        description="True when the household band counts this grant (same rule as the band: it counts, its "
+        "funder is outside, and it sits on at least one included request, i.e. live and not cancelled, so a "
+        "grant on a withdrawn or duplicate request is left out). The band counts per request share: a grant split "
+        "over an included and an excluded request reads true, and only its share on the included request is in "
+        "the band"
+    )
+
+
 class HouseholdPageResponse(BaseModel):
     year: int
     household_cm_id: int
@@ -180,7 +192,7 @@ class HouseholdPageResponse(BaseModel):
     totals: HouseholdTotalsOut
     requests: list[HouseholdRequestOut]
     incomes: list[IncomeOut]
-    grants: list[GrantRowOut]
+    grants: list[HouseholdGrantRowOut]
     expected: list[ExpectedOut]
     postings: list[AidPostingLine]
     links: list[HouseholdLinkRow]

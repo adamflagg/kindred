@@ -28,11 +28,12 @@ from api.schemas.financial_aid_grants import GrantRowOut, GrantsResponse, Reques
 from api.schemas.financial_aid_intake import AnswerOut, ApplicationDetailResponse, RequestOut
 from api.services.financial_aid_casework_service import CaseworkNotFoundError
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
-from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_grants_register import RegisterRow, RequestShare
 from api.services.financial_aid_household_page import (
     HouseholdNotFoundError,
     HouseholdPageService,
     band_grants_by_request,
+    grant_rows_with_band_flag,
     household_money,
     page_scope,
     request_grants,
@@ -325,6 +326,87 @@ def test_a_row_has_no_include_override_and_its_included_is_live_and_not_cancelle
     assert "include_override" not in GridRowOut.model_fields
     out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA)], {})
     assert (out.cost, out.decided) == (4000.0, 3000.0)
+
+
+def _split_request(first_pct: str, second_pct: str, confirmation: ConfirmationOut) -> tuple[list[GridRowOut], Any]:
+    posted = [_round(1, "posted", decided=1800.0, posted=1800.0, posted_on=date(2031, 3, 9))]
+    rows = [_row(EMMA, JOHNSON, rounds=posted, total_decided=1800.0, total_posted=1800.0, confirmation=confirmation)]
+    shares = {EMMA: (share_row(EMMA, JOHNSON, first_pct), share_row(EMMA, GARCIA, second_pct))}
+    return rows, shares
+
+
+def test_a_card_shows_no_gap_while_the_requests_shares_do_not_add_up() -> None:
+    """Mid-rebalance (60% + 30%): the share table shows "-" for the request, so each card reads no CampMinder
+    figure and no state for it, never the request's whole figure as its own."""
+    rows, shares = _split_request("60", "30", _confirmation("short", 1800.0, 1590.0, []))
+    chips = {JOHNSON: 1, GARCIA: 2}
+    for household in (JOHNSON, GARCIA):
+        card = household_money(household, rows, shares, chips)
+        assert (card.in_campminder, card.states) == (None, [])
+        line = next(x for x in share_lines(rows[0], shares[EMMA], chips) if x.household_cm_id == household)
+        assert (line.in_campminder, line.status) == (None, None)
+
+
+def test_a_card_shows_its_own_shares_gap_when_the_shares_add_up() -> None:
+    held = [
+        ShareConfirmationOut(household_cm_id=JOHNSON, expected=1080.0, in_campminder=1000.0, status="short"),
+        ShareConfirmationOut(household_cm_id=GARCIA, expected=720.0, in_campminder=720.0, status="confirmed"),
+    ]
+    rows, shares = _split_request("60", "40", _confirmation("short", 1800.0, 1720.0, held))
+    chips = {JOHNSON: 1, GARCIA: 2}
+    johnson = household_money(JOHNSON, rows, shares, chips)
+    assert (johnson.posted, johnson.in_campminder) == (1080.0, 1000.0)
+    assert [(s.status, s.count, s.gap) for s in johnson.states] == [("short", 1, -80.0)]
+    garcia = household_money(GARCIA, rows, shares, chips)
+    assert [(s.status, s.count, s.gap) for s in garcia.states] == [("confirmed", 1, 0.0)]
+
+
+def test_a_single_payer_card_still_carries_the_requests_whole_figure() -> None:
+    rows = [
+        _row(
+            LIAM,
+            GARCIA,
+            rounds=[_round(1, "posted", decided=1800.0, posted=1800.0, posted_on=date(2031, 3, 9))],
+            total_decided=1800.0,
+            total_posted=1800.0,
+            confirmation=_confirmation("short", 1800.0, 1590.0, []),
+        )
+    ]
+    card = household_money(GARCIA, rows, {LIAM: (share_row(LIAM, GARCIA, "100"),)}, {GARCIA: 1})
+    assert card.in_campminder == 1590.0
+    assert [(s.status, s.count, s.gap) for s in card.states] == [("short", 1, -210.0)]
+
+
+def test_a_lone_payer_whose_share_is_not_100_shows_no_gap() -> None:
+    """One payer at 60% doesn't add up either: `split` yields it no decided or posted part, so its card never reads
+    the request's whole CampMinder figure as a gap against a posted of nothing."""
+    rows = [
+        _row(
+            LIAM,
+            GARCIA,
+            rounds=[_round(1, "posted", decided=1800.0, posted=1800.0, posted_on=date(2031, 3, 9))],
+            total_decided=1800.0,
+            total_posted=1800.0,
+            confirmation=_confirmation("short", 1800.0, 1590.0, []),
+        )
+    ]
+    shares = {LIAM: (share_row(LIAM, GARCIA, "60"),)}
+    card = household_money(GARCIA, rows, shares, {GARCIA: 1})
+    assert (card.in_campminder, card.states) == (None, [])
+    [line] = share_lines(rows[0], shares[LIAM], {GARCIA: 1})
+    assert (line.in_campminder, line.status) == (None, None)
+
+
+def test_a_reversed_split_request_reads_reversed_for_every_payer() -> None:
+    """A clawed-back request's confirmation carries no per-share lines even when its shares add up: nothing is left
+    in CampMinder for any payer, so each line reads $0 and reversed."""
+    reversed_ = _confirmation("reversed", 0.0, 0.0, [])
+    rows, shares = _split_request("60", "40", reversed_)
+    lines = share_lines(rows[0], shares[EMMA], {JOHNSON: 1, GARCIA: 2})
+    assert [(x.household_cm_id, x.in_campminder, x.status) for x in lines] == [
+        (JOHNSON, 0.0, "reversed"),
+        (GARCIA, 0.0, "reversed"),
+    ]
 
 
 # --- the service: one season, one grants load, the page's own reads ----------------------------------
@@ -1067,3 +1149,70 @@ async def test_a_household_card_names_its_county_from_the_billing_zip(monkeypatc
     monkeypatch.setattr(zip_counties, "_table", lambda: {"94612": "Alameda County"})
     page = await _page_service(_family()).read(YEAR, JOHNSON)
     assert [(c.household_cm_id, c.county) for c in page.households] == [(JOHNSON, "Alameda County"), (GARCIA, None)]
+
+
+# --- each grant row says whether the band counted it ---------------------------------------------
+
+
+def _flags(grants: list[GrantRowOut], rows: list[GridRowOut]) -> list[bool]:
+    return [g.in_band for g in grant_rows_with_band_flag(grants, rows)]
+
+
+def test_a_counted_outside_grant_on_a_live_request_is_in_the_band() -> None:
+    rows = [_row(EMMA, JOHNSON)]
+    grants = [_grant_out(JOHNSON, EMMA, 200.0, 9001)]
+    assert _flags(grants, rows) == [True]
+    assert totals(rows, band_grants_by_request([grant_row(EMMA, "200")])).grants == 200.0
+
+
+@pytest.mark.parametrize("status", ["withdrawn", "duplicate"])
+def test_the_same_grant_on_a_withdrawn_or_duplicate_request_is_not_in_the_band(status: str) -> None:
+    rows = [_row(EMMA, JOHNSON, request_status=status), _row(LIAM, JOHNSON)]
+    grants = [_grant_out(JOHNSON, EMMA, 200.0, 9001)]
+    assert _flags(grants, rows) == [False]
+    assert totals(rows, band_grants_by_request([grant_row(EMMA, "200")])).grants == 0.0
+
+
+def test_a_grant_that_does_not_count_or_is_not_outside_is_not_in_the_band() -> None:
+    rows = [_row(EMMA, JOHNSON)]
+    uncounted = _grant_out(JOHNSON, EMMA, 200.0, 9001).model_copy(update={"counts": False})
+    camp = _grant_out(JOHNSON, EMMA, 200.0, 9002).model_copy(update={"funder_type": "camp"})
+    assert _flags([uncounted, camp], rows) == [False, False]
+
+
+def test_the_bands_grant_figure_is_the_sum_over_the_rows_flagged_in_band() -> None:
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, JOHNSON, request_status="withdrawn")]
+    grants = [
+        _grant_out(JOHNSON, EMMA, 200.0, 9001),
+        _grant_out(JOHNSON, LIAM, 300.0, 9002),
+        _grant_out(JOHNSON, EMMA, 50.0, 9003).model_copy(update={"counts": False}),
+    ]
+    register = [grant_row(EMMA, "200"), grant_row(LIAM, "300")]
+    live = {r.request_id for r in rows if r.request_status == "active"}
+    flagged = grant_rows_with_band_flag(grants, rows)
+    from_rows = sum(s.amount for g in flagged if g.in_band for s in g.requests if s.request_id in live)
+    assert totals(rows, band_grants_by_request(register)).grants == from_rows == 200.0
+
+
+def test_a_grant_split_over_a_live_and_a_withdrawn_request_is_in_the_band_for_its_live_share_only() -> None:
+    """in_band is per grant and the band per request share: a grant with any share on an included request reads
+    True, and the band takes that share alone, never the row's full amount."""
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, JOHNSON, request_status="withdrawn")]
+    split = _grant_out(JOHNSON, EMMA, 300.0, 9001).model_copy(
+        update={
+            "requests": [RequestShareOut(request_id=EMMA, amount=100.0), RequestShareOut(request_id=LIAM, amount=200.0)]
+        }
+    )
+    register = [
+        replace(grant_row(EMMA, "300"), requests=(RequestShare(EMMA, Decimal(100)), RequestShare(LIAM, Decimal(200))))
+    ]
+    assert _flags([split], rows) == [True]
+    assert totals(rows, band_grants_by_request(register)).grants == 100.0
+
+
+def test_a_last_dollar_grant_is_in_the_band_as_the_band_counts_it() -> None:
+    """Decision 7 (⚠): in_band follows band_grants_by_request's reading. The grant row carries no
+    pays-after-camp-aid mark, so flipping Decision 7 is also grant_rows_with_band_flag and this test."""
+    rows = [_row(EMMA, JOHNSON)]
+    assert band_grants_by_request([grant_row(EMMA, "2000", pays_after_camp_aid=True)]) == {EMMA: Decimal(2000)}
+    assert _flags([_grant_out(JOHNSON, EMMA, 2000.0, 9001)], rows) == [True]
