@@ -13039,6 +13039,10 @@ export type RequestsGridResponse = {
    * Not Rebuilt
    */
   not_rebuilt?: Array<NotRebuiltOut>
+  /**
+   * Ticked Season
+   */
+  ticked_season: boolean
 }
 
 /**
