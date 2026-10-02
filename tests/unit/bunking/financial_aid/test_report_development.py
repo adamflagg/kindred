@@ -36,7 +36,7 @@ CAMP = DevGroup("camp_pool", "Camp", "summer")
 WEEKEND = DevGroup("weekend_pool", "Weekends", "families")
 BMITZVAH = DevGroup("bmitzvah_pool", "B'mitzvah", "campers")
 GROUPS = (CAMP, WEEKEND, BMITZVAH)
-EMMA, LIAM, NOAH, AVA = 1000011, 1000021, 1000031, 1000041
+EMMA, LIAM, SAMUEL, OLIVIA = 1000011, 1000021, 1000031, 1000041
 SESSION_START = date(2027, 6, 20)
 
 
@@ -96,8 +96,8 @@ def test_a_camper_who_did_not_attend_is_not_counted_and_neither_is_their_money()
     """D92: campers who attended (status 2); a cancelled camper is not counted."""
     column = development_column(
         _inputs(
-            requests=(req("reqnoah00000001", rnd(1, ask="4000", posted="1500"), person=NOAH, household=1000003),),
-            grants=(GrantMoney("regional grant", 1000003, NOAH, "camp_pool", Decimal(500)),),
+            requests=(req("reqsamuel000001", rnd(1, ask="4000", posted="1500"), person=SAMUEL, household=1000003),),
+            grants=(GrantMoney("regional grant", 1000003, SAMUEL, "camp_pool", Decimal(500)),),
         )
     )
     camp = _camp(column)
@@ -172,17 +172,17 @@ def test_ages_are_on_the_first_day_of_the_campers_first_session_in_the_group() -
                 _went(EMMA, 1000001),
                 _went(EMMA, 1000001, start=date(2027, 7, 25)),
                 _went(LIAM, 1000002),
-                _went(AVA, 1000004),
+                _went(OLIVIA, 1000004),
             ),
             persons={
                 EMMA: Person(EMMA, date(2013, 7, 1), "Girl/woman"),
                 LIAM: Person(LIAM, date(2016, 1, 5), "Boy/man"),
-                AVA: Person(AVA, None, "Girl/woman"),
+                OLIVIA: Person(OLIVIA, None, "Girl/woman"),
             },
             requests=(
                 req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA),
                 req("reqliam00000001", rnd(1, ask="4000", posted="1500"), person=LIAM, household=1000002),
-                req("reqava000000001", rnd(1, ask="4000", posted="1500"), person=AVA, household=1000004),
+                req("reqolivia000001", rnd(1, ask="4000", posted="1500"), person=OLIVIA, household=1000004),
             ),
         )
     )
@@ -197,11 +197,11 @@ def test_first_time_and_gender_are_the_summer_groups_lines() -> None:
                 req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA),
                 req("reqliam00000001", rnd(1, ask="4000", posted="1500"), person=LIAM, household=1000002),
             ),
-            attendance=(_went(EMMA, 1000001), _went(LIAM, 1000002), _went(NOAH, 1000003)),
+            attendance=(_went(EMMA, 1000001), _went(LIAM, 1000002), _went(SAMUEL, 1000003)),
             persons={
                 EMMA: Person(EMMA, None, "Girl/woman"),
                 LIAM: Person(LIAM, None, SELF_DESCRIBED),
-                NOAH: Person(NOAH, None, NOT_GIVEN),
+                SAMUEL: Person(SAMUEL, None, NOT_GIVEN),
             },
         )
     )
@@ -236,27 +236,27 @@ def test_appeals_count_once_per_request_in_full_or_in_part_and_declines_include_
                     household=1000002,
                 ),
                 req(
-                    "reqnoah00000001",
+                    "reqsamuel000001",
                     rnd(1, ask="4000", posted="1500"),
-                    person=NOAH,
+                    person=SAMUEL,
                     household=1000003,
                     standing="cancelled",
                     reason="aid_not_enough",
                 ),
                 req(
-                    "reqava000000001",
+                    "reqolivia000001",
                     rnd(1, ask="4000", posted="1500"),
                     rnd(2, ask="500", posted="500"),
                     rnd(3, ask="200"),
-                    person=AVA,
+                    person=OLIVIA,
                     household=1000004,
                 ),
             ),
-            attendance=(_went(EMMA, 1000001), _went(LIAM, 1000002), _went(AVA, 1000004)),
+            attendance=(_went(EMMA, 1000001), _went(LIAM, 1000002), _went(OLIVIA, 1000004)),
         )
     )
     appeals = _camp(column).appeals
-    # Ava's Round 2 was granted in full but her Round 3 ask wasn't: in part, as Liam's.
+    # Olivia's Round 2 was granted in full but her Round 3 ask wasn't: in part, as Liam's.
     assert (appeals.submitted, appeals.approved_in_full, appeals.approved_in_part) == (3, 1, 2)
     assert appeals.declined_insufficient_aid == 1
 
@@ -305,11 +305,15 @@ def test_money_no_group_holds_is_in_the_total_and_its_own_line_never_dropped() -
     in Total Awards Granted and the families; it is shown as "not in a group", and in no camper cut."""
     column = development_column(
         _inputs(
-            attendance=(_went(EMMA, 1000001), _went(AVA, 1000004, NOT_REPORTED)),
+            attendance=(_went(EMMA, 1000001), _went(OLIVIA, 1000004, NOT_REPORTED)),
             requests=(
                 req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA),
                 req(
-                    "reqava000000001", rnd(1, ask="900", posted="600"), person=AVA, household=1000004, pool=NOT_REPORTED
+                    "reqolivia000001",
+                    rnd(1, ask="900", posted="600"),
+                    person=OLIVIA,
+                    household=1000004,
+                    pool=NOT_REPORTED,
                 ),
             ),
             grants=(
@@ -324,7 +328,7 @@ def test_money_no_group_holds_is_in_the_total_and_its_own_line_never_dropped() -
         2,
     )
     assert (column.total_awards, column.awards, column.families) == (Decimal(2350), 3, 2)
-    assert _camp(column).recipients == 1  # Ava is in no camper cut
+    assert _camp(column).recipients == 1  # Olivia is in no camper cut
     assert SourceLine("ungrouped grant", NOT_REPORTED, Decimal(250), 1) in column.by_source
 
 
@@ -357,10 +361,10 @@ def test_every_cancel_reason_counts_every_cancelled_request_attended_or_not() ->
                     standing="cancelled",
                     reason="aid_not_enough",
                 ),
-                req("reqnoah00000001", rnd(1, ask="4000"), person=NOAH, household=1000003, standing="cancelled"),
-                req("reqava000000001", rnd(1, ask="4000", posted="1500"), person=AVA, household=1000004),
+                req("reqsamuel000001", rnd(1, ask="4000"), person=SAMUEL, household=1000003, standing="cancelled"),
+                req("reqolivia000001", rnd(1, ask="4000", posted="1500"), person=OLIVIA, household=1000004),
             ),
-            attendance=(_went(AVA, 1000004),),
+            attendance=(_went(OLIVIA, 1000004),),
         )
     )
     camp = _camp(column)
@@ -375,13 +379,13 @@ def test_rebuilt_ages_count_recipients_by_age_on_their_first_summer_session() ->
     stays = [
         (EMMA, 1000001, date(2025, 6, 20)),
         (LIAM, 1000002, date(2025, 7, 10)),
-        (NOAH, 1000002, date(2025, 6, 20)),
-        (AVA, 1000004, None),
+        (SAMUEL, 1000002, date(2025, 6, 20)),
+        (OLIVIA, 1000004, None),
     ]
     persons = {
         EMMA: Person(EMMA, date(2015, 1, 1), ""),
         LIAM: Person(LIAM, date(2012, 1, 1), ""),
-        NOAH: Person(NOAH, date(2007, 1, 1), ""),
+        SAMUEL: Person(SAMUEL, date(2007, 1, 1), ""),
     }
-    ages = rebuilt_ages(stays, persons, money_people={EMMA, AVA}, money_households={1000002})
-    assert ages == {YOUTH: 1, TEEN: 1, ADULT: 1, AGE_UNKNOWN: 1}  # Emma 10, Liam 13, Noah 18, Ava no birthdate
+    ages = rebuilt_ages(stays, persons, money_people={EMMA, OLIVIA}, money_households={1000002})
+    assert ages == {YOUTH: 1, TEEN: 1, ADULT: 1, AGE_UNKNOWN: 1}  # Emma 10, Liam 13, Samuel 18, Olivia no birthdate

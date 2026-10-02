@@ -57,3 +57,17 @@ def test_a_source_without_the_incentive_field_reads_need_based() -> None:
         )
     )
     assert (out.source_name, out.incentive, out.implied_program_families) == ("Regional Grant", False, ("summer",))
+
+
+def test_a_person_record_reads_the_gender_write_in_field() -> None:
+    """D94: a write-in is the camper's own words; the record must carry the `gender_identity_write_in` field."""
+    record = SimpleNamespace(
+        cm_id=1000021,
+        household_id=1000002,
+        birthdate="2012-01-01",
+        gender_identity_name="",
+        gender_identity_write_in="their own words",
+    )
+    out = person_record(record)
+    assert (out.gender_identity_name, out.gender_identity_write_in) == ("", "their own words")
+    assert (out.person_cm_id, out.household_cm_id, out.birthdate) == (1000021, 1000002, date(2012, 1, 1))

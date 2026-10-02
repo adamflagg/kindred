@@ -55,9 +55,10 @@ def _service(
     history: FakeReportsStore | None = None,
     register: Sequence[RegisterRow] = (),
     store: FakeDecisionsStore | None = None,
+    past_register: Sequence[RegisterRow] = (),
 ) -> FinancialAidDevelopmentService:
     async def rows(year: int) -> Sequence[RegisterRow]:
-        return list(register) if year == YEAR else []
+        return list(register) if year == YEAR else list(past_register)
 
     return FinancialAidDevelopmentService(
         store or report_season(),
@@ -97,6 +98,92 @@ async def test_a_camper_who_did_not_attend_drops_out_with_their_money() -> None:
     out = await _service(_development(registrations=[went(LIAM, 1000002)])).development(YEAR)
     assert _row(out, "total_awards", "camp_pool").values == [0.0]
     assert _row(out, "recipients", "camp_pool").values == [0.0]
+
+
+@pytest.mark.parametrize("status", [32, 256])
+async def test_a_cancelled_or_withdrawn_registration_does_not_attend(status: int) -> None:
+    """D92: only status 2 attends; Emma's cancelled (32) or withdrawn (256) row keeps her and her money out."""
+    development = _development(registrations=[went(EMMA, 1000001, status=status), went(LIAM, 1000002)])
+    out = await _service(development).development(YEAR)
+    assert _row(out, "total_awards", "camp_pool").values == [0.0]
+    assert _row(out, "recipients", "camp_pool").values == [0.0]
+
+
+async def test_outside_money_leaves_out_reversed_lines_and_unposted_commitments() -> None:
+    """D29 (ruled as built, R2b): a reversed line isn't money given out, and a commitment not yet posted isn't."""
+    live = grant_row("reqemma00000001", "500")
+    reversed_line = replace(grant_row("reqemma00000001", "7000"), is_reversed=True, reversal_date="2027-03-01")
+    commitment = replace(grant_row("reqemma00000001", "9000"), kind="commitment", commitment_id="com000000000001")
+    out = await _service(_development(), register=[live, reversed_line, commitment]).development(YEAR)
+    assert _row(out, "total_awards", "camp_pool").values == [2000.0]  # 1,500 + 500, none of the 7,000 or 9,000
+    assert _row(out, "outside_awards", "camp_pool").values == [500.0]
+    assert _row(out, "awards", "camp_pool").values == [2.0]
+
+
+async def test_the_every_group_average_award_includes_money_in_no_group() -> None:
+    """D158: every-group average = (all money, the money no group holds too) / all awards."""
+    line = replace(
+        grant_row("reqemma00000001", "300", on_request=False),
+        person_cm_id=0,
+        session_cm_id=0,
+        program_family="other",
+        camper_basis="none",
+        counts=False,
+    )
+    out = await _service(_development(), register=[line]).development(YEAR)
+    assert _row(out, "average_award", None).values == [900.0]  # (1,500 + 300) / 2 awards
+    assert _row(out, "average_award", "camp_pool").values == [1500.0]  # the group's own, without the 300
+
+
+async def test_first_time_counts_only_earlier_summer_sessions() -> None:
+    """D99's default: no Summer Camp or Quest session in any earlier season; an earlier weekend doesn't count."""
+    development = _development(earlier=[went(EMMA, 1000001, year=2025, start=date(2025, 6, 20), session_type="family")])
+    out = await _service(development).development(YEAR)
+    assert _row(out, "first_time", "camp_pool").values == [1.0]
+    assert _row(out, "returning", "camp_pool").values == [0.0]
+
+
+def _backfilled_2025() -> FakeReportsStore:
+    history = FakeReportsStore()
+    history.seed(
+        ReportedFigure(
+            2025, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2025, 9, 29), Decimal(900)
+        )
+    )
+    return history
+
+
+def _stayed_2025() -> FakeDevelopmentStore:
+    return _development(
+        registrations=[
+            went(EMMA, 1000001),
+            went(LIAM, 1000002),
+            went(EMMA, 1000001, year=2025, start=date(2025, 6, 20)),
+            went(LIAM, 1000002, year=2025, start=date(2025, 6, 20)),
+        ]
+    )
+
+
+async def test_the_rebuilt_ages_ignore_reversed_camp_lines() -> None:
+    """D158: Emma's reversed 2025 camp line isn't aid, so she isn't counted; Liam's live one is."""
+    store = report_season()
+    seed_line(store, 7001, "800", household=1000002, person=LIAM)
+    seed_line(store, 7002, "600", household=1000001, person=EMMA, reversed_at=datetime(2025, 8, 1, 18, 0, tzinfo=UTC))
+    out = await _service(_stayed_2025(), _backfilled_2025(), store=store).development(YEAR)
+    assert _row(out, "teens", "camp_pool").values[0] == 1.0  # Liam, 13
+    assert _row(out, "youth", "camp_pool").values[0] == 0.0  # not Emma
+
+
+@pytest.mark.parametrize(("funder_type", "youth", "named"), [("outside", 1.0, False), ("unknown", None, True)])
+async def test_the_rebuilt_ages_count_only_classified_outside_grants(
+    funder_type: str, youth: float | None, named: bool
+) -> None:
+    """D158: with no camp lines, an outside grant on Emma rebuilds her age; a line whose funder is unclassified
+    ("unknown") isn't a grant, so the season stays blank and is named."""
+    line = grant_row("reqemma00000001", "300", funder_type=funder_type)
+    out = await _service(_stayed_2025(), _backfilled_2025(), past_register=[line]).development(YEAR)
+    assert _row(out, "youth", "camp_pool").values[0] == youth
+    assert ("ages_before_backfill" in {n.figure for n in out.not_built}) is named
 
 
 async def test_first_time_states_its_definition_and_reads_earlier_seasons_for_recipients() -> None:
