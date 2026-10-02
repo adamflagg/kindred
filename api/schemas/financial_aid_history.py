@@ -49,7 +49,9 @@ class HistoryOperationOut(BaseModel):
     counts: list[HistoryCountOut]  # by entity, then action
     rules_versions: list[int]  # the rules versions it touched ("Open vN in Rules")
     rules_sections: list[str]  # the rules sections it approved or locked
-    summary: str  # "7 requests · 6 families · $9,840 locked"; "" when it names no request, family or money
+    # "7 requests · 6 families · $9,840 locked", then a rules approval's effect words when it has one
+    # ("v4 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged"); "" when it has neither
+    summary: str
     figures: HistoryFiguresOut
     effect: HistoryEffectOut | None  # a rules approval's recorded effect; None on every other line
 
