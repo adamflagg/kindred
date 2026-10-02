@@ -7,7 +7,6 @@ import { useAidHistory } from '../../../hooks/camperships/useAidHistory'
 import { useYear } from '../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidHistoryPage } from '../../../types/api-types'
-import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { DefinitionNotes, type DefinitionNote } from '../kit/DefinitionNotes'
@@ -40,6 +39,9 @@ const NOTES: readonly DefinitionNote[] = [
   },
 ]
 const NOTES_WITHOUT_SCENARIOS = NOTES.slice(0, 2)
+/** Paging buttons in the row's compact size (history.html B); lodgingStyles' BUTTON_SECONDARY is form-sized. */
+const PAGE_BUTTON =
+  'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md border px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50'
 const NO_ACTORS: readonly string[] = []
 
 function HistoryBody({
@@ -48,25 +50,32 @@ function HistoryBody({
   onToggle,
   onPage,
   view,
+  stale,
 }: {
   page: ApiAidHistoryPage
   open: readonly string[]
   onToggle: (operationId: string) => void
   onPage: (page: number) => void
   view: AidView
+  /** The page on screen is the previous one, while the next page or filter loads. */
+  stale: boolean
 }) {
   const last = lastPage(page)
   return (
     <div className="space-y-2">
-      <p className="text-muted-foreground text-xs">{pageWords(page)}</p>
+      <p className="text-muted-foreground text-xs">
+        {stale ? `${pageWords(page)} · Updating…` : pageWords(page)}
+      </p>
       {page.operations.length > 0 && (
-        <HistoryTable operations={page.operations} open={open} onToggle={onToggle} view={view} />
+        <div className={stale ? 'opacity-60' : undefined} data-stale={stale ? '' : undefined}>
+          <HistoryTable operations={page.operations} open={open} onToggle={onToggle} view={view} />
+        </div>
       )}
       {(page.total > page.per_page || page.page > 1) && (
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className={BUTTON_SECONDARY}
+            className={PAGE_BUTTON}
             disabled={page.page <= 1}
             onClick={() => onPage(Math.min(page.page - 1, last))}
           >
@@ -75,7 +84,7 @@ function HistoryBody({
           <span className="text-muted-foreground text-xs">{`Page ${String(page.page)} of ${String(last)}`}</span>
           <button
             type="button"
-            className={BUTTON_SECONDARY}
+            className={PAGE_BUTTON}
             disabled={page.page >= last}
             onClick={() => onPage(page.page + 1)}
           >
@@ -158,7 +167,14 @@ export function HistoryTab() {
         label="History"
       >
         {(data) => (
-          <HistoryBody page={data} open={open} onToggle={toggle} onPage={setPage} view={view} />
+          <HistoryBody
+            page={data}
+            open={open}
+            onToggle={toggle}
+            onPage={setPage}
+            view={view}
+            stale={history.isPlaceholderData}
+          />
         )}
       </QueryGuard>
       <DefinitionNotes notes={canSeeRules ? NOTES : NOTES_WITHOUT_SCENARIOS} />

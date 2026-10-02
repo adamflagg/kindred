@@ -1,6 +1,5 @@
 import { useState } from 'react'
 
-import { FIELD_INLINE, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from '../../admin/lodging/lodgingStyles'
 import {
   actorWords,
   chipKinds,
@@ -10,21 +9,52 @@ import {
   type HistoryFilters as Filters,
 } from './historyModel'
 
+/**
+ * The compact control of this row (history.html B: 12.5px, tight padding). lodgingStyles' FIELD_INLINE
+ * is the form-sized one (`text-sm py-1.5`) and can't be shrunk without two classes setting one
+ * property, so the row has its own. Padding is added per use, so a box with a glyph sets its own left.
+ */
+const COMPACT_BASE =
+  'border-border bg-background focus:ring-primary/50 rounded-md border text-xs focus:ring-2 focus:outline-none'
+const COMPACT_FIELD = `${COMPACT_BASE} px-2 py-0.5`
+/** A kind chip: an outlined pill when idle (history.html B), filled when it is the one asked for. */
+const CHIP = 'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors'
+const CHIP_ACTIVE = `${CHIP} border-primary bg-primary text-primary-foreground`
+const CHIP_IDLE = `${CHIP} border-border bg-card text-muted-foreground hover:text-foreground`
+
+/**
+ * A box's text while it is edited, which follows the URL's value when that changes from elsewhere
+ * (Back, a pasted link): React's reset-state-on-prop-change, in render. A `key` would remount the box
+ * and drop focus on every commit.
+ */
+function useDraft(value: string): [string, (text: string) => void] {
+  const [text, setText] = useState(value)
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    setText(value)
+  }
+  return [text, setText]
+}
+
 /** The search writes on Enter or on leaving the box, never per keystroke (D15; the lead's rule). */
 function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: string) => void }) {
-  const [text, setText] = useState(initial)
+  const [text, setText] = useDraft(initial)
   const commit = () => {
     const trimmed = text.trim()
     if (trimmed !== initial) onSearch(trimmed)
   }
   return (
     <form
-      className="ml-auto"
+      className="relative ml-auto"
       onSubmit={(event) => {
         event.preventDefault()
         commit()
       }}
     >
+      <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+        ⌕
+      </span>
       <input
         type="search"
         aria-label="Search"
@@ -33,7 +63,7 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
         placeholder="Reason, person or record id"
         onChange={(event) => setText(event.target.value)}
         onBlur={commit}
-        className={`${FIELD_INLINE} w-56`}
+        className={`${COMPACT_BASE} w-50 py-0.5 pr-2 pl-6`}
       />
     </form>
   )
@@ -42,10 +72,10 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
 const orNull = (value: string): string | null => (value === '' ? null : value)
 
 /**
- * A date box. Typing a year passes through 0002-…, 0020-…, 0202-…, each a real day, so only an
- * empty box or a day in a season's year is written (I4); a picker's click writes at once. The box
- * is uncontrolled (React would wipe a half-typed year back to the URL's day) and keyed on the URL's
- * day, so Back or a pasted link still shows the right one.
+ * A date box. A browser fires `change` on every digit once the box holds a whole day (typing 15 into
+ * 04/20 passes through 04/01), and a typed year passes through 0002-…, 0020-…, 0202-…, so nothing is
+ * written per change: the day lands on leaving the box or Enter, as the search does (I1). Only an
+ * empty box or a day in a season's year is kept (I4); any other day goes back to the URL's.
  */
 function DayBox({
   label,
@@ -56,20 +86,27 @@ function DayBox({
   value: string | null
   onDay: (day: string | null) => void
 }) {
+  const current = value ?? ''
+  const [text, setText] = useDraft(current)
+  const commit = () => {
+    if (text === current) return
+    if (text === '') onDay(null)
+    else if (isSeasonDay(text)) onDay(text)
+    else setText(current)
+  }
   return (
     <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
       {label}
       <input
-        key={value ?? ''}
         type="date"
         aria-label={label}
-        defaultValue={value ?? ''}
-        onChange={(event) => {
-          const day = event.target.value
-          if (day === '') onDay(null)
-          else if (isSeasonDay(day)) onDay(day)
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit()
         }}
-        className={FIELD_INLINE}
+        className={COMPACT_FIELD}
       />
     </span>
   )
@@ -97,7 +134,7 @@ export function HistoryFilters({
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
       <button
         type="button"
-        className={filters.kind === null ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+        className={filters.kind === null ? CHIP_ACTIVE : CHIP_IDLE}
         onClick={() => onChange('kind', null)}
       >
         All
@@ -106,7 +143,7 @@ export function HistoryFilters({
         <button
           key={kind}
           type="button"
-          className={filters.kind === kind ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+          className={filters.kind === kind ? CHIP_ACTIVE : CHIP_IDLE}
           onClick={() => onChange('kind', kind)}
         >
           {KIND_LABELS[kind]}
@@ -116,7 +153,7 @@ export function HistoryFilters({
         aria-label="Person"
         value={filters.actor ?? ''}
         onChange={(event) => onChange('actor', orNull(event.target.value))}
-        className={FIELD_INLINE}
+        className={COMPACT_FIELD}
       >
         <option value="">Anyone</option>
         {people.map((actor) => (
@@ -135,11 +172,7 @@ export function HistoryFilters({
         />
         Show intake runs
       </label>
-      <SearchBox
-        key={filters.q}
-        initial={filters.q}
-        onSearch={(text) => onChange('q', orNull(text))}
-      />
+      <SearchBox initial={filters.q} onSearch={(text) => onChange('q', orNull(text))} />
     </div>
   )
 }
