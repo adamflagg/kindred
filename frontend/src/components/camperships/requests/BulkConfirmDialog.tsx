@@ -52,7 +52,8 @@ export function BulkConfirmDialog({
     setError(null)
     onClose()
   }
-  const confirm = async () => {
+  // `only` re-sends one row at the amount the server named (#2981); otherwise the whole plan.
+  const confirm = async (only?: { requestId: string; round: number; amount: number }) => {
     if (busy || tooMany) return
     setSending(true)
     setError(null)
@@ -63,11 +64,14 @@ export function BulkConfirmDialog({
               year,
               body: {
                 // Only Posted rows, each at the amount it was confirmed at: never a $0 fallback.
-                rows: plan.rows.flatMap((r) =>
-                  r.action === 'posted'
-                    ? [{ request_id: r.requestId, round: r.round, amount: r.amount }]
-                    : []
-                ),
+                rows:
+                  only !== undefined
+                    ? [{ request_id: only.requestId, round: only.round, amount: only.amount }]
+                    : plan.rows.flatMap((r) =>
+                        r.action === 'posted'
+                          ? [{ request_id: r.requestId, round: r.round, amount: r.amount }]
+                          : []
+                      ),
               },
             })
           : await accepted.mutateAsync({
@@ -95,6 +99,7 @@ export function BulkConfirmDialog({
     <Modal
       isOpen
       onClose={close}
+      closeDisabled={busy}
       title={plan.action === 'posted' ? 'Tick Posted' : 'Tick Accepted'}
       size="md"
       footer={
@@ -154,12 +159,33 @@ export function BulkConfirmDialog({
             <p>{named(error.message)}</p>
             {error.rows.length > 0 && (
               <ul>
-                {error.rows.map((r) => (
-                  // One text node, so the line reads (and is found) whole.
-                  <li key={`${r.request_id}:${String(r.round)}`}>
-                    {`${named(r.request_id)} R${String(r.round)}: now ${formatMoney(r.decided_now)}, you confirmed ${formatMoney(r.confirmed)}`}
-                  </li>
-                ))}
+                {error.rows.map((r) => {
+                  const offer = r.decided_now
+                  return (
+                    // One text node, so the line reads (and is found) whole.
+                    <li key={`${r.request_id}:${String(r.round)}`}>
+                      {`${named(r.request_id)} R${String(r.round)}: now ${formatMoney(r.decided_now)}, you confirmed ${formatMoney(r.confirmed)}`}
+                      {/* A withheld round's decided_now is what the tick WOULD lock: refreshing can
+                        only be refused again, so tick at it directly. */}
+                      {plan.action === 'posted' && offer !== null && offer !== r.confirmed && (
+                        <button
+                          type="button"
+                          className={`${BUTTON_SECONDARY} ml-2`}
+                          disabled={busy}
+                          onClick={() =>
+                            void confirm({
+                              requestId: r.request_id,
+                              round: r.round,
+                              amount: offer,
+                            })
+                          }
+                        >
+                          {`Tick at ${formatMoney(offer)}`}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             )}
             {wroteNothing(error.status) ? (

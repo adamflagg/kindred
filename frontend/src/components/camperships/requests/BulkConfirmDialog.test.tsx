@@ -333,4 +333,86 @@ describe('BulkConfirmDialog (§4.10)', () => {
     expect(screen.queryByText(/0 requests/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   })
+
+  it('holds the X, Escape and the backdrop while the write is in flight', async () => {
+    let finish: (v: unknown) => void = () => undefined
+    posted.mockImplementation(() => new Promise((resolve) => (finish = resolve)))
+    const onClose = vi.fn()
+    render(
+      <BulkConfirmDialog
+        plan={tickPlan([ROW_EMMA], 'posted')}
+        year={2027}
+        onClose={onClose}
+        onDone={onDone}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(screen.getByRole('button', { name: 'Close modal' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Close modal' }))
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByTestId('modal-backdrop'))
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () =>
+      finish({ year: 2027, written: 1, unchanged: 0, operation_id: 'op1', total_locked: 1420 })
+    )
+  })
+
+  // A withheld round's decided_now is what the tick WOULD lock, so refreshing and ticking again
+  // can only be refused again: the dialog offers the amount itself (#2981).
+  describe('Tick at the amount the server named (#2981)', () => {
+    const moved = (decidedNow: number | null) => {
+      const error = new AidWriteError('Decided amounts moved since they were shown', 409)
+      error.rows = [
+        { request_id: 'reqemma00000001', round: 1, confirmed: 1420, decided_now: decidedNow },
+      ]
+      return error
+    }
+    const open = () =>
+      render(
+        <BulkConfirmDialog
+          plan={tickPlan([ROW_EMMA, ROW_OLIVIA], 'posted')}
+          year={2027}
+          onClose={() => undefined}
+          onDone={onDone}
+        />
+      )
+
+    it('re-sends that row at decided_now and reaches success, with no second 409 needed', async () => {
+      posted.mockRejectedValueOnce(moved(1500))
+      posted.mockResolvedValueOnce({
+        year: 2027,
+        written: 1,
+        unchanged: 0,
+        operation_id: 'op3',
+        total_locked: 1500,
+      })
+      open()
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Tick at $1,500' }))
+      expect(posted).toHaveBeenCalledTimes(2)
+      expect(posted).toHaveBeenLastCalledWith({
+        year: 2027,
+        body: { rows: [{ request_id: 'reqemma00000001', round: 1, amount: 1500 }] },
+      })
+      expect(onDone).toHaveBeenCalledWith(
+        expect.stringContaining('$1,500'),
+        expect.objectContaining({ written: 1 })
+      )
+    })
+
+    it('offers nothing when decided_now is null, and keeps the refresh advice', async () => {
+      posted.mockRejectedValueOnce(moved(null))
+      open()
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+      expect(screen.queryByRole('button', { name: /Tick at/ })).toBeNull()
+      expect(screen.getByText(/close this and tick again/)).toBeInTheDocument()
+    })
+
+    it('offers nothing when decided_now equals what was confirmed', async () => {
+      posted.mockRejectedValueOnce(moved(1420))
+      open()
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+      expect(screen.queryByRole('button', { name: /Tick at/ })).toBeNull()
+    })
+  })
 })
