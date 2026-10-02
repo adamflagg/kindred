@@ -22,8 +22,14 @@ describe('the views strip (T4; RULED P1, P2, P4)', () => {
     ])
   })
 
-  it('puts Holds, Duplicates, Session not settled and To reverse on the right, and no Finance approval (no such view)', () => {
-    expect(EXCEPTION_BADGES).toEqual(['holds', 'duplicates', 'session_not_settled', 'to_reverse'])
+  it('puts Holds, Duplicates, Session not settled, To reverse and Cancelled: give a reason (RULED D-a) on the right, and no Finance approval (no such view)', () => {
+    expect(EXCEPTION_BADGES).toEqual([
+      'holds',
+      'duplicates',
+      'session_not_settled',
+      'to_reverse',
+      'cancel_reason',
+    ])
   })
 })
 
@@ -47,7 +53,7 @@ describe('resolveStrip (the URL: ?lens=appeals, absent All; ?view=<stage slug>, 
     expect(resolveStrip('bogus', null)).toEqual({ lens: 'all', stage: null })
   })
 
-  it('reads an unknown lens as All, and keeps a stage the strip draws only while picked (Cancelled: give a reason)', () => {
+  it('reads an unknown lens as All, and reads Cancelled: give a reason as a stage', () => {
     expect(resolveStrip(null, 'bogus').lens).toBe('all')
     expect(resolveStrip('cancel-reason', null).stage?.key).toBe('cancel_reason')
   })

@@ -32,6 +32,8 @@ export const EXCEPTION_BADGES: readonly RequestViewKey[] = [
   'duplicates',
   'session_not_settled',
   'to_reverse',
+  // RULED D-a: a permanent fifth badge (0 until 2027, when cancellations need a reason).
+  'cancel_reason',
 ]
 
 export const STRIP_LEGEND =
@@ -47,12 +49,8 @@ export interface StripState {
   readonly stage: RequestView | null
 }
 
-/** Every stage `?view=` can name: the pipeline, the badges, and Cancelled: give a reason (a Today line). */
-const STAGES: ReadonlySet<RequestViewKey> = new Set([
-  ...PIPELINE_STAGES,
-  ...EXCEPTION_BADGES,
-  'cancel_reason',
-])
+/** Every stage `?view=` can name: the pipeline and the badges. */
+const STAGES: ReadonlySet<RequestViewKey> = new Set([...PIPELINE_STAGES, ...EXCEPTION_BADGES])
 
 /**
  * The strip's URL (D15): `?lens=appeals` (absent: All) and `?view=<stage slug>` (absent: no stage).

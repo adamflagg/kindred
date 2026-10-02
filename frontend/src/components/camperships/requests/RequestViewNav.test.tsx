@@ -75,15 +75,17 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('Needs an offer')).toHaveAttribute('href', '/s/needs-offer')
   })
 
-  it('puts the exception badges on the right: Holds, Duplicates, Session not settled, To reverse', () => {
+  it('puts the exception badges on the right: Holds, Duplicates, Session not settled, To reverse, Cancelled: give a reason', () => {
     strip()
     expect(names(screen.getByTestId('strip-exceptions'))).toEqual([
       'Holds 2',
       'Duplicates 0',
       'Session not settled 1',
       'To reverse 4',
+      'Cancelled: give a reason 1',
     ])
     expect(link('To reverse')).toHaveAttribute('href', '/s/to-reverse')
+    expect(link('Cancelled: give a reason')).toHaveAttribute('href', '/s/cancel-reason')
   })
 
   it('reads "—" for a count it does not have (a past date counts only All, Decision 11)', () => {
@@ -112,11 +114,14 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('All')).toHaveAttribute('data-state', 'lens')
   })
 
-  it('shows Cancelled: give a reason as a badge only while it is the picked stage (a Today link)', () => {
+  // RULED D-a: a permanent fifth badge, red when non-zero, muted at 0.
+  it('always shows Cancelled: give a reason as the fifth badge, red when non-zero and muted at 0', () => {
     const { unmount } = strip()
-    expect(screen.queryByRole('link', { name: /^Cancelled: give a reason/ })).toBeNull()
+    expect(link('Cancelled: give a reason').className).toContain('bg-red-100')
+    expect(link('Cancelled: give a reason')).not.toHaveAttribute('data-state')
     unmount()
-    strip({ stage: 'cancel_reason' })
+    strip({ counts: new Map([...COUNTS, ['cancel_reason', count(0)]]), stage: 'cancel_reason' })
+    expect(link('Cancelled: give a reason').className).not.toContain('bg-red-100')
     expect(link('Cancelled: give a reason')).toHaveAttribute('data-state', 'on')
   })
 
