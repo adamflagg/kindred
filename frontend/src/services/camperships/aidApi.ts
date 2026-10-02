@@ -153,6 +153,16 @@ export function hasStatus(error: unknown, status: number): boolean {
   return typeof error === 'object' && error !== null && 'status' in error && error.status === status
 }
 
+/**
+ * A read's retry rule (Decision 30): a refusal in the server's words (`statuses`, e.g. no rules yet
+ * 404, nothing to start from 422) and a lapsed sign-in (401) answer at once; anything else keeps the
+ * app's three retries.
+ */
+export function retryUnlessRefused(statuses: readonly number[]) {
+  return (failureCount: number, error: Error): boolean =>
+    ![...statuses, 401].some((status) => hasStatus(error, status)) && failureCount < 3
+}
+
 /** FastAPI's detail as one sentence: a string, a 409's `{message}`, or a 422's first `msg`. */
 export function writeMessage(detail: unknown): string | null {
   const words = wordsOf(detail)
@@ -648,7 +658,7 @@ export function keepAidScenario(
 export function fetchAidScenarioSensitivity(
   fetchWithAuth: FetchWithAuth,
   year: number,
-  body: ApiAidScenarioViewIn
+  body: Pick<ApiAidScenarioViewIn, 'document'>
 ): Promise<ApiAidScenarioSensitivity> {
   return send<ApiAidScenarioSensitivity>(
     fetchWithAuth,

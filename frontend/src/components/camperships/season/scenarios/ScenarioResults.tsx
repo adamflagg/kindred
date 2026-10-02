@@ -35,9 +35,6 @@ export function ScenarioResults({
           </span>
         ))}
       </div>
-      {results.request_set && (
-        <p className="text-sm font-medium">{`Figures on ${results.request_set.label}`}</p>
-      )}
       <div className={TABLE_CARD}>
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>

@@ -174,6 +174,51 @@ describe('useAidScenarioDraft (Decision 19)', () => {
     expect(routes()).toEqual(['POST /keep', 'POST /draft/load'])
   })
 
+  it('keeps a refusal on screen through a release with nothing to record (T17-m6)', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    await act(async () => {
+      await result.current.keep(false)
+    })
+    const busySeen: Array<string | null> = []
+    await act(async () => {
+      const releasing = result.current.release()
+      busySeen.push(result.current.busy)
+      await releasing
+    })
+    expect(result.current.error).toBe('Your draft is the same as B: there is nothing new to keep')
+    expect(busySeen).toEqual([null])
+    expect(result.current.busy).toBeNull()
+    expect(routes()).toEqual(['POST /keep'])
+  })
+
+  it("says so when a freeze finds the season hasn't moved: the server hands back the same snapshot (F-m7)", async () => {
+    const same = workspace().snapshot
+    fetchSpy.mockImplementation(async (input, init) => {
+      const route = `${init?.method ?? 'GET'} ${String(input)}`
+      calls.push({ route, body: null, headers: new Headers(init?.headers) })
+      return route.endsWith('/snapshot') ? json(same) : answer(route)
+    })
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    await act(() => result.current.freeze())
+    expect(result.current.nothingToFreeze).toBe(true)
+    // The next write that runs clears it, as it clears an error.
+    await act(() => result.current.load({ option: 'A1' }))
+    expect(result.current.nothingToFreeze).toBe(false)
+  })
+
+  it('says nothing more when a freeze writes a new snapshot (F-m7)', async () => {
+    fetchSpy.mockImplementation(async (input, init) => {
+      const route = `${init?.method ?? 'GET'} ${String(input)}`
+      calls.push({ route, body: null, headers: new Headers(init?.headers) })
+      return route.endsWith('/snapshot')
+        ? json({ ...workspace().snapshot, id: 'snap00000000002' })
+        : answer(route)
+    })
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    await act(() => result.current.freeze())
+    expect(result.current.nothingToFreeze).toBe(false)
+  })
+
   it('sends every call through fetchWithAuth', async () => {
     const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
     act(() => result.current.move({ tierShift: -1 }))
