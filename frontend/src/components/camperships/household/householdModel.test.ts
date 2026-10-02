@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
 import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_SAMUEL } from '../requests/gridFixtures'
-import { householdPage, householdRequest, receiptOut, SPLIT_PAGE } from './householdFixtures'
+import {
+  householdCard,
+  householdPage,
+  householdRequest,
+  receiptOut,
+  SPLIT_PAGE,
+} from './householdFixtures'
 import {
   answerValue,
   answerWords,
   appliedBy,
   bandSubtitle,
   bandTitle,
+  campMinderPersonUrl,
   cancellationWords,
   cardShares,
   earlierReceipts,
@@ -16,6 +23,8 @@ import {
   historyLine,
   householdCsvName,
   latestReceipt,
+  linkWords,
+  noteWords,
   opensByItself,
   postedLabel,
   postingsCsv,
@@ -65,6 +74,55 @@ describe('household cards (§6.3 item 2)', () => {
       chip: 1,
       name: 'The Johnson Family',
     })
+  })
+})
+
+describe('an applicant household that pays nothing (review I1)', () => {
+  it('says it applied, and claims no share', () => {
+    const page = householdPage({
+      households: [
+        householdCard({ request_ids: ['reqemma00000001'] }),
+        householdCard({
+          household_cm_id: 1000003,
+          chip: 2,
+          family_name: 'The Garcia Family',
+          request_ids: ['reqemma00000001'],
+        }),
+        householdCard({
+          household_cm_id: 1000004,
+          chip: 3,
+          family_name: 'The Chen Family',
+          request_ids: ['reqemma00000001'],
+        }),
+      ],
+      requests: [
+        householdRequest(ROW_EMMA, {
+          shares: [
+            {
+              household_cm_id: 1000003,
+              chip: 2,
+              share_pct: 50,
+              decided: 710,
+              posted: null,
+              in_campminder: null,
+              status: null,
+            },
+            {
+              household_cm_id: 1000004,
+              chip: 3,
+              share_pct: 50,
+              decided: 710,
+              posted: null,
+              in_campminder: null,
+              status: null,
+            },
+          ],
+        }),
+      ],
+    })
+    const [johnson, garcia] = page.households
+    expect(johnson && cardShares(johnson, page)).toBe('applied for Emma')
+    expect(garcia && cardShares(garcia, page)).toBe('50% of Emma')
   })
 })
 
@@ -186,6 +244,36 @@ describe('words', () => {
     expect(answerValue('total_rent', '')).toBe('—')
   })
 
+  it('reads an income override as words, not the stored string (review M1)', () => {
+    expect(answerWords('income_override')).toBe('Income override')
+    expect(answerValue('income_override', 'staff_entered:52000.00')).toBe('Staff entered $52,000')
+    expect(answerValue('income_override', 'prior_year_only')).toBe('Prior year only')
+    expect(answerValue('income_override', 'current_year_only')).toBe('Current year only')
+    expect(answerValue('income_override', 'confirmed_prior_year')).toBe('Confirmed from prior year')
+  })
+
+  it("builds CampMinder's person URL as person, then year (review M3)", () => {
+    expect(campMinderPersonUrl(1000002, 2027)).toBe(
+      'https://system.campminder.com/ui/person/Record#1000002:2027'
+    )
+  })
+
+  it('words a household link and a note key (review M3)', () => {
+    expect(
+      linkWords({
+        id: 'link00000000001',
+        year: 2027,
+        household_cm_id: 1000003,
+        family_key: 'k',
+        source: 'staff',
+        excluded: true,
+        note: 'Same family',
+        actor: 'Test User',
+      })
+    ).toBe('household 1000003 · staff · excluded · Same family')
+    expect(noteWords('special_circumstances')).toBe('Special financial circumstances')
+  })
+
   it('names the camper a household card opens in CampMinder (M12)', () => {
     expect(firstCamperOf(PAGE, 1000001)).toEqual({ personCmId: 1000002, name: 'Emma Johnson' })
     expect(firstCamperOf(PAGE, 9999999)).toBeNull()
@@ -214,8 +302,8 @@ describe('downloads (§11; D127; Decision 32)', () => {
       'Amount',
       'Reversed on',
       'Source',
-      'Person',
-      'Session',
+      'Person id',
+      'Session id',
       'Program',
       'Note',
     ])

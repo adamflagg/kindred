@@ -10,6 +10,12 @@ describe('Camperships query keys', () => {
     expect(queryKeys.aidRemainingPrefix()[0]).toBe(queryKeys.aidPrefix()[0])
   })
 
+  it('puts a household page under the prefix invalidateAidMoneyQueries refreshes (review M4)', () => {
+    expect(queryKeys.aidHouseholdPage(2027, 1000001).slice(0, 2)).toEqual(
+      queryKeys.aidHouseholdPagePrefix()
+    )
+  })
+
   it('tell a live read from a past one, and the two axes apart', () => {
     expect(queryKeys.aidRemaining(2027, null, null)).not.toEqual(
       queryKeys.aidRemaining(2027, '2026-04-01', null)
