@@ -4,7 +4,7 @@ import { Permission } from '../../constants/permissions'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   fetchAidSessionCapacities,
-  hasStatus,
+  retryUnlessRefused,
   setAidSessionCapacity,
 } from '../../services/camperships/aidApi'
 import type { ApiAidCapacityIn } from '../../types/api-types'
@@ -13,14 +13,9 @@ import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
 
-/** Same retry rule as the rules reads: a missing or signed-out answer is final. */
-function retryUnlessMissing(failureCount: number, error: Error): boolean {
-  return !hasStatus(error, 404) && !hasStatus(error, 401) && failureCount < 3
-}
-
 /**
  * The session capacities stored for the season (spec §6.3; view-level, like every Season read: the
- * registrar's too, D76). Self-contained by Decision 23: nothing outside the capacity form reads it.
+ * registrar's too, D76). Live only: no as_of. Self-contained by Decision 23: nothing outside the capacity form reads it.
  * App cache defaults; the save below refreshes it.
  */
 export function useAidSessionCapacities(year: number) {
@@ -31,7 +26,7 @@ export function useAidSessionCapacities(year: number) {
     queryKey: queryKeys.aidCapacity(year),
     queryFn: () => fetchAidSessionCapacities(fetchWithAuth, year),
     enabled: year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
-    retry: retryUnlessMissing,
+    retry: retryUnlessRefused([]),
   })
 }
 

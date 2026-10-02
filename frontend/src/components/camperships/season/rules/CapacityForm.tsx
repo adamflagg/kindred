@@ -38,15 +38,23 @@ export function CapacityForm() {
   const [typed, setTyped] = useState<string | null>(null)
   const [typedNote, setTypedNote] = useState<string | null>(null)
   const [saved, setSaved] = useState<ApiAidCapacity | null>(null)
-  const storedRows = stored.data?.sessions ?? []
-  const current = storedRows.find((row) => String(row.session_cm_id) === session)
+  const storedAll = stored.data?.sessions ?? []
+  // The picker's order (by start date, from the names), then any stored row the names don't know.
+  const storedRows =
+    sessions === undefined
+      ? []
+      : [
+          ...[...sessions.keys()].flatMap((id) => storedAll.filter((r) => r.session_cm_id === id)),
+          ...storedAll.filter((r) => !sessions.has(r.session_cm_id)),
+        ]
+  const current = storedAll.find((row) => String(row.session_cm_id) === session)
   const raw = typed ?? (current ? String(current.capacity) : '')
   const note = typedNote ?? current?.note ?? ''
   const read = raw === '' ? null : readCapacity(raw)
   const nameOf = (id: number) => sessions?.get(id) ?? `Session ${String(id)}`
 
   return (
-    <section className={`${SEASON_CARD} space-y-2 p-4`} data-testid="capacity-form">
+    <section className={`${SEASON_CARD} space-y-2`} data-testid="capacity-form">
       <h2 className="font-semibold">Session capacity, for Round 3</h2>
       <p className="text-muted-foreground text-xs">
         Reference only: a Round 3 request shows its session&apos;s capacity beside its enrollment.
@@ -63,6 +71,11 @@ export function CapacityForm() {
           ))}
         </ul>
       )}
+      {sessions === undefined && (
+        <p className="text-muted-foreground text-xs">
+          Loading sessions… (if they never appear, the list couldn&apos;t be read: reload the page)
+        </p>
+      )}
       {stored.error !== null && stored.data === undefined && (
         <p className={AMBER_NOTE}>Couldn&apos;t load the stored capacities.</p>
       )}
@@ -75,10 +88,17 @@ export function CapacityForm() {
                 className={FIELD_INLINE}
                 value={session}
                 onChange={(event) => {
-                  setSession(event.target.value)
-                  setTyped(null)
-                  setTypedNote(null)
+                  const next = event.target.value
+                  // Choosing a session fills its stored figure and note over what was typed for
+                  // another. Typing done before the first pick survives it, unless the chosen
+                  // session has a stored figure to show.
+                  if (session !== '' || storedAll.some((r) => String(r.session_cm_id) === next)) {
+                    setTyped(null)
+                    setTypedNote(null)
+                  }
+                  setSession(next)
                   setSaved(null)
+                  save.reset()
                 }}
               >
                 <option value="">Choose a session</option>
