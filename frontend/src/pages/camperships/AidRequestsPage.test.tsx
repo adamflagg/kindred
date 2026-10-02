@@ -314,6 +314,22 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
     expect(headers()).not.toContain('Round')
   })
 
+  it("orders the Appeals view's columns by the identity rule under the lens: Camper first, Family just left of Needs attention (T2)", () => {
+    renderAt('/aid/requests?view=needs-offer&lens=appeals')
+    expect(headers()).toEqual([
+      'Camper',
+      'Session',
+      'Stage',
+      'R1',
+      'Appeal ask',
+      'R2',
+      'Total',
+      'Posted',
+      'Family',
+      'Needs attention',
+    ])
+  })
+
   it('shows a stage under All with its own columns, and no appeals-only line', () => {
     renderAt('/aid/requests?view=needs-offer')
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
