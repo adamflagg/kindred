@@ -69,7 +69,7 @@ function lowestWhere(
 }
 
 // A request cancelled in Kindred takes no tick (the server's CANCELLED_IN_KINDRED refusal).
-const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by === 'kindred'
+export const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by === 'kindred'
 
 /**
  * The lowest round that needs an offer and has a decided amount, if the request can take a tick at all.

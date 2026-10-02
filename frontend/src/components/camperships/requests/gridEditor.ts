@@ -7,6 +7,10 @@ import { roundOf } from './stage'
  */
 export const LIVE_REQUEST_STATUSES: readonly string[] = ['active', 'unmatched_session']
 
+/** The server's `_live`: a withdrawn or duplicate request takes no ask, amount, cancellation or hold. */
+export const isLiveRequest = (row: ApiAidGridRow): boolean =>
+  row.request_status === null || LIVE_REQUEST_STATUSES.includes(row.request_status)
+
 export type AppealTarget =
   | { readonly kind: 'appeal'; readonly initialAmount: number | null }
   | { readonly kind: 'none'; readonly why: string }
@@ -19,8 +23,11 @@ export type AppealTarget =
  */
 export function appealTarget(row: ApiAidGridRow): AppealTarget {
   // The write's first check (`_live`): a withdrawn or duplicate request takes nothing.
-  if (row.request_status !== null && !LIVE_REQUEST_STATUSES.includes(row.request_status)) {
-    return { kind: 'none', why: `a ${row.request_status} request takes no new asks or amounts` }
+  if (!isLiveRequest(row)) {
+    return {
+      kind: 'none',
+      why: `a ${String(row.request_status)} request takes no new asks or amounts`,
+    }
   }
   if (row.cancellation?.by === 'kindred') {
     return { kind: 'none', why: 'Cancelled in Kindred: reopen it first' }

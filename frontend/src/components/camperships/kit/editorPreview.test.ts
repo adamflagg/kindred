@@ -23,6 +23,7 @@ const OUT: ApiAidPreview = {
     { household_cm_id: 1000003, pct: 40, amount: 312 },
   ],
   pending_approval: false,
+  total_decided: 2280,
 }
 
 describe('toEditorPreview', () => {
@@ -36,6 +37,7 @@ describe('toEditorPreview', () => {
       trace: OUT.trace,
       stageChange: 'Needs an offer',
       pendingApproval: false,
+      totalDecided: 2280,
       shares: [
         {
           householdCmId: 1000001,
@@ -47,5 +49,11 @@ describe('toEditorPreview', () => {
         { householdCmId: 1000003, chip: null, householdName: null, pct: 40, amount: 312 },
       ],
     })
+  })
+
+  it('maps an absent total to null', () => {
+    const without: ApiAidPreview = { ...OUT }
+    delete without.total_decided
+    expect(toEditorPreview(without, () => ({ chip: null, name: null })).totalDecided).toBeNull()
   })
 })

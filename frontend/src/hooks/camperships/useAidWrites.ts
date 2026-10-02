@@ -1,8 +1,28 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { keyAidAsk, tickAidAccepted, tickAidPosted } from '../../services/camperships/aidApi'
+import {
+  decideAidRound3,
+  keyAidAsk,
+  keyAidRound3Amount,
+  setAidCancellation,
+  setAidHoldRelease,
+  setAidManualHold,
+  tickAidAccepted,
+  tickAidPosted,
+  undoAidPosted,
+} from '../../services/camperships/aidApi'
 import type { FetchWithAuth } from '../../services/lodgingApi'
-import type { ApiAidAcceptedIn, ApiAidAskIn, ApiAidPostedIn } from '../../types/api-types'
+import type {
+  ApiAidAcceptedIn,
+  ApiAidAskIn,
+  ApiAidCancellationIn,
+  ApiAidHoldReleaseIn,
+  ApiAidManualHoldIn,
+  ApiAidPostedIn,
+  ApiAidRound3AmountIn,
+  ApiAidRound3ApprovalIn,
+  ApiAidUnpostIn,
+} from '../../types/api-types'
 import { invalidateAidMoneyQueries } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 
@@ -58,5 +78,58 @@ export interface AcceptedVars {
 export function useAidTickAccepted() {
   return useAidWrite((fetchWithAuth, vars: AcceptedVars) =>
     tickAidAccepted(fetchWithAuth, vars.year, vars.body)
+  )
+}
+
+/** A write on one request. */
+export interface RequestVars<B> {
+  readonly requestId: string
+  readonly body: B
+}
+
+export interface UndoPostedVars {
+  readonly year: number
+  readonly body: ApiAidUnpostIn
+}
+
+/** Undo a mistaken Posted tick, with its reason (§5.1). */
+export function useAidUndoPosted() {
+  return useAidWrite((fetchWithAuth, vars: UndoPostedVars) =>
+    undoAidPosted(fetchWithAuth, vars.year, vars.body)
+  )
+}
+
+/** A Round 3 amount (§4.6; D22, D79). */
+export function useAidRound3Amount() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidRound3AmountIn>) =>
+    keyAidRound3Amount(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** Finance's decision on a Round 3 waiting on it (D79). */
+export function useAidRound3Decision() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidRound3ApprovalIn>) =>
+    decideAidRound3(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** Release a check's hold, or put it back (main spec §10.5). */
+export function useAidHoldRelease() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidHoldReleaseIn>) =>
+    setAidHoldRelease(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** Place or lift the manual hold (§6.3). */
+export function useAidManualHold() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidManualHoldIn>) =>
+    setAidManualHold(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** Cancel, give a reason, or reopen (D101, D141). */
+export function useAidCancellation() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidCancellationIn>) =>
+    setAidCancellation(fetchWithAuth, vars.requestId, vars.body)
   )
 }

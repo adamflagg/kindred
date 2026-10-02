@@ -38,6 +38,7 @@ import type {
   CamperJourneyCounts,
   CamperJourneyResponse,
   CamperJourneyRow,
+  CancellationIn,
   CancellationOut,
   ConfirmationOut,
   ConfirmationStateOut,
@@ -49,6 +50,7 @@ import type {
   GrantRowOut,
   GridRowOut,
   HistoryEntryOut,
+  HoldReleaseIn,
   HouseholdCardOut,
   HouseholdLinkRow,
   HouseholdPageResponse,
@@ -58,6 +60,7 @@ import type {
   IssueOut,
   JumpIndexHousehold,
   JumpIndexResponse,
+  ManualHoldIn,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
@@ -66,11 +69,14 @@ import type {
   ReceiptOut,
   RemainingResponse,
   RequestsGridResponse,
+  Round3AmountIn,
+  Round3ApprovalIn,
   RoundOut,
   ShareLineOut,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
+  UnpostIn,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -136,6 +142,13 @@ export type ApiAidAskIn = AskIn
 export type ApiAidPostedIn = PostedIn
 /** The Accepted tick (D47). Mirrors Python `AcceptedIn`. */
 export type ApiAidAcceptedIn = AcceptedIn
+/** The household page's decision writes (§6.3). Each mirrors its Python model. */
+export type ApiAidUnpostIn = UnpostIn
+export type ApiAidRound3AmountIn = Round3AmountIn
+export type ApiAidRound3ApprovalIn = Round3ApprovalIn
+export type ApiAidHoldReleaseIn = HoldReleaseIn
+export type ApiAidManualHoldIn = ManualHoldIn
+export type ApiAidCancellationIn = CancellationIn
 /** What a decisions write did. Mirrors Python `DecisionWriteOut`. */
 export type ApiAidWriteOut = DecisionWriteOut
 

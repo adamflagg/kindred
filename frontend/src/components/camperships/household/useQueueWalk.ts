@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useAidGrid } from '../../../hooks/camperships/useAidGrid'
@@ -15,12 +15,22 @@ import {
   type WalkStop,
 } from './queueWalk'
 
+export interface Neighbours {
+  readonly previous: WalkStop | null
+  readonly next: WalkStop | null
+}
+
 export interface QueueWalk {
   readonly view: RequestView
   /** Null while the grid read is loading or failed, or when the family is not among the view's stops. */
   readonly position: WalkPosition | null
   /** True only once the grid has loaded and the family is not in the view (I2): the strip says so. */
   readonly absent: boolean
+  /**
+   * Where the family was, once it has left the view after a decision: its neighbours by household (the
+   * index it held when one has gone too), so the walk goes on (PR 7 I2). Null while it is in the view, and with no memory of it.
+   */
+  readonly remembered: Neighbours | null
   readonly backHref: string
   readonly hrefOf: (stop: WalkStop) => string
 }
@@ -31,7 +41,12 @@ export interface QueueWalk {
  * in the background. Null when the page stands alone (search, Grants, Money). `view` is the season
  * and as-of the links carry: the as-of is the grid's, kept so Back returns to the same view.
  */
-export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | null {
+export function useQueueWalk(
+  householdCmId: number,
+  view: AidView,
+  /** A page-owned exit (owner F2 4): given, every step goes through it, and it calls `go` to leave. */
+  beforeLeave?: ((go: () => void) => void) | undefined
+): QueueWalk | null {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   // react-router's navigate changes identity with the location: the key listener reads it by ref.
@@ -39,6 +54,10 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
   useEffect(() => {
     navigateRef.current = navigate
   }, [navigate])
+  const beforeLeaveRef = useRef(beforeLeave)
+  useEffect(() => {
+    beforeLeaveRef.current = beforeLeave
+  }, [beforeLeave])
   const from = params.get('from')
   const walkView = from === null ? null : requestView(from)
   // The household page is live only (Decision 36), so the walk reads the live grid.
@@ -57,6 +76,38 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
   )
   const position = useMemo(() => walkPosition(stops, householdCmId), [stops, householdCmId])
   const slug = walkView?.slug ?? null
+  // The family's last index and neighbours (by household) while it was in the stops, for this
+  // household and view: a refetch that drops it keeps its neighbours (I2), and they follow their
+  // household, not a position another family's leaving would shift. Another household or view
+  // starts afresh. A neighbour can leave while the family keeps its index, so the guard compares all.
+  const memoryKey = `${String(householdCmId)}|${slug ?? ''}`
+  const [last, setLast] = useState<{
+    key: string
+    index: number
+    prevId: number | null
+    nextId: number | null
+  } | null>(null)
+  const prevId = position?.previous?.householdCmId ?? null
+  const nextId = position?.next?.householdCmId ?? null
+  const remembersThis =
+    last?.key === memoryKey &&
+    last.index === position?.index &&
+    last.prevId === prevId &&
+    last.nextId === nextId
+  if (position !== null && !remembersThis) {
+    setLast({ key: memoryKey, index: position.index, prevId, nextId })
+  }
+  const remembered = useMemo<Neighbours | null>(() => {
+    if (position !== null || rows === undefined || last?.key !== memoryKey) {
+      return null
+    }
+    const byId = (id: number | null) =>
+      id === null ? undefined : stops.find((stop) => stop.householdCmId === id)
+    return {
+      previous: byId(last.prevId) ?? stops[last.index - 1] ?? null,
+      next: byId(last.nextId) ?? stops[last.index] ?? null,
+    }
+  }, [position, rows, stops, memoryKey, last])
   const hrefOf = useMemo(
     () => (stop: WalkStop) =>
       aidHref(
@@ -66,10 +117,11 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
       ),
     [view, slug, keep]
   )
-  usePrefetchHousehold(position?.next?.householdCmId ?? null)
+  usePrefetchHousehold((position ?? remembered)?.next?.householdCmId ?? null)
 
   useEffect(() => {
-    if (position === null) return
+    const here = position ?? remembered
+    if (here === null) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== '[' && event.key !== ']') return
       // A bracket typed into an editor or a form is text (the kit's lesson: page keys stand aside
@@ -81,14 +133,17 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
         return
       }
       if (!isPageKey(event)) return
-      const stop = event.key === ']' ? position.next : position.previous
+      const stop = event.key === ']' ? here.next : here.previous
       if (stop === null) return
       event.preventDefault()
-      void navigateRef.current(hrefOf(stop))
+      const go = () => void navigateRef.current(hrefOf(stop))
+      const guard = beforeLeaveRef.current
+      if (guard) guard(go)
+      else go()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [position, hrefOf])
+  }, [position, remembered, hrefOf])
 
   if (walkView === null) return null
   const here = position === null ? undefined : stops[position.index]
@@ -97,6 +152,7 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
     position,
     // Only a loaded read can say the family left the view: loading and failed claim nothing.
     absent: rows !== undefined && position === null,
+    remembered,
     backHref: aidHref('/aid/requests', view, {
       view: walkView.slug,
       ...keep,

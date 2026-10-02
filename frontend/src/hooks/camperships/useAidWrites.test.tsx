@@ -4,7 +4,17 @@ import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import { useAidKeyAsk, useAidTickAccepted, useAidTickPosted } from './useAidWrites'
+import {
+  useAidCancellation,
+  useAidHoldRelease,
+  useAidKeyAsk,
+  useAidManualHold,
+  useAidRound3Amount,
+  useAidRound3Decision,
+  useAidTickAccepted,
+  useAidTickPosted,
+  useAidUndoPosted,
+} from './useAidWrites'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -114,5 +124,101 @@ describe('useAidTickAccepted', () => {
     expect(JSON.parse(options.body as string)).toEqual(body)
     expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'grid'] })
+  })
+})
+
+describe('the household writes (§6.3)', () => {
+  const lastCall = () => {
+    const [url, options] = fetchSpy.mock.calls.at(-1) as [string, RequestInit]
+    return {
+      url,
+      method: options.method,
+      body: JSON.parse(options.body as string) as unknown,
+      auth: new Headers(options.headers).get('Authorization'),
+    }
+  }
+
+  it('undoes a Posted tick with its reason', async () => {
+    const { result } = renderHook(() => useAidUndoPosted(), { wrapper })
+    const body = {
+      request_id: 'reqsamuel000005',
+      round: 1 as const,
+      reason: 'Ticked the wrong family',
+    }
+    await act(() => result.current.mutateAsync({ year: 2027, body }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/decisions/2027/unposted',
+      method: 'POST',
+      body,
+      auth: 'Bearer test-jwt',
+    })
+  })
+
+  it('keys a Round 3 amount, and finance decides it', async () => {
+    const amount = renderHook(() => useAidRound3Amount(), { wrapper }).result
+    await act(() =>
+      amount.current.mutateAsync({ requestId: 'reqolivia000003', body: { amount: 450, note: '' } })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqolivia000003/round3-amount',
+      method: 'POST',
+      body: { amount: 450, note: '' },
+      auth: 'Bearer test-jwt',
+    })
+    const decide = renderHook(() => useAidRound3Decision(), { wrapper }).result
+    await act(() =>
+      decide.current.mutateAsync({
+        requestId: 'reqolivia000003',
+        body: { approve: true, note: 'Within the reserve' },
+      })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqolivia000003/round3-approval',
+      method: 'POST',
+      body: { approve: true, note: 'Within the reserve' },
+      auth: 'Bearer test-jwt',
+    })
+  })
+
+  it('releases a hold, places a manual one, and cancels with a reason', async () => {
+    const release = renderHook(() => useAidHoldRelease(), { wrapper }).result
+    await act(() =>
+      release.current.mutateAsync({
+        requestId: 'reqliam00000002',
+        body: { code: 'py_confirm_tier_change', released: true, note: 'Checked with the family' },
+      })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqliam00000002/hold-release',
+      method: 'POST',
+      body: { code: 'py_confirm_tier_change', released: true, note: 'Checked with the family' },
+      auth: 'Bearer test-jwt',
+    })
+    const manual = renderHook(() => useAidManualHold(), { wrapper }).result
+    await act(() =>
+      manual.current.mutateAsync({
+        requestId: 'reqliam00000002',
+        body: { held: true, note: 'Waiting on a call' },
+      })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqliam00000002/manual-hold',
+      method: 'POST',
+      body: { held: true, note: 'Waiting on a call' },
+      auth: 'Bearer test-jwt',
+    })
+    const cancel = renderHook(() => useAidCancellation(), { wrapper }).result
+    await act(() =>
+      cancel.current.mutateAsync({
+        requestId: 'reqriley0000004',
+        body: { cancelled: true, reason: 'medical', note: '' },
+      })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqriley0000004/cancellation',
+      method: 'POST',
+      body: { cancelled: true, reason: 'medical', note: '' },
+      auth: 'Bearer test-jwt',
+    })
   })
 })
