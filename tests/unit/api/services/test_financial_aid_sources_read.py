@@ -181,3 +181,19 @@ async def test_the_last_change_read_asks_the_log_for_source_writes_of_every_seas
     pb.collection.assert_called_with("aid_change_log")
     params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
     assert (params["filter"], params["sort"]) == ('entity = "aid_sources"', "created,id")
+
+
+# --- the incentive flag (D88; aid_sources.incentive from #2967) -------------------------------------------
+
+
+def test_a_row_carries_its_incentive_flag_never_its_funder_type() -> None:
+    """D88: "incentive" is a per-source flag; an incentive-flagged source stays funder type outside."""
+    assert source_row(_source("regional grant", "src000000000001", incentive=True)).incentive is True
+    assert source_row(_source("regional grant", "src000000000001", incentive=False)).incentive is False
+
+
+@pytest.mark.asyncio
+async def test_the_list_read_carries_the_incentive_flag() -> None:
+    repo = _repo(fetch_sources=[_source("regional grant", "src000000000001", incentive=True)])
+    out = await FinancialAidLedgerService(repo).sources()
+    assert [s.incentive for s in out.sources] == [True]
