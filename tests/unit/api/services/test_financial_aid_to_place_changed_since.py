@@ -520,6 +520,30 @@ async def test_money_placed_tick_withheld_and_the_response_names_the_round() -> 
 
 
 @pytest.mark.asyncio
+async def test_a_legacy_include_override_row_entered_after_the_posting_withholds_nothing_at_the_placement() -> None:
+    """The store's read carries each correction's field, so the placement skips a legacy include_override row as
+    `changed_since` does (owner ruling: the Include override is gone) and ticks the round."""
+    store = one_line()
+    store.corrections.append(
+        CorrectionRecord(
+            id="cor000000000002",
+            year=YEAR,
+            application_id=APPLICATION,
+            request_id="",
+            field="include_override",
+            new_value="excluded",
+            original_value="",
+            reason="Legacy row",
+            actor=ACTOR,
+            created=T0.isoformat(),
+        )
+    )
+    out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+    assert (out.placed, out.not_ticked) == ([9001], [])
+    assert [(e.request_id, e.round) for e in store.events if e.kind == "post"] == [(EMMA, 1)]
+
+
+@pytest.mark.asyncio
 async def test_a_bulk_confirm_places_every_line_and_withholds_only_the_changed_lines_tick() -> None:
     store = one_line()
     seed_request(store, LIAM_ELSEWHERE, household=1000002, person=1000021)

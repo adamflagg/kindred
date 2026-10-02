@@ -107,7 +107,7 @@ class FakeDecisionsStore:
             *self.since.log,
         ]
         corrections = [
-            SinceCorrection(c.application_id, c.request_id, created)
+            SinceCorrection(c.application_id, c.request_id, created, c.field)
             for c in self.corrections
             if (created := parse_pb_datetime(c.created)) is not None
         ]
