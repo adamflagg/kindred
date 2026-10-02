@@ -311,6 +311,18 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.6",
         rulings=("D132", "D133"),
     ),
+    Definition(
+        key="round1_phases",
+        term="Round 1 phases",
+        text=(
+            "Round 1 phases: phase 1 is Round 1 money on requests received by the application deadline; phase 2 is "
+            "Round 1 money on requests received after it; phase 3 is appeals (Rounds 2 and 3). A request received "
+            "on time but posted later stays in phase 1. Each phase is shown as a % of the season's total budget and "
+            "as its share of all three."
+        ),
+        spec="§9.7",
+        rulings=("D155",),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -340,7 +352,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "recipients_cancelled",
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
-    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported"),
+    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases"),
 }
 
 BY_KEY: Final[Mapping[str, Definition]] = {d.key: d for d in DEFINITIONS}

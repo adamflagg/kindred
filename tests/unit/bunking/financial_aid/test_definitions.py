@@ -32,7 +32,7 @@ def test_the_household_band_cites_its_five_figures() -> None:
 @pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: d.key)
 def test_each_definition_cites_its_spec_section_and_rulings(definition: Definition) -> None:
     assert re.fullmatch(r"[a-z][a-z0-9_]*", definition.key)
-    assert re.fullmatch(r"§[57]\.\d+", definition.spec)
+    assert re.fullmatch(r"§[579]\.\d+", definition.spec)
     assert definition.rulings
     assert all(re.fullmatch(r"D\d+", r) for r in definition.rulings)
 

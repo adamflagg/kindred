@@ -17,7 +17,7 @@ def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
         "recipients_cancelled",
     )
     assert SURFACES["reports-programs"] == ("apps", "awarded", "average_award", "pct_of_ask")
-    assert SURFACES["reports-committee"] == ("finance_budget", "awarded", "apps", "as_reported")
+    assert SURFACES["reports-committee"] == ("finance_budget", "awarded", "apps", "as_reported", "round1_phases")
 
 
 def test_awarded_is_posted_on_live_requests_never_total_awards_granted() -> None:
@@ -60,3 +60,11 @@ def test_awarded_says_live_for_the_request_standing_never_included() -> None:
     text = BY_KEY["awarded"].text
     assert "on a live request" in text
     assert "included request" not in text
+
+
+def test_round_1_phases_carry_their_signed_boundary() -> None:
+    """D155: phase 1 = Round 1 on requests received by the application deadline; held-and-posted-later stays in 1."""
+    note = BY_KEY["round1_phases"]
+    assert "received by the application deadline" in note.text
+    assert "stays in phase 1" in note.text
+    assert note.key in SURFACES["reports-committee"]
