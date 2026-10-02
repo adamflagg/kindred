@@ -10,13 +10,13 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
   apps            the population; `cancelled` counts the cancelled ones among them, the line beside apps (D131).
   asked           the population's asks on the chip's round(s), as keyed (D80); `asks` counts the requests with
                   one, and the average ask divides by it.
-  amount          awarded (D80, Posted net of clawback, the camp's own money) on included requests; on the
+  amount          awarded (D80, Posted net of clawback, the camp's own money) on live requests; on the
                   "posted_and_decided" basis (D130) plus decided and not yet offered, broken out as `decided`.
-  awarded_count   included requests whose AWARDED (Posted) money is above $0, on either basis; the average award is
+  awarded_count   live requests whose AWARDED (Posted) money is above $0, on either basis; the average award is
                   awarded ÷ this count (D80, labelled with its population: O-930-16), never decided money (D130:
                   decided is never called awarded). `decided_count` counts the requests with decided money apart.
-  % of ask        amount ÷ the asks of the INCLUDED requests (a cancelled request's ask leaves with its award).
-  % with grants   (amount + the counting outside grants on the included requests) ÷ the same asks: the sheet's
+  % of ask        amount ÷ the asks of the LIVE requests (a cancelled request's ask leaves with its award).
+  % with grants   (amount + the counting outside grants on the live requests) ÷ the same asks: the sheet's
                   "% of Ask Granted in Total". Round 1 and All rounds only: a grant belongs to the request, not a
                   round.
   fee %           Round 1 and All rounds: the chip table's Round 1 % for the tier. Round 2: the Round 2 table the
@@ -60,7 +60,7 @@ class StatisticsRow:
     awarded_count: int
     decided_count: int
     average_award: Decimal | None
-    included_asked: Decimal
+    live_asked: Decimal
     pct_of_ask: Decimal | None
     grants: Decimal | None
     pct_of_ask_with_grants: Decimal | None
@@ -97,7 +97,7 @@ class TierAppealsRow:
 @dataclass(frozen=True)
 class OutcomeRow:
     """RPT-23, the March committee's outcomes for one pool (None: all pools): accepted, appealed and waiting for
-    a response (posted Round 1, not accepted, no Round 2 ask), on included requests."""
+    a response (posted Round 1, not accepted, no Round 2 ask), on live requests."""
 
     pool: str | None
     accepted: int
@@ -159,7 +159,7 @@ def _row(
 ) -> StatisticsRow:
     rounds = _rounds(round_)
     with_decided = basis == "posted_and_decided"
-    asked = included_asked = amount = decided = awarded = ZERO
+    asked = live_asked = amount = decided = awarded = ZERO
     asks = awarded_count = decided_count = cancelled = 0
     grants = ZERO
     for request in requests:
@@ -169,10 +169,10 @@ def _row(
             asks += 1
         if request.standing == "cancelled":
             cancelled += 1
-        if not request.included:
+        if not request.live:
             continue
         if ask is not None:
-            included_asked += ask
+            live_asked += ask
         money = request.awarded(rounds, decided=with_decided)
         posted = request.awarded(rounds)
         amount += money
@@ -197,10 +197,10 @@ def _row(
         awarded_count=awarded_count,
         decided_count=decided_count,
         average_award=average(awarded, awarded_count),
-        included_asked=included_asked,
-        pct_of_ask=pct(amount, included_asked),
+        live_asked=live_asked,
+        pct_of_ask=pct(amount, live_asked),
         grants=grants if shows_grants else None,
-        pct_of_ask_with_grants=pct(amount + grants, included_asked) if shows_grants else None,
+        pct_of_ask_with_grants=pct(amount + grants, live_asked) if shows_grants else None,
     )
 
 
@@ -301,11 +301,11 @@ def tier_appeals(
 def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
     """RPT-23 per home pool, then all pools (pool None): accepted (Round 1 posted and accepted: count and the posted
     amount), appealed (a Round 2 ask: count and the asks), waiting (Round 1 posted, not accepted, no Round 2 ask).
-    Included requests only: a cancelled family is no longer waiting."""
+    Live requests only: a cancelled family is no longer waiting."""
     pools: dict[str | None, list[ReportRequest]] = defaultdict(list)
     every: list[ReportRequest] = []
     for request in requests:
-        if request.included:
+        if request.live:
             pools[request.pool].append(request)
             every.append(request)
 

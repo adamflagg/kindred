@@ -24,8 +24,8 @@ def _tier(rows: tuple[StatisticsRow, ...], tier: int | None) -> StatisticsRow:
     return next(row for row in rows if row.tier == tier)
 
 
-def test_a_tier_row_counts_received_apps_and_awards_only_the_included() -> None:
-    """D72 apps (cancelled included, D131) against D80 awarded (Posted, included requests only, D129)."""
+def test_a_tier_row_counts_received_apps_and_awards_only_the_live() -> None:
+    """D72 apps (cancelled included, D131) against D80 awarded (Posted, live requests only, D129)."""
     table = statistics(
         [
             req("reqemma00000001", rnd(1, ask="4000", posted="1500")),
@@ -40,8 +40,8 @@ def test_a_tier_row_counts_received_apps_and_awards_only_the_included() -> None:
     assert (two.apps, two.cancelled, two.asked, two.asks) == (3, 1, Decimal(9000), 3)
     assert two.average_ask == Decimal("3000.00")
     assert (two.amount, two.awarded_count, two.average_award) == (Decimal(2500), 2, Decimal("1250.00"))
-    # % of ask divides by the INCLUDED requests' asks: the cancelled 3,000 leaves with its award.
-    assert (two.included_asked, two.pct_of_ask) == (Decimal(6000), Decimal("41.7"))
+    # % of ask divides by the LIVE requests' asks: the cancelled 3,000 leaves with its award.
+    assert (two.live_asked, two.pct_of_ask) == (Decimal(6000), Decimal("41.7"))
     assert (two.income_from, two.income_to, two.fee_pct) == (Decimal(40001), Decimal(80000), Decimal(75))
 
 
@@ -104,7 +104,7 @@ def test_the_decided_basis_adds_decided_not_yet_offered_and_breaks_it_out() -> N
     assert both.average_award == posted.average_award == Decimal("1500.00")
 
 
-def test_percent_of_ask_with_grants_adds_the_included_requests_grants_on_round_1_only() -> None:
+def test_percent_of_ask_with_grants_adds_the_live_requests_grants_on_round_1_only() -> None:
     requests = [
         req("reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="800", posted="300"), grants="500")
     ]

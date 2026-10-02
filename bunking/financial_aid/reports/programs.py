@@ -13,10 +13,10 @@ the screen): the pool grouping and subtotals, the Round 3 columns and total awar
                     one Family Camp session; a camper at two sessions is two requests), under that session's pool;
                     a request with no rules session counts in its home pool's "session not matched" row.
   apps, requested   as Statistics (D72): received requests, cancelled included; their asks as keyed.
-  awarded           as Statistics (D80, D129): Posted on included requests, net of clawback.
+  awarded           as Statistics (D80, D129): Posted on live requests, net of clawback.
   average request   requested ÷ requests with an ask; average award: awarded ÷ requests with an award (D80, labelled,
                     O-930-16; the sheet divided by every app).
-  % awarded         awarded ÷ the included requests' asks (the sheet's avg award ÷ avg request is awarded ÷ requested).
+  % awarded         awarded ÷ the live requests' asks (the sheet's avg award ÷ avg request is awarded ÷ requested).
   subtotals/total   POOLED ratios over the rows' requests, never averages of the rows' ratios (the sheet summed its
                     averages and averaged its percentages).
 """
@@ -72,15 +72,15 @@ class ProgramsTable:
 
 def _block(requests: Sequence[ReportRequest], n: int) -> RoundBlock:
     members = [r for r in requests if in_round(r, n)]
-    requested = included_asked = awarded = ZERO
+    requested = live_asked = awarded = ZERO
     asks = awarded_count = 0
     for request in members:
         ask = request.asked((n,))
         if ask is not None:
             requested += ask
             asks += 1
-            if request.included:
-                included_asked += ask
+            if request.live:
+                live_asked += ask
         money = request.awarded((n,))
         awarded += money
         awarded_count += money > 0
@@ -92,7 +92,7 @@ def _block(requests: Sequence[ReportRequest], n: int) -> RoundBlock:
         awarded_count=awarded_count,
         average_request=average(requested, asks),
         average_award=average(awarded, awarded_count),
-        pct_awarded=pct(awarded, included_asked),
+        pct_awarded=pct(awarded, live_asked),
     )
 
 

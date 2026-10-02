@@ -10,7 +10,7 @@ that an edited answer replaced (intake withdraws the old key and creates a new o
 Where each field comes from:
   standing      cancelled when the season lists a cancellation (10b-2; on a past read the season lists the ones made by
                 that day, whether CampMinder's or Kindred's, so a request cancelled on or before `as_of` IS cancelled
-                then and one cancelled after is not); included when live (active, unmatched) and not cancelled;
+                then and one cancelled after is not); live (active, unmatched) and not cancelled;
                 otherwise closed (a pending duplicate, a withdrawn answer). This is the request's STANDING, not the
                 Include override (a staff exclusion from a family's sums); see OWNER ITEM 53 below.
   program       the priced program, else the rules program the request's session belongs to (a request that is
@@ -63,7 +63,7 @@ def received_ids(requests: Mapping[str, RequestRecord]) -> frozenset[str]:
 def _standing(request: RequestRecord, cancelled: bool) -> Standing:
     if cancelled:
         return "cancelled"
-    return "included" if request.status in _LIVE else "closed"
+    return "live" if request.status in _LIVE else "closed"
 
 
 def _snapshot_tier(state: RoundState | None) -> int | None:
@@ -138,7 +138,7 @@ def report_requests(
         # OWNER ITEM 53 NOT RULED: Reports ignore the Include override (default). Flip deliberately.
         # `season.exclusions` (financial_aid_request_overrides.exclusion) is the Include override, which staff set to
         # leave a request out of a family's sums; Reports never read it, so an excluded request still counts in apps,
-        # asks and awarded. It is NOT the report's own standing == "included" (received and live, below), a
+        # asks and awarded. It is NOT the report's own standing == "live" (received and live, below), a
         # different concept with the same word. To honour it, filter on `request_id in season.exclusions` here.
         priced = season.priced.get(request_id)
         states = season.rounds.get(request_id, {})

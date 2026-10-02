@@ -45,7 +45,7 @@ def req(
     pool: str | None = "camp_pool",
     table: str = "camp",
     round2_table: str = "camp",
-    standing: Standing = "included",
+    standing: Standing = "live",
     reason: str | None = None,
     received_at: datetime | None = datetime(2027, 1, 10, 18, 0, tzinfo=UTC),
     grants: str = "0",

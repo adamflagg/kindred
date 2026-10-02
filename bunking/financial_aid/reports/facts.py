@@ -3,12 +3,12 @@ D80, D129, D131). Pure: no I/O.
 
 A report never reads the budget's Posted (D129, D131). It reads each request's own rounds and its standing:
 
-  standing      "included"   received and live (active or unmatched): it can be awarded;
+  standing      "live"       received and live (active or unmatched): it can be awarded;
                 "cancelled"  received, then cancelled (CampMinder or Kindred, 10b-2): in the apps, out of the
                              awarded figures at once, even while the budget's Posted still holds its money (D54);
                 "closed"     received but not live and not cancelled (a pending duplicate, a withdrawn answer
                              nothing replaced): in the apps, never awarded.
-  awarded       a round's Posted lock (D80: awarded = offered = Posted) on an included request, counted toward the
+  awarded       a round's Posted lock (D80: awarded = offered = Posted) on a live request, counted toward the
                 budget (the camp's own money, D106), net of clawback (D54). A wholly-outside decision type's round
                 (an outside funder's full-cost type, D121) is not the camp's money, so it is never awarded here.
   decided       a round decided and not yet offered (§5.3's Needs an offer): the "Decided (not yet offered)" basis
@@ -28,7 +28,7 @@ from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
 
-Standing = Literal["included", "cancelled", "closed"]
+Standing = Literal["live", "cancelled", "closed"]
 REPORT_ROUNDS: Final[tuple[int, ...]] = (1, 2, 3)
 _CENT: Final = Decimal("0.01")
 
@@ -86,16 +86,16 @@ class ReportRequest:
     grants: Decimal = ZERO
 
     @property
-    def included(self) -> bool:
-        return self.standing == "included"
+    def live(self) -> bool:
+        return self.standing == "live"
 
     def round(self, n: int) -> RoundFacts | None:
         return next((r for r in self.rounds if r.round == n), None)
 
     def awarded(self, rounds: Iterable[int] = REPORT_ROUNDS, *, decided: bool = False) -> Decimal:
         """The camp's awarded money on the rounds named (D80), plus decided and not yet offered when `decided`
-        (D130). Always 0 on a request that is not included (D129, D131)."""
-        if not self.included:
+        (D130). Always 0 on a request that is not live (D129, D131)."""
+        if not self.live:
             return ZERO
         total = ZERO
         for n in rounds:

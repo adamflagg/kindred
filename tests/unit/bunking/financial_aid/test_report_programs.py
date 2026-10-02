@@ -32,7 +32,7 @@ def test_a_session_row_has_the_sheets_round_1_and_round_2_columns_and_kindreds_r
     one = row.round1
     assert (one.apps, one.requested, one.awarded, one.awarded_count) == (3, Decimal(9000), Decimal(2500), 2)
     assert (one.average_request, one.average_award) == (Decimal("3000.00"), Decimal("1250.00"))
-    assert one.pct_awarded == Decimal("41.7")  # 2,500 ÷ the included requests' 6,000
+    assert one.pct_awarded == Decimal("41.7")  # 2,500 ÷ the live requests' 6,000
     assert (row.round2.apps, row.round2.requested, row.round2.awarded) == (1, Decimal(1000), Decimal(400))
     assert (row.round3.apps, row.round3.awarded) == (1, Decimal(200))  # a Round 3 posted with no ask keyed
     assert row.total_awarded == Decimal(3100)  # 1,500 + 400 + 1,000 + 200; the cancelled 900 is out

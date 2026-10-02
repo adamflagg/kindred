@@ -185,7 +185,7 @@ def test_appeals_and_the_rate_count_every_received_request() -> None:
     assert (r.year, r.applications, r.appeals, r.rate) == (2026, 50, 10, Decimal("20.0"))
 
 
-def test_round_1_percent_of_ask_is_included_awards_over_included_asks() -> None:
+def test_round_1_percent_of_ask_is_live_awards_over_live_asks() -> None:
     """RPT-13, end of season."""
     rows = [r for r in committee_tables([SEASON], []).round1_pct if r.basis == "P"]
     camp = next(r for r in rows if r.pool == "camp_pool")

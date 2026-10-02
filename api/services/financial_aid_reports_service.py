@@ -599,7 +599,7 @@ def _statistics_row(row: StatisticsRow, *, past: bool) -> StatisticsRowOut:
         awarded_count=row.awarded_count,
         decided_count=row.decided_count,
         average_award=_money(row.average_award),
-        included_asked=money(row.included_asked),
+        live_asked=money(row.live_asked),
         pct_of_ask=_pct(row.pct_of_ask),
         grants=None if past else _money(row.grants),
         pct_of_ask_with_grants=None if past else _pct(row.pct_of_ask_with_grants),

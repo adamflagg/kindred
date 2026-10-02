@@ -2,7 +2,7 @@
 D133). Pure: no I/O.
 
 Each table has one row per season and basis: **P** (computed from the season's own decisions, awarded = Posted on
-included requests, D80, D129) where Kindred has them, and **r** (as reported, typed once, `history.py`) where
+live requests, D80, D129) where Kindred has them, and **r** (as reported, typed once, `history.py`) where
 finance typed them. A season can carry both (2026: typed phases beside the D67 load). Kindred computes every
 percentage and every over/under; nothing typed is a percentage except a target band (history.py).
 
@@ -17,7 +17,7 @@ percentage and every over/under; nothing typed is a percentage except a target b
   RPT-7 / RPT-24    per pool and in total: budget, awarded, the over/under, % of budget, the pool's share of the
                     season's awarded money, the rules' split as a reference (D119), and finance's note.
   RPT-8             applications (received, cancelled included) and appeals (any Round 2 or later ask), the rate.
-  RPT-13            Round 1 awarded ÷ the included requests' Round 1 asks, end of season, per pool and in total. The
+  RPT-13            Round 1 awarded ÷ the live requests' Round 1 asks, end of season, per pool and in total. The
                     start-of-season basis is Scenarios › Compare's rules column (RPT-17, SP9c), not repeated here.
 """
 
@@ -503,7 +503,7 @@ def native_budget(season: NativeSeason, typed: _Typed | None) -> list[BudgetRow]
     allocated = allocations(document) if document is not None else {}
     awarded: dict[str | None, Decimal] = defaultdict(lambda: ZERO)
     for request in season.requests:
-        if not request.included:
+        if not request.live:
             continue
         for facts in request.rounds:
             if facts.posted is not None:
@@ -612,9 +612,9 @@ def typed_appeals(year: int, typed: _Typed) -> AppealsRow | None:
 def native_round1_pct(season: NativeSeason) -> list[Round1PctRow]:
     pools: dict[str | None, list[ReportRequest]] = defaultdict(list)
     for request in season.requests:
-        if request.included:
+        if request.live:
             pools[request.pool].append(request)
-    every = [r for r in season.requests if r.included]
+    every = [r for r in season.requests if r.live]
 
     def row(pool: str | None, members: Sequence[ReportRequest]) -> Round1PctRow:
         awarded = sum((r.awarded((1,)) for r in members), ZERO)

@@ -238,7 +238,7 @@ async def test_programs_count_a_past_cancellation_too() -> None:
 async def test_a_request_the_include_override_excludes_still_counts_in_apps_asks_and_awarded() -> None:
     """OWNER ITEM 53 NOT RULED: Reports do NOT read the Include override (default; flip deliberately). Staff leaving
     Emma out of her family's sums doesn't take her out of Statistics: she is still an app, her ask is still asked and
-    her posted 1,500 is still awarded. (The report's own "included" standing is the request's status, a different
+    her posted 1,500 is still awarded. (The report's own "live" standing is the request's status, a different
     concept.)"""
     store = report_season()
     store.corrections.append(
