@@ -998,6 +998,16 @@ describe('ticks (§4.10, §5.2)', () => {
       ).toBeInTheDocument()
     })
 
+    // Owner sitting A, A18: the bar's own Tick button is an exit like the row's, so it saves first too.
+    it('saves the typed ask first when the tick comes from the selection bar, and the dialog shows it', async () => {
+      await typeAppeal()
+      const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+      await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Tick Posted…' }))
+      expect(keyAsk).toHaveBeenCalledTimes(1)
+      expect(await screen.findByText(/^Tick Posted on 1 request/)).toBeInTheDocument()
+    })
+
     it('opens nothing when that save fails, and the failure stays listed', async () => {
       keyAsk.mockImplementationOnce(() => Promise.reject(new Error('The server is down')))
       await typeAppeal()
