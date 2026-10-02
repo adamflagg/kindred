@@ -95,19 +95,19 @@ export default function AidHouseholdPage() {
   const view = useMemo((): AidView => ({ year, asOf: LIVE }), [year])
   // The links carry the as-of the grid's link did, so Back returns to the same view.
   const linkView = useMemo((): AidView => ({ year, asOf }), [year, asOf])
-  const walk = useQueueWalk(valid ? id : 0, linkView)
+  // The page's one open editor. `exits.beforeLeave(go)` leaves it (saving what is typed) before an
+  // exit the page owns: the queue walk's keys and links go through it. Stable for the page's life.
+  const exits = useEditorExits()
+  const walk = useQueueWalk(valid ? id : 0, linkView, exits.beforeLeave)
   const { hasPermission } = usePermissions()
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
   const canApprove = hasPermission(Permission.FINANCIAL_AID_RULES)
-  // The page's one open editor. `exits.beforeLeave(go)` leaves it (saving what is typed) before an
-  // exit the page owns; the queue walk is handed it in the follow-up that joins the two.
-  const exits = useEditorExits()
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      {walk && <QueueWalkStrip walk={walk} />}
+      {walk && <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />}
       <AidPageBand
         icon={Users}
         title={data ? bandTitle(data) : `Household ${householdCmId ?? ''}`}
