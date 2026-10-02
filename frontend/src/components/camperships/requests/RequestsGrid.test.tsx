@@ -13,7 +13,7 @@ vi.mock('../../../utils/csvExport', async (importActual) => ({
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { confirmationOut, GRID_ROWS, gridRow, roundOut, ROW_LIAM } from './gridFixtures'
 import { RequestsGrid } from './RequestsGrid'
-import { filterRows, GRID_COLUMNS, NO_FILTERS, requestView } from './views'
+import { CM_PENDING_WORD, filterRows, GRID_COLUMNS, NO_FILTERS, requestView } from './views'
 
 let highlights: Array<string | null> = []
 const open = vi.fn()
@@ -219,14 +219,15 @@ describe('RequestsGrid', () => {
     expect(within(rowOf('Riley Sam')).getByText('Cancelled')).toBeInTheDocument()
   })
 
-  it("gives All's needs-attention cell its next step, and a queue view none (§4.4)", () => {
+  // Batch 4 (owner LOCKED): the cell is the chip only; All's next step moved out of the cell into
+  // the opened row's detail line ("the detail line" tests below). Was: "gives All's
+  // needs-attention cell its next step, and a queue view none (§4.4)".
+  it('puts no next step in the needs-attention cell, in All or a queue view', () => {
     const { unmount } = render(<Grid />)
-    expect(
-      within(rowOf('Liam Garcia')).getByRole('link', { name: 'Enter income' })
-    ).toBeInTheDocument()
+    expect(within(rowOf('Liam Garcia')).queryByRole('link', { name: /income/ })).toBeNull()
     unmount()
     render(<Grid slug="holds" />)
-    expect(screen.queryByRole('link', { name: 'Enter income' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /income/ })).toBeNull()
     expect(
       screen.getByText('Placeholder income', { selector: '[data-group-heading] span' })
     ).toBeInTheDocument()
@@ -381,29 +382,36 @@ describe('RequestsGrid: the CM ✓ column', () => {
     userEvent.hover(
       screen.getByRole('columnheader', { name: 'CM ✓' }).firstElementChild as HTMLElement
     )
-  const EXPLAIN =
-    "CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched on that date; short/over = CampMinder's ledger differs; tonight = waiting for tonight's sync."
+  // Owner ruling (A2, batch 4): verbatim, the pending word from its one constant.
+  const EXPLAIN = `CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
 
-  it('says "✓ Mar 10", "short $50", "over $50" and "tonight"', () => {
-    render(<Grid rows={ROWS} />)
-    expect(cmCell('Emma Johnson')).toHaveTextContent(/^✓ Mar 10$/)
-    expect(cmCell('Liam Garcia')).toHaveTextContent(/^short \$50$/)
-    expect(cmCell('Olivia Chen')).toHaveTextContent(/^over \$50$/)
-    expect(cmCell('Riley Sam')).toHaveTextContent(/^tonight$/)
-  })
-
-  // Interim wording (lead, 2026-10-02): a posting with no matching ledger line.
-  it('says "not in CM" for a posting the ledger has no line for, on screen and in the CSV', async () => {
+  // Owner ruling (A2, batch 4): chips only, one word each. Was "✓ Mar 10", "short $50",
+  // "over $50", "tonight" and the interim "not in CM".
+  it('says one word on a chip for each of the six states, with no amount or date', () => {
     const rows = [
-      withConfirmation('reqc5', 'Emma Johnson', { status: 'not_in_campminder', on: null }),
+      ...ROWS,
+      withConfirmation('reqc5', 'Samuel Johnson', { status: 'not_in_campminder', on: null }),
     ]
-    render(<Grid rows={rows} />)
-    expect(cmCell('Emma Johnson')).toHaveTextContent(/^not in CM$/)
-    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
-    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
-    const lines = content.split('\n')
-    const at = csvCells(lines[0] ?? '').indexOf('Confirmed by CampMinder')
-    expect(csvCells(lines[1] ?? '')[at]).toBe('not in CM')
+    const { unmount } = render(<Grid rows={rows} />)
+    const word = (camper: string, text: string) => {
+      const cell = cmCell(camper) as HTMLElement
+      expect(cell).toHaveTextContent(new RegExp(`^${text}$`))
+      // The word is a chip, the cell's only child.
+      expect(cell.children).toHaveLength(1)
+      expect(cell.firstElementChild?.className).toContain('rounded-full')
+    }
+    word('Emma Johnson', '✓')
+    word('Liam Garcia', 'short')
+    word('Olivia Chen', 'over')
+    word('Riley Sam', CM_PENDING_WORD)
+    word('Samuel Johnson', 'missing')
+    unmount()
+    render(
+      <Grid
+        rows={[withConfirmation('reqc6', 'Emma Johnson', { status: 'reversed', on: '2027-10-02' })]}
+      />
+    )
+    word('Emma Johnson', 'reversed')
   })
 
   it('explains itself on hover and on click, and a click does not sort', async () => {
@@ -448,7 +456,9 @@ describe('RequestsGrid: the CM ✓ column', () => {
     expect(screen.queryByRole('columnheader', { name: 'CM ✓' })).toBeNull()
   })
 
-  it("writes the CSV with the full header name and the screen's words, and drops the column before 2027", async () => {
+  // Owner ruling (A2, batch 4): the CSV keeps the full detail, not the one-word chip. Was "the
+  // screen's words".
+  it('writes the CSV with the full header name and the full detail, and drops the column before 2027', async () => {
     const { unmount } = render(<Grid rows={ROWS} />)
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
@@ -457,15 +467,156 @@ describe('RequestsGrid: the CM ✓ column', () => {
     expect(at).toBeGreaterThan(-1)
     expect(csvCells(lines[0] ?? '')).not.toContain('CM ✓')
     expect(lines.slice(1, 5).map((l) => csvCells(l)[at])).toEqual([
-      '✓ Mar 10',
-      'short $50',
-      'over $50',
-      'tonight',
+      '✓ confirmed Mar 10',
+      'CampMinder shows $1,750; short $50',
+      'CampMinder shows $1,850; over $50',
+      "Ticked today; tonight's sync checks it.",
     ])
     unmount()
     render(<Grid rows={ROWS} year={2026} />)
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [older] = downloadSpy.mock.calls.at(-1) as [string, string]
     expect(csvCells(older.split('\n')[0] ?? '')).not.toContain('Confirmed by CampMinder')
+  })
+})
+
+// Batch 4 (owner LOCKED, grid-layout-options.html#or=i, round 6). The next-step labels are the
+// mock's, INTERIM. #2943 has no writers: every next step is a link or plain words, never a button.
+describe('RequestsGrid: Needs attention frozen right, and the detail line (batch 4)', () => {
+  const BASE = '/aid/households/1000003?from=all&year=2027'
+  const LIAM_FACT =
+    'Income was entered as $1, so no tier can be set. Call for the real figure and enter it as a correction.'
+  const attentionCell = (camper: string) =>
+    within(rowOf(camper)).getAllByRole('cell').at(-1) as HTMLElement
+  const detail = () => {
+    const row = document.querySelector('[data-aid-detail]')
+    if (row === null) throw new Error('no detail line')
+    return row as HTMLElement
+  }
+  const openRow = (camper: string) =>
+    userEvent.click(within(rowOf(camper)).getAllByRole('cell')[1] as HTMLElement)
+
+  it('shows only the chip in the Needs attention cell', () => {
+    render(<Grid />)
+    expect(attentionCell('Liam Garcia')).toHaveTextContent(/^Placeholder income$/)
+    expect(within(rowOf('Liam Garcia')).queryByText(LIAM_FACT)).toBeNull()
+  })
+
+  it('freezes Needs attention on the right edge, and fits it to the chips on screen', () => {
+    render(<Grid />)
+    expect(screen.getByRole('columnheader', { name: 'Needs attention' }).style.right).toBe('0px')
+    expect(attentionCell('Liam Garcia').style.right).toBe('0px')
+    // jsdom has no layout, so every chip measures 0: the column sits on its 84px floor.
+    const cols = screen.getByRole('table').querySelectorAll('col')
+    expect((cols[cols.length - 1] as HTMLElement).style.width).toBe('84px')
+  })
+
+  it('opens a detail line under the clicked row, and Esc closes it', async () => {
+    render(<Grid />)
+    expect(document.querySelector('[data-aid-detail]')).toBeNull()
+    await openRow('Liam Garcia')
+    expect(detail().previousElementSibling).toBe(rowOf('Liam Garcia'))
+    await userEvent.keyboard('{Escape}')
+    expect(document.querySelector('[data-aid-detail]')).toBeNull()
+    expect(highlights.at(-1)).toBeNull()
+  })
+
+  it('opens it with ↓ as well', async () => {
+    render(<Grid />)
+    await userEvent.keyboard('{ArrowDown}')
+    expect(detail().previousElementSibling).toHaveAttribute('data-highlighted', 'true')
+  })
+
+  it('holds the chip, the full text, the Family, the household link and the next step, with no button', async () => {
+    render(<Grid />)
+    await openRow('Liam Garcia')
+    const line = within(detail())
+    expect(line.getByText('Placeholder income')).toHaveClass('rounded-full')
+    expect(line.getByText(LIAM_FACT)).toBeInTheDocument()
+    expect(line.getByText('Family')).toBeInTheDocument()
+    expect(line.getByText('The Garcia Family')).toBeInTheDocument()
+    expect(line.getByRole('link', { name: 'Household 1000003 ›' })).toHaveAttribute('href', BASE)
+    const next = line.getByRole('link', { name: 'Enter the income ›' })
+    expect(next).toHaveAttribute('href', `${BASE}#income`)
+    expect(line.queryAllByRole('button')).toHaveLength(0)
+    await userEvent.click(next)
+    expect(open).toHaveBeenCalledWith(ROW_LIAM, `${BASE}#income`)
+    expect(highlights).toEqual(['reqliam00000002'])
+  })
+
+  it("links a request-level step to the request's card", async () => {
+    const row = gridRow({
+      request_id: 'reqliam00000002',
+      household_cm_id: 1000003,
+      camper_name: 'Liam Garcia',
+      holds: [{ code: 'manual_hold', severity: 'hold', message: 'Waiting on a document.' }],
+      queues: ['holds'],
+    })
+    render(<Grid rows={[row]} />)
+    await openRow('Liam Garcia')
+    expect(within(detail()).getByRole('link', { name: 'Release the hold… ›' })).toHaveAttribute(
+      'href',
+      `${BASE}#request-reqliam00000002`
+    )
+  })
+
+  it('says so in plain words where Kindred has nothing to do', async () => {
+    render(<Grid />)
+    await openRow('Riley Sam')
+    const line = within(detail())
+    expect(line.getByText('Reverse it in CampMinder; nothing to do here')).toBeInTheDocument()
+    expect(line.getAllByRole('link').map((a) => a.textContent)).toEqual(['Household 1000007 ›'])
+  })
+
+  it('draws no next step where the mock has a tick or editor button (#2951, #2948 add them)', async () => {
+    render(<Grid slug="waiting" />)
+    await openRow('Samuel Johnson')
+    const line = within(detail())
+    expect(line.getByText('Waiting 23 days')).toBeInTheDocument()
+    expect(line.getAllByRole('link').map((a) => a.textContent)).toEqual(['Household 1000001 ›'])
+    expect(line.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('says a row that needs nothing needs nothing, and still opens the request', async () => {
+    render(<Grid />)
+    await openRow('Emma Johnson')
+    const line = within(detail())
+    expect(line.getByText('Nothing needs attention on this request.')).toBeInTheDocument()
+    expect(line.getByRole('link', { name: 'Open the request ›' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000001?from=all&year=2027#request-reqemma00000001'
+    )
+  })
+
+  it('shows the CM ✓ detail in the detail line from the first ticked season', async () => {
+    const { unmount } = render(<Grid />)
+    await openRow('Samuel Johnson')
+    expect(within(detail()).getByText('CampMinder shows $1,590; short $210')).toBeInTheDocument()
+    unmount()
+    render(<Grid year={2026} />)
+    await openRow('Samuel Johnson')
+    // (The needs-attention text itself may still say what CampMinder shows; the CM ✓ part is gone.)
+    expect(within(detail()).queryByText('CampMinder shows $1,590; short $210')).toBeNull()
+    expect(within(detail()).queryByText('CM ✓')).toBeNull()
+  })
+
+  it('no longer grows the opened row tall: no full text in it, and names stay on one line', async () => {
+    render(<Grid />)
+    await openRow('Liam Garcia')
+    const row = rowOf('Liam Garcia')
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+    expect(within(row).queryByText(LIAM_FACT)).toBeNull()
+    expect(attentionCell('Liam Garcia')).not.toHaveClass('whitespace-normal')
+    const family = within(row).getByRole('link', { name: 'The Garcia Family' })
+    expect(family.parentElement).toHaveClass('truncate')
+  })
+
+  it('spans every column, and keeps Person beside the pinned Camper with Show IDs (D25)', async () => {
+    render(<Grid showIds />)
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
+    expect(headers.slice(0, 2)).toEqual(['Camper', 'Person'])
+    expect(headers.at(-1)).toBe('Needs attention')
+    await openRow('Liam Garcia')
+    expect((detail().firstElementChild as HTMLTableCellElement).colSpan).toBe(headers.length)
   })
 })

@@ -11,7 +11,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AidTable, type AidColumn, type AidGrouping } from './AidTable'
 import { moneyCsv } from './money'
 import { Money } from './MoneyText'
-import { NeedsAttentionCell } from './NeedsAttentionCell'
 import { IdChip } from './Pills'
 import { matchedId } from './table'
 
@@ -131,13 +130,9 @@ const COLUMNS: Array<AidColumn<Row>> = [
     key: 'attention',
     header: 'Needs attention',
     flex: true,
+    // A plain flexible cell: the kit still wraps it on the highlighted row (D31). The Requests grid's
+    // needs-attention chip no longer does (batch 4), so it is not the sample here.
     value: (r) => r.fact,
-    render: (r, { highlighted }) => (
-      <NeedsAttentionCell
-        item={{ level: 'hold', pill: r.reason, fact: r.fact }}
-        highlighted={highlighted}
-      />
-    ),
   },
 ]
 
@@ -248,16 +243,16 @@ describe('AidTable', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('group=flat')
   })
 
-  it('highlights a row on click and shows its full needs-attention text (D31)', async () => {
+  // Batch 4 (owner LOCKED): the needs-attention cell's truncate-until-highlighted is gone (the cell
+  // is a chip; the full text is in the Requests grid's detail line). The kit's flexible cell still
+  // wraps on the highlighted row, held by "wraps only the highlighted flexible cell" below.
+  it('highlights a row on click (D31)', async () => {
     renderTable()
-    const fact = 'Two forms disagree on income. Call the family and enter one figure.'
-    expect(screen.getByText(fact)).toHaveClass('truncate')
     await userEvent.click(screen.getByText('Emma Johnson'))
     expect(screen.getByText('Emma Johnson').closest('tr')).toHaveAttribute(
       'data-highlighted',
       'true'
     )
-    expect(screen.getByText(fact)).not.toHaveClass('truncate')
   })
 
   it('moves the highlight with ↓ and ↑, but not while you type in the search box', async () => {

@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import { STATUS_TONE } from './kitStyles'
 import { StatusPill } from './Pills'
 
@@ -12,32 +10,21 @@ export interface AttentionItem {
   readonly fact: string
 }
 
-/**
- * The needs-attention cell (§4.4; D24, D31): the pill and the long-form fact on one line, cut at
- * the column edge. The full text shows only on the highlighted row, never on hover. A row that
- * needs nothing draws nothing.
- */
-export function NeedsAttentionCell({
-  item,
-  highlighted,
-  action,
-}: {
-  item: AttentionItem | null
-  highlighted: boolean
-  action?: ReactNode | undefined
-}) {
-  if (item === null) return null
+/** An item's chip: red for a hold, amber for a note. */
+export function AttentionChip({ item }: { item: AttentionItem }) {
   return (
-    <div className="flex min-w-0 items-start gap-1.5">
-      <StatusPill tone={item.level === 'hold' ? STATUS_TONE.hold : STATUS_TONE.note}>
-        {item.pill}
-      </StatusPill>
-      {item.fact !== '' && (
-        <span className={highlighted ? 'min-w-0 whitespace-normal' : 'min-w-0 truncate'}>
-          {item.fact}
-        </span>
-      )}
-      {action}
-    </div>
+    <StatusPill tone={item.level === 'hold' ? STATUS_TONE.hold : STATUS_TONE.note}>
+      {item.pill}
+    </StatusPill>
   )
+}
+
+/**
+ * The needs-attention cell (§4.4; D24; batch 4, owner LOCKED grid-layout-options.html#or=i): the
+ * chip only. The full text and the next step live in the opened row's detail line, so the
+ * highlighted row no longer grows tall (D31's full text moved there). A row that needs nothing
+ * draws nothing.
+ */
+export function NeedsAttentionCell({ item }: { item: AttentionItem | null }) {
+  return item === null ? null : <AttentionChip item={item} />
 }

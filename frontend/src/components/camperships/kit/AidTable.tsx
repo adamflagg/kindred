@@ -23,12 +23,15 @@ import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
 import { Tooltip } from '../../ui/Tooltip'
 import {
   CELL_BG,
+  DETAIL_LINE,
+  DETAIL_ROW,
   EDITOR_ROW,
   GROUP_ROW,
   HELP_HEADER,
   HIGHLIGHT_EDGE,
   HIGHLIGHT_PINNED_EDGE,
   PINNED_EDGE,
+  RIGHT_PINNED_EDGE,
   ROW_HIGHLIGHT,
   SCROLL_BOX,
   TABLE,
@@ -44,11 +47,13 @@ import { isPageKey } from './keyboard'
 import { moneyCsv } from './money'
 import { Money } from './MoneyText'
 import {
+  fitColumnWidth,
   groupRows,
   matchesSearch,
   sortRows,
   stepHighlight,
   type CellValue,
+  type FitContent,
   type RowGroup,
 } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
@@ -84,6 +89,17 @@ export interface AidColumn<Row> {
   readonly flex?: boolean | undefined
   readonly align?: 'left' | 'right' | undefined
   readonly pinned?: boolean | undefined
+  /**
+   * Frozen on the right edge (batch 4: Needs attention), over the columns scrolling under it. Put
+   * it last; it is never also `pinned`.
+   */
+  readonly pinnedRight?: boolean | undefined
+  /**
+   * The width comes from the cells drawn, not `width`: the widest first element of this column's
+   * rendered body cells (its chip), plus `pad`, never under `min`, re-measured every render, so it
+   * follows the rows, the view, the search and the filters (batch 4, round 6's fitAttn).
+   */
+  readonly fitContent?: FitContent | undefined
   readonly value: (row: Row) => CellValue
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
   readonly csv?: ((row: Row) => string) | undefined
@@ -122,6 +138,12 @@ export interface AidTableProps<Row> {
   readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
+  /**
+   * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i): a row
+   * straight under the highlighted one, as wide as the box's visible width and stuck at its left,
+   * so it wraps and stays put while the rows scroll sideways. Esc closes the row (with `arrowKeys`).
+   */
+  readonly renderDetail?: ((row: Row) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
   /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
   readonly toolbarLead?: ReactNode
@@ -174,6 +196,7 @@ export function AidTable<Row>({
   csvExtra,
   onOpenTotal,
   renderBelowHighlighted,
+  renderDetail,
   arrowKeys = false,
   toolbarLead,
   highlighted: highlightedProp,
@@ -250,13 +273,20 @@ export function AidTable<Row>({
   useEffect(() => {
     if (!arrowKeys) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+      const escape = event.key === 'Escape'
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && !escape) return
       // Not while a field (the search box, the editor) owns the key, a modifier is held, a modal is
       // open, or the key was already handled, held down or part of an IME composition (isPageKey).
       // Nor while focus is anywhere in the editor row (a Save button is not a typing target).
       if (event.target instanceof Element && event.target.closest('[data-aid-editor]') !== null)
         return
-      if (!isPageKey(event) || order.length === 0) return
+      if (!isPageKey(event)) return
+      // Esc closes the opened row (batch 4); an open tooltip or modal takes it first (isPageKey).
+      if (escape) {
+        if (highlighted !== null) setHighlight(null)
+        return
+      }
+      if (order.length === 0) return
       event.preventDefault()
       setHighlight(stepHighlight(order, highlighted, event.key === 'ArrowDown' ? 1 : -1))
     }
@@ -305,6 +335,38 @@ export function AidTable<Row>({
   // resizes no element the observer was handed, and the setState above is a no-op when unchanged.
   useLayoutEffect(measure)
 
+  // Widths taken from what is drawn (batch 4): each fitted column from its rendered chips, and the
+  // box's visible width for the detail line. Every render (the rows, view, search or filters may
+  // have changed what is drawn) and on resize; each setState is a no-op when nothing moved.
+  const [fitWidths, setFitWidths] = useState<Readonly<Record<string, number>>>({})
+  const [boxWidth, setBoxWidth] = useState(0)
+  const measureWidths = useCallback(() => {
+    const element = boxRef.current
+    if (element === null) return
+    setBoxWidth(element.clientWidth)
+    const next: Record<string, number> = {}
+    for (const column of columns) {
+      if (!column.fitContent) continue
+      const chips = [...element.querySelectorAll(`td[data-fit-col="${column.key}"]`)]
+        .map((cell) => cell.firstElementChild?.getBoundingClientRect().width)
+        .filter((width): width is number => width !== undefined)
+      next[column.key] = fitColumnWidth(chips, column.fitContent)
+    }
+    setFitWidths((was) => {
+      const keys = Object.keys(next)
+      const same =
+        keys.length === Object.keys(was).length && keys.every((key) => was[key] === next[key])
+      return same ? was : next
+    })
+  }, [columns])
+  useLayoutEffect(measureWidths)
+  useEffect(() => {
+    window.addEventListener('resize', measureWidths)
+    return () => window.removeEventListener('resize', measureWidths)
+  }, [measureWidths])
+  const widthOf = (column: AidColumn<Row>) =>
+    column.fitContent ? (fitWidths[column.key] ?? column.fitContent.min) : column.width
+
   useEffect(() => {
     if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
   }, [highlighted])
@@ -332,22 +394,30 @@ export function AidTable<Row>({
     return out
   }, [columns])
   const lastPinned = [...pinnedLeft.keys()].at(-1)
-  const minWidth = columns.reduce((sum, c) => sum + (c.flex ? FLEX_MIN : (c.width ?? 0)), 0)
+  // A flexible column with a width of its own never gets narrower than it (the Requests grid's
+  // Family, which takes the spare width now Needs attention is fitted: batch 4).
+  const minWidth = columns.reduce(
+    (sum, c) => sum + (c.flex ? (c.width ?? FLEX_MIN) : (widthOf(c) ?? 0)),
+    0
+  )
+  const isPinned = (column: AidColumn<Row>) =>
+    pinnedLeft.has(column.key) || column.pinnedRight === true
+  const edgeOf = (column: AidColumn<Row>) =>
+    column.key === lastPinned ? PINNED_EDGE : column.pinnedRight ? RIGHT_PINNED_EDGE : undefined
 
   const pinStyle = (column: AidColumn<Row>): CSSProperties | undefined =>
-    pinnedLeft.has(column.key) ? { left: pinnedLeft.get(column.key) } : undefined
+    pinnedLeft.has(column.key)
+      ? { left: pinnedLeft.get(column.key) }
+      : column.pinnedRight
+        ? { right: 0 }
+        : undefined
   const pinClasses = (column: AidColumn<Row>, layer: string) =>
-    join(pinnedLeft.has(column.key) && `sticky ${layer}`, column.key === lastPinned && PINNED_EDGE)
+    join(isPinned(column) && `sticky ${layer}`, edgeOf(column))
   // In the screen box the header and totals are held on both axes: every cell sticks, and a pinned
   // one sits a layer above the rest (and above the pinned body cells), so nothing scrolls over it.
   const heldClasses = (column: AidColumn<Row>, side: 'top-0' | 'bottom-0', fallback: string) =>
     scrollBox
-      ? join(
-          'sticky',
-          side,
-          pinnedLeft.has(column.key) ? 'z-40' : 'z-30',
-          column.key === lastPinned && PINNED_EDGE
-        )
+      ? join('sticky', side, isPinned(column) ? 'z-40' : 'z-30', edgeOf(column))
       : pinClasses(column, fallback)
   // One shadow class per cell (Ruling 2026-10-01 (plan review)): a highlighted first cell that is
   // also the last pinned one gets the combined shadow, never two competing `shadow-[…]` classes.
@@ -355,6 +425,7 @@ export function AidTable<Row>({
     const highlightEdge = isHighlighted && index === 0
     const pinnedEdge = column.key === lastPinned
     if (highlightEdge && pinnedEdge) return HIGHLIGHT_PINNED_EDGE
+    if (column.pinnedRight) return RIGHT_PINNED_EDGE
     return highlightEdge ? HIGHLIGHT_EDGE : pinnedEdge ? PINNED_EDGE : ''
   }
   const alignClass = (column: AidColumn<Row>) =>
@@ -437,7 +508,7 @@ export function AidTable<Row>({
         <table className={TABLE} style={{ minWidth }}>
           <colgroup>
             {columns.map((c) => (
-              <col key={c.key} style={c.flex ? undefined : { width: c.width }} />
+              <col key={c.key} style={c.flex ? undefined : { width: widthOf(c) }} />
             ))}
           </colgroup>
           <thead ref={headRef}>
@@ -518,11 +589,12 @@ export function AidTable<Row>({
                           <td
                             key={c.key}
                             style={pinStyle(c)}
+                            data-fit-col={c.fitContent ? c.key : undefined}
                             className={join(
                               TD,
                               isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
                               bodyEdge(c, index, isHighlighted),
-                              pinnedLeft.has(c.key) && 'sticky z-10',
+                              isPinned(c) && 'sticky z-10',
                               alignClass(c),
                               c.flex === true && isHighlighted
                                 ? 'whitespace-normal'
@@ -535,6 +607,19 @@ export function AidTable<Row>({
                           </td>
                         ))}
                       </tr>
+                      {isHighlighted && renderDetail && (
+                        <tr data-aid-detail="">
+                          {/* The cell must not clip, or the sticky line is trapped inside it (round 6). */}
+                          <td colSpan={columns.length} className={DETAIL_ROW}>
+                            <div
+                              className={DETAIL_LINE}
+                              style={boxWidth > 0 ? { width: boxWidth } : undefined}
+                            >
+                              {renderDetail(row)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       {isHighlighted && renderBelowHighlighted && (
                         <tr>
                           <td colSpan={columns.length} className={EDITOR_ROW} data-aid-editor="">

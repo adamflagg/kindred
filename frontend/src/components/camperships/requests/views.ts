@@ -11,8 +11,9 @@ import type {
 } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
-import { formatGap, toCents } from '../kit/money'
-import type { CellValue } from '../kit/table'
+import { formatGap, formatMoney, toCents } from '../kit/money'
+import type { PillTone } from '../kit/kitStyles'
+import type { CellValue, FitContent } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
 import { latestRound, requestStage, roundOf } from './stage'
 
@@ -173,6 +174,10 @@ export interface GridColumnSpec {
   readonly align?: 'right'
   readonly flex?: true
   readonly pinned?: true
+  /** Frozen on the right edge (batch 4: Needs attention). */
+  readonly pinnedRight?: true
+  /** Width from the chips drawn: the widest plus `pad`, never under `min` (batch 4). */
+  readonly fitContent?: FitContent
   /** A money column: the footer totals it, and the CSV writes it through moneyCsv. */
   readonly money?: true
   /** False keeps an action column out of the CSV (M16). */
@@ -181,6 +186,8 @@ export interface GridColumnSpec {
   readonly help?: string
   /** The CSV's own, fuller header name when the screen's is short. */
   readonly csvHeader?: string
+  /** The CSV's own text when it says more than the screen's (CM ✓'s full detail, batch 4). */
+  readonly csv?: (row: ApiAidGridRow, ctx: ColumnContext) => string
   readonly value: (row: ApiAidGridRow, ctx: ColumnContext) => CellValue
 }
 
@@ -210,31 +217,66 @@ export function viewRound(row: ApiAidGridRow, view: RequestViewKey): ApiAidRound
 }
 
 /**
- * CM ✓'s short words (owner ruling 2026-10-02): "✓ Mar 10", "short $50" / "over $50", "tonight".
- * "not in CM" is interim wording (lead, 2026-10-02); reversed has no ruled word and keeps its old wording.
+ * The word CM ✓ shows while a tick waits for tonight's sync (owner ruling A2: "pending"). One
+ * constant, used by the chip, the header's explanation and the CSV, because the owner may rename it.
  */
-export function confirmationWord(confirmation: ApiAidConfirmation): string {
-  const on = confirmation.on ? formatShortDate(confirmation.on) : ''
+export const CM_PENDING_WORD = 'pending'
+
+/**
+ * CM ✓'s cell (owner rulings A2, batch 4): a chip of one word, no amount or date. The amount and
+ * date are in the opened row's detail line and the CSV (confirmationDetail).
+ */
+export function confirmationChip(confirmation: ApiAidConfirmation): {
+  readonly word: string
+  readonly tone: PillTone
+} {
   switch (confirmation.status) {
-    case 'awaiting_sync':
-      return 'tonight'
     case 'confirmed':
-      return on === '' ? '✓' : `✓ ${on}`
+      return { word: '✓', tone: 'emerald' }
     case 'short':
     case 'over':
-      return formatGap(confirmation.locked, confirmation.in_campminder) ?? ''
+      return { word: confirmation.status, tone: 'amber' }
     case 'not_in_campminder':
-      return 'not in CM'
+      return { word: 'missing', tone: 'amber' }
     case 'reversed':
-      return on === '' ? 'reversed' : `reversed ${on}`
+      return { word: 'reversed', tone: 'stone' }
+    case 'awaiting_sync':
+      return { word: CM_PENDING_WORD, tone: 'muted' }
   }
 }
 
-const CM_CHECK_HELP =
-  "CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched on that date; short/over = CampMinder's ledger differs; tonight = waiting for tonight's sync."
+/**
+ * CM ✓ in full (owner ruling, batch 4), for the detail line and the CSV's "Confirmed by
+ * CampMinder": "✓ confirmed Sep 29", "CampMinder shows $1,450; short $50", "reversed Oct 2",
+ * "Ticked today; tonight's sync checks it.", "Posted $1,800; the last sync found nothing in
+ * CampMinder for it."
+ */
+export function confirmationDetail(confirmation: ApiAidConfirmation): string {
+  const on = confirmation.on ? ` ${formatShortDate(confirmation.on)}` : ''
+  switch (confirmation.status) {
+    case 'confirmed':
+      return `✓ confirmed${on}`
+    case 'short':
+    case 'over':
+      return `CampMinder shows ${formatMoney(confirmation.in_campminder)}; ${
+        formatGap(confirmation.locked, confirmation.in_campminder) ?? confirmation.status
+      }`
+    case 'not_in_campminder':
+      return `Posted ${formatMoney(confirmation.locked)}; the last sync found nothing in CampMinder for it.`
+    case 'reversed':
+      return `reversed${on}`
+    case 'awaiting_sync':
+      return "Ticked today; tonight's sync checks it."
+  }
+}
+
+/** The CM ✓ header's explanation (owner ruling, batch 4), verbatim but for the pending word. */
+export const CM_CHECK_HELP = `CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
 
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
-  family: { header: 'Family', width: 130, value: (r) => r.family_name },
+  // Takes the spare width (batch 4): Needs attention is now only as wide as its chips, so in a
+  // narrow view the gap opens here, beside it, and never at 130 or under.
+  family: { header: 'Family', width: 130, flex: true, value: (r) => r.family_name },
   camper: { header: 'Camper', width: 130, pinned: true, value: (r) => r.camper_name },
   householdId: {
     header: 'Household',
@@ -314,12 +356,15 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     money: true,
     value: (r) => viewRound(r, 'waiting_on_family')?.posted ?? null,
   },
+  // As wide as its widest chip, "reversed" (batch 4): the words are a closed set of six, so the
+  // width is fixed, not measured, and the column never shifts as rows change.
   confirmed: {
     header: 'CM ✓',
     csvHeader: 'Confirmed by CampMinder',
     help: CM_CHECK_HELP,
-    width: 90,
-    value: (r) => (r.confirmation ? confirmationWord(r.confirmation) : null),
+    width: 84,
+    value: (r) => (r.confirmation ? confirmationChip(r.confirmation).word : null),
+    csv: (r) => (r.confirmation ? confirmationDetail(r.confirmation) : ''),
   },
   round: {
     header: 'Round',
@@ -355,9 +400,12 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
       return on === null ? null : daysBetween(on, today)
     },
   },
+  // Frozen on the right and as wide as the widest chip on screen plus 18px, never under 84px (owner
+  // LOCKED batch 4, round 6). The cell is the chip; the full text is in the opened row's detail line.
   attention: {
     header: 'Needs attention',
-    flex: true,
+    pinnedRight: true,
+    fitContent: { pad: 18, min: 84 },
     value: (r, { view, today, cancelledOnShown }) => {
       const found = attentionFor(r, view, today, cancelledOnShown)
       if (!found) return null

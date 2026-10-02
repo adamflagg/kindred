@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
-import { attentionFor, attentionItems, codeWords, daysBetween, waitingSince } from './attention'
-import { gridRow, roundOut, ROW_EMMA, ROW_LIAM, ROW_RILEY, ROW_SAMUEL } from './gridFixtures'
+import {
+  attentionFor,
+  attentionItems,
+  codeWords,
+  daysBetween,
+  OPEN_REQUEST,
+  waitingSince,
+} from './attention'
+import {
+  confirmationOut,
+  gridRow,
+  roundOut,
+  ROW_EMMA,
+  ROW_LIAM,
+  ROW_RILEY,
+  ROW_SAMUEL,
+} from './gridFixtures'
 
 const TODAY = '2027-04-01'
 
@@ -50,7 +65,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
         fact: 'Income was entered as $1, so no tier can be set. Call for the real figure and enter it as a correction.',
       },
       queue: 'holds',
-      action: 'Enter income',
+      next: { kind: 'link', label: 'Enter the income', at: 'income' },
     })
   })
 
@@ -155,7 +170,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
           fact: 'Income is above the season’s note figure.',
         },
         queue: null,
-        action: null,
+        next: OPEN_REQUEST,
       },
     ])
     expect(attentionFor(ROW_EMMA, 'all', TODAY)).toBeNull()
@@ -275,5 +290,93 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     const [first, second] = attentionItems(row, TODAY)
     expect(first?.item).toEqual({ level: 'note', pill: 'Ask above cost', fact: '' })
     expect(second?.item.fact).toBe('Adjusted income is above $150,000')
+  })
+})
+
+// Batch 4: each reason's next step for the opened row's detail line. The labels are the round 6
+// mock's (grid-layout-options.html nextAction), INTERIM until the owner rules them. #2943 has no
+// writers, so every step is a link to where it is done today (the household page: its income
+// section, or the request's card) or plain words; a step that is a tick or the editor (the mock's
+// buttons) is null here, and #2951 / #2948 add it.
+describe('the next step (batch 4, interim labels)', () => {
+  const nextOf = (
+    row: Parameters<typeof attentionFor>[0],
+    view: Parameters<typeof attentionFor>[1]
+  ) => attentionFor(row, view, TODAY)?.next
+  const hold = (code: string) =>
+    gridRow({ holds: [{ code, severity: 'hold', message: 'A hold.' }], queues: ['holds'] })
+  const link = (label: string, at: 'income' | 'request' = 'request') => ({
+    kind: 'link' as const,
+    label,
+    at,
+  })
+
+  it('sends an income hold to the household income section', () => {
+    expect(nextOf(hold('household_income_conflict'), 'holds')).toEqual(
+      link('Enter the income', 'income')
+    )
+    expect(nextOf(hold('placeholder_income'), 'holds')).toEqual(link('Enter the income', 'income'))
+  })
+
+  it("sends the other holds to the request's card", () => {
+    expect(nextOf(hold('payer_shares_incomplete'), 'holds')).toEqual(link('Check the payer shares'))
+    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Release the hold…'))
+    expect(nextOf(hold('unmatched_session'), 'holds')).toEqual(link('Pick the session'))
+    expect(nextOf(hold('multiple_grants'), 'holds')).toEqual(OPEN_REQUEST)
+  })
+
+  it('leaves the editor and the ticks to the PRs that add them', () => {
+    // "Edit the award" opens the editor (#2948); "Tick Accepted" and "Mark posted" are ticks (#2951).
+    expect(nextOf(hold('award_above_cost'), 'holds')).toBeNull()
+    expect(nextOf(ROW_SAMUEL, 'waiting_on_family')).toBeNull()
+    const marked = gridRow({
+      notes: [{ code: 'in_campminder_not_ticked', severity: 'warn', message: 'In CampMinder.' }],
+    })
+    expect(nextOf(marked, 'all')).toBeNull()
+  })
+
+  it('says where nothing can be done in Kindred', () => {
+    expect(nextOf(ROW_RILEY, 'to_reverse')).toEqual({
+      kind: 'text',
+      text: 'Reverse it in CampMinder; nothing to do here',
+    })
+    const awaiting = gridRow({
+      confirmation: confirmationOut({ status: 'awaiting_sync', on: null, reconciled: false }),
+      queues: ['not_reconciled'],
+    })
+    expect(nextOf(awaiting, 'not_reconciled')).toEqual({
+      kind: 'text',
+      text: "Nothing to do; tonight's sync confirms it",
+    })
+  })
+
+  it("sends the queue items to the request's card", () => {
+    expect(nextOf(ROW_RILEY, 'cancel_reason')).toEqual(link('Pick a reason'))
+    expect(nextOf(ROW_SAMUEL, 'not_reconciled')).toEqual(link('Check the posting'))
+    const pending = gridRow({
+      rounds: [roundOut(3, 'pending_approval', { pending_approval: 450 })],
+      queues: ['pending_approval'],
+    })
+    expect(nextOf(pending, 'pending_approval')).toEqual(link('Approve Round 3 (finance)'))
+    expect(
+      nextOf(
+        gridRow({ request_status: 'unmatched_session', queues: ['session_not_settled'] }),
+        'all'
+      )
+    ).toEqual(link('Pick the session'))
+    expect(
+      nextOf(gridRow({ request_status: 'duplicate_pending', queues: ['duplicates'] }), 'all')
+    ).toEqual(link('Choose which to keep'))
+    expect(nextOf(hold('duplicate_survivor_withdrawn'), 'duplicates')).toEqual(
+      link('Choose which to keep')
+    )
+    const share = gridRow({
+      confirmation: confirmationOut({
+        reconciled: false,
+        shares: [{ household_cm_id: 1000003, expected: 100, in_campminder: 50, status: 'short' }],
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(nextOf(share, 'not_reconciled')).toEqual(link('Check the payer shares'))
   })
 })

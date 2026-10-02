@@ -79,6 +79,8 @@ export const ROW_HIGHLIGHT =
 export const HIGHLIGHT_EDGE = 'shadow-[inset_3px_0_0_var(--color-amber-500)]'
 /** The soft shadow on the last pinned column's edge (D25). */
 export const PINNED_EDGE = 'shadow-[6px_0_6px_-6px_rgb(0_0_0/0.25)]'
+/** The soft shadow on the left edge of a column frozen on the right (batch 4: Needs attention). */
+export const RIGHT_PINNED_EDGE = 'shadow-[-6px_0_6px_-6px_rgb(0_0_0/0.25)]'
 /** Both on one cell (a highlighted row's first cell is also the last pinned one): one shadow class, not two. */
 export const HIGHLIGHT_PINNED_EDGE =
   'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.25)]'
@@ -89,6 +91,14 @@ export const TFOOT_CELL_WRAP =
   'bg-muted border-border border-t px-2 py-1.5 font-semibold whitespace-normal'
 export const GROUP_ROW =
   'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-xs font-semibold'
+/**
+ * The opened row's detail line (batch 4, grid-layout-options.html round 6): the highlighted row's
+ * tint with an amber rule under it. Its cell must not clip (`overflow-visible`) and carries no side
+ * padding, or the sticky line inside would be trapped by it or pushed off the box's left edge.
+ */
+export const DETAIL_ROW = `${ROW_HIGHLIGHT} overflow-visible border-b border-amber-300 px-0 py-1.5 dark:border-amber-800`
+/** The line itself: stuck at the box's left, as wide as the box (set inline), wrapping. */
+export const DETAIL_LINE = 'sticky left-0 box-border px-3 whitespace-normal'
 /** The editor row under the highlighted row (D22). */
 export const EDITOR_ROW = 'bg-forest-50 dark:bg-forest-900 border-border border-b px-3 py-2.5'
 export const TOTAL_BUTTON = 'tabular-nums hover:underline'

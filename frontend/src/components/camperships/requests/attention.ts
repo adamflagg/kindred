@@ -83,19 +83,53 @@ export function waitingSince(row: Pick<ApiAidGridRow, 'rounds'>): string | null 
   return days.length === 0 ? null : days.reduce((a, b) => (b < a ? b : a))
 }
 
+/**
+ * The opened row's next step (batch 4). #2943 has no writers, so a step is a link to where it is
+ * done today (the household page, at its income section or at the request's card), or plain words
+ * where nothing can be done in Kindred. The labels are round 6's mock (grid-layout-options.html
+ * nextAction), INTERIM until the owner rules them.
+ */
+export type NextStep =
+  | { readonly kind: 'link'; readonly label: string; readonly at: 'income' | 'request' }
+  | { readonly kind: 'text'; readonly text: string }
+
+const toRequest = (label: string): NextStep => ({ kind: 'link', label, at: 'request' })
+const say = (text: string): NextStep => ({ kind: 'text', text })
+
+/** The mock's fallback, and the step for a row that needs nothing. */
+export const OPEN_REQUEST = toRequest('Open the request')
+
 export interface GridAttention {
   readonly item: AttentionItem
   /** The Requests view this item belongs to; null for a note that has none. */
   readonly queue: ApiAidQueue | null
-  /** The next step's name, for All's action button (§4.4); null when none. */
-  readonly action: string | null
+  /**
+   * Its next step for the detail line. Null where the mock's step is a tick or the editor (a
+   * button): #2943 has none, and #2951 (ticks) / #2948 (editor) add them.
+   */
+  readonly next: NextStep | null
 }
 
-const ACTION_BY_CODE: Readonly<Record<string, string>> = {
-  household_income_conflict: 'Enter income',
-  placeholder_income: 'Enter income',
-  payer_shares_incomplete: 'Set shares',
-  unmatched_session: 'Settle session',
+const ENTER_INCOME: NextStep = { kind: 'link', label: 'Enter the income', at: 'income' }
+const PAYER_SHARES = toRequest('Check the payer shares')
+const PICK_SESSION = toRequest('Pick the session')
+const KEEP_ONE = toRequest('Choose which to keep')
+
+const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
+  household_income_conflict: ENTER_INCOME,
+  placeholder_income: ENTER_INCOME,
+  payer_shares_incomplete: PAYER_SHARES,
+  manual_hold: toRequest('Release the hold…'),
+  unmatched_session: PICK_SESSION,
+  duplicate_survivor_withdrawn: KEEP_ONE,
+  // The editor's "Edit the award" (#2948) and the Posted tick (#2951).
+  award_above_cost: null,
+  in_campminder_not_ticked: null,
+}
+
+const stepFor = (code: string): NextStep | null => {
+  const step = STEP_BY_CODE[code]
+  return step === undefined ? OPEN_REQUEST : step
 }
 
 function holdQueue(code: string): ApiAidQueue {
@@ -125,12 +159,14 @@ const note = (
   pill: string,
   fact: string,
   queue: ApiAidQueue | null,
-  action: string | null = null
+  next: NextStep | null
 ): GridAttention => ({
   item: gridItem('note', pill, fact),
   queue,
-  action,
+  next,
 })
+
+const CHECK_POSTING = toRequest('Check the posting')
 
 function reconciliation(row: ApiAidGridRow): GridAttention | null {
   const c = row.confirmation
@@ -141,19 +177,22 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
       return note(
         formatGap(c.locked, c.in_campminder) ?? c.status,
         `CampMinder shows ${formatMoney(c.in_campminder)}.`,
-        'not_reconciled'
+        'not_reconciled',
+        CHECK_POSTING
       )
     case 'not_in_campminder':
       return note(
         'not in CampMinder',
         `Posted ${formatMoney(c.locked)}; the last sync found nothing for it.`,
-        'not_reconciled'
+        'not_reconciled',
+        CHECK_POSTING
       )
     case 'awaiting_sync':
       return note(
         "awaiting tonight's sync",
         'Ticked Posted; the ledger confirms it overnight.',
-        'not_reconciled'
+        'not_reconciled',
+        say("Nothing to do; tonight's sync confirms it")
       )
     case 'reversed':
       // Always reconciled, so never reached; it has nothing posted that is live, and would read $0.
@@ -165,7 +204,8 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
       return note(
         open === 1 ? 'a share unconfirmed' : `${String(open)} shares unconfirmed`,
         'Check the payer shares on the household page.',
-        'not_reconciled'
+        'not_reconciled',
+        PAYER_SHARES
       )
     }
   }
@@ -180,7 +220,7 @@ export function attentionItems(
   const items: GridAttention[] = row.holds.map((hold) => ({
     item: gridItem('hold', codeWords(hold.code), hold.message),
     queue: holdQueue(hold.code),
-    action: ACTION_BY_CODE[hold.code] ?? null,
+    next: stepFor(hold.code),
   }))
   if (row.to_reverse === true) {
     // The server's To reverse means live ledger lines remain, so the amount is what CampMinder
@@ -194,7 +234,8 @@ export function attentionItems(
             ? `${formatMoney(live)} still live in CampMinder: reverse it there; the row clears on the next sync.`
             : 'Reverse the posting in CampMinder; the row clears on the next sync.'
         }`,
-        'to_reverse'
+        'to_reverse',
+        say('Reverse it in CampMinder; nothing to do here')
       )
     )
   }
@@ -204,7 +245,7 @@ export function attentionItems(
         'Give a reason',
         todo.code === 'cancel_reason_missing' ? 'No reason recorded' : todo.message,
         todo.code === 'cancel_reason_missing' ? 'cancel_reason' : null,
-        'Give a reason'
+        toRequest('Pick a reason')
       )
     )
   }
@@ -214,7 +255,9 @@ export function attentionItems(
       note(
         ROUND_STATUS_WORDS.pending_approval,
         `R${String(pending.round)} ${formatMoney(pending.pending_approval)} is above the registrar's limit: finance approves it from Today.`,
-        'pending_approval'
+        'pending_approval',
+        // Finance approves on the request's card (the household page's round actions).
+        toRequest(`Approve Round ${String(pending.round)} (finance)`)
       )
     )
   }
@@ -229,7 +272,7 @@ export function attentionItems(
         codeWords('unmatched_session'),
         'Resolve it on the household page.',
         'session_not_settled',
-        ACTION_BY_CODE['unmatched_session'] ?? null
+        PICK_SESSION
       )
     )
   }
@@ -238,7 +281,8 @@ export function attentionItems(
       note(
         'Possible duplicate',
         `Same ${row.camper_name === '' ? 'family' : 'camper'} and session as another request: keep one on the household page.`,
-        'duplicates'
+        'duplicates',
+        KEEP_ONE
       )
     )
   }
@@ -252,12 +296,13 @@ export function attentionItems(
         `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
         "The family hasn't replied: follow up, then tick Accepted.",
         'waiting_on_family',
-        'Mark accepted'
+        // The mock's "Tick Accepted" is the Accepted tick (#2951).
+        null
       )
     )
   }
   for (const issue of row.notes ?? []) {
-    items.push(note(codeWords(issue.code), issue.message, null))
+    items.push(note(codeWords(issue.code), issue.message, null, stepFor(issue.code)))
   }
   return items
 }

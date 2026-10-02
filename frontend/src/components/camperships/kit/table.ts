@@ -117,3 +117,18 @@ export function stepHighlight(
   if (at === -1) return (step === 1 ? order[0] : order[order.length - 1]) ?? null
   return order[Math.min(order.length - 1, Math.max(0, at + step))] ?? null
 }
+
+/** A column sized to its content: the widest piece, rounded up, plus padding, never under the floor. */
+export interface FitContent {
+  readonly pad: number
+  readonly min: number
+}
+
+/**
+ * Needs attention's width (batch 4, grid-layout-options.html round 6): the widest chip on screen
+ * plus 18px, never under 84px. Pure, so the rule is held apart from the DOM that measures it.
+ */
+export function fitColumnWidth(widths: readonly number[], fit: FitContent): number {
+  const widest = widths.reduce((max, width) => Math.max(max, width), 0)
+  return Math.max(fit.min, Math.ceil(widest) + fit.pad)
+}

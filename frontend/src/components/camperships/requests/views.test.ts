@@ -13,7 +13,10 @@ import {
 } from './gridFixtures'
 import { shownView } from './strip'
 import {
+  CM_PENDING_WORD,
   columnContext,
+  confirmationChip,
+  confirmationDetail,
   countWords,
   filterRows,
   FIRST_TICKED_SEASON,
@@ -33,6 +36,8 @@ import {
 } from './views'
 
 const TODAY = '2027-04-01'
+/** CM ✓'s width: its widest chip, "reversed", plus the cell's padding (measured at 1440, batch 4). */
+const CM_WIDTH = 84
 
 describe('REQUEST_VIEWS (§6.2)', () => {
   it('has All and one view per queue the server names, in its order', () => {
@@ -74,7 +79,22 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     const fixed = keys.reduce((sum, k) => sum + (GRID_COLUMNS[k].width ?? 0), 0)
     // Family widened 110 → 130 now it is unpinned and truncated long names (integration ruling).
     expect(GRID_COLUMNS.family.width).toBe(130)
-    expect(fixed + 250).toBe(1486)
+    // Batch 4 (owner rulings): CM ✓ is as wide as its widest one-word chip ("reversed"), and Needs
+    // attention has no fixed width (it fits the chips on screen, measured), so Family takes the
+    // spare width at 130 or more. Was: CM ✓ 90 and Needs attention flexible, 1,486 with it at 250.
+    expect(GRID_COLUMNS.confirmed.width).toBe(CM_WIDTH)
+    expect(GRID_COLUMNS.attention.width).toBeUndefined()
+    expect(GRID_COLUMNS.attention.flex).toBeUndefined()
+    expect(GRID_COLUMNS.family.flex).toBe(true)
+    expect(fixed).toBe(1236 - 90 + CM_WIDTH)
+  })
+
+  // Batch 4 (owner LOCKED, grid-layout-options.html#or=i): Needs attention is frozen on the right,
+  // as wide as the widest chip on screen plus 18px, never under 84px.
+  it('freezes Needs attention on the right, fitted to its chips', () => {
+    expect(GRID_COLUMNS.attention.pinnedRight).toBe(true)
+    expect(GRID_COLUMNS.attention.fitContent).toEqual({ pad: 18, min: 84 })
+    expect(GRID_COLUMNS.attention.pinned).toBeUndefined()
   })
 
   it('drops CM ✓ before the first ticked season, and keeps it from then on', () => {
@@ -311,5 +331,57 @@ describe('requestsCsvName (§11, D70; Decision 32)', () => {
         null
       )
     ).toBe('camperships-requests-all-round-2-posted-2027.csv')
+  })
+})
+
+// Owner rulings (A2, batch 4): CM ✓'s cell is one word; the detail goes to the opened row's detail
+// line and the CSV. The pending word is one constant (the owner may rename it).
+describe('CM ✓ words and detail (batch 4)', () => {
+  const c = confirmationOut
+  it('names the pending word once', () => {
+    expect(CM_PENDING_WORD).toBe('pending')
+  })
+
+  it('gives each state one word on its chip, no amount or date', () => {
+    expect(confirmationChip(c({ status: 'confirmed', on: '2027-09-29' })).word).toBe('✓')
+    expect(confirmationChip(c({ status: 'short', locked: 1500, in_campminder: 1450 })).word).toBe(
+      'short'
+    )
+    expect(confirmationChip(c({ status: 'over', locked: 1500, in_campminder: 1550 })).word).toBe(
+      'over'
+    )
+    expect(confirmationChip(c({ status: 'not_in_campminder' })).word).toBe('missing')
+    expect(confirmationChip(c({ status: 'reversed', on: '2027-10-02' })).word).toBe('reversed')
+    expect(confirmationChip(c({ status: 'awaiting_sync', on: null })).word).toBe(CM_PENDING_WORD)
+  })
+
+  it('spells out each state in full for the detail line and the CSV', () => {
+    expect(confirmationDetail(c({ status: 'confirmed', on: '2027-09-29' }))).toBe(
+      '✓ confirmed Sep 29'
+    )
+    expect(confirmationDetail(c({ status: 'confirmed', on: null }))).toBe('✓ confirmed')
+    expect(confirmationDetail(c({ status: 'short', locked: 1500, in_campminder: 1450 }))).toBe(
+      'CampMinder shows $1,450; short $50'
+    )
+    expect(confirmationDetail(c({ status: 'over', locked: 1500, in_campminder: 1550 }))).toBe(
+      'CampMinder shows $1,550; over $50'
+    )
+    expect(confirmationDetail(c({ status: 'reversed', on: '2027-10-02' }))).toBe('reversed Oct 2')
+    expect(confirmationDetail(c({ status: 'awaiting_sync', on: null }))).toBe(
+      "Ticked today; tonight's sync checks it."
+    )
+    expect(confirmationDetail(c({ status: 'not_in_campminder', locked: 1800, on: null }))).toBe(
+      'Posted $1,800; the last sync found nothing in CampMinder for it.'
+    )
+  })
+
+  it('writes the full detail to the CSV and the word as the value', () => {
+    const row = gridRow({
+      confirmation: c({ status: 'short', locked: 1500, in_campminder: 1450 }),
+    })
+    const ctx = { view: 'all' as const, today: TODAY }
+    expect(GRID_COLUMNS.confirmed.value(row, ctx)).toBe('short')
+    expect(GRID_COLUMNS.confirmed.csv?.(row, ctx)).toBe('CampMinder shows $1,450; short $50')
+    expect(GRID_COLUMNS.confirmed.csv?.(gridRow(), ctx)).toBe('')
   })
 })

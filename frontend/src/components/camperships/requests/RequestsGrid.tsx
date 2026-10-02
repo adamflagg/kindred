@@ -1,4 +1,4 @@
-import { useMemo, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
 
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
@@ -16,9 +16,13 @@ import { NeedsAttentionCell } from '../kit/NeedsAttentionCell'
 import { IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
+import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
+import { RequestDetailLine } from './RequestDetailLine'
 import { requestStage, roundOf } from './stage'
 import {
+  confirmationChip,
   countWords,
+  FIRST_TICKED_SEASON,
   footerWords,
   GRID_COLUMNS,
   moneyTotal,
@@ -31,11 +35,7 @@ import {
   type RequestView,
 } from './views'
 
-/** How a row reaches its household page (slice 1 Decision 1): the link, and the surface's way to go there. */
-export interface HouseholdLinks {
-  readonly href: (row: ApiAidGridRow) => string
-  readonly open: (row: ApiAidGridRow, href: string) => void
-}
+export type { HouseholdLinks } from './HouseholdLink'
 
 interface RequestsGridProps {
   /** Already the view's rows (filterRows). */
@@ -70,36 +70,6 @@ const R3_PENDING_CSV: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
 ]
 
 const NAME_LINK = 'text-primary font-medium hover:underline'
-const ACTION_LINK_CLASS =
-  'border-border text-primary shrink-0 rounded border px-1.5 text-xs font-medium hover:underline'
-
-function HouseholdLink({
-  row,
-  links,
-  className,
-  children,
-}: {
-  row: ApiAidGridRow
-  links: HouseholdLinks
-  className: string
-  children: ReactNode
-}) {
-  const href = links.href(row)
-  const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    // Opening the family is not a click on the row: no highlight, so no save-then-move (ruling B).
-    // Before the modifier check, so a modified click does not bubble to the row either.
-    event.stopPropagation()
-    // A modified click opens a new tab, as any link does (Decision 1).
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-    event.preventDefault()
-    links.open(row, href)
-  }
-  return (
-    <a href={href} onClick={onClick} className={className}>
-      {children}
-    </a>
-  )
-}
 
 function renderFor(
   key: GridColumnKey,
@@ -110,8 +80,10 @@ function renderFor(
     case 'family':
       return (row, { query }) => {
         const matched = matchedId([row.household_cm_id, row.person_cm_id], query)
+        // One line even on the highlighted row (batch 4: the opened row no longer grows tall), though
+        // the kit wraps a flexible column there.
         return (
-          <div className="min-w-0">
+          <div className="min-w-0 truncate">
             <HouseholdLink row={row} links={links} className={NAME_LINK}>
               {row.family_name}
             </HouseholdLink>
@@ -150,18 +122,19 @@ function renderFor(
       }
     case 'cancelledOn':
       return (row) => (row.cancellation?.on ? formatShortDate(row.cancellation.on) : '—')
-    case 'attention':
-      return (row, { highlighted }) => {
-        const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
-        if (found === null) return null
-        const action =
-          ctx.view === 'all' && found.action !== null ? (
-            <HouseholdLink row={row} links={links} className={ACTION_LINK_CLASS}>
-              {found.action}
-            </HouseholdLink>
-          ) : undefined
-        return <NeedsAttentionCell item={found.item} highlighted={highlighted} action={action} />
+    case 'confirmed':
+      return (row) => {
+        if (!row.confirmation) return '—'
+        const chip = confirmationChip(row.confirmation)
+        return <StatusPill tone={chip.tone}>{chip.word}</StatusPill>
       }
+    case 'attention':
+      // The chip only (batch 4); the full text and the next step are in the detail line.
+      return (row) => (
+        <NeedsAttentionCell
+          item={attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)?.item ?? null}
+        />
+      )
     default: {
       const spec = GRID_COLUMNS[key]
       return spec.money ? (row) => <Money value={asMoney(spec.value(row, ctx))} /> : undefined
@@ -188,7 +161,10 @@ function buildColumns(
       align: spec.align,
       flex: spec.flex,
       pinned: spec.pinned,
+      pinnedRight: spec.pinnedRight,
+      fitContent: spec.fitContent,
       inCsv: spec.inCsv,
+      csv: spec.csv ? (row: ApiAidGridRow) => spec.csv?.(row, ctx) ?? '' : undefined,
       searchable: key === 'family' || key === 'camper',
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
       render: renderFor(key, ctx, links),
@@ -221,6 +197,17 @@ export function RequestsGrid({
     () => buildColumns(view, showIds, year, today, links),
     [view, showIds, year, today, links]
   )
+  const renderDetail = useCallback(
+    (row: ApiAidGridRow) => (
+      <RequestDetailLine
+        row={row}
+        ctx={columnContext(view, today)}
+        links={links}
+        showConfirmation={year >= FIRST_TICKED_SEASON}
+      />
+    ),
+    [view, today, links, year]
+  )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [
       { key: 'reason', label: 'By reason', groupOf: reasonGroup(view, today) },
@@ -244,6 +231,7 @@ export function RequestsGrid({
       scrollBox
       highlighted={highlighted}
       onHighlight={onHighlight}
+      renderDetail={renderDetail}
       renderBelowHighlighted={renderBelowHighlighted}
       footerLabel={footer}
       groupCount={groupCount}
