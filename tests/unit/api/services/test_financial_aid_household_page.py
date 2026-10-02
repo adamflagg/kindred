@@ -33,6 +33,7 @@ from api.services.financial_aid_household_page import (
     HouseholdNotFoundError,
     HouseholdPageService,
     band_grants_by_request,
+    grant_rows_with_band_flag,
     household_money,
     page_scope,
     request_grants,
@@ -1148,3 +1149,46 @@ async def test_a_household_card_names_its_county_from_the_billing_zip(monkeypatc
     monkeypatch.setattr(zip_counties, "_table", lambda: {"94612": "Alameda County"})
     page = await _page_service(_family()).read(YEAR, JOHNSON)
     assert [(c.household_cm_id, c.county) for c in page.households] == [(JOHNSON, "Alameda County"), (GARCIA, None)]
+
+
+# --- each grant row says whether the band counted it ---------------------------------------------
+
+
+def _flags(grants: list[GrantRowOut], rows: list[GridRowOut]) -> list[bool]:
+    return [g.in_band for g in grant_rows_with_band_flag(grants, rows)]
+
+
+def test_a_counted_outside_grant_on_a_live_request_is_in_the_band() -> None:
+    rows = [_row(EMMA, JOHNSON)]
+    grants = [_grant_out(JOHNSON, EMMA, 200.0, 9001)]
+    assert _flags(grants, rows) == [True]
+    assert totals(rows, band_grants_by_request([grant_row(EMMA, "200")])).grants == 200.0
+
+
+@pytest.mark.parametrize("status", ["withdrawn", "duplicate"])
+def test_the_same_grant_on_a_withdrawn_or_duplicate_request_is_not_in_the_band(status: str) -> None:
+    rows = [_row(EMMA, JOHNSON, request_status=status), _row(LIAM, JOHNSON)]
+    grants = [_grant_out(JOHNSON, EMMA, 200.0, 9001)]
+    assert _flags(grants, rows) == [False]
+    assert totals(rows, band_grants_by_request([grant_row(EMMA, "200")])).grants == 0.0
+
+
+def test_a_grant_that_does_not_count_or_is_not_outside_is_not_in_the_band() -> None:
+    rows = [_row(EMMA, JOHNSON)]
+    uncounted = _grant_out(JOHNSON, EMMA, 200.0, 9001).model_copy(update={"counts": False})
+    camp = _grant_out(JOHNSON, EMMA, 200.0, 9002).model_copy(update={"funder_type": "camp"})
+    assert _flags([uncounted, camp], rows) == [False, False]
+
+
+def test_the_bands_grant_figure_is_the_sum_over_the_rows_flagged_in_band() -> None:
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, JOHNSON, request_status="withdrawn")]
+    grants = [
+        _grant_out(JOHNSON, EMMA, 200.0, 9001),
+        _grant_out(JOHNSON, LIAM, 300.0, 9002),
+        _grant_out(JOHNSON, EMMA, 50.0, 9003).model_copy(update={"counts": False}),
+    ]
+    register = [grant_row(EMMA, "200"), grant_row(LIAM, "300")]
+    live = {r.request_id for r in rows if r.request_status == "active"}
+    flagged = grant_rows_with_band_flag(grants, rows)
+    from_rows = sum(s.amount for g in flagged if g.in_band for s in g.requests if s.request_id in live)
+    assert totals(rows, band_grants_by_request(register)).grants == from_rows == 200.0

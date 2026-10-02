@@ -22,10 +22,12 @@ from typing import Any, Final, Protocol
 
 from api.schemas.financial_aid import HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
+from api.schemas.financial_aid_grants import GrantRowOut
 from api.schemas.financial_aid_household_page import (
     ConfirmationStateOut,
     HistoryEntryOut,
     HouseholdCardOut,
+    HouseholdGrantRowOut,
     HouseholdMoneyOut,
     HouseholdPageResponse,
     HouseholdRequestOut,
@@ -44,7 +46,7 @@ from api.services.financial_aid_decisions_service import (
     PricingRules,
     is_included,
 )
-from api.services.financial_aid_grants_register import RegisterRow, outside_grants_by_request
+from api.services.financial_aid_grants_register import RegisterRow, counts_as_outside, outside_grants_by_request
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
 from api.services.financial_aid_intake_types import PayerShareRecord
 from api.services.financial_aid_ledger_service import (
@@ -142,6 +144,20 @@ def band_grants_by_request(register: Iterable[RegisterRow]) -> dict[str, Decimal
     which leaves that grant out. Flipping it is this function and
     test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_zero."""
     return outside_grants_by_request(register)
+
+
+def grant_rows_with_band_flag(grants: Iterable[GrantRowOut], rows: Sequence[GridRowOut]) -> list[HouseholdGrantRowOut]:
+    """Each grant row with in_band: whether the band counted it. Same rule as band_grants_by_request
+    (counts_as_outside) and totals (included requests only), so a counted grant on a withdrawn or duplicate
+    request reads False."""
+    live = {row.request_id for row in rows if included(row)}
+    return [
+        HouseholdGrantRowOut(
+            **g.model_dump(),
+            in_band=counts_as_outside(g.counts, g.funder_type) and any(s.request_id in live for s in g.requests),
+        )
+        for g in grants
+    ]
 
 
 def _band_states(row: GridRowOut) -> list[tuple[ConfirmationStatusOut, Decimal]]:
@@ -594,7 +610,7 @@ class HouseholdPageService:
                 )
                 for d in incomes
             ],
-            grants=grant_rows,
+            grants=grant_rows_with_band_flag(grant_rows, rows),
             expected=[e for e in grants.expected if e.household_cm_id in households],
             postings=[
                 posting_line(p, accepted)
