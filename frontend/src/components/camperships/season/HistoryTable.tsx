@@ -6,7 +6,7 @@ import { hasStatus } from '../../../services/camperships/aidApi'
 import type { ApiAidHistoryOperation } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
 import { ACTION_LINK } from '../../admin/lodging/lodgingStyles'
-import { PILL, TABLE_CARD } from '../kit/kitStyles'
+import { PILL, ROW_HIGHLIGHT, TABLE_CARD } from '../kit/kitStyles'
 import {
   householdHref,
   KIND_LABELS,
@@ -22,6 +22,10 @@ const ROWS_SHOWN = 25
 
 /** Links and the two buttons that read as links: lodgingStyles' action link, in the primary colour. */
 const LINK = `text-primary ${ACTION_LINK}`
+
+/** Cells align to the top, so a wrapping "What happened" doesn't float the others (history.html B). */
+const CELL_LABEL = `${TD_LABEL} align-top`
+const CELL_MONEY = `${TD_MONEY} align-top`
 
 function OperationDetail({
   operation,
@@ -140,29 +144,27 @@ export function HistoryTable({
                 <tr
                   data-operation={op.operation_id}
                   className={
-                    isOpen
-                      ? 'cursor-pointer bg-amber-50 dark:bg-amber-900/20'
-                      : 'hover:bg-muted/40 cursor-pointer'
+                    isOpen ? `cursor-pointer ${ROW_HIGHLIGHT}` : 'hover:bg-muted/40 cursor-pointer'
                   }
                   onClick={() => onToggle(op.operation_id)}
                 >
-                  <td className={TD_LABEL}>
+                  <td className={CELL_LABEL}>
                     <span className="text-muted-foreground mr-1 inline-block w-3">
                       {isOpen ? '▾' : '▸'}
                     </span>
                     {words.when}
                   </td>
-                  <td className={TD_LABEL}>{words.who}</td>
-                  <td className={TD_LABEL}>
+                  <td className={CELL_LABEL}>{words.who}</td>
+                  <td className={CELL_LABEL}>
                     <span className={PILL[KIND_TONE[op.kind]]}>{KIND_LABELS[op.kind]}</span>
                   </td>
-                  <td className="border-border border-b px-2 py-1.5">
+                  <td className="border-border border-b px-2 py-1.5 align-top">
                     <span>{words.what}</span>
                     {words.reason !== null && (
                       <span className="text-muted-foreground">{` · “${words.reason}”`}</span>
                     )}
                   </td>
-                  <td className={TD_MONEY}>{op.rows}</td>
+                  <td className={CELL_MONEY}>{op.rows}</td>
                 </tr>
                 {isOpen && (
                   <tr>

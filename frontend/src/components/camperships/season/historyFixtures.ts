@@ -93,7 +93,7 @@ export const OP_RULES_APPROVE: ApiAidHistoryOperation = {
   rules_sections: ['awards', 'budget'],
 }
 
-export const OP_RULES_CREATE: ApiAidHistoryOperation = {
+const OP_RULES_CREATE: ApiAidHistoryOperation = {
   operation_id: 'op0000000000006',
   at: '2027-04-08T22:00:00Z',
   actor: FINANCE_EMAIL,

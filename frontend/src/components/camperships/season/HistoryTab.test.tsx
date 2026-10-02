@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation, useNavigationType } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiAidHistoryOperationDetail, ApiAidHistoryPage } from '../../../types/api-types'
@@ -23,6 +23,7 @@ let read: {
   data: ApiAidHistoryPage | undefined
   isLoading: boolean
   isFetching?: boolean
+  isPlaceholderData?: boolean
   error: Error | null
 }
 let queries: Array<Readonly<Record<string, string>>>
@@ -58,11 +59,20 @@ function Where() {
   )
 }
 
+/** A URL change from elsewhere (Back, a pasted link): fired without moving focus. */
+function Jump({ to }: { to: string }) {
+  const navigate = useNavigate()
+  return (
+    <button type="button" data-testid="jump" onClick={() => void navigate(to, { replace: true })} />
+  )
+}
+
 function renderAt(path = '/aid/season/history?year=2027') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <HistoryTab />
       <Where />
+      <Jump to="/aid/season/history?since=2027-02-01" />
     </MemoryRouter>
   )
 }
@@ -138,28 +148,65 @@ describe('HistoryTab', () => {
     expect(screen.getByRole('option', { name: 'someone@example.com' })).toBeInTheDocument()
   })
 
-  it('filters by camp day, From and Through', () => {
+  it('filters by camp day, From and Through, on leaving the box', () => {
     renderAt()
-    // jsdom has no picker, so the change is fired directly.
+    // jsdom has no picker, so the change is fired directly; the day lands when the box is left.
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2027-03-01' } })
+    fireEvent.blur(screen.getByLabelText('From'))
     expect(where().get('since')).toBe('2027-03-01')
     expect(lastQuery()).toMatchObject({ since: '2027-03-01' })
     fireEvent.change(screen.getByLabelText('Through'), { target: { value: '2027-03-31' } })
+    fireEvent.blur(screen.getByLabelText('Through'))
     expect(where().get('until')).toBe('2027-03-31')
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '' } })
+    fireEvent.blur(screen.getByLabelText('From'))
     expect(where().has('since')).toBe(false)
   })
 
-  it("commits a typed date only once its year is a season's, never per keystroke (I4)", () => {
+  it('writes a typed day on Enter too', () => {
+    renderAt()
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2027-03-01' } })
+    fireEvent.keyDown(screen.getByLabelText('From'), { key: 'Enter' })
+    expect(where().get('since')).toBe('2027-03-01')
+  })
+
+  it('writes nothing while a date is typed segment by segment, until blur (I1)', () => {
+    renderAt()
+    // A browser fires change on each digit once the box holds a whole day: 04/20 -> 04/01 -> 04/15.
+    for (const day of ['2027-04-20', '2027-04-01', '2027-04-15']) {
+      fireEvent.change(screen.getByLabelText('From'), { target: { value: day } })
+      expect(where().has('since')).toBe(false)
+    }
+    expect(queries.every((q) => !('since' in q))).toBe(true)
+    fireEvent.blur(screen.getByLabelText('From'))
+    expect(where().get('since')).toBe('2027-04-15')
+  })
+
+  it("commits a typed date only once its year is a season's (I4)", () => {
     renderAt()
     // Typing the year into a date box passes through 0002-, 0020-, 0202-: each a real day.
     for (const partial of ['0002-03-01', '0020-03-01', '0202-03-01']) {
       fireEvent.change(screen.getByLabelText('From'), { target: { value: partial } })
-      expect(where().has('since')).toBe(false)
     }
+    fireEvent.blur(screen.getByLabelText('From'))
+    expect(where().has('since')).toBe(false)
     expect(queries.every((q) => !('since' in q))).toBe(true)
+    // A day the box can't keep goes back to the URL's.
+    expect(screen.getByLabelText('From')).toHaveValue('')
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2027-03-01' } })
+    fireEvent.blur(screen.getByLabelText('From'))
     expect(where().get('since')).toBe('2027-03-01')
+  })
+
+  it('shows a URL change in the date box and keeps focus there (Back, a pasted link)', () => {
+    renderAt()
+    const box = screen.getByLabelText('From')
+    box.focus()
+    fireEvent.click(screen.getByTestId('jump'))
+    expect(where().get('since')).toBe('2027-02-01')
+    expect(screen.getByLabelText('From')).toBe(box)
+    expect(box).toHaveValue('2027-02-01')
+    expect(box).toHaveFocus()
   })
 
   it('shows intake runs only when ticked (D49)', async () => {
@@ -180,6 +227,17 @@ describe('HistoryTab', () => {
     await userEvent.type(box, '{Enter}')
     expect(where().get('q')).toBe('phone')
     expect(lastQuery()).toMatchObject({ q: 'phone' })
+  })
+
+  it('keeps focus in the search box after Enter, so the next word can be typed', async () => {
+    renderAt()
+    const box = screen.getByRole('searchbox', { name: 'Search' })
+    await userEvent.type(box, 'phone{Enter}')
+    expect(where().get('q')).toBe('phone')
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBe(box)
+    expect(box).toHaveFocus()
+    await userEvent.type(box, ' call')
+    expect(box).toHaveValue('phone call')
   })
 
   it('writes the search on leaving the box too', async () => {
@@ -264,5 +322,32 @@ describe('HistoryTab', () => {
     renderAt()
     expect(screen.getByText('Posted · 380 decisions')).toBeInTheDocument()
     expect(screen.queryByText(/Rules v3/)).toBeNull()
+  })
+
+  it('says so when the first read fails', () => {
+    read = { data: undefined, isLoading: false, error: new Error('down') }
+    renderAt()
+    expect(screen.getByText(/Failed to load History data/)).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-operation]')).toHaveLength(0)
+  })
+
+  it('says so while the first read loads', () => {
+    read = { data: undefined, isLoading: true, error: null }
+    renderAt()
+    expect(screen.getByText(/Loading History data/)).toBeInTheDocument()
+  })
+
+  it('marks the rows stale while the next page or filter loads', () => {
+    read = { data: PAGE, isLoading: false, isFetching: true, isPlaceholderData: true, error: null }
+    renderAt()
+    expect(screen.getByText('1–3 of 3 operations · Updating…')).toBeInTheDocument()
+    expect(document.querySelector('[data-operation]')?.closest('[data-stale]')).not.toBeNull()
+    expect(document.querySelectorAll('[data-operation]')).toHaveLength(3)
+  })
+
+  it('does not mark a settled page stale', () => {
+    renderAt()
+    expect(screen.queryByText(/Updating/)).toBeNull()
+    expect(document.querySelector('[data-stale]')).toBeNull()
   })
 })
