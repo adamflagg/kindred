@@ -88,7 +88,8 @@ async def test_bootstrap_refuses_a_season_that_already_has_rules() -> None:
     service = _service(store)
     await service.bootstrap(fictional_rules(), actor=FINANCE)
     written = len(store.operations)
-    with pytest.raises(VersionExistsError):
+    # The whole-document PUT is retired (queue 23), so the refusal points at the section editor.
+    with pytest.raises(VersionExistsError, match="2031 already has aid rules; edit them in the section editor instead"):
         await service.bootstrap(fictional_rules(), actor=FINANCE)
     assert len(store.operations) == written
     assert (await service.load(2031)).version == 1
@@ -659,7 +660,7 @@ async def _knock_back_programs(
     service: FinancialAidRulesService, store: FakeStore, version: int, document: AidRules
 ) -> None:
     """Seed what a whole-document save once wrote: `document` stored on `version` with `programs` sent back to draft,
-    logged as a "save". Written through the store because the rules PUT now refuses this knock-back (ruling 1)."""
+    logged as a "save". Written through the store because `save` now refuses this knock-back (ruling 1)."""
     current = await service.load(2031, version)
     status = {**current.section_status, "programs": initial_status()["programs"]}
     data = {"document": _dump(document), "section_status": status_to_json(status)}
@@ -686,7 +687,7 @@ async def test_latest_approved_skips_a_newer_version_whose_section_went_back_to_
         await service.approve_section(2031, 1, section, actor=FINANCE, note="Approved.")
     await service.new_version(2031, 1, actor=FINANCE)
     edited = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
-    await _knock_back_programs(service, store, 2, edited)  # programs back to draft (the PUT now refuses this)
+    await _knock_back_programs(service, store, 2, edited)  # programs back to draft (`save` now refuses this)
     found = await service.latest_approved(2031, ("programs", "cost"))
     assert found is not None
     assert (found.version, found.document.programs["summer"].label) == (1, "Summer")
@@ -768,7 +769,7 @@ async def test_an_edit_after_the_date_does_not_change_the_document_the_date_show
     service, store, clock = await _made_jan_approved_feb()
     clock.now = MAR
     renamed = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
-    await _knock_back_programs(service, store, 1, renamed)  # the PUT now refuses this knock-back (ruling 1)
+    await _knock_back_programs(service, store, 1, renamed)  # `save` now refuses this knock-back (ruling 1)
     await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
     _label_in_order(store, reverse=reverse)  # the save and the approval share March's instant
     then = await service.approved_as_of(2031, _PRICING, FEB + DAY)
@@ -821,7 +822,7 @@ async def test_a_newer_version_whose_create_row_is_lost_is_refused_not_skipped()
     clock.now = MAR
     await service.new_version(2031, 1, actor=FINANCE)
     clock.now = APR
-    # The PUT now refuses this knock-back (ruling 1), so seed it through the store.
+    # `save` now refuses this knock-back (ruling 1), so seed it through the store.
     await _knock_back_programs(service, store, 2, with_lever(fictional_rules(), "programs.summer.label", "Renamed"))
     store.log_rows = [r for r in store.log_rows if not (r.entity_id == "2031:2" and r.before is None)]
     for at in (MAR + DAY, APR + DAY):

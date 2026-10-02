@@ -23726,42 +23726,6 @@ export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPo
 export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponse =
   StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponses[keyof StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponses]
 
-export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutData = {
-  body: RulesDocumentIn
-  path: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Version
-     */
-    version: number
-  }
-  query?: never
-  url: '/api/financial-aid/rules/{year}/versions/{version}'
-}
-
-export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutError =
-  SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutErrors[keyof SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutErrors]
-
-export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponses = {
-  /**
-   * Successful Response
-   */
-  200: RulesVersionOut
-}
-
-export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponse =
-  SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponses[keyof SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponses]
-
 export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostData = {
   body: RulesApproveIn
   path: {

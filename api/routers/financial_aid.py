@@ -803,22 +803,6 @@ async def start_aid_rules_from_last_year(year: _Year, user: AuthUser = _RULES) -
     return _rules_out(created, report)
 
 
-@router.put("/rules/{year}/versions/{version}", response_model=RulesVersionOut)
-async def save_aid_rules(
-    year: _Year, version: _Version, body: RulesDocumentIn, user: AuthUser = _RULES
-) -> RulesVersionOut:
-    """Save the whole document over the latest version. Changed approved sections go back to draft;
-    a change to a locked section is refused (make a new version). 409 when the version prices the season, or
-    is the one intake reads for `programs` and `cost`, and the save would change an approved or locked section
-    there, or send one back to draft: use the section editor, which branches a new version."""
-    _same_year(year, body.document)
-    try:
-        saved, report = await _rules().save(year, version, body.document, actor=user.email)
-    except FinancialAidError as exc:
-        raise _rules_http(exc) from exc
-    return _rules_out(saved, report)
-
-
 @router.post("/rules/{year}/versions/{version}/approve", response_model=RulesVersionOut)
 async def approve_aid_rules_sections(
     year: _Year, version: _Version, body: RulesApproveIn, user: AuthUser = _RULES
