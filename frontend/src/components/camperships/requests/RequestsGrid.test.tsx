@@ -282,3 +282,12 @@ describe('RequestsGrid fits its labels (sitting A, A2)', () => {
     expect(GRID_COLUMNS.stage.width).toBeGreaterThanOrEqual(140)
   })
 })
+
+describe('RequestsGrid in the screen box (grid layout T1)', () => {
+  it('sits in the one scrolling box, with the header held', () => {
+    render(<Grid />)
+    const table = screen.getByRole('table')
+    expect(table.parentElement?.className).toContain('overscroll-contain')
+    expect(screen.getByRole('columnheader', { name: 'Session' }).className).toContain('top-0')
+  })
+})

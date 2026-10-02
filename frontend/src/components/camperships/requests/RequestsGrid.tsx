@@ -235,6 +235,7 @@ export function RequestsGrid({
         view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
       }
       arrowKeys
+      scrollBox
       highlighted={highlighted}
       onHighlight={onHighlight}
       renderBelowHighlighted={renderBelowHighlighted}

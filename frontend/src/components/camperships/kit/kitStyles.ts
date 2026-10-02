@@ -60,6 +60,9 @@ export const ID_CHIP =
 // ── The table (§4.3; D18, D25, D28, D29, D31; mockups/round7.html) ────────────
 
 export const TABLE_CARD = 'bg-card border-border shadow-lodge-sm overflow-x-auto rounded-xl border'
+/** The opt-in screen box (grid layout T1): one box scrolling both ways, keeping its scroll to itself. */
+export const SCROLL_BOX =
+  'bg-card border-border shadow-lodge-sm overflow-auto overscroll-contain rounded-xl border'
 export const TABLE = 'w-full table-fixed border-separate border-spacing-0 text-sm'
 export const TH =
   'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 align-bottom text-left text-xs leading-tight font-semibold whitespace-normal'

@@ -3,6 +3,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -27,6 +28,7 @@ import {
   HIGHLIGHT_PINNED_EDGE,
   PINNED_EDGE,
   ROW_HIGHLIGHT,
+  SCROLL_BOX,
   TABLE,
   TABLE_CARD,
   TD,
@@ -124,7 +126,17 @@ export interface AidTableProps<Row> {
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
+  /**
+   * Opt-in (grid layout T1, Scroll b): the table sits in one box that scrolls both ways, as tall as
+   * the screen leaves room for, with the header and totals held, so the horizontal scrollbar is
+   * always on screen. Off, the table renders as it always did.
+   */
+  readonly scrollBox?: boolean | undefined
 }
+
+/** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
+const BOX_GAP = 12
+const BOX_MIN_HEIGHT = 320
 
 /** A column with a `total` is money: its value is a number, or nothing there. */
 const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)
@@ -159,6 +171,7 @@ export function AidTable<Row>({
   footerLabel,
   groupCount,
   emptyText = 'No rows match.',
+  scrollBox = false,
 }: AidTableProps<Row>) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const groupingKeys = useMemo(() => groupings.map((g) => g.key), [groupings])
@@ -241,6 +254,43 @@ export function AidTable<Row>({
     return () => window.removeEventListener('keydown', onKey)
   }, [arrowKeys, order, highlighted, setHighlight])
 
+  // The screen box: its height is what the screen leaves under its own top, measured on mount, on
+  // resize and when anything above it changes height; the held header and totals' heights become
+  // the rows' scroll margin, so a row moved into view is never left under them.
+  const boxRef = useRef<HTMLDivElement>(null)
+  const headRef = useRef<HTMLTableSectionElement>(null)
+  const footRef = useRef<HTMLTableSectionElement>(null)
+  const [margins, setMargins] = useState({ top: 0, bottom: 0 })
+  useLayoutEffect(() => {
+    const element = boxRef.current
+    if (!scrollBox || element === null) return
+    const measure = () => {
+      const top = element.getBoundingClientRect().top + window.scrollY
+      element.style.maxHeight = `${String(Math.max(BOX_MIN_HEIGHT, window.innerHeight - top - BOX_GAP))}px`
+      const next = {
+        top: headRef.current?.getBoundingClientRect().height ?? 0,
+        bottom: footRef.current?.getBoundingClientRect().height ?? 0,
+      }
+      setMargins((was) => (was.top === next.top && was.bottom === next.bottom ? was : next))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    // Whatever sits above the box (the views row, the filters, this table's own toolbar) moves it
+    // when it changes height.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (observer) {
+      for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+        for (let above = node.previousElementSibling; above; above = above.previousElementSibling)
+          observer.observe(above)
+      }
+    }
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+      element.style.maxHeight = ''
+    }
+  }, [scrollBox])
+
   useEffect(() => {
     if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
   }, [highlighted])
@@ -274,6 +324,17 @@ export function AidTable<Row>({
     pinnedLeft.has(column.key) ? { left: pinnedLeft.get(column.key) } : undefined
   const pinClasses = (column: AidColumn<Row>, layer: string) =>
     join(pinnedLeft.has(column.key) && `sticky ${layer}`, column.key === lastPinned && PINNED_EDGE)
+  // In the screen box the header and totals are held on both axes: every cell sticks, and a pinned
+  // one sits a layer above the rest (and above the pinned body cells), so nothing scrolls over it.
+  const heldClasses = (column: AidColumn<Row>, side: 'top-0' | 'bottom-0', fallback: string) =>
+    scrollBox
+      ? join(
+          'sticky',
+          side,
+          pinnedLeft.has(column.key) ? 'z-40' : 'z-30',
+          column.key === lastPinned && PINNED_EDGE
+        )
+      : pinClasses(column, fallback)
   // One shadow class per cell (Ruling 2026-10-01 (plan review)): a highlighted first cell that is
   // also the last pinned one gets the combined shadow, never two competing `shadow-[…]` classes.
   const bodyEdge = (column: AidColumn<Row>, index: number, isHighlighted: boolean) => {
@@ -356,14 +417,14 @@ export function AidTable<Row>({
         </button>
       </div>
 
-      <div className={TABLE_CARD}>
+      <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
         <table className={TABLE} style={{ minWidth }}>
           <colgroup>
             {columns.map((c) => (
               <col key={c.key} style={c.flex ? undefined : { width: c.width }} />
             ))}
           </colgroup>
-          <thead>
+          <thead ref={headRef}>
             <tr>
               {columns.map((c) => (
                 <SortableColumnHeader
@@ -374,7 +435,7 @@ export function AidTable<Row>({
                   }
                   onSort={() => toggleSort(c.key)}
                   style={pinStyle(c)}
-                  className={join(TH, pinClasses(c, 'z-20'))}
+                  className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
                   {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
                 />
               ))}
@@ -419,6 +480,11 @@ export function AidTable<Row>({
                           if (key !== highlighted) setHighlight(key)
                         }}
                         className="cursor-pointer"
+                        style={
+                          scrollBox
+                            ? { scrollMarginTop: margins.top, scrollMarginBottom: margins.bottom }
+                            : undefined
+                        }
                       >
                         {columns.map((c, index) => (
                           <td
@@ -458,7 +524,7 @@ export function AidTable<Row>({
             ))}
           </tbody>
           {hasTotals && (
-            <tfoot>
+            <tfoot ref={footRef}>
               <tr>
                 {columns.map((c, index) => {
                   // The footer label spans the leading pinned columns that carry no total, so the
@@ -473,7 +539,7 @@ export function AidTable<Row>({
                       style={pinStyle(c)}
                       className={join(
                         TFOOT_CELL,
-                        pinClasses(c, 'z-10'),
+                        heldClasses(c, 'bottom-0', 'z-10'),
                         spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
                         alignClass(c)
                       )}
