@@ -35,6 +35,7 @@ FINANCIAL_AID_PERMISSIONS: frozenset[str] = frozenset(
     {
         Permission.FINANCIAL_AID_VIEW,
         Permission.FINANCIAL_AID_CASEWORK,
+        Permission.FINANCIAL_AID_FUNDING_SOURCES,
         Permission.FINANCIAL_AID_GRANTORS,
         Permission.FINANCIAL_AID_RULES,
         Permission.FINANCIAL_AID_SUMMARY,
@@ -65,8 +66,15 @@ PERSONAS: Mapping[str, frozenset[str]] = MappingProxyType(
         PERSONA_FINANCE: frozenset(
             {Permission.METRICS_FINANCIAL, Permission.SHEETS_EXPORT, *FINANCIAL_AID_PERMISSIONS}
         ),
-        # Migration 1500000227 adds financial_aid.grantors (owner ruling 2026-10-01, grantor directory).
-        PERSONA_DEVELOPMENT: frozenset({Permission.FINANCIAL_AID_SUMMARY, Permission.FINANCIAL_AID_GRANTORS}),
+        # Migration 1500000227 adds financial_aid.grantors (owner ruling 2026-10-01, grantor directory); Reports
+        # Part C's migration adds financial_aid.funding_sources (D100).
+        PERSONA_DEVELOPMENT: frozenset(
+            {
+                Permission.FINANCIAL_AID_SUMMARY,
+                Permission.FINANCIAL_AID_GRANTORS,
+                Permission.FINANCIAL_AID_FUNDING_SOURCES,
+            }
+        ),
     }
 )
 

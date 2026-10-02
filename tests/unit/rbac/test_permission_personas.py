@@ -58,11 +58,13 @@ class TestPersonas:
             PERSONA_DEVELOPMENT,
         }
 
-    def test_financial_aid_permissions_are_the_five(self):
-        """The four of spec §14.1, plus financial_aid.grantors (owner ruling 2026-10-01, grantor directory)."""
+    def test_financial_aid_permissions_are_the_six(self):
+        """Spec §14.1's four, financial_aid.grantors (owner ruling 2026-10-01, D160) and D100's Funding sources edit
+        (Reports back end, Part C: replaces "the five")."""
         assert {
             "financial_aid.view",
             "financial_aid.casework",
+            "financial_aid.funding_sources",
             "financial_aid.grantors",
             "financial_aid.rules",
             "financial_aid.summary",
@@ -81,16 +83,23 @@ class TestPersonas:
         held = PERSONAS[PERSONA_REGISTRAR]
         assert held & FINANCIAL_AID_PERMISSIONS == {Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_CASEWORK}
 
-    def test_finance_holds_all_five(self):
+    def test_finance_holds_all_six(self):
         assert PERSONAS[PERSONA_FINANCE] >= FINANCIAL_AID_PERMISSIONS
 
-    def test_development_holds_summary_and_grantors(self):
-        """Migration 1500000227 grants development the grantor directory (owner ruling 2026-10-01): still no
-        family-level read, and never rules."""
-        assert PERSONAS[PERSONA_DEVELOPMENT] == {Permission.FINANCIAL_AID_SUMMARY, Permission.FINANCIAL_AID_GRANTORS}
+    def test_development_holds_summary_grantors_and_funding_sources(self):
+        """D65's summary, the grantor directory (migration 1500000227, D160) and D100's Funding sources edit (Reports
+        back end, Part C): still no family-level read, and never rules."""
+        assert PERSONAS[PERSONA_DEVELOPMENT] == {
+            Permission.FINANCIAL_AID_SUMMARY,
+            Permission.FINANCIAL_AID_GRANTORS,
+            Permission.FINANCIAL_AID_FUNDING_SOURCES,
+        }
 
     def test_registrar_does_not_hold_grantors(self):
         assert Permission.FINANCIAL_AID_GRANTORS not in PERSONAS[PERSONA_REGISTRAR]
+
+    def test_registrar_does_not_hold_funding_sources(self):
+        assert Permission.FINANCIAL_AID_FUNDING_SOURCES not in PERSONAS[PERSONA_REGISTRAR]
 
     def test_persona_user_is_never_admin(self):
         """is_admin bypasses every gate, so an admin persona would prove nothing."""
