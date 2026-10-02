@@ -17,6 +17,7 @@ import {
   startAidScenarios,
 } from '../../services/camperships/aidApi'
 import type {
+  ApiAidRulesDocumentIn,
   ApiAidScenarioDraft,
   ApiAidScenarioResults,
   ApiAidScenarioWorkspace,
@@ -230,6 +231,16 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     [run, fetchWithAuth, year]
   )
 
+  /** Record a whole document as the draft: a fit's answer, or a section edited under "All settings". */
+  const adopt = useCallback(
+    (document: ApiAidRulesDocumentIn) =>
+      run('Recording…', async () => {
+        settleDraft(await saveAidScenarioDraft(fetchWithAuth, year, { document }))
+        clearPending()
+      }),
+    [run, fetchWithAuth, year, settleDraft, clearPending]
+  )
+
   const freeze = useCallback(
     () =>
       run('Freezing the applications…', async () => {
@@ -260,5 +271,18 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     [run, fetchWithAuth, year, queryClient, clearPending]
   )
 
-  return { pending, live, busy, error, nothingToFreeze, move, release, load, keep, freeze, start }
+  return {
+    pending,
+    live,
+    busy,
+    error,
+    nothingToFreeze,
+    move,
+    release,
+    load,
+    keep,
+    adopt,
+    freeze,
+    start,
+  }
 }

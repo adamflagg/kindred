@@ -434,3 +434,16 @@ describe('useAidScenarioDraft (Decision 19)', () => {
     expect(result.current.live.status).toBe('ready')
   })
 })
+
+describe('adopt (PR 6: Fit to budget, All settings)', () => {
+  it('records a whole document as the draft, after anything already running', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    let landed = false
+    await act(async () => {
+      landed = await result.current.adopt(EVALUATED.document)
+    })
+    expect(landed).toBe(true)
+    expect(routes()).toEqual(['PUT /draft'])
+    expect(calls[0]?.body).toEqual({ document: EVALUATED.document })
+  })
+})
