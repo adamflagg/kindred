@@ -24,7 +24,7 @@ from api.services.financial_aid_reports_service import (
     ReportsRefusedError,
 )
 from api.services.financial_aid_request_overrides import EXCLUDED, INCLUDE_OVERRIDE
-from bunking.financial_aid.reports.committee import PHASE_BOUNDARY_GAP
+from bunking.financial_aid.reports.committee import NO_DEADLINE_CUT_GAP, PHASE_BOUNDARY_GAP
 from bunking.financial_aid.reports.history import ReportedFigure
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
@@ -414,12 +414,15 @@ async def test_the_committee_puts_this_seasons_p_rows_beside_typed_history() -> 
     assert out.seasons == [2026, 2027]
     assert [(row.year, row.basis) for row in out.phases] == [(2026, "r"), (2027, "P")]
     p = out.phases[1]
-    assert (p.phases, p.total, p.budget, p.gaps) == ([None, None, 0.0], 1500.0, 500000.0, [PHASE_BOUNDARY_GAP])
+    assert (p.phases, p.total, p.budget, p.gaps) == ([1500.0, 0.0, 0.0], 1500.0, 500000.0, [])
+    assert p.reconciliation == 0.0
     camp = next(row for row in out.applications if row.year == YEAR and row.pool == "camp_pool")
     assert camp.cutoff == date(2027, 2, 1)
     assert camp.at_cutoff is not None
     assert camp.at_cutoff.apps == 2
-    assert {item.figure for item in out.not_built} >= {PHASE_BOUNDARY_GAP, "enrollment_pct_of_goal"}
+    figures = {item.figure for item in out.not_built}
+    assert PHASE_BOUNDARY_GAP not in figures
+    assert figures >= {NO_DEADLINE_CUT_GAP, "enrollment_pct_of_goal"}
 
 
 async def test_the_committee_refuses_a_received_through_date_before_2027_as_statistics_does() -> None:

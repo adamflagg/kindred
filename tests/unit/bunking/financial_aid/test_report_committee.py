@@ -9,9 +9,11 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from bunking.financial_aid.reports.committee import (
+    NO_DEADLINE_CUT_GAP,
     PHASE_BOUNDARY_GAP,
     NativeSeason,
     committee_tables,
+    native_phases,
 )
 from bunking.financial_aid.reports.history import ReportedFigure
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules
@@ -77,16 +79,17 @@ SEASON = _season(
 )
 
 
-def test_a_priced_seasons_phase_row_has_appeals_and_the_total_but_waits_for_the_boundary() -> None:
-    """RPT-1: phases 1 and 2 need O-930-10's boundary; appeals and the total don't."""
-    row = next(r for r in committee_tables([SEASON], []).phases if r.basis == "P")
-    assert row.phases == (None, None, Decimal(300))
+def test_a_priced_seasons_phase_row_splits_round_1_at_the_deadline_with_appeals_and_the_total() -> None:
+    """RPT-1 (D155, ruled; replaces the pre-ruling test that expected phases 1 and 2 empty): the cut is the
+    application deadline, so a season whose deadline is known shows all three phases."""
+    season = replace(SEASON, deadline_instant=CUTOFF)
+    row = next(r for r in committee_tables([season], []).phases if r.basis == "P")
+    assert row.phases == (Decimal(1500), Decimal(1000), Decimal(300))
     assert row.total == Decimal(3200)  # 1,500 + 300 + 1,000 + 400; the cancelled 900 is out (D129)
     assert (row.budget, row.variance, row.side) == (Decimal(500000), Decimal(-496800), "under")
     assert row.total_pct_of_budget == Decimal("0.6")
-    assert row.reconciliation is None
-    assert row.share_of_phases == (None, None, None)
-    assert row.gaps == (PHASE_BOUNDARY_GAP,)
+    assert row.reconciliation == Decimal(400)  # Olivia has no received date: in no Round 1 phase
+    assert row.gaps == ()
 
 
 def test_a_typed_phase_row_computes_every_percent_and_shows_the_gap_and_the_band() -> None:
@@ -262,3 +265,52 @@ def test_the_at_cutoff_asks_are_the_frozen_ones_and_the_season_end_the_live_ones
     assert (camp.at_cutoff.apps, camp.at_cutoff.asked) == (2, Decimal(6500))  # Emma 3,500 then + Noah 3,000
     assert camp.season_end.asked == Decimal(9000)  # the season's end keeps asks as they stand
     assert (camp.asks_basis, camp.asks_reason) == ("as_of_cutoff", None)
+
+
+# --- Task A10 (RULED, D155): the phase boundary ----------------------------------------------------------------
+
+
+def test_with_the_boundary_set_round_1_splits_by_received_date_at_the_deadline() -> None:
+    """O-930-10, the plan's recommended boundary: phase 1 is Round 1 awarded on requests received by the application
+    deadline, phase 2 on those received after it; a request with no received date is in neither, so the
+    reconciliation line shows it."""
+    season = replace(SEASON, deadline_instant=CUTOFF)
+    row = native_phases(season, None, boundary="received_by_deadline")
+    # Emma (by the deadline) 1,500; Liam (after) 1,000; Olivia (no received date) 400 sits in the gap.
+    assert row.phases == (Decimal(1500), Decimal(1000), Decimal(300))
+    assert row.reconciliation == Decimal(400)
+    assert row.gaps == ()
+
+
+def test_without_the_boundary_phases_1_and_2_stay_empty() -> None:
+    row = native_phases(replace(SEASON, deadline_instant=CUTOFF), None, boundary=None)
+    assert row.phases[:2] == (None, None)
+    assert row.gaps == (PHASE_BOUNDARY_GAP,)
+
+
+def test_an_on_time_request_posted_later_stays_in_phase_1() -> None:
+    """D155: the cut is the received date, never the posting date. Emma was received before the deadline; her Round 1
+    posted on April 20, well after the bulk posting, and still counts in phase 1."""
+    late_post = req(
+        "reqemma00000002", rnd(1, ask="4000", posted="1500", posted_on=date(2027, 4, 20)), received_at=EARLY
+    )
+    row = native_phases(replace(_season(late_post), deadline_instant=CUTOFF), None, boundary="received_by_deadline")
+    assert row.phases[:2] == (Decimal(1500), Decimal(0))
+
+
+def test_a_season_with_no_deadline_cut_leaves_phases_1_and_2_blank_never_zero() -> None:
+    """No received dates (a P season before 2027, D138) or no deadline: phases 1 and 2 are blank and named."""
+    row = native_phases(SEASON, None, boundary="received_by_deadline")  # SEASON has no deadline_instant
+    assert row.phases[:2] == (None, None)
+    assert row.gaps == (NO_DEADLINE_CUT_GAP,)
+
+
+def test_a_typed_season_with_no_phase_figures_shows_them_blank() -> None:
+    """S1 Q2: 2022 gets phase figures if the deck has them, else blank: no 0, no reconciliation, no band."""
+    row = committee_tables([], [_typed("awarded", "300000", year=2022), _typed("budget", "400000", year=2022)]).phases[
+        0
+    ]
+    assert (row.year, row.basis) == (2022, "r")
+    assert row.phases == (None, None, None)
+    assert (row.share_of_phases, row.reconciliation) == ((None, None, None), None)
+    assert row.total_pct_of_budget == Decimal("75.0")

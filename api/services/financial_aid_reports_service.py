@@ -85,7 +85,7 @@ from bunking.financial_aid.decisions import PAST_DATE_GAPS
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.received import edit_predecessors, received_dates, split_by_received
 from bunking.financial_aid.reports.committee import (
-    PHASE_BOUNDARY_GAP,
+    NO_DEADLINE_CUT_GAP,
     AppealsRow,
     ApplicationsRow,
     Band,
@@ -121,9 +121,9 @@ UNMATCHED_LABEL: Final = "Session not matched"
 ALL_POOLS_LABEL: Final = "All pools"
 RECONCILIATION_LABEL: Final = "headline − Σ pools"
 NOT_BUILT: Final[Mapping[str, str]] = {
-    PHASE_BOUNDARY_GAP: (
-        "Round 1 by the deadline and Round 1 rolling wait for the phase boundary (O-930-10, the owner's sign-off): "
-        "appeals and the total are shown"
+    NO_DEADLINE_CUT_GAP: (
+        "A season with no received dates (before 2027, D138) or no application deadline can't split Round 1 at the "
+        "deadline: phases 1 and 2 are blank; typed history shows the decks' figures"
     ),
     "enrollment_pct_of_goal": "Enrollment % of goal waits for its basis (O-930-15, finance); nothing is shown",
     "round1_pct_start_of_season": (

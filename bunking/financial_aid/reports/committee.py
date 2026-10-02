@@ -284,20 +284,54 @@ def _phase_row(
     )
 
 
-def native_phases(season: NativeSeason, typed: _Typed | None) -> PhaseRow:
+PhaseBoundary = Literal["received_by_deadline"]
+# O-930-10, RULED "received by the deadline" (D155). None would leave phases 1 and 2 empty and named (PHASE_BOUNDARY_GAP).
+PHASE_BOUNDARY: Final[PhaseBoundary | None] = "received_by_deadline"
+# AMENDED 2026-10-01: a season with no deadline to cut on (no received dates before 2027, D138; or no deadline set).
+NO_DEADLINE_CUT_GAP: Final = "no_deadline_cut"
+
+
+def _round1_phase(request: ReportRequest, season: NativeSeason) -> int | None:
+    """1 when the request was received by the application deadline, 2 after it; None when either date is unknown."""
+    if season.deadline_instant is None or request.received_at is None:
+        return None
+    return 1 if request.received_at < season.deadline_instant else 2
+
+
+def native_phases(
+    season: NativeSeason, typed: _Typed | None, *, boundary: PhaseBoundary | None = PHASE_BOUNDARY
+) -> PhaseRow:
     appeals_money = sum((r.awarded((2, 3)) for r in season.requests), ZERO)
     total = sum((r.awarded() for r in season.requests), ZERO)
     budget = season.document.budget.total if season.document is not None else None
+    if boundary is None or season.deadline_instant is None:
+        # AMENDED 2026-10-01: no deadline to cut on (a season before 2027 has no received dates, D138, or rules with
+        # no application deadline) leaves phases 1 and 2 blank and named, never a false 0.
+        return _phase_row(
+            season.year,
+            "P",
+            (None, None, appeals_money),
+            (None, None, season.as_of),
+            total,
+            season.as_of,
+            budget,
+            typed,
+            gaps=(PHASE_BOUNDARY_GAP if boundary is None else NO_DEADLINE_CUT_GAP,),
+        )
+    by_phase = {1: ZERO, 2: ZERO}
+    for request in season.requests:
+        phase = _round1_phase(request, season)
+        if phase is not None:
+            by_phase[phase] += request.awarded((1,))
     return _phase_row(
         season.year,
         "P",
-        (None, None, appeals_money),
-        (None, None, season.as_of),
+        (by_phase[1], by_phase[2], appeals_money),
+        (season.as_of, season.as_of, season.as_of),
         total,
         season.as_of,
         budget,
         typed,
-        gaps=(PHASE_BOUNDARY_GAP,),
     )
 
 
