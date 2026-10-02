@@ -12,8 +12,25 @@ Never in the file:
   * a held, pending or undecided Round 1: nothing is decided to send (D44);
   * a request that isn't live (withdrawn, duplicate, cancelled in Kindred or CampMinder): pricing gives it no Round 1
     to offer (Decision 14).
-A $0 Round 1 is a real zero (D74) and still needs its offer: it is a $0 row (owner question 2, default). A household's
-own request (Family Camp) names no camper: blank names and no Personal Id (owner question 1, default).
+A $0 Round 1 is a real zero (D74) and still needs its offer: it is a $0 row (owner question 2, default).
+
+A FAMILY CAMP ROW (owner ruling A3 (a), 2026-10-02). A household's own request has no camper (person_cm_id 0), so its
+rows name the OLDEST CHILD attending that Family Camp session, as the registrar's 2025 file does (one child per
+family, all under 18): the child's CampMinder first and last names, and the child's Personal Id. Primary Childhood
+ID stays each payer share's household, and every payer share of the request names the same child. The rules:
+  * Attending: enrolled in the request's session_cm_id this season with status_id 2 (ACTIVE_ENROLLED_STATUS_ID,
+    the house rule for active enrolled).
+  * A member of the request's household: the membership rule Go's attribution and the grants register (D142's
+    `_sole_camper`) use, FinancialAidRepository.fetch_household_persons_by_household: the person's own household or
+    their primary or alternate childhood household.
+  * A child: under 18 on the session's first day (camp_sessions.start_date), by birthdate. A session with no start
+    date has no first day, so no child can be chosen.
+  * Oldest: the earliest birthdate. A tie on birthdate (twins) goes to the lowest Personal Id, so the file is
+    deterministic.
+  * A person with no birthdate can't be ranked, so is never chosen.
+  * If no child qualifies (an all-adult household, or no dated child), the row stays as it was: blank names and no
+    Personal Id, and the request is logged at info.
+The household's members are read in one batch for the whole file (HouseholdAttendeeReads), never per request.
 
 Names are CampMinder's (persons.first_name and last_name, never the preferred name): CampMinder's staff match on them.
 """
@@ -21,10 +38,12 @@ Names are CampMinder's (persons.first_name and last_name, never the preferred na
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol
 
+from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.schemas.financial_aid_march_file import MarchFileOut, MarchFileRowOut
 from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord
 from api.services.financial_aid_ledger_service import money
@@ -33,7 +52,7 @@ from bunking.financial_aid.decisions import PricedRequest
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:  # annotations only, as To place does: the service module is heavy
-    from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+    from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
 
 logger = get_logger(__name__)
 
@@ -113,8 +132,55 @@ def march_rows(shares: Sequence[MarchShare], names: Mapping[int, tuple[str, str]
     return [out for _, out in built]
 
 
+@dataclass(frozen=True)
+class HouseholdAttendee:
+    """One registration of one member of a household (own or childhood household): who, where, and their birthdate."""
+
+    household_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    status_id: int
+    birthdate: date | None
+
+
 class CamperNames(Protocol):
     async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]: ...
+
+    async def fetch_household_attendees(
+        self, year: int, household_cm_ids: Collection[int]
+    ) -> Sequence[HouseholdAttendee]: ...
+
+
+def _day(text: str) -> date | None:
+    """A PocketBase date or date-time string ("2027-08-20 00:00:00.000Z"), or None."""
+    try:
+        return date.fromisoformat(text[:10]) if text else None
+    except ValueError:
+        return None
+
+
+def _age_on(born: date, day: date) -> int:
+    return day.year - born.year - ((day.month, day.day) < (born.month, born.day))
+
+
+def oldest_child(
+    attendees: Sequence[HouseholdAttendee], household_cm_id: int, session_cm_id: int, first_day: date | None
+) -> int | None:
+    """The Personal Id of the oldest child (under 18 on the session's first day) of the household actively enrolled
+    in the session: earliest birthdate, twins to the lowest Personal Id. None when no child qualifies."""
+    if first_day is None:
+        return None
+    kids = [
+        (a.birthdate, a.person_cm_id)
+        for a in attendees
+        if a.household_cm_id == household_cm_id
+        and a.session_cm_id == session_cm_id
+        and a.status_id == ACTIVE_ENROLLED_STATUS_ID
+        and a.person_cm_id > 0
+        and a.birthdate is not None
+        and _age_on(a.birthdate, first_day) < 18
+    ]
+    return min(kids)[1] if kids else None  # type: ignore[type-var]  # a None birthdate was filtered out above
 
 
 class MarchFileService:
@@ -127,6 +193,7 @@ class MarchFileService:
         season = await self._decisions.season(year)
         left_out: list[str] = []
         shares = march_shares(season.requests, season.priced, season.shares, left_out)
+        shares = await self._name_family_camp_children(year, season, shares)
         people = sorted({share.person_cm_id for share in shares if share.person_cm_id > 0})
         names = await self._store.fetch_camper_names(year, people)
         rows = march_rows(shares, names)
@@ -138,3 +205,27 @@ class MarchFileService:
             len(left_out),
         )
         return MarchFileOut(year=year, rows=rows)
+
+    async def _name_family_camp_children(self, year: int, season: Season, shares: list[MarchShare]) -> list[MarchShare]:
+        """Each household request's shares (person 0) take the oldest attending child's Personal Id (ruling A3 (a));
+        one read of the household members for the whole file."""
+        asks = {s.request_id for s in shares if s.person_cm_id <= 0}
+        if not asks:
+            return shares
+        households = {season.requests[r].household_cm_id for r in asks}
+        attendees = await self._store.fetch_household_attendees(year, households)
+        chosen: dict[str, int] = {}
+        for request_id in sorted(asks):
+            request = season.requests[request_id]
+            session = season.sessions.get(request.session_cm_id)
+            child = oldest_child(
+                attendees,
+                request.household_cm_id,
+                request.session_cm_id,
+                _day(session.start_date) if session is not None else None,
+            )
+            if child is None:
+                logger.info("March file: request %s has no child attending to name; its row stays blank", request_id)
+            else:
+                chosen[request_id] = child
+        return [replace(s, person_cm_id=chosen[s.request_id]) if s.request_id in chosen else s for s in shares]

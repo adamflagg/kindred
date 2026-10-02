@@ -52,6 +52,7 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     person_display_name,
 )
+from api.services.financial_aid_march_file import HouseholdAttendee
 from api.services.financial_aid_money_ledger import LedgerLine
 from api.services.financial_aid_reconciliation import (
     CampLine,
@@ -159,6 +160,13 @@ def camp_line(record: Any) -> CampLine:
         recorded_at=parse_pb_datetime(getattr(record, "created", None)),
         updated_at=parse_pb_datetime(getattr(record, "updated", None)),
     )
+
+
+def _birth_day(text: str) -> date | None:
+    try:
+        return date.fromisoformat(text[:10]) if text else None
+    except ValueError:
+        return None
 
 
 def camper_name(record: Any) -> tuple[str, str]:
@@ -385,6 +393,37 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         record this season is left out, and reads blank."""
         persons = await FinancialAidRepository(self.pb).fetch_persons(year, person_cm_ids)
         return {int(p.cm_id): camper_name(p) for p in persons}
+
+    async def fetch_household_attendees(self, year: int, household_cm_ids: Collection[int]) -> list[HouseholdAttendee]:
+        """Every registration this season of the people in these households, with their birthdate (the March file's
+        Family Camp child). Membership is Go's attribution rule: a person's own household or their primary or alternate
+        childhood household (fetch_household_persons_by_household). Two batched reads for the whole file: the people,
+        then their registrations."""
+        repo = FinancialAidRepository(self.pb)
+        by_household = await repo.fetch_household_persons_by_household(year, household_cm_ids)
+        people = {int(p.cm_id): p for members in by_household.values() for p in members}
+        if not people:
+            return []
+        enrolments = await repo.fetch_enrollments(year, people)
+        out: list[HouseholdAttendee] = []
+        for household, members in by_household.items():
+            member_ids = {int(p.cm_id) for p in members}
+            for row in enrolments:
+                person = int(row.person_id or 0)
+                if person not in member_ids:
+                    continue
+                session = (getattr(row, "expand", None) or {}).get("session")
+                born = str(getattr(people[person], "birthdate", "") or "")
+                out.append(
+                    HouseholdAttendee(
+                        household,
+                        person,
+                        int(getattr(session, "cm_id", 0) or 0),
+                        int(row.status_id or 0),
+                        _birth_day(born),
+                    )
+                )
+        return out
 
     async def fetch_ledger_lines(self, year: int) -> list[LedgerLine]:
         """Every aid_postings line of the season, every funder, live and reversed, with when Kindred recorded and last
