@@ -230,14 +230,14 @@ export const TO_PLACE: ApiAidToPlace = {
   groups: [
     {
       reason: 'several',
-      label: 'Several requests could take this line',
+      label: 'Several requests could take this',
       count: 3,
       total: 5720,
       lines: [JOHNSON_SPLIT, GARCIA_WITHHELD, CHEN_EXACT],
     },
     {
       reason: 'no_request',
-      label: 'No request behind this line',
+      label: 'No request behind it',
       count: 1,
       total: 900,
       lines: [SAM_NO_REQUEST],

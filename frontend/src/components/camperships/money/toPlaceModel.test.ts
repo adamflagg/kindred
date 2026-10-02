@@ -85,7 +85,7 @@ describe("Kindred's suggestion and what Confirm does (§4.10; D146, D152)", () =
         would_lock: 0,
       },
     }
-    expect(confirmLines(none)).toEqual(['Ticks nothing: no round is covered in full.'])
+    expect(confirmLines(none)).toEqual(['Ticks nothing.'])
     expect(confirmSummary(none)).toBe('Ticks nothing')
   })
 
@@ -137,7 +137,7 @@ describe('what a placement did (§4.10: the result lists exactly what was ticked
         labels
       )
     ).toBe(
-      `2 lines placed. Nothing ticked. Not ticked, tick by hand: Liam Garcia · Session 2 (${GARCIA_WHY}). rules not locked yet: award tables.`
+      `2 lines placed. Nothing ticked. Not ticked, tick by hand: Liam Garcia · Session 2 (${GARCIA_WHY}). Rules not locked yet: award tables.`
     )
   })
 })
@@ -153,6 +153,42 @@ describe('open lines and the CSV name', () => {
     expect(toPlaceCsvName(2027, null)).toBe('camperships-money-to-place-2027.csv')
     expect(toPlaceCsvName(2027, 1000001)).toBe(
       'camperships-money-to-place-household-1000001-2027.csv'
+    )
+  })
+})
+
+describe('the leave and left-to-tick lines say "by hand" once (review m3)', () => {
+  const labels = requestLabels(allLines(TO_PLACE))
+  const WHY = 'Round 2 needs $1,500: tick it by hand if that is right'
+
+  it('words a round Confirm leaves with the round and the server’s own reason', () => {
+    const line = {
+      ...CHEN_EXACT,
+      suggestion: CHEN_EXACT.suggestion && {
+        ...CHEN_EXACT.suggestion,
+        would_tick: [],
+        would_lock: 0,
+        would_leave: [{ request_id: 'reqolivia000003', round: 2, why: WHY }],
+      },
+    }
+    expect(confirmLines(line)).toEqual([`Leaves Olivia Chen · Quest · Round 2: ${WHY}`])
+  })
+
+  it('words a round left to tick without repeating "by hand"', () => {
+    expect(
+      placedWords(
+        {
+          year: 2027,
+          operation_id: 'op0000000000003',
+          placed: [3000003],
+          ticked: [],
+          left_to_tick: [{ request_id: 'reqolivia000003', round: 2, why: WHY }],
+        },
+        [CHEN_EXACT],
+        labels
+      )
+    ).toBe(
+      `Chen: $1,500 placed. Nothing ticked. Left unticked: Olivia Chen · Quest Round 2 (${WHY}).`
     )
   })
 })

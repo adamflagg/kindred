@@ -4,6 +4,7 @@ import { Permission } from '../../../constants/permissions'
 import { useAidToPlace } from '../../../hooks/camperships/useAidToPlace'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidToPlaceLine } from '../../../types/api-types'
+import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
@@ -12,6 +13,7 @@ import { ToPlaceLinePanel, type LinePanelAccess } from './ToPlaceLinePanel'
 import { ToPlaceTable } from './ToPlaceTable'
 import { toPlaceCsvName } from './toPlaceModel'
 import { DONE_NOTE } from './toPlaceStyles'
+import { useInFlightLines } from './useInFlightLines'
 
 /**
  * Money › To place (spec §8.1; D12, D16, D58, D62, D151, D152; money-v2.html): camp-aid lines no
@@ -29,7 +31,12 @@ export function ToPlaceTab({ view }: { view: AidView }) {
     }),
     [hasPermission]
   )
-  const [result, setResult] = useState<string | null>(null)
+  // The outcome of the last write lives here, not in a panel: a refusal that drops its line from the
+  // table would otherwise unmount the only place it was shown (review I1).
+  const [note, setNote] = useState<{ tone: 'done' | 'refused'; words: string } | null>(null)
+  const onDone = useCallback((words: string) => setNote({ tone: 'done', words }), [])
+  const onRefused = useCallback((words: string) => setNote({ tone: 'refused', words }), [])
+  const inFlight = useInFlightLines()
   const renderPanel = useCallback(
     (line: ApiAidToPlaceLine) => (
       <ToPlaceLinePanel
@@ -38,10 +45,12 @@ export function ToPlaceTab({ view }: { view: AidView }) {
         year={view.year}
         view={view}
         access={access}
-        onDone={setResult}
+        inFlight={inFlight}
+        onDone={onDone}
+        onRefused={onRefused}
       />
     ),
-    [view, access]
+    [view, access, inFlight, onDone, onRefused]
   )
 
   return (
@@ -59,7 +68,8 @@ export function ToPlaceTab({ view }: { view: AidView }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {result !== null && <p className={DONE_NOTE}>✓ {result}</p>}
+            {note?.tone === 'done' && <p className={DONE_NOTE}>✓ {note.words}</p>}
+            {note?.tone === 'refused' && <p className={AMBER_NOTE}>{note.words}</p>}
             <p className="text-sm">
               <span className="font-medium">
                 {`${String(data.open_count)} ${data.open_count === 1 ? 'line' : 'lines'} open · ${formatMoney(data.open_total)}`}
@@ -78,7 +88,8 @@ export function ToPlaceTab({ view }: { view: AidView }) {
               total={data.left_total ?? 0}
               year={data.year}
               canWork={access.casework}
-              onDone={setResult}
+              onDone={onDone}
+              onRefused={onRefused}
             />
           </div>
         )

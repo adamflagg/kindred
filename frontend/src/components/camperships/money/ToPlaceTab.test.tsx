@@ -13,6 +13,11 @@ import type { ApiAidToPlace } from '../../../types/api-types'
 import { ToPlaceTab } from './ToPlaceTab'
 import { CHEN_EXACT, TO_PLACE, TO_PLACE_SKIPPED } from './toPlaceFixtures'
 
+const downloadSpy = vi.fn()
+vi.mock('../../../utils/csvExport', async (importActual) => ({
+  ...(await importActual<typeof import('../../../utils/csvExport')>()),
+  downloadCsv: (...args: unknown[]) => downloadSpy(...args),
+}))
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
@@ -43,6 +48,9 @@ const WROTE = {
 
 let reads: ApiAidToPlace[] = []
 let answers: Response[] = []
+// A write held open until the test lets it go (the in-flight traps), and reads that fail.
+let gate: Promise<Response> | null = null
+let failReads = false
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const writes = () =>
@@ -54,12 +62,17 @@ beforeEach(() => {
   granted = REGISTRAR
   reads = [TO_PLACE]
   answers = []
+  gate = null
+  failReads = false
+  downloadSpy.mockClear()
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
     if ((init?.method ?? 'GET') === 'GET') {
+      if (failReads) return Promise.resolve(json({ detail: 'Server error' }, 500))
       // Each read takes the next answer; the last one repeats.
       const next = reads.length > 1 ? reads.shift() : reads[0]
       return Promise.resolve(json(next ?? TO_PLACE))
     }
+    if (gate) return gate
     return Promise.resolve(answers.shift() ?? json(PLACED))
   })
 })
@@ -85,9 +98,9 @@ describe('Money › To place (§8.1)', () => {
   it("shows the server's open count and total, and the lines grouped by its reasons", async () => {
     renderTab()
     expect(await screen.findByText('5 lines open · $6,920')).toBeInTheDocument()
-    expect(screen.getByText('Several requests could take this line')).toBeInTheDocument()
+    expect(screen.getByText('Several requests could take this')).toBeInTheDocument()
     expect(screen.getByText('3 households · 3 lines')).toBeInTheDocument()
-    expect(screen.getByText('No request behind this line')).toBeInTheDocument()
+    expect(screen.getByText('No request behind it')).toBeInTheDocument()
     expect(screen.getByText('1 · $120 · not counted as open')).toBeInTheDocument()
   })
 
@@ -232,5 +245,174 @@ describe('Money › To place (§8.1)', () => {
         'Nothing to place for 2026: 2026 predates To place (the first ticked season is 2027).'
       )
     ).toBeInTheDocument()
+  })
+
+  describe('a refusal is never lost (review I1)', () => {
+    const without = (txn: number): ApiAidToPlace => ({
+      ...TO_PLACE,
+      groups: TO_PLACE.groups.map((g) => ({
+        ...g,
+        lines: g.lines.filter((l) => l.transaction_cm_id !== txn),
+      })),
+    })
+
+    it('says so when the refused line has left the table (someone else placed it)', async () => {
+      reads = [TO_PLACE, without(CHEN_EXACT.transaction_cm_id)]
+      answers = [json({ detail: 'line 3000003: line 3000003 is already on a request' }, 422)]
+      renderTab()
+      const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+      expect(
+        await screen.findByText(
+          'Nothing was written: line 3000003: line 3000003 is already on a request'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('says so for a 409 race on a line that has left the table', async () => {
+      reads = [TO_PLACE, without(CHEN_EXACT.transaction_cm_id)]
+      answers = [json({ detail: 'Someone else changed this; reload and try again' }, 409)]
+      renderTab()
+      const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+      expect(
+        await screen.findByText(/Someone else changed this while you looked; nothing was written/)
+      ).toBeInTheDocument()
+    })
+
+    it('a refusal replaces a stale green line', async () => {
+      answers = [
+        json(PLACED),
+        json({ detail: 'Someone else changed this; reload and try again' }, 409),
+      ]
+      renderTab()
+      const chen = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      await userEvent.click(within(chen).getByRole('button', { name: 'Confirm' }))
+      expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
+      const johnson = await openLine(
+        '$3,620 · Camp aid · Summer · posted to the household · May 14'
+      )
+      await userEvent.click(within(johnson).getByRole('button', { name: 'Confirm' }))
+      expect(
+        (await screen.findAllByText(/Someone else changed this while you looked/)).length
+      ).toBeGreaterThan(0)
+      expect(screen.queryByText(/^✓ Chen/)).toBeNull()
+    })
+
+    it('says so when Leave is refused and its line has left the table', async () => {
+      reads = [TO_PLACE, without(CHEN_EXACT.transaction_cm_id)]
+      answers = [json({ detail: 'line 3000003 is already on a request' }, 422)]
+      renderTab()
+      const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+      await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+      expect(
+        await screen.findByText('Nothing was written: line 3000003 is already on a request')
+      ).toBeInTheDocument()
+    })
+
+    it('says so when Reopen is refused and its line has left', async () => {
+      reads = [TO_PLACE, { ...TO_PLACE, left: [], left_total: 0 }]
+      answers = [json({ detail: 'line 3000006 is not left at family level' }, 409)]
+      renderTab()
+      const left = await screen.findByTestId('left-lines')
+      await userEvent.click(within(left).getByRole('button', { name: 'Reopen…' }))
+      await userEvent.type(within(left).getByRole('textbox'), 'Fixed in CampMinder')
+      await userEvent.click(within(left).getByRole('button', { name: 'Reopen' }))
+      expect(
+        await screen.findByText('Nothing was written: line 3000006 is not left at family level')
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('a line in flight stays held (review m1)', () => {
+    const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
+    const JOHNSON = '$3,620 · Camp aid · Summer · posted to the household · May 14'
+
+    it('reads Placing…, disables Confirm and Leave, and sends one POST on a double click', async () => {
+      let release: (r: Response) => void = () => undefined
+      gate = new Promise((resolve) => {
+        release = resolve
+      })
+      renderTab()
+      const panel = await openLine(CHEN)
+      await userEvent.dblClick(within(panel).getByRole('button', { name: 'Confirm' }))
+      expect(await within(panel).findByRole('button', { name: 'Placing…' })).toBeDisabled()
+      expect(within(panel).getByRole('button', { name: 'Leave at family level…' })).toBeDisabled()
+      expect(writes()).toHaveLength(1)
+      release(json(PLACED))
+      expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
+    })
+
+    it('is still held after moving to another line and back', async () => {
+      let release: (r: Response) => void = () => undefined
+      gate = new Promise((resolve) => {
+        release = resolve
+      })
+      renderTab()
+      const first = await openLine(CHEN)
+      await userEvent.click(within(first).getByRole('button', { name: 'Confirm' }))
+      await userEvent.click(await screen.findByText(JOHNSON))
+      const back = await openLine(CHEN)
+      expect(within(back).getByRole('button', { name: 'Placing…' })).toBeDisabled()
+      expect(within(back).getByRole('button', { name: 'Leave at family level…' })).toBeDisabled()
+      expect(writes()).toHaveLength(1)
+      release(json(PLACED))
+      expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
+    })
+  })
+
+  it('keeps the table when a background refetch fails (owner ruling Group 5)', async () => {
+    renderTab()
+    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    failReads = true
+    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
+    expect(screen.getByText('5 lines open · $6,920')).toBeInTheDocument()
+  })
+
+  it('offers "Leave with a note…" on a line that is not a several-requests line', async () => {
+    renderTab()
+    const panel = await openLine('$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1')
+    expect(within(panel).getByRole('button', { name: 'Leave with a note…' })).toBeInTheDocument()
+  })
+
+  it('colours a tick line green, and "Ticks nothing." not at all (review m2)', async () => {
+    const none: ApiAidToPlace = {
+      ...TO_PLACE,
+      groups: TO_PLACE.groups.map((g) => ({
+        ...g,
+        lines: g.lines.map((l) =>
+          l.transaction_cm_id === CHEN_EXACT.transaction_cm_id && l.suggestion
+            ? { ...l, suggestion: { ...l.suggestion, would_tick: [], would_lock: 0 } }
+            : l
+        ),
+      })),
+    }
+    reads = [none]
+    renderTab()
+    const chen = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    expect(within(chen).getByText('Ticks nothing.').className).not.toMatch(/emerald/)
+    const johnson = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    expect(
+      within(johnson).getByText('Ticks Emma Johnson · Session 2 · Round 2 · $780 locked').className
+    ).toMatch(/emerald/)
+  })
+
+  it('writes the same apostrophe in the column and in the panel (⚠1)', async () => {
+    renderTab()
+    await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    expect(screen.getAllByText('Kindred’s suggestion')).toHaveLength(2)
+  })
+
+  it('exports the household and the line id, so a row joins back to CampMinder (review m5)', async () => {
+    renderTab()
+    await screen.findByText('5 lines open · $6,920')
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    const [header, firstRow] = content.split('\n')
+    expect(header).toMatch(/Household,Line$/)
+    expect(firstRow).toMatch(/1000001,3000001$/)
   })
 })

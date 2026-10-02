@@ -102,6 +102,12 @@ export function evidenceWords(line: ApiAidToPlaceLine): string {
   return (line.suggestion?.evidence ?? []).map((e) => e.text).join(' ')
 }
 
+/** What Confirm says when it ticks, withholds and leaves nothing (the mock's own words). */
+export const NOTHING_TICKED = 'Ticks nothing.'
+
+/** Whether a Confirm line is a tick (green): "Ticks nothing." is not one. */
+export const isTickLine = (words: string) => words.startsWith('Ticks ') && words !== NOTHING_TICKED
+
 /**
  * What Confirm will do, before the click (§4.10: computed at the click, what you confirm is what's
  * written), from the server's preview of the very write it runs: the rounds it ticks and locks, the
@@ -120,11 +126,10 @@ export function confirmLines(line: ApiAidToPlaceLine): string[] {
     (n) => `Places the money; doesn't tick ${labelOf(labels, n.request_id)}: ${n.why}`
   )
   const left = (suggestion.would_leave ?? []).map(
-    (l) =>
-      `Leaves ${labelOf(labels, l.request_id)} · Round ${String(l.round)} to tick by hand: ${l.why}`
+    (l) => `Leaves ${labelOf(labels, l.request_id)} · Round ${String(l.round)}: ${l.why}`
   )
   const all = [...ticks, ...withheld, ...left]
-  return all.length > 0 ? all : ['Ticks nothing: no round is covered in full.']
+  return all.length > 0 ? all : [NOTHING_TICKED]
 }
 
 /** The short form for the table's column: "Ticks 1 round · $780 locked", "Places; 1 to tick by hand". */
@@ -199,11 +204,11 @@ export function placedWords(
     const named = out.left_to_tick.map(
       (l) => `${labelOf(labels, l.request_id)} Round ${String(l.round)} (${l.why})`
     )
-    parts.push(`Left to tick by hand: ${named.join(', ')}`)
+    parts.push(`Left unticked: ${named.join(', ')}`)
   }
   const sections = out.sections_not_locked ?? []
   if (sections.length > 0) {
-    parts.push(`rules not locked yet: ${sections.map((s) => s.replaceAll('_', ' ')).join(', ')}`)
+    parts.push(`Rules not locked yet: ${sections.map((s) => s.replaceAll('_', ' ')).join(', ')}`)
   }
   return `${parts.join('. ')}.`
 }
