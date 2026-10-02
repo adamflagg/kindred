@@ -270,9 +270,11 @@ export function fitWords(fit: ApiAidScenarioFit): {
   readonly headline: string
   readonly pool: string | null
 } {
-  const pool = fit.results.pools.find((p) => p.pool === fit.tightest_pool)
+  const pool = fit.results.pools.find(
+    (p) => p.pool === fit.tightest_pool && p.round1_remaining !== null
+  )
   const tightest =
-    pool === undefined || pool.round1_remaining === null
+    pool === undefined
       ? null
       : `Tightest pool: ${pool.label}, Round 1 remaining ${formatMoney(pool.round1_remaining)}. Pools are guidance; only the total budget is hard.`
   if (fit.outcome === 'over_at_lowest') {
