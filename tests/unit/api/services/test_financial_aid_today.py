@@ -24,12 +24,14 @@ from api.schemas.financial_aid_grants import (
 )
 from api.schemas.financial_aid_intake import IssueOut
 from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_intake_service import never_true_fields
 from api.services.financial_aid_queues import row_queues
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import CASEWORK_LINES, FINANCE_LINES, TodayInputs, TodayService, build_today
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
-from tests.unit.api.services.financial_aid_fakes import YEAR
+from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, intake_rules
+from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 TODAY = date(2031, 4, 20)
 
@@ -134,6 +136,7 @@ def _grantor(key: str, *, full: bool, after: bool = False) -> GrantorOut:
         pays_after_camp_aid=after,
         eligibility="",
         contacts="",
+        retired_at="",
         descriptions=[],
     )
 
@@ -430,12 +433,14 @@ class _Grants:
     def __init__(self, grants: GrantsResponse) -> None:
         self.grants = grants
         self.loads = 0
+        self.include_retired: bool | None = None
 
     async def read_with_rows(self, year: int) -> tuple[GrantsResponse, list[Any]]:
         self.loads += 1
         return self.grants, []
 
-    async def list_grantors(self) -> GrantorsResponse:
+    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse:
+        self.include_retired = include_retired
         return GrantorsResponse(grantors=[])
 
 
@@ -506,3 +511,64 @@ async def test_a_user_with_neither_section_reads_nothing() -> None:
         YEAR, casework=False, finance=False
     )
     assert (out.casework, out.finance, grants.loads) == (None, None, 0)
+
+
+@pytest.mark.asyncio
+async def test_today_reads_retired_grantors_too() -> None:
+    """A retired grantor is hidden from pickers, not from history: Today resolves a grant's grantor through the
+    whole directory, so a grantor retired later still answers for grants that named it."""
+    grants = _Grants(_grants(year=YEAR))
+    await _service(FakeDecisionsStore(), grants, _Drafts(None), _Ledger()).read(YEAR, casework=True, finance=False)
+    assert grants.include_retired is True
+
+
+def test_a_weighted_question_no_applicant_answered_yes_is_a_finance_line() -> None:
+    """§6.4 Finance: "Intake health and season warnings, e.g. … equity_field_never_true (D69)"; one reason per field."""
+    out = build_today(_inputs([], never_true=("unemployment", "gov_subsidies")), casework=False, finance=True)
+    line = _line(out.finance, "equity_field_never_true")
+    assert (line.families, line.items, line.item_kind) == (None, 2, "fields")
+    assert sorted(r.code for r in line.reasons) == ["gov_subsidies", "unemployment"]
+
+
+def test_with_every_question_answered_yes_somewhere_the_line_is_zero() -> None:
+    line = _line(build_today(_inputs([]), casework=False, finance=True).finance, "equity_field_never_true")
+    assert (line.items, line.reasons) == (0, [])
+
+
+def _weighted_rules() -> Any:
+    """The fixture rules with gov_subsidies weighted: intake_rules() alone weights no yes/no question."""
+    return with_levers(intake_rules(), {"equity.weights.camp": {"bipoc": "0.5", "gov_subsidies": "1"}})
+
+
+class _Intake:
+    def __init__(self) -> None:
+        self.reads = 0
+
+    async def fetch_fa_rows(self, year: int) -> list[Any]:
+        self.reads += 1
+        return [fa_row(1000011)]
+
+    async def load_equity_rules(self, year: int) -> Any:
+        return _weighted_rules()
+
+
+@pytest.mark.asyncio
+async def test_today_reads_the_intake_warning_for_finance_only() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, "reqemma00000001")
+    intake = _Intake()
+    service = TodayService(
+        store=store,
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        intake=intake,
+        clock=lambda: T0,
+    )
+    await service.read(YEAR, casework=True, finance=False)
+    assert intake.reads == 0
+    out = await service.read(YEAR, casework=False, finance=True)
+    expected = never_true_fields(_weighted_rules(), [fa_row(1000011)])
+    assert expected == ("gov_subsidies",)  # weighted, and nobody here answered yes
+    assert sorted(r.code for r in _line(out.finance, "equity_field_never_true").reasons) == sorted(expected)

@@ -43,6 +43,7 @@ its own household's lines.
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -62,6 +63,9 @@ from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundState
 from bunking.financial_aid.money import ZERO
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def camp_date(moment: datetime) -> date:
@@ -162,6 +166,60 @@ def placeable(
 
 
 @dataclass(frozen=True)
+class SplitPart:
+    """One part of a line the registrar split across requests (D12, SP11-rest): where it goes, named the
+    way a placement names it (a person, a session, a program family), and how much of the line it takes."""
+
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+    amount: Decimal
+
+    def placement(self, transaction_cm_id: int) -> Placement:
+        return Placement(transaction_cm_id, self.person_cm_id, self.session_cm_id, self.program_family)
+
+    def fields(self) -> dict[str, Any]:
+        """The part as aid_attribution_overrides.split stores it: the amount as its exact string (D74)."""
+        return {
+            "person_cm_id": self.person_cm_id,
+            "session_cm_id": self.session_cm_id,
+            "program_family": self.program_family,
+            "amount": str(self.amount),
+        }
+
+
+def _finite_amount(value: Any) -> Decimal:
+    """A split part's amount; NaN and the infinities are unreadable like any other bad value."""
+    amount = Decimal(str(value))
+    if not amount.is_finite():
+        raise ValueError(f"non-finite split amount {value!r}")
+    return amount
+
+
+def override_split(fields: Mapping[str, Any]) -> tuple[SplitPart, ...]:
+    """The parts of a split override (its `split` JSON, a list or its text); () for an override that
+    places or reclassifies a line whole."""
+    raw = fields.get("split")
+    try:
+        if isinstance(raw, str):
+            raw = json.loads(raw) if raw.strip() else None
+        return tuple(
+            SplitPart(
+                int(part.get("person_cm_id") or 0),
+                int(part.get("session_cm_id") or 0),
+                str(part.get("program_family") or ""),
+                _finite_amount(part["amount"]),
+            )
+            for part in raw or ()
+        )
+    except (ValueError, TypeError, AttributeError, KeyError, ArithmeticError) as exc:
+        # An unreadable split must not fail the season read: a part with no amount reads as a bad record,
+        # and _pieces leaves the line at family level, where To place shows it.
+        logger.warning("Unreadable aid split override ignored: %s: %s", type(exc).__name__, exc)
+        return (SplitPart(0, 0, "", ZERO),)
+
+
+@dataclass(frozen=True)
 class LineOverride:
     """One aid_attribution_overrides record: its id (the key its log rows carry) and what it places."""
 
@@ -170,15 +228,20 @@ class LineOverride:
     attributed_person_cm_id: int
     attributed_session_cm_id: int
     program_family: str
+    split: tuple[SplitPart, ...] = ()  # a split across requests (SP11-rest); () places the line whole
 
     def fields(self) -> dict[str, Any]:
-        """The record in the shape its log rows carry (the replay's `current`)."""
-        return {
+        """The record in the shape its log rows carry (the replay's `current`). `split` only when set:
+        the overrides written before SP11-rest logged none."""
+        out: dict[str, Any] = {
             "transaction_cm_id": self.transaction_cm_id,
             "attributed_person_cm_id": self.attributed_person_cm_id,
             "attributed_session_cm_id": self.attributed_session_cm_id,
             "program_family": self.program_family,
         }
+        if self.split:
+            out["split"] = [part.fields() for part in self.split]
+        return out
 
 
 def override_placement(fields: Mapping[str, Any]) -> Placement | None:
@@ -196,6 +259,33 @@ def override_placement(fields: Mapping[str, Any]) -> Placement | None:
 def request_scope(request: RequestRecord, shares: Iterable[PayerShareRecord]) -> frozenset[int]:
     """D26 / D58: the application's household and every household holding a payer share of the request."""
     return frozenset({request.household_cm_id, *(s.household_cm_id for s in shares if s.request_id == request.id)})
+
+
+@dataclass(frozen=True)
+class PageScope:
+    request_ids: tuple[str, ...]  # chip order of the applying household, then request id
+    households: tuple[int, ...]  # the opened household first, then by id
+
+
+def page_scope(
+    household_cm_id: int,
+    requests: Mapping[str, RequestRecord],
+    shares: Mapping[str, Sequence[PayerShareRecord]],
+) -> PageScope:
+    mine = [
+        rid
+        for rid, request in requests.items()
+        if request.household_cm_id == household_cm_id
+        or any(s.household_cm_id == household_cm_id for s in shares.get(rid, ()))
+    ]
+    others = {requests[rid].household_cm_id for rid in mine} | {
+        s.household_cm_id for rid in mine for s in shares.get(rid, ())
+    }
+    households = (household_cm_id, *sorted(others - {household_cm_id}))
+    chip = {h: i for i, h in enumerate(households)}
+    shown = [rid for rid, request in requests.items() if request.household_cm_id in chip]
+    ordered = sorted(shown, key=lambda rid: (chip[requests[rid].household_cm_id], rid))
+    return PageScope(request_ids=tuple(ordered), households=households)
 
 
 @dataclass(frozen=True)
@@ -355,6 +445,35 @@ def _index(
     return by_person, by_household
 
 
+def _split_is_sound(line: CampLine, parts: Sequence[SplitPart]) -> bool:
+    """A split places a line only when every part is positive, no two parts name one request, and the
+    parts add up to the line (CampMinder never changes a posted amount, so anything else is a bad record)."""
+    if any(part.amount <= 0 for part in parts):
+        return False
+    if len({(p.person_cm_id, p.session_cm_id, p.program_family) for p in parts}) != len(parts):
+        return False
+    return sum((part.amount for part in parts), ZERO) == line.amount
+
+
+def _pieces(
+    lines: Iterable[CampLine], placements: Mapping[int, Placement], splits: Mapping[int, Sequence[SplitPart]]
+) -> Iterable[tuple[CampLine, Placement | None]]:
+    """Each line with its staff placement, or each part of a split line with the part's own placement.
+    A split whose parts don't add up to the line yields the line unplaced."""
+    for line in lines:
+        parts = splits.get(line.transaction_cm_id)
+        if not parts:
+            yield line, placements.get(line.transaction_cm_id)
+        elif _split_is_sound(line, parts):
+            for part in parts:
+                yield replace(line, amount=part.amount), part.placement(line.transaction_cm_id)
+        else:
+            logger.warning(
+                "Aid split on transaction %s is not usable; the line stays at family level", line.transaction_cm_id
+            )
+            yield line, None
+
+
 def build_ledger(
     lines: Iterable[CampLine],
     placements: Mapping[int, Placement],
@@ -362,6 +481,8 @@ def build_ledger(
     synced_at: datetime | None,
     posted_request_ids: frozenset[str] = frozenset(),
     at: datetime | None = None,
+    *,
+    splits: Mapping[int, Sequence[SplitPart]] | None = None,
 ) -> SeasonLedger:
     """Every camp-aid line placed on its one request, or left at family level. Only live requests
     (active, unmatched) take a line, as the grants register's split does.
@@ -373,7 +494,12 @@ def build_ledger(
     reversing a withdrawn request's posted money can claw it back.
 
     `at` is a past instant (3c-1's as-of reads): family-level money counts only where it was live then,
-    posted by `at` and not yet reversed. The default is the live read."""
+    posted by `at` and not yet reversed. The default is the live read.
+
+    `splits` (SP11-rest, D12) are the lines a person split across requests: each part is placed as its
+    own line, by its own placement, for its own amount, and a part no request takes waits at family
+    level alone. A split whose parts don't add up to the line places nothing: CampMinder never changes
+    a posted amount, so that is a bad record, and the whole line waits for a person."""
     everyone = list(requests)
     by_person, by_household = _index(r for r in everyone if r.status in LIVE_REQUEST_STATUSES)
     closed_person, closed_household = _index(
@@ -383,26 +509,25 @@ def build_ledger(
     closed: dict[str, list[CampLine]] = defaultdict(list)
     unplaced: dict[int, Decimal] = defaultdict(Decimal)
     unplaced_lines: dict[int, list[CampLine]] = defaultdict(list)
-    for line in lines:
-        placement = placements.get(line.transaction_cm_id)
-        own_closed = line.person_cm_id > 0 and bool(closed_person.get(line.person_cm_id))
-        outcome = _place(line, placement, by_person, by_household, own_closed, closed_person)
+    for piece, placement in _pieces(lines, placements, splits or {}):
+        own_closed = piece.person_cm_id > 0 and bool(closed_person.get(piece.person_cm_id))
+        outcome = _place(piece, placement, by_person, by_household, own_closed, closed_person)
         if isinstance(outcome, str):
-            placed[outcome].append(line)
+            placed[outcome].append(piece)
             continue
         # The second pass runs on ABSENCE only: several live candidates are ambiguity, and stay at family level.
         # A reversed line ignores Go's program there: after a cancel Go re-tags it from what the person is
         # still enrolled in, and the reversal must still reach the closed request for its clawback (D54).
         closed_outcome = (
-            _place(line, placement, closed_person, closed_household, ignore_program=line.is_reversed)
+            _place(piece, placement, closed_person, closed_household, ignore_program=piece.is_reversed)
             if outcome is _Miss.NONE
             else outcome
         )
         if isinstance(closed_outcome, str):
-            closed[closed_outcome].append(line)
-        elif line.live(at):
-            unplaced[line.household_cm_id] += line.amount
-            unplaced_lines[line.household_cm_id].append(line)
+            closed[closed_outcome].append(piece)
+        elif piece.live(at):
+            unplaced[piece.household_cm_id] += piece.amount
+            unplaced_lines[piece.household_cm_id].append(piece)
     return SeasonLedger(
         by_request={rid: tuple(lns) for rid, lns in placed.items()},
         by_closed_request={rid: tuple(lns) for rid, lns in closed.items()},
@@ -540,16 +665,31 @@ def _status(awaiting: bool, held: Decimal, due: Decimal) -> ConfirmationStatus:
     return "short" if held < due else "over"
 
 
+# Locks made from money already in CampMinder: the ledger's own tick (D78) and the tick a registrar's
+# placement makes (D81, SP11-rest). Neither waits for tonight's sync.
+FROM_THE_LEDGER: Final = frozenset({"ledger", "placement"})
+
+
 def _awaiting(state: RoundState | None, synced_at: datetime | None) -> bool:
     """The tick was made after the last successful ledger sync ("awaiting tonight's sync", D59).
-    The ledger's own tick came from the ledger, so it never waits for it."""
-    if state is None or state.lock_source == "ledger":
+    A tick made from money already in CampMinder never waits for it (FROM_THE_LEDGER)."""
+    if state is None or state.lock_source in FROM_THE_LEDGER:
         return False
     return synced_at is None or state.locked_at is None or state.locked_at > synced_at
 
 
-def _live_net(lines: Iterable[CampLine]) -> Decimal:
-    return sum((line.amount for line in lines if line.live()), ZERO)
+def _live_net(lines: Iterable[CampLine], at: datetime | None = None) -> Decimal:
+    return sum((line.amount for line in lines if line.live(at)), ZERO)
+
+
+def live_net(lines: Iterable[CampLine]) -> Decimal:
+    """The net of the live lines: what CampMinder holds now (main spec §11)."""
+    return _live_net(lines)
+
+
+def locked_total(priced: PricedRequest) -> Decimal:
+    """The locked total of the request's posted rounds still counted (a clawed-back round counts nowhere)."""
+    return _locked(priced)
 
 
 def _locked(priced: PricedRequest) -> Decimal:
@@ -618,14 +758,17 @@ def confirmation(
     )
 
 
-def ledger_note(priced: PricedRequest, lines: Sequence[CampLine], family_unplaced: Decimal) -> CalcIssue | None:
+def ledger_note(
+    priced: PricedRequest, lines: Sequence[CampLine], family_unplaced: Decimal, *, at: datetime | None = None
+) -> CalcIssue | None:
     """D81's amber Note, on a live request with a round not yet ticked, when CampMinder already holds
     money for the family beyond what the request's ticks lock: placed on it, or at family level. A
     Note never stops anything (§4.4); it is there so the registrar doesn't post the family twice.
-    The season gate (no Note before the first ticked season) is the caller's."""
+    The season gate (no Note before the first ticked season) is the caller's. `at`: a past instant
+    (3c-2), when only the lines live then count, as `family_unplaced` was built."""
     if not priced.live or all(view.status == "posted" for view in priced.rounds):
         return None
-    extra = max(ZERO, _live_net(lines) - _locked(priced)) + family_unplaced
+    extra = max(ZERO, _live_net(lines, at) - _locked(priced)) + family_unplaced
     if extra <= 0:
         return None
     return CalcIssue(

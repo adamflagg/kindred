@@ -16,6 +16,7 @@ import pytest
 
 import api.schemas.financial_aid_decisions as decision_schemas
 from api.schemas.financial_aid_decisions import (
+    CancellationOut,
     ConfirmationOut,
     GridRowOut,
     PostedIn,
@@ -34,11 +35,12 @@ from api.services.financial_aid_household_page import (
     band_grants_by_request,
     household_money,
     page_scope,
+    request_grants,
     share_lines,
     totals,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord
-from bunking.financial_aid.decisions import RoundState
+from bunking.financial_aid.decisions import DecisionEvent, RoundState
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -318,6 +320,13 @@ def test_a_household_card_carries_its_own_share_of_decided_and_posted() -> None:
     assert (johnson.decided, johnson.posted, johnson.in_campminder, johnson.states) == (750.0, None, None, [])
 
 
+def test_a_row_has_no_include_override_and_its_included_is_live_and_not_cancelled() -> None:
+    """Owner ruling: no staff exclusion; a request leaves the band only by being cancelled or not live."""
+    assert "include_override" not in GridRowOut.model_fields
+    out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA)], {})
+    assert (out.cost, out.decided) == (4000.0, 3000.0)
+
+
 # --- the service: one season, one grants load, the page's own reads ----------------------------------
 
 
@@ -447,6 +456,7 @@ class _Ledger:
         ]
         self.posting_reads: list[frozenset[int]] = []
         self.name_reads: list[frozenset[str]] = []
+        self.count_reads: list[frozenset[int]] = []
 
     async def fetch_postings(
         self, year: int, household_ids: Collection[int] | None = None, *, include_reversed: bool = False
@@ -467,6 +477,7 @@ class _Ledger:
                 household_phone="555-0100",
                 billing_city="Riverside",
                 billing_state="CA",
+                billing_postal_code="94612",
             ),
             SimpleNamespace(
                 cm_id=GARCIA,
@@ -475,6 +486,7 @@ class _Ledger:
                 household_phone="",
                 billing_city="",
                 billing_state="",
+                billing_postal_code="",
             ),
         ]
         return [h for h in rows if h.cm_id in cm_ids]
@@ -492,6 +504,13 @@ class _Ledger:
             ),
         ]
         return [p for p in people if p.cm_id in cm_ids]
+
+    async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]:
+        self.count_reads.append(frozenset(session_cm_ids))
+        return {1000101: (180, 12)}
+
+    async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]:
+        return {1000101: SimpleNamespace(session_cm_id=1000101, capacity=190, note="Board figure")}
 
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
         self.name_reads.append(frozenset(emails))
@@ -859,3 +878,192 @@ def test_the_band_counts_a_confirmed_split_request_under_its_short_share() -> No
     )
     out = totals([row], {})
     assert [(s.status, s.count, s.gap) for s in out.states] == [("confirmed", 1, 200.0), ("short", 1, -200.0)]
+
+
+def test_a_round_ticked_by_a_placement_keeps_its_source_and_names_the_registrar() -> None:
+    from api.services.financial_aid_household_page import receipts
+
+    state = RoundState(
+        round=1,
+        posted=True,
+        posted_on=date(2027, 3, 9),
+        posted_by=ACTOR,
+        lock_source="placement",
+        rules_version=1,
+        snapshot={"result": {"trace": []}},
+    )
+    priced = SimpleNamespace(rounds=[SimpleNamespace(round=1)], result=None)
+    (out,) = receipts(priced, {1: state}, year=YEAR, rules_version=1, names={ACTOR: "Test User"})  # type: ignore[arg-type]
+    assert (out.label.kind, out.label.lock_source, out.label.ticked_by_name) == ("locked", "placement", "Test User")
+
+
+# --- grants applied (⚠38 (b), owner ruling 2026-10-01) ------------------------------------------------------
+
+
+def test_the_band_shows_grants_applied_so_its_sum_adds_up_and_the_rest_is_beyond_what_was_owed() -> None:
+    """Cost 2,000 − aid 1,500 − grants applied 500 = share 0; the grant's other 1,500 is beyond what Emma owed.
+    The counted grants stay 2,000: the Grants table's money."""
+    out = totals([_row(EMMA, JOHNSON)], {EMMA: Decimal(2000)})
+    assert (out.cost, out.decided, out.grants, out.grants_applied, out.family_share, out.grants_beyond_owed) == (
+        2000.0,
+        1500.0,
+        2000.0,
+        500.0,
+        0.0,
+        1500.0,
+    )
+    assert out.cost is not None
+    assert out.decided is not None
+    assert out.grants_applied is not None
+    assert out.cost - out.decided - out.grants_applied == out.family_share
+
+
+def test_a_grant_within_what_was_owed_applies_whole() -> None:
+    out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA)], {EMMA: Decimal(300)})
+    assert (out.grants, out.grants_applied, out.grants_beyond_owed, out.family_share) == (300.0, 300.0, 0.0, 700.0)
+
+
+def test_a_request_whose_aid_alone_passes_its_cost_applies_no_grant() -> None:
+    """The per-request floor (owner ruling, #2924): aid 1,108 on a 1,000 cost owes nothing, so none of its 200 grant
+    applies; never a negative 'applied' that would cancel a sibling's real grant."""
+    parts = request_grants(_row(EMMA, JOHNSON, cost=1000.0, total_decided=1108.0), {EMMA: Decimal(200)})
+    assert parts == (Decimal(200), Decimal(0), Decimal(200))
+
+
+def test_grants_applied_wait_with_the_share_for_every_included_request_to_be_priced() -> None:
+    """Decision 1 (⚠): while an included request has no decided total, the share reads "—", and so do grants
+    applied and beyond; the counted grants still show."""
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, GARCIA, total_decided=None, rounds=[_round(1, "held")])]
+    out = totals(rows, {EMMA: Decimal(300)})
+    assert (out.grants, out.grants_applied, out.grants_beyond_owed, out.family_share) == (300.0, None, None, None)
+
+
+def test_a_request_outside_the_band_carries_no_grants_applied() -> None:
+    cancelled = CancellationOut(by="kindred", on=date(2031, 5, 1), reason="medical", note="")
+    assert request_grants(_row(LIAM, GARCIA, cancellation=cancelled), {LIAM: Decimal(100)}) == (
+        Decimal(100),
+        None,
+        None,
+    )
+
+
+def test_with_no_included_request_there_is_no_grants_applied() -> None:
+    out = totals([], {})
+    assert (out.grants_applied, out.grants_beyond_owed) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_each_request_card_carries_its_grants_and_what_of_them_applied() -> None:
+    """_Grants holds a 200 grant on Emma; her cost is 2,000 and her decided award is at most 1,500."""
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    emma = next(r for r in page.requests if r.row.request_id == EMMA)
+    liam = next(r for r in page.requests if r.row.request_id == LIAM)
+    assert (emma.grants, emma.grants_applied, emma.grants_beyond_owed) == (200.0, 200.0, 0.0)
+    assert (liam.grants, liam.grants_applied, liam.grants_beyond_owed) == (0.0, 0.0, 0.0)
+    assert (page.totals.grants, page.totals.grants_applied, page.totals.grants_beyond_owed) == (200.0, 200.0, 0.0)
+
+
+# --- aid, decided so far (read 12; Decision 2) ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", ["held", "not_decided", "pending_approval"])
+def test_aid_decided_is_partial_while_an_included_round_is_undecided(status: str) -> None:
+    """Decision 2 (⚠): a held round counts too: its amount is unknown, so the sum is partial."""
+    posted = _round(1, "posted", decided=1500.0, posted=1500.0)
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, GARCIA, rounds=[posted, _round(3, status, ask=500.0)])]
+    assert totals(rows, {}).decided_partial is True
+
+
+def test_aid_decided_is_whole_once_every_included_round_is_decided_or_refused() -> None:
+    rows = [
+        _row(EMMA, JOHNSON),
+        _row(LIAM, GARCIA, rounds=[_round(1, "needs_offer", decided=1500.0), _round(3, "refused")]),
+    ]
+    assert totals(rows, {}).decided_partial is False
+
+
+def test_an_undecided_round_outside_the_band_leaves_it_whole() -> None:
+    rows = [_row(EMMA, JOHNSON), _row(OLIVIA, OTHER, request_status="withdrawn", rounds=[_round(1, "held")])]
+    assert totals(rows, {}).decided_partial is False
+
+
+def test_a_mixed_household_adds_up_per_request_not_across_the_household() -> None:
+    """Emma's 2,000 grant owes 500 of it, Liam's 300 applies whole: applied 800, beyond 1,500, and cost − aid − applied
+    is the share (200) request by request. A household-level floor would read 0 (4,000 − 3,000 − 2,300)."""
+    out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA)], {EMMA: Decimal(2000), LIAM: Decimal(300)})
+    assert (out.grants, out.grants_applied, out.grants_beyond_owed, out.family_share) == (2300.0, 800.0, 1500.0, 200.0)
+    assert out.cost is not None
+    assert out.decided is not None
+    assert out.grants_applied is not None
+    assert out.cost - out.decided - out.grants_applied == out.family_share
+
+
+def test_when_a_requests_aid_alone_passes_its_cost_the_band_falls_short_by_the_excess() -> None:
+    """Pins today's behaviour (open owner item 1b): aid 1,108 on a 1,000 cost owes nothing (share 0) and no grant
+    applies, so cost − aid − applied reads −108, not the share. The equation holds except for that excess."""
+    out = totals([_row(EMMA, JOHNSON, cost=1000.0, total_decided=1108.0)], {EMMA: Decimal(200)})
+    assert (out.family_share, out.grants_applied, out.grants_beyond_owed) == (0.0, 0.0, 200.0)
+    assert out.cost is not None
+    assert out.decided is not None
+    assert out.cost - out.decided - (out.grants_applied or 0) == -108.0
+
+
+@pytest.mark.asyncio
+async def test_the_page_carries_the_seasons_reason_codes() -> None:
+    """Decision 6: the cost-override and headcount forms offer the approved rules' cost.override_reasons."""
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert page.override_reasons == [
+        "headcount",
+        "partial_session",
+        "discount",
+        "missing_catalog",
+        "typed_household_total",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_request_shows_its_sessions_enrollment_waitlist_and_capacity() -> None:
+    """§6.3 item 4 (context only): enrolled = attendees status 2, waitlisted = status 8, capacity as finance entered it."""
+    store = _family()
+    store.events.append(
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=EMMA,
+            round=3,
+            kind="ask",
+            created=T0,
+            amount=Decimal(500),
+            effective_on=date(2027, 3, 1),
+            statement_of_need="Lost a job this spring",
+        )
+    )
+    ledger = _Ledger()
+    page = await _page_service(store, ledger=ledger).read(YEAR, JOHNSON)
+    emma = next(r for r in page.requests if r.row.request_id == EMMA)
+    liam = next(r for r in page.requests if r.row.request_id == LIAM)
+    assert emma.round3_context is not None
+    assert emma.round3_context.model_dump() == {
+        "session_cm_id": 1000101,
+        "enrolled": 180,
+        "waitlisted": 12,
+        "capacity": 190,
+        "capacity_note": "Board figure",
+    }
+    assert liam.round3_context is None
+    assert ledger.count_reads == [frozenset({1000101})]
+
+
+@pytest.mark.asyncio
+async def test_a_page_with_no_round_3_reads_no_counts() -> None:
+    ledger = _Ledger()
+    await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
+    assert ledger.count_reads == []
+
+
+@pytest.mark.asyncio
+async def test_a_household_card_names_its_county_from_the_billing_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bunking.geo_normalizer.zip_counties as zip_counties
+
+    monkeypatch.setattr(zip_counties, "_table", lambda: {"94612": "Alameda County"})
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [(c.household_cm_id, c.county) for c in page.households] == [(JOHNSON, "Alameda County"), (GARCIA, None)]

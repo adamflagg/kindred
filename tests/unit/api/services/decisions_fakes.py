@@ -17,10 +17,12 @@ from typing import Any, cast
 import httpx
 
 from api.constants.collections import (
+    AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
     AID_ATTRIBUTION_OVERRIDES,
     AID_CANCELLATIONS,
     AID_DECISIONS,
+    AID_GRANT_PLACEMENTS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
@@ -28,6 +30,7 @@ from api.constants.collections import (
 )
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import cancel_event, decision_event, hold_event
+from api.services.financial_aid_grant_placements import PlacementRecord, placement_record
 from api.services.financial_aid_grants_register import Placement, RegisterRow, RequestShare
 from api.services.financial_aid_intake_plan import application_fields, request_fields
 from api.services.financial_aid_intake_types import (
@@ -38,7 +41,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
-from api.services.financial_aid_reconciliation import CampLine, LineOverride
+from api.services.financial_aid_reconciliation import CampLine, LineOverride, SplitPart
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow
@@ -78,10 +81,12 @@ class FakeDecisionsStore:
         self.camp_lines: list[CampLine] = []
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
+        self.splits: dict[int, tuple[SplitPart, ...]] = {}  # lines a person split across requests (SP11-rest)
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self.cancel_events: list[CancelEvent] = []
         self.enrollments: list[EnrollmentState] = []
         self.enrollment_reads: list[tuple[frozenset[int], frozenset[int]]] = []  # each read's (persons, households)
+        self.grant_placements: list[PlacementRecord] = []  # the grant placement log (3c-2)
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -151,16 +156,24 @@ class FakeDecisionsStore:
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         return dict(self.placements)
 
+    async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]:
+        return dict(self.splits)
+
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
-        return [
+        whole = [
             LineOverride(
                 f"ovr{p.transaction_cm_id:012d}", p.transaction_cm_id, p.person_cm_id, p.session_cm_id, p.program_family
             )
             for p in self.placements.values()
         ]
+        split = [LineOverride(f"ovr{txn:012d}", txn, 0, 0, "", parts) for txn, parts in self.splits.items()]
+        return [*whole, *split]
 
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
         return self.synced_at
+
+    async def fetch_grant_placements(self, year: int) -> list[PlacementRecord]:
+        return list(self.grant_placements)
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
@@ -217,6 +230,25 @@ class FakeDecisionsStore:
             elif collection == AID_CANCELLATIONS:
                 self._clock += timedelta(seconds=1)
                 self.cancel_events.append(cancel_event(SimpleNamespace(**body, created=self._clock.isoformat())))
+            elif collection == AID_GRANT_PLACEMENTS:
+                self._clock += timedelta(seconds=1)
+                self.grant_placements.append(placement_record(SimpleNamespace(**body, created=self._clock.isoformat())))
+            elif collection == AID_APPLICATION_CORRECTIONS:
+                self._clock += timedelta(seconds=1)
+                self.corrections.append(
+                    CorrectionRecord(
+                        id=f"cor{len(self.corrections):012d}",
+                        year=int(body["year"]),
+                        application_id=str(body["application"]),
+                        request_id=str(body["request"]),
+                        field=str(body["field"]),
+                        new_value=str(body["new_value"]),
+                        original_value=str(body["original_value"]),
+                        reason=str(body["reason"]),
+                        actor=str(body["actor"]),
+                        created=self._clock.strftime("%Y-%m-%d %H:%M:%S.000Z"),
+                    )
+                )
             elif collection == AID_RULES:
                 self.rules_writes.append(body)
             else:
@@ -262,6 +294,15 @@ class FakeRules:
         if isinstance(self.as_of_version, Exception):
             raise self.as_of_version
         return self.as_of_version
+
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]:
+        """approved_as_of at each instant, from one call (as the rules service reads its history once)."""
+        self.as_of_calls.extend(ats)
+        if isinstance(self.as_of_version, Exception):
+            return {}, frozenset(ats)
+        return dict.fromkeys(ats, self.as_of_version), frozenset()
 
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
@@ -498,3 +539,17 @@ def seed_override(
 def log_delete(store: FakeDecisionsStore, entity: str, entity_id: str, before: dict[str, Any], at: datetime) -> None:
     """One logged delete (its `before` is the whole record)."""
     _log(store, entity, entity_id, before, None, at)
+
+
+def seed_split(store: FakeDecisionsStore, txn: int, parts: tuple[SplitPart, ...], at: datetime) -> None:
+    """A staff split of one line across requests (SP11-rest), as the write path logs it: created at `at`."""
+    store.splits[txn] = parts
+    body = {
+        "transaction_cm_id": txn,
+        "year": YEAR,
+        "attributed_person_cm_id": 0,
+        "attributed_session_cm_id": 0,
+        "program_family": "",
+        "split": [part.fields() for part in parts],
+    }
+    _log(store, AID_ATTRIBUTION_OVERRIDES, f"ovr{txn:012d}", None, body, at)

@@ -11,8 +11,6 @@ from pydantic import ValidationError
 
 from api.schemas.financial_aid import (
     AidSourceUpdate,
-    DispositionBulkLoad,
-    DispositionRow,
     OverrideBulkLoad,
     OverrideRow,
 )
@@ -235,6 +233,18 @@ async def test_get_source_escapes_the_id() -> None:
     assert calls[0]["filter"] == "id = 'abc\\'def'"
 
 
+@pytest.mark.asyncio
+async def test_open_commitments_naming_a_grantor_span_every_season_and_escape_the_key() -> None:
+    """Retiring a grantor checks every season's open grants (owner ruling 2026-10-01); a withdrawn one names nothing."""
+    from api.services.financial_aid_grants_repository import GrantsRepository
+
+    pb, calls = _pb()
+    await GrantsRepository(pb).fetch_open_commitments_naming("regional'fund")
+    assert pb.collection.call_args.args == ("aid_grants",)
+    assert calls[0]["filter"] == "grantor_key = 'regional\\'fund' && status = 'open'"
+    assert "year" not in str(calls[0]["filter"])
+
+
 def test_override_row_must_place_or_reclassify() -> None:
     with pytest.raises(ValidationError):
         OverrideRow(transaction_cm_id=9001)
@@ -285,18 +295,6 @@ def test_the_repository_is_read_only() -> None:
     assert ".delete(" not in source
 
 
-def test_disposition_rows_are_unique_per_flag_and_name_a_real_flag_shape() -> None:
-    row = DispositionRow(
-        transaction_cm_id=9001, flag="implied_program_mismatch", disposition="accepted_late_grant", note="n"
-    )
-    with pytest.raises(ValidationError):
-        DispositionBulkLoad(year=2026, rows=[row, row])
-    with pytest.raises(ValidationError):
-        DispositionRow(transaction_cm_id=9001, flag="Not A Flag", disposition="accepted_other", note="n")
-    with pytest.raises(ValidationError):
-        DispositionRow(transaction_cm_id=9001, flag="implied_program_mismatch", disposition="accepted_other", note="")
-
-
 def test_only_the_camps_own_aid_counts_toward_the_budget() -> None:
     # Owner ruling 2026-09-25: every outside grant and fund is external to the budget.
     base = {"source_name": "X", "counts_as_aid": True, "note": "n"}
@@ -340,3 +338,20 @@ async def test_user_names_query_both_the_original_and_lowercased_email() -> None
     (call,) = calls
     assert "email = 'Registrar@Example.com'" in str(call["filter"])
     assert "email = 'registrar@example.com'" in str(call["filter"])
+
+
+@pytest.mark.asyncio
+async def test_session_counts_read_enrolled_and_waitlisted_registrations_of_the_sessions_asked() -> None:
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = [
+        SimpleNamespace(status_id=2, expand={"session": SimpleNamespace(cm_id=1000101)}),
+        SimpleNamespace(status_id=2, expand={"session": SimpleNamespace(cm_id=1000101)}),
+        SimpleNamespace(status_id=8, expand={"session": SimpleNamespace(cm_id=1000101)}),
+    ]
+    counts = await FinancialAidRepository(pb).fetch_session_counts(2027, [1000102, 1000101])
+    assert counts == {1000101: (2, 1), 1000102: (0, 0)}
+    params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert params["filter"] == (
+        "year = 2027 && (status_id = 2 || status_id = 8) && (session.cm_id = 1000101 || session.cm_id = 1000102)"
+    )
+    assert params["expand"] == "session"

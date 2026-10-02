@@ -25,6 +25,7 @@ from api.constants.collections import (
     AID_GRANTORS,
     AID_HOUSEHOLD_LINKS,
     AID_POSTINGS,
+    AID_SESSION_CAPACITY,
     AID_SOURCES,
     ATTENDEES,
     CAMP_SESSIONS,
@@ -35,6 +36,7 @@ from api.constants.collections import (
     USERS,
 )
 from api.services.lodging_repository import STABLE_SORT
+from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
 
 PAGE_SIZE = 1000
@@ -109,7 +111,7 @@ class FinancialAidRepository:
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
-            self.pb.collection(collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
+            aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
 
@@ -170,9 +172,6 @@ class FinancialAidRepository:
     async def fetch_dispositions(self, year: int) -> list[Any]:
         return await self._page(AID_FLAG_DISPOSITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
 
-    async def get_disposition(self, disposition_id: str) -> Any | None:
-        return await self._one(AID_FLAG_DISPOSITIONS, disposition_id)
-
     # --- people, sessions, applications ------------------------------------
 
     async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
@@ -180,6 +179,28 @@ class FinancialAidRepository:
 
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
         return await self._by_ids(PERSONS, f"year = {int(year)}", "cm_id", cm_ids)
+
+    async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]:
+        """Each session's enrolled (status 2, as the solver counts them) and waitlisted (status 8) registrations this
+        season: Round 3's context (§6.3 item 4)."""
+        rows = await self._by_ids(
+            ATTENDEES,
+            f"year = {int(year)} && (status_id = 2 || status_id = 8)",
+            "session.cm_id",
+            session_cm_ids,
+            {"expand": "session", "fields": "status_id,expand.session.cm_id"},
+        )
+        counts = {s: [0, 0] for s in _positive_unique(session_cm_ids)}
+        for row in rows:
+            session = int(getattr((getattr(row, "expand", None) or {}).get("session"), "cm_id", 0) or 0)
+            if session in counts:
+                counts[session][0 if int(row.status_id) == 2 else 1] += 1
+        return {s: (enrolled, waitlisted) for s, (enrolled, waitlisted) in counts.items()}
+
+    async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]:
+        """The capacity finance entered per session (aid_session_capacity), by session."""
+        rows = await self._by_ids(AID_SESSION_CAPACITY, f"year = {int(year)}", "session_cm_id", session_cm_ids)
+        return {int(r.session_cm_id): r for r in rows}
 
     async def fetch_household_persons(self, year: int, household_ids: Collection[int]) -> list[Any]:
         """Everyone the Go transform treats as a candidate for these households:

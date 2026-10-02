@@ -61,6 +61,7 @@ from api.services.financial_aid_intake_types import (
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
+    EquityAnswers,
     FaRow,
     Flag,
     PayerShareRecord,
@@ -104,6 +105,7 @@ class IntakeStore(Protocol):
         self, year: int, request_ids: Sequence[str] | None = None
     ) -> list[PayerShareRecord]: ...
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
+    async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
@@ -284,14 +286,9 @@ def _awaiting(plan: IntakePlan, existing: Sequence[RequestRecord]) -> int:
 FIELD_NEVER_TRUE: Final = "equity_field_never_true"
 
 
-def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
-    """A yes/no answer the approved equity rules weight that no applicant this season answered
-    yes (spec 18 U-C7: warn when no one answered).
-
-    The mirror stores a blank yes/no as False, so "answered No" and "never asked" look the same
-    on any one row. Across a whole season they do not: a weighted question nobody answered yes
-    was most likely dropped from the form, and its weight silently reaches no family. Staff and
-    finance should look at the form or the weight. Nothing is held."""
+def never_true_fields(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
+    """The yes/no fields the approved equity rules weight that no applicant this season answered yes (spec 18 U-C7).
+    Today shows them (§6.4); the intake run logs them (never_true_warnings)."""
     if rules is None or not fa_rows:
         return ()
     weighted = {key for weights in rules.equity.weights.values() for key, weight in weights.items() if weight > 0}
@@ -302,10 +299,19 @@ def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tup
         for field in (criterion.field, *criterion.also_fields)
         if field in YES_NO_ANSWER_FIELDS
     )
+    return tuple(field for field in fields if not any(bool(row.answers.get(field)) for row in fa_rows))
+
+
+def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
+    """A yes/no answer the approved equity rules weight that no applicant this season answered
+    yes (spec 18 U-C7: warn when no one answered).
+
+    The mirror stores a blank yes/no as False, so "answered No" and "never asked" look the same
+    on any one row. Across a whole season they do not: a weighted question nobody answered yes
+    was most likely dropped from the form, and its weight silently reaches no family. Staff and
+    finance should look at the form or the weight. Nothing is held."""
     return tuple(
-        f"{FIELD_NEVER_TRUE}: {field} (0 of {len(fa_rows)} applicants)"
-        for field in fields
-        if not any(bool(row.answers.get(field)) for row in fa_rows)
+        f"{FIELD_NEVER_TRUE}: {field} (0 of {len(fa_rows)} applicants)" for field in never_true_fields(rules, fa_rows)
     )
 
 
@@ -387,6 +393,10 @@ class FinancialAidIntakeService:
 
         family_households = [h.household_cm_id for h in households if any(s.person_cm_id == 0 for s in h.requests)]
         billed = billed_headcounts(billing, family_households, await self._age_rule(year, rules, sessions, billing))
+        # 3c-2: each camper-level request records its camper's equity answers, so a past date can price
+        # them as they stood. Live pricing keeps reading the synced answers (owner ruling 2026-09-30).
+        people = sorted({s.person_cm_id for h in households for s in h.requests if s.person_cm_id > 0})
+        equity = await self._store.fetch_equity_answers(year, people)
         plan = plan_intake(
             households,
             applications,
@@ -394,6 +404,7 @@ class FinancialAidIntakeService:
             billed,
             frozenset(s.request_id for s in shares),
             _rules_check(rules, sessions),
+            equity=equity,
         )
         operation_id = await self._commit(year, plan, applications, requests)
         statuses = _final_statuses(plan, requests)

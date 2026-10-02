@@ -48,8 +48,6 @@ from api.schemas.financial_aid import (
     AttributionLevel,
     BulkLoadResult,
     DataQualityResponse,
-    DispositionBulkLoad,
-    DispositionsResponse,
     HouseholdDetailResponse,
     HouseholdLinkCreate,
     HouseholdLinkRow,
@@ -67,6 +65,7 @@ from api.schemas.financial_aid_decisions import (
     AsOfAxis,
     BudgetResponse,
     CancellationIn,
+    CostOverrideIn,
     DecisionWriteOut,
     EditorPreviewOut,
     HoldReleaseIn,
@@ -84,6 +83,7 @@ from api.schemas.financial_aid_grants import (
     CommitmentOut,
     GrantorCreate,
     GrantorOut,
+    GrantorRetireIn,
     GrantorSave,
     GrantorsResponse,
     GrantsResponse,
@@ -153,7 +153,22 @@ from api.schemas.financial_aid_scenarios import (
     ViewIn,
     WorkspaceOut,
 )
-from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse, TodayResponse
+from api.schemas.financial_aid_surfaces import (
+    DefinitionNoteOut,
+    DefinitionsResponse,
+    HouseholdSearchResponse,
+    JumpIndexResponse,
+    TodayResponse,
+)
+from api.schemas.financial_aid_to_place import (
+    LeaveLineIn,
+    PlaceLineIn,
+    PlaceLinesIn,
+    PlaceOut,
+    ReclassifyLineIn,
+    ToPlaceResponse,
+    ToPlaceWriteOut,
+)
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -169,8 +184,14 @@ from api.services.financial_aid_decisions_service import (
     FinancialAidDecisionsService,
 )
 from api.services.financial_aid_grants_repository import GrantsRepository
-from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
+from api.services.financial_aid_grants_service import (
+    GrantorInUseError,
+    GrantorKeyTakenError,
+    GrantorStateError,
+    GrantsService,
+)
 from api.services.financial_aid_household_page import HouseholdNotFoundError, HouseholdPageService
+from api.services.financial_aid_household_search import HouseholdSearchRepository, HouseholdSearchService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
 from api.services.financial_aid_ledger_service import (
@@ -181,7 +202,9 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_rules_service import (
+    PRICING_SECTIONS,
     AidRulesRepository,
     ApprovedRules,
     FinancialAidRulesService,
@@ -192,6 +215,7 @@ from api.services.financial_aid_rules_service import (
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
+    SectionChangedError,
     VersionExistsError,
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
@@ -214,6 +238,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     Workspace,
 )
+from api.services.financial_aid_to_place_service import ToPlaceService
 from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
@@ -233,6 +258,12 @@ router = APIRouter(prefix="/api/financial-aid", tags=["financial-aid"])
 _VIEW = Depends(require_permission(Permission.FINANCIAL_AID_VIEW))
 _CASEWORK = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK))
 _RULES = Depends(require_permission(Permission.FINANCIAL_AID_RULES))
+# Owner ruling 2026-10-01: the grantor directory's writes (create, save, retire, unretire, mapping a description to
+# a grantor) are their own permission, held by development and finance; not rules.
+_GRANTORS = Depends(require_permission(Permission.FINANCIAL_AID_GRANTORS))
+# Owner ruling 2026-10-01: the grantor list and the source list are readable with view OR grantors, so the
+# development role (grantors, no view) sees what it edits. No other read widens.
+_VIEW_OR_GRANTORS = Depends(require_any_permission(Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_GRANTORS))
 
 # A DELETE reason: whitespace-only would otherwise reach commit_aid_writes
 # (4a's helper), which raises ValueError on a blank reason -> an unhandled 500.
@@ -240,11 +271,18 @@ _RULES = Depends(require_permission(Permission.FINANCIAL_AID_RULES))
 _Reason = Annotated[str, Query(...), StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
+async def _override_reasons(year: int) -> tuple[str, ...]:
+    """The season's reason codes for cost overrides and headcounts (Decision 6): the approved pricing rules', else the
+    rules' defaults."""
+    approved = await _rules().latest_approved(year, PRICING_SECTIONS)
+    return tuple(approved.document.cost.override_reasons) if approved is not None else DEFAULT_REASON_CODES
+
+
 def _casework() -> FinancialAidCaseworkService:
     # Every write commits through the repository's one write path, sub-project 4a's
     # commit_aid_writes: the record and its aid_change_log row in one batch.
     repository = FinancialAidIntakeRepository(pb)
-    return FinancialAidCaseworkService(repository)
+    return FinancialAidCaseworkService(repository, reason_codes=_override_reasons)
 
 
 def _raise_http(exc: Exception) -> NoReturn:
@@ -279,6 +317,8 @@ def _rules() -> FinancialAidRulesService:
 
 
 def _rules_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, SectionChangedError):  # structured, so the editor can mark the stale sections
+        return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, RulesNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(
@@ -330,6 +370,7 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
                 changes=[field_change_out(c) for c in s.changes],
                 errors=sum(1 for i in draft.report.errors if i.section == s.section),
                 warnings=sum(1 for i in draft.report.warnings if i.section == s.section),
+                fingerprint=s.fingerprint,
             )
             for s in draft.sections
         ],
@@ -363,7 +404,10 @@ def _grants() -> GrantsService:
 def _grants_http(exc: FinancialAidError) -> HTTPException:
     if isinstance(exc, FinancialAidNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, GrantorKeyTakenError):
+    if isinstance(exc, GrantorInUseError):
+        detail = {"message": str(exc), "descriptions": exc.descriptions, "grants": exc.grants}
+        return HTTPException(status_code=409, detail=detail)
+    if isinstance(exc, (GrantorKeyTakenError, GrantorStateError)):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -457,7 +501,7 @@ async def set_aid_request_headcount(
 ) -> RequestOut:
     try:
         return await _casework().set_headcount(
-            request_id, body.non_infant, body.infant, body.source, body.reason, user.email
+            request_id, body.non_infant, body.infant, body.source, body.reason, user.email, reason_code=body.reason_code
         )
     except _ERRORS as exc:
         _raise_http(exc)
@@ -556,7 +600,7 @@ async def get_data_quality(year: int = Query(..., ge=2017, le=2100), user: AuthU
 
 
 @router.get("/sources", response_model=AidSourcesResponse)
-async def list_sources(user: AuthUser = _VIEW) -> AidSourcesResponse:
+async def list_sources(user: AuthUser = _VIEW_OR_GRANTORS) -> AidSourcesResponse:
     return await _ledger().sources()
 
 
@@ -569,7 +613,7 @@ async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser 
 
 
 @router.put("/sources/{source_id}/grantor", response_model=AidSourceRow)
-async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _RULES) -> AidSourceRow:
+async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _GRANTORS) -> AidSourceRow:
     try:
         return await _writes().map_source_grantor(source_id, body, user.email)
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
@@ -604,32 +648,6 @@ async def load_overrides(body: OverrideBulkLoad, user: AuthUser = _RULES) -> Bul
         return await _writes().load_overrides(body, user.email)
     except FinancialAidValidationError as exc:
         raise _http(exc) from exc
-
-
-@router.get("/flag-dispositions", response_model=DispositionsResponse)
-async def list_flag_dispositions(
-    year: int = Query(..., ge=2017, le=2100), user: AuthUser = _VIEW
-) -> DispositionsResponse:
-    return await _ledger().dispositions(year)
-
-
-@router.post("/flag-dispositions/bulk", response_model=BulkLoadResult)
-async def load_flag_dispositions(body: DispositionBulkLoad, user: AuthUser = _RULES) -> BulkLoadResult:
-    """Record finance's decisions on posting flags ("accepted: let stand", "accepted: late grant"). One atomic operation."""
-    try:
-        return await _writes().load_dispositions(body, user.email)
-    except FinancialAidValidationError as exc:
-        raise _http(exc) from exc
-
-
-@router.delete("/flag-dispositions/{disposition_id}", status_code=204, response_class=Response)
-async def delete_flag_disposition(disposition_id: str, reason: _Reason, user: AuthUser = _RULES) -> Response:
-    """Reopen a flag."""
-    try:
-        await _writes().delete_disposition(disposition_id, user.email, reason)
-    except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
-        raise _http(exc) from exc
-    return Response(status_code=204)
 
 
 @router.get("/rules/{year}", response_model=RulesVersionOut)
@@ -698,7 +716,7 @@ async def approve_aid_rules_sections(
     """Approve sections as one logged operation; the note names the approving body (D39)."""
     try:
         approved, report = await _rules().approve_sections(
-            year, version, body.sections, actor=user.email, note=body.note
+            year, version, body.sections, actor=user.email, note=body.note, fingerprints=body.fingerprints
         )
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
@@ -723,7 +741,14 @@ async def save_aid_rules_section(
     (`branched_from` names the version it came from); 409 when the rules draft moved on since the editor opened."""
     service = _rules()
     try:
-        saved = await service.save_section(year, body.base_version, section, body.content, actor=user.email)
+        saved = await service.save_section(
+            year,
+            body.base_version,
+            section,
+            body.content,
+            actor=user.email,
+            expected_fingerprint=body.expected_fingerprint,
+        )
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
@@ -759,13 +784,14 @@ async def get_approved_aid_rules(
 
 
 @router.get("/grantors", response_model=GrantorsResponse)
-async def list_grantors(user: AuthUser = _VIEW) -> GrantorsResponse:
-    # D57: everyone with view access sees the directory, contacts included; edits are finance's.
-    return await _grants().list_grantors()
+async def list_grantors(include_retired: bool = Query(False), user: AuthUser = _VIEW_OR_GRANTORS) -> GrantorsResponse:
+    # D57: view or grantors sees the directory, contacts included; edits are financial_aid.grantors.
+    # A retired grantor is left out (pickers never offer one) unless include_retired.
+    return await _grants().list_grantors(include_retired=include_retired)
 
 
 @router.post("/grantors", response_model=GrantorOut, status_code=201)
-async def create_grantor(body: GrantorCreate, user: AuthUser = _RULES) -> GrantorOut:
+async def create_grantor(body: GrantorCreate, user: AuthUser = _GRANTORS) -> GrantorOut:
     try:
         return await _grants().create_grantor(body, user.email)
     except FinancialAidError as exc:
@@ -773,9 +799,28 @@ async def create_grantor(body: GrantorCreate, user: AuthUser = _RULES) -> Granto
 
 
 @router.put("/grantors/{key}", response_model=GrantorOut)
-async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser = _RULES) -> GrantorOut:
+async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser = _GRANTORS) -> GrantorOut:
     try:
         return await _grants().save_grantor(key, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.post("/grantors/{key}/retire", response_model=GrantorOut)
+async def retire_grantor(key: _GrantorKeyPath, body: GrantorRetireIn, user: AuthUser = _GRANTORS) -> GrantorOut:
+    """409 while a description maps to it or an open grant names it (the detail counts each), or when it is
+    already retired; nothing is written or logged then."""
+    try:
+        return await _grants().retire_grantor(key, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.post("/grantors/{key}/unretire", response_model=GrantorOut)
+async def unretire_grantor(key: _GrantorKeyPath, body: GrantorRetireIn, user: AuthUser = _GRANTORS) -> GrantorOut:
+    """409 when it isn't retired."""
+    try:
+        return await _grants().unretire_grantor(key, body, user.email)
     except FinancialAidError as exc:
         raise _grants_http(exc) from exc
 
@@ -948,6 +993,17 @@ async def set_manual_hold(
     """Put the request on hold by hand with a reason, or lift it (app spec §6.3; follow-up 3b)."""
     try:
         return await _decisions().set_manual_hold(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/cost-override", response_model=DecisionWriteOut)
+async def set_cost_override(
+    request_id: _RequestIdPath, body: CostOverrideIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """A cost override with its reason code, or clearing it (D22; app spec §2: casework)."""
+    try:
+        return await _decisions().set_cost_override(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 
@@ -1433,6 +1489,17 @@ async def get_jump_index(year: _Year, user: AuthUser = _VIEW) -> JumpIndexRespon
     return await JumpIndexService(JumpIndexRepository(pb)).read(year)
 
 
+@router.get("/household-search/{year}", response_model=HouseholdSearchResponse)
+async def search_households(
+    year: _Year,
+    q: Annotated[str, Query(min_length=2, max_length=100)],
+    user: AuthUser = _VIEW,
+) -> HouseholdSearchResponse:
+    """The Add-a-link picker's search (owner F3 #27): a household by name or CampMinder id (a household's or a
+    person's), with the family keys it is linked under. financial_aid.view, as the household page's links."""
+    return await HouseholdSearchService(HouseholdSearchRepository(pb)).search(year, q)
+
+
 def _holds(user: AuthUser, permission: str) -> bool:
     return user.is_admin or permission in user.permissions
 
@@ -1446,6 +1513,7 @@ async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
         rules=_rules(),
         grants=GrantsService(GrantsRepository(pb)),
         ledger=_ledger(),
+        intake=FinancialAidIntakeRepository(pb),
     )
     return await service.read(
         year,
@@ -1481,5 +1549,79 @@ async def preview_request_edit(
     can_approve = _holds(user, Permission.FINANCIAL_AID_RULES)
     try:
         return await _decisions().preview(request_id, body, can_approve=can_approve)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+# --- Money > To place (campership SP11-rest; clean spec §8.1) ----------------------------------
+
+_TransactionId = Annotated[int, Path(ge=1)]
+
+
+def _to_place() -> ToPlaceService:
+    return ToPlaceService(_decisions(), FinancialAidDecisionsRepository(pb))
+
+
+@router.get("/money/{year}/to-place", response_model=ToPlaceResponse)
+async def get_to_place(
+    year: _Year, household_cm_id: int | None = Query(None, ge=1), user: AuthUser = _VIEW
+) -> ToPlaceResponse:
+    """Camp-aid lines no single request takes, by reason, with Kindred's suggestions and their evidence
+    (D12, D16, D58); `household_cm_id` scopes it to one household page (D26)."""
+    try:
+        return await _to_place().read(year, household_cm_id=household_cm_id)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/place", response_model=PlaceOut)
+async def place_lines(year: _Year, body: PlaceLinesIn, user: AuthUser = _CASEWORK) -> PlaceOut:
+    """Confirm a whole class of lines at once (D16), all or nothing, as one operation with the ticks they make."""
+    try:
+        return await _to_place().place_lines(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/place", response_model=PlaceOut)
+async def place_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: PlaceLineIn, user: AuthUser = _CASEWORK
+) -> PlaceOut:
+    """Confirm or Split (D12): the staff placement and the Posted ticks it makes, as one operation (D81)."""
+    try:
+        return await _to_place().place(year, transaction_cm_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut)
+async def leave_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: LeaveLineIn, user: AuthUser = _CASEWORK
+) -> ToPlaceWriteOut:
+    """Leave at family level, with a note (D58)."""
+    try:
+        return await _to_place().leave(year, transaction_cm_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.delete("/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut)
+async def reopen_line(
+    year: _Year, transaction_cm_id: _TransactionId, reason: _Reason, user: AuthUser = _CASEWORK
+) -> ToPlaceWriteOut:
+    """Undo Leave at family level: the line is open in To place again."""
+    try:
+        return await _to_place().reopen(year, transaction_cm_id, reason, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/reclassify", response_model=ToPlaceWriteOut)
+async def reclassify_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: ReclassifyLineIn, user: AuthUser = _RULES
+) -> ToPlaceWriteOut:
+    """Reclassify (D104, finance): the line's money is really another source's; Go applies it on the next sync."""
+    try:
+        return await _to_place().reclassify(year, transaction_cm_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc

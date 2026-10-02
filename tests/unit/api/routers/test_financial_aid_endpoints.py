@@ -16,7 +16,6 @@ from api.schemas.financial_aid import (
     AidSourcesResponse,
     BulkLoadResult,
     DataQualityResponse,
-    DispositionsResponse,
     FaRequested,
     HouseholdDetailResponse,
     HouseholdLinkRow,
@@ -27,7 +26,14 @@ from api.schemas.financial_aid import (
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.rbac.permissions import Permission
-from tests.unit.rbac.permission_personas import PERSONA_FINANCE, PERSONAS, persona_client, persona_user
+from tests.unit.rbac.permission_personas import (
+    PERSONA_DEVELOPMENT,
+    PERSONA_FINANCE,
+    PERSONA_REGISTRAR,
+    PERSONAS,
+    persona_client,
+    persona_user,
+)
 
 VIEW, CASEWORK, RULES = Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_CASEWORK, Permission.FINANCIAL_AID_RULES
 
@@ -63,34 +69,28 @@ OVERRIDE_BODY = {
     "reason": "Reviewed placements",
     "rows": [{"transaction_cm_id": 9001, "program_family": "summer"}],
 }
-DISPOSITION_BODY = {
-    "year": 2026,
-    "rows": [
-        {
-            "transaction_cm_id": 9001,
-            "flag": "implied_program_mismatch",
-            "disposition": "accepted_late_grant",
-            "note": "Grant after the offer",
-        }
-    ],
-}
 
 # (method, url, json body, permission required, success status)
-ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
+ROUTES: list[tuple[str, str, dict[str, Any] | None, str | tuple[str, ...], int]] = [
     ("GET", "/api/financial-aid/ledger?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/households/100?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/summary?year=2026&as_of=2026-03-10", None, VIEW, 200),
     ("GET", "/api/financial-aid/net-totals?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/data-quality?year=2026", None, VIEW, 200),
-    ("GET", "/api/financial-aid/sources", None, VIEW, 200),
+    # Owner ruling 2026-10-01: view OR grantors may read the source list (development edits its mappings).
+    ("GET", "/api/financial-aid/sources", None, (VIEW, Permission.FINANCIAL_AID_GRANTORS), 200),
     ("PATCH", "/api/financial-aid/sources/src1", SOURCE_BODY, RULES, 200),
     ("POST", "/api/financial-aid/household-links", LINK_BODY, CASEWORK, 201),
     ("DELETE", "/api/financial-aid/household-links/l1?reason=merged%20by%20mistake", None, CASEWORK, 204),
     ("POST", "/api/financial-aid/overrides/bulk", OVERRIDE_BODY, RULES, 200),
-    ("GET", "/api/financial-aid/flag-dispositions?year=2026", None, VIEW, 200),
-    ("POST", "/api/financial-aid/flag-dispositions/bulk", DISPOSITION_BODY, RULES, 200),
-    ("DELETE", "/api/financial-aid/flag-dispositions/d1?reason=wrong%20posting", None, RULES, 204),
-    ("PUT", "/api/financial-aid/sources/src1/grantor", {"grantor_key": "regional_fund", "note": "n"}, RULES, 200),
+    # Owner ruling 2026-10-01: remapping a description to a grantor is the grantor directory's permission.
+    (
+        "PUT",
+        "/api/financial-aid/sources/src1/grantor",
+        {"grantor_key": "regional_fund", "note": "n"},
+        Permission.FINANCIAL_AID_GRANTORS,
+        200,
+    ),
 ]
 
 
@@ -141,15 +141,12 @@ def _stub_services() -> tuple[Any, Any]:
         )
     )
     ledger.return_value.sources = AsyncMock(return_value=AidSourcesResponse(sources=[SOURCE]))
-    ledger.return_value.dispositions = AsyncMock(return_value=DispositionsResponse(year=2026, dispositions=[]))
     writes = patch("api.routers.financial_aid.FinancialAidWriteService").start()
     writes.return_value.classify_source = AsyncMock(return_value=SOURCE)
     writes.return_value.map_source_grantor = AsyncMock(return_value=SOURCE)
     writes.return_value.create_link = AsyncMock(return_value=LINK)
     writes.return_value.delete_link = AsyncMock(return_value=None)
     writes.return_value.load_overrides = AsyncMock(return_value=BulkLoadResult(year=2026, dry_run=False))
-    writes.return_value.load_dispositions = AsyncMock(return_value=BulkLoadResult(year=2026, dry_run=False))
-    writes.return_value.delete_disposition = AsyncMock(return_value=None)
     return ledger, writes
 
 
@@ -162,21 +159,32 @@ def _stop_patches() -> Any:
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 @pytest.mark.parametrize(("method", "url", "body", "required", "ok"), ROUTES)
 def test_permission_matrix(
-    persona: str, method: str, url: str, body: dict[str, Any] | None, required: str, ok: int
+    persona: str, method: str, url: str, body: dict[str, Any] | None, required: str | tuple[str, ...], ok: int
 ) -> None:
     _stub_services()
     response = _client(persona).request(method, url, json=body)
-    expected = ok if required in PERSONAS[persona] else 403
+    accepted = (required,) if isinstance(required, str) else required
+    expected = ok if any(r in PERSONAS[persona] for r in accepted) else 403
     assert response.status_code == expected, (persona, method, url, response.text)
+
+
+def test_development_remaps_a_description_but_never_classifies_one() -> None:
+    """Owner ruling 2026-10-01: development holds financial_aid.grantors, not rules. Mapping a description to its
+    grantor is the directory's; classifying a description (what counts as aid) stays with rules."""
+    _stub_services()
+    client = _client(PERSONA_DEVELOPMENT)
+    mapping = {"grantor_key": "regional_fund", "note": "Development true-up"}
+    assert client.put("/api/financial-aid/sources/src1/grantor", json=mapping).status_code == 200
+    assert client.patch("/api/financial-aid/sources/src1", json=SOURCE_BODY).status_code == 403
+    assert client.post("/api/financial-aid/overrides/bulk", json=OVERRIDE_BODY).status_code == 403
+    assert _client(PERSONA_REGISTRAR).put("/api/financial-aid/sources/src1/grantor", json=mapping).status_code == 403
 
 
 def test_the_actor_is_the_callers_email() -> None:
     _, writes = _stub_services()
     _client(PERSONA_FINANCE).post("/api/financial-aid/overrides/bulk", json=OVERRIDE_BODY)
-    _client(PERSONA_FINANCE).post("/api/financial-aid/flag-dispositions/bulk", json=DISPOSITION_BODY)
     email = persona_user(PERSONA_FINANCE).email
-    for call in (writes.return_value.load_overrides.await_args, writes.return_value.load_dispositions.await_args):
-        assert call.args[1] == email
+    assert writes.return_value.load_overrides.await_args.args[1] == email
 
 
 def test_as_of_reaches_the_service_as_a_date() -> None:
@@ -189,19 +197,14 @@ def test_service_errors_map_to_404_and_422() -> None:
     ledger, writes = _stub_services()
     ledger.return_value.household = AsyncMock(side_effect=FinancialAidNotFoundError("no rows"))
     writes.return_value.create_link = AsyncMock(side_effect=FinancialAidValidationError("already linked"))
-    writes.return_value.delete_disposition = AsyncMock(side_effect=FinancialAidNotFoundError("gone"))
     writes.return_value.load_overrides = AsyncMock(side_effect=FinancialAidValidationError("split it"))
-    writes.return_value.load_dispositions = AsyncMock(side_effect=FinancialAidValidationError("split it"))
     client = _client(PERSONA_FINANCE)
     missing = client.get("/api/financial-aid/households/100", params={"year": 2026})
     refused = client.post("/api/financial-aid/household-links", json=LINK_BODY)
-    gone = client.delete("/api/financial-aid/flag-dispositions/d9", params={"reason": "r"})
     too_big = client.post("/api/financial-aid/overrides/bulk", json=OVERRIDE_BODY)
-    too_many = client.post("/api/financial-aid/flag-dispositions/bulk", json=DISPOSITION_BODY)
     assert missing.status_code == 404
     assert (refused.status_code, refused.json()["detail"]) == (422, "already linked")
-    assert gone.status_code == 404
-    assert (too_big.status_code, too_many.status_code) == (422, 422)  # a load over one batch is refused whole
+    assert too_big.status_code == 422  # a load over one batch is refused whole
 
 
 @pytest.mark.parametrize(
@@ -212,7 +215,6 @@ def test_service_errors_map_to_404_and_422() -> None:
         "/api/financial-aid/ledger?year=1999",
         "/api/financial-aid/summary",
         "/api/financial-aid/summary?year=2026&as_of=not-a-date",
-        "/api/financial-aid/flag-dispositions",
     ],
 )
 def test_bad_query_parameters_are_422(url: str) -> None:
@@ -229,11 +231,21 @@ def test_household_link_delete_blank_reason_is_422_and_never_writes() -> None:
     writes.return_value.delete_link.assert_not_called()
 
 
-def test_flag_disposition_delete_blank_reason_is_422_and_never_writes() -> None:
-    _, writes = _stub_services()
-    response = _client(PERSONA_FINANCE).delete("/api/financial-aid/flag-dispositions/d1?reason=%20%20%20")
-    assert response.status_code == 422
-    writes.return_value.delete_disposition.assert_not_called()
+@pytest.mark.parametrize(
+    ("method", "url"),
+    [
+        ("GET", "/api/financial-aid/flag-dispositions?year=2026"),
+        ("POST", "/api/financial-aid/flag-dispositions/bulk"),
+        ("DELETE", "/api/financial-aid/flag-dispositions/d1?reason=x"),
+    ],
+)
+def test_the_old_flag_disposition_routes_are_gone(method: str, url: str) -> None:
+    """Owner ruling 2026-10-01: the table stays (To place's Leave/Reopen use it); the routes do not.
+
+    Finance holds both view and rules, so a 403 cannot hide a route that still exists."""
+    _stub_services()
+    response = _client(PERSONA_FINANCE).request(method, url, json={} if method == "POST" else None)
+    assert response.status_code in (404, 405), (method, url, response.text)
 
 
 def test_a_household_link_that_lost_a_race_with_the_sync_is_409() -> None:
@@ -243,3 +255,19 @@ def test_a_household_link_that_lost_a_race_with_the_sync_is_409() -> None:
     )
     response = _client(PERSONA_FINANCE).post("/api/financial-aid/household-links", json=LINK_BODY)
     assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
+
+
+def test_a_grantors_only_user_reads_the_source_list() -> None:
+    """Owner ruling 2026-10-01: financial_aid.grantors alone (no view) may read the source list."""
+    from fastapi import FastAPI
+
+    from api.routers.financial_aid import router
+    from bunking.auth_middleware import get_current_user
+
+    _stub_services()
+    user = persona_user(PERSONA_DEVELOPMENT)
+    user.permissions = {Permission.FINANCIAL_AID_GRANTORS}
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: user
+    assert TestClient(app, raise_server_exceptions=False).get("/api/financial-aid/sources").status_code == 200

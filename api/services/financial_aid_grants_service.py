@@ -7,7 +7,9 @@ changes nothing writes nothing (the helper refuses to log a no-op, which would b
 actor is the real signed-in person (AuthUser.email).
 
 The grantor directory is global, like aid_sources (Decision 7); its writes are logged under the
-current season with entity_id = the grantor key.
+current season with entity_id = the grantor key. Its writes are financial_aid.grantors (owner ruling
+2026-10-01). A grantor is RETIRED, never deleted: only once no description maps to it and no open grant
+names it; it is then hidden from pickers (list_grantors) and kept for history (every other read).
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from api.schemas.financial_aid_grants import (
     GrantorCreate,
     GrantorDescription,
     GrantorOut,
+    GrantorRetireIn,
     GrantorSave,
     GrantorsResponse,
     GrantRowOut,
@@ -56,6 +59,7 @@ from api.services.financial_aid_grants_register import (
     RequestRef,
     applied_households,
     build_register,
+    expected_display_names,
     expected_grants,
     needs_attention,
     program_family_for_session_type,
@@ -90,6 +94,50 @@ class GrantorKeyTakenError(FinancialAidValidationError):
     """A grantor with that key already exists (409)."""
 
 
+class GrantorStateError(FinancialAidValidationError):
+    """Retiring a retired grantor, or unretiring one in use (409). Answered before any write, so nothing is logged."""
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+class GrantorInUseError(FinancialAidValidationError):
+    """A grantor something still points at can't be retired (409): the counts say what to fix first."""
+
+    def __init__(self, name: str, *, descriptions: int, grants: int) -> None:
+        self.descriptions = descriptions
+        self.grants = grants
+        mapped = (
+            _count(descriptions, "CampMinder description still maps", "CampMinder descriptions still map") + " to it"
+        )
+        named = _count(grants, "open grant still names", "open grants still name") + " it"
+        them = "it" if descriptions == 1 else "them"
+        grant_them = "it" if grants == 1 else "them"
+        if descriptions and grants:
+            what = f"{mapped}, and {named}"
+            fix = (
+                f"Map the {'description' if descriptions == 1 else 'descriptions'} to another grantor and move or "
+                f"withdraw the {'grant' if grants == 1 else 'grants'} first."
+            )
+        elif descriptions:
+            what, fix = mapped, f"Map {them} to another grantor first."
+        else:
+            what, fix = named, f"Move {grant_them} to another grantor or withdraw {grant_them} first."
+        super().__init__(f"{name} can't be retired yet: {what}. {fix}")
+
+
+def grantor_retired_at(record: Any) -> str:
+    """Empty for a grantor in use; when it was retired otherwise."""
+    return str(getattr(record, "retired_at", "") or "")
+
+
+def refuse_retired_grantor(record: Any) -> None:
+    """A retired grantor takes no new description or grant: either would undo what retiring it checked."""
+    if grantor_retired_at(record):
+        raise FinancialAidValidationError(f"{record.name} is retired; unretire it first")
+
+
 def _grantor_snapshot(record: Any) -> dict[str, Any]:
     return {
         "name": str(record.name or ""),
@@ -118,8 +166,10 @@ def _descriptions_by_grantor(sources: list[Any]) -> dict[str, list[GrantorDescri
     return {k: sorted(v, key=lambda d: d.description_key) for k, v in out.items()}
 
 
-def _grantor_out(key: str, fields: dict[str, Any], descriptions: list[GrantorDescription]) -> GrantorOut:
-    return GrantorOut(key=key, descriptions=descriptions, **fields)
+def _grantor_out(
+    key: str, fields: dict[str, Any], descriptions: list[GrantorDescription], retired_at: str = ""
+) -> GrantorOut:
+    return GrantorOut(key=key, descriptions=descriptions, retired_at=retired_at, **fields)
 
 
 # --- the register read: record -> dataclass converters -----------------------------
@@ -295,17 +345,23 @@ class GrantsService:
             for h, hs in family_sets.items()
         }
 
-    # --- the grantor directory (rules) ------------------------------------------
+    # --- the grantor directory (financial_aid.grantors) ------------------------------
 
-    async def list_grantors(self) -> GrantorsResponse:
-        grantors = await self.repo.fetch_grantors()
+    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse:
+        """The directory. Retired grantors are left out (pickers never offer one) unless include_retired."""
+        grantors = [g for g in await self.repo.fetch_grantors() if include_retired or not grantor_retired_at(g)]
         descriptions = _descriptions_by_grantor(await self.repo.fetch_sources())
-        rows = [_grantor_out(str(g.key), _grantor_snapshot(g), descriptions.get(str(g.key), [])) for g in grantors]
+        rows = [
+            _grantor_out(str(g.key), _grantor_snapshot(g), descriptions.get(str(g.key), []), grantor_retired_at(g))
+            for g in grantors
+        ]
         return GrantorsResponse(grantors=sorted(rows, key=lambda g: (g.name.lower(), g.key)))
 
     async def create_grantor(self, body: GrantorCreate, actor: str) -> GrantorOut:
-        if await self.repo.get_grantor(body.key) is not None:
-            raise GrantorKeyTakenError(f"a grantor with key {body.key!r} already exists")
+        existing = await self.repo.get_grantor(body.key)
+        if existing is not None:
+            retired = " (retired; unretire it instead)" if grantor_retired_at(existing) else ""
+            raise GrantorKeyTakenError(f"a grantor with key {body.key!r} already exists{retired}")
         fields = body.model_dump(include=set(GRANTOR_FIELDS))
         season = await current_season_year(self.repo.pb)  # the directory spans seasons; log the current one
         write = AidWrite(
@@ -326,8 +382,9 @@ class GrantsService:
         before = _grantor_snapshot(current)
         after = body.model_dump(include=set(GRANTOR_FIELDS))
         descriptions = _descriptions_by_grantor(await self.repo.fetch_sources()).get(key, [])
+        retired_at = grantor_retired_at(current)  # a retired grantor's facts can still be corrected
         if changed_fields(before, after) == ({}, {}):
-            return _grantor_out(key, before, descriptions)  # nothing to write, nothing to log
+            return _grantor_out(key, before, descriptions, retired_at)  # nothing to write, nothing to log
         season = await current_season_year(self.repo.pb)
         write = AidWrite(
             collection=AID_GRANTORS,
@@ -340,7 +397,60 @@ class GrantsService:
             entity_id=key,
         )
         await self._commit([write], actor=actor, reason=body.note)
-        return _grantor_out(key, after, descriptions)
+        return _grantor_out(key, after, descriptions, retired_at)
+
+    async def retire_grantor(self, key: str, body: GrantorRetireIn, actor: str) -> GrantorOut:
+        """Owner ruling 2026-10-01: only once no description maps to the grantor and no open grant names it
+        (GrantorInUseError says how many of each). Retiring a retired grantor is refused (GrantorStateError)
+        before any write, so the helper never sees a no-op.
+
+        Known limit: the in-use counts are read before the write batch, and aid_sources/aid_grants carry no
+        revision to guard on, so a remap or new grant racing a retire can leave a retired grantor still named.
+        Nothing is lost (history still resolves it) and unretire repairs it; with a handful of staff the window
+        is tiny, so it is accepted rather than adding revision fields."""
+        current = await self.repo.get_grantor(key)
+        if current is None:
+            raise FinancialAidNotFoundError(f"grantor {key!r} not found")
+        if grantor_retired_at(current):
+            raise GrantorStateError(f"{current.name} is already retired")
+        sources, open_grants = await asyncio.gather(
+            self.repo.fetch_sources(), self.repo.fetch_open_commitments_naming(key)
+        )
+        mapped = sum(1 for s in sources if str(getattr(s, "grantor_key", "") or "") == key)
+        if mapped or open_grants:
+            raise GrantorInUseError(str(current.name), descriptions=mapped, grants=len(open_grants))
+        retired_at = self._clock().astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+        await self._set_retired_at(current, key, retired_at, "retire", body.reason, actor)
+        return _grantor_out(key, _grantor_snapshot(current), [], retired_at)
+
+    async def unretire_grantor(self, key: str, body: GrantorRetireIn, actor: str) -> GrantorOut:
+        """Puts a retired grantor back in the pickers (development trues up the directory after the seed, and a
+        retire can be a mistake). Same permission, a reason required and logged; an active one is refused."""
+        current = await self.repo.get_grantor(key)
+        if current is None:
+            raise FinancialAidNotFoundError(f"grantor {key!r} not found")
+        if not grantor_retired_at(current):
+            raise GrantorStateError(f"{current.name} isn't retired")
+        await self._set_retired_at(current, key, "", "unretire", body.reason, actor)
+        descriptions = _descriptions_by_grantor(await self.repo.fetch_sources()).get(key, [])
+        return _grantor_out(key, _grantor_snapshot(current), descriptions)
+
+    async def _set_retired_at(
+        self, current: Any, key: str, retired_at: str, log_action: str, reason: str, actor: str
+    ) -> None:
+        season = await current_season_year(self.repo.pb)  # the directory spans seasons; log the current one
+        write = AidWrite(
+            collection=AID_GRANTORS,
+            action="update",
+            year=season,
+            record_id=str(current.id),
+            before={"retired_at": grantor_retired_at(current)},
+            data={"retired_at": retired_at, "note": reason},
+            after={"retired_at": retired_at},
+            log_action=log_action,
+            entity_id=key,
+        )
+        await self._commit([write], actor=actor, reason=reason, require_reason=True)
 
     # --- the register read (view) ------------------------------------------------
 
@@ -498,6 +608,8 @@ class GrantsService:
             if getattr(s, "grantor_key", ""):
                 grantor_families[str(s.grantor_key)].add(str(s.source_family))
         expected = expected_grants(answers, rows, {k: frozenset(v) for k, v in grantor_families.items()})
+        active_names = {str(g.key): str(g.name) for g in grantors_raw if not grantor_retired_at(g)}
+        display = expected_display_names({k: frozenset(v) for k, v in grantor_families.items()}, active_names)
 
         household_names = {int(h.cm_id): h for h in household_rows}
         grantor_names = {str(g.key): str(g.name) for g in grantors_raw}
@@ -604,6 +716,7 @@ class GrantsService:
                     kind=e.kind,
                     person_cm_ids=list(e.person_cm_ids),
                     camper_names=[name_of(cm) for cm in e.person_cm_ids],
+                    display_name=display.get(e.kind),
                 )
                 for e in expected
             ],
@@ -713,8 +826,10 @@ class GrantsService:
         """Checks a commitment against the directory and the season, and resolves its program
         family. Membership and family inference mirror place()'s ruled pattern exactly (Ruling
         1/2), via the same `_family_members` and `_program_family` helpers."""
-        if await self.repo.get_grantor(body.grantor_key) is None:
+        grantor = await self.repo.get_grantor(body.grantor_key)
+        if grantor is None:
             raise FinancialAidNotFoundError(f"grantor {body.grantor_key!r} not found")
+        refuse_retired_grantor(grantor)
         funders = {
             str(s.funder_type)
             for s in await self.repo.fetch_sources()

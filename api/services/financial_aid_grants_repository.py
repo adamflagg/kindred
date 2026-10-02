@@ -17,6 +17,7 @@ from api.constants.collections import (
 )
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_repository import STABLE_SORT
+from api.utils.pb_filters import pb_escape
 
 
 class GrantsRepository(FinancialAidRepository):
@@ -28,6 +29,12 @@ class GrantsRepository(FinancialAidRepository):
 
     async def fetch_commitments(self, year: int) -> list[Any]:
         return await self._page(AID_GRANTS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
+
+    async def fetch_open_commitments_naming(self, grantor_key: str) -> list[Any]:
+        """Every season's open commitments naming this grantor: what stops it being retired. A withdrawn
+        commitment counts toward nothing and can't be edited, so it never blocks."""
+        flt = f"grantor_key = '{pb_escape(grantor_key)}' && status = 'open'"
+        return await self._page(AID_GRANTS, {"filter": flt, "fields": "id", "sort": STABLE_SORT})
 
     async def get_commitment(self, commitment_id: str) -> Any | None:
         return await self._one(AID_GRANTS, commitment_id)

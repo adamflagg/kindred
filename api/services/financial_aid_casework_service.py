@@ -17,11 +17,11 @@ read before. Corrections and capacity are not intake's and do not wait.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
@@ -86,6 +86,7 @@ from api.services.financial_aid_payer_shares import (
     split_award,
     validate_shares,
 )
+from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
@@ -170,10 +171,17 @@ def answer_out(value: EffectiveValue) -> AnswerOut:
 _CONFLICT_CODES = frozenset({"income_conflict", "household_answer_conflict"})
 
 
+_ANSWER_FIELDS: Final = frozenset(APPLICATION_CORRECTABLE) | frozenset(REQUEST_CORRECTABLE)
+
+
 def _live_correction_count(corrections: Sequence[CorrectionRecord]) -> int:
+    """The family's corrected intake answers. The request cost override is a correction row too
+    (financial_aid_request_overrides) but no corrected answer, so it never counts here; nor does a legacy
+    include_override row, which nothing reads."""
     latest: dict[tuple[str, str], CorrectionRecord] = {}
     for c in sorted(corrections, key=lambda c: (c.created, c.id)):
-        latest[(c.request_id, c.field)] = c
+        if c.field in _ANSWER_FIELDS:
+            latest[(c.request_id, c.field)] = c
     return sum(1 for c in latest.values() if c.new_value != REVERT)
 
 
@@ -265,14 +273,19 @@ def _share_fields(share: PayerShareRecord) -> dict[str, Any]:
     }
 
 
+ReasonCodes = Callable[[int], Awaitable[tuple[str, ...]]]  # the season's cost.override_reasons (Decision 6)
+
+
 class FinancialAidCaseworkService:
     def __init__(
         self,
         store: CaseworkStore,
         award_source: AwardSource | None = None,
+        reason_codes: ReasonCodes | None = None,
     ) -> None:
         self._store = store
         self._award_source = award_source
+        self._reason_codes = reason_codes
 
     async def _require_application(self, year: int, household_cm_id: int) -> ApplicationRecord:
         application = await self._store.fetch_application(year, household_cm_id)
@@ -601,12 +614,20 @@ class FinancialAidCaseworkService:
         source: str,
         reason: str,
         actor: str,
+        reason_code: str | None = None,
     ) -> RequestOut:
         async with self._locked(request_id) as request:
-            return await self._set_headcount(request, non_infant, infant, source, reason, actor)
+            return await self._set_headcount(request, non_infant, infant, source, reason, actor, reason_code)
 
     async def _set_headcount(
-        self, request: RequestRecord, non_infant: int, infant: int, source: str, reason: str, actor: str
+        self,
+        request: RequestRecord,
+        non_infant: int,
+        infant: int,
+        source: str,
+        reason: str,
+        actor: str,
+        reason_code: str | None = None,
     ) -> RequestOut:
         if request.person_cm_id != 0 or request.program_key != PROGRAM_FAMILY_CAMP:
             raise CaseworkValidationError("a headcount belongs to a family-camp request")
@@ -618,12 +639,19 @@ class FinancialAidCaseworkService:
             raise CaseworkValidationError("a family needs at least one person")
         if not reason.strip():
             raise CaseworkValidationError("a reason is required")
+        if reason_code is not None:
+            codes = await self._reason_codes(request.year) if self._reason_codes is not None else DEFAULT_REASON_CODES
+            if reason_code not in codes:
+                raise CaseworkValidationError(
+                    f"{reason_code} is not one of {request.year}'s reason codes ({', '.join(codes)})"
+                )
         updated = await self._commit_request_change(
             request,
             {"headcount_non_infant": non_infant, "headcount_infant": infant, "headcount_source": source},
             "set_headcount",
             actor=actor,
-            reason=reason,
+            # The code leads the operation's reason, the one place a log row keeps it.
+            reason=f"{reason_code}: {reason.strip()}" if reason_code else reason,
         )
         return await self._request_out(updated)
 

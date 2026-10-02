@@ -193,6 +193,9 @@ class RegisterRow:
     fulfils_commitment_id: str
     requests: tuple[RequestShare, ...]  # the aid requests it sits on; () = didn't apply
     pays_after_camp_aid: bool = False  # D143: its grantor pays what the camp's award leaves
+    # A ledger line's own CampMinder post instant (recorded_at can be an earlier commitment's); None for a
+    # commitment, or a line with no post date. To place's D16b check reads it.
+    posted_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -496,6 +499,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                     )
                 ),
                 pays_after_camp_aid=grantor in inputs.pays_after_grantors,
+                posted_at=parse_pb_datetime(line.post_date),
             )
         )
     fulfilled_ids = {c.id for c in fulfilled.values()}
@@ -808,6 +812,20 @@ _EXPECTED_SOURCE_FAMILY: Final[Mapping[ExpectedKind, str]] = {
     "one_happy_camper": "one_happy_camper",
     "synagogue": "synagogue_federation",
 }
+
+
+def expected_display_names(
+    grantor_families: Mapping[str, frozenset[str]], grantor_names: Mapping[str, str]
+) -> dict[ExpectedKind, str]:
+    """An Expected kind's display name (slice 1 read 10): the one active grantor whose descriptions carry the kind's
+    source family. A kind several grantors share (a synagogue campership), or none carries, has no name, and the screen
+    keeps its generic words. `grantor_names` holds active grantors only. The name is the directory's data, never code's."""
+    out: dict[ExpectedKind, str] = {}
+    for kind, family in _EXPECTED_SOURCE_FAMILY.items():
+        keys = sorted(k for k, families in grantor_families.items() if family in families and k in grantor_names)
+        if len(keys) == 1:
+            out[kind] = grantor_names[keys[0]]
+    return out
 
 
 @dataclass(frozen=True)

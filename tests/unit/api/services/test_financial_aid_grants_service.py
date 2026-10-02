@@ -16,12 +16,19 @@ from pydantic import ValidationError
 from api.schemas.financial_aid_grants import (
     CommitmentIn,
     GrantorCreate,
+    GrantorRetireIn,
     GrantorSave,
     GrantsResponse,
     PlaceGrantsIn,
     WithdrawIn,
 )
-from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService, OneGrantsLoad
+from api.services.financial_aid_grants_service import (
+    GrantorInUseError,
+    GrantorKeyTakenError,
+    GrantorStateError,
+    GrantsService,
+    OneGrantsLoad,
+)
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from tests.unit.api.services.aid_commit_spy import AidCommitSpy, spy_on_commits
 
@@ -41,6 +48,7 @@ def _grantor(**kw: Any) -> SimpleNamespace:
         "eligibility": "",
         "contacts": "",
         "note": "",
+        "retired_at": "",
     }
     base.update(kw)
     return SimpleNamespace(**base)
@@ -71,6 +79,7 @@ def _repo(**values: Any) -> MagicMock:
     repo.fetch_grantors = AsyncMock(return_value=values.get("grantors", []))
     repo.get_grantor = AsyncMock(return_value=values.get("grantor"))
     repo.fetch_sources = AsyncMock(return_value=values.get("sources", []))
+    repo.fetch_open_commitments_naming = AsyncMock(return_value=values.get("open_commitments", []))
     return repo
 
 
@@ -175,6 +184,178 @@ async def test_save_grantor_of_an_unknown_key_is_not_found() -> None:
     service, _ = _service(_repo(grantor=None))
     with pytest.raises(FinancialAidNotFoundError):
         await service.save_grantor("nobody", _save(), ACTOR)
+
+
+# --- retiring a grantor (owner ruling 2026-10-01) ----------------------------------------
+
+RETIRED_AT = "2031-02-01 18:30:00.000Z"
+NOW = datetime(2031, 2, 1, 18, 30, tzinfo=UTC)
+
+
+def _retire(reason: str = "Folded into the regional fund") -> GrantorRetireIn:
+    return GrantorRetireIn(reason=reason)
+
+
+def _clocked(repo: MagicMock) -> tuple[GrantsService, AidCommitSpy]:
+    spy = spy_on_commits(SERVICE)
+    patch(f"{SERVICE}.current_season_year", AsyncMock(return_value=2031)).start()
+    return GrantsService(repo, clock=lambda: NOW), spy
+
+
+@pytest.mark.asyncio
+async def test_retiring_an_unused_grantor_stamps_retired_at_and_logs_the_reason() -> None:
+    service, spy = _clocked(_repo(grantor=_grantor()))
+    out = await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert out.retired_at == RETIRED_AT
+    assert out.key == "regional_fund"
+    (write,) = spy.writes
+    assert write.collection == "aid_grantors"
+    assert write.action == "update"
+    assert write.record_id == "gra000000000001"
+    assert write.entity_id == "regional_fund"
+    assert write.log_action == "retire"
+    assert write.year == 2031
+    assert write.data == {"retired_at": RETIRED_AT, "note": "Folded into the regional fund"}
+    assert spy.kwargs["reason"] == "Folded into the regional fund"
+    assert spy.kwargs["require_reason"] is True
+    assert spy.kwargs["actor"] == ACTOR
+    (log,) = spy.log_rows()
+    assert log["action"] == "retire"
+    assert log["before"] == {"retired_at": ""}
+    assert log["after"] == {"retired_at": RETIRED_AT}
+    assert log["reason"] == "Folded into the regional fund"
+
+
+@pytest.mark.asyncio
+async def test_a_grantor_a_description_still_maps_to_is_not_retired() -> None:
+    repo = _repo(
+        grantor=_grantor(),
+        sources=[
+            _source("regional grant - north", "regional_fund"),
+            _source("regional grant - south", "regional_fund"),
+            _source("city grant", "city_fund"),
+        ],
+    )
+    service, spy = _clocked(repo)
+    with pytest.raises(GrantorInUseError) as caught:
+        await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert (caught.value.descriptions, caught.value.grants) == (2, 0)
+    assert str(caught.value) == (
+        "Regional Fund can't be retired yet: 2 CampMinder descriptions still map to it. "
+        "Map them to another grantor first."
+    )
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_grantor_an_open_grant_names_is_not_retired() -> None:
+    open_grant = SimpleNamespace(id="com000000000001", grantor_key="regional_fund", status="open")
+    service, spy = _clocked(_repo(grantor=_grantor(), open_commitments=[open_grant]))
+    with pytest.raises(GrantorInUseError) as caught:
+        await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert (caught.value.descriptions, caught.value.grants) == (0, 1)
+    assert str(caught.value) == (
+        "Regional Fund can't be retired yet: 1 open grant still names it. "
+        "Move it to another grantor or withdraw it first."
+    )
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_grantor_in_use_both_ways_says_both() -> None:
+    commitments = [SimpleNamespace(id=f"com00000000000{i}", grantor_key="regional_fund") for i in (1, 2)]
+    repo = _repo(grantor=_grantor(), sources=[_source("regional grant", "regional_fund")], open_commitments=commitments)
+    service, spy = _clocked(repo)
+    with pytest.raises(GrantorInUseError) as caught:
+        await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert str(caught.value) == (
+        "Regional Fund can't be retired yet: 1 CampMinder description still maps to it, "
+        "and 2 open grants still name it. Map the description to another grantor and move or withdraw "
+        "the grants first."
+    )
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_the_in_use_check_asks_for_this_grantors_open_grants() -> None:
+    repo = _repo(grantor=_grantor())
+    service, _ = _clocked(repo)
+    await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    repo.fetch_open_commitments_naming.assert_awaited_once_with("regional_fund")
+
+
+@pytest.mark.asyncio
+async def test_retiring_a_retired_grantor_is_refused_and_logs_nothing() -> None:
+    service, spy = _clocked(_repo(grantor=_grantor(retired_at=RETIRED_AT)))
+    with pytest.raises(GrantorStateError, match=r"^Regional Fund is already retired$"):
+        await service.retire_grantor("regional_fund", _retire(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_retiring_an_unknown_grantor_is_not_found() -> None:
+    service, spy = _clocked(_repo(grantor=None))
+    with pytest.raises(FinancialAidNotFoundError):
+        await service.retire_grantor("nobody", _retire(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_unretiring_clears_retired_at_and_logs_the_reason() -> None:
+    service, spy = _clocked(_repo(grantor=_grantor(retired_at=RETIRED_AT)))
+    out = await service.unretire_grantor("regional_fund", _retire("Retired by mistake"), ACTOR)
+    assert out.retired_at == ""
+    (write,) = spy.writes
+    assert write.log_action == "unretire"
+    assert write.data == {"retired_at": "", "note": "Retired by mistake"}
+    assert spy.kwargs["require_reason"] is True
+    (log,) = spy.log_rows()
+    assert log["action"] == "unretire"
+    assert log["before"] == {"retired_at": RETIRED_AT}
+    assert log["after"] == {"retired_at": ""}
+
+
+@pytest.mark.asyncio
+async def test_unretiring_an_active_grantor_is_refused_and_logs_nothing() -> None:
+    service, spy = _clocked(_repo(grantor=_grantor()))
+    with pytest.raises(GrantorStateError, match=r"^Regional Fund isn't retired$"):
+        await service.unretire_grantor("regional_fund", _retire(), ACTOR)
+    assert not spy.called
+
+
+def test_a_retire_reason_is_required() -> None:
+    with pytest.raises(ValidationError):
+        GrantorRetireIn(reason="   ")
+    with pytest.raises(ValidationError):
+        GrantorRetireIn()  # type: ignore[call-arg]
+
+
+@pytest.mark.asyncio
+async def test_the_directory_hides_retired_grantors_unless_asked() -> None:
+    repo = _repo(
+        grantors=[_grantor(), _grantor(id="gra2", key="old_fund", name="Old Fund", retired_at=RETIRED_AT)],
+    )
+    service, _ = _service(repo)
+    assert [g.key for g in (await service.list_grantors()).grantors] == ["regional_fund"]
+    every = (await service.list_grantors(include_retired=True)).grantors
+    assert [(g.key, g.retired_at) for g in every] == [("old_fund", RETIRED_AT), ("regional_fund", "")]
+
+
+@pytest.mark.asyncio
+async def test_a_retired_grantors_key_is_still_taken() -> None:
+    service, spy = _service(_repo(grantor=_grantor(retired_at=RETIRED_AT)))
+    with pytest.raises(GrantorKeyTakenError, match="retired; unretire it instead"):
+        await service.create_grantor(_create(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_retired_grantor_can_still_be_saved_and_reads_back_retired() -> None:
+    service, spy = _service(_repo(grantor=_grantor(retired_at=RETIRED_AT)))
+    out = await service.save_grantor("regional_fund", _save(contacts="Archive copy"), ACTOR)
+    assert out.retired_at == RETIRED_AT
+    (log,) = spy.log_rows()
+    assert set(log["after"]) == {"contacts"}
 
 
 def test_covers_canteen_is_recorded_only_for_a_full_coverage_grantor() -> None:
@@ -520,6 +701,23 @@ async def test_read_lists_expected_from_yes_answers() -> None:
         [1002],
         ["Liam Johnson"],
     )
+
+
+@pytest.mark.asyncio
+async def test_an_expected_grant_carries_its_one_active_grantors_name() -> None:
+    answer = SimpleNamespace(
+        person_id=1002, one_happy_camper="Yes", synagogue_grant="No", expand={"household": SimpleNamespace(cm_id=100)}
+    )
+    repo = _read_repo(answers=[answer])
+    repo.fetch_sources = AsyncMock(
+        return_value=[_source("camper fund", "regional_fund", source_family="one_happy_camper")]
+    )
+    (expected,) = (await _service(repo)[0].read(2031)).expected
+    assert expected.display_name == "Regional Fund"
+    retired = _grantor(retired_at="2031-01-01 00:00:00.000Z")
+    repo.fetch_grantors = AsyncMock(return_value=[retired])
+    (expected,) = (await _service(repo)[0].read(2031)).expected
+    assert expected.display_name is None
 
 
 @pytest.mark.asyncio
@@ -879,6 +1077,18 @@ async def test_a_commitment_needs_a_known_grantor() -> None:
     service, spy = _service(_commit_repo(grantor=None))
     with pytest.raises(FinancialAidNotFoundError, match="grantor"):
         await service.create_commitment(2031, _commitment_in(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_cannot_name_a_retired_grantor() -> None:
+    """A retired grantor is hidden from pickers; a grant naming one would also undo what retiring it checked."""
+    retired = _grantor(retired_at="2031-02-01 18:30:00.000Z")
+    service, spy = _service(_commit_repo(grantor=retired, commitment=_stored()))
+    with pytest.raises(FinancialAidValidationError, match=r"^Regional Fund is retired; unretire it first$"):
+        await service.create_commitment(2031, _commitment_in(), ACTOR)
+    with pytest.raises(FinancialAidValidationError, match="retired"):
+        await service.save_commitment(2031, "com000000000001", _commitment_in(), ACTOR)
     assert not spy.called
 
 

@@ -59,6 +59,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
+from api.services.pb_precise_datetime import aid_collection
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow, replay
@@ -135,6 +136,25 @@ class NotLatestVersionError(FinancialAidError, ValueError):
     An older version is read-only once a newer one exists -- branch from the
     latest version instead (`new_version`).
     """
+
+
+class SectionChangedError(FinancialAidError, ValueError):
+    """A section save or approval named a fingerprint that is no longer the section's: someone changed it since the
+    editor opened it. Names every stale section; nothing is written."""
+
+    def __init__(self, sections: Sequence[str], message: str | None = None) -> None:
+        self.sections = list(sections)
+        super().__init__(
+            message
+            or (
+                f"Someone else saved {', '.join(self.sections)} since you opened "
+                f"{'it' if len(self.sections) == 1 else 'them'}; reload to see their change"
+            )
+        )
+
+
+class FingerprintsMismatchError(FinancialAidError, ValueError):
+    """An approval's fingerprints do not name exactly the sections being approved."""
 
 
 class NoSectionsNamedError(FinancialAidError, ValueError):
@@ -214,6 +234,7 @@ class DraftSection:
     section: SectionName
     status: SectionStatus
     changes: tuple[FieldChange, ...]
+    fingerprint: str  # of the section's stored content: a save or approval names the one the editor opened
 
 
 @dataclass(frozen=True)
@@ -350,7 +371,7 @@ class AidRulesRepository:
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
-            self.pb.collection(collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
+            aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
 
@@ -502,6 +523,44 @@ def _status_write(
     )
 
 
+def _approved_at(
+    sections: Collection[SectionName], at: datetime, current: Mapping[str, dict[str, Any]], log: Sequence[LogRow]
+) -> RulesVersion | None:
+    """approved_as_of's replay over one read: the newest version whose `sections` were approved or locked at
+    `at`. Raises RulesHistoryIncompleteError for a version whose history can't be replayed to `at`."""
+    made = {_version_key(row) for row in log if row.before is None and row.entity_id == _version_key(row)}
+    replayed = replay(log, as_of=at, key=_version_key, current=current)
+    for name in sorted({*replayed, *current}, key=lambda k: int(k.split(":")[1]), reverse=True):
+        version = replayed.get(name)
+        if version is None:
+            # No row by `at`: legitimately made later, unless its create row is missing altogether.
+            if name in made:
+                continue
+            raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history has no create to replay from")
+        if not version.complete:
+            raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
+        state = version.state
+        if state is None:
+            continue  # deleted by `at`
+        try:
+            status = status_from_json(state.get("section_status"))
+            if not all(status[section].state in ("approved", "locked") for section in sections):
+                continue
+            return RulesVersion(
+                record_id="",  # rebuilt from the log; read-only
+                year=int(state["year"]),
+                version=int(state["version"]),
+                document=AidRules.model_validate(state.get("document") or {}),
+                section_status=status,
+                parent_year=int(state.get("parent_year") or 0) or None,
+                parent_version=int(state.get("parent_version") or 0) or None,
+            )
+        except (SectionStatusMissingError, KeyError, TypeError, ValueError) as exc:
+            # ValueError covers pydantic's ValidationError
+            raise RulesHistoryIncompleteError(f"aid_rules {name}: its replayed state is malformed") from exc
+    return None
+
+
 class FinancialAidRulesService:
     def __init__(self, store: AidRulesStore, *, clock: Callable[[], datetime] | None = None) -> None:
         self._store = store
@@ -543,6 +602,7 @@ class FinancialAidRulesService:
                 section=name,
                 status=current.section_status[name],
                 changes=tuple(field_changes(base[name], now[name])) if base is not None else (),
+                fingerprint=section_fingerprint(current.document, name),
             )
             for name in SECTION_NAMES
         )
@@ -582,6 +642,26 @@ class FinancialAidRulesService:
         approval and lock is logged with its before and after, 4a), then latest_approved's rule. A
         later edit, re-approval or new version changes nothing earlier. A version whose history
         can't be replayed raises rather than letting an older version answer in its place."""
+        current, log = await self._replay_inputs(year)
+        return _approved_at(sections, at, current, log)
+
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]:
+        """approved_as_of at several instants from ONE read of the versions and the log (D16b: the rules at the
+        end of each posting day To place checks), and the instants whose history can't be replayed, apart."""
+        current, log = await self._replay_inputs(year)
+        found: dict[datetime, RulesVersion | None] = {}
+        unknown: set[datetime] = set()
+        for at in ats:
+            try:
+                found[at] = _approved_at(sections, at, current, log)
+            except RulesHistoryIncompleteError:
+                unknown.add(at)
+        return found, frozenset(unknown)
+
+    async def _replay_inputs(self, year: int) -> tuple[dict[str, dict[str, Any]], list[LogRow]]:
+        """Each version as it stands now (the replay's `current`) and the season's rules log."""
         # `current` settles two same-instant rows that changed the same field with nothing after them.
         # list_versions is read BEFORE fetch_log, so `current` never runs ahead of the log.
         current = {
@@ -591,38 +671,7 @@ class FinancialAidRulesService:
             }
             for row in await self._store.list_versions(year)
         }
-        log = await self._store.fetch_log(year)
-        made = {_version_key(row) for row in log if row.before is None and row.entity_id == _version_key(row)}
-        replayed = replay(log, as_of=at, key=_version_key, current=current)
-        for name in sorted({*replayed, *current}, key=lambda k: int(k.split(":")[1]), reverse=True):
-            version = replayed.get(name)
-            if version is None:
-                # No row by `at`: legitimately made later, unless its create row is missing altogether.
-                if name in made:
-                    continue
-                raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history has no create to replay from")
-            if not version.complete:
-                raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
-            state = version.state
-            if state is None:
-                continue  # deleted by `at`
-            try:
-                status = status_from_json(state.get("section_status"))
-                if not all(status[section].state in ("approved", "locked") for section in sections):
-                    continue
-                return RulesVersion(
-                    record_id="",  # rebuilt from the log; read-only
-                    year=int(state["year"]),
-                    version=int(state["version"]),
-                    document=AidRules.model_validate(state.get("document") or {}),
-                    section_status=status,
-                    parent_year=int(state.get("parent_year") or 0) or None,
-                    parent_version=int(state.get("parent_version") or 0) or None,
-                )
-            except (SectionStatusMissingError, KeyError, TypeError, ValueError) as exc:
-                # ValueError covers pydantic's ValidationError
-                raise RulesHistoryIncompleteError(f"aid_rules {name}: its replayed state is malformed") from exc
-        return None
+        return current, await self._store.fetch_log(year)
 
     async def validate_document(self, document: AidRules) -> ValidationReport:
         """Validation against the season's synced sessions. A season with none synced
@@ -704,7 +753,13 @@ class FinancialAidRulesService:
         return await self.load(year, current.version), report
 
     async def save_sections(
-        self, year: int, base_version: int, candidate: AidRules, *, actor: str, via: str | None = None
+        self,
+        year: int,
+        base_version: int,
+        candidate: AidRules,
+        *,
+        actor: str,
+        via: str | None = None,
     ) -> SectionSaveResult:
         """Save `candidate` over the rules draft (the latest version), which the editor opened as `base_version`.
 
@@ -725,12 +780,22 @@ class FinancialAidRulesService:
         return await self._save_over(current, candidate, actor=actor, via=via)
 
     async def save_section(
-        self, year: int, base_version: int, section: SectionName, content: Mapping[str, Any], *, actor: str
+        self,
+        year: int,
+        base_version: int,
+        section: SectionName,
+        content: Mapping[str, Any],
+        *,
+        actor: str,
+        expected_fingerprint: str | None = None,
     ) -> SectionSaveResult:
         """One section editor's save: `content` (that section's JSON) merged into the rules draft this call loads,
         then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
-        earlier, means a save that landed in between is never silently reverted."""
+        earlier, means a save that landed in between is never silently reverted. `expected_fingerprint` (the router
+        always sends it) is the section's fingerprint as the editor opened it: a section saved since is refused."""
         current = await self._rules_draft(year, base_version)
+        if expected_fingerprint is not None:
+            _assert_unchanged(current, {section: expected_fingerprint})
         return await self._save_over(current, parse_section(current.document, section, content), actor=actor, via=None)
 
     async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
@@ -878,17 +943,30 @@ class FinancialAidRulesService:
         return await self.approve_sections(year, version, [section], actor=actor, note=note)
 
     async def approve_sections(
-        self, year: int, version: int, sections: Sequence[SectionName], *, actor: str, note: str | None
+        self,
+        year: int,
+        version: int,
+        sections: Sequence[SectionName],
+        *,
+        actor: str,
+        note: str | None,
+        fingerprints: Mapping[SectionName, str] | None = None,
     ) -> tuple[RulesVersion, ValidationReport]:
         """Approve `sections` as ONE operation: a log row per section, the note (naming the
         approving body, D39) as each row's reason. All or nothing: every approval is checked
         before anything is sent, so one section that cannot be approved stops them all.
-        The report comes back so its warnings (no_sessions_to_check) reach the approver."""
+        The report comes back so its warnings (no_sessions_to_check) reach the approver. `fingerprints` (the router
+        always sends them) are the ticked sections' fingerprints as the approver saw them: one changed since is
+        refused, naming it, before anything is approved."""
         named = list(dict.fromkeys(sections))
         if not named:
             raise NoSectionsNamedError("Name at least one section to approve")
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
+        if fingerprints is not None:
+            if set(fingerprints) != set(named):
+                raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
+            _assert_unchanged(current, fingerprints)
         report = await self.validate_document(current.document)
         at = self._clock()
         status = current.section_status
@@ -1056,3 +1134,22 @@ class FinancialAidRulesService:
 
 def _dump(document: AidRules) -> dict[str, Any]:
     return document.model_dump(mode="json")
+
+
+def section_fingerprint(document: AidRules, section: SectionName) -> str:
+    """sha256 of one section's stored content as canonical JSON (sorted keys, no spaces): stable across key order,
+    and it moves only when that section's content does, so a save to another section never invalidates it."""
+    canonical = json.dumps(_dump(document)[section], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _assert_unchanged(current: RulesVersion, expected: Mapping[SectionName, str]) -> None:
+    """Refuse when any section named in `expected` no longer has the fingerprint the caller opened. Run on the same
+    read the write is built from and guarded with the revision of (G6), so a save landing after it is refused there."""
+    stale = [
+        name
+        for name in SECTION_NAMES
+        if name in expected and section_fingerprint(current.document, name) != expected[name]
+    ]
+    if stale:
+        raise SectionChangedError(stale)

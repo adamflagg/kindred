@@ -17,6 +17,7 @@ from api.services.financial_aid_grants_register import (
     RequestRef,
     RequestShare,
     build_register,
+    expected_display_names,
     expected_grants,
     grant_inputs_by_request,
     needs_attention,
@@ -1016,3 +1017,32 @@ def test_expected_is_never_a_grant() -> None:
 
 def test_an_answer_with_no_household_is_skipped() -> None:
     assert expected_grants([FormAnswer(EMMA, 0, True, True)], [], FAMILIES) == []
+
+
+def test_a_fulfilled_commitments_line_still_carries_its_own_post_instant() -> None:
+    """D16b: To place tests a ledger grant's own CampMinder post date, which recorded_at (the earlier
+    commitment's) hides; a line posted after the posting day must still read as posted then."""
+    line = _line(person_cm_id=EMMA, post_date="2031-03-15 17:00:00.000Z")
+    row = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))[0]
+    assert row.posted_at == datetime(2031, 3, 15, 17, 0, tzinfo=UTC)
+    assert row.recorded_at == datetime(2031, 1, 21, 18, 0, tzinfo=UTC)  # unchanged (Decision 5)
+
+
+def test_an_expected_kind_is_named_after_its_one_grantor() -> None:
+    """Read 10: the grantor directory's own name (data, never code), when exactly one active grantor carries the
+    kind's source family."""
+    families = {"regional_fund": frozenset({"one_happy_camper"})}
+    assert expected_display_names(families, {"regional_fund": "Regional Camp Fund"}) == {
+        "one_happy_camper": "Regional Camp Fund"
+    }
+
+
+def test_a_kind_two_grantors_share_has_no_name() -> None:
+    families = {"riverside": frozenset({"synagogue_federation"}), "hillside": frozenset({"synagogue_federation"})}
+    names = {"riverside": "Riverside Congregation", "hillside": "Hillside Congregation"}
+    assert expected_display_names(families, names) == {}
+
+
+def test_a_retired_grantor_names_nothing() -> None:
+    """The caller passes only active grantors' names; a family carried only by a retired one has no name."""
+    assert expected_display_names({"old_fund": frozenset({"one_happy_camper"})}, {}) == {}

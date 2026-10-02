@@ -63,8 +63,10 @@ from api.services.financial_aid_intake_types import (
     PayerShareRecord,
     RequestRecord,
     SessionRow,
+    equity_from_json,
 )
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
+from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.rules.schema import AidRules, SectionName
@@ -226,6 +228,7 @@ def _request(record: Any) -> RequestRecord:
         status=_str(record.status),
         duplicate_of=_str(getattr(record, "duplicate_of", "")),
         flags=tuple(_json(getattr(record, "flags", None), [])),
+        equity=equity_from_json(_json(getattr(record, "equity", None), None)),
     )
 
 
@@ -288,7 +291,7 @@ class FinancialAidIntakeRepository:
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
-            self.pb.collection(collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
+            aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
 

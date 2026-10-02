@@ -35,6 +35,7 @@ from api.services.financial_aid_intake_types import (
     PayerShareRecord,
     RequestRecord,
     SessionRow,
+    equity_from_json,
 )
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.rules.schema import AidRules
@@ -120,6 +121,14 @@ def intake_rules() -> AidRules:
 
 def _tupled(changes: Mapping[str, Any]) -> dict[str, Any]:
     return {k: tuple(v) if isinstance(v, list) else v for k, v in changes.items()}
+
+
+def _request_changes(changes: Mapping[str, Any]) -> dict[str, Any]:
+    """A request update's fields as the record holds them: the equity copy parsed as the repository does."""
+    out = _tupled(changes)
+    if "equity" in out:
+        out["equity"] = equity_from_json(out["equity"])
+    return out
 
 
 # Everything a batch can change; a failed batch restores all of it.
@@ -384,9 +393,10 @@ class FakeAidStore:
                 status=body["status"],
                 duplicate_of=body.get("duplicate_of", ""),
                 flags=tuple(body["flags"]),
+                equity=equity_from_json(body.get("equity")),
             )
         elif collection == AID_REQUESTS:
-            self.requests[rid] = replace(self.requests[rid], **_tupled(body))
+            self.requests[rid] = replace(self.requests[rid], **_request_changes(body))
         elif collection == AID_PAYER_SHARES and method == "POST":
             self.payer_shares[rid] = PayerShareRecord(
                 id=rid,

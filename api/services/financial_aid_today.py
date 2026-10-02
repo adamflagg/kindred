@@ -4,8 +4,7 @@ as the lists). The casework lines count the queue memberships the Requests grid 
 register's needs-attention groups; the finance lines read the same rows plus the rules draft and the
 season's descriptions. Counts of work carry no basis word and no definition (D20).
 
-Not here yet: To place (SP11-rest builds it) and the intake run's equity_field_never_true warning
-(it is computed by the intake run and not stored where a read can find it).
+Not here yet: To place (SP11-rest builds it).
 """
 
 from __future__ import annotations
@@ -31,11 +30,13 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
-from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
+from api.services.financial_aid_intake_service import never_true_fields
+from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_queues import UNRECONCILED
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES
+from bunking.financial_aid.rules.schema import AidRules
 
 CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "needs_offer",
@@ -49,7 +50,14 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "grants",
     "late_full_coverage",
 )
-FINANCE_LINES: Final[tuple[TodayKey, ...]] = ("pending_approval", "rules_sections", "would_change", "sources", "intake")
+FINANCE_LINES: Final[tuple[TodayKey, ...]] = (
+    "pending_approval",
+    "rules_sections",
+    "would_change",
+    "sources",
+    "intake",
+    "equity_field_never_true",
+)
 WAITING_TOO_LONG_DAYS: Final = 14  # §6.4: "how many over 14 days"
 
 
@@ -63,6 +71,7 @@ class TodayInputs:
     draft_sections: Sequence[str] | None  # the rules draft's sections not yet approved; None: no rules yet
     unclassified: Sequence[UnclassifiedSource]
     today: date
+    never_true: Sequence[str] = ()  # weighted yes/no fields no applicant answered yes (finance only)
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -274,6 +283,13 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
             ),
             listed=True,
         ),
+        "equity_field_never_true": TodayLineOut(
+            key="equity_field_never_true",
+            families=None,
+            items=len(inputs.never_true),
+            item_kind="fields",
+            reasons=_reasons((field, 0) for field in inputs.never_true),
+        ),
     }
     return [lines[key] for key in FINANCE_LINES]
 
@@ -287,7 +303,7 @@ def build_today(inputs: TodayInputs, *, casework: bool, finance: bool) -> TodayR
 
 
 class GrantsReads(GrantsLoader, Protocol):
-    async def list_grantors(self) -> GrantorsResponse: ...
+    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse: ...
 
 
 class RulesDrafts(Protocol):
@@ -307,6 +323,20 @@ async def _draft_sections(rules: RulesDrafts, year: int) -> list[str] | None:
     return [name for name, status in latest.section_status.items() if status.state == "draft"]
 
 
+class IntakeWarningReads(Protocol):
+    async def fetch_fa_rows(self, year: int) -> list[FaRow]: ...
+    async def load_equity_rules(self, year: int) -> AidRules | None: ...
+
+
+async def _never_true(intake: IntakeWarningReads, year: int) -> tuple[str, ...]:
+    rows, rules = await asyncio.gather(intake.fetch_fa_rows(year), intake.load_equity_rules(year))
+    return never_true_fields(rules, rows)
+
+
+async def _no_fields() -> tuple[str, ...]:
+    return ()
+
+
 class TodayService:
     """Today's one aggregate read (D21): the live season priced once, with the grants register it was
     priced with (OneGrantsLoad), and only for finance the rules draft and the season's descriptions."""
@@ -319,6 +349,7 @@ class TodayService:
         rules: RulesDrafts,
         grants: GrantsReads,
         ledger: LedgerReads,
+        intake: IntakeWarningReads | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
@@ -326,6 +357,7 @@ class TodayService:
         self._rules = rules
         self._grants = grants
         self._ledger = ledger
+        self._intake = intake
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
     async def read(self, year: int, *, casework: bool, finance: bool) -> TodayResponse:
@@ -333,12 +365,14 @@ class TodayService:
             return TodayResponse(year=year, casework=None, finance=None)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
-        season, (grants, register), grantors, draft, unclassified = await asyncio.gather(
+        season, (grants, register), grantors, draft, unclassified, never_true = await asyncio.gather(
             decisions.season(year),
             shared.read(),
-            self._grants.list_grantors() if casework else _no_grantors(),
+            # Retired grantors too: hidden from pickers, never from the grants that named them.
+            self._grants.list_grantors(include_retired=True) if casework else _no_grantors(),
             _draft_sections(self._rules, year) if finance else _none(),
             self._ledger.unclassified_sources(year) if finance else _no_sources(),
+            _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
         inputs = TodayInputs(
@@ -350,6 +384,7 @@ class TodayService:
             draft_sections=draft,
             unclassified=unclassified,
             today=self._clock().astimezone(CAMP_TZ).date(),
+            never_true=never_true,
         )
         return build_today(inputs, casework=casework, finance=finance)
 

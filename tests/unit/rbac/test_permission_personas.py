@@ -58,10 +58,12 @@ class TestPersonas:
             PERSONA_DEVELOPMENT,
         }
 
-    def test_financial_aid_permissions_are_the_four(self):
+    def test_financial_aid_permissions_are_the_five(self):
+        """The four of spec §14.1, plus financial_aid.grantors (owner ruling 2026-10-01, grantor directory)."""
         assert {
             "financial_aid.view",
             "financial_aid.casework",
+            "financial_aid.grantors",
             "financial_aid.rules",
             "financial_aid.summary",
         } == FINANCIAL_AID_PERMISSIONS
@@ -71,7 +73,7 @@ class TestPersonas:
 
     def test_exec_without_finance_holds_everything_but_financial_aid(self):
         """The prod exec role as migration 1500000185 leaves it (spec §2 item 12):
-        every permission, users.manage included, and none of the four."""
+        every permission, users.manage included, and none of the financial aid ones."""
         assert PERSONAS[PERSONA_EXEC_WITHOUT_FINANCE] == ALL_PERMISSIONS - FINANCIAL_AID_PERMISSIONS
         assert Permission.USERS_MANAGE in PERSONAS[PERSONA_EXEC_WITHOUT_FINANCE]
 
@@ -79,11 +81,16 @@ class TestPersonas:
         held = PERSONAS[PERSONA_REGISTRAR]
         assert held & FINANCIAL_AID_PERMISSIONS == {Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_CASEWORK}
 
-    def test_finance_holds_all_four(self):
+    def test_finance_holds_all_five(self):
         assert PERSONAS[PERSONA_FINANCE] >= FINANCIAL_AID_PERMISSIONS
 
-    def test_development_holds_summary_only(self):
-        assert PERSONAS[PERSONA_DEVELOPMENT] == {Permission.FINANCIAL_AID_SUMMARY}
+    def test_development_holds_summary_and_grantors(self):
+        """Migration 1500000227 grants development the grantor directory (owner ruling 2026-10-01): still no
+        family-level read, and never rules."""
+        assert PERSONAS[PERSONA_DEVELOPMENT] == {Permission.FINANCIAL_AID_SUMMARY, Permission.FINANCIAL_AID_GRANTORS}
+
+    def test_registrar_does_not_hold_grantors(self):
+        assert Permission.FINANCIAL_AID_GRANTORS not in PERSONAS[PERSONA_REGISTRAR]
 
     def test_persona_user_is_never_admin(self):
         """is_admin bypasses every gate, so an admin persona would prove nothing."""

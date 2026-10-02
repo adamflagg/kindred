@@ -69,10 +69,13 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE_PENDING,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
+    UNKNOWN_EQUITY,
     ApplicationRecord,
+    EquityAnswers,
     Flag,
     RequestKey,
     RequestRecord,
+    equity_json,
 )
 
 _Slot = tuple[str, int, int]
@@ -154,6 +157,7 @@ def request_fields(record: RequestRecord) -> dict[str, Any]:
         "headcount_infant": record.headcount_infant,
         "headcount_source": record.headcount_source,
         "flags": [dict(f) for f in record.flags],
+        "equity": equity_json(record.equity) if record.equity is not None else None,
     }
 
 
@@ -215,6 +219,7 @@ def _request_target(
     billed: Mapping[tuple[int, int], BilledHeadcount],
     self_ref: str,
     rules_check: RulesCheck | None,
+    equity: EquityAnswers | None = None,
 ) -> dict[str, Any]:
     if spec is None:
         return {"status": STATUS_WITHDRAWN}
@@ -256,8 +261,18 @@ def _request_target(
     }
     if spec.person_cm_id == 0:
         target.update(_headcount_target(record, billed.get((spec.household_cm_id, session)), flags))
+    if equity is not None:
+        target["equity"] = equity_json(equity)
     target["flags"] = [f.to_json() for f in flags]
     return target
+
+
+def _equity_for(spec: RequestSpec | None, equity: Mapping[int, EquityAnswers] | None) -> EquityAnswers | None:
+    """The answers to record on a camper-level request; a camper who answered nothing is recorded as
+    unknown. None when the caller read no answers (nothing is written) or the request is household-level."""
+    if equity is None or spec is None or not spec.person_cm_id:
+        return None
+    return equity.get(spec.person_cm_id, UNKNOWN_EQUITY)
 
 
 def _plan_applications(
@@ -412,6 +427,7 @@ def plan_intake(
     billed: Mapping[tuple[int, int], BilledHeadcount],
     requests_with_shares: frozenset[str] = frozenset(),
     rules_check: RulesCheck | None = None,
+    equity: Mapping[int, EquityAnswers] | None = None,
 ) -> IntakePlan:
     plan = IntakePlan()
     _plan_applications(plan, households, existing_applications)
@@ -433,12 +449,25 @@ def plan_intake(
     for record in sorted(existing_requests, key=lambda r: (not stays(r), r.status != STATUS_ACTIVE, r.id)):
         known.add(record.key)
         targets.append(
-            (record, _request_target(record, specs.get(record.key), holders, billed, record.id, rules_check))
+            (
+                record,
+                _request_target(
+                    record,
+                    specs.get(record.key),
+                    holders,
+                    billed,
+                    record.id,
+                    rules_check,
+                    _equity_for(specs.get(record.key), equity),
+                ),
+            )
         )
     new_targets: dict[str, dict[str, Any]] = {}
     for key in sorted(k for k in specs if k not in known):
         ref = f"new:{len(new_targets)}"
-        new_targets[ref] = _request_target(None, specs[key], holders, billed, ref, rules_check)
+        new_targets[ref] = _request_target(
+            None, specs[key], holders, billed, ref, rules_check, _equity_for(specs[key], equity)
+        )
     _heal_stranded_duplicates(targets, new_targets, holders)
     # A cycle-breaker writes one request twice (vacate, then its final session): give it one share, not two.
     shared: set[str] = set(requests_with_shares)

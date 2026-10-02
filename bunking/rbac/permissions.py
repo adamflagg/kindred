@@ -18,6 +18,7 @@ class Permission:
 
     BUNKING_MANAGE = "bunking.manage"
     FINANCIAL_AID_CASEWORK = "financial_aid.casework"
+    FINANCIAL_AID_GRANTORS = "financial_aid.grantors"
     FINANCIAL_AID_RULES = "financial_aid.rules"
     FINANCIAL_AID_SUMMARY = "financial_aid.summary"
     FINANCIAL_AID_VIEW = "financial_aid.view"
@@ -40,6 +41,9 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
         "Work a family's aid on the Requests and household pages: move stages, record cancellations, "
         "set appeal amounts and cost overrides, assign grants and clear the posting worklist. "
         "It only adds editing to the screens that family-detail access opens."
+    ),
+    Permission.FINANCIAL_AID_GRANTORS: (
+        "Financial aid grantor directory: add, edit and retire grantors, and map CampMinder descriptions to them"
     ),
     Permission.FINANCIAL_AID_RULES: (
         "Set the aid rules and budget, approve rounds, set session capacity and use the Season › Scenarios tab. "

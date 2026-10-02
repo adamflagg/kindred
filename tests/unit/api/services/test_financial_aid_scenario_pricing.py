@@ -330,3 +330,15 @@ async def test_a_stored_value_of_the_wrong_shape_is_a_snapshot_error(key: str, v
 async def test_a_stored_snapshot_that_is_not_a_mapping_is_a_snapshot_error() -> None:
     with pytest.raises(SnapshotError, match="can't be read"):
         decode_snapshot(["not", "a", "snapshot"])  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_freezing_and_pricing_a_scenario_never_read_or_write_the_grant_placement_log() -> None:
+    """3c-2: live pricing logs where the register placed each grant, but a scenario never writes (spec §7.4).
+    So freezing neither reads nor writes that log, and pricing on the snapshot needs no read of it: a
+    snapshot frozen before the log existed still prices."""
+    store = _store()
+    frozen = await _frozen(store, [grant_row(EMMA, "250")])
+    assert "fetch_grant_placements" not in frozen.calls
+    await price_document(frozen, approved().document, approved())
+    assert (store.grant_placements, store.operations) == ([], [])

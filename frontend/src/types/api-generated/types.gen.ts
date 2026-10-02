@@ -2008,6 +2008,51 @@ export type CancellationSessionBreakdown = {
 }
 
 /**
+ * CandidateOut
+ *
+ * A request the line's family holds (D26). not_yet_in_campminder is the part of it not yet in CampMinder:
+ * its locked total and its decided rounds waiting to be ticked, less the money already placed on it.
+ */
+export type CandidateOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family
+   */
+  family: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper
+   */
+  camper: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session
+   */
+  session: string
+  /**
+   * Not Yet In Campminder
+   */
+  not_yet_in_campminder: number
+  /**
+   * Cancelled
+   */
+  cancelled: boolean
+}
+
+/**
  * CanonicalEntry
  *
  * A canonical entry with metadata.
@@ -2659,6 +2704,53 @@ export type CorrectionOut = {
 }
 
 /**
+ * CostOverrideIn
+ *
+ * A cost override (D22): the cost to price the request at, a reason code from the season's cost.override_reasons
+ * and a note (required, main spec §14.4). amount None clears the override, and then takes no code. The code is at
+ * most 48 characters so "<code>:<amount>" fits the corrections table's 64.
+ */
+export type CostOverrideIn = {
+  /**
+   * Amount
+   */
+  amount: number | string | null
+  /**
+   * Reason Code
+   */
+  reason_code?: string | null
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * CostOverrideOut
+ *
+ * A staff cost override (D22): the cost the request is priced at, its reason code from the season's
+ * cost.override_reasons, the note and who. The calculator's cost step reads it (calculator/cost.py).
+ */
+export type CostOverrideOut = {
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Reason Code
+   */
+  reason_code: string
+  /**
+   * Note
+   */
+  note: string
+  /**
+   * Actor
+   */
+  actor: string
+}
+
+/**
  * CostSection
  */
 export type CostSectionInput = {
@@ -3228,6 +3320,10 @@ export type DecisionWriteOut = {
    */
   pending_approval?: boolean
   /**
+   * Warning
+   */
+  warning?: string | null
+  /**
    * Sections Not Locked
    */
   sections_not_locked?: Array<string>
@@ -3265,98 +3361,6 @@ export type DefinitionsResponse = {
    * Notes
    */
   notes: Array<DefinitionNoteOut>
-}
-
-/**
- * DispositionBulkLoad
- */
-export type DispositionBulkLoad = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Dry Run
-   */
-  dry_run?: boolean
-  /**
-   * Rows
-   */
-  rows: Array<DispositionRow>
-}
-
-/**
- * DispositionOut
- */
-export type DispositionOut = {
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Transaction Cm Id
-   */
-  transaction_cm_id: number
-  /**
-   * Flag
-   */
-  flag: string
-  /**
-   * Disposition
-   */
-  disposition: string
-  /**
-   * Note
-   */
-  note: string
-  /**
-   * Actor
-   */
-  actor: string
-  /**
-   * Updated
-   */
-  updated: string
-}
-
-/**
- * DispositionRow
- */
-export type DispositionRow = {
-  /**
-   * Transaction Cm Id
-   */
-  transaction_cm_id: number
-  /**
-   * Flag
-   */
-  flag: string
-  /**
-   * Disposition
-   */
-  disposition: 'accepted_let_stand' | 'accepted_late_grant' | 'accepted_other'
-  /**
-   * Note
-   */
-  note: string
-}
-
-/**
- * DispositionsResponse
- */
-export type DispositionsResponse = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Dispositions
-   */
-  dispositions: Array<DispositionOut>
 }
 
 /**
@@ -3430,6 +3434,10 @@ export type DraftSectionOut = {
    * Warnings
    */
   warnings: number
+  /**
+   * Fingerprint
+   */
+  fingerprint: string
 }
 
 /**
@@ -3880,6 +3888,20 @@ export type EvaluateOut = {
 }
 
 /**
+ * EvidenceOut
+ */
+export type EvidenceOut = {
+  /**
+   * Kind
+   */
+  kind: 'amount' | 'person' | 'date' | 'only_request' | 'proportional'
+  /**
+   * Text
+   */
+  text: string
+}
+
+/**
  * ExpectedOut
  *
  * D56: never a grant, never counted.
@@ -3905,6 +3927,10 @@ export type ExpectedOut = {
    * Camper Names
    */
   camper_names: Array<string>
+  /**
+   * Display Name
+   */
+  display_name?: string | null
 }
 
 /**
@@ -4979,9 +5005,25 @@ export type GrantorOut = {
    */
   contacts: string
   /**
+   * Retired At
+   */
+  retired_at: string
+  /**
    * Descriptions
    */
   descriptions: Array<GrantorDescription>
+}
+
+/**
+ * GrantorRetireIn
+ *
+ * Retire or unretire a grantor (owner ruling 2026-10-01): the reason is required and logged.
+ */
+export type GrantorRetireIn = {
+  /**
+   * Reason
+   */
+  reason: string
 }
 
 /**
@@ -5208,6 +5250,67 @@ export type GridRowOut = {
     | 'duplicates'
     | 'cancel_reason'
   > | null
+  /**
+   * Payer Count
+   */
+  payer_count?: number | null
+  /**
+   * Payer Shares
+   */
+  payer_shares?: Array<GridShareOut>
+  /**
+   * Appeal Refusal
+   */
+  appeal_refusal?: string | null
+  cost_override?: CostOverrideOut | null
+  /**
+   * Included
+   */
+  included?: boolean | null
+  /**
+   * Session Candidates
+   */
+  session_candidates?: Array<SessionCandidateOut>
+  /**
+   * Campminder Description
+   */
+  campminder_description?: string | null
+}
+
+/**
+ * GridShareOut
+ *
+ * One payer of a split request, on its grid row (§6.2: Needs an offer has one row per payer share; ⚠39, owner
+ * ruling 2026-10-01). Its whole-dollar part of the request's decided total (`decided`: the household's new total
+ * once the open rounds post, ⚠40), of the posted total, and of the rounds that need an offer (`needs_offer`: what
+ * is posted to this household when they are ticked). None while the request has no such money, or its shares
+ * don't add up to 100%.
+ */
+export type GridShareOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Share Pct
+   */
+  share_pct: number
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * Needs Offer
+   */
+  needs_offer: number | null
 }
 
 /**
@@ -5260,6 +5363,10 @@ export type HeadcountSet = {
    * Reason
    */
   reason: string
+  /**
+   * Reason Code
+   */
+  reason_code?: string | null
 }
 
 /**
@@ -5386,6 +5493,10 @@ export type HouseholdCardOut = {
    * City
    */
   city: string
+  /**
+   * County
+   */
+  county?: string | null
   money: HouseholdMoneyOut
   /**
    * Request Ids
@@ -5667,6 +5778,36 @@ export type HouseholdLinkRow = {
 }
 
 /**
+ * HouseholdMatchOut
+ *
+ * One household the Add-a-link picker can name (owner F3 #27; §6.3 †): its CampMinder id and name, the people on
+ * its record this season, the family keys it is linked under (aid_household_links, excluded rows left out), and the
+ * other households those keys join.
+ */
+export type HouseholdMatchOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * People
+   */
+  people: Array<string>
+  /**
+   * Family Keys
+   */
+  family_keys: Array<string>
+  /**
+   * Linked Household Cm Ids
+   */
+  linked_household_cm_ids: Array<number>
+}
+
+/**
  * HouseholdMedicalResponse
  *
  * Narrative medical text and the gate answers beside it. Served by ONE
@@ -5809,6 +5950,10 @@ export type HouseholdPageResponse = {
    * History
    */
   history: Array<HistoryEntryOut>
+  /**
+   * Override Reasons
+   */
+  override_reasons?: Array<string>
 }
 
 /**
@@ -5829,6 +5974,37 @@ export type HouseholdRequestOut = {
    * Receipts
    */
   receipts: Array<ReceiptOut>
+  /**
+   * Grants
+   */
+  grants?: number
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
+  round3_context?: Round3ContextOut | null
+}
+
+/**
+ * HouseholdSearchResponse
+ */
+export type HouseholdSearchResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Matches
+   */
+  matches: Array<HouseholdMatchOut>
+  /**
+   * Truncated
+   */
+  truncated: boolean
 }
 
 /**
@@ -5884,6 +6060,18 @@ export type HouseholdTotalsOut = {
    * States
    */
   states: Array<ConfirmationStateOut>
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
+  /**
+   * Decided Partial
+   */
+  decided_partial?: boolean
 }
 
 /**
@@ -6803,6 +6991,16 @@ export type LastSeasonOut = {
 }
 
 /**
+ * LeaveLineIn
+ */
+export type LeaveLineIn = {
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
  * LedgerCamper
  */
 export type LedgerCamper = {
@@ -6916,6 +7114,26 @@ export type LedgerTicksOut = {
    * Skipped
    */
   skipped?: string
+}
+
+/**
+ * LeftToTickOut
+ *
+ * A round the placement did not tick, and why: the registrar ticks it by hand if that is right.
+ */
+export type LeftToTickOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Why
+   */
+  why: string
 }
 
 /**
@@ -7560,6 +7778,41 @@ export type NotRebuiltOut = {
    * Requests
    */
   requests?: Array<string>
+}
+
+/**
+ * NotTickedOut
+ *
+ * A round the money covers that the placement does not tick (D16, owner ruling 2026-10-01, refined: option a).
+ * Something that prices the request was recorded after the day CampMinder posted it, so Kindred can't tell what
+ * the round was decided at that day. The money is placed anyway; only the automatic tick is withheld. `why` says
+ * that ticking it, by hand or by the next ledger sync, locks today's decided amount, to check against the offer.
+ */
+export type NotTickedOut = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Posted On
+   */
+  posted_on: string
+  /**
+   * Reasons
+   */
+  reasons: Array<string>
+  /**
+   * Why
+   */
+  why: string
 }
 
 /**
@@ -8407,6 +8660,20 @@ export type ParsedIntent = {
   temporal_info?: {
     [key: string]: unknown
   } | null
+}
+
+/**
+ * PartOut
+ */
+export type PartOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Amount
+   */
+  amount: number
 }
 
 /**
@@ -9298,6 +9565,112 @@ export type PlaceGrantsOut = {
 }
 
 /**
+ * PlaceLineIn
+ *
+ * One line's Confirm or Split.
+ */
+export type PlaceLineIn = {
+  /**
+   * Parts
+   */
+  parts: Array<PlacePartIn>
+  /**
+   * Note
+   */
+  note?: string
+  /**
+   * Expected Locked
+   */
+  expected_locked?: number | string | null
+}
+
+/**
+ * PlaceLinesIn
+ *
+ * Several lines confirmed at once (D16: "a whole class in bulk"), all or nothing, as one operation.
+ */
+export type PlaceLinesIn = {
+  /**
+   * Lines
+   */
+  lines: Array<PlaceLinesRow>
+  /**
+   * Note
+   */
+  note?: string
+  /**
+   * Expected Locked
+   */
+  expected_locked?: number | string | null
+}
+
+/**
+ * PlaceLinesRow
+ */
+export type PlaceLinesRow = {
+  /**
+   * Parts
+   */
+  parts: Array<PlacePartIn>
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+}
+
+/**
+ * PlaceOut
+ *
+ * What a placement did: the lines it placed, the rounds it ticked, and the rounds it left for a person.
+ * not_ticked: the rounds the money covers whose automatic tick was withheld because something that prices the
+ * request changed after the posting (D16), each with why and a prompt to tick it by hand.
+ */
+export type PlaceOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * Placed
+   */
+  placed: Array<number>
+  /**
+   * Ticked
+   */
+  ticked: Array<TickedOut>
+  /**
+   * Left To Tick
+   */
+  left_to_tick: Array<LeftToTickOut>
+  /**
+   * Not Ticked
+   */
+  not_ticked?: Array<NotTickedOut>
+  /**
+   * Sections Not Locked
+   */
+  sections_not_locked?: Array<string>
+}
+
+/**
+ * PlacePartIn
+ */
+export type PlacePartIn = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Amount
+   */
+  amount: number | string
+}
+
+/**
  * PlacementCopyRequest
  *
  * Seed one weekend's scenario from the CampMinder mirror.
@@ -9862,6 +10235,10 @@ export type ProgramProfile = {
    * Open To Aid
    */
   open_to_aid?: boolean
+  /**
+   * Campminder Description
+   */
+  campminder_description?: string
 }
 
 /**
@@ -10356,7 +10733,7 @@ export type ReceiptLabelOut = {
   /**
    * Lock Source
    */
-  lock_source: 'tick' | 'ledger' | null
+  lock_source: 'tick' | 'ledger' | 'placement' | null
   /**
    * Ticked By Name
    */
@@ -10383,6 +10760,22 @@ export type ReceiptOut = {
    */
   trace: Array<TraceStep>
   label: ReceiptLabelOut
+}
+
+/**
+ * ReclassifyLineIn
+ *
+ * Reclassify (D104): the aid_sources description key the line's money really is, and why.
+ */
+export type ReclassifyLineIn = {
+  /**
+   * Source Key
+   */
+  source_key: string
+  /**
+   * Reason
+   */
+  reason: string
 }
 
 /**
@@ -11956,6 +12349,36 @@ export type Round3ApprovalIn = {
 }
 
 /**
+ * Round3ContextOut
+ *
+ * A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
+ * status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
+ * None: not entered).
+ */
+export type Round3ContextOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Enrolled
+   */
+  enrolled: number
+  /**
+   * Waitlisted
+   */
+  waitlisted: number
+  /**
+   * Capacity
+   */
+  capacity: number | null
+  /**
+   * Capacity Note
+   */
+  capacity_note: string
+}
+
+/**
  * Round3Section
  */
 export type Round3SectionInput = {
@@ -12127,6 +12550,10 @@ export type RoundOut = {
    * Clawed Back
    */
   clawed_back?: boolean
+  /**
+   * Status Label
+   */
+  status_label?: string
 }
 
 /**
@@ -12170,6 +12597,12 @@ export type RulesApproveIn = {
    * Note
    */
   note: string
+  /**
+   * Fingerprints
+   */
+  fingerprints: {
+    [key: string]: string
+  }
 }
 
 /**
@@ -12639,6 +13072,10 @@ export type SectionSaveIn = {
   content: {
     [key: string]: unknown
   }
+  /**
+   * Expected Fingerprint
+   */
+  expected_fingerprint: string
 }
 
 /**
@@ -12877,6 +13314,23 @@ export type SessionBreakdown = {
    * Capacity utilization percentage
    */
   utilization?: number | null
+}
+
+/**
+ * SessionCandidateOut
+ *
+ * A session intake found for an unmatched request (Session not settled, §6.2; read 4), named from the season's
+ * sessions, or "Session <id>" when the season lacks it.
+ */
+export type SessionCandidateOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name: string
 }
 
 /**
@@ -13948,6 +14402,42 @@ export type SubjectNotesResponse = {
 }
 
 /**
+ * SuggestionOut
+ *
+ * Kindred's suggestion (D12): one part places the whole line, two or more split it. would_tick is what
+ * confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
+ * it locks); would_leave names the rounds it leaves for a person to tick, and why. would_not_tick names the
+ * rounds the money covers that confirming will NOT tick, from the same check the write runs (D16): the line
+ * is still placed, and each of those rounds waits for a person to tick it by hand.
+ */
+export type SuggestionOut = {
+  /**
+   * Parts
+   */
+  parts: Array<PartOut>
+  /**
+   * Evidence
+   */
+  evidence: Array<EvidenceOut>
+  /**
+   * Would Tick
+   */
+  would_tick?: Array<TickedOut>
+  /**
+   * Would Lock
+   */
+  would_lock?: number
+  /**
+   * Would Leave
+   */
+  would_leave?: Array<LeftToTickOut>
+  /**
+   * Would Not Tick
+   */
+  would_not_tick?: Array<NotTickedOut>
+}
+
+/**
  * SummaryCell
  */
 export type SummaryCell = {
@@ -14216,6 +14706,24 @@ export type TeenSessionAvailability = {
 }
 
 /**
+ * TickedOut
+ */
+export type TickedOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Amount
+   */
+  amount: number
+}
+
+/**
  * TierBand
  *
  * One income band. The tier lookup uses lower bounds only; `upper` is for display.
@@ -14396,6 +14904,170 @@ export type TimeBucket = {
 }
 
 /**
+ * ToPlaceGroupOut
+ */
+export type ToPlaceGroupOut = {
+  /**
+   * Reason
+   */
+  reason: 'several' | 'no_request' | 'program_mismatch'
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Count
+   */
+  count: number
+  /**
+   * Total
+   */
+  total: number
+  /**
+   * Lines
+   */
+  lines: Array<ToPlaceLineOut>
+}
+
+/**
+ * ToPlaceLineOut
+ *
+ * One camp-aid line no single request takes. `unplaced` is the part of `amount` still at family level.
+ * `left_note` is set while it is left at family level (D58); `reclassified_to` while a reclassification
+ * (D104) waits for the next ledger sync.
+ */
+export type ToPlaceLineOut = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family
+   */
+  family: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Person
+   */
+  person: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Unplaced
+   */
+  unplaced: number
+  /**
+   * Posted On
+   */
+  posted_on: string | null
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Reason
+   */
+  reason: 'several' | 'no_request' | 'program_mismatch'
+  /**
+   * Candidates
+   */
+  candidates: Array<CandidateOut>
+  suggestion: SuggestionOut | null
+  /**
+   * Left Note
+   */
+  left_note?: string
+  /**
+   * Reclassified To
+   */
+  reclassified_to?: string
+}
+
+/**
+ * ToPlaceResponse
+ *
+ * The open lines by reason, in §8.1's order (every reason listed, empty or not); the lines left at
+ * family level and those reclassified, apart and not counted. open_count and open_total are Today's
+ * To place line; open_total, left_total and reclassified_total together are §5.5's "To place" part of
+ * In CampMinder (net). household_cm_id is set when the read is scoped to one household page (D26).
+ */
+export type ToPlaceResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number | null
+  /**
+   * Open Count
+   */
+  open_count: number
+  /**
+   * Open Total
+   */
+  open_total: number
+  /**
+   * Groups
+   */
+  groups: Array<ToPlaceGroupOut>
+  /**
+   * Left
+   */
+  left?: Array<ToPlaceLineOut>
+  /**
+   * Left Total
+   */
+  left_total?: number
+  /**
+   * Reclassified
+   */
+  reclassified?: Array<ToPlaceLineOut>
+  /**
+   * Reclassified Total
+   */
+  reclassified_total?: number
+  /**
+   * Skipped
+   */
+  skipped?: string
+}
+
+/**
+ * ToPlaceWriteOut
+ *
+ * What a leave, reopen or reclassify did. A write that changed nothing wrote nothing: operation_id is "".
+ */
+export type ToPlaceWriteOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Written
+   */
+  written: number
+  /**
+   * Operation Id
+   */
+  operation_id: string
+}
+
+/**
  * TodayLineOut
  *
  * One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
@@ -14424,6 +15096,7 @@ export type TodayLineOut = {
     | 'would_change'
     | 'sources'
     | 'intake'
+    | 'equity_field_never_true'
   /**
    * Families
    */
@@ -14435,7 +15108,7 @@ export type TodayLineOut = {
   /**
    * Item Kind
    */
-  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions'
+  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields'
   /**
    * Reasons
    */
@@ -20451,102 +21124,6 @@ export type LoadOverridesApiFinancialAidOverridesBulkPostResponses = {
 export type LoadOverridesApiFinancialAidOverridesBulkPostResponse =
   LoadOverridesApiFinancialAidOverridesBulkPostResponses[keyof LoadOverridesApiFinancialAidOverridesBulkPostResponses]
 
-export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Year
-     */
-    year: number
-  }
-  url: '/api/financial-aid/flag-dispositions'
-}
-
-export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetError =
-  ListFlagDispositionsApiFinancialAidFlagDispositionsGetErrors[keyof ListFlagDispositionsApiFinancialAidFlagDispositionsGetErrors]
-
-export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: DispositionsResponse
-}
-
-export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponse =
-  ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponses[keyof ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponses]
-
-export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostData = {
-  body: DispositionBulkLoad
-  path?: never
-  query?: never
-  url: '/api/financial-aid/flag-dispositions/bulk'
-}
-
-export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostError =
-  LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostErrors[keyof LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostErrors]
-
-export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: BulkLoadResult
-}
-
-export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponse =
-  LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponses[keyof LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponses]
-
-export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Disposition Id
-     */
-    disposition_id: string
-  }
-  query: {
-    /**
-     * Reason
-     */
-    reason: string
-  }
-  url: '/api/financial-aid/flag-dispositions/{disposition_id}'
-}
-
-export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteError =
-  DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteErrors[keyof DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteErrors]
-
-export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  204: void
-}
-
-export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponse =
-  DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses[keyof DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses]
-
 export type GetAidRulesApiFinancialAidRulesYearGetData = {
   body?: never
   path: {
@@ -20910,9 +21487,24 @@ export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetResponse =
 export type ListGrantorsApiFinancialAidGrantorsGetData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    /**
+     * Include Retired
+     */
+    include_retired?: boolean
+  }
   url: '/api/financial-aid/grantors'
 }
+
+export type ListGrantorsApiFinancialAidGrantorsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListGrantorsApiFinancialAidGrantorsGetError =
+  ListGrantorsApiFinancialAidGrantorsGetErrors[keyof ListGrantorsApiFinancialAidGrantorsGetErrors]
 
 export type ListGrantorsApiFinancialAidGrantorsGetResponses = {
   /**
@@ -20982,6 +21574,70 @@ export type SaveGrantorApiFinancialAidGrantorsKeyPutResponses = {
 
 export type SaveGrantorApiFinancialAidGrantorsKeyPutResponse =
   SaveGrantorApiFinancialAidGrantorsKeyPutResponses[keyof SaveGrantorApiFinancialAidGrantorsKeyPutResponses]
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostData = {
+  body: GrantorRetireIn
+  path: {
+    /**
+     * Key
+     */
+    key: string
+  }
+  query?: never
+  url: '/api/financial-aid/grantors/{key}/retire'
+}
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostError =
+  RetireGrantorApiFinancialAidGrantorsKeyRetirePostErrors[keyof RetireGrantorApiFinancialAidGrantorsKeyRetirePostErrors]
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantorOut
+}
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponse =
+  RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponses[keyof RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponses]
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostData = {
+  body: GrantorRetireIn
+  path: {
+    /**
+     * Key
+     */
+    key: string
+  }
+  query?: never
+  url: '/api/financial-aid/grantors/{key}/unretire'
+}
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostError =
+  UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostErrors[keyof UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostErrors]
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantorOut
+}
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponse =
+  UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponses[keyof UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponses]
 
 export type GetGrantsApiFinancialAidGrantsYearGetData = {
   body?: never
@@ -21532,6 +22188,38 @@ export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses
 
 export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponse =
   SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses[keyof SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses]
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostData = {
+  body: CostOverrideIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/cost-override'
+}
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostError =
+  SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostErrors[keyof SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostErrors]
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponse =
+  SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses[keyof SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses]
 
 export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostData = {
   body?: never
@@ -22115,6 +22803,43 @@ export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponses = {
 export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponse =
   GetJumpIndexApiFinancialAidJumpIndexYearGetResponses[keyof GetJumpIndexApiFinancialAidJumpIndexYearGetResponses]
 
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query: {
+    /**
+     * Q
+     */
+    q: string
+  }
+  url: '/api/financial-aid/household-search/{year}'
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetError =
+  SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors[keyof SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors]
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdSearchResponse
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponse =
+  SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses[keyof SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses]
+
 export type GetTodayApiFinancialAidTodayYearGetData = {
   body?: never
   path: {
@@ -22214,6 +22939,224 @@ export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostRespons
 
 export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponse =
   PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponses[keyof PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponses]
+
+export type GetToPlaceApiFinancialAidMoneyYearToPlaceGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Household Cm Id
+     */
+    household_cm_id?: number | null
+  }
+  url: '/api/financial-aid/money/{year}/to-place'
+}
+
+export type GetToPlaceApiFinancialAidMoneyYearToPlaceGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetToPlaceApiFinancialAidMoneyYearToPlaceGetError =
+  GetToPlaceApiFinancialAidMoneyYearToPlaceGetErrors[keyof GetToPlaceApiFinancialAidMoneyYearToPlaceGetErrors]
+
+export type GetToPlaceApiFinancialAidMoneyYearToPlaceGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ToPlaceResponse
+}
+
+export type GetToPlaceApiFinancialAidMoneyYearToPlaceGetResponse =
+  GetToPlaceApiFinancialAidMoneyYearToPlaceGetResponses[keyof GetToPlaceApiFinancialAidMoneyYearToPlaceGetResponses]
+
+export type PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostData = {
+  body: PlaceLinesIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/money/{year}/to-place/place'
+}
+
+export type PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostError =
+  PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostErrors[keyof PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostErrors]
+
+export type PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlaceOut
+}
+
+export type PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostResponse =
+  PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostResponses[keyof PlaceLinesApiFinancialAidMoneyYearToPlacePlacePostResponses]
+
+export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostData = {
+  body: PlaceLineIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Transaction Cm Id
+     */
+    transaction_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/money/{year}/to-place/{transaction_cm_id}/place'
+}
+
+export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostError =
+  PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostErrors[keyof PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostErrors]
+
+export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlaceOut
+}
+
+export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponse =
+  PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponses[keyof PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponses]
+
+export type ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Transaction Cm Id
+     */
+    transaction_cm_id: number
+  }
+  query: {
+    /**
+     * Reason
+     */
+    reason: string
+  }
+  url: '/api/financial-aid/money/{year}/to-place/{transaction_cm_id}/leave'
+}
+
+export type ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteError =
+  ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteErrors[keyof ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteErrors]
+
+export type ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: ToPlaceWriteOut
+}
+
+export type ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteResponse =
+  ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteResponses[keyof ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteResponses]
+
+export type LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostData = {
+  body: LeaveLineIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Transaction Cm Id
+     */
+    transaction_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/money/{year}/to-place/{transaction_cm_id}/leave'
+}
+
+export type LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostError =
+  LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostErrors[keyof LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostErrors]
+
+export type LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ToPlaceWriteOut
+}
+
+export type LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostResponse =
+  LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostResponses[keyof LeaveLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeavePostResponses]
+
+export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostData = {
+  body: ReclassifyLineIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Transaction Cm Id
+     */
+    transaction_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/money/{year}/to-place/{transaction_cm_id}/reclassify'
+}
+
+export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostError =
+  ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostErrors[keyof ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostErrors]
+
+export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ToPlaceWriteOut
+}
+
+export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponse =
+  ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses[keyof ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

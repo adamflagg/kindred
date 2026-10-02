@@ -19,6 +19,7 @@ export const Collections = {
   AidChangeLog: 'aid_change_log',
   AidDecisions: 'aid_decisions',
   AidFlagDispositions: 'aid_flag_dispositions',
+  AidGrantPlacements: 'aid_grant_placements',
   AidGrantors: 'aid_grantors',
   AidGrants: 'aid_grants',
   AidHoldEvents: 'aid_hold_events',
@@ -281,7 +282,7 @@ export const AidAttributionOverridesSourceOptions = {
 } as const
 export type AidAttributionOverridesSourceOptions =
   (typeof AidAttributionOverridesSourceOptions)[keyof typeof AidAttributionOverridesSourceOptions]
-export type AidAttributionOverridesRecord = {
+export type AidAttributionOverridesRecord<Tsplit = unknown> = {
   actor?: string
   attributed_person_cm_id?: number
   attributed_session_cm_id?: number
@@ -291,6 +292,7 @@ export type AidAttributionOverridesRecord = {
   program_family?: AidAttributionOverridesProgramFamilyOptions
   source: AidAttributionOverridesSourceOptions
   source_key_override?: string
+  split?: null | Tsplit
   transaction_cm_id: number
   updated: IsoAutoDateString
   year: number
@@ -358,6 +360,7 @@ export type AidDecisionsEventOptions =
 export const AidDecisionsLockSourceOptions = {
   tick: 'tick',
   ledger: 'ledger',
+  placement: 'placement',
 } as const
 export type AidDecisionsLockSourceOptions =
   (typeof AidDecisionsLockSourceOptions)[keyof typeof AidDecisionsLockSourceOptions]
@@ -399,6 +402,23 @@ export type AidFlagDispositionsRecord = {
   year: number
 }
 
+export const AidGrantPlacementsEventOptions = {
+  place: 'place',
+  remove: 'remove',
+} as const
+export type AidGrantPlacementsEventOptions =
+  (typeof AidGrantPlacementsEventOptions)[keyof typeof AidGrantPlacementsEventOptions]
+export type AidGrantPlacementsRecord<Tplacement = unknown> = {
+  actor: string
+  created: IsoAutoDateString
+  event: AidGrantPlacementsEventOptions
+  grant: string
+  household_cm_id?: number
+  id: string
+  placement?: null | Tplacement
+  year: number
+}
+
 export const AidGrantorsCoversCanteenOptions = {
   unknown: 'unknown',
   yes: 'yes',
@@ -418,6 +438,7 @@ export type AidGrantorsRecord<Taliases = unknown> = {
   name: string
   note?: string
   pays_after_camp_aid?: boolean
+  retired_at?: IsoDateString
   updated: IsoAutoDateString
 }
 
@@ -648,11 +669,12 @@ export const AidRequestsStatusOptions = {
 } as const
 export type AidRequestsStatusOptions =
   (typeof AidRequestsStatusOptions)[keyof typeof AidRequestsStatusOptions]
-export type AidRequestsRecord<Tflags = unknown> = {
+export type AidRequestsRecord<Tequity = unknown, Tflags = unknown> = {
   application: RecordIdString
   ask?: number
   created: IsoAutoDateString
   duplicate_of?: string
+  equity?: null | Tequity
   flags?: null | Tflags
   headcount_infant?: number
   headcount_non_infant?: number
@@ -2569,8 +2591,10 @@ export type AidApplicationsResponse<
   Texpand = unknown,
 > = Required<AidApplicationsRecord<Tanswers, Tflags, Tmember_person_cm_ids>> &
   BaseSystemFields<Texpand>
-export type AidAttributionOverridesResponse<Texpand = unknown> =
-  Required<AidAttributionOverridesRecord> & BaseSystemFields<Texpand>
+export type AidAttributionOverridesResponse<Tsplit = unknown, Texpand = unknown> = Required<
+  AidAttributionOverridesRecord<Tsplit>
+> &
+  BaseSystemFields<Texpand>
 export type AidCancellationsResponse<Texpand = unknown> = Required<AidCancellationsRecord> &
   BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
@@ -2582,6 +2606,10 @@ export type AidDecisionsResponse<Tsnapshot = unknown, Texpand = unknown> = Requi
 > &
   BaseSystemFields<Texpand>
 export type AidFlagDispositionsResponse<Texpand = unknown> = Required<AidFlagDispositionsRecord> &
+  BaseSystemFields<Texpand>
+export type AidGrantPlacementsResponse<Tplacement = unknown, Texpand = unknown> = Required<
+  AidGrantPlacementsRecord<Tplacement>
+> &
   BaseSystemFields<Texpand>
 export type AidGrantorsResponse<Taliases = unknown, Texpand = unknown> = Required<
   AidGrantorsRecord<Taliases>
@@ -2602,8 +2630,8 @@ export type AidPostingsResponse<
   Tflags = unknown,
   Texpand = unknown,
 > = Required<AidPostingsRecord<Tcandidate_program_families, Tflags>> & BaseSystemFields<Texpand>
-export type AidRequestsResponse<Tflags = unknown, Texpand = unknown> = Required<
-  AidRequestsRecord<Tflags>
+export type AidRequestsResponse<Tequity = unknown, Tflags = unknown, Texpand = unknown> = Required<
+  AidRequestsRecord<Tequity, Tflags>
 > &
   BaseSystemFields<Texpand>
 export type AidRulesResponse<
@@ -2867,6 +2895,7 @@ export type CollectionRecords = {
   aid_change_log: AidChangeLogRecord
   aid_decisions: AidDecisionsRecord
   aid_flag_dispositions: AidFlagDispositionsRecord
+  aid_grant_placements: AidGrantPlacementsRecord
   aid_grantors: AidGrantorsRecord
   aid_grants: AidGrantsRecord
   aid_hold_events: AidHoldEventsRecord
@@ -2972,6 +3001,7 @@ export type CollectionResponses = {
   aid_change_log: AidChangeLogResponse
   aid_decisions: AidDecisionsResponse
   aid_flag_dispositions: AidFlagDispositionsResponse
+  aid_grant_placements: AidGrantPlacementsResponse
   aid_grantors: AidGrantorsResponse
   aid_grants: AidGrantsResponse
   aid_hold_events: AidHoldEventsResponse

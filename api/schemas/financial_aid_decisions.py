@@ -76,8 +76,12 @@ class RoundOut(BaseModel):
     would_change_by: float | None
     counts_toward_budget: bool
     rules_version: int | None
-    lock_source: str | None = None  # "tick" (registrar) or "ledger" (automatic tick, D78); None while unposted
+    # "tick" (registrar), "ledger" (automatic tick, D78) or "placement" (To place, D81); None while unposted
+    lock_source: str | None = None
     clawed_back: bool = False  # CampMinder reversed its money: it counts nowhere (D54)
+    # Its words (ROUND_STATUS_LABELS; read 3): the screens keep no map of their own (§6.1, D21). Set on every row the
+    # server builds.
+    status_label: str = ""
 
 
 class ReleasedHoldOut(BaseModel):
@@ -165,6 +169,39 @@ QueueOut = Literal[
 ]
 
 
+class GridShareOut(BaseModel):
+    """One payer of a split request, on its grid row (§6.2: Needs an offer has one row per payer share; ⚠39, owner
+    ruling 2026-10-01). Its whole-dollar part of the request's decided total (`decided`: the household's new total
+    once the open rounds post, ⚠40), of the posted total, and of the rounds that need an offer (`needs_offer`: what
+    is posted to this household when they are ticked). None while the request has no such money, or its shares
+    don't add up to 100%."""
+
+    household_cm_id: int
+    family_name: str
+    share_pct: float
+    decided: float | None
+    posted: float | None
+    needs_offer: float | None
+
+
+class SessionCandidateOut(BaseModel):
+    """A session intake found for an unmatched request (Session not settled, §6.2; read 4), named from the season's
+    sessions, or "Session <id>" when the season lacks it."""
+
+    session_cm_id: int
+    name: str
+
+
+class CostOverrideOut(BaseModel):
+    """A staff cost override (D22): the cost the request is priced at, its reason code from the season's
+    cost.override_reasons, the note and who. The calculator's cost step reads it (calculator/cost.py)."""
+
+    amount: float
+    reason_code: str
+    note: str
+    actor: str
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -193,6 +230,21 @@ class GridRowOut(BaseModel):
     todos: list[TodoOut] | None = Field(default_factory=list)
     # Slice 1: the views the row is in. None on a past read: membership reads figures a past date leaves empty.
     queues: list[QueueOut] | None = Field(default_factory=list)
+    # ⚠39 (owner ruling 2026-10-01): how many households pay the request (1 with no share row), and each payer's part
+    # when two or more do ([] for one payer, as the editor preview's shares). On a past read payer_count is None
+    # (and payer_shares []) for a request whose payer shares couldn't be replayed for that date.
+    payer_count: int | None = 1
+    payer_shares: list[GridShareOut] = Field(default_factory=list)
+    # Read 3: why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words; None when it can;
+    # a past read names it in not_rebuilt.
+    appeal_refusal: str | None = None
+    cost_override: CostOverrideOut | None = None
+    # D77/D129: live and not cancelled (derived; staff have no override on it). None on a past read: it reads the
+    # cancellation, which a past date doesn't rebuild (not_rebuilt names it).
+    included: bool | None = None
+    session_candidates: list[SessionCandidateOut] = Field(default_factory=list)  # read 4: an unmatched request's
+    # Read 2 (§6.2 Needs an offer): the description to post the program's aid under, from the rules; None: none named.
+    campminder_description: str | None = None
 
 
 class RequestsGridResponse(BaseModel):
@@ -351,6 +403,27 @@ class HoldReleaseIn(BaseModel):
     note: _Reason
 
 
+_ReasonCode = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", max_length=48)]
+
+
+class CostOverrideIn(BaseModel):
+    """A cost override (D22): the cost to price the request at, a reason code from the season's cost.override_reasons
+    and a note (required, main spec §14.4). amount None clears the override, and then takes no code. The code is at
+    most 48 characters so "<code>:<amount>" fits the corrections table's 64."""
+
+    amount: _Amount | None
+    reason_code: _ReasonCode | None = None
+    note: _Reason
+
+    @model_validator(mode="after")
+    def _code_with_amount(self) -> CostOverrideIn:
+        if self.amount is not None and self.reason_code is None:
+            raise ValueError("a cost override needs its reason code (D22)")
+        if self.amount is None and self.reason_code is not None:
+            raise ValueError("clearing a cost override takes no reason code")
+        return self
+
+
 class ManualHoldIn(BaseModel):
     """Put the request on hold by hand (held=True, "Put on hold…", app spec §6.3), or lift it
     (held=False). The note is the hold's reason when placing it and why when lifting it; required."""
@@ -433,6 +506,9 @@ class DecisionWriteOut(BaseModel):
     operation_id: str
     total_locked: float | None = None
     pending_approval: bool = False
+    # A write that went through but moves figures its author may not expect (a cost override on a request with a
+    # posted round); the screen shows it beside the save.
+    warning: str | None = None
     sections_not_locked: list[str] = Field(default_factory=list)
 
 
