@@ -144,7 +144,8 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     await openProgram()
     expect(screen.getByRole('option', { name: 'Weekend Programs' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Pool B' })).toBeNull()
-    await pickProgram('Quest')
+    // The list is already open: a second click on the button would close it mid-pick (flaky under load).
+    await userEvent.click(screen.getByRole('option', { name: 'Quest' }))
     expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
