@@ -22,11 +22,13 @@ export function parseCodes(raw: string | null): string[] {
   return [...new Set(codes)].slice(0, MAX_COMPARED)
 }
 
-/** Ticking a fifth drops the oldest (scenarios-v2.html); unticking removes it. */
-export function toggleCode(codes: readonly string[], code: string): string[] {
+/**
+ * Unticking removes one; a fifth tick is refused (the same array comes back, and the tab says so):
+ * dropping the oldest would take a column off the screen unasked.
+ */
+export function toggleCode(codes: readonly string[], code: string): readonly string[] {
   if (codes.includes(code)) return codes.filter((c) => c !== code)
-  const next = [...codes, code]
-  return next.length > MAX_COMPARED ? next.slice(next.length - MAX_COMPARED) : next
+  return codes.length >= MAX_COMPARED ? codes : [...codes, code]
 }
 
 /** `?through=deadline` or `?through=2027-02-01` (D138); anything else counts every frozen request. */
@@ -52,6 +54,8 @@ export interface CompareRow {
   readonly key: string
   readonly label: string
   readonly cells: readonly CompareCell[]
+  /** Said beside the rows above it, never summed into them (Held, In no tier): drawn muted. */
+  readonly informational?: boolean
 }
 
 const plain = (text: string): CompareCell => ({ text, changed: false, negative: false })
@@ -189,15 +193,26 @@ export function tierRows(views: ReadonlyArray<ApiAidCommittee | null>, round: 1 
             key: 'r1:held',
             label: 'Held',
             cells: held.map((h) => plain(`${String(h.count)} · ${formatMoney(h.asked)} asked`)),
+            informational: true,
           }
-        : { key: 'r2:held', label: 'Held asks', cells: held.map((h) => moneyCell(h.asked)) }
+        : {
+            key: 'r2:held',
+            label: 'Held',
+            cells: held.map((h) => plain(`${formatMoney(h.asked)} asked`)),
+            informational: true,
+          }
     )
   }
   const none = views.map((view) =>
     round === 1 ? (view?.not_in_tiers ?? 0) : (view?.round2_not_in_tiers ?? 0)
   )
   if (none.some((n) => n !== 0)) {
-    rows.push({ key: `r${String(round)}:none`, label: 'In no tier', cells: none.map(moneyCell) })
+    rows.push({
+      key: `r${String(round)}:none`,
+      label: 'In no tier',
+      cells: none.map(moneyCell),
+      informational: true,
+    })
   }
   return rows
 }

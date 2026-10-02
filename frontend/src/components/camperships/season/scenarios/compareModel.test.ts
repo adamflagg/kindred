@@ -18,9 +18,12 @@ describe('what the compare shows, in the URL (D15, D38, D138)', () => {
     expect(parseCodes(null)).toEqual([])
   })
 
-  it('drops the oldest when a fifth is ticked, and unticks', () => {
-    expect(toggleCode(['A', 'A1', 'B', 'B1'], 'B2')).toEqual(['A1', 'B', 'B1', 'B2'])
+  it('refuses a fifth tick (the tab says so), keeps the four, and unticks', () => {
+    const full = ['A', 'A1', 'B', 'B1']
+    expect(toggleCode(full, 'B2')).toBe(full)
+    expect(toggleCode(full, 'B1')).toEqual(['A', 'A1', 'B'])
     expect(toggleCode(['A', 'A1'], 'A')).toEqual(['A1'])
+    expect(toggleCode(['A'], 'A1')).toEqual(['A', 'A1'])
   })
 
   it('reads the request set: the Round 1 deadline, a date, or every frozen request', () => {
@@ -73,6 +76,7 @@ describe('the compare rows (D38; RPT-17, RPT-32)', () => {
     const views = columns.map((c) => c.committee ?? null)
     const rows = tierRows(views, 1)
     expect(rows.map((r) => r.label)).toEqual(['Tier 1', 'Tier 2', 'Held', 'In no tier'])
+    expect(rows.map((r) => r.informational ?? false)).toEqual([false, false, true, true])
     // 3 + 1 held, $6,000 + $1,500 asked: counted apart, out of the tier money and pct of ask.
     expect(rows.find((r) => r.key === 'r1:held')?.cells[0]?.text).toBe('4 · $7,500 asked')
     expect(rows.find((r) => r.key === 'r1:none')?.cells.map((c) => c.text)).toEqual([
@@ -105,8 +109,11 @@ describe('the compare rows (D38; RPT-17, RPT-32)', () => {
         : null
     )
     const rows = tierRows(views, 2)
-    expect(rows.map((r) => r.label)).toEqual(['Tier 1', 'Held asks', 'In no tier'])
-    expect(rows.find((r) => r.key === 'r2:held')?.cells[0]?.text).toBe('$2,000')
+    // Worded as Round 1's: "Held", "$X asked" (Round2CompareOut has no held count).
+    expect(rows.map((r) => r.label)).toEqual(['Tier 1', 'Held', 'In no tier'])
+    expect(rows.find((r) => r.key === 'r2:held')?.cells[0]?.text).toBe('$2,000 asked')
+    // What the tiers leave out is informational: never drawn as if summed into them.
+    expect(rows.map((r) => r.informational ?? false)).toEqual([false, true, true])
     expect(rows.find((r) => r.key === 'r2:none')?.cells[0]?.text).toBe('$300')
   })
 
