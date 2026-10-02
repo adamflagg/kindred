@@ -357,6 +357,8 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             tally.cancelled[request.cancel_reason or NOT_RECORDED_REASON] += 1
             if request.cancel_reason == AID_NOT_ENOUGH:
                 tally.declined += 1
+        if not request.live:  # 29b: only a live request of a camper who attended is in the need and appeal figures
+            continue
         if not attended(group, request.person_cm_id, request.household_cm_id):
             continue
         whom = request.household_cm_id if group.kind == "families" else request.person_cm_id

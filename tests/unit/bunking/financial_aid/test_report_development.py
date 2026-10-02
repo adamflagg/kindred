@@ -7,6 +7,8 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from bunking.financial_aid.reports.development import (
     ADULT,
     AGE_UNKNOWN,
@@ -477,3 +479,41 @@ def test_a_grant_with_no_session_and_no_other_aid_is_one_award() -> None:
         _inputs(grants=(GrantMoney("regional grant", 1000001, EMMA, "camp_pool", Decimal(500)),))
     )
     assert _camp(column).awards == 1
+
+
+# --- a request that is not live is out of the need and appeal figures (29b: attended requests only) -------------
+
+
+def _emma_with_a_second_request(standing: str, reason: str | None = None) -> DevelopmentColumn:
+    """Emma attended session 1000101 (live, ask 4,000, awarded 1,500) and holds a second request on session 1000102
+    in the same group, with an appeal, that is not live. Her attendance of the first must not carry the second."""
+    return development_column(
+        _inputs(
+            requests=(
+                req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA),
+                req(
+                    "reqemma00000002",
+                    rnd(1, ask="3000"),
+                    rnd(2, ask="800", posted="200"),
+                    person=EMMA,
+                    session=1000102,
+                    standing=standing,  # type: ignore[arg-type]
+                    reason=reason,
+                ),
+            ),
+            attendance=(_went(EMMA, 1000001),),
+        )
+    )
+
+
+@pytest.mark.parametrize("standing", ["cancelled", "closed"])
+def test_a_request_that_is_not_live_is_not_counted_because_the_camper_attended_another_session(standing: str) -> None:
+    camp = _camp(_emma_with_a_second_request(standing, "medical" if standing == "cancelled" else None))
+    assert camp.total_requests == Decimal(4000)
+    assert camp.pct_need_met == Decimal("37.5")  # 1,500 ÷ 4,000: the second request's 3,000 is not in the need
+    assert camp.appeals.submitted == 0
+
+
+def test_a_cancelled_request_still_counts_in_the_cancel_reasons_though_it_is_out_of_the_need() -> None:
+    camp = _camp(_emma_with_a_second_request("cancelled", "medical"))
+    assert camp.cancelled_by_reason == {"medical": 1}
