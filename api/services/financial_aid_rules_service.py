@@ -98,6 +98,11 @@ logger = get_logger(__name__)
 
 # Rows per request for every paged read; PocketBase clamps anything above 1000.
 PAGE_SIZE = 1000
+
+# How long an approval's request waits on measuring and recording its effect. The approval has already committed, so a
+# slow pricing read must not hold the answer (and time the client out) for the sake of a note about it.
+EFFECT_TIMEOUT_SECONDS = 15.0
+
 # Every paged read ends its sort on the record id: LIMIT/OFFSET paging without a
 # total order can skip or repeat a row.
 STABLE_SORT = "id"
@@ -1053,17 +1058,25 @@ class FinancialAidRulesService:
     ) -> None:
         """H3: what this approval did to the season's pricing, recorded on its own operation as one log-only row
         (classed rules in History). The approval has committed, so a failure here is logged and never raised: the
-        approval stands, without an effect."""
+        approval stands, without an effect. Measuring and recording are bounded by EFFECT_TIMEOUT_SECONDS, so a slow
+        measure gives up the same way instead of holding the request."""
         try:
-            effect = await effects.measure(year, before, await self._pricing_version(year))
-            await self._store.record(
-                entity=RULES_EFFECT_ENTITY,
-                entity_id=_entity_id(year, version),
-                year=year,
-                action=EFFECT_ACTION,
-                after=effect.log(),
-                actor=actor,
-                operation_id=operation_id,
+            async with asyncio.timeout(EFFECT_TIMEOUT_SECONDS):
+                effect = await effects.measure(year, before, await self._pricing_version(year))
+                await self._store.record(
+                    entity=RULES_EFFECT_ENTITY,
+                    entity_id=_entity_id(year, version),
+                    year=year,
+                    action=EFFECT_ACTION,
+                    after=effect.log(),
+                    actor=actor,
+                    operation_id=operation_id,
+                )
+        except TimeoutError:
+            logger.warning(
+                "rules approval %s:%s committed; its effect was not recorded because measuring took too long",
+                year,
+                version,
             )
         except Exception:
             logger.exception("rules approval %s:%s committed; its effect on pricing was not recorded", year, version)

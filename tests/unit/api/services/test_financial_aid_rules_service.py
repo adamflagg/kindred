@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
+import time
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -974,6 +976,32 @@ async def test_an_effect_that_fails_never_undoes_the_approval() -> None:
     approved, _ = await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
     assert approved.section_status["budget"].state == "approved"
     assert (store.recorded, effects.calls) == ([], [])  # no effect, and nothing measured
+
+
+class _SlowEffects(_Effects):
+    async def measure(self, year: int, before: int, after: int) -> ApprovalEffect:
+        await asyncio.sleep(1.0)
+        return await super().measure(year, before, after)
+
+
+@pytest.mark.asyncio
+async def test_an_effect_that_measures_too_slowly_is_dropped_and_the_approval_answers_promptly(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The request waits on the effect, so a slow measure must not hold the answer to an approval that has committed."""
+    from api.services import financial_aid_rules_service as module
+
+    monkeypatch.setattr(module, "EFFECT_TIMEOUT_SECONDS", 0.05, raising=False)
+    store, effects = FakeStore(), _SlowEffects()
+    service = FinancialAidRulesService(store, clock=lambda: AT, effects=effects)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    started = time.monotonic()
+    with caplog.at_level("WARNING"):
+        approved, _ = await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
+    assert time.monotonic() - started < 0.5  # not the full second the measure takes
+    assert approved.section_status["budget"].state == "approved"
+    assert store.recorded == []
+    assert "took too long" in caplog.text
 
 
 @pytest.mark.asyncio
