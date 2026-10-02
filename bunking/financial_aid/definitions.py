@@ -200,7 +200,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Round 1 unmet ask, not yet appealed: Σ (the family's Round 1 ask − its Round 1 decided award) over "
             "live requests with no Round 2 ask keyed yet, plus held Round 1 requests' asks, per pool. It is demand "
-            "that can still come back as appeals: shown below the line, never counted in Remaining."
+            "that can still come back as appeals: shown below the line, never counted in Remaining. Rounds outside "
+            "the budget don't count, offers that were clawed back don't count, and each family's gap is floored at "
+            "$0, so one family's overage never offsets another's unmet ask."
         ),
         spec="§5.9",
         rulings=("D82",),

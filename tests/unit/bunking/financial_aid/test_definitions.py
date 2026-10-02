@@ -98,3 +98,12 @@ def test_rounds_and_budget_adds_forward_demand_and_the_confirmed_share_after_its
 def test_the_unconfirmed_note_cites_the_reconciliation_section() -> None:
     """The confirmed share is spec §7.2's reconciliation, not §5.3's budget posted."""
     assert BY_KEY["unconfirmed"].spec == "§7.2"
+
+
+def test_the_round_1_unmet_note_names_the_three_rules_the_figure_applies() -> None:
+    """Rounds outside the budget and clawed-back offers are skipped, and each family's gap is floored at $0 (the
+    behaviour is pinned in test_decision_budget.py)."""
+    text = BY_KEY["round1_unmet"].text
+    assert "Rounds outside the budget don't count" in text
+    assert "offers that were clawed back don't count" in text
+    assert "each family's gap is floored at $0" in text
