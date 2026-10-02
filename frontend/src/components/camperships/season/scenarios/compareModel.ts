@@ -153,7 +153,7 @@ const pctOfAsk = (pct: number | null) => (pct === null ? '' : ` · ${String(pct)
  * 2, from the committee's "All" rows. A column that holds no row for a tier reads "—".
  */
 export function tierRows(views: ReadonlyArray<ApiAidCommittee | null>, round: 1 | 2): CompareRow[] {
-  return tiersOf(views, round).map((tier) => ({
+  const tiers = tiersOf(views, round).map((tier) => ({
     key: `r${String(round)}:${String(tier)}`,
     label: `Tier ${String(tier)}`,
     cells: views.map((view) => {
@@ -169,6 +169,41 @@ export function tierRows(views: ReadonlyArray<ApiAidCommittee | null>, round: 1 
       )
     }),
   }))
+  if (tiers.length === 0) return []
+
+  // What the tier rows leave out, shown only when some column has it (as the Results panel's "In no tier").
+  const rows: CompareRow[] = [...tiers]
+  const held = views.map((view) => {
+    const all = (round === 1 ? view?.round1_by_tier : view?.round2_by_tier)?.filter(
+      (r) => r.table === null
+    )
+    return {
+      count: round === 1 ? sum(all, (r) => ('held' in r ? r.held : 0)) : 0,
+      asked: sum(all, (r) => r.held_asked),
+    }
+  })
+  if (held.some((h) => h.count !== 0 || h.asked !== 0)) {
+    rows.push(
+      round === 1
+        ? {
+            key: 'r1:held',
+            label: 'Held',
+            cells: held.map((h) => plain(`${String(h.count)} · ${formatMoney(h.asked)} asked`)),
+          }
+        : { key: 'r2:held', label: 'Held asks', cells: held.map((h) => moneyCell(h.asked)) }
+    )
+  }
+  const none = views.map((view) =>
+    round === 1 ? (view?.not_in_tiers ?? 0) : (view?.round2_not_in_tiers ?? 0)
+  )
+  if (none.some((n) => n !== 0)) {
+    rows.push({ key: `r${String(round)}:none`, label: 'In no tier', cells: none.map(moneyCell) })
+  }
+  return rows
+}
+
+function sum<T>(rows: readonly T[] | undefined, pick: (row: T) => number): number {
+  return (rows ?? []).reduce((total, row) => total + pick(row), 0)
 }
 
 /** Last season's column (RPT-17): its posted money, or its label when it isn't loaded (never zeros). */
