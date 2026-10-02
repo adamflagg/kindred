@@ -338,3 +338,20 @@ async def test_user_names_query_both_the_original_and_lowercased_email() -> None
     (call,) = calls
     assert "email = 'Registrar@Example.com'" in str(call["filter"])
     assert "email = 'registrar@example.com'" in str(call["filter"])
+
+
+@pytest.mark.asyncio
+async def test_session_counts_read_enrolled_and_waitlisted_registrations_of_the_sessions_asked() -> None:
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = [
+        SimpleNamespace(status_id=2, expand={"session": SimpleNamespace(cm_id=1000101)}),
+        SimpleNamespace(status_id=2, expand={"session": SimpleNamespace(cm_id=1000101)}),
+        SimpleNamespace(status_id=8, expand={"session": SimpleNamespace(cm_id=1000101)}),
+    ]
+    counts = await FinancialAidRepository(pb).fetch_session_counts(2027, [1000102, 1000101])
+    assert counts == {1000101: (2, 1), 1000102: (0, 0)}
+    params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert params["filter"] == (
+        "year = 2027 && (status_id = 2 || status_id = 8) && (session.cm_id = 1000101 || session.cm_id = 1000102)"
+    )
+    assert params["expand"] == "session"

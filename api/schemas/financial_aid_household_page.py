@@ -117,6 +117,18 @@ class ReceiptOut(BaseModel):
     label: ReceiptLabelOut
 
 
+class Round3ContextOut(BaseModel):
+    """A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
+    status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
+    None: not entered)."""
+
+    session_cm_id: int
+    enrolled: int
+    waitlisted: int
+    capacity: int | None
+    capacity_note: str
+
+
 class HouseholdRequestOut(BaseModel):
     row: GridRowOut
     ask: AnswerOut | None  # the Round 1 ask with its corrections beside the original (main spec §9.3)
@@ -128,6 +140,7 @@ class HouseholdRequestOut(BaseModel):
     # a decided total, and on a request outside the band (D77's included).
     grants_applied: float | None = None
     grants_beyond_owed: float | None = None  # grants − grants_applied
+    round3_context: Round3ContextOut | None = None  # only on a request with a Round 3
 
 
 class IncomeOut(BaseModel):

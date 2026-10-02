@@ -33,6 +33,7 @@ from api.schemas.financial_aid_household_page import (
     IncomeOut,
     ReceiptLabelOut,
     ReceiptOut,
+    Round3ContextOut,
     ShareLineOut,
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
@@ -261,7 +262,25 @@ class HouseholdLedgerReads(Protocol):
     async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]: ...
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]: ...
     async def fetch_links(self, year: int) -> list[Any]: ...
+    async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]: ...
+    async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]: ...
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]: ...
+
+
+def round3_context(
+    row: GridRowOut, counts: Mapping[int, tuple[int, int]], capacities: Mapping[int, Any]
+) -> Round3ContextOut | None:
+    if row.session_cm_id <= 0 or not any(r.round == 3 for r in row.rounds):
+        return None
+    enrolled, waitlisted = counts.get(row.session_cm_id, (0, 0))
+    cap = capacities.get(row.session_cm_id)
+    return Round3ContextOut(
+        session_cm_id=row.session_cm_id,
+        enrolled=enrolled,
+        waitlisted=waitlisted,
+        capacity=int(cap.capacity) if cap is not None else None,
+        capacity_note=str(getattr(cap, "note", "") or "") if cap is not None else "",
+    )
 
 
 def _name(names: Mapping[str, str], actor: str) -> str | None:
@@ -457,6 +476,16 @@ class HouseholdPageService:
             asyncio.gather(*(_income(self._casework, year, h) for h in scope.households)),
         )
         rows = [decisions.row_of(season, names, rid) for rid in scope.request_ids]
+        r3_sessions = sorted(
+            {r.session_cm_id for r in rows if r.session_cm_id > 0 and any(x.round == 3 for x in r.rounds)}
+        )
+        counts, capacities = (
+            await asyncio.gather(
+                self._ledger.fetch_session_counts(year, r3_sessions), self._ledger.fetch_capacities(year, r3_sessions)
+            )
+            if r3_sessions
+            else ({}, {})
+        )
         grant_rows = [
             g
             for g in grants.grants
@@ -512,6 +541,7 @@ class HouseholdPageService:
                 grants=money(counted),
                 grants_applied=money(applied) if applied is not None else None,
                 grants_beyond_owed=money(beyond) if beyond is not None else None,
+                round3_context=round3_context(row, counts, capacities),
             )
 
         return HouseholdPageResponse(
