@@ -28,6 +28,8 @@ import type {
   ApiAidRequestOut,
   ApiAidHistoryOperationDetail,
   ApiAidHistoryPage,
+  ApiAidMakeRulesDraftIn,
+  ApiAidPromotionPreview,
   ApiAidRulesDraft,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
@@ -35,6 +37,7 @@ import type {
   ApiAidScenarioDraft,
   ApiAidScenarioEvaluateIn,
   ApiAidScenarioEvaluation,
+  ApiAidScenarioFit,
   ApiAidScenarioCompare,
   ApiAidScenarioKeepIn,
   ApiAidScenarioLoadIn,
@@ -720,4 +723,52 @@ export async function fetchAidScenarioTrail(
   )
   if (!response.ok) throw await toApiError(response, 'Failed to load the trail', AidApiError)
   return (await response.json()) as ApiAidScenarioTrailPage
+}
+
+/**
+ * The tier shift that uses Round 1's allocation, the pools' Round 1 Remaining summed (§7.4; D119;
+ * fit.py), naming the tightest pool as information. Records nothing: "Use it" records the document.
+ */
+export function fitAidScenario(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidScenarioDocumentIn
+): Promise<ApiAidScenarioFit> {
+  return send<ApiAidScenarioFit>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/fit-to-budget`,
+    body,
+    "Couldn't fit to budget"
+  )
+}
+
+/** "Make A1 the rules draft": each section it changes, old → new, and whose edit it would replace (D39). */
+export async function fetchAidPromotionPreview(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  code: string
+): Promise<ApiAidPromotionPreview> {
+  const response = await fetchWithAuth(`${scenarios(year)}/options/${code}/rules-draft`)
+  if (!response.ok) throw await toApiError(response, "Couldn't look at the changes", AidApiError)
+  return (await response.json()) as ApiAidPromotionPreview
+}
+
+/**
+ * Copy a kept option's changed sections into the rules draft (D39); each then goes through approval.
+ * 409 when the rules draft moved on since the preview, or a replaced edit wasn't confirmed by its token.
+ */
+export function makeAidRulesDraft(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  code: string,
+  body: ApiAidMakeRulesDraftIn
+): Promise<ApiAidRulesDraft> {
+  return send<ApiAidRulesDraft>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/options/${code}/rules-draft`,
+    body,
+    "Couldn't make it the rules draft"
+  )
 }

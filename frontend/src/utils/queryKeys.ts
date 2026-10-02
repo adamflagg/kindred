@@ -766,6 +766,8 @@ export const queryKeys = {
     ['financial-aid', 'scenarios', year, 'compare', codes, requestSet, lastSeason] as const,
   aidScenarioTrail: (year: number, page: number) =>
     ['financial-aid', 'scenarios', year, 'trail', page] as const,
+  aidPromotionPreview: (year: number, code: string) =>
+    ['financial-aid', 'scenarios', year, 'promotion', code] as const,
 }
 
 /**
