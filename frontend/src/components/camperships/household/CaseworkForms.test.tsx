@@ -285,7 +285,12 @@ describe('ShareForm (main spec §9.2)', () => {
   it('shows the percent unit and says what the server does with the other share (m2)', () => {
     render(<ShareForm request={householdRequest(ROW_EMMA)} page={SPLIT_PAGE} onDone={done} />)
     expect(screen.getByText('%')).toBeInTheDocument()
-    expect(screen.getByText(/the server fills the other household.s share/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "With one other household on this request, this tool fills the other household's share.",
+        { exact: false }
+      )
+    ).toBeInTheDocument()
     expect(screen.getByText(/holds .* until a second share is added/i)).toBeInTheDocument()
   })
 
