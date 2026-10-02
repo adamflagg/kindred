@@ -41,7 +41,7 @@ export function bandTitle(page: ApiAidHouseholdPage): string {
 export function bandSubtitle(page: ApiAidHouseholdPage): string {
   const opened = page.households.find((h) => h.household_cm_id === page.household_cm_id)
   if (page.households.length > 1) {
-    return `${String(page.households.length)} households with a financial stake · opened from ${opened?.family_name ?? `household ${String(page.household_cm_id)}`}`
+    return `${String(page.households.length)} households with a financial stake · opened from ${householdName(page, page.household_cm_id)}`
   }
   const card = opened ?? page.households[0]
   if (card === undefined) return `household ${String(page.household_cm_id)}`
@@ -79,11 +79,10 @@ export function postedLabel(states: readonly ApiAidConfirmationState[]): string 
   return states.length === 0 ? 'posted' : `posted · ${states.map(stateWords).join(' · ')}`
 }
 
+/** A blank family name reads as missing here, the one place names come from (the server never sends one today). */
 export function householdName(page: ApiAidHouseholdPage, householdCmId: number): string {
-  return (
-    page.households.find((h) => h.household_cm_id === householdCmId)?.family_name ??
-    `Household ${String(householdCmId)}`
-  )
+  const name = page.households.find((h) => h.household_cm_id === householdCmId)?.family_name
+  return name !== undefined && nonEmpty(name) ? name : `Household ${String(householdCmId)}`
 }
 
 export function householdChip(page: ApiAidHouseholdPage, householdCmId: number): number | null {
