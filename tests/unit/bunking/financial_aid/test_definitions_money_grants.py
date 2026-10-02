@@ -25,8 +25,9 @@ def test_slice_3s_three_surfaces_number_their_notes_in_this_order() -> None:
 
 def test_not_yet_in_campminder_is_d151s_figure() -> None:
     assert (
-        "locked total, plus the decided amounts of its rounds waiting to be ticked, less the live camp-aid money "
-        "already placed on it" in _text("not_yet_in_campminder")
+        "locked total, plus the decided amounts of its rounds waiting to be ticked (oldest first, up to the first "
+        "round that can't be ticked), less the live camp-aid money already placed on it"
+        in _text("not_yet_in_campminder")
     )
 
 
@@ -44,3 +45,20 @@ def test_a_placement_ticks_only_rounds_covered_in_full_at_the_posting_days_price
 def test_expected_is_never_a_grant_and_a_season_counts_no_commitment() -> None:
     assert "never a grant" in _text("expected_grant")  # D56
     assert "commitment not yet in CampMinder are left out" in _text("grantor_season")  # owner question 3's default
+
+
+def test_a_reporting_group_change_re_places_every_households_household_level_lines() -> None:
+    """The ledger narrows a household-level line by group for every household (_sole_camper), as the shipped
+    GROUP_CHANGE_WARNING says; the note claims no narrower scope."""
+    text = _text("reporting_group")
+    assert "Changing it re-places household-level lines on the next sync." in text
+    assert "multi-program" not in text
+
+
+def test_expected_clears_on_a_line_or_an_open_commitment() -> None:
+    """expected_grants clears on a line of the source family (a reversed one too) or an open hand-entered commitment."""
+    text = _text("expected_grant")
+    assert (
+        "It clears itself when a line or an open commitment arrives (a reversed line counts: the application was answered)."
+        in text
+    )

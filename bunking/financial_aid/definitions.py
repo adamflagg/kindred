@@ -526,7 +526,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Not yet in CampMinder",
         text=(
             "Not yet in CampMinder: a candidate request's locked total, plus the decided amounts of its rounds waiting "
-            "to be ticked, less the live camp-aid money already placed on it. It is what To place weighs a line "
+            "to be ticked (oldest first, up to the first round that can't be ticked), less the live camp-aid money "
+            "already placed on it. It is what To place weighs a line "
             "against; it redefines nothing."
         ),
         spec="§8.1",
@@ -562,7 +563,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Reporting group: the season's budget pool, or programs within it, that an outside source funds. The "
             "ledger places a household-level grant line with it. An outside source with none needs a group, here and "
-            "on Today. Changing it re-places household-level lines in multi-program households on the next sync."
+            "on Today. Changing it re-places household-level lines on the next sync."
         ),
         spec="§8.1",
         rulings=("D95", "D100", "D159"),
@@ -583,7 +584,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Expected",
         text=(
             "Expected: a family whose aid form says it applied, or plans to apply, for an outside camper grant or a "
-            "congregation's campership, with no such line in CampMinder yet. It clears itself when a line arrives. It "
+            "congregation's campership, with no such line in CampMinder yet. It clears itself when a line or an open "
+            "commitment arrives (a reversed line counts: the application was answered). It "
             "is never a grant, and the calculator never counts it."
         ),
         spec="§5.8",
