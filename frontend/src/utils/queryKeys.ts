@@ -139,8 +139,6 @@ export const queryKeys = {
   // Admin/Config (Tier 2 - user data)
   adminSettings: () => ['admin-settings'] as const,
   adminSessions: (year: number) => ['admin-sessions', year] as const,
-  /** The season's session names (Camperships' Settle session; Decision 28). Not under the aid prefix: aid writes don't move it. */
-  campSessionNames: (year: number) => ['camp-sessions', 'names', year] as const,
   solverConfig: () => ['solver-config'] as const,
 
   // Debug (Tier 2 - frequently updated during testing)

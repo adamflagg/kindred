@@ -19,6 +19,12 @@ export type Parsed<T> =
 const ok = <T>(value: T): Parsed<T> => ({ kind: 'ok', value })
 const invalid = <T>(reason: string): Parsed<T> => ({ kind: 'invalid', reason })
 
+/**
+ * The server's ceiling on a corrected income figure (`MONEY_CEILING` in
+ * api/services/financial_aid_corrections.py). Not the aid-amount limit the kit's editor keeps.
+ */
+const INCOME_MAX = 10_000_000
+
 const COUNT_FIELDS = new Set(['num_children'])
 
 /** An answer's kind, as api/services/financial_aid_corrections.py keeps it. */
@@ -59,38 +65,17 @@ export function correctionValue(kind: FieldKind, raw: string | null): Parsed<str
     const count = parseCount(raw, 50)
     return count.kind === 'ok' ? ok(String(count.value)) : count
   }
-  const money = parseMoneyInput(raw)
+  const money = parseMoneyInput(raw, INCOME_MAX)
   if (money.kind === 'ok') return ok(String(money.amount))
   return invalid(money.kind === 'invalid' ? money.reason : 'Enter the figure')
 }
 
-/** The session candidates intake recorded on the request's `unmatched_session` flag (Decision 28). */
-export function sessionCandidates(
-  application: ApiAidApplication | undefined,
-  requestId: string
-): number[] {
-  const flag = application?.requests
-    .find((r) => r.id === requestId)
-    ?.flags.find((f) => f.code === 'unmatched_session')
-  const candidates = flag?.detail?.['candidates']
-  return Array.isArray(candidates)
-    ? candidates.filter((c): c is number => typeof c === 'number')
-    : []
-}
-
 /**
- * A session's name: the season's sessions first (Decision 28's default; M6), then a row on the page,
- * else its id.
+ * The holder intake named for a pending duplicate (`RequestOut.duplicate_of`), or ''. It can be on
+ * another household's page, where the page's own requests do not reach (spec §9.2).
  */
-export function sessionName(
-  page: ApiAidHouseholdPage,
-  sessionCmId: number,
-  names?: ReadonlyMap<number, string> | undefined
-): string {
-  const named = names?.get(sessionCmId)
-  if (named !== undefined && named !== '') return named
-  const row = page.requests.find((r) => r.row.session_cm_id === sessionCmId)?.row
-  return row && row.session_name !== '' ? row.session_name : `Session ${String(sessionCmId)}`
+export function namedHolder(application: ApiAidApplication | undefined, requestId: string): string {
+  return application?.requests.find((r) => r.id === requestId)?.duplicate_of ?? ''
 }
 
 /**
@@ -136,15 +121,27 @@ export interface CaseworkOffers {
 }
 
 /**
+ * Whether Payer shares… is offered. Owner ruling (review ⚠1): the server refuses only a duplicate or
+ * withdrawn request, but the button is also hidden on a cancelled request (CampMinder's or Kindred's:
+ * its reversal follows its shares, and the card shows no consequence) and on a pending duplicate (not
+ * priced; the second payer belongs on the survivor). Widening it is this one line.
+ */
+function offersShares(row: ApiAidGridRow): boolean {
+  const refusedByServer = row.request_status === 'duplicate' || row.request_status === 'withdrawn'
+  return !refusedByServer && row.request_status !== 'duplicate_pending' && !row.cancellation
+}
+
+/**
  * Which casework buttons a request takes, gated as the server gates each write
  * (api/services/financial_aid_casework_service.py): payer shares and headcount refuse a duplicate or
- * withdrawn request (`_CLOSED`); a headcount also belongs to a Family Camp household request; Settle
- * session and Keep the other request are for the two statuses intake sets.
+ * withdrawn request (`_CLOSED`; shares are narrowed further, see `offersShares`); a headcount also
+ * belongs to a Family Camp household request; Settle session and Keep the other request are for the
+ * two statuses intake sets.
  */
 export function caseworkOffers(row: ApiAidGridRow): CaseworkOffers {
   const closed = row.request_status === 'duplicate' || row.request_status === 'withdrawn'
   return {
-    shares: !closed,
+    shares: offersShares(row),
     session: row.request_status === 'unmatched_session',
     duplicate: row.request_status === 'duplicate_pending',
     headcount: !closed && row.person_cm_id === 0 && row.program_key === 'family_camp',

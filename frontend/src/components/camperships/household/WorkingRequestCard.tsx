@@ -72,6 +72,9 @@ export function WorkingRequestCard({
   // (Posted undone, Round 3 posted elsewhere, the request no longer live) closes it, instead of
   // leaving a draft that can only be refused and would block every exit. No current save removes its
   // own kind (a Round 3 amount stays offered while pending), so this never unmounts an in-flight save.
+  // The casework forms below are the exception: a Settle session or Keep-the-other save removes its own
+  // offer (the refetch it awaits moves the status), so its form unmounts while the save is still
+  // pending. That is benign: the form's late state is dropped, and its `closeIfStill` then clears `open`.
   const edit =
     open?.kind === 'edit' && cardEdits(request.row).includes(open.edit) ? open.edit : null
   const editing = edit !== null
@@ -146,11 +149,11 @@ export function WorkingRequestCard({
   } else if (form === 'shares') {
     editor = <ShareForm request={request} page={page} onDone={close} />
   } else if (form === 'session') {
-    editor = <SessionForm request={request} page={page} onDone={close} />
+    editor = <SessionForm request={request} onDone={close} />
   } else if (form === 'duplicate') {
     editor = <DuplicateForm request={request} page={page} onDone={close} />
   } else if (form === 'headcount') {
-    editor = <HeadcountForm request={request} onDone={close} />
+    editor = <HeadcountForm request={request} page={page} onDone={close} />
   } else if (open?.kind === 'cancel') {
     editor = (
       <CancelForm
