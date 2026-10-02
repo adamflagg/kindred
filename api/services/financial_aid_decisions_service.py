@@ -605,8 +605,13 @@ def _candidates(request: RequestRecord, sessions: Mapping[int, SessionRow]) -> l
     for flag in request.flags:
         if flag.get("code") != _UNMATCHED_FLAG:
             continue
-        detail = flag.get("detail") or {}
-        ids.extend(c for c in detail.get("candidates", []) if isinstance(c, int) and not isinstance(c, bool))
+        detail = flag.get("detail")
+        if not isinstance(detail, Mapping):
+            continue
+        candidates = detail.get("candidates")
+        if not isinstance(candidates, list):
+            continue
+        ids.extend(c for c in candidates if isinstance(c, int) and not isinstance(c, bool))
     return [
         SessionCandidateOut(session_cm_id=i, name=sessions[i].name if i in sessions else f"Session {i}")
         for i in dict.fromkeys(ids)

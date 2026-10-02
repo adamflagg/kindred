@@ -164,3 +164,23 @@ def test_a_rules_document_from_before_the_field_still_loads() -> None:
     doc = intake_rules().model_dump(mode="json")
     del doc["programs"]["summer"]["campminder_description"]
     assert AidRules.model_validate(doc).programs["summer"].campminder_description == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("detail", ["oops", 7, ["x"], {"candidates": 5}, {"candidates": "1000101"}, None])
+async def test_a_malformed_unmatched_flag_cannot_break_the_grid(detail: object) -> None:
+    store = FakeDecisionsStore()
+    request = seed_request(store, EMMA)
+    store.requests[EMMA] = replace(
+        request, status="unmatched_session", session_cm_id=0, flags=({"code": "unmatched_session", "detail": detail},)
+    )
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.session_candidates == []
+
+
+def test_a_whitespace_only_description_reads_as_empty() -> None:
+    doc = intake_rules().model_dump(mode="json")
+    doc["programs"]["summer"]["campminder_description"] = "   "
+    assert AidRules.model_validate(doc).programs["summer"].campminder_description == ""
+    doc["programs"]["summer"]["campminder_description"] = "  Summer aid "
+    assert AidRules.model_validate(doc).programs["summer"].campminder_description == "Summer aid"
