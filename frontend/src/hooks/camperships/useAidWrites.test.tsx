@@ -251,6 +251,18 @@ describe('the casework forms’ writes (§6.3)', () => {
     })
   })
 
+  it('sends null (not an empty string) to put an answer back to the form’s figure', async () => {
+    const { result } = renderHook(() => useAidCorrection(), { wrapper })
+    const body = { field: 'num_children', new_value: null, reason: 'The family was right' }
+    await act(() => result.current.mutateAsync({ year: 2027, householdCmId: 1000001, body }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/applications/2027/1000001/corrections',
+      method: 'POST',
+      body: { field: 'num_children', new_value: null, reason: 'The family was right' },
+      auth: 'Bearer test-jwt',
+    })
+  })
+
   it("sets one household's payer share, and refreshes the jump index too", async () => {
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     const { result } = renderHook(() => useAidHouseholdShare(), { wrapper })

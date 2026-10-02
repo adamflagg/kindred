@@ -12,8 +12,9 @@ vi.mock('../../lib/pocketbase', () => ({
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
 }))
+let granted: string[] = ['financial_aid.view']
 vi.mock('../usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.view' }),
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../useCurrentYear', () => ({ useYear: () => 2027 }))
 
@@ -25,6 +26,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+  granted = ['financial_aid.view']
   client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
   fetchSpy = vi
     .spyOn(globalThis, 'fetch')
@@ -53,5 +55,12 @@ describe('useAidApplication', () => {
     renderHook(() => useAidApplication(0), { wrapper })
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads nothing without the financial_aid.view permission', async () => {
+    granted = ['financial_aid.summary']
+    renderHook(() => useAidApplication(1000001), { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
