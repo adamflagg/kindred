@@ -422,7 +422,7 @@ export function viewCounts(
   return counts
 }
 
-/** "5 fam · 7 req" (§6.4's form, on view links and group headings); "—" when not counted. */
+/** "5 fam · 7 req" (§6.4's form, on group headings; a view link now shows requests only); "—" when not counted. */
 export function countWords(count: ViewCount | null): string {
   if (count === null) return '—'
   return `${String(count.families)} fam · ${String(count.requests)} req`

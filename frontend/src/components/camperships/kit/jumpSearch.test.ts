@@ -60,11 +60,11 @@ describe('searchJumpIndex (§3.5; D13: family, camper or parent name, or a CampM
       {
         household_cm_id: 1000009,
         family_name: 'Garcia',
-        people: [{ person_cm_id: null, name: 'Rosa Garcia', role: 'requester' }],
+        people: [{ person_cm_id: null, name: 'Olivia Chen', role: 'requester' }],
       },
     ] as unknown as ApiAidJumpHousehold[]
-    expect(searchJumpIndex(withRequester, 'rosa')[0]).toMatchObject({
-      lead: 'Rosa Garcia',
+    expect(searchJumpIndex(withRequester, 'olivia')[0]).toMatchObject({
+      lead: 'Olivia Chen',
       detail: '· requester · Garcia household',
     })
   })
