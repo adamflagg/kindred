@@ -106,6 +106,7 @@ from bunking.financial_aid.reports.programs import (
     programs,
 )
 from bunking.financial_aid.reports.statistics import (
+    DUPLICATE_REASON,
     NO_REASON,
     PCT_OF_ASK_DECIDED_LABEL,
     PCT_OF_ASK_LABEL,
@@ -138,6 +139,7 @@ CANCELLATION_CAVEAT: Final = (
     "counted as of the day; a registration CampMinder changed since then reads as it stands now"
 )
 WITHDRAWN_LABEL: Final = "Withdrawn in Kindred"
+DUPLICATE_LABEL: Final = "Duplicate"
 # RPT-1's two figure columns (owner N2 = C): what each says, server-sent so the screen never words it.
 OFFERED_LABEL: Final = "As offered"
 END_OF_SEASON_LABEL: Final = "End of season"
@@ -783,6 +785,8 @@ def _reason_label(reason: str) -> str:
         return "no reason recorded"
     if reason == WITHDRAWN_REASON:
         return WITHDRAWN_LABEL
+    if reason == DUPLICATE_REASON:
+        return DUPLICATE_LABEL
     for key, label in CANCEL_REASON_LABELS.items():
         if key == reason:
             return label

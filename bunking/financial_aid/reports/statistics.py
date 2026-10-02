@@ -56,15 +56,15 @@ def counts_in(request: ReportRequest, rounds: tuple[int, ...], *, with_decided: 
     """The Statistics counts a request in a row's population is in: the one definition the row's counts and the
     requests behind them share (slice 4 ask 1).
 
-      apps       always (D72; cancelled included, D131)
+      apps       every received request (D72; cancelled included, D131); a posted confirmed duplicate is not received
       cancelled  its standing is cancelled
       asks       it has an ask on the chip's round(s)
       awarded    awarded (Posted) money above $0 on those rounds (D80, D157); 0 on a request that isn't live (D129)
       decided    decided money not yet offered above $0, on the decided basis only (D130)"""
-    found: set[StatisticsCount] = {"apps"}
+    found: set[StatisticsCount] = {"apps"} if request.counts_as_received else set()
     if request.standing == "cancelled":
         found.add("cancelled")
-    if request.asked(rounds) is not None:
+    if request.counts_as_received and request.asked(rounds) is not None:
         found.add("asks")
     posted = request.awarded(rounds)
     if posted > 0:
@@ -108,6 +108,9 @@ NO_REASON: Final = "not_recorded"  # a cancellation with no reason: before 2027,
 # A withdrawn request that holds a posted award counts as a cancellation (owner (a), RULED 2026-10-02); it has no
 # cancel reason, so it gets its own line rather than reading as missing data.
 WITHDRAWN_REASON: Final = "withdrawn_in_kindred"
+# A CONFIRMED duplicate that holds a posted award counts the same way (owner ruling, queue 4, RULED), on its own line.
+# A pending duplicate does not.
+DUPLICATE_REASON: Final = "duplicate_in_kindred"
 
 
 PCT_OF_ASK_LABEL: Final = "% of ask"
@@ -243,7 +246,7 @@ def _row(
         cancelled += "cancelled" in found
         awarded_count += "awarded" in found
         decided_count += "decided" in found
-        if (ask := request.asked(rounds)) is not None:
+        if request.counts_as_received and (ask := request.asked(rounds)) is not None:
             asked += ask
         if not request.live:
             continue
@@ -264,7 +267,7 @@ def _row(
         income_from=band[0] if band is not None else None,
         income_to=band[1] if band is not None else None,
         fee_pct=fee,
-        apps=len(requests),
+        apps=sum(1 for r in requests if r.counts_as_received),
         cancelled=cancelled,
         asked=asked,
         asks=asks,
@@ -341,7 +344,7 @@ def tier_appeals(
 ) -> tuple[TierAppealsRow, ...]:
     """RPT-9: each tier's Round 1 apps beside its appeals, then a "no tier" row when any, then the totals (tier None,
     no band)."""
-    population = in_table(requests, table)
+    population = [r for r in in_table(requests, table) if r.counts_as_received]  # a duplicate is no application
     round1: dict[int | None, list[ReportRequest]] = defaultdict(list)
     round2: dict[int | None, int] = defaultdict(int)
     round3: dict[int | None, Decimal] = defaultdict(lambda: ZERO)

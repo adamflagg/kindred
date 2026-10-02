@@ -125,3 +125,9 @@ def test_recipients_who_cancelled_names_a_withdrawn_request_that_holds_a_posted_
     text = BY_KEY["recipients_cancelled"].text
     assert "or withdrawn" in text
     assert "A withdrawn request that holds a posted award counts here exactly as a cancelled one does." in text
+
+
+def test_recipients_who_cancelled_names_a_confirmed_duplicate_that_holds_a_posted_award() -> None:
+    """Owner ruling, queue 4 (RULED): a confirmed duplicate with a posted award counts on its own Duplicate line."""
+    text = BY_KEY["recipients_cancelled"].text
+    assert "a confirmed duplicate that holds one, on its own Duplicate line" in text

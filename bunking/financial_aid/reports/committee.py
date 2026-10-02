@@ -418,7 +418,8 @@ def _counted(requests: Sequence[ReportRequest]) -> Counted:
 
 def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
     pools: dict[str | None, list[ReportRequest]] = defaultdict(list)
-    for request in season.requests:
+    applications = [r for r in season.requests if r.counts_as_received]  # a posted duplicate is no application
+    for request in applications:
         pools[request.pool].append(request)
     out: list[ApplicationsRow] = []
     # (pool, members, kind): the named pools, a no-pool row where a request has none (the budget table's way, so the
@@ -431,7 +432,7 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
     ]
     if None in pools:
         groups.append((None, pools[None], "no_pool"))
-    groups.append((None, list(season.requests), "headline"))
+    groups.append((None, applications, "headline"))
     for pool, members, kind in groups:
         cut = season.cutoff_instant
         frozen = {r.request_id: r for r in season.cutoff_requests or ()}
@@ -702,9 +703,10 @@ def typed_budget(year: int, typed: _Typed) -> list[BudgetRow]:
 
 
 def native_appeals(season: NativeSeason) -> AppealsRow:
-    applications = len(season.requests)
+    received = [r for r in season.requests if r.counts_as_received]
+    applications = len(received)
     # Owner ruling (RULED 2026-10-02, appeals and cancellations): cancelled requests' Round 2/3 asks count, see `appeals`.
-    appealed = len(appeals(season.requests))
+    appealed = len(appeals(received))
     return AppealsRow(season.year, "P", applications, appealed, pct(Decimal(appealed), Decimal(applications)))
 
 

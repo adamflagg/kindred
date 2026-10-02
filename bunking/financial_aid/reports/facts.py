@@ -15,7 +15,9 @@ A report never reads the budget's Posted (D129, D131). It reads each request's o
                 (D130); a past date prices it as of the day (A6c), except a request 3c-2 can't price.
 
 Only RECEIVED requests become ReportRequests (D72: every intake request except refused duplicates; an edited
-answer is the same application, so the request it replaced is not counted again). The service decides that.
+answer is the same application, so the request it replaced is not counted again). The service decides that. The one
+exception is a CONFIRMED duplicate holding a posted award (owner ruling, queue 4): it carries `counts_as_received`
+False, reads as "cancelled", and only its money (As offered, the recipients-who-cancelled line) is counted.
 """
 
 from __future__ import annotations
@@ -89,6 +91,9 @@ class ReportRequest:
     received_at: datetime | None
     rounds: tuple[RoundFacts, ...]
     grants: Decimal = ZERO
+    # False only for a CONFIRMED duplicate holding a posted award (owner ruling, queue 4): it is not an application
+    # (D72), so it stays out of Apps, Asked, "# asks", r1_apps and every received count; only its money counts.
+    counts_as_received: bool = True
 
     @property
     def live(self) -> bool:

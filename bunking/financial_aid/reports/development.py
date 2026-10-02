@@ -341,6 +341,8 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         return person in attended_people[group.key]
 
     for request in inputs.requests:
+        if not request.counts_as_received:  # a posted duplicate is Finance's cancelled line alone, never Development's
+            continue
         group = groups.get(request.pool or NOT_REPORTED)
         if group is None:
             money = request.awarded()
