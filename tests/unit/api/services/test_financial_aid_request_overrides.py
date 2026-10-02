@@ -11,6 +11,12 @@ from decimal import Decimal
 import pytest
 
 import api.schemas.financial_aid_decisions as schemas
+from api.schemas.financial_aid_decisions import CancellationIn, CostOverrideIn, IncludeIn
+from api.services.financial_aid_decisions_service import (
+    CANCELLED_IN_KINDRED,
+    DecisionNotFoundError,
+    DecisionRefusedError,
+)
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord
 from api.services.financial_aid_request_overrides import (
     COST_OVERRIDE,
@@ -23,9 +29,9 @@ from api.services.financial_aid_request_overrides import (
     parse_cost_override,
 )
 from bunking.financial_aid.calculator import CostOverride
-from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore, log_seeded, seed_request
+from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore, FakeRules, log_seeded, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
-from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _service
+from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _posted, _service
 
 APP = f"app{1000001:012d}"  # seed_request's application id for the Johnson household
 
@@ -148,3 +154,151 @@ async def test_a_past_read_leaves_included_empty_and_names_it() -> None:
     grid = await _service(store).grid(YEAR, as_of=date(2027, 3, 1))
     assert grid.rows[0].included is None
     assert "included" in [gap.figure for gap in grid.not_rebuilt]
+
+
+NOTE = "Partial session agreed with the family"
+OVERRIDE = CostOverrideIn(amount=Decimal(3500), reason_code="discount", note=NOTE)
+
+
+@pytest.mark.asyncio
+async def test_a_cost_override_is_one_correction_row_with_its_log_line_and_the_grid_prices_it() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    out = await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+    assert (out.written, out.unchanged) == (1, 0)
+    assert out.operation_id
+    (write,) = store.operations[-1]
+    assert write.data is not None
+    assert (write.collection, write.data["field"], write.data["new_value"], write.data["request"]) == (
+        "aid_application_corrections",
+        "cost_override",
+        "discount:3500.00",
+        EMMA,
+    )
+    (log,) = store.log
+    assert (log["entity_id"], log["reason"], log["operation_id"]) == (f"{EMMA}:cost_override", NOTE, out.operation_id)
+    (row,) = (await service.grid(YEAR)).rows
+    assert row.cost == 3500.0
+
+
+@pytest.mark.asyncio
+async def test_retyping_the_standing_cost_override_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+    writes = len(store.operations)
+    again = await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+    assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
+    assert len(store.operations) == writes  # a no-op never reaches commit, so never change_row
+
+
+@pytest.mark.asyncio
+async def test_a_reason_code_the_season_doesnt_list_is_refused_naming_its_codes() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    whim = CostOverrideIn(amount=Decimal(3500), reason_code="whim", note=NOTE)
+    with pytest.raises(DecisionRefusedError, match=r"whim is not one of 2027's cost override reasons .*discount"):
+        await _service(store).set_cost_override(EMMA, whim, ACTOR)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_clearing_an_override_writes_a_revert_and_clearing_none_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    clear = CostOverrideIn(amount=None, note="Back to the catalog price")
+    assert (await service.set_cost_override(EMMA, clear, ACTOR)).written == 0
+    await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+    assert (await service.set_cost_override(EMMA, clear, ACTOR)).written == 1
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.cost, row.cost_override) == (2000.0, None)
+
+
+@pytest.mark.asyncio
+async def test_a_cost_override_needs_approved_rules() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    with pytest.raises(DecisionRefusedError, match="not approved yet"):
+        await _service(store, FakeRules(None)).set_cost_override(EMMA, OVERRIDE, ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_excluding_a_request_takes_it_out_and_putting_it_back_restores_it() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    out = await service.set_include(EMMA, IncludeIn(included=False, note="Counted under a sibling's request"), ACTOR)
+    assert out.written == 1
+    (row,) = (await service.grid(YEAR)).rows
+    assert row.included is False
+    assert row.include_override is not None
+    back = await service.set_include(EMMA, IncludeIn(included=True, note="Counted on its own again"), ACTOR)
+    assert back.written == 1
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.included, row.include_override) == (True, None)
+
+
+@pytest.mark.asyncio
+async def test_putting_back_a_request_never_excluded_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    out = await _service(store).set_include(EMMA, IncludeIn(included=True, note="Nothing to undo"), ACTOR)
+    assert (out.written, out.unchanged, out.operation_id) == (0, 1, "")
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_an_override_on_a_request_cancelled_in_kindred_is_refused_in_the_writes_words() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="medical"), ACTOR)
+    with pytest.raises(DecisionRefusedError, match=CANCELLED_IN_KINDRED):
+        await service.set_include(EMMA, IncludeIn(included=False, note="x"), ACTOR)
+    with pytest.raises(DecisionRefusedError, match=CANCELLED_IN_KINDRED):
+        await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_request_is_not_found() -> None:
+    with pytest.raises(DecisionNotFoundError):
+        await _service(FakeDecisionsStore()).set_include("reqnone00000001", IncludeIn(included=False, note="x"), ACTOR)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"amount": "3500", "note": "x"},  # an amount needs its code (D22)
+        {"amount": None, "reason_code": "discount", "note": "x"},  # clearing takes no code
+        {"amount": "3500", "reason_code": "discount", "note": "  "},  # the note is required
+        {"amount": "3500", "reason_code": "Discount", "note": "x"},  # a code is a key
+    ],
+)
+def test_a_cost_override_body_is_validated(body: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        CostOverrideIn.model_validate(body)
+
+
+@pytest.mark.asyncio
+async def test_a_cost_override_on_a_request_with_a_posted_round_succeeds_but_warns() -> None:
+    """It changes what the later rounds and "would change by" read, never the posted money; the response says so."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    out = await _service(store).set_cost_override(EMMA, OVERRIDE, ACTOR)
+    assert out.written == 1
+    assert out.warning is not None
+    assert "posted" in out.warning
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.rounds[0].posted == 1500.0  # the posted money doesn't move
+
+
+@pytest.mark.asyncio
+async def test_a_cost_override_with_nothing_posted_carries_no_warning() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    out = await _service(store).set_cost_override(EMMA, OVERRIDE, ACTOR)
+    assert out.warning is None

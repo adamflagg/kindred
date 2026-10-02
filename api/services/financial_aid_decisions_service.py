@@ -59,6 +59,7 @@ from api.schemas.financial_aid_decisions import (
     CellOut,
     ChangedRowOut,
     ConfirmationOut,
+    CostOverrideIn,
     CostOverrideOut,
     CountOut,
     DecisionWriteOut,
@@ -66,6 +67,7 @@ from api.schemas.financial_aid_decisions import (
     ForwardDemandOut,
     GridRowOut,
     HoldReleaseIn,
+    IncludeIn,
     IncludeOverrideOut,
     LedgerTicksOut,
     ManualHoldIn,
@@ -112,7 +114,7 @@ from api.services.financial_aid_cancellations import (
     needs_reason,
     withdrawn_on_cancelled_enrollments,
 )
-from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
+from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REVERT, effective_values
 from api.services.financial_aid_grant_placements import (
     PLACEMENT_ACTOR,
     PLACEMENT_REASON,
@@ -163,8 +165,16 @@ from api.services.financial_aid_reconciliation import (
     request_scope,
     undone_rounds,
 )
+from api.services.financial_aid_request_overrides import (
+    COST_OVERRIDE,
+    EXCLUDED,
+    INCLUDE_OVERRIDE,
+    encode_cost_override,
+    latest,
+    override_write,
+    parse_cost_override,
+)
 from api.services.financial_aid_request_overrides import by_request as overrides_by_request
-from api.services.financial_aid_request_overrides import parse_cost_override
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
@@ -256,6 +266,10 @@ CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
 
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
+_POSTED_OVERRIDE_WARNING: Final = (
+    "A round is already posted: this cost changes the later rounds and the would-change-by figures, "
+    "never the money already posted"
+)
 # Intake's flag on an unmatched request (financial_aid_intake_plan): its detail lists the candidate session ids.
 _UNMATCHED_FLAG: Final = "unmatched_session"
 
@@ -2486,6 +2500,44 @@ class FinancialAidDecisionsService:
         kind: HoldEventKind = "release" if body.released else "unrelease"
         write = self._hold_write(request, kind, body.code, body.note, actor, fact)
         return await self._commit_hold(request, write, body.note, actor)
+
+    async def set_cost_override(self, request_id: str, body: CostOverrideIn, actor: str) -> DecisionWriteOut:
+        """A cost override with its reason code, or clearing it (D22; reads 5-6): one aid_application_corrections row
+        and its log line. The code must be one of the approved rules' cost.override_reasons. What stands, retyped,
+        writes nothing."""
+        request, rounds = await self._live(request_id)
+        value = REVERT
+        if body.amount is not None and body.reason_code is not None:
+            rules = await self._approved_rules(request.year)
+            codes = rules.document.cost.override_reasons
+            if body.reason_code not in codes:
+                raise DecisionRefusedError(
+                    f"{body.reason_code} is not one of {request.year}'s cost override reasons ({', '.join(codes)})"
+                )
+            value = encode_cost_override(body.reason_code, body.amount)
+        out = await self._override(request, COST_OVERRIDE, value, actor, body.note)
+        if out.written and any(state.posted for state in rounds.values()):
+            # The override re-prices later rounds and "would change by"; money already posted is locked and never moves.
+            return out.model_copy(update={"warning": _POSTED_OVERRIDE_WARNING})
+        return out
+
+    async def set_include(self, request_id: str, body: IncludeIn, actor: str) -> DecisionWriteOut:
+        """Leave a request out of the household band, or put it back (D22; Decision 5). Putting back a request never
+        left out writes nothing."""
+        request, _ = await self._live(request_id)
+        return await self._override(request, INCLUDE_OVERRIDE, REVERT if body.included else EXCLUDED, actor, body.note)
+
+    async def _override(
+        self, request: RequestRecord, field_name: str, value: str, actor: str, note: str
+    ) -> DecisionWriteOut:
+        corrections = await self._store.fetch_corrections(request.year, request.application_id)
+        standing = latest(corrections, request.id, field_name)
+        if value == (standing.new_value if standing is not None else REVERT):
+            return self._unchanged(request.year)
+        result = await self._store.commit(
+            [override_write(request, field_name, value, actor, note)], actor=actor, reason=note, require_reason=True
+        )
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
 
     async def set_manual_hold(self, request_id: str, body: ManualHoldIn, actor: str) -> DecisionWriteOut:
         """Put the request on hold by hand with a reason ("waiting on something" is a hold, not a stage:

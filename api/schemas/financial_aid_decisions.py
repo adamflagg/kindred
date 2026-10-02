@@ -412,6 +412,35 @@ class HoldReleaseIn(BaseModel):
     note: _Reason
 
 
+_ReasonCode = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", max_length=48)]
+
+
+class CostOverrideIn(BaseModel):
+    """A cost override (D22): the cost to price the request at, a reason code from the season's cost.override_reasons
+    and a note (required, main spec §14.4). amount None clears the override, and then takes no code. The code is at
+    most 48 characters so "<code>:<amount>" fits the corrections table's 64."""
+
+    amount: _Amount | None
+    reason_code: _ReasonCode | None = None
+    note: _Reason
+
+    @model_validator(mode="after")
+    def _code_with_amount(self) -> CostOverrideIn:
+        if self.amount is not None and self.reason_code is None:
+            raise ValueError("a cost override needs its reason code (D22)")
+        if self.amount is None and self.reason_code is not None:
+            raise ValueError("clearing a cost override takes no reason code")
+        return self
+
+
+class IncludeIn(BaseModel):
+    """Leave a request out of the household band (included=false) or put it back (true), with a note (D22, Decision 5).
+    It never includes a request derived as not included."""
+
+    included: bool
+    note: _Reason
+
+
 class ManualHoldIn(BaseModel):
     """Put the request on hold by hand (held=True, "Put on hold…", app spec §6.3), or lift it
     (held=False). The note is the hold's reason when placing it and why when lifting it; required."""
@@ -494,6 +523,9 @@ class DecisionWriteOut(BaseModel):
     operation_id: str
     total_locked: float | None = None
     pending_approval: bool = False
+    # A write that went through but moves figures its author may not expect (a cost override on a request with a
+    # posted round); the screen shows it beside the save.
+    warning: str | None = None
     sections_not_locked: list[str] = Field(default_factory=list)
 
 

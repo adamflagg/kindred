@@ -14,8 +14,10 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from api.services.financial_aid_intake_types import CorrectionRecord
+from api.constants.collections import AID_APPLICATION_CORRECTIONS
+from api.services.financial_aid_intake_types import CorrectionRecord, RequestRecord
 from bunking.financial_aid.calculator import CostOverride
+from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.rules.schema import CostSection
 
 COST_OVERRIDE: Final = "cost_override"
@@ -73,3 +75,27 @@ def by_request(
         if excluded is not None:
             exclusions[rid] = excluded
     return costs, exclusions
+
+
+def override_write(request: RequestRecord, field: str, value: str, actor: str, note: str) -> AidWrite:
+    """One aid_application_corrections row and its log line. The log keys it `<request>:<field>`, so the household
+    page's timeline (which follows the page's request ids) shows it."""
+    data = {
+        "year": request.year,
+        "application": request.application_id,
+        "request": request.id,
+        "field": field,
+        "new_value": value,
+        "original_value": "",
+        "reason": note,
+        "actor": actor,
+    }
+    return AidWrite(
+        collection=AID_APPLICATION_CORRECTIONS,
+        action="create",
+        year=request.year,
+        data=data,
+        after={"field": field, "value": value},
+        log_action=field,
+        entity_id=f"{request.id}:{field}",
+    )

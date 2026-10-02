@@ -65,9 +65,11 @@ from api.schemas.financial_aid_decisions import (
     AsOfAxis,
     BudgetResponse,
     CancellationIn,
+    CostOverrideIn,
     DecisionWriteOut,
     EditorPreviewOut,
     HoldReleaseIn,
+    IncludeIn,
     ManualHoldIn,
     PostedIn,
     PreviewIn,
@@ -983,6 +985,28 @@ async def set_manual_hold(
     """Put the request on hold by hand with a reason, or lift it (app spec §6.3; follow-up 3b)."""
     try:
         return await _decisions().set_manual_hold(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/cost-override", response_model=DecisionWriteOut)
+async def set_cost_override(
+    request_id: _RequestIdPath, body: CostOverrideIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """A cost override with its reason code, or clearing it (D22; app spec §2: casework)."""
+    try:
+        return await _decisions().set_cost_override(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/include", response_model=DecisionWriteOut)
+async def set_request_include(
+    request_id: _RequestIdPath, body: IncludeIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """Leave a request out of the household band, or put it back, with a note (D22; Decision 5)."""
+    try:
+        return await _decisions().set_include(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 
