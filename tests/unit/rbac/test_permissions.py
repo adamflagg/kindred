@@ -149,12 +149,12 @@ class TestPermissionInfo:
 
     def test_admin_only_areas(self):
         assert ADMIN_ONLY_AREAS == (
-            "Manage › Sync page (bunking staff can still refresh data)",
+            "Manage › Sync",
             "Manage › Config",
             "Manage › Audit log",
             "Summer › Debug",
             "Camperships › Kit",
-            "Creating and editing roles",
+            "Role editing",
         )
 
     def test_aid_view_screens_cover_every_view_gated_section(self):

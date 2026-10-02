@@ -156,10 +156,10 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
 }
 
 ADMIN_ONLY_AREAS: tuple[str, ...] = (
-    "Manage › Sync page (bunking staff can still refresh data)",
+    "Manage › Sync",
     "Manage › Config",
     "Manage › Audit log",
     "Summer › Debug",
     "Camperships › Kit",
-    "Creating and editing roles",
+    "Role editing",
 )

@@ -41,7 +41,7 @@ def test_orders_by_area_then_registry(client):
 def test_carries_areas_and_admin_only(client):
     body = client.get("/api/permissions").json()
     assert body["areas"] == list(PERMISSION_AREAS)
-    assert body["admin_only"][0] == "Manage › Sync page (bunking staff can still refresh data)"
+    assert body["admin_only"][0] == "Manage › Sync"
 
 
 def test_total_counts_the_permissions_it_returns(client):
