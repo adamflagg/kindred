@@ -744,6 +744,10 @@ export const queryKeys = {
   aidApplication: (year: number, householdCmId: number) =>
     ['financial-aid', 'application', year, householdCmId] as const,
   aidJumpIndexPrefix: () => ['financial-aid', 'jump-index'] as const,
+  aidRulesPrefix: () => ['financial-aid', 'rules'] as const,
+  aidRulesApproved: (year: number, version: number | null) =>
+    ['financial-aid', 'rules', year, 'approved', version ?? 'pricing'] as const,
+  aidRulesDraft: (year: number) => ['financial-aid', 'rules', year, 'draft'] as const,
 }
 
 /**
@@ -875,9 +879,10 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  * - the Requests grid and Today;
  * - every household page (a split request sits on both homes' pages, and a rules or grants change
  *   re-prices them all);
- * - the application read.
+ * - the application read;
+ * - the rules reads: a Posted tick locks the sections its round read, in the same operation.
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
- * A rules approval re-prices the season, so its writer (a later slice 2 PR) must call this too.
+ * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
  * Definitions are static and never invalidated.
  */
 export function invalidateAidMoneyQueries(
@@ -893,6 +898,8 @@ export function invalidateAidMoneyQueries(
     queryKeys.aidTodayPrefix(),
     queryKeys.aidHouseholdPagePrefix(),
     queryKeys.aidApplicationPrefix(),
+    // A Posted tick locks the rules sections its round read (lock_writes): the Rules tab says so.
+    queryKeys.aidRulesPrefix(),
   ]
   if (options.jumpIndex === true) keys.push(queryKeys.aidJumpIndexPrefix())
   // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
@@ -900,6 +907,26 @@ export function invalidateAidMoneyQueries(
   return Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey }))).then(
     () => undefined
   )
+}
+
+/**
+ * Every rules write calls this on settle (spec §10; slice 2): the Rules tab's reads, and Today, whose
+ * Finance line counts the sections awaiting approval. An approval (`priced`) re-prices every request
+ * not yet posted and raises "would change by" on posted ones, so it refreshes every money read too.
+ * A draft save or a new season's start prices nothing: no version prices the season until approved.
+ * Returns a promise like `invalidateAidMoneyQueries`, so an onSettled can wait for the refetch.
+ */
+export function invalidateAidRulesQueries(
+  queryClient: {
+    invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+  },
+  options: { readonly priced?: boolean } = {}
+): Promise<void> {
+  const refreshed = [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix()].map((queryKey) =>
+    queryClient.invalidateQueries({ queryKey })
+  )
+  const money = options.priced === true ? invalidateAidMoneyQueries(queryClient) : undefined
+  return Promise.all([...refreshed, money]).then(() => undefined)
 }
 
 /**
