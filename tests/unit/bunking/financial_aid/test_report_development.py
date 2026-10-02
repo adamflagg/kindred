@@ -77,8 +77,9 @@ def test_all_money_counts_the_camps_awards_and_every_outside_grant_together() ->
     )
     camp = _camp(column)
     assert (camp.total_awards, camp.camp_awards, camp.outside_awards) == (Decimal(2300), Decimal(1500), Decimal(800))
-    assert (camp.awards, camp.camp_award_count, camp.outside_award_count) == (3, 1, 2)
-    assert camp.average_award == Decimal("766.67")
+    # item 32: Emma's camp aid and her grant are one camper's award; the household-level line is the other
+    assert (camp.awards, camp.camp_award_count, camp.outside_award_count) == (2, 1, 2)
+    assert camp.average_award == Decimal("1150.00")
     assert (camp.recipients, camp.families) == (1, 2)
     assert (camp.household_level.lines, camp.household_level.households, camp.household_level.amount) == (
         1,
@@ -389,3 +390,90 @@ def test_rebuilt_ages_count_recipients_by_age_on_their_first_summer_session() ->
     }
     ages = rebuilt_ages(stays, persons, money_people={EMMA, OLIVIA}, money_households={1000002})
     assert ages == {YOUTH: 1, TEEN: 1, ADULT: 1, AGE_UNKNOWN: 1}  # Emma 10, Liam 13, Samuel 18, Olivia no birthdate
+
+
+# --- item 32: an award is a distinct attendee/session combo receiving any aid (owner rule 2026-10-02) ------------
+
+
+def test_camp_aid_and_an_outside_grant_on_the_same_camper_session_are_one_award() -> None:
+    column = development_column(
+        _inputs(
+            requests=(req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA, session=1000101),),
+            grants=(GrantMoney("regional grant", 1000001, EMMA, "camp_pool", Decimal(500), session_cm_id=1000101),),
+        )
+    )
+    camp = _camp(column)
+    assert (camp.total_awards, camp.awards) == (Decimal(2000), 1)
+    assert camp.average_award == Decimal(2000)
+    assert (column.awards, column.total_awards / column.awards) == (1, Decimal(2000))
+
+
+def test_the_same_camper_in_two_sessions_with_aid_is_two_awards() -> None:
+    column = development_column(
+        _inputs(
+            requests=(
+                req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA, session=1000101),
+                req("reqemma00000002", rnd(1, ask="4000", posted="500"), person=EMMA, session=1000102),
+            ),
+            grants=(GrantMoney("regional grant", 1000001, EMMA, "camp_pool", Decimal(500), session_cm_id=1000102),),
+        )
+    )
+    camp = _camp(column)
+    assert (camp.awards, camp.recipients) == (2, 1)
+    assert camp.average_award == Decimal("1250.00")
+
+
+def test_a_cancelled_request_is_no_award() -> None:
+    column = development_column(
+        _inputs(
+            requests=(
+                req(
+                    "reqemma00000001",
+                    rnd(1, ask="4000", posted="1500"),
+                    person=EMMA,
+                    standing="cancelled",
+                    reason="aid_not_enough",
+                ),
+            ),
+        )
+    )
+    assert (_camp(column).awards, column.awards) == (0, 0)
+
+
+def test_a_families_group_household_with_camp_aid_and_a_grant_is_one_award() -> None:
+    column = development_column(
+        _inputs(
+            attendance=(_went(0, 1000005, "weekend_pool"),),
+            requests=(
+                req(
+                    "reqfam000000005",
+                    rnd(1, ask="900", posted="600"),
+                    person=0,
+                    household=1000005,
+                    pool="weekend_pool",
+                    session=1000201,
+                ),
+            ),
+            grants=(GrantMoney("family incentive", 1000005, 0, "weekend_pool", Decimal(250), session_cm_id=1000201),),
+        )
+    )
+    weekend = next(g for g in column.groups if g.group == "weekend_pool")
+    assert (weekend.awards, weekend.total_awards) == (1, Decimal(850))
+
+
+def test_a_grant_with_no_session_joins_the_campers_award_rather_than_adding_one() -> None:
+    """Most ledger lines carry no session: the camper's one request is the combo they belong to."""
+    column = development_column(
+        _inputs(
+            requests=(req("reqemma00000001", rnd(1, ask="4000", posted="1500"), person=EMMA, session=1000101),),
+            grants=(GrantMoney("regional grant", 1000001, EMMA, "camp_pool", Decimal(500)),),
+        )
+    )
+    assert _camp(column).awards == 1
+
+
+def test_a_grant_with_no_session_and_no_other_aid_is_one_award() -> None:
+    column = development_column(
+        _inputs(grants=(GrantMoney("regional grant", 1000001, EMMA, "camp_pool", Decimal(500)),))
+    )
+    assert _camp(column).awards == 1

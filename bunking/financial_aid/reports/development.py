@@ -9,7 +9,9 @@ reporting groups). The service resolves every input to a group first; this modul
                   once per group (D92); in a group that counts families (Family Camp and adult weekends), the
                   households that attended and got money. Money on a camper or household that didn't attend is
                   not development's (a cancelled camper is not counted).
-  awards          each camp award (a request with awarded money above $0) and each outside grant line count as one.
+  awards          (item 32) a distinct attendee/session combo that gets ANY aid, the camp's or an outside funder's:
+                  a camper per session, a household per session or program in a families group. The camp's aid plus
+                  a grant on one combo is one award; two sessions are two; a cancelled request is none.
   household-level a grant line on a household with no camper (D142: a never-applied household with more than one
                   eligible camper) counts in the money and the families, never in a camper cut; the report says how
                   much and how many (`household_level`).
@@ -94,6 +96,7 @@ class GrantMoney:
     person_cm_id: int
     group: str | None  # None: no reported group (a program development doesn't report)
     amount: Decimal
+    session_cm_id: int = 0  # the session the line is placed on; 0 when the ledger names none
 
 
 @dataclass(frozen=True)
@@ -253,7 +256,29 @@ def need(request: ReportRequest) -> Decimal:
 
 
 @dataclass
+class _Awards:
+    """Item 32 (owner rule 2026-10-02): an award is a distinct attendee/session combo that gets ANY aid, the camp's or
+    an outside funder's. The attendee is the camper (a household in a families group; a household-level line in a
+    camper group is its own household's). A line with no session joins the attendee's session combo when they have
+    one and stands as the attendee's one award otherwise (most ledger lines name no session)."""
+
+    placed: set[tuple[int, int]] = field(default_factory=set)
+    unplaced: set[int] = field(default_factory=set)
+
+    def add(self, group: DevGroup | None, person: int, household: int, session: int) -> None:
+        who = person if person > 0 and (group is None or group.kind != "families") else -household
+        if session > 0:
+            self.placed.add((who, session))
+        else:
+            self.unplaced.add(who)
+
+    def count(self) -> int:
+        return len(self.placed) + len(self.unplaced - {who for who, _ in self.placed})
+
+
+@dataclass
 class _Tally:
+    awards: _Awards = field(default_factory=_Awards)
     camp: Decimal = ZERO
     outside: Decimal = ZERO
     camp_count: int = 0
@@ -321,6 +346,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             if money > 0 and attended_anything(request.person_cm_id, request.household_cm_id):
                 outside_groups.camp += money
                 outside_groups.camp_count += 1
+                outside_groups.awards.add(None, request.person_cm_id, request.household_cm_id, request.session_cm_id)
                 outside_groups.households.add(request.household_cm_id)
                 source(CAMP_SOURCE, NOT_REPORTED, money)
             if request.standing == "cancelled":
@@ -340,6 +366,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         if money > 0:
             tally.camp += money
             tally.camp_count += 1
+            tally.awards.add(group, request.person_cm_id, request.household_cm_id, request.session_cm_id)
             tally.recipients.add(whom)
             tally.households.add(request.household_cm_id)
             tally.camper_money[whom] += money
@@ -358,6 +385,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             if attended_anything(line.person_cm_id, line.household_cm_id):
                 outside_groups.outside += line.amount
                 outside_groups.outside_count += 1
+                outside_groups.awards.add(None, line.person_cm_id, line.household_cm_id, line.session_cm_id)
                 outside_groups.households.add(line.household_cm_id)
                 source(line.source_key, NOT_REPORTED, line.amount)
             continue
@@ -366,6 +394,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         tally = tallies[group.key]
         tally.outside += line.amount
         tally.outside_count += 1
+        tally.awards.add(group, line.person_cm_id, line.household_cm_id, line.session_cm_id)
         tally.households.add(line.household_cm_id)
         if line.source_key in inputs.incentive_sources:
             tally.incentive += line.amount
@@ -392,7 +421,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
     not_in_group = NotInGroup(
         camp=outside_groups.camp,
         outside=outside_groups.outside,
-        awards=outside_groups.camp_count + outside_groups.outside_count,
+        awards=outside_groups.awards.count(),
         households=len(outside_groups.households),
         cancelled_by_reason=dict(outside_groups.cancelled),
     )
@@ -421,7 +450,7 @@ def _figures(
     teen_program: Collection[int] = frozenset(),
 ) -> GroupFigures:
     total = tally.camp + tally.outside
-    awards = tally.camp_count + tally.outside_count
+    awards = tally.awards.count()
     out = GroupFigures(
         group=group.key,
         total_awards=total,

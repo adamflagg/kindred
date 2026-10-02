@@ -86,7 +86,15 @@ NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
 FAMILY_TYPES: Final = frozenset({"family", "adult"})
 FIRST_TIME_SUMMER: Final = "No Summer Camp or Quest session at camp in any earlier season from 2017 (the default; D99)"
 FIRST_TIME_FAMILY: Final = "The household's first weekend program: no earlier Family or Adult weekend session at camp since 2017 (the default; D99)"
-AVERAGE_AWARD_DEFINITION: Final = "Total Awards Granted (the camp's aid plus outside grants) ÷ Number of awards (D158)"
+AWARDS_DEFINITION: Final = (
+    "An award is a distinct attendee and session combination that gets any aid, the camp's or an outside funder's "
+    "(a household per session or program in a families group). The camp's aid plus a grant on the same session is "
+    "one award; two sessions are two; a cancelled registration is none"
+)
+AVERAGE_AWARD_DEFINITION: Final = (
+    "Total Awards Granted (the camp's aid plus outside grants) ÷ Number of awards, each a distinct attendee and "
+    "session with any aid (D158, item 32)"
+)
 # D158: development sees every cancel reason. "aid not enough" keeps its own line (declined_insufficient).
 _CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
     *((f"cancelled_{r}", f"Cancelled: {CANCEL_REASON_LABELS[r]}") for r in CANCEL_REASONS if r != AID_NOT_ENOUGH),
@@ -159,7 +167,7 @@ def grouping(document: AidRules | None, session_types: Mapping[int, str]) -> Gro
 
 
 def grant_money(rows: Iterable[RegisterRow], grouping_: Grouping) -> tuple[GrantMoney, ...]:
-    """Every live outside or incentive ledger line (D87: every outside grant is an award), placed or not: a
+    """Every live outside or incentive ledger line (D87: every outside grant is money given; it counts as an award by item 32's distinct combos), placed or not: a
     commitment not yet posted is not money given out, and a reversed line isn't either."""
     out: list[GrantMoney] = []
     for row in rows:
@@ -169,7 +177,9 @@ def grant_money(rows: Iterable[RegisterRow], grouping_: Grouping) -> tuple[Grant
             group: str | None = grouping_.by_session[row.session_cm_id]
         else:
             group = grouping_.by_family.get(row.program_family)  # None: no group (D100's "needs a group")
-        out.append(GrantMoney(row.source_key, row.household_cm_id, row.person_cm_id, group, row.amount))
+        out.append(
+            GrantMoney(row.source_key, row.household_cm_id, row.person_cm_id, group, row.amount, row.session_cm_id)
+        )
     return tuple(out)
 
 
@@ -217,7 +227,7 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
     _RowSpec("camp_awards", "money", "The camp's own awards", "dollars", True, None, None),
     _RowSpec("outside_awards", "money", "Grants from other funders", "dollars", True, None, None),
     _RowSpec("incentive_awards", "money", "of which incentive grants", "dollars", True, None, None),
-    _RowSpec("awards", "money", "Number of awards", "count", True, None, "awards"),
+    _RowSpec("awards", "money", "Number of awards", "count", True, None, "awards", AWARDS_DEFINITION),
     _RowSpec("average_award", "money", "Average award", "dollars", True, None, None, AVERAGE_AWARD_DEFINITION),
     _RowSpec("total_requests", "money", "Total Requests (demand)", "dollars", True, None, "total_requests"),
     _RowSpec("need_met", "money", "% of need met", "percent", True, frozenset({"summer"}), "need_met"),

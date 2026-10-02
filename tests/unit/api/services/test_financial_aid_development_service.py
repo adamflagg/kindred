@@ -19,6 +19,7 @@ from api.services.financial_aid_development_service import (
     FIRST_TIME_FAMILY,
     FIRST_TIME_SUMMER,
     FinancialAidDevelopmentService,
+    grant_money,
     grouping,
 )
 from api.services.financial_aid_grants_register import RegisterRow
@@ -99,7 +100,7 @@ async def test_the_season_column_is_all_money_on_campers_who_attended() -> None:
         ("bmitzvah_pool", "campers"),
     ]
     assert _row(out, "total_awards", "camp_pool").values == [2000.0]
-    assert _row(out, "awards", "camp_pool").values == [2.0]
+    assert _row(out, "awards", "camp_pool").values == [1.0]  # item 32: Emma's aid and her grant are one award
     assert _row(out, "recipients", None).values == [1.0]
     assert _row(out, "total_requests", "camp_pool").values == [6000.0]  # both attended, both asked
     assert [(s.name, s.who_paid, s.amount, s.awards) for s in out.sources] == [
@@ -132,7 +133,7 @@ async def test_outside_money_leaves_out_reversed_lines_and_unposted_commitments(
     out = await _service(_development(), register=[live, reversed_line, commitment]).development(YEAR)
     assert _row(out, "total_awards", "camp_pool").values == [2000.0]  # 1,500 + 500, none of the 7,000 or 9,000
     assert _row(out, "outside_awards", "camp_pool").values == [500.0]
-    assert _row(out, "awards", "camp_pool").values == [2.0]
+    assert _row(out, "awards", "camp_pool").values == [1.0]  # item 32: one camper-session
 
 
 async def test_the_every_group_average_award_includes_money_in_no_group() -> None:
@@ -391,9 +392,9 @@ async def test_the_average_award_is_all_money_over_the_number_of_awards_and_says
     """D158: (the camp's aid + outside grants) / Number of awards, per group and for every group."""
     out = await _service(_development(), register=[grant_row("reqemma00000001", "500")]).development(YEAR)
     row = _row(out, "average_award", "camp_pool")
-    assert row.values == [1000.0]  # (1,500 + 500) / 2 awards
+    assert row.values == [2000.0]  # (1,500 + 500) / 1 award: item 32, one camper-session
     assert row.definition == AVERAGE_AWARD_DEFINITION
-    assert _row(out, "average_award", None).values == [1000.0]
+    assert _row(out, "average_award", None).values == [2000.0]
 
 
 async def test_a_column_with_no_p_column_counts_its_ages_by_age_from_the_ledger() -> None:
@@ -542,3 +543,19 @@ async def test_an_attendee_of_a_closed_to_aid_programs_session_counts_nowhere() 
     assert _row(out, "recipients", "bmitzvah_pool").values == [0.0]
     assert _row(out, "total_awards", None).values == [1500.0]
     assert _row(out, "families", None).values == [1.0]
+
+
+async def test_number_of_awards_says_what_an_award_is_and_the_average_divides_by_it() -> None:
+    """Owner rule (item 32): an award is a distinct attendee/session combo with any aid, the camp's or an outside
+    funder's, never one per line."""
+    out = await _service(_development(), register=[grant_row("reqemma00000001", "500")]).development(YEAR)
+    awards = _row(out, "awards", "camp_pool").definition
+    assert "distinct" in awards and "session" in awards and "counts as one" not in awards
+    average = _row(out, "average_award", "camp_pool").definition
+    assert "Number of awards" in average and "counts as one" not in average
+
+
+async def test_a_grant_line_carries_its_session_into_the_awards_count() -> None:
+    line = replace(grant_row("reqemma00000001", "500"), session_cm_id=1000102)
+    found = grant_money([line], grouping(intake_rules(), {s.cm_id: s.session_type for s in SESSIONS}))
+    assert [g.session_cm_id for g in found] == [1000102]
