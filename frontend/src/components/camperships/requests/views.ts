@@ -218,7 +218,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   },
   // Blank when the session didn't match (an unsettled request): the cell draws "—".
   session: { header: 'Session', width: 96, value: (r) => r.session_name || null },
-  stage: { header: 'Stage', width: 104, value: (r) => requestStage(r)?.text ?? null },
+  stage: { header: 'Stage', width: 150, value: (r) => requestStage(r)?.text ?? null },
   tier: { header: 'Tier', width: 44, align: 'right', value: (r) => r.tier },
   ask: {
     header: 'Ask',
@@ -283,7 +283,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   },
   confirmed: {
     header: 'Confirmed by the ledger',
-    width: 100,
+    width: 132,
     value: (r) => (r.confirmation ? CONFIRMATION_WORDS[r.confirmation.status] : null),
   },
   round: {

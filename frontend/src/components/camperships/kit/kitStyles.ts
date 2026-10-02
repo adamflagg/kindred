@@ -10,6 +10,9 @@
 const PILL_SHAPE =
   'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap'
 
+/** A pill that wraps inside a narrow column rather than being cut off by it (the Stage and Confirmed columns). */
+export const PILL_WRAP = 'whitespace-normal text-left rounded-xl'
+
 export type PillTone = 'red' | 'amber' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted'
 
 export const PILL: Record<PillTone, string> = {
@@ -59,7 +62,7 @@ export const ID_CHIP =
 export const TABLE_CARD = 'bg-card border-border shadow-lodge-sm overflow-x-auto rounded-xl border'
 export const TABLE = 'w-full table-fixed border-separate border-spacing-0 text-sm'
 export const TH =
-  'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-left text-xs font-semibold whitespace-nowrap'
+  'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 align-bottom text-left text-xs leading-tight font-semibold whitespace-normal'
 /** No `white-space` here: the cell picks nowrap, or normal on the highlighted flexible column (Ruling 2026-10-01 (plan review): no two classes setting one property). */
 export const TD = 'border-border overflow-hidden border-b px-2 py-1.5 align-top text-ellipsis'
 /** Cells are opaque, so pinned columns hide what scrolls under them. */

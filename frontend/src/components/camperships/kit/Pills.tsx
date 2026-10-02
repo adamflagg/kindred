@@ -1,12 +1,27 @@
 import type { ReactNode } from 'react'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
-import { householdChipClass, ID_CHIP, PILL, type PillTone } from './kitStyles'
+import { householdChipClass, ID_CHIP, PILL, PILL_WRAP, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
 import { formatGap, formatMoney } from './money'
 
-export function StatusPill({ tone, children }: { tone: PillTone; children: ReactNode }) {
-  return <span className={PILL[tone]}>{children}</span>
+export function StatusPill({
+  tone,
+  children,
+  wrap = false,
+}: {
+  tone: PillTone
+  children: ReactNode
+  /** Wrap inside a narrow column rather than be cut off by it. */
+  wrap?: boolean
+}) {
+  return (
+    <span
+      className={wrap ? `${PILL[tone].replace('whitespace-nowrap', '')} ${PILL_WRAP}` : PILL[tone]}
+    >
+      {children}
+    </span>
+  )
 }
 
 /**
@@ -18,25 +33,41 @@ export function ConfirmationState({ confirmation }: { confirmation: Confirmation
   const on = confirmation.on ? ` ${formatShortDate(confirmation.on)}` : ''
   switch (confirmation.status) {
     case 'awaiting_sync':
-      return <StatusPill tone="muted">awaiting tonight&apos;s sync</StatusPill>
+      return (
+        <StatusPill wrap tone="muted">
+          awaiting tonight&apos;s sync
+        </StatusPill>
+      )
     case 'confirmed':
-      return <StatusPill tone="emerald">✓ confirmed{on}</StatusPill>
+      return (
+        <StatusPill wrap tone="emerald">
+          ✓ confirmed{on}
+        </StatusPill>
+      )
     case 'short':
     case 'over':
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+        <span className="inline-flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted-foreground">
             CampMinder shows {formatMoney(confirmation.in_campminder)}
           </span>
-          <StatusPill tone="amber">
+          <StatusPill wrap tone="amber">
             {formatGap(confirmation.locked, confirmation.in_campminder)}
           </StatusPill>
         </span>
       )
     case 'not_in_campminder':
-      return <StatusPill tone="amber">not in CampMinder</StatusPill>
+      return (
+        <StatusPill wrap tone="amber">
+          not in CampMinder
+        </StatusPill>
+      )
     case 'reversed':
-      return <StatusPill tone="stone">reversed{on}</StatusPill>
+      return (
+        <StatusPill wrap tone="stone">
+          reversed{on}
+        </StatusPill>
+      )
   }
 }
 

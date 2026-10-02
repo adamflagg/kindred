@@ -48,7 +48,7 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     ])
   })
 
-  it('gives All D27’s fifteen columns at their widths, about 1,430 px with the flexible one', () => {
+  it('gives All D27’s fifteen columns at their widths, about 1,510 px with the flexible one (Stage and Confirmed widened so no chip clips: sitting A, A2)', () => {
     const all = requestView('all')
     const keys = viewColumns(all, false)
     expect(keys.map((k) => GRID_COLUMNS[k].header)).toEqual([
@@ -69,7 +69,7 @@ describe('REQUEST_VIEWS (§6.2)', () => {
       'Needs attention',
     ])
     const fixed = keys.reduce((sum, k) => sum + (GRID_COLUMNS[k].width ?? 0), 0)
-    expect(fixed + 250).toBe(1430)
+    expect(fixed + 250).toBe(1508)
   })
 
   it('brings the two id columns back, pinned after the names, with Show IDs (D27)', () => {

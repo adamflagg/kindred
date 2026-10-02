@@ -13,7 +13,7 @@ vi.mock('../../../utils/csvExport', async (importActual) => ({
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { GRID_ROWS, gridRow, roundOut, ROW_LIAM } from './gridFixtures'
 import { RequestsGrid } from './RequestsGrid'
-import { filterRows, NO_FILTERS, requestView } from './views'
+import { filterRows, GRID_COLUMNS, NO_FILTERS, requestView } from './views'
 
 let highlights: Array<string | null> = []
 const open = vi.fn()
@@ -261,5 +261,24 @@ describe('RequestsGrid', () => {
       render(<Grid slug="all" rows={[split]} />)
       expect(within(rowOf('Samuel Johnson')).getAllByText('$1,500').length).toBeGreaterThan(0)
     })
+  })
+})
+
+describe('RequestsGrid fits its labels (sitting A, A2)', () => {
+  it('lets a column header wrap, so two long headers never print over each other', () => {
+    render(<Grid />)
+    const header = screen.getByRole('columnheader', { name: 'Confirmed by the ledger' })
+    expect(header.className).not.toContain('whitespace-nowrap')
+    expect(header.className).toContain('whitespace-normal')
+  })
+
+  it('lets a Stage chip wrap inside its column instead of being cut off', () => {
+    render(<Grid />)
+    const chip = screen.getAllByText(/^R\d · /)[0]
+    expect(chip?.className).not.toContain('whitespace-nowrap')
+  })
+
+  it('gives the Stage column room for its commonest chip', () => {
+    expect(GRID_COLUMNS.stage.width).toBeGreaterThanOrEqual(140)
   })
 })

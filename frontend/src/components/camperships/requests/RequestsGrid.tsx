@@ -128,7 +128,13 @@ function renderFor(
     case 'stage':
       return (row) => {
         const stage = requestStage(row)
-        return stage ? <StatusPill tone={stage.tone}>{stage.text}</StatusPill> : '—'
+        return stage ? (
+          <StatusPill tone={stage.tone} wrap>
+            {stage.text}
+          </StatusPill>
+        ) : (
+          '—'
+        )
       }
     case 'r3':
       return (row) => {
