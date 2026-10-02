@@ -18,6 +18,9 @@ vi.mock('../../components/camperships/requests/RequestsGrid', () => ({
     )
   },
 }))
+vi.mock('../../hooks/camperships/useAidToday', () => ({
+  useAidToday: () => ({ data: undefined }),
+}))
 vi.mock('../../hooks/camperships/useAidGrid', () => ({
   useAidGrid: () => ({
     data: { year: 2027, rules_version: 1, rows: [...GRID_ROWS] },

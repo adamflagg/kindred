@@ -142,3 +142,15 @@ export function todaySections(today: ApiAidToday): TodaySection[] {
   if (today.finance !== null) sections.push({ title: 'Finance', lines: today.finance })
   return sections
 }
+
+/**
+ * The requests a Today line counted (Decision 10): the grid shows exactly these. Empty, never "no
+ * filter", while Today is unread or the reader's role is not sent the line's section.
+ */
+export function todayRequestIds(
+  today: ApiAidToday | undefined,
+  key: TodayKey
+): ReadonlySet<string> {
+  const lines = [...(today?.casework ?? []), ...(today?.finance ?? [])]
+  return new Set(lines.find((l) => l.key === key)?.request_ids ?? [])
+}

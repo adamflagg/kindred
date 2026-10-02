@@ -8,6 +8,7 @@ import {
   LINE_NAMES,
   openHref,
   reasonWords,
+  todayRequestIds,
   todaySections,
 } from './todayModel'
 
@@ -227,5 +228,23 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
       )
     ).toEqual(['Casework', 'Finance'])
     expect(todaySections({ year: 2027, casework: null, finance: null })).toEqual([])
+  })
+})
+
+describe("a line's request ids (Decision 10)", () => {
+  const data = {
+    year: 2027,
+    casework: [line({ key: 'holds', request_ids: ['a'] })],
+    finance: [line({ key: 'would_change', request_ids: ['b', 'c'] })],
+  }
+  it('finds the line in either section', () => {
+    expect(todayRequestIds(data, 'would_change')).toEqual(new Set(['b', 'c']))
+    expect(todayRequestIds(data, 'holds')).toEqual(new Set(['a']))
+  })
+  it('is empty while Today is unread or the section is withheld, never "no filter"', () => {
+    expect(todayRequestIds(undefined, 'holds')).toEqual(new Set())
+    expect(todayRequestIds({ year: 2027, casework: null, finance: null }, 'holds')).toEqual(
+      new Set()
+    )
   })
 })
