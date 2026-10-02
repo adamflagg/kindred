@@ -133,13 +133,16 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 		if e.Record != nil && !e.IsNewRecord {
 			currentAdmin := e.Record.GetBool("is_admin")
 			if currentAdmin != isAdmin {
-				e.Record.Set("is_admin", isAdmin)
-				changed = true
-				saveAdminChange(e.App, e.Record.Id, isAdmin)
-				slog.Info("OIDC admin sync updated",
-					"user_id", e.Record.Id,
-					"is_admin", isAdmin,
-				)
+				// Only a persisted change is mirrored, audited and logged: on a
+				// failed save the response keeps the stored value.
+				if saveAdminChange(e.App, e.Record.Id, isAdmin) {
+					e.Record.Set("is_admin", isAdmin)
+					changed = true
+					slog.Info("OIDC admin sync updated",
+						"user_id", e.Record.Id,
+						"is_admin", isAdmin,
+					)
+				}
 			}
 		}
 
@@ -163,17 +166,20 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 // is re-read immediately before the save, so the save carries the current
 // cached_permissions and every other column rather than the request-start
 // snapshot. The audit entry is written separately, after the sign-in succeeds,
-// once the stored value is confirmed. Fail open, like every sign-in path.
-func saveAdminChange(app core.App, userID string, isAdmin bool) {
+// once the stored value is confirmed. Fail open, like every sign-in path: a
+// failure is logged and reported as false, never returned.
+func saveAdminChange(app core.App, userID string, isAdmin bool) bool {
 	fresh, err := app.FindRecordById("users", userID)
 	if err != nil {
 		slog.Error("Failed to reload user for the admin group sync", "user_id", userID, "error", err)
-		return
+		return false
 	}
 	fresh.Set("is_admin", isAdmin)
 	if err := app.Save(fresh); err != nil {
 		slog.Error("Failed to save the admin group sync", "user_id", userID, "error", err)
+		return false
 	}
+	return true
 }
 
 // RegisterOIDCHooks registers OAuth2 login hooks:

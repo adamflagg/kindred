@@ -233,3 +233,35 @@ func TestOAuth2SignInStampsDoNotClobberConcurrentWrites(t *testing.T) {
 		s.Test(t)
 	}
 }
+
+// TestOAuth2AdminSyncSaveFailureIsNotReported: when the admin-group save fails,
+// the sign-in still succeeds (fail open), but the response must keep the stored
+// is_admin and no admin_removed audit row may be written for a change that
+// never persisted.
+func TestOAuth2AdminSyncSaveFailureIsNotReported(t *testing.T) {
+	s := tests.ApiScenario{
+		Name: "admin removal whose save fails", Method: http.MethodPost,
+		URL: "/api/collections/users/auth-with-oauth2", Body: strings.NewReader(oauth2PlainLogin),
+		TestAppFactory: func(t testing.TB) *tests.TestApp {
+			app := newAuthTestApp(t, testAdminGroup)
+			audittest.Setup(t, app)
+			return app
+		},
+		BeforeTestFunc: func(t testing.TB, app *tests.TestApp, _ *core.ServeEvent) {
+			linkedUser(t, app, "ava.martinez@example.com", true, []string{"bunking.manage"}, []any{"staff"})
+			app.OnRecordUpdate("users").BindFunc(func(e *core.RecordEvent) error {
+				return fmt.Errorf("simulated save failure")
+			})
+		},
+		ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"isNew":false`, `"is_admin":true`},
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+			assertAccess(t, findUser(t, app, "ava.martinez@example.com"), true, []string{"bunking.manage"})
+			for _, r := range audittest.Rows(t, app) {
+				if r.GetString("action") == audit.ActionAdminRemoved {
+					t.Error("admin_removed audited although the save failed")
+				}
+			}
+		},
+	}
+	s.Test(t)
+}
