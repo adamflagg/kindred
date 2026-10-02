@@ -47,7 +47,7 @@ class Metric:
 _POOL: Final[frozenset[Dimension]] = frozenset({"pool"})
 _DEV_ATS: Final[frozenset[At]] = frozenset({"pull", "season_end"})
 # One basis, all money (D87). Unlike finance's, "% of need met" is typed: no per-round asks exist before 2026 to
-# rebuild it from (§9.5). The summer-only lines (% of need met, teens, youth, TLI + SCIT) carry the summer group's
+# rebuild it from (§9.5). The summer-only typed lines (% of need met, TLI + SCIT; ages are always Kindred's by age, D158) carry the summer group's
 # pool, so a typed figure reaches the row that shows it.
 _DEVELOPMENT: Final[tuple[tuple[str, Unit, frozenset[Dimension], str], ...]] = (
     ("total_awards", "dollars", _POOL, "Total Awards Granted"),
@@ -56,8 +56,6 @@ _DEVELOPMENT: Final[tuple[tuple[str, Unit, frozenset[Dimension], str], ...]] = (
     ("need_met", "percent", _POOL, "% of need met"),
     ("recipients", "count", _POOL, "Applications (campers and families who got money)"),
     ("families", "count", _POOL, "Families receiving"),
-    ("teens", "count", _POOL, "Teens (13–17)"),
-    ("youth", "count", _POOL, "Youth (0–12)"),
     ("teen_programs", "count", _POOL, "TLI + SCIT"),
     ("first_time", "count", _POOL, "First-time"),
     ("returning", "count", _POOL, "Returning"),

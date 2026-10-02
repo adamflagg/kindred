@@ -21,12 +21,18 @@ def test_development_types_its_lines_per_group() -> None:
 
 def test_need_met_is_development_only_and_typed_against_the_summer_group() -> None:
     """§9.5: % of need met before 2026 is "as reported only (no per-round asks)"; it is typed with the summer group's
-    pool, the row that shows it (plan review I3), as teens, youth and TLI + SCIT are."""
+    pool, the row that shows it (plan review I3), as TLI + SCIT is."""
     assert problems(_figure("need_met", "70.0")) == []
-    for metric in ("teens", "youth", "teen_programs"):
+    for metric in ("teen_programs",):
         assert problems(_figure(metric, "12")) == [], metric
     development_percents = {m.key for m in METRICS if m.unit == "percent" and m.view == "development"}
     assert development_percents == {"need_met"}
+
+
+def test_teens_and_youth_are_never_typed() -> None:
+    """D158: every season's ages are Kindred's by age, so the old teen-program counts can't be loaded as teens."""
+    for metric in ("teens", "youth"):
+        assert any("is not a reported metric" in p for p in problems(_figure(metric, "12"))), metric
 
 
 def test_a_dated_pull_is_allowed_for_developments_as_of_columns() -> None:

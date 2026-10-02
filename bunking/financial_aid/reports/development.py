@@ -209,6 +209,35 @@ def age_band(age: int | None) -> str:
     return YOUTH if age <= 12 else TEEN if age <= 17 else ADULT
 
 
+def rebuilt_ages(
+    stays: Iterable[tuple[int, int, date | None]],
+    persons: Mapping[int, Person],
+    money_people: Collection[int],
+    money_households: Collection[int],
+) -> dict[str, int]:
+    """D158: a season with no P column counts its summer recipients by age all the same. `stays` are the season's
+    attended summer-type registrations (person, household, session start). A recipient is a camper a live aid line
+    names (`money_people`: the camp's or an outside funder's), or any summer camper of a household that a
+    household-level line of the camp's own aid names (`money_households`). Age is on the first day of the camper's
+    first summer session (D103), as in a P column."""
+    first: dict[int, date | None] = {}
+    homes: dict[int, set[int]] = defaultdict(set)
+    for person, household, start in stays:
+        homes[person].add(household)
+        known = first.get(person)
+        first[person] = start if known is None else (min(known, start) if start is not None else known)
+    named = set(money_people)
+    households = set(money_households)
+    ages: dict[str, int] = defaultdict(int)
+    for person, homes_of in homes.items():
+        # OWNER ITEM 50 NOT RULED: a household-level camp-aid line counts every attended summer camper of that
+        # household (the alternative, only a sole summer camper, undercounts siblings who each had aid).
+        if person in named or homes_of & households:
+            who = persons.get(person)
+            ages[age_band(age_on(who.birthdate if who is not None else None, first.get(person)))] += 1
+    return dict(ages)
+
+
 def need(request: ReportRequest) -> Decimal:
     """§5.10: the camp's awards in the rounds before an ask + that ask, at its highest over the asked rounds."""
     best = ZERO

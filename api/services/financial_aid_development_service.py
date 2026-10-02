@@ -45,7 +45,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_development_repository import AttendanceRecord, PersonRecord, SourceRecord
 from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow
-from api.services.financial_aid_ledger_service import money
+from api.services.financial_aid_ledger_service import GRANT_FUNDER_TYPES, money
 from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsStore
 from bunking.financial_aid.reports.development import (
@@ -67,6 +67,7 @@ from bunking.financial_aid.reports.development import (
     Person,
     development_column,
     gender_label,
+    rebuilt_ages,
 )
 from bunking.financial_aid.reports.facts import ReportRequest
 from bunking.financial_aid.reports.history import ReportedFigure
@@ -91,7 +92,7 @@ _CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
 NOT_BUILT: Final[Mapping[str, str]] = {
     "rebuild": (
         "Kindred's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons show "
-        "as reported"
+        "as reported, except their age lines, which are Kindred's by age (D158)"
     ),
     "need_met_history": "% of need met before 2026 is as reported only: no per-round asks exist to rebuild it",
 }
@@ -221,8 +222,8 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
     _RowSpec("families", "counts", "Families receiving", "count", True, None, "families"),
     _RowSpec("shared_households", "counts", "of which households that share a camper", "count", False, None, None),
     _RowSpec("shared_campers", "counts", "campers those households share", "count", False, None, None),
-    _RowSpec("teens", "counts", "Teens (13–17)", "count", True, frozenset({"summer"}), "teens"),
-    _RowSpec("youth", "counts", "Youth (0–12)", "count", True, frozenset({"summer"}), "youth"),
+    _RowSpec("teens", "counts", "Teens (13–17)", "count", True, frozenset({"summer"}), None),
+    _RowSpec("youth", "counts", "Youth (0–12)", "count", True, frozenset({"summer"}), None),
     _RowSpec("adults", "counts", "18 and over", "count", True, frozenset({"summer"}), None),
     _RowSpec("age_unknown", "counts", "Age unknown", "count", True, frozenset({"summer"}), None),
     _RowSpec(
@@ -314,6 +315,20 @@ def _total_value(key: str, column: DevelopmentColumn) -> Decimal | int | None:
     return total + extra if total is not None and extra is not None else total
 
 
+_AGE_LINES: Final[Mapping[str, str]] = {"teens": TEEN, "youth": YOUTH, "adults": ADULT, "age_unknown": AGE_UNKNOWN}
+
+
+def _rebuilt_age(
+    ages: Mapping[str, int] | None, key: str, scope: DevGroup | None, groups: Sequence[DevGroup]
+) -> int | None:
+    """D158: an r column's age line is Kindred's rebuild by age, on the one summer group's row; None before the
+    backfill (no ledger lines) or when there isn't exactly one summer group to put it on."""
+    summer = [g for g in groups if g.kind == "summer"]
+    if ages is None or scope is None or len(summer) != 1 or scope.key != summer[0].key:
+        return None
+    return ages.get(_AGE_LINES[key], 0)
+
+
 def _number(value: Decimal | int | None, unit: Unit) -> float | None:
     if value is None:
         return None
@@ -335,6 +350,7 @@ class FinancialAidDevelopmentService:
     ) -> None:
         self._store = store
         self._development = development
+        self._register = register
         self._history = history
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self._decisions = FinancialAidDecisionsService(store, rules, register, clock=self._clock)
@@ -377,6 +393,30 @@ class FinancialAidDevelopmentService:
         )
         return development_column(inputs), grouping_
 
+    async def _rebuilt_ages(self, year: int) -> dict[str, int] | None:
+        """D158: the summer recipients of a season with no P column, by age, rebuilt from that season's ledger. None
+        when the season has no live aid line at all (2022-2024 until the 2017-2024 backfill)."""
+        # OWNER ITEM 51 NOT RULED: a season with no ledger lines yet is blank (named once in not_built), never zero.
+        camp = [line for line in await self._store.fetch_camp_lines(year) if line.live() and line.amount > 0]
+        outside = [
+            row
+            for row in await self._register(year)
+            if row.kind == "ledger" and not row.is_reversed and row.funder_type in GRANT_FUNDER_TYPES and row.amount > 0
+        ]
+        if not camp and not outside:
+            return None
+        stays = [
+            r for r in await self._development.attendances(year) if r.status_id == 2 and r.session_type in SUMMER_TYPES
+        ]
+        people = await self._development.persons(year, {r.person_cm_id for r in stays})
+        return rebuilt_ages(
+            ((r.person_cm_id, r.household_cm_id, r.start) for r in stays),
+            {p.person_cm_id: Person(p.person_cm_id, p.birthdate, "") for p in people},
+            {line.person_cm_id for line in camp if line.person_cm_id > 0}
+            | {row.person_cm_id for row in outside if row.person_cm_id > 0},
+            {line.household_cm_id for line in camp if line.person_cm_id <= 0},
+        )
+
     async def development(self, year: int) -> DevelopmentResponse:
         today = self._today()
         sources = await self._development.sources()
@@ -399,14 +439,26 @@ class FinancialAidDevelopmentService:
             document = season.rules.document if season.rules is not None else None
             latest = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
         columns = _columns(typed, natives, today)
+        ages = {season: await self._rebuilt_ages(season) for season in sorted({f.year for f in typed} - set(natives))}
+        not_built = [NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()]
+        if waiting := sorted(season for season, found in ages.items() if found is None):
+            not_built.append(
+                NotBuiltOut(
+                    figure="ages_before_backfill",
+                    reason=(
+                        f"Teens, youth and the other age lines for {', '.join(map(str, waiting))} wait on the "
+                        "2017–2024 ledger backfill: those seasons have no aid lines in Kindred yet"
+                    ),
+                )
+            )
         return DevelopmentResponse(
             year=year,
             figures_on=today,
             groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in latest.groups],
             columns=[c for c, _ in columns],
-            rows=_rows(latest.groups, columns),
+            rows=_rows(latest.groups, columns, ages),
             sources=_sources(natives.get(year), latest, sources),
-            not_built=[NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()],
+            not_built=not_built,
         )
 
 
@@ -457,8 +509,11 @@ def _typed_value(figures: Sequence[ReportedFigure], metric: str | None, pool: st
 
 
 def _rows(
-    groups: Sequence[DevGroup], columns: Sequence[tuple[DevelopmentColumnOut, ColumnData]]
+    groups: Sequence[DevGroup],
+    columns: Sequence[tuple[DevelopmentColumnOut, ColumnData]],
+    ages: Mapping[int, Mapping[str, int] | None] | None = None,
 ) -> list[DevelopmentRowOut]:
+    by_season = ages or {}
     out: list[DevelopmentRowOut] = []
     for spec in _ROWS:
         scopes: list[DevGroup | None] = [
@@ -477,7 +532,9 @@ def _rows(
                         value = _group_value(spec.key, figures) if figures is not None else None
                 else:
                     pool = scope.key if scope is not None else ""
-                    if spec.key == "average_award":
+                    if spec.key in _AGE_LINES:
+                        value = _rebuilt_age(by_season.get(column.season), spec.key, scope, groups)
+                    elif spec.key == "average_award":
                         total = _typed_value(data, "total_awards", pool)
                         count = _typed_value(data, "awards", pool)
                         value = (total / count).quantize(Decimal("0.01")) if total is not None and count else None

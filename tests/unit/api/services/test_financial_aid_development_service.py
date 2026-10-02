@@ -24,7 +24,7 @@ from api.services.financial_aid_grants_register import RegisterRow
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.reports.development import NOT_REPORTED
 from bunking.financial_aid.reports.history import ReportedFigure
-from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved, grant_row
+from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved, grant_row, seed_line
 from tests.unit.api.services.development_fakes import FakeDevelopmentStore, went
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR, intake_rules
 from tests.unit.api.services.reports_fakes import FakeReportsStore, report_season
@@ -227,7 +227,7 @@ async def test_a_grant_no_group_holds_is_in_the_total_and_its_own_row() -> None:
 async def test_typed_summer_lines_reach_their_rows() -> None:
     """Plan review I3: a typed % of need met, teens and TLI + SCIT are typed with the summer group's pool."""
     history = FakeReportsStore()
-    for metric, value in (("need_met", "70.0"), ("teens", "12"), ("teen_programs", "3")):
+    for metric, value in (("need_met", "70.0"), ("teen_programs", "3")):
         history.seed(
             ReportedFigure(
                 2025, "development", metric, "camp_pool", 0, 0, "season_end", date(2025, 9, 29), Decimal(value)
@@ -235,7 +235,7 @@ async def test_typed_summer_lines_reach_their_rows() -> None:
         )
     out = await _service(_development(), history).development(YEAR)
     assert _row(out, "need_met", "camp_pool").values[0] == 70.0
-    assert _row(out, "teens", "camp_pool").values[0] == 12.0
+    assert _row(out, "teens", "camp_pool").values[0] is None  # no 2025 ledger lines in this fake: blank, never typed
     assert _row(out, "teen_programs", "camp_pool").values[0] == 3.0
 
 
@@ -269,3 +269,44 @@ async def test_the_average_award_is_all_money_over_the_number_of_awards_and_says
     assert row.values == [1000.0]  # (1,500 + 500) / 2 awards
     assert row.definition == AVERAGE_AWARD_DEFINITION
     assert _row(out, "average_award", None).values == [1000.0]
+
+
+async def test_a_column_with_no_p_column_counts_its_ages_by_age_from_the_ledger() -> None:
+    """D158: 2025's "as reported" column shows teens and youth by age, rebuilt from 2025's ledger, with no mark."""
+    history = FakeReportsStore()
+    history.seed(
+        ReportedFigure(
+            2025, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2025, 9, 29), Decimal(900)
+        )
+    )
+    store = report_season()
+    seed_line(store, 7001, "800", household=1000002, person=LIAM)  # on Liam: 13 on June 20 2025
+    seed_line(store, 7002, "600", household=1000001, person=0)  # Emma's household-level line: 10 that day
+    development = _development(
+        registrations=[
+            went(EMMA, 1000001),
+            went(LIAM, 1000002),
+            went(EMMA, 1000001, year=2025, start=date(2025, 6, 20)),
+            went(LIAM, 1000002, year=2025, start=date(2025, 6, 20)),
+        ]
+    )
+    out = await _service(development, history, store=store).development(YEAR)
+    assert [(c.season, c.basis) for c in out.columns] == [(2025, "r"), (2027, "P")]
+    assert _row(out, "teens", "camp_pool").values[0] == 1.0
+    assert _row(out, "youth", "camp_pool").values[0] == 1.0
+    assert "ages_before_backfill" not in {n.figure for n in out.not_built}
+
+
+async def test_a_season_with_no_ledger_lines_leaves_its_ages_blank_and_names_why() -> None:
+    """OWNER ITEM 51 NOT RULED: 2022-2024 wait on the 2017-2024 backfill; the cells are blank and the wait is named
+    once."""
+    history = FakeReportsStore()
+    history.seed(
+        ReportedFigure(
+            2024, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2024, 9, 29), Decimal(900)
+        )
+    )
+    out = await _service(_development(), history).development(YEAR)
+    assert _row(out, "teens", "camp_pool").values[0] is None
+    gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
+    assert "2024" in gap.reason
