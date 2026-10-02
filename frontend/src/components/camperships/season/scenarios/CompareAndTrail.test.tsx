@@ -88,7 +88,7 @@ function renderAt(path: string) {
   )
 }
 
-const params = () => new URLSearchParams(screen.getByTestId('where').textContent ?? '')
+const params = () => new URLSearchParams(screen.getByTestId('where').textContent)
 
 beforeEach(() => {
   asked.length = 0
