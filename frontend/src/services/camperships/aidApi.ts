@@ -8,6 +8,7 @@ import type {
   ApiAidAskIn,
   ApiAidDefinitions,
   ApiAidGrid,
+  ApiAidHouseholdPage,
   ApiAidJumpIndex,
   ApiAidPreview,
   ApiAidPostedIn,
@@ -73,6 +74,20 @@ export async function fetchAidGrid(
   if (!response.ok)
     throw await toApiError(response, 'Failed to load the Requests grid', AidApiError)
   return (await response.json()) as ApiAidGrid
+}
+
+/** The household page (§6.3; D26): the family's aggregate, its request rows the grid's own. 404: no aid activity. */
+export async function fetchAidHouseholdPage(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  householdCmId: number
+): Promise<ApiAidHouseholdPage> {
+  const response = await fetchWithAuth(
+    `${BASE}/household-page/${String(year)}/${String(householdCmId)}`
+  )
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the household page', AidApiError)
+  return (await response.json()) as ApiAidHouseholdPage
 }
 
 /**
