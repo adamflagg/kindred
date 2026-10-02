@@ -47,6 +47,7 @@ import type {
   ConfirmationOut,
   ConfirmationStateOut,
   CountOut,
+  DecisionTypeLineOut,
   CorrectionCreate,
   CorrectionOut,
   CrossScopeEdge,
@@ -216,3 +217,5 @@ export type ApiAidBudgetCell = CellOut
 export type ApiAidRoundCounts = RoundCountsOut
 /** "3 families · 4 requests" (principle 7). Mirrors Python `CountOut`. */
 export type ApiAidCount = CountOut
+/** One decision-type line of a pool's budget. Mirrors Python `DecisionTypeLineOut`. */
+export type ApiAidDecisionTypeLine = DecisionTypeLineOut

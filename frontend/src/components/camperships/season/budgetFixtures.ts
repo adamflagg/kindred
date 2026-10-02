@@ -11,6 +11,7 @@ import type {
   ApiAidBudgetCell,
   ApiAidBudgetPool,
   ApiAidCount,
+  ApiAidDecisionTypeLine,
 } from '../../../types/api-types'
 
 const count = (families: number, requests: number): ApiAidCount => ({ families, requests })
@@ -30,8 +31,22 @@ function cell(
     needs_offer: needs,
     pending_approval: pending,
     remaining: allocated === null ? null : allocated - posted - needs - pending,
+    // A live cell always carries both counts, at least {0, 0} (the server's `_cell`).
+    needs_offer_count: count(0, 0),
+    pending_approval_count: count(0, 0),
     ...extra,
   }
+}
+
+/** Money on a round with no named decision type: the server's key-null line (budget.py). */
+const NO_TYPE_LINE: ApiAidDecisionTypeLine = {
+  key: null,
+  label: 'No named decision type',
+  counts_toward_budget: true,
+  amount: 1200,
+  posted: 1200,
+  own: 0,
+  requests: count(1, 1),
 }
 
 const POOL_A: ApiAidBudgetPool = {
@@ -180,13 +195,20 @@ const NO_POOL: ApiAidBudgetPool = {
     outside_grants: 0,
     outside_budget: 0,
     outside_budget_posted: 0,
+    outside_grants_requests: count(0, 0),
   },
   demand: {
     round2_asks: count(0, 0),
     round2_asked: 0,
     round2_computed: 0,
     round1_unmet: 0,
+    round1_unmet_requests: count(0, 0),
+    round2_held: count(0, 0),
+    round2_held_asked: 0,
+    round1_held: count(0, 0),
+    round1_held_asked: 0,
   },
+  decision_types: [NO_TYPE_LINE],
 }
 
 const TOTAL: ApiAidBudgetPool = {
@@ -241,6 +263,37 @@ const TOTAL: ApiAidBudgetPool = {
     round1_held: count(5, 8),
     round1_held_asked: 18300,
   },
+  // Merged by key (and in/out of the budget) from the pools' lines; counts are plausible merges.
+  decision_types: [
+    {
+      key: 'standard',
+      label: 'Standard award',
+      counts_toward_budget: true,
+      amount: 752510,
+      posted: 737400,
+      own: 737400,
+      requests: count(324, 345),
+    },
+    {
+      key: 'appeal',
+      label: 'Appeal',
+      counts_toward_budget: true,
+      amount: 95000,
+      posted: 95540,
+      own: 95540,
+      requests: count(40, 44),
+    },
+    {
+      key: 'outside',
+      label: 'Funded outside the budget',
+      counts_toward_budget: false,
+      amount: 21840,
+      posted: 21840,
+      own: 0,
+      requests: count(9, 10),
+    },
+    NO_TYPE_LINE,
+  ],
 }
 
 export const BUDGET: ApiAidBudget = {
@@ -311,6 +364,13 @@ export function pastBudget(): ApiAidBudget {
       outside_budget: null,
       outside_grants_requests: null,
     },
+    // The server nulls amount, own and requests on every line (`_past_pool`), posted stays.
+    decision_types: (p.decision_types ?? []).map((t) => ({
+      ...t,
+      amount: null,
+      own: null,
+      requests: null,
+    })),
     demand: {
       ...p.demand,
       round2_computed: null,
