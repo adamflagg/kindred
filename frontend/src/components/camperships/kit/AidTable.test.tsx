@@ -766,6 +766,7 @@ describe('marked rows (Decision 3: a save that failed)', () => {
 })
 
 let selections: Array<ReadonlySet<string>> = []
+let matchings: Array<ReadonlySet<string>> = []
 
 const MARKED_R1: ReadonlySet<string> = new Set(['r1'])
 
@@ -793,6 +794,7 @@ function Selectable({
         arrowKeys
         highlighted={highlighted}
         onHighlight={setHighlighted}
+        onMatchingChange={(keys) => matchings.push(keys)}
         selected={selected}
         onSelectedChange={(next) => {
           selections.push(next)
@@ -806,6 +808,7 @@ function Selectable({
 describe('AidTable with a selection (§4.10)', () => {
   beforeEach(() => {
     selections = []
+    matchings = []
   })
 
   it('leads with a checkbox; ticking one selects it without highlighting the row', async () => {
@@ -857,38 +860,50 @@ describe('AidTable with a selection (§4.10)', () => {
     expect(cells[0]?.className).toContain('shadow-[inset_3px_0_0')
     expect(cells[1]?.className).not.toContain('shadow-[inset_3px_0_0')
   })
-  it('drops ticks the search hides, so the selection is the matching rows (R1)', async () => {
+  // Owner ruling 2026-10-02 (Task 16 fix round): ticks persist across searches. This replaces the
+  // three tests that pinned the earlier untick-on-search default (a spec change, not a fit).
+  it('keeps the ticks a search hides: someone ticks a few families at a time, then ticks them all', async () => {
     render(<Selectable />)
     for (const name of ['Emma Johnson', 'Liam Garcia']) {
       const row = screen.getByText(name).closest('tr') as HTMLElement
       await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
     }
+    const before = selections.length
     await userEvent.type(screen.getByLabelText('Search'), 'johnson')
-    expect([...(selections.at(-1) ?? [])]).toEqual(['r1'])
-  })
-
-  it('clears a search-wide Select all with the next Select all, and leaves nothing hidden', async () => {
-    render(<Selectable />)
-    const row = screen.getByText('Liam Garcia').closest('tr') as HTMLElement
-    await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
-    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    expect(selections.at(-1)?.size).toBe(0)
-  })
-
-  it('leaves the dropped rows unticked when the search is cleared', async () => {
-    render(<Selectable />)
-    const row = screen.getByText('Liam Garcia').closest('tr') as HTMLElement
-    await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
-    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    expect(selections.length).toBe(before)
     await userEvent.clear(screen.getByLabelText('Search'))
-    expect(selections.at(-1)?.size).toBe(0)
     expect(
       within(screen.getByText('Liam Garcia').closest('tr') as HTMLElement).getByRole('checkbox', {
         name: 'Select',
       })
-    ).not.toBeChecked()
+    ).toBeChecked()
+  })
+
+  it('clears only the matching rows with the second Select all, and leaves a hidden tick alone', async () => {
+    render(<Selectable />)
+    const row = screen.getByText('Liam Garcia').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect([...(selections.at(-1) ?? [])]).toEqual(['r2'])
+  })
+
+  it('tells the page which keys the search matches, again whenever they change', async () => {
+    render(<Selectable highlightedKey="r3" />)
+    expect([...(matchings.at(-1) ?? [])].sort()).toEqual(['r1', 'r2', 'r3', 'r4'])
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    // The kept row (Olivia, shown only for the highlight) is not a match.
+    expect([...(matchings.at(-1) ?? [])].sort()).toEqual(['r1', 'r4'])
+  })
+
+  it('gives the row kept only by the highlight no checkbox: it cannot be ticked (R1; review I3)', async () => {
+    render(<Selectable highlightedKey="r3" />)
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    const kept = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+    expect(within(kept).queryByRole('checkbox')).toBeNull()
+    const matching = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
+    expect(within(matching).getByRole('checkbox', { name: 'Select' })).toBeInTheDocument()
   })
 
   it('does not call onSelectedChange when a search drops nothing', async () => {
