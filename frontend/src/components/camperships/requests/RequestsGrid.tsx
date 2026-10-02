@@ -55,6 +55,8 @@ interface RequestsGridProps {
   readonly marked?: ReadonlySet<string> | undefined
   readonly selected?: ReadonlySet<string> | undefined
   readonly onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
+  /** The rows the table's search matches, for the ticks it hides. Stable. */
+  readonly onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
   /** `casework` only: a single tick opens the same confirmation as bulk (Decision 15). Stable. */
   readonly onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 }
@@ -266,6 +268,7 @@ export function RequestsGrid({
   marked,
   selected,
   onSelectedChange,
+  onMatchingChange,
   onTick,
 }: RequestsGridProps) {
   const columns = useMemo(
@@ -298,6 +301,7 @@ export function RequestsGrid({
       markedKeys={marked}
       selected={selected}
       onSelectedChange={onSelectedChange}
+      onMatchingChange={onMatchingChange}
       footerLabel={footer}
       groupCount={groupCount}
       emptyText="No requests in this view."

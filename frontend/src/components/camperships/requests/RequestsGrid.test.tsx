@@ -317,6 +317,16 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
     expect(highlights).toEqual([])
   })
 
+  it('offers no Mark accepted tick on a waiting row cancelled in Kindred: the server refuses it (review M3)', () => {
+    const cancelled = gridRow({
+      ...WAITING,
+      request_id: 'reqcancelled0001',
+      cancellation: { by: 'kindred', on: null, reason: 'medical', note: '' },
+    })
+    render(<Grid slug="all" rows={[cancelled]} onTick={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Mark accepted' })).toBeNull()
+  })
+
   it('leaves Mark accepted a household link when the viewer cannot tick', () => {
     render(<Grid slug="all" rows={[WAITING]} />)
     expect(screen.getByRole('link', { name: 'Mark accepted' })).toBeInTheDocument()
