@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { householdPage } from '../../components/camperships/household/householdFixtures'
+import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
 import { AidApiError } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
 import AidHouseholdPage from './AidHouseholdPage'
@@ -15,10 +16,24 @@ interface PageResult {
 }
 let result: PageResult
 const asked: number[] = []
+const prefetched: Array<number | null> = []
 vi.mock('../../hooks/camperships/useAidHouseholdPage', () => ({
   useAidHouseholdPage: (id: number) => {
     asked.push(id)
     return result
+  },
+  usePrefetchHousehold: (id: number | null) => {
+    prefetched.push(id)
+  },
+}))
+const gridAsked: Array<{ enabled?: boolean; live?: boolean }> = []
+vi.mock('../../hooks/camperships/useAidGrid', () => ({
+  useAidGrid: (options: { enabled?: boolean; live?: boolean }) => {
+    gridAsked.push(options)
+    return {
+      data:
+        options.enabled === false ? undefined : { year: 2027, rules_version: 1, rows: GRID_ROWS },
+    }
   },
 }))
 const NOTES: Record<string, number> = { cost: 1, decided: 2, grants: 3, family_share: 4, posted: 5 }
@@ -43,21 +58,19 @@ function Where() {
   return <div data-testid="where">{pathname + search}</div>
 }
 
-function renderAt(path: string, history: string[] = [], state: unknown = null) {
+function renderAt(path: string) {
   return render(
-    <MemoryRouter
-      initialEntries={[
-        ...history,
-        {
-          pathname: path.split('?')[0] ?? path,
-          search: path.includes('?') ? `?${path.split('?')[1] ?? ''}` : '',
-          state,
-        },
-      ]}
-      initialIndex={history.length}
-    >
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        <Route
+          path="/aid/households/:householdCmId"
+          element={
+            <>
+              <AidHouseholdPage />
+              <Where />
+            </>
+          }
+        />
         <Route path="/aid/requests" element={<Where />} />
       </Routes>
     </MemoryRouter>
@@ -67,6 +80,8 @@ function renderAt(path: string, history: string[] = [], state: unknown = null) {
 beforeEach(() => {
   result = { data: householdPage(), isLoading: false, error: null }
   asked.length = 0
+  prefetched.length = 0
+  gridAsked.length = 0
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
 })
@@ -113,53 +128,134 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.queryByText(/Network down/)).toBeNull()
   })
 
-  // Regression guard: passed against the first build too (no `from` means no link).
-  it('has no way back when it was not opened from the grid', () => {
-    renderAt('/aid/households/1000001?year=2027')
-    expect(screen.queryByRole('link', { name: /Back to requests/ })).toBeNull()
-  })
-
-  it('links back to the grid view and filters it came from (fresh tab, no history)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=approved&pool=pool_a&ids=1')
-    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
-    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
-    expect(where.pathname).toBe('/aid/requests')
-    expect(Object.fromEntries(where.searchParams)).toEqual({
-      view: 'approved',
-      pool: 'pool_a',
-      ids: '1',
-      year: '2027',
-    })
-  })
-
-  it('keeps the as-of of the view it came from in the fallback href', () => {
-    renderAt('/aid/households/1000001?year=2027&from=all&as_of=2027-03-01')
-    const href = screen.getByRole('link', { name: /Back to requests/ }).getAttribute('href') ?? ''
-    expect(new URL(href, 'http://x').searchParams.get('as_of')).toBe('2027-03-01')
-  })
-
-  it('goes back through history when the grid opened it, so the grid lands on its row (§3.5)', async () => {
-    renderAt(
-      '/aid/households/1000001?year=2027&from=all',
-      ['/aid/requests?view=all&row=req-7&year=2027'],
-      { aidFromGrid: true }
-    )
-    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
-    expect(screen.getByTestId('where')).toHaveTextContent(
-      '/aid/requests?view=all&row=req-7&year=2027'
-    )
-  })
-
-  it('follows the href, not history, when something else opened it (a queue step, a jump)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=all', ['/aid/households/1000002?from=all'])
-    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?view=all&year=2027')
-  })
-
   it('shows the income, the grants and postings, and the history below the cards', () => {
     renderAt('/aid/households/1000001')
     expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
+  })
+})
+
+describe('the queue walk (§3.5; D14)', () => {
+  it('shows where the family sits in the view it came from, and its neighbours by name and reason', () => {
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=all&row=reqolivia000003&year=2027'
+    )
+    expect(screen.getByText(/3 of 4 families/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: '‹ The Garcia Family · placeholder income' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'The Sam Family · reverse posting ›' })
+    ).toBeInTheDocument()
+    expect(gridAsked.at(-1)).toEqual({ enabled: true, live: true })
+  })
+
+  it('steps with ] and [, carrying the view', async () => {
+    renderAt('/aid/households/1000005?from=all')
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000007?from=all&year=2027'
+    )
+    // '[[' is user-event's escape for a literal '[' (a lone '[' opens a key descriptor).
+    await userEvent.keyboard('[[')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000005?from=all&year=2027'
+    )
+  })
+
+  it("keeps the grid's filters on every step and on the way back (M5)", () => {
+    renderAt('/aid/households/1000005?from=all&program=quest')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=all&program=quest&row=reqolivia000003&year=2027'
+    )
+    // Only the Chen family is in Quest: no neighbours to step to.
+    expect(screen.queryByRole('link', { name: /The Sam Family/ })).toBeNull()
+  })
+
+  it("keeps the grid's as-of on the way back and on a step (it came on the link)", async () => {
+    renderAt('/aid/households/1000005?from=all&as_of=2027-03-01')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=all&row=reqolivia000003&year=2027&as_of=2027-03-01'
+    )
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000007?from=all&year=2027&as_of=2027-03-01'
+    )
+  })
+
+  it('goes Back to the view with a plain link, highlighting the family it left', async () => {
+    renderAt('/aid/households/1000005?from=all')
+    await userEvent.click(screen.getByRole('link', { name: '← Back to All' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/requests?view=all&row=reqolivia000003&year=2027'
+    )
+  })
+
+  it('leaves a bracket typed in a field alone', async () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/households/1000005?from=all']}>
+        <Routes>
+          <Route
+            path="/aid/households/:householdCmId"
+            element={
+              <>
+                <AidHouseholdPage />
+                <input aria-label="typing" />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('textbox', { name: 'typing' }))
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+  })
+
+  it('leaves a bracket inside a form or the editor alone', async () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/households/1000005?from=all']}>
+        <Routes>
+          <Route
+            path="/aid/households/:householdCmId"
+            element={
+              <>
+                <AidHouseholdPage />
+                <form>
+                  <button type="button">in form</button>
+                </form>
+                <div data-aid-editor>
+                  <button type="button">in editor</button>
+                </div>
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'in form' }))
+    await userEvent.keyboard(']')
+    await userEvent.click(screen.getByRole('button', { name: 'in editor' }))
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+  })
+
+  it('loads the next family in the background', () => {
+    renderAt('/aid/households/1000005?from=all')
+    expect(prefetched).toContain(1000007)
+  })
+
+  it('stands alone when reached from search, Grants or Money: no strip, no Back, no grid read', () => {
+    renderAt('/aid/households/1000005')
+    expect(screen.queryByText(/families$/)).toBeNull()
+    expect(screen.queryByRole('link', { name: /Back to/ })).toBeNull()
+    expect(gridAsked.every((options) => options.enabled === false)).toBe(true)
   })
 })
