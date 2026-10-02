@@ -23,7 +23,9 @@ class LedgerFamilyOut(BaseModel):
     outside_grants: float  # its live lines of every other funder: outside, incentive (D97), unclassified
     lines: int  # its lines by the read's day, reversed ones included (D74)
     reversed_lines: int  # how many of those were reversed by then
-    level: LedgerLevelOut | None  # where a live camp-aid line isn't on a request (D151); None: all on requests
+    # Where a live camp-aid line isn't on a request (D151). None: none waits off a request (every camp-aid line is on
+    # one, or it has only outside or reversed lines), or a season before FIRST_TICKED_SEASON (no levels at all).
+    level: LedgerLevelOut | None
 
 
 class MoneyLedgerOut(BaseModel):

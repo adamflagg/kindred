@@ -317,9 +317,10 @@ def tier_appeals(
 
 
 def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
-    """RPT-23 per home pool, then the requests with no pool (kind no_pool), then every request (kind headline): accepted (Round 1 posted and accepted: count and the posted
-    amount), appealed (a Round 2 ask: count and the asks), waiting (Round 1 posted, not accepted, no Round 2 ask).
-    Live requests only: a cancelled family is no longer waiting."""
+    """RPT-23 per home pool, then the requests with no pool (kind no_pool), then every request (kind headline):
+    accepted (Round 1 posted and accepted: count and the posted amount), appealed (a Round 2 ask: count and the asks),
+    waiting (Round 1 posted, not accepted, no Round 2 ask). Live requests only: a cancelled family is no longer
+    waiting."""
     pools: dict[str | None, list[ReportRequest]] = defaultdict(list)
     every: list[ReportRequest] = []
     for request in requests:

@@ -1724,7 +1724,7 @@ async def reclassify_line(
         raise _decisions_http(exc) from exc
 
 
-# --- Reports (slice 4's back end, Part A: Statistics, Programs, the committee's tables, typed history) ------------
+# --- Money > Ledger (campership slice 3, ask 1; clean spec §8.1) -------------------------------
 
 
 def _money_ledger() -> MoneyLedgerService:
@@ -1769,6 +1769,9 @@ async def get_money_ledger_lines(
         )
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
+
+
+# --- Reports (slice 4's back end, Part A: Statistics, Programs, the committee's tables, typed history) ------------
 
 
 def _reports() -> FinancialAidReportsService:
