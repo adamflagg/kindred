@@ -138,6 +138,17 @@ def test_todays_sections_follow_the_users_permissions(persona: str, casework: bo
     service.read.assert_awaited_once_with(2031, casework=casework, finance=finance)
 
 
+def test_today_counts_to_place_on_the_repository_it_prices_with() -> None:
+    """Ask 3: Today's To place line reads To place's own three reads, from the same repository (SP11)."""
+    from api.schemas.financial_aid_surfaces import TodayResponse
+
+    today = patch("api.routers.financial_aid.TodayService").start()
+    today.return_value.read = AsyncMock(return_value=TodayResponse(year=2031, casework=None, finance=None))
+    assert _client(PERSONA_REGISTRAR).get("/api/financial-aid/today/2031").status_code == 200
+    kwargs = today.call_args.kwargs
+    assert kwargs.get("to_place") is kwargs["store"]
+
+
 # --- the household page (§6.3) --------------------------------------------------------------------------
 
 

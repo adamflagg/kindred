@@ -44,10 +44,12 @@ from api.schemas.financial_aid import (
     NetTotalsResponse,
     OrphanReversal,
     SessionMismatch,
+    SourceChangeOut,
     StaleStaffLink,
     SummaryCell,
     SummaryResponse,
     UnclassifiedSource,
+    WhoPaid,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_repository import FaRequestRow, FinancialAidRepository
@@ -62,6 +64,24 @@ _DASHES = str.maketrans({"–": "-", "—": "-", "−": "-"})  # en, em, minus
 # The funder types whose aid_postings lines are grants (D55): outside grants and funds, and
 # family incentives (JFAM). The camp's own aid is "camp"; an unclassified line is "unknown".
 GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
+# Go's attribution level for money a staff placement put on a request: what a split line's placed dollars read as on
+# /summary (D151). Go never emits "decision" and a split's override places nothing, so Go infers a split line's level.
+PLACED_BY_STAFF: Final = "override"
+
+
+def needs_group(source: Any) -> bool:
+    """D100: an outside (or still-incentive) source with no reporting group (no implied program family), so the ledger
+    has no program to place its household-level lines with. The same rule as Funding sources' needs_group (#2967)."""
+    return str(source.funder_type) in GRANT_FUNDER_TYPES and not list(source.implied_program_families or [])
+
+
+def who_paid(funder_type: str) -> WhoPaid | None:
+    """D88's "who paid": the camp's own money, or another funder's; None while the description is unclassified."""
+    if funder_type == "camp":
+        return "the camp"
+    if funder_type in GRANT_FUNDER_TYPES:
+        return "another funder"
+    return None
 
 
 class FinancialAidNotFoundError(FinancialAidError, LookupError):
@@ -245,7 +265,36 @@ def source_row(s: Any) -> AidSourceRow:
         implied_program_families=list(s.implied_program_families or []),
         classified_by=str(s.classified_by),
         note=str(s.note or ""),
+        needs_group=needs_group(s),
+        who_paid=who_paid(str(s.funder_type)),
     )
+
+
+def source_lines(postings: Iterable[Any]) -> dict[str, tuple[int, Decimal]]:
+    """Each description's live lines this season and their net in aid dollars, keyed by the description that
+    classifies them now (effective_source_key: after a reclassifying override, the target's; §5.5). Reversed lines
+    are out: fetch_postings reads live rows only."""
+    counts: Counter[str] = Counter()
+    amounts: dict[str, Decimal] = defaultdict(Decimal)
+    for p in postings:
+        key = str(p.effective_source_key or p.source_key)
+        counts[key] += 1
+        amounts[key] += aid_dollars(p.amount)
+    return {key: (counts[key], amounts[key]) for key in counts}
+
+
+def _logged_at(row: Any) -> tuple[datetime, str]:
+    return (parse_pb_datetime(getattr(row, "created", None)) or datetime.min.replace(tzinfo=UTC), str(row.id))
+
+
+def last_changes(rows: Iterable[Any]) -> dict[str, SourceChangeOut]:
+    """Each aid_sources record's last logged edit (D105: who and why), by record id: the latest log row naming it."""
+    out: dict[str, SourceChangeOut] = {}
+    for row in sorted(rows, key=_logged_at):
+        at = parse_pb_datetime(getattr(row, "created", None))
+        if at is not None:
+            out[str(row.entity_id)] = SourceChangeOut(by=str(row.actor or ""), at=at, note=str(row.reason or ""))
+    return out
 
 
 def _unclassified(postings: Iterable[Any], sources: Mapping[str, Any]) -> list[UnclassifiedSource]:
@@ -291,8 +340,25 @@ class FinancialAidLedgerService:
                 counted.append(p)
         return counted, undated
 
-    async def sources(self) -> AidSourcesResponse:
-        return AidSourcesResponse(sources=[source_row(s) for s in await self.repo.fetch_sources()])
+    async def sources(self, year: int | None = None) -> AidSourcesResponse:
+        """Money › Sources (§8.1): every description in the registry with its classification, D88's who paid (and
+        the mapped grantor's name), D100's needs-a-group check and D105's last logged change; with `year`, also the
+        season's live lines each description classifies and their net. Without it no postings are read."""
+        sources, grantors, changes = await asyncio.gather(
+            self.repo.fetch_sources(), self.repo.fetch_grantors(), self.repo.fetch_source_changes()
+        )
+        names = {str(g.key): str(g.name) for g in grantors}
+        last = last_changes(changes)
+        counted = source_lines(await self.repo.fetch_postings(year)) if year is not None else {}
+        rows: list[AidSourceRow] = []
+        for s in sources:
+            row = source_row(s)
+            update: dict[str, Any] = {"grantor_name": names.get(row.grantor_key, ""), "last_change": last.get(row.id)}
+            if year is not None:
+                lines, amount = counted.get(row.description_key, (0, _ZERO))
+                update |= {"lines": lines, "amount": money(amount)}
+            rows.append(row.model_copy(update=update))
+        return AidSourcesResponse(year=year, sources=rows)
 
     async def ledger(
         self,
@@ -434,7 +500,13 @@ class FinancialAidLedgerService:
             fa_requested=_requested(requests, family),
         )
 
-    async def summary(self, year: int, as_of: date | None = None) -> SummaryResponse:
+    async def summary(
+        self, year: int, as_of: date | None = None, *, split_placed: Mapping[int, Decimal] | None = None
+    ) -> SummaryResponse:
+        """F10: posted totals by program × source family (§8.1). `split_placed` (a live read from the first ticked
+        season) is Kindred's placement of each split camp-aid line (D151): its placed dollars count at "override", as
+        a whole-line staff placement does, never at the level Go's attribution leaves a split line at. Without it the
+        levels are Go's. No total and no cell moves either way."""
         postings, undated = await self._counted(year, as_of)
         amounts: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
         counts: Counter[tuple[str, str]] = Counter()
@@ -447,7 +519,13 @@ class FinancialAidLedgerService:
             amounts[key] += dollars
             counts[key] += 1
             households[key].add(int(p.household_cm_id or 0))
-            by_level[str(p.attribution_level)] += dollars
+            placed = _ZERO
+            if split_placed is not None and str(p.funder_type) == "camp":
+                placed = min(split_placed.get(int(p.transaction_cm_id), _ZERO), dollars)
+            if placed:
+                by_level[PLACED_BY_STAFF] += placed
+            if dollars != placed or not placed:
+                by_level[str(p.attribution_level)] += dollars - placed
             total += dollars
             if p.counts_toward_budget:
                 budget += dollars
@@ -467,6 +545,7 @@ class FinancialAidLedgerService:
             total_aid=money(total),
             counts_toward_budget=money(budget),
             by_level={k: money(v) for k, v in by_level.items()},
+            by_level_basis="placements" if split_placed is not None else "attribution",
             cells=cells,
             undated_postings=undated,
         )
@@ -523,6 +602,13 @@ class FinancialAidLedgerService:
             undated_postings=undated,
             rows=rows,
         )
+
+    async def needs_group_sources(self, year: int) -> list[str]:
+        """The descriptions that need a reporting group and classify a live line this season (Today's finance line,
+        D100), by key. A line counts under the description that classifies it now (effective_source_key)."""
+        postings, sources = await asyncio.gather(self.repo.fetch_postings(year), self._sources_by_key())
+        used = {str(p.effective_source_key or p.source_key) for p in postings}
+        return sorted(key for key in used if key in sources and needs_group(sources[key]))
 
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]:
         """Data quality's unclassified descriptions alone (slice 1's Today), from two reads."""

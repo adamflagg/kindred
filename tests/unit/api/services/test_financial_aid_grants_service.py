@@ -30,6 +30,8 @@ from api.services.financial_aid_grants_service import (
     OneGrantsLoad,
 )
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
+from bunking.pocketbase_batch import BatchRequest, BatchRequestFailedError, BatchResult
 from tests.unit.api.services.aid_commit_spy import AidCommitSpy, spy_on_commits
 
 ACTOR = "finance@example.com"
@@ -1184,3 +1186,50 @@ def test_a_commitment_amount_is_positive_whole_cents() -> None:
         _commitment_in(amount="0")
     with pytest.raises(ValidationError):
         _commitment_in(amount="10.005")
+
+
+# --- a write that lost a race (slice 3 back-end PR-B) ----------------------------------------------------
+
+
+def _refuse(status: int, field_errors: dict[str, str] | None = None) -> None:
+    """PocketBase refuses the operation's first sub-request: the batch rolled back, and nothing was written."""
+
+    def refused(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+        raise BatchRequestFailedError(
+            index=0,
+            total=len(requests),
+            request=requests[0],
+            status=status,
+            message="refused",
+            field_errors=field_errors or {},
+            response=None,
+        )
+
+    patch("bunking.financial_aid.change_log.send_batch", side_effect=refused).start()
+
+
+@pytest.mark.asyncio
+async def test_a_grantor_key_someone_created_first_is_a_conflict_not_a_500() -> None:
+    """Two people adding one grantor: the second create hits the unique key. G6's refusal, so the route says 409."""
+    service, _ = _service(_repo())
+    _refuse(400, {"key": "Value must be unique."})
+    with pytest.raises(AidWriteConflictError) as refused:
+        await service.create_grantor(_create(), ACTOR)
+    assert (refused.value.collection, str(refused.value)) == ("aid_grantors", CONFLICT_MESSAGE)
+
+
+@pytest.mark.asyncio
+async def test_a_grantor_someone_removed_first_is_a_conflict_not_a_500() -> None:
+    service, _ = _service(_repo(grantor=_grantor()))
+    _refuse(404)
+    with pytest.raises(AidWriteConflictError) as refused:
+        await service.save_grantor("regional_fund", _save(name="Regional Fund North"), ACTOR)
+    assert (refused.value.collection, refused.value.record_id) == ("aid_grantors", "gra000000000001")
+
+
+@pytest.mark.asyncio
+async def test_a_grants_refusal_that_is_no_race_is_not_dressed_as_one() -> None:
+    service, _ = _service(_repo())
+    _refuse(400, {"name": "Cannot be blank."})
+    with pytest.raises(BatchRequestFailedError):
+        await service.create_grantor(_create(), ACTOR)

@@ -735,3 +735,42 @@ async def test_a_new_staff_link_whose_row_the_sync_just_created_is_a_conflict_no
             ACTOR,
         )
     assert (refused.value.collection, str(refused.value)) == ("aid_household_links", CONFLICT_MESSAGE)
+
+
+# --- a source write that lost a race (slice 3 back-end PR-B) ----------------------------------------------
+
+
+def _vanished(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+    """The source row was removed after the write read it: PocketBase answers the update 404 inside the batch."""
+    raise BatchRequestFailedError(
+        index=0,
+        total=len(requests),
+        request=requests[0],
+        status=404,
+        message="The requested resource wasn't found.",
+        field_errors={},
+        response=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_classification_whose_source_vanished_is_a_conflict_not_a_500() -> None:
+    service, _ = _service(_mapping_repo(_source()))
+    patch("bunking.financial_aid.change_log.send_batch", side_effect=_vanished).start()
+    with pytest.raises(AidWriteConflictError) as refused:
+        await service.classify_source(SOURCE_ID, _classification(), ACTOR)
+    assert (refused.value.collection, refused.value.record_id, str(refused.value)) == (
+        "aid_sources",
+        SOURCE_ID,
+        CONFLICT_MESSAGE,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_grantor_mapping_whose_source_vanished_is_a_conflict_not_a_500() -> None:
+    source = _source(source_family="other_outside", funder_type="outside", counts_as_aid=True)
+    service, _ = _service(_mapping_repo(source, _GRANTOR))
+    patch("bunking.financial_aid.change_log.send_batch", side_effect=_vanished).start()
+    with pytest.raises(AidWriteConflictError) as refused:
+        await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert (refused.value.collection, refused.value.record_id) == ("aid_sources", SOURCE_ID)

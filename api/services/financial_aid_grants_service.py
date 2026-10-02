@@ -35,6 +35,7 @@ from api.schemas.financial_aid_grants import (
     GrantorOut,
     GrantorRetireIn,
     GrantorSave,
+    GrantorSeasonOut,
     GrantorsResponse,
     GrantRowOut,
     GrantsResponse,
@@ -77,7 +78,14 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, new_record_id
+from bunking.financial_aid.change_log import (
+    AidOperationResult,
+    AidWrite,
+    commit_aid_writes,
+    new_record_id,
+    race_conflict,
+)
+from bunking.pocketbase_batch import BatchRequestFailedError
 
 GRANTOR_FIELDS = (
     "name",
@@ -164,6 +172,20 @@ def _descriptions_by_grantor(sources: list[Any]) -> dict[str, list[GrantorDescri
                 )
             )
     return {k: sorted(v, key=lambda d: d.description_key) for k, v in out.items()}
+
+
+def grantor_seasons(year: int, rows: Sequence[RegisterRow]) -> dict[str, GrantorSeasonOut]:
+    """Grants › Grantors' "grants / $ this season" (owner question 3, default): each grantor's live CampMinder grant
+    lines this season and their net. A reversed line is out (D74). A line still waiting for its camper is in: the
+    money is given (D87). A hand-entered commitment is not, until CampMinder posts it (D55)."""
+    count: dict[str, int] = defaultdict(int)
+    amount: dict[str, Decimal] = defaultdict(Decimal)
+    for row in rows:
+        if row.kind != "ledger" or row.is_reversed or not row.grantor_key:
+            continue
+        count[row.grantor_key] += 1
+        amount[row.grantor_key] += row.amount
+    return {key: GrantorSeasonOut(year=year, count=count[key], amount=money(amount[key])) for key in count}
 
 
 def _grantor_out(
@@ -324,9 +346,17 @@ class GrantsService:
     async def _commit(
         self, writes: list[AidWrite], *, actor: str, reason: str | None, require_reason: bool = False
     ) -> AidOperationResult:
-        return await asyncio.to_thread(
-            commit_aid_writes, self.repo.pb, writes, actor=actor, reason=reason, require_reason=require_reason
-        )
+        """One operation. A batch that lost a race (a grantor key or a line's placement someone created first, a
+        record someone removed first) is G6's AidWriteConflictError, answered 409: nothing was written; reload and
+        try again. Any other refused batch goes through as it is."""
+        try:
+            return await asyncio.to_thread(
+                commit_aid_writes, self.repo.pb, writes, actor=actor, reason=reason, require_reason=require_reason
+            )
+        except BatchRequestFailedError as exc:
+            if (conflict := race_conflict(exc)) is not None:
+                raise conflict from exc
+            raise
 
     async def _family_members(
         self, year: int, links: Any, household_cm_ids: Collection[int]
@@ -347,12 +377,22 @@ class GrantsService:
 
     # --- the grantor directory (financial_aid.grantors) ------------------------------
 
-    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse:
-        """The directory. Retired grantors are left out (pickers never offer one) unless include_retired."""
+    async def list_grantors(self, *, include_retired: bool = False, year: int | None = None) -> GrantorsResponse:
+        """The directory. Retired grantors are left out (pickers never offer one) unless include_retired. With `year`,
+        each grantor carries its season's grant lines (grantor_seasons); without it the register is never read."""
         grantors = [g for g in await self.repo.fetch_grantors() if include_retired or not grantor_retired_at(g)]
         descriptions = _descriptions_by_grantor(await self.repo.fetch_sources())
+        seasons = grantor_seasons(year, await self.register_rows(year)) if year is not None else {}
+
+        def season(key: str) -> GrantorSeasonOut | None:
+            if year is None:
+                return None
+            return seasons.get(key, GrantorSeasonOut(year=year, count=0, amount=0.0))
+
         rows = [
-            _grantor_out(str(g.key), _grantor_snapshot(g), descriptions.get(str(g.key), []), grantor_retired_at(g))
+            _grantor_out(
+                str(g.key), _grantor_snapshot(g), descriptions.get(str(g.key), []), grantor_retired_at(g)
+            ).model_copy(update={"season": season(str(g.key))})
             for g in grantors
         ]
         return GrantorsResponse(grantors=sorted(rows, key=lambda g: (g.name.lower(), g.key)))

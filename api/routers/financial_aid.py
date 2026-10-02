@@ -199,6 +199,7 @@ from api.services.financial_aid_change_log_reads import EntityLogReads, HistoryL
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import (
+    FIRST_TICKED_SEASON,
     DecisionChangedError,
     DecisionNotFoundError,
     FinancialAidDecisionsService,
@@ -226,6 +227,7 @@ from api.services.financial_aid_march_file import MarchFileService
 from api.services.financial_aid_money_ledger import LedgerFilters
 from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_payer_shares import ShareSpec
+from api.services.financial_aid_reconciliation import split_placed
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
@@ -441,6 +443,8 @@ def _grants_http(exc: FinancialAidError) -> HTTPException:
         detail = {"message": str(exc), "descriptions": exc.descriptions, "grants": exc.grants}
         return HTTPException(status_code=409, detail=detail)
     if isinstance(exc, (GrantorKeyTakenError, GrantorStateError)):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, AidWriteConflictError):  # G6: the write lost a race; nothing was written (slice 3 PR-B)
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -665,8 +669,13 @@ async def get_household(
 async def get_summary(
     year: int = Query(..., ge=2017, le=2100), as_of: date | None = None, user: AuthUser = _VIEW
 ) -> SummaryResponse:
-    """Unsuppressed posted totals by program and source family. Finance-facing, not development."""
-    return await _ledger().summary(year, as_of=as_of)
+    """Unsuppressed posted totals by program and source family. Finance-facing, not development. A live read from the
+    first ticked season reads Kindred's placements for its levels (D151: a split line is not household level)."""
+    placed: dict[int, Decimal] | None = None
+    if as_of is None and year >= FIRST_TICKED_SEASON:
+        season = await _decisions().season(year)
+        placed = split_placed(season.ledger, season.splits, season.camp_lines)
+    return await _ledger().summary(year, as_of=as_of, split_placed=placed)
 
 
 @router.get("/net-totals", response_model=NetTotalsResponse)
@@ -683,14 +692,19 @@ async def get_data_quality(year: int = Query(..., ge=2017, le=2100), user: AuthU
 
 
 @router.get("/sources", response_model=AidSourcesResponse)
-async def list_sources(user: AuthUser = _VIEW_OR_GRANTORS) -> AidSourcesResponse:
-    return await _ledger().sources()
+async def list_sources(
+    year: int | None = Query(None, ge=2017, le=2100), user: AuthUser = _VIEW_OR_GRANTORS
+) -> AidSourcesResponse:
+    """Money › Sources (§8.1). `year` adds each description's live lines this season and their net."""
+    return await _ledger().sources(year)
 
 
 @router.patch("/sources/{source_id}", response_model=AidSourceRow)
 async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser = _RULES) -> AidSourceRow:
     try:
         return await _writes().classify_source(source_id, body, user.email)
+    except AidWriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 
@@ -699,6 +713,8 @@ async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser 
 async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _GRANTORS) -> AidSourceRow:
     try:
         return await _writes().map_source_grantor(source_id, body, user.email)
+    except AidWriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 
@@ -867,10 +883,17 @@ async def get_approved_aid_rules(
 
 
 @router.get("/grantors", response_model=GrantorsResponse)
-async def list_grantors(include_retired: bool = Query(False), user: AuthUser = _VIEW_OR_GRANTORS) -> GrantorsResponse:
+async def list_grantors(
+    include_retired: bool = Query(False),
+    year: int | None = Query(None, ge=2017, le=2100),
+    user: AuthUser = _VIEW_OR_GRANTORS,
+) -> GrantorsResponse:
     # D57: view or grantors sees the directory, contacts included; edits are financial_aid.grantors.
-    # A retired grantor is left out (pickers never offer one) unless include_retired.
-    return await _grants().list_grantors(include_retired=include_retired)
+    # A retired grantor is left out (pickers never offer one) unless include_retired. `year` adds each grantor's
+    # live grant lines that season (Grants › Grantors' "grants / $ this season").
+    if year is None:
+        return await _grants().list_grantors(include_retired=include_retired)
+    return await _grants().list_grantors(include_retired=include_retired, year=year)
 
 
 @router.post("/grantors", response_model=GrantorOut, status_code=201)
@@ -1604,13 +1627,15 @@ def _holds(user: AuthUser, permission: str) -> bool:
 @router.get("/today/{year}", response_model=TodayResponse)
 async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
     """Today (§6.4): one dense line per waiting queue; its sections follow the user's permissions."""
+    store = FinancialAidDecisionsRepository(pb)
     service = TodayService(
-        store=FinancialAidDecisionsRepository(pb),
+        store=store,
         pricing=_rules(),
         rules=_rules(),
         grants=GrantsService(GrantsRepository(pb)),
         ledger=_ledger(),
         intake=FinancialAidIntakeRepository(pb),
+        to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
     )
     return await service.read(
         year,
