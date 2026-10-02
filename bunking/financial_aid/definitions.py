@@ -347,6 +347,101 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§9.7",
         rulings=("D131",),
     ),
+    # Reports › Development (Part B): development's one all-money basis (§5.7, §5.10, §5.11).
+    Definition(
+        key="total_awards_granted",
+        term="Total Awards Granted",
+        text=(
+            "Total Awards Granted: all money given out for camperships, together: {camp}'s awarded amounts and every "
+            "outside grant. Every outside grant is an award, and the counts follow the same money."
+        ),
+        spec="§5.7",
+        rulings=("D87", "D88"),
+    ),
+    Definition(
+        key="need",
+        term="Need",
+        text=(
+            "Need: {camp}'s awards in the rounds before the latest ask + the latest ask, never less than any earlier "
+            "ask's own figure. Total Requests = Σ need, for campers who attended; outside grants are never in it. % "
+            "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need."
+        ),
+        spec="§5.10",
+        rulings=("D91",),
+    ),
+    Definition(
+        key="dev_recipients",
+        term="Who counts",
+        text=(
+            "Who counts: campers who attended (CampMinder status 2) and got money from any source, including campers "
+            "who never applied. A cancelled camper, or one who got nothing, is not counted. A camper counts once per "
+            "program; Weekend counts families."
+        ),
+        spec="§5.11",
+        rulings=("D92",),
+    ),
+    Definition(
+        key="teens",
+        term="Teens",
+        text=(
+            "Teens: Summer Camp and Quest campers aged 13–17 on the first day of their first session in that program. "
+            "Youth are 0–12."
+        ),
+        spec="§5.11",
+        rulings=("D89", "D103"),
+    ),
+    Definition(
+        key="dev_families",
+        term="Families",
+        text=(
+            "Families: each CampMinder household counts once, and the report says how many households share a "
+            "camper. Family Camp counts the households that attended and got money."
+        ),
+        spec="§5.11",
+        rulings=("D93",),
+    ),
+    Definition(
+        key="gender",
+        term="Gender",
+        text=(
+            "Gender: CampMinder's Gender Identity, for aid recipients and everyone enrolled. A write-in shows as "
+            "self-described and a blank as not given."
+        ),
+        spec="§5.11",
+        rulings=("D94",),
+    ),
+    Definition(
+        key="first_time",
+        term="First-time",
+        text=(
+            "First-time depends on who is asking: a grantor's or donor's own definition decides it, so each "
+            "first-time line states its definition."
+        ),
+        spec="§5.11",
+        rulings=("D99",),
+    ),
+    Definition(
+        key="dev_appeals",
+        term="Appeals",
+        text=(
+            "Appeals: an ask in Round 2 or any later round, for a camper who attended, counted once per request. "
+            "Approved = a posted award above $0 in those rounds, in full or in part. Declined due to insufficient aid "
+            "= requests cancelled with that reason, the one count that includes campers who didn't attend."
+        ),
+        spec="§5.11",
+        rulings=("D101", "D141"),
+    ),
+    Definition(
+        key="household_level",
+        term="Household-level grants",
+        text=(
+            "Household-level grants: a never-applied household's grant is tied to a camper only when the household "
+            "has exactly one eligible camper; otherwise it stays household-level, and the camper counts show it as "
+            "household-level and say by how much. Money totals and family counts are exact either way."
+        ),
+        spec="§5.11",
+        rulings=("D142",),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -378,6 +473,17 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
     "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
+    "reports-development": (
+        "total_awards_granted",
+        "need",
+        "dev_recipients",
+        "teens",
+        "dev_families",
+        "gender",
+        "first_time",
+        "dev_appeals",
+        "household_level",
+    ),
 }
 
 BY_KEY: Final[Mapping[str, Definition]] = {d.key: d for d in DEFINITIONS}
