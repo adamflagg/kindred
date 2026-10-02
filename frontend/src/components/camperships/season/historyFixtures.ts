@@ -18,8 +18,9 @@ export const OP_SHARE: ApiAidHistoryOperation = {
   actor: REGISTRAR_EMAIL,
   kind: 'money',
   reason: 'Family emailed',
-  rows: 1,
-  counts: [{ entity: 'aid_payer_shares', action: 'set_household_share', rows: 1 }],
+  // The writer logs the whole share set as one operation: the entered household and the remainder's.
+  rows: 2,
+  counts: [{ entity: 'aid_payer_shares', action: 'set_household_share', rows: 2 }],
   rules_versions: [],
   rules_sections: [],
 }
@@ -163,26 +164,67 @@ const row = (
   ...fields,
 })
 
+/**
+ * As `_replace_shares` logs `set_household_share`: percents are `_pct_text` strings ("40"), the entered
+ * household's row carries `entered`, and the other household's share becomes the remainder (an update).
+ */
 export const DETAIL_SHARE: ApiAidHistoryOperationDetail = {
   year: 2027,
   operation: OP_SHARE,
   rows: [
     row({
       entity: 'aid_payer_shares',
-      entity_id: 'req000000000009:1000002',
+      entity_id: 'req000000000009:1000001',
       action: 'set_household_share',
       reason: 'Family emailed',
-      after: {
-        household_cm_id: 1000002,
+      before: {
+        actor: 'system:intake',
+        household_cm_id: 1000001,
+        note: '',
         request: 'req000000000009',
-        share_pct: 40,
+        share_pct: '100',
+        source: 'intake_default',
+        year: 2027,
+      },
+      after: {
+        actor: REGISTRAR_EMAIL,
+        household_cm_id: 1000001,
+        note: 'Family emailed',
+        request: 'req000000000009',
+        share_pct: '60',
         source: 'staff',
         year: 2027,
       },
       changes: [
+        { path: ['actor'], kind: 'changed', before: 'system:intake', after: REGISTRAR_EMAIL },
+        { path: ['note'], kind: 'changed', before: '', after: 'Family emailed' },
+        { path: ['share_pct'], kind: 'changed', before: '100', after: '60' },
+        { path: ['source'], kind: 'changed', before: 'intake_default', after: 'staff' },
+      ],
+    }),
+    row({
+      entity: 'aid_payer_shares',
+      entity_id: 'req000000000009:1000002',
+      action: 'set_household_share',
+      reason: 'Family emailed',
+      after: {
+        actor: REGISTRAR_EMAIL,
+        entered: { household_cm_id: 1000002, share_pct: '40' },
+        household_cm_id: 1000002,
+        note: 'Family emailed',
+        request: 'req000000000009',
+        share_pct: '40',
+        source: 'staff',
+        year: 2027,
+      },
+      changes: [
+        { path: ['actor'], kind: 'added', after: REGISTRAR_EMAIL },
+        { path: ['entered', 'household_cm_id'], kind: 'added', after: 1000002 },
+        { path: ['entered', 'share_pct'], kind: 'added', after: '40' },
         { path: ['household_cm_id'], kind: 'added', after: 1000002 },
+        { path: ['note'], kind: 'added', after: 'Family emailed' },
         { path: ['request'], kind: 'added', after: 'req000000000009' },
-        { path: ['share_pct'], kind: 'added', after: 40 },
+        { path: ['share_pct'], kind: 'added', after: '40' },
         { path: ['source'], kind: 'added', after: 'staff' },
         { path: ['year'], kind: 'added', after: 2027 },
       ],
@@ -220,7 +262,7 @@ export const DETAIL_RELEASE: ApiAidHistoryOperationDetail = {
   ],
 }
 
-/** As `_post_write` logs a tick: the receipt `snapshot` stays on the row, out of the log. */
+/** As `_post_write` logs a tick (`amount` a Decimal, so the log holds its exact string): the receipt `snapshot` stays on the row, out of the log. */
 export const DETAIL_POSTED: ApiAidHistoryOperationDetail = {
   year: 2027,
   operation: OP_POSTED,
@@ -233,7 +275,7 @@ export const DETAIL_POSTED: ApiAidHistoryOperationDetail = {
       action: 'post',
       after: {
         actor: REGISTRAR_EMAIL,
-        amount: 1420,
+        amount: '1420',
         effective_on: '2027-04-09',
         event: 'post',
         lock_source: 'tick',
@@ -244,7 +286,7 @@ export const DETAIL_POSTED: ApiAidHistoryOperationDetail = {
       },
       changes: [
         { path: ['actor'], kind: 'added', after: REGISTRAR_EMAIL },
-        { path: ['amount'], kind: 'added', after: 1420 },
+        { path: ['amount'], kind: 'added', after: '1420' },
         { path: ['effective_on'], kind: 'added', after: '2027-04-09' },
         { path: ['event'], kind: 'added', after: 'post' },
         { path: ['lock_source'], kind: 'added', after: 'tick' },
@@ -263,14 +305,14 @@ export const ROW_ROUND3_AWARD: ApiAidHistoryRow = row({
   entity_id: 'req000000000011:3',
   action: 'award',
   after: {
-    amount: 500,
+    amount: '500',
     event: 'award',
     needs_approval: true,
     request: 'req000000000011',
     round: 3,
   },
   changes: [
-    { path: ['amount'], kind: 'added', after: 500 },
+    { path: ['amount'], kind: 'added', after: '500' },
     { path: ['event'], kind: 'added', after: 'award' },
     { path: ['needs_approval'], kind: 'added', after: true },
     { path: ['request'], kind: 'added', after: 'req000000000011' },

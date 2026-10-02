@@ -111,4 +111,14 @@ describe('useAidHistoryOperation', () => {
     await waitFor(() => expect(result.current.error).not.toBeNull())
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
+
+  it('answers a 401 at once too: a signed-out reader is not retried', async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } })
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ detail: 'expired' }), { status: 401 }))
+    )
+    const { result } = renderHook(() => useAidHistoryOperation('op0000000000003'), { wrapper })
+    await waitFor(() => expect(result.current.error).not.toBeNull())
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
 })
