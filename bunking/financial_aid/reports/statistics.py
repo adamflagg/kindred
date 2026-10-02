@@ -22,9 +22,12 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
                   ask leaves the denominator too (owner (c), RULED 2026-10-02; `asked` keeps it). On the
                   "posted_and_decided" basis amount is Posted + Decided and the column reads
                   PCT_OF_ASK_DECIDED_LABEL (owner (b), RULED 2026-10-02).
-  % with grants   (amount + the counting outside grants on the live requests) ÷ the live requests' FULL asks,
-                  outside-budget rounds kept: an outside funder counts as grants, so its ask stays in the
-                  denominator beside its grant money (owner, RULED 2026-10-02). The sheet's
+  grants          the live requests' counting outside grants plus each outside-budget round's own money (Posted,
+                  + Decided on the decided basis): "grants means anything that isn't internal camp money" (owner A1,
+                  RULED 2026-10-02).
+  % with grants   (amount + grants) ÷ the live requests' FULL asks, outside-budget rounds kept: an outside funder
+                  counts as grants, so its ask stays in the denominator beside its money (owner, RULED 2026-10-02).
+                  The sheet's
                   "% of Ask Granted in Total". Round 1 and All rounds only: a grant belongs to the request, not a
                   round.
   fee %           Round 1 and All rounds: the chip table's Round 1 % for the tier. Round 2: the Round 2 table the
@@ -258,7 +261,8 @@ def _row(
         amount += money
         awarded += posted
         decided += money - posted
-        grants += request.grants
+        # An outside-budget round's own money is an outside funder's: grants, never the camp's amount (owner A1).
+        grants += request.grants + request.outside_funded(rounds, decided=with_decided)
     shows_grants = round_ in (None, 1)
     # Owner (b) (RULED 2026-10-02): pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by
     # the live requests' asks, so a request still waiting on an offer sits in the denominator at $0; the decided

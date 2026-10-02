@@ -353,7 +353,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="pct_of_ask_with_grants",
         term="% of ask incl. grants",
         text=(
-            "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests, ÷ the "
+            "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests and the "
+            "money of the rounds an outside funder pays in full, ÷ the "
             "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
             "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. With "
             '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '

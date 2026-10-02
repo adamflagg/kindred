@@ -51,3 +51,13 @@ def test_basis_unconfirmed_is_the_interim_default_until_d96_is_re_ruled() -> Non
     assert "{camp}'s own aid only" in definition.text
     assert "may compare two bases" in definition.text
     assert "Kindred's interim default, not a ruling" in definition.text
+
+
+def test_percent_of_ask_including_grants_counts_an_outside_funded_rounds_money_as_grants() -> None:
+    """Owner A1 carried through (RULED 2026-10-02): the numerator's grants include the money of a round an outside
+    funder pays in full, not only the Grants register's lines."""
+    text = _text("pct_of_ask_with_grants")
+    assert (
+        "the counting outside grants placed on the live requests and the money of the rounds an outside funder pays in full"
+        in text
+    )
