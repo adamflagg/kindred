@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
+from datetime import datetime
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import cast
 
+import pytest
+
+from api.services.financial_aid_decisions_service import PricingRules, Season
 from api.services.financial_aid_rules_effect import RULES_EFFECT_ENTITY, ApprovalEffect, approval_counts
+from api.services.financial_aid_rules_effect_pricing import PinnedRules, SeasonApprovalEffects
+from api.services.financial_aid_rules_service import PRICING_SECTIONS, RulesVersion
 from api.services.financial_aid_season_history import ENTITY_KINDS
+from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.decisions import PricedRequest, RoundStatus, RoundView
+from bunking.financial_aid.rules import SectionName
+from tests.unit.api.services.decisions_fakes import approved
 from tests.unit.bunking.financial_aid.fixtures import app
 
 EMMA, SAMUEL, LIAM = "reqemma00000001", "reqsamuel000001", "reqliam00000001"
@@ -123,3 +135,75 @@ def test_the_logged_effect_is_four_whole_numbers() -> None:
 def test_an_effect_row_is_a_rules_row_in_history() -> None:
     """RBAC: without this mapping the row defaults to "money" and a registrar would see a rules approval."""
     assert ENTITY_KINDS.get(RULES_EFFECT_ENTITY) == "rules"
+
+
+class _Rules:
+    """The rules reads the measurer uses: `load` and the four PricingRules reads (only the pinned one is used)."""
+
+    def __init__(self) -> None:
+        self.loads: list[tuple[int, int | None]] = []
+
+    async def load(self, year: int, version: int | None = None) -> RulesVersion:
+        self.loads.append((year, version))
+        return approved(version=version or 1)
+
+    # Typed exactly like PricingRules (dict and list are invariant), so `_Rules()` is accepted as a VersionedRules.
+    async def latest_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
+        return approved(version=99)
+
+    async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
+        return None
+
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]:
+        return {}, frozenset()
+
+    async def lock_writes(
+        self, year: int, version: int, sections: Collection[SectionName]
+    ) -> tuple[list[AidWrite], list[SectionName]]:
+        raise AssertionError("measuring never locks")
+
+
+def _season_on(priced_by: list[int | None]):  # type: ignore[no-untyped-def]
+    async def season_on(pricing: PricingRules, year: int) -> Season:
+        pinned = await pricing.latest_approved(year, PRICING_SECTIONS)
+        version = pinned.version if pinned is not None else None
+        priced_by.append(version)
+        decided = "1420" if version == 3 else "1380"
+        return cast(Season, SimpleNamespace(priced={EMMA: _priced(EMMA, _view(1, "needs_offer", decided=decided))}))
+
+    return season_on
+
+
+@pytest.mark.asyncio
+async def test_an_approval_that_moved_no_pricing_prices_nothing() -> None:
+    priced_by: list[int | None] = []
+    effect = await SeasonApprovalEffects(_Rules(), _season_on(priced_by)).measure(2027, 3, 3)
+    assert (effect, priced_by) == (ApprovalEffect(3, 3, 0, 0), [])
+
+
+@pytest.mark.asyncio
+async def test_the_season_is_priced_on_the_old_version_then_the_new_one() -> None:
+    priced_by: list[int | None] = []
+    rules = _Rules()
+    effect = await SeasonApprovalEffects(rules, _season_on(priced_by)).measure(2027, 3, 4)
+    assert effect == ApprovalEffect(3, 4, 1, 0)
+    assert priced_by == [3, 4]
+    assert rules.loads == [(2027, 3), (2027, 4)]
+
+
+@pytest.mark.asyncio
+async def test_a_season_no_rules_priced_before_is_priced_on_none() -> None:
+    priced_by: list[int | None] = []
+    await SeasonApprovalEffects(_Rules(), _season_on(priced_by)).measure(2027, 0, 1)
+    assert priced_by == [None, 1]
+
+
+@pytest.mark.asyncio
+async def test_pinned_rules_answer_only_the_pricing_read_and_never_lock() -> None:
+    pinned = PinnedRules(_Rules(), approved(version=3))
+    assert (await pinned.latest_approved(2027, PRICING_SECTIONS)).version == 3  # type: ignore[union-attr]
+    assert (await pinned.latest_approved(2027, ("programs", "cost"))).version == 99  # type: ignore[union-attr]
+    with pytest.raises(RuntimeError, match="never locks"):
+        await pinned.lock_writes(2027, 3, cast(list[SectionName], ["budget"]))
