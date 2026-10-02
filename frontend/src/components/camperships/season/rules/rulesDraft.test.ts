@@ -14,7 +14,8 @@ describe('reading the rules draft', () => {
     const a = rulesDraft()
     const b = rulesDraft()
     expect(sameSection(a, b, 'awards')).toBe(true)
-    b.document.awards = { ...b.document.awards, minimum: '120' }
+    const moved = b.sections.find((x) => x.section === 'awards')
+    if (moved) moved.fingerprint = 'fp-awards-v5'
     expect(sameSection(a, b, 'awards')).toBe(false)
     expect(sameSection(a, b, 'budget')).toBe(true)
     const c = rulesDraft()
