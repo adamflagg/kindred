@@ -213,3 +213,12 @@ def test_recipients_who_cancelled_are_grouped_by_the_rounds_lock_pool_not_the_ho
         )
     ]
     assert recipients_cancelled(requests) == (CancelledRow("medical", "weekend_pool", 1, 1, Decimal(1500)),)
+
+
+def test_the_round_2_fee_percent_is_null_when_a_chips_programs_use_two_round_2_tables() -> None:
+    """The chip's programs (camp's r1 table) route their appeals to two Round 2 tables, so no one fee % is true."""
+    split = RULES.model_copy(deep=True)
+    split.round2.program_tables["quest"] = "teen"
+    requests = [req("reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="800", posted="300", tier=3))]
+    assert _tier(statistics(requests, RULES, table="camp", round_=2).rows, 3).fee_pct is not None
+    assert _tier(statistics(requests, split, table="camp", round_=2).rows, 3).fee_pct is None

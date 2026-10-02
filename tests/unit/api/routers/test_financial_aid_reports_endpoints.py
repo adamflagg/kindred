@@ -22,6 +22,7 @@ from api.schemas.financial_aid_reports import (
 )
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError
 from api.services.financial_aid_reports_service import ReportedFigureNotFoundError, ReportsRefusedError
+from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import PERSONA_FINANCE, PERSONAS, persona_client, persona_user
@@ -134,6 +135,7 @@ def test_a_malformed_load_is_422_before_the_service(body: dict[str, Any]) -> Non
     [
         (ReportsRefusedError("bad figure"), 422),
         (ReportedFigureTakenError("same moment"), 409),
+        (AidWriteConflictError(collection="aid_requests", record_id="rec1"), 409),
     ],
 )
 def test_load_refusals_map(error: Exception, status: int) -> None:

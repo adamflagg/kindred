@@ -113,6 +113,27 @@ async def test_an_answer_edited_after_the_cut_freezes_to_the_answer_that_stood()
     assert camp.asks_basis == "as_of_cutoff"
 
 
+async def test_a_predecessor_withdrawn_by_the_cut_day_does_not_stand_for_the_frozen_ask() -> None:
+    """A6b: the first answer was withdrawn before the deadline and the new one recorded after it, so nothing stood
+    for the request on the day: its ask can't be rebuilt, and the figure says "now" rather than reuse the old ask."""
+    store = report_season()
+    seed_request(store, OLD)
+    store.requests[EMMA] = replace(store.requests[EMMA], ask=5000.0)
+    store.change_log = []
+    log_seeded(store, EARLY)
+    store.change_log = [
+        replace(row, created=CORRECTED) if row.entity == AID_REQUESTS and row.entity_id == EMMA else row
+        for row in store.change_log
+    ]
+    log_update(
+        store, AID_REQUESTS, OLD, {"status": "active"}, {"status": "withdrawn"}, datetime(2027, 1, 25, tzinfo=UTC)
+    )
+    store.requests[OLD] = replace(store.requests[OLD], status="withdrawn")
+    camp = _camp((await _service(store).committee(YEAR)).applications)
+    assert camp.asks_basis == "now"
+    assert camp.asks_reason is not None
+
+
 async def test_asks_that_cant_be_rebuilt_fall_back_to_now_and_say_so(monkeypatch: pytest.MonkeyPatch) -> None:
     """D155: when any kept request's ask that day can't be rebuilt (3c-2 lists it in Season.unrebuilt), the whole
     figure keeps asks as they stand now, labelled; never a mix of the two."""

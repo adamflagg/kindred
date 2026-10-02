@@ -314,3 +314,8 @@ def test_a_typed_season_with_no_phase_figures_shows_them_blank() -> None:
     assert row.phases == (None, None, None)
     assert (row.share_of_phases, row.reconciliation) == ((None, None, None), None)
     assert row.total_pct_of_budget == Decimal("75.0")
+
+
+def test_a_budget_met_to_the_dollar_reads_on() -> None:
+    rows = committee_tables([], [_typed("budget", "500000"), _typed("awarded", "500000")]).budget
+    assert (rows[0].variance, rows[0].side) == (Decimal(0), "on")

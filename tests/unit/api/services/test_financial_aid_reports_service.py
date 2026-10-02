@@ -171,6 +171,20 @@ async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_repla
     assert two.asked == 4000.0  # the ask is not money posted: it stays
 
 
+async def test_the_posted_gap_names_only_requests_the_reporting_control_keeps() -> None:
+    """Emma's posted money can't be replayed, but a received-through cut before her request leaves her out of the
+    reading, so the gap does not name her (and says nothing at all)."""
+    store = report_season(liam_late=False)
+    store.placements[9001] = Placement(9001, 1000011, 0, "")
+    seed_line(store, 9001, "1500", person=0, posted=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
+    kept = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
+    assert next(g for g in kept.not_rebuilt if g.figure == "posted").requests == [EMMA]
+    cut = await _service(store).statistics(
+        YEAR, table="camp", round_=1, as_of=date(2027, 3, 31), through=date(2027, 1, 10)
+    )
+    assert not [g for g in cut.not_rebuilt if g.figure == "posted"]
+
+
 async def test_a_closed_request_is_neither_awarded_nor_cancelled() -> None:
     """Standing is the request's status: a pending duplicate still counts in apps but is never awarded, even with a
     posted lock, and is not a cancellation."""
