@@ -5207,6 +5207,14 @@ export type GridRowOut = {
    * Appeal Refusal
    */
   appeal_refusal?: string | null
+  /**
+   * Session Candidates
+   */
+  session_candidates?: Array<SessionCandidateOut>
+  /**
+   * Campminder Description
+   */
+  campminder_description?: string | null
 }
 
 /**
@@ -10088,6 +10096,10 @@ export type ProgramProfile = {
    * Open To Aid
    */
   open_to_aid?: boolean
+  /**
+   * Campminder Description
+   */
+  campminder_description?: string
 }
 
 /**
@@ -13133,6 +13145,23 @@ export type SessionBreakdown = {
    * Capacity utilization percentage
    */
   utilization?: number | null
+}
+
+/**
+ * SessionCandidateOut
+ *
+ * A session intake found for an unmatched request (Session not settled, §6.2; read 4), named from the season's
+ * sessions, or "Session <id>" when the season lacks it.
+ */
+export type SessionCandidateOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name: string
 }
 
 /**
