@@ -145,3 +145,10 @@ describe('a Posted tick the server would refuse (fix round: M4, M7, M8, M6, M1)'
     )
   })
 })
+
+describe("an appeal line's new total (PR 4 review I2; ⚠ Decision 40)", () => {
+  it('carries the request total_decided on a Round 2 or 3 Posted row, and nothing on Round 1', () => {
+    const plan = tickPlan([ROW_EMMA, ROW_OLIVIA], 'posted')
+    expect(plan.rows.map((r) => (r.action === 'posted' ? r.newTotal : 'n/a'))).toEqual([null, 2200])
+  })
+})

@@ -298,4 +298,23 @@ describe('BulkConfirmDialog (§4.10)', () => {
     )
     expect(screen.getByText(/Samuel Johnson \(Round 1 isn't posted yet\)/)).toBeInTheDocument()
   })
+
+  // The registrar compares this line with what CampMinder holds after a reverse-and-repost, which is
+  // the request's new total, the same figure as the grid's New total cell. The locked amount and the
+  // "$X locked" total stay the round amounts: that is what the server locks.
+  it("shows an appeal's new total beside its round amount, and a Round 1 line unchanged", () => {
+    render(
+      <BulkConfirmDialog
+        plan={tickPlan([ROW_EMMA, ROW_OLIVIA], 'posted')}
+        year={2027}
+        onClose={() => undefined}
+        onDone={onDone}
+      />
+    )
+    expect(screen.getByText('Olivia Chen · Round 2 · $780 (new total $2,200)')).toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson · Round 1 · $1,420')).toBeInTheDocument()
+    expect(
+      screen.getByText('Tick Posted on 2 requests · 2 families · $2,200 locked')
+    ).toBeInTheDocument()
+  })
 })
