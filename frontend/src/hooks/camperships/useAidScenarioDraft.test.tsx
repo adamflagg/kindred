@@ -38,12 +38,14 @@ let client: QueryClient
 let fetchSpy: MockInstance<typeof fetch>
 let calls: Array<{ route: string; body: unknown; headers: Headers }>
 let hold: Promise<void> | null
+/** What `PUT /draft` answers: the server's saved draft (a test may make it differ from the workspace's). */
+let saved = SAVED
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
 function answer(route: string): Response {
   if (route === 'POST /api/financial-aid/scenarios/2027/evaluate') return json(EVALUATED)
-  if (route === 'PUT /api/financial-aid/scenarios/2027/draft') return json(SAVED)
+  if (route === 'PUT /api/financial-aid/scenarios/2027/draft') return json(saved)
   if (route === 'POST /api/financial-aid/scenarios/2027/draft/load') return json(LOADED)
   if (route === 'POST /api/financial-aid/scenarios/2027/snapshot') return json({})
   if (route.startsWith('POST /api/financial-aid/scenarios/2027/starting-points'))
@@ -63,6 +65,7 @@ beforeEach(() => {
   client.setQueryData(queryKeys.aidScenarios(2027), workspace())
   calls = []
   hold = null
+  saved = SAVED
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const route = `${init?.method ?? 'GET'} ${String(input)}`
     calls.push({
@@ -448,6 +451,11 @@ describe('adopt (PR 6: Fit to budget, All settings)', () => {
   })
 
   it('builds on the draft as it stands when its turn comes: after a queued release', async () => {
+    // The release records a draft that differs from the one the page was rendered with.
+    saved = {
+      ...SAVED,
+      document: { ...SAVED.document, awards: { ...SAVED.document.awards, minimum: '150' } },
+    }
     const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
     act(() => result.current.move({ minimum: '150' }))
     const seen: unknown[] = []
@@ -464,8 +472,8 @@ describe('adopt (PR 6: Fit to budget, All settings)', () => {
     })
     expect(routes()).toEqual(['POST /evaluate', 'PUT /draft', 'PUT /draft'])
     // It saw what the release recorded (the server's saved draft), not the draft it was clicked on.
-    expect(seen).toEqual([SAVED.document])
-    expect(calls[2]?.body).toEqual({ document: { ...SAVED.document, year: 2099 } })
+    expect(seen).toEqual([saved.document])
+    expect(calls[2]?.body).toEqual({ document: { ...saved.document, year: 2099 } })
   })
 
   it('records nothing when the draft moved on since the document was made (basedOn)', async () => {
