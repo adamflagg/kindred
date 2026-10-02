@@ -33,6 +33,7 @@ import type {
   AcceptedIn,
   AidPostingLine,
   AnswerOut,
+  ApplicationDetailResponse,
   AskIn,
   BunkGraphResponse,
   CamperJourneyCounts,
@@ -42,19 +43,24 @@ import type {
   CancellationOut,
   ConfirmationOut,
   ConfirmationStateOut,
+  CorrectionCreate,
+  CorrectionOut,
   CrossScopeEdge,
   DecisionWriteOut,
   DefinitionsResponse,
+  DuplicateMark,
   EditorPreviewOut,
   ExpectedOut,
   GrantRowOut,
   GridRowOut,
+  HeadcountSet,
   HistoryEntryOut,
   HoldReleaseIn,
   HouseholdCardOut,
   HouseholdLinkRow,
   HouseholdPageResponse,
   HouseholdRequestOut,
+  HouseholdShareSet,
   HouseholdTotalsOut,
   IncomeOut,
   IssueOut,
@@ -68,10 +74,12 @@ import type {
   PreviewIn,
   ReceiptOut,
   RemainingResponse,
+  RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
   Round3ApprovalIn,
   RoundOut,
+  SessionResolve,
   ShareLineOut,
   SocialGraphEdge,
   SocialGraphNode,
@@ -166,6 +174,17 @@ export type ApiAidHistoryEntry = HistoryEntryOut
 export type ApiAidPostingLine = AidPostingLine
 export type ApiAidGrantRow = GrantRowOut
 export type ApiAidExpected = ExpectedOut
+
+/** A household's application with its intake requests (flags, headcounts, duplicates). Mirrors Python `ApplicationDetailResponse`. */
+export type ApiAidApplication = ApplicationDetailResponse
+export type ApiAidRequestOut = RequestOut
+/** The casework forms' writes (§6.3). Each mirrors its Python model. */
+export type ApiAidCorrectionIn = CorrectionCreate
+export type ApiAidCorrectionOut = CorrectionOut
+export type ApiAidHouseholdShareIn = HouseholdShareSet
+export type ApiAidSessionIn = SessionResolve
+export type ApiAidDuplicateIn = DuplicateMark
+export type ApiAidHeadcountIn = HeadcountSet
 export type ApiAidHouseholdLink = HouseholdLinkRow
 /** A hold, note or check on a request. Mirrors Python `IssueOut`. */
 export type ApiAidIssue = IssueOut
