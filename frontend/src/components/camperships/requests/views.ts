@@ -38,6 +38,7 @@ export type GridColumnKey =
   | 'confirmed'
   | 'round'
   | 'decided'
+  | 'newTotal'
   | 'daysWaiting'
   | 'tick'
   | 'cancelledOn'
@@ -84,7 +85,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'needs-offer',
     label: 'Needs an offer',
     groupBy: 'round',
-    columns: ['session', 'stage', 'round', 'decided', 'tick', 'attention'],
+    columns: ['session', 'stage', 'round', 'decided', 'newTotal', 'tick', 'attention'],
   },
   {
     key: 'holds',
@@ -301,6 +302,17 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     align: 'right',
     money: true,
     value: (r, { view }) => viewRound(r, view)?.decided ?? null,
+  },
+  // ⚠ Decision 40 (owner approved): under reverse-and-repost, what is typed into CampMinder for an
+  // appeal is the request's new total, so it sits beside the round's own amount on Round 2/3 rows.
+  // It is the server's `total_decided` as it stands, clawed-back rounds included (owner ruling
+  // 2026-10-02: a reversal mid-appeal, before the repost syncs, leaves R1 + R2 to type).
+  newTotal: {
+    header: 'New total',
+    width: 78,
+    align: 'right',
+    money: true,
+    value: (r) => ((viewRound(r, 'needs_offer')?.round ?? 1) > 1 ? r.total_decided : null),
   },
   daysWaiting: {
     header: 'Days waiting',
