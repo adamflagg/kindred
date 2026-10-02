@@ -12,7 +12,7 @@ import type {
   ApiAidScenarioOption,
   ApiAidScenarioResults,
 } from '../../../../types/api-types'
-import { formatMoney } from '../../kit/money'
+import { formatMoney, isNegativeMoney } from '../../kit/money'
 
 /**
  * What the sliders have moved and not yet released: the two relative moves the server applies
@@ -36,6 +36,25 @@ export function hasPending(pending: Pending): boolean {
     pending.minimum !== null ||
     pending.dollar !== null
   )
+}
+
+/**
+ * `pending` with each absolute setting that equals the draft's own value dropped (scan #1): a minimum
+ * typed as "250" over a stored "250.00" (compared by value), or the switch toggled back. Nothing
+ * moved, so nothing is recorded and no name turns amber. The two relative moves are unmoved at 0.
+ */
+export function unmoved(pending: Pending, document: ApiAidRulesDocument): Pending {
+  const minimum =
+    pending.minimum !== null && Number(pending.minimum) === Number(document.awards.minimum)
+      ? null
+      : pending.minimum
+  const dollar =
+    pending.dollar !== null && pending.dollar === isDollarForDollar(document)
+      ? null
+      : pending.dollar
+  return minimum === pending.minimum && dollar === pending.dollar
+    ? pending
+    : { ...pending, minimum, dollar }
 }
 
 /** The draft's dollar-for-dollar switch (sizing.dollar_for_dollar: on is offset mode "dollar"). */
@@ -211,7 +230,8 @@ const money = (key: string, label: string, value: number | null | undefined): Re
   key,
   label,
   value: formatMoney(value),
-  negative: value !== null && value !== undefined && value < 0,
+  // By the cents shown: -0.004 prints "$0", never in negative ink (scan #5).
+  negative: isNegativeMoney(value),
 })
 
 /**
