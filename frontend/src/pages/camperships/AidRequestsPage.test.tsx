@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { APPROVED_RULES_2026 } from '../../components/camperships/requests/approvedRulesFixtures'
 import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
-import type { ApiAidGrid, ApiAidRemaining } from '../../types/api-types'
+import type { ApiAidApprovedRules, ApiAidGrid, ApiAidRemaining } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
 interface GridResult {
@@ -24,6 +25,10 @@ const REMAINING: ApiAidRemaining = {
 }
 vi.mock('../../hooks/camperships/useAidRemaining', () => ({
   useAidRemaining: () => ({ data: REMAINING }),
+}))
+let approved: { data: ApiAidApprovedRules | undefined } = { data: APPROVED_RULES_2026 }
+vi.mock('../../hooks/camperships/useAidRules', () => ({
+  useAidApprovedRules: () => approved,
 }))
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
@@ -80,6 +85,7 @@ function renderAt(path: string) {
 const viewLink = (label: string) => screen.getByRole('link', { name: new RegExp(`^${label} `) })
 
 beforeEach(() => {
+  approved = { data: APPROVED_RULES_2026 }
   grid = { data: LIVE, isLoading: false, error: null }
   granted = ['financial_aid.view']
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -146,12 +152,25 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText('Emma Johnson')).toBeNull()
   })
 
-  it('names the programs in words, not by their rules keys', () => {
+  it("names the programs with the server's labels, not by their rules keys", () => {
     renderAt('/aid/requests')
     const program = within(screen.getByLabelText('Program'))
-    expect(program.getByRole('option', { name: 'Summer camp' })).toBeInTheDocument()
-    expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+    expect(program.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
     expect(program.queryByRole('option', { name: 'summer' })).toBeNull()
+    expect(program.queryByRole('option', { name: 'Summer camp' })).toBeNull()
+    // The rules do not name Quest: its key spelled out.
+    expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+  })
+
+  it('spells the keys out when the rules read has no answer (404, loading, failed), and still filters', async () => {
+    approved = { data: undefined }
+    renderAt('/aid/requests')
+    const program = within(screen.getByLabelText('Program'))
+    expect(program.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
+    expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Program'), 'quest')
+    expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
   })
 
   it('stays on the URL it was opened at for a queue view on a past date (A8)', () => {

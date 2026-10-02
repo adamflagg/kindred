@@ -4,6 +4,7 @@
  * `fetchWithAuth` from `useApiWithAuth()`.
  */
 import type {
+  ApiAidApprovedRules,
   ApiAidDefinitions,
   ApiAidGrid,
   ApiAidJumpIndex,
@@ -67,4 +68,28 @@ export async function fetchAidGrid(
   if (!response.ok)
     throw await toApiError(response, 'Failed to load the Requests grid', AidApiError)
   return (await response.json()) as ApiAidGrid
+}
+
+/** Whether an error carries this HTTP status (narrow on `.status`, never `instanceof`: apiError.ts). */
+export function hasStatus(error: unknown, status: number): boolean {
+  return typeof error === 'object' && error !== null && 'status' in error && error.status === status
+}
+
+/**
+ * The approved rules, read only (spec §7.5; D76): for everyone with view. With `version` (a receipt's
+ * link) that version alone; without it, each section as it prices the season. 404: none approved yet.
+ */
+export async function fetchAidApprovedRules(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  version: number | null
+): Promise<ApiAidApprovedRules> {
+  const response = await fetchWithAuth(
+    withQuery(
+      `${BASE}/rules/${String(year)}/approved`,
+      version === null ? {} : { version: String(version) }
+    )
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the rules', AidApiError)
+  return (await response.json()) as ApiAidApprovedRules
 }

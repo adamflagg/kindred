@@ -13,7 +13,7 @@ import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
-import { programLabel } from '../../components/camperships/requests/programLabel'
+import { programLabel, programLabels } from '../../components/camperships/requests/programLabel'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
 import { useGridParams } from '../../components/camperships/requests/useGridParams'
 import {
@@ -29,6 +29,7 @@ import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidRemaining } from '../../hooks/camperships/useAidRemaining'
+import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow } from '../../types/api-types'
 
@@ -48,6 +49,8 @@ export default function AidRequestsPage() {
   const { view, program, pool, round, tick, showIds, row: rowParam, setParam } = useGridParams()
   const grid = useAidGrid()
   const remaining = useAidRemaining()
+  // The rules name their programs. A failed or missing read never blocks the grid: keys spelled out.
+  const approvedRules = useAidApprovedRules(null)
   const today = campToday()
   const viewState = useMemo(() => ({ year, asOf }), [year, asOf])
 
@@ -79,14 +82,13 @@ export default function AidRequestsPage() {
     () => (rows ? viewCounts(rows, filters, live) : null),
     [rows, filters, live]
   )
-  const programs = useMemo(
-    (): FilterOption[] =>
-      distinct((rows ?? []).map((r) => r.program_key)).map((value) => ({
-        value,
-        label: programLabel(value),
-      })),
-    [rows]
-  )
+  const programs = useMemo((): FilterOption[] => {
+    const labels = programLabels(approvedRules.data)
+    return distinct((rows ?? []).map((r) => r.program_key)).map((value) => ({
+      value,
+      label: programLabel(labels, value),
+    }))
+  }, [rows, approvedRules.data])
   const pools = useMemo((): FilterOption[] => {
     const labels = new Map((remaining.data?.pools ?? []).map((p) => [p.pool, p.label] as const))
     return distinct((rows ?? []).map((r) => r.pool)).map((value) => ({

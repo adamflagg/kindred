@@ -30,6 +30,7 @@
  */
 
 import type {
+  ApprovedRulesOut,
   BunkGraphResponse,
   CamperJourneyCounts,
   CamperJourneyResponse,
@@ -84,6 +85,9 @@ export type ApiCamperJourneyCounts = CamperJourneyCounts
 
 /** The Remaining line's read (D48). Mirrors Python `RemainingResponse`. */
 export type ApiAidRemaining = RemainingResponse
+
+/** Season › Rules (spec §7.5; D76). Mirrors Python `ApprovedRulesOut`. */
+export type ApiAidApprovedRules = ApprovedRulesOut
 
 /** The jump box's index (§3.5, slice 1's read). Mirrors Python `JumpIndexResponse`. */
 export type ApiAidJumpIndex = JumpIndexResponse
