@@ -25,6 +25,12 @@ describe('AidSecondaryBarRight (§3.4)', () => {
     expect(screen.queryByTestId('jump-box')).toBeNull()
   })
 
+  it('keeps a gap from the sync stamps on its left, so "…hours ago" never runs into "Remaining"', () => {
+    granted = ['financial_aid.view']
+    render(<AidSecondaryBarRight />)
+    expect(screen.getByTestId('remaining').parentElement).toHaveClass('ml-4')
+  })
+
   it('draws nothing for someone who cannot open Camperships', () => {
     granted = []
     const { container } = render(<AidSecondaryBarRight />)
