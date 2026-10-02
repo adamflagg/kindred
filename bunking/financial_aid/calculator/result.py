@@ -35,7 +35,8 @@ class TraceStep(BaseModel):
     @property
     def section(self) -> SectionName | None:
         """The rules section whose setting bound this step (D76), derived from `key` and `bound`; None when none did.
-        Derived, never stored: a stored trace reads back with today's mapping, and a retrace re-derives it."""
+        Derived on every read: a dumped trace carries it (a lock snapshot stores one), but validation ignores the
+        stored value, so a stored trace reads back with today's mapping, and a retrace re-derives it."""
         return bound_section(self.key, self.bound)
 
 
