@@ -42,7 +42,8 @@ export function sameSection(
 
 /** A rules document with one section's settings replaced: what a scenario's "All settings" records (D39). */
 export function withSection(
-  document: ApiAidRulesDraft['document'],
+  // The draft's own document (a read) or the one `adopt` hands its builder (the write's input shape).
+  document: ApiAidRulesDraft['document'] | ApiAidRulesDocumentIn,
   section: ApiAidRulesSection,
   content: Readonly<Record<string, unknown>>
 ): ApiAidRulesDocumentIn {

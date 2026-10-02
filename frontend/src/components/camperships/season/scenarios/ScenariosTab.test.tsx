@@ -87,6 +87,18 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   },
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+// PR 6's fit and promotion: idle unless a test reads them (FitAndPromotion.test.tsx).
+vi.mock('../../../../hooks/camperships/useAidPromotion', () => ({
+  useAidScenarioFit: () => ({
+    data: undefined,
+    error: null,
+    isPending: false,
+    mutate: vi.fn(),
+    reset: vi.fn(),
+  }),
+  useAidPromotionPreview: () => ({ data: undefined, isLoading: false, error: null }),
+  useAidMakeRulesDraft: () => ({ isPending: false, mutate: vi.fn(), reset: vi.fn() }),
+}))
 vi.mock('../../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: () => true }),
 }))

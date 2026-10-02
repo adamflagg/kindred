@@ -263,3 +263,19 @@ describe('Fit to budget in words (fit.py; D119)', () => {
     expect(none.headline).not.toMatch(/pools/i)
   })
 })
+
+describe('the Shift-every-tier amber is a hint once award tables are editable', () => {
+  it('lights only for the Round 1 % leaves the shift writes, not any award-table edit', () => {
+    const change = (path: string[]) => ({ path, kind: 'changed' as const, before: '1', after: '2' })
+    expect(
+      changedLevers([change(['award_tables', 'general', 'tiers', '1', 'r1_pct'])], NO_PENDING).has(
+        'tier_shift'
+      )
+    ).toBe(true)
+    expect(
+      changedLevers([change(['award_tables', 'general', 'tiers', '1', 'r2_pct'])], NO_PENDING).has(
+        'tier_shift'
+      )
+    ).toBe(false)
+  })
+})
