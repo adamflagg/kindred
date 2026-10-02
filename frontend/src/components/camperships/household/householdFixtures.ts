@@ -148,6 +148,7 @@ export function householdPage(over: Partial<ApiAidHouseholdPage> = {}): ApiAidHo
         reversal_date: '',
         cancelled: false,
         counts: true,
+        in_band: false,
         fulfils_commitment_id: '',
         requests: [{ request_id: 'reqemma00000001', amount: 1000 }],
       },
