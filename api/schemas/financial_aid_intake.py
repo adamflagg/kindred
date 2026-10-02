@@ -156,6 +156,13 @@ class CapacityOut(BaseModel):
     actor: str
 
 
+class CapacityListOut(BaseModel):
+    """What finance stored per session this season (Season › Rules; slice 2 Decision 23). Live only."""
+
+    year: int
+    sessions: list[CapacityOut]  # by session id
+
+
 class PayerShareIn(BaseModel):
     household_cm_id: int = Field(gt=0)
     share_pct: Decimal = Field(gt=0, le=100, decimal_places=4)

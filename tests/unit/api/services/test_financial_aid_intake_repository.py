@@ -333,3 +333,19 @@ async def test_a_request_reads_its_recorded_equity_copy_and_none_when_there_is_n
     recorded, unrecorded = await FinancialAidIntakeRepository(pb).fetch_requests(2027)
     assert recorded.equity == EquityAnswers(bipoc=None, gender_identity="", pronouns="they/them")
     assert unrecorded.equity is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_capacities_reads_the_season_by_session() -> None:
+    handle = MagicMock()
+    handle.get_full_list.return_value = [
+        SimpleNamespace(
+            id="cap000000000001", year=2027, session_cm_id=1000101, capacity=120, note="", actor="f@example.com"
+        )
+    ]
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    (row,) = await FinancialAidIntakeRepository(pb).fetch_capacities(2027)
+    assert (row.session_cm_id, row.capacity) == (1000101, 120)
+    pb.collection.assert_called_with("aid_session_capacity")
+    assert handle.get_full_list.call_args.kwargs["query_params"]["filter"] == "year = 2027"

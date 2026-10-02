@@ -100,6 +100,7 @@ from api.schemas.financial_aid_household_page import HouseholdPageResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
+    CapacityListOut,
     CapacityOut,
     CapacitySet,
     CorrectionCreate,
@@ -562,6 +563,13 @@ async def set_aid_request_household_share(
         )
     except _ERRORS as exc:
         _raise_http(exc)
+
+
+@router.get("/capacity/{year}", response_model=CapacityListOut)
+async def get_aid_session_capacities(year: int = Path(ge=2017, le=2100), user: AuthUser = _VIEW) -> CapacityListOut:
+    """The session capacities finance stored this season (Season › Rules), for everyone with view (the Season reads'
+    gate; D76). Live only. The write stays financial_aid.rules."""
+    return await _casework().capacities(year)
 
 
 @router.put("/capacity/{year}/{session_cm_id}", response_model=CapacityOut)

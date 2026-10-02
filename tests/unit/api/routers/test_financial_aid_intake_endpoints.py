@@ -19,6 +19,7 @@ from api.schemas.financial_aid_intake import (
     AnswerOut,
     ApplicationDetailResponse,
     ApplicationListResponse,
+    CapacityListOut,
     CapacityOut,
     CorrectionOut,
     RequestOut,
@@ -63,6 +64,7 @@ REQUEST = RequestOut(
 )
 
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
+    ("GET", "/api/financial-aid/capacity/2027", None, "view"),
     ("GET", "/api/financial-aid/applications?year=2027", None, "view"),
     ("GET", "/api/financial-aid/applications/2027/1000001", None, "view"),
     ("GET", "/api/financial-aid/requests?year=2027&status=unmatched_session", None, "view"),
@@ -109,6 +111,7 @@ ALLOWED = {
 
 def _stub() -> MagicMock:
     stub = MagicMock()
+    stub.capacities = AsyncMock(return_value=CapacityListOut(year=2027, sessions=[]))
     stub.list_applications = AsyncMock(return_value=ApplicationListResponse(year=2027, applications=[]))
     stub.application_detail = AsyncMock(
         return_value=ApplicationDetailResponse(
@@ -180,6 +183,7 @@ def test_every_handler_declares_its_permission() -> None:
         (r.set_aid_request_headcount, Permission.FINANCIAL_AID_CASEWORK),
         (r.set_aid_request_payer_shares, Permission.FINANCIAL_AID_CASEWORK),
         (r.set_aid_request_household_share, Permission.FINANCIAL_AID_CASEWORK),
+        (r.get_aid_session_capacities, Permission.FINANCIAL_AID_VIEW),
         (r.set_aid_session_capacity, Permission.FINANCIAL_AID_RULES),
     ):
         assert_requires_permission(endpoint, permission)
