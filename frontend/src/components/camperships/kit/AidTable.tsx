@@ -398,7 +398,7 @@ export function AidTable<Row>({
           <input
             type="search"
             aria-label="Search"
-            placeholder="Search names or CampMinder ids"
+            placeholder="Search names or CM IDs"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className={SEARCH_INPUT}

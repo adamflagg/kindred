@@ -11,7 +11,7 @@ const PILL_SHAPE =
   'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap'
 
 /** A pill that wraps inside a narrow column rather than being cut off by it (the Stage and Confirmed columns). */
-export const PILL_WRAP = 'whitespace-normal text-left rounded-xl'
+export const PILL_WRAP = 'whitespace-normal text-center rounded-xl'
 
 export type PillTone = 'red' | 'amber' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted'
 

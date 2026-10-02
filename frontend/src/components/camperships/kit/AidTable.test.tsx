@@ -185,6 +185,13 @@ const bodyCampers = () =>
 
 beforeEach(() => downloadSpy.mockClear())
 
+describe('AidTable search', () => {
+  it('says exactly "Search names or CM IDs"', () => {
+    renderTable()
+    expect(screen.getByLabelText('Search')).toHaveAttribute('placeholder', 'Search names or CM IDs')
+  })
+})
+
 describe('AidTable', () => {
   it('keeps the row you are on through a search that does not match it (uncontrolled)', async () => {
     renderTable('/aid/requests', { renderBelowHighlighted: (r) => <div>Editing {r.camper}</div> })

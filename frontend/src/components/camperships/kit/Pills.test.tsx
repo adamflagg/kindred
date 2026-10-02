@@ -20,6 +20,18 @@ function confirmation(over: Partial<ConfirmationOut>): ConfirmationOut {
 }
 
 describe('StatusPill (§4.5; D19, D59)', () => {
+  // Owner 2026-10-02: a chip that wraps to two lines centres its text.
+  it('centres its text when it wraps, and keeps one line otherwise', () => {
+    render(
+      <StatusPill tone={STATUS_TONE.hold} wrap>
+        R3 · Refused by finance
+      </StatusPill>
+    )
+    const wrapped = screen.getByText('R3 · Refused by finance')
+    expect(wrapped).toHaveClass('text-center', 'whitespace-normal')
+    expect(wrapped).not.toHaveClass('text-left')
+  })
+
   it.each([
     ['hold', 'bg-red-100'],
     ['note', 'bg-amber-100'],
