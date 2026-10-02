@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -148,8 +148,13 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone{Enter}')
-    await userEvent.type(screen.getByLabelText('Reason'), '{Enter}')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone')
+    // Two submits in one tick, before any re-render could disable the button: only the ref stops the second.
+    const form = screen.getByLabelText('Reason').closest('form')!
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
     expect(spies.correction).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Save the correction' })).toBeDisabled()
     await act(async () => {
