@@ -652,6 +652,7 @@ export type {
   HouseholdCardOut,
   HouseholdDetailResponse,
   HouseholdEnrollment,
+  HouseholdGrantRowOut,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
   HouseholdJourneyWeekendCabin,

@@ -5622,6 +5622,116 @@ export type HouseholdEnrollment = {
 }
 
 /**
+ * HouseholdGrantRowOut
+ *
+ * A register row as the household page shows it, with whether the band counted it.
+ */
+export type HouseholdGrantRowOut = {
+  /**
+   * Kind
+   */
+  kind: 'ledger' | 'commitment'
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Commitment Id
+   */
+  commitment_id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name: string
+  /**
+   * Camper Basis
+   */
+  camper_basis: 'ledger' | 'placed' | 'sole_camper' | 'commitment' | 'household' | 'none'
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Program Family
+   */
+  program_family: string
+  /**
+   * Grantor Key
+   */
+  grantor_key: string
+  /**
+   * Grantor Name
+   */
+  grantor_name: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Funder Type
+   */
+  funder_type: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Recorded On
+   */
+  recorded_on: string
+  /**
+   * Is Reversed
+   */
+  is_reversed: boolean
+  /**
+   * Reversal Date
+   */
+  reversal_date: string
+  /**
+   * Cancelled
+   */
+  cancelled: boolean
+  /**
+   * Counts
+   */
+  counts: boolean
+  /**
+   * Fulfils Commitment Id
+   */
+  fulfils_commitment_id: string
+  /**
+   * Requests
+   */
+  requests: Array<RequestShareOut>
+  /**
+   * In Band
+   *
+   * True when the household band counts this grant (same rule as the band: it counts, its funder is outside, and it sits on at least one included request, i.e. live and not cancelled, so a grant on a withdrawn or duplicate request is left out)
+   */
+  in_band: boolean
+}
+
+/**
  * HouseholdJourneyResponse
  *
  * A household's year-over-year family-camp record, newest year first.
@@ -5982,7 +6092,7 @@ export type HouseholdPageResponse = {
   /**
    * Grants
    */
-  grants: Array<GrantRowOut>
+  grants: Array<HouseholdGrantRowOut>
   /**
    * Expected
    */
