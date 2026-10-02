@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useImperativeHandle, useRef, useState, type Ref } from 'react'
 
 import { useAidEditorPreview } from '../../../hooks/camperships/useAidEditorPreview'
 import { useAidKeyAsk, useAidRound3Amount } from '../../../hooks/camperships/useAidWrites'
@@ -6,8 +6,12 @@ import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types
 import { campToday } from '../kit/dates'
 import { REASON_POLICY } from '../kit/editor'
 import type { PreviewHousehold } from '../kit/editorPreview'
-import { formatMoney } from '../kit/money'
-import { RequestEditor, type EditorPreview, type EditorSave } from '../kit/RequestEditor'
+import {
+  RequestEditor,
+  type EditorDraftReport,
+  type EditorPreview,
+  type EditorSave,
+} from '../kit/RequestEditor'
 import { roundOf } from '../requests/stage'
 import type { CardEditKind } from './cardEdits'
 import { householdChip, householdName } from './householdModel'
@@ -26,19 +30,38 @@ const ignore = () => undefined
  * Round 3's ask with its statement of need, or Round 3's amount. While typing, the appeal and the
  * Round 3 amount show the preview (an ask alone prices nothing). Enter saves; Esc closes. A failed
  * save keeps the editor open with what was typed (the kit's editor holds it) and shows the error.
- * ⚠ Decision 40: on Round 2/3 work the round's amount shows beside the request's new total.
+ *
  */
-export function CardEditor({
-  request,
-  page,
-  kind,
-  onClose,
-}: {
+export interface CardEditorHandle {
+  /**
+   * F2 4/5: every exit the page owns asks here first. Nothing typed: `go` now. Typed but not
+   * saveable: the editor shows what is missing and `go` is NOT called. Saveable: the editor's own
+   * write saves it (so saving and the error show here) and `go` runs once the save and the refresh
+   * land. A failure keeps the editor open with what was typed and never calls `go`. A save already
+   * in flight: `go` runs when it succeeds.
+   */
+  leave(go: () => void): void
+}
+
+interface CardEditorProps {
   request: ApiAidHouseholdRequest
   page: ApiAidHouseholdPage
   kind: CardEditKind
   onClose: () => void
-}) {
+  /** What is typed (null when nothing is), so the page knows an exit has something to save. */
+  onDraftChange?: ((report: EditorDraftReport | null) => void) | undefined
+  ref?: Ref<CardEditorHandle> | undefined
+}
+
+/**
+ * Keyed by request and kind, so a change of either starts the mutations, the preview and the
+ * typed note afresh: an appeal's note can never become a Round 3 statement of need.
+ */
+export function CardEditor(props: CardEditorProps) {
+  return <CardEditorBody key={`${props.request.row.request_id}:${props.kind}`} {...props} />
+}
+
+function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: CardEditorProps) {
   const row = request.row
   const ask = useAidKeyAsk()
   const amount = useAidRound3Amount()
@@ -59,10 +82,40 @@ export function CardEditor({
         ? (r3?.ask ?? null)
         : (r3?.pending_approval ?? r3?.decided ?? null)
   const writing = kind === 'round3_amount' ? amount : ask
-  const done = { onSuccess: onClose }
-  const standing = kind === 'appeal' ? r2 : kind === 'round3_amount' ? r3 : undefined
+  const lastReport = useRef<EditorDraftReport | null>(null)
+  const goAfter = useRef<(() => void) | null>(null)
+  const [showProblem, setShowProblem] = useState(false)
+  // A save that lands runs the exit waiting on it, else closes; a failure drops the exit.
+  const done = {
+    onSuccess: () => {
+      const go = goAfter.current
+      goAfter.current = null
+      if (go !== null) go()
+      else onClose()
+    },
+    onError: () => {
+      goAfter.current = null
+    },
+  }
 
-  const onSave = (save: EditorSave) => {
+  useImperativeHandle(ref, () => ({
+    leave: (go) => {
+      const report = lastReport.current
+      if (report === null) {
+        go()
+        return
+      }
+      if (report.save === null) {
+        setShowProblem(true)
+        return
+      }
+      if (goAfter.current !== null) return
+      goAfter.current = go
+      if (!writing.isPending) doSave(report.save)
+    },
+  }))
+
+  const doSave = (save: EditorSave) => {
     const requestId = row.request_id
     if (kind === 'round3_amount') {
       amount.mutate({ requestId, body: { amount: save.amount, note: save.reason } }, done)
@@ -102,17 +155,18 @@ export function CardEditor({
         today={campToday()}
         preview={kind === 'round3_ask' ? IDLE : preview.preview}
         onAmountChange={kind === 'round3_ask' ? ignore : preview.onAmountChange}
-        onSave={onSave}
+        onSave={doSave}
         onCancel={onClose}
+        showProblem={showProblem}
+        onDraftChange={(report) => {
+          lastReport.current = report
+          onDraftChange?.(report)
+        }}
         saving={writing.isPending}
         saveError={writing.error?.message ?? null}
         layout="card"
       />
-      {standing?.decided != null && (
-        <p className="text-muted-foreground mt-2 text-xs">
-          {`Round ${String(standing.round)} now ${formatMoney(standing.decided)} (new total ${formatMoney(row.total_decided)})`}
-        </p>
-      )}
+      {/* The after-edit "new total" (Decision 40) needs the preview to carry it: a back-end field, requested. Until then only the preview's award shows, never the pre-edit figures. */}
     </div>
   )
 }
