@@ -5,6 +5,7 @@ nowhere. Fictional only; figures as decisions_fakes: Session 2 costs 2,000, Roun
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -17,6 +18,7 @@ from api.services.financial_aid_decisions_service import (
     DecisionNotFoundError,
     DecisionRefusedError,
     FinancialAidDecisionsService,
+    _total_decided,
 )
 from api.services.financial_aid_grants_register import RegisterRow
 from bunking.financial_aid.decisions import DecisionEvent
@@ -222,3 +224,53 @@ async def test_retyping_the_round_3_amount_already_keyed_is_the_writes_no_op(app
     assert (out.stage_after, out.stage_after_label, out.pending_approval) == (None, None, False)
     written = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=can_approve)
     assert (written.unchanged, written.pending_approval) == (1, False)
+
+
+# --- the request's total decided after the edit (the grid row's own definition) -------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_preview_total_is_round_1_plus_the_previewed_round_2_award() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted_round_1(store)
+    out = await _service(store).preview(EMMA, PreviewIn(round=2, amount=Decimal(400)), can_approve=False)
+    assert out.award == 300.0
+    assert out.total_decided == 1800.0  # 1,500 posted + the previewed 300, not the Round 2 ask of 400
+
+
+@pytest.mark.asyncio
+async def test_the_preview_total_uses_the_previewed_award_not_the_one_already_keyed() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted_round_1(store)
+    _event(store, 2, "ask", amount=Decimal(100), effective_on=date(2027, 3, 20))
+    out = await _service(store).preview(EMMA, PreviewIn(round=2, amount=Decimal(250)), can_approve=False)
+    assert (out.award, out.total_decided) == (250.0, 1750.0)
+
+
+@pytest.mark.asyncio
+async def test_a_clawed_back_round_still_counts_in_the_total() -> None:
+    """The preview refuses a cancelled or closed request (the only kind a round is clawed back on), so the shared
+    definition is pinned directly: the grid row and the preview both read it."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted_round_1(store)
+    priced = (await _service(store).season(2027)).priced[EMMA]
+    clawed = replace(priced, rounds=tuple(replace(v, clawed_back=True) for v in priced.rounds))
+    assert any(v.status == "posted" for v in clawed.rounds)
+    assert all(v.clawed_back for v in clawed.rounds if v.status == "posted")
+    assert _total_decided(clawed) == 1500.0 == _total_decided(priced)
+
+
+@pytest.mark.asyncio
+async def test_the_preview_total_equals_the_grid_rows_total_once_the_edit_is_saved() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted_round_1(store)
+    service = _service(store)
+    previewed = await service.preview(EMMA, PreviewIn(round=2, amount=Decimal(400)), can_approve=False)
+    await service.key_ask(EMMA, AskIn(round=2, amount=Decimal(400), asked_on=date(2027, 3, 20)), ACTOR)
+    row = next(r for r in (await service.grid(2027)).rows if r.request_id == EMMA)
+    assert row.total_decided == 1800.0
+    assert previewed.total_decided == row.total_decided

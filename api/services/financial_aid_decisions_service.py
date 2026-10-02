@@ -654,6 +654,13 @@ def _candidates(request: RequestRecord, sessions: Mapping[int, SessionRow]) -> l
     ]
 
 
+def _total_decided(priced: PricedRequest) -> float | None:
+    """A request's total decided: every round with a decided amount. A clawed-back round stays in Decided (a
+    declined offer was still decided) and leaves Posted. The grid row and the editor preview share this."""
+    decided = [v.decided for v in priced.rounds if v.decided is not None]
+    return money(sum(decided, ZERO)) if decided else None
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -690,8 +697,6 @@ def grid_row(
         )
         for v in priced.rounds
     ]
-    # A clawed-back round stays in Decided (a declined offer was still decided) and leaves Posted.
-    decided = [v.decided for v in priced.rounds if v.decided is not None]
     posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None and not v.clawed_back]
     return GridRowOut(
         request_id=request.id,
@@ -707,7 +712,7 @@ def grid_row(
         tier=result.final_tier if result is not None else None,
         cost=_money(result.cost) if result is not None else None,
         rounds=views,
-        total_decided=money(sum(decided, ZERO)) if decided else None,
+        total_decided=_total_decided(priced),
         total_posted=money(sum(posted, ZERO)) if posted else None,
         holds=[_issue(i) for i in priced.holds],
         released_holds=[
@@ -2267,6 +2272,7 @@ class FinancialAidDecisionsService:
                 if s.household_cm_id in split
             ],
             pending_approval=pending,
+            total_decided=_total_decided(after),
         )
 
     async def tick_posted(self, year: int, body: PostedIn, actor: str) -> DecisionWriteOut:
