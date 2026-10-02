@@ -425,6 +425,17 @@ def test_every_reason_has_a_label() -> None:
     assert set(UNTICKED_LABELS) == set(get_args(UntickedReasonOut))
 
 
+def test_the_schemas_reasons_are_the_walks_codes() -> None:
+    """The schema's Literal mirrors the service's (its comment says a test pins them): one can't drift from the other."""
+    from typing import get_args
+
+    from api.schemas.financial_aid_decisions import UntickedReasonOut
+    from api.services.financial_aid_reconciliation import MARK_POSTED, UntickedCode
+
+    assert get_args(UntickedReasonOut) == get_args(UntickedCode)
+    assert MARK_POSTED <= set(get_args(UntickedCode))
+
+
 def test_a_row_with_a_reason_is_out_of_needs_an_offer_even_on_its_own() -> None:
     row = _today_row("reqemma00000001", 1000001, _round(1, "needs_offer", decided=1500.0))
     with_reason = row.model_copy(update={"unticked": [_out("short_posting", "x", mark_posted=True)]})
