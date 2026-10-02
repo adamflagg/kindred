@@ -26,6 +26,11 @@ describe('what the compare shows, in the URL (D15, D38, D138)', () => {
     expect(toggleCode(['A'], 'A1')).toEqual(['A', 'A1'])
   })
 
+  it('counts a malformed or implausible day as no request set, never asks the server for it', () => {
+    expect(parseRequestSet('2027-13-45')).toEqual({ kind: 'all' })
+    expect(parseRequestSet('0002-01-01')).toEqual({ kind: 'all' })
+  })
+
   it('reads the request set: the Round 1 deadline, a date, or every frozen request', () => {
     expect(parseRequestSet('deadline')).toEqual({ kind: 'deadline' })
     expect(parseRequestSet('2027-02-01')).toEqual({ kind: 'date', date: '2027-02-01' })
@@ -83,6 +88,34 @@ describe('the compare rows (D38; RPT-17, RPT-32)', () => {
       '$1,200',
       '$1,200',
     ])
+  })
+
+  it("reads '—', never zeros, where last season has nothing: posted money holds no requests (I2)", () => {
+    const views = columns.map((c) => c.committee ?? null)
+    // Index 2 is last season, loaded: Held never applies to posted money; In no tier is a real figure.
+    const posted = tierRows([...views, views[0] ?? null], 1, 2)
+    expect(posted.find((r) => r.key === 'r1:held')?.cells.map((c) => c.text)).toEqual([
+      '4 · $7,500 asked',
+      '4 · $7,500 asked',
+      '—',
+    ])
+    expect(posted.find((r) => r.key === 'r1:none')?.cells[2]?.text).toBe('$1,200')
+    // Last season not loaded: no view at all, so no zero in either row, in either round.
+    const unloaded = tierRows([...views, null], 1, 2)
+    expect(unloaded.find((r) => r.key === 'r1:held')?.cells[2]?.text).toBe('—')
+    expect(unloaded.find((r) => r.key === 'r1:none')?.cells[2]?.text).toBe('—')
+    const round2 = tierRows(
+      [...views, null].map((v) => (v ? { ...v, round2_not_in_tiers: 300 } : v)),
+      2,
+      2
+    )
+    expect(round2.find((r) => r.key === 'r2:none')?.cells[2]?.text).toBe('—')
+    expect(round2.find((r) => r.key === 'r2:held')?.cells[2]?.text).toBe('—')
+  })
+
+  it('keeps the up and down counts apart, so the screen can colour each', () => {
+    const cell = resultRows(columns).find((r) => r.key === 'updown')?.cells[0]
+    expect(cell).toMatchObject({ up: 12, down: 3 })
   })
 
   it('leaves the held and in-no-tier rows out when every column holds none', () => {

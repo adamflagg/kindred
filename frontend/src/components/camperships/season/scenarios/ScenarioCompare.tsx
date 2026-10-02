@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { AidRequestSet } from '../../../../services/camperships/aidApi'
 import type { ApiAidScenarioCompare } from '../../../../types/api-types'
 import {
+  AMBER_NOTE,
   BUTTON_SECONDARY,
   FIELD_INLINE,
   TAB_PILL_ACTIVE,
@@ -12,7 +13,7 @@ import { NEGATIVE_INK } from '../../kit/aidStyles'
 import { BINDING_TEXT, TABLE_CARD } from '../../kit/kitStyles'
 import { formatMoney } from '../../kit/money'
 import { isSeasonDay } from '../historyModel'
-import { BELOW_HEADING, TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from '../seasonStyles'
+import { BELOW_HEADING, TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY_TEXT } from '../seasonStyles'
 import {
   lastSeasonHeading,
   resultRows,
@@ -21,9 +22,16 @@ import {
   type CompareCell,
   type CompareRow,
 } from './compareModel'
+import { DRAFT_CHIP, DRAFT_COLUMN, START_CHIP, UP_INK, VARIANT_CHIP } from './scenarioStyles'
 
 interface CompareProps {
-  readonly compare: ApiAidScenarioCompare
+  /** Undefined while the first read is out or after it failed: the toolbar stays either way (I1). */
+  readonly compare: ApiAidScenarioCompare | undefined
+  readonly loading: boolean
+  /** The server's words, when the read was refused and nothing older is showing. */
+  readonly error: string | null
+  /** The table is the previous answer while the next one loads. */
+  readonly stale: boolean
   readonly requestSet: AidRequestSet
   readonly onRequestSet: (set: AidRequestSet) => void
   readonly lastSeason: boolean
@@ -32,9 +40,26 @@ interface CompareProps {
   readonly onByTier: (on: boolean) => void
 }
 
-function Cell({ cell }: { cell: CompareCell }) {
+function Cell({ cell, tint }: { cell: CompareCell; tint: boolean }) {
   const tone = cell.negative ? NEGATIVE_INK : cell.changed ? BINDING_TEXT : ''
-  return <td className={`${TD_MONEY} ${tone}`}>{cell.text}</td>
+  return (
+    <td className={`${TD_MONEY} ${tone} ${tint ? DRAFT_COLUMN : ''}`}>
+      {cell.up === undefined || cell.down === undefined ? (
+        cell.text
+      ) : (
+        <>
+          <span className={UP_INK}>{`▲${String(cell.up)}`}</span>{' '}
+          <span className={NEGATIVE_INK}>{`▼${String(cell.down)}`}</span>
+        </>
+      )}
+    </td>
+  )
+}
+
+/** A column's code as PR 4's chips draw it: Draft, a starting point (A, B), a variant (A1, B2). */
+function chipFor(code: string): { text: string; style: string } {
+  if (code === 'draft') return { text: 'Draft', style: DRAFT_CHIP }
+  return { text: code, style: /\d/.test(code) ? VARIANT_CHIP : START_CHIP }
 }
 
 function Rows({
@@ -56,7 +81,7 @@ function Rows({
           >
             <td className={TD_LABEL}>{row.label}</td>
             {row.cells.map((cell, index) => (
-              <Cell key={index} cell={cell} />
+              <Cell key={index} cell={cell} tint={index === 0} />
             ))}
             {last !== null && <td className={`${TD_MONEY} text-muted-foreground`}>{last}</td>}
           </tr>
@@ -127,6 +152,9 @@ function ThroughBox({ current, onDay }: { current: string; onDay: (day: string |
  */
 export function ScenarioCompare({
   compare,
+  loading,
+  error,
+  stale,
   requestSet,
   onRequestSet,
   lastSeason,
@@ -134,10 +162,11 @@ export function ScenarioCompare({
   byTier,
   onByTier,
 }: CompareProps) {
-  const columns = compare.columns
-  const last = lastSeason ? (compare.last_season ?? null) : null
+  const columns = compare?.columns ?? []
+  const last = lastSeason ? (compare?.last_season ?? null) : null
   const span = columns.length + 1 + (last === null ? 0 : 1)
   const views = [...columns.map((c) => c.committee ?? null), ...(last === null ? [] : [last.view])]
+  const postedIndex = last === null ? null : columns.length
   const set = columns[0]?.results.request_set ?? null
   const lastFigure = (row: CompareRow): string | null => {
     if (last === null) return null
@@ -198,43 +227,67 @@ export function ScenarioCompare({
           Print
         </button>
       </div>
+      {error !== null && compare === undefined && <p className={AMBER_NOTE}>{error}</p>}
+      {loading && compare === undefined && error === null && (
+        <p className="text-muted-foreground text-sm">Loading the compare…</p>
+      )}
       {set !== null && (
         <p className="text-sm font-medium">
-          {`Every figure counts ${set.label}: ${String(set.left_out)} left out`}
+          {`Every scenario figure counts ${set.label}: ${String(set.left_out)} left out`}
           {set.unknown > 0 && `, ${String(set.unknown)} with no received date left out too`}
+          {last === null ? '' : '; last season is as posted'}
+          {'.'}
         </p>
       )}
-      <div className={TABLE_CARD}>
-        <table className="w-full border-separate border-spacing-0 text-sm">
-          <thead>
-            <tr>
-              <th className={TH_LABEL} />
-              {columns.map((column) => (
-                <th key={column.code} className={`${TH_MONEY} align-bottom`}>
-                  <span className="text-foreground font-mono font-bold">
-                    {column.code === 'draft' ? 'Draft' : column.code}
-                  </span>
-                </th>
-              ))}
-              {last !== null && <th className={TH_MONEY}>{lastSeasonHeading(last)}</th>}
-            </tr>
-          </thead>
-          <tbody>
-            <Section title="Settings (amber: changed)" span={span} />
-            <Rows rows={settingRows(columns)} extra={() => (last === null ? null : '—')} />
-            <Section title="Results" span={span} />
-            <Rows rows={resultRows(columns)} extra={lastFigure} />
-            {byTier && (
-              <>
-                <Section title="Round 1 by tier, against what was asked" span={span} />
-                <Rows rows={tierRows(views, 1)} extra={() => null} />
-                <Section title="Round 2 by tier, against what was asked" span={span} />
-                <Rows rows={tierRows(views, 2)} extra={() => null} />
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {stale && <p className="text-muted-foreground text-xs">Updating…</p>}
+      {compare !== undefined && (
+        <div
+          className={`${TABLE_CARD} ${stale ? 'opacity-60' : ''}`}
+          data-testid="scenario-compare-table"
+          data-stale={stale ? '' : undefined}
+        >
+          <table className="w-full border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr>
+                <th className={TH_LABEL} />
+                {columns.map((column, index) => {
+                  const chip = chipFor(column.code)
+                  return (
+                    <th
+                      key={column.code}
+                      className={`${TH_MONEY_TEXT} align-bottom ${index === 0 ? DRAFT_COLUMN : 'bg-muted'}`}
+                    >
+                      <span className={chip.style}>{chip.text}</span>
+                      <div className="text-muted-foreground max-w-48 text-xs font-normal">
+                        {column.label}
+                      </div>
+                    </th>
+                  )
+                })}
+                {last !== null && (
+                  <th className={`${TH_MONEY_TEXT} bg-muted align-bottom`}>
+                    {lastSeasonHeading(last)}
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              <Section title="Settings (amber: changed)" span={span} />
+              <Rows rows={settingRows(columns)} extra={() => (last === null ? null : '—')} />
+              <Section title="Results" span={span} />
+              <Rows rows={resultRows(columns)} extra={lastFigure} />
+              {byTier && (
+                <>
+                  <Section title="Round 1 by tier, against what was asked" span={span} />
+                  <Rows rows={tierRows(views, 1, postedIndex)} extra={() => null} />
+                  <Section title="Round 2 by tier, against what was asked" span={span} />
+                  <Rows rows={tierRows(views, 2, postedIndex)} extra={() => null} />
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
       <p className="text-muted-foreground text-xs print:hidden">
         Your draft is always the first column. Tick kept options on the left to compare them.
       </p>

@@ -11,6 +11,7 @@ import type {
   ApiAidLastSeason,
 } from '../../../../types/api-types'
 import { formatMoney } from '../../kit/money'
+import { isSeasonDay } from '../historyModel'
 import { isDollarForDollar } from './scenarioModel'
 
 export const MAX_COMPARED = 4
@@ -34,7 +35,8 @@ export function toggleCode(codes: readonly string[], code: string): readonly str
 /** `?through=deadline` or `?through=2027-02-01` (D138); anything else counts every frozen request. */
 export function parseRequestSet(raw: string | null): AidRequestSet {
   if (raw === 'deadline') return { kind: 'deadline' }
-  if (raw !== null && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return { kind: 'date', date: raw }
+  // A real day in a season's year (as History reads its dates): anything else would only 422.
+  if (raw !== null && isSeasonDay(raw)) return { kind: 'date', date: raw }
   return { kind: 'all' }
 }
 
@@ -48,6 +50,9 @@ export interface CompareCell {
   /** Differs from the column's reference (the screen's amber). */
   readonly changed: boolean
   readonly negative: boolean
+  /** The up / down counts, when this cell holds them: the screen colours each apart. */
+  readonly up?: number
+  readonly down?: number
 }
 
 export interface CompareRow {
@@ -70,7 +75,6 @@ const changedAt = (column: ApiAidCompareColumn, section: string, key: string) =>
 /** The settings rows: what differs, the minimum award, the dollar-for-dollar switch, how many settings moved. */
 export function settingRows(columns: readonly ApiAidCompareColumn[]): CompareRow[] {
   return [
-    { key: 'label', label: 'What differs', cells: columns.map((c) => plain(c.label)) },
     {
       key: 'minimum',
       label: 'Minimum award',
@@ -127,7 +131,10 @@ export function resultRows(columns: readonly ApiAidCompareColumn[]): CompareRow[
     {
       key: 'updown',
       label: 'Requests up / down against its reference',
-      cells: columns.map((c) => plain(updown(c.up, c.down))),
+      cells: columns.map((c) => ({
+        ...plain(updown(c.up, c.down)),
+        ...(c.up === null || c.down === null ? {} : { up: c.up, down: c.down }),
+      })),
     },
     {
       key: 'pct_of_budget',
@@ -156,7 +163,12 @@ const pctOfAsk = (pct: number | null) => (pct === null ? '' : ` · ${String(pct)
  * By tier (RPT-17, RPT-32): each tier's money and its share of what was asked, for Round 1 or Round
  * 2, from the committee's "All" rows. A column that holds no row for a tier reads "—".
  */
-export function tierRows(views: ReadonlyArray<ApiAidCommittee | null>, round: 1 | 2): CompareRow[] {
+export function tierRows(
+  views: ReadonlyArray<ApiAidCommittee | null>,
+  round: 1 | 2,
+  /** The column that is last season as posted: posted money holds no requests, so it has no Held. */
+  posted: number | null = null
+): CompareRow[] {
   const tiers = tiersOf(views, round).map((tier) => ({
     key: `r${String(round)}:${String(tier)}`,
     label: `Tier ${String(tier)}`,
@@ -175,10 +187,13 @@ export function tierRows(views: ReadonlyArray<ApiAidCommittee | null>, round: 1 
   }))
   if (tiers.length === 0) return []
 
-  // What the tier rows leave out, shown only when some column has it (as the Results panel's "In no tier").
+  // What the tier rows leave out, shown only when some column has it (as the Results panel's "In no
+  // tier"). A column with no view (last season not loaded) reads "—", never a zero (I2); last season
+  // loaded holds nothing in Held (posted money has no held requests) but a real "In no tier".
   const rows: CompareRow[] = [...tiers]
-  const held = views.map((view) => {
-    const all = (round === 1 ? view?.round1_by_tier : view?.round2_by_tier)?.filter(
+  const held = views.map((view, index) => {
+    if (view === null || index === posted) return null
+    const all = (round === 1 ? view.round1_by_tier : view.round2_by_tier).filter(
       (r) => r.table === null
     )
     return {
@@ -186,31 +201,30 @@ export function tierRows(views: ReadonlyArray<ApiAidCommittee | null>, round: 1 
       asked: sum(all, (r) => r.held_asked),
     }
   })
-  if (held.some((h) => h.count !== 0 || h.asked !== 0)) {
-    rows.push(
-      round === 1
-        ? {
-            key: 'r1:held',
-            label: 'Held',
-            cells: held.map((h) => plain(`${String(h.count)} · ${formatMoney(h.asked)} asked`)),
-            informational: true,
-          }
-        : {
-            key: 'r2:held',
-            label: 'Held',
-            cells: held.map((h) => plain(`${formatMoney(h.asked)} asked`)),
-            informational: true,
-          }
-    )
+  if (held.some((h) => h !== null && (h.count !== 0 || h.asked !== 0))) {
+    rows.push({
+      key: `r${String(round)}:held`,
+      label: 'Held',
+      cells: held.map((h) =>
+        h === null
+          ? plain('—')
+          : plain(
+              round === 1
+                ? `${String(h.count)} · ${formatMoney(h.asked)} asked`
+                : `${formatMoney(h.asked)} asked`
+            )
+      ),
+      informational: true,
+    })
   }
   const none = views.map((view) =>
-    round === 1 ? (view?.not_in_tiers ?? 0) : (view?.round2_not_in_tiers ?? 0)
+    view === null ? null : round === 1 ? view.not_in_tiers : view.round2_not_in_tiers
   )
-  if (none.some((n) => n !== 0)) {
+  if (none.some((n) => n !== null && n !== 0)) {
     rows.push({
       key: `r${String(round)}:none`,
       label: 'In no tier',
-      cells: none.map(moneyCell),
+      cells: none.map((n) => (n === null ? plain('—') : moneyCell(n))),
       informational: true,
     })
   }

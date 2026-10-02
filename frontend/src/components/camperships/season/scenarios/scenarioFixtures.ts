@@ -147,8 +147,12 @@ export function workspace(over: Partial<ApiAidScenarioWorkspace> = {}): ApiAidSc
   }
 }
 
-function committee(round1: number): ApiAidCommittee {
-  return {
+/**
+ * `posted` is last season's view: posted money holds no requests, so its held counts are zero (the
+ * server's `posted_season` never holds one, committee.py 305-352).
+ */
+function committee(round1: number, posted = false): ApiAidCommittee {
+  const out: ApiAidCommittee = {
     budget_total: 1000000,
     round1,
     round1_pct_of_budget: Math.round((round1 / 1000000) * 1000) / 10,
@@ -221,6 +225,12 @@ function committee(round1: number): ApiAidCommittee {
     not_in_tiers: 1200,
     round2_not_in_tiers: 0,
   }
+  if (!posted) return out
+  return {
+    ...out,
+    round1_by_tier: out.round1_by_tier.map((row) => ({ ...row, held: 0, held_asked: 0 })),
+    round2_by_tier: out.round2_by_tier.map((row) => ({ ...row, held_asked: 0 })),
+  }
 }
 
 function column(
@@ -265,7 +275,7 @@ export function compareOut(over: Partial<ApiAidScenarioCompare> = {}): ApiAidSce
       loaded: true,
       label: '2026 as posted',
       rules_version: 7,
-      view: committee(649247),
+      view: committee(649247, true),
     },
     ...over,
   }
