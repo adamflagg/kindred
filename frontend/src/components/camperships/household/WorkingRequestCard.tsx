@@ -7,6 +7,7 @@ import type { AidView } from '../kit/asOf'
 import { CancelForm } from './CancelForm'
 import { CardEditor, type CardEditorHandle } from './CardEditor'
 import { CARD_EDIT_LABEL, cardEdits, type CardEditKind } from './cardEdits'
+import { LIVE_REQUEST_STATUSES } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
 import { ReasonForm } from './ReasonForm'
@@ -25,8 +26,10 @@ type Open =
  * edits in place, Put on hold…, the cancel form, the round checklist and next actions, and holds
  * released before. Without `casework` it is the plain card.
  *
- * Every action button goes through `switchTo`, which first leaves the open editor (saving what is
- * typed), and then the editor open on any other card (`exits`): one editor per page, nothing typed lost.
+ * Every action button goes through `switchTo`, which first leaves the open money editor (saving what
+ * is typed), and then the one open on any other card (`exits`): one money editor per page. The cancel,
+ * hold and reopen forms don't register: saving them on leave would act without confirmation, so
+ * leaving one of them drops what was typed.
  */
 export function WorkingRequestCard({
   request,
@@ -69,6 +72,8 @@ export function WorkingRequestCard({
   const row = request.row
   const year = page.year
   const c = row.cancellation
+  // The server's `_live`: a withdrawn or duplicate request takes no cancellation or hold.
+  const live = row.request_status === null || LIVE_REQUEST_STATUSES.includes(row.request_status)
   const manualHeld = row.holds.some((hold) => hold.code === 'manual_hold')
   const switchTo = (next: Open) =>
     leaveOwn(() => {
@@ -86,8 +91,8 @@ export function WorkingRequestCard({
   const actions = (
     <>
       {cardEdits(row).map((edit) => button(CARD_EDIT_LABEL[edit], { kind: 'edit', edit }))}
-      {!c && !manualHeld && button('Put on hold…', { kind: 'hold' })}
-      {!c && button('Cancel request…', { kind: 'cancel' })}
+      {live && !c && !manualHeld && button('Put on hold…', { kind: 'hold' })}
+      {live && !c && button('Cancel request…', { kind: 'cancel' })}
       {c?.by === 'campminder' &&
         button(c.reason === null ? 'Give a reason…' : 'Change the reason…', { kind: 'cancel' })}
       {c?.by === 'kindred' && button('Change the reason…', { kind: 'cancel' })}
@@ -118,8 +123,7 @@ export function WorkingRequestCard({
   } else if (open?.kind === 'reopen') {
     editor = (
       <ReasonForm
-        label="Why reopen (optional)"
-        required={false}
+        label="Why reopen"
         submitLabel="Reopen"
         onSubmit={(note) =>
           cancellation.mutateAsync({ requestId, body: { cancelled: false, note } }).then(close)

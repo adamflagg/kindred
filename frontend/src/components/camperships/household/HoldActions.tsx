@@ -19,6 +19,10 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
   const requestId = request.row.request_id
   const close = () => setOpen(false)
   const fix = fixLink(code, requestId)
+  // The server's own severity: only a hold stops the award, so only a hold has anything to release.
+  const releasable =
+    !UNRELEASABLE_CODES.has(code) &&
+    request.row.holds.some((hold) => hold.code === code && hold.severity === 'hold')
 
   if (open) {
     return code === 'manual_hold' ? (
@@ -53,7 +57,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
           Lift…
         </button>
       )}
-      {!UNRELEASABLE_CODES.has(code) && (
+      {releasable && (
         <button type="button" className={BUTTON_SECONDARY} onClick={() => setOpen(true)}>
           Release…
         </button>
