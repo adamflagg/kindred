@@ -72,7 +72,10 @@ const STRIP_LABELS: Readonly<Record<StripMeasure, string>> = {
  * approval open their Requests views; posted and accepted open All filtered to that round and tick,
  * slice 1's `round=` and `tick=`, so the list holds the rows the count counts. Every count but held
  * also carries `counted=1` (Decision 6): only rounds that count toward the budget make these figures.
- * Null where it opens nothing: a queue view on a past date (`opensQueueViews`).
+ * Needs an offer and pending approval carry the count's round too: the grid binds `counted` and
+ * `round=` to the round in that status (views.ts), so the list is that round's. Held carries no
+ * round (its view isn't bound to one). Null where it opens nothing: a queue view on a past date
+ * (`opensQueueViews`).
  */
 function stripTarget(
   measure: StripMeasure,
@@ -82,7 +85,7 @@ function stripTarget(
   const queues = opensQueueViews(view)
   switch (measure) {
     case 'needs_offer':
-      return queues ? { view: viewSlug('needs_offer'), counted: '1' } : null
+      return queues ? { view: viewSlug('needs_offer'), round: String(round), counted: '1' } : null
     case 'posted':
       return { view: viewSlug('all'), round: String(round), tick: 'posted', counted: '1' }
     case 'accepted':
@@ -90,7 +93,9 @@ function stripTarget(
     case 'held':
       return queues ? { view: viewSlug('holds') } : null
     case 'pending_approval':
-      return queues ? { view: viewSlug('pending_approval'), counted: '1' } : null
+      return queues
+        ? { view: viewSlug('pending_approval'), round: String(round), counted: '1' }
+        : null
   }
 }
 
@@ -239,9 +244,13 @@ export function overWords(row: BudgetRow, column: BudgetColumn): string | null {
 /**
  * Where a figure opens (D20: every figure opens its rows, from the same server query).
  * - Posted and Accepted: All, filtered to the pool, the round and the tick (D153).
- * - Needs an offer and Pending approval: their Requests views, on the pool.
- * - Allocated: the budget section of the approved version that priced the figure (`?version=`), and
- *   nothing while no version is approved (Decision 6; plan review I1).
+ * - Needs an offer and Pending approval: their Requests views, on the pool and, on a round line
+ *   (and the Pending approval line under it), that round; the grid binds `counted` and `round=`
+ *   to the round in that status (views.ts), so the list is exactly the figure's. A pool or total
+ *   line covers every round and carries none.
+ * - Allocated: the budget section of the approved version that priced the figure (`?version=`),
+ *   keeping the page's past date like every Season tab (I6), and nothing while no version is
+ *   approved (Decision 6; plan review I1).
  * Every request link but Holds carries `counted=1`, so it opens only rounds that count (Decision 6).
  * - Remaining: nothing; it is the others' arithmetic.
  * A "No pool" figure opens nothing: no request can be filtered to having no pool. Nor does "—" or $0,
@@ -258,7 +267,12 @@ export function cellHref(
   const round: Record<string, string> = row.round === null ? {} : { round: String(row.round) }
   if (row.kind === 'pending') {
     if (!opensQueueViews(view)) return null
-    return requests(view, { view: viewSlug('pending_approval'), ...pool, counted: '1' })
+    return requests(view, {
+      view: viewSlug('pending_approval'),
+      ...pool,
+      ...round,
+      counted: '1',
+    })
   }
   switch (column) {
     case 'posted':
@@ -279,15 +293,15 @@ export function cellHref(
       })
     case 'needs_offer':
       if (!opensQueueViews(view)) return null
-      return requests(view, { view: viewSlug('needs_offer'), ...pool, counted: '1' })
+      return requests(view, { view: viewSlug('needs_offer'), ...pool, ...round, counted: '1' })
     case 'allocated':
       // The version that priced the figure: `?version=` always opens the approved read (Decision 31).
+      // The page's date rides along, as on every Season tab (I6).
       if (rulesVersion === null) return null
-      return aidHref(
-        '/aid/season/rules',
-        { year: view.year, asOf: { kind: 'live' } },
-        { version: String(rulesVersion), section: 'budget' }
-      )
+      return aidHref('/aid/season/rules', view, {
+        version: String(rulesVersion),
+        section: 'budget',
+      })
     case 'remaining':
       return null
   }

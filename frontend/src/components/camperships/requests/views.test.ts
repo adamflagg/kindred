@@ -255,6 +255,23 @@ describe('filterRows', () => {
       filterRows(rows, 'pending_approval', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
     expect(ids({})).toEqual(['reqoutpend00001', 'reqcntpend00001'])
     expect(ids({ counted: true })).toEqual(['reqcntpend00001'])
+    // round= binds to the pending round, as it does for Needs an offer.
+    expect(ids({ counted: true, round: 3 })).toEqual(['reqcntpend00001'])
+    expect(ids({ counted: true, round: 1 })).toEqual([])
+    const bothCounted = gridRow({
+      request_id: 'reqbothpend0001',
+      rounds: [
+        roundOut(1, 'posted', { posted: 900 }),
+        roundOut(3, 'pending_approval', { pending_approval: 450 }),
+      ],
+      queues: ['pending_approval'],
+    })
+    const round = (n: 1 | 3) =>
+      filterRows([bothCounted], 'pending_approval', { ...NO_FILTERS, counted: true, round: n }).map(
+        (r) => r.request_id
+      )
+    expect(round(1)).toEqual([])
+    expect(round(3)).toEqual(['reqbothpend0001'])
   })
 
   it("keeps only live requests with live=1: the server's live statuses, not cancelled (owner, Decision 6(b))", () => {

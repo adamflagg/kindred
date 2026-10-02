@@ -66,10 +66,13 @@ describe('the strip (§7.2; D153, owner ruling Group 2c Q3)', () => {
     const rounds = stripRounds(BUDGET.strip, LIVE)
     const href = (round: number, measure: string) =>
       rounds[round - 1]?.counts.find((c) => c.measure === measure)?.href
-    expect(href(1, 'needs_offer')).toBe('/aid/requests?view=needs-offer&counted=1&year=2027')
+    // A round's queue count carries its round (lead ruling, fix-wave addition).
+    expect(href(1, 'needs_offer')).toBe(
+      '/aid/requests?view=needs-offer&round=1&counted=1&year=2027'
+    )
     expect(href(1, 'held')).toBe('/aid/requests?view=holds&year=2027')
     expect(href(3, 'pending_approval')).toBe(
-      '/aid/requests?view=pending-approval&counted=1&year=2027'
+      '/aid/requests?view=pending-approval&round=3&counted=1&year=2027'
     )
   })
 
@@ -221,14 +224,25 @@ describe('where each figure opens (D20, D153)', () => {
   })
 
   it('opens Needs an offer and Pending approval on their views, and Allocated on the rules', () => {
+    // A round line carries its round; the pool line covers every round (fix-wave addition).
     expect(cellHref(row(rows, 'pool_a:1'), 'needs_offer', LIVE, 3)).toBe(
+      '/aid/requests?view=needs-offer&pool=pool_a&round=1&counted=1&year=2027'
+    )
+    expect(cellHref(row(rows, 'pool_a:all'), 'needs_offer', LIVE, 3)).toBe(
       '/aid/requests?view=needs-offer&pool=pool_a&counted=1&year=2027'
     )
-    expect(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', LIVE, 3)).toBe(
-      '/aid/requests?view=pending-approval&pool=pool_a&counted=1&year=2027'
+    expect(cellHref(row(rows, 'total'), 'needs_offer', LIVE, 3)).toBe(
+      '/aid/requests?view=needs-offer&counted=1&year=2027'
     )
-    // The approved version that priced the figure, past date or not (plan review I1).
+    expect(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', LIVE, 3)).toBe(
+      '/aid/requests?view=pending-approval&pool=pool_a&round=3&counted=1&year=2027'
+    )
+    // The approved version that priced the figure (plan review I1), keeping the page's past date
+    // (I6: the pill shows on every Season tab; Task 11 review).
     expect(cellHref(row(rows, 'pool_a:1'), 'allocated', PAST, 3)).toBe(
+      '/aid/season/rules?version=3&section=budget&year=2027&as_of=2027-03-15'
+    )
+    expect(cellHref(row(rows, 'pool_a:1'), 'allocated', LIVE, 3)).toBe(
       '/aid/season/rules?version=3&section=budget&year=2027'
     )
     expect(cellHref(row(rows, 'pool_a:1'), 'allocated', LIVE, null)).toBeNull()
@@ -330,6 +344,82 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
       'reqcounted00001',
       'reqcounted00002',
     ])
+  })
+
+  /** The rows a link opens, read back through the grid's own parsers. */
+  const opened = (href: string | null, rows: readonly ApiAidGridRow[]) => {
+    const params = new URL(href ?? '', 'http://kindred.test').searchParams
+    const { filters } = gridFiltersFrom(params)
+    return filterRows(rows, requestView(params.get('view')).key, filters).map((r) => r.request_id)
+  }
+  const queued = (
+    id: string,
+    queue: 'needs_offer' | 'pending_approval',
+    over: Partial<ApiAidGridRow>
+  ) => gridRow({ request_id: id, queues: [queue], ...over })
+  const NEEDS_ROWS = [
+    // Round 1 needs the offer, counted, Pool A.
+    queued('reqround1a0001', 'needs_offer', { rounds: [roundOut(1, 'needs_offer')] }),
+    // Round 2 needs the offer; Round 1 is posted and counted.
+    queued('reqround2a0001', 'needs_offer', {
+      rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+    }),
+    // Round 1 needs the offer, outside the budget.
+    queued('reqround1out01', 'needs_offer', {
+      rounds: [roundOut(1, 'needs_offer', { counts_toward_budget: false })],
+    }),
+    // Round 1 needs the offer, Pool B.
+    queued('reqround1b0001', 'needs_offer', {
+      pool: 'pool_b',
+      rounds: [roundOut(1, 'needs_offer')],
+    }),
+  ]
+
+  it("a round's Needs an offer opens that round's counted rows, not another round's (fix-wave addition)", () => {
+    const rows = budgetRows(BUDGET, EVERY)
+    expect(opened(cellHref(row(rows, 'pool_a:1'), 'needs_offer', LIVE, 3), NEEDS_ROWS)).toEqual([
+      'reqround1a0001',
+    ])
+    expect(opened(cellHref(row(rows, 'pool_a:2'), 'needs_offer', LIVE, 3), NEEDS_ROWS)).toEqual([
+      'reqround2a0001',
+    ])
+    // The strip's Round 1 count is the season's: both pools, Round 1 only.
+    const strip = stripRounds(BUDGET.strip, LIVE)[0]?.counts.find(
+      (c) => c.measure === 'needs_offer'
+    )
+    expect(opened(strip?.href ?? null, NEEDS_ROWS)).toEqual(['reqround1a0001', 'reqround1b0001'])
+  })
+
+  it("a round's Pending approval opens that round's counted rows (fix-wave addition)", () => {
+    const pendingRows = [
+      queued('reqpend3a00001', 'pending_approval', {
+        rounds: [
+          roundOut(1, 'posted', { posted: 900 }),
+          roundOut(3, 'pending_approval', { pending_approval: 450 }),
+        ],
+      }),
+      // Pending on Round 2, with a counted Round 3 needing an offer: not Round 3's pending.
+      queued('reqpend2a00001', 'pending_approval', {
+        rounds: [
+          roundOut(2, 'pending_approval', { pending_approval: 300 }),
+          roundOut(3, 'needs_offer'),
+        ],
+      }),
+      // Round 3 pending, outside the budget.
+      queued('reqpend3out001', 'pending_approval', {
+        rounds: [
+          roundOut(3, 'pending_approval', { pending_approval: 200, counts_toward_budget: false }),
+        ],
+      }),
+    ]
+    const rows = budgetRows(BUDGET, EVERY)
+    expect(
+      opened(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', LIVE, 3), pendingRows)
+    ).toEqual(['reqpend3a00001'])
+    const strip = stripRounds(BUDGET.strip, LIVE)[2]?.counts.find(
+      (c) => c.measure === 'pending_approval'
+    )
+    expect(opened(strip?.href ?? null, pendingRows)).toEqual(['reqpend3a00001'])
   })
 })
 
