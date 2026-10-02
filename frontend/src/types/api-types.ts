@@ -31,6 +31,8 @@
 
 import type {
   AcceptedIn,
+  AidPostingLine,
+  AnswerOut,
   ApprovedRulesOut,
   AskIn,
   BunkGraphResponse,
@@ -39,11 +41,22 @@ import type {
   CamperJourneyRow,
   CancellationOut,
   ConfirmationOut,
+  ConfirmationStateOut,
   CrossScopeEdge,
   DecisionWriteOut,
   DefinitionsResponse,
   EditorPreviewOut,
+  ExpectedOut,
+  GrantRowOut,
   GridRowOut,
+  HistoryEntryOut,
+  HouseholdCardOut,
+  HouseholdLinkRow,
+  HouseholdPageResponse,
+  HouseholdRequestOut,
+  HouseholdTotalsOut,
+  IncomeOut,
+  IssueOut,
   JumpIndexHousehold,
   JumpIndexResponse,
   PermissionEntry,
@@ -51,10 +64,12 @@ import type {
   PermissionScreen,
   PostedIn,
   PreviewIn,
+  ReceiptOut,
   RemainingResponse,
   RequestsGridResponse,
   RoundOut,
   RowStageOut,
+  ShareLineOut,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
@@ -133,3 +148,21 @@ export type ApiAidPostedIn = PostedIn
 export type ApiAidAcceptedIn = AcceptedIn
 /** What a decisions write did. Mirrors Python `DecisionWriteOut`. */
 export type ApiAidWriteOut = DecisionWriteOut
+
+/** The household page's read (§6.3). Mirrors Python `HouseholdPageResponse` and its parts. */
+export type ApiAidHouseholdPage = HouseholdPageResponse
+export type ApiAidHouseholdRequest = HouseholdRequestOut
+export type ApiAidHouseholdCard = HouseholdCardOut
+export type ApiAidHouseholdTotals = HouseholdTotalsOut
+export type ApiAidConfirmationState = ConfirmationStateOut
+export type ApiAidShareLine = ShareLineOut
+export type ApiAidReceipt = ReceiptOut
+export type ApiAidIncome = IncomeOut
+export type ApiAidAnswer = AnswerOut
+export type ApiAidHistoryEntry = HistoryEntryOut
+export type ApiAidPostingLine = AidPostingLine
+export type ApiAidGrantRow = GrantRowOut
+export type ApiAidExpected = ExpectedOut
+export type ApiAidHouseholdLink = HouseholdLinkRow
+/** A hold, note or check on a request. Mirrors Python `IssueOut`. */
+export type ApiAidIssue = IssueOut
