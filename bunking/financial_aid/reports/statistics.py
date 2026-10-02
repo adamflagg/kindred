@@ -262,7 +262,9 @@ def _row(
     shows_grants = round_ in (None, 1)
     # Owner (b) (RULED 2026-10-02): pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by
     # the live requests' asks, so a request still waiting on an offer sits in the denominator at $0; the decided
-    # basis's column says so (PCT_OF_ASK_DECIDED_LABEL).
+    # basis's column says so (PCT_OF_ASK_DECIDED_LABEL). The asks differ: pct_of_ask divides by the in-budget asks
+    # (`live_asked`), "% with grants" adds its grants to the numerator and divides by the full asks, outside-funded
+    # rounds kept (`live_full_asked`; owner, RULED 2026-10-02).
     return StatisticsRow(
         tier=tier,
         income_from=band[0] if band is not None else None,
