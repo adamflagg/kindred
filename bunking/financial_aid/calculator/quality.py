@@ -19,6 +19,7 @@ from bunking.financial_aid.calculator.income import IncomeResult, household_inco
 from bunking.financial_aid.calculator.inputs import ApplicationInputs, IncomeOverride, RequestInputs
 from bunking.financial_aid.calculator.result import CalcIssue
 from bunking.financial_aid.calculator.tiers import income_tier as tier_of
+from bunking.financial_aid.money import dollars
 from bunking.financial_aid.rules.schema import AidRules, ProgramProfile, QualityCheck, QualityCheckKey
 
 
@@ -55,12 +56,12 @@ def run_quality_checks(
         and adjusted is not None
         and adjusted > check.threshold
     ):
-        fire("income_above", check, f"Adjusted income is above {check.threshold}")
+        fire("income_above", check, f"Adjusted income is above {dollars(check.threshold)}")
     largest_expense = max(income.medical_excess, income.education_excess, income.dependent_reduction)
     if (check := active("expense_above")) and check.threshold is not None and largest_expense > check.threshold:
-        fire("expense_above", check, f"A counted expense or reduction is above {check.threshold}")
+        fire("expense_above", check, f"A counted expense or reduction is above {dollars(check.threshold)}")
     if (check := active("multiple_grants")) and len(request.grants_applicable) > 1:
-        fire("multiple_grants", check, "This camper has more than one outside grant")
+        fire("multiple_grants", check, "More than one outside grant")
     # Absent gross figures are unknown, not 0: a household with only a staff override or only
     # a confirmed prior-year figure has no gross figure to call a placeholder, so the check
     # is silent rather than comparing an invented 0 to the threshold.
@@ -71,7 +72,7 @@ def run_quality_checks(
             fire(
                 "placeholder_income",
                 check,
-                f"Reported income is at or below {check.threshold}; it may be a placeholder",
+                f"Reported income is at or below {dollars(check.threshold)}; it may be a placeholder",
             )
     # Always on and always a hold, whatever the season lists. A full_cost decision type's named
     # extra_amount is a deliberate lever (Round 1 = cost - grants + extra, by design), so it
@@ -105,7 +106,7 @@ def run_quality_checks(
     ):
         fire("implausible_dependents", check, f"More than {check.threshold} dependents")
     if (check := active("family_cost_missing")) and program.cost_source == "per_person" and cost is None:
-        fire("family_cost_missing", check, "Family-camp cost is missing: enter the headcount")
+        fire("family_cost_missing", check, "Enter the family-camp headcount")
     if (
         (check := active("py_confirm_tier_change"))
         and income_tier is not None

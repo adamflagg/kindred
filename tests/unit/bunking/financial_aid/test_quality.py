@@ -105,6 +105,33 @@ def test_threshold_is_a_lever() -> None:
     assert "income_above" in _codes(_run(rules))
 
 
+# Each check's boundary is the one its message states: "above" and "more than" exclude the
+# threshold, "at or below" includes it.
+
+
+@pytest.mark.parametrize(("threshold", "fires"), [("60000", False), ("59999", True)])
+def test_income_above_excludes_the_threshold(threshold: str, fires: bool) -> None:
+    # The default household reports 60,000 both years, so its adjusted income is 60,000.
+    rules = with_lever(fictional_rules(), "quality_checks.checks.income_above.threshold", threshold)
+    assert ("income_above" in _codes(_run(rules))) is fires
+
+
+@pytest.mark.parametrize(("medical", "fires"), [("34000", False), ("34001", True)])
+def test_expense_above_excludes_the_threshold(medical: str, fires: bool) -> None:
+    # 34,000 medical is a 30,000 excess over the 4,000 threshold: exactly the 30,000 limit.
+    assert ("expense_above" in _codes(_run(app_fields={"medical_expenses": medical}))) is fires
+
+
+def test_one_outside_grant_is_not_several() -> None:
+    assert "multiple_grants" not in _codes(_run(grants_applicable=[{"amount": "100", "state": "committed"}]))
+
+
+@pytest.mark.parametrize(("gross", "fires"), [("1000", True), ("1001", False)])
+def test_placeholder_income_includes_the_threshold(gross: str, fires: bool) -> None:
+    result = _run(app_fields={"prior_year_gross": gross, "current_year_gross": gross})
+    assert ("placeholder_income" in _codes(result)) is fires
+
+
 def test_placeholder_income_ignores_a_staff_entered_override_with_no_gross_figures() -> None:
     # No gross figures were ever reported; the override is the real income. That is not
     # a placeholder, even though both gross fields read as "at or below the threshold" if

@@ -160,7 +160,6 @@ from api.services.financial_aid_reconciliation import (
     camp_date,
     clawback_eligible,
     confirmation,
-    dollars,
     ledger_note,
     ledger_ticks,
     override_placement,
@@ -235,7 +234,7 @@ from bunking.financial_aid.decisions import (
     with_holds,
 )
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.money import ZERO, dollars
 from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 

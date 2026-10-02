@@ -14,10 +14,10 @@ from api.services.financial_aid_reconciliation import (
     PlaceableRequest,
     build_ledger,
     camp_date,
-    dollars,
     undone_rounds,
 )
 from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.money import dollars
 
 MAR8 = datetime(2027, 3, 8, 18, 0, tzinfo=UTC)  # 10 am Pacific (PST), Mar 8
 MAR9 = datetime(2027, 3, 9, 18, 0, tzinfo=UTC)

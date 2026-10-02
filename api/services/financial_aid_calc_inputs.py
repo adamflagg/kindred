@@ -210,14 +210,14 @@ def request_issues(
         found.append(
             _hold(
                 "household_income_conflict",
-                "The family's applications report different income figures: call the family and enter the one to use",
+                "The applications differ: call the family and enter the income to use",
             )
         )
     if awaiting_approved_rules(request):
         found.append(
             _hold(
                 FLAG_AWAITING_RULES,
-                "Waiting for finance to approve this season's programs and cost rules; intake resolves it after",
+                "Clears at the next intake run after finance approves this season's programs and cost rules",
             )
         )
     if any(flag.get("code") == FLAG_DUPLICATE_SURVIVOR_WITHDRAWN for flag in request.flags):
@@ -225,12 +225,12 @@ def request_issues(
         found.append(
             _hold(
                 FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
-                "The request this one duplicated was withdrawn, so this one is live again: its payer "
-                "shares and any decision stayed on the withdrawn request; check them before awarding",
+                "The original request was withdrawn but kept the payer shares and any decision: "
+                "check them before awarding",
             )
         )
     if request.session_cm_id <= 0:
-        found.append(_check_issue(rules, "unmatched_session", "The requested session is not matched: resolve it"))
+        found.append(_check_issue(rules, "unmatched_session", "Resolve the session"))
     if request.status in _LIVE and share_status([s for s in shares if s.request_id == request.id]) == "incomplete":
         found.append(_hold("payer_shares_incomplete", "The payer shares do not add up to 100%"))
     return [issue for issue in found if issue is not None]
@@ -253,7 +253,7 @@ def priced_program(
         return None, "the session is unmatched"
     program_key = rules_program_key(request, sessions, rules)
     if program_key is None:
-        return None, f"no program in the {rules.year} rules claims session {request.session_cm_id}"
+        return None, f"No program in the rules claims session {request.session_cm_id}"
     return program_key, ""
 
 
