@@ -20,6 +20,7 @@ from api.services.financial_aid_intake_repository import (
     parse_poc_answer,
 )
 from api.services.financial_aid_intake_types import EquityAnswers
+from api.services.financial_aid_requesters import FaContact
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.rules import SectionName
 from bunking.financial_aid.rules.lifecycle import SectionStatus, initial_status, status_to_json
@@ -349,3 +350,27 @@ async def test_fetch_capacities_reads_the_season_by_session() -> None:
     assert (row.session_cm_id, row.capacity) == (1000101, 120)
     pb.collection.assert_called_with("aid_session_capacity")
     assert handle.get_full_list.call_args.kwargs["query_params"]["filter"] == "year = 2027"
+
+
+@pytest.mark.asyncio
+async def test_fetch_fa_contacts_reads_every_row_of_the_year_with_only_the_contact_columns() -> None:
+    records = [
+        SimpleNamespace(
+            id="fa0000000000001",
+            person_id=1000011,
+            contact_first_name="Maria",
+            contact_last_name="Garcia",
+            expand={"household": SimpleNamespace(cm_id=1000001)},
+        ),
+        SimpleNamespace(id="fa0000000000002", person_id=0, expand={}),  # a row the sync has not stamped
+    ]
+    handle = MagicMock()
+    handle.get_full_list.return_value = records
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    contacts = await FinancialAidIntakeRepository(pb).fetch_fa_contacts(2027)
+    assert contacts == [FaContact(1000011, 1000001, "Maria", "Garcia"), FaContact(0, 0, "", "")]
+    params = handle.get_full_list.call_args.kwargs["query_params"]
+    assert params["filter"] == "year = 2027"  # not is_applicant: a donation-only row names a household too
+    assert params["fields"] == "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"
+    assert params["expand"] == "household"

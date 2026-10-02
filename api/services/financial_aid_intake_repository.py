@@ -6,7 +6,9 @@ null, and the router gates each call on a financial_aid.* permission first.
 Two reads are narrowed on purpose, and tests pin both:
 
 * `fetch_fa_rows` names its columns. financial_aid_applications also holds
-  contact names, addresses and phone numbers that intake never needs.
+  addresses and phone numbers that intake never needs. (The contact NAME is
+  read, by `read_fa_contacts` below: the Requests grid's Requested by and the
+  jump index's requesters, each column-narrowed too.)
 * `fetch_equity_answers` reads person_custom_values through EQUITY_FIELD_CM_IDS,
   an ALLOWLIST (the precedent: ADULT_NEED_FIELD_CM_IDS in
   api/services/adult_need_answers.py). That table holds race,
@@ -30,7 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from decimal import Decimal
 from typing import Any, Final
 
@@ -65,6 +67,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
     equity_from_json,
 )
+from api.services.financial_aid_requesters import FaContact
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
@@ -110,6 +113,7 @@ FA_READ_FIELDS: Final = ",".join(
         "expand.household.cm_id",
     )
 )
+FA_CONTACT_FIELDS: Final = "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"
 _BILLING_FIELDS: Final = ",".join(
     (
         "id",
@@ -162,6 +166,30 @@ def _float(value: Any) -> float:
 
 def _str(value: Any) -> str:
     return str(value or "")
+
+
+async def read_fa_contacts(page: Callable[[str, dict[str, Any]], Awaitable[list[Any]]], year: int) -> list[FaContact]:
+    """The contact name on every aid form row of the season, not only applicants, with the camper and household it
+    belongs to: the Requests grid's Requested by, and the jump index's requesters (financial_aid_requesters). Only
+    those columns are read. `page` is a repository's `_page`, so every aid repository shares this one query."""
+    rows = await page(
+        FINANCIAL_AID_APPLICATIONS,
+        {
+            "filter": f"year = {int(year)}",
+            "expand": "household",
+            "fields": FA_CONTACT_FIELDS,
+            "sort": STABLE_SORT,
+        },
+    )
+    return [
+        FaContact(
+            _int(getattr(r, "person_id", 0)),
+            _int(getattr(_expanded(r, "household"), "cm_id", 0)),
+            _str(getattr(r, "contact_first_name", "")),
+            _str(getattr(r, "contact_last_name", "")),
+        )
+        for r in rows
+    ]
 
 
 def _json(value: Any, default: Any) -> Any:
@@ -333,6 +361,9 @@ class FinancialAidIntakeRepository:
             },
         )
         return [_fa_row(r) for r in rows]
+
+    async def fetch_fa_contacts(self, year: int) -> list[FaContact]:
+        return await read_fa_contacts(self._page, year)
 
     async def fetch_sessions(self, year: int) -> list[SessionRow]:
         rows = await self._page(

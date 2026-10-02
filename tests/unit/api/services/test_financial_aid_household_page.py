@@ -41,6 +41,7 @@ from api.services.financial_aid_household_page import (
     totals,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord
+from api.services.financial_aid_requesters import FaContact
 from bunking.financial_aid.decisions import DecisionEvent, RoundState
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
@@ -1216,3 +1217,12 @@ def test_a_last_dollar_grant_is_in_the_band_as_the_band_counts_it() -> None:
     rows = [_row(EMMA, JOHNSON)]
     assert band_grants_by_request([grant_row(EMMA, "2000", pays_after_camp_aid=True)]) == {EMMA: Decimal(2000)}
     assert _flags([_grant_out(JOHNSON, EMMA, 2000.0, 9001)], rows) == [True]
+
+
+@pytest.mark.asyncio
+async def test_the_page_rows_carry_requested_by_like_the_grids() -> None:
+    store = _family()
+    store.fa_contacts = [FaContact(1000011, JOHNSON, "Maria", "Garcia")]
+    page = await _page_service(store).read(YEAR, JOHNSON)
+    by_id = {card.row.request_id: card.row.requested_by for card in page.requests}
+    assert by_id == {EMMA: "Maria Garcia", LIAM: None}

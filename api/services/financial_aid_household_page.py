@@ -61,6 +61,7 @@ from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
+from api.services.financial_aid_requesters import requester_names
 from api.services.financial_aid_share_split import dollars, payers, split
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
@@ -477,7 +478,12 @@ class HouseholdPageService:
             for actor in (state.posted_by, state.decided_by)
         } - {""}
         actors = {a.strip() for a in actors} - {""}
-        (names, user_names, postings, dispositions, household_rows, persons), links, details = await asyncio.gather(
+        (
+            (names, user_names, postings, dispositions, household_rows, persons),
+            links,
+            details,
+            contacts,
+        ) = await asyncio.gather(
             asyncio.gather(
                 self._store.fetch_names(year, scope.households, campers),
                 self._ledger.fetch_user_names(actors) if actors else _no_names(),
@@ -488,8 +494,10 @@ class HouseholdPageService:
             ),
             self._ledger.fetch_links(year),
             asyncio.gather(*(_income(self._casework, year, h) for h in scope.households)),
+            self._store.fetch_fa_contacts(year),
         )
-        rows = [decisions.row_of(season, names, rid) for rid in scope.request_ids]
+        requesters = requester_names(contacts, season.requests.values())
+        rows = [decisions.row_of(season, names, rid, requesters) for rid in scope.request_ids]
         r3_sessions = sorted(
             {r.session_cm_id for r in rows if r.session_cm_id > 0 and any(x.round == 3 for x in r.rounds)}
         )

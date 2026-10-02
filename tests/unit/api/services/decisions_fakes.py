@@ -43,6 +43,7 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_reconciliation import CampLine, LineOverride, SplitPart
+from api.services.financial_aid_requesters import FaContact
 from api.services.financial_aid_rules_service import RulesVersion
 from api.services.financial_aid_to_place import SinceCorrection, SinceLog, SinceRecords
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
@@ -94,7 +95,13 @@ class FakeDecisionsStore:
         self.since_reads: list[datetime] = []  # each fetch_changed_since call's floor
         self.household_attendees: list[Any] = []  # the March file's household members' registrations
         self.household_attendee_reads: list[frozenset[int]] = []  # each read's households
+        self.fa_contacts: list[FaContact] = []  # the aid form's contact names (the grid's Requested by)
+        self.fa_contact_reads = 0
         self._clock = T0
+
+    async def fetch_fa_contacts(self, year: int) -> list[FaContact]:
+        self.fa_contact_reads += 1
+        return list(self.fa_contacts)
 
     async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords:
         """As the repository reads them, after `floor`: the decision, hold and cancellation rows this twin
