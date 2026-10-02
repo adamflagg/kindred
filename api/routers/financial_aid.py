@@ -116,6 +116,7 @@ from api.schemas.financial_aid_intake import (
     RequestStatus,
     SessionResolve,
 )
+from api.schemas.financial_aid_march_file import MarchFileOut
 from api.schemas.financial_aid_reports import (
     CommitteeResponse,
     DevelopmentResponse,
@@ -219,6 +220,7 @@ from api.services.financial_aid_ledger_service import (
     FinancialAidValidationError,
     money,
 )
+from api.services.financial_aid_march_file import MarchFileService
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
@@ -996,6 +998,20 @@ async def get_remaining_line(
 ) -> RemainingResponse:
     """The Remaining line (D48), live or as of a past day."""
     return await _decisions().remaining(year, as_of=as_of, as_of_axis=as_of_axis)
+
+
+def _march_file() -> MarchFileService:
+    return MarchFileService(_decisions(), FinancialAidDecisionsRepository(pb))
+
+
+@router.get("/decisions/{year}/march-file", response_model=MarchFileOut)
+async def get_march_file(year: _Year, user: AuthUser = _CASEWORK) -> MarchFileOut:
+    """The March bulk file (§8.3; D73; S3-7): one row per payer share of each Round 1 offer still to make, at that
+    share's part of Round 1's decided amount, for CampMinder's staff. Live only; changes nothing."""
+    try:
+        return await _march_file().read(year)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
 
 
 @router.post("/requests/{request_id}/asks", response_model=DecisionWriteOut)
