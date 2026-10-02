@@ -82,9 +82,6 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
 vi.mock('../../hooks/camperships/useAidApplication', () => ({
   useAidApplication: () => ({ data: undefined, isLoading: false, error: null }),
 }))
-vi.mock('../../hooks/camperships/useAidSessionNames', () => ({
-  useAidSessionNames: () => undefined,
-}))
 vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
 }))

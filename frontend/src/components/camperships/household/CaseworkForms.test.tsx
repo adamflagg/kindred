@@ -44,9 +44,6 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidDuplicate: () => writing(spies.duplicate),
   useAidHeadcount: () => writing(spies.headcount),
 }))
-vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
-  useAidSessionNames: () => new Map([[1000199, 'Session 3']]),
-}))
 let application: ReturnType<typeof applicationOut> | undefined = applicationOut()
 vi.mock('../../../hooks/camperships/useAidApplication', () => ({
   useAidApplication: () => ({ data: application, isLoading: false, error: null }),
@@ -205,17 +202,16 @@ describe('ShareForm (main spec §9.2)', () => {
     })
   })
 
-  it('takes dollars for the server to turn into a percentage, and refuses more than 100%', async () => {
+  it('takes a percentage only: no dollar unit, and a typed amount is refused as not a percentage', async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    expect(screen.queryByLabelText('Share as')).toBeNull()
     await userEvent.type(screen.getByLabelText('Share'), '140')
     await userEvent.type(screen.getByLabelText('Reason'), 'Typo{Enter}')
     expect(screen.getByText('At most 100%')).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Share as'), 'amount')
     await userEvent.clear(screen.getByLabelText('Share'))
-    await userEvent.type(screen.getByLabelText('Share'), '880{Enter}')
-    expect(spies.share).toHaveBeenCalledWith(
-      expect.objectContaining({ body: { amount: '880', reason: 'Typo' } })
-    )
+    await userEvent.type(screen.getByLabelText('Share'), '$880{Enter}')
+    expect(screen.getByText('A percentage, like 40 or 62.5')).toBeInTheDocument()
+    expect(spies.share).not.toHaveBeenCalled()
   })
 
   it('adds a household that is not on the page by its CampMinder id', async () => {
@@ -232,27 +228,21 @@ describe('ShareForm (main spec §9.2)', () => {
     )
   })
 
-  it('refuses a share of nothing, in either unit, before asking the server', async () => {
+  it('refuses a share of nothing before asking the server', async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
     await userEvent.type(screen.getByLabelText('Share'), '0')
     await userEvent.type(screen.getByLabelText('Reason'), 'x{Enter}')
     expect(screen.getByText('More than 0%')).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Share as'), 'amount')
-    await userEvent.type(screen.getByLabelText('Share'), '{Enter}')
-    expect(screen.getByText('More than $0')).toBeInTheDocument()
     expect(spies.share).not.toHaveBeenCalled()
   })
 
-  it("shows the server's refusal (no priced amount yet) and stays open; done only on success", async () => {
-    outcome = Promise.reject(new Error('this request has no priced amount yet: enter a percentage'))
+  it("shows the server's refusal and stays open; done only on success", async () => {
+    outcome = Promise.reject(new Error('a withdrawn request has no payers to set'))
     outcome.catch(() => undefined)
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
-    await userEvent.selectOptions(screen.getByLabelText('Share as'), 'amount')
-    await userEvent.type(screen.getByLabelText('Share'), '500')
+    await userEvent.type(screen.getByLabelText('Share'), '50')
     await userEvent.type(screen.getByLabelText('Reason'), 'Split{Enter}')
-    expect(
-      await screen.findByText('this request has no priced amount yet: enter a percentage')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('a withdrawn request has no payers to set')).toBeInTheDocument()
     expect(done).not.toHaveBeenCalled()
   })
 
@@ -267,8 +257,19 @@ describe('ShareForm (main spec §9.2)', () => {
 })
 
 describe('SessionForm, DuplicateForm, HeadcountForm', () => {
-  it('settles the session from its candidates', async () => {
-    render(<SessionForm request={householdRequest(ROW_EMMA)} page={PAGE} onDone={done} />)
+  // The candidates come on the row (GridRowOut.session_candidates), named by the server.
+  const UNSETTLED = gridRow({
+    ...ROW_EMMA,
+    request_status: 'unmatched_session',
+    session_candidates: [
+      { session_cm_id: 1000101, name: 'Session 2' },
+      { session_cm_id: 1000199, name: 'Session 3' },
+    ],
+  })
+
+  it('settles the session from the candidates on the row, with no application read', async () => {
+    application = undefined
+    render(<SessionForm request={householdRequest(UNSETTLED)} onDone={done} />)
     expect(screen.getByRole('option', { name: 'Session 3' })).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Session'), '1000101')
     await userEvent.type(screen.getByLabelText('Reason'), 'Registered for Session 2{Enter}')
@@ -279,17 +280,15 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
   })
 
   it('says so when intake recorded no candidates', () => {
-    application = applicationOut({ requests: [requestOut({ flags: [] })] })
-    render(<SessionForm request={householdRequest(ROW_EMMA)} page={PAGE} onDone={done} />)
+    render(
+      <SessionForm
+        request={householdRequest({ ...UNSETTLED, session_candidates: [] })}
+        onDone={done}
+      />
+    )
     expect(
       screen.getByText('No candidate sessions are recorded for this request.')
     ).toBeInTheDocument()
-  })
-
-  it('says so, rather than "no candidates", when the application could not be read', () => {
-    application = undefined
-    render(<SessionForm request={householdRequest(ROW_EMMA)} page={PAGE} onDone={done} />)
-    expect(screen.getByText(/Couldn.t load this request.s candidate sessions/)).toBeInTheDocument()
   })
 
   it('keeps the other request and marks this one its duplicate', async () => {
@@ -303,6 +302,48 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       requestId: 'reqemmadup00009',
       body: { duplicate_of: 'reqemma00000001', reason: 'Sent twice' },
     })
+  })
+
+  it("also offers the holder intake named when it is on another household's page (§9.2)", async () => {
+    const pending = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    application = applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqemmadup00009',
+          status: 'duplicate_pending',
+          duplicate_of: 'reqemmaother01',
+        }),
+      ],
+    })
+    render(
+      <DuplicateForm
+        request={pending}
+        page={householdPage({ requests: [pending] })}
+        onDone={done}
+      />
+    )
+    expect(
+      screen.getByRole('option', { name: 'the request intake named · reqemmaother01' })
+    ).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Reason'), 'Second parent filed it{Enter}')
+    expect(spies.duplicate).toHaveBeenCalledWith({
+      requestId: 'reqemmadup00009',
+      body: { duplicate_of: 'reqemmaother01', reason: 'Second parent filed it' },
+    })
+  })
+
+  it('does not list the named holder twice when it is on the page', () => {
+    const pending = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    application = applicationOut({
+      requests: [requestOut({ id: 'reqemmadup00009', duplicate_of: 'reqemma00000001' })],
+    })
+    const page = householdPage({ requests: [householdRequest(ROW_EMMA), pending] })
+    render(<DuplicateForm request={pending} page={page} onDone={done} />)
+    expect(screen.getAllByRole('option')).toHaveLength(1)
   })
 
   it('sets a Family Camp headcount, starting from what the application holds', async () => {
@@ -319,7 +360,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
-    render(<HeadcountForm request={family} onDone={done} />)
+    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
     expect(screen.getByLabelText('Not infants')).toHaveValue('2')
     await userEvent.clear(screen.getByLabelText('Not infants'))
     await userEvent.type(screen.getByLabelText('Not infants'), '3')
@@ -330,6 +371,69 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     })
   })
 
+  it('shows a note, and no fields, when the headcount could not be read', () => {
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    application = undefined
+    const { unmount } = render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
+    expect(screen.queryByLabelText('Not infants')).toBeNull()
+    unmount()
+    // Read, but the request is not in it.
+    application = applicationOut({ requests: [requestOut({ id: 'reqother0000099' })] })
+    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
+  })
+
+  describe("the season's reason codes (Decision 6: what the page's override_reasons offers)", () => {
+    const CODES = householdPage({ override_reasons: ['headcount', 'discount'] })
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    beforeEach(() => {
+      application = applicationOut({
+        requests: [
+          requestOut({
+            id: 'reqfamily000010',
+            person_cm_id: 0,
+            headcount_non_infant: 2,
+            headcount_infant: 1,
+          }),
+        ],
+      })
+    })
+
+    it('offers the codes as the server sends them, and sends the one picked as reason_code', async () => {
+      render(<HeadcountForm request={family} page={CODES} onDone={done} />)
+      expect(screen.getByRole('option', { name: 'discount' })).toBeInTheDocument()
+      await userEvent.selectOptions(screen.getByLabelText('Reason code'), 'headcount')
+      await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
+      expect(spies.headcount).toHaveBeenCalledWith({
+        requestId: 'reqfamily000010',
+        body: {
+          non_infant: 2,
+          infant: 1,
+          source: 'override',
+          reason: 'Billing shows three',
+          reason_code: 'headcount',
+        },
+      })
+    })
+
+    it('asks for a code before sending when the season offers any', async () => {
+      render(<HeadcountForm request={family} page={CODES} onDone={done} />)
+      await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
+      expect(screen.getByText('Pick a reason code')).toBeInTheDocument()
+      expect(spies.headcount).not.toHaveBeenCalled()
+    })
+
+    it('offers no picker, and sends no code, when the page carries none', () => {
+      render(<HeadcountForm request={family} page={householdPage()} onDone={done} />)
+      expect(screen.queryByLabelText('Reason code')).toBeNull()
+    })
+  })
+
   it('refuses a family of nobody before asking the server', async () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
@@ -337,7 +441,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     application = applicationOut({
       requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
     })
-    render(<HeadcountForm request={family} onDone={done} />)
+    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
     await userEvent.type(screen.getByLabelText('Reason'), 'none{Enter}')
     expect(screen.getByText('A family needs at least one person')).toBeInTheDocument()
     expect(spies.headcount).not.toHaveBeenCalled()

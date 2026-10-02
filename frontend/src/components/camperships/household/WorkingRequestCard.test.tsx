@@ -68,16 +68,13 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidRound3Decision: () => quiet,
   useAidRound3Amount: () => quiet,
   useAidHouseholdShare: () => quiet,
-  useAidSessionResolve: () => quiet,
+  useAidSessionResolve: () => ({ ...quiet, mutateAsync: () => resolveGate ?? Promise.resolve({}) }),
   useAidDuplicate: () => quiet,
   useAidHeadcount: () => quiet,
   useAidCorrection: () => quiet,
 }))
 vi.mock('../../../hooks/camperships/useAidApplication', () => ({
   useAidApplication: () => ({ data: applicationOut(), isLoading: false, error: null }),
-}))
-vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
-  useAidSessionNames: () => undefined,
 }))
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
@@ -87,6 +84,8 @@ const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 const go = vi.fn()
 // When set, the cancellation write stays pending until the test settles it.
 let cancelGate: Promise<unknown> | null = null
+// When set, Settle session's write stays pending until the test settles it.
+let resolveGate: Promise<unknown> | null = null
 let exitsSeen: EditorExits | null = null
 
 const settle = () => {
@@ -130,6 +129,7 @@ const renderCards = (rows = [ROW_OLIVIA], canWork = true, canApprove = false) =>
 beforeEach(() => {
   cancel.mockReset()
   cancelGate = null
+  resolveGate = null
   manual.mockReset()
   ask.mockReset()
   go.mockReset()
@@ -504,13 +504,38 @@ describe('WorkingRequestCard: the casework forms', () => {
     expect(screen.getByLabelText('Household')).toBeInTheDocument()
   })
 
+  const UNSETTLED = {
+    ...ROW_EMMA,
+    request_status: 'unmatched_session',
+    session_candidates: [{ session_cm_id: 1000101, name: 'Session 2' }],
+  }
+
   it('drops a form once the request no longer takes it (a refetch moved the status)', async () => {
-    const { rerender } = render(
-      <Cards rows={[{ ...ROW_EMMA, request_status: 'unmatched_session' }]} />
-    )
+    const { rerender } = render(<Cards rows={[UNSETTLED]} />)
     await userEvent.click(screen.getByRole('button', { name: 'Settle session…' }))
     expect(screen.getByLabelText('Session')).toBeInTheDocument()
-    rerender(<Cards rows={[{ ...ROW_EMMA, request_status: 'active' }]} />)
+    rerender(<Cards rows={[{ ...UNSETTLED, request_status: 'active' }]} />)
     expect(screen.queryByLabelText('Session')).toBeNull()
+  })
+
+  it('a save that removes its own offer unmounts its form mid-save: no error, and the card is free after', async () => {
+    let settle: () => void = () => undefined
+    resolveGate = new Promise<void>((resolve) => {
+      settle = resolve
+    })
+    const { rerender } = render(<Cards rows={[UNSETTLED]} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Settle session…' }))
+    await userEvent.selectOptions(screen.getByLabelText('Session'), '1000101')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Registered for Session 2{Enter}')
+    // The refetch lands before the write's promise resolves, and the row is no longer unmatched.
+    rerender(<Cards rows={[{ ...UNSETTLED, request_status: 'active' }]} />)
+    expect(screen.queryByLabelText('Session')).toBeNull()
+    await act(async () => {
+      settle()
+      await resolveGate
+    })
+    expect(screen.queryByText(/Couldn|required|refused/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    expect(screen.getByLabelText('Household')).toBeInTheDocument()
   })
 })
