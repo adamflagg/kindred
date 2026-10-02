@@ -1,7 +1,8 @@
 """Who requested a request's aid: the parent or guardian who submitted the aid form (Requests grid "Requested by").
 
 The name is the form's contact name, read from the synced financial_aid_applications mirror. The chain, per request:
-1. The camper's own form row(s) with a contact name: that name.
+1. The camper's own form row(s) with a contact name decide alone: their one name, or None when they name two or
+   more different people (no fallback to the household).
 2. Otherwise, the request's household has exactly one distinct contact name across its form rows: that name.
 3. Otherwise None: two or more different names (ambiguous, never guessed) or none at all.
 """
