@@ -520,6 +520,95 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.11",
         rulings=("D142",),
     ),
+    # Money › To place (slice 3; PENDING OWNER, owner question 4).
+    Definition(
+        key="not_yet_in_campminder",
+        term="Not yet in CampMinder",
+        text=(
+            "Not yet in CampMinder: a candidate request's locked total, plus the decided amounts of its rounds waiting "
+            "to be ticked, less the live camp-aid money already placed on it. It is what To place weighs a line "
+            "against; it redefines nothing."
+        ),
+        spec="§8.1",
+        rulings=("D151",),
+    ),
+    Definition(
+        key="to_place_suggestion",
+        term="Suggestion",
+        text=(
+            "Suggestion: Kindred's proposed placement or split of a line, with its evidence (an exact amount match, "
+            "the person on the line, the date, or a split in proportion to the decided amounts). It counts toward "
+            "nothing until a person confirms it, and Kindred never chooses between equal matches."
+        ),
+        spec="§8.1",
+        rulings=("D12", "D16"),
+    ),
+    Definition(
+        key="placement_tick",
+        term="A placement's tick",
+        text=(
+            "A placement's tick: placing a line ticks Posted on the rounds the placed money covers in full, oldest "
+            "first, at their decided amounts as of the posting date. If anything that prices the request was "
+            "recorded since that posting, the money is still placed but the automatic tick is refused, and the "
+            "registrar ticks by hand. The tick never reads awaiting tonight's sync: the money is already in CampMinder."
+        ),
+        spec="§5.1",
+        rulings=("D81", "D146", "D151", "D152"),
+    ),
+    # Money › Sources (slice 3; PENDING OWNER, owner question 4). The three facts are #2967's source_facts.
+    Definition(
+        key="reporting_group",
+        term="Reporting group",
+        text=(
+            "Reporting group: the season's budget pool, or programs within it, that an outside source funds. The "
+            "ledger places a household-level grant line with it. An outside source with none needs a group, here and "
+            "on Today. Changing it re-places household-level lines in multi-program households on the next sync."
+        ),
+        spec="§8.1",
+        rulings=("D95", "D100", "D159"),
+    ),
+    Definition(
+        key="source_lines",
+        term="Lines this season",
+        text=(
+            "Lines this season: the season's live CampMinder lines a description classifies, after any reclassifying "
+            "override, and their net. A reversed line is left out."
+        ),
+        spec="§5.5",
+        rulings=("D58", "D74"),
+    ),
+    # Grants (slice 3; PENDING OWNER, owner question 4).
+    Definition(
+        key="expected_grant",
+        term="Expected",
+        text=(
+            "Expected: a family whose aid form says it applied, or plans to apply, for an outside camper grant or a "
+            "congregation's campership, with no such line in CampMinder yet. It clears itself when a line arrives. It "
+            "is never a grant, and the calculator never counts it."
+        ),
+        spec="§5.8",
+        rulings=("D56",),
+    ),
+    Definition(
+        key="last_dollar",
+        term="Pays after camp aid",
+        text=(
+            "Pays after camp aid: a full-cost grantor that fills whatever {camp}'s award left, last. The calculator "
+            "never subtracts its grant from the award, but the family's share does."
+        ),
+        spec="§5.8",
+        rulings=("D143", "D150"),
+    ),
+    Definition(
+        key="grantor_season",
+        term="Grants this season",
+        text=(
+            "Grants this season: a grantor's live CampMinder grant lines this season (a line still waiting for its "
+            "camper included) and their net. A reversed line and a commitment not yet in CampMinder are left out."
+        ),
+        spec="§5.7",
+        rulings=("D55", "D87"),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -539,6 +628,9 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "unconfirmed",
     ),
     "money-ledger": ("in_campminder_net", "posted"),
+    "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
+    "money-sources": ("source_facts", "reporting_group", "source_lines"),
+    "grants": ("grants", "expected_grant", "last_dollar", "household_level", "grantor_season"),
     "reports-statistics": (
         "apps",
         "cancelled_applicants",

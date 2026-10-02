@@ -265,3 +265,12 @@ def test_the_household_search_passes_the_season_and_query() -> None:
 def test_the_household_search_refuses_a_query_too_short_or_too_long(query: str) -> None:
     _stub_search()
     assert _client().get(f"/api/financial-aid/household-search/2031?q={query}").status_code == 422
+
+
+@pytest.mark.parametrize(("surface", "notes"), [("money-to-place", 4), ("money-sources", 3), ("grants", 5)])
+def test_slice_3s_surfaces_serve_their_numbered_notes(surface: str, notes: int) -> None:
+    with patch("api.routers.financial_aid.camp_label", return_value="Camp Fictional"):
+        response = _client().get(f"/api/financial-aid/definitions?surface={surface}")
+    assert response.status_code == 200
+    assert [n["n"] for n in response.json()["notes"]] == list(range(1, notes + 1))
+    assert "{camp}" not in response.text

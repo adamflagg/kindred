@@ -32,7 +32,9 @@ def test_the_household_band_cites_its_five_figures() -> None:
 @pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: d.key)
 def test_each_definition_cites_its_spec_section_and_rulings(definition: Definition) -> None:
     assert re.fullmatch(r"[a-z][a-z0-9_]*", definition.key)
-    assert re.fullmatch(r"§[579]\.\d+", definition.spec)
+    # §8 since slice 3 PR-B: "not yet in CampMinder" (D151), the suggestion (D12, D16) and the reporting group (D100)
+    # are signed in §0 and written only in the spec's §8.1 (owner question 4). A citation must still be a section.
+    assert re.fullmatch(r"§[5789]\.\d+", definition.spec)
     assert definition.rulings
     assert all(re.fullmatch(r"D\d+", r) for r in definition.rulings)
 
