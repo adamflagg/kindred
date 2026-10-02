@@ -56,6 +56,7 @@ from api.services.financial_aid_ledger_service import (
 from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
+from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_share_split import dollars, payers, split
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
@@ -563,6 +564,11 @@ class HouseholdPageService:
             ],
             links=[_link_row(ln) for ln in family_links],
             history=[entry for record in log if (entry := _history_entry(record, request_ids)) is not None],
+            override_reasons=(
+                list(season.rules.document.cost.override_reasons)
+                if season.rules is not None
+                else list(DEFAULT_REASON_CODES)
+            ),
         )
 
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.schemas.financial_aid import AidPostingLine, HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
@@ -170,3 +170,6 @@ class HouseholdPageResponse(BaseModel):
     postings: list[AidPostingLine]
     links: list[HouseholdLinkRow]
     history: list[HistoryEntryOut]
+    override_reasons: list[str] = Field(
+        default_factory=list
+    )  # Decision 6: what the cost-override and headcount forms offer

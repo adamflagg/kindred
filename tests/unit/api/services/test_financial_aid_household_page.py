@@ -1008,3 +1008,16 @@ def test_when_a_requests_aid_alone_passes_its_cost_the_band_falls_short_by_the_e
     assert out.cost is not None
     assert out.decided is not None
     assert out.cost - out.decided - (out.grants_applied or 0) == -108.0
+
+
+@pytest.mark.asyncio
+async def test_the_page_carries_the_seasons_reason_codes() -> None:
+    """Decision 6: the cost-override and headcount forms offer the approved rules' cost.override_reasons."""
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert page.override_reasons == [
+        "headcount",
+        "partial_session",
+        "discount",
+        "missing_catalog",
+        "typed_household_total",
+    ]
