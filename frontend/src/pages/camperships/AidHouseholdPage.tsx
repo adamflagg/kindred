@@ -10,6 +10,12 @@ import { HoldBanners } from '../../components/camperships/household/HoldBanners'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
 import { bandSubtitle, bandTitle } from '../../components/camperships/household/householdModel'
 import { HouseholdTotals } from '../../components/camperships/household/HouseholdTotals'
+import {
+  GrantsPostingsSection,
+  HistorySection,
+  IncomeSection,
+  LinksSection,
+} from '../../components/camperships/household/HouseholdSections'
 import { RequestCard } from '../../components/camperships/household/RequestCard'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -31,6 +37,10 @@ function HouseholdBody({ page, view }: { page: ApiAidHouseholdPage; view: AidVie
       {page.requests.map((request) => (
         <RequestCard key={request.row.request_id} request={request} page={page} view={view} />
       ))}
+      <IncomeSection page={page} />
+      <GrantsPostingsSection page={page} />
+      <LinksSection page={page} />
+      <HistorySection page={page} />
     </>
   )
 }
