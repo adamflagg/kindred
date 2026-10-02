@@ -33,7 +33,8 @@ reporting groups). The service resolves every input to a group first; this modul
                   session (SCIT, TLI).
   appeals (D101)  requests with an ask in Round 2 or later, for a camper (or household) who attended, once per
                   request; approved = posted Round 2+ money above $0: in full when every appeal round posted at least
-                  its own ask, else in part. Declined for insufficient aid = requests cancelled with that reason, attended or not.
+                  its own ask, else in part. Every cancel reason (D158, amending D101) counts every cancelled aid request, attended or not; "declined for
+                  insufficient aid" is the aid_not_enough one.
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ from bunking.financial_aid.scenarios.committee import pct
 
 GroupKind = Literal["summer", "families", "campers"]
 AID_NOT_ENOUGH: Final = "aid_not_enough"  # D141's "declined: aid not enough / financial constraints"
+NOT_RECORDED_REASON: Final = "not_recorded"  # a cancellation with no reason given (every one before 2027)
 SELF_DESCRIBED: Final = "self-described"
 NOT_GIVEN: Final = "not given"
 TEEN, YOUTH, ADULT, AGE_UNKNOWN = "13–17", "0–12", "18 and over", "age unknown"
@@ -153,6 +155,7 @@ class GroupFigures:
     gender_enrolled: Mapping[str, int] = field(default_factory=dict)  # the summer group only
     incentive_awards: Decimal = ZERO  # the incentive-flagged sources' money (D88's detail line)
     teen_programs: int | None = None  # the summer group only: recipients at a TLI or SCIT session
+    cancelled_by_reason: Mapping[str, int] = field(default_factory=dict)  # D158: every cancelled aid request, by reason
     # Internal, for the ZIP read only: NEVER copied into a response (D66, D90: no family's row, ever).
     money_by_recipient: Mapping[int, Decimal] = field(default_factory=dict)  # camper (or household) -> all money
     household_level_by_household: Mapping[int, Decimal] = field(default_factory=dict)
@@ -166,6 +169,7 @@ class NotInGroup:
     outside: Decimal
     awards: int
     households: int
+    cancelled_by_reason: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def total(self) -> Decimal:
@@ -239,6 +243,7 @@ class _Tally:
     in_part: int = 0
     declined: int = 0
     incentive: Decimal = ZERO
+    cancelled: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
 def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
@@ -290,10 +295,14 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
                 outside_groups.camp_count += 1
                 outside_groups.households.add(request.household_cm_id)
                 source(CAMP_SOURCE, NOT_REPORTED, money)
+            if request.standing == "cancelled":
+                outside_groups.cancelled[request.cancel_reason or NOT_RECORDED_REASON] += 1
             continue
         tally = tallies[group.key]
-        if request.standing == "cancelled" and request.cancel_reason == AID_NOT_ENOUGH:
-            tally.declined += 1  # D101: the one count that includes campers who did not attend
+        if request.standing == "cancelled":  # D158 (amends D101): every reason, attended or not, awarded or not
+            tally.cancelled[request.cancel_reason or NOT_RECORDED_REASON] += 1
+            if request.cancel_reason == AID_NOT_ENOUGH:
+                tally.declined += 1
         if not attended(group, request.person_cm_id, request.household_cm_id):
             continue
         whom = request.household_cm_id if group.kind == "families" else request.person_cm_id
@@ -357,6 +366,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         outside=outside_groups.outside,
         awards=outside_groups.camp_count + outside_groups.outside_count,
         households=len(outside_groups.households),
+        cancelled_by_reason=dict(outside_groups.cancelled),
     )
     return DevelopmentColumn(
         groups=figures,
@@ -401,6 +411,7 @@ def _figures(
         ),
         appeals=Appeals(tally.submitted, tally.in_full, tally.in_part, tally.declined),
         incentive_awards=tally.incentive,
+        cancelled_by_reason=dict(tally.cancelled),
         money_by_recipient={k: v for k, v in tally.camper_money.items() if v > 0},
         household_level_by_household=dict(tally.household_money),
     )

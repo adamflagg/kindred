@@ -34,6 +34,7 @@ from api.schemas.financial_aid_reports import (
     NotBuiltOut,
 )
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_cancellations import CANCEL_REASON_LABELS, CANCEL_REASONS
 from api.services.financial_aid_decisions_service import (
     FIRST_TICKED_SEASON,
     DecisionsStore,
@@ -50,7 +51,9 @@ from api.services.financial_aid_reports_service import ReportsStore
 from bunking.financial_aid.reports.development import (
     ADULT,
     AGE_UNKNOWN,
+    AID_NOT_ENOUGH,
     CAMP_SOURCE,
+    NOT_RECORDED_REASON,
     NOT_REPORTED,
     TEEN,
     YOUTH,
@@ -79,6 +82,12 @@ NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
 FAMILY_TYPES: Final = frozenset({"family", "adult"})
 FIRST_TIME_SUMMER: Final = "No Summer Camp or Quest session at camp in any earlier season from 2017 (the default; D99)"
 FIRST_TIME_FAMILY: Final = "The household's first season in this group's programs since 2017 (the default; D99)"
+AVERAGE_AWARD_DEFINITION: Final = "Total Awards Granted (the camp's aid plus outside grants) ÷ Number of awards (D158)"
+# D158: development sees every cancel reason. "aid not enough" keeps its own line (declined_insufficient).
+_CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
+    *((f"cancelled_{r}", f"Cancelled: {CANCEL_REASON_LABELS[r]}") for r in CANCEL_REASONS if r != AID_NOT_ENOUGH),
+    (f"cancelled_{NOT_RECORDED_REASON}", "Cancelled: reason not recorded"),
+)
 NOT_BUILT: Final[Mapping[str, str]] = {
     "rebuild": (
         "Kindred's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons show "
@@ -205,7 +214,7 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
     _RowSpec("outside_awards", "money", "Grants from other funders", "dollars", True, None, None),
     _RowSpec("incentive_awards", "money", "of which incentive grants", "dollars", True, None, None),
     _RowSpec("awards", "money", "Number of awards", "count", True, None, "awards"),
-    _RowSpec("average_award", "money", "Average award", "dollars", True, None, None),
+    _RowSpec("average_award", "money", "Average award", "dollars", True, None, None, AVERAGE_AWARD_DEFINITION),
     _RowSpec("total_requests", "money", "Total Requests (demand)", "dollars", True, None, "total_requests"),
     _RowSpec("need_met", "money", "% of need met", "percent", True, frozenset({"summer"}), "need_met"),
     _RowSpec("recipients", "counts", "Applications (got money)", "count", True, None, "recipients"),
@@ -239,10 +248,13 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
         None,
         "declined_insufficient",
     ),
+    *(_RowSpec(key, "appeals", label, "count", True, None, None) for key, label in _CANCEL_ROWS),
 )
 
 
 def _group_value(key: str, figures: GroupFigures) -> Decimal | int | None:
+    if key.startswith("cancelled_"):
+        return figures.cancelled_by_reason.get(key.removeprefix("cancelled_"), 0)
     simple: dict[str, Decimal | int | None] = {
         "total_awards": figures.total_awards,
         "camp_awards": figures.camp_awards,
@@ -288,6 +300,8 @@ def _total_value(key: str, column: DevelopmentColumn) -> Decimal | int | None:
         "camp_awards": column.not_in_group.camp,
         "outside_awards": column.not_in_group.outside,
         "awards": column.not_in_group.awards,
+        "declined_insufficient": column.not_in_group.cancelled_by_reason.get(AID_NOT_ENOUGH, 0),
+        **{f"cancelled_{r}": n for r, n in column.not_in_group.cancelled_by_reason.items()},
         "not_in_group_amount": column.not_in_group.total,
         "not_in_group_awards": column.not_in_group.awards,
     }

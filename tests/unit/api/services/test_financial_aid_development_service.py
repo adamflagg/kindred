@@ -6,14 +6,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 import pytest
 
+from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent
 from api.services.financial_aid_development_repository import PersonRecord, SourceRecord
 from api.services.financial_aid_development_service import (
+    AVERAGE_AWARD_DEFINITION,
     FIRST_TIME_SUMMER,
     FinancialAidDevelopmentService,
     grouping,
@@ -235,3 +237,35 @@ async def test_typed_summer_lines_reach_their_rows() -> None:
     assert _row(out, "need_met", "camp_pool").values[0] == 70.0
     assert _row(out, "teens", "camp_pool").values[0] == 12.0
     assert _row(out, "teen_programs", "camp_pool").values[0] == 3.0
+
+
+async def test_development_lists_every_cancel_reason_with_its_label() -> None:
+    """D158: one line per reason, each a count of cancelled aid requests; "aid not enough" stays its own line."""
+    store = report_season()
+    store.cancel_events.append(
+        CancelEvent(
+            "can000000000001",
+            "reqliam00000001",
+            "cancel",
+            NOW - timedelta(days=1),
+            reason="schedule",
+            in_kindred=True,
+            actor="registrar@example.com",
+        )
+    )
+    out = await _service(_development(), store=store).development(YEAR)
+    row = _row(out, "cancelled_schedule", None)
+    assert (row.label, row.section, row.values) == ("Cancelled: schedule", "appeals", [1.0])
+    assert _row(out, "cancelled_not_recorded", "camp_pool").values == [0.0]
+    assert _row(out, "declined_insufficient", "camp_pool").values == [0.0]
+    every = {r.key for r in out.rows if r.group is None and r.key.startswith("cancelled_")}
+    assert every == {f"cancelled_{c}" for c in CANCEL_REASONS if c != "aid_not_enough"} | {"cancelled_not_recorded"}
+
+
+async def test_the_average_award_is_all_money_over_the_number_of_awards_and_says_so() -> None:
+    """D158: (the camp's aid + outside grants) / Number of awards, per group and for every group."""
+    out = await _service(_development(), register=[grant_row("reqemma00000001", "500")]).development(YEAR)
+    row = _row(out, "average_award", "camp_pool")
+    assert row.values == [1000.0]  # (1,500 + 500) / 2 awards
+    assert row.definition == AVERAGE_AWARD_DEFINITION
+    assert _row(out, "average_award", None).values == [1000.0]

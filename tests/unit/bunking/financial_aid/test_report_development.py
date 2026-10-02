@@ -12,6 +12,7 @@ from bunking.financial_aid.reports.development import (
     AGE_UNKNOWN,
     CAMP_SOURCE,
     NOT_GIVEN,
+    NOT_RECORDED_REASON,
     NOT_REPORTED,
     SELF_DESCRIBED,
     TEEN,
@@ -338,3 +339,29 @@ def test_tli_and_scit_stay_a_program_line_of_the_summer_group() -> None:
         )
     )
     assert _camp(column).teen_programs == 1
+
+
+def test_every_cancel_reason_counts_every_cancelled_request_attended_or_not() -> None:
+    """D158 (amends D101): development sees every reason; each counts every cancelled aid request in its group,
+    awarded or not, attended or not. A cancellation with no reason given is "not recorded"."""
+    column = development_column(
+        _inputs(
+            requests=(
+                req("reqemma00000001", rnd(1, ask="4000"), person=EMMA, standing="cancelled", reason="medical"),
+                req(
+                    "reqliam00000001",
+                    rnd(1, ask="4000", posted="1500"),
+                    person=LIAM,
+                    household=1000002,
+                    standing="cancelled",
+                    reason="aid_not_enough",
+                ),
+                req("reqnoah00000001", rnd(1, ask="4000"), person=NOAH, household=1000003, standing="cancelled"),
+                req("reqava000000001", rnd(1, ask="4000", posted="1500"), person=AVA, household=1000004),
+            ),
+            attendance=(_went(AVA, 1000004),),
+        )
+    )
+    camp = _camp(column)
+    assert camp.cancelled_by_reason == {"medical": 1, "aid_not_enough": 1, NOT_RECORDED_REASON: 1}
+    assert camp.appeals.declined_insufficient_aid == 1  # the aid_not_enough line keeps its own count
