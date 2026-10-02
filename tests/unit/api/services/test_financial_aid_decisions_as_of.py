@@ -847,3 +847,16 @@ async def test_a_masked_pool_keeps_its_type_lines_posted_part_only() -> None:
     (line,) = camp.decision_types
     assert (line.key, line.posted, line.amount, line.own, line.requests) == (None, 1500.0, None, None, None)
     assert (camp.below.outside_grants, camp.below.outside_grants_requests) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_masked_pool_masks_the_new_demand_counts_with_their_figures() -> None:
+    past = await _service(_seeded(EMMA)).budget(YEAR, as_of=MAR_9)
+    demand = next(p for p in past.pools if p.pool == "camp_pool").demand
+    assert (demand.round1_unmet, demand.round1_unmet_requests, demand.round1_held, demand.round1_held_asked) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert (demand.round2_held, demand.round2_held_asked) == (None, None)

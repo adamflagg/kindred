@@ -775,6 +775,11 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             round2_asked=money(pool.demand.round2_asked),
             round2_computed=money(pool.demand.round2_computed),
             round1_unmet=money(pool.demand.round1_unmet),
+            round1_unmet_requests=_count(pool.demand.round1_unmet_requests),
+            round2_held=_count(pool.demand.round2_held),
+            round2_held_asked=money(pool.demand.round2_held_asked),
+            round1_held=_count(pool.demand.round1_held),
+            round1_held_asked=money(pool.demand.round1_held_asked),
         ),
         decision_types=[
             DecisionTypeLineOut(
@@ -1088,9 +1093,21 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
     Needs an offer, Pending approval, Remaining, the held figures, outside grants, outside the budget
     and the computed demand stay empty. Remaining also needs Posted (`posted`), and Round 2 asks so far
     every request's status (`asks`)."""
-    demand: dict[str, Any] = {} if priced else {"round2_computed": None, "round1_unmet": None}
+    demand: dict[str, Any] = (
+        {}
+        if priced
+        else {
+            "round2_computed": None,
+            "round1_unmet": None,
+            "round1_unmet_requests": None,
+            "round1_held": None,
+            "round1_held_asked": None,
+            "round2_held": None,
+            "round2_held_asked": None,
+        }
+    )
     if not asks:
-        demand |= {"round2_asks": None, "round2_asked": None}
+        demand |= {"round2_asks": None, "round2_asked": None, "round2_held": None, "round2_held_asked": None}
     below: dict[str, Any] = (
         {}
         if priced

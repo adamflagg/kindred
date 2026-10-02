@@ -301,6 +301,11 @@ class ForwardDemandOut(BaseModel):
     round2_asked: float | None
     round2_computed: float | None
     round1_unmet: float | None
+    round1_unmet_requests: CountOut | None = None
+    round2_held: CountOut | None = None
+    round2_held_asked: float | None = None
+    round1_held: CountOut | None = None
+    round1_held_asked: float | None = None
 
 
 class DecisionTypeLineOut(BaseModel):

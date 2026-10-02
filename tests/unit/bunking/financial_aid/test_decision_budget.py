@@ -502,3 +502,26 @@ def test_the_outside_grants_line_counts_the_requests_it_offsets() -> None:
         rows, RULES, outside_grants={"a": Decimal(400), "b": Decimal(0), "c": Decimal(250)}
     ).total.below
     assert (below.outside_grants, below.outside_grants_requests) == (Decimal(650), Count(2, 2))
+
+
+def test_forward_demand_counts_unmet_round_1_and_splits_out_the_held() -> None:
+    rows = [
+        priced("short", 1000001, view(1, "posted", ask="2000", locked="1500")),  # 500 unmet
+        priced("met", 1000002, view(1, "posted", ask="1500", locked="1500")),  # nothing unmet: not counted
+        priced("held1", 1000003, view(1, "held", ask="1800")),
+        priced("appeal", 1000004, view(1, "posted", locked="1500"), view(2, "needs_offer", ask="900", decided="400")),
+        priced("held2", 1000005, view(1, "posted", locked="1500"), view(2, "held", ask="700")),
+    ]
+    demand = season_budget(rows, RULES, outside_grants={}).total.demand
+    assert (demand.round1_unmet, demand.round1_unmet_requests) == (Decimal(2300), Count(2, 2))
+    assert (demand.round1_held, demand.round1_held_asked) == (Count(1, 1), Decimal(1800))
+    assert (demand.round2_asks, demand.round2_asked) == (Count(2, 2), Decimal(1600))  # unchanged: held included
+    assert (demand.round2_held, demand.round2_held_asked) == (Count(1, 1), Decimal(700))
+
+
+def test_a_pool_reached_only_by_demand_is_still_listed_as_before() -> None:
+    """The refactor keeps which pools are listed: a pool no money reaches, but a $0 appeal does, still shows (the old
+    per-figure dicts created its key)."""
+    appeal = priced("a", 1000001, view(2, "not_decided", ask="0", pool="other_pool"))
+    budget = season_budget([appeal], RULES, outside_grants={})
+    assert pool_of(budget, "other_pool").demand.round2_asks == Count(1, 1)

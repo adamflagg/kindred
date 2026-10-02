@@ -76,3 +76,20 @@ def test_the_budget_surface_cites_the_budgets_own_posted() -> None:
     assert "posted" not in SURFACES["season-rounds-budget"]
     assert BY_KEY["budget_posted"].spec == "§5.3"
     assert BY_KEY["budget_posted"].term == "Posted"
+
+
+def test_rounds_and_budget_adds_forward_demand_and_the_confirmed_share_after_its_first_seven() -> None:
+    """Appended, so notes 1–7 keep their numbers; §5.9 (D82) and the owner's ⚠10 ruling (D59, D153)."""
+    keys = SURFACES["season-rounds-budget"]
+    assert keys[:7] == (
+        "allocated",
+        "budget_posted",
+        "accepted",
+        "needs_offer",
+        "pending_approval",
+        "remaining",
+        "below_the_line",
+    )
+    assert keys[7:] == ("round2_asks", "round1_unmet", "unconfirmed")
+    assert "held appeals' asks included" in BY_KEY["round2_asks"].text
+    assert "oldest round first" in BY_KEY["unconfirmed"].text
