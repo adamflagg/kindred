@@ -120,24 +120,34 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
   )
 
   /**
-   * One write after the last, refreshing the scenario reads when it settles. Resolves true when the
-   * write landed, false when it was refused (its words are in `error`).
+   * One write after the last. Resolves true when the write landed, false when it was refused (its
+   * words are in `error`). The scenario reads refresh before `busy` clears, so a button never comes
+   * back while the page still shows the state from before the write. A write that returns `false`
+   * recorded nothing and refreshes nothing (a slider's no-op release). A failing refresh can never
+   * stop later writes.
    */
   const run = useCallback(
-    (label: string, write: () => Promise<void>): Promise<boolean> => {
+    (label: string, write: () => Promise<boolean | undefined>): Promise<boolean> => {
       const done = chain.current.then(async () => {
         setBusy(label)
         setError(null)
+        let wrote = true
+        let landed = true
         try {
-          await write()
-          return true
+          wrote = (await write()) !== false
         } catch (caught) {
           setError(message(caught, "Couldn't do that"))
-          return false
-        } finally {
-          setBusy(null)
-          void invalidateAidScenarioQueries(queryClient)
+          landed = false
         }
+        if (wrote) {
+          try {
+            await invalidateAidScenarioQueries(queryClient)
+          } catch {
+            // the refetch is a refresh, not part of the write: the chain must keep going
+          }
+        }
+        setBusy(null)
+        return landed
       })
       chain.current = done.then(() => undefined)
       return done
@@ -167,19 +177,29 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     () =>
       run('Recording…', async () => {
         const moved = pendingRef.current
+        if (!hasPending(moved)) return false
         const draft = draftRef.current
-        if (!hasPending(moved) || draft === null) return
-        const evaluated = await evaluateAidScenario(fetchWithAuth, year, {
-          document: sizingDocument(draft.document, moved),
-          tier_shift: moved.tierShift,
-          band_width_delta: moved.bandDelta,
-        })
-        settleDraft(
-          await saveAidScenarioDraft(fetchWithAuth, year, { document: evaluated.document })
-        )
-        clearPending()
+        if (draft === null) throw new Error('Load a kept option into your draft first')
+        // This release prices the season itself: a live pricing still waiting would be a second one.
+        if (timer.current !== null) clearTimeout(timer.current)
+        inFlight.current?.abort()
+        try {
+          const evaluated = await evaluateAidScenario(fetchWithAuth, year, {
+            document: sizingDocument(draft.document, moved),
+            tier_shift: moved.tierShift,
+            band_width_delta: moved.bandDelta,
+          })
+          settleDraft(
+            await saveAidScenarioDraft(fetchWithAuth, year, { document: evaluated.document })
+          )
+          clearPending()
+        } catch (caught) {
+          // Refused: the moves are still on screen, so their figures follow again.
+          move({})
+          throw caught
+        }
       }),
-    [run, fetchWithAuth, year, settleDraft, clearPending]
+    [run, fetchWithAuth, year, settleDraft, clearPending, move]
   )
 
   /** A kept option or a trail row into the draft; recorded, so loading never asks "discard?" (D38). */
@@ -205,16 +225,22 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     () =>
       run('Freezing the applications…', async () => {
         await freezeAidScenarioSeason(fetchWithAuth, year)
+        // Moves still on screen were priced on the snapshot this replaced.
+        if (hasPending(pendingRef.current)) move({})
       }),
-    [run, fetchWithAuth, year]
+    [run, fetchWithAuth, year, move]
   )
 
   const start = useCallback(
     (from: 'rules' | 'last_season') =>
       run('Starting…', async () => {
-        await startAidScenarios(fetchWithAuth, year, from)
+        // Starting replaces the draft: settle the workspace it returns, as a load settles its draft.
+        const started = await startAidScenarios(fetchWithAuth, year, from)
+        draftRef.current = started.draft ?? null
+        queryClient.setQueryData<ApiAidScenarioWorkspace>(queryKeys.aidScenarios(year), started)
+        clearPending()
       }),
-    [run, fetchWithAuth, year]
+    [run, fetchWithAuth, year, queryClient, clearPending]
   )
 
   return { pending, live, busy, error, move, release, load, keep, freeze, start }
