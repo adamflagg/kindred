@@ -7,14 +7,20 @@ import type {
   ApiAidAcceptedIn,
   ApiAidApprovedRules,
   ApiAidAskIn,
+  ApiAidCancellationIn,
   ApiAidDefinitions,
   ApiAidGrid,
+  ApiAidHoldReleaseIn,
   ApiAidHouseholdPage,
   ApiAidJumpIndex,
+  ApiAidManualHoldIn,
   ApiAidPreview,
   ApiAidPostedIn,
   ApiAidPreviewIn,
   ApiAidRemaining,
+  ApiAidRound3AmountIn,
+  ApiAidRound3ApprovalIn,
+  ApiAidUnpostIn,
   ApiAidWriteOut,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
@@ -262,5 +268,95 @@ export function tickAidAccepted(
     `${BASE}/decisions/${String(year)}/accepted`,
     body,
     "Couldn't tick Accepted"
+  )
+}
+
+/** Undo a mistaken Posted tick, with its reason. Refused while Accepted is ticked or a later round is posted. */
+export function undoAidPosted(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidUnpostIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/decisions/${String(year)}/unposted`,
+    body,
+    "Couldn't undo the Posted tick"
+  )
+}
+
+/** A Round 3 amount. The registrar's above the limit waits for finance (D79). */
+export function keyAidRound3Amount(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidRound3AmountIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/round3-amount`,
+    body,
+    "Couldn't save the Round 3 amount"
+  )
+}
+
+/** Finance approves or refuses a Round 3 waiting on it, with a note (D79). */
+export function decideAidRound3(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidRound3ApprovalIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/round3-approval`,
+    body,
+    "Couldn't decide the Round 3"
+  )
+}
+
+/** Release a check's hold with a note, or put it back (main spec §10.5). */
+export function setAidHoldRelease(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidHoldReleaseIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/hold-release`,
+    body,
+    "Couldn't change the hold"
+  )
+}
+
+/** Put the request on hold by hand with a reason, or lift it (§6.3). */
+export function setAidManualHold(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidManualHoldIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/manual-hold`,
+    body,
+    "Couldn't change the hold"
+  )
+}
+
+/** Cancel with one of D141's reasons, give CampMinder's cancellation its reason, or reopen (D101). */
+export function setAidCancellation(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidCancellationIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/cancellation`,
+    body,
+    "Couldn't save the cancellation"
   )
 }
