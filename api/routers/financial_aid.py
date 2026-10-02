@@ -186,6 +186,8 @@ from api.schemas.financial_aid_to_place import (
     PlaceLineIn,
     PlaceLinesIn,
     PlaceOut,
+    PlacePreviewIn,
+    PlacePreviewOut,
     ReclassifyLineIn,
     ToPlaceResponse,
     ToPlaceWriteOut,
@@ -1716,6 +1718,18 @@ async def place_line(
     """Confirm or Split (D12): the staff placement and the Posted ticks it makes, as one operation (D81)."""
     try:
         return await _to_place().place(year, transaction_cm_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/preview", response_model=PlacePreviewOut)
+async def preview_place_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: PlacePreviewIn, user: AuthUser = _CASEWORK
+) -> PlacePreviewOut:
+    """What a typed Split… or Place on another request would tick, lock and withhold (slice 3, ask 8), from the plan
+    the write runs. Writes nothing; refuses as the write would."""
+    try:
+        return await _to_place().preview(year, transaction_cm_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 
