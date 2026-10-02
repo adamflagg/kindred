@@ -21,6 +21,7 @@ import {
   householdName,
   latestReceipt,
   opensByItself,
+  requestStatusWords,
   roundLines,
   shareConfirmation,
   type RoundLine,
@@ -200,6 +201,7 @@ export function RequestCard({
   const applied = appliedBy(request, page)
   const latest = latestReceipt(request)
   const lines = roundLines(request)
+  const statusWords = requestStatusWords(row.request_status)
   return (
     <div id={`request-${row.request_id}`} className="card-lodge space-y-2 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -208,6 +210,7 @@ export function RequestCard({
           {`· ${row.session_name}${row.person_cm_id > 0 ? ` · person ${String(row.person_cm_id)}` : ''}`}
         </span>
         {stage && !row.cancellation && <StatusPill tone={stage.tone}>{stage.text}</StatusPill>}
+        {statusWords !== null && <StatusPill tone="stone">{statusWords}</StatusPill>}
         {applied && (
           <>
             <span className="text-muted-foreground text-xs">applied by</span>
@@ -244,12 +247,20 @@ export function RequestCard({
             {wouldChangeSentence(line)}
           </p>
         ))}
-      <DecisionPanel
-        lines={lines}
-        total={row.total_decided}
-        checklist={checklist}
-        nextAction={nextAction}
-      />
+      {/* The server's notes (calculator warnings, D81's "not yet ticked"), as the grid's attention cell words them. */}
+      {(row.notes ?? []).map((issue, index) => (
+        <p key={`${issue.code}:${String(index)}`} className={AMBER_NOTE}>
+          {issue.message}
+        </p>
+      ))}
+      {lines.length > 0 && (
+        <DecisionPanel
+          lines={lines}
+          total={row.total_decided}
+          checklist={checklist}
+          nextAction={nextAction}
+        />
+      )}
       {/* shares.length IS the payer count (#2941's payer_count is len of the same payers, with an implied 100% line for none). */}
       {request.shares.length > 1 ? (
         <ShareTable request={request} page={page} />
