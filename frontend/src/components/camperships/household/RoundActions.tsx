@@ -6,6 +6,7 @@ import {
   useAidTickPosted,
   useAidUndoPosted,
 } from '../../../hooks/camperships/useAidWrites'
+import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidHouseholdRequest } from '../../../types/api-types'
 import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { formatShortDate } from '../kit/dates'
@@ -143,6 +144,9 @@ export function RoundNextAction({
   const decide = useAidRound3Decision()
   const [deciding, setDeciding] = useState<'approve' | 'refuse' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A withheld round's decided_now is what the tick WOULD lock, so refreshing and ticking again can
+  // only be refused again: a 409 that names a different amount offers it (#2981).
+  const [offer, setOffer] = useState<number | null>(null)
   const round = asRound(line.round)
   const requestId = request.row.request_id
   // A refusal belongs to the line it was made on: a changed status or decided amount clears it.
@@ -152,6 +156,7 @@ export function RoundNextAction({
   if (seenKey !== lineKey) {
     setSeenKey(lineKey)
     setError(null)
+    setOffer(null)
   }
 
   const cancelled = cancelledInKindred(request.row)
@@ -168,23 +173,44 @@ export function RoundNextAction({
     }
     if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
+    const send = (at: number) => {
+      setError(null)
+      setOffer(null)
+      posted.mutate(
+        { year, body: { rows: [{ request_id: requestId, round, amount: at }] } },
+        {
+          onError: (caught) => {
+            setError(messageOf(caught))
+            if (caught instanceof AidWriteError && caught.status === 409) {
+              const moved = caught.rows.find((r) => r.request_id === requestId && r.round === round)
+              if (moved?.decided_now != null && moved.decided_now !== at)
+                setOffer(moved.decided_now)
+            }
+          },
+        }
+      )
+    }
     return (
       <div className="flex flex-col items-start gap-1">
         <button
           type="button"
           className={BUTTON_PRIMARY}
           disabled={posted.isPending}
-          onClick={() => {
-            setError(null)
-            posted.mutate(
-              { year, body: { rows: [{ request_id: requestId, round, amount }] } },
-              { onError: (caught) => setError(messageOf(caught)) }
-            )
-          }}
+          onClick={() => send(amount)}
         >
           {`Mark posted · locks ${formatMoney(amount)}`}
         </button>
         {error !== null && <span className={AMBER_NOTE}>{error}</span>}
+        {offer !== null && (
+          <button
+            type="button"
+            className={BUTTON_SECONDARY}
+            disabled={posted.isPending}
+            onClick={() => send(offer)}
+          >
+            {`Tick at ${formatMoney(offer)}`}
+          </button>
+        )}
       </div>
     )
   }
