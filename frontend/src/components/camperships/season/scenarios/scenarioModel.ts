@@ -9,6 +9,7 @@ import type {
   ApiAidFieldChange,
   ApiAidLeverEffect,
   ApiAidRulesDocument,
+  ApiAidScenarioFit,
   ApiAidScenarioOption,
   ApiAidScenarioResults,
 } from '../../../../types/api-types'
@@ -255,4 +256,39 @@ export function resultLines(results: ApiAidScenarioResults): ResultLine[] {
     { key: 'held', label: 'Held', value: requestCount(results.held), negative: false },
     money('round1_unmet', 'Round 1 unmet ask (below the line)', results.round1_unmet),
   ]
+}
+
+// ── Fit to budget (fit.py; D119) ──────────────────────────────────────────────
+
+/**
+ * What Fit to budget found, in fit.py's terms: the largest shift on a half-point grid whose TOTAL row's
+ * Round 1 Remaining (money on a program with no pool included) is still $0 or more (Round 2 and 3
+ * reserves stay held back), or that even the ends of its range (−100 to +100 pts) don't fit. The
+ * tightest pool is information only (D119).
+ */
+export function fitWords(fit: ApiAidScenarioFit): {
+  readonly headline: string
+  readonly pool: string | null
+} {
+  const pool = fit.results.pools.find((p) => p.pool === fit.tightest_pool)
+  const tightest =
+    pool === undefined || pool.round1_remaining === null
+      ? null
+      : `Tightest pool: ${pool.label}, Round 1 remaining ${formatMoney(pool.round1_remaining)}. Pools are guidance; only the total budget is hard.`
+  if (fit.outcome === 'over_at_lowest') {
+    return {
+      headline: `Even the lowest shift (${shiftWords(fit.tier_shift)}) leaves Round 1 over its allocation.`,
+      pool: tightest,
+    }
+  }
+  if (fit.outcome === 'under_at_highest') {
+    return {
+      headline: `Even the highest shift (${shiftWords(fit.tier_shift)}) leaves part of Round 1's allocation unused.`,
+      pool: tightest,
+    }
+  }
+  return {
+    headline: `Shifting every tier ${shiftWords(fit.tier_shift)} uses Round 1's allocation: Round 1 ${formatMoney(fit.results.round1)}, ${formatMoney(fit.results.round1_remaining)} left.`,
+    pool: tightest,
+  }
 }
