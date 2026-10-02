@@ -139,10 +139,17 @@ describe('AidTable scrollBox: its height', () => {
     expect(box().style.maxHeight).toBe('688px')
   })
 
-  it('never goes under 320px', () => {
+  // Spec change (RULED screen box (a)): the floor is 200px, so the box ends inside a 720px screen.
+  it('never goes under 200px', () => {
+    setInner(380)
+    renderTable(true)
+    expect(box().style.maxHeight).toBe('200px')
+  })
+
+  it('ends inside a short screen rather than holding a taller floor', () => {
     setInner(500)
     renderTable(true)
-    expect(box().style.maxHeight).toBe('320px')
+    expect(box().style.maxHeight).toBe('288px')
   })
 
   it('measures again when the window resizes and when the box moves', () => {

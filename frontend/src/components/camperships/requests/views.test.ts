@@ -69,7 +69,9 @@ describe('REQUEST_VIEWS (§6.2)', () => {
       'Needs attention',
     ])
     const fixed = keys.reduce((sum, k) => sum + (GRID_COLUMNS[k].width ?? 0), 0)
-    expect(fixed + 250).toBe(1508)
+    // Family widened 110 → 130 now it is unpinned and truncated long names (integration ruling).
+    expect(GRID_COLUMNS.family.width).toBe(130)
+    expect(fixed + 250).toBe(1528)
   })
 
   it('brings the id columns back with Show IDs: Person pinned after the Camper, Household beside Family (D27, T2)', () => {

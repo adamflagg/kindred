@@ -137,7 +137,7 @@ export interface AidTableProps<Row> {
 
 /** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
 const BOX_GAP = 12
-const BOX_MIN_HEIGHT = 320
+const BOX_MIN_HEIGHT = 200
 
 /** A column with a `total` is money: its value is a number, or nothing there. */
 const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)

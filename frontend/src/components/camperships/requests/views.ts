@@ -200,7 +200,7 @@ const CONFIRMATION_WORDS: Readonly<Record<ApiAidConfirmation['status'], string>>
 }
 
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
-  family: { header: 'Family', width: 110, value: (r) => r.family_name },
+  family: { header: 'Family', width: 130, value: (r) => r.family_name },
   camper: { header: 'Camper', width: 130, pinned: true, value: (r) => r.camper_name },
   householdId: {
     header: 'Household',
