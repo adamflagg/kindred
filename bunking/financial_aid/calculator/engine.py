@@ -332,10 +332,12 @@ def _round1(
     grants = work.grants_offset or ZERO  # set by the grants step, which always runs before Round 1
     if work.cost is None:
         if not awards.minimum_when_cost_unknown:
-            work.issue("cost_unknown", "needs_input", f"{_capitalised(cost.missing)}; Round 1 cannot be computed", "r1")
+            work.issue(
+                "cost_unknown", "needs_input", f"{_capitalised(cost.missing or '')}; Round 1 cannot be computed", "r1"
+            )
             work.r1_bound = "cost_unknown"
             return
-        work.issue("cost_unknown", "warn", f"{_capitalised(cost.missing)}; the minimum award was used", "r1")
+        work.issue("cost_unknown", "warn", f"{_capitalised(cost.missing or '')}; the minimum award was used", "r1")
         potential, bound = awards.minimum, "minimum"
         minimum = awards.minimum
     else:

@@ -68,7 +68,6 @@ from api.services.financial_aid_reconciliation import (
     SeasonLedger,
     SplitPart,
     camp_date,
-    dollars,
     live_net,
     locked_total,
 )
@@ -95,7 +94,7 @@ from api.services.financial_aid_to_place import (
 from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.decisions import PricedRequest
-from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.money import ZERO, dollars
 from bunking.pocketbase_batch import BatchLimitError, BatchRequestFailedError
 
 GROUP_LABELS: Final[dict[Reason, str]] = {
