@@ -74,6 +74,8 @@ import type {
   PreviewIn,
   ReceiptOut,
   RemainingResponse,
+  TodayLineOut,
+  TodayResponse,
   RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
@@ -119,6 +121,10 @@ export type ApiCamperJourneyCounts = CamperJourneyCounts
 
 /** The Remaining line's read (D48). Mirrors Python `RemainingResponse`. */
 export type ApiAidRemaining = RemainingResponse
+
+/** Today (§6.4). Mirrors Python `TodayResponse` and `TodayLineOut`. */
+export type ApiAidToday = TodayResponse
+export type ApiAidTodayLine = TodayLineOut
 
 /** The jump box's index (§3.5, slice 1's read). Mirrors Python `JumpIndexResponse`. */
 export type ApiAidJumpIndex = JumpIndexResponse
