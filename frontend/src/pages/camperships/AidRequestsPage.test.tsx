@@ -13,7 +13,21 @@ interface GridResult {
   error: Error | null
 }
 let grid: GridResult
-vi.mock('../../hooks/camperships/useAidGrid', () => ({ useAidGrid: () => grid }))
+// A refetch landing while the page is open: set `grid`, then `await refetch()`.
+let bumpGrid: (() => void) | undefined
+vi.mock('../../hooks/camperships/useAidGrid', async () => {
+  const { useEffect, useState } = await import('react')
+  return {
+    useAidGrid: () => {
+      const [, setTick] = useState(0)
+      useEffect(() => {
+        bumpGrid = () => setTick((n) => n + 1)
+      }, [])
+      return grid
+    },
+  }
+})
+const refetch = () => act(async () => bumpGrid?.())
 const REMAINING: ApiAidRemaining = {
   year: 2027,
   pools: [
@@ -562,5 +576,52 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Go back' })[1] as HTMLElement)
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
     expect(screen.getAllByRole('button', { name: 'Go back' })).toHaveLength(1)
+  })
+
+  describe('an entry typed on a row whose editor a refetch takes away (I2)', () => {
+    const olivia2Posted = () => {
+      grid = {
+        ...grid,
+        data: {
+          ...LIVE,
+          rows: LIVE.rows.map((r) =>
+            r.request_id === 'reqolivia000003'
+              ? { ...r, rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 900 })] }
+              : r
+          ),
+        },
+      }
+    }
+
+    it('lets staff move on when what was typed could never be saved', async () => {
+      renderAt('/aid/requests')
+      await userEvent.click(sessionCell('Olivia Chen'))
+      await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '12,50')
+      olivia2Posted()
+      await refetch()
+      expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+      await userEvent.click(sessionCell('Emma Johnson'))
+      expect(screen.getByTestId('where')).toHaveTextContent('row=reqemma00000001')
+      await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000003')
+      )
+    })
+
+    it('still saves first, then moves, when what was typed could be saved (rulings B, F2-4; regression guard)', async () => {
+      renderAt('/aid/requests')
+      await userEvent.click(sessionCell('Olivia Chen'))
+      await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+      olivia2Posted()
+      await refetch()
+      await userEvent.click(sessionCell('Emma Johnson'))
+      expect(keyAsk).toHaveBeenCalledWith({
+        requestId: 'reqolivia000003',
+        body: { round: 2, amount: 1300, asked_on: '2027-04-01', note: 'Family emailed (Apr 1)' },
+      })
+      expect(screen.getByTestId('where')).toHaveTextContent('row=reqemma00000001')
+    })
   })
 })

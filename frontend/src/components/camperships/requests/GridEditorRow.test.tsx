@@ -27,6 +27,7 @@ const WALK: WalkEditorProps = {
   onSave: () => undefined,
   onMove: () => undefined,
   onCancel: () => undefined,
+  onGone: () => undefined,
 }
 const LINKS = { href: () => '/aid/households/1', open: () => undefined }
 

@@ -47,6 +47,12 @@ export interface WalkEditorProps {
   readonly onSave: (save: EditorSave) => void
   readonly onMove: (direction: 1 | -1, save: EditorSave | null) => void
   readonly onCancel: () => void
+  /**
+   * The editor went away (unmounted). Typing it held that could never be saved is dropped, or it
+   * would hold every exit with no editor left to clear it. Saveable typing stays: the next exit
+   * saves it, and a refusal then lists as a failure.
+   */
+  readonly onGone: () => void
 }
 
 export interface EditorWalk {
@@ -362,6 +368,12 @@ export function useEditorWalk({
       },
       onMove: (direction, entry) => {
         moveFrom(rowKey, entry, direction === 1 ? nav.next : nav.previous)
+      },
+      onGone: () => {
+        if (typed.current?.rowKey === rowKey && typed.current.report.save === null) {
+          typed.current = null
+          setBlocked((b) => withMember(b, rowKey, false))
+        }
       },
       onCancel: () => {
         if (typed.current?.rowKey === rowKey) typed.current = null
