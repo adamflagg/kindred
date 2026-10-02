@@ -14,15 +14,18 @@ import asyncio
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any, Final
 
 from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES
+from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_grants_service import grantor_retired_at
-from api.services.financial_aid_ledger_service import parse_pb_datetime
+from api.services.financial_aid_ledger_service import last_changes, parse_pb_datetime, source_lines
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.utils.pb_filters import pb_escape
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, race_conflict
 from bunking.financial_aid.reports.zips import HouseholdAddress
+from bunking.pocketbase_batch import BatchRequestFailedError
 
 PAGE_SIZE: Final = 1000
 ID_CHUNK: Final = 50  # ids per filter, under PocketBase's 3,500-character filter limit
@@ -244,6 +247,22 @@ class DevelopmentRepository:
         row = await self._aid.get_source(source_id)
         return source_record(row) if row is not None else None
 
+    async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
+        """Each description's live lines this season and their net, by the description that classifies them now
+        (after any reclassifying override): Money > Sources' count, so Funding sources' agrees with it."""
+        return source_lines(await self._aid.fetch_postings(year))
+
+    async def source_changes(self) -> dict[str, SourceChangeOut]:
+        """Each aid_sources record's last logged edit, any season (Money > Sources' last change)."""
+        return last_changes(await self._aid.fetch_source_changes())
+
     async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
-        """A Funding sources edit and its aid_change_log row, in one batch (4a)."""
-        return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
+        """A Funding sources edit and its aid_change_log row, in one batch (4a). A batch that lost a race (the row
+        someone removed first) is G6's AidWriteConflictError, answered 409 by _reports_http: nothing was written. Any
+        other refused batch goes through as it is."""
+        try:
+            return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
+        except BatchRequestFailedError as exc:
+            if (conflict := race_conflict(exc)) is not None:
+                raise conflict from exc
+            raise

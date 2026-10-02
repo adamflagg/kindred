@@ -817,3 +817,19 @@ async def test_classifying_outside_to_outside_writes_no_incentive_change() -> No
     [write] = spy.writes
     assert write.data is not None
     assert "incentive" not in write.data
+
+
+@pytest.mark.asyncio
+async def test_a_mapping_echoes_the_sources_incentive_flag() -> None:
+    """The screen redraws the row from the echo until the registry re-reads: it must not drop the flag."""
+    source = _source(source_family="other_outside", funder_type="outside", counts_as_aid=True, incentive=True)
+    service, _ = _service(_mapping_repo(source, _GRANTOR))
+    out = await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert out.incentive is True
+
+
+@pytest.mark.asyncio
+async def test_a_classification_echoes_the_sources_incentive_flag() -> None:
+    service, _ = _service(_mapping_repo(_source(incentive=True)))
+    out = await service.classify_source(SOURCE_ID, _classification(), ACTOR)
+    assert out.incentive is True

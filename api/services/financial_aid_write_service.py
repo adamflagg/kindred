@@ -221,7 +221,11 @@ class FinancialAidWriteService:
         fields = {f: getattr(current, f, None) for f in SOURCE_FIELDS}
         before = {"grantor_key": str(getattr(current, "grantor_key", "") or "")}
         row = SimpleNamespace(
-            id=source_id, description_key=current.description_key, description=current.description, **fields
+            id=source_id,
+            description_key=current.description_key,
+            description=current.description,
+            incentive=bool(getattr(current, "incentive", False)),
+            **fields,
         )
         if before["grantor_key"] == key:
             return source_row(SimpleNamespace(**vars(row), grantor_key=key))  # nothing to write, nothing to log

@@ -14,6 +14,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from api.schemas.financial_aid import SourceChangeOut
 from api.schemas.financial_aid_decisions import NotRebuiltOut
 from bunking.financial_aid.scenarios.request_set import RequestSetNote
 
@@ -412,8 +413,11 @@ class FundingSourceOut(BaseModel):
     incentive: bool
     group: str | None  # the season's pool its program families fund; None: none set, or several
     group_label: str
-    needs_group: bool  # D100's "needs a group" line: no program family set
+    needs_group: bool  # D100's "needs a group" line: an outside or incentive source with no program family set
     families: list[str]  # the stored program families (implied_program_families)
+    lines: int | None = None  # the season's live lines this classifies now; None: not counted (a save's answer)
+    amount: float | None = None  # their net, in aid dollars
+    last_change: SourceChangeOut | None = None  # the last logged edit; None: never edited in the app, or not read
 
 
 class FundingSourceRowOut(BaseModel):
@@ -432,6 +436,9 @@ class FundingSourceRowOut(BaseModel):
     needs_group: bool  # every description lacks a group (D100's "needs a group")
     descriptions: list[FundingSourceOut]
     families_changed: bool = False  # a funder save's answer
+    lines: int | None = None  # the season's live lines this classifies now; None: not counted (a save's answer)
+    amount: float | None = None  # their net, in aid dollars
+    last_change: SourceChangeOut | None = None  # the last logged edit; None: never edited in the app, or not read
 
 
 class FundingSourcesResponse(BaseModel):

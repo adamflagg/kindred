@@ -263,6 +263,7 @@ def source_row(s: Any) -> AidSourceRow:
         note=str(s.note or ""),
         needs_group=needs_group(s),
         who_paid=who_paid(str(s.funder_type)),
+        incentive=bool(getattr(s, "incentive", False)),
     )
 
 

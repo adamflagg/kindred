@@ -263,6 +263,7 @@ class AidSourceRow(BaseModel):
     # Slice 3 PR-B (ask 2). The record's own facts, on every read and write echo:
     needs_group: bool = False  # D100: an outside or incentive source with no reporting group
     who_paid: WhoPaid | None = None  # D88: the camp's own money or another funder's; None while unclassified
+    incentive: bool = False  # D88's per-source flag (aid_sources.incentive); never funder_type
     # The list read only (a PATCH/PUT echo leaves these at their defaults):
     grantor_name: str = ""  # the mapped grantor's name; "" when none is mapped
     lines: int | None = None  # with ?year=: the season's live lines this description classifies now

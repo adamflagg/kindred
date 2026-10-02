@@ -6,11 +6,13 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
+from decimal import Decimal
 from typing import Any, cast
 
 import httpx
 
 from api.constants.collections import AID_REPORT_DEFINITIONS, AID_SOURCES
+from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_development_repository import (
     AttendanceRecord,
     GrantorRecord,
@@ -18,6 +20,7 @@ from api.services.financial_aid_development_repository import (
     SourceRecord,
     StoredColumns,
 )
+from api.services.financial_aid_ledger_service import last_changes, source_lines
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.reports.zips import HouseholdAddress
 from pocketbase import PocketBase
@@ -48,6 +51,12 @@ class FakeDevelopmentStore:
     families: dict[int, str] = field(default_factory=dict)
     source_rows: list[SourceRecord] = field(default_factory=list)
     grantor_rows: list[GrantorRecord] = field(default_factory=list)
+    posting_rows: list[Any] = field(
+        default_factory=list
+    )  # this season's live aid_postings (the real source_lines reads them)
+    change_rows: list[Any] = field(
+        default_factory=list
+    )  # aid_change_log rows about aid_sources (the real last_changes reads them)
     earlier_reads: list[tuple[frozenset[int], frozenset[int]]] = field(default_factory=list)
     columns: StoredColumns = field(default_factory=lambda: StoredColumns("", ()))
     log: list[dict[str, Any]] = field(default_factory=list)  # every aid_change_log row that committed
@@ -81,6 +90,12 @@ class FakeDevelopmentStore:
 
     async def grantors(self) -> list[GrantorRecord]:
         return list(self.grantor_rows)
+
+    async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]:
+        return source_lines(self.posting_rows)
+
+    async def source_changes(self) -> dict[str, SourceChangeOut]:
+        return last_changes(self.change_rows)
 
     async def report_columns(self, report: str) -> StoredColumns:
         return self.columns
