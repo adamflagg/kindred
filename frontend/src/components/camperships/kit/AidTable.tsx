@@ -80,6 +80,14 @@ export interface AidColumn<Row> {
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
   readonly searchable?: boolean | undefined
+  /** False leaves the column out of Download CSV: an action column has nothing to export (M16). */
+  readonly inCsv?: boolean | undefined
+}
+
+/** A column only the CSV carries: a figure the screen draws inside another cell (M16). */
+export interface AidCsvExtra<Row> {
+  readonly header: string
+  readonly value: (row: Row) => string
 }
 
 export interface AidGrouping<Row> {
@@ -102,6 +110,7 @@ export interface AidTableProps<Row> {
   readonly defaultGrouping?: string | undefined
   readonly urlPrefix?: string | undefined
   readonly csvFilename: string
+  readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
@@ -141,6 +150,7 @@ export function AidTable<Row>({
   defaultGrouping,
   urlPrefix = '',
   csvFilename,
+  csvExtra,
   onOpenTotal,
   renderBelowHighlighted,
   arrowKeys = false,
@@ -276,14 +286,18 @@ export function AidTable<Row>({
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
   const download = () => {
-    const data = counted(ordered).map((row) =>
-      columns.map((c) =>
+    const csvColumns = columns.filter((c) => c.inCsv !== false)
+    const extra = csvExtra ?? []
+    // counted(): the kept row (shown only because it is highlighted) stays out of the file.
+    const data = counted(ordered).map((row) => [
+      ...csvColumns.map((c) =>
         c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
-      )
-    )
+      ),
+      ...extra.map((e) => e.value(row)),
+    ])
     downloadCsv(
       buildCsvContent(
-        columns.map((c) => c.header),
+        [...csvColumns.map((c) => c.header), ...extra.map((e) => e.header)],
         withLinkLine(data, window.location.href)
       ),
       csvFilename
@@ -291,6 +305,15 @@ export function AidTable<Row>({
   }
 
   const hasTotals = columns.some((c) => c.total)
+  const labelSpan = (() => {
+    if (!footerLabel) return 1
+    let span = 0
+    for (const c of columns) {
+      if (!pinnedLeft.has(c.key) || c.total) break
+      span += 1
+    }
+    return Math.max(span, 1)
+  })()
 
   return (
     <div className="space-y-2">
@@ -438,12 +461,22 @@ export function AidTable<Row>({
             <tfoot>
               <tr>
                 {columns.map((c, index) => {
+                  // The footer label spans the leading pinned columns that carry no total, so the
+                  // sticky cell after it can't paint over it (I1).
+                  if (index > 0 && index < labelSpan) return null
+                  const spans = index === 0 && labelSpan > 1
                   const total = c.total ? c.total(visible) : null
                   return (
                     <td
                       key={c.key}
+                      colSpan={spans ? labelSpan : undefined}
                       style={pinStyle(c)}
-                      className={join(TFOOT_CELL, pinClasses(c, 'z-10'), alignClass(c))}
+                      className={join(
+                        TFOOT_CELL,
+                        pinClasses(c, 'z-10'),
+                        spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
+                        alignClass(c)
+                      )}
                     >
                       {index === 0 && footerLabel ? footerLabel(visible) : null}
                       {c.total &&
