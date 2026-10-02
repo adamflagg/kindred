@@ -65,7 +65,12 @@ export function QueueWalkStrip({
   // No place in the view (the read is loading or failed, or the family has left it): Back alone,
   // and `[`/`]` do nothing (I2).
   if (position === null) {
-    const kept = walk.remembered
+    // Both sides null (the view is empty now): nothing to show, and no edge words beside "not in X".
+    const kept =
+      walk.remembered !== null &&
+      (walk.remembered.previous !== null || walk.remembered.next !== null)
+        ? walk.remembered
+        : null
     return (
       <div className="bg-muted flex flex-wrap items-center gap-3 rounded-lg px-3 py-1.5 text-sm">
         {kept && (
