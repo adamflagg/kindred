@@ -20,12 +20,14 @@ export function LeftLines({
   year,
   canWork,
   onDone,
+  onRefused,
 }: {
   lines: readonly ApiAidToPlaceLine[]
   total: number
   year: number
   canWork: boolean
   onDone: (words: string) => void
+  onRefused: (words: string) => void
 }) {
   const reopen = useAidReopenLine()
   const [reopening, setReopening] = useState<number | null>(null)
@@ -54,13 +56,19 @@ export function LeftLines({
                         submitLabel="Reopen"
                         onCancel={() => setReopening(null)}
                         onSubmit={async (reason) => {
-                          await inStaffWords(
-                            reopen.mutateAsync({
-                              year,
-                              transactionCmId: line.transaction_cm_id,
-                              reason,
-                            })
-                          )
+                          try {
+                            await inStaffWords(
+                              reopen.mutateAsync({
+                                year,
+                                transactionCmId: line.transaction_cm_id,
+                                reason,
+                              })
+                            )
+                          } catch (caught) {
+                            // Up to the tab: the refresh can drop this row and its form with it.
+                            if (caught instanceof Error) onRefused(caught.message)
+                            throw caught
+                          }
                           setReopening(null)
                           onDone(`${line.family}: reopened; the line is open again.`)
                         }}

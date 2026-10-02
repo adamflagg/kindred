@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
-import { AidTable, type AidColumn } from '../kit/AidTable'
+import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
 import { Money } from '../kit/MoneyText'
 import {
   groupWords,
@@ -41,6 +41,12 @@ const NOT_PLACED: AidColumn<ApiAidToPlaceLine> = {
   render: (line) => <Money value={line.unplaced} />,
   csv: unplacedCsv,
 }
+
+/** The ids the screen draws inside other cells, so an exported row joins back to CampMinder. */
+const CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidToPlaceLine>> = [
+  { header: 'Household', value: (line) => String(line.household_cm_id) },
+  { header: 'Line', value: (line) => String(line.transaction_cm_id) },
+]
 
 const COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
   FAMILY,
@@ -85,6 +91,7 @@ export function ToPlaceTable({
       selected={selected}
       onSelectedChange={onSelectedChange}
       onMatchingChange={onMatchingChange}
+      csvExtra={CSV_EXTRA}
       emptyText="Nothing to place: every camp-aid line sits on a request."
     />
   )

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { useAidLeaveLine, useAidPlaceLine } from '../../../hooks/camperships/useAidToPlaceWrites'
@@ -11,6 +11,7 @@ import {
   candidateLabel,
   confirmBody,
   confirmLines,
+  isTickLine,
   evidenceWords,
   lineWords,
   placedWords,
@@ -19,6 +20,7 @@ import {
   unplacedWords,
 } from './toPlaceModel'
 import { inStaffWords, refusalWords } from './refusal'
+import type { InFlightLines } from './useInFlightLines'
 import { PANEL_BLOCK, PANEL_LABEL, TICK_TEXT } from './toPlaceStyles'
 
 export interface LinePanelAccess {
@@ -41,19 +43,25 @@ export function ToPlaceLinePanel({
   year,
   view,
   access,
+  inFlight,
   onDone,
+  onRefused,
 }: {
   line: ApiAidToPlaceLine
   year: number
   view: AidView
   access: LinePanelAccess
+  inFlight: InFlightLines
   onDone: (words: string) => void
+  /** A refusal goes up to the tab: this panel unmounts when the refresh drops its line. */
+  onRefused: (words: string) => void
 }) {
   const place = useAidPlaceLine()
   const leave = useAidLeaveLine()
   const [mode, setMode] = useState<Mode>('none')
   const [error, setError] = useState<string | null>(null)
-  const inFlight = useRef(false)
+  const txn = line.transaction_cm_id
+  const busy = inFlight.has(txn)
   const unplaced = unplacedWords(line)
   const body = confirmBody(line)
 
@@ -61,8 +69,7 @@ export function ToPlaceLinePanel({
     // A second press while one is in flight is ignored (slice 1's ReasonForm pattern; plan review
     // m5): `isPending` from the render closure lags a fast double click, and a second POST would
     // come back "already placed" and paint an error over the success.
-    if (body === null || inFlight.current) return
-    inFlight.current = true
+    if (body === null || !inFlight.begin(txn)) return
     setError(null)
     try {
       const out = await place.mutateAsync({
@@ -74,9 +81,11 @@ export function ToPlaceLinePanel({
     } catch (caught) {
       // The reads refreshed before this rejection (onSettled is awaited): the preview above is
       // already the new one, so Confirm stays on and confirms what it now shows.
-      setError(refusalWords(caught))
+      const words = refusalWords(caught)
+      setError(words)
+      onRefused(words)
     } finally {
-      inFlight.current = false
+      inFlight.end(txn)
     }
   }
 
@@ -105,7 +114,7 @@ export function ToPlaceLinePanel({
         )}
       </div>
       <div className={PANEL_BLOCK}>
-        <p className={PANEL_LABEL}>Kindred&apos;s suggestion</p>
+        <p className={PANEL_LABEL}>Kindred’s suggestion</p>
         <p>{suggestionWords(line)}</p>
         {evidenceWords(line) !== '' && (
           <p className="text-muted-foreground text-xs">{evidenceWords(line)}</p>
@@ -116,7 +125,7 @@ export function ToPlaceLinePanel({
           <p className={PANEL_LABEL}>What Confirm does</p>
           <ul>
             {confirmLines(line).map((words) => (
-              <li key={words} className={words.startsWith('Ticks') ? TICK_TEXT : undefined}>
+              <li key={words} className={isTickLine(words) ? TICK_TEXT : undefined}>
                 {words}
               </li>
             ))}
@@ -129,14 +138,19 @@ export function ToPlaceLinePanel({
           <button
             type="button"
             className={BUTTON_PRIMARY}
-            disabled={place.isPending}
+            disabled={place.isPending || busy}
             onClick={() => void confirm()}
           >
-            {place.isPending ? 'Placing…' : 'Confirm'}
+            {place.isPending || busy ? 'Placing…' : 'Confirm'}
           </button>
         )}
         {access.casework && mode === 'none' && (
-          <button type="button" className={BUTTON_SECONDARY} onClick={() => setMode('leave')}>
+          <button
+            type="button"
+            className={BUTTON_SECONDARY}
+            disabled={busy}
+            onClick={() => setMode('leave')}
+          >
             {line.reason === 'several' ? 'Leave at family level…' : 'Leave with a note…'}
           </button>
         )}
@@ -153,9 +167,15 @@ export function ToPlaceLinePanel({
           submitLabel="Leave it"
           onCancel={() => setMode('none')}
           onSubmit={async (note) => {
-            await inStaffWords(
-              leave.mutateAsync({ year, transactionCmId: line.transaction_cm_id, note })
-            )
+            if (!inFlight.begin(txn)) return
+            try {
+              await inStaffWords(leave.mutateAsync({ year, transactionCmId: txn, note }))
+            } catch (caught) {
+              if (caught instanceof Error) onRefused(caught.message)
+              throw caught
+            } finally {
+              inFlight.end(txn)
+            }
             onDone(`${line.family}: left at family level with your note. Reopen needs a reason.`)
           }}
         />
