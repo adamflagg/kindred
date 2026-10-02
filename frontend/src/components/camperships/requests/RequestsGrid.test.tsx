@@ -22,10 +22,12 @@ function Grid({
   slug = 'all',
   showIds = false,
   rows = GRID_ROWS,
+  onTick,
 }: {
   slug?: string
   showIds?: boolean
   rows?: readonly ApiAidGridRow[]
+  onTick?: (row: ApiAidGridRow, action: 'posted' | 'accepted') => void
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -51,6 +53,7 @@ function Grid({
           setHighlighted(key)
         }}
         links={links}
+        onTick={onTick}
       />
     </MemoryRouter>
   )
@@ -261,5 +264,95 @@ describe('RequestsGrid', () => {
       render(<Grid slug="all" rows={[split]} />)
       expect(within(rowOf('Samuel Johnson')).getAllByText('$1,500').length).toBeGreaterThan(0)
     })
+  })
+})
+
+// Posted and waiting, nothing else wrong: its one attention note is the waiting one.
+const WAITING = gridRow({
+  request_id: 'reqwaiting00001',
+  rounds: [roundOut(1, 'posted', { decided: 900, posted: 900, posted_on: '2027-03-09' })],
+  total_decided: 900,
+  total_posted: 900,
+  queues: ['waiting_on_family'],
+})
+
+describe('ticks in the grid (§4.10; Decision 15)', () => {
+  beforeEach(() => {
+    highlights = []
+  })
+
+  it('draws no Tick column without a tick handler', () => {
+    render(<Grid slug="needs-offer" />)
+    expect(screen.queryByRole('button', { name: /^Posted · locks/ })).toBeNull()
+    expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
+  })
+
+  it('ticks Posted at the decided amount on Needs an offer, without highlighting the row', async () => {
+    const onTick = vi.fn()
+    render(<Grid slug="needs-offer" onTick={onTick} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $780' }))
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqolivia000003' }),
+      'posted'
+    )
+    expect(highlights).toEqual([])
+  })
+
+  it('ticks Accepted from Waiting on the family, and from Mark accepted on All', async () => {
+    const onTick = vi.fn()
+    const { unmount } = render(<Grid slug="waiting" onTick={onTick} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Accepted' }))
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqsamuel000005' }),
+      'accepted'
+    )
+    unmount()
+    onTick.mockClear()
+    render(<Grid slug="all" rows={[WAITING]} onTick={onTick} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Mark accepted' }))
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqwaiting00001' }),
+      'accepted'
+    )
+    expect(highlights).toEqual([])
+  })
+
+  it('offers no Mark accepted tick on a waiting row cancelled in Kindred: the server refuses it (review M3)', () => {
+    const cancelled = gridRow({
+      ...WAITING,
+      request_id: 'reqcancelled0001',
+      cancellation: { by: 'kindred', on: null, reason: 'medical', note: '' },
+    })
+    render(<Grid slug="all" rows={[cancelled]} onTick={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Mark accepted' })).toBeNull()
+  })
+
+  it('leaves Mark accepted a household link when the viewer cannot tick', () => {
+    render(<Grid slug="all" rows={[WAITING]} />)
+    expect(screen.getByRole('link', { name: 'Mark accepted' })).toBeInTheDocument()
+  })
+})
+
+describe("Needs an offer's new total column (⚠ Decision 40, ruled)", () => {
+  it("shows a Round 2 row's total beside its own amount, and a dash on a Round 1 row", () => {
+    render(<Grid slug="needs-offer" />)
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    const at = (name: string) => headers.findIndex((h) => h.startsWith(name))
+    const cells = (camper: string) =>
+      Array.from((screen.getByText(camper).closest('tr') as HTMLElement).querySelectorAll('td'))
+    const olivia = cells('Olivia Chen')
+    expect(olivia[at('Decided')]).toHaveTextContent('$780')
+    expect(olivia[at('New total')]).toHaveTextContent('$2,200')
+    expect(cells('Emma Johnson')[at('New total')]).toHaveTextContent('—')
+  })
+
+  // Review I1 (owner call): the ruling covered the per-row cell only, and a sum of whole-season
+  // totals over just the appeal rows is a new figure nobody ruled. Decided's total is unchanged.
+  it('totals Decided in the footer but shows no total under New total', () => {
+    const { container } = render(<Grid slug="needs-offer" />)
+    const footer = Array.from(container.querySelectorAll('tfoot td'))
+    // The footer ends ... Decided, New total, Needs attention.
+    expect(footer.at(-3)).toHaveTextContent('$2,200')
+    expect(footer.at(-2)?.textContent).toBe('')
   })
 })

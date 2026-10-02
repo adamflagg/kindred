@@ -1167,4 +1167,70 @@ describe('Modal', () => {
       )
     })
   })
+
+  describe('closeDisabled (a write is running: the dialog cannot be left)', () => {
+    const variants: Array<[string, Partial<React.ComponentProps<typeof Modal>>]> = [
+      ['simple title', { title: 'Writing' }],
+      ['custom header', { header: <div>Custom</div> }],
+      ['floating', {}],
+    ]
+
+    it.each(variants)(
+      '%s: the X is disabled and dimmed, and leaves the same classes when not',
+      (_n, props) => {
+        const { unmount } = render(
+          <Modal isOpen={true} onClose={() => {}} closeDisabled {...props}>
+            <p>Body</p>
+          </Modal>
+        )
+        const x = screen.getByRole('button', { name: 'Close modal' })
+        expect(x).toBeDisabled()
+        expect(x).toHaveClass('disabled:opacity-50', 'disabled:cursor-not-allowed')
+        unmount()
+        render(
+          <Modal isOpen={true} onClose={() => {}} {...props}>
+            <p>Body</p>
+          </Modal>
+        )
+        const live = screen.getByRole('button', { name: 'Close modal' })
+        expect(live).toBeEnabled()
+        expect(live.className).not.toContain('disabled:')
+      }
+    )
+
+    it('does not close on the X, Escape or the backdrop while disabled', () => {
+      const onClose = vi.fn()
+      render(
+        <Modal isOpen={true} onClose={onClose} title="Writing" closeDisabled>
+          <p>Body</p>
+        </Modal>
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Close modal' }))
+      fireEvent.keyDown(document, { key: 'Escape' })
+      fireEvent.click(screen.getByTestId('modal-backdrop'))
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('closes on the X, Escape and the backdrop as ever when not disabled', () => {
+      const onClose = vi.fn()
+      render(
+        <Modal isOpen={true} onClose={onClose} title="Writing">
+          <p>Body</p>
+        </Modal>
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Close modal' }))
+      fireEvent.keyDown(document, { key: 'Escape' })
+      fireEvent.click(screen.getByTestId('modal-backdrop'))
+      expect(onClose).toHaveBeenCalledTimes(3)
+    })
+
+    it('still lands initial focus on the body, never the disabled X', async () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Writing" closeDisabled>
+          <input placeholder="Field" />
+        </Modal>
+      )
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText('Field')))
+    })
+  })
 })

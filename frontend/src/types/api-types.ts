@@ -30,6 +30,7 @@
  */
 
 import type {
+  AcceptedIn,
   AskIn,
   BunkGraphResponse,
   CamperJourneyCounts,
@@ -47,6 +48,7 @@ import type {
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
+  PostedIn,
   PreviewIn,
   RemainingResponse,
   RequestsGridResponse,
@@ -115,5 +117,9 @@ export type ApiAidPreview = EditorPreviewOut
 export type ApiAidPreviewIn = PreviewIn
 /** A family's Round 2 or Round 3 ask. Mirrors Python `AskIn`. */
 export type ApiAidAskIn = AskIn
+/** The Posted tick, one row or many (D51, D52). Mirrors Python `PostedIn`. */
+export type ApiAidPostedIn = PostedIn
+/** The Accepted tick (D47). Mirrors Python `AcceptedIn`. */
+export type ApiAidAcceptedIn = AcceptedIn
 /** What a decisions write did. Mirrors Python `DecisionWriteOut`. */
 export type ApiAidWriteOut = DecisionWriteOut
