@@ -274,7 +274,11 @@ class FinancialAidReportsService:
         if read.season.as_of is None:
             return []
         named = [NotRebuiltOut(figure=f, reason=REPORTS_PAST_GAPS.get(f) or PAST_DATE_GAPS[f]) for f in figures]
-        return [*named, *read.season.gaps]
+        # Posted money that can't be replayed is blanked by the grid and the budget; Reports still counts it as
+        # awarded, so it is named here until A6c decides whether to blank it too.
+        ids = sorted(rid for rid in read.season.posted_unknown if any(r.request_id == rid for r in read.requests))
+        posted = [NotRebuiltOut(figure="posted", reason=PAST_DATE_GAPS["posted"], requests=ids)] if ids else []
+        return [*named, *posted, *read.season.gaps]
 
     # --- Statistics -------------------------------------------------------------------------------------------
 

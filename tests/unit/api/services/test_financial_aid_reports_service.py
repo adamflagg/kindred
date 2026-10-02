@@ -15,7 +15,7 @@ import pytest
 
 from api.constants.collections import AID_REPORTED_HISTORY
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
-from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_intake_types import CorrectionRecord
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
@@ -31,6 +31,7 @@ from tests.unit.api.services.decisions_fakes import (
     FakeRules,
     approved,
     grant_row,
+    seed_line,
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
@@ -131,6 +132,16 @@ async def test_a_cancelled_request_with_no_posted_round_keeps_its_income_tier() 
     three = _tier(out.rows, 3)
     assert (three.apps, three.cancelled, three.amount, three.awarded_count) == (1, 1, 0.0, 0)
     assert all(row.tier is not None for row in out.rows)
+
+
+async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_replayed() -> None:
+    """The grid and budget blank them; Reports does not yet (A6c decides), so it names a `posted` gap instead."""
+    store = report_season()
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged: Emma's posted is unknown
+    seed_line(store, 9001, "1500", person=0, posted=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
+    out = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
+    gap = next(g for g in out.not_rebuilt if g.figure == "posted")
+    assert gap.requests == [EMMA]
 
 
 async def test_an_edited_answer_is_one_application_and_a_refused_duplicate_is_none() -> None:
