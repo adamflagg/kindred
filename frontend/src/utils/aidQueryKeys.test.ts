@@ -58,7 +58,14 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
   it('refreshes the jump index too when a write changes who has aid activity (payer shares)', () => {
     const invalidateQueries = vi.fn()
     void invalidateAidMoneyQueries({ invalidateQueries }, { jumpIndex: true })
-    expect(keysOf(invalidateQueries)).toContainEqual(['financial-aid', 'jump-index'])
+    expect(keysOf(invalidateQueries)).toEqual([
+      ['financial-aid', 'remaining'],
+      ['financial-aid', 'grid'],
+      ['financial-aid', 'today'],
+      ['financial-aid', 'household-page'],
+      ['financial-aid', 'application'],
+      ['financial-aid', 'jump-index'],
+    ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
   })
 })
