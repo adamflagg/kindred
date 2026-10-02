@@ -75,8 +75,9 @@ TodayKey = Literal[
     "would_change",
     "sources",
     "intake",
+    "equity_field_never_true",
 ]
-TodayItemKind = Literal["requests", "grants", "sections", "descriptions"]
+TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields"]
 
 
 class TodayReasonOut(BaseModel):

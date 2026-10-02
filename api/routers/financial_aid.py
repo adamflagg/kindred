@@ -1525,6 +1525,7 @@ async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
         rules=_rules(),
         grants=GrantsService(GrantsRepository(pb)),
         ledger=_ledger(),
+        intake=FinancialAidIntakeRepository(pb),
     )
     return await service.read(
         year,
