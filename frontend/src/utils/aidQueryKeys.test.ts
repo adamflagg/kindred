@@ -218,18 +218,6 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
     expect(done).toBe(true)
   })
 
-  it("keeps each request set's step apart (D138)", () => {
-    expect(queryKeys.aidScenarioSensitivity(2027, 't', 's')).toEqual(
-      queryKeys.aidScenarioSensitivity(2027, 't', 's', 'all')
-    )
-    expect(queryKeys.aidScenarioSensitivity(2027, 't', 's', 'round1_deadline')).not.toEqual(
-      queryKeys.aidScenarioSensitivity(2027, 't', 's')
-    )
-    expect(queryKeys.aidScenarioSensitivity(2027, 't', 's', '2026-04-01')).not.toEqual(
-      queryKeys.aidScenarioSensitivity(2027, 't', 's', '2026-05-01')
-    )
-  })
-
   it('keeps the scenario keys apart from every other aid read and from each other', () => {
     expect(queryKeys.aidScenarios(2027)).not.toEqual(queryKeys.aidScenarios(2028))
     expect(queryKeys.aidScenarioSensitivity(2027, 't1', 's')).not.toEqual(
@@ -253,9 +241,6 @@ describe("each step's effect is a pure function of its key (lead ruling, review 
     const client = new QueryClient()
     client.setQueryData(queryKeys.aidScenarios(2027), { w: 1 })
     client.setQueryData(queryKeys.aidScenarioSensitivity(2027, 't', 's'), { s: 1 })
-    client.setQueryData(queryKeys.aidScenarioSensitivity(2027, 't', 's', 'round1_deadline'), {
-      s: 2,
-    })
     return client
   }
   const stale = (client: QueryClient, key: readonly unknown[]) =>
@@ -271,9 +256,6 @@ describe("each step's effect is a pure function of its key (lead ruling, review 
     await run(client)
     expect(stale(client, queryKeys.aidScenarios(2027))).toBe(true)
     expect(stale(client, queryKeys.aidScenarioSensitivity(2027, 't', 's'))).toBe(false)
-    expect(stale(client, queryKeys.aidScenarioSensitivity(2027, 't', 's', 'round1_deadline'))).toBe(
-      false
-    )
   })
 
   it('invalidates the scenario prefix once on an approval, which money already covers', () => {

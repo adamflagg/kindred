@@ -115,22 +115,6 @@ describe('useAidScenarioSensitivity (§7.4)', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('sends the request set (D138) with the document, as the server reads it', async () => {
-    renderHook(
-      () =>
-        useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot, {
-          through_round1_deadline: true,
-        }),
-      { wrapper }
-    )
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
-    const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
-    expect(JSON.parse(String(options.body))).toEqual({
-      document: scenarioDraft().document,
-      through_round1_deadline: true,
-    })
-  })
-
   it('waits for a snapshot too', async () => {
     renderHook(() => useAidScenarioSensitivity(scenarioDraft(), null), { wrapper })
     await settle()
@@ -174,14 +158,11 @@ describe('the scenario writes (wire; every route is finance-only on the server)'
     expect(JSON.parse(String(last()[1].body))).toEqual(doc)
   })
 
-  it("asks each setting's step by POST, the request set riding along", async () => {
-    await fetchAidScenarioSensitivity(fetchWithAuth, 2027, {
-      ...doc,
-      received_through: '2026-04-01',
-    })
+  it("asks each setting's step by POST, with the draft's document alone (Decision 22)", async () => {
+    await fetchAidScenarioSensitivity(fetchWithAuth, 2027, doc)
     expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/sensitivity')
     expect(last()[1].method).toBe('POST')
-    expect(JSON.parse(String(last()[1].body))).toEqual({ ...doc, received_through: '2026-04-01' })
+    expect(JSON.parse(String(last()[1].body))).toEqual(doc)
   })
 
   it('saves the draft by PUT, and loads into it by POST', async () => {

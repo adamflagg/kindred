@@ -760,14 +760,8 @@ export const queryKeys = {
     ['financial-aid', 'history', year, 'operation', operationId] as const,
   aidScenariosPrefix: () => ['financial-aid', 'scenarios'] as const,
   aidScenarios: (year: number) => ['financial-aid', 'scenarios', year, 'workspace'] as const,
-  /** `requestSet`: 'all' (the whole season), 'round1_deadline', or the received-through date (D138). */
-  aidScenarioSensitivity: (
-    year: number,
-    trailId: string,
-    snapshotId: string,
-    requestSet: string = 'all'
-  ) =>
-    ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId, requestSet] as const,
+  aidScenarioSensitivity: (year: number, trailId: string, snapshotId: string) =>
+    ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId] as const,
 }
 
 /**
@@ -819,9 +813,13 @@ interface ScenarioRefresh {
 }
 
 /**
- * Every scenario refresh skips the sensitivity read: its answer is a pure function of its key (year,
- * trail row, snapshot, request set), so a changed draft already has a new key, and refetching the old
- * one costs the server five season replays for a figure that cannot move (lead ruling, review I1).
+ * Every scenario refresh skips the sensitivity read. The server prices the draft's document on the
+ * frozen snapshot, keeping only the identity of the season's rules version (`price_document`), so
+ * the answer is fixed by its key (year, trail row, snapshot): a changed draft or a re-freeze already
+ * has a new key, and refetching the old one costs the server five season replays for a figure that
+ * cannot move (lead ruling, review I1). A read that adds a request set must key what that set reads
+ * too (the Round 1 deadline comes from the approved milestones), or let the writes that move it
+ * refresh it.
  */
 const SCENARIO_REFRESH: ScenarioRefresh = {
   queryKey: queryKeys.aidScenariosPrefix(),
@@ -916,8 +914,10 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  * - every household page (a split request sits on both homes' pages, and a rules or grants change
  *   re-prices them all);
  * - the application read;
- * - the rules reads: a Posted tick locks the sections its round read, in the same operation.
- * - Season › History: every write logs a row.
+ * - the rules reads: a Posted tick locks the sections its round read, in the same operation;
+ * - Season › History: every write logs a row;
+ * - the scenario reads but each step's effect: a Posted tick's lock changes the promotion preview's
+ *   token.
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
  * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
  * Definitions are static and never invalidated.
@@ -946,8 +946,9 @@ export function invalidateAidMoneyQueries(
     ...(options.jumpIndex === true ? [{ queryKey: queryKeys.aidJumpIndexPrefix() }] : []),
   ]
   // A Posted tick's lock changes the promotion preview's confirm token (it hashes the section's
-  // status), and posted money feeds compare's last-season column. The workspace and each step's
-  // effect don't move, so this refreshes the scenario reads by the shared filter, not by prefix.
+  // status), and posted money feeds compare's last-season column. Each step's effect can't move
+  // (its key is its inputs), so the shared filter skips it. The workspace doesn't move either; it
+  // rides along, cheaply, with the reads that do.
   // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
   // awaits a promise returned from onSettled before mutateAsync resolves.
   return Promise.all(filters.map((filter) => queryClient.invalidateQueries(filter))).then(
@@ -984,7 +985,8 @@ export function invalidateAidRulesQueries(
 
 /**
  * Every scenario write calls this on settle (spec §7.4, §10): a scenario never writes live awards, so
- * it moves the scenario reads only (the workspace, the compare, the trail, each step's effect).
+ * it moves the scenario reads only (the workspace, the compare, the trail), except each step's
+ * effect, whose key is its inputs.
  * Returns a promise like the other aid helpers, so an onSettled can wait for the refetch.
  */
 export function invalidateAidScenarioQueries(queryClient: {
