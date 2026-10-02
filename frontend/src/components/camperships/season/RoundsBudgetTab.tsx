@@ -101,7 +101,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
           &ldquo;—&rdquo;, never an estimate.
         </p>
       )}
-      <BudgetStrip rounds={strip} />
+      <BudgetStrip rounds={strip} scoped={pool !== null} />
       <div className="flex flex-wrap items-center gap-2.5">
         {pool !== null && (
           <span className="text-sm">

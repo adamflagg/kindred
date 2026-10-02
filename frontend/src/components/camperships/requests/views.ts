@@ -576,6 +576,22 @@ function matchesRound(
   )
 }
 
+/**
+ * Needs an offer and Pending approval hold a row for a round in that status, and the budget counts
+ * that round's money only when the round counts toward it (budget.py). So `counted` binds to that
+ * round, on `round=` too: a counted posted Round 1 doesn't let in a Round 2 needing an offer outside
+ * the budget (final review I2). Other views are unchanged.
+ */
+function countedInView(row: ApiAidGridRow, view: RequestViewKey, filters: GridFilters): boolean {
+  if (!filters.counted || (view !== 'needs_offer' && view !== 'pending_approval')) return true
+  return row.rounds.some(
+    (r) =>
+      r.status === view &&
+      r.counts_toward_budget &&
+      (filters.round === null || r.round === filters.round)
+  )
+}
+
 export function filterRows(
   rows: readonly ApiAidGridRow[],
   view: RequestViewKey,
@@ -588,6 +604,7 @@ export function filterRows(
       (filters.pool === null || row.pool === filters.pool) &&
       (!filters.live || isLiveRow(row)) &&
       matchesRound(row, filters.round, filters.tick, filters.counted) &&
+      countedInView(row, view, filters) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }
