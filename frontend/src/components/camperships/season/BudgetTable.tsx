@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 
+import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import type { AidView } from '../kit/asOf'
 import { DefRef } from '../kit/DefinitionNotes'
 import { PILL, TABLE_CARD } from '../kit/kitStyles'
@@ -12,6 +13,8 @@ import {
   cellHref,
   cellValue,
   cellWords,
+  confirmedHref,
+  confirmedWords,
   overWords,
   pendingNote,
   type BelowLine,
@@ -41,7 +44,7 @@ interface BudgetTableProps {
   readonly numberOf: (key: string) => number | null
 }
 
-function Note({ n }: { n: number | null }) {
+export function Note({ n }: { n: number | null }) {
   return n === null ? null : <DefRef n={n} />
 }
 
@@ -85,11 +88,13 @@ function Figure({
   column,
   view,
   rulesVersion,
+  numberOf,
 }: {
   row: BudgetRow
   column: BudgetColumn
   view: AidView
   rulesVersion: number | null
+  numberOf: (key: string) => number | null
 }) {
   // A Pending approval line holds only its Needs an offer figure; its other cells stay blank, as
   // the mock draws them: "—" here means a past date's unknown (Task 4 m1).
@@ -104,6 +109,8 @@ function Figure({
     )
   const over = overWords(row, column)
   const pending = column === 'needs_offer' ? pendingNote(row) : null
+  const confirmed = column === 'posted' ? confirmedWords(row) : null
+  const confirmedTo = confirmed === null ? null : confirmedHref(row, view)
   return (
     <>
       {href === null ? (
@@ -116,6 +123,18 @@ function Figure({
       {over !== null && <span className={`${PILL.amber} ml-1.5`}>{over}</span>}
       {pending !== null && (
         <div className="text-muted-foreground text-xs font-normal">{pending}</div>
+      )}
+      {confirmed !== null && (
+        <div className={`${AMBER_NOTE} font-normal`}>
+          {confirmedTo === null ? (
+            confirmed
+          ) : (
+            <Link to={confirmedTo} className={FIGURE_LINK}>
+              {confirmed}
+            </Link>
+          )}
+          <Note n={numberOf('unconfirmed')} />
+        </div>
       )}
     </>
   )
@@ -182,7 +201,13 @@ export function BudgetTable({
               </td>
               {BUDGET_COLUMNS.map((column) => (
                 <td key={column} className={TD_MONEY}>
-                  <Figure row={row} column={column} view={view} rulesVersion={rulesVersion} />
+                  <Figure
+                    row={row}
+                    column={column}
+                    view={view}
+                    rulesVersion={rulesVersion}
+                    numberOf={numberOf}
+                  />
                 </td>
               ))}
             </tr>

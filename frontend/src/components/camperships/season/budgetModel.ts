@@ -41,7 +41,7 @@ const requests = (view: AidView, extra: Record<string, string>) =>
  * the Requests page refuses them there ("…needs today's data"). A figure the server still sends on
  * a past date opens nothing rather than that refusal; Posted and Accepted open All, which keeps it.
  */
-const opensQueueViews = (view: AidView) => view.asOf.kind !== 'past'
+export const opensQueueViews = (view: AidView) => view.asOf.kind !== 'past'
 
 // ── The strip (§7.2; D153) ────────────────────────────────────────────────────
 
@@ -334,6 +334,41 @@ export function pendingNote(row: BudgetRow): string | null {
   const count = row.cell.pending_approval_count
   const lead = count == null ? '' : `${String(count.requests)} · `
   return `and ${lead}${formatMoney(pending)} pending approval`
+}
+
+/**
+ * The amber line under Posted (D153; owner ruling 2026-10-02): "N not yet confirmed · $X", N the
+ * server's request count and X the part of the posted rounds' locked money CampMinder's live camp aid
+ * doesn't cover yet. Null with nothing to say (no read, or a count of 0), and on the Pending approval
+ * line, which shares its round's cell and would say it twice.
+ */
+export function confirmedWords(row: BudgetRow): string | null {
+  const unconfirmed = row.cell.unconfirmed
+  if (row.kind === 'pending' || unconfirmed == null || unconfirmed.count === 0) return null
+  return `${String(unconfirmed.count)} not yet confirmed · ${formatMoney(unconfirmed.amount)}`
+}
+
+/**
+ * Where the amber line opens: Requests › Not reconciled, filtered as the Posted figure beside it is
+ * (`cellHref`): the row's pool (none for the total), a round line's round, `tick=posted` and
+ * `counted=1`, so it keeps only rounds that are posted and count toward the budget, which are the
+ * ones the figure counts. Residue the grid can't close: confirmation is per request, not per round,
+ * so an over-confirmed request (nothing unconfirmed) or one whose round N is filled while a later
+ * round is short can still list. Oldest-first filling makes the second uncommon.
+ * Null for the No pool line (no request filters to having no pool), where there is nothing to say,
+ * and on a past date, since Not reconciled is today's queue (`opensQueueViews`).
+ */
+export function confirmedHref(row: BudgetRow, view: AidView): string | null {
+  if (confirmedWords(row) === null || row.pool === NO_POOL || !opensQueueViews(view)) return null
+  const pool: Record<string, string> = row.pool === TOTAL_POOL ? {} : { pool: row.pool }
+  const round: Record<string, string> = row.round === null ? {} : { round: String(row.round) }
+  return requests(view, {
+    view: viewSlug('not_reconciled'),
+    ...pool,
+    ...round,
+    tick: 'posted',
+    counted: '1',
+  })
 }
 
 // ── Below the line (§5.3, §7.2; D44, D121) ────────────────────────────────────

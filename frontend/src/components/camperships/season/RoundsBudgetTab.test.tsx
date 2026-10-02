@@ -16,7 +16,15 @@ vi.mock('../../../hooks/camperships/useAidBudget', () => ({ useAidBudget: () => 
 vi.mock('../../../hooks/camperships/useAidDefinitions', () => ({
   useAidDefinitions: () => ({
     notes: [],
-    numberOf: (key: string) => ({ allocated: 1, budget_posted: 2, remaining: 6 })[key] ?? null,
+    numberOf: (key: string) =>
+      ({
+        allocated: 1,
+        budget_posted: 2,
+        remaining: 6,
+        round2_asks: 8,
+        round1_unmet: 9,
+        unconfirmed: 10,
+      })[key] ?? null,
     isPending: false,
     error: null,
   }),
@@ -229,8 +237,11 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
   it("shows the budget by decision type, leading with the type's own money (owner ⚠2; final review ⚠1)", () => {
     renderAt('/aid/season/rounds-budget')
     expect(screen.getByText('In the budget, by decision type')).toBeInTheDocument()
+    // Scoped to this block's table: the forward-demand table also has a Requests column.
+    const block = typeLine('type:standard').closest('table')
+    if (block === null) throw new Error('no type table')
     for (const name of ['Decision type', 'Requests', 'Own money', 'Rounds total']) {
-      expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
+      expect(within(block).getByRole('columnheader', { name })).toBeInTheDocument()
     }
     expect(keys('data-type-line')).toEqual(['type:standard', 'type:appeal', 'type:none'])
     const standard = typeLine('type:standard')
@@ -318,5 +329,97 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
       '',
       `Link,${window.location.href}`,
     ])
+  })
+})
+
+const demandLine = (key: string) => {
+  const row = document.querySelector(`[data-demand-line="${key}"]`)
+  if (!(row instanceof HTMLElement)) throw new Error(`no demand line ${key}`)
+  return row
+}
+
+describe('forward demand below the line (D82)', () => {
+  it("shows each pool's Round 2 asks, the count opening its live appeals, with the held column", () => {
+    renderAt('/aid/season/rounds-budget')
+    const asks = demandLine('pool_a:round2_asks')
+    expect(within(asks).getByRole('link', { name: '30 fam · 31 req' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=appeals&pool=pool_a&live=1&year=2027'
+    )
+    expect(within(asks).getByText('$33,000')).toBeInTheDocument()
+    expect(within(asks).getByText('$20,500')).toBeInTheDocument()
+    // Unmet ask stays empty: Asked counts held appeals' asks and Computed leaves them out.
+    expect(
+      within(asks)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual([
+      'Round 2 asks so far8',
+      '30 fam · 31 req',
+      '$33,000',
+      '$20,500',
+      '—',
+      '2 fam · 2 req · $2,600',
+    ])
+  })
+
+  it("shows Round 1's unmet ask with its count, opening nothing", () => {
+    renderAt('/aid/season/rounds-budget')
+    const unmet = demandLine('pool_a:round1_unmet')
+    expect(within(unmet).getByText('40 fam · 44 req')).toBeInTheDocument()
+    expect(within(unmet).queryByRole('link')).toBeNull()
+    expect(within(unmet).getByText('$50,920')).toBeInTheDocument()
+    expect(within(unmet).getByText('4 fam · 7 req · $16,300')).toBeInTheDocument()
+    expect(within(unmet).getAllByRole('cell')[0]).toHaveTextContent(
+      'Round 1 unmet ask, not yet appealed9'
+    )
+  })
+
+  it('reads "—" and opens nothing for what a past date leaves empty', () => {
+    read = { data: pastBudget(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?as_of=2027-03-15')
+    const asks = demandLine('pool_a:round2_asks')
+    expect(within(asks).getByText('30 fam · 31 req')).toBeInTheDocument()
+    expect(within(asks).queryByRole('link')).toBeNull()
+    expect(
+      within(demandLine('pool_a:round1_unmet'))
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['Round 1 unmet ask, not yet appealed9', '—', '—', '—', '—', '—'])
+  })
+
+  it('shows one pool alone when the page is on it', () => {
+    renderAt('/aid/season/rounds-budget?pool=pool_b')
+    expect(keys('data-demand-line')).toEqual(['pool_b:round2_asks', 'pool_b:round1_unmet'])
+  })
+})
+
+describe('the confirmed share under Posted (D153; Decision 10)', () => {
+  it("shows the amber line under a round's Posted, opening Not reconciled on its pool", () => {
+    renderAt('/aid/season/rounds-budget')
+    const r1 = line('pool_a:1')
+    expect(within(r1).getByRole('link', { name: '4 not yet confirmed · $5,200' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=not-reconciled&pool=pool_a&round=1&tick=posted&counted=1&year=2027'
+    )
+    expect(r1).toHaveTextContent('4 not yet confirmed · $5,200')
+    expect(
+      within(line('total')).getByRole('link', { name: '6 not yet confirmed · $7,000' })
+    ).toHaveAttribute('href', '/aid/requests?view=not-reconciled&tick=posted&counted=1&year=2027')
+    expect(within(r1).getByText('10', { selector: 'sup' })).toBeInTheDocument()
+  })
+
+  it('shows no line where the server sends none, and no interim sentence', () => {
+    renderAt('/aid/season/rounds-budget')
+    expect(within(line('pool_a:3')).queryByText(/not yet confirmed/)).toBeNull()
+    expect(screen.queryByTestId('confirmation-line')).toBeNull()
+  })
+
+  it('shows the line without a link on a past date, where Not reconciled is refused', () => {
+    read = { data: pastBudgetUnmasked(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?as_of=2027-03-15')
+    const r1 = line('pool_a:1')
+    expect(r1).toHaveTextContent('4 not yet confirmed · $5,200')
+    expect(within(r1).queryByRole('link', { name: /not yet confirmed/ })).toBeNull()
   })
 })
