@@ -260,8 +260,8 @@ export function IncomeCorrection({
 
 /**
  * "Payer shares…" (main spec §9.2): one household's share, as a percentage. With two shares the
- * server fills the other. A household not on the page is added by its CampMinder id. Percent only:
- * the server's dollar path needs an award source it is not wired with (review I2).
+ * tool fills the other. A household not on the page is added by its CampMinder id. Percent only:
+ * the dollar path needs an award source it is not wired with (review I2).
  */
 export function ShareForm({
   request,
@@ -343,7 +343,7 @@ export function ShareForm({
         <span>%</span>
       </label>
       <p className="text-muted-foreground text-xs">
-        With one other household on this request, the server fills the other household&apos;s share.
+        With one other household on this request, this tool fills the other household&apos;s share.
         A lone partial share holds the request until a second share is added.
       </p>
       <ReasonInput value={reason} onChange={setReason} />
