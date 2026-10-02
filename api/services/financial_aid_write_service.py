@@ -38,6 +38,7 @@ from api.schemas.financial_aid import (
     OverrideBulkLoad,
     SourceGrantorIn,
 )
+from api.services.financial_aid_grants_service import refuse_retired_grantor
 from api.services.financial_aid_ledger_service import (
     GRANT_FUNDER_TYPES,
     FinancialAidNotFoundError,
@@ -203,8 +204,10 @@ class FinancialAidWriteService:
                 raise FinancialAidValidationError(
                     "only an outside grant or incentive description names a grantor; classify it first"
                 )
-            if await self.repo.get_grantor(key) is None:
+            grantor = await self.repo.get_grantor(key)
+            if grantor is None:
                 raise FinancialAidNotFoundError(f"grantor {key!r} not found")
+            refuse_retired_grantor(grantor)
         fields = {f: getattr(current, f, None) for f in SOURCE_FIELDS}
         before = {"grantor_key": str(getattr(current, "grantor_key", "") or "")}
         row = SimpleNamespace(

@@ -11,11 +11,13 @@ import (
 	"github.com/pocketbase/dbx"
 )
 
-// The four financial aid permissions (campership spec §14.1), spelled out
-// rather than shared: the assertion's value is that it fails when the
-// migration drifts from the spec.
+// The financial aid permissions (campership spec §14.1, plus financial_aid.grantors
+// from the owner's 2026-10-01 grantor-directory ruling), spelled out rather than
+// shared: the assertion's value is that it fails when the migrations drift from
+// the spec.
 var financialAidPermissions = []string{
 	"financial_aid.casework",
+	"financial_aid.grantors",
 	"financial_aid.rules",
 	"financial_aid.summary",
 	"financial_aid.view",
@@ -71,10 +73,10 @@ func loadBootedRoles(t *testing.T) map[string]bootedRole {
 	return roles
 }
 
-// TestBootedRolesCarryFinancialAidGrants proves migration 1500000185 against
-// the booted database: finance holds all four, registrar view+casework only,
-// a system development role holds summary alone, and no other seeded role
-// picked any of them up. (A fresh database has no exec role; that exec is
+// TestBootedRolesCarryFinancialAidGrants proves migrations 1500000185 and
+// 1500000227 against the booted database: finance holds all five, registrar
+// view+casework only, a system development role holds summary and grantors
+// alone, and no other seeded role picked any of them up. (A fresh database has no exec role; that exec is
 // untouched is proven by pocketbase/pb_sp2/check-role-migration.sh and pinned
 // by TestFinancialAidPermissionsMigrationNeverNamesExec.)
 func TestBootedRolesCarryFinancialAidGrants(t *testing.T) {
@@ -110,15 +112,16 @@ func TestBootedRolesCarryFinancialAidGrants(t *testing.T) {
 
 	registrar := get("registrar")
 	holds("registrar", registrar, "financial_aid.view", "financial_aid.casework", "metrics.geo", "registration.manage")
-	lacks("registrar", registrar, "financial_aid.rules", "financial_aid.summary")
+	lacks("registrar", registrar, "financial_aid.rules", "financial_aid.summary", "financial_aid.grantors")
 
 	development := get("development")
 	if !development.IsSystem {
 		t.Error("development must be a system role")
 	}
-	if !slices.Equal(development.Permissions, []string{"financial_aid.summary"}) {
-		t.Errorf("development (%q) = %v, want exactly [financial_aid.summary] (never sheets.export, "+
-			"bunking.manage or users.manage -- analysis §9.3)", development.Name, development.Permissions)
+	if !slices.Equal(development.Permissions, []string{"financial_aid.grantors", "financial_aid.summary"}) {
+		t.Errorf("development (%q) = %v, want exactly [financial_aid.grantors financial_aid.summary] (never "+
+			"sheets.export, bunking.manage, users.manage or rules -- analysis §9.3, owner ruling 2026-10-01)",
+			development.Name, development.Permissions)
 	}
 
 	for slug, r := range roles {

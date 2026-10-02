@@ -233,6 +233,18 @@ async def test_get_source_escapes_the_id() -> None:
     assert calls[0]["filter"] == "id = 'abc\\'def'"
 
 
+@pytest.mark.asyncio
+async def test_open_commitments_naming_a_grantor_span_every_season_and_escape_the_key() -> None:
+    """Retiring a grantor checks every season's open grants (owner ruling 2026-10-01); a withdrawn one names nothing."""
+    from api.services.financial_aid_grants_repository import GrantsRepository
+
+    pb, calls = _pb()
+    await GrantsRepository(pb).fetch_open_commitments_naming("regional'fund")
+    assert pb.collection.call_args.args == ("aid_grants",)
+    assert calls[0]["filter"] == "grantor_key = 'regional\\'fund' && status = 'open'"
+    assert "year" not in str(calls[0]["filter"])
+
+
 def test_override_row_must_place_or_reclassify() -> None:
     with pytest.raises(ValidationError):
         OverrideRow(transaction_cm_id=9001)

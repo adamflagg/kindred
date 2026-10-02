@@ -4946,9 +4946,25 @@ export type GrantorOut = {
    */
   contacts: string
   /**
+   * Retired At
+   */
+  retired_at: string
+  /**
    * Descriptions
    */
   descriptions: Array<GrantorDescription>
+}
+
+/**
+ * GrantorRetireIn
+ *
+ * Retire or unretire a grantor (owner ruling 2026-10-01): the reason is required and logged.
+ */
+export type GrantorRetireIn = {
+  /**
+   * Reason
+   */
+  reason: string
 }
 
 /**
@@ -21134,9 +21150,24 @@ export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetResponse =
 export type ListGrantorsApiFinancialAidGrantorsGetData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    /**
+     * Include Retired
+     */
+    include_retired?: boolean
+  }
   url: '/api/financial-aid/grantors'
 }
+
+export type ListGrantorsApiFinancialAidGrantorsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListGrantorsApiFinancialAidGrantorsGetError =
+  ListGrantorsApiFinancialAidGrantorsGetErrors[keyof ListGrantorsApiFinancialAidGrantorsGetErrors]
 
 export type ListGrantorsApiFinancialAidGrantorsGetResponses = {
   /**
@@ -21206,6 +21237,70 @@ export type SaveGrantorApiFinancialAidGrantorsKeyPutResponses = {
 
 export type SaveGrantorApiFinancialAidGrantorsKeyPutResponse =
   SaveGrantorApiFinancialAidGrantorsKeyPutResponses[keyof SaveGrantorApiFinancialAidGrantorsKeyPutResponses]
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostData = {
+  body: GrantorRetireIn
+  path: {
+    /**
+     * Key
+     */
+    key: string
+  }
+  query?: never
+  url: '/api/financial-aid/grantors/{key}/retire'
+}
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostError =
+  RetireGrantorApiFinancialAidGrantorsKeyRetirePostErrors[keyof RetireGrantorApiFinancialAidGrantorsKeyRetirePostErrors]
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantorOut
+}
+
+export type RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponse =
+  RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponses[keyof RetireGrantorApiFinancialAidGrantorsKeyRetirePostResponses]
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostData = {
+  body: GrantorRetireIn
+  path: {
+    /**
+     * Key
+     */
+    key: string
+  }
+  query?: never
+  url: '/api/financial-aid/grantors/{key}/unretire'
+}
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostError =
+  UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostErrors[keyof UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostErrors]
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantorOut
+}
+
+export type UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponse =
+  UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponses[keyof UnretireGrantorApiFinancialAidGrantorsKeyUnretirePostResponses]
 
 export type GetGrantsApiFinancialAidGrantsYearGetData = {
   body?: never

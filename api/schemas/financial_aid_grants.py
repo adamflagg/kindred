@@ -64,6 +64,12 @@ class GrantorSave(GrantorFields):
     note: _Note
 
 
+class GrantorRetireIn(BaseModel):
+    """Retire or unretire a grantor (owner ruling 2026-10-01): the reason is required and logged."""
+
+    reason: _Note
+
+
 class GrantorDescription(BaseModel):
     """One CampMinder description mapped to the grantor, read from aid_sources (D58)."""
 
@@ -82,6 +88,9 @@ class GrantorOut(BaseModel):
     pays_after_camp_aid: bool
     eligibility: str
     contacts: str
+    # "" while in use; when it was retired otherwise. A retired grantor is hidden from pickers and the default
+    # directory list (GET /grantors?include_retired=true shows it), and kept for history.
+    retired_at: str
     descriptions: list[GrantorDescription]
 
 

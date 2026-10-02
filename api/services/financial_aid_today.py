@@ -287,7 +287,7 @@ def build_today(inputs: TodayInputs, *, casework: bool, finance: bool) -> TodayR
 
 
 class GrantsReads(GrantsLoader, Protocol):
-    async def list_grantors(self) -> GrantorsResponse: ...
+    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse: ...
 
 
 class RulesDrafts(Protocol):
@@ -336,7 +336,8 @@ class TodayService:
         season, (grants, register), grantors, draft, unclassified = await asyncio.gather(
             decisions.season(year),
             shared.read(),
-            self._grants.list_grantors() if casework else _no_grantors(),
+            # Retired grantors too: hidden from pickers, never from the grants that named them.
+            self._grants.list_grantors(include_retired=True) if casework else _no_grantors(),
             _draft_sections(self._rules, year) if finance else _none(),
             self._ledger.unclassified_sources(year) if finance else _no_sources(),
         )

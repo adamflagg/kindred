@@ -11,7 +11,7 @@ Two complementary checks, because neither alone is enough:
 * ``assert_persona_access`` drives the real route through a bare FastAPI app
   once per persona and proves who gets a 403, whatever form the gate takes.
 
-Personas mirror the roles migration 1500000185 leaves in production.
+Personas mirror the roles migrations 1500000185 and 1500000227 leave in production.
 ``is_admin`` bypasses every ``require_*`` gate and is deliberately not a
 persona: it would pass every route and prove nothing.
 
@@ -35,6 +35,7 @@ FINANCIAL_AID_PERMISSIONS: frozenset[str] = frozenset(
     {
         Permission.FINANCIAL_AID_VIEW,
         Permission.FINANCIAL_AID_CASEWORK,
+        Permission.FINANCIAL_AID_GRANTORS,
         Permission.FINANCIAL_AID_RULES,
         Permission.FINANCIAL_AID_SUMMARY,
     }
@@ -64,7 +65,8 @@ PERSONAS: Mapping[str, frozenset[str]] = MappingProxyType(
         PERSONA_FINANCE: frozenset(
             {Permission.METRICS_FINANCIAL, Permission.SHEETS_EXPORT, *FINANCIAL_AID_PERMISSIONS}
         ),
-        PERSONA_DEVELOPMENT: frozenset({Permission.FINANCIAL_AID_SUMMARY}),
+        # Migration 1500000227 adds financial_aid.grantors (owner ruling 2026-10-01, grantor directory).
+        PERSONA_DEVELOPMENT: frozenset({Permission.FINANCIAL_AID_SUMMARY, Permission.FINANCIAL_AID_GRANTORS}),
     }
 )
 

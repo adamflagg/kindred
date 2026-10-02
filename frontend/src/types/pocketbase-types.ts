@@ -437,6 +437,7 @@ export type AidGrantorsRecord<Taliases = unknown> = {
   name: string
   note?: string
   pays_after_camp_aid?: boolean
+  retired_at?: IsoDateString
   updated: IsoAutoDateString
 }
 

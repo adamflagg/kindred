@@ -15,9 +15,10 @@ describe('Permission constants', () => {
     expect(unique.size).toBe(ALL_PERMISSIONS.length)
   })
 
-  it('declares the four financial aid permissions with their exact strings', () => {
+  it('declares the five financial aid permissions with their exact strings', () => {
     expect(Permission.FINANCIAL_AID_VIEW).toBe('financial_aid.view')
     expect(Permission.FINANCIAL_AID_CASEWORK).toBe('financial_aid.casework')
+    expect(Permission.FINANCIAL_AID_GRANTORS).toBe('financial_aid.grantors')
     expect(Permission.FINANCIAL_AID_RULES).toBe('financial_aid.rules')
     expect(Permission.FINANCIAL_AID_SUMMARY).toBe('financial_aid.summary')
   })

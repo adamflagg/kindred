@@ -19,6 +19,7 @@ class TestPermissionConstants:
         expected = {
             "bunking.manage",
             "financial_aid.casework",
+            "financial_aid.grantors",
             "financial_aid.rules",
             "financial_aid.summary",
             "financial_aid.view",
@@ -34,6 +35,7 @@ class TestPermissionConstants:
     def test_permission_class_attributes_match_values(self):
         assert Permission.BUNKING_MANAGE == "bunking.manage"
         assert Permission.FINANCIAL_AID_CASEWORK == "financial_aid.casework"
+        assert Permission.FINANCIAL_AID_GRANTORS == "financial_aid.grantors"
         assert Permission.FINANCIAL_AID_RULES == "financial_aid.rules"
         assert Permission.FINANCIAL_AID_SUMMARY == "financial_aid.summary"
         assert Permission.FINANCIAL_AID_VIEW == "financial_aid.view"
