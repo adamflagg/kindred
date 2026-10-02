@@ -222,6 +222,12 @@ export default function AidRequestsPage() {
     (r: ApiAidGridRow, action: TickAction) => startTick([r.request_id], action),
     [startTick]
   )
+  // A checkbox is an exit like ↓ and a filter (A18): what is typed on the open row is saved first,
+  // then the selection changes. A failed save keeps the person here and leaves the box as it was.
+  const changeSelected = useCallback(
+    (next: ReadonlySet<string>) => leaveThen(null, () => setSelected(next)),
+    [leaveThen]
+  )
   const closePlan = useCallback(() => setPlan(null), [])
   const tickDone = useCallback(
     (words: string, out: ApiAidWriteOut) => {
@@ -455,7 +461,7 @@ export default function AidRequestsPage() {
               links={links}
               filters={filtersBar}
               selected={canWork ? selected : undefined}
-              onSelectedChange={canWork ? setSelected : undefined}
+              onSelectedChange={canWork ? changeSelected : undefined}
               onMatchingChange={canWork ? onMatchingChange : undefined}
               onTick={canWork ? onTick : undefined}
             />

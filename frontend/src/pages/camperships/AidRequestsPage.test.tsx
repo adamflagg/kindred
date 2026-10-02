@@ -1008,6 +1008,56 @@ describe('ticks (§4.10, §5.2)', () => {
       expect(await screen.findByText(/^Tick Posted on 1 request/)).toBeInTheDocument()
     })
 
+    // Owner sitting A, A18: toggling a row's checkbox is an exit like ↓, so what is typed is saved
+    // first, before any dialog, and the row shows the saved figures.
+    it('saves the typed ask when a row checkbox is toggled, before any dialog, and refreshes the row', async () => {
+      keyAsk.mockImplementationOnce(() => {
+        grid = {
+          data: {
+            ...LIVE,
+            rows: GRID_ROWS.map((r) =>
+              r.request_id === 'reqolivia000003'
+                ? {
+                    ...r,
+                    rounds: [
+                      r.rounds[0] as ApiAidRound,
+                      roundOut(2, 'needs_offer', { ask: 1300, decided: 1040 }),
+                    ],
+                  }
+                : r
+            ),
+          },
+          isLoading: false,
+          error: null,
+        }
+        return Promise.resolve({
+          year: 2027,
+          written: 1,
+          unchanged: 0,
+          operation_id: 'op0000000000001',
+        })
+      })
+      await typeAppeal()
+      const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+      await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+      expect(keyAsk).toHaveBeenCalledTimes(1)
+      expect(screen.queryByText(/^Tick Posted on/)).toBeNull()
+      expect(await screen.findByText('1 selected')).toBeInTheDocument()
+      expect(
+        within(screen.getByText('Olivia Chen').closest('tr') as HTMLElement).getAllByText('$1,040')
+          .length
+      ).toBeGreaterThan(0)
+    })
+
+    it("keeps the row unticked and lists the failure when the checkbox's save fails", async () => {
+      keyAsk.mockImplementationOnce(() => Promise.reject(new Error('The server is down')))
+      await typeAppeal()
+      const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+      await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+      expect(await screen.findByText(/Couldn't save Olivia Chen's Round 2 ask/)).toBeInTheDocument()
+      expect(screen.queryByText('1 selected')).toBeNull()
+    })
+
     it('opens nothing when that save fails, and the failure stays listed', async () => {
       keyAsk.mockImplementationOnce(() => Promise.reject(new Error('The server is down')))
       await typeAppeal()
