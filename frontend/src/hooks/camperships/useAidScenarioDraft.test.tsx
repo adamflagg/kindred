@@ -436,14 +436,60 @@ describe('useAidScenarioDraft (Decision 19)', () => {
 })
 
 describe('adopt (PR 6: Fit to budget, All settings)', () => {
-  it('records a whole document as the draft, after anything already running', async () => {
+  it('records the document the builder returns as the draft', async () => {
     const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
     let landed = false
     await act(async () => {
-      landed = await result.current.adopt(EVALUATED.document)
+      landed = await result.current.adopt('Recording…', () => EVALUATED.document)
     })
     expect(landed).toBe(true)
     expect(routes()).toEqual(['PUT /draft'])
     expect(calls[0]?.body).toEqual({ document: EVALUATED.document })
+  })
+
+  it('builds on the draft as it stands when its turn comes: after a queued release', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    act(() => result.current.move({ minimum: '150' }))
+    const seen: unknown[] = []
+    let adopted: Promise<boolean> = Promise.resolve(false)
+    await act(async () => {
+      void result.current.release()
+      adopted = result.current.adopt('Recording…', (current) => {
+        seen.push(current)
+        return { ...current, year: 2099 }
+      })
+      // Queued behind the release: nothing is built at click time.
+      expect(seen).toEqual([])
+      await adopted
+    })
+    expect(routes()).toEqual(['POST /evaluate', 'PUT /draft', 'PUT /draft'])
+    // It saw what the release recorded (the server's saved draft), not the draft it was clicked on.
+    expect(seen).toEqual([SAVED.document])
+    expect(calls[2]?.body).toEqual({ document: { ...SAVED.document, year: 2099 } })
+  })
+
+  it('records nothing when the draft moved on since the document was made (basedOn)', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    let landed = true
+    await act(async () => {
+      landed = await result.current.adopt('Recording…', (current) => current, {
+        basedOn: 'trail-from-before',
+      })
+    })
+    expect(landed).toBe(false)
+    expect(calls).toEqual([])
+    expect(result.current.error).toBe('The draft moved since: try again')
+  })
+
+  it('records it when the draft is still the one it was made on', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    let landed = false
+    await act(async () => {
+      landed = await result.current.adopt('Recording…', () => EVALUATED.document, {
+        basedOn: workspace().draft?.trail_id ?? '',
+      })
+    })
+    expect(landed).toBe(true)
+    expect(routes()).toEqual(['PUT /draft'])
   })
 })

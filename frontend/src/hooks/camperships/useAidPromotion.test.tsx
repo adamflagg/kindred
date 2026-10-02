@@ -11,8 +11,13 @@ import { useAidMakeRulesDraft, useAidPromotionPreview, useAidScenarioFit } from 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
+let authLoading = false
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+  useAuth: () => ({ isLoading: authLoading, user: { id: 'u1' } }),
+}))
+let granted: string[] = []
+vi.mock('../usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../useCurrentYear', () => ({ useYear: () => 2027 }))
 
@@ -24,7 +29,9 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
+  granted = ['financial_aid.view', 'financial_aid.rules']
+  authLoading = false
   fetchSpy = vi
     .spyOn(globalThis, 'fetch')
     .mockImplementation(() =>
@@ -67,6 +74,31 @@ describe('useAidPromotionPreview (D39)', () => {
     expect(sent().auth).toBe('Bearer test-jwt')
   })
 
+  it('waits for auth and for the rules permission, like the other scenario reads', async () => {
+    granted = ['financial_aid.view']
+    renderHook(() => useAidPromotionPreview('A1'), { wrapper })
+    authLoading = true
+    granted = ['financial_aid.rules']
+    renderHook(() => useAidPromotionPreview('A1'), { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it("answers a refusal in the server's words at once, and retries anything else", async () => {
+    fetchSpy.mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify({ detail: 'No such option' }), { status: 404 }))
+    )
+    const refused = renderHook(() => useAidPromotionPreview('A1'), { wrapper })
+    await waitFor(() => expect(refused.result.current.isError).toBe(true))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    fetchSpy.mockClear()
+    fetchSpy.mockImplementationOnce(() => Promise.resolve(new Response('{}', { status: 500 })))
+    const retried = renderHook(() => useAidPromotionPreview('B2'), { wrapper })
+    await waitFor(() => expect(retried.result.current.isSuccess).toBe(true))
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
   it('is keyed under the scenario prefix, so a rules write refreshes it', () => {
     expect(queryKeys.aidPromotionPreview(2027, 'A1').slice(0, 2)).toEqual(
       queryKeys.aidScenariosPrefix()
@@ -94,5 +126,48 @@ describe('useAidMakeRulesDraft (D39)', () => {
     )
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.aidHistoryPrefix() })
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.aidBudgetPrefix() })
+  })
+
+  it('still refreshes when the draft moved on (409): the preview and rules are stale then', async () => {
+    fetchSpy.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: 'The rules draft moved on' }), { status: 409 })
+      )
+    )
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidMakeRulesDraft(), { wrapper })
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({ code: 'A1', body: { base_version: 3 } })
+      ).rejects.toThrow('The rules draft moved on')
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.aidRulesPrefix() })
+    expect(invalidate).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['financial-aid', 'scenarios'] })
+    )
+  })
+
+  it('resolves only after the reads it moved have refreshed', async () => {
+    const finishers: Array<() => void> = []
+    vi.spyOn(client, 'invalidateQueries').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishers.push(resolve)
+        })
+    )
+    const { result } = renderHook(() => useAidMakeRulesDraft(), { wrapper })
+    let saved = false
+    await act(async () => {
+      void result.current.mutateAsync({ code: 'A1', body: { base_version: 4 } }).then(() => {
+        saved = true
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(saved).toBe(false)
+    await act(async () => {
+      for (const finish of finishers) finish()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(saved).toBe(true)
   })
 })

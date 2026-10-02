@@ -716,8 +716,8 @@ export async function fetchAidScenarioTrail(
 }
 
 /**
- * The tier shift that uses Round 1's allocation, the pools' Round 1 Remaining summed (§7.4; D119;
- * fit.py), naming the tightest pool as information. Records nothing: "Use it" records the document.
+ * The tier shift that uses Round 1's allocation: the total row's Round 1 Remaining (it also counts
+ * money on programs with no pool; §7.4; D119; fit.py), naming the tightest pool as information. Records nothing: "Use it" records the document.
  */
 export function fitAidScenario(
   fetchWithAuth: FetchWithAuth,
