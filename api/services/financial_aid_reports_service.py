@@ -182,8 +182,8 @@ def _pool_label(document: AidRules | None, pool: str | None) -> str:
 
 
 def table_chips(document: AidRules | None) -> list[ChipOut]:
-    """Each award table, labelled by the pool its programs share (2026: Camp & Quest, Weekend programs, TBM), else
-    by its programs' labels."""
+    """Each award table, labelled by the pool its programs share (pool A, pool B, ...), else by
+    its programs' labels."""
     if document is None:
         return []
     out: list[ChipOut] = []
