@@ -12,6 +12,7 @@ import type {
 } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
 import { formatCampDateTime, parseIsoDay } from '../kit/dates'
+import { CANCEL_REASON_OPTIONS } from '../kit/editor'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { codeWords } from '../requests/attention'
@@ -195,7 +196,30 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
     set_payer_shares: 'Payer shares set',
     set_household_share: 'Household share set',
   },
-  aid_grants: { place_grant: 'Grant placed', withdraw: 'Withdrawn' },
+  aid_grants: { withdraw: 'Withdrawn' },
+  // `place_grant` is logged on the placement-override collection, not on `aid_grants` (I1).
+  aid_attribution_overrides: {
+    place_grant: 'Grant placed',
+    place_line: 'Line placed',
+    reclassify: 'Reclassified',
+  },
+  // ⚠1 interim (lead-built, the owner rules later): past-tense words, so "Correct" never reads as
+  // "this figure is correct" over a corrected figure.
+  aid_application_corrections: { correct: 'Corrected', cost_override: 'Cost override set' },
+  aid_flag_dispositions: {
+    placed: 'Placed',
+    reopen: 'Reopened',
+    reclassified: 'Reclassified',
+    leave_at_family_level: 'Left at family level',
+  },
+  aid_grantors: { retire: 'Retired', unretire: 'Unretired' },
+  aid_sources: { map_grantor: 'Grantor mapped' },
+  aid_requests: {
+    status: 'Status changed',
+    resolve_session: 'Session resolved',
+    mark_duplicate: 'Marked duplicate',
+    set_headcount: 'Headcount set',
+  },
   aid_grant_placements: { place: 'Placed', remove: 'Removed' },
   aid_rules: {
     create: 'Created',
@@ -239,7 +263,7 @@ const RECORD_WORDS: Readonly<Record<string, readonly [string, string]>> = {
   aid_grantors: ['grantor', 'grantors'],
   aid_payer_shares: ['payer share', 'payer shares'],
   aid_applications: ['application', 'applications'],
-  aid_application_corrections: ['income correction', 'income corrections'],
+  aid_application_corrections: ['correction', 'corrections'],
   aid_attribution_overrides: ['placement', 'placements'],
   aid_household_links: ['household link', 'household links'],
   aid_sources: ['source', 'sources'],
@@ -355,8 +379,8 @@ export function rulesLines(row: ApiAidHistoryRow): string[] {
   return lines
 }
 
-/** ⚠ Decision 4: the only fields formatted as money or percent; every other figure reads as recorded. An ask is logged as `amount` under the action `ask`, so there is no `ask` field. */
-const MONEY_FIELDS: ReadonlySet<string> = new Set(['amount'])
+/** ⚠ Decision 4: the only fields formatted as money or percent; every other figure reads as recorded. A decision's ask is logged as `amount` under the action `ask` (no `ask` field on decision rows); an intake request logs its own `ask`, a float. */
+const MONEY_FIELDS: ReadonlySet<string> = new Set(['amount', 'ask'])
 const PERCENT_FIELDS: ReadonlySet<string> = new Set(['share_pct'])
 /** Codes worded as the Requests grid words them (a hold's `code`: "Placeholder income"). */
 const CODE_FIELDS: ReadonlySet<string> = new Set(['code'])
@@ -393,23 +417,31 @@ function decimalOf(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function fieldValue(field: string, value: unknown): string {
+/** The cancel form's words for a cancellation's reason code; a code it doesn't know reads as recorded. */
+const CANCEL_REASON_WORDS: ReadonlyMap<string, string> = new Map(
+  CANCEL_REASON_OPTIONS.map((option) => [option.value, option.label])
+)
+
+function fieldValue(entity: string, field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   if (CODE_FIELDS.has(field) && typeof value === 'string') return codeWords(value)
+  if (entity === 'aid_cancellations' && field === 'reason' && typeof value === 'string') {
+    return CANCEL_REASON_WORDS.get(value) ?? value
+  }
   const n = decimalOf(value)
   if (MONEY_FIELDS.has(field) && n !== null) return formatMoney(n)
   if (PERCENT_FIELDS.has(field) && n !== null) return `${String(value)}%`
   return String(value)
 }
 
-function fieldLine(change: ApiAidFieldChange): string {
+function fieldLine(entity: string, change: ApiAidFieldChange): string {
   const field = change.path[0] ?? ''
   const label = codeText(field)
-  if (change.kind === 'added') return `${label}: ${fieldValue(field, change.after)}`
+  if (change.kind === 'added') return `${label}: ${fieldValue(entity, field, change.after)}`
   if (change.kind === 'removed')
-    return `${label}: removed (was ${fieldValue(field, change.before)})`
-  return `${label}: ${fieldValue(field, change.before)} → ${fieldValue(field, change.after)}`
+    return `${label}: removed (was ${fieldValue(entity, field, change.before)})`
+  return `${label}: ${fieldValue(entity, field, change.before)} → ${fieldValue(entity, field, change.after)}`
 }
 
 /** The household the row itself recorded, if it did (a create, or an update of that field). */
@@ -453,7 +485,7 @@ export function rowView(row: ApiAidHistoryRow): RowView {
       `${recordWords(row.entity, 1)} ${row.entity_id}`,
       row.reason,
     ]),
-    lines: listed.map(fieldLine),
+    lines: listed.map((change) => fieldLine(row.entity, change)),
     hidden: row.changes.length - listed.length - unlisted.length,
     householdCmId: householdOf(row),
   }
