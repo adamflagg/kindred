@@ -104,6 +104,14 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
   })
 })
 
+describe('RulesTab keeps what it has when a refetch fails', () => {
+  it('still shows the approved rules when data and an error are both held', () => {
+    approved = { data: APPROVED_RULES, isLoading: false, error: new Error('refetch failed') }
+    renderAt('/aid/season/rules?section=budget')
+    expect(within(panel()).getByText('$1,000,000')).toBeInTheDocument()
+  })
+})
+
 describe('RulesTab for finance (D39)', () => {
   beforeEach(() => {
     granted = FINANCE
