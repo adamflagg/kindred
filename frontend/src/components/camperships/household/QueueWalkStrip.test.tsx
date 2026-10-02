@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AidView } from '../kit/asOf'
@@ -26,16 +26,17 @@ function Where() {
   return <div data-testid="where">{pathname + search}</div>
 }
 
-function Page({
-  id,
-  beforeLeave,
-}: {
-  id: number
-  beforeLeave?: ((go: () => void) => void) | undefined
-}) {
+function Page({ beforeLeave }: { beforeLeave?: ((go: () => void) => void) | undefined }) {
+  // The id follows the route, as the household page's does.
+  const { householdCmId } = useParams()
+  const id = Number(householdCmId)
+  const navigate = useNavigate()
   const walk = useQueueWalk(id, VIEW, beforeLeave)
   return (
     <>
+      <button type="button" onClick={() => void navigate('/aid/households/9999999?from=all')}>
+        jump to a family outside the view
+      </button>
       {walk && <QueueWalkStrip walk={walk} beforeLeave={beforeLeave} />}
       <Where />
     </>
@@ -46,12 +47,7 @@ function tree(path: string, beforeLeave?: (go: () => void) => void) {
   return (
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route
-          path="/aid/households/:householdCmId"
-          element={
-            <Page id={Number(path.split('/')[3]?.split('?')[0])} beforeLeave={beforeLeave} />
-          }
-        />
+        <Route path="/aid/households/:householdCmId" element={<Page beforeLeave={beforeLeave} />} />
         <Route path="*" element={<Where />} />
       </Routes>
     </MemoryRouter>
@@ -99,6 +95,60 @@ describe('the walk after the family leaves the view (PR 7 I2)', () => {
   })
 })
 
+describe('the remembered neighbours (PR 8 review m4-m6)', () => {
+  it('follows the neighbours by household when another family leaves too', () => {
+    const { rerender } = render(tree('/aid/households/1000005?from=all'))
+    expect(screen.getByText(/3 of 4 families/)).toBeInTheDocument()
+    rows = GRID_ROWS.filter(
+      (row) => row.household_cm_id !== 1000005 && row.household_cm_id !== 1000001
+    )
+    rerender(tree('/aid/households/1000005?from=all'))
+    expect(screen.getByRole('link', { name: /‹ The Garcia Family/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /The Sam Family.* ›/ })).toBeInTheDocument()
+  })
+
+  it('prints no edge words beside "not in X now" once the view is empty', () => {
+    rows = GRID_ROWS.filter((row) => row.household_cm_id === 1000005)
+    const { rerender } = render(tree('/aid/households/1000005?from=all'))
+    expect(screen.getByText(/1 of 1 families/)).toBeInTheDocument()
+    rows = []
+    rerender(tree('/aid/households/1000005?from=all'))
+    expect(screen.getByText('not in All now')).toBeInTheDocument()
+    expect(screen.queryByText('start of the list')).toBeNull()
+    expect(screen.queryByText('end of the list')).toBeNull()
+  })
+
+  it('returns to its place in the list when the family re-enters the view', () => {
+    const { rerender } = render(tree('/aid/households/1000005?from=all'))
+    rows = without(1000005)
+    rerender(tree('/aid/households/1000005?from=all'))
+    expect(screen.getByText('not in All now')).toBeInTheDocument()
+    rows = GRID_ROWS
+    rerender(tree('/aid/households/1000005?from=all'))
+    expect(screen.getByText(/3 of 4 families/)).toBeInTheDocument()
+    expect(screen.queryByText('not in All now')).toBeNull()
+    expect(screen.getByRole('link', { name: /‹ The Garcia Family/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /The Sam Family.* ›/ })).toBeInTheDocument()
+  })
+
+  it('forgets the memory when the route moves to another family', async () => {
+    render(tree('/aid/households/1000005?from=all'))
+    await userEvent.click(screen.getByRole('button', { name: /jump to a family outside/ }))
+    expect(screen.getByText('not in All now')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /‹|›$/ })).toBeNull()
+  })
+
+  it('has no previous link when the first family leaves, and the next is the old second', () => {
+    const { rerender } = render(tree('/aid/households/1000001?from=all'))
+    expect(screen.getByText(/1 of 4 families/)).toBeInTheDocument()
+    rows = without(1000001)
+    rerender(tree('/aid/households/1000001?from=all'))
+    expect(screen.getByText('not in All now')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^‹/ })).toBeNull()
+    expect(screen.getByRole('link', { name: /The Garcia Family.* ›/ })).toBeInTheDocument()
+  })
+})
+
 describe('beforeLeave (owner F2 4)', () => {
   it('defers the ] key until go() runs', async () => {
     let go: (() => void) | null = null
@@ -132,7 +182,10 @@ describe('beforeLeave (owner F2 4)', () => {
   it('leaves a modified click to the browser', () => {
     const before = vi.fn()
     render(tree('/aid/households/1000005?from=all', before))
-    fireEvent.click(screen.getByRole('link', { name: '← Back to All' }), { ctrlKey: true })
+    const back = screen.getByRole('link', { name: '← Back to All' })
+    // fireEvent returns false when the default was prevented: true means the browser still gets it.
+    expect(fireEvent.click(back, { ctrlKey: true })).toBe(true)
+    expect(fireEvent.click(back, { metaKey: true })).toBe(true)
     expect(before).not.toHaveBeenCalled()
   })
 
