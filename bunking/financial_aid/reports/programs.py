@@ -42,7 +42,7 @@ def block_counts_in(request: ReportRequest, n: int) -> frozenset[ProgramsCount]:
     """The Programs counts a request is in, in round `n`'s block (none when it isn't in that round): one definition
     for the block's counts and the requests behind them (slice 4 ask 1). Awards: awarded above $0 (D80, D157), which
     is 0 on a request that isn't live (D129)."""
-    if not in_round(request, n):
+    if not request.counts_as_received or not in_round(request, n):
         return frozenset()
     found: set[ProgramsCount] = {"apps"}
     if request.asked((n,)) is not None:
@@ -156,7 +156,7 @@ def _row(session: int, requests: Sequence[ReportRequest]) -> ProgramRow:
 
 def programs(requests: Iterable[ReportRequest], sessions: Mapping[int, str | None]) -> ProgramsTable:
     """`sessions`: every session a rules program claims -> its program's pool (None: the program has no pool)."""
-    every = list(requests)
+    every = [r for r in requests if r.counts_as_received]  # a posted duplicate is no application, nor a session's
     by_session: dict[tuple[str | None, int], list[ReportRequest]] = defaultdict(list)
     for request in every:
         by_session[_slot(request, sessions)].append(request)

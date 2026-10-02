@@ -63,9 +63,7 @@ class StatisticsRowOut(BaseModel):
 
 
 class CancelledRowOut(BaseModel):
-    reason: (
-        str  # one of D141's nine, "not_recorded", or "withdrawn_in_kindred" (a withdrawn request with a posted award)
-    )
+    reason: str  # one of D141's nine, "not_recorded", "withdrawn_in_kindred" (a withdrawn request with a posted award), or "duplicate_in_kindred" (a confirmed duplicate with one)
     reason_label: str
     pool: str | None
     pool_label: str  # the season's rules' label; "No pool" when pool is null; the key when the rules don't name it

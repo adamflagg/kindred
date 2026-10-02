@@ -293,6 +293,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Aid recipients who cancelled: requests with a posted award later cancelled, or withdrawn, by cancel reason, "
             "pool and round. A withdrawn request that holds a posted award counts here exactly as a cancelled one does. "
+            "So does a confirmed duplicate that holds one, on its own Duplicate line (it is still not an application). "
             "Once cancelled a request is out of awarded already."
         ),
         spec="§5.6",

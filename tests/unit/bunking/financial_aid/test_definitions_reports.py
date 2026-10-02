@@ -128,6 +128,12 @@ def test_recipients_who_cancelled_names_a_withdrawn_request_that_holds_a_posted_
     assert "A withdrawn request that holds a posted award counts here exactly as a cancelled one does." in text
 
 
+def test_recipients_who_cancelled_names_a_confirmed_duplicate_that_holds_a_posted_award() -> None:
+    """Owner ruling, queue 4 (RULED): a confirmed duplicate with a posted award counts on its own Duplicate line."""
+    text = BY_KEY["recipients_cancelled"].text
+    assert "a confirmed duplicate that holds one, on its own Duplicate line" in text
+
+
 def test_awarded_names_what_liveness_leaves_out() -> None:
     """Owner A11 (APPROVED): not cancelled, withdrawn or a pending duplicate."""
     assert "on a live request (not cancelled, withdrawn or a pending duplicate)" in BY_KEY["awarded"].text

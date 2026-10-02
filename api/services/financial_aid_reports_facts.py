@@ -5,13 +5,17 @@ ReportRequests. No I/O: the reports service loads the change log and the correct
 Which requests are RECEIVED (D72): every intake request except a refused duplicate, and except a withdrawn request
 that an edited answer replaced (intake withdraws the old key and creates a new one, bunking.financial_aid.received's
 `edit_predecessors`): that is one application, counted once, at its first date. A withdrawn request nothing replaced
-(the family removed the answer) was still received.
+(the family removed the answer) was still received. `report_requests` also emits one request that is NOT received: a
+CONFIRMED duplicate holding a posted award (owner ruling, queue 4), with `counts_as_received` False, so its money is
+counted and it is no application.
 
 Where each field comes from:
   standing      cancelled when the season lists a cancellation (10b-2; on a past read the season lists the ones made by
                 that day, whether CampMinder's or Kindred's, so a request cancelled on or before `as_of` IS cancelled
                 then and one cancelled after is not), or withdrawn while holding a posted award (owner (a), RULED
-                2026-10-02: a forgotten reversal, read as a cancellation); live (active, unmatched) and not
+                2026-10-02: a forgotten reversal, read as a cancellation), or a CONFIRMED duplicate while holding a
+                posted award (owner ruling, queue 4: the same, on its own "Duplicate" line; it is still not received,
+                so it counts in no Apps/Asked figure); live (active, unmatched) and not
                 cancelled; otherwise closed (a pending duplicate, a withdrawn answer with no posted award). Inclusion comes from status alone: there
                 is no Include override (owner ruling, ⚠5 option c).
   program       the priced program, else the rules program the request's session belongs to (a request that is
@@ -49,7 +53,7 @@ from bunking.financial_aid.decisions import PricedRequest, RoundState, RoundView
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import edit_predecessors
 from bunking.financial_aid.reports.facts import REPORT_ROUNDS, AsksBasis, ReportRequest, RoundFacts, Standing
-from bunking.financial_aid.reports.statistics import WITHDRAWN_REASON
+from bunking.financial_aid.reports.statistics import DUPLICATE_REASON, WITHDRAWN_REASON
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.results import round1_table, round2_table
 
@@ -69,8 +73,10 @@ def _standing(request: RequestRecord, cancelled: bool, rounds: Sequence[RoundFac
     # Owner (a) (RULED 2026-10-02): a posted award on a WITHDRAWN request is a forgotten reversal, so it reads exactly
     # as a cancelled request does (same standing, money and recipients-who-cancelled line), whether or not the money
     # was since reversed: the cancelled path reads the lock, not the net Posted. A withdrawn request with no posted
-    # award stays "closed".
-    if cancelled or (request.status == STATUS_WITHDRAWN and any(r.locked is not None for r in rounds)):
+    # award stays "closed". A CONFIRMED duplicate holding a posted award reads the same way (owner ruling, queue 4,
+    # RULED), on its own "Duplicate" line; a pending duplicate (`duplicate_pending`) stays "closed".
+    holds_award = any(r.locked is not None for r in rounds)
+    if cancelled or (request.status in (STATUS_WITHDRAWN, STATUS_DUPLICATE) and holds_award):
         return "cancelled"
     return "live" if request.status in _LIVE else "closed"
 
@@ -146,13 +152,18 @@ def report_requests(
     corrections: Sequence[CorrectionRecord],
     keep: Collection[str] | None = None,
 ) -> tuple[ReportRequest, ...]:
-    """Every received request of `season` (D72), as reports read it. `received` holds each request's first-recorded
-    moment (bunking.financial_aid.received; empty before the first season it means anything); `keep`, when given, is
-    a reporting control's request set (D138): only those requests."""
+    """Every received request of `season` (D72), as reports read it, plus each confirmed duplicate holding a posted
+    award (`counts_as_received` False, owner ruling, queue 4). `received` holds each request's first-recorded moment
+    (bunking.financial_aid.received; empty before the first season it means anything); `keep`, when given, is a
+    reporting control's request set (D138): only those requests (received ones, so a duplicate is never kept)."""
     document = season.rules.document if season.rules is not None else None
     grants = outside_grants_by_request(season.register)
     out: list[ReportRequest] = []
-    for request_id in sorted(received_ids(season.requests)):
+    received_set = received_ids(season.requests)
+    # A confirmed duplicate is not received (D72), but its posted award is counted (owner ruling, queue 4): it gets a
+    # row too, without counting as an application, and only when it holds a lock.
+    duplicates = {rid for rid, r in season.requests.items() if r.status == STATUS_DUPLICATE}
+    for request_id in sorted(received_set | duplicates):
         if keep is not None and request_id not in keep:
             continue
         request = season.requests[request_id]
@@ -180,6 +191,9 @@ def report_requests(
         cancellation = season.cancellations.get(request_id)
         # Standing reads the lock before a past read blanks it: owner (a)'s withdrawn recipient is one whether or not
         # its money was since reversed, so a clawback the read can't replay never makes it "closed".
+        is_duplicate = request_id in duplicates
+        if is_duplicate and not any(r.locked is not None for r in rounds):
+            continue  # a confirmed duplicate with no posted award is not in the reports at all
         standing = _standing(request, cancellation is not None, rounds)
         if request_id in season.posted_unknown and standing == "live":
             # A past read can't replay its clawback: like the grid, its money leaves awarded. Only a live request's
@@ -188,6 +202,8 @@ def report_requests(
         cancel_reason: str | None = cancellation.reason if cancellation is not None else None
         if cancel_reason is None and standing == "cancelled" and request.status == STATUS_WITHDRAWN:
             cancel_reason = WITHDRAWN_REASON  # a withdrawal is named, never read as a missing reason
+        elif cancel_reason is None and standing == "cancelled" and is_duplicate:
+            cancel_reason = DUPLICATE_REASON  # likewise a confirmed duplicate
         out.append(
             ReportRequest(
                 request_id=request_id,
@@ -203,6 +219,7 @@ def report_requests(
                 received_at=received.get(request_id),
                 rounds=tuple(rounds),
                 grants=grants.get(request_id, ZERO),
+                counts_as_received=not is_duplicate,
             )
         )
     return tuple(out)

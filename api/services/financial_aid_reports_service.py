@@ -106,6 +106,7 @@ from bunking.financial_aid.reports.programs import (
     programs,
 )
 from bunking.financial_aid.reports.statistics import (
+    DUPLICATE_REASON,
     NO_REASON,
     PCT_OF_ASK_DECIDED_LABEL,
     PCT_OF_ASK_LABEL,
@@ -138,6 +139,7 @@ CANCELLATION_CAVEAT: Final = (
     "counted as of the day; a registration CampMinder changed since then reads as it stands now"
 )
 WITHDRAWN_LABEL: Final = "Withdrawn in Kindred"
+DUPLICATE_LABEL: Final = "Duplicate"
 # RPT-1's two figure columns (owner N2 = C): what each says, server-sent so the screen never words it.
 OFFERED_LABEL: Final = "As offered"
 END_OF_SEASON_LABEL: Final = "End of season"
@@ -602,7 +604,13 @@ class FinancialAidReportsService:
             frozen: FrozenAsks | None = None
             if cutoff is not None:
                 cut = as_of_cutoff(cutoff)
-                kept = frozenset(r.request_id for r in requests if r.received_at is not None and r.received_at < cut)
+                # Only applications are kept: a posted duplicate (counts_as_received False) is in no at-cutoff count,
+                # so it must not move the frozen asks' basis either (D155 falls the whole figure back to "now").
+                kept = frozenset(
+                    r.request_id
+                    for r in requests
+                    if r.counts_as_received and r.received_at is not None and r.received_at < cut
+                )
                 frozen = await self._frozen(season_year, season, kept, cutoff)
                 cutoff_requests = with_frozen_asks((r for r in requests if r.request_id in kept), frozen)
             natives.append(
@@ -783,6 +791,8 @@ def _reason_label(reason: str) -> str:
         return "no reason recorded"
     if reason == WITHDRAWN_REASON:
         return WITHDRAWN_LABEL
+    if reason == DUPLICATE_REASON:
+        return DUPLICATE_LABEL
     for key, label in CANCEL_REASON_LABELS.items():
         if key == reason:
             return label
