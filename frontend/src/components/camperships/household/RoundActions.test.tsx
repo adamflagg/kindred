@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { AidWriteError } from '../../../services/camperships/aidApi'
 import { gridRow, roundOut, ROW_EMMA, ROW_SAMUEL } from '../requests/gridFixtures'
 import { householdRequest } from './householdFixtures'
 import { roundLines } from './householdModel'
@@ -143,6 +144,48 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await userEvent.type(screen.getByLabelText('Approval note'), 'Within the reserve{Enter}')
     await waitFor(() => expect(screen.queryByLabelText('Approval note')).not.toBeInTheDocument())
+  })
+
+  // A withheld round's decided_now is what the tick WOULD lock, so refresh-and-tick-again loops:
+  // the refusal offers the amount itself (#2981).
+  describe('Tick at the amount the server named (#2981)', () => {
+    const moved = (decidedNow: number | null) => {
+      const error = new AidWriteError('Decided amounts moved since they were shown', 409)
+      error.rows = [
+        { request_id: 'reqemma00000001', round: 1, confirmed: 1420, decided_now: decidedNow },
+      ]
+      return error
+    }
+
+    it('re-sends the round at decided_now and the offer goes away, with no second 409 needed', async () => {
+      failWith = moved(1500)
+      render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+      failWith = null
+      await userEvent.click(screen.getByRole('button', { name: 'Tick at $1,500' }))
+      expect(posted).toHaveBeenCalledTimes(2)
+      expect(posted).toHaveBeenLastCalledWith({
+        year: 2027,
+        body: { rows: [{ request_id: 'reqemma00000001', round: 1, amount: 1500 }] },
+      })
+      expect(screen.queryByRole('button', { name: /Tick at/ })).not.toBeInTheDocument()
+      expect(screen.queryByText(/moved since/)).not.toBeInTheDocument()
+    })
+
+    it('offers nothing when decided_now is null or equals the decided amount', async () => {
+      failWith = moved(null)
+      const { unmount } = render(
+        <RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+      expect(screen.getByText(/Decided amounts moved/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Tick at/ })).not.toBeInTheDocument()
+      unmount()
+      failWith = moved(1420)
+      render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+      expect(screen.queryByRole('button', { name: /Tick at/ })).not.toBeInTheDocument()
+    })
   })
 
   it('clears a Mark posted refusal when the line changes under it', async () => {
