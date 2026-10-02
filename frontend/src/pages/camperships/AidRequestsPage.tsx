@@ -62,11 +62,14 @@ import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
 
 /** The From Today line's words for each state of the filter (I1). */
-function todayWords(key: ListedTodayKey, state: TodayFilter): string {
+function todayWords(key: ListedTodayKey, state: TodayFilter, shown: number | null): string {
   const name = `From Today: ${LINE_NAMES[key]}`
   switch (state.state) {
-    case 'ready':
-      return `${name} · ${String(state.ids.size)} ${state.ids.size === 1 ? 'request' : 'requests'}`
+    case 'ready': {
+      // Today's own count, unless another filter narrows the list: then the count the list shows.
+      const n = shown ?? state.ids.size
+      return `${name} · ${String(n)} ${n === 1 ? 'request' : 'requests'}`
+    }
     case 'pending':
       return `${name} · loading…`
     case 'failed':
@@ -151,6 +154,9 @@ export default function AidRequestsPage() {
     () => (lensed ? filterRows(lensed, view.key, filters) : []),
     [lensed, view.key, filters]
   )
+  // The view or another filter narrows the list past the Today line's own rows.
+  const narrowed =
+    view.key !== 'all' || program !== null || pool !== null || round !== null || tick !== null
   const counts = useMemo(
     () => (lensed && !todayUnknown ? viewCounts(lensed, filters, live) : null),
     [lensed, filters, live, todayUnknown]
@@ -431,7 +437,7 @@ export default function AidRequestsPage() {
       />
       {todayKey !== null && (
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {todayWords(todayKey, todayState)}
+          {todayWords(todayKey, todayState, narrowed ? visible.length : null)}
           {/* Through the walk, like any filter change: what is typed is saved first (Decision 4). */}
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('today', null)}>
             Clear
