@@ -143,14 +143,33 @@ export function todaySections(today: ApiAidToday): TodaySection[] {
   return sections
 }
 
+export type ListedTodayKey = 'late_full_coverage' | 'would_change' | 'intake'
+
+/** Only the listed lines carry `request_ids` (the server sends [] for the rest), so only they filter the grid. */
+export function isListedTodayKey(value: string): value is ListedTodayKey {
+  return value === 'late_full_coverage' || value === 'would_change' || value === 'intake'
+}
+
 /**
- * The requests a Today line counted (Decision 10): the grid shows exactly these. Empty, never "no
- * filter", while Today is unread or the reader's role is not sent the line's section.
+ * The grid's and the walk's `?today=` filter (Decision 10), one state for both. A missing line is
+ * unknown, never an empty one: `ready` with no ids is a true zero, while `pending`, `failed` and
+ * `withheld` (the line's section is not sent to this role) are never read as "no requests".
  */
-export function todayRequestIds(
-  today: ApiAidToday | undefined,
-  key: TodayKey
-): ReadonlySet<string> {
-  const lines = [...(today?.casework ?? []), ...(today?.finance ?? [])]
-  return new Set(lines.find((l) => l.key === key)?.request_ids ?? [])
+export type TodayFilter =
+  | { readonly state: 'off' }
+  | { readonly state: 'pending' }
+  | { readonly state: 'failed' }
+  | { readonly state: 'withheld' }
+  | { readonly state: 'ready'; readonly ids: ReadonlySet<string> }
+
+export function todayFilter(
+  key: ListedTodayKey | null,
+  read: { readonly data: ApiAidToday | undefined; readonly error: Error | null }
+): TodayFilter {
+  if (key === null) return { state: 'off' }
+  if (read.data === undefined) return { state: read.error ? 'failed' : 'pending' }
+  const sections = [read.data.casework, read.data.finance].filter((s) => s !== null)
+  const found = sections.flat().find((l) => l.key === key)
+  if (found === undefined) return { state: 'withheld' }
+  return { state: 'ready', ids: new Set(found.request_ids ?? []) }
 }

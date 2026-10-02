@@ -42,8 +42,23 @@ vi.mock('../../hooks/camperships/useAidRemaining', () => ({
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
 }))
-let todayRead: { data: ApiAidToday | undefined } = { data: undefined }
-vi.mock('../../hooks/camperships/useAidToday', () => ({ useAidToday: () => todayRead }))
+interface TodayResult {
+  data: ApiAidToday | undefined
+  isLoading: boolean
+  error: Error | null
+}
+let todayRead: TodayResult = { data: undefined, isLoading: false, error: null }
+// Every `enabled` the page asked Today with: it must read Today only under ?today= (m5).
+const todayAsked: Array<boolean | undefined> = []
+vi.mock('../../hooks/camperships/useAidToday', () => ({
+  useAidToday: (options?: { enabled?: boolean }) => {
+    todayAsked.push(options?.enabled)
+    return options?.enabled === false
+      ? { data: undefined, isLoading: false, error: null }
+      : todayRead
+  },
+}))
+const loaded = (data: ApiAidToday): TodayResult => ({ data, isLoading: false, error: null })
 let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -111,7 +126,8 @@ beforeEach(() => {
   keyAsk.mockClear()
   grid = { data: LIVE, isLoading: false, error: null }
   granted = ['financial_aid.view']
-  todayRead = { data: undefined }
+  todayRead = { data: undefined, isLoading: false, error: null }
+  todayAsked.length = 0
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
 })
@@ -864,7 +880,7 @@ describe("a Today line's rows (Decision 10)", () => {
   }
 
   it('shows exactly the requests the line counted, says where they came from, and clears', async () => {
-    todayRead = { data: WOULD_CHANGE }
+    todayRead = loaded(WOULD_CHANGE)
     renderAt('/aid/requests?view=all&today=would_change')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
@@ -877,13 +893,13 @@ describe("a Today line's rows (Decision 10)", () => {
   })
 
   it('counts the view links over the line only, so the totals match the rows (R1)', () => {
-    todayRead = { data: WOULD_CHANGE }
+    todayRead = loaded(WOULD_CHANGE)
     renderAt('/aid/requests?view=all&today=would_change')
     expect(viewLink('All')).toHaveTextContent('1 fam · 1 req')
   })
 
   it('carries the line on the household link, so the walk and Back keep it', () => {
-    todayRead = { data: WOULD_CHANGE }
+    todayRead = loaded(WOULD_CHANGE)
     renderAt('/aid/requests?view=all&today=would_change')
     expect(screen.getByRole('link', { name: 'The Chen Family' })).toHaveAttribute(
       'href',
@@ -895,5 +911,86 @@ describe("a Today line's rows (Decision 10)", () => {
     renderAt('/aid/requests?view=all&today=bogus')
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.queryByText(/From Today/)).toBeNull()
+  })
+
+  // I1: a missing Today line is unknown, never an empty one.
+  it('says it is loading while Today loads: no zero, no empty grid, no zeroed counts', () => {
+    todayRead = { data: undefined, isLoading: true, error: null }
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByText(/From Today: .* · loading…/)).toBeInTheDocument()
+    expect(screen.queryByText(/0 requests/)).toBeNull()
+    expect(screen.queryByText('No requests in this view.')).toBeNull()
+    expect(screen.getByText(/Loading Requests data/)).toBeInTheDocument()
+    expect(viewLink('All')).not.toHaveTextContent('0 fam · 0 req')
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
+  })
+
+  it("shows the error when Today's read failed, never an empty or unfiltered list", () => {
+    todayRead = { data: undefined, isLoading: false, error: new Error('boom') }
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByText(/couldn't load Today's list/)).toBeInTheDocument()
+    expect(screen.getByText(/Failed to load .*boom/)).toBeInTheDocument()
+    expect(screen.queryByText(/0 requests/)).toBeNull()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+  })
+
+  it("says so, and does not filter, when the line's section is not sent to this role", () => {
+    todayRead = loaded({ year: 2027, casework: [], finance: null })
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByText(/isn't one of your Today lines/)).toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText(/0 requests/)).toBeNull()
+  })
+
+  it('treats a line present with no ids as a true zero', () => {
+    todayRead = loaded({
+      year: 2027,
+      casework: null,
+      finance: [
+        {
+          key: 'would_change',
+          families: 0,
+          items: 0,
+          item_kind: 'requests',
+          reasons: [],
+          request_ids: [],
+        },
+      ],
+    })
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByText(/· 0 requests/)).toBeInTheDocument()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+  })
+
+  // m1: only the three listed lines carry request_ids, so only they filter.
+  it('ignores a Today line that is not a listed one (the server sends no ids for it)', () => {
+    todayRead = loaded({
+      year: 2027,
+      casework: [
+        {
+          key: 'holds',
+          families: 1,
+          items: 7,
+          item_kind: 'requests',
+          reasons: [],
+          request_ids: [],
+        },
+      ],
+      finance: null,
+    })
+    renderAt('/aid/requests?view=all&today=holds')
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText(/From Today/)).toBeNull()
+  })
+
+  // m5
+  it('reads Today only under ?today=', () => {
+    renderAt('/aid/requests')
+    expect(todayAsked.length).toBeGreaterThan(0)
+    expect(todayAsked.every((e) => e === false)).toBe(true)
+    todayAsked.length = 0
+    todayRead = loaded(WOULD_CHANGE)
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(todayAsked).toContain(true)
   })
 })

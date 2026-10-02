@@ -41,9 +41,11 @@ import {
   type RequestView,
 } from '../../components/camperships/requests/views'
 import {
-  isTodayKey,
+  isListedTodayKey,
   LINE_NAMES,
-  todayRequestIds,
+  todayFilter,
+  type ListedTodayKey,
+  type TodayFilter,
 } from '../../components/camperships/today/todayModel'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -56,6 +58,23 @@ import { useAidKeyAsk } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
+
+/** The From Today line's words for each state of the filter (I1). */
+function todayWords(key: ListedTodayKey, state: TodayFilter): string {
+  const name = `From Today: ${LINE_NAMES[key]}`
+  switch (state.state) {
+    case 'ready':
+      return `${name} · ${String(state.ids.size)} ${state.ids.size === 1 ? 'request' : 'requests'}`
+    case 'pending':
+      return `${name} · loading…`
+    case 'failed':
+      return `${name} · couldn't load Today's list`
+    case 'withheld':
+      return `${name} isn't one of your Today lines · showing every request`
+    case 'off':
+      return name
+  }
+}
 
 function distinct(values: ReadonlyArray<string | null>): string[] {
   return [...new Set(values.filter((v): v is string => v !== null))].sort()
@@ -108,15 +127,18 @@ export default function AidRequestsPage() {
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
   // Decision 10: a Today line that is no view (would change, intake, a late grant) opens its exact rows.
-  const todayKey = todayParam !== null && isTodayKey(todayParam) ? todayParam : null
+  const todayKey = todayParam !== null && isListedTodayKey(todayParam) ? todayParam : null
   const todayRead = useAidToday({ enabled: todayKey !== null })
   const todayData = todayRead.data
-  const todayIds = useMemo(
-    () => (todayKey === null ? null : todayRequestIds(todayData, todayKey)),
-    [todayKey, todayData]
+  const todayError = todayRead.error
+  // One tri-state, shared with the queue walk: a Today line that is loading, failed or not sent to
+  // this role is unknown, never an empty one.
+  const todayState = useMemo(
+    () => todayFilter(todayKey, { data: todayData, error: todayError }),
+    [todayKey, todayData, todayError]
   )
-  // One filters memo feeds the rows, the view counts and the CSV name, so R1 holds: totals, CSV and
-  // Select all count what is shown.
+  const todayIds = todayState.state === 'ready' ? todayState.ids : null
+  const todayUnknown = todayState.state === 'pending' || todayState.state === 'failed'
   const filters = useMemo(
     (): GridFilters => ({ program, pool, round, tick, ids: todayIds }),
     [program, pool, round, tick, todayIds]
@@ -126,8 +148,8 @@ export default function AidRequestsPage() {
     [rows, view.key, filters]
   )
   const counts = useMemo(
-    () => (rows ? viewCounts(rows, filters, live) : null),
-    [rows, filters, live]
+    () => (rows && !todayUnknown ? viewCounts(rows, filters, live) : null),
+    [rows, filters, live, todayUnknown]
   )
   const programs = useMemo(
     (): FilterOption[] =>
@@ -326,7 +348,13 @@ export default function AidRequestsPage() {
     [viewState, view.slug, keep, sort, group, setParam, navigate, leaveThen]
   )
 
-  const csvFilename = requestsCsvName(view, filters, year, asOf.kind === 'past' ? asOf.date : null)
+  const csvFilename = requestsCsvName(
+    view,
+    filters,
+    year,
+    asOf.kind === 'past' ? asOf.date : null,
+    todayIds === null ? null : todayKey
+  )
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -345,7 +373,7 @@ export default function AidRequestsPage() {
       />
       {todayKey !== null && (
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {`From Today: ${LINE_NAMES[todayKey]} · ${String(todayIds?.size ?? 0)} ${todayIds?.size === 1 ? 'request' : 'requests'}`}
+          {todayWords(todayKey, todayState)}
           {/* Through the walk, like any filter change: what is typed is saved first (Decision 4). */}
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('today', null)}>
             Clear
@@ -409,9 +437,9 @@ export default function AidRequestsPage() {
         <BulkConfirmDialog plan={plan} year={year} onClose={closePlan} onDone={tickDone} />
       )}
       <QueryGuard
-        isLoading={grid.isLoading}
+        isLoading={grid.isLoading || todayState.state === 'pending'}
         // Decision 33: a failed background refetch keeps what loaded.
-        error={grid.data ? null : grid.error}
+        error={grid.data ? (todayState.state === 'failed' ? todayError : null) : grid.error}
         data={grid.data}
         label="Requests"
       >

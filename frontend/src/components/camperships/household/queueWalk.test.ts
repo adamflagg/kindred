@@ -43,6 +43,12 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
     expect(keep).toEqual({ today: 'would_change' })
   })
 
+  it('ignores a Today key that is not a listed line (m1)', () => {
+    const { keep, todayKey } = gridFiltersFrom(new URLSearchParams('from=all&today=holds'))
+    expect(keep).toEqual({})
+    expect(todayKey).toBeNull()
+  })
+
   it("walks only a Today line's requests when its ids come along", () => {
     const stops = walkStops(GRID_ROWS, requestView('all'), TODAY, {
       ...NO_FILTERS,
