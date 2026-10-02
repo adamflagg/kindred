@@ -15,6 +15,7 @@ from api.services.financial_aid_rules_service import (
     PricingVersionInUseError,
     RulesNotFoundError,
     RulesVersion,
+    SectionChangedError,
     VersionExistsError,
 )
 from bunking.financial_aid.change_log import AidWriteConflictError
@@ -47,7 +48,11 @@ WARNED = ValidationReport(
     ]
 )
 DOC_BODY = {"document": fictional_rules_json()}
-APPROVE_BODY = {"sections": ["programs", "cost"], "note": "Finance, Oct 7 meeting"}
+APPROVE_BODY = {
+    "sections": ["programs", "cost"],
+    "note": "Finance, Oct 7 meeting",
+    "fingerprints": {"programs": "a" * 64, "cost": "b" * 64},
+}
 
 ROUTES: list[tuple[str, str, dict[str, Any] | None, int]] = [
     ("GET", "/api/financial-aid/rules/2031", None, 200),
@@ -109,6 +114,7 @@ def test_approve_passes_the_sections_in_order_and_the_note() -> None:
     call = service.approve_sections.await_args
     assert call.args == (2031, 1, ["programs", "cost"])
     assert call.kwargs["note"] == "Finance, Oct 7 meeting"
+    assert call.kwargs["fingerprints"] == {"programs": "a" * 64, "cost": "b" * 64}
 
 
 @pytest.mark.parametrize(
@@ -118,6 +124,9 @@ def test_approve_passes_the_sections_in_order_and_the_note() -> None:
         {"sections": ["programs"]},
         {"sections": [], "note": "Finance"},
         {"sections": ["canteen"], "note": "Finance"},  # not a section
+        {"sections": ["programs"], "note": "Finance"},  # no fingerprints
+        {"sections": ["programs", "cost"], "note": "Finance", "fingerprints": {"programs": "a"}},  # cost missing
+        {"sections": ["programs"], "note": "Finance", "fingerprints": {"programs": "a", "cost": "b"}},  # cost extra
     ],
 )
 def test_a_bad_approval_is_422_and_never_reaches_the_service(body: dict[str, Any]) -> None:
@@ -191,3 +200,11 @@ def test_get_passes_the_version_asked_for() -> None:
     service = _stub()
     _client().get("/api/financial-aid/rules/2031", params={"version": 3})
     assert service.load.await_args.args == (2031, 3)
+
+
+def test_an_approval_of_a_section_changed_since_it_was_opened_is_409_naming_it() -> None:
+    service = _stub()
+    message = "Someone else saved programs since you opened it; reload to see their change"
+    service.approve_sections = AsyncMock(side_effect=SectionChangedError(["programs"], message))
+    response = _client().post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
+    assert (response.status_code, response.json()["detail"]) == (409, {"message": message, "sections": ["programs"]})

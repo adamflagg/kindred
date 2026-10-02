@@ -14,7 +14,7 @@ from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.rules import AidRules, SectionName
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from tests.unit.api.services.rules_fakes import FakeStore
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
 FINANCE = "finance@example.com"
@@ -223,3 +223,51 @@ async def test_a_save_landing_between_a_promotions_preview_and_its_apply_is_a_co
     v2 = await service.load(2031, 2)
     assert str(v2.document.awards.minimum) == "130"  # the save stands
     assert v2.document.award_tables == fictional_rules().award_tables  # and the promotion wrote nothing
+
+
+# --- a section fingerprint and the revision: the check passes on a stale read, the write is still refused --------
+
+
+@pytest.mark.asyncio
+async def test_a_same_section_save_landing_after_the_read_is_refused_and_the_other_value_kept() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    opened = {s.section: s.fingerprint for s in (await service.draft_view(2031)).sections}
+    awards = fictional_rules_json()["awards"]
+    store.after_next_read(
+        lambda: service.save_section(
+            2031, 1, "awards", awards | {"minimum": "175"}, actor=FINANCE, expected_fingerprint=opened["awards"]
+        )
+    )
+    with pytest.raises(AidWriteConflictError):
+        await service.save_section(
+            2031, 1, "awards", awards | {"minimum": "150"}, actor=TREASURER, expected_fingerprint=opened["awards"]
+        )
+    assert str((await service.load(2031)).document.awards.minimum) == "175"
+
+
+@pytest.mark.asyncio
+async def test_an_approval_read_before_a_save_of_a_ticked_section_is_refused_and_both_stay_draft() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    opened = {s.section: s.fingerprint for s in (await service.draft_view(2031)).sections}
+    awards = fictional_rules_json()["awards"]
+    store.before_next_commit(
+        lambda: service.save_section(
+            2031, 1, "awards", awards | {"minimum": "175"}, actor=TREASURER, expected_fingerprint=opened["awards"]
+        )
+    )
+    with pytest.raises(AidWriteConflictError):
+        await service.approve_sections(
+            2031,
+            1,
+            ["awards", "income"],
+            actor=FINANCE,
+            note="Board",
+            fingerprints={s: opened[s] for s in ("awards", "income")},
+        )
+    v1 = await service.load(2031)
+    assert (v1.section_status["awards"].state, v1.section_status["income"].state) == ("draft", "draft")
+    assert str(v1.document.awards.minimum) == "175"

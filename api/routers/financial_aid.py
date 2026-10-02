@@ -212,6 +212,7 @@ from api.services.financial_aid_rules_service import (
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
+    SectionChangedError,
     VersionExistsError,
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
@@ -306,6 +307,8 @@ def _rules() -> FinancialAidRulesService:
 
 
 def _rules_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, SectionChangedError):  # structured, so the editor can mark the stale sections
+        return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, RulesNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(
@@ -357,6 +360,7 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
                 changes=[field_change_out(c) for c in s.changes],
                 errors=sum(1 for i in draft.report.errors if i.section == s.section),
                 warnings=sum(1 for i in draft.report.warnings if i.section == s.section),
+                fingerprint=s.fingerprint,
             )
             for s in draft.sections
         ],
@@ -702,7 +706,7 @@ async def approve_aid_rules_sections(
     """Approve sections as one logged operation; the note names the approving body (D39)."""
     try:
         approved, report = await _rules().approve_sections(
-            year, version, body.sections, actor=user.email, note=body.note
+            year, version, body.sections, actor=user.email, note=body.note, fingerprints=body.fingerprints
         )
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
@@ -727,7 +731,14 @@ async def save_aid_rules_section(
     (`branched_from` names the version it came from); 409 when the rules draft moved on since the editor opened."""
     service = _rules()
     try:
-        saved = await service.save_section(year, body.base_version, section, body.content, actor=user.email)
+        saved = await service.save_section(
+            year,
+            body.base_version,
+            section,
+            body.content,
+            actor=user.email,
+            expected_fingerprint=body.expected_fingerprint,
+        )
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
