@@ -134,6 +134,7 @@ from api.services.financial_aid_intake_plan import application_fields, request_f
 from api.services.financial_aid_intake_repository import application_record, request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
+    STATUS_DUPLICATE,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
     ApplicationRecord,
@@ -230,6 +231,7 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+_CLOSED_REVERSIBLE: Final = frozenset({STATUS_WITHDRAWN, STATUS_DUPLICATE})
 
 
 def is_included(status: str | None, *, cancelled: bool) -> bool:
@@ -1432,13 +1434,14 @@ class FinancialAidDecisionsService:
                 reversed_on[request.id] = day
             note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
             priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
-        # Owner ruling (a), 2026-10-02: a withdrawn request whose camp aid is still live in CampMinder is To reverse
-        # whatever its enrollment says (and once that money is reversed it reads clawed back: clawback_eligible).
+        # Owner ruling (a), 2026-10-02: a withdrawn or confirmed-duplicate request whose camp aid is still live in
+        # CampMinder is To reverse whatever its enrollment says (and once that money is reversed it reads clawed back:
+        # clawback_eligible). A duplicate_pending one is neither: it stays in Duplicates with its money Posted.
         to_reverse = frozenset(
             r.id
             for r in side.requests
             if (r.id in cancellations and any(line.live() for line in ledger.lines(r.id)))
-            or (r.status == STATUS_WITHDRAWN and any(line.live() for line in ledger.closed_lines(r.id)))
+            or (r.status in _CLOSED_REVERSIBLE and any(line.live() for line in ledger.closed_lines(r.id)))
         )
         season = Season(
             year=year,

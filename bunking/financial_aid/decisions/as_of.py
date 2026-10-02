@@ -59,8 +59,8 @@ _CANCELLED: Final = (
     "cancelled by that day is left out of Round 2 asks so far, as today's read leaves it out"
 )
 _TO_REVERSE: Final = (
-    "To reverse is cancelled or withdrawn money still live in CampMinder's ledger, and a past date doesn't read "
-    "the ledger, so it can't be rebuilt"
+    "To reverse is cancelled, withdrawn or duplicate money still live in CampMinder's ledger, and a past date doesn't "
+    "read the ledger, so it can't be rebuilt"
 )
 
 

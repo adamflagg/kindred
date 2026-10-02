@@ -227,7 +227,7 @@ class GridRowOut(BaseModel):
     # Sub-project 10b-2. On a past read, as of the day (Decision 11); a registration whose status changed since
     # reads by today's status (not_rebuilt's cancellation).
     cancellation: CancellationOut | None = None
-    to_reverse: bool | None = False  # cancelled or withdrawn with camp aid still live in CampMinder (spec §6.2, D54)
+    to_reverse: bool | None = False  # cancelled, withdrawn or duplicate with camp aid still live in CampMinder
     todos: list[TodoOut] | None = Field(default_factory=list)
     # Slice 1: the views the row is in. None on a past read: membership reads figures a past date leaves empty.
     queues: list[QueueOut] | None = Field(default_factory=list)

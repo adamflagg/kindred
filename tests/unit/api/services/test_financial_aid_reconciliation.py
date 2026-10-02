@@ -1035,11 +1035,14 @@ def test_a_camper_who_leaves_summer_with_two_live_family_camps_leaves_her_live_l
 
 
 def test_only_a_cancelled_or_closed_request_is_eligible_for_a_clawback() -> None:
-    """Owner ruling 2026-10-02 (option B): a live request is never clawed back, a cancelled or closed one is."""
+    """Owner ruling 2026-10-02 (option B): a live or pending-duplicate request is never clawed back, a cancelled or closed one is."""
     assert [clawback_eligible(s, cancelled=False) for s in ("active", "unmatched_session")] == [False, False]
     assert [clawback_eligible(s, cancelled=False) for s in ("withdrawn", "duplicate", "duplicate_pending")] == [
-        True
-    ] * 3
+        True,
+        True,
+        False,  # a pending duplicate is not confirmed: its money stays Posted until staff resolve it
+    ]
+    assert clawback_eligible("duplicate_pending", cancelled=True) is True
     assert [clawback_eligible(s, cancelled=True) for s in ("active", "unmatched_session")] == [True, True]
     lines = [line(1, "1800", posted=MAR9, reversed_at=JUN1)]
     assert apply_clawback(R1, POSTED_R1, lines, eligible=False, family_lines=[]) == (R1, None)

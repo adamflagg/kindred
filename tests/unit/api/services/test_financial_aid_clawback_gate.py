@@ -190,3 +190,64 @@ async def test_a_withdrawn_request_with_no_camp_aid_lines_is_not_to_reverse() ->
     store = FakeDecisionsStore()
     _withdrawn_emma(store, line=False)
     assert (await _row(store)).to_reverse is False
+
+
+# --- duplicates agree: a confirmed duplicate is clawback territory and To reverse, a pending one is neither ----
+
+
+def _duplicate_emma(store: FakeDecisionsStore, status: str, *, reversed_at: datetime | None = None) -> None:
+    """Emma's request marked `status`, Round 1 posted, and CampMinder holding (or having reversed) her aid."""
+    seed_request(store, EMMA, status=status)
+    _posted(store, EMMA, 1, "1500")
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 2, None))
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=reversed_at)
+    store.synced_at = AFTER
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_duplicate_with_live_camp_aid_is_to_reverse_then_clawed_back_once_reversed() -> None:
+    live = FakeDecisionsStore()
+    _duplicate_emma(live, "duplicate")
+    row = await _row(live)
+    assert row.to_reverse is True
+    assert "to_reverse" in (row.queues or [])
+    assert (row.rounds[0].status, row.rounds[0].clawed_back) == ("posted", False)
+    out = await _today(live, _Grants(_grants(year=YEAR)), _Drafts(None), _Ledger()).read(
+        YEAR, casework=True, finance=False
+    )
+    assert _line(out.casework, "to_reverse").items == 1
+    done = FakeDecisionsStore()
+    _duplicate_emma(done, "duplicate", reversed_at=JUN1)
+    row = await _row(done)
+    assert row.to_reverse is False
+    assert (row.rounds[0].status, row.rounds[0].clawed_back) == ("posted", True)
+
+
+@pytest.mark.asyncio
+async def test_a_pending_duplicate_is_neither_to_reverse_nor_clawed_back_and_stays_in_duplicates() -> None:
+    live = FakeDecisionsStore()
+    _duplicate_emma(live, "duplicate_pending")
+    row = await _row(live)
+    assert row.to_reverse is False
+    assert "to_reverse" not in (row.queues or [])
+    assert "duplicates" in (row.queues or [])
+    done = FakeDecisionsStore()
+    _duplicate_emma(done, "duplicate_pending", reversed_at=JUN1)
+    row = await _row(done)
+    assert row.to_reverse is False
+    assert "duplicates" in (row.queues or [])
+    assert (row.rounds[0].status, row.rounds[0].clawed_back) == ("posted", False)
+    assert row.confirmation is not None
+    assert row.confirmation.status != "reversed"
+    camp_r1 = _camp(await _service(done).budget(YEAR), 1)
+    assert camp_r1.posted == 1500.0
+
+
+@pytest.mark.asyncio
+async def test_on_a_past_date_a_pending_duplicate_reversed_by_then_stays_posted() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="duplicate_pending")
+    log_seeded(store, SEEDED)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    assert _camp(await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5)), 1).posted == 1500.0
