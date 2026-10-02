@@ -101,6 +101,9 @@ describe('a typed step the slider cannot take (residue 12)', () => {
     expect(stepNote('−2.5', SHIFT_RANGE, 'points')).toBeNull()
     expect(stepNote('', SHIFT_RANGE, 'points')).toBeNull()
     expect(stepNote('-', SHIFT_RANGE, 'points')).toBeNull()
+    // On the way to "2.5" (rereview m2): still typing, so no "not a number" flash.
+    expect(stepNote('2.', SHIFT_RANGE, 'points')).toBeNull()
+    expect(stepNote('-2.', SHIFT_RANGE, 'points')).toBeNull()
   })
 })
 

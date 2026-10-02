@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { ApiAidScenarioResults } from '../../../../types/api-types'
+import { AMBER_NOTE } from '../../../admin/lodging/lodgingStyles'
 import { NEGATIVE_INK } from '../../kit/aidStyles'
 import { TABLE_CARD } from '../../kit/kitStyles'
 import { Money } from '../../kit/MoneyText'
@@ -27,17 +28,21 @@ export function ScenarioResults({
   results,
   state,
   actions,
+  liveError = null,
 }: {
   results: ApiAidScenarioResults
   state: 'recorded' | 'moving' | 'updating' | 'failed'
   /** The Keep buttons, right-aligned in the strip as the mock has them. */
   actions?: ReactNode
+  /** Why the live figures failed, said in the strip so no line pushes the sliders mid-drag. */
+  liveError?: string | null
 }) {
   return (
     <div className="space-y-2" data-testid="scenario-results">
       <div className={STRIP_CARD}>
         <span className={DRAFT_CHIP}>Draft</span>
         <span className="text-muted-foreground text-xs">{STATE_WORDS[state]}</span>
+        {liveError !== null && <span className={AMBER_NOTE}>{liveError}</span>}
         {state === 'updating' && <span className="text-muted-foreground text-xs">updating…</span>}
         {resultLines(results).map((line) => (
           <span key={line.key} className="whitespace-nowrap">
