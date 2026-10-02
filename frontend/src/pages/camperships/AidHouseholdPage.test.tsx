@@ -43,9 +43,19 @@ function Where() {
   return <div data-testid="where">{pathname + search}</div>
 }
 
-function renderAt(path: string, history: string[] = []) {
+function renderAt(path: string, history: string[] = [], state: unknown = null) {
   return render(
-    <MemoryRouter initialEntries={[...history, path]} initialIndex={history.length}>
+    <MemoryRouter
+      initialEntries={[
+        ...history,
+        {
+          pathname: path.split('?')[0] ?? path,
+          search: path.includes('?') ? `?${path.split('?')[1] ?? ''}` : '',
+          state,
+        },
+      ]}
+      initialIndex={history.length}
+    >
       <Routes>
         <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
         <Route path="/aid/requests" element={<Where />} />
@@ -103,17 +113,18 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.queryByText(/Network down/)).toBeNull()
   })
 
+  // Regression guard: passed against the first build too (no `from` means no link).
   it('has no way back when it was not opened from the grid', () => {
     renderAt('/aid/households/1000001?year=2027')
     expect(screen.queryByRole('link', { name: /Back to requests/ })).toBeNull()
   })
 
-  it('links back to the grid view and filters it came from (fresh tab, no history)', () => {
+  it('links back to the grid view and filters it came from (fresh tab, no history)', async () => {
     renderAt('/aid/households/1000001?year=2027&from=approved&pool=pool_a&ids=1')
-    const link = screen.getByRole('link', { name: /Back to requests/ })
-    const url = new URL(link.getAttribute('href') ?? '', 'http://x')
-    expect(url.pathname).toBe('/aid/requests')
-    expect(Object.fromEntries(url.searchParams)).toEqual({
+    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
+    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
+    expect(where.pathname).toBe('/aid/requests')
+    expect(Object.fromEntries(where.searchParams)).toEqual({
       view: 'approved',
       pool: 'pool_a',
       ids: '1',
@@ -121,13 +132,27 @@ describe('AidHouseholdPage (§6.3)', () => {
     })
   })
 
-  it('goes back through history, so the grid lands on the row it left (§3.5)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=all', [
-      '/aid/requests?view=all&row=req-7&year=2027',
-    ])
+  it('keeps the as-of of the view it came from in the fallback href', () => {
+    renderAt('/aid/households/1000001?year=2027&from=all&as_of=2027-03-01')
+    const href = screen.getByRole('link', { name: /Back to requests/ }).getAttribute('href') ?? ''
+    expect(new URL(href, 'http://x').searchParams.get('as_of')).toBe('2027-03-01')
+  })
+
+  it('goes back through history when the grid opened it, so the grid lands on its row (§3.5)', async () => {
+    renderAt(
+      '/aid/households/1000001?year=2027&from=all',
+      ['/aid/requests?view=all&row=req-7&year=2027'],
+      { aidFromGrid: true }
+    )
     await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/aid/requests?view=all&row=req-7&year=2027'
     )
+  })
+
+  it('follows the href, not history, when something else opened it (a queue step, a jump)', async () => {
+    renderAt('/aid/households/1000001?year=2027&from=all', ['/aid/households/1000002?from=all'])
+    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?view=all&year=2027')
   })
 })
