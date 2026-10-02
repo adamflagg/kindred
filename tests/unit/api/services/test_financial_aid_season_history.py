@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 
 import api.constants.collections as collections
+from api.schemas.financial_aid_history import HistoryEffectOut
+from api.services.financial_aid_rules_effect import RULES_EFFECT_ENTITY
 from api.services.financial_aid_season_history import (
     ENTITY_KINDS,
     NOT_IN_HISTORY,
@@ -785,3 +787,80 @@ async def test_a_field_the_model_added_since_the_parent_was_stored_is_no_change(
     (row,) = (await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)).rows
     assert row.against_parent is not None
     assert row.against_parent.changes == []
+
+
+# --- Back-end ask H3: a rules approval's recorded effect --------------------------------------------------------
+
+
+def _approval(effect: dict[str, int] | None) -> list[SimpleNamespace]:
+    rows = [
+        _rec("p1", "aid_rules", "2027:4:income", OP_R, actor=FIN, action="approve", reason="Board, Jan 8"),
+        _rec("p2", "aid_rules", "2027:4:budget", OP_R, actor=FIN, action="approve", reason="Board, Jan 8"),
+    ]
+    if effect is not None:
+        rows.append(_row("p3", RULES_EFFECT_ENTITY, "2027:4", OP_R, actor=FIN, action="effect", after=effect))
+    return rows
+
+
+EFFECT = {"from_version": 3, "to_version": 4, "repriced": 41, "flagged": 12}
+
+
+@pytest.mark.asyncio
+async def test_an_approval_line_says_what_it_re_priced_and_flagged() -> None:
+    reads = _Reads(*_approval(EFFECT))
+    (line,) = (await SeasonHistoryService(reads).page(2027, HistoryFilter(rules=True), page=1, per_page=50)).operations
+    assert line.summary == "v4 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged"
+    assert line.effect == HistoryEffectOut(from_version=3, to_version=4, repriced=41, flagged=12)
+    assert (line.rows, [(c.entity, c.action) for c in line.counts]) == (2, [("aid_rules", "approve")])
+    detail = await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)
+    assert [r.entity for r in detail.rows] == ["aid_rules", "aid_rules"]  # the effect is not a record write
+    assert detail.operation.effect == line.effect
+
+
+@pytest.mark.asyncio
+async def test_an_approval_that_moved_no_pricing_says_so_and_an_old_one_says_nothing() -> None:
+    async def summary(effect: dict[str, int] | None) -> str:
+        page = await SeasonHistoryService(_Reads(*_approval(effect))).page(
+            2027, HistoryFilter(rules=True), page=1, per_page=50
+        )
+        return page.operations[0].summary
+
+    assert await summary({"from_version": 3, "to_version": 3, "repriced": 0, "flagged": 0}) == (
+        "v3 still prices the season: nothing re-priced"
+    )
+    assert await summary({"from_version": 0, "to_version": 0, "repriced": 0, "flagged": 0}) == (
+        "no approved rules price the season yet: nothing re-priced"
+    )
+    assert await summary({"from_version": 0, "to_version": 1, "repriced": 1, "flagged": 0}) == (
+        "v1 now prices the season · 1 unsent request re-priced · 0 sent offers flagged"
+    )
+    assert await summary(None) == ""  # approved before the effect was recorded, or its measure failed
+
+
+@pytest.mark.asyncio
+async def test_a_registrar_never_sees_an_approvals_effect() -> None:
+    """Review Focus 1: the effect row is a rules row: hidden with a rules-only approval, and stripped from any other
+    operation a registrar may see."""
+    service = SeasonHistoryService(_Reads(*_approval(EFFECT)))
+    page = await service.page(2027, HistoryFilter(), page=1, per_page=50)
+    assert (page.total, [c.kind for c in page.kind_counts]) == (0, ["offers", "money", "holds", "grants"])
+    with pytest.raises(HistoryNotFoundError):
+        await service.operation(2027, OP_R, rules=False)
+    mixed = [*_tick(), _row("e1", RULES_EFFECT_ENTITY, "2027:4", OP_T, actor=FIN, action="effect", after=EFFECT)]
+    (line,) = (
+        await SeasonHistoryService(_Reads(*mixed, subjects=SEASON)).page(2027, HistoryFilter(), page=1, per_page=50)
+    ).operations
+    assert (line.effect, line.summary) == (None, "3 requests · 2 families · $2,400.50 locked")
+    assert (line.rows, [c.entity for c in line.counts], line.figures.locked) == (3, ["aid_decisions"], 2400.5)
+    assert ENTITY_KINDS[RULES_EFFECT_ENTITY] == "rules"
+    # Nor can a registrar's search reach it, by the effect row's own text or by the family names beside it.
+    mixed_reads = _Reads(*mixed, subjects=SEASON)
+    for q, total in ((RULES_EFFECT_ENTITY, 0), ("2027:4", 0), ("johnson", 1)):
+        found = await SeasonHistoryService(mixed_reads).page(2027, HistoryFilter(text=q), page=1, per_page=50)
+        assert (q, found.total) == (q, total)
+    opened = await SeasonHistoryService(mixed_reads).operation(2027, OP_T, rules=False)
+    assert (opened.operation.effect, opened.operation.rows, [r.entity for r in opened.rows]) == (
+        None,
+        3,
+        ["aid_decisions"] * 3,
+    )
