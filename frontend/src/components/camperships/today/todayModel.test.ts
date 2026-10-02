@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ApiAidTodayLine } from '../../../types/api-types'
+import type { ApiAidToday, ApiAidTodayLine } from '../../../types/api-types'
 import {
   countWords,
   detailWords,
+  isListedTodayKey,
   isTodayKey,
   LINE_NAMES,
   openHref,
   reasonWords,
-  todayRequestIds,
+  todayFilter,
   todaySections,
 } from './todayModel'
 
@@ -231,20 +232,40 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
   })
 })
 
-describe("a line's request ids (Decision 10)", () => {
-  const data = {
-    year: 2027,
-    casework: [line({ key: 'holds', request_ids: ['a'] })],
-    finance: [line({ key: 'would_change', request_ids: ['b', 'c'] })],
-  }
-  it('finds the line in either section', () => {
-    expect(todayRequestIds(data, 'would_change')).toEqual(new Set(['b', 'c']))
-    expect(todayRequestIds(data, 'holds')).toEqual(new Set(['a']))
+describe('the Today filter is unknown, not empty (I1; m1)', () => {
+  const read = (data: ApiAidToday | undefined, error: Error | null = null) => ({ data, error })
+  const finance = [line({ key: 'would_change', request_ids: ['b'] })]
+
+  it('is off without a key', () => {
+    expect(todayFilter(null, read(undefined))).toEqual({ state: 'off' })
   })
-  it('is empty while Today is unread or the section is withheld, never "no filter"', () => {
-    expect(todayRequestIds(undefined, 'holds')).toEqual(new Set())
-    expect(todayRequestIds({ year: 2027, casework: null, finance: null }, 'holds')).toEqual(
-      new Set()
-    )
+  it('is pending until Today lands, and failed when it failed with nothing cached', () => {
+    expect(todayFilter('would_change', read(undefined))).toEqual({ state: 'pending' })
+    expect(todayFilter('would_change', read(undefined, new Error('boom')))).toEqual({
+      state: 'failed',
+    })
+  })
+  it('keeps what loaded when a refetch fails', () => {
+    const data = { year: 2027, casework: null, finance }
+    expect(todayFilter('would_change', read(data, new Error('boom')))).toEqual({
+      state: 'ready',
+      ids: new Set(['b']),
+    })
+  })
+  it("is withheld when the line's section is not sent to the role", () => {
+    expect(todayFilter('would_change', read({ year: 2027, casework: [], finance: null }))).toEqual({
+      state: 'withheld',
+    })
+  })
+  it('is ready with no ids for a line that is present and empty: a true zero', () => {
+    const data = { year: 2027, casework: null, finance: [line({ key: 'would_change' })] }
+    expect(todayFilter('would_change', read(data))).toEqual({ state: 'ready', ids: new Set() })
+  })
+  it('knows the three listed lines only', () => {
+    expect(isListedTodayKey('intake')).toBe(true)
+    expect(isListedTodayKey('would_change')).toBe(true)
+    expect(isListedTodayKey('late_full_coverage')).toBe(true)
+    expect(isListedTodayKey('holds')).toBe(false)
+    expect(isListedTodayKey('bogus')).toBe(false)
   })
 })

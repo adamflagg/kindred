@@ -9,7 +9,7 @@ import { campToday } from '../kit/dates'
 import { isPageKey } from '../kit/keyboard'
 import { lensRows, resolveStrip, shownView } from '../requests/strip'
 import type { RequestView } from '../requests/views'
-import { todayRequestIds } from '../today/todayModel'
+import { todayFilter } from '../today/todayModel'
 import {
   gridFiltersFrom,
   walkPosition,
@@ -87,16 +87,22 @@ export function useQueueWalk(
   // A Today line's rows are filtered like any other filter: the walk steps through exactly them.
   const todayRead = useAidToday({ enabled: walkView !== null && todayKey !== null })
   const todayData = todayRead.data
-  // Until Today's read lands the walk's rows are unknown, not empty: no "left the view" flash.
-  const allRows = todayKey !== null && todayData === undefined ? undefined : grid.data?.rows
+  const todayError = todayRead.error
+  const todayState = useMemo(
+    () => todayFilter(todayKey, { data: todayData, error: todayError }),
+    [todayKey, todayData, todayError]
+  )
+  // The same tri-state as the grid. Until Today's read lands (or when it failed) the rows are
+  // unknown, not empty: no "left the view" claim. A line this role isn't sent filters nothing.
+  const allRows =
+    todayState.state === 'pending' || todayState.state === 'failed' ? undefined : grid.data?.rows
   const rows = useMemo(
     () => (allRows ? lensRows(allRows, strip.lens) : undefined),
     [allRows, strip.lens]
   )
   const filters = useMemo(
-    () =>
-      todayKey === null ? urlFilters : { ...urlFilters, ids: todayRequestIds(todayData, todayKey) },
-    [urlFilters, todayKey, todayData]
+    () => (todayState.state === 'ready' ? { ...urlFilters, ids: todayState.ids } : urlFilters),
+    [urlFilters, todayState]
   )
   const stops = useMemo(
     () => (rows && walkView ? walkStops(rows, walkView, today, filters, order) : []),
