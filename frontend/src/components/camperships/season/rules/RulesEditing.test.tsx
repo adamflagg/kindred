@@ -785,3 +785,65 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
     expect(screen.queryByText(/^Editing /)).toBeNull()
   })
 })
+
+describe('round 3: what belongs to a season stays with it', () => {
+  const treeAt = (path: string) => (
+    <MemoryRouter initialEntries={[path]}>
+      <RulesTab />
+    </MemoryRouter>
+  )
+
+  it("says so when a save can't be built (a section without a fingerprint), instead of throwing", async () => {
+    const base = rulesDraft()
+    server = [
+      {
+        ...base,
+        sections: base.sections.map((x) =>
+          x.section === 'awards' ? { ...x, fingerprint: '' } : x
+        ),
+      },
+    ]
+    renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    const box = await screen.findByRole('textbox', { name: 'Minimum award' })
+    await userEvent.clear(box)
+    await userEvent.type(box, '150')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(
+      await screen.findByText("Couldn't send this save: reload the rules and try again.")
+    ).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+
+  it("doesn't carry a start error into another season", async () => {
+    draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
+    outcome = { kind: 'refused', status: 409, message: 'The season already has rules' }
+    const view = renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
+    expect(await screen.findByText('The season already has rules')).toBeInTheDocument()
+    year = 2028
+    view.rerender(treeAt('/aid/season/rules'))
+    expect(await screen.findByText('No rules for 2028 yet.')).toBeInTheDocument()
+    expect(screen.queryByText('The season already has rules')).toBeNull()
+  })
+
+  it('drops the notice when the season changes', async () => {
+    const view = renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByTestId('rules-notice')).toBeInTheDocument()
+    year = 2028
+    view.rerender(treeAt('/aid/season/rules?section=awards'))
+    expect(screen.queryByTestId('rules-notice')).toBeNull()
+  })
+
+  it("words the pills' cue for the mode: edit or approve", async () => {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await screen.findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
+    expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
+  })
+})
