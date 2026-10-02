@@ -12,7 +12,11 @@ import pytest
 from api.constants.collections import AID_SOURCES
 from api.schemas.financial_aid_reports import FundingSourceIn
 from api.services.financial_aid_development_repository import GrantorRecord, SourceRecord
-from api.services.financial_aid_development_service import FinancialAidDevelopmentService, FundingSourceNotFoundError
+from api.services.financial_aid_development_service import (
+    FinancialAidDevelopmentService,
+    FunderNotFoundError,
+    FundingSourceNotFoundError,
+)
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_reports_service import ReportsRefusedError
 from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved
@@ -219,3 +223,50 @@ async def test_a_group_change_says_it_re_places_on_tonights_sync_and_a_flag_chan
         YEAR, REGIONAL.id, FundingSourceIn(group="camp_pool", incentive=True), actor=DEVELOPMENT
     )
     assert flagged.families_changed is False
+
+
+async def test_a_funder_row_saves_its_descriptions_in_one_logged_operation() -> None:
+    """Decision 48: one operation; each description writes only what changed (Decision 43)."""
+    store = _by_funder()
+    out = await _service(store).save_funder(
+        YEAR,
+        "regional_fund",
+        FundingSourceIn(group="camp_pool", incentive=True, note="flagged by development"),
+        actor=DEVELOPMENT,
+    )
+    [operation] = store.operations
+    assert sorted(w.record_id for w in operation) == [REGIONAL.id, SPRING.id]
+    assert all(w.data == {"incentive": True} for w in operation)  # the group as shown: families kept
+    assert (out.kind, out.incentive, out.families_changed) == ("funder", True, False)
+    assert store.log[-1]["reason"] == "flagged by development"
+
+
+async def test_a_several_groups_row_keeps_its_families_when_only_the_flag_changes() -> None:
+    """A row shown as "several groups" saved with no group must not clear its descriptions' families."""
+    store = FakeDevelopmentStore(
+        source_rows=[replace(SPLIT, grantor_key="regional_fund"), replace(NARROW, grantor_key="regional_fund")],
+        grantor_rows=[FUND],
+    )
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn(group=None, incentive=True), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert all(w.data == {"incentive": True} for w in operation)
+
+
+async def test_an_unknown_or_empty_funder_is_not_found() -> None:
+    with pytest.raises(FunderNotFoundError, match="No funder"):
+        await _service(_by_funder()).save_funder(
+            YEAR, "nobody", FundingSourceIn(group="camp_pool", incentive=False), actor=DEVELOPMENT
+        )
+
+
+async def test_a_funder_whose_descriptions_are_unclassified_is_not_a_funder_to_save() -> None:
+    """N3: unclassified sources are listed read-only; a funder save finds only outside descriptions, so it cannot
+    touch them (the classification fix is the Sources route's)."""
+    store = FakeDevelopmentStore(source_rows=[replace(MYSTERY, grantor_key="regional_fund")], grantor_rows=[FUND])
+    with pytest.raises(FunderNotFoundError):
+        await _service(store).save_funder(
+            YEAR, "regional_fund", FundingSourceIn(group="camp_pool", incentive=True), actor=DEVELOPMENT
+        )
+    assert store.operations == []

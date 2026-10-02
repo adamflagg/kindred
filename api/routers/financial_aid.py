@@ -121,6 +121,7 @@ from api.schemas.financial_aid_reports import (
     DevelopmentResponse,
     FundingSourceIn,
     FundingSourceOut,
+    FundingSourceRowOut,
     FundingSourcesResponse,
     ProgramsResponse,
     ReportColumnsIn,
@@ -213,7 +214,11 @@ from api.services.financial_aid_decisions_service import (
     Season,
 )
 from api.services.financial_aid_development_repository import DevelopmentRepository
-from api.services.financial_aid_development_service import FinancialAidDevelopmentService, FundingSourceNotFoundError
+from api.services.financial_aid_development_service import (
+    FinancialAidDevelopmentService,
+    FunderNotFoundError,
+    FundingSourceNotFoundError,
+)
 from api.services.financial_aid_grant_offsets import GrantsRegisterService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
@@ -1846,7 +1851,7 @@ def _reports() -> FinancialAidReportsService:
 
 
 def _reports_http(exc: FinancialAidError) -> HTTPException:
-    if isinstance(exc, (ReportedFigureNotFoundError, FundingSourceNotFoundError)):
+    if isinstance(exc, (ReportedFigureNotFoundError, FundingSourceNotFoundError, FunderNotFoundError)):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, (ReportedFigureTakenError, AidWriteConflictError)):
         return HTTPException(status_code=409, detail=str(exc))
@@ -2117,5 +2122,17 @@ async def save_funding_source(
     """Set a source's reporting group (one of `year`'s pools) and incentive flag (D88, D100), logged."""
     try:
         return await _development().save_funding_source(year, source_id, body, actor=user.email)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.put("/reports/{year}/funding-sources/funders/{grantor_key}", response_model=FundingSourceRowOut)
+async def save_funding_source_funder(
+    year: _Year, grantor_key: _GrantorKeyPath, body: FundingSourceIn, user: AuthUser = _FUNDING_SOURCES_EDIT
+) -> FundingSourceRowOut:
+    """Set a funder row's reporting group and incentive flag on each of its descriptions, in one logged operation
+    (D159; Decision 48)."""
+    try:
+        return await _development().save_funder(year, grantor_key, body, actor=user.email)
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc

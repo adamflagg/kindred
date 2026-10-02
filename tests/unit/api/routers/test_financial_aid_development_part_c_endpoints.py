@@ -18,7 +18,7 @@ from api.schemas.financial_aid_reports import (
     ReportColumnsResponse,
     ZipResponse,
 )
-from api.services.financial_aid_development_service import FundingSourceNotFoundError
+from api.services.financial_aid_development_service import FunderNotFoundError, FundingSourceNotFoundError
 from api.services.financial_aid_reports_service import ReportsRefusedError
 from bunking.rbac.permissions import Permission
 from tests.unit.api.routers.test_financial_aid_development_endpoints import FAMILY_LEVEL, walk_models
@@ -43,7 +43,14 @@ def _client(persona: str = PERSONA_DEVELOPMENT) -> TestClient:
 
 def _stub() -> Any:
     service = patch("api.routers.financial_aid.FinancialAidDevelopmentService").start().return_value
-    for name in ("zip_codes", "report_columns", "save_report_columns", "funding_sources", "save_funding_source"):
+    for name in (
+        "zip_codes",
+        "report_columns",
+        "save_report_columns",
+        "funding_sources",
+        "save_funding_source",
+        "save_funder",
+    ):
         setattr(service, name, AsyncMock(side_effect=ReportsRefusedError("stub")))
     return service
 
@@ -88,6 +95,30 @@ def test_development_and_finance_edit_a_funding_source_and_the_registrar_cannot(
     assert (status != 403) == bool(allowed), (persona, status)
     if persona == PERSONA_REGISTRAR:
         assert status == 403
+
+
+FUNDER_URL = "/api/financial-aid/reports/2027/funding-sources/funders/regional_fund"
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_a_funder_row_is_edited_by_whoever_edits_a_funding_source(persona: str) -> None:
+    _stub()
+    allowed = {Permission.FINANCIAL_AID_FUNDING_SOURCES, Permission.FINANCIAL_AID_RULES} & set(PERSONAS[persona])
+    status = _client(persona).put(FUNDER_URL, json={"group": "camp_pool", "incentive": True}).status_code
+    assert (status != 403) == bool(allowed), (persona, status)
+
+
+def test_a_funder_edit_reaches_the_service_and_maps_not_found_to_404() -> None:
+    service = _stub()
+    _client(PERSONA_DEVELOPMENT).put(FUNDER_URL, json={"group": None, "incentive": True, "note": "why"})
+    assert service.save_funder.call_args.args == (
+        2027,
+        "regional_fund",
+        FundingSourceIn(group=None, incentive=True, note="why"),
+    )
+    assert service.save_funder.call_args.kwargs == {"actor": persona_user(PERSONA_DEVELOPMENT).email}
+    service.save_funder = AsyncMock(side_effect=FunderNotFoundError("none"))
+    assert _client(PERSONA_FINANCE).put(FUNDER_URL, json={"group": None, "incentive": False}).status_code == 404
 
 
 def test_an_edit_reaches_the_service_with_the_caller_and_maps_its_refusals() -> None:

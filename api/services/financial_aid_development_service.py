@@ -158,6 +158,10 @@ class FundingSourceNotFoundError(FinancialAidError, LookupError):
     """No aid_sources record with that id (404)."""
 
 
+class FunderNotFoundError(FinancialAidError, LookupError):
+    """No grantor with that key has an outside source description (404)."""
+
+
 @dataclass(frozen=True)
 class Grouping:
     """How a season's money and registrations find their development group (D100's reporting groups)."""
@@ -563,6 +567,27 @@ class FinancialAidDevelopmentService:
             group_change_warning=GROUP_CHANGE_WARNING,
         )
 
+    def _planned(
+        self, year: int, source: SourceRecord, body: FundingSourceIn, found: Grouping, *, keep_group: bool
+    ) -> tuple[dict[str, Any], dict[str, Any], SourceRecord]:
+        """Decision 43 for one description: its before, what changes, and the source after. `keep_group`: the group
+        as shown, so the families stay exactly (an incentive-only save never rewrites them)."""
+        families = list(source.implied_program_families)
+        if keep_group:
+            pass
+        elif body.group is None:
+            families = []
+        else:
+            if body.group not in {g.key for g in found.groups}:
+                raise ReportsRefusedError(f"{body.group!r} is not one of {year}'s budget pools")
+            families = sorted(f for f, pool in found.by_family.items() if pool == body.group)
+            if not families:
+                raise ReportsRefusedError(f"No program of {year} funds {body.group!r}: nothing to point the source at")
+        before = {"implied_program_families": list(source.implied_program_families), "incentive": source.incentive}
+        after: dict[str, Any] = {"implied_program_families": families, "incentive": body.incentive}
+        changed = {key: value for key, value in after.items() if before[key] != value}
+        return before, changed, replace(source, implied_program_families=tuple(families), incentive=body.incentive)
+
     async def save_funding_source(
         self, year: int, source_id: str, body: FundingSourceIn, *, actor: str
     ) -> FundingSourceOut:
@@ -579,21 +604,9 @@ class FinancialAidDevelopmentService:
                 raise ReportsRefusedError("Only an outside source is a funding source: the camp's own aid has no group")
             raise ReportsRefusedError("Only an outside source has a group here: classify this source first (Sources)")
         found = await self._season_grouping(year)
-        families = list(source.implied_program_families)
-        if body.group == _funding_source(source, found).group:
-            pass  # the group as it stands: keep the families exactly
-        elif body.group is None:
-            families = []
-        else:
-            if body.group not in {g.key for g in found.groups}:
-                raise ReportsRefusedError(f"{body.group!r} is not one of {year}'s budget pools")
-            families = sorted(f for f, pool in found.by_family.items() if pool == body.group)
-            if not families:
-                raise ReportsRefusedError(f"No program of {year} funds {body.group!r}: nothing to point the source at")
-        before = {"implied_program_families": list(source.implied_program_families), "incentive": source.incentive}
-        after: dict[str, Any] = {"implied_program_families": families, "incentive": body.incentive}
-        changed = {key: value for key, value in after.items() if before[key] != value}
-        updated = replace(source, implied_program_families=tuple(families), incentive=body.incentive)
+        before, changed, updated = self._planned(
+            year, source, body, found, keep_group=body.group == _funding_source(source, found).group
+        )
         if changed:
             await self._development.commit(
                 [
@@ -611,6 +624,46 @@ class FinancialAidDevelopmentService:
                 reason=body.note or None,
             )
         return _funding_source(updated, found, families_changed="implied_program_families" in changed)
+
+    async def save_funder(
+        self, year: int, grantor_key: str, body: FundingSourceIn, *, actor: str
+    ) -> FundingSourceRowOut:
+        """Decision 48 (D159): a funder row's group and incentive flag, written to each of its outside descriptions in
+        ONE logged operation, each writing only what changed (Decision 43). "The group as shown" is the row's: a row
+        shown as several groups, saved with no group, keeps every description's families. Unclassified sources are
+        never members (N3): they are listed read-only, and classifying them is the Sources route's."""
+        grantors = {g.key: g for g in await self._development.grantors()}
+        members = [
+            s
+            for s in await self._development.sources()
+            if s.grantor_key == grantor_key and s.funder_type in GRANT_FUNDER_TYPES
+        ]
+        if grantor_key not in grantors or not members:
+            raise FunderNotFoundError(f"No funder {grantor_key} with an outside source")
+        found = await self._season_grouping(year)
+        keep_group = body.group == _row_of(grantors[grantor_key], members, found, "outside").group
+        writes: list[AidWrite] = []
+        updated: list[SourceRecord] = []
+        families_changed = False
+        for source in members:
+            before, changed, after = self._planned(year, source, body, found, keep_group=keep_group)
+            updated.append(after)
+            if changed:
+                families_changed = families_changed or "implied_program_families" in changed
+                writes.append(
+                    AidWrite(
+                        collection=AID_SOURCES,
+                        action="update",
+                        year=year,
+                        record_id=source.id,
+                        before=before,
+                        data=changed,
+                        log_action="funding_source",
+                    )
+                )
+        if writes:
+            await self._development.commit(writes, actor=actor, reason=body.note or None)
+        return _row_of(grantors[grantor_key], updated, found, "outside", families_changed=families_changed)
 
     async def _native(
         self,
