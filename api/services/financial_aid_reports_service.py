@@ -604,7 +604,13 @@ class FinancialAidReportsService:
             frozen: FrozenAsks | None = None
             if cutoff is not None:
                 cut = as_of_cutoff(cutoff)
-                kept = frozenset(r.request_id for r in requests if r.received_at is not None and r.received_at < cut)
+                # Only applications are kept: a posted duplicate (counts_as_received False) is in no at-cutoff count,
+                # so it must not move the frozen asks' basis either (D155 falls the whole figure back to "now").
+                kept = frozenset(
+                    r.request_id
+                    for r in requests
+                    if r.counts_as_received and r.received_at is not None and r.received_at < cut
+                )
                 frozen = await self._frozen(season_year, season, kept, cutoff)
                 cutoff_requests = with_frozen_asks((r for r in requests if r.request_id in kept), frozen)
             natives.append(

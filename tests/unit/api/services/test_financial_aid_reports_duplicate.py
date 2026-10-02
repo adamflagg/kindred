@@ -24,18 +24,18 @@ from tests.unit.api.services.test_financial_aid_reports_service import _service
 pytestmark = pytest.mark.asyncio
 
 YEAR = 2027
-NOAH = "reqnoah00000001"
+OLIVIA = "reqolivia000001"
 
 
 def _season(status: str, *, award: bool = True) -> FakeDecisionsStore:
-    """Emma (posted 1,500) and Liam (decided), plus Noah, a request in `status`, holding a posted 1,200 when `award`."""
+    """Emma (posted 1,500) and Liam (decided), plus Olivia, a request in `status`, holding a posted 1,200 when `award`."""
     store = report_season()
-    seed_request(store, NOAH, household=1000003, person=1000031, status=status, income=90000.0, ask=2000.0)
+    seed_request(store, OLIVIA, household=1000003, person=1000031, status=status, income=90000.0, ask=2000.0)
     before = list(store.change_log)
-    log_seeded(store, EARLY)  # Noah's request was recorded like the others (its received date); nothing else is added
-    store.change_log = [*before, *(r for r in store.change_log[len(before) :] if r.entity_id == NOAH)]
+    log_seeded(store, EARLY)  # Olivia's request was recorded like the others (its received date); nothing else is added
+    store.change_log = [*before, *(r for r in store.change_log[len(before) :] if r.entity_id == OLIVIA)]
     if award:
-        store.events.append(posted("ev0000000000002", NOAH, 1, "1200", 3))
+        store.events.append(posted("ev0000000000002", OLIVIA, 1, "1200", 3))
     return store
 
 
@@ -105,7 +105,7 @@ async def test_a_posted_duplicate_moves_no_development_figure() -> None:
 
 async def test_received_does_not_include_the_duplicate_and_the_request_set_still_excludes_it() -> None:
     store = _season("duplicate")
-    assert NOAH not in received_ids(store.requests)
+    assert OLIVIA not in received_ids(store.requests)
     assert EMMA in received_ids(store.requests)
     out = await _service(store).statistics(YEAR, table="camp", round_=1, through=date(2027, 3, 1))
     assert out.total.apps == 2
@@ -125,22 +125,58 @@ async def test_a_pending_duplicate_with_a_posted_award_is_unchanged() -> None:
 
 
 async def test_standing_reads_the_lock_not_the_net_posted_for_a_duplicate() -> None:
-    dup = replace(_season("duplicate").requests[NOAH], status="duplicate")
+    dup = replace(_season("duplicate").requests[OLIVIA], status="duplicate")
     locked = RoundFacts(1, Decimal(2000), Decimal(1200), True, None, False, None, 3, "camp_pool")
     assert _standing(dup, False, (locked,)) == "cancelled"  # clawed back since: still counted, like withdrawn
     assert _standing(dup, False, (replace(locked, locked=None),)) == "closed"
     assert _standing(replace(dup, status="duplicate_pending"), False, (locked,)) == "closed"
 
 
-def test_development_tallies_no_cancellation_for_a_posted_duplicate() -> None:
+async def test_development_tallies_no_cancellation_for_a_posted_duplicate() -> None:
     """Development's cancelled-by-reason lines are its own figures: a duplicate is Finance's Duplicate line alone."""
     from bunking.financial_aid.reports.development import development_column
     from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
     from tests.unit.bunking.financial_aid.test_report_development import _camp, _inputs
 
     duplicate = req(
-        "reqnoah00000001", rnd(1, ask="2000", posted="1200"), standing="cancelled", reason="duplicate_in_kindred"
+        "reqolivia000001", rnd(1, ask="2000", posted="1200"), standing="cancelled", reason="duplicate_in_kindred"
     )
     duplicate = replace(duplicate, counts_as_received=False)
     column = development_column(_inputs(requests=(duplicate,)))
     assert _camp(column).cancelled_by_reason == {}
+
+
+async def test_the_requests_behind_apps_and_asks_never_name_the_duplicate() -> None:
+    """The drill-downs share the counts' one definition (slice 4 ask 1): a posted duplicate is behind no Apps or
+    "# asks" count, on Statistics or on Programs, but it is behind the cancelled count."""
+    service = _service(_season("duplicate"))
+    apps = await service.statistics_request_ids(YEAR, part="total", table="camp", count="apps")
+    asks = await service.statistics_request_ids(YEAR, part="total", table="camp", count="asks")
+    cancelled = await service.statistics_request_ids(YEAR, part="total", table="camp", count="cancelled")
+    assert OLIVIA not in apps.request_ids
+    assert OLIVIA not in asks.request_ids
+    assert cancelled.request_ids == [OLIVIA]
+    for count in ("apps", "asks"):
+        every = await service.programs_request_ids(YEAR, part="total", block=1, count=count)
+        assert OLIVIA not in every.request_ids, count
+
+
+async def test_a_duplicate_that_cant_be_rebuilt_at_the_cutoff_leaves_the_committee_asks_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The committee's at-cutoff asks fall back to "now" when a KEPT request can't be rebuilt (D155). A posted
+    duplicate is no application, so it is not kept: it can't move that figure's basis or its reason."""
+    from tests.unit.api.services.test_financial_aid_reports_frozen_asks import _camp
+    from tests.unit.api.services.test_financial_aid_reports_frozen_asks import _service as cutoff_service
+
+    service = cutoff_service(_season("duplicate"))
+    real = service._decisions.past_season
+
+    async def duplicate_unreplayable(year: int, day: date, axis: Any = "campminder") -> Any:
+        then = await real(year, day, axis)
+        return replace(then, unrebuilt=then.unrebuilt | {OLIVIA})
+
+    monkeypatch.setattr(service._decisions, "past_season", duplicate_unreplayable)
+    camp = _camp((await service.committee(YEAR)).applications)
+    assert camp.at_cutoff is not None
+    assert (camp.asks_basis, camp.asks_reason) == ("as_of_cutoff", None)

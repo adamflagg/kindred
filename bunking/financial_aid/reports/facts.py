@@ -74,9 +74,10 @@ class RoundFacts:
 
 @dataclass(frozen=True)
 class ReportRequest:
-    """One received request, as every finance report reads it. `table` / `round2_table` are its program's award
-    and Round 2 tables under the season's rules ("" when none); `pool` its home pool (None when unknown);
-    `grants` the counting outside grants placed on it (the grants register, D55, D116)."""
+    """One received request (or a posted confirmed duplicate, `counts_as_received` False), as every finance report
+    reads it. `table` / `round2_table` are its program's award and Round 2 tables under the season's rules ("" when
+    none); `pool` its home pool (None when unknown); `grants` the counting outside grants placed on it (the grants
+    register, D55, D116)."""
 
     request_id: str
     household_cm_id: int

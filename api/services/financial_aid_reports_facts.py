@@ -5,7 +5,9 @@ ReportRequests. No I/O: the reports service loads the change log and the correct
 Which requests are RECEIVED (D72): every intake request except a refused duplicate, and except a withdrawn request
 that an edited answer replaced (intake withdraws the old key and creates a new one, bunking.financial_aid.received's
 `edit_predecessors`): that is one application, counted once, at its first date. A withdrawn request nothing replaced
-(the family removed the answer) was still received.
+(the family removed the answer) was still received. `report_requests` also emits one request that is NOT received: a
+CONFIRMED duplicate holding a posted award (owner ruling, queue 4), with `counts_as_received` False, so its money is
+counted and it is no application.
 
 Where each field comes from:
   standing      cancelled when the season lists a cancellation (10b-2; on a past read the season lists the ones made by
@@ -146,9 +148,10 @@ def report_requests(
     corrections: Sequence[CorrectionRecord],
     keep: Collection[str] | None = None,
 ) -> tuple[ReportRequest, ...]:
-    """Every received request of `season` (D72), as reports read it. `received` holds each request's first-recorded
-    moment (bunking.financial_aid.received; empty before the first season it means anything); `keep`, when given, is
-    a reporting control's request set (D138): only those requests."""
+    """Every received request of `season` (D72), as reports read it, plus each confirmed duplicate holding a posted
+    award (`counts_as_received` False, owner ruling, queue 4). `received` holds each request's first-recorded moment
+    (bunking.financial_aid.received; empty before the first season it means anything); `keep`, when given, is a
+    reporting control's request set (D138): only those requests (received ones, so a duplicate is never kept)."""
     document = season.rules.document if season.rules is not None else None
     grants = outside_grants_by_request(season.register)
     out: list[ReportRequest] = []
