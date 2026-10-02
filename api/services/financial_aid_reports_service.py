@@ -1,0 +1,730 @@
+"""Reports' reads and finance's typed history (Reports back end, Part A; clean spec §9.1–§9.3, §9.5, §9.7, §10;
+D21, D63, D72, D80, D129–D133, D138).
+
+Three reads, one per surface (D21), all `financial_aid.view`:
+
+  Statistics  one season, live or as of a past day (3c-1), chips (award table × round), the "Decided (not yet
+              offered)" basis (D130, live only), the reporting controls (D138), RPT-9's per-tier table and RPT-23's
+              outcomes beside it, and D131's cancellations.
+  Programs    one season by session (RPT-11), live or as of a past day, with the reporting controls.
+  Committee   the year-over-year tables (RPT-1, 2, 6, 7, 8, 13, 24): every season Kindred priced (P) beside finance's
+              typed history (r), live.
+
+Each season is priced once through FinancialAidDecisionsService (the Requests grid's own read), so Reports and
+casework never disagree; reports read request status, never the budget's Posted (D129, D131).
+
+And finance's typed history (`aid_reported_history`, O-930-13's default): a bulk load that adds or corrects figures
+by their natural key, skipping the unchanged ones (a no-op never reaches 4a), and a delete with a reason. Every
+write commits with its aid_change_log row (4a), one operation per load.
+
+Past dates: a request cancelled (CampMinder or Kindred) on or before the day is cancelled then (the decisions
+service's past read lists those, Decision 11), so the cancellation lines are real counts. Reports do not yet read the
+grant placement or the decided amounts of a past day (the as-of reads' priced past, task A6c): the Decided basis is
+refused, and the grants figures are left empty and named in `not_rebuilt`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from typing import Final, Protocol
+
+from api.constants.collections import AID_REPORTED_HISTORY, AID_REQUESTS
+from api.schemas.financial_aid_decisions import AsOfAxis, NotRebuiltOut
+from api.schemas.financial_aid_reports import (
+    AppealsRowOut,
+    ApplicationsRowOut,
+    BandOut,
+    BudgetRowOut,
+    CancelledRowOut,
+    ChipOut,
+    CommitteeResponse,
+    CountedOut,
+    NotBuiltOut,
+    OutcomeRowOut,
+    PhaseRowOut,
+    PoolGroupOut,
+    ProgramRowOut,
+    ProgramsResponse,
+    ReportedFigureOut,
+    ReportedHistoryResponse,
+    ReportedLoadOut,
+    Round1PctRowOut,
+    RoundBlockOut,
+    StatisticsBasis,
+    StatisticsResponse,
+    StatisticsRowOut,
+    TierAppealsRowOut,
+)
+from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_cancellations import CANCEL_REASON_LABELS
+from api.services.financial_aid_decisions_service import (
+    FIRST_TICKED_SEASON,
+    DecisionsStore,
+    FinancialAidDecisionsService,
+    PricingRules,
+    RegisterSource,
+    Season,
+)
+from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_reports_facts import received_ids, report_requests
+from api.services.financial_aid_reports_repository import StoredFigure, figure_fields
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.decisions import PAST_DATE_GAPS
+from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.received import edit_predecessors, received_dates, split_by_received
+from bunking.financial_aid.reports.committee import (
+    PHASE_BOUNDARY_GAP,
+    AppealsRow,
+    ApplicationsRow,
+    Band,
+    BudgetRow,
+    Counted,
+    NativeSeason,
+    PhaseRow,
+    Round1PctRow,
+    committee_tables,
+)
+from bunking.financial_aid.reports.facts import ReportRequest
+from bunking.financial_aid.reports.history import ReportedFigure, figure_entity, problems
+from bunking.financial_aid.reports.programs import ProgramRow, RoundBlock, programs
+from bunking.financial_aid.reports.statistics import (
+    NO_REASON,
+    RoundChip,
+    StatisticsRow,
+    outcomes,
+    statistics,
+    tier_appeals,
+)
+from bunking.financial_aid.rules import AidRules, resolve_program
+from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetNote, request_set_note
+
+# Finance ruled out reporting before 2022 (COVID): trends start there (§9.5).
+FIRST_REPORT_SEASON: Final = 2022
+# D138: received dates mean something from 2027 (every 2026 request row was created on 2026-09-27).
+FIRST_RECEIVED_SEASON: Final = 2027
+# The first season with aid_requests at all: intake starts in 2026, so earlier seasons are typed history only.
+FIRST_REQUEST_SEASON: Final = 2026
+NO_POOL_LABEL: Final = "No pool"
+UNMATCHED_LABEL: Final = "Session not matched"
+ALL_POOLS_LABEL: Final = "All pools"
+RECONCILIATION_LABEL: Final = "headline − Σ pools"
+# Past-date gaps a Reports read names (3c-1's PAST_DATE_GAPS wording), and Reports' own.
+STATISTICS_PAST_GAPS: Final = ("grants",)
+PROGRAMS_PAST_GAPS: Final = ()
+REPORTS_PAST_GAPS: Final[Mapping[str, str]] = {
+    "grants": (
+        "Grants on a request aren't read for a past date yet (the grant placement log's as-of read is task A6c), so "
+        "grants and % of ask including grants are left empty"
+    ),
+}
+NOT_BUILT: Final[Mapping[str, str]] = {
+    PHASE_BOUNDARY_GAP: (
+        "Round 1 by the deadline and Round 1 rolling wait for the phase boundary (O-930-10, the owner's sign-off): "
+        "appeals and the total are shown"
+    ),
+    "enrollment_pct_of_goal": "Enrollment % of goal waits for its basis (O-930-15, finance); nothing is shown",
+    "round1_pct_start_of_season": (
+        "Round 1 % of ask at the start of the season is Scenarios › Compare's rules column (RPT-17), on the frozen "
+        "snapshot"
+    ),
+    "rebuild_history": (
+        "Seasons before Kindred's decisions show finance's typed figures only. Kindred's approximate rebuild (≈) is "
+        "deferred: demand and application counts from the aid form mirror need an outlier-ask rule, and money by "
+        "pool needs the 2017–2024 ledger backfill"
+    ),
+    "typed_tiers": "Typed per-tier history (RPT-9's earlier seasons) loads but isn't shown yet",
+    "typed_cancellations": "Earlier seasons' recipients who cancelled (RPT-22) have no typed history yet",
+}
+
+
+class ReportsRefusedError(FinancialAidError, ValueError):
+    """A read or load that can't be answered as asked (422)."""
+
+
+class ReportedFigureNotFoundError(FinancialAidError, LookupError):
+    """No aid_reported_history record with that id (404)."""
+
+
+class ReportsStore(Protocol):
+    """What the service needs of the reports repository (ReportsRepository has it; tests use a fake)."""
+
+    async def reported(self) -> list[StoredFigure]: ...
+    async def commit(
+        self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None
+    ) -> AidOperationResult: ...
+
+
+@dataclass(frozen=True)
+class _Read:
+    season: Season
+    requests: tuple[ReportRequest, ...]
+    note: RequestSetNote | None
+    figures_on: date
+
+
+def _money(value: Decimal | None) -> float | None:
+    return money(value) if value is not None else None
+
+
+def _pct(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
+
+
+def _pool_label(document: AidRules | None, pool: str | None) -> str:
+    if pool is None:
+        return NO_POOL_LABEL
+    if document is not None and pool in document.budget.pools:
+        return document.budget.pools[pool].label
+    return pool
+
+
+def table_chips(document: AidRules | None) -> list[ChipOut]:
+    """Each award table, labelled by the pool its programs share (2026: Camp & Quest, Weekend programs, TBM), else
+    by its programs' labels."""
+    if document is None:
+        return []
+    out: list[ChipOut] = []
+    for key in document.award_tables:
+        programs_ = [p for p in document.programs.values() if (p.r1_table or "") == key]
+        pools = {p.budget_pool for p in programs_}
+        if len(pools) == 1 and (pool := next(iter(pools))) is not None and pool in document.budget.pools:
+            label = document.budget.pools[pool].label
+        else:
+            label = " · ".join(p.label for p in programs_) or key
+        out.append(ChipOut(key=key, label=label))
+    return out
+
+
+class FinancialAidReportsService:
+    def __init__(
+        self,
+        store: DecisionsStore,
+        rules: PricingRules,
+        register: RegisterSource,
+        history: ReportsStore,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._store = store
+        self._rules = rules
+        self._history = history
+        self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        self._decisions = FinancialAidDecisionsService(store, rules, register, clock=self._clock)
+
+    def _today(self) -> date:
+        return self._clock().astimezone(CAMP_TZ).date()
+
+    # --- the season, as reports read it ---------------------------------------------------------------------
+
+    async def _request_set(self, year: int, through_deadline: bool, through: date | None) -> RequestSet | None:
+        """The reporting control asked for (D138), or None. Both at once is refused; so is either before 2027."""
+        if through_deadline and through is not None:
+            raise ReportsRefusedError("Choose the Round 1 deadline switch or a received-through date, not both")
+        if not through_deadline and through is None:
+            return None
+        if year < FIRST_RECEIVED_SEASON:
+            raise ReportsRefusedError(
+                f"The reporting controls work from {FIRST_RECEIVED_SEASON}: every {year} request was recorded on one "
+                "day, so there is no received date to cut on (D138)"
+            )
+        if through is not None:
+            return RequestSet("date", through)
+        approved = await self._rules.latest_approved(year, ["milestones"])
+        deadline = approved.document.milestones.application_deadline if approved is not None else None
+        if deadline is None:
+            raise ReportsRefusedError(
+                f"{year}'s approved rules set no application deadline (milestones): choose a received-through date"
+            )
+        return RequestSet("round1_deadline", deadline)
+
+    async def _received(self, season: Season) -> dict[str, datetime | None]:
+        if season.year < FIRST_RECEIVED_SEASON:
+            return {}
+        log = await self._store.fetch_change_log(season.year, AID_REQUESTS)
+        return received_dates(season.requests.keys(), log, predecessors=edit_predecessors(season.requests.values()))
+
+    async def _read(self, year: int, *, as_of: date | None, axis: AsOfAxis, request_set: RequestSet | None) -> _Read:
+        today = self._today()
+        past = as_of is not None and as_of < today
+        season = (
+            await self._decisions.past_season(year, as_of, axis)
+            if past and as_of
+            else await self._decisions.season(year)
+        )
+        received = await self._received(season)
+        corrections = await self._store.fetch_corrections(year, None)
+        if past and as_of is not None:
+            cutoff = as_of_cutoff(as_of)
+            corrections = [
+                c for c in corrections if (made := parse_pb_datetime(c.created)) is not None and made < cutoff
+            ]
+        keep: frozenset[str] | None = None
+        note: RequestSetNote | None = None
+        if request_set is not None:
+            ids = received_ids(season.requests)
+            split = split_by_received({rid: received.get(rid) for rid in ids}, as_of_cutoff(request_set.through), ids)
+            keep, note = split.kept, request_set_note(request_set, split)
+        requests = report_requests(season, received=received, corrections=corrections, keep=keep)
+        return _Read(season, requests, note, as_of if past and as_of is not None else today)
+
+    def _gaps(self, read: _Read, figures: Iterable[str]) -> list[NotRebuiltOut]:
+        if read.season.as_of is None:
+            return []
+        named = [NotRebuiltOut(figure=f, reason=REPORTS_PAST_GAPS.get(f) or PAST_DATE_GAPS[f]) for f in figures]
+        return [*named, *read.season.gaps]
+
+    # --- Statistics -------------------------------------------------------------------------------------------
+
+    async def statistics(
+        self,
+        year: int,
+        *,
+        table: str | None = None,
+        round_: RoundChip = 1,
+        basis: StatisticsBasis = "posted",
+        through_deadline: bool = False,
+        through: date | None = None,
+        as_of: date | None = None,
+        axis: AsOfAxis = "campminder",
+    ) -> StatisticsResponse:
+        if basis == "posted_and_decided" and as_of is not None and as_of < self._today():
+            raise ReportsRefusedError(
+                "Decided (not yet offered) works on the live read only for now: Reports don't read a past date's "
+                "decided amounts yet (task A6c)"
+            )
+        read = await self._read(
+            year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
+        )
+        document = read.season.rules.document if read.season.rules is not None else None
+        if table is not None and (document is None or table not in document.award_tables):
+            raise ReportsRefusedError(f"{table!r} is not one of {year}'s award tables")
+        past = read.season.as_of is not None
+        result = statistics(read.requests, document, table=table, round_=round_, basis=basis)
+        return StatisticsResponse(
+            year=year,
+            as_of=read.season.as_of,
+            as_of_axis=read.season.axis,
+            figures_on=read.figures_on,
+            rules_version=read.season.rules.version if read.season.rules is not None else None,
+            basis=basis,
+            table=table,
+            round=round_,
+            tables=table_chips(document),
+            rows=[_statistics_row(row, past=past) for row in result.rows],
+            total=_statistics_row(result.total, past=past),
+            cancelled_applicants=result.total.cancelled,
+            recipients_cancelled=[
+                CancelledRowOut(
+                    reason=row.reason,
+                    reason_label=_reason_label(row.reason),
+                    pool=row.pool,
+                    round=row.round,
+                    requests=row.requests,
+                    posted=money(row.posted),
+                )
+                for row in result.recipients_cancelled
+            ],
+            tier_appeals=[
+                TierAppealsRowOut(
+                    tier=row.tier,
+                    income_from=_money(row.income_from),
+                    income_to=_money(row.income_to),
+                    round1_apps=row.round1_apps,
+                    round1_fee_pct=_pct(row.round1_fee_pct),
+                    appeals=row.appeals,
+                    round2_max_pct=_pct(row.round2_max_pct),
+                    round3_awarded=money(row.round3_awarded),
+                    appeal_rate=_pct(row.appeal_rate),
+                )
+                for row in tier_appeals(read.requests, document, table=table)
+            ],
+            outcomes=[
+                OutcomeRowOut(
+                    pool=row.pool,
+                    pool_label=ALL_POOLS_LABEL if row.pool is None else _pool_label(document, row.pool),
+                    accepted=row.accepted,
+                    accepted_amount=money(row.accepted_amount),
+                    appealed=row.appealed,
+                    appealed_asked=money(row.appealed_asked),
+                    waiting=row.waiting,
+                )
+                for row in outcomes(read.requests)
+            ],
+            request_set=read.note,
+            not_rebuilt=self._gaps(read, STATISTICS_PAST_GAPS),
+        )
+
+    # --- Programs ---------------------------------------------------------------------------------------------
+
+    async def programs(
+        self,
+        year: int,
+        *,
+        through_deadline: bool = False,
+        through: date | None = None,
+        as_of: date | None = None,
+        axis: AsOfAxis = "campminder",
+    ) -> ProgramsResponse:
+        read = await self._read(
+            year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
+        )
+        document = read.season.rules.document if read.season.rules is not None else None
+        sessions = rules_sessions(read.season, document)
+        table = programs(read.requests, sessions)
+        names = {cm_id: row.name for cm_id, row in read.season.sessions.items()}
+
+        def row_out(row: ProgramRow, name: str) -> ProgramRowOut:
+            return ProgramRowOut(
+                session_cm_id=row.session_cm_id,
+                session_name=name,
+                round1=_block(row.round1),
+                round2=_block(row.round2),
+                round3=_block(row.round3),
+                total_awarded=money(row.total_awarded),
+            )
+
+        return ProgramsResponse(
+            year=year,
+            as_of=read.season.as_of,
+            as_of_axis=read.season.axis,
+            figures_on=read.figures_on,
+            rules_version=read.season.rules.version if read.season.rules is not None else None,
+            pools=[
+                PoolGroupOut(
+                    pool=group.pool,
+                    pool_label=_pool_label(document, group.pool),
+                    sessions=[
+                        row_out(
+                            row, names.get(row.session_cm_id, UNMATCHED_LABEL) if row.session_cm_id else UNMATCHED_LABEL
+                        )
+                        for row in group.sessions
+                    ],
+                    subtotal=row_out(group.subtotal, _pool_label(document, group.pool)),
+                )
+                for group in table.pools
+            ],
+            total=row_out(table.total, ALL_POOLS_LABEL),
+            request_set=read.note,
+            not_rebuilt=self._gaps(read, PROGRAMS_PAST_GAPS),
+        )
+
+    # --- the committee's year-over-year tables ---------------------------------------------------------------
+
+    async def committee(self, year: int, *, through: date | None = None) -> CommitteeResponse:
+        """Every season from 2022 to `year`: typed rows (r) from finance's history, and a P row for each season
+        Kindred priced (from 2027; 2026 once its decisions are loaded, D67). `through` moves RPT-2's cutoff off the
+        application deadline."""
+        today = self._today()
+        if through is not None and year < FIRST_RECEIVED_SEASON:
+            raise ReportsRefusedError(
+                f"The reporting controls work from {FIRST_RECEIVED_SEASON}: every {year} request was recorded on one "
+                "day, so there is no received date to cut on (D138)"
+            )
+        natives: list[NativeSeason] = []
+        for season_year in range(max(FIRST_REQUEST_SEASON, FIRST_REPORT_SEASON), year + 1):
+            season = await self._decisions.season(season_year)
+            if season_year < FIRST_TICKED_SEASON and not any(
+                view.status == "posted" for priced in season.priced.values() for view in priced.rounds
+            ):
+                continue  # 2026 before its decisions load (D67): typed history only
+            received = await self._received(season)
+            corrections = await self._store.fetch_corrections(season_year, None)
+            document = season.rules.document if season.rules is not None else None
+            deadline = document.milestones.application_deadline if document is not None else None
+            if season_year < FIRST_RECEIVED_SEASON:
+                deadline = None  # no received dates to cut on (D138)
+            cutoff = through if through is not None and season_year == year else deadline
+            natives.append(
+                NativeSeason(
+                    year=season_year,
+                    document=document,
+                    requests=report_requests(season, received=received, corrections=corrections),
+                    as_of=today,
+                    cutoff=cutoff,
+                    cutoff_instant=as_of_cutoff(cutoff) if cutoff is not None else None,
+                    deadline_instant=as_of_cutoff(deadline) if deadline is not None else None,
+                )
+            )
+        figures = [s.figure for s in await self._history.reported() if FIRST_REPORT_SEASON <= s.figure.year <= year]
+        tables = committee_tables(natives, figures)
+        documents = {n.year: n.document for n in natives}
+        latest = next((d for d in reversed(list(documents.values())) if d is not None), None)
+
+        def label(row_year: int, pool: str | None, kind: str = "pool") -> str:
+            if kind == "reconciliation":
+                return RECONCILIATION_LABEL
+            if kind == "no_pool":
+                return NO_POOL_LABEL
+            if pool is None:
+                return ALL_POOLS_LABEL
+            return _pool_label(documents.get(row_year) or latest, pool)
+
+        seasons = sorted(
+            {r.year for r in tables.phases}
+            | {r.year for r in tables.applications}
+            | {r.year for r in tables.budget}
+            | {r.year for r in tables.appeals}
+            | {r.year for r in tables.round1_pct}
+        )
+        return CommitteeResponse(
+            year=year,
+            figures_on=today,
+            seasons=seasons,
+            phases=[_phase_out(r) for r in tables.phases],
+            applications=[_applications_out(r, label(r.year, r.pool, r.kind)) for r in tables.applications],
+            budget=[_budget_out(r, label(r.year, r.pool, r.kind)) for r in tables.budget],
+            appeals=[_appeals_out(r) for r in tables.appeals],
+            round1_pct=[_round1_out(r, label(r.year, r.pool, r.kind)) for r in tables.round1_pct],
+            not_built=[NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()],
+        )
+
+    # --- finance's typed history ------------------------------------------------------------------------------
+
+    async def reported_history(self) -> ReportedHistoryResponse:
+        return ReportedHistoryResponse(figures=[_figure_out(s) for s in await self._history.reported()])
+
+    async def load_reported(self, figures: Sequence[ReportedFigure], *, actor: str) -> ReportedLoadOut:
+        """Adds each figure, or corrects it where its natural key is stored; unchanged figures are skipped, and a load
+        with nothing to write writes nothing (never an empty 4a operation). All or nothing: one bad figure refuses
+        the load."""
+        found: list[str] = []
+        seen: set[tuple[object, ...]] = set()
+        for n, figure in enumerate(figures, start=1):
+            found.extend(f"figure {n}: {p}" for p in problems(figure))
+            if figure.key in seen:
+                found.append(f"figure {n}: the same figure twice in one load")
+            seen.add(figure.key)
+        if found:
+            raise ReportsRefusedError("; ".join(found))
+        stored = {s.figure.key: s for s in await self._history.reported()}
+        writes: list[AidWrite] = []
+        created = updated = unchanged = 0
+        for figure in figures:
+            fields = figure_fields(figure)
+            entity = figure_entity(figure)
+            before = stored.get(figure.key)
+            if before is None:
+                writes.append(
+                    AidWrite(
+                        collection=AID_REPORTED_HISTORY,
+                        action="create",
+                        year=figure.year,
+                        data=fields,
+                        entity_id=entity,
+                    )
+                )
+                created += 1
+                continue
+            changed = {k: v for k, v in fields.items() if v != figure_fields(before.figure)[k]}
+            if not changed:
+                unchanged += 1
+                continue
+            writes.append(
+                AidWrite(
+                    collection=AID_REPORTED_HISTORY,
+                    action="update",
+                    year=figure.year,
+                    record_id=before.id,
+                    before=figure_fields(before.figure),
+                    data=changed,
+                    entity_id=entity,
+                )
+            )
+            updated += 1
+        if writes:
+            await self._history.commit(writes, actor=actor)
+        return ReportedLoadOut(created=created, updated=updated, unchanged=unchanged)
+
+    async def delete_reported(self, record_id: str, *, reason: str, actor: str) -> None:
+        stored = next((s for s in await self._history.reported() if s.id == record_id), None)
+        if stored is None:
+            raise ReportedFigureNotFoundError(f"No typed figure {record_id}")
+        await self._history.commit(
+            [
+                AidWrite(
+                    collection=AID_REPORTED_HISTORY,
+                    action="delete",
+                    year=stored.figure.year,
+                    record_id=stored.id,
+                    before=figure_fields(stored.figure),
+                    entity_id=figure_entity(stored.figure),
+                )
+            ],
+            actor=actor,
+            reason=reason,
+        )
+
+
+# --- shapes ----------------------------------------------------------------------------------------------------
+
+
+def rules_sessions(season: Season, document: AidRules | None) -> dict[int, str | None]:
+    """Programs' sessions (§9.3: from the rules, never a hand-kept list): every session of the season a rules
+    program claims, with its program's pool."""
+    if document is None:
+        return {}
+    out: dict[int, str | None] = {}
+    for cm_id, session in season.sessions.items():
+        program = resolve_program(document, cm_id, session.session_type)
+        if program is not None:
+            out[cm_id] = document.programs[program].budget_pool
+    return out
+
+
+def _reason_label(reason: str) -> str:
+    if reason == NO_REASON:
+        return "no reason recorded"
+    for key, label in CANCEL_REASON_LABELS.items():
+        if key == reason:
+            return label
+    return reason
+
+
+def _statistics_row(row: StatisticsRow, *, past: bool) -> StatisticsRowOut:
+    return StatisticsRowOut(
+        tier=row.tier,
+        income_from=_money(row.income_from),
+        income_to=_money(row.income_to),
+        fee_pct=_pct(row.fee_pct),
+        apps=row.apps,
+        cancelled=row.cancelled,
+        asked=money(row.asked),
+        asks=row.asks,
+        average_ask=_money(row.average_ask),
+        amount=money(row.amount),
+        decided=money(row.decided),
+        awarded_count=row.awarded_count,
+        decided_count=row.decided_count,
+        average_award=_money(row.average_award),
+        included_asked=money(row.included_asked),
+        pct_of_ask=_pct(row.pct_of_ask),
+        grants=None if past else _money(row.grants),
+        pct_of_ask_with_grants=None if past else _pct(row.pct_of_ask_with_grants),
+    )
+
+
+def _block(block: RoundBlock) -> RoundBlockOut:
+    return RoundBlockOut(
+        apps=block.apps,
+        requested=money(block.requested),
+        asks=block.asks,
+        awarded=money(block.awarded),
+        awarded_count=block.awarded_count,
+        average_request=_money(block.average_request),
+        average_award=_money(block.average_award),
+        pct_awarded=_pct(block.pct_awarded),
+    )
+
+
+def _band(band: Band | None) -> BandOut | None:
+    if band is None:
+        return None
+    return BandOut(
+        low_pct=float(band.low_pct),
+        high_pct=float(band.high_pct),
+        low=_money(band.low),
+        high=_money(band.high),
+        position=band.position,
+    )
+
+
+def _phase_out(row: PhaseRow) -> PhaseRowOut:
+    return PhaseRowOut(
+        year=row.year,
+        basis=row.basis,
+        phases=[_money(p) for p in row.phases],
+        phase_as_of=list(row.phase_as_of),
+        total=_money(row.total),
+        total_as_of=row.total_as_of,
+        budget=_money(row.budget),
+        pct_of_budget=[_pct(p) for p in row.pct_of_budget],
+        total_pct_of_budget=_pct(row.total_pct_of_budget),
+        share_of_phases=[_pct(p) for p in row.share_of_phases],
+        reconciliation=_money(row.reconciliation),
+        variance=_money(row.variance),
+        side=row.side,
+        bands=[_band(b) for b in row.bands],
+        gaps=list(row.gaps),
+    )
+
+
+def _counted(counted: Counted | None) -> CountedOut | None:
+    if counted is None:
+        return None
+    return CountedOut(apps=counted.apps, asked=_money(counted.asked), average=_money(counted.average))
+
+
+def _applications_out(row: ApplicationsRow, label: str) -> ApplicationsRowOut:
+    return ApplicationsRowOut(
+        year=row.year,
+        basis=row.basis,
+        kind=row.kind,
+        pool=row.pool,
+        pool_label=label,
+        cutoff=row.cutoff,
+        at_cutoff=_counted(row.at_cutoff),
+        since=_counted(row.since),
+        season_end=_counted(row.season_end),
+        season_end_as_of=row.season_end_as_of,
+        change_apps=row.change_apps,
+        change_asked=_money(row.change_asked),
+        unknown_received=row.unknown_received,
+    )
+
+
+def _budget_out(row: BudgetRow, label: str) -> BudgetRowOut:
+    return BudgetRowOut(
+        year=row.year,
+        basis=row.basis,
+        kind=row.kind,
+        pool=row.pool,
+        pool_label=label,
+        budget=_money(row.budget),
+        awarded=_money(row.awarded),
+        variance=_money(row.variance),
+        side=row.side,
+        pct_of_budget=_pct(row.pct_of_budget),
+        pool_share=_pct(row.pool_share),
+        rules_split_pct=_pct(row.rules_split_pct),
+        note=row.note,
+    )
+
+
+def _appeals_out(row: AppealsRow) -> AppealsRowOut:
+    return AppealsRowOut(
+        year=row.year, basis=row.basis, applications=row.applications, appeals=row.appeals, rate=_pct(row.rate)
+    )
+
+
+def _round1_out(row: Round1PctRow, label: str) -> Round1PctRowOut:
+    return Round1PctRowOut(
+        year=row.year,
+        basis=row.basis,
+        kind=row.kind,
+        pool=row.pool,
+        pool_label=label,
+        awarded=_money(row.awarded),
+        asked=_money(row.asked),
+        pct_of_ask=_pct(row.pct_of_ask),
+    )
+
+
+def _figure_out(stored: StoredFigure) -> ReportedFigureOut:
+    f = stored.figure
+    return ReportedFigureOut(
+        id=stored.id,
+        year=f.year,
+        view=f.view,
+        metric=f.metric,
+        pool=f.pool,
+        tier=f.tier,
+        phase=f.phase,
+        at=f.at,
+        as_of=f.as_of,
+        value=money(f.value),
+        source=f.source,
+        note=f.note,
+    )
