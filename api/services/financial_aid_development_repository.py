@@ -1,0 +1,179 @@
+"""PocketBase reads for Reports › Development (Reports back end, Part B; clean spec §5.11, §9.4): the season's
+registrations with their sessions and households, the people development counts (age, gender identity), the
+earlier seasons' attendance (first-time), aid families
+(aid_household_links) and the sources with their incentive flag (D88). Reads only.
+
+Development never reads the raw person_custom_values table (§10) and never aid_postings.attributed_* (the grants
+register places outside lines; the camp's money comes from the decisions season).
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Collection
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, Final
+
+from api.constants.collections import ATTENDEES
+from api.services.financial_aid_ledger_service import parse_pb_datetime
+from api.services.financial_aid_repository import FinancialAidRepository
+
+PAGE_SIZE: Final = 1000
+ID_CHUNK: Final = 50  # ids per filter, under PocketBase's 3,500-character filter limit
+FIRST_HISTORY_SEASON: Final = 2017  # D99's default: no summer at camp in 2017 on
+ENROLLED: Final = 2
+CANCELLED_STATUS_IDS: Final = frozenset({32, 256})  # Go's aidCancelledStatusIDs
+_FIELDS: Final = (
+    "id,person_id,status_id,enrollment_date,year,"
+    "expand.person.household_id,expand.session.cm_id,expand.session.session_type,expand.session.start_date"
+)
+
+
+@dataclass(frozen=True)
+class AttendanceRecord:
+    person_cm_id: int
+    household_cm_id: int
+    session_cm_id: int
+    session_type: str
+    start: date | None
+    status_id: int
+    changed_on: date | None  # a cancelled row's day (CampMinder's PostDate); None otherwise
+    year: int
+
+
+@dataclass(frozen=True)
+class PersonRecord:
+    person_cm_id: int
+    household_cm_id: int
+    birthdate: date | None
+    gender_identity_name: str
+    gender_identity_write_in: str
+
+
+@dataclass(frozen=True)
+class SourceRecord:
+    id: str
+    description_key: str
+    source_name: str
+    funder_type: str
+    incentive: bool
+    implied_program_families: tuple[str, ...]
+
+
+def _day(value: Any) -> date | None:
+    text = str(value or "").strip()
+    try:
+        return date.fromisoformat(text[:10]) if text else None
+    except ValueError:
+        return None
+
+
+def attendance_record(record: Any) -> AttendanceRecord:
+    expand = getattr(record, "expand", None) or {}
+    person = expand.get("person")
+    session = expand.get("session")
+    status = int(getattr(record, "status_id", 0) or 0)
+    changed = parse_pb_datetime(getattr(record, "enrollment_date", None)) if status in CANCELLED_STATUS_IDS else None
+    return AttendanceRecord(
+        person_cm_id=int(getattr(record, "person_id", 0) or 0),
+        household_cm_id=int(getattr(person, "household_id", 0) or 0),
+        session_cm_id=int(getattr(session, "cm_id", 0) or 0),
+        session_type=str(getattr(session, "session_type", "") or ""),
+        start=_day(getattr(session, "start_date", "")),
+        status_id=status,
+        changed_on=changed.date() if changed is not None else None,
+        year=int(getattr(record, "year", 0) or 0),
+    )
+
+
+def person_record(record: Any) -> PersonRecord:
+    return PersonRecord(
+        person_cm_id=int(getattr(record, "cm_id", 0) or 0),
+        household_cm_id=int(getattr(record, "household_id", 0) or 0),
+        birthdate=_day(getattr(record, "birthdate", "")),
+        gender_identity_name=str(getattr(record, "gender_identity_name", "") or ""),
+        gender_identity_write_in=str(getattr(record, "gender_identity_write_in", "") or ""),
+    )
+
+
+def source_record(record: Any) -> SourceRecord:
+    families = getattr(record, "implied_program_families", None) or []
+    return SourceRecord(
+        id=str(record.id),
+        description_key=str(getattr(record, "description_key", "") or ""),
+        source_name=str(getattr(record, "source_name", "") or "") or str(getattr(record, "description", "") or ""),
+        funder_type=str(getattr(record, "funder_type", "") or ""),
+        incentive=bool(getattr(record, "incentive", False)),
+        implied_program_families=tuple(sorted(str(f) for f in families)),
+    )
+
+
+class DevelopmentRepository:
+    def __init__(self, pb: Any) -> None:
+        self.pb = pb
+        self._aid = FinancialAidRepository(pb)
+
+    async def _page(self, query: dict[str, Any]) -> list[Any]:
+        rows: list[Any] = await asyncio.to_thread(
+            self.pb.collection(ATTENDEES).get_full_list, batch=PAGE_SIZE, query_params=query
+        )
+        return rows
+
+    async def attendances(self, year: int) -> list[AttendanceRecord]:
+        """The season's enrolled (2), cancelled (32) and withdrawn (256) registrations: a dated column needs the
+        cancelled ones to tell who was still enrolled on its date."""
+        rows = await self._page(
+            {
+                "filter": f"year = {int(year)} && (status_id = 2 || status_id = 32 || status_id = 256)",
+                "expand": "person,session",
+                "fields": _FIELDS,
+                "sort": "id",
+            }
+        )
+        return [attendance_record(row) for row in rows]
+
+    async def earlier_attendance(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[AttendanceRecord]:
+        """Enrolled registrations in the seasons from 2017 to the one before `year`, of these campers and of
+        everyone in these households (first-time, D99): never the whole history."""
+        chunks: list[str] = []
+        for field, ids in (("person_id", person_cm_ids), ("person.household_id", household_cm_ids)):
+            wanted = sorted({int(i) for i in ids if int(i) > 0})
+            chunks.extend(
+                " || ".join(f"{field} = {i}" for i in wanted[start : start + ID_CHUNK])
+                for start in range(0, len(wanted), ID_CHUNK)
+            )
+        found = await asyncio.gather(
+            *(
+                self._page(
+                    {
+                        "filter": (
+                            f"year >= {FIRST_HISTORY_SEASON} && year < {int(year)} && status_id = {ENROLLED} "
+                            f"&& ({chunk})"
+                        ),
+                        "expand": "person,session",
+                        "fields": _FIELDS,
+                        "sort": "id",
+                    }
+                )
+                for chunk in chunks
+            )
+        )
+        rows: dict[str, Any] = {str(row.id): row for batch in found for row in batch}
+        return [attendance_record(row) for row in rows.values()]
+
+    async def persons(self, year: int, person_cm_ids: Collection[int]) -> list[PersonRecord]:
+        return [person_record(row) for row in await self._aid.fetch_persons(year, person_cm_ids)]
+
+    async def family_keys(self, year: int) -> dict[int, str]:
+        """household -> its aid family (aid_household_links), excluded rows dropped."""
+        out: dict[int, str] = {}
+        for row in await self._aid.fetch_links(year):
+            if not bool(getattr(row, "excluded", False)):
+                out.setdefault(int(row.household_cm_id), str(row.family_key))
+        return out
+
+    async def sources(self) -> list[SourceRecord]:
+        return [source_record(row) for row in await self._aid.fetch_sources()]

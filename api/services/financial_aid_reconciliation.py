@@ -101,6 +101,9 @@ class CampLine:
     attributed_person_cm_id: int = 0
     attributed_session_cm_id: int = 0
     program_family: str = ""
+    # The line's CampMinder description after any reclassification (aid_postings.effective_source_key): the key of the
+    # aid_sources row that classifies it. "" when a caller didn't read it.
+    description_key: str = ""
     # When Kindred recorded the row (aid_postings' created) and last wrote it (updated). Read only by a
     # past read, for the recorded as-of axis (as_recorded); None on the live read.
     recorded_at: datetime | None = None

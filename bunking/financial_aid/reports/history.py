@@ -9,7 +9,7 @@ column (§5.3, D120): it is a percentage of budget by definition.
 Each metric names the dimensions it may carry (a pool, an income tier, a Round 1 phase) and when it was read:
 `pull` (a dated pull before the season ended, e.g. the deadline figures a deck showed) or `season_end` (the
 season's final figure). A dimension the metric doesn't carry must be empty. Development's own as-reported rows
-(§9.4) join this catalogue with their plan (Part B).
+(§9.4) are the "development" view's metrics (Reports Part B).
 """
 
 from __future__ import annotations
@@ -44,6 +44,25 @@ class Metric:
     label: str
 
 
+_POOL: Final[frozenset[Dimension]] = frozenset({"pool"})
+_DEV_ATS: Final[frozenset[At]] = frozenset({"pull", "season_end"})
+# One basis, all money (D87). Unlike finance's, "% of need met" is typed: no per-round asks exist before 2026 to
+# rebuild it from (§9.5). The summer-only typed lines (% of need met, TLI + SCIT; ages are always Kindred's by age, D158) carry the summer group's
+# pool, so a typed figure reaches the row that shows it.
+_DEVELOPMENT: Final[tuple[tuple[str, Unit, frozenset[Dimension], str], ...]] = (
+    ("total_awards", "dollars", _POOL, "Total Awards Granted"),
+    ("awards", "count", _POOL, "Number of awards"),
+    ("total_requests", "dollars", _POOL, "Total Requests (demand)"),
+    ("need_met", "percent", _POOL, "% of need met"),
+    ("recipients", "count", _POOL, "Applications (campers and families who got money)"),
+    ("families", "count", _POOL, "Families receiving"),
+    ("teen_programs", "count", _POOL, "TLI + SCIT"),
+    ("first_time", "count", _POOL, "First-time"),
+    ("returning", "count", _POOL, "Returning"),
+    ("appeals_submitted", "count", _POOL, "Appeals submitted"),
+    ("appeals_approved", "count", _POOL, "Appeals approved"),
+    ("declined_insufficient", "count", _POOL, "Declined enrollment for insufficient aid"),
+)
 METRICS: Final[tuple[Metric, ...]] = (
     Metric(
         "budget",
@@ -131,6 +150,8 @@ METRICS: Final[tuple[Metric, ...]] = (
         ("RPT-9",),
         "Round 3 awarded",
     ),
+    # Development's rows as development reported them (§9.4: 2022 to 2025, and 2026's "as reported" row, D102).
+    *(Metric(key, "development", unit, dims, _DEV_ATS, ("§9.4",), label) for key, unit, dims, label in _DEVELOPMENT),
 )
 METRICS_BY_KEY: Final[Mapping[str, Metric]] = {m.key: m for m in METRICS}
 

@@ -154,6 +154,7 @@ def camp_line(record: Any) -> CampLine:
         attributed_person_cm_id=int(getattr(record, "attributed_person_cm_id", 0) or 0),
         attributed_session_cm_id=int(getattr(record, "attributed_session_cm_id", 0) or 0),
         program_family=str(getattr(record, "program_family", "") or ""),
+        description_key=str(getattr(record, "effective_source_key", "") or ""),
         recorded_at=parse_pb_datetime(getattr(record, "created", None)),
         updated_at=parse_pb_datetime(getattr(record, "updated", None)),
     )
@@ -240,7 +241,7 @@ def hold_event(record: Any) -> HoldEvent:
 
 _LINE_FIELDS = (
     "transaction_cm_id,household_cm_id,person_cm_id,amount,post_date,is_reversed,reversal_date,"
-    "attributed_person_cm_id,attributed_session_cm_id,program_family"
+    "attributed_person_cm_id,attributed_session_cm_id,program_family,effective_source_key"
 )
 # sync_runs.trigger values a current-season queue records (sync/orchestrator.go). Only `daily` runs
 # aid_postings and financial_transactions today; each such run spans seasons N-1..N+1, but Go records it

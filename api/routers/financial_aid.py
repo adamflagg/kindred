@@ -35,7 +35,8 @@ season's rules (RPT-18).
 The Reports back end adds finance's reports (financial_aid.view): Statistics,
 Programs and the committee's year-over-year tables (`/reports/{year}/...`), and
 finance's typed "as reported" history (`/reports/reported-history`,
-financial_aid.rules).
+financial_aid.rules); and development's report (`/reports/{year}/development`,
+financial_aid.view or .summary: aggregates only, D65).
 """
 
 from datetime import date
@@ -115,6 +116,7 @@ from api.schemas.financial_aid_intake import (
 )
 from api.schemas.financial_aid_reports import (
     CommitteeResponse,
+    DevelopmentResponse,
     ProgramsResponse,
     ReportedHistoryResponse,
     ReportedLoadIn,
@@ -196,6 +198,8 @@ from api.services.financial_aid_decisions_service import (
     DecisionNotFoundError,
     FinancialAidDecisionsService,
 )
+from api.services.financial_aid_development_repository import DevelopmentRepository
+from api.services.financial_aid_development_service import FinancialAidDevelopmentService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
     GrantorInUseError,
@@ -1776,3 +1780,26 @@ async def delete_reported_figure(record_id: _RecordIdPath, reason: _Reason, user
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc
     return Response(status_code=204)
+
+
+# --- Reports › Development (Part B) ------------------------------------------------------------------------------
+
+
+def _development() -> FinancialAidDevelopmentService:
+    return FinancialAidDevelopmentService(
+        FinancialAidDecisionsRepository(pb),
+        _rules(),
+        GrantsService(GrantsRepository(pb)).register_rows,
+        DevelopmentRepository(pb),
+        ReportsRepository(pb),
+    )
+
+
+@router.get("/reports/{year}/development", response_model=DevelopmentResponse)
+async def get_report_development(year: _Year, user: AuthUser = _VIEW_OR_SUMMARY) -> DevelopmentResponse:
+    """Reports › Development (§9.4): development's lines by group, seasons from 2022 as columns (r as reported, P
+    Kindred's), all money (D87). Aggregates only: development's summary permission reads it (D65)."""
+    try:
+        return await _development().development(year)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
