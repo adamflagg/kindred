@@ -190,7 +190,9 @@ from api.services.financial_aid_to_place import (
     SYNC_HISTORY,
     SinceInputs,
     SinceRecords,
+    on_placed_money,
     reads_person_fields,
+    withhold,
 )
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
@@ -1571,6 +1573,19 @@ class FinancialAidDecisionsService:
             now=now, history_from=now - SYNC_HISTORY, records=records, rules_at=rules_at, rules_unknown=unknown
         )
 
+    async def _without_withheld(self, season: Season, ticks: Sequence[LedgerTick]) -> list[LedgerTick]:
+        """D152 (owner, B1 Q1 2026-10-02): money a person placed is the placement's to tick, so a round D16 withholds
+        there stays withheld at night too, for a person to tick at its posting-day price. The rest (money CampMinder
+        posted to the camper) is the overnight tick's own, priced at the sync (SP10b-1 Decision 2). Withheld is per
+        request and as broad as D16's check: a later camper-posted round, or a top-up of a short placement, on a
+        request with a placed line waits too."""
+        placed = on_placed_money(season, ticks)
+        if not placed:
+            return list(ticks)
+        _, held = withhold(season, placed, await self.since_inputs(season, placed))
+        left = {(tick.request_id, tick.round) for tick, _ in held}
+        return [tick for tick in ticks if (tick.request_id, tick.round) not in left]
+
     async def past_season(self, year: int, day: date, axis: AsOfAxis = "campminder") -> Season:
         """The season by the end of `day`, camp time, priced (3c-2): applications, requests and payer
         shares replayed from aid_change_log; the corrections, events, hold events and Kindred's
@@ -2519,7 +2534,7 @@ class FinancialAidDecisionsService:
         """D78: after the overnight ledger sync, tick Posted where CampMinder holds camp aid on a request
         beyond what its posted rounds lock: the oldest decided round first, locked at its decided amount
         with its receipt, as a person's tick would have done, dated the posting's day (never after today).
-        A family-level line never ticks (D81), nor a round a person un-ticked. One operation for the
+        A family-level line never ticks (D81), nor a round a person un-ticked. Nor does a round on a request holding money a person placed, when D16 finds something that prices the request recorded after its posting day: it waits for a person (D152). One operation for the
         season, as system:ledger, with the rules sections a first lock reads (SP10a Decision 11).
         Idempotent: a round it ticked is posted, so the next run finds nothing beyond the locks. Two runs
         at once could each write a post for one round; the fold is idempotent, so that is left alone.
@@ -2537,6 +2552,7 @@ class FinancialAidDecisionsService:
                 year=year, ticked=0, operation_id="", skipped=f"{year}'s pricing rules are not approved yet"
             )
         ticks = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=season.undone)
+        ticks = await self._without_withheld(season, ticks)
         if not ticks:
             return LedgerTicksOut(year=year, ticked=0, operation_id="")
         writes, locks, not_locked = await self.tick_writes(
