@@ -17588,8 +17588,8 @@ export type UnpushResponse = {
  *
  * One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
  * stopped there (short posting, family-level money, a round not decided yet, un-ticked by hand, payer shares not
- * covering it), D152 withheld it (priced since the posting), or tonight's tick will make it. `message` is a whole
- * sentence (the household page shows it without a pill). `mark_posted`: a hand tick ("Mark posted",
+ * covering it), D152 withheld it (priced since the posting), or tonight's tick will make it. `message` is in whole
+ * sentences (the household page shows it without a pill). `mark_posted`: a hand tick ("Mark posted",
  * POST /decisions/{year}/posted) is the way through; family-level money is placed in Money › To place instead,
  * and a round not decided yet has nothing to lock. A round here is never in Needs an offer (Q1).
  */
