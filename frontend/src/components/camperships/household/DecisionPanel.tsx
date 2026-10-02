@@ -89,7 +89,7 @@ export function DecisionPanel({
                   <Money value={line.amount} />
                   {line.amount !== null && (
                     <span className="text-muted-foreground block text-xs">
-                      {BASIS_WORDS[line.basis]}
+                      {line.clawedBack ? 'reversed' : BASIS_WORDS[line.basis]}
                     </span>
                   )}
                 </>
