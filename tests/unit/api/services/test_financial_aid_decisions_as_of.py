@@ -563,6 +563,7 @@ async def test_round_2_asks_are_named_only_when_an_unrebuilt_request_empties_the
     assert "round2_asked" in named
     camp = next(p for p in out.pools if p.pool == "camp_pool")
     assert (camp.demand.round2_asks, camp.demand.round2_asked) == (None, None)
+    assert (camp.demand.round2_held, camp.demand.round2_held_asked) == (None, None)
 
 
 _GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS}

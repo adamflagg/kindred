@@ -442,6 +442,10 @@ SEASON = [
     priced("disc", 1000003, _typed(view(3, "posted", locked="250", counts=False), "discretionary")),
     priced("pending", 1000004, _typed(view(3, "pending_approval", pending="300"), "discretionary")),
     priced("held", 1000005, view(1, "held", ask="2000")),
+    # Counts nowhere (D54): its money was reversed, so no line, cell or total may carry it.
+    priced("clawed", 1000006, replace(view(1, "posted", locked="1500"), clawed_back=True)),
+    # A non-counting type's needs-an-offer round: wholly outside the budget, never in a posted or inside figure.
+    priced("outside", 1000007, _typed(view(3, "needs_offer", decided="400", counts=False), "discretionary")),
 ]
 
 
@@ -462,6 +466,7 @@ def test_one_line_per_decision_type_in_the_rules_order_then_rounds_with_none() -
     )
     none = lines[3]  # plain's Round 1 (posted) and Round 2 (needs an offer), and topped's Round 1 (posted)
     assert (none.amount, none.posted, none.requests) == (Decimal(3400), Decimal(3000), Count(2, 2))
+    assert none.own == ZERO  # no type, so no decision money of its own: the whole line is plain rounds
 
 
 def test_the_lines_add_up_to_the_budgets_own_figures() -> None:
@@ -475,6 +480,16 @@ def test_the_lines_add_up_to_the_budgets_own_figures() -> None:
         assert sum((t.posted for t in inside), ZERO) == total.posted
         assert sum((t.amount for t in outside), ZERO) == pool.below.outside_budget
         assert sum((t.posted for t in outside), ZERO) == pool.below.outside_budget_posted
+
+
+def test_a_clawed_back_request_adds_nothing_and_an_outside_needs_offer_joins_its_types_outside_line() -> None:
+    clawed = next(r for r in SEASON if r.request_id == "clawed")
+    without = season_budget([r for r in SEASON if r is not clawed], RULES, outside_grants={})
+    with_it = season_budget(SEASON, RULES, outside_grants={})
+    assert with_it.total.decision_types == without.total.decision_types
+    assert with_it.total.total == without.total.total
+    outside = next(t for t in with_it.total.decision_types if t.key == "discretionary" and not t.counts_toward_budget)
+    assert (outside.amount, outside.posted) == (Decimal(650), Decimal(250))  # the disc round's 250 plus 400 to offer
 
 
 def test_a_type_the_rules_no_longer_name_keeps_its_line_and_key() -> None:
@@ -517,6 +532,16 @@ def test_forward_demand_counts_unmet_round_1_and_splits_out_the_held() -> None:
     assert (demand.round1_held, demand.round1_held_asked) == (Count(1, 1), Decimal(1800))
     assert (demand.round2_asks, demand.round2_asked) == (Count(2, 2), Decimal(1600))  # unchanged: held included
     assert (demand.round2_held, demand.round2_held_asked) == (Count(1, 1), Decimal(700))
+
+
+def test_a_held_round_1_with_no_ask_is_no_demand_but_still_lists_its_pool() -> None:
+    """Decision 7: the held count is requests whose part is above $0, so a $0 ask is neither counted nor added."""
+    budget = season_budget(
+        [priced("zero", 1000001, view(1, "held", ask="0", pool="other_pool"))], RULES, outside_grants={}
+    )
+    demand = pool_of(budget, "other_pool").demand
+    assert (demand.round1_held, demand.round1_held_asked) == (Count(), ZERO)
+    assert (demand.round1_unmet, demand.round1_unmet_requests) == (ZERO, Count())
 
 
 def test_a_pool_reached_only_by_demand_is_still_listed_as_before() -> None:

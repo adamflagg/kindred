@@ -394,3 +394,22 @@ def test_a_posted_round_keeps_the_type_its_lock_recorded_after_the_rules_drop_it
     assert (view.decision_type, view.extra) == ("retired_program", Decimal(250))
     other = replace(RETIRED, snapshot={**(RETIRED.snapshot or {}), "decision_round": 3})
     assert posted_view(other, None, None, "camp_pool").decision_type is None  # the type's money sits in Round 3
+
+
+def test_a_lock_without_decision_round_takes_the_rules_type_only_for_its_own_round() -> None:
+    """The fallback for an older lock: the rules' type when it sits in this round, else no type."""
+    decision = RULES.awards.decision_types["discretionary"]
+    old = RoundState(
+        round=decision.round,
+        posted=True,
+        locked_amount=Decimal(650),
+        locked_at=T0,
+        snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+    )
+    here = posted_view(old, decision, None, "camp_pool", decision_key="discretionary")
+    assert here.decision_type == "discretionary"
+    elsewhere = posted_view(
+        replace(old, round=decision.round + 1), decision, None, "camp_pool", decision_key="discretionary"
+    )
+    assert elsewhere.decision_type is None
+    assert posted_view(old, None, None, "camp_pool", decision_key="discretionary").decision_type is None

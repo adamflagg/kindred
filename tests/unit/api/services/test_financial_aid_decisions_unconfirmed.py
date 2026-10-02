@@ -10,7 +10,7 @@ import pytest
 
 import api.services.financial_aid_decisions_service as decisions_service
 from api.schemas.financial_aid_decisions import BudgetResponse, CountOut, RoundCellOut, UnconfirmedOut
-from bunking.financial_aid.decisions import BUDGET_GAPS, DecisionEvent
+from bunking.financial_aid.decisions import BUDGET_GAPS, DecisionEvent, RoundLedger
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, log_seeded, seed_line, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _posted, _service
@@ -105,3 +105,23 @@ async def test_remaining_and_the_scenarios_build_no_ledger_figures(monkeypatch: 
     assert calls == []
     await service.budget(YEAR)
     assert calls == ["x"]
+
+
+@pytest.mark.asyncio
+async def test_a_closed_requests_posted_round_reads_its_closed_lines_in_the_ledger() -> None:
+    """A withdrawn request's posted money is confirmed (or not) against its closed lines, never its live ones."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0)
+    store.synced_at = NIGHT_AFTER
+    service = _service(store)
+    ledgers = service._round_ledgers(await service.season(YEAR))
+    assert ledgers is not None
+    assert ledgers[EMMA] == {1: RoundLedger(Decimal(0), False)}
+    bare = FakeDecisionsStore()  # the same withdrawn request with no line: the whole lock is unconfirmed
+    seed_request(bare, EMMA, status="withdrawn")
+    _posted(bare, EMMA, 1, "1500")
+    bare.synced_at = NIGHT_AFTER
+    service = _service(bare)
+    assert (service._round_ledgers(await service.season(YEAR)) or {})[EMMA] == {1: RoundLedger(Decimal(1500), False)}

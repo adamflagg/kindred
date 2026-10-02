@@ -24,8 +24,8 @@ from api.services.financial_aid_decisions_repository import (
     line_placement,
 )
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
-from api.services.financial_aid_intake_types import UNKNOWN_EQUITY
 from api.services.financial_aid_grants_register import Placement, RegisterRow
+from api.services.financial_aid_intake_types import UNKNOWN_EQUITY
 from api.services.financial_aid_reconciliation import confirmation
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
