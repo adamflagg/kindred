@@ -259,7 +259,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
   })
 
-  it('drops "a posted amount stands" when undoing would re-price to a different figure', async () => {
+  it("names the figure undoing returns to when the posted amount differs from today's (owner-approved)", async () => {
     const moved = householdRequest(
       gridRow({
         rounds: [
@@ -274,8 +274,34 @@ describe('RoundChecklist (§5.2; D47)', () => {
     )
     render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; ticking Posted again locks that."
+      )
+    ).toBeInTheDocument()
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
+  })
+
+  it('names it on a reversed round too when the figures differ', async () => {
+    const reversed = householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'posted', {
+            decided: 1600,
+            posted: 1800,
+            posted_on: '2027-03-09',
+            clawed_back: true,
+          }),
+        ],
+      })
+    )
+    render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    expect(
+      screen.getByText(
+        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; ticking Posted again locks that."
+      )
+    ).toBeInTheDocument()
   })
 
   it('disables Accepted while its write is pending', () => {
