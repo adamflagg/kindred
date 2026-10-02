@@ -72,14 +72,18 @@ _UNDECIDED: Final = frozenset({"held", "not_decided", "pending_approval"})
 REPRODUCED = "reproduced"
 
 
-def _share_state(row: GridRowOut, household_cm_id: int) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
+def _share_state(
+    row: GridRowOut, household_cm_id: int, payer_count: int
+) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
     """A payer's money in CampMinder and its state: its own share's when the request is split (main spec
-    §11), else the request's (one payer)."""
+    §11), else the request's (one payer). A request with several payers but no per-share confirmation (their
+    percentages don't add up to 100%, so `split` yields no parts either) has no share of its own to show: the
+    request's whole figure is never one payer's."""
     c = row.confirmation
     if c is None:
         return None, None
     if not c.shares:
-        return dollars(c.in_campminder), c.status
+        return (dollars(c.in_campminder), c.status) if payer_count == 1 else (None, None)
     share = next((s for s in c.shares if s.household_cm_id == household_cm_id), None)
     if share is None:
         return None, None
@@ -92,7 +96,7 @@ def share_lines(row: GridRowOut, shares: Sequence[PayerShareRecord], chips: Mapp
     posted = split(dollars(row.total_posted), shares, row.household_cm_id)
     out = []
     for share in sorted(shares, key=lambda s: (chips.get(s.household_cm_id, len(chips) + 1), s.household_cm_id)):
-        held, status = _share_state(row, share.household_cm_id)
+        held, status = _share_state(row, share.household_cm_id, len(shares))
         mine_decided = decided.get(share.household_cm_id)
         mine_posted = posted.get(share.household_cm_id)
         out.append(
