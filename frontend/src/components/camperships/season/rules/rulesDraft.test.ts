@@ -43,6 +43,13 @@ describe('withSection (D39: what All settings records)', () => {
     expect(next.year).toBe(RULES_DOCUMENT.year)
   })
 
+  it('lands the content under the section it names, whichever one that is', () => {
+    const content = { ...sectionContent(RULES_DOCUMENT, 'budget'), note: 'moved' }
+    const next = withSection(RULES_DOCUMENT, 'budget', content)
+    expect(next.budget).toEqual(content)
+    expect(next.awards).toBe(RULES_DOCUMENT.awards)
+  })
+
   it('does not change the document it was given', () => {
     const before = JSON.stringify(RULES_DOCUMENT)
     withSection(RULES_DOCUMENT, 'awards', { minimum: '1' })

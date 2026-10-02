@@ -251,6 +251,12 @@ describe('Fit to budget in words (fit.py; D119)', () => {
     )
   })
 
+  it('names no pool whose Round 1 has no allocation (null remaining)', () => {
+    const base = fit('fits', 0)
+    const pools = base.results.pools.map((p) => ({ ...p, round1_remaining: null }))
+    expect(fitWords({ ...base, results: { ...base.results, pools } }).pool).toBeNull()
+  })
+
   it('names no pool when none is tightest, and never calls the figure the pools summed', () => {
     const none = fitWords({ ...fit('fits', 0), tightest_pool: null })
     expect(none.pool).toBeNull()
