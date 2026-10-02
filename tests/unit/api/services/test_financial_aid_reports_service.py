@@ -18,12 +18,14 @@ from api.services.financial_aid_cancellations import CancelEvent, EnrollmentStat
 from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord
+from api.services.financial_aid_reports_facts import _standing
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
     ReportedFigureNotFoundError,
     ReportsRefusedError,
 )
 from bunking.financial_aid.reports.committee import NO_DEADLINE_CUT_GAP, PHASE_BOUNDARY_GAP
+from bunking.financial_aid.reports.facts import RoundFacts
 from bunking.financial_aid.reports.history import ReportedFigure
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
@@ -195,12 +197,42 @@ async def test_a_closed_request_is_neither_awarded_nor_cancelled() -> None:
     assert out.recipients_cancelled == []
 
 
-async def test_a_withdrawn_request_with_a_posted_lock_reads_zero_in_reports() -> None:
-    """OWNER ITEM (a) NOT RULED: the budget still shows the lock as Posted; Reports reads $0 (closed, not cancelled)."""
+async def test_a_withdrawn_request_with_a_posted_award_reads_exactly_like_a_cancelled_twin() -> None:
+    """Owner (a) (RULED 2026-10-02): a posted award on a withdrawn request is a forgotten reversal, so Reports counts
+    it with "aid recipients who cancelled", figure for figure as a cancelled request with the same award (no reason
+    given on either)."""
+    cancelled = report_season()
+    cancelled.cancel_events.append(
+        CancelEvent("can000000000003", EMMA, "cancel", NOW - timedelta(days=1), in_kindred=True)
+    )
+    withdrawn = report_season()
+    withdrawn.requests[EMMA] = replace(withdrawn.requests[EMMA], status="withdrawn")
+    twin = await _service(cancelled).statistics(YEAR, table="camp", round_=1)
+    out = await _service(withdrawn).statistics(YEAR, table="camp", round_=1)
+    assert (out.total.apps, out.total.cancelled, out.cancelled_applicants, out.total.amount) == (2, 1, 1, 0.0)
+    assert [r.model_dump() for r in out.recipients_cancelled] == [r.model_dump() for r in twin.recipients_cancelled]
+    assert len(out.recipients_cancelled) == 1
+    assert out.recipients_cancelled[0].posted == 1500.0
+    assert out.total.model_dump() == twin.total.model_dump()
+    assert [r.model_dump() for r in out.rows] == [r.model_dump() for r in twin.rows]
+
+
+async def test_a_withdrawn_request_whose_award_was_since_reversed_still_counts_as_cancelled_like_its_twin() -> None:
+    """The cancelled path counts a clawed-back award too (it reads the lock, not the net Posted), so the withdrawn
+    one does: standing is the same for a reversed lock as for a standing one."""
+    withdrawn = replace(report_season().requests[EMMA], status="withdrawn")
+    reversed_lock = RoundFacts(1, Decimal(4000), Decimal(1500), True, None, False, None, 2, "camp_pool")
+    assert _standing(withdrawn, False, (reversed_lock,)) == "cancelled"
+    assert _standing(withdrawn, False, (replace(reversed_lock, locked=None),)) == "closed"
+    assert _standing(replace(withdrawn, status="active"), False, (reversed_lock,)) == "live"
+
+
+async def test_a_withdrawn_request_with_no_posted_award_stays_closed() -> None:
+    """Owner (a): only a posted award makes a withdrawn request a recipient who cancelled."""
     store = report_season()
-    store.requests[EMMA] = replace(store.requests[EMMA], status="withdrawn")
+    store.requests[LIAM] = replace(store.requests[LIAM], status="withdrawn")  # Liam is decided, never posted
     out = await _service(store).statistics(YEAR, table="camp", round_=1)
-    assert (out.total.apps, out.total.cancelled, out.total.amount, out.total.awarded_count) == (2, 0, 0.0, 0)
+    assert (out.total.apps, out.total.cancelled, out.cancelled_applicants) == (2, 0, 0)
     assert out.recipients_cancelled == []
 
 

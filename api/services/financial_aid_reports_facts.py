@@ -10,8 +10,9 @@ that an edited answer replaced (intake withdraws the old key and creates a new o
 Where each field comes from:
   standing      cancelled when the season lists a cancellation (10b-2; on a past read the season lists the ones made by
                 that day, whether CampMinder's or Kindred's, so a request cancelled on or before `as_of` IS cancelled
-                then and one cancelled after is not); live (active, unmatched) and not cancelled;
-                otherwise closed (a pending duplicate, a withdrawn answer). Inclusion comes from status alone: there
+                then and one cancelled after is not), or withdrawn while holding a posted award (owner (a), RULED
+                2026-10-02: a forgotten reversal, read as a cancellation); live (active, unmatched) and not
+                cancelled; otherwise closed (a pending duplicate, a withdrawn answer with no posted award). Inclusion comes from status alone: there
                 is no Include override (owner ruling, ⚠5 option c).
   program       the priced program, else the rules program the request's session belongs to (a request that is
                 not live is not priced, so its program comes from its session).
@@ -63,11 +64,12 @@ def received_ids(requests: Mapping[str, RequestRecord]) -> frozenset[str]:
     return frozenset(rid for rid, r in requests.items() if r.status != STATUS_DUPLICATE and rid not in replaced)
 
 
-def _standing(request: RequestRecord, cancelled: bool) -> Standing:
-    # OWNER ITEM (a) NOT RULED: a posted lock on a withdrawn request is dropped (closed). Flip deliberately.
-    # A withdrawn request is "closed": not awarded, not cancelled, not in recipients-who-cancelled, so Reports reads
-    # $0 where the budget still shows the lock as Posted.
-    if cancelled:
+def _standing(request: RequestRecord, cancelled: bool, rounds: Sequence[RoundFacts] = ()) -> Standing:
+    # Owner (a) (RULED 2026-10-02): a posted award on a WITHDRAWN request is a forgotten reversal, so it reads exactly
+    # as a cancelled request does (same standing, money and recipients-who-cancelled line), whether or not the money
+    # was since reversed: the cancelled path reads the lock, not the net Posted. A withdrawn request with no posted
+    # award stays "closed".
+    if cancelled or (request.status == STATUS_WITHDRAWN and any(r.locked is not None for r in rounds)):
         return "cancelled"
     return "live" if request.status in _LIVE else "closed"
 
@@ -179,7 +181,7 @@ def report_requests(
                 pool=home_pool,
                 table=round1_table(document, program) if document is not None else "",
                 round2_table=round2_table(document, program) if document is not None else "",
-                standing=_standing(request, cancellation is not None),
+                standing=_standing(request, cancellation is not None, rounds),
                 cancel_reason=cancellation.reason if cancellation is not None else None,
                 received_at=received.get(request_id),
                 rounds=tuple(rounds),

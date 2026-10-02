@@ -92,3 +92,10 @@ def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applic
     assert "the rate divides by applications, which include cancellations" in note.text
     assert note.key in SURFACES["reports-committee"]
     assert note.key in SURFACES["reports-statistics"]
+
+
+def test_recipients_who_cancelled_names_a_withdrawn_request_that_holds_a_posted_award() -> None:
+    """Owner (a) (RULED 2026-10-02)."""
+    text = BY_KEY["recipients_cancelled"].text
+    assert "or withdrawn" in text
+    assert "A withdrawn request that holds a posted award counts here exactly as a cancelled one does." in text

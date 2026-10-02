@@ -290,8 +290,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="recipients_cancelled",
         term="Aid recipients who cancelled",
         text=(
-            "Aid recipients who cancelled: requests with a posted award later cancelled, by cancel reason, pool and "
-            "round. Once cancelled a request is out of awarded already."
+            "Aid recipients who cancelled: requests with a posted award later cancelled, or withdrawn, by cancel reason, "
+            "pool and round. A withdrawn request that holds a posted award counts here exactly as a cancelled one does. "
+            "Once cancelled a request is out of awarded already."
         ),
         spec="§5.6",
         rulings=("D101", "D131", "D141"),
