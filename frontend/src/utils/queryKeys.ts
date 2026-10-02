@@ -748,6 +748,11 @@ export const queryKeys = {
   aidRulesApproved: (year: number, version: number | null) =>
     ['financial-aid', 'rules', year, 'approved', version ?? 'pricing'] as const,
   aidRulesDraft: (year: number) => ['financial-aid', 'rules', year, 'draft'] as const,
+  aidHistoryPrefix: () => ['financial-aid', 'history'] as const,
+  aidHistory: (year: number, query: Readonly<Record<string, string>>) =>
+    ['financial-aid', 'history', year, 'page', query] as const,
+  aidHistoryOperation: (year: number, operationId: string) =>
+    ['financial-aid', 'history', year, 'operation', operationId] as const,
 }
 
 /**
@@ -881,6 +886,7 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  *   re-prices them all);
  * - the application read;
  * - the rules reads: a Posted tick locks the sections its round read, in the same operation.
+ * - Season › History: every write logs a row.
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
  * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
  * Definitions are static and never invalidated.
@@ -900,6 +906,8 @@ export function invalidateAidMoneyQueries(
     queryKeys.aidApplicationPrefix(),
     // A Posted tick locks the rules sections its round read (lock_writes): the Rules tab says so.
     queryKeys.aidRulesPrefix(),
+    // Every write logs a row (spec §4.11): Season › History (D49).
+    queryKeys.aidHistoryPrefix(),
   ]
   if (options.jumpIndex === true) keys.push(queryKeys.aidJumpIndexPrefix())
   // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
@@ -914,6 +922,8 @@ export function invalidateAidMoneyQueries(
  * Finance line counts the sections awaiting approval. An approval (`priced`) re-prices every request
  * not yet posted and raises "would change by" on posted ones, so it refreshes every money read too.
  * A draft save or a new season's start prices nothing: no version prices the season until approved.
+ * It logs a rules row though (D49), so History refreshes too: directly here, through the money helper
+ * on an approval.
  * Returns a promise like `invalidateAidMoneyQueries`, so an onSettled can wait for the refetch.
  */
 export function invalidateAidRulesQueries(
@@ -926,8 +936,8 @@ export function invalidateAidRulesQueries(
   // invalidating them twice would cancel and restart each active read's refetch.
   if (options.priced === true) return invalidateAidMoneyQueries(queryClient)
   return Promise.all(
-    [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix()].map((queryKey) =>
-      queryClient.invalidateQueries({ queryKey })
+    [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix(), queryKeys.aidHistoryPrefix()].map(
+      (queryKey) => queryClient.invalidateQueries({ queryKey })
     )
   ).then(() => undefined)
 }

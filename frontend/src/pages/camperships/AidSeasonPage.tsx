@@ -11,7 +11,6 @@ import { RulesTab } from '../../components/camperships/season/rules/RulesTab'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
-import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidBudget } from '../../hooks/camperships/useAidBudget'
 import { useYear } from '../../hooks/useCurrentYear'
@@ -80,9 +79,7 @@ export default function AidSeasonPage() {
         </p>
       )}
       {onRounds && <RoundsBudgetTab />}
-      {slug === 'history' && (
-        <HistoryTab canSeeScenarios={hasPermission(Permission.FINANCIAL_AID_RULES)} />
-      )}
+      {slug === 'history' && <HistoryTab />}
       {slug === 'rules' && <RulesTab />}
       {slug === 'scenarios' && (
         <div className="card-lodge text-muted-foreground p-6 text-sm">

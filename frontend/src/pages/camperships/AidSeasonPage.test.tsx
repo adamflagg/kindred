@@ -25,6 +25,9 @@ vi.mock('../../hooks/camperships/useAidBudget', () => ({
 vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
   RoundsBudgetTab: () => <div>Rounds and budget body</div>,
 }))
+vi.mock('../../components/camperships/season/HistoryTab', () => ({
+  HistoryTab: () => <div>History body</div>,
+}))
 vi.mock('../../components/camperships/season/rules/RulesTab', () => ({
   RulesTab: () => <div>Rules tab body</div>,
 }))
@@ -121,17 +124,14 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     expect(screen.getByText('As of Mar 15, 2027')).toBeInTheDocument()
   })
 
-  it('says History waits for its server read, pointing finance at the scenario trail', () => {
+  // A regression guard: the mock ignores props, so this passes before the real tab lands. It pins
+  // that the page mounts History's body on its tab for both readers (the interim is retired).
+  it("mounts History's body on its tab, for the registrar and for finance (D49, D76)", () => {
     const first = renderAt('/aid/season/history')
-    const heading = screen.getByText("The season's log isn't built yet.")
-    // The same p-6 card as the page's other placeholders (Task 5 m1).
-    expect(heading.parentElement?.className).toBe(
-      'card-lodge text-muted-foreground space-y-1 p-6 text-sm'
-    )
-    expect(screen.queryByText(/Scenarios › Trail/)).toBeNull()
+    expect(screen.getByText('History body')).toBeInTheDocument()
     first.unmount()
     granted = FINANCE
     renderAt('/aid/season/history')
-    expect(screen.getByText(/Scenarios › Trail/)).toBeInTheDocument()
+    expect(screen.getByText('History body')).toBeInTheDocument()
   })
 })

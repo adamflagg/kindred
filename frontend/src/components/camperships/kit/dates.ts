@@ -52,3 +52,19 @@ export function formatLongDate(iso: string): string {
   if (day === null) return iso
   return `${formatShortDate(iso)}, ${String(day.year)}`
 }
+
+/** "Apr 9 16:05": a stored time on camp time, 24-hour (history.html B). Anything unreadable comes back unchanged. */
+export function formatCampDateTime(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return iso
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CAMP_TIME_ZONE,
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at)
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('month')} ${part('day')} ${part('hour')}:${part('minute')}`
+}

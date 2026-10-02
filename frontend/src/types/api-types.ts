@@ -66,6 +66,10 @@ import type {
   GridRowOut,
   HeadcountSet,
   HistoryEntryOut,
+  HistoryOperationDetailOut,
+  HistoryOperationOut,
+  HistoryPageOut,
+  HistoryRowOut,
   HoldReleaseIn,
   HouseholdCardOut,
   HouseholdLinkRow,
@@ -243,3 +247,11 @@ export type ApiAidProgramProfile = ProgramProfile
 export type ApiAidIncentiveRule = IncentiveRule
 /** Mirrors Python `DecisionType`. */
 export type ApiAidDecisionType = DecisionTypeOutput
+
+/** Season › History (spec §7.6; D49): the season's log, one line per operation. Mirrors Python `HistoryPageOut`, `HistoryOperationOut`, `HistoryOperationDetailOut` and `HistoryRowOut`. */
+export type ApiAidHistoryPage = HistoryPageOut
+export type ApiAidHistoryOperation = HistoryOperationOut
+export type ApiAidHistoryOperationDetail = HistoryOperationDetailOut
+export type ApiAidHistoryRow = HistoryRowOut
+/** Mirrors Python `HistoryKind`. */
+export type ApiAidHistoryKind = HistoryOperationOut['kind']

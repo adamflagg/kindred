@@ -27,6 +27,8 @@ import type {
   ApiAidRemaining,
   ApiAidToday,
   ApiAidRequestOut,
+  ApiAidHistoryOperationDetail,
+  ApiAidHistoryPage,
   ApiAidRulesDraft,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
@@ -493,4 +495,31 @@ export async function fetchAidRulesDraft(
   const response = await fetchWithAuth(`${BASE}/rules/${String(year)}/draft`)
   if (!response.ok) throw await toApiError(response, 'Failed to load the rules draft', AidApiError)
   return (await response.json()) as ApiAidRulesDraft
+}
+
+/**
+ * Season › History (spec §7.6; D49): one page of the season's log, one line per operation, newest
+ * first. `query` is the page's filters in the router's names (historyModel's `historyQuery`).
+ */
+export async function fetchAidHistory(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  query: Readonly<Record<string, string>>
+): Promise<ApiAidHistoryPage> {
+  const response = await fetchWithAuth(withQuery(`${BASE}/history/${String(year)}`, { ...query }))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the history', AidApiError)
+  return (await response.json()) as ApiAidHistoryPage
+}
+
+/** One operation's rows with their field-level diffs, as recorded. 404: not in this season's log, or a rules one without `rules`. */
+export async function fetchAidHistoryOperation(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  operationId: string
+): Promise<ApiAidHistoryOperationDetail> {
+  const response = await fetchWithAuth(
+    `${BASE}/history/${String(year)}/operations/${encodeURIComponent(operationId)}`
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the operation', AidApiError)
+  return (await response.json()) as ApiAidHistoryOperationDetail
 }
