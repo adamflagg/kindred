@@ -114,15 +114,27 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('All')).toHaveAttribute('data-state', 'lens')
   })
 
-  // RULED D-a: a permanent fifth badge, red when non-zero, muted at 0.
-  it('always shows Cancelled: give a reason as the fifth badge, red when non-zero and muted at 0', () => {
-    const { unmount } = strip()
+  // RULED D-a, revised to option (3): the fifth badge shows only when non-zero, or while picked,
+  // so it appears exactly when Today's Open › can link to it. Full label, red like the others.
+  it('shows Cancelled: give a reason, red, when its count is non-zero', () => {
+    strip()
     expect(link('Cancelled: give a reason').className).toContain('bg-red-100')
     expect(link('Cancelled: give a reason')).not.toHaveAttribute('data-state')
+  })
+
+  it('hides Cancelled: give a reason at 0, and while its count is unknown (a past date)', () => {
+    const { unmount } = strip({ counts: new Map([...COUNTS, ['cancel_reason', count(0)]]) })
+    expect(screen.queryByRole('link', { name: /^Cancelled: give a reason/ })).toBeNull()
+    expect(names(screen.getByTestId('strip-exceptions'))).toHaveLength(4)
     unmount()
+    strip({ counts: new Map([['all', count(9)]]) })
+    expect(screen.queryByRole('link', { name: /^Cancelled: give a reason/ })).toBeNull()
+  })
+
+  it('keeps Cancelled: give a reason while it is the picked stage, muted at 0', () => {
     strip({ counts: new Map([...COUNTS, ['cancel_reason', count(0)]]), stage: 'cancel_reason' })
-    expect(link('Cancelled: give a reason').className).not.toContain('bg-red-100')
     expect(link('Cancelled: give a reason')).toHaveAttribute('data-state', 'on')
+    expect(link('Cancelled: give a reason').className).not.toContain('bg-red-100')
   })
 
   it('says under the strip how to read it, verbatim, and that only appeals show under that lens', () => {

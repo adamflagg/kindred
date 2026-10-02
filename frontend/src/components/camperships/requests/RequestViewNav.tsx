@@ -34,6 +34,8 @@ const LENSES: ReadonlyArray<{ readonly lens: RequestLens; readonly label: string
 
 /** Watched, not to do (rv=todo): the family has it, so its chevron and count stay muted. */
 const WATCHED: ReadonlySet<RequestViewKey> = new Set(['waiting_on_family'])
+/** Badges drawn only while something is in them (or picked): the strip has no room for a standing 0. */
+const SHOWN_WHEN_DUE: ReadonlySet<RequestViewKey> = new Set(['cancel_reason'])
 /** An unsettled session waits on a rule, not a fault: amber, as the mock tones it. */
 const AMBER_BADGES: ReadonlySet<RequestViewKey> = new Set(['session_not_settled'])
 
@@ -101,6 +103,12 @@ export function RequestViewNav({
     </Link>
   )
 
+  // RULED D-a (revised, option 3): Cancelled: give a reason shows only when its count is non-zero
+  // or it is the picked stage: exactly when Today's Open › can link to it. It is 0 until 2027.
+  const badges = EXCEPTION_BADGES.filter(
+    (key) => !SHOWN_WHEN_DUE.has(key) || key === stage || (counts?.get(key)?.requests ?? 0) > 0
+  )
+
   return (
     <div>
       <nav className={STRIP}>
@@ -137,7 +145,7 @@ export function RequestViewNav({
           })}
         </span>
         <span className={STRIP_EXCEPTIONS} data-testid="strip-exceptions">
-          {EXCEPTION_BADGES.map((key) => {
+          {badges.map((key) => {
             const view = viewOf(key)
             const count = counts?.get(key)
             const tone = !count?.requests ? 'zero' : AMBER_BADGES.has(key) ? 'amber' : 'red'
