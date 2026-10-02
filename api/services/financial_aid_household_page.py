@@ -141,15 +141,17 @@ def band_grants_by_request(register: Iterable[RegisterRow]) -> dict[str, Decimal
     outside grants on the request, live lines plus open commitments (D116, D55; Expected never, D56), INCLUDING a
     last-dollar grantor's (D77's "live outside-grant lines", D143), as the budget's below-the-line money does.
     The other reading (§5.8's gloss "the same grants the calculator subtracts") is `grant_inputs_by_request`,
-    which leaves that grant out. Flipping it is this function and
-    test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_zero."""
+    which leaves that grant out. Flipping it is this function,
+    test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_zero, and the grant rows' in_band
+    flag (grant_rows_with_band_flag, test_a_last_dollar_grant_is_in_the_band_as_the_band_counts_it)."""
     return outside_grants_by_request(register)
 
 
 def grant_rows_with_band_flag(grants: Iterable[GrantRowOut], rows: Sequence[GridRowOut]) -> list[HouseholdGrantRowOut]:
     """Each grant row with in_band: whether the band counted it. Same rule as band_grants_by_request
     (counts_as_outside) and totals (included requests only), so a counted grant on a withdrawn or duplicate
-    request reads False."""
+    request reads False. The band takes a grant per request share: a grant split over a live and a withdrawn
+    request reads True, and only its live share is in the band."""
     live = {row.request_id for row in rows if included(row)}
     return [
         HouseholdGrantRowOut(

@@ -28,7 +28,7 @@ from api.schemas.financial_aid_grants import GrantRowOut, GrantsResponse, Reques
 from api.schemas.financial_aid_intake import AnswerOut, ApplicationDetailResponse, RequestOut
 from api.services.financial_aid_casework_service import CaseworkNotFoundError
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
-from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_grants_register import RegisterRow, RequestShare
 from api.services.financial_aid_household_page import (
     HouseholdNotFoundError,
     HouseholdPageService,
@@ -1192,3 +1192,27 @@ def test_the_bands_grant_figure_is_the_sum_over_the_rows_flagged_in_band() -> No
     flagged = grant_rows_with_band_flag(grants, rows)
     from_rows = sum(s.amount for g in flagged if g.in_band for s in g.requests if s.request_id in live)
     assert totals(rows, band_grants_by_request(register)).grants == from_rows == 200.0
+
+
+def test_a_grant_split_over_a_live_and_a_withdrawn_request_is_in_the_band_for_its_live_share_only() -> None:
+    """in_band is per grant and the band per request share: a grant with any share on an included request reads
+    True, and the band takes that share alone, never the row's full amount."""
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, JOHNSON, request_status="withdrawn")]
+    split = _grant_out(JOHNSON, EMMA, 300.0, 9001).model_copy(
+        update={
+            "requests": [RequestShareOut(request_id=EMMA, amount=100.0), RequestShareOut(request_id=LIAM, amount=200.0)]
+        }
+    )
+    register = [
+        replace(grant_row(EMMA, "300"), requests=(RequestShare(EMMA, Decimal(100)), RequestShare(LIAM, Decimal(200))))
+    ]
+    assert _flags([split], rows) == [True]
+    assert totals(rows, band_grants_by_request(register)).grants == 100.0
+
+
+def test_a_last_dollar_grant_is_in_the_band_as_the_band_counts_it() -> None:
+    """Decision 7 (⚠): in_band follows band_grants_by_request's reading. The grant row carries no
+    pays-after-camp-aid mark, so flipping Decision 7 is also grant_rows_with_band_flag and this test."""
+    rows = [_row(EMMA, JOHNSON)]
+    assert band_grants_by_request([grant_row(EMMA, "2000", pays_after_camp_aid=True)]) == {EMMA: Decimal(2000)}
+    assert _flags([_grant_out(JOHNSON, EMMA, 2000.0, 9001)], rows) == [True]

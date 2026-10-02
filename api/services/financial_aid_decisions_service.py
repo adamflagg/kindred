@@ -127,6 +127,7 @@ from api.services.financial_aid_grant_placements import (
 from api.services.financial_aid_grants_register import (
     Placement,
     RegisterRow,
+    counts_as_outside,
     grant_inputs_by_request,
     outside_grants_by_request,
 )
@@ -1796,7 +1797,11 @@ class FinancialAidDecisionsService:
         # reaches the calculator but is still outside money below the line (D125).
         by_request = outside_grants_by_request(season.register)
         off = sum(
-            (row.amount for row in season.register if row.counts and row.funder_type == "outside" and not row.requests),
+            (
+                row.amount
+                for row in season.register
+                if counts_as_outside(row.counts, row.funder_type) and not row.requests
+            ),
             ZERO,
         )
         document = season.rules.document if season.rules is not None else None

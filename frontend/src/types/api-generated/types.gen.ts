@@ -5726,7 +5726,7 @@ export type HouseholdGrantRowOut = {
   /**
    * In Band
    *
-   * True when the household band counts this grant (same rule as the band: it counts, its funder is outside, and it sits on at least one included request, i.e. live and not cancelled, so a grant on a withdrawn or duplicate request is left out)
+   * True when the household band counts this grant (same rule as the band: it counts, its funder is outside, and it sits on at least one included request, i.e. live and not cancelled, so a grant on a withdrawn or duplicate request is left out). The band counts per request share: a grant split over an included and an excluded request reads true, and only its share on the included request is in the band
    */
   in_band: boolean
 }

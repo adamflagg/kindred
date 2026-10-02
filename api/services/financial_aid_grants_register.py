@@ -569,7 +569,8 @@ def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[Grant
 
 def counts_as_outside(counts: bool, funder_type: str) -> bool:
     """The one test of whether a grant is outside money that counts: the band's rule (D77), shared by the
-    per-request sum below and the household page's per-grant in_band flag so the two cannot disagree."""
+    per-request sum below, the budget's off-request sum and the household page's per-grant in_band flag so they
+    cannot disagree."""
     return counts and funder_type == "outside"
 
 
