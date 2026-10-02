@@ -34,6 +34,7 @@ from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
     ApplicationSummaryOut,
+    CapacityListOut,
     CapacityOut,
     CorrectionOut,
     FlagOut,
@@ -119,6 +120,7 @@ class CaseworkStore(Protocol):
     async def fetch_sessions(self, year: int) -> list[SessionRow]: ...
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
     async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None: ...
+    async def fetch_capacities(self, year: int) -> list[CapacityRecord]: ...
     async def fetch_payer_shares(
         self, year: int, request_ids: Sequence[str] | None = None
     ) -> list[PayerShareRecord]: ...
@@ -641,6 +643,17 @@ class FinancialAidCaseworkService:
             reason=f"{reason_code}: {reason.strip()}" if reason_code else reason,
         )
         return await self._request_out(updated)
+
+    async def capacities(self, year: int) -> CapacityListOut:
+        """Every session capacity finance stored for the season (live only: no past date is rebuilt)."""
+        rows = await self._store.fetch_capacities(year)
+        return CapacityListOut(
+            year=year,
+            sessions=[
+                CapacityOut(year=r.year, session_cm_id=r.session_cm_id, capacity=r.capacity, note=r.note, actor=r.actor)
+                for r in sorted(rows, key=lambda r: r.session_cm_id)
+            ],
+        )
 
     async def set_capacity(self, year: int, session_cm_id: int, capacity: int, note: str, actor: str) -> CapacityOut:
         if capacity < 0:

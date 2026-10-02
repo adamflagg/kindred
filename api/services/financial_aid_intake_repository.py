@@ -483,6 +483,12 @@ class FinancialAidIntakeRepository:
         )
         return _capacity(rows[0]) if rows else None
 
+    async def fetch_capacities(self, year: int) -> list[CapacityRecord]:
+        rows = await self._page(
+            AID_SESSION_CAPACITY, {"filter": f"year = {int(year)}", "sort": f"session_cm_id,{STABLE_SORT}"}
+        )
+        return [_capacity(row) for row in rows]
+
     # -- equity (ALLOWLIST) -----------------------------------------------
 
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]:

@@ -283,6 +283,9 @@ class FakeAidStore:
     async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None:
         return self.capacity.get((year, session_cm_id))
 
+    async def fetch_capacities(self, year: int) -> list[CapacityRecord]:
+        return sorted((c for (y, _), c in self.capacity.items() if y == year), key=lambda c: c.session_cm_id)
+
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]:
         return {p: self.equity[p] for p in person_cm_ids if p in self.equity}
 

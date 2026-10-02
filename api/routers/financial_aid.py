@@ -96,10 +96,12 @@ from api.schemas.financial_aid_grants import (
     PlaceGrantsOut,
     WithdrawIn,
 )
+from api.schemas.financial_aid_history import HistoryKind, HistoryOperationDetailOut, HistoryPageOut
 from api.schemas.financial_aid_household_page import HouseholdPageResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
+    CapacityListOut,
     CapacityOut,
     CapacitySet,
     CorrectionCreate,
@@ -190,7 +192,7 @@ from api.services.financial_aid_casework_service import (
     DuplicateRequestError,
     FinancialAidCaseworkService,
 )
-from api.services.financial_aid_change_log_reads import EntityLogReads
+from api.services.financial_aid_change_log_reads import EntityLogReads, HistoryLogReads
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import (
@@ -260,6 +262,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     Workspace,
 )
+from api.services.financial_aid_season_history import HistoryFilter, HistoryNotFoundError, SeasonHistoryService
 from api.services.financial_aid_to_place_service import ToPlaceService
 from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
@@ -562,6 +565,58 @@ async def set_aid_request_household_share(
         )
     except _ERRORS as exc:
         _raise_http(exc)
+
+
+@router.get("/capacity/{year}", response_model=CapacityListOut)
+async def get_aid_session_capacities(year: int = Path(ge=2017, le=2100), user: AuthUser = _VIEW) -> CapacityListOut:
+    """The session capacities finance stored this season (Season › Rules), for everyone with view (the Season reads'
+    gate; D76). Live only. The write stays financial_aid.rules."""
+    return await _casework().capacities(year)
+
+
+def _history() -> SeasonHistoryService:
+    return SeasonHistoryService(HistoryLogReads(pb))
+
+
+_OperationId = Annotated[str, Path(pattern=r"^[a-z0-9]{15}$")]
+
+
+@router.get("/history/{year}", response_model=HistoryPageOut)
+async def get_season_history(
+    year: _Year,
+    kind: Annotated[list[HistoryKind] | None, Query()] = None,
+    actor: Annotated[str | None, Query(max_length=320)] = None,
+    since: date | None = None,
+    until: date | None = None,
+    q: Annotated[str, Query(max_length=200)] = "",
+    include_intake: bool = False,
+    page: int = Query(default=1, ge=1, le=10000),
+    per_page: int = Query(default=50, ge=1, le=200),
+    user: AuthUser = _VIEW,
+) -> HistoryPageOut:
+    """Season › History (D49, §7.6): one line per operation, newest first. Rules operations only with
+    financial_aid.rules; intake runs only when asked. `until` shows the log through that camp day, exactly."""
+    f = HistoryFilter(
+        kinds=frozenset(kind or ()),
+        actor=actor,
+        since=since,
+        until=until,
+        text=q,
+        include_intake=include_intake,
+        rules=_holds(user, Permission.FINANCIAL_AID_RULES),
+    )
+    return await _history().page(year, f, page=page, per_page=per_page)
+
+
+@router.get("/history/{year}/operations/{operation_id}", response_model=HistoryOperationDetailOut)
+async def get_season_history_operation(
+    year: _Year, operation_id: _OperationId, user: AuthUser = _VIEW
+) -> HistoryOperationDetailOut:
+    """One operation's rows and their field-level diffs. 404 when it doesn't exist or the reader may not see it."""
+    try:
+        return await _history().operation(year, operation_id, rules=_holds(user, Permission.FINANCIAL_AID_RULES))
+    except HistoryNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.put("/capacity/{year}/{session_cm_id}", response_model=CapacityOut)

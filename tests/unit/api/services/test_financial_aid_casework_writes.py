@@ -14,7 +14,7 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AttendeeRow
+from api.services.financial_aid_intake_types import AttendeeRow, CapacityRecord
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, seeded_store
 
 ACTOR = "registrar@example.com"
@@ -260,3 +260,24 @@ async def test_without_a_code_source_the_rules_defaults_apply() -> None:
     family = store.request_for(household=1000001, program="family_camp")
     out = await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR, reason_code="headcount")
     assert out.headcount_non_infant == 4
+
+
+@pytest.mark.asyncio
+async def test_the_capacity_read_lists_the_seasons_sessions_by_id() -> None:
+    store, casework = await built()
+    for year, session, figure in ((YEAR, 1000102, 90), (YEAR, 1000101, 120), (YEAR + 1, 1000101, 70)):
+        store.capacity[(year, session)] = CapacityRecord(
+            id=f"cap{session:012d}",
+            year=year,
+            session_cm_id=session,
+            capacity=figure,
+            note="Board figure.",
+            actor=ACTOR,
+        )
+    out = await casework.capacities(YEAR)
+    assert out.year == YEAR
+    assert [(c.session_cm_id, c.capacity, c.note) for c in out.sessions] == [
+        (1000101, 120, "Board figure."),
+        (1000102, 90, "Board figure."),
+    ]
+    assert (await casework.capacities(YEAR + 2)).sessions == []
