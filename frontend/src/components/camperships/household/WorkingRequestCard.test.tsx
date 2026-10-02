@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { gridRow, ROW_EMMA, ROW_OLIVIA, ROW_RILEY } from '../requests/gridFixtures'
+import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_RILEY } from '../requests/gridFixtures'
 import { useEditorExits, type EditorExits } from './editorExits'
 import { householdPage, householdRequest } from './householdFixtures'
 import { WorkingRequestCard } from './WorkingRequestCard'
@@ -47,7 +47,7 @@ function useFakeMutation(spy: (vars: unknown) => unknown) {
     },
     mutateAsync: (vars: unknown) => {
       spy(vars)
-      return Promise.resolve({})
+      return spy === cancel && cancelGate !== null ? cancelGate : Promise.resolve({})
     },
   }
 }
@@ -74,6 +74,8 @@ vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 const go = vi.fn()
+// When set, the cancellation write stays pending until the test settles it.
+let cancelGate: Promise<unknown> | null = null
 let exitsSeen: EditorExits | null = null
 
 const settle = () => {
@@ -84,9 +86,11 @@ const settle = () => {
 function Cards({
   rows,
   canWork = true,
+  canApprove = false,
 }: {
   rows: Array<Parameters<typeof householdRequest>[0]>
   canWork?: boolean
+  canApprove?: boolean
 }) {
   const exits = useEditorExits()
   exitsSeen = exits
@@ -101,7 +105,7 @@ function Cards({
           page={page}
           view={VIEW}
           canWork={canWork}
-          canApprove={false}
+          canApprove={canApprove}
           exits={exits}
         />
       ))}
@@ -109,11 +113,12 @@ function Cards({
   )
 }
 
-const renderCards = (rows = [ROW_OLIVIA], canWork = true) =>
-  render(<Cards rows={rows} canWork={canWork} />)
+const renderCards = (rows = [ROW_OLIVIA], canWork = true, canApprove = false) =>
+  render(<Cards rows={rows} canWork={canWork} canApprove={canApprove} />)
 
 beforeEach(() => {
   cancel.mockReset()
+  cancelGate = null
   manual.mockReset()
   ask.mockReset()
   go.mockReset()
@@ -175,6 +180,67 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
   })
 })
 
+const KINDRED_CANCELLED = gridRow({
+  ...ROW_EMMA,
+  cancellation: { by: 'kindred', on: '2027-06-02', reason: 'medical', note: '' },
+})
+
+describe('WorkingRequestCard reopen, liveness and approval', () => {
+  it('reopens a Kindred cancellation only with a note, and sends it', async () => {
+    renderCards([KINDRED_CANCELLED])
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen' }))
+    expect(cancel).not.toHaveBeenCalled()
+    expect(screen.getByText('Why reopen is required')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Why reopen'), 'Family changed their mind{Enter}')
+    expect(cancel).toHaveBeenCalledWith({
+      requestId: 'reqemma00000001',
+      body: { cancelled: false, note: 'Family changed their mind' },
+    })
+  })
+
+  it('offers no cancel or hold on a request that is no longer live', () => {
+    renderCards([gridRow({ ...ROW_EMMA, request_status: 'withdrawn' })])
+    expect(screen.queryByRole('button', { name: 'Cancel request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put on hold…' })).toBeNull()
+  })
+
+  it('leaves a form alone when another opened while its save was pending', async () => {
+    let finish: (value: unknown) => void = () => undefined
+    cancelGate = new Promise((resolve) => {
+      finish = resolve
+    })
+    renderCards([ROW_EMMA])
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel request…' }))
+    await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'medical')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put on hold…' }))
+    await act(async () => {
+      finish({})
+      await cancelGate
+    })
+    expect(screen.getByLabelText('Reason for the hold')).toBeInTheDocument()
+  })
+
+  const PENDING = gridRow({
+    ...ROW_OLIVIA,
+    rounds: [
+      ...ROW_OLIVIA.rounds.slice(0, 1),
+      roundOut(3, 'pending_approval', { pending_approval: 450 }),
+    ],
+  })
+
+  it("passes finance's right to approve to the round's next action", () => {
+    renderCards([PENDING], true, true)
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+  })
+
+  it('offers no approval without it', () => {
+    renderCards([PENDING], true, false)
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+  })
+})
+
 describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through the open editor)', () => {
   const typeAppeal = async () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
@@ -223,7 +289,11 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
 
   it('opens one editor per page: another card saves the open one first', async () => {
     mode = 'manual'
-    const other = gridRow({ ...ROW_OLIVIA, request_id: 'reqolivia000009', camper_name: 'Mia Chen' })
+    const other = gridRow({
+      ...ROW_OLIVIA,
+      request_id: 'reqolivia000009',
+      camper_name: 'Samuel Johnson',
+    })
     renderCards([ROW_OLIVIA, other])
     const edits = () => screen.getAllByRole('button', { name: 'Edit the appeal…' })
     await userEvent.click(edits()[0] as HTMLElement)
