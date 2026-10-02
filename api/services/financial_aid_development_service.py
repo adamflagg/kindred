@@ -23,14 +23,18 @@ from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol
 
+from api.constants.collections import AID_SOURCES
 from api.schemas.financial_aid_reports import (
     DevelopmentColumnOut,
     DevelopmentGroupOut,
     DevelopmentResponse,
     DevelopmentRowOut,
     DevelopmentSourceOut,
+    FundingSourceIn,
+    FundingSourceOut,
+    FundingSourcesResponse,
     NotBuiltOut,
 )
 from api.services.camp_calendar import CAMP_TZ
@@ -47,7 +51,9 @@ from api.services.financial_aid_development_repository import AttendanceRecord, 
 from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow
 from api.services.financial_aid_ledger_service import GRANT_FUNDER_TYPES, money
 from api.services.financial_aid_reports_facts import report_requests
-from api.services.financial_aid_reports_service import ReportsStore
+from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.reports.development import (
     ADULT,
     AGE_UNKNOWN,
@@ -121,6 +127,14 @@ class DevelopmentStore(Protocol):
     async def persons(self, year: int, person_cm_ids: Collection[int]) -> list[PersonRecord]: ...
     async def family_keys(self, year: int) -> dict[int, str]: ...
     async def sources(self) -> list[SourceRecord]: ...
+    async def source(self, source_id: str) -> SourceRecord | None: ...
+    async def commit(
+        self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None
+    ) -> AidOperationResult: ...
+
+
+class FundingSourceNotFoundError(FinancialAidError, LookupError):
+    """No aid_sources record with that id (404)."""
 
 
 @dataclass(frozen=True)
@@ -362,6 +376,7 @@ class FinancialAidDevelopmentService:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
+        self._rules = rules
         self._development = development
         self._register = register
         self._history = history
@@ -370,6 +385,73 @@ class FinancialAidDevelopmentService:
 
     def _today(self) -> date:
         return self._clock().astimezone(CAMP_TZ).date()
+
+    async def _season_grouping(self, year: int) -> Grouping:
+        """The season's groups without pricing it: the newest approved programs and budget, and its sessions."""
+        approved = await self._rules.latest_approved(year, ["programs", "budget"])
+        sessions = await self._store.fetch_sessions(year)
+        return grouping(
+            approved.document if approved is not None else None, {s.cm_id: s.session_type for s in sessions}
+        )
+
+    # --- Funding sources (D88, D100; Part C) -----------------------------------------------------------------
+
+    async def funding_sources(self, year: int) -> FundingSourcesResponse:
+        """Every outside source with its three facts and its reporting group under `year`'s pools."""
+        found = await self._season_grouping(year)
+        sources = [s for s in await self._development.sources() if s.funder_type in GRANT_FUNDER_TYPES]
+        return FundingSourcesResponse(
+            year=year,
+            groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in found.groups],
+            sources=[_funding_source(s, found) for s in sorted(sources, key=lambda s: (s.source_name.lower(), s.id))],
+        )
+
+    async def save_funding_source(
+        self, year: int, source_id: str, body: FundingSourceIn, *, actor: str
+    ) -> FundingSourceOut:
+        """Set a source's reporting group (stored as the program families that `year`'s pool funds, D100's
+        implied_program_families) and its incentive flag (D88), with its aid_change_log row. Only what changed is
+        written: the families are rewritten only when the group itself changes, so finance's narrower program setting
+        (D100: "specific programs within them") or a source over several groups survives an incentive-only save.
+        Nothing changed: nothing written."""
+        source = await self._development.source(source_id)
+        if source is None:
+            raise FundingSourceNotFoundError(f"No aid source {source_id}")
+        if source.funder_type not in GRANT_FUNDER_TYPES:
+            raise ReportsRefusedError("Only an outside source is a funding source: the camp's own aid has no group")
+        found = await self._season_grouping(year)
+        families = list(source.implied_program_families)
+        if body.group == _funding_source(source, found).group:
+            pass  # the group as it stands: keep the families exactly
+        elif body.group is None:
+            families = []
+        else:
+            if body.group not in {g.key for g in found.groups}:
+                raise ReportsRefusedError(f"{body.group!r} is not one of {year}'s budget pools")
+            families = sorted(f for f, pool in found.by_family.items() if pool == body.group)
+            if not families:
+                raise ReportsRefusedError(f"No program of {year} funds {body.group!r}: nothing to point the source at")
+        before = {"implied_program_families": list(source.implied_program_families), "incentive": source.incentive}
+        after: dict[str, Any] = {"implied_program_families": families, "incentive": body.incentive}
+        changed = {key: value for key, value in after.items() if before[key] != value}
+        updated = replace(source, implied_program_families=tuple(families), incentive=body.incentive)
+        if changed:
+            await self._development.commit(
+                [
+                    AidWrite(
+                        collection=AID_SOURCES,
+                        action="update",
+                        year=year,
+                        record_id=source_id,
+                        before=before,
+                        data=changed,
+                        log_action="funding_source",
+                    )
+                ],
+                actor=actor,
+                reason=body.note or None,
+            )
+        return _funding_source(updated, found)
 
     async def _native(self, season: Season, sources: Sequence[SourceRecord]) -> tuple[DevelopmentColumn, Grouping]:
         # Development's money is all money (the camp's awards plus every live outside grant line) on campers who
@@ -625,6 +707,23 @@ def _gender_rows(
                 for name in sorted(set().union(*found) if found else set())
             )
     return out
+
+
+def _funding_source(source: SourceRecord, found: Grouping) -> FundingSourceOut:
+    pools = {found.by_family[f] for f in source.implied_program_families if f in found.by_family}
+    labels = {g.key: g.label for g in found.groups}
+    group = next(iter(pools)) if len(pools) == 1 else None
+    return FundingSourceOut(
+        source_id=source.id,
+        description_key=source.description_key,
+        name=source.source_name,
+        funder_type="incentive" if source.funder_type == "incentive" else "outside",
+        incentive=source.incentive,
+        group=group,
+        group_label=labels.get(group, group) if group is not None else ("several groups" if pools else ""),
+        needs_group=not source.implied_program_families,
+        families=list(source.implied_program_families),
+    )
 
 
 def _sources(

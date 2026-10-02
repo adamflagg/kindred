@@ -391,3 +391,35 @@ class DevelopmentResponse(BaseModel):
     rows: list[DevelopmentRowOut]
     sources: list[DevelopmentSourceOut]  # this season's P column, by source
     not_built: list[NotBuiltOut]
+
+
+# --- Funding sources (§9.4, D88, D100; Part C) --------------------------------------------------------------------
+
+
+class FundingSourceOut(BaseModel):
+    """One outside funding source with its three facts (D88) and its reporting group (D100). No family data."""
+
+    source_id: str
+    description_key: str
+    name: str
+    funder_type: Literal["outside", "incentive"]
+    incentive: bool
+    group: str | None  # the season's pool its program families fund; None: none set, or several
+    group_label: str
+    needs_group: bool  # D100's "needs a group" line: no program family set
+    families: list[str]  # the stored program families (implied_program_families)
+
+
+class FundingSourcesResponse(BaseModel):
+    year: int
+    groups: list[DevelopmentGroupOut]
+    sources: list[FundingSourceOut]
+
+
+class FundingSourceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group: str | None = Field(default=None, max_length=60)  # a pool of the season's rules; None clears one group
+    # (the group shown unchanged keeps its program families as they are: several groups stay several)
+    incentive: bool
+    note: str = Field(default="", max_length=2000)

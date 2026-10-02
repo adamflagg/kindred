@@ -1,7 +1,8 @@
 """PocketBase reads for Reports › Development (Reports back end, Part B; clean spec §5.11, §9.4): the season's
 registrations with their sessions and households, the people development counts (age, gender identity), the
 earlier seasons' attendance (first-time), aid families
-(aid_household_links) and the sources with their incentive flag (D88). Reads only.
+(aid_household_links) and the sources with their incentive flag (D88). Its one write (Part C) is a Funding sources
+edit, through 4a.
 
 Development never reads the raw person_custom_values table (§10) and never aid_postings.attributed_* (the grants
 register places outside lines; the camp's money comes from the decisions season).
@@ -10,7 +11,7 @@ register places outside lines; the camp's money comes from the decisions season)
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Final
@@ -18,6 +19,7 @@ from typing import Any, Final
 from api.constants.collections import ATTENDEES
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_repository import FinancialAidRepository
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 
 PAGE_SIZE: Final = 1000
 ID_CHUNK: Final = 50  # ids per filter, under PocketBase's 3,500-character filter limit
@@ -177,3 +179,11 @@ class DevelopmentRepository:
 
     async def sources(self) -> list[SourceRecord]:
         return [source_record(row) for row in await self._aid.fetch_sources()]
+
+    async def source(self, source_id: str) -> SourceRecord | None:
+        row = await self._aid.get_source(source_id)
+        return source_record(row) if row is not None else None
+
+    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
+        """A Funding sources edit and its aid_change_log row, in one batch (4a)."""
+        return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)

@@ -1,12 +1,20 @@
-"""An in-memory twin of DevelopmentRepository (Reports back end, Part B). Fictional only (tests/CLAUDE.md)."""
+"""An in-memory twin of DevelopmentRepository (Reports back end, Parts B and C). Its one write (a Funding sources
+edit) runs 4a's real commit_aid_writes over a fake batch. Fictional only (tests/CLAUDE.md)."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date
+from typing import Any, cast
 
+import httpx
+
+from api.constants.collections import AID_SOURCES
 from api.services.financial_aid_development_repository import AttendanceRecord, PersonRecord, SourceRecord
+from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
+from pocketbase import PocketBase
+from tests.unit.api.services.financial_aid_fakes import _BatchTwin
 
 
 def went(
@@ -31,6 +39,8 @@ class FakeDevelopmentStore:
     families: dict[int, str] = field(default_factory=dict)
     source_rows: list[SourceRecord] = field(default_factory=list)
     earlier_reads: list[tuple[frozenset[int], frozenset[int]]] = field(default_factory=list)
+    log: list[dict[str, Any]] = field(default_factory=list)  # every aid_change_log row that committed
+    operations: list[list[AidWrite]] = field(default_factory=list)  # every commit attempted
 
     async def attendances(self, year: int) -> list[AttendanceRecord]:
         return [r for r in self.registrations if r.year == year]
@@ -53,3 +63,31 @@ class FakeDevelopmentStore:
 
     async def sources(self) -> list[SourceRecord]:
         return list(self.source_rows)
+
+    async def source(self, source_id: str) -> SourceRecord | None:
+        return next((s for s in self.source_rows if s.id == source_id), None)
+
+    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
+        self.operations.append(list(writes))
+        return commit_aid_writes(cast(PocketBase, _BatchTwin(self)), writes, actor=actor, reason=reason)
+
+    def apply_batch(self, requests: list[dict[str, Any]]) -> httpx.Response:
+        results: list[dict[str, Any]] = []
+        for item in requests:
+            parts = item["url"].strip("/").split("/")
+            collection, body = parts[2], dict(item.get("body") or {})
+            if collection == COLLECTION:
+                self.log.append(body)
+            elif collection == AID_SOURCES and item["method"] == "PATCH":
+                at = next(i for i, s in enumerate(self.source_rows) if s.id == parts[4])
+                current = self.source_rows[at]
+                families = body.get("implied_program_families", current.implied_program_families)
+                self.source_rows[at] = replace(
+                    current,
+                    implied_program_families=tuple(families),
+                    incentive=bool(body.get("incentive", current.incentive)),
+                )
+            else:
+                raise AssertionError(f"development must not write {collection} ({item['method']})")
+            results.append({"status": 200, "body": {**body, "id": parts[-1]}})
+        return httpx.Response(200, json=results)
