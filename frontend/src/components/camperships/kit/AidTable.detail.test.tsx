@@ -38,13 +38,28 @@ const COLUMNS: Array<AidColumn<Row>> = [
   },
 ]
 
-function Table({ rows = ROWS, detail = true }: { rows?: readonly Row[]; detail?: boolean }) {
+/** With a totals footer, so there are held totals to keep clear of. */
+const WITH_TOTALS: Array<AidColumn<Row>> = [
+  ...COLUMNS.slice(0, 2),
+  { key: 'n', header: 'N', width: 60, value: () => 1, total: () => 1 },
+  ...COLUMNS.slice(2),
+]
+
+function Table({
+  rows = ROWS,
+  detail = true,
+  columns = COLUMNS,
+}: {
+  rows?: readonly Row[]
+  detail?: boolean
+  columns?: Array<AidColumn<Row>>
+}) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
   return (
     <MemoryRouter>
       <AidTable<Row>
         rows={rows}
-        columns={COLUMNS}
+        columns={columns}
         rowKey={(r) => r.id}
         csvFilename="x.csv"
         arrowKeys
@@ -189,5 +204,59 @@ describe('AidTable: the opened row and its detail line', () => {
     render(<Table detail={false} />)
     await userEvent.click(screen.getByText('Liam Garcia'))
     expect(document.querySelector('[data-aid-detail]')).toBeNull()
+  })
+})
+
+// Playwright, batch 4: an opened row near the bottom of the box left its detail line under the held
+// totals, and a row restored from ?row= scrolled before the held header and totals were measured.
+describe('AidTable: the opened row and its detail line are brought into view together', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      const height = this.tagName === 'THEAD' ? 44 : this.tagName === 'TFOOT' ? 33 : 0
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height, x: 0, y: 0, toJSON() {} }
+    })
+  })
+
+  it('scrolls the detail line into view, then the row, both clear of the held header and totals', async () => {
+    const scrolled: Element[] = []
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      scrolled.push(this)
+    })
+    render(<Table columns={WITH_TOTALS} />)
+    await userEvent.click(screen.getByText('Liam Garcia'))
+    const row = rowOf('Liam Garcia')
+    const detailRow = screen.getByText('Detail of Liam Garcia').closest('tr') as HTMLElement
+    const last = scrolled.slice(-2)
+    expect(last).toEqual([detailRow, row])
+    expect(detailRow.style.scrollMarginBottom).toBe('33px')
+    expect(detailRow.style.scrollMarginTop).toBe('44px')
+  })
+
+  it('scrolls a row opened before the held header and totals were measured again once they are', () => {
+    const margins: string[] = []
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+      if ((this as HTMLElement).dataset['rowKey'] === 'r2')
+        margins.push((this as HTMLElement).style.scrollMarginBottom)
+    })
+    function Opened() {
+      const [highlighted, setHighlighted] = useState<string | null>('r2')
+      return (
+        <MemoryRouter>
+          <AidTable<Row>
+            rows={ROWS}
+            columns={WITH_TOTALS}
+            rowKey={(r) => r.id}
+            csvFilename="x.csv"
+            scrollBox
+            highlighted={highlighted}
+            onHighlight={setHighlighted}
+          />
+        </MemoryRouter>
+      )
+    }
+    render(<Opened />)
+    expect(margins.at(-1)).toBe('33px')
   })
 })

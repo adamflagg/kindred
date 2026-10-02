@@ -367,9 +367,15 @@ export function AidTable<Row>({
   const widthOf = (column: AidColumn<Row>) =>
     column.fitContent ? (fitWidths[column.key] ?? column.fitContent.min) : column.width
 
+  // The opened row comes into view with its detail line under it (batch 4): the line first, then
+  // the row, so a row taller than the room left still shows its top. Again once the held header and
+  // totals are measured, so a row restored from the URL is not left under them.
+  const detailRef = useRef<HTMLTableRowElement>(null)
   useEffect(() => {
-    if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
-  }, [highlighted])
+    if (highlighted === null) return
+    detailRef.current?.scrollIntoView({ block: 'nearest' })
+    rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
+  }, [highlighted, margins])
 
   // Each move is worked out from the highlight this render shows, so two moves in one tick can't
   // step twice.
@@ -428,6 +434,9 @@ export function AidTable<Row>({
     if (column.pinnedRight) return RIGHT_PINNED_EDGE
     return highlightEdge ? HIGHLIGHT_EDGE : pinnedEdge ? PINNED_EDGE : ''
   }
+  const scrollMargins: CSSProperties | undefined = scrollBox
+    ? { scrollMarginTop: margins.top, scrollMarginBottom: margins.bottom }
+    : undefined
   const alignClass = (column: AidColumn<Row>) =>
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
@@ -579,11 +588,7 @@ export function AidTable<Row>({
                           if (key !== highlighted) setHighlight(key)
                         }}
                         className="cursor-pointer"
-                        style={
-                          scrollBox
-                            ? { scrollMarginTop: margins.top, scrollMarginBottom: margins.bottom }
-                            : undefined
-                        }
+                        style={scrollMargins}
                       >
                         {columns.map((c, index) => (
                           <td
@@ -608,7 +613,7 @@ export function AidTable<Row>({
                         ))}
                       </tr>
                       {isHighlighted && renderDetail && (
-                        <tr data-aid-detail="">
+                        <tr data-aid-detail="" ref={detailRef} style={scrollMargins}>
                           {/* The cell must not clip, or the sticky line is trapped inside it (round 6). */}
                           <td colSpan={columns.length} className={DETAIL_ROW}>
                             <div
