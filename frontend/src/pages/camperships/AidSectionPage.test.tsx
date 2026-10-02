@@ -10,6 +10,9 @@ vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+vi.mock('../../hooks/camperships/useAidToday', () => ({
+  useAidToday: () => ({ data: undefined, isLoading: true, error: null }),
+}))
 vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denied</div> }))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']

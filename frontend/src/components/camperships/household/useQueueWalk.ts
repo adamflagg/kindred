@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useAidGrid } from '../../../hooks/camperships/useAidGrid'
+import { useAidToday } from '../../../hooks/camperships/useAidToday'
 import { usePrefetchHousehold } from '../../../hooks/camperships/useAidHouseholdPage'
 import { aidHref, type AidView } from '../kit/asOf'
 import { campToday } from '../kit/dates'
 import { isPageKey } from '../kit/keyboard'
 import { lensRows, resolveStrip, shownView } from '../requests/strip'
 import type { RequestView } from '../requests/views'
+import { todayRequestIds } from '../today/todayModel'
 import {
   gridFiltersFrom,
   walkPosition,
@@ -74,16 +76,27 @@ export function useQueueWalk(
   // The household page is live only (Decision 36), so the walk reads the live grid.
   const grid = useAidGrid({ enabled: walkView !== null, live: true })
   const today = campToday()
-  const allRows = grid.data?.rows
+  // The grid's filters ride along on the link (M5): same rows, and Back lands on the same view.
+  const search = params.toString()
+  const {
+    filters: urlFilters,
+    keep,
+    order,
+    todayKey,
+  } = useMemo(() => gridFiltersFrom(new URLSearchParams(search)), [search])
+  // A Today line's rows are filtered like any other filter: the walk steps through exactly them.
+  const todayRead = useAidToday({ enabled: walkView !== null && todayKey !== null })
+  const todayData = todayRead.data
+  // Until Today's read lands the walk's rows are unknown, not empty: no "left the view" flash.
+  const allRows = todayKey !== null && todayData === undefined ? undefined : grid.data?.rows
   const rows = useMemo(
     () => (allRows ? lensRows(allRows, strip.lens) : undefined),
     [allRows, strip.lens]
   )
-  // The grid's filters ride along on the link (M5): same rows, and Back lands on the same view.
-  const search = params.toString()
-  const { filters, keep, order } = useMemo(
-    () => gridFiltersFrom(new URLSearchParams(search)),
-    [search]
+  const filters = useMemo(
+    () =>
+      todayKey === null ? urlFilters : { ...urlFilters, ids: todayRequestIds(todayData, todayKey) },
+    [urlFilters, todayKey, todayData]
   )
   const stops = useMemo(
     () => (rows && walkView ? walkStops(rows, walkView, today, filters, order) : []),

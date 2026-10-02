@@ -38,6 +38,19 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
     expect(keep).toEqual({ program: 'quest', round: '2', ids: '1' })
   })
 
+  it('keeps a Today line on the household link, so Back and the walk stay on it', () => {
+    const { keep } = gridFiltersFrom(new URLSearchParams('from=all&today=would_change&year=2027'))
+    expect(keep).toEqual({ today: 'would_change' })
+  })
+
+  it("walks only a Today line's requests when its ids come along", () => {
+    const stops = walkStops(GRID_ROWS, requestView('all'), TODAY, {
+      ...NO_FILTERS,
+      ids: new Set(['reqolivia000003']),
+    })
+    expect(stops.map((s) => s.householdCmId)).toEqual([1000005])
+  })
+
   it("follows a grouped view's groups: Needs an offer's Round 1 before its Round 2", () => {
     const stops = walkStops(GRID_ROWS, requestView('needs-offer'), TODAY)
     expect(stops.map((s) => s.familyName)).toEqual(['The Johnson Family', 'The Chen Family'])

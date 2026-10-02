@@ -42,10 +42,16 @@ import {
   type GridFilters,
   type RequestView,
 } from '../../components/camperships/requests/views'
+import {
+  isTodayKey,
+  LINE_NAMES,
+  todayRequestIds,
+} from '../../components/camperships/today/todayModel'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
+import { useAidToday } from '../../hooks/camperships/useAidToday'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
@@ -73,6 +79,7 @@ export default function AidRequestsPage() {
     sort,
     group,
     row: rowParam,
+    today: todayParam,
     setParam,
     setParams,
   } = useGridParams()
@@ -101,9 +108,19 @@ export default function AidRequestsPage() {
   const rows = grid.data?.rows
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
+  // Decision 10: a Today line that is no view (would change, intake, a late grant) opens its exact rows.
+  const todayKey = todayParam !== null && isTodayKey(todayParam) ? todayParam : null
+  const todayRead = useAidToday({ enabled: todayKey !== null })
+  const todayData = todayRead.data
+  const todayIds = useMemo(
+    () => (todayKey === null ? null : todayRequestIds(todayData, todayKey)),
+    [todayKey, todayData]
+  )
+  // One filters memo feeds the rows, the view counts and the CSV name, so R1 holds: totals, CSV and
+  // Select all count what is shown.
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, ids: null }),
-    [program, pool, round]
+    (): GridFilters => ({ program, pool, round, ids: todayIds }),
+    [program, pool, round, todayIds]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -298,9 +315,10 @@ export default function AidRequestsPage() {
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
+      ...(todayKey !== null ? { today: todayKey } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, showIds]
+    [program, pool, round, todayKey, showIds]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -385,6 +403,15 @@ export default function AidRequestsPage() {
         lensHrefOf={lensHrefOf}
         onOpen={openView}
       />
+      {todayKey !== null && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          {`From Today: ${LINE_NAMES[todayKey]} · ${String(todayIds?.size ?? 0)} ${todayIds?.size === 1 ? 'request' : 'requests'}`}
+          {/* Through the walk, like any filter change: what is typed is saved first (Decision 4). */}
+          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('today', null)}>
+            Clear
+          </button>
+        </p>
+      )}
       {!gridShown && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">{filtersBar}</div>
       )}
