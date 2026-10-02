@@ -2317,6 +2317,22 @@ export type CanonicalSearchResponse = {
 }
 
 /**
+ * CapacityListOut
+ *
+ * What finance stored per session this season (Season › Rules; slice 2 Decision 23). Live only.
+ */
+export type CapacityListOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Sessions
+   */
+  sessions: Array<CapacityOut>
+}
+
+/**
  * CapacityOut
  */
 export type CapacityOut = {
@@ -5863,6 +5879,24 @@ export type HistoricalTrendsResponse = {
 }
 
 /**
+ * HistoryCountOut
+ */
+export type HistoryCountOut = {
+  /**
+   * Entity
+   */
+  entity: string
+  /**
+   * Action
+   */
+  action: string
+  /**
+   * Rows
+   */
+  rows: number
+}
+
+/**
  * HistoryEntryOut
  *
  * One aid_change_log row about the page's requests, applications, corrections, commitments or links
@@ -5913,6 +5947,139 @@ export type HistoryEntryOut = {
   after: {
     [key: string]: unknown
   } | null
+}
+
+/**
+ * HistoryOperationDetailOut
+ */
+export type HistoryOperationDetailOut = {
+  /**
+   * Year
+   */
+  year: number
+  operation: HistoryOperationOut
+  /**
+   * Rows
+   */
+  rows: Array<HistoryRowOut>
+}
+
+/**
+ * HistoryOperationOut
+ */
+export type HistoryOperationOut = {
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * At
+   */
+  at: string
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * Kind
+   */
+  kind: 'rules' | 'offers' | 'money' | 'holds' | 'grants' | 'intake'
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Rows
+   */
+  rows: number
+  /**
+   * Counts
+   */
+  counts: Array<HistoryCountOut>
+  /**
+   * Rules Versions
+   */
+  rules_versions: Array<number>
+  /**
+   * Rules Sections
+   */
+  rules_sections: Array<string>
+}
+
+/**
+ * HistoryPageOut
+ */
+export type HistoryPageOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Page
+   */
+  page: number
+  /**
+   * Per Page
+   */
+  per_page: number
+  /**
+   * Total
+   */
+  total: number
+  /**
+   * Operations
+   */
+  operations: Array<HistoryOperationOut>
+  /**
+   * Actors
+   */
+  actors: Array<string>
+}
+
+/**
+ * HistoryRowOut
+ */
+export type HistoryRowOut = {
+  /**
+   * At
+   */
+  at: string
+  /**
+   * Entity
+   */
+  entity: string
+  /**
+   * Entity Id
+   */
+  entity_id: string
+  /**
+   * Action
+   */
+  action: string
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Before
+   */
+  before: {
+    [key: string]: unknown
+  } | null
+  /**
+   * After
+   */
+  after: {
+    [key: string]: unknown
+  } | null
+  /**
+   * Changes
+   */
+  changes: Array<FieldChangeOut>
 }
 
 /**
@@ -16540,6 +16707,28 @@ export type TraceStep = {
    * Note
    */
   note?: string | null
+  /**
+   * Section
+   *
+   * The rules section whose setting bound this step (D76), derived from `key` and `bound`; None when none did.
+   * Derived, never stored: a stored trace reads back with today's mapping, and a retrace re-derives it.
+   */
+  readonly section:
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+    | null
 }
 
 /**
@@ -17789,6 +17978,193 @@ export type YearsAtCampBreakdown = {
    * Percentage of total
    */
   percentage: number
+}
+
+/**
+ * EditorPreviewOut
+ *
+ * The editor's line while typing (§4.6): the round's computed award (None: held, or nothing computable),
+ * the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
+ * move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
+ * finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
+ * already pending. `total_decided` is the request's total decided after the edit, defined as the grid row's
+ * (every round, a clawed-back one included): the figure the row will carry once the edit is saved.
+ */
+export type EditorPreviewOutWritable = {
+  /**
+   * Award
+   */
+  award: number | null
+  /**
+   * Trace
+   */
+  trace: Array<TraceStepWritable>
+  /**
+   * Stage After
+   */
+  stage_after:
+    | 'posted'
+    | 'held'
+    | 'pending_approval'
+    | 'refused'
+    | 'not_decided'
+    | 'needs_offer'
+    | 'not_rebuilt'
+    | null
+  /**
+   * Stage After Label
+   */
+  stage_after_label: string | null
+  /**
+   * Shares
+   */
+  shares: Array<PreviewShareOut>
+  /**
+   * Pending Approval
+   */
+  pending_approval: boolean
+  /**
+   * Total Decided
+   */
+  total_decided?: number | null
+}
+
+/**
+ * HouseholdPageResponse
+ */
+export type HouseholdPageResponseWritable = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  /**
+   * Households
+   */
+  households: Array<HouseholdCardOut>
+  totals: HouseholdTotalsOut
+  /**
+   * Requests
+   */
+  requests: Array<HouseholdRequestOutWritable>
+  /**
+   * Incomes
+   */
+  incomes: Array<IncomeOut>
+  /**
+   * Grants
+   */
+  grants: Array<HouseholdGrantRowOut>
+  /**
+   * Expected
+   */
+  expected: Array<ExpectedOut>
+  /**
+   * Postings
+   */
+  postings: Array<AidPostingLine>
+  /**
+   * Links
+   */
+  links: Array<HouseholdLinkRow>
+  /**
+   * History
+   */
+  history: Array<HistoryEntryOut>
+  /**
+   * Override Reasons
+   */
+  override_reasons?: Array<string>
+}
+
+/**
+ * HouseholdRequestOut
+ */
+export type HouseholdRequestOutWritable = {
+  row: GridRowOut
+  ask: AnswerOut | null
+  /**
+   * Payer Share Status
+   */
+  payer_share_status: '' | 'complete' | 'incomplete'
+  /**
+   * Shares
+   */
+  shares: Array<ShareLineOut>
+  /**
+   * Receipts
+   */
+  receipts: Array<ReceiptOutWritable>
+  /**
+   * Grants
+   */
+  grants?: number
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
+  round3_context?: Round3ContextOut | null
+}
+
+/**
+ * ReceiptOut
+ *
+ * One round's receipt (D33, D34, §6.5): the calculator's own trace. A posted round's is the snapshot
+ * stored at its lock; an unposted round's is live, the request priced now.
+ */
+export type ReceiptOutWritable = {
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Trace
+   */
+  trace: Array<TraceStepWritable>
+  label: ReceiptLabelOut
+}
+
+/**
+ * TraceStep
+ */
+export type TraceStepWritable = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Value
+   */
+  value?: string | number | string | boolean | null
+  /**
+   * Inputs
+   */
+  inputs?: {
+    [key: string]: string | number | string | boolean | null
+  }
+  /**
+   * Bound
+   */
+  bound?: string | null
+  /**
+   * Note
+   */
+  note?: string | null
 }
 
 export type ValidateBunkingApiValidateBunkingPostData = {
@@ -21976,6 +22352,139 @@ export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerShar
 
 export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponse =
   SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses]
+
+export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/capacity/{year}'
+}
+
+export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetError =
+  GetAidSessionCapacitiesApiFinancialAidCapacityYearGetErrors[keyof GetAidSessionCapacitiesApiFinancialAidCapacityYearGetErrors]
+
+export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: CapacityListOut
+}
+
+export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponse =
+  GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponses[keyof GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponses]
+
+export type GetSeasonHistoryApiFinancialAidHistoryYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Kind
+     */
+    kind?: Array<'rules' | 'offers' | 'money' | 'holds' | 'grants' | 'intake'> | null
+    /**
+     * Actor
+     */
+    actor?: string | null
+    /**
+     * Since
+     */
+    since?: string | null
+    /**
+     * Until
+     */
+    until?: string | null
+    /**
+     * Q
+     */
+    q?: string
+    /**
+     * Include Intake
+     */
+    include_intake?: boolean
+    /**
+     * Page
+     */
+    page?: number
+    /**
+     * Per Page
+     */
+    per_page?: number
+  }
+  url: '/api/financial-aid/history/{year}'
+}
+
+export type GetSeasonHistoryApiFinancialAidHistoryYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetSeasonHistoryApiFinancialAidHistoryYearGetError =
+  GetSeasonHistoryApiFinancialAidHistoryYearGetErrors[keyof GetSeasonHistoryApiFinancialAidHistoryYearGetErrors]
+
+export type GetSeasonHistoryApiFinancialAidHistoryYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HistoryPageOut
+}
+
+export type GetSeasonHistoryApiFinancialAidHistoryYearGetResponse =
+  GetSeasonHistoryApiFinancialAidHistoryYearGetResponses[keyof GetSeasonHistoryApiFinancialAidHistoryYearGetResponses]
+
+export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Operation Id
+     */
+    operation_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/history/{year}/operations/{operation_id}'
+}
+
+export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetError =
+  GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetErrors[keyof GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetErrors]
+
+export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HistoryOperationDetailOut
+}
+
+export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponse =
+  GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponses[keyof GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponses]
 
 export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutData = {
   body: CapacitySet
