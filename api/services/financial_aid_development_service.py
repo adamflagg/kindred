@@ -27,6 +27,7 @@ from typing import Any, Final, Literal, Protocol
 
 from api.constants.collections import AID_REPORT_DEFINITIONS, AID_SOURCES
 from api.schemas.financial_aid_reports import (
+    GROUP_CHANGE_WARNING,
     DatedColumn,
     DevelopmentColumnOut,
     DevelopmentGroupOut,
@@ -35,6 +36,7 @@ from api.schemas.financial_aid_reports import (
     DevelopmentSourceOut,
     FundingSourceIn,
     FundingSourceOut,
+    FundingSourceRowOut,
     FundingSourcesResponse,
     NotBuiltOut,
     ReportColumnsResponse,
@@ -54,6 +56,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_development_repository import (
     AttendanceRecord,
+    GrantorRecord,
     PersonRecord,
     SourceRecord,
     StoredColumns,
@@ -143,6 +146,7 @@ class DevelopmentStore(Protocol):
     async def households(self, year: int, household_cm_ids: Collection[int]) -> dict[int, HouseholdAddress]: ...
     async def family_keys(self, year: int) -> dict[int, str]: ...
     async def sources(self) -> list[SourceRecord]: ...
+    async def grantors(self) -> list[GrantorRecord]: ...
     async def source(self, source_id: str) -> SourceRecord | None: ...
     async def report_columns(self, report: str) -> StoredColumns: ...
     async def commit(
@@ -538,13 +542,25 @@ class FinancialAidDevelopmentService:
     # --- Funding sources (D88, D100; Part C) -----------------------------------------------------------------
 
     async def funding_sources(self, year: int) -> FundingSourcesResponse:
-        """Every outside source with its three facts and its reporting group under `year`'s pools."""
+        """Every source with its three facts and its reporting group under `year`'s pools: the outside sources (the
+        per-description edit list) and the rows by funder (D159). Read-only rows follow: the unclassified (N3: listed,
+        so staff can fix the classification) and the camp's own."""
         found = await self._season_grouping(year)
-        sources = [s for s in await self._development.sources() if s.funder_type in GRANT_FUNDER_TYPES]
+        every = await self._development.sources()
+        grantors = {g.key: g for g in await self._development.grantors()}
+        outside = [s for s in every if s.funder_type in GRANT_FUNDER_TYPES]
+        unclassified = [s for s in every if s.funder_type not in GRANT_FUNDER_TYPES and s.funder_type != "camp"]
+        own = [s for s in every if s.funder_type == "camp"]
         return FundingSourcesResponse(
             year=year,
             groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in found.groups],
-            sources=[_funding_source(s, found) for s in sorted(sources, key=lambda s: (s.source_name.lower(), s.id))],
+            sources=[_funding_source(s, found) for s in sorted(outside, key=lambda s: (s.source_name.lower(), s.id))],
+            rows=[
+                *funder_rows(outside, grantors, found, "outside"),
+                *funder_rows(unclassified, grantors, found, "unclassified"),
+                *funder_rows(own, grantors, found, "camp"),
+            ],
+            group_change_warning=GROUP_CHANGE_WARNING,
         )
 
     async def save_funding_source(
@@ -559,7 +575,9 @@ class FinancialAidDevelopmentService:
         if source is None:
             raise FundingSourceNotFoundError(f"No aid source {source_id}")
         if source.funder_type not in GRANT_FUNDER_TYPES:
-            raise ReportsRefusedError("Only an outside source is a funding source: the camp's own aid has no group")
+            if source.funder_type == "camp":
+                raise ReportsRefusedError("Only an outside source is a funding source: the camp's own aid has no group")
+            raise ReportsRefusedError("Only an outside source has a group here: classify this source first (Sources)")
         found = await self._season_grouping(year)
         families = list(source.implied_program_families)
         if body.group == _funding_source(source, found).group:
@@ -592,7 +610,7 @@ class FinancialAidDevelopmentService:
                 actor=actor,
                 reason=body.note or None,
             )
-        return _funding_source(updated, found)
+        return _funding_source(updated, found, families_changed="implied_program_families" in changed)
 
     async def _native(
         self,
@@ -912,7 +930,14 @@ def _zip_table(table: ZipTable) -> ZipTableOut:
     return ZipTableOut(rows=[row(r) for r in table.rows], total=row(table.total), zips=table.zips)
 
 
-def _funding_source(source: SourceRecord, found: Grouping) -> FundingSourceOut:
+_FUNDER_TYPES: Final[Mapping[str, Literal["outside", "incentive", "camp", "unknown"]]] = {
+    "outside": "outside",
+    "incentive": "incentive",
+    "camp": "camp",
+}
+
+
+def _funding_source(source: SourceRecord, found: Grouping, *, families_changed: bool = False) -> FundingSourceOut:
     pools = {found.by_family[f] for f in source.implied_program_families if f in found.by_family}
     labels = {g.key: g.label for g in found.groups}
     group = next(iter(pools)) if len(pools) == 1 else None
@@ -920,13 +945,64 @@ def _funding_source(source: SourceRecord, found: Grouping) -> FundingSourceOut:
         source_id=source.id,
         description_key=source.description_key,
         name=source.source_name,
-        funder_type="incentive" if source.funder_type == "incentive" else "outside",
+        funder_type=_FUNDER_TYPES.get(source.funder_type, "unknown"),
+        editable=source.funder_type in GRANT_FUNDER_TYPES,
+        families_changed=families_changed,
         incentive=source.incentive,
         group=group,
         group_label=labels.get(group, group) if group is not None else ("several groups" if pools else ""),
         needs_group=not source.implied_program_families,
         families=list(source.implied_program_families),
     )
+
+
+RowSection = Literal["outside", "camp", "unclassified"]
+
+
+def _row_of(
+    grantor: GrantorRecord | None,
+    members: Sequence[SourceRecord],
+    found: Grouping,
+    section: RowSection,
+    *,
+    families_changed: bool = False,
+) -> FundingSourceRowOut:
+    descriptions = [_funding_source(s, found) for s in sorted(members, key=lambda s: (s.source_name.lower(), s.id))]
+    groups = {d.group for d in descriptions}
+    labels = {d.group_label for d in descriptions}
+    incentives = {d.incentive for d in descriptions}
+    return FundingSourceRowOut(
+        kind="funder" if grantor is not None else "description",
+        section=section,
+        grantor_key=grantor.key if grantor is not None else "",
+        name=grantor.name if grantor is not None else descriptions[0].name,
+        retired=grantor.retired if grantor is not None else False,
+        editable=all(d.editable for d in descriptions),
+        incentive=next(iter(incentives)) if len(incentives) == 1 else None,
+        group=next(iter(groups)) if len(groups) == 1 else None,
+        group_label=next(iter(labels)) if len(labels) == 1 else "several groups",
+        needs_group=all(d.needs_group for d in descriptions),
+        descriptions=descriptions,
+        families_changed=families_changed,
+    )
+
+
+def funder_rows(
+    sources: Sequence[SourceRecord], grantors: Mapping[str, GrantorRecord], found: Grouping, section: RowSection
+) -> list[FundingSourceRowOut]:
+    """D159: one row per funder where the grantor directory groups descriptions (a retired grantor still names its
+    row, for history), else one row per description; by name. Funding sources and Development's money by source both
+    group through this one helper."""
+    by_funder: dict[str, list[SourceRecord]] = defaultdict(list)
+    singles: list[SourceRecord] = []
+    for source in sources:
+        if source.grantor_key and source.grantor_key in grantors:
+            by_funder[source.grantor_key].append(source)
+        else:
+            singles.append(source)
+    rows = [_row_of(grantors[key], members, found, section) for key, members in by_funder.items()]
+    rows += [_row_of(None, [source], found, section) for source in singles]
+    return sorted(rows, key=lambda r: (r.name.lower(), r.grantor_key, r.descriptions[0].source_id))
 
 
 def _sources(

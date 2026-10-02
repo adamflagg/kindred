@@ -4,13 +4,14 @@ and its reporting group, which development and finance set. Fictional sources on
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 
 from api.constants.collections import AID_SOURCES
 from api.schemas.financial_aid_reports import FundingSourceIn
-from api.services.financial_aid_development_repository import SourceRecord
+from api.services.financial_aid_development_repository import GrantorRecord, SourceRecord
 from api.services.financial_aid_development_service import FinancialAidDevelopmentService, FundingSourceNotFoundError
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_reports_service import ReportsRefusedError
@@ -126,3 +127,95 @@ async def test_refusals(source_id: str, group: str, error: type[Exception], says
             YEAR, source_id, FundingSourceIn(group=group, incentive=False), actor=DEVELOPMENT
         )
     assert store.operations == []
+
+
+FUND = GrantorRecord("regional_fund", "Regional Camp Fund", retired=False)
+OLD_FUND = GrantorRecord("old_fund", "Old Valley Fund", retired=True)
+SPRING = SourceRecord(
+    "src000000000006",
+    "regional grant 2",
+    "Regional Camp Fund (spring)",
+    "outside",
+    False,
+    ("quest", "summer"),
+    "regional_fund",
+)
+MYSTERY = SourceRecord("src000000000007", "mystery fund", "Mystery Fund", "unknown", False, ())
+
+
+def _by_funder() -> FakeDevelopmentStore:
+    return FakeDevelopmentStore(
+        source_rows=[
+            replace(REGIONAL, grantor_key="regional_fund"),
+            SPRING,
+            replace(SPLIT, grantor_key="old_fund"),
+            YEARS_AT_CAMP,
+            CAMP,
+        ],
+        grantor_rows=[FUND, OLD_FUND],
+    )
+
+
+async def test_rows_group_a_funders_descriptions_and_list_the_camps_own_read_only() -> None:
+    """D159: one row per funder where the grantor directory groups descriptions (a retired grantor still names its
+    row), else one per description; the camp's own sources last, read-only."""
+    out = await _service(_by_funder()).funding_sources(YEAR)
+    assert [(r.kind, r.name, r.retired, r.editable, len(r.descriptions)) for r in out.rows] == [
+        ("funder", "Old Valley Fund", True, True, 1),
+        ("funder", "Regional Camp Fund", False, True, 2),
+        ("description", "Years-at-Camp Grant", False, True, 1),
+        ("description", "Camp aid", False, False, 1),
+    ]
+    regional = out.rows[1]
+    assert (regional.grantor_key, regional.group, regional.group_label, regional.incentive) == (
+        "regional_fund",
+        "camp_pool",
+        "Camp",
+        False,
+    )
+    assert out.rows[3].descriptions[0].funder_type == "camp"
+    # the per-description edit list is unchanged: outside sources only
+    assert [s.name for s in out.sources] == [
+        "Regional Camp Fund",
+        "Regional Camp Fund (spring)",
+        "Two-Group Fund",
+        "Years-at-Camp Grant",
+    ]
+    assert out.group_change_warning == "Changing this re-places household-level lines on tonight's sync."
+
+
+async def test_an_unclassified_source_is_listed_read_only_under_its_own_section_not_hidden() -> None:
+    """N3 (owner 2026-10-02): a funder type of unknown is shown to development so staff can fix the classification;
+    it is neither editable here nor part of the per-description edit list."""
+    store = _by_funder()
+    store.source_rows.append(MYSTERY)
+    out = await _service(store).funding_sources(YEAR)
+    assert [(r.name, r.section, r.editable) for r in out.rows] == [
+        ("Old Valley Fund", "outside", True),
+        ("Regional Camp Fund", "outside", True),
+        ("Years-at-Camp Grant", "outside", True),
+        ("Mystery Fund", "unclassified", False),
+        ("Camp aid", "camp", False),
+    ]
+    assert out.rows[3].descriptions[0].funder_type == "unknown"
+    assert "Mystery Fund" not in [s.name for s in out.sources]
+
+
+async def test_an_unclassified_source_cannot_be_saved_here_and_the_refusal_says_to_classify_it() -> None:
+    """N3: the group and incentive save is for outside sources; the classification fix is the Sources route's."""
+    with pytest.raises(ReportsRefusedError, match="classif"):
+        await _service(FakeDevelopmentStore(source_rows=[MYSTERY])).save_funding_source(
+            YEAR, MYSTERY.id, FundingSourceIn(group="camp_pool", incentive=False), actor=DEVELOPMENT
+        )
+
+
+async def test_a_group_change_says_it_re_places_on_tonights_sync_and_a_flag_change_does_not() -> None:
+    """D43 / D159: the dialog warns before; the save says whether the families (Go's tie-break input) changed."""
+    moved = await _service(_store()).save_funding_source(
+        YEAR, YEARS_AT_CAMP.id, FundingSourceIn(group="camp_pool", incentive=True), actor=DEVELOPMENT
+    )
+    assert moved.families_changed is True
+    flagged = await _service(_store()).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn(group="camp_pool", incentive=True), actor=DEVELOPMENT
+    )
+    assert flagged.families_changed is False

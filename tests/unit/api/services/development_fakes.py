@@ -13,6 +13,7 @@ import httpx
 from api.constants.collections import AID_REPORT_DEFINITIONS, AID_SOURCES
 from api.services.financial_aid_development_repository import (
     AttendanceRecord,
+    GrantorRecord,
     PersonRecord,
     SourceRecord,
     StoredColumns,
@@ -46,6 +47,7 @@ class FakeDevelopmentStore:
     homes: dict[int, HouseholdAddress] = field(default_factory=dict)
     families: dict[int, str] = field(default_factory=dict)
     source_rows: list[SourceRecord] = field(default_factory=list)
+    grantor_rows: list[GrantorRecord] = field(default_factory=list)
     earlier_reads: list[tuple[frozenset[int], frozenset[int]]] = field(default_factory=list)
     columns: StoredColumns = field(default_factory=lambda: StoredColumns("", ()))
     log: list[dict[str, Any]] = field(default_factory=list)  # every aid_change_log row that committed
@@ -76,6 +78,9 @@ class FakeDevelopmentStore:
 
     async def sources(self) -> list[SourceRecord]:
         return list(self.source_rows)
+
+    async def grantors(self) -> list[GrantorRecord]:
+        return list(self.grantor_rows)
 
     async def report_columns(self, report: str) -> StoredColumns:
         return self.columns

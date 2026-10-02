@@ -17,6 +17,7 @@ from datetime import date
 from typing import Any, Final
 
 from api.constants.collections import AID_REPORT_DEFINITIONS, ATTENDEES
+from api.services.financial_aid_grants_service import grantor_retired_at
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.utils.pb_filters import pb_escape
@@ -73,6 +74,7 @@ class SourceRecord:
     funder_type: str
     incentive: bool
     implied_program_families: tuple[str, ...]
+    grantor_key: str = ""  # aid_sources.grantor_key: the description's funder in the grantor directory ("" = none)
 
 
 def _day(value: Any) -> date | None:
@@ -121,6 +123,22 @@ def source_record(record: Any) -> SourceRecord:
         funder_type=str(getattr(record, "funder_type", "") or ""),
         incentive=bool(getattr(record, "incentive", False)),
         implied_program_families=tuple(sorted(str(f) for f in families)),
+        grantor_key=str(getattr(record, "grantor_key", "") or ""),
+    )
+
+
+@dataclass(frozen=True)
+class GrantorRecord:
+    key: str
+    name: str
+    retired: bool  # kept for history (aid_grantors.retired_at, D160): it still names its descriptions' row
+
+
+def grantor_record(record: Any) -> GrantorRecord:
+    return GrantorRecord(
+        key=str(getattr(record, "key", "") or ""),
+        name=str(getattr(record, "name", "") or ""),
+        retired=bool(grantor_retired_at(record)),
     )
 
 
@@ -202,6 +220,9 @@ class DevelopmentRepository:
 
     async def sources(self) -> list[SourceRecord]:
         return [source_record(row) for row in await self._aid.fetch_sources()]
+
+    async def grantors(self) -> list[GrantorRecord]:
+        return [grantor_record(row) for row in await self._aid.fetch_grantors()]
 
     async def report_columns(self, report: str) -> StoredColumns:
         rows: list[Any] = await asyncio.to_thread(

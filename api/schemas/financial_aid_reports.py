@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -397,13 +397,18 @@ class DevelopmentResponse(BaseModel):
 # --- Funding sources (§9.4, D88, D100; Part C) --------------------------------------------------------------------
 
 
+GROUP_CHANGE_WARNING: Final = "Changing this re-places household-level lines on tonight's sync."  # D43, D159
+
+
 class FundingSourceOut(BaseModel):
     """One outside funding source with its three facts (D88) and its reporting group (D100). No family data."""
 
     source_id: str
     description_key: str
     name: str
-    funder_type: Literal["outside", "incentive"]
+    funder_type: Literal["outside", "incentive", "camp", "unknown"]
+    editable: bool = True  # False: the camp's own aid or an unclassified source (D159, N3: listed read-only)
+    families_changed: bool = False  # a save's answer: the families changed, so tonight's sync re-places (D43)
     incentive: bool
     group: str | None  # the season's pool its program families fund; None: none set, or several
     group_label: str
@@ -411,10 +416,30 @@ class FundingSourceOut(BaseModel):
     families: list[str]  # the stored program families (implied_program_families)
 
 
+class FundingSourceRowOut(BaseModel):
+    """One Funding sources row (D159): a funder the grantor directory groups descriptions under, or one description.
+    `group` / `incentive` show only when every description agrees (else None: "several groups" / mixed)."""
+
+    kind: Literal["funder", "description"]
+    section: Literal["outside", "camp", "unclassified"]  # N3: an unknown funder type is listed, read-only
+    grantor_key: str  # "" for a description row
+    name: str  # the grantor's name, or the description's source name
+    retired: bool  # a retired grantor, kept for history
+    editable: bool  # False for the camp's own sources and the unclassified (read-only)
+    incentive: bool | None
+    group: str | None
+    group_label: str
+    needs_group: bool  # every description lacks a group (D100's "needs a group")
+    descriptions: list[FundingSourceOut]
+    families_changed: bool = False  # a funder save's answer
+
+
 class FundingSourcesResponse(BaseModel):
     year: int
     groups: list[DevelopmentGroupOut]
     sources: list[FundingSourceOut]
+    rows: list[FundingSourceRowOut] = Field(default_factory=list)
+    group_change_warning: str = GROUP_CHANGE_WARNING
 
 
 class FundingSourceIn(BaseModel):
