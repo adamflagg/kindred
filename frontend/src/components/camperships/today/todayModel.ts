@@ -91,13 +91,16 @@ export function detailWords(line: ApiAidTodayLine): string {
   if (reasons !== '') parts.push(reasons)
   const oldest = line.oldest_days ?? null
   if (line.key === 'waiting_on_family' && oldest !== null) {
-    parts.push(`oldest ${String(oldest)} days`, `${String(line.over_14_days ?? 0)} over 14 days`)
+    parts.push(
+      `oldest ${plural(oldest, 'day', 'days')}`,
+      `${String(line.over_14_days ?? 0)} over 14 days`
+    )
   }
   const largest = line.largest_gap ?? null
   if (line.key === 'not_reconciled' && largest !== null)
     parts.push(`largest ${formatMoney(largest)}`)
   const amount = line.amount ?? null
-  if (line.key === 'pending_approval' && amount !== null)
+  if (line.key === 'pending_approval' && line.items > 0 && amount !== null)
     parts.push(`${formatMoney(amount)} awaiting finance`)
   if (line.key === 'late_full_coverage' && line.items > 0) parts.push('contact the family')
   // Owner ruling 2026-10-01 S1 Q1: once offered or posted, an amount stands.

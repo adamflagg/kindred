@@ -34,6 +34,25 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
     expect(Object.keys(LINE_NAMES)).toHaveLength(16)
     expect(LINE_NAMES.cancel_reason).toBe('Cancelled: give a reason')
     expect(LINE_NAMES.equity_field_never_true).toBe('Equity question never answered yes')
+    // m3: every name pinned by value, so a typo fails.
+    expect(LINE_NAMES).toEqual({
+      needs_offer: 'Needs an offer',
+      holds: 'Holds',
+      waiting_on_family: 'Waiting on the family',
+      not_reconciled: 'Not reconciled',
+      to_reverse: 'To reverse',
+      session_not_settled: 'Session not settled',
+      duplicates: 'Duplicates',
+      cancel_reason: 'Cancelled: give a reason',
+      grants: 'Grants needing attention',
+      late_full_coverage: 'A late full-coverage grant',
+      pending_approval: 'Pending approval',
+      rules_sections: 'Rules sections awaiting approval',
+      would_change: "Locked rounds today's rules price differently",
+      sources: 'New CampMinder descriptions',
+      intake: 'Intake health',
+      equity_field_never_true: 'Equity question never answered yes',
+    })
     expect(isTodayKey('would_change')).toBe(true)
     expect(isTodayKey('equity_field_never_true')).toBe(true)
     expect(isTodayKey('bogus')).toBe(false)
@@ -139,7 +158,15 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
         })
       )
     ).toBe('not in CampMinder 1 · largest $1,800')
-    expect(detailWords(line({ key: 'pending_approval', amount: 0 }))).toBe('$0 awaiting finance')
+    // m2: a real $0 on a counted line shows; an empty line shows nothing, like the other lines.
+    expect(detailWords(line({ key: 'pending_approval', items: 1, amount: 0 }))).toBe(
+      '$0 awaiting finance'
+    )
+    expect(detailWords(line({ key: 'pending_approval', items: 0, amount: 0 }))).toBe('')
+    // m1: singular at one.
+    expect(detailWords(line({ key: 'waiting_on_family', oldest_days: 1, over_14_days: 0 }))).toBe(
+      'oldest 1 day · 0 over 14 days'
+    )
     expect(detailWords(line({ key: 'late_full_coverage', items: 1 }))).toBe('contact the family')
     // Owner ruling S1 Q1: the posted amounts stand; the line is information only.
     expect(detailWords(line({ key: 'would_change', items: 3 }))).toBe(
@@ -153,6 +180,12 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
     )
     expect(openHref(line({ key: 'would_change', items: 3 }), VIEW)).toBe(
       '/aid/requests?view=all&today=would_change&year=2027'
+    )
+    expect(openHref(line({ key: 'intake', items: 2 }), VIEW)).toBe(
+      '/aid/requests?view=all&today=intake&year=2027'
+    )
+    expect(openHref(line({ key: 'late_full_coverage', items: 1 }), VIEW)).toBe(
+      '/aid/requests?view=all&today=late_full_coverage&year=2027'
     )
     expect(openHref(line({ key: 'grants', items: 2 }), VIEW)).toBe(
       '/aid/grants/needs-attention?year=2027'
