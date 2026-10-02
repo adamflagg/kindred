@@ -76,10 +76,12 @@ function useScenarioView() {
   useEffect(() => {
     setter.current = setParams
   })
-  const set = useCallback((name: string, value: string | null) => {
+  // Every write is built from the router's previous params, so it never overwrites another one.
+  const update = useCallback((name: string, change: (previous: string | null) => string | null) => {
     setter.current(
       (previous) => {
         const next = new URLSearchParams(previous)
+        const value = change(previous.get(name))
         if (value === null) next.delete(name)
         else next.set(name, value)
         return next
@@ -87,6 +89,10 @@ function useScenarioView() {
       { replace: true }
     )
   }, [])
+  const set = useCallback(
+    (name: string, value: string | null) => update(name, () => value),
+    [update]
+  )
   const codesRaw = params.get('compare')
   const throughRaw = params.get('through')
   const codes = useMemo(() => parseCodes(codesRaw), [codesRaw])
@@ -100,6 +106,7 @@ function useScenarioView() {
     byTier: params.get('tiers') === '1',
     page: Number.isInteger(page) && page > 0 ? page : 1,
     set,
+    update,
   }
 }
 
@@ -163,10 +170,23 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const { hasPermission } = usePermissions()
   // Finance only, as every scenario route (D76): the registrar never fires either read.
   const canRules = hasPermission(Permission.FINANCIAL_AID_RULES)
-  const compare = useAidScenarioCompare(view.codes, view.requestSet, view.lastSeason, {
+  // A code in the URL that this year doesn't keep (a year switch, an old link) would only 404 the
+  // read: it is left out of the request, dropped from the URL, and said once.
+  const kept = useMemo(() => new Set(workspace.options.map((o) => o.code)), [workspace.options])
+  const codes = useMemo(() => view.codes.filter((c) => kept.has(c)), [view.codes, kept])
+  const gone = view.codes.filter((c) => !kept.has(c)).join(', ')
+  const [droppedNote, setDroppedNote] = useState<string | null>(null)
+  if (gone !== '' && gone !== droppedNote) setDroppedNote(gone)
+  const { set: setView } = view
+  useEffect(() => {
+    if (gone !== '') setView('compare', codes.length === 0 ? null : codes.join(','))
+  }, [gone, codes, setView])
+  const compare = useAidScenarioCompare(codes, view.requestSet, view.lastSeason, {
     enabled: canRules && draft !== null && view.panel === 'compare',
   })
-  const trail = useAidScenarioTrail(view.page, { enabled: canRules && view.panel === 'trail' })
+  const trail = useAidScenarioTrail(view.page, {
+    enabled: canRules && draft !== null && view.panel === 'trail',
+  })
   // The code a fifth tick was refused for, said under the list until the next tick.
   const [refused, setRefused] = useState<string | null>(null)
   const keepButtons = (
@@ -254,15 +274,26 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 current={draft?.from_code ?? null}
                 onLoad={(code) => void work.load({ option: code })}
                 compare={{
-                  ticked: new Set(view.codes),
+                  ticked: new Set(codes),
                   onToggle: (code) => {
-                    const next = toggleCode(view.codes, code)
-                    setRefused(next === view.codes ? code : null)
-                    if (next !== view.codes)
-                      view.set('compare', next.length === 0 ? null : next.join(','))
+                    const outcome: { refused: string | null } = { refused: null }
+                    view.update('compare', (previous) => {
+                      const before = parseCodes(previous)
+                      const next = toggleCode(before, code)
+                      outcome.refused = next === before ? code : null
+                      if (next === before) return previous
+                      return next.length === 0 ? null : next.join(',')
+                    })
+                    setRefused(outcome.refused)
+                    setDroppedNote(null)
                   },
                 }}
               />
+              {droppedNote !== null && (
+                <p className={`${AMBER_NOTE} mx-3 mb-2`}>
+                  {`${droppedNote} ${droppedNote.includes(',') ? "aren't" : "isn't"} kept in ${String(workspace.year)}, so it was left out of the compare.`}
+                </p>
+              )}
               {refused !== null && (
                 <p className={`${AMBER_NOTE} mx-3 mb-2`}>
                   {`Four are already ticked: untick one to compare ${refused}.`}
@@ -316,35 +347,31 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   className={view.panel === 'compare' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
                   onClick={() => view.set('panel', null)}
                 >
-                  {`Compare (draft + ${String(view.codes.length)})`}
+                  {`Compare (draft + ${String(codes.length)})`}
                 </button>
                 <button
                   type="button"
                   className={view.panel === 'trail' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
                   onClick={() => view.set('panel', 'trail')}
                 >
-                  {trail.data ? `Trail (${String(trail.data.total)} changes)` : 'Trail'}
+                  {trail.data
+                    ? `Trail (${String(trail.data.total)} ${trail.data.total === 1 ? 'change' : 'changes'})`
+                    : 'Trail'}
                 </button>
               </div>
               {view.panel === 'compare' ? (
-                <QueryGuard
-                  isLoading={compare.isLoading}
-                  error={compare.data ? null : compare.error}
-                  data={compare.data}
-                  label="the compare"
-                >
-                  {(data) => (
-                    <ScenarioCompare
-                      compare={data}
-                      requestSet={view.requestSet}
-                      onRequestSet={(next) => view.set('through', requestSetParam(next))}
-                      lastSeason={view.lastSeason}
-                      onLastSeason={(on) => view.set('last', on ? '1' : null)}
-                      byTier={view.byTier}
-                      onByTier={(on) => view.set('tiers', on ? '1' : null)}
-                    />
-                  )}
-                </QueryGuard>
+                <ScenarioCompare
+                  compare={compare.data}
+                  loading={compare.isLoading}
+                  error={compare.data ? null : (compare.error?.message ?? null)}
+                  stale={compare.isPlaceholderData}
+                  requestSet={view.requestSet}
+                  onRequestSet={(next) => view.set('through', requestSetParam(next))}
+                  lastSeason={view.lastSeason}
+                  onLastSeason={(on) => view.set('last', on ? '1' : null)}
+                  byTier={view.byTier}
+                  onByTier={(on) => view.set('tiers', on ? '1' : null)}
+                />
               ) : (
                 <QueryGuard
                   isLoading={trail.isLoading}
@@ -355,6 +382,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   {(data) => (
                     <ScenarioTrail
                       trail={data}
+                      current={draft.trail_id}
                       onLoad={(id) => void work.load({ trail_row: id })}
                       onPage={(next) => view.set('trail_page', next === 1 ? null : String(next))}
                     />

@@ -1,9 +1,9 @@
 import type { ApiAidScenarioTrailPage } from '../../../../types/api-types'
 import { BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
-import { campToday, formatShortDate } from '../../kit/dates'
-import { TABLE_CARD } from '../../kit/kitStyles'
+import { formatCampDateTime } from '../../kit/dates'
+import { HIGHLIGHT_EDGE, ROW_HIGHLIGHT, TABLE_CARD } from '../../kit/kitStyles'
 import { Money } from '../../kit/MoneyText'
-import { TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from '../seasonStyles'
+import { TD_LABEL, TD_MONEY, TD_TEXT, TH_LABEL, TH_MONEY } from '../seasonStyles'
 
 /**
  * The trail (spec §7.4; D38): every setting anyone let go of, newest first, with its results, who and
@@ -12,10 +12,13 @@ import { TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from '../seasonStyles'
  */
 export function ScenarioTrail({
   trail,
+  current,
   onLoad,
   onPage,
 }: {
   trail: ApiAidScenarioTrailPage
+  /** The trail row your draft is on (`draft.trail_id`): highlighted, as the kept list's current. */
+  current: string | null
   onLoad: (trailRow: string) => void
   onPage: (page: number) => void
 }) {
@@ -26,6 +29,7 @@ export function ScenarioTrail({
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
+              <th className={TH_LABEL}>#</th>
               <th className={TH_LABEL}>When</th>
               <th className={TH_LABEL}>What changed</th>
               <th className={TH_MONEY}>Round 1</th>
@@ -36,13 +40,21 @@ export function ScenarioTrail({
             </tr>
           </thead>
           <tbody>
-            {trail.rows.map((row) => (
-              <tr key={row.id} data-trail-row={row.id}>
+            {trail.rows.map((row, index) => (
+              <tr
+                key={row.id}
+                data-trail-row={row.id}
+                className={row.id === current ? `${ROW_HIGHLIGHT} ${HIGHLIGHT_EDGE}` : ''}
+              >
+                {/* Numbered oldest first, as the mock does, newest listed first. */}
+                <td className={`${TD_LABEL} tabular-nums`}>
+                  {trail.total - (trail.page - 1) * trail.per_page - index}
+                </td>
                 <td className={TD_LABEL}>
-                  {formatShortDate(campToday(new Date(row.recorded_at)))}
+                  {formatCampDateTime(row.recorded_at)}
                   <div className="text-muted-foreground text-xs">{row.actor}</div>
                 </td>
-                <td className={`${TD_LABEL} whitespace-normal`}>
+                <td className={TD_TEXT}>
                   {row.change}
                   <div className="text-muted-foreground text-xs">
                     {`draft from ${row.from_code}`}

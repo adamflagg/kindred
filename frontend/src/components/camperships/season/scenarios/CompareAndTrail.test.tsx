@@ -9,9 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Permission } from '../../../../constants/permissions'
 import type { LiveResults } from '../../../../hooks/camperships/useAidScenarioDraft'
-import type { AidRequestSet } from '../../../../services/camperships/aidApi'
-import type { ApiAidScenarioTrailPage } from '../../../../types/api-types'
+import { AidApiError, type AidRequestSet } from '../../../../services/camperships/aidApi'
+import type { ApiAidScenarioCompare, ApiAidScenarioTrailPage } from '../../../../types/api-types'
 import { NO_PENDING } from './scenarioModel'
+import { ROW_HIGHLIGHT } from '../../kit/kitStyles'
+import { DRAFT_CHIP, DRAFT_COLUMN, START_CHIP, UP_INK, VARIANT_CHIP } from './scenarioStyles'
 import { OPTIONS, TRAIL, compareOut, results, workspace } from './scenarioFixtures'
 import { ScenariosTab } from './ScenariosTab'
 
@@ -34,6 +36,19 @@ const asked: Array<{
 }> = []
 const askedTrail: Array<{ page: number; enabled: boolean | undefined }> = []
 let trail: ApiAidScenarioTrailPage = TRAIL
+interface CompareState {
+  data: ApiAidScenarioCompare | undefined
+  isLoading: boolean
+  isPlaceholderData: boolean
+  error: Error | null
+}
+let compareState: CompareState
+const settled = (): CompareState => ({
+  data: compareOut(),
+  isLoading: false,
+  isPlaceholderData: false,
+  error: null,
+})
 vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
   useAidScenarioCompare: (
     codes: readonly string[],
@@ -42,7 +57,7 @@ vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
     options: { enabled?: boolean } = {}
   ) => {
     asked.push({ codes, set, last, enabled: options.enabled })
-    return { data: compareOut(), isLoading: false, error: null }
+    return compareState
   },
   useAidScenarioTrail: (page: number, options: { enabled?: boolean } = {}) => {
     askedTrail.push({ page, enabled: options.enabled })
@@ -94,6 +109,7 @@ beforeEach(() => {
   asked.length = 0
   askedTrail.length = 0
   trail = TRAIL
+  compareState = settled()
   ws = workspace()
   granted = [Permission.FINANCIAL_AID_RULES]
   load.mockClear()
@@ -111,6 +127,38 @@ describe('the compare (D38)', () => {
     ).toEqual(['', 'Draft', 'A1'])
     const minimum = compare.querySelector('[data-compare-row="minimum"]') as HTMLElement
     expect(within(minimum).getByText('$150')).toHaveClass('text-amber-700')
+  })
+
+  it('heads each column with its code chip and its label under it, and tints the draft column', () => {
+    const out = compareOut()
+    const [draftColumn, a1] = out.columns
+    if (!draftColumn || !a1) throw new Error('the fixture has two columns')
+    compareState = {
+      ...settled(),
+      data: {
+        ...out,
+        columns: [draftColumn, a1, { ...a1, code: 'B', label: 'bands $5,000 wider' }],
+      },
+    }
+    renderAt('/aid/season/scenarios?compare=A1,B')
+    const heads = within(screen.getByTestId('scenario-compare')).getAllByRole('columnheader')
+    const chip = (th: HTMLElement) => th.querySelector('span')?.className ?? ''
+    expect(chip(heads[1] as HTMLElement)).toContain(DRAFT_CHIP)
+    expect(chip(heads[2] as HTMLElement)).toContain(VARIANT_CHIP)
+    expect(chip(heads[3] as HTMLElement)).toContain(START_CHIP)
+    expect(heads[2]).toHaveTextContent('Round 1 % −2 pts')
+    const minimum = document.querySelector('[data-compare-row="minimum"]') as HTMLElement
+    const [, draft, other] = within(minimum).getAllByRole('cell')
+    expect(draft?.className).toContain(DRAFT_COLUMN)
+    expect(other?.className).not.toContain(DRAFT_COLUMN)
+  })
+
+  it('draws up in the positive ink and down in the negative ink', () => {
+    renderAt('/aid/season/scenarios?compare=A1')
+    const row = document.querySelector('[data-compare-row="updown"]') as HTMLElement
+    const [, draft] = within(row).getAllByRole('cell')
+    expect(within(draft as HTMLElement).getByText('▲12')).toHaveClass(UP_INK)
+    expect(within(draft as HTMLElement).getByText('▼3')).toHaveClass('text-red-700')
   })
 
   it('ticks a kept option into the compare, in the URL, replacing the history entry', async () => {
@@ -181,6 +229,132 @@ describe('the compare (D38)', () => {
   })
 })
 
+function withRequestSet(): ApiAidScenarioCompare {
+  const out = compareOut()
+  return {
+    ...out,
+    columns: out.columns.map((c) => ({
+      ...c,
+      results: {
+        ...c.results,
+        request_set: {
+          basis: 'date',
+          through: '2027-02-01',
+          label: 'requests received through Feb 1, 2027',
+          left_out: 14,
+          unknown: 2,
+        },
+      },
+    })),
+  }
+}
+
+describe('the request-set sentence (D138)', () => {
+  it('says what every scenario figure counts, and that last season is as posted', () => {
+    compareState = { ...settled(), data: withRequestSet() }
+    renderAt('/aid/season/scenarios?compare=A1&through=2027-02-01&last=1')
+    expect(
+      screen.getByText(
+        'Every scenario figure counts requests received through Feb 1, 2027: 14 left out, 2 with no received date left out too; last season is as posted.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('leaves the last-season clause off when last season is not shown', () => {
+    compareState = { ...settled(), data: withRequestSet() }
+    renderAt('/aid/season/scenarios?compare=A1&through=2027-02-01')
+    expect(
+      screen.getByText(/^Every scenario figure counts requests received/)
+    ).not.toHaveTextContent('last season')
+  })
+})
+
+describe('the compare keeps its controls whatever the read does (I1)', () => {
+  it('shows a refused request set under the toolbar, which stays usable', async () => {
+    compareState = {
+      ...settled(),
+      data: undefined,
+      error: new AidApiError(
+        "2027's approved rules set no application deadline: choose a received-through date",
+        422
+      ),
+    }
+    renderAt('/aid/season/scenarios?compare=A1&through=deadline')
+    expect(screen.getByText(/choose a received-through date/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Received through')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Every frozen request' }))
+    expect(params().has('through')).toBe(false)
+  })
+
+  it('keeps the toolbar on screen while the first read is out', () => {
+    compareState = { ...settled(), data: undefined, isLoading: true }
+    renderAt('/aid/season/scenarios?compare=A1')
+    expect(screen.getByRole('button', { name: 'By the Round 1 deadline' })).toBeInTheDocument()
+    expect(screen.queryByTestId('scenario-compare-table')).toBeNull()
+  })
+
+  it('keeps the previous table showing, marked stale, while the next one loads', () => {
+    compareState = { ...settled(), isPlaceholderData: true }
+    renderAt('/aid/season/scenarios?compare=A1')
+    const table = screen.getByTestId('scenario-compare-table')
+    expect(table).toHaveAttribute('data-stale')
+    expect(screen.getByText(/Updating/)).toBeInTheDocument()
+  })
+
+  it('does not mark a settled table stale', () => {
+    renderAt('/aid/season/scenarios?compare=A1')
+    expect(screen.getByTestId('scenario-compare-table')).not.toHaveAttribute('data-stale')
+  })
+
+  it("drops a code the workspace doesn't keep from the request and the URL, and says so", () => {
+    renderAt('/aid/season/scenarios?compare=A1,Z9')
+    expect(asked.at(-1)?.codes).toEqual(['A1'])
+    expect(params().get('compare')).toBe('A1')
+    expect(screen.getByText(/Z9 isn't kept in 2027/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compare (draft + 1)' })).toBeInTheDocument()
+    expect(screen.getByTestId('nav')).toHaveTextContent('REPLACE')
+  })
+
+  it('clears the compare param when every code is gone', () => {
+    renderAt('/aid/season/scenarios?compare=Z9')
+    expect(params().has('compare')).toBe(false)
+    expect(asked.at(-1)?.codes).toEqual([])
+  })
+})
+
+describe("last season's column (I2)", () => {
+  it('reads — in Held and a real figure in In no tier, never a held count', () => {
+    renderAt('/aid/season/scenarios?compare=A1&last=1&tiers=1')
+    const held = within(document.querySelector('[data-compare-row="r1:held"]') as HTMLElement)
+    expect(held.getAllByRole('cell').at(-1)).toHaveTextContent('—')
+    const none = within(document.querySelector('[data-compare-row="r1:none"]') as HTMLElement)
+    expect(none.getAllByRole('cell').at(-1)).toHaveTextContent('$1,200')
+  })
+
+  it('reads its label, and — in every by-tier cell, when it is not loaded', () => {
+    const out = compareOut()
+    compareState = {
+      ...settled(),
+      data: {
+        ...out,
+        last_season: {
+          year: 2026,
+          loaded: false,
+          label: '2026 is not loaded yet',
+          rules_version: null,
+          view: null,
+        },
+      },
+    }
+    renderAt('/aid/season/scenarios?compare=A1&last=1&tiers=1')
+    expect(screen.getByRole('columnheader', { name: '2026 is not loaded yet' })).toBeInTheDocument()
+    for (const key of ['r1:held', 'r1:none', 'r1:1']) {
+      const row = document.querySelector(`[data-compare-row="${key}"]`) as HTMLElement
+      expect(within(row).getAllByRole('cell').at(-1)).toHaveTextContent('—')
+    }
+  })
+})
+
 describe('the Received-through date box (D138)', () => {
   it('writes the day on leaving the box or Enter, never per change', () => {
     renderAt('/aid/season/scenarios?compare=A1')
@@ -247,6 +421,38 @@ describe('the trail (D38)', () => {
     const row = panel.querySelector('[data-trail-row="trail0000000001"]') as HTMLElement
     await userEvent.click(within(row).getByRole('button', { name: 'Load' }))
     expect(load).toHaveBeenCalledWith({ trail_row: 'trail0000000001' })
+  })
+
+  it('wraps What changed: no nowrap on that cell (I3)', () => {
+    renderAt('/aid/season/scenarios?panel=trail')
+    const cell = screen.getByText('shift every tier 0 pts → −5 pts').closest('td') as HTMLElement
+    expect(cell.className).not.toContain('whitespace-nowrap')
+  })
+
+  it('numbers the rows oldest first, shows camp time, and highlights the one the draft is on', () => {
+    renderAt('/aid/season/scenarios?panel=trail')
+    const newest = document.querySelector('[data-trail-row="trail0000000002"]') as HTMLElement
+    const current = document.querySelector('[data-trail-row="trail0000000001"]') as HTMLElement
+    expect(within(newest).getAllByRole('cell')[0]).toHaveTextContent('2')
+    expect(within(current).getAllByRole('cell')[0]).toHaveTextContent('1')
+    expect(newest).toHaveTextContent('Jan 15 09:03')
+    expect(current.className).toContain(ROW_HIGHLIGHT)
+    expect(newest.className).not.toContain(ROW_HIGHLIGHT)
+  })
+
+  it('reads the trail only with a draft on screen (m2)', () => {
+    ws = workspace({ draft: null })
+    renderAt('/aid/season/scenarios?panel=trail')
+    expect(askedTrail.every((a) => a.enabled === false)).toBe(true)
+  })
+
+  it.each([
+    [1, 'Trail (1 change)'],
+    [2, 'Trail (2 changes)'],
+  ])('counts %i in the pill, singular for one', (total, name) => {
+    trail = { ...TRAIL, total }
+    renderAt('/aid/season/scenarios?panel=trail')
+    expect(screen.getByRole('button', { name })).toBeInTheDocument()
   })
 
   it('reads the trail only while it is the open panel', () => {

@@ -39,6 +39,19 @@ afterEach(() => fetchSpy.mockRestore())
 const url = () => (fetchSpy.mock.calls[0] as [string, RequestInit])[0]
 
 describe('useAidScenarioCompare', () => {
+  it('keeps the previous answer showing, marked as a placeholder, while a new tick loads (I1)', async () => {
+    const { result, rerender } = renderHook(
+      ({ codes }: { codes: readonly string[] }) =>
+        useAidScenarioCompare(codes, { kind: 'all' }, false),
+      { wrapper, initialProps: { codes: ['A'] as readonly string[] } }
+    )
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    fetchSpy.mockImplementation(() => new Promise<Response>(() => undefined))
+    rerender({ codes: ['A', 'B'] })
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true))
+    expect(result.current.data).toBeDefined()
+  })
+
   it('asks for each ticked option, the deadline switch and last season', async () => {
     renderHook(() => useAidScenarioCompare(['A1', 'B'], { kind: 'deadline' }, true), { wrapper })
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled())

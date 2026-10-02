@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import {
   fetchAidScenarioCompare,
@@ -36,6 +36,8 @@ export function useAidScenarioCompare(
     queryFn: () => fetchAidScenarioCompare(fetchWithAuth, year, codes, requestSet, lastSeason),
     enabled: enabled && year > 0 && !authLoading,
     retry,
+    // A tick or a request-set change keeps the last table on screen, marked stale, rather than a spinner.
+    placeholderData: keepPreviousData,
   })
 }
 
