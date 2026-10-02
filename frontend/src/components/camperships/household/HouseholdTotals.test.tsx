@@ -118,6 +118,8 @@ describe('HouseholdTotals (D77; household-totals.html B2)', () => {
     })
 
     it('keeps "·" when grants_applied is present but the figures do not add up (one request aid alone passes its cost)', () => {
+      // A shape the server makes: request A costs 5,000 with 6,000 aid (its share floors at 0);
+      // request B costs 5,000 with 2,000 aid and 2,000 grants. 10,000 − 8,000 − 2,000 is 0, not 1,000.
       render(
         <HouseholdTotals
           totals={{
@@ -127,7 +129,7 @@ describe('HouseholdTotals (D77; household-totals.html B2)', () => {
             grants: 2000,
             grants_applied: 2000,
             grants_beyond_owed: 0,
-            family_share: 500,
+            family_share: 1000,
           }}
           numberOf={numberOf}
         />
