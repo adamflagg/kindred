@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
 
@@ -60,7 +60,6 @@ from api.services.financial_aid_decisions_service import (
     DecisionRefusedError,
     FinancialAidDecisionsService,
     Season,
-    as_of_instant,
 )
 from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_ledger_service import money
@@ -85,15 +84,13 @@ from api.services.financial_aid_to_place import (
     OverrideRow,
     Reason,
     SinceInputs,
-    SinceRecords,
     SourceRow,
     Suggestion,
     ToPlaceItem,
-    changed_since,
     page_scope,
     placement_outcome,
-    reads_person_fields,
     to_place,
+    withhold,
 )
 from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
@@ -109,17 +106,12 @@ GROUP_LABELS: Final[dict[Reason, str]] = {
 
 PENDING_RECLASS: Final = "its reclassification waits for tonight's ledger sync"
 
-# sync_runs keeps 90 days (pocketbase/sync/sync_runs.go SyncRunRetentionDays); a day's margin, so a posting near
-# the edge has its tick withheld rather than trusting a removal record that may already be pruned (D16).
-SYNC_HISTORY: Final = timedelta(days=89)
-
 
 class ToPlaceStore(Protocol):
     async def fetch_line_details(self, year: int) -> dict[int, LineDetail]: ...
     async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]: ...
     async def fetch_left_lines(self, year: int) -> dict[int, LeftLine]: ...
     async def fetch_source_rows(self) -> dict[str, SourceRow]: ...
-    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
@@ -352,38 +344,16 @@ class ToPlaceService:
         return self._clock().astimezone(CAMP_TZ).date()
 
     async def _since(self, season: Season, ticks: Sequence[LedgerTick]) -> SinceInputs | None:
-        """D16b's loads for these ticks, once: everything recorded after the end of the earliest posting day,
-        and the rules at the end of each. None when every tick is dated today (nothing can be after it)."""
-        now = self._clock()
-        days = sorted({t.posted_on for t in ticks if as_of_instant(t.posted_on) < now})
-        if not days:
-            return None
-        records, (rules_at, unknown) = await asyncio.gather(
-            self._store.fetch_changed_since(
-                season.year, as_of_instant(days[0]), persons=reads_person_fields(season.rules)
-            ),
-            self._decisions.rules_on(season.year, days),
-        )
-        return SinceInputs(
-            now=now, history_from=now - SYNC_HISTORY, records=records, rules_at=rules_at, rules_unknown=unknown
-        )
+        """D16b's loads for these ticks, once: the decisions service's, which its overnight and hand ticks read too."""
+        return await self._decisions.since_inputs(season, ticks)
 
     @staticmethod
     def _withhold(
         season: Season, ticks: Sequence[LedgerTick], since: SinceInputs | None
     ) -> tuple[list[LedgerTick], list[tuple[LedgerTick, tuple[ChangedReason, ...]]]]:
-        """The one check the preview and the write both run (§4.10): the ticks a placement writes, and apart the
-        ones it withholds, with why (D16 option a). A request's rounds share one posting day and the check reads
-        no round, so they are withheld together: a later round is never ticked before the one before it (SP10a)."""
-        kept: list[LedgerTick] = []
-        held: list[tuple[LedgerTick, tuple[ChangedReason, ...]]] = []
-        for tick in ticks:
-            reasons = changed_since(season, tick, since) if since is not None else ()
-            if reasons:
-                held.append((tick, reasons))
-            else:
-                kept.append(tick)
-        return kept, held
+        """The one check the preview and the write both run (§4.10): `withhold`, which the overnight tick and a
+        person's tick run too (D152)."""
+        return withhold(season, ticks, since)
 
     # --- the read ---------------------------------------------------------------------------------
 

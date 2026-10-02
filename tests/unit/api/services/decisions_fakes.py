@@ -41,8 +41,10 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
+from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_reconciliation import CampLine, LineOverride, SplitPart
 from api.services.financial_aid_rules_service import RulesVersion
+from api.services.financial_aid_to_place import SinceCorrection, SinceLog, SinceRecords
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent, HoldEvent
@@ -88,7 +90,37 @@ class FakeDecisionsStore:
         self.enrollment_reads: list[tuple[frozenset[int], frozenset[int]]] = []  # each read's (persons, households)
         self.grant_placements: list[PlacementRecord] = []  # the grant placement log (3c-2)
         self.camper_names: dict[int, tuple[str, str]] = {}  # CampMinder's first and last names (the March file)
+        self.since = SinceRecords()  # D16b: synced records, grant lines, links and sync removals a test seeds
+        self.since_reads: list[datetime] = []  # each fetch_changed_since call's floor
         self._clock = T0
+
+    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords:
+        """As the repository reads them, after `floor`: the decision, hold and cancellation rows this twin
+        records (each logged in the same batch, at its created), its seeded change log and corrections, and
+        whatever a test seeds in `since`."""
+        self.since_reads.append(floor)
+        log = [
+            *(SinceLog("aid_decisions", f"{e.request_id}:{e.round}", e.kind, e.created) for e in self.events),
+            *(SinceLog("aid_hold_events", f"{e.request_id}:{e.code}", e.kind, e.created) for e in self.hold_events),
+            *(SinceLog("aid_cancellations", e.request_id, e.kind, e.created) for e in self.cancel_events),
+            *(SinceLog(r.entity, r.entity_id, "", r.created, r.before, r.after) for r in self.change_log),
+            *self.since.log,
+        ]
+        corrections = [
+            SinceCorrection(c.application_id, c.request_id, created)
+            for c in self.corrections
+            if (created := parse_pb_datetime(c.created)) is not None
+        ]
+        return SinceRecords(
+            log=tuple(row for row in log if row.created > floor),
+            corrections=tuple(c for c in (*corrections, *self.since.corrections) if c.created > floor),
+            synced=tuple(s for s in self.since.synced if s.at > floor and (persons or s.collection != "persons")),
+            grant_lines=tuple(
+                g for g in self.since.grant_lines if any(t is not None and t > floor for t in (g.created, g.updated))
+            ),
+            links=self.since.links,
+            removals=tuple(r for r in self.since.removals if r.ended > floor),
+        )
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
         return [a for a in self.applications if a.year == year]

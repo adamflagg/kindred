@@ -556,6 +556,11 @@ class SinceRecords:
     removals: tuple[SyncRemoval, ...] = ()
 
 
+# sync_runs keeps 90 days (pocketbase/sync/sync_runs.go SyncRunRetentionDays); a day's margin, so a posting near
+# the edge has its tick withheld rather than trusting a removal record that may already be pruned (D16).
+SYNC_HISTORY: Final = timedelta(days=89)
+
+
 @dataclass(frozen=True)
 class SinceInputs:
     """changed_since's loads: the records after the earliest posting day in hand, the rules that priced the
@@ -856,3 +861,33 @@ def changed_since(season: Season, tick: LedgerTick, since: SinceInputs) -> tuple
         if moments:
             texts[code] = f"{_TEXT[code]} ({_day(min(moments))})"
     return tuple(ChangedReason(code, texts[code]) for code in get_args(ChangedCode) if code in texts)
+
+
+def withhold(
+    season: Season, ticks: Sequence[LedgerTick], since: SinceInputs | None
+) -> tuple[list[LedgerTick], list[tuple[LedgerTick, tuple[ChangedReason, ...]]]]:
+    """The one check the placement, its preview, the overnight tick and a person's tick all run (§4.10; D152): the
+    ticks to write, and apart the ones D16 withholds, with why (option a). A request's rounds share one posting day
+    and the check reads no round, so they are withheld together: a later round is never ticked before the one before
+    it (SP10a)."""
+    kept: list[LedgerTick] = []
+    held: list[tuple[LedgerTick, tuple[ChangedReason, ...]]] = []
+    for tick in ticks:
+        reasons = changed_since(season, tick, since) if since is not None else ()
+        if reasons:
+            held.append((tick, reasons))
+        else:
+            kept.append(tick)
+    return kept, held
+
+
+def on_placed_money(season: Season, ticks: Sequence[LedgerTick]) -> list[LedgerTick]:
+    """The ticks whose request holds live money a person placed (a staff placement or a split part, D12): the money
+    that sat in To place, whose tick D152 prices at its posting day wherever it is ticked. Money CampMinder posted to
+    the camper is the overnight tick's own and keeps sync-time pricing (D152; SP10b-1 Decision 2)."""
+    placed = season.placements.keys() | season.splits.keys()
+    return [
+        tick
+        for tick in ticks
+        if any(line.live() and line.transaction_cm_id in placed for line in season.ledger.lines(tick.request_id))
+    ]

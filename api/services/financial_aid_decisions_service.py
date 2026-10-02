@@ -186,6 +186,12 @@ from api.services.financial_aid_rules_service import (
     RulesVersion,
 )
 from api.services.financial_aid_share_split import grid_shares, payers
+from api.services.financial_aid_to_place import (
+    SYNC_HISTORY,
+    SinceInputs,
+    SinceRecords,
+    reads_person_fields,
+)
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.change_replay import LogRow, Replayed, replay
@@ -313,6 +319,7 @@ class DecisionsStore(Protocol):
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
+    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
     async def fetch_grant_placements(self, year: int) -> list[PlacementRecord]: ...
@@ -1545,6 +1552,24 @@ class FinancialAidDecisionsService:
         ends = {as_of_instant(day): day for day in days}
         found, unknown = await self._rules.approved_as_of_each(year, PRICING_SECTIONS, ends.keys())
         return {ends[at]: version for at, version in found.items()}, frozenset(ends[at] for at in unknown)
+
+    async def since_inputs(self, season: Season, ticks: Sequence[LedgerTick]) -> SinceInputs | None:
+        """D16b's loads for these ticks, once (moved here from To place, so the placement, the overnight tick and a
+        person's tick read the same): everything recorded after the end of the earliest posting day, and the rules
+        at the end of each. None when every tick is dated today (nothing can be after it)."""
+        now = self._clock()
+        days = sorted({t.posted_on for t in ticks if as_of_instant(t.posted_on) < now})
+        if not days:
+            return None
+        records, (rules_at, unknown) = await asyncio.gather(
+            self._store.fetch_changed_since(
+                season.year, as_of_instant(days[0]), persons=reads_person_fields(season.rules)
+            ),
+            self.rules_on(season.year, days),
+        )
+        return SinceInputs(
+            now=now, history_from=now - SYNC_HISTORY, records=records, rules_at=rules_at, rules_unknown=unknown
+        )
 
     async def past_season(self, year: int, day: date, axis: AsOfAxis = "campminder") -> Season:
         """The season by the end of `day`, camp time, priced (3c-2): applications, requests and payer
