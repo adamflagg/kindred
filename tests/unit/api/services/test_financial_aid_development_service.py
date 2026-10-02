@@ -174,6 +174,24 @@ async def test_the_rebuilt_ages_ignore_reversed_camp_lines() -> None:
     assert _row(out, "youth", "camp_pool").values[0] == 0.0  # not Emma
 
 
+async def test_the_rebuilt_ages_count_only_attending_registrations() -> None:
+    """D158: Emma's 2025 registration was cancelled (status 32), so her 2025 aid line gives no youth to count."""
+    store = report_season()
+    seed_line(store, 7001, "800", household=1000002, person=LIAM)
+    seed_line(store, 7002, "600", household=1000001, person=EMMA)
+    development = _development(
+        registrations=[
+            went(EMMA, 1000001),
+            went(LIAM, 1000002),
+            went(EMMA, 1000001, year=2025, start=date(2025, 6, 20), status=32),
+            went(LIAM, 1000002, year=2025, start=date(2025, 6, 20)),
+        ]
+    )
+    out = await _service(development, _backfilled_2025(), store=store).development(YEAR)
+    assert _row(out, "teens", "camp_pool").values[0] == 1.0
+    assert _row(out, "youth", "camp_pool").values[0] == 0.0
+
+
 @pytest.mark.parametrize(("funder_type", "youth", "named"), [("outside", 1.0, False), ("unknown", None, True)])
 async def test_the_rebuilt_ages_count_only_classified_outside_grants(
     funder_type: str, youth: float | None, named: bool
