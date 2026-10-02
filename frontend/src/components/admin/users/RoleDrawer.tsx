@@ -195,7 +195,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
                 {items.map((p) => (
                   <div key={p.codename} className="flex flex-wrap items-center gap-x-2 text-xs">
                     <Check className="h-3 w-3" />
-                    <span>{p.short}</span>
+                    <span className="text-sm font-semibold">{p.short}</span>
                     {p.screens.map((s) => (
                       <Link
                         key={s.path}
@@ -333,7 +333,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
           <input type="checkbox" checked={on} onChange={() => toggle(p.code)} className="mt-0.5" />
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{p.short}</span>
+              <span className="text-sm font-semibold">{p.short}</span>
               {on !== was && (
                 <span
                   className={`text-[10px] font-bold uppercase ${on ? 'text-emerald-600' : 'text-red-600'}`}

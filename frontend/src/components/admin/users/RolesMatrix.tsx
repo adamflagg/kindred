@@ -77,8 +77,12 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
           admins create or edit roles.
         </span>
         {isAdmin && (
-          <button type="button" className="btn-primary" onClick={() => setDrawer(null)}>
-            <Plus className="h-4 w-4" />
+          <button
+            type="button"
+            className="btn-primary gap-1.5 rounded-[10px] px-3.5 py-[7px] text-[13px]"
+            onClick={() => setDrawer(null)}
+          >
+            <Plus className="h-3.5 w-3.5" />
             New role
           </button>
         )}
@@ -205,7 +209,7 @@ function GroupRows({
               type="button"
               className={
                 row.named
-                  ? 'hover:text-primary font-semibold hover:underline'
+                  ? 'hover:text-primary text-sm font-semibold hover:underline'
                   : 'hover:text-primary font-mono text-[11px] hover:underline'
               }
               onClick={() => onJump(row.code)}

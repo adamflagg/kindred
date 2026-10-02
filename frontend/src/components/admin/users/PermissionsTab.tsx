@@ -134,7 +134,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
       >
         {areas.map(({ area, rows }) => (
           <div key={area} data-testid={`perm-area-${area}`}>
-            <h3 className="bg-background text-muted-foreground sticky top-0 z-[2] py-1 text-[11px] font-bold tracking-wider uppercase">
+            <h3 className="bg-background text-muted-foreground sticky top-0 z-[2] py-1 font-sans text-[11px] font-bold tracking-[0.07em] uppercase">
               {area}
             </h3>
             <div className="bg-card divide-border divide-y rounded-xl border">
@@ -152,7 +152,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                     className={`${GRID} px-4 py-2.5 ${focused ? 'bg-primary/8 shadow-[inset_3px_0_0_hsl(var(--primary))]' : ''}`}
                   >
                     <div>
-                      <span className="font-semibold">{m.entry.short}</span>
+                      <span className="text-sm font-semibold">{m.entry.short}</span>
                       <code className="text-muted-foreground block font-mono text-[11.5px]">
                         {code}
                       </code>
