@@ -92,6 +92,8 @@ class FakeDecisionsStore:
         self.camper_names: dict[int, tuple[str, str]] = {}  # CampMinder's first and last names (the March file)
         self.since = SinceRecords()  # D16b: synced records, grant lines, links and sync removals a test seeds
         self.since_reads: list[datetime] = []  # each fetch_changed_since call's floor
+        self.household_attendees: list[Any] = []  # the March file's household members' registrations
+        self.household_attendee_reads: list[frozenset[int]] = []  # each read's households
         self._clock = T0
 
     async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords:
@@ -216,6 +218,12 @@ class FakeDecisionsStore:
     async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]:
         """As the repository reads them: CampMinder's first and last names, only for the people asked for."""
         return {p: self.camper_names[p] for p in person_cm_ids if p in self.camper_names}
+
+    async def fetch_household_attendees(self, year: int, household_cm_ids: Collection[int]) -> list[Any]:
+        """As the repository reads them: each registration of the people in these households (one read per call)."""
+        asked = frozenset(household_cm_ids)
+        self.household_attendee_reads.append(asked)
+        return [a for a in self.household_attendees if a.household_cm_id in asked]
 
     async def commit(
         self,
