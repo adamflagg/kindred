@@ -235,7 +235,7 @@ async def test_a_funder_row_saves_its_descriptions_in_one_logged_operation() -> 
         actor=DEVELOPMENT,
     )
     [operation] = store.operations
-    assert sorted(w.record_id for w in operation) == [REGIONAL.id, SPRING.id]
+    assert sorted(str(w.record_id) for w in operation) == [REGIONAL.id, SPRING.id]
     assert all(w.data == {"incentive": True} for w in operation)  # the group as shown: families kept
     assert (out.kind, out.incentive, out.families_changed) == ("funder", True, False)
     assert store.log[-1]["reason"] == "flagged by development"
