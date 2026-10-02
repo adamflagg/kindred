@@ -67,8 +67,6 @@ from api.schemas.financial_aid_decisions import (
     ForwardDemandOut,
     GridRowOut,
     HoldReleaseIn,
-    IncludeIn,
-    IncludeOverrideOut,
     LedgerTicksOut,
     ManualHoldIn,
     NotRebuiltOut,
@@ -167,8 +165,6 @@ from api.services.financial_aid_reconciliation import (
 )
 from api.services.financial_aid_request_overrides import (
     COST_OVERRIDE,
-    EXCLUDED,
-    INCLUDE_OVERRIDE,
     encode_cost_override,
     latest,
     override_write,
@@ -229,17 +225,11 @@ from bunking.pocketbase_batch import BatchError, BatchLimitError
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 
 
-def is_included(status: str | None, *, cancelled: bool, excluded: bool) -> bool:
-    """D77's included request: live (the budget's own set), not cancelled (D129) and not excluded by staff (Decision 5
-    of the slice 1 reads part 2 plan). The household band and each card's money line read it; pricing, Rounds & budget,
-    the Remaining line and Today never do.
-
-    OWNER ITEM 5 IS NOT RULED YET: this is the plan's recommendation (exclude-only, band and card money only). To flip
-    it, change this function; test_an_exclusion_moves_no_budget_figure pins the budget half, and
-    test_a_request_staff_excluded_leaves_the_band and ..._leaves_each_households_card_money_too pin the page half.
-    financial_aid_to_place.changed_since also treats an exclusion as no price input; if item 5 flips, both move
-    together."""
-    return status in _LIVE and not cancelled and not excluded
+def is_included(status: str | None, *, cancelled: bool) -> bool:
+    """D77's included request: live (the budget's own set) and not cancelled (D129). Derived only: staff have no
+    override on it (owner ruling). The household band and each card's money line read it; pricing, Rounds & budget,
+    the Remaining line and Today never do."""
+    return status in _LIVE and not cancelled
 
 
 # Spec §5.4: 2026 has no ticks and no dated decisions; its decisions are reproduced from the repaired
@@ -390,10 +380,9 @@ class Season:
     # Empty on a past read.
     camp_lines: tuple[CampLine, ...] = ()
     placements: Mapping[int, Placement] = field(default_factory=dict)
-    # Slice 1 part 2 (reads 5-6): each request's standing cost-override and exclusion rows (aid_application_corrections),
-    # dated by the read's day on a past read.
+    # Slice 1 part 2 (reads 5-6): each request's standing cost-override row (aid_application_corrections), dated by
+    # the read's day on a past read.
     cost_overrides: Mapping[str, CorrectionRecord] = field(default_factory=dict)
-    exclusions: Mapping[str, CorrectionRecord] = field(default_factory=dict)
     splits: Mapping[int, tuple[SplitPart, ...]] = field(default_factory=dict)
 
 
@@ -1276,7 +1265,7 @@ class FinancialAidDecisionsService:
         document = rules.document if rules is not None else None
         # Sub-project 10b-2: a cancelled request is not live (spec §5.3, Decision 14), so it is priced that way.
         cancellations = cancellations_by_request(side.requests, cancel_events, enrollments, sessions)
-        cost_overrides, exclusions = overrides_by_request(side.corrections)
+        cost_overrides = overrides_by_request(side.corrections)
         items = {
             r.id: with_holds(
                 _to_price(
@@ -1353,7 +1342,6 @@ class FinancialAidDecisionsService:
             placements=placements,
             splits=splits,
             cost_overrides=cost_overrides,
-            exclusions=exclusions,
         )
         return season, side.names
 
@@ -1560,7 +1548,7 @@ class FinancialAidDecisionsService:
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None), *named)
         if axis == "campminder":
             gaps = (*gaps, *_posted_before_request(rounds, requests.keys() | deleted))
-        cost_overrides, exclusions = overrides_by_request(_dated_by(corrections, at))
+        cost_overrides = overrides_by_request(_dated_by(corrections, at))
         return Season(
             year=year,
             rules=rules,
@@ -1581,7 +1569,6 @@ class FinancialAidDecisionsService:
             grants_unplaced=grants_unplaced,
             deleted=deleted,
             cost_overrides=cost_overrides,
-            exclusions=exclusions,
         )
 
     @staticmethod
@@ -1791,7 +1778,6 @@ class FinancialAidDecisionsService:
         description = (program.campminder_description or None) if program is not None else None
         standing = season.cost_overrides.get(request_id)
         parsed = parse_cost_override(standing.new_value) if standing is not None else None
-        excluded = season.exclusions.get(request_id)
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
         return row.model_copy(
             update={
@@ -1809,12 +1795,7 @@ class FinancialAidDecisionsService:
                     if standing is not None and parsed is not None
                     else None
                 ),
-                "included": is_included(
-                    row.request_status, cancelled=row.cancellation is not None, excluded=excluded is not None
-                ),
-                "include_override": (
-                    IncludeOverrideOut(note=excluded.reason, actor=excluded.actor) if excluded is not None else None
-                ),
+                "included": is_included(row.request_status, cancelled=row.cancellation is not None),
             }
         )
 
@@ -2521,12 +2502,6 @@ class FinancialAidDecisionsService:
             # The override re-prices later rounds and "would change by"; money already posted is locked and never moves.
             return out.model_copy(update={"warning": _POSTED_OVERRIDE_WARNING})
         return out
-
-    async def set_include(self, request_id: str, body: IncludeIn, actor: str) -> DecisionWriteOut:
-        """Leave a request out of the household band, or put it back (D22; Decision 5). Putting back a request never
-        left out writes nothing."""
-        request, _ = await self._live(request_id)
-        return await self._override(request, INCLUDE_OVERRIDE, REVERT if body.included else EXCLUDED, actor, body.note)
 
     async def _override(
         self, request: RequestRecord, field_name: str, value: str, actor: str, note: str

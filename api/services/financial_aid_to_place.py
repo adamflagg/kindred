@@ -57,7 +57,6 @@ from api.services.financial_aid_reconciliation import (
 from api.services.financial_aid_reconciliation import (
     page_scope as _page_scope,
 )
-from api.services.financial_aid_request_overrides import INCLUDE_OVERRIDE
 from bunking.financial_aid.decisions import PricedRequest
 from bunking.financial_aid.money import ZERO
 
@@ -819,8 +818,6 @@ def changed_since(season: Season, tick: LedgerTick, since: SinceInputs) -> tuple
         elif row.entity == "aid_cancellations" and row.entity_id == request.id:
             found["cancellation"].append(row.created)
     for correction in since.records.corrections:
-        if correction.field == INCLUDE_OVERRIDE:
-            continue  # leaving a request out of the household band changes no price (Decision 5)
         if correction.created > cut and (
             correction.application_id == request.application_id or correction.request_id == request.id
         ):

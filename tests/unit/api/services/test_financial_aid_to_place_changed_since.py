@@ -169,13 +169,11 @@ async def test_each_input_recorded_after_the_posting_day_refuses_and_one_at_the_
 
 
 @pytest.mark.asyncio
-async def test_an_include_override_is_no_price_input_and_changes_nothing() -> None:
-    """Leaving a request out of the household band moves no price (Decision 5); a cost override does."""
+async def test_a_legacy_include_override_row_is_an_ordinary_correction() -> None:
+    """There is no Include override; a row with that field is no special case, so it reads as any correction."""
     season = await _season()
-    exclusion = SinceCorrection(APPLICATION, EMMA, AFTER, "include_override")
-    assert changed_since(season, TICK, _since(corrections=(exclusion,))) == ()
-    cost = SinceCorrection(APPLICATION, EMMA, AFTER, "cost_override")
-    assert _codes(changed_since(season, TICK, _since(corrections=(exclusion, cost)))) == ["correction"]
+    legacy = SinceCorrection(APPLICATION, EMMA, AFTER, "include_override")
+    assert _codes(changed_since(season, TICK, _since(corrections=(legacy,)))) == ["correction"]
 
 
 @pytest.mark.asyncio

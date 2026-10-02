@@ -202,14 +202,6 @@ class CostOverrideOut(BaseModel):
     actor: str
 
 
-class IncludeOverrideOut(BaseModel):
-    """A staff exclusion (D22; main spec §10.2's "audited override"): the request is left out of the household band
-    (Decision 5); the note says why."""
-
-    note: str
-    actor: str
-
-
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -247,10 +239,9 @@ class GridRowOut(BaseModel):
     # a past read names it in not_rebuilt.
     appeal_refusal: str | None = None
     cost_override: CostOverrideOut | None = None
-    # D77/D129 and Decision 5: live, not cancelled, and not excluded by staff. None on a past read: it reads the
+    # D77/D129: live and not cancelled (derived; staff have no override on it). None on a past read: it reads the
     # cancellation, which a past date doesn't rebuild (not_rebuilt names it).
     included: bool | None = None
-    include_override: IncludeOverrideOut | None = None
     session_candidates: list[SessionCandidateOut] = Field(default_factory=list)  # read 4: an unmatched request's
     # Read 2 (§6.2 Needs an offer): the description to post the program's aid under, from the rules; None: none named.
     campminder_description: str | None = None
@@ -431,14 +422,6 @@ class CostOverrideIn(BaseModel):
         if self.amount is None and self.reason_code is not None:
             raise ValueError("clearing a cost override takes no reason code")
         return self
-
-
-class IncludeIn(BaseModel):
-    """Leave a request out of the household band (included=false) or put it back (true), with a note (D22, Decision 5).
-    It never includes a request derived as not included."""
-
-    included: bool
-    note: _Reason
 
 
 class ManualHoldIn(BaseModel):

@@ -110,10 +110,8 @@ def share_lines(row: GridRowOut, shares: Sequence[PayerShareRecord], chips: Mapp
 
 
 def included(row: GridRowOut) -> bool:
-    """D77's included request (is_included): live, not cancelled (D129), not excluded by staff (Decision 5)."""
-    return is_included(
-        row.request_status, cancelled=row.cancellation is not None, excluded=row.include_override is not None
-    )
+    """D77's included request (is_included): live and not cancelled (D129)."""
+    return is_included(row.request_status, cancelled=row.cancellation is not None)
 
 
 def _states(pairs: Iterable[tuple[ConfirmationStatusOut, Decimal]]) -> list[ConfirmationStateOut]:

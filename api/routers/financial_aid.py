@@ -69,7 +69,6 @@ from api.schemas.financial_aid_decisions import (
     DecisionWriteOut,
     EditorPreviewOut,
     HoldReleaseIn,
-    IncludeIn,
     ManualHoldIn,
     PostedIn,
     PreviewIn,
@@ -1005,17 +1004,6 @@ async def set_cost_override(
     """A cost override with its reason code, or clearing it (D22; app spec §2: casework)."""
     try:
         return await _decisions().set_cost_override(request_id, body, user.email)
-    except FinancialAidError as exc:
-        raise _decisions_http(exc) from exc
-
-
-@router.post("/requests/{request_id}/include", response_model=DecisionWriteOut)
-async def set_request_include(
-    request_id: _RequestIdPath, body: IncludeIn, user: AuthUser = _CASEWORK
-) -> DecisionWriteOut:
-    """Leave a request out of the household band, or put it back, with a note (D22; Decision 5)."""
-    try:
-        return await _decisions().set_include(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 

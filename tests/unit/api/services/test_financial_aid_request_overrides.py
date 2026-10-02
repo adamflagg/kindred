@@ -1,6 +1,6 @@
-"""Staff overrides on one request (D22; main spec §10.2): a cost override with its reason code, and the Include
-override, each carried as an aid_application_corrections row like the income override, so it has a reason, a
-history, a change-log row, and a past date replays it. Fictional only."""
+"""Staff cost override on one request (D22; main spec §10.2), carried as an aid_application_corrections row like the
+income override, so it has a reason, a history, a change-log row, and a past date replays it. There is no Include
+override (owner ruling): Include is derived, live and not cancelled. Fictional only."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from decimal import Decimal
 import pytest
 
 import api.schemas.financial_aid_decisions as schemas
-from api.schemas.financial_aid_decisions import CancellationIn, CostOverrideIn, IncludeIn
+import api.services.financial_aid_request_overrides as overrides_module
+from api.schemas.financial_aid_decisions import CancellationIn, CostOverrideIn, GridRowOut
 from api.services.financial_aid_decisions_service import (
     CANCELLED_IN_KINDRED,
     DecisionNotFoundError,
@@ -20,12 +21,9 @@ from api.services.financial_aid_decisions_service import (
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord
 from api.services.financial_aid_request_overrides import (
     COST_OVERRIDE,
-    EXCLUDED,
-    INCLUDE_OVERRIDE,
     by_request,
     cost_override,
     encode_cost_override,
-    exclusion,
     parse_cost_override,
 )
 from bunking.financial_aid.calculator import CostOverride
@@ -75,13 +73,15 @@ def test_the_newest_row_wins_and_an_empty_value_reverts() -> None:
     assert cost_override(EMMA, [earlier_revert, set_]) == CostOverride(amount=Decimal("3500.00"), reason="discount")
 
 
-def test_an_exclusion_stands_until_it_is_reverted_and_never_reaches_another_request() -> None:
-    out = _correction(INCLUDE_OVERRIDE, EXCLUDED, "2027-02-01 17:00:00.000Z", n=1)
-    back = _correction(INCLUDE_OVERRIDE, "", "2027-02-03 17:00:00.000Z", n=2)
-    assert exclusion(EMMA, [out]) == out
-    assert exclusion(EMMA, [out, back]) is None
-    assert exclusion(LIAM, [out]) is None
-    assert by_request([out]) == ({}, {EMMA: out})
+def test_there_is_no_include_override() -> None:
+    """Owner ruling: Include is derived (live and not cancelled); staff have no override on it."""
+    assert not hasattr(overrides_module, "INCLUDE_OVERRIDE")
+    assert not hasattr(overrides_module, "EXCLUDED")
+    assert not hasattr(overrides_module, "exclusion")
+    assert "include_override" not in GridRowOut.model_fields
+    assert not hasattr(_service(FakeDecisionsStore()), "set_include")
+    legacy = _correction("include_override", "excluded", "2027-02-01 17:00:00.000Z", n=1)
+    assert by_request([legacy]) == {}
 
 
 @pytest.mark.asyncio
@@ -123,27 +123,18 @@ async def test_a_row_shows_its_cost_override_with_the_code_note_and_who() -> Non
 
 
 @pytest.mark.asyncio
-async def test_an_excluded_row_is_not_included_until_it_is_put_back() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    store.corrections.append(_correction(INCLUDE_OVERRIDE, EXCLUDED, "2027-02-01 17:00:00.000Z", n=1))
-    (row,) = (await _service(store).grid(YEAR)).rows
-    assert (row.included, row.include_override is not None) == (False, True)
-    store.corrections.append(_correction(INCLUDE_OVERRIDE, "", "2027-02-02 17:00:00.000Z", n=2))
-    (row,) = (await _service(store).grid(YEAR)).rows
-    assert (row.included, row.include_override) == (True, None)
-
-
-@pytest.mark.asyncio
-async def test_an_exclusion_moves_no_budget_figure() -> None:
-    """Decision 5 (⚠): the Include override reaches the household band only, never pricing, Rounds & budget or the
-    Remaining line."""
+async def test_a_legacy_include_override_row_excludes_nothing() -> None:
+    """A correction row with field include_override already in the data is no longer read: the request stays included
+    and no budget figure moves."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_request(store, LIAM, household=1000002, person=1000021)
-    before = await _service(store).budget(YEAR)
-    store.corrections.append(_correction(INCLUDE_OVERRIDE, EXCLUDED, "2027-02-01 17:00:00.000Z"))
-    assert await _service(store).budget(YEAR) == before
+    before_budget = await _service(store).budget(YEAR)
+    store.corrections.append(_correction("include_override", "excluded", "2027-02-01 17:00:00.000Z"))
+    (emma, _liam) = sorted((await _service(store).grid(YEAR)).rows, key=lambda r: r.request_id != EMMA)
+    assert emma.included is True
+    assert "include_override" not in emma.model_dump()
+    assert await _service(store).budget(YEAR) == before_budget
 
 
 @pytest.mark.asyncio
@@ -197,7 +188,7 @@ async def test_retyping_the_standing_cost_override_writes_nothing() -> None:
 @pytest.mark.asyncio
 async def test_retyping_a_standing_override_with_a_new_note_writes_the_note() -> None:
     """The same value with a changed note is a real edit (the reason is the audit trail); identical value and note
-    stay a no-op. Cost override and the Include override alike."""
+    stay a no-op."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     service = _service(store)
@@ -207,12 +198,6 @@ async def test_retyping_a_standing_override_with_a_new_note_writes_the_note() ->
     assert (await service.set_cost_override(EMMA, reworded, ACTOR)).written == 1
     assert len(store.corrections) == rows + 1
     assert (await service.set_cost_override(EMMA, reworded, ACTOR)).written == 0
-    assert len(store.corrections) == rows + 1
-    out = IncludeIn(included=False, note="Left out for now")
-    await service.set_include(EMMA, out, ACTOR)
-    rows = len(store.corrections)
-    assert (await service.set_include(EMMA, out, ACTOR)).written == 0
-    assert (await service.set_include(EMMA, IncludeIn(included=False, note="Left out, see call"), ACTOR)).written == 1
     assert len(store.corrections) == rows + 1
 
 
@@ -248,38 +233,11 @@ async def test_a_cost_override_needs_approved_rules() -> None:
 
 
 @pytest.mark.asyncio
-async def test_excluding_a_request_takes_it_out_and_putting_it_back_restores_it() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    service = _service(store)
-    out = await service.set_include(EMMA, IncludeIn(included=False, note="Counted under a sibling's request"), ACTOR)
-    assert out.written == 1
-    (row,) = (await service.grid(YEAR)).rows
-    assert row.included is False
-    assert row.include_override is not None
-    back = await service.set_include(EMMA, IncludeIn(included=True, note="Counted on its own again"), ACTOR)
-    assert back.written == 1
-    (row,) = (await service.grid(YEAR)).rows
-    assert (row.included, row.include_override) == (True, None)
-
-
-@pytest.mark.asyncio
-async def test_putting_back_a_request_never_excluded_writes_nothing() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    out = await _service(store).set_include(EMMA, IncludeIn(included=True, note="Nothing to undo"), ACTOR)
-    assert (out.written, out.unchanged, out.operation_id) == (0, 1, "")
-    assert store.operations == []
-
-
-@pytest.mark.asyncio
-async def test_an_override_on_a_request_cancelled_in_kindred_is_refused_in_the_writes_words() -> None:
+async def test_a_cost_override_on_a_request_cancelled_in_kindred_is_refused_in_the_writes_words() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     service = _service(store)
     await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="medical"), ACTOR)
-    with pytest.raises(DecisionRefusedError, match=CANCELLED_IN_KINDRED):
-        await service.set_include(EMMA, IncludeIn(included=False, note="x"), ACTOR)
     with pytest.raises(DecisionRefusedError, match=CANCELLED_IN_KINDRED):
         await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
 
@@ -287,7 +245,7 @@ async def test_an_override_on_a_request_cancelled_in_kindred_is_refused_in_the_w
 @pytest.mark.asyncio
 async def test_an_unknown_request_is_not_found() -> None:
     with pytest.raises(DecisionNotFoundError):
-        await _service(FakeDecisionsStore()).set_include("reqnone00000001", IncludeIn(included=False, note="x"), ACTOR)
+        await _service(FakeDecisionsStore()).set_cost_override("reqnone00000001", OVERRIDE, ACTOR)
 
 
 @pytest.mark.parametrize(
