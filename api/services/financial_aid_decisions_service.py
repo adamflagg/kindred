@@ -1660,7 +1660,10 @@ class FinancialAidDecisionsService:
                 rounds,
                 priced,
                 (shares_of, bad_shares, bad_share_households),
-                cancelled=frozenset(in_kindred) | cancelled_now,
+                # As live's cancellations_by_request and _past_cancellations: a Kindred cancellation counts
+                # only on a request live then, so a pending duplicate's money stays Posted on both reads.
+                cancelled=frozenset(r for r in in_kindred if r in requests and requests[r].status in _LIVE)
+                | cancelled_now,
                 notes=year >= FIRST_TICKED_SEASON,
             )
             gaps = (*gaps, *ledger_gaps)

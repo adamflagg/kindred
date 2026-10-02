@@ -15,7 +15,7 @@ service's _PRICING_GAPS), and names what each gap leaves empty (PAST_DATE_GAPS).
 
 The fold is not the whole past Posted figure: the decisions service then applies sub-project 10b's
 clawback as of the date (D54), so a posted round whose money CampMinder had reversed by then counts
-nowhere, and where a request's payer shares or line placements can't be replayed its posted money is
+nowhere on a request cancelled or closed by then (clawback_eligible), and where a request's payer shares or line placements can't be replayed its posted money is
 left empty and named (POSTED_GAPS).
 """
 

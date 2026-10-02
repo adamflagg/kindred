@@ -251,3 +251,21 @@ async def test_on_a_past_date_a_pending_duplicate_reversed_by_then_stays_posted(
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     assert _camp(await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5)), 1).posted == 1500.0
+
+
+@pytest.mark.asyncio
+async def test_a_pending_duplicate_cancelled_in_kindred_while_live_stays_posted_on_a_past_date_as_it_does_today() -> (
+    None
+):
+    """Cancelled in Kindred while active, then re-planned duplicate_pending by intake: today's read drops a Kindred
+    cancellation on a request no longer live (cancellations_by_request), so its money stays Posted. The past read
+    uses the same rule (_past_cancellations), so the two agree on the one gate."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="duplicate_pending")
+    log_seeded(store, SEEDED)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    store.synced_at = AFTER
+    _cancel_in_kindred(store)
+    assert _camp(await _service(store).budget(YEAR), 1).posted == 1500.0
+    assert _camp(await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5)), 1).posted == 1500.0
