@@ -18,6 +18,8 @@ import {
   cellHref,
   cellValue,
   cellWords,
+  confirmedHref,
+  confirmedWords,
   overWords,
   parseFolded,
   pendingNote,
@@ -669,5 +671,55 @@ describe('the URL and the download (D15, D70, §11)', () => {
   it('leaves a count empty when the server sent none (a past date)', () => {
     const rows = budgetCsvRows(budgetRows(pastBudget(), { pool: 'pool_a', folded: new Set() }))
     expect(rows[1]).toEqual(['Pool A', '1', '800000', '764540', '598300', '', '', '', '', ''])
+  })
+})
+
+describe('the confirmed share under Posted (D153; owner ruling 2026-10-02)', () => {
+  const rows = budgetRows(BUDGET, EVERY)
+
+  it("words the server's count and amount, on pool, round and total lines alike", () => {
+    expect(confirmedWords(row(rows, 'pool_a:1'))).toBe('4 not yet confirmed · $5,200')
+    expect(confirmedWords(row(rows, 'pool_a:2'))).toBe('2 not yet confirmed · $1,800')
+    expect(confirmedWords(row(rows, 'pool_a:all'))).toBe('6 not yet confirmed · $7,000')
+    expect(confirmedWords(row(rows, 'total'))).toBe('6 not yet confirmed · $7,000')
+  })
+
+  it('says nothing when the read sends none, or a count of 0', () => {
+    expect(confirmedWords(row(rows, 'pool_a:3'))).toBeNull()
+    const zero = { ...row(rows, 'pool_a:1') }
+    const none = {
+      ...zero,
+      cell: { ...zero.cell, unconfirmed: { count: 0, families: 0, amount: 0 } },
+    }
+    expect(confirmedWords(none)).toBeNull()
+    expect(confirmedWords(row(budgetRows(pastBudget(), EVERY), 'pool_a:1'))).toBeNull()
+  })
+
+  it("keeps it off the Pending approval line, which shares its round's cell", () => {
+    const pending = budgetRows(BUDGET, EVERY).find((r) => r.kind === 'pending')
+    expect(pending).toBeDefined()
+    if (pending !== undefined) expect(confirmedWords(pending)).toBeNull()
+  })
+
+  it("opens Not reconciled on the row's pool, and on none for the total", () => {
+    expect(confirmedHref(row(rows, 'pool_a:1'), LIVE)).toBe(
+      '/aid/requests?view=not-reconciled&pool=pool_a&year=2027'
+    )
+    expect(confirmedHref(row(rows, 'pool_a:all'), LIVE)).toBe(
+      '/aid/requests?view=not-reconciled&pool=pool_a&year=2027'
+    )
+    expect(confirmedHref(row(rows, 'total'), LIVE)).toBe(
+      '/aid/requests?view=not-reconciled&year=2027'
+    )
+  })
+
+  it('opens nothing for the No pool line, for nothing to say, or on a past date', () => {
+    const noPool = { ...row(rows, 'pool_a:1'), pool: '' }
+    expect(confirmedHref(noPool, LIVE)).toBeNull()
+    expect(confirmedHref(row(rows, 'pool_a:3'), LIVE)).toBeNull()
+    // Not reconciled is today's queue: the Requests page refuses it on a past date.
+    const unmasked = budgetRows(pastBudgetUnmasked(), EVERY)
+    expect(confirmedWords(row(unmasked, 'pool_a:1'))).toBe('4 not yet confirmed · $5,200')
+    expect(confirmedHref(row(unmasked, 'pool_a:1'), PAST)).toBeNull()
   })
 })
