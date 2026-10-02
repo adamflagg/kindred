@@ -198,6 +198,34 @@ def test_round_1_percent_of_ask_is_live_awards_over_live_asks() -> None:
     assert (every.pool, every.awarded, every.asked) == (None, Decimal(2900), Decimal(7000))
 
 
+def test_round_1_percent_of_ask_leaves_an_outside_budget_round_out_of_its_denominator() -> None:
+    """Owner (c), RULED 2026-10-02: a D121 full-cost outside-funder round is never awarded, so its ask is not in RPT-13's
+    denominator; `asked` still shows it."""
+    season = _season(
+        req("reqemma00000001", rnd(1, ask="4000", posted="1500"), received_at=EARLY),
+        req("reqliam00000001", rnd(1, ask="3000", outside_budget=True), household=1000002, received_at=EARLY),
+    )
+    rows = [r for r in committee_tables([season], []).round1_pct if r.basis == "P"]
+    camp = next(r for r in rows if r.pool == "camp_pool")
+    assert (camp.awarded, camp.asked, camp.asked_in_budget, camp.pct_of_ask) == (
+        Decimal(1500),
+        Decimal(7000),
+        Decimal(4000),
+        Decimal("37.5"),
+    )
+    headline = rows[-1]
+    assert (headline.asked, headline.asked_in_budget, headline.pct_of_ask) == (
+        Decimal(7000),
+        Decimal(4000),
+        Decimal("37.5"),
+    )
+
+
+def test_a_typed_round_1_row_divides_by_its_typed_ask() -> None:
+    row = committee_tables([], [_typed("r1_awarded", "100"), _typed("r1_asked", "400")]).round1_pct[0]
+    assert (row.asked, row.asked_in_budget, row.pct_of_ask) == (Decimal(400), Decimal(400), Decimal("25.0"))
+
+
 def test_rows_run_by_season_typed_before_priced() -> None:
     tables = committee_tables([SEASON], [_typed("awarded", "460000"), _typed("awarded", "400000", year=2025)])
     assert [(r.year, r.basis) for r in tables.phases] == [(2025, "r"), (2026, "r"), (2027, "P")]

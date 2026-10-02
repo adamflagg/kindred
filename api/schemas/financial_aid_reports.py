@@ -243,6 +243,7 @@ class Round1PctRowOut(BaseModel):
     pool_label: str
     awarded: float | None
     asked: float | None
+    asked_in_budget: float | None  # `asked` less rounds outside the budget (D121): % of ask's denominator
     pct_of_ask: float | None
 
 

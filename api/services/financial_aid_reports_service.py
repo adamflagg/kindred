@@ -742,6 +742,7 @@ def _round1_out(row: Round1PctRow, label: str) -> Round1PctRowOut:
         pool_label=label,
         awarded=_money(row.awarded),
         asked=_money(row.asked),
+        asked_in_budget=_money(row.asked_in_budget),
         pct_of_ask=_pct(row.pct_of_ask),
     )
 

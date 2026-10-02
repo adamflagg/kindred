@@ -155,6 +155,9 @@ class Round1PctRow:
     awarded: Decimal | None
     asked: Decimal | None
     pct_of_ask: Decimal | None
+    # `asked` less any round outside the budget (D121; owner (c), RULED 2026-10-02): % of ask's denominator. `asked`
+    # stays the displayed column, outside rounds included.
+    asked_in_budget: Decimal | None = None
     kind: RowKind = "pool"
 
 
@@ -679,7 +682,8 @@ def native_round1_pct(season: NativeSeason) -> list[Round1PctRow]:
     def row(pool: str | None, members: Sequence[ReportRequest], kind: RowKind) -> Round1PctRow:
         awarded = sum((r.awarded((1,)) for r in members), ZERO)
         asked = sum((a for r in members if (a := r.asked((1,))) is not None), ZERO)
-        return Round1PctRow(season.year, "P", pool, awarded, asked, pct(awarded, asked), kind)
+        in_budget = sum((a for r in members if (a := r.asked_in_budget((1,))) is not None), ZERO)
+        return Round1PctRow(season.year, "P", pool, awarded, asked, pct(awarded, in_budget), in_budget, kind)
 
     named = sorted(p for p in pools if p is not None)
     # A no-pool row where a live request has none, so the pool rows sum to the headline (as the budget table does).
@@ -703,6 +707,7 @@ def typed_round1_pct(year: int, typed: _Typed) -> list[Round1PctRow]:
                 awarded,
                 asked,
                 pct(awarded, asked) if asked is not None else None,
+                asked,
                 "headline" if pool is None else "pool",
             )
         )
