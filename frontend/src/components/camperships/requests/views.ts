@@ -389,6 +389,8 @@ export interface GridFilters {
 
 /** A live request, as the budget's demand counts one: a live status and not cancelled (`request.live`). */
 export function isLiveRow(row: ApiAidGridRow): boolean {
+  // A null status is not live, as the server's `_LIVE` reads it; gridEditor's isLiveRequest treats
+  // null as editable on purpose (placeholder rows), so don't unify the two (Task 2 m1).
   return (
     row.request_status !== null &&
     LIVE_REQUEST_STATUSES.includes(row.request_status) &&
