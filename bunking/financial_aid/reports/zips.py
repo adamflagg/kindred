@@ -1,9 +1,9 @@
 """Reports › Development › ZIP codes (clean spec §9.4's ZIP screen; D66, D90). Pure: no I/O.
 
-One season, two tables, over the summer group's campers (the Summer Camp & Quest campers development's counts use,
-teen programs included). Only attendees of aid-eligible sessions are in the summer group (owner rule, item 28: the
-sessions a program open to aid claims), so a camper who attended only a session that is not aid-eligible is in neither
-table:
+One season, two tables, over one group's campers (the caller picks it: the summer group, the Summer Camp & Quest
+campers development's counts use with teen programs included, unless another pool or all groups is asked for). Only
+attendees of aid-eligible sessions are in any group (owner rule, item 28: the sessions a program open to aid claims),
+so a camper who attended only a session that is not aid-eligible is in neither table:
 
   every camper   enrolled (status 2) in an aid-eligible session: campers and families (CampMinder households) by ZIP;
   with aid       attended and got money from any source (development's recipients, all money): campers, families
@@ -86,7 +86,7 @@ def _table(cells: Mapping[tuple[str, ZipKind], _Cell], *, with_dollars: bool) ->
 
 
 def every_camper(enrolled: Iterable[tuple[int, int]], households: Mapping[int, HouseholdAddress]) -> ZipTable:
-    """`enrolled`: (camper, their household) for every enrolled camper of the summer group."""
+    """`enrolled`: (camper, their household) for every enrolled camper of the chosen group."""
     cells: dict[tuple[str, ZipKind], _Cell] = defaultdict(_Cell)
     for camper, household in enrolled:
         cell = cells[zip_of(households.get(household))]
@@ -101,8 +101,8 @@ def with_aid(
     household_level: Mapping[int, Decimal],
     households: Mapping[int, HouseholdAddress],
 ) -> ZipTable:
-    """Development's summer-group recipients (`money_by_camper`: all money per camper), each on their household's
-    ZIP (`household_of`), and the household-level grant dollars on theirs."""
+    """Development's recipients in the chosen group (`money_by_camper`: all money per camper), each on their
+    household's ZIP (`household_of`), and the household-level grant dollars (and a family group's money) on theirs."""
     cells: dict[tuple[str, ZipKind], _Cell] = defaultdict(_Cell)
     for camper, money in money_by_camper.items():
         household = household_of.get(camper, 0)

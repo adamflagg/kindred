@@ -501,8 +501,8 @@ class FinancialAidDevelopmentService:
     # --- ZIP codes (§9.4's second screen, D90; Part C) ---------------------------------------------------------
 
     async def zip_codes(self, year: int, group: str | None = None) -> ZipResponse:
-        """Every enrolled camper of the summer group by ZIP, and (once the season's decisions exist) development's
-        recipients there with all their money. Small groups as they are; never a family's row (D90). Both tables
+        """Every enrolled camper of `group` (the summer group when omitted; `all` counts each person and household
+        once) by ZIP, and (once the season's decisions exist) development's recipients there with all their money. Small groups as they are; never a family's row (D90). Both tables
         are built on `grouping`, so only attendees of aid-eligible sessions are counted (owner rule, item 28)."""
         today = self._today()
         season = await self._decisions.season(year)

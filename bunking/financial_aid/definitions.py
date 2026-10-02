@@ -450,10 +450,10 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Who counts",
         text=(
             "Who counts: the every-family table counts households with an attendee in an aid-eligible session (one "
-            "a program open to aid claims this season) in the summer group, with those attendees; the recipient table "
-            "is the subset of them that received aid, with its dollars. Someone who attended only a session that is "
-            "not aid-eligible is not counted in either table. A ZIP with one family shows as it is; no family is ever "
-            "a row."
+            "a program open to aid claims this season) in the chosen group (the summer group unless another, or all "
+            "groups, is picked), with those attendees; the recipient table is the subset of them that received aid, "
+            "with its dollars. Someone who attended only a session that is not aid-eligible is not counted in either "
+            "table. A ZIP with one family shows as it is; no family is ever a row."
         ),
         spec="§9.4",
         rulings=("D90",),
