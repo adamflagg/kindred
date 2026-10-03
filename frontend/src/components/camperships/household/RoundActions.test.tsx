@@ -377,7 +377,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
     expect(
       screen.getByText(
-        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; ticking Posted again locks that."
+        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; marking it posted again locks that."
       )
     ).toBeInTheDocument()
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
@@ -400,7 +400,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
     expect(
       screen.getByText(
-        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; ticking Posted again locks that."
+        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; marking it posted again locks that."
       )
     ).toBeInTheDocument()
   })
