@@ -84,6 +84,24 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     })
   })
 
+  // #2996 C1: a round CampMinder covers in full waits on the family at once, before tonight's tick
+  // gives it a posting date. It still says why it is in Waiting, with no day count to give.
+  it('says a C1 round is waiting on the family though it has no posting date yet', () => {
+    const c1 = gridRow({
+      rounds: [roundOut(1, 'needs_offer', { decided: 900, cm_pending: true })],
+      queues: ['waiting_on_family'],
+    })
+    expect(attentionFor(c1, 'waiting_on_family', TODAY)).toEqual({
+      item: {
+        level: 'note',
+        pill: 'Waiting on the family',
+        fact: "The family hasn't replied: follow up, then tick Accepted.",
+      },
+      queue: 'waiting_on_family',
+      next: null,
+    })
+  })
+
   it('says "day" for one day and "days" otherwise on the waiting pill', () => {
     expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', '2027-03-10')?.item.pill).toBe(
       'Waiting 1 day'

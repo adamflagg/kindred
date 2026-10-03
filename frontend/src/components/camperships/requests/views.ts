@@ -210,12 +210,27 @@ function lowest(rounds: readonly ApiAidRound[]): ApiAidRound | undefined {
   )
 }
 
-/** The round a per-round view is about (§13; Decision 15): Needs an offer's lowest round to offer, Waiting's oldest round awaiting the family. */
+/**
+ * The round a per-round view is about (§13; Decision 15): Needs an offer's lowest round to offer,
+ * Waiting's oldest round awaiting the family. As the server's queues (#2996): a round CampMinder
+ * covers in full (C1, `cm_pending`) waits on the family at once and is no round to offer, nor is
+ * one the overnight tick refused (`unticked`, Q1).
+ */
 export function viewRound(row: ApiAidGridRow, view: RequestViewKey): ApiAidRound | undefined {
-  if (view === 'needs_offer') return lowest(row.rounds.filter((r) => r.status === 'needs_offer'))
+  if (view === 'needs_offer') {
+    const refused = new Set((row.unticked ?? []).map((u) => u.round))
+    return lowest(
+      row.rounds.filter(
+        (r) => r.status === 'needs_offer' && r.cm_pending !== true && !refused.has(r.round)
+      )
+    )
+  }
   if (view === 'waiting_on_family') {
     return lowest(
-      row.rounds.filter((r) => r.status === 'posted' && !r.accepted && r.clawed_back !== true)
+      row.rounds.filter(
+        (r) =>
+          (r.status === 'posted' || r.cm_pending === true) && !r.accepted && r.clawed_back !== true
+      )
     )
   }
   return latestRound(row)

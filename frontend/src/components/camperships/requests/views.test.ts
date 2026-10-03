@@ -33,6 +33,7 @@ import {
   viewColumns,
   viewCount,
   viewCounts,
+  viewRound,
 } from './views'
 
 const TODAY = '2027-04-01'
@@ -414,5 +415,46 @@ describe('CM ✓ words and detail (batch 4)', () => {
     expect(GRID_COLUMNS.confirmed.value(row, ctx)).toBe('short')
     expect(GRID_COLUMNS.confirmed.csv?.(row, ctx)).toBe('CampMinder shows $1,450; short $50')
     expect(GRID_COLUMNS.confirmed.csv?.(gridRow(), ctx)).toBe('')
+  })
+})
+
+// #2996: a C1 round (in CampMinder in full, tonight's tick posts it: `cm_pending`) waits on the family
+// at once and is out of Needs an offer, as is a round the tick refused (`unticked`, Q1). The server's
+// `queues` already say so; the per-round columns follow the same rounds.
+describe('the round a view is about, after #2996', () => {
+  const c1 = gridRow({
+    rounds: [
+      roundOut(1, 'needs_offer', { decided: 900, cm_pending: true }),
+      roundOut(2, 'needs_offer', { ask: 500, decided: 400 }),
+    ],
+    queues: ['needs_offer', 'waiting_on_family'],
+  })
+
+  it('takes a C1 round as the one waiting on the family, with nothing posted yet in the footer', () => {
+    expect(viewRound(c1, 'waiting_on_family')?.round).toBe(1)
+    expect(
+      GRID_COLUMNS.roundPosted.value(c1, { view: 'waiting_on_family', today: TODAY })
+    ).toBeNull()
+  })
+
+  it('leaves a C1 round and a refused one out of Needs an offer', () => {
+    expect(viewRound(c1, 'needs_offer')?.round).toBe(2)
+    const refused = gridRow({
+      rounds: [
+        roundOut(1, 'needs_offer', { decided: 900 }),
+        roundOut(2, 'needs_offer', { decided: 400 }),
+      ],
+      unticked: [
+        {
+          round: 1,
+          code: 'short_posting',
+          label: 'Short in CM',
+          message: 'A sentence.',
+          mark_posted: true,
+        },
+      ],
+      queues: ['needs_offer', 'not_reconciled'],
+    })
+    expect(viewRound(refused, 'needs_offer')?.round).toBe(2)
   })
 })

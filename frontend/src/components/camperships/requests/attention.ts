@@ -289,12 +289,15 @@ export function attentionItems(
   }
   const reconcile = reconciliation(row)
   if (reconcile !== null) items.push(reconcile)
-  const since = waitingSince(row)
-  if (since !== null && (row.queues?.includes('waiting_on_family') ?? false)) {
-    const waited = daysBetween(since, today) ?? 0
+  if (row.queues?.includes('waiting_on_family') ?? false) {
+    // A C1 round (#2996, `cm_pending`) waits before tonight's tick gives it a posting date: no count.
+    const since = waitingSince(row)
+    const waited = since === null ? null : (daysBetween(since, today) ?? 0)
     items.push(
       note(
-        `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
+        waited === null
+          ? 'Waiting on the family'
+          : `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
         "The family hasn't replied: follow up, then tick Accepted.",
         'waiting_on_family',
         // The mock's "Tick Accepted" is the Accepted tick (#2951).
