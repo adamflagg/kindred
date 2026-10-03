@@ -66,6 +66,9 @@ import type {
   GridRowOut,
   HeadcountSet,
   HistoryEntryOut,
+  HistoryEffectOut,
+  HistoryFiguresOut,
+  HistoryKindCountOut,
   HistoryOperationDetailOut,
   HistoryOperationOut,
   HistoryPageOut,
@@ -259,5 +262,9 @@ export type ApiAidHistoryPage = HistoryPageOut
 export type ApiAidHistoryOperation = HistoryOperationOut
 export type ApiAidHistoryOperationDetail = HistoryOperationDetailOut
 export type ApiAidHistoryRow = HistoryRowOut
+/** H1, H3, H5: an operation's recorded figures, an approval's recorded effect, a chip's count. */
+export type ApiAidHistoryFigures = HistoryFiguresOut
+export type ApiAidHistoryEffect = HistoryEffectOut
+export type ApiAidHistoryKindCount = HistoryKindCountOut
 /** Mirrors Python `HistoryKind`. */
 export type ApiAidHistoryKind = HistoryOperationOut['kind']

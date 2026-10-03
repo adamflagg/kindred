@@ -3,11 +3,22 @@
  * ids from 1000001, every figure invented. Shapes are the generated types', so a server change fails tsc.
  */
 import type {
+  ApiAidHistoryFigures,
   ApiAidHistoryOperation,
   ApiAidHistoryOperationDetail,
   ApiAidHistoryPage,
   ApiAidHistoryRow,
 } from '../../../types/api-types'
+
+/** H1: what an operation's rows add up to, as the server counts them; no money unless given. */
+const figures = (fields: Partial<ApiAidHistoryFigures> = {}): ApiAidHistoryFigures => ({
+  requests: 0,
+  families: 0,
+  locked: null,
+  round3_entered: null,
+  asked: null,
+  ...fields,
+})
 
 export const FINANCE_EMAIL = 'finance@example.com'
 export const REGISTRAR_EMAIL = 'registrar@example.com'
@@ -23,6 +34,9 @@ export const OP_SHARE: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_payer_shares', action: 'set_household_share', rows: 2 }],
   rules_versions: [],
   rules_sections: [],
+  summary: '1 request · 2 families',
+  figures: figures({ requests: 1, families: 2 }),
+  effect: null,
 }
 
 export const OP_RELEASE: ApiAidHistoryOperation = {
@@ -35,6 +49,9 @@ export const OP_RELEASE: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_hold_events', action: 'release', rows: 1 }],
   rules_versions: [],
   rules_sections: [],
+  summary: '1 request · 1 family',
+  figures: figures({ requests: 1, families: 1 }),
+  effect: null,
 }
 
 export const OP_POSTED: ApiAidHistoryOperation = {
@@ -48,6 +65,9 @@ export const OP_POSTED: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_decisions', action: 'post', rows: 30 }],
   rules_versions: [],
   rules_sections: [],
+  summary: '30 requests · 28 families · $42,600 locked',
+  figures: figures({ requests: 30, families: 28, locked: 42600 }),
+  effect: null,
 }
 
 /**
@@ -67,6 +87,9 @@ export const OP_POSTED_LOCKING: ApiAidHistoryOperation = {
   ],
   rules_versions: [3],
   rules_sections: ['income', 'tiers'],
+  summary: '380 requests · 352 families · $539,600 locked',
+  figures: figures({ requests: 380, families: 352, locked: 539600 }),
+  effect: null,
 }
 
 export const OP_RULES_SAVE: ApiAidHistoryOperation = {
@@ -79,6 +102,9 @@ export const OP_RULES_SAVE: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_rules', action: 'save', rows: 1 }],
   rules_versions: [4],
   rules_sections: [],
+  summary: '',
+  figures: figures(),
+  effect: null,
 }
 
 export const OP_RULES_APPROVE: ApiAidHistoryOperation = {
@@ -91,6 +117,9 @@ export const OP_RULES_APPROVE: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_rules', action: 'approve', rows: 2 }],
   rules_versions: [3],
   rules_sections: ['awards', 'budget'],
+  summary: 'v3 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged',
+  figures: figures(),
+  effect: { from_version: 2, to_version: 3, repriced: 41, flagged: 12 },
 }
 
 const OP_RULES_CREATE: ApiAidHistoryOperation = {
@@ -103,6 +132,9 @@ const OP_RULES_CREATE: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_rules', action: 'save', rows: 1 }],
   rules_versions: [5],
   rules_sections: [],
+  summary: '',
+  figures: figures(),
+  effect: null,
 }
 
 export const OP_INTAKE: ApiAidHistoryOperation = {
@@ -118,6 +150,9 @@ export const OP_INTAKE: ApiAidHistoryOperation = {
   ],
   rules_versions: [],
   rules_sections: [],
+  summary: '5 requests · 3 families',
+  figures: figures({ requests: 5, families: 3 }),
+  effect: null,
 }
 
 /**
@@ -140,6 +175,13 @@ export const PAGE: ApiAidHistoryPage = {
   total: 3,
   operations: [OP_SHARE, OP_RELEASE, OP_POSTED],
   actors: [REGISTRAR_EMAIL],
+  // H5: each chip this reader has, counted with that chip alone picked (no Rules without `rules`).
+  kind_counts: [
+    { kind: 'offers', operations: 1 },
+    { kind: 'money', operations: 1 },
+    { kind: 'holds', operations: 1 },
+    { kind: 'grants', operations: 0 },
+  ],
 }
 
 /** Finance's first page: the rules operations too. */
@@ -150,6 +192,13 @@ export const FINANCE_PAGE: ApiAidHistoryPage = {
   total: 6,
   operations: [OP_SHARE, OP_RELEASE, OP_POSTED, OP_RULES_CREATE, OP_RULES_SAVE, OP_RULES_APPROVE],
   actors: [FINANCE_EMAIL, REGISTRAR_EMAIL],
+  kind_counts: [
+    { kind: 'rules', operations: 3 },
+    { kind: 'offers', operations: 1 },
+    { kind: 'money', operations: 1 },
+    { kind: 'holds', operations: 1 },
+    { kind: 'grants', operations: 0 },
+  ],
 }
 
 const row = (
@@ -161,6 +210,12 @@ const row = (
   before: null,
   after: null,
   changes: [],
+  // H2/H4: who the row is about (null for a rules row, or no record this season) and a created
+  // version's diff against its parent.
+  household_cm_id: null,
+  household_name: null,
+  camper_name: null,
+  against_parent: null,
   ...fields,
 })
 
