@@ -7,7 +7,6 @@ import type { ApiAidGridRow } from '../../../types/api-types'
 import { groupRows, parseSort, sortRows } from '../kit/table'
 import { attentionFor } from '../requests/attention'
 import {
-  familyGroup,
   filterRows,
   GRID_COLUMNS,
   NO_FILTERS,
@@ -50,6 +49,7 @@ export function gridFiltersFrom(params: URLSearchParams): {
   keep: Record<string, string>
   order: WalkOrder
 } {
+  const lens = params.get('lens')
   const program = params.get('program')
   const pool = params.get('pool')
   const round = parseRoundFilter(params.get('round'))
@@ -60,6 +60,8 @@ export function gridFiltersFrom(params: URLSearchParams): {
   return {
     filters: { program, pool, round, tick, ids: null },
     keep: {
+      // The lens (T4) rides along with the filters: a step and Back stay under it.
+      ...(lens === 'appeals' ? { lens } : {}),
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
@@ -82,9 +84,10 @@ export function walkStops(
   const inView = filterRows(rows, view.key, filters)
   const reason = reasonGroup(view, today)
   // What AidTable does with the same URL: sort first (a column the view lacks is no sort; tick is
-  // taken as present), then group in the order the rows now stand. `group=flat` is no grouping, and
-  // an unset one is the view's own (by reason for a queue, flat for All).
-  const columnKeys = viewColumns(view, order.showIds, true)
+  // taken as present, and so is CM ✓), then group in the order the rows now stand. `group=flat` is
+  // no grouping, and an unset or unknown one is the view's own (by reason for a queue, flat for All),
+  // as useAidTableUrl reads it.
+  const columnKeys = viewColumns(view, order.showIds, true, true)
   const sort = parseSort(order.sort, columnKeys)
   const sorted = sort
     ? sortRows(
@@ -93,15 +96,9 @@ export function walkStops(
         sort.dir
       )
     : inView
-  const choice =
-    order.group === 'flat'
-      ? null
-      : order.group === 'reason' || order.group === 'family'
-        ? order.group
-        : view.groupBy === null
-          ? null
-          : 'reason'
-  const grouping = choice === 'family' ? familyGroup : choice === 'reason' ? reason : null
+  const byReason =
+    order.group === 'flat' ? false : order.group === 'reason' ? true : view.groupBy !== null
+  const grouping = byReason ? reason : null
   const ordered =
     grouping === null ? sorted : groupRows(sorted, grouping).flatMap((group) => group.rows)
   const stops = new Map<number, WalkStop>()
