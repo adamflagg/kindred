@@ -341,7 +341,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
   })
 
-  it('says live=1 is on, hides withdrawn and cancelled requests, and Show all clears it', async () => {
+  it('says live=1 is on, hides withdrawn and cancelled requests, and Show All clears it', async () => {
     const withdrawn = {
       ...ROW_SAMUEL,
       request_id: 'reqwithdrawn001',
@@ -354,7 +354,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText('Withdrawn Camper')).toBeNull()
     expect(screen.queryByText('Riley Sam')).toBeNull()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
     expect(screen.getByTestId('where')).not.toHaveTextContent('live=')
     expect(screen.getByText('Withdrawn Camper')).toBeInTheDocument()
     expect(screen.queryByText(/Live requests only/)).toBeNull()

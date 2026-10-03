@@ -397,7 +397,7 @@ export default function AidRequestsPage() {
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
           Live requests only ·
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('live', null)}>
-            Show all
+            Show All
           </button>
         </p>
       )}
