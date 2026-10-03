@@ -248,11 +248,11 @@ def _left_to_tick(
             if view.status != "needs_offer" or view.decided is None:
                 break
             if key in undone:
-                why = "You un-ticked this round: tick it again by hand if that is right"
+                why = "You un-ticked this round: mark it posted again by hand if that is right"
             else:
                 why = (
                     f"CampMinder holds {dollars(held)} on this request; Round {view.round} needs "
-                    f"{dollars(locked + view.decided)}: tick it by hand if that is right"
+                    f"{dollars(locked + view.decided)}: mark it posted by hand if that is right"
                 )
             out.append(LeftToTickOut(request_id=request.request_id, round=view.round, why=why))
             break

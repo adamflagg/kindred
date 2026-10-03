@@ -900,7 +900,7 @@ def ledger_note(
     return CalcIssue(
         code=NOTE_NOT_TICKED,
         severity="warn",
-        message=f"CampMinder shows {dollars(extra)} for this family; not yet ticked",
+        message=f"CampMinder shows {dollars(extra)} for this family; not yet marked posted",
         step="ledger",
     )
 

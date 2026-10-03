@@ -304,7 +304,7 @@ class DecisionChangedError(FinancialAidError, ValueError):
 
     def __init__(self, rows: Sequence[ChangedRowOut]) -> None:
         super().__init__(
-            "A decided amount moved since it was shown, so nothing was posted: check the amount and tick again"
+            "A decided amount moved since it was shown, so nothing was posted: check the amount and mark it posted again"
         )
         self.rows = list(rows)
 
@@ -1687,7 +1687,7 @@ class FinancialAidDecisionsService:
         def first(request_id: str, n: int) -> bool:
             return all(
                 v.status == "posted" for v in season.priced[request_id].rounds if v.round < n
-            )  # H3: tick_posted's "tick Round m Posted before Round n"
+            )  # H3: tick_posted's "mark Round m posted before Round n"
 
         found: dict[str, list[Unticked]] = defaultdict(list)
         pending: dict[tuple[str, int], Decimal] = {}
@@ -2650,7 +2650,7 @@ class FinancialAidDecisionsService:
                 None,
             )
             if unposted is not None:
-                problems.append(f"{request_id}: tick Round {unposted} Posted before Round {n}")
+                problems.append(f"{request_id}: mark Round {unposted} posted before Round {n}")
                 continue
             then = posting_day.get((request_id, n))
             lock = then.amount if then is not None else view.decided
@@ -2678,7 +2678,7 @@ class FinancialAidDecisionsService:
             result = await self._store.commit([*writes, *locks], actor=actor)
         except BatchLimitError as exc:
             raise DecisionRefusedError(
-                f"{len(writes)} rounds are too many to tick at once; tick them in smaller groups"
+                f"{len(writes)} rounds are too many to mark posted at once; mark them posted in smaller groups"
             ) from exc
         return DecisionWriteOut(
             year=year,
