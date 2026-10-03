@@ -152,7 +152,7 @@ describe('HistoryTable', () => {
     }
     renderTable([OP_POSTED.operation_id])
     expect(screen.getByText("Its rows didn't load.")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
@@ -165,7 +165,7 @@ describe('HistoryTable', () => {
     }
     renderTable([OP_POSTED.operation_id])
     expect(screen.getByText('This operation is not in the log you can read.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try Again' })).toBeNull()
   })
 
   it("keeps the page's as-of on every link it makes", () => {
