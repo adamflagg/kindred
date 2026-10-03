@@ -146,6 +146,15 @@ async def test_a_reconciled_accepted_posted_round_reads_accepted() -> None:
     assert _stage(row) == ("accepted", 1, "R1 · Accepted")
 
 
+@pytest.mark.asyncio
+async def test_a_withdrawn_request_with_nothing_posted_has_no_rounds_and_no_stage() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    row = (await _rows(store))[EMMA]
+    assert row.rounds == []  # the premise: a request that isn't live shows only its posted rounds
+    assert row.stage is None
+
+
 def test_every_round_status_is_a_stage_code() -> None:
     """row_stage passes a round's status through as the code, and mypy does not check the pydantic constructor, so a
     status RowStageCode lacked would fail validation on every read of such a row."""
