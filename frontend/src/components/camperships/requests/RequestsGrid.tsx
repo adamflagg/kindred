@@ -22,7 +22,6 @@ import { requestStage, roundOf } from './stage'
 import {
   confirmationChip,
   countWords,
-  FIRST_TICKED_SEASON,
   footerWords,
   GRID_COLUMNS,
   moneyTotal,
@@ -42,8 +41,8 @@ interface RequestsGridProps {
   readonly rows: readonly ApiAidGridRow[]
   readonly view: RequestView
   readonly showIds: boolean
-  /** The season: CM ✓ only exists from the first ticked season. */
-  readonly year: number
+  /** The read's `ticked_season` (#2994): CM ✓ only exists in a season with Posted ticks. */
+  readonly tickedSeason: boolean
   readonly today: string
   readonly csvFilename: string
   readonly highlighted: string | null
@@ -145,12 +144,12 @@ function renderFor(
 function buildColumns(
   view: RequestView,
   showIds: boolean,
-  year: number,
+  tickedSeason: boolean,
   today: string,
   links: HouseholdLinks
 ): Array<AidColumn<ApiAidGridRow>> {
   const ctx: ColumnContext = columnContext(view, today)
-  return viewColumns(view, showIds, year).map((key) => {
+  return viewColumns(view, showIds, tickedSeason).map((key) => {
     const spec = GRID_COLUMNS[key]
     return {
       key,
@@ -184,7 +183,7 @@ export function RequestsGrid({
   rows,
   view,
   showIds,
-  year,
+  tickedSeason,
   today,
   csvFilename,
   highlighted,
@@ -194,8 +193,8 @@ export function RequestsGrid({
   renderBelowHighlighted,
 }: RequestsGridProps) {
   const columns = useMemo(
-    () => buildColumns(view, showIds, year, today, links),
-    [view, showIds, year, today, links]
+    () => buildColumns(view, showIds, tickedSeason, today, links),
+    [view, showIds, tickedSeason, today, links]
   )
   const renderDetail = useCallback(
     (row: ApiAidGridRow) => (
@@ -203,10 +202,10 @@ export function RequestsGrid({
         row={row}
         ctx={columnContext(view, today)}
         links={links}
-        showConfirmation={year >= FIRST_TICKED_SEASON}
+        showConfirmation={tickedSeason}
       />
     ),
-    [view, today, links, year]
+    [view, today, links, tickedSeason]
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [

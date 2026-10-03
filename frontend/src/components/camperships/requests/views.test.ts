@@ -19,7 +19,6 @@ import {
   confirmationDetail,
   countWords,
   filterRows,
-  FIRST_TICKED_SEASON,
   footerWords,
   GRID_COLUMNS,
   moneyTotal,
@@ -58,7 +57,7 @@ describe('REQUEST_VIEWS (§6.2)', () => {
 
   it('gives All D27’s fifteen columns at their widths, about 1,510 px with the flexible one (Stage and Confirmed widened so no chip clips: sitting A, A2)', () => {
     const all = requestView('all')
-    const keys = viewColumns(all, false, 2027)
+    const keys = viewColumns(all, false, true)
     expect(keys.map((k) => GRID_COLUMNS[k].header)).toEqual([
       'Camper',
       'Session',
@@ -97,16 +96,15 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     expect(GRID_COLUMNS.attention.pinned).toBeUndefined()
   })
 
-  it('drops CM ✓ before the first ticked season, and keeps it from then on', () => {
-    expect(viewColumns(requestView('all'), false, FIRST_TICKED_SEASON - 1)).not.toContain(
-      'confirmed'
-    )
-    expect(viewColumns(requestView('all'), false, FIRST_TICKED_SEASON)).toContain('confirmed')
-    expect(viewColumns(requestView('not-reconciled'), false, 2026)).not.toContain('confirmed')
+  // #2994: the grid read says whether the season is ticked (`ticked_season`); no frontend mirror.
+  it('drops CM ✓ when the season is not ticked, and keeps it when it is', () => {
+    expect(viewColumns(requestView('all'), false, false)).not.toContain('confirmed')
+    expect(viewColumns(requestView('all'), false, true)).toContain('confirmed')
+    expect(viewColumns(requestView('not-reconciled'), false, false)).not.toContain('confirmed')
   })
 
   it('brings the id columns back with Show IDs: Person pinned after the Camper, Household beside Family (D27, T2)', () => {
-    const keys = viewColumns(requestView('holds'), true, 2027)
+    const keys = viewColumns(requestView('holds'), true, true)
     expect(keys.slice(0, 2)).toEqual(['camper', 'personId'])
     expect(keys.slice(-3)).toEqual(['family', 'householdId', 'attention'])
     expect(GRID_COLUMNS.personId.pinned).toBe(true)
@@ -117,7 +115,7 @@ describe('REQUEST_VIEWS (§6.2)', () => {
 
   it('puts Family just left of Needs attention in every view (interim until Requested by)', () => {
     for (const view of REQUEST_VIEWS) {
-      const keys = viewColumns(view, false, 2027)
+      const keys = viewColumns(view, false, true)
       expect(keys.at(-1)).toBe('attention')
       expect(keys.at(-2)).toBe('family')
       expect(keys[0]).toBe('camper')

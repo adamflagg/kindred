@@ -191,13 +191,6 @@ export interface GridColumnSpec {
   readonly value: (row: ApiAidGridRow, ctx: ColumnContext) => CellValue
 }
 
-/**
- * The first season whose rounds carry Posted ticks, so the first with anything to confirm against
- * CampMinder's ledger. Mirrors `FIRST_TICKED_SEASON` in api/services/financial_aid_decisions_service.py;
- * the API does not send it, so keep the two together.
- */
-export const FIRST_TICKED_SEASON = 2027
-
 function lowest(rounds: readonly ApiAidRound[]): ApiAidRound | undefined {
   return rounds.reduce<ApiAidRound | undefined>(
     (low, r) => (low === undefined || r.round < low.round ? r : low),
@@ -418,11 +411,16 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
  * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; the Family and Household id sit
  * just left of Needs attention, where Requested by will go (T3).
  */
-export function viewColumns(view: RequestView, showIds: boolean, year: number): GridColumnKey[] {
+export function viewColumns(
+  view: RequestView,
+  showIds: boolean,
+  tickedSeason: boolean
+): GridColumnKey[] {
   const tail: GridColumnKey[] = ['family', ...(showIds ? (['householdId'] as const) : [])]
-  // Before the first ticked season there is nothing to confirm, so no CM ✓ (and no CSV column).
+  // A season before the first ticked one (the read's `ticked_season`, #2994) has nothing to
+  // confirm, so no CM ✓ (and no CSV column).
   const middle = view.columns.filter(
-    (key) => key !== 'attention' && (key !== 'confirmed' || year >= FIRST_TICKED_SEASON)
+    (key) => key !== 'attention' && (key !== 'confirmed' || tickedSeason)
   )
   const attention = view.columns.filter((key) => key === 'attention')
   return ['camper', ...(showIds ? (['personId'] as const) : []), ...middle, ...tail, ...attention]

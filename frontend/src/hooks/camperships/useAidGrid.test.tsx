@@ -25,7 +25,7 @@ vi.mock('../usePermissions', () => ({
 let year = 2027
 vi.mock('../useCurrentYear', () => ({ useYear: () => year }))
 
-const PAYLOAD: ApiAidGrid = { year: 2027, rules_version: 1, rows: [ROW_EMMA] }
+const PAYLOAD: ApiAidGrid = { year: 2027, rules_version: 1, rows: [ROW_EMMA], ticked_season: true }
 
 let client: QueryClient
 let fetchSpy: MockInstance<typeof fetch>

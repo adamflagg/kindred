@@ -22,12 +22,12 @@ function Grid({
   slug = 'all',
   showIds = false,
   rows = GRID_ROWS,
-  year = 2027,
+  tickedSeason = true,
 }: {
   slug?: string
   showIds?: boolean
   rows?: readonly ApiAidGridRow[]
-  year?: number
+  tickedSeason?: boolean
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -45,7 +45,7 @@ function Grid({
         rows={filterRows(rows, view.key, NO_FILTERS)}
         view={view}
         showIds={showIds}
-        year={year}
+        tickedSeason={tickedSeason}
         today="2027-04-01"
         csvFilename="camperships-requests-all-2027.csv"
         highlighted={highlighted}
@@ -448,17 +448,17 @@ describe('RequestsGrid: the CM ✓ column', () => {
     expect(header).toHaveTextContent(/^CM ✓$/)
   })
 
-  it('is there from the first ticked season and gone before it', () => {
-    const { unmount } = render(<Grid rows={ROWS} year={2027} />)
+  it('is there in a ticked season and gone before it (the read says which, #2994)', () => {
+    const { unmount } = render(<Grid rows={ROWS} tickedSeason />)
     expect(screen.getByRole('columnheader', { name: 'CM ✓' })).toBeInTheDocument()
     unmount()
-    render(<Grid rows={ROWS} year={2026} />)
+    render(<Grid rows={ROWS} tickedSeason={false} />)
     expect(screen.queryByRole('columnheader', { name: 'CM ✓' })).toBeNull()
   })
 
   // Owner ruling (A2, batch 4): the CSV keeps the full detail, not the one-word chip. Was "the
   // screen's words".
-  it('writes the CSV with the full header name and the full detail, and drops the column before 2027', async () => {
+  it('writes the CSV with the full header name and the full detail, and drops the column in a season not ticked', async () => {
     const { unmount } = render(<Grid rows={ROWS} />)
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
@@ -473,7 +473,7 @@ describe('RequestsGrid: the CM ✓ column', () => {
       "Ticked today; tonight's sync checks it.",
     ])
     unmount()
-    render(<Grid rows={ROWS} year={2026} />)
+    render(<Grid rows={ROWS} tickedSeason={false} />)
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [older] = downloadSpy.mock.calls.at(-1) as [string, string]
     expect(csvCells(older.split('\n')[0] ?? '')).not.toContain('Confirmed by CampMinder')
@@ -588,12 +588,12 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     )
   })
 
-  it('shows the CM ✓ detail in the detail line from the first ticked season', async () => {
+  it('shows the CM ✓ detail in the detail line only in a ticked season', async () => {
     const { unmount } = render(<Grid />)
     await openRow('Samuel Johnson')
     expect(within(detail()).getByText('CampMinder shows $1,590; short $210')).toBeInTheDocument()
     unmount()
-    render(<Grid year={2026} />)
+    render(<Grid tickedSeason={false} />)
     await openRow('Samuel Johnson')
     // (The needs-attention text itself may still say what CampMinder shows; the CM ✓ part is gone.)
     expect(within(detail()).queryByText('CampMinder shows $1,590; short $210')).toBeNull()

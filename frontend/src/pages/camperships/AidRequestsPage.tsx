@@ -220,7 +220,7 @@ export default function AidRequestsPage() {
         data={grid.data}
         label="Requests"
       >
-        {() =>
+        {(data) =>
           !live && view.key !== 'all' ? (
             <div className="card-lodge text-muted-foreground p-6 text-sm">
               {view.label} needs today&apos;s data: which list a row is in isn&apos;t rebuilt for a
@@ -231,7 +231,7 @@ export default function AidRequestsPage() {
               rows={visible}
               view={view}
               showIds={showIds}
-              year={year}
+              tickedSeason={data.ticked_season}
               today={today}
               csvFilename={csvFilename}
               highlighted={highlighted}

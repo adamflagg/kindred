@@ -28,7 +28,7 @@ vi.mock('../../hooks/usePermissions', () => ({
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
-const LIVE: ApiAidGrid = { year: 2027, rules_version: 1, rows: [...GRID_ROWS] }
+const LIVE: ApiAidGrid = { year: 2027, rules_version: 1, rows: [...GRID_ROWS], ticked_season: true }
 
 function Where() {
   const { pathname, search } = useLocation()
@@ -100,6 +100,16 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(viewLink('All')).toHaveAttribute('href', '/aid/requests?year=2027')
     expect(viewLink('Holds')).toHaveTextContent('Holds 1')
     expect(viewLink('Holds')).toHaveAttribute('href', '/aid/requests?view=holds&year=2027')
+  })
+
+  // #2994: whether CM ✓ shows is the read's `ticked_season`, not a frontend copy of the first year.
+  it('shows CM ✓ only when the read says the season is ticked', () => {
+    const { unmount } = renderAt('/aid/requests')
+    expect(screen.getByRole('columnheader', { name: 'CM ✓' })).toBeInTheDocument()
+    unmount()
+    grid = { data: { ...LIVE, ticked_season: false }, isLoading: false, error: null }
+    renderAt('/aid/requests')
+    expect(screen.queryByRole('columnheader', { name: 'CM ✓' })).toBeNull()
   })
 
   it("shows only a view's rows", () => {
