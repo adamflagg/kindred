@@ -21,6 +21,19 @@ describe('which round a tick sets (§13; Decision 15)', () => {
     ).toBeNull()
   })
 
+  // #2996 (owner 10-03): Mark accepted is allowed the same day on a C1 round (CampMinder covers it
+  // in full; tonight's tick posts it), which waits on the family at once. A round merely needing an
+  // offer still takes no Accepted tick.
+  it('ticks Accepted on a C1 round before tonight posts it, and not on a plain needs-offer round', () => {
+    const c1 = gridRow({
+      rounds: [roundOut(1, 'needs_offer', { decided: 900, cm_pending: true })],
+      queues: ['waiting_on_family'],
+    })
+    expect(acceptedTarget(c1)).toEqual({ round: 1 })
+    const offer = gridRow({ rounds: [roundOut(1, 'needs_offer', { decided: 900 })] })
+    expect(acceptedTarget(offer)).toBeNull()
+  })
+
   it('never ticks Accepted on a round whose money CampMinder reversed', () => {
     const clawed = gridRow({
       rounds: [roundOut(1, 'posted', { decided: 900, posted: 900, clawed_back: true })],

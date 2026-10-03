@@ -52,12 +52,16 @@ function lowestWhere(
 // A request cancelled in Kindred takes no tick (the server's CANCELLED_IN_KINDRED refusal).
 export const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by === 'kindred'
 
-/** Accepted ticks the lowest posted round the family hasn't accepted (Decision 15; D47). */
+/**
+ * Accepted ticks the lowest posted round the family hasn't accepted (Decision 15; D47), or a C1
+ * round (#2996, `cm_pending`: CampMinder covers it in full and tonight's tick posts it), which the
+ * server lets be ticked Accepted the same day (owner 10-03).
+ */
 export function acceptedTarget(row: ApiAidGridRow): { readonly round: 1 | 2 | 3 } | null {
   if (cancelledInKindred(row)) return null
   const round = lowestWhere(
     row,
-    (r) => r.status === 'posted' && !r.accepted && r.clawed_back !== true
+    (r) => (r.status === 'posted' || r.cm_pending === true) && !r.accepted && r.clawed_back !== true
   )
   const n = round === undefined ? null : asRound(round.round)
   return n === null ? null : { round: n }
