@@ -7,11 +7,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import get_args
 
 import pytest
 
 import api.services.financial_aid_decisions_service as decisions_service
-from api.schemas.financial_aid_decisions import GridRowOut
+from api.schemas.financial_aid_decisions import GridRowOut, RoundStatusOut, RowStageCode
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from tests.unit.api.services.decisions_fakes import (
@@ -129,6 +130,26 @@ async def test_an_accepted_posted_round_reads_accepted() -> None:
     _posted(store, EMMA, 1, "1500")
     _event(store, EMMA, 1, "accept")
     assert _stage((await _rows(store))[EMMA]) == ("accepted", 1, "R1 · Accepted")
+
+
+@pytest.mark.asyncio
+async def test_a_reconciled_accepted_posted_round_reads_accepted() -> None:
+    """The plain case, with no cm_pending: CampMinder holds the posted money and the sync has seen it."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 1, "accept")
+    seed_line(store, 9001, "1500")
+    store.synced_at = T0 + timedelta(days=1)
+    row = (await _rows(store))[EMMA]
+    assert (row.rounds[0].status, row.rounds[0].accepted, row.rounds[0].cm_pending) == ("posted", True, False)
+    assert _stage(row) == ("accepted", 1, "R1 · Accepted")
+
+
+def test_every_round_status_is_a_stage_code() -> None:
+    """row_stage passes a round's status through as the code, and mypy does not check the pydantic constructor, so a
+    status RowStageCode lacked would fail validation on every read of such a row."""
+    assert set(get_args(RowStageCode)) == set(get_args(RoundStatusOut)) | {"accepted", "cancelled"}
 
 
 @pytest.mark.asyncio
