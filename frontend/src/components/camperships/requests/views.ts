@@ -583,16 +583,14 @@ export function footerWords(count: ViewCount): string {
   return `${requests} · ${families}`
 }
 
-/** The states Today counts as not reconciled (financial_aid_queues.UNRECONCILED). */
-const UNRECONCILED: ReadonlySet<string> = new Set([
-  'awaiting_sync',
-  'short',
-  'over',
-  'not_in_campminder',
-])
+/**
+ * The states Today counts as not reconciled (financial_aid_queues.UNRECONCILED). A check awaiting
+ * tonight's sync is not one (owner V1, #2996): CM ✓ says pending instead.
+ */
+const UNRECONCILED: ReadonlySet<string> = new Set(['short', 'over', 'not_in_campminder'])
 
-const STATE_HEADINGS: Readonly<Record<ApiAidConfirmation['status'], string>> = {
-  awaiting_sync: "Awaiting tonight's sync",
+/** Not reconciled's group headings by state; "Awaiting tonight's sync" is retired (owner V1, #2996). */
+const STATE_HEADINGS: Readonly<Partial<Record<ApiAidConfirmation['status'], string>>> = {
   // Confirmed as a request, but not reconciled: a payer share is what is open (D59, D81).
   confirmed: 'A payer share',
   short: 'Short',
@@ -617,8 +615,8 @@ export function reasonGroup(view: RequestView, today: string) {
       // Today's reasons do (financial_aid_today._unreconciled), not a vague "A payer share".
       const open =
         c.status === 'confirmed' ? c.shares.find((s) => UNRECONCILED.has(s.status)) : undefined
-      const heading = STATE_HEADINGS[open?.status ?? c.status]
-      return { id: heading, heading }
+      const state = STATE_HEADINGS[open?.status ?? c.status]
+      if (state !== undefined) return { id: state, heading: state }
     }
     const heading = attentionFor(row, view.key, today)?.item.pill ?? 'Nothing waiting'
     return { id: heading, heading }

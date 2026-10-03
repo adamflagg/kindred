@@ -189,12 +189,9 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
         CHECK_POSTING
       )
     case 'awaiting_sync':
-      return note(
-        "awaiting tonight's sync",
-        'Ticked Posted; the ledger confirms it overnight.',
-        'not_reconciled',
-        say("Nothing to do; tonight's sync confirms it")
-      )
+      // No exception (owner V1, #2996): CM ✓ says pending, in the server's words. Retired: the
+      // "awaiting tonight's sync" pill and its "Nothing to do" step.
+      return null
     case 'reversed':
       // Always reconciled, so never reached; it has nothing posted that is live, and would read $0.
       return null

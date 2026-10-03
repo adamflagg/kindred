@@ -364,14 +364,18 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
       kind: 'text',
       text: 'Reverse it in CampMinder; nothing to do here',
     })
+  })
+
+  // Owner V1 (10-03) and #2996: a hand tick awaiting tonight's sync is no exception (the server reads
+  // it reconciled and keeps it out of Not reconciled; CM ✓ says pending). The "awaiting tonight's
+  // sync" pill, its text and its "Nothing to do; tonight's sync confirms it" step are retired. Was:
+  // that step asserted here.
+  it("has no item for a check awaiting tonight's sync", () => {
     const awaiting = gridRow({
       confirmation: confirmationOut({ status: 'awaiting_sync', on: null, reconciled: false }),
-      queues: ['not_reconciled'],
+      queues: [],
     })
-    expect(nextOf(awaiting, 'not_reconciled')).toEqual({
-      kind: 'text',
-      text: "Nothing to do; tonight's sync confirms it",
-    })
+    expect(attentionFor(awaiting, 'all', TODAY)).toBeNull()
   })
 
   it("sends the queue items to the request's card", () => {

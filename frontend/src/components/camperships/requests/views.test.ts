@@ -220,6 +220,26 @@ describe('grouping', () => {
     })
   })
 
+  // Owner V1 (10-03), #2996: a share awaiting tonight's sync is no open share (the server's
+  // UNRECONCILED is short, over and missing), and "Awaiting tonight's sync" heads no group.
+  it("heads no group Awaiting tonight's sync: a share awaiting the sync is not the open one", () => {
+    const share = (status: 'awaiting_sync' | 'over') => ({
+      household_cm_id: 1000001,
+      expected: 900,
+      in_campminder: 900,
+      status,
+    })
+    const row = gridRow({
+      confirmation: confirmationOut({
+        status: 'confirmed',
+        reconciled: false,
+        shares: [share('awaiting_sync'), share('over')],
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(reasonGroup(requestView('not-reconciled'), TODAY)(row).heading).toBe('Over')
+  })
+
   // Owner ruling V1 (10-03): the Not reconciled group says what the pill says. Was "Not in CampMinder".
   it('heads a request missing in CampMinder "Missing in CM", as its pill does', () => {
     const missing = gridRow({
