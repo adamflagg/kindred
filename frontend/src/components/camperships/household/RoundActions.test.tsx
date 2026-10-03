@@ -50,7 +50,7 @@ const lineOf = (request: typeof emma, round = 1) => {
 describe('RoundNextAction (D51; Decision 22)', () => {
   it('marks posted at the decided amount it names', async () => {
     render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
     expect(posted).toHaveBeenCalledWith({
       year: 2027,
       body: { rows: [{ request_id: 'reqemma00000001', round: 1, amount: 1420 }] },
@@ -62,7 +62,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
       'A decided amount moved since it was shown, so nothing was posted: check the rows and tick again'
     )
     render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
     expect(
       screen.getByText(
         'A decided amount moved since it was shown, so nothing was posted: check the rows and tick again'
@@ -121,7 +121,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
   it('disables Mark posted while its write is pending', () => {
     pending = true
     render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
-    expect(screen.getByRole('button', { name: 'Mark posted · locks $1,420' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' })).toBeDisabled()
   })
 
   it('closes the Round 3 form after a successful decision', async () => {
@@ -148,7 +148,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
 
   // A withheld round's decided_now is what the tick WOULD lock, so refresh-and-tick-again loops:
   // the refusal offers the amount itself (#2981).
-  describe('Tick at the amount the server named (#2981)', () => {
+  describe('Mark Posted at the amount the server named (#2981)', () => {
     const moved = (decidedNow: number | null) => {
       const error = new AidWriteError('Decided amounts moved since they were shown', 409)
       error.rows = [
@@ -160,15 +160,15 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     it('re-sends the round at decided_now and the offer goes away, with no second 409 needed', async () => {
       failWith = moved(1500)
       render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
       failWith = null
-      await userEvent.click(screen.getByRole('button', { name: 'Tick at $1,500' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Mark Posted at $1,500' }))
       expect(posted).toHaveBeenCalledTimes(2)
       expect(posted).toHaveBeenLastCalledWith({
         year: 2027,
         body: { rows: [{ request_id: 'reqemma00000001', round: 1, amount: 1500 }] },
       })
-      expect(screen.queryByRole('button', { name: /Tick at/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Mark Posted at/ })).not.toBeInTheDocument()
       expect(screen.queryByText(/moved since/)).not.toBeInTheDocument()
     })
 
@@ -177,14 +177,14 @@ describe('RoundNextAction (D51; Decision 22)', () => {
       const { unmount } = render(
         <RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />
       )
-      await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
       expect(screen.getByText(/Decided amounts moved/)).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /Tick at/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Mark Posted at/ })).not.toBeInTheDocument()
       unmount()
       failWith = moved(1420)
       render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
-      await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
-      expect(screen.queryByRole('button', { name: /Tick at/ })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
+      expect(screen.queryByRole('button', { name: /Mark Posted at/ })).not.toBeInTheDocument()
     })
   })
 
@@ -193,7 +193,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     const { rerender } = render(
       <RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' }))
     expect(screen.getByText(/A decided amount moved/)).toBeInTheDocument()
     const postedRow = householdRequest(
       gridRow({ rounds: [roundOut(1, 'posted', { posted: 1420, decided: 1420 })] })
@@ -220,7 +220,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
       })
     )
     render(<RoundNextAction request={two} line={lineOf(two, 2)} year={2027} canApprove={false} />)
-    expect(screen.queryByRole('button', { name: /Mark posted/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).not.toBeInTheDocument()
     expect(screen.getByText('after Round 1 is posted')).toBeInTheDocument()
   })
 })
@@ -373,7 +373,7 @@ describe('a request cancelled in Kindred takes no tick (the server refuses it: r
   it('offers no Mark posted, and says to reopen first', () => {
     const request = cancelled([roundOut(1, 'needs_offer', { ask: 1500, decided: 900 })])
     render(<RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove />)
-    expect(screen.queryByRole('button', { name: /Mark posted/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
     expect(screen.getByText('Cancelled in Kindred: reopen it first')).toBeInTheDocument()
   })
 
@@ -413,7 +413,7 @@ describe('while the card has a money editor open (editing)', () => {
     render(
       <RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} editing />
     )
-    expect(screen.queryByRole('button', { name: /Mark posted/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
     expect(screen.getByText('save or close the edit first')).toBeInTheDocument()
   })
 

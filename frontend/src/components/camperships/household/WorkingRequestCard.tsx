@@ -23,13 +23,13 @@ type Open =
 
 /**
  * A request card with its casework (§6.3; D22, D50, D51, D79, D101; Decisions 22–25): the money
- * edits in place, Put on hold…, the cancel form, the round checklist and next actions, and holds
+ * edits in place, Put on Hold…, the cancel form, the round checklist and next actions, and holds
  * released before. Without `casework` it is the plain card.
  *
  * The card's `actions` buttons (the money edits, hold, cancel, reopen) go through `switchTo`, which
  * first leaves the open money editor (saving what is typed), and then the one open on any other
  * card (`exits`): one money editor per page. The round checklist and next actions do not: while this
- * card's money editor is open they are disabled instead (`editing`), since Mark posted would lock the
+ * card's money editor is open they are disabled instead (`editing`), since Mark Posted would lock the
  * figure being edited. The hold banners' Lift/Release/Put back are wired straight to their writes
  * and cross an open editor (a known limit). The cancel, hold and reopen forms don't register:
  * saving them on leave would act without confirmation, so leaving one of them drops what was typed.
@@ -103,12 +103,12 @@ export function WorkingRequestCard({
   const actions = (
     <>
       {cardEdits(row).map((edit) => button(CARD_EDIT_LABEL[edit], { kind: 'edit', edit }))}
-      {live && !c && !manualHeld && button('Put on hold…', { kind: 'hold' })}
-      {live && !c && button('Cancel request…', { kind: 'cancel' })}
+      {live && !c && !manualHeld && button('Put on Hold…', { kind: 'hold' })}
+      {live && !c && button('Cancel Request…', { kind: 'cancel' })}
       {live &&
         c?.by === 'campminder' &&
-        button(c.reason === null ? 'Give a reason…' : 'Change the reason…', { kind: 'cancel' })}
-      {live && c?.by === 'kindred' && button('Change the reason…', { kind: 'cancel' })}
+        button(c.reason === null ? 'Give a Reason…' : 'Change the Reason…', { kind: 'cancel' })}
+      {live && c?.by === 'kindred' && button('Change the Reason…', { kind: 'cancel' })}
       {live && c?.by === 'kindred' && button('Reopen…', { kind: 'reopen' })}
       <ReleasedHolds request={request} />
     </>
@@ -124,7 +124,7 @@ export function WorkingRequestCard({
     editor = (
       <CancelForm
         initial={c ? { reason: c.reason, note: c.note } : null}
-        submitLabel={c ? 'Save the reason' : 'Cancel the request'}
+        submitLabel={c ? 'Save the Reason' : 'Cancel the Request'}
         onSubmit={(reason, note) =>
           cancellation
             .mutateAsync({ requestId, body: { cancelled: true, reason, note } })
@@ -148,7 +148,7 @@ export function WorkingRequestCard({
     editor = (
       <ReasonForm
         label="Reason for the hold"
-        submitLabel="Put on hold"
+        submitLabel="Put on Hold"
         onSubmit={(note) =>
           manual.mutateAsync({ requestId, body: { held: true, note } }).then(close)
         }
