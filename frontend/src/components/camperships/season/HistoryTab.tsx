@@ -157,6 +157,7 @@ export function HistoryTab() {
       <HistoryFilters
         filters={filters}
         actors={history.data?.actors ?? NO_ACTORS}
+        kindCounts={history.data?.kind_counts}
         canSeeRules={canSeeRules}
         onChange={setFilter}
       />

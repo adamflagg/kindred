@@ -108,8 +108,8 @@ describe('HistoryTab', () => {
 
   it('shows the registrar no Rules chip and no Scenarios note (D49, D76)', () => {
     renderAt()
-    expect(screen.queryByRole('button', { name: 'Rules' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Offers & stages' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Rules/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Offers & stages 1' })).toBeInTheDocument()
     expect(screen.queryByText(/Scenarios/)).toBeNull()
   })
 
@@ -117,13 +117,23 @@ describe('HistoryTab', () => {
     granted = FINANCE
     read = { data: FINANCE_PAGE, isLoading: false, error: null }
     renderAt()
-    expect(screen.getByRole('button', { name: 'Rules' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Rules 3' })).toBeInTheDocument()
     expect(screen.getByText(/The scenario trail stays in Scenarios/)).toBeInTheDocument()
+  })
+
+  it('counts each chip as the server counts it, and shows the bare chips while it loads (H5)', () => {
+    renderAt()
+    expect(screen.getByRole('button', { name: 'Holds 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Grants 0' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument()
+    read = { data: undefined, isLoading: true, error: null }
+    renderAt()
+    expect(screen.getAllByRole('button', { name: 'Holds' })).toHaveLength(1)
   })
 
   it('filters by kind through the URL, back on page 1 (D15)', async () => {
     renderAt('/aid/season/history?year=2027&page=3')
-    await userEvent.click(screen.getByRole('button', { name: 'Holds' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Holds 1' }))
     replaced()
     expect(where().get('kind')).toBe('holds')
     expect(where().has('page')).toBe(false)
@@ -254,18 +264,18 @@ describe('HistoryTab', () => {
 
   it('opens and closes a line through `open=` (D15)', async () => {
     renderAt()
-    await userEvent.click(screen.getByText('Released · 1 hold'))
+    await userEvent.click(screen.getByText('Released · 1 request · 1 family'))
     replaced()
     expect(where().get('open')).toBe('op0000000000002')
     expect(screen.getByText('Loading its rows…')).toBeInTheDocument()
-    await userEvent.click(screen.getByText('Released · 1 hold'))
+    await userEvent.click(screen.getByText('Released · 1 request · 1 family'))
     expect(where().has('open')).toBe(false)
   })
 
   it("builds its links with the page's as-of, as the Rules tab does (D15; I3)", () => {
     detail = { id: OP_SHARE.operation_id, data: DETAIL_SHARE }
     renderAt(`/aid/season/history?year=2027&as_of=2027-03-15&open=${OP_SHARE.operation_id}`)
-    expect(screen.getByRole('link', { name: 'Household 1000002 ›' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'The Chen Family ›' })).toHaveAttribute(
       'href',
       '/aid/households/1000002?year=2027&as_of=2027-03-15'
     )
@@ -296,7 +306,7 @@ describe('HistoryTab', () => {
     read = { data: { ...PAGE, total: 0, operations: [] }, isLoading: false, error: null }
     renderAt('/aid/season/history?kind=grants')
     expect(screen.getByText('No operations match.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Grants' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Grants/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Older' })).toBeNull()
   })
 
@@ -325,7 +335,9 @@ describe('HistoryTab', () => {
       error: null,
     }
     renderAt()
-    expect(screen.getByText('Posted · 380 decisions')).toBeInTheDocument()
+    expect(
+      screen.getByText('Posted · 380 requests · 352 families · $539,600 locked')
+    ).toBeInTheDocument()
     expect(screen.queryByText(/Rules v3/)).toBeNull()
   })
 

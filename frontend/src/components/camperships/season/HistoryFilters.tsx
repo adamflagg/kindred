@@ -1,10 +1,11 @@
 import { useState } from 'react'
 
+import type { ApiAidHistoryKindCount } from '../../../types/api-types'
 import {
   actorWords,
   chipKinds,
+  chipWords,
   isSeasonDay,
-  KIND_LABELS,
   type HistoryFilterKey,
   type HistoryFilters as Filters,
 } from './historyModel'
@@ -128,11 +129,14 @@ function DayBox({
 export function HistoryFilters({
   filters,
   actors,
+  kindCounts,
   canSeeRules,
   onChange,
 }: {
   filters: Filters
   actors: readonly string[]
+  /** Each chip's count as the server counts it (H5); undefined while the read loads. */
+  kindCounts: readonly ApiAidHistoryKindCount[] | undefined
   canSeeRules: boolean
   onChange: (key: HistoryFilterKey, value: string | null) => void
 }) {
@@ -154,7 +158,7 @@ export function HistoryFilters({
           className={filters.kind === kind ? CHIP_ACTIVE : CHIP_IDLE}
           onClick={() => onChange('kind', kind)}
         >
-          {KIND_LABELS[kind]}
+          {chipWords(kind, kindCounts)}
         </button>
       ))}
       <select
