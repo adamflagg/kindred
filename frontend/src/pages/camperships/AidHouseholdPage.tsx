@@ -1,5 +1,5 @@
 import { Users } from 'lucide-react'
-import { useMemo, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { QueryGuard } from '../../components/QueryGuard'
@@ -76,6 +76,24 @@ function BackToRequests({ view }: { view: AidView }) {
 }
 
 /**
+ * Lands on the place a link names ("#income", "#request-<id>": the grid's next steps; scan H1). The app
+ * has no scroll restoration and a click goes through navigate(), so the browser never does it. Once
+ * per hash, once the section has rendered (it is absent while the read loads): a refetch does not
+ * pull the page back.
+ */
+function useScrollToHash() {
+  const { hash } = useLocation()
+  const done = useRef<string | null>(null)
+  useEffect(() => {
+    if (hash === '' || done.current === hash) return
+    const target = document.getElementById(hash.slice(1))
+    if (target === null) return
+    done.current = hash
+    target.scrollIntoView({ block: 'start' })
+  })
+}
+
+/**
  * `/aid/households/:householdCmId` (§6.3; D8, D26, D32, D77; round7.html, decision-panel.html,
  * household-totals.html B2): the family's whole aid story on one page, scoped to every household with
  * a payer share in its requests, both ways (D26).
@@ -91,6 +109,7 @@ export default function AidHouseholdPage() {
   const view = useMemo((): AidView => ({ year, asOf: LIVE }), [year])
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
+  useScrollToHash()
 
   return (
     <div className="space-y-3 sm:space-y-4">
