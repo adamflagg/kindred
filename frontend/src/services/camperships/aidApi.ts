@@ -3,7 +3,13 @@
  * URLs and turns a non-ok answer into an error that keeps its status. Protected: pass
  * `fetchWithAuth` from `useApiWithAuth()`.
  */
-import type { ApiAidDefinitions, ApiAidJumpIndex, ApiAidRemaining } from '../../types/api-types'
+import type {
+  ApiAidApprovedRules,
+  ApiAidDefinitions,
+  ApiAidGrid,
+  ApiAidJumpIndex,
+  ApiAidRemaining,
+} from '../../types/api-types'
 import { ApiError, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
 
@@ -48,4 +54,42 @@ export async function fetchAidDefinitions(
   const response = await fetchWithAuth(withQuery(`${BASE}/definitions`, { surface }))
   if (!response.ok) throw await toApiError(response, 'Failed to load the definitions', AidApiError)
   return (await response.json()) as ApiAidDefinitions
+}
+
+/** The Requests grid (§6.1; D21): one row per request, each naming the views it is in; live or as of a past day. */
+export async function fetchAidGrid(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  asOfParams: Record<string, string>
+): Promise<ApiAidGrid> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/decisions/${String(year)}/grid`, asOfParams)
+  )
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the Requests grid', AidApiError)
+  return (await response.json()) as ApiAidGrid
+}
+
+/** Whether an error carries this HTTP status (narrow on `.status`, never `instanceof`: apiError.ts). */
+export function hasStatus(error: unknown, status: number): boolean {
+  return typeof error === 'object' && error !== null && 'status' in error && error.status === status
+}
+
+/**
+ * The approved rules, read only (spec §7.5; D76): for everyone with view. With `version` (a receipt's
+ * link) that version alone; without it, each section as it prices the season. 404: none approved yet.
+ */
+export async function fetchAidApprovedRules(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  version: number | null
+): Promise<ApiAidApprovedRules> {
+  const response = await fetchWithAuth(
+    withQuery(
+      `${BASE}/rules/${String(year)}/approved`,
+      version === null ? {} : { version: String(version) }
+    )
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the rules', AidApiError)
+  return (await response.json()) as ApiAidApprovedRules
 }

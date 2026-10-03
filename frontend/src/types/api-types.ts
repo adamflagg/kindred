@@ -30,21 +30,29 @@
  */
 
 import type {
+  ApprovedRulesOut,
   BunkGraphResponse,
   CamperJourneyCounts,
   CamperJourneyResponse,
   CamperJourneyRow,
+  CancellationOut,
+  ConfirmationOut,
   CrossScopeEdge,
   DefinitionsResponse,
+  GridRowOut,
   JumpIndexHousehold,
   JumpIndexResponse,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
   RemainingResponse,
+  RequestsGridResponse,
+  RoundOut,
+  RowStageOut,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
+  UntickedMoneyOut,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -80,6 +88,9 @@ export type ApiCamperJourneyCounts = CamperJourneyCounts
 /** The Remaining line's read (D48). Mirrors Python `RemainingResponse`. */
 export type ApiAidRemaining = RemainingResponse
 
+/** Season › Rules (spec §7.5; D76). Mirrors Python `ApprovedRulesOut`. */
+export type ApiAidApprovedRules = ApprovedRulesOut
+
 /** The jump box's index (§3.5, slice 1's read). Mirrors Python `JumpIndexResponse`. */
 export type ApiAidJumpIndex = JumpIndexResponse
 export type ApiAidJumpHousehold = JumpIndexHousehold
@@ -91,3 +102,17 @@ export type ApiAidDefinitions = DefinitionsResponse
 export type ApiPermissionRegistry = PermissionRegistryResponse
 export type ApiPermissionEntry = PermissionEntry
 export type ApiPermissionScreen = PermissionScreen
+
+/** The Requests grid's read (§6.1). Mirrors Python `RequestsGridResponse`. */
+export type ApiAidGrid = RequestsGridResponse
+export type ApiAidGridRow = GridRowOut
+export type ApiAidRound = RoundOut
+/** A row's Stage, the server's (#2996; one source with the household page). */
+export type ApiAidRowStage = RowStageOut
+/** A round CampMinder holds money for with no Posted tick, and why (#2996, D162). */
+export type ApiAidUnticked = UntickedMoneyOut
+/** A Requests view a row is in (#2924's `QueueOut`). */
+export type ApiAidQueue = NonNullable<GridRowOut['queues']>[number]
+/** A request's confirmation state (D59) and its cancellation (D101). Mirror Python's models (M4). */
+export type ApiAidConfirmation = ConfirmationOut
+export type ApiAidCancellation = CancellationOut

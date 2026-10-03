@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  fitColumnWidth,
   formatSort,
   groupRows,
   fold,
@@ -139,5 +140,18 @@ describe('stepHighlight (up/down; D13, D31)', () => {
 
   it('has nothing to highlight in an empty table', () => {
     expect(stepHighlight([], null, 1)).toBeNull()
+  })
+})
+
+// Batch 4 (owner LOCKED, grid-layout-options.html round 6): Needs attention is as wide as the widest
+// chip on screen plus 18px, never under 84px.
+describe('fitColumnWidth', () => {
+  it('is the widest chip, rounded up, plus 18', () => {
+    expect(fitColumnWidth([70, 120.2, 96], { pad: 18, min: 84 })).toBe(139)
+  })
+
+  it('never goes under the floor, nor with no chip on screen', () => {
+    expect(fitColumnWidth([40.5], { pad: 18, min: 84 })).toBe(84)
+    expect(fitColumnWidth([], { pad: 18, min: 84 })).toBe(84)
   })
 })

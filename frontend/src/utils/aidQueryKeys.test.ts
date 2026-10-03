@@ -27,3 +27,29 @@ describe('invalidateAidMoneyQueries (D48: Remaining moves live)', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'remaining'] })
   })
 })
+
+describe('the Requests grid key', () => {
+  it('sits under the grid prefix, apart per season, as-of and axis', () => {
+    expect(queryKeys.aidGrid(2027, null, null).slice(0, 2)).toEqual(queryKeys.aidGridPrefix())
+    expect(queryKeys.aidGrid(2027, null, null)).not.toEqual(
+      queryKeys.aidGrid(2027, '2026-04-01', null)
+    )
+    expect(queryKeys.aidGrid(2027, '2026-04-01', 'campminder')).not.toEqual(
+      queryKeys.aidGrid(2027, '2026-04-01', 'recorded')
+    )
+  })
+})
+
+describe('the approved-rules key (slice 2, read in the Requests grid)', () => {
+  it('sits under the rules prefix, one key per version and one for the pricing read', () => {
+    expect(queryKeys.aidRulesApproved(2027, 3).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
+    expect(queryKeys.aidRulesApproved(2027, null)).toEqual([
+      'financial-aid',
+      'rules',
+      2027,
+      'approved',
+      'pricing',
+    ])
+    expect(queryKeys.aidRulesApproved(2027, 3)).not.toEqual(queryKeys.aidRulesApproved(2027, 4))
+  })
+})

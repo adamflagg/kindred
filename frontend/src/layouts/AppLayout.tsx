@@ -720,8 +720,8 @@ export const AppLayout = () => {
                 )}
             </div>
 
-            {/* Right side: Program-specific actions */}
-            <div className="flex items-center gap-2">
+            {/* Right side: Program-specific actions. min-w-0 lets a crowded Camperships bar shrink it instead of widening the page. */}
+            <div className="flex min-w-0 items-center gap-2">
               {activeProgram === 'aid' && <AidSecondaryBarRight />}
               {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                 <>

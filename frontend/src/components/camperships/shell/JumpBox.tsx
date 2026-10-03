@@ -84,7 +84,7 @@ export function JumpBox() {
   }
 
   return (
-    <div className="relative w-56">
+    <div className="relative w-56 min-w-40 shrink">
       <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
       <input
         ref={inputRef}
@@ -120,7 +120,7 @@ export function JumpBox() {
                 }}
                 className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${index === current ? 'bg-muted/60' : ''}`}
               >
-                <span className="font-medium">{match.familyName}</span>{' '}
+                <span className="font-medium">{match.lead}</span>{' '}
                 <span className="text-muted-foreground text-xs">{match.detail}</span>
               </button>
             </li>

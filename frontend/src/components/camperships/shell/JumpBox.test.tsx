@@ -53,6 +53,12 @@ beforeEach(() => {
 })
 
 describe('JumpBox (§3.5; D13)', () => {
+  // jsdom has no layout: this pins the classes. The real proof is the 1280px measurement.
+  it('gives way on a crowded bar, but keeps room to read its placeholder', () => {
+    renderBox()
+    expect(box().parentElement).toHaveClass('shrink', 'min-w-40')
+  })
+
   // Ruling 2026-10-01 (plan review): the four-states rule.
   it('says it is loading, and takes no search until the index is in', () => {
     index = { isPending: true, error: null }
@@ -182,6 +188,39 @@ describe('JumpBox (§3.5; D13)', () => {
     await userEvent.type(box(), 'john')
     await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000001')
+  })
+
+  // Owner ruling 2026-10-03: a result leads with the matched person, the household is secondary.
+  const rowText = (name: RegExp) => screen.getByRole('button', { name }).textContent
+  const leadSpan = (name: RegExp) => screen.getByRole('button', { name }).querySelector('span')
+
+  it('leads a person-name match with the person, then role and household', async () => {
+    renderBox()
+    await userEvent.type(box(), 'emma')
+    expect(rowText(/Emma/)).toBe('Emma Johnson · camper · Johnson household')
+    expect(leadSpan(/Emma/)).toHaveTextContent(/^Emma Johnson$/)
+    expect(leadSpan(/Emma/)).toHaveClass('font-medium')
+  })
+
+  it('leads a family-name match with the household', async () => {
+    renderBox()
+    await userEvent.type(box(), 'chen')
+    expect(rowText(/Chen/)).toBe('Chen family')
+    expect(leadSpan(/Chen/)).toHaveClass('font-medium')
+  })
+
+  it('leads a person-id match with the person and keeps the id visible', async () => {
+    renderBox()
+    await userEvent.type(box(), '1000006')
+    expect(rowText(/Olivia/)).toBe('Olivia Chen · camper · person 1000006 · Chen household')
+    expect(leadSpan(/Olivia/)).toHaveTextContent(/^Olivia Chen$/)
+  })
+
+  it('leads a household-id match with the household and its id', async () => {
+    renderBox()
+    await userEvent.type(box(), '1000005')
+    expect(rowText(/Chen/)).toBe('Chen household 1000005')
+    expect(leadSpan(/Chen/)).toHaveTextContent(/^Chen$/)
   })
 
   it('clears and lets go on Esc', async () => {

@@ -3,6 +3,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -19,18 +20,25 @@ import {
 } from '../../admin/audit/auditStyles'
 import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
+import { Tooltip } from '../../ui/Tooltip'
 import {
   CELL_BG,
+  DETAIL_LINE,
+  DETAIL_ROW,
   EDITOR_ROW,
   GROUP_ROW,
+  HELP_HEADER,
   HIGHLIGHT_EDGE,
   HIGHLIGHT_PINNED_EDGE,
   PINNED_EDGE,
+  RIGHT_PINNED_EDGE,
   ROW_HIGHLIGHT,
+  SCROLL_BOX,
   TABLE,
   TABLE_CARD,
   TD,
   TFOOT_CELL,
+  TFOOT_CELL_WRAP,
   TH,
   TOTAL_BUTTON,
 } from './kitStyles'
@@ -39,11 +47,13 @@ import { isPageKey } from './keyboard'
 import { moneyCsv } from './money'
 import { Money } from './MoneyText'
 import {
+  fitColumnWidth,
   groupRows,
   matchesSearch,
   sortRows,
   stepHighlight,
   type CellValue,
+  type FitContent,
   type RowGroup,
 } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
@@ -71,15 +81,40 @@ export interface AidRowNav {
 export interface AidColumn<Row> {
   readonly key: string
   readonly header: string
+  /** Explains the header on hover and click (the `Tooltip`); such a header does not sort. */
+  readonly help?: string | undefined
+  /** The CSV's own header name, when it is fuller than the screen's. */
+  readonly csvHeader?: string | undefined
   readonly width?: number | undefined
   readonly flex?: boolean | undefined
   readonly align?: 'left' | 'right' | undefined
   readonly pinned?: boolean | undefined
+  /**
+   * Frozen on the right edge (batch 4: Needs attention), over the columns scrolling under it. Put
+   * it last; it is never also `pinned`.
+   */
+  readonly pinnedRight?: boolean | undefined
+  /**
+   * The width comes from the cells drawn, not `width`: the widest first element of this column's
+   * rendered body cells (its chip), plus `pad`, never under `min`, re-measured every render, so it
+   * follows the rows, the view, the search and the filters (batch 4, round 6's fitAttn).
+   */
+  readonly fitContent?: FitContent | undefined
   readonly value: (row: Row) => CellValue
+  /** What a header click sorts on, when it isn't the value (Requested by sorts on the last name, T3). */
+  readonly sortValue?: ((row: Row) => CellValue) | undefined
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
   readonly searchable?: boolean | undefined
+  /** False leaves the column out of Download CSV: an action column has nothing to export (M16). */
+  readonly inCsv?: boolean | undefined
+}
+
+/** A column only the CSV carries: a figure the screen draws inside another cell (M16). */
+export interface AidCsvExtra<Row> {
+  readonly header: string
+  readonly value: (row: Row) => string
 }
 
 export interface AidGrouping<Row> {
@@ -102,9 +137,18 @@ export interface AidTableProps<Row> {
   readonly defaultGrouping?: string | undefined
   readonly urlPrefix?: string | undefined
   readonly csvFilename: string
+  readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
+  /**
+   * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i): a row
+   * straight under the highlighted one, as wide as the box's visible width and stuck at its left,
+   * so it wraps and stays put while the rows scroll sideways. Esc closes the row (with `arrowKeys`).
+   */
+  readonly renderDetail?: ((row: Row) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
+  /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
+  readonly toolbarLead?: ReactNode
   /**
    * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor row's
    * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
@@ -115,7 +159,17 @@ export interface AidTableProps<Row> {
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
+  /**
+   * Opt-in (grid layout T1, Scroll b): the table sits in one box that scrolls both ways, as tall as
+   * the screen leaves room for, with the header and totals held, so the horizontal scrollbar is
+   * always on screen. Off, the table renders as it always did.
+   */
+  readonly scrollBox?: boolean | undefined
 }
+
+/** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
+const BOX_GAP = 12
+const BOX_MIN_HEIGHT = 200
 
 /** A column with a `total` is money: its value is a number, or nothing there. */
 const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)
@@ -141,14 +195,18 @@ export function AidTable<Row>({
   defaultGrouping,
   urlPrefix = '',
   csvFilename,
+  csvExtra,
   onOpenTotal,
   renderBelowHighlighted,
+  renderDetail,
   arrowKeys = false,
+  toolbarLead,
   highlighted: highlightedProp,
   onHighlight,
   footerLabel,
   groupCount,
   emptyText = 'No rows match.',
+  scrollBox = false,
 }: AidTableProps<Row>) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const groupingKeys = useMemo(() => groupings.map((g) => g.key), [groupings])
@@ -189,7 +247,7 @@ export function AidTable<Row>({
   const sorted = useCallback(
     (list: readonly Row[]) => {
       const column = sort ? columns.find((c) => c.key === sort.key) : undefined
-      return column && sort ? sortRows(list, column.value, sort.dir) : [...list]
+      return column && sort ? sortRows(list, column.sortValue ?? column.value, sort.dir) : [...list]
     },
     [columns, sort]
   )
@@ -217,13 +275,20 @@ export function AidTable<Row>({
   useEffect(() => {
     if (!arrowKeys) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+      const escape = event.key === 'Escape'
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && !escape) return
       // Not while a field (the search box, the editor) owns the key, a modifier is held, a modal is
       // open, or the key was already handled, held down or part of an IME composition (isPageKey).
       // Nor while focus is anywhere in the editor row (a Save button is not a typing target).
       if (event.target instanceof Element && event.target.closest('[data-aid-editor]') !== null)
         return
-      if (!isPageKey(event) || order.length === 0) return
+      if (!isPageKey(event)) return
+      // Esc closes the opened row (batch 4); an open tooltip or modal takes it first (isPageKey).
+      if (escape) {
+        if (highlighted !== null) setHighlight(null)
+        return
+      }
+      if (order.length === 0) return
       event.preventDefault()
       setHighlight(stepHighlight(order, highlighted, event.key === 'ArrowDown' ? 1 : -1))
     }
@@ -231,9 +296,88 @@ export function AidTable<Row>({
     return () => window.removeEventListener('keydown', onKey)
   }, [arrowKeys, order, highlighted, setHighlight])
 
+  // The screen box: its height is what the screen leaves under its own top, measured on mount, on
+  // resize and when anything above it changes height; the held header and totals' heights become
+  // the rows' scroll margin, so a row moved into view is never left under them.
+  const boxRef = useRef<HTMLDivElement>(null)
+  const headRef = useRef<HTMLTableSectionElement>(null)
+  const footRef = useRef<HTMLTableSectionElement>(null)
+  const [margins, setMargins] = useState({ top: 0, bottom: 0 })
+  const measure = useCallback(() => {
+    const element = boxRef.current
+    if (!scrollBox || element === null) return
+    const top = element.getBoundingClientRect().top + window.scrollY
+    element.style.maxHeight = `${String(Math.max(BOX_MIN_HEIGHT, window.innerHeight - top - BOX_GAP))}px`
+    const next = {
+      top: headRef.current?.getBoundingClientRect().height ?? 0,
+      bottom: footRef.current?.getBoundingClientRect().height ?? 0,
+    }
+    setMargins((was) => (was.top === next.top && was.bottom === next.bottom ? was : next))
+  }, [scrollBox])
+  useLayoutEffect(() => {
+    const element = boxRef.current
+    if (!scrollBox || element === null) return
+    window.addEventListener('resize', measure)
+    // Whatever sits above the box (the views row, the filters, this table's own toolbar) moves it
+    // when it changes height.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (observer) {
+      for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+        for (let above = node.previousElementSibling; above; above = above.previousElementSibling)
+          observer.observe(above)
+      }
+    }
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+      element.style.maxHeight = ''
+    }
+  }, [scrollBox, measure])
+  // Every render measures too: a note inserted above the box (a view change re-renders this table)
+  // resizes no element the observer was handed, and the setState above is a no-op when unchanged.
+  useLayoutEffect(measure)
+
+  // Widths taken from what is drawn (batch 4): each fitted column from its rendered chips, and the
+  // box's visible width for the detail line. Every render (the rows, view, search or filters may
+  // have changed what is drawn) and on resize; each setState is a no-op when nothing moved.
+  const [fitWidths, setFitWidths] = useState<Readonly<Record<string, number>>>({})
+  const [boxWidth, setBoxWidth] = useState(0)
+  const measureWidths = useCallback(() => {
+    const element = boxRef.current
+    if (element === null) return
+    setBoxWidth(element.clientWidth)
+    const next: Record<string, number> = {}
+    for (const column of columns) {
+      if (!column.fitContent) continue
+      const chips = [...element.querySelectorAll(`td[data-fit-col="${column.key}"]`)]
+        .map((cell) => cell.firstElementChild?.getBoundingClientRect().width)
+        .filter((width): width is number => width !== undefined)
+      next[column.key] = fitColumnWidth(chips, column.fitContent)
+    }
+    setFitWidths((was) => {
+      const keys = Object.keys(next)
+      const same =
+        keys.length === Object.keys(was).length && keys.every((key) => was[key] === next[key])
+      return same ? was : next
+    })
+  }, [columns])
+  useLayoutEffect(measureWidths)
   useEffect(() => {
-    if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
-  }, [highlighted])
+    window.addEventListener('resize', measureWidths)
+    return () => window.removeEventListener('resize', measureWidths)
+  }, [measureWidths])
+  const widthOf = (column: AidColumn<Row>) =>
+    column.fitContent ? (fitWidths[column.key] ?? column.fitContent.min) : column.width
+
+  // The opened row comes into view with its detail line under it (batch 4): the line first, then
+  // the row, so a row taller than the room left still shows its top. Again once the held header and
+  // totals are measured, so a row restored from the URL is not left under them.
+  const detailRef = useRef<HTMLTableRowElement>(null)
+  useEffect(() => {
+    if (highlighted === null) return
+    detailRef.current?.scrollIntoView({ block: 'nearest' })
+    rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
+  }, [highlighted, margins])
 
   // Each move is worked out from the highlight this render shows, so two moves in one tick can't
   // step twice.
@@ -258,32 +402,59 @@ export function AidTable<Row>({
     return out
   }, [columns])
   const lastPinned = [...pinnedLeft.keys()].at(-1)
-  const minWidth = columns.reduce((sum, c) => sum + (c.flex ? FLEX_MIN : (c.width ?? 0)), 0)
+  // A flexible column with a width of its own never gets narrower than it (the Requests grid's
+  // Requested by, which takes the spare width now Needs attention is fitted: batch 4, T3).
+  const minWidth = columns.reduce(
+    (sum, c) => sum + (c.flex ? (c.width ?? FLEX_MIN) : (widthOf(c) ?? 0)),
+    0
+  )
+  const isPinned = (column: AidColumn<Row>) =>
+    pinnedLeft.has(column.key) || column.pinnedRight === true
+  const edgeOf = (column: AidColumn<Row>) =>
+    column.key === lastPinned ? PINNED_EDGE : column.pinnedRight ? RIGHT_PINNED_EDGE : undefined
 
   const pinStyle = (column: AidColumn<Row>): CSSProperties | undefined =>
-    pinnedLeft.has(column.key) ? { left: pinnedLeft.get(column.key) } : undefined
+    pinnedLeft.has(column.key)
+      ? { left: pinnedLeft.get(column.key) }
+      : column.pinnedRight
+        ? { right: 0 }
+        : undefined
   const pinClasses = (column: AidColumn<Row>, layer: string) =>
-    join(pinnedLeft.has(column.key) && `sticky ${layer}`, column.key === lastPinned && PINNED_EDGE)
+    join(isPinned(column) && `sticky ${layer}`, edgeOf(column))
+  // In the screen box the header and totals are held on both axes: every cell sticks, and a pinned
+  // one sits a layer above the rest (and above the pinned body cells), so nothing scrolls over it.
+  const heldClasses = (column: AidColumn<Row>, side: 'top-0' | 'bottom-0', fallback: string) =>
+    scrollBox
+      ? join('sticky', side, isPinned(column) ? 'z-40' : 'z-30', edgeOf(column))
+      : pinClasses(column, fallback)
   // One shadow class per cell (Ruling 2026-10-01 (plan review)): a highlighted first cell that is
   // also the last pinned one gets the combined shadow, never two competing `shadow-[…]` classes.
   const bodyEdge = (column: AidColumn<Row>, index: number, isHighlighted: boolean) => {
     const highlightEdge = isHighlighted && index === 0
     const pinnedEdge = column.key === lastPinned
     if (highlightEdge && pinnedEdge) return HIGHLIGHT_PINNED_EDGE
+    if (column.pinnedRight) return RIGHT_PINNED_EDGE
     return highlightEdge ? HIGHLIGHT_EDGE : pinnedEdge ? PINNED_EDGE : ''
   }
+  const scrollMargins: CSSProperties | undefined = scrollBox
+    ? { scrollMarginTop: margins.top, scrollMarginBottom: margins.bottom }
+    : undefined
   const alignClass = (column: AidColumn<Row>) =>
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
   const download = () => {
-    const data = counted(ordered).map((row) =>
-      columns.map((c) =>
+    const csvColumns = columns.filter((c) => c.inCsv !== false)
+    const extra = csvExtra ?? []
+    // counted(): the kept row (shown only because it is highlighted) stays out of the file.
+    const data = counted(ordered).map((row) => [
+      ...csvColumns.map((c) =>
         c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
-      )
-    )
+      ),
+      ...extra.map((e) => e.value(row)),
+    ])
     downloadCsv(
       buildCsvContent(
-        columns.map((c) => c.header),
+        [...csvColumns.map((c) => c.csvHeader ?? c.header), ...extra.map((e) => e.header)],
         withLinkLine(data, window.location.href)
       ),
       csvFilename
@@ -291,21 +462,32 @@ export function AidTable<Row>({
   }
 
   const hasTotals = columns.some((c) => c.total)
+  const labelSpan = (() => {
+    if (!footerLabel) return 1
+    let span = 0
+    for (const c of columns) {
+      if (!pinnedLeft.has(c.key) || c.total) break
+      span += 1
+    }
+    return Math.max(span, 1)
+  })()
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        {toolbarLead}
         <div className="relative w-64">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <input
             type="search"
             aria-label="Search"
-            placeholder="Search names or CampMinder ids"
+            placeholder="Search names or CM IDs"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className={SEARCH_INPUT}
           />
         </div>
+        {/* Flat is always a choice, so one grouping is enough for a switch (owner ruling G1). */}
         {groupings.length > 0 && (
           <div className={GROUP}>
             <button
@@ -333,28 +515,40 @@ export function AidTable<Row>({
         </button>
       </div>
 
-      <div className={TABLE_CARD}>
+      <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
         <table className={TABLE} style={{ minWidth }}>
           <colgroup>
             {columns.map((c) => (
-              <col key={c.key} style={c.flex ? undefined : { width: c.width }} />
+              <col key={c.key} style={c.flex ? undefined : { width: widthOf(c) }} />
             ))}
           </colgroup>
-          <thead>
+          <thead ref={headRef}>
             <tr>
-              {columns.map((c) => (
-                <SortableColumnHeader
-                  key={c.key}
-                  label={c.header}
-                  direction={
-                    sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
-                  }
-                  onSort={() => toggleSort(c.key)}
-                  style={pinStyle(c)}
-                  className={join(TH, pinClasses(c, 'z-20'))}
-                  {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
-                />
-              ))}
+              {columns.map((c) =>
+                c.help ? (
+                  <th
+                    key={c.key}
+                    style={pinStyle(c)}
+                    className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
+                  >
+                    <Tooltip content={c.help} className={HELP_HEADER}>
+                      {c.header}
+                    </Tooltip>
+                  </th>
+                ) : (
+                  <SortableColumnHeader
+                    key={c.key}
+                    label={c.header}
+                    direction={
+                      sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
+                    }
+                    onSort={() => toggleSort(c.key)}
+                    style={pinStyle(c)}
+                    className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
+                    {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
+                  />
+                )
+              )}
             </tr>
           </thead>
           <tbody>
@@ -396,16 +590,18 @@ export function AidTable<Row>({
                           if (key !== highlighted) setHighlight(key)
                         }}
                         className="cursor-pointer"
+                        style={scrollMargins}
                       >
                         {columns.map((c, index) => (
                           <td
                             key={c.key}
                             style={pinStyle(c)}
+                            data-fit-col={c.fitContent ? c.key : undefined}
                             className={join(
                               TD,
                               isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
                               bodyEdge(c, index, isHighlighted),
-                              pinnedLeft.has(c.key) && 'sticky z-10',
+                              isPinned(c) && 'sticky z-10',
                               alignClass(c),
                               c.flex === true && isHighlighted
                                 ? 'whitespace-normal'
@@ -418,6 +614,19 @@ export function AidTable<Row>({
                           </td>
                         ))}
                       </tr>
+                      {isHighlighted && renderDetail && (
+                        <tr data-aid-detail="" ref={detailRef} style={scrollMargins}>
+                          {/* The cell must not clip, or the sticky line is trapped inside it (round 6). */}
+                          <td colSpan={columns.length} className={DETAIL_ROW}>
+                            <div
+                              className={DETAIL_LINE}
+                              style={boxWidth > 0 ? { width: boxWidth } : undefined}
+                            >
+                              {renderDetail(row)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       {isHighlighted && renderBelowHighlighted && (
                         <tr>
                           <td colSpan={columns.length} className={EDITOR_ROW} data-aid-editor="">
@@ -435,15 +644,25 @@ export function AidTable<Row>({
             ))}
           </tbody>
           {hasTotals && (
-            <tfoot>
+            <tfoot ref={footRef}>
               <tr>
                 {columns.map((c, index) => {
+                  // The footer label spans the leading pinned columns that carry no total, so the
+                  // sticky cell after it can't paint over it (I1).
+                  if (index > 0 && index < labelSpan) return null
+                  const spans = index === 0 && labelSpan > 1
                   const total = c.total ? c.total(visible) : null
                   return (
                     <td
                       key={c.key}
+                      colSpan={spans ? labelSpan : undefined}
                       style={pinStyle(c)}
-                      className={join(TFOOT_CELL, pinClasses(c, 'z-10'), alignClass(c))}
+                      className={join(
+                        scrollBox && index === 0 && footerLabel ? TFOOT_CELL_WRAP : TFOOT_CELL,
+                        heldClasses(c, 'bottom-0', 'z-10'),
+                        spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
+                        alignClass(c)
+                      )}
                     >
                       {index === 0 && footerLabel ? footerLabel(visible) : null}
                       {c.total &&

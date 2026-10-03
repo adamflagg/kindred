@@ -1,0 +1,12 @@
+{
+  "_about": "Words and lists the Camperships frontend mirrors from the server. tests/unit/api/services/test_camperships_frontend_mirrors.py holds the server to this file; the frontend's vitest tests hold the frontend to it.",
+  "round_status_labels": {
+    "held": "On hold",
+    "not_decided": "Not decided",
+    "needs_offer": "Needs an offer",
+    "pending_approval": "Pending approval",
+    "refused": "Refused by finance",
+    "posted": "Posted",
+    "not_rebuilt": "Not rebuilt for that date"
+  }
+}

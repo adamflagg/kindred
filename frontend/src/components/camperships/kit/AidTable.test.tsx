@@ -11,7 +11,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AidTable, type AidColumn, type AidGrouping } from './AidTable'
 import { moneyCsv } from './money'
 import { Money } from './MoneyText'
-import { NeedsAttentionCell } from './NeedsAttentionCell'
 import { IdChip } from './Pills'
 import { matchedId } from './table'
 
@@ -131,13 +130,9 @@ const COLUMNS: Array<AidColumn<Row>> = [
     key: 'attention',
     header: 'Needs attention',
     flex: true,
+    // A plain flexible cell: the kit still wraps it on the highlighted row (D31). The Requests grid's
+    // needs-attention chip no longer does (batch 4), so it is not the sample here.
     value: (r) => r.fact,
-    render: (r, { highlighted }) => (
-      <NeedsAttentionCell
-        item={{ level: 'hold', pill: r.reason, fact: r.fact }}
-        highlighted={highlighted}
-      />
-    ),
   },
 ]
 
@@ -184,6 +179,13 @@ const bodyCampers = () =>
     .map((row) => within(row).getAllByRole('cell')[1]?.textContent)
 
 beforeEach(() => downloadSpy.mockClear())
+
+describe('AidTable search', () => {
+  it('says exactly "Search names or CM IDs"', () => {
+    renderTable()
+    expect(screen.getByLabelText('Search')).toHaveAttribute('placeholder', 'Search names or CM IDs')
+  })
+})
 
 describe('AidTable', () => {
   it('keeps the row you are on through a search that does not match it (uncontrolled)', async () => {
@@ -241,16 +243,16 @@ describe('AidTable', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('group=flat')
   })
 
-  it('highlights a row on click and shows its full needs-attention text (D31)', async () => {
+  // Batch 4 (owner LOCKED): the needs-attention cell's truncate-until-highlighted is gone (the cell
+  // is a chip; the full text is in the Requests grid's detail line). The kit's flexible cell still
+  // wraps on the highlighted row, held by "wraps only the highlighted flexible cell" below.
+  it('highlights a row on click (D31)', async () => {
     renderTable()
-    const fact = 'Two forms disagree on income. Call the family and enter one figure.'
-    expect(screen.getByText(fact)).toHaveClass('truncate')
     await userEvent.click(screen.getByText('Emma Johnson'))
     expect(screen.getByText('Emma Johnson').closest('tr')).toHaveAttribute(
       'data-highlighted',
       'true'
     )
-    expect(screen.getByText(fact)).not.toHaveClass('truncate')
   })
 
   it('moves the highlight with ↓ and ↑, but not while you type in the search box', async () => {
@@ -647,6 +649,17 @@ describe('AidTable with a controlled highlight', () => {
   )
 })
 
+describe('the footer label', () => {
+  it('spans the pinned columns, so the sticky Camper cell cannot cover it (I1)', () => {
+    renderTable()
+    const label = screen.getByText('4 requests').closest('td')
+    expect(label).not.toBeNull()
+    expect(label).toHaveAttribute('colspan', '2')
+    // The two pinned footer cells are one cell now: label, then Decided, Would change by, attention.
+    expect(label?.closest('tr')?.querySelectorAll('td')).toHaveLength(4)
+  })
+})
+
 // Owner ruling R1 (2026-10-01): the row you are on stays on screen under a search that hides it,
 // but totals, group counts and the CSV always mean the rows matching the search.
 describe('a row kept on screen under a search', () => {
@@ -698,5 +711,31 @@ describe('a row kept on screen under a search', () => {
     await search('johnson')
     expect(screen.getByText('2 requests')).toBeInTheDocument()
     expect(groupHeading('Johnson')).toHaveTextContent('2 in group')
+  })
+})
+
+describe('AidTable CSV columns (§11; M16)', () => {
+  it('leaves an action column out of the file, and adds the columns only the file carries', async () => {
+    const columns: Array<AidColumn<Row>> = [
+      ...COLUMNS.slice(0, 2),
+      { key: 'act', header: 'Act', width: 60, value: () => null, inCsv: false },
+    ]
+    render(
+      <MemoryRouter initialEntries={['/aid/requests']}>
+        <AidTable<Row>
+          rows={ROWS.slice(0, 1)}
+          columns={columns}
+          rowKey={(r) => r.id}
+          csvFilename="camperships-requests-all-2027.csv"
+          csvExtra={[{ header: 'Household id', value: (r) => String(r.householdCmId) }]}
+        />
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls[0] as [string, string]
+    expect(content.split('\n').slice(0, 2)).toEqual([
+      'Family,Camper,Household id',
+      'Johnson,Emma Johnson,1000001',
+    ])
   })
 })
