@@ -65,7 +65,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
         fact: 'Income was entered as $1, so no tier can be set. Call for the real figure and enter it as a correction.',
       },
       queue: 'holds',
-      next: { kind: 'link', label: 'Enter the income', at: 'income' },
+      next: { kind: 'link', label: 'Enter the Income', at: 'income' },
     })
   })
 
@@ -294,11 +294,15 @@ describe('attentionFor (§4.4; D24, D31)', () => {
 })
 
 // Batch 4: each reason's next step for the opened row's detail line. The labels are the round 6
-// mock's (grid-layout-options.html nextAction), INTERIM until the owner rules them. #2943 has no
+// mock's (grid-layout-options.html nextAction), owner-approved in title case (10-03). #2943 has no
 // writers, so every step is a link to where it is done today (the household page: its income
 // section, or the request's card) or plain words; a step that is a tick or the editor (the mock's
 // buttons) is null here, and #2951 / #2948 add it.
-describe('the next step (batch 4, interim labels)', () => {
+describe('the next step (batch 4; labels owner-approved in title case, 10-03)', () => {
+  it('names the open-the-request step in title case', () => {
+    expect(OPEN_REQUEST).toEqual({ kind: 'link', label: 'Open the Request', at: 'request' })
+  })
+
   const nextOf = (
     row: Parameters<typeof attentionFor>[0],
     view: Parameters<typeof attentionFor>[1]
@@ -313,15 +317,15 @@ describe('the next step (batch 4, interim labels)', () => {
 
   it('sends an income hold to the household income section', () => {
     expect(nextOf(hold('household_income_conflict'), 'holds')).toEqual(
-      link('Enter the income', 'income')
+      link('Enter the Income', 'income')
     )
-    expect(nextOf(hold('placeholder_income'), 'holds')).toEqual(link('Enter the income', 'income'))
+    expect(nextOf(hold('placeholder_income'), 'holds')).toEqual(link('Enter the Income', 'income'))
   })
 
   it("sends the other holds to the request's card", () => {
-    expect(nextOf(hold('payer_shares_incomplete'), 'holds')).toEqual(link('Check the payer shares'))
-    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Release the hold…'))
-    expect(nextOf(hold('unmatched_session'), 'holds')).toEqual(link('Pick the session'))
+    expect(nextOf(hold('payer_shares_incomplete'), 'holds')).toEqual(link('Check the Payer Shares'))
+    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Release the Hold…'))
+    expect(nextOf(hold('unmatched_session'), 'holds')).toEqual(link('Pick the Session'))
     expect(nextOf(hold('multiple_grants'), 'holds')).toEqual(OPEN_REQUEST)
   })
 
@@ -351,24 +355,24 @@ describe('the next step (batch 4, interim labels)', () => {
   })
 
   it("sends the queue items to the request's card", () => {
-    expect(nextOf(ROW_RILEY, 'cancel_reason')).toEqual(link('Pick a reason'))
-    expect(nextOf(ROW_SAMUEL, 'not_reconciled')).toEqual(link('Check the posting'))
+    expect(nextOf(ROW_RILEY, 'cancel_reason')).toEqual(link('Pick a Reason'))
+    expect(nextOf(ROW_SAMUEL, 'not_reconciled')).toEqual(link('Check the Posting'))
     const pending = gridRow({
       rounds: [roundOut(3, 'pending_approval', { pending_approval: 450 })],
       queues: ['pending_approval'],
     })
-    expect(nextOf(pending, 'pending_approval')).toEqual(link('Approve Round 3 (finance)'))
+    expect(nextOf(pending, 'pending_approval')).toEqual(link('Approve Round 3 (Finance)'))
     expect(
       nextOf(
         gridRow({ request_status: 'unmatched_session', queues: ['session_not_settled'] }),
         'all'
       )
-    ).toEqual(link('Pick the session'))
+    ).toEqual(link('Pick the Session'))
     expect(
       nextOf(gridRow({ request_status: 'duplicate_pending', queues: ['duplicates'] }), 'all')
-    ).toEqual(link('Choose which to keep'))
+    ).toEqual(link('Choose Which to Keep'))
     expect(nextOf(hold('duplicate_survivor_withdrawn'), 'duplicates')).toEqual(
-      link('Choose which to keep')
+      link('Choose Which to Keep')
     )
     const share = gridRow({
       confirmation: confirmationOut({
@@ -377,6 +381,6 @@ describe('the next step (batch 4, interim labels)', () => {
       }),
       queues: ['not_reconciled'],
     })
-    expect(nextOf(share, 'not_reconciled')).toEqual(link('Check the payer shares'))
+    expect(nextOf(share, 'not_reconciled')).toEqual(link('Check the Payer Shares'))
   })
 })

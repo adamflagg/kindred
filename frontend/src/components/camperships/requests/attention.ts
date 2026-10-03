@@ -87,7 +87,7 @@ export function waitingSince(row: Pick<ApiAidGridRow, 'rounds'>): string | null 
  * The opened row's next step (batch 4). #2943 has no writers, so a step is a link to where it is
  * done today (the household page, at its income section or at the request's card), or plain words
  * where nothing can be done in Kindred. The labels are round 6's mock (grid-layout-options.html
- * nextAction), INTERIM until the owner rules them.
+ * nextAction), owner-APPROVED in title case (10-03); plain-words steps stay sentence case.
  */
 export type NextStep =
   | { readonly kind: 'link'; readonly label: string; readonly at: 'income' | 'request' }
@@ -97,7 +97,7 @@ const toRequest = (label: string): NextStep => ({ kind: 'link', label, at: 'requ
 const say = (text: string): NextStep => ({ kind: 'text', text })
 
 /** The mock's fallback, and the step for a row that needs nothing. */
-export const OPEN_REQUEST = toRequest('Open the request')
+export const OPEN_REQUEST = toRequest('Open the Request')
 
 export interface GridAttention {
   readonly item: AttentionItem
@@ -110,16 +110,16 @@ export interface GridAttention {
   readonly next: NextStep | null
 }
 
-const ENTER_INCOME: NextStep = { kind: 'link', label: 'Enter the income', at: 'income' }
-const PAYER_SHARES = toRequest('Check the payer shares')
-const PICK_SESSION = toRequest('Pick the session')
-const KEEP_ONE = toRequest('Choose which to keep')
+const ENTER_INCOME: NextStep = { kind: 'link', label: 'Enter the Income', at: 'income' }
+const PAYER_SHARES = toRequest('Check the Payer Shares')
+const PICK_SESSION = toRequest('Pick the Session')
+const KEEP_ONE = toRequest('Choose Which to Keep')
 
 const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   household_income_conflict: ENTER_INCOME,
   placeholder_income: ENTER_INCOME,
   payer_shares_incomplete: PAYER_SHARES,
-  manual_hold: toRequest('Release the hold…'),
+  manual_hold: toRequest('Release the Hold…'),
   unmatched_session: PICK_SESSION,
   duplicate_survivor_withdrawn: KEEP_ONE,
   // The editor's "Edit the award" (#2948) and the Posted tick (#2951).
@@ -166,7 +166,7 @@ const note = (
   next,
 })
 
-const CHECK_POSTING = toRequest('Check the posting')
+const CHECK_POSTING = toRequest('Check the Posting')
 
 function reconciliation(row: ApiAidGridRow): GridAttention | null {
   const c = row.confirmation
@@ -245,7 +245,7 @@ export function attentionItems(
         'Give a reason',
         todo.code === 'cancel_reason_missing' ? 'No reason recorded' : todo.message,
         todo.code === 'cancel_reason_missing' ? 'cancel_reason' : null,
-        toRequest('Pick a reason')
+        toRequest('Pick a Reason')
       )
     )
   }
@@ -257,7 +257,7 @@ export function attentionItems(
         `R${String(pending.round)} ${formatMoney(pending.pending_approval)} is above the registrar's limit: finance approves it from Today.`,
         'pending_approval',
         // Finance approves on the request's card (the household page's round actions).
-        toRequest(`Approve Round ${String(pending.round)} (finance)`)
+        toRequest(`Approve Round ${String(pending.round)} (Finance)`)
       )
     )
   }

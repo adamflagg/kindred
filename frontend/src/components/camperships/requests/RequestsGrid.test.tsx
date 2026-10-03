@@ -588,7 +588,7 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     expect(line.queryByText('Family')).toBeNull()
     expect(line.queryByText('The Garcia Family')).toBeNull()
     expect(line.getByRole('link', { name: 'Household 1000003 ›' })).toHaveAttribute('href', BASE)
-    const next = line.getByRole('link', { name: 'Enter the income ›' })
+    const next = line.getByRole('link', { name: 'Enter the Income ›' })
     expect(next).toHaveAttribute('href', `${BASE}#income`)
     expect(line.queryAllByRole('button')).toHaveLength(0)
     await userEvent.click(next)
@@ -606,7 +606,7 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     })
     render(<Grid rows={[row]} />)
     await openRow('Liam Garcia')
-    expect(within(detail()).getByRole('link', { name: 'Release the hold… ›' })).toHaveAttribute(
+    expect(within(detail()).getByRole('link', { name: 'Release the Hold… ›' })).toHaveAttribute(
       'href',
       `${BASE}#request-reqliam00000002`
     )
@@ -634,7 +634,7 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     await openRow('Emma Johnson')
     const line = within(detail())
     expect(line.getByText('Nothing needs attention on this request.')).toBeInTheDocument()
-    expect(line.getByRole('link', { name: 'Open the request ›' })).toHaveAttribute(
+    expect(line.getByRole('link', { name: 'Open the Request ›' })).toHaveAttribute(
       'href',
       '/aid/households/1000001?from=all&year=2027#request-reqemma00000001'
     )
