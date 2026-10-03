@@ -457,6 +457,25 @@ async def test_every_row_carrying_the_note_has_a_reason_and_none_without_it() ->
 
 
 @pytest.mark.asyncio
+async def test_the_one_note_row_with_no_reason_is_a_zero_round_1() -> None:
+    """The named exception to the rule above, and only it. Owner 10-03: a $0 Round 1 comes only from a hand-typed $0
+    (Round 1 is never calculated below the rules' minimum), so it gets no Not reconciled reason; the Note alone shows
+    CampMinder's money. The walk stops at it (zero_round), which shown_stops leaves out of the (b) rows."""
+    store = FakeDecisionsStore()
+    service = _service(store, _zero_round_1(store))
+    seed_request(store, "reqoliv00000001", household=1000003, person=1000031, income=60000.0)
+    seed_line(store, 9002, "1300", household=1000003, person=1000031)  # a short posting beside it: Note and reason
+    rows = {r.request_id: r for r in (await service.grid(YEAR)).rows}
+    noted = {rid for rid, r in rows.items() if _notes(r)}
+    assert noted == {EMMA, "reqoliv00000001"}
+    without = {rid for rid in noted if not rows[rid].unticked and not any(x.cm_pending for x in rows[rid].rounds)}
+    assert without == {EMMA}  # every other Note row still has its reason
+    season = await service.season(YEAR)
+    stops = ledger_walk([season.priced[EMMA]], season.ledger, today=TODAY).stops
+    assert [(s.round, s.code) for s in stops] == [(1, "zero_round")]
+
+
+@pytest.mark.asyncio
 async def test_before_the_first_ticked_season_nothing_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
     store = FakeDecisionsStore()
@@ -1269,26 +1288,35 @@ async def test_the_zero_round_3_repro_offers_round_3_as_the_exact_case_does() ->
     assert row.queues == ["needs_offer", "waiting_on_family", "appeals", "not_reconciled"]
 
 
-@pytest.mark.asyncio
-async def test_a_zero_round_1_on_money_in_campminder_is_not_ticked_or_pending() -> None:
-    """A family above the income ceiling: Round 1 is decided at $0, and CampMinder holds $500. The walk makes no tick and
-    no pending round. (What Not reconciled and the Note show for it waits on an owner ruling, so it is not pinned.)"""
+def _zero_round_1(store: FakeDecisionsStore) -> FakeRules:
+    """Emma's family above the income ceiling, so Round 1 is decided at $0 (in practice only a hand-typed $0: Round 1 is
+    never calculated below the rules' minimum), and CampMinder holding $500 on her request with nothing posted. Returns
+    the rules that price it so."""
     from tests.unit.api.services.financial_aid_fakes import intake_rules
     from tests.unit.bunking.financial_aid.fixtures import with_lever
 
-    rules = FakeRules(approved(with_lever(intake_rules(), "tiers.income_ceiling", "100000")))
-    store = FakeDecisionsStore()
     seed_request(store, EMMA, income=900000.0)
     seed_line(store, 9001, "500")
     store.synced_at = T0.replace(hour=23)
-    service = _service(store, rules)
+    return FakeRules(approved(with_lever(intake_rules(), "tiers.income_ceiling", "100000")))
+
+
+@pytest.mark.asyncio
+async def test_a_zero_round_1_on_money_in_campminder_shows_only_through_the_note() -> None:
+    """Owner 10-03 (option 2, internal only): the walk makes no tick and no pending round; the row has no Not reconciled
+    reason and is not in Not reconciled; the D81 Note alone shows CampMinder's money."""
+    store = FakeDecisionsStore()
+    service = _service(store, _zero_round_1(store))
     season = await service.with_unticked(await service.season(YEAR))
-    assert (season.priced[EMMA].rounds[0].status, season.priced[EMMA].rounds[0].decided) == ("needs_offer", 0)
+    r1_view = season.priced[EMMA].rounds[0]
+    assert (r1_view.status, r1_view.decided) == ("needs_offer", Decimal(0))  # the premise: Round 1 decided at $0
     assert dict(season.pending) == {}
-    walk = ledger_walk(season.priced.values(), season.ledger, today=TODAY)
-    assert walk.ticks == ()
-    r1 = {r.request_id: r for r in (await service.grid(YEAR)).rows}[EMMA].rounds[0]
-    assert (r1.cm_pending, r1.cm_pending_message) == (False, None)
+    assert ledger_walk(season.priced.values(), season.ledger, today=TODAY).ticks == ()
+    row = {r.request_id: r for r in (await service.grid(YEAR)).rows}[EMMA]
+    assert (row.rounds[0].cm_pending, row.rounds[0].cm_pending_message) == (False, None)
+    assert row.unticked == []
+    assert "not_reconciled" not in (row.queues or [])
+    assert _notes(row) == ["CampMinder shows $500 for this family; not yet ticked"]
     assert (await service.ledger_ticks(YEAR)).ticked == 0
     assert {r.request_id: r for r in (await service.grid(YEAR)).rows}[EMMA].rounds[0].status == "needs_offer"
 
