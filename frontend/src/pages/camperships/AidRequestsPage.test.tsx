@@ -187,7 +187,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
         </Routes>
       </MemoryRouter>
     )
-    await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
     expect(screen.getByTestId('state')).toHaveTextContent('{"aidFromGrid":true}')
   })
 
