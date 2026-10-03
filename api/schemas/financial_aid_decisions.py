@@ -246,6 +246,28 @@ class CostOverrideOut(BaseModel):
     actor: str
 
 
+RowStageCode = Literal[
+    "posted",
+    "held",
+    "pending_approval",
+    "refused",
+    "not_decided",
+    "needs_offer",
+    "not_rebuilt",
+    "accepted",
+    "cancelled",
+]
+
+
+class RowStageOut(BaseModel):
+    """A request's grid Stage, derived on the server so the Requests grid and the household page read one source
+    (ROUND_STATUS_LABELS words; a C1 round reads Posted)."""
+
+    round: int | None  # the latest round's number; None when Cancelled
+    code: RowStageCode
+    label: str  # the whole column text: "Cancelled" or "R{n} · {words}"
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -295,6 +317,8 @@ class GridRowOut(BaseModel):
     # Who submitted the aid form (the parent or guardian's name, from the form's contact fields); None when it can't
     # be named, e.g. the household's forms name two different people. The grid is to link it to the household page.
     requested_by: str | None = None
+    # The Stage column's value (RowStageOut). None only when the row has no rounds.
+    stage: RowStageOut | None = None
 
 
 class RequestsGridResponse(BaseModel):
