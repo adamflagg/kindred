@@ -668,7 +668,7 @@ AWAITING_SYNC_TEXT: Final = "Ticked today; tonight's sync checks it."
 @dataclass(frozen=True)
 class ShareConfirmation:
     """One payer share against its own household's lines (main spec §11): `expected` is its
-    whole-dollar part of the locked total (split_award)."""
+    whole-dollar part of the locked total (split_award), C1 pending rounds included (Confirmation.locked)."""
 
     household_cm_id: int
     expected: Decimal
@@ -827,8 +827,8 @@ def _dues_by_payer(
     locks: Mapping[int, Decimal], shares: Sequence[PayerShareRecord], application_household_cm_id: int
 ) -> dict[int, dict[int, Decimal]] | None:
     """Each payer's part of each round's lock: the move in its whole-dollar share of the cumulative locked total
-    (Decision 5), so a payer's parts add up to its share of the whole, as confirmation()'s `expected` reads it.
-    None for one payer, or for shares not adding to 100% (read as one payer, as _share_lines does)."""
+    (Decision 5), so a payer's parts add up to its share of the whole, as confirmation()'s `expected` reads it (which
+    also counts a C1 pending round's amount; these `locks` are the posted rounds'). None for one payer, or for shares not adding to 100% (read as one payer, as _share_lines does)."""
     if len(shares) < 2:
         return None
     dues: dict[int, dict[int, Decimal]] = defaultdict(dict)
@@ -858,7 +858,8 @@ def round_ledger(
     """Owner ruling ⚠10 (2026-10-02): how much of each posted round CampMinder's live camp-aid net confirms. The net
     fills the request's posted rounds still counted (not clawed back), oldest round first; a round's unconfirmed part
     is its lock less what the net filled. A split request fills each payer's part from that household's own lines,
-    and the parts are summed. Money beyond the locked total confirms nothing more (it stays in Not reconciled). Only
+    and the parts are summed. Money beyond the locked total confirms nothing more (it stays in Not reconciled, unless
+    it is a C1 pending round's, which confirmation() counts as locked, owner 10-03). Only
     the live net is read, so one line per round and a reverse-and-repost give the same answer. `lines` are the lines
     placed on the request, as confirmation() takes them; the season gate is the caller's."""
     posted = [view for view in priced.rounds if view.status == "posted" and not view.clawed_back]
