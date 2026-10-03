@@ -52,7 +52,7 @@ interface RequestsGridProps {
   readonly onHighlight: (key: string | null) => void
   /** Stable (useMemo): the columns memo depends on it. */
   readonly links: HouseholdLinks
-  /** The filter controls: they share the table's toolbar line with search and Download CSV. */
+  /** The filter controls: they share the table's toolbar line with search and the ⤓ CSV chip. */
   readonly filters?: ReactNode
   readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
   /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
@@ -272,6 +272,7 @@ export function RequestsGrid({
       groupings={groupings}
       defaultGrouping={view.groupBy === null ? undefined : 'reason'}
       csvFilename={csvFilename}
+      csvChip
       csvExtra={
         view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
       }
