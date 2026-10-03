@@ -90,7 +90,8 @@ describe('AidTodayPage (§6.4; D24)', () => {
       .getByText('Equity question never answered yes')
       .closest('[data-today-line]') as HTMLElement
     expect(within(equity).getByText('1 field')).toBeInTheDocument()
-    expect(within(equity).getByText('single_parent 1')).toBeInTheDocument()
+    // Q5: the criterion's label, else the code in words; no per-field count.
+    expect(within(equity).getByText('Single parent')).toBeInTheDocument()
     expect(within(equity).queryByRole('link')).toBeNull()
   })
 
