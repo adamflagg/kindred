@@ -32,8 +32,8 @@ function line(over: Partial<ApiAidTodayLine> & Pick<ApiAidTodayLine, 'key'>): Ap
 
 describe('Today’s words (§6.4; D24; Decision 30)', () => {
   it('names every line the server sends', () => {
-    // The server's TodayKey has 16 keys (equity_field_never_true arrived with #2950).
-    expect(Object.keys(LINE_NAMES)).toHaveLength(16)
+    // The server's TodayKey has 17 keys (equity_field_never_true arrived with #2950, to_place with #2973).
+    expect(Object.keys(LINE_NAMES)).toHaveLength(17)
     expect(LINE_NAMES.cancel_reason).toBe('Cancelled: give a reason')
     expect(LINE_NAMES.equity_field_never_true).toBe('Equity question never answered yes')
     // m3: every name pinned by value, so a typo fails.
@@ -46,6 +46,7 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
       session_not_settled: 'Session not settled',
       duplicates: 'Duplicates',
       cancel_reason: 'Cancelled: give a reason',
+      to_place: 'To place',
       grants: 'Grants needing attention',
       late_full_coverage: 'A late full-coverage grant',
       pending_approval: 'Pending approval',
@@ -81,6 +82,13 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
         line({ key: 'equity_field_never_true', items: 2, item_kind: 'fields', families: null })
       )
     ).toBe('2 fields')
+    // #2973: To place counts its open lines.
+    expect(countWords(line({ key: 'to_place', items: 1, item_kind: 'lines', families: 1 }))).toBe(
+      '1 line'
+    )
+    expect(countWords(line({ key: 'to_place', items: 3, item_kind: 'lines', families: 2 }))).toBe(
+      '3 lines'
+    )
   })
 
   it('breaks the reasons down inline, in the words the grid uses', () => {
@@ -130,21 +138,63 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
         })
       )
     ).toBe('needs a camper 1 · camper cancelled 1')
+    // #2973: an outside source that needs a reporting group (D100).
+    expect(
+      reasonWords(
+        line({
+          key: 'sources',
+          item_kind: 'descriptions',
+          reasons: [
+            { code: 'no_grantor', families: null, items: 1 },
+            { code: 'needs_group', families: null, items: 2 },
+          ],
+        })
+      )
+    ).toBe('no grantor 1 · needs a group 2')
   })
 
-  it('shows the equity fields as the server sent them, never re-worded', () => {
+  // #2996: Not reconciled's direction (b) reasons come with the server's label (UNTICKED_LABELS, the
+  // grid's pill); short, over and missing carry none and keep the grid's words. Owner V1: "Missing in CM".
+  it("names Not reconciled's reasons in the server's labels, and the grid's own words where it sends none", () => {
+    expect(
+      reasonWords(
+        line({
+          key: 'not_reconciled',
+          reasons: [
+            { code: 'withheld', families: 2, items: 2, label: 'Server label for withheld' },
+            { code: 'not_in_campminder', families: 1, items: 1, label: null },
+            { code: 'short', families: 1, items: 1, label: null },
+          ],
+        })
+      )
+    ).toBe('Server label for withheld 2 · Missing in CM 1 · short 1')
+    // #2996 no longer counts a check awaiting the sync as not reconciled; should a reason still say
+    // so, it is the CM ✓ chip's word (owner V1: one vocabulary).
+    expect(
+      reasonWords(
+        line({
+          key: 'not_reconciled',
+          reasons: [{ code: 'awaiting_sync', families: 1, items: 1, label: null }],
+        })
+      )
+    ).toBe('pending 1')
+  })
+
+  // Q5 (owner, with #2988's TodayReasonOut.label): each field by the equity criterion's name, else the
+  // code in words; one field is one item, so no per-field " 1".
+  it("names each equity field by its criterion's label, or the code in words, with no per-field count", () => {
     const equity = line({
       key: 'equity_field_never_true',
       items: 2,
       item_kind: 'fields',
       families: null,
       reasons: [
-        { code: 'home_is_rented', families: null, items: 1 },
-        { code: 'single_parent', families: null, items: 1 },
+        { code: 'home_is_rented', families: null, items: 1, label: 'Rents their home' },
+        { code: 'single_parent', families: null, items: 1, label: null },
       ],
     })
-    expect(reasonWords(equity)).toBe('home_is_rented 1 · single_parent 1')
-    expect(detailWords(equity)).toBe('home_is_rented 1 · single_parent 1')
+    expect(reasonWords(equity)).toBe('Rents their home · Single parent')
+    expect(detailWords(equity)).toBe('Rents their home · Single parent')
   })
 
   it("adds each line's own facts: oldest and over 14 days, the largest gap, the amount awaiting finance", () => {
@@ -159,7 +209,7 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
           largest_gap: 1800,
         })
       )
-    ).toBe('not in CampMinder 1 · largest $1,800')
+    ).toBe('Missing in CM 1 · largest $1,800')
     // m2: a real $0 on a counted line shows; an empty line shows nothing, like the other lines.
     expect(detailWords(line({ key: 'pending_approval', items: 1, amount: 0 }))).toBe(
       '$0 awaiting finance'
@@ -181,13 +231,13 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
       '/aid/requests?view=holds&year=2027'
     )
     expect(openHref(line({ key: 'would_change', items: 3 }), VIEW)).toBe(
-      '/aid/requests?view=all&today=would_change&year=2027'
+      '/aid/requests?today=would_change&year=2027'
     )
     expect(openHref(line({ key: 'intake', items: 2 }), VIEW)).toBe(
-      '/aid/requests?view=all&today=intake&year=2027'
+      '/aid/requests?today=intake&year=2027'
     )
     expect(openHref(line({ key: 'late_full_coverage', items: 1 }), VIEW)).toBe(
-      '/aid/requests?view=all&today=late_full_coverage&year=2027'
+      '/aid/requests?today=late_full_coverage&year=2027'
     )
     expect(openHref(line({ key: 'grants', items: 2 }), VIEW)).toBe(
       '/aid/grants/needs-attention?year=2027'
