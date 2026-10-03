@@ -899,3 +899,232 @@ async def test_before_the_first_ticked_season_the_march_file_is_unchanged(monkey
     store.camper_names = {1000011: ("Emma", "Johnson"), 1000021: ("Liam", "Garcia"), 1000031: ("Olivia", "Chen")}
     out = await MarchFileService(_service(store), store).read(YEAR)
     assert sorted(r.request_id for r in out.rows) == [EMMA, LIAM, "reqoliv00000001"]
+
+
+# --- C1 on a later round: a pending round counts as locked (owner 10-03, option a) --------------------------
+#
+# Round 1 is posted ($1,500 locked) and CampMinder already holds a later round's full decided money with nothing
+# blocking the tick. That round is C1 pending, so the money beyond the posted lock is exactly what tonight's tick will
+# lock: the confirmation counts it as locked (the amount the ledger walk ticks), and the request is no exception. Only
+# the live read from the first ticked season widens the lock; the walk stopping short (short_posting) widens nothing.
+
+
+def _round2(store: FakeDecisionsStore, *, held: str) -> None:
+    """Emma: Round 1 posted at $1,500 before last night's sync, Round 2 decided at $300 (asked $400), and CampMinder
+    holding `held` on her request."""
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))  # recorded directly: decided $300
+    seed_line(store, 9001, held)
+    store.synced_at = T0.replace(hour=23)
+
+
+def _today_service(store: FakeDecisionsStore) -> TodayService:
+    return TodayService(
+        store=store,
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        clock=lambda: T0,
+    )
+
+
+async def _today_lines(store: FakeDecisionsStore) -> dict[str, Any]:
+    out = await _today_service(store).read(YEAR, casework=True, finance=False)
+    assert out.casework is not None
+    return {line.key: line for line in out.casework}
+
+
+@pytest.mark.asyncio
+async def test_a_pending_round_2_counts_as_locked_so_the_request_is_not_over() -> None:
+    """The F1 repro: Round 2's $300 is the only money beyond Round 1's lock, and tonight's tick posts it. The row reads
+    CM ✓ pending on Round 2 and waits on the family; it is not over and not in Not reconciled."""
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    row = (await _rows(store))[EMMA]
+    r2 = row.rounds[1]
+    assert (r2.status, r2.decided, r2.cm_pending) == ("needs_offer", 300.0, True)  # the premise: C1 on Round 2
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.in_campminder, c.gap) == ("confirmed", True, 1800.0, 1800.0, 0.0)
+    assert (row.unticked, row.queues) == ([], ["waiting_on_family", "appeals"])  # Round 2's ask: Appeals too
+    assert row.stage is not None
+    assert row.stage.label == "R2 · Posted"
+
+
+@pytest.mark.asyncio
+async def test_a_pending_round_2_is_left_out_of_todays_not_reconciled() -> None:
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    lines = await _today_lines(store)
+    unreconciled = lines["not_reconciled"]
+    assert (unreconciled.items, unreconciled.families) == (0, 0)
+    assert "over" not in [r.code for r in unreconciled.reasons]
+    assert unreconciled.largest_gap is None
+    assert lines["waiting_on_family"].items == 1
+    assert lines["needs_offer"].items == 0
+
+
+@pytest.mark.asyncio
+async def test_a_pending_round_2_stays_reconciled_once_tonights_tick_posts_it() -> None:
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    service = _service(store)
+    assert (await service.ledger_ticks(YEAR)).ticked == 1
+    row = (await _rows(store))[EMMA]
+    assert [(r.status, r.cm_pending) for r in row.rounds[:2]] == [("posted", False), ("posted", False)]
+    assert row.confirmation is not None
+    assert (row.confirmation.status, row.confirmation.locked, row.confirmation.reconciled) == (
+        "confirmed",
+        1800.0,
+        True,
+    )
+    assert "not_reconciled" not in (row.queues or [])
+
+
+def _round3_pending(store: FakeDecisionsStore, *, held: str) -> None:
+    """Emma: Rounds 1 and 2 posted ($1,500 and $300) before last night's sync, Round 3 decided at $100 (the session
+    costs $2,000, so $1,900 in all stays under it), and CampMinder holding `held`."""
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))  # Round 3 needs a Round 2 decision
+    _posted(store, EMMA, 2, "300")
+    _event(store, EMMA, 3, "ask", amount=Decimal(100), statement_of_need="A parent lost their job")
+    _event(store, EMMA, 3, "award", amount=Decimal(100))
+    seed_line(store, 9001, held)
+    store.synced_at = T0.replace(hour=23)
+
+
+@pytest.mark.asyncio
+async def test_a_pending_round_3_counts_as_locked_too() -> None:
+    store = FakeDecisionsStore()
+    _round3_pending(store, held="1900")
+    row = (await _rows(store))[EMMA]
+    r3 = row.rounds[2]
+    assert (r3.status, r3.decided, r3.cm_pending) == ("needs_offer", 100.0, True)  # the premise: C1 on Round 3
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.gap) == ("confirmed", True, 1900.0, 0.0)
+    assert (row.unticked, row.queues) == ([], ["waiting_on_family", "appeals"])
+    assert row.stage is not None
+    assert row.stage.label == "R3 · Posted"
+    unreconciled = (await _today_lines(store))["not_reconciled"]
+    assert (unreconciled.items, unreconciled.largest_gap) == (0, None)
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 1
+    after = (await _rows(store))[EMMA]
+    assert after.rounds[2].status == "posted"
+    assert "not_reconciled" not in (after.queues or [])
+
+
+@pytest.mark.asyncio
+async def test_money_beyond_posted_and_pending_is_still_over_by_the_excess() -> None:
+    """Regression: CampMinder holds $2,000 against Round 1's $1,500 posted and Round 2's $300 pending. Round 2 still
+    reads pending, but the $200 beyond both is a real over-posting: Not reconciled, over by $200, not $500."""
+    store = FakeDecisionsStore()
+    _round2(store, held="2000")
+    row = (await _rows(store))[EMMA]
+    assert row.rounds[1].cm_pending is True  # the premise
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.gap) == ("over", False, 1800.0, 200.0)
+    assert row.queues == ["waiting_on_family", "appeals", "not_reconciled"]
+    unreconciled = (await _today_lines(store))["not_reconciled"]
+    assert [(r.code, r.items) for r in unreconciled.reasons] == [("over", 1)]
+    assert unreconciled.largest_gap == 200.0
+
+
+@pytest.mark.asyncio
+async def test_a_short_later_round_is_not_pending_and_the_lock_stays_the_posted_rounds() -> None:
+    """CampMinder holds $1,700: less than Round 1 + Round 2. The walk stops at Round 2 (short_posting, #2996), so
+    nothing is pending, and the confirmation reads against the posted Round 1 alone, as before."""
+    store = FakeDecisionsStore()
+    _round2(store, held="1700")
+    row = (await _rows(store))[EMMA]
+    assert row.rounds[1].cm_pending is False
+    assert [(u.round, u.code) for u in row.unticked or []] == [(2, "short_posting")]
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.gap) == ("over", False, 1500.0, 200.0)
+    assert row.queues == ["waiting_on_family", "appeals", "not_reconciled"]
+
+
+@pytest.mark.asyncio
+async def test_payer_shares_read_confirmed_against_the_widened_lock() -> None:
+    """A 60/40 split: Round 1's $1,500 posted, Round 2's $300 pending. Each payer has posted its share of $1,800
+    ($1,080 and $720), so each share is confirmed against the widened lock, not over against Round 1's."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))
+    seed_line(store, 9001, "1080")
+    seed_line(store, 9002, "720", household=1000004)
+    store.synced_at = T0.replace(hour=23)
+    row = (await _rows(store))[EMMA]
+    assert row.rounds[1].cm_pending is True  # the premise
+    c = row.confirmation
+    assert c is not None
+    assert [(s.household_cm_id, s.expected, s.status) for s in c.shares] == [
+        (1000001, 1080.0, "confirmed"),
+        (1000004, 720.0, "confirmed"),
+    ]
+    assert (c.status, c.reconciled) == ("confirmed", True)
+    assert row.queues == ["waiting_on_family", "appeals"]
+
+
+@pytest.mark.asyncio
+async def test_a_pending_round_widens_only_its_own_requests_lock() -> None:
+    """Emma's Round 2 is pending; Liam's Round 1 is posted at $1,500 and CampMinder holds exactly that. Emma's $300
+    widens Emma's lock alone: Liam stays confirmed against his own $1,500."""
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    seed_line(store, 9002, "1500", household=1000002, person=1000021)
+    rows = await _rows(store)
+    assert rows[EMMA].rounds[1].cm_pending is True  # the premise
+    c = rows[LIAM].confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.gap) == ("confirmed", True, 1500.0, 0.0)
+
+
+@pytest.mark.asyncio
+async def test_before_the_first_ticked_season_a_later_round_widens_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    row = (await _rows(store))[EMMA]
+    assert (row.confirmation, row.rounds[1].cm_pending, row.unticked) == (None, False, [])
+    assert row.queues == ["needs_offer", "waiting_on_family", "appeals"]
+
+
+@pytest.mark.asyncio
+async def test_the_budget_and_todays_counts_follow_a_pending_round_2() -> None:
+    """Beside the pending Round 2 request: Liam short in CampMinder for Round 1 (Not reconciled, b) and Olivia with
+    nothing there (Needs an offer). Today's Not reconciled counts Liam alone; Waiting on the family and Needs an offer
+    are as before. Rounds & budget's Decision 3 tally reads the posted rounds' shortfall (round_ledger), which an
+    over-posting never has, so its counts are 0 either way; its Needs an offer count is the grid's list."""
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    seed_line(store, 9002, "1300", household=1000002, person=1000021)
+    seed_request(store, "reqoliv00000001", household=1000003, person=1000031)
+    lines = await _today_lines(store)
+    assert [(k, lines[k].items) for k in ("needs_offer", "waiting_on_family", "not_reconciled")] == [
+        ("needs_offer", 1),
+        ("waiting_on_family", 1),
+        ("not_reconciled", 1),
+    ]
+    assert [r.code for r in lines["not_reconciled"].reasons] == ["short_posting"]
+    assert lines["not_reconciled"].largest_gap is None
+    out = await _service(store).budget(YEAR)
+    strip = {c.round: c for c in out.strip}
+    assert strip[1].awaiting_sync is not None
+    assert strip[1].not_reconciled is not None
+    assert (strip[1].awaiting_sync.requests, strip[1].not_reconciled.requests) == (0, 0)
+    assert strip[2].not_reconciled is not None
+    assert strip[2].not_reconciled.requests == 0
+    assert strip[1].needs_offer is not None
+    assert strip[2].needs_offer is not None
+    assert (strip[1].needs_offer.requests, strip[2].needs_offer.requests) == (1, 0)

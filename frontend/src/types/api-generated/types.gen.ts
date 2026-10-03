@@ -2866,7 +2866,8 @@ export type ComparisonMetricsResponse = {
  *
  * Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
  * in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
- * the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
+ * the camp-aid lines placed on the request against its locked total (main spec §11), which counts a C1 pending
+ * round at what tonight's tick locks, so the night before the tick it can exceed Posted (owner 10-03). family_unplaced
  * is the family's camp aid no single request takes yet (D81). reconciled: off Requests › Not reconciled's
  * direction (a), which a hand tick awaiting tonight's sync is too (V1, owner 10-03: status stays awaiting_sync).
  */
