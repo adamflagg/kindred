@@ -175,12 +175,12 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   })
 
   it("carries the grid's sort and grouping on the household link, so Back restores them (I1)", async () => {
-    renderAt('/aid/requests?sort=total:desc&group=family')
-    await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
+    renderAt('/aid/requests?sort=total:desc&group=reason')
+    await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
     const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
     expect(where.pathname).toBe('/aid/households/1000003')
     expect(where.searchParams.get('sort')).toBe('total:desc')
-    expect(where.searchParams.get('group')).toBe('family')
+    expect(where.searchParams.get('group')).toBe('reason')
   })
 
   it('opens the household from a name, with the view and season, and Back highlights the row (§3.5)', async () => {
