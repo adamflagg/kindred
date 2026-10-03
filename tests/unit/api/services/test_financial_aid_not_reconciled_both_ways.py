@@ -776,7 +776,7 @@ async def test_mark_posted_is_offered_only_where_the_hand_tick_accepts_one_round
     assert [r.cm_pending for r in row.rounds[:2]] == [True, False]
     (r2,) = row.unticked or []
     assert (r2.round, r2.code, r2.mark_posted) == (2, "short_posting", False)
-    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 2"):
+    with pytest.raises(DecisionRefusedError, match=f"^{EMMA}: mark Round 1 posted before Round 2$"):
         await service.tick_posted(
             YEAR, PostedIn(rows=[PostedRow(request_id=EMMA, round=2, amount=Decimal(300))]), ACTOR
         )
@@ -1355,7 +1355,9 @@ async def test_a_zero_round_1_on_money_in_campminder_has_the_decided_zero_reason
     unreconciled = next(line for line in out.casework if line.key == "not_reconciled")
     assert [(r.code, r.items, r.label) for r in unreconciled.reasons] == [(DECIDED_ZERO, 1, DECIDED_ZERO_PILL)]
     assert (unreconciled.items, unreconciled.largest_gap) == (1, None)
-    assert _notes(row) == ["CampMinder shows $500 for this family; not yet ticked"]  # the D81 Note, beside its reason
+    assert _notes(row) == [
+        "CampMinder shows $500 for this family; not yet marked posted"
+    ]  # the D81 Note, beside its reason
     assert dict((await service.with_unticked(await service.season(YEAR))).pending) == {}
     assert (await service.ledger_ticks(YEAR)).ticked == 0  # still never auto-ticked
     assert {r.request_id: r for r in (await service.grid(YEAR)).rows}[EMMA].rounds[0].status == "needs_offer"

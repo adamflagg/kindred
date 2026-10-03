@@ -287,7 +287,7 @@ async def test_a_past_date_shows_the_ledger_note_live_showed_then() -> None:
     seed_line(store, 9001, "1500", posted=_day(3, 5))
     service = _service(store)
     live, past = _row(await service.grid(YEAR), EMMA), _row(await service.grid(YEAR, as_of=MAR_9), EMMA)
-    note = "CampMinder shows $1,500 for this family; not yet ticked"
+    note = "CampMinder shows $1,500 for this family; not yet marked posted"
     assert [n.message for n in past.notes or []] == [n.message for n in live.notes or []]
     assert note in [n.message for n in past.notes or []]
     before = _row(await service.grid(YEAR, as_of=date(2027, 3, 4)), EMMA)

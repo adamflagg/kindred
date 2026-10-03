@@ -527,14 +527,14 @@ def test_money_in_campminder_on_an_unticked_row_raises_the_note() -> None:
     note = ledger_note(held, [line(1, "1800", person=1000011)], Decimal(0))
     assert note is not None
     assert (note.code, note.severity) == ("in_campminder_not_ticked", "warn")
-    assert note.message == "CampMinder shows $1,800 for this family; not yet ticked"
+    assert note.message == "CampMinder shows $1,800 for this family; not yet marked posted"
 
 
 def test_an_unplaced_family_line_raises_the_note_on_each_unticked_request() -> None:
     needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
     note = ledger_note(needs, [], Decimal(3000))
     assert note is not None
-    assert note.message == "CampMinder shows $3,000 for this family; not yet ticked"
+    assert note.message == "CampMinder shows $3,000 for this family; not yet marked posted"
 
 
 def test_no_note_once_every_round_is_ticked_nothing_is_extra_or_the_request_is_not_live() -> None:

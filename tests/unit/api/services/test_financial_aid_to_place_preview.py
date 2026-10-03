@@ -85,7 +85,11 @@ async def test_a_whole_line_short_of_the_round_previews_the_round_left_for_a_per
     preview = await service.preview(YEAR, 9001, _preview((EMMA, "1000")), ACTOR)
     assert (preview.would_tick, preview.would_lock) == ([], 0.0)
     assert [(x.request_id, x.round, x.why) for x in preview.would_leave] == [
-        (EMMA, 1, "CampMinder holds $1,000 on this request; Round 1 needs $1,500: tick it by hand if that is right")
+        (
+            EMMA,
+            1,
+            "CampMinder holds $1,000 on this request; Round 1 needs $1,500: mark it posted by hand if that is right",
+        )
     ]
     placed = await service.place(YEAR, 9001, _place((EMMA, "1000")), ACTOR)
     assert placed.left_to_tick == preview.would_leave

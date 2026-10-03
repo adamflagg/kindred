@@ -150,7 +150,11 @@ async def test_a_placement_short_of_the_decided_amount_places_but_leaves_the_rou
     out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1000")), ACTOR)
     assert out.ticked == []
     assert [(x.request_id, x.round, x.why) for x in out.left_to_tick] == [
-        (EMMA, 1, "CampMinder holds $1,000 on this request; Round 1 needs $1,500: tick it by hand if that is right")
+        (
+            EMMA,
+            1,
+            "CampMinder holds $1,000 on this request; Round 1 needs $1,500: mark it posted by hand if that is right",
+        )
     ]
     (operation,) = store.operations
     assert [w.collection for w in operation] == ["aid_attribution_overrides"]
@@ -163,7 +167,9 @@ async def test_a_round_a_person_unticked_is_left_for_a_person() -> None:
     store.events.append(DecisionEvent(id="ev9999999999999", request_id=EMMA, round=1, kind="unpost", created=MAY1))
     out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
     assert out.ticked == []
-    assert [x.why for x in out.left_to_tick] == ["You un-ticked this round: tick it again by hand if that is right"]
+    assert [x.why for x in out.left_to_tick] == [
+        "You un-ticked this round: mark it posted again by hand if that is right"
+    ]
 
 
 @pytest.mark.asyncio
@@ -190,7 +196,7 @@ async def test_placing_on_a_request_whose_money_came_back_counts_that_money_agai
     out = await to_place_service(store).place(YEAR, 9002, _place((EMMA, "1500")), ACTOR)
     assert out.ticked == []
     assert [(x.round, x.why) for x in out.left_to_tick] == [
-        (2, "CampMinder holds $1,500 on this request; Round 2 needs $1,800: tick it by hand if that is right")
+        (2, "CampMinder holds $1,500 on this request; Round 2 needs $1,800: mark it posted by hand if that is right")
     ]
 
 

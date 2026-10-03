@@ -320,7 +320,7 @@ async def test_a_family_level_line_notes_both_requests() -> None:
     seed_request(store, LIAM, person=1000012)
     seed_line(store, 9001, "3000", person=0)
     rows = (await _service(store).grid(YEAR)).rows
-    assert [_notes(r) for r in rows] == [["CampMinder shows $3,000 for this family; not yet ticked"]] * 2
+    assert [_notes(r) for r in rows] == [["CampMinder shows $3,000 for this family; not yet marked posted"]] * 2
     assert all(r.confirmation is None for r in rows)
 
 
@@ -329,7 +329,7 @@ async def test_money_on_a_held_request_raises_the_note() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA, session=0, status="unmatched_session")
     seed_line(store, 9001, "1500")
-    assert _notes(await _row(store)) == ["CampMinder shows $1,500 for this family; not yet ticked"]
+    assert _notes(await _row(store)) == ["CampMinder shows $1,500 for this family; not yet marked posted"]
 
 
 @pytest.mark.asyncio
@@ -794,7 +794,7 @@ async def test_a_round_a_person_unticked_is_left_for_a_person() -> None:
     assert (await service.ledger_ticks(YEAR)).ticked == 0
     row = await _row(store)
     assert row.rounds[0].status == "needs_offer"
-    assert _notes(row) == ["CampMinder shows $1,500 for this family; not yet ticked"]
+    assert _notes(row) == ["CampMinder shows $1,500 for this family; not yet marked posted"]
 
 
 @pytest.mark.asyncio
