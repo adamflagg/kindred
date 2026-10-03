@@ -420,6 +420,9 @@ describe('RequestsGrid in the screen box (grid layout T1)', () => {
   })
 })
 
+/** A server-owned pending sentence (#2996's cm_pending_message), as the read sends it. */
+const V1_SENTENCE = 'Ticked today; the server says tonight’s sync checks it.'
+
 // Owner ruling 2026-10-02: the ledger-confirmation column is "CM ✓", in short words.
 describe('RequestsGrid: the CM ✓ column', () => {
   const withConfirmation = (
@@ -446,7 +449,20 @@ describe('RequestsGrid: the CM ✓ column', () => {
       in_campminder: 1850,
       on: null,
     }),
-    withConfirmation('reqc4', 'Riley Sam', { status: 'awaiting_sync', on: null }),
+    // V1 (#2996): ticked by hand today; the server marks the round pending with its own sentence.
+    gridRow({
+      request_id: 'reqc4',
+      camper_name: 'Riley Sam',
+      confirmation: confirmationOut({ status: 'awaiting_sync', on: null }),
+      rounds: [
+        roundOut(1, 'posted', {
+          posted: 900,
+          posted_on: '2027-04-01',
+          cm_pending: true,
+          cm_pending_message: V1_SENTENCE,
+        }),
+      ],
+    }),
   ]
   const cmCell = (camper: string) => {
     const at = screen.getAllByRole('columnheader').findIndex((th) => th.textContent === 'CM ✓')
@@ -530,6 +546,27 @@ describe('RequestsGrid: the CM ✓ column', () => {
     expect(screen.queryByRole('columnheader', { name: 'CM ✓' })).toBeNull()
   })
 
+  // #2996 C1: no confirmation yet, but the round is pending; the opened row says the server's sentence.
+  it("shows pending on a C1 row's chip, and the server's sentence in its opened row", async () => {
+    const c1 = gridRow({
+      request_id: 'reqc7',
+      camper_name: 'Emma Johnson',
+      confirmation: null,
+      rounds: [
+        roundOut(1, 'needs_offer', {
+          decided: 900,
+          cm_pending: true,
+          cm_pending_message: 'A C1 sentence from the server.',
+        }),
+      ],
+    })
+    render(<Grid rows={[c1]} />)
+    expect(cmCell('Emma Johnson')).toHaveTextContent(new RegExp(`^${CM_PENDING_WORD}$`))
+    await userEvent.click(within(rowOf('Emma Johnson')).getAllByRole('cell')[1] as HTMLElement)
+    const line = document.querySelector('[data-aid-detail]') as HTMLElement
+    expect(within(line).getByText('A C1 sentence from the server.')).toBeInTheDocument()
+  })
+
   // Owner ruling (A2, batch 4): the CSV keeps the full detail, not the one-word chip. Was "the
   // screen's words".
   it('writes the CSV with the full header name and the full detail, and drops the column in a season not ticked', async () => {
@@ -544,7 +581,7 @@ describe('RequestsGrid: the CM ✓ column', () => {
       '✓ confirmed Mar 10',
       'CampMinder shows $1,750; short $50',
       'CampMinder shows $1,850; over $50',
-      "Ticked today; tonight's sync checks it.",
+      V1_SENTENCE,
     ])
     unmount()
     render(<Grid rows={ROWS} tickedSeason={false} />)

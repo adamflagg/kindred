@@ -2,7 +2,7 @@ import type { ApiAidGridRow } from '../../../types/api-types'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
-import { confirmationDetail, type ColumnContext } from './views'
+import { cmDetail, type ColumnContext } from './views'
 
 const LINK = 'text-primary font-medium hover:underline'
 const MUTED = 'text-muted-foreground'
@@ -32,7 +32,7 @@ export function RequestDetailLine({
 }) {
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
   const next = found === null ? OPEN_REQUEST : found.next
-  const confirmation = showConfirmation && row.confirmation ? row.confirmation : null
+  const confirmation = showConfirmation ? cmDetail(row) : null
   return (
     <div className="flex flex-col gap-1 text-sm">
       <div>
@@ -56,7 +56,7 @@ export function RequestDetailLine({
           <>
             <span className={MUTED}>·</span>
             <span className={MUTED}>CM ✓</span>
-            <span>{confirmationDetail(confirmation)}</span>
+            <span>{confirmation}</span>
           </>
         )}
         {next !== null && (

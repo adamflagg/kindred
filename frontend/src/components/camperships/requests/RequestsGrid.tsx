@@ -20,7 +20,7 @@ import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import { RequestDetailLine } from './RequestDetailLine'
 import { requestStage, roundOf } from './stage'
 import {
-  confirmationChip,
+  cmChip,
   countWords,
   footerWords,
   GRID_COLUMNS,
@@ -128,9 +128,8 @@ function renderFor(
       return (row) => (row.cancellation?.on ? formatShortDate(row.cancellation.on) : '—')
     case 'confirmed':
       return (row) => {
-        if (!row.confirmation) return '—'
-        const chip = confirmationChip(row.confirmation)
-        return <StatusPill tone={chip.tone}>{chip.word}</StatusPill>
+        const chip = cmChip(row)
+        return chip ? <StatusPill tone={chip.tone}>{chip.word}</StatusPill> : '—'
       }
     case 'attention':
       // The chip only (batch 4); the full text and the next step are in the detail line.

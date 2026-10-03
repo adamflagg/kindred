@@ -14,6 +14,8 @@ import {
 import { shownView } from './strip'
 import {
   CM_PENDING_WORD,
+  cmChip,
+  cmDetail,
   columnContext,
   confirmationChip,
   confirmationDetail,
@@ -399,9 +401,9 @@ describe('CM ✓ words and detail (batch 4)', () => {
       'CampMinder shows $1,550; over $50'
     )
     expect(confirmationDetail(c({ status: 'reversed', on: '2027-10-02' }))).toBe('reversed Oct 2')
-    expect(confirmationDetail(c({ status: 'awaiting_sync', on: null }))).toBe(
-      "Ticked today; tonight's sync checks it."
-    )
+    // #2996: the pending sentences are the server's (cm_pending_message); with none sent (a past
+    // read), the word alone. Was "Ticked today; tonight's sync checks it." written here.
+    expect(confirmationDetail(c({ status: 'awaiting_sync', on: null }))).toBe(CM_PENDING_WORD)
     expect(confirmationDetail(c({ status: 'not_in_campminder', locked: 1800, on: null }))).toBe(
       'Posted $1,800; the last sync found nothing in CampMinder for it.'
     )
@@ -456,5 +458,58 @@ describe('the round a view is about, after #2996', () => {
       queues: ['needs_offer', 'not_reconciled'],
     })
     expect(viewRound(refused, 'needs_offer')?.round).toBe(2)
+  })
+})
+
+// #2996: a round's CampMinder check is pending in two cases, both sent as rounds[].cm_pending with the
+// server's own sentence (cm_pending_message): C1 (in CampMinder in full, tonight's tick posts it) and
+// V1 (ticked by hand today, tonight's sync checks it). CM ✓ says the pending word; the detail line and
+// the CSV say the server's sentence, never a copy.
+describe('CM ✓ pending (#2996)', () => {
+  const ctx = { view: 'all' as const, today: TODAY }
+  const C1_TEXT = 'Server sentence for a C1 round.'
+  const V1_TEXT = 'Server sentence for a V1 round.'
+  const c1 = gridRow({
+    rounds: [
+      roundOut(1, 'needs_offer', { decided: 900, cm_pending: true, cm_pending_message: C1_TEXT }),
+    ],
+    confirmation: null,
+    queues: ['waiting_on_family'],
+  })
+  const v1 = gridRow({
+    rounds: [
+      roundOut(1, 'posted', {
+        decided: 900,
+        posted: 900,
+        posted_on: '2027-04-01',
+        cm_pending: true,
+        cm_pending_message: V1_TEXT,
+      }),
+    ],
+    confirmation: confirmationOut({ status: 'awaiting_sync', on: null, locked: 900 }),
+    queues: ['waiting_on_family'],
+  })
+
+  it('says the pending word on the chip for a C1 round, which has no confirmation yet', () => {
+    expect(GRID_COLUMNS.confirmed.value(c1, ctx)).toBe(CM_PENDING_WORD)
+    expect(cmChip(c1)).toEqual({ word: CM_PENDING_WORD, tone: 'muted' })
+  })
+
+  it("writes the server's own sentence to the detail and the CSV, for C1 and V1 alike", () => {
+    expect(cmDetail(c1)).toBe(C1_TEXT)
+    expect(GRID_COLUMNS.confirmed.csv?.(c1, ctx)).toBe(C1_TEXT)
+    expect(GRID_COLUMNS.confirmed.value(v1, ctx)).toBe(CM_PENDING_WORD)
+    expect(cmDetail(v1)).toBe(V1_TEXT)
+    expect(GRID_COLUMNS.confirmed.csv?.(v1, ctx)).toBe(V1_TEXT)
+  })
+
+  it('reads the confirmation as before when no round is pending', () => {
+    const short = gridRow({
+      confirmation: confirmationOut({ status: 'short', locked: 1500, in_campminder: 1450 }),
+    })
+    expect(cmChip(short)?.word).toBe('short')
+    expect(cmDetail(short)).toBe('CampMinder shows $1,450; short $50')
+    expect(cmChip(gridRow())).toBeNull()
+    expect(cmDetail(gridRow())).toBeNull()
   })
 })

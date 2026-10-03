@@ -269,8 +269,8 @@ export function confirmationChip(confirmation: ApiAidConfirmation): {
 /**
  * CM ✓ in full (owner ruling, batch 4), for the detail line and the CSV's "Confirmed by
  * CampMinder": "✓ confirmed Sep 29", "CampMinder shows $1,450; short $50", "reversed Oct 2",
- * "Ticked today; tonight's sync checks it.", "Posted $1,800; the last sync found nothing in
- * CampMinder for it."
+ * "Posted $1,800; the last sync found nothing in CampMinder for it." A pending check's sentence is
+ * the server's (cmDetail, #2996); with none sent (a past read) this says the pending word alone.
  */
 export function confirmationDetail(confirmation: ApiAidConfirmation): string {
   const on = confirmation.on ? ` ${formatShortDate(confirmation.on)}` : ''
@@ -287,8 +287,34 @@ export function confirmationDetail(confirmation: ApiAidConfirmation): string {
     case 'reversed':
       return `reversed${on}`
     case 'awaiting_sync':
-      return "Ticked today; tonight's sync checks it."
+      return CM_PENDING_WORD
   }
+}
+
+/**
+ * The round whose CampMinder check is pending (#2996, `cm_pending`), lowest first: C1 (in CampMinder
+ * in full, tonight's tick posts it) or V1 (ticked by hand today, tonight's sync checks it).
+ */
+function pendingRound(row: ApiAidGridRow): ApiAidRound | undefined {
+  return lowest(row.rounds.filter((r) => r.cm_pending === true))
+}
+
+/** CM ✓'s chip for a row: the pending word while a round's check is pending, else the confirmation's. */
+export function cmChip(
+  row: ApiAidGridRow
+): { readonly word: string; readonly tone: PillTone } | null {
+  if (pendingRound(row) !== undefined) return { word: CM_PENDING_WORD, tone: 'muted' }
+  return row.confirmation ? confirmationChip(row.confirmation) : null
+}
+
+/**
+ * CM ✓ in full for a row (the detail line and the CSV): a pending round's sentence as the server
+ * sends it (`cm_pending_message`; no copy here), else the confirmation's.
+ */
+export function cmDetail(row: ApiAidGridRow): string | null {
+  const pending = pendingRound(row)
+  if (pending !== undefined) return pending.cm_pending_message ?? CM_PENDING_WORD
+  return row.confirmation ? confirmationDetail(row.confirmation) : null
 }
 
 /** The CM ✓ header's explanation (owner ruling, batch 4), verbatim but for the pending word. */
@@ -392,8 +418,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     csvHeader: 'Confirmed by CampMinder',
     help: CM_CHECK_HELP,
     width: 84,
-    value: (r) => (r.confirmation ? confirmationChip(r.confirmation).word : null),
-    csv: (r) => (r.confirmation ? confirmationDetail(r.confirmation) : ''),
+    value: (r) => cmChip(r)?.word ?? null,
+    csv: (r) => cmDetail(r) ?? '',
   },
   round: {
     header: 'Round',
