@@ -175,7 +175,7 @@ interface RequestCardProps {
   readonly view: AidView
   readonly checklist?: ((line: RoundLine) => ReactNode) | undefined
   readonly nextAction?: ((line: RoundLine) => ReactNode) | undefined
-  /** The card's own actions (PR 8): Edit…, Round 3…, Put on hold…, Cancel… */
+  /** The card's own actions (PR 8): Edit…, Round 3…, Put on Hold…, Cancel… */
   readonly actions?: ReactNode | undefined
   /** The shared editor, opened in place on the card (§4.6). */
   readonly editor?: ReactNode | undefined

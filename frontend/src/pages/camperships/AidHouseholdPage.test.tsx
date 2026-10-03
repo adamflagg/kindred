@@ -137,7 +137,7 @@ describe('AidHouseholdPage (§6.3)', () => {
       error: null,
     }
     renderAt('/aid/households/1000001')
-    expect(screen.queryByRole('button', { name: 'Cancel request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Lift…' })).toBeNull()
   })
 
@@ -155,7 +155,7 @@ describe('AidHouseholdPage (§6.3)', () => {
       error: null,
     }
     renderAt('/aid/households/1000001')
-    expect(screen.getByRole('button', { name: 'Cancel request…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel Request…' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
   })
 
@@ -520,7 +520,7 @@ describe('the walk stands aside for an open editor (F2 4)', () => {
     })
   })
   const typeAppeal = async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
   }
@@ -558,7 +558,7 @@ describe('the walk stands aside for an open editor (F2 4)', () => {
 
   it('steps at once with nothing typed', async () => {
     renderAt(OLIVIA)
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.click(screen.getByRole('heading', { level: 1 }))
     await userEvent.keyboard(']')
     expect(keyAskMutate).not.toHaveBeenCalled()
@@ -567,7 +567,7 @@ describe('the walk stands aside for an open editor (F2 4)', () => {
 
   it('stays, and shows what is missing, when the edit cannot be saved', async () => {
     renderAt(OLIVIA)
-    await userEvent.click(screen.getByRole('button', { name: 'Round 3 ask…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Round 3 Ask…' }))
     await userEvent.keyboard('450')
     await userEvent.click(screen.getByRole('heading', { level: 1 }))
     await userEvent.keyboard(']')

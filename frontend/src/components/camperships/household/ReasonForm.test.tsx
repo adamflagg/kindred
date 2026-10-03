@@ -10,13 +10,13 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
     render(
       <ReasonForm
         label="Release note"
-        submitLabel="Release the hold"
+        submitLabel="Release the Hold"
         onSubmit={onSubmit}
         onCancel={() => undefined}
       />
     )
     expect(screen.getByLabelText('Release note')).toHaveFocus()
-    await userEvent.click(screen.getByRole('button', { name: 'Release the hold' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Release the Hold' }))
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByText('Release note is required')).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Release note'), '  Checked with the family {Enter}')

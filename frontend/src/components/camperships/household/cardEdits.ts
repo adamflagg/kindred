@@ -5,9 +5,9 @@ import { roundOf } from '../requests/stage'
 export type CardEditKind = 'appeal' | 'round3_ask' | 'round3_amount'
 
 export const CARD_EDIT_LABEL: Readonly<Record<CardEditKind, string>> = {
-  appeal: 'Edit the appeal…',
-  round3_ask: 'Round 3 ask…',
-  round3_amount: 'Round 3 amount…',
+  appeal: 'Edit the Appeal…',
+  round3_ask: 'Round 3 Ask…',
+  round3_amount: 'Round 3 Amount…',
 }
 
 /**
