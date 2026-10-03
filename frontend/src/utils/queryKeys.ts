@@ -735,6 +735,10 @@ export const queryKeys = {
   aidRulesPrefix: () => ['financial-aid', 'rules'] as const,
   aidRulesApproved: (year: number, version: number | null) =>
     ['financial-aid', 'rules', year, 'approved', version ?? 'pricing'] as const,
+  aidTodayPrefix: () => ['financial-aid', 'today'] as const,
+  aidHouseholdPagePrefix: () => ['financial-aid', 'household-page'] as const,
+  aidApplicationPrefix: () => ['financial-aid', 'application'] as const,
+  aidJumpIndexPrefix: () => ['financial-aid', 'jump-index'] as const,
 }
 
 /**
@@ -861,14 +865,33 @@ export function invalidateLodgingRegistryQueries(queryClient: {
 }
 
 /**
- * Every Camperships money write calls this (spec §7.3, §10; D48): saving an ask puts it in Needs
- * an offer, which moves Remaining at once. Each slice adds the reads its writes move (Rounds &
- * budget, the grid, the household page), so a writer never needs to know every key.
+ * Every Camperships write calls this on settle (spec §10; #2924's invalidation table):
+ * - the Remaining line, the Requests grid and Today;
+ * - every household page (a split request sits on both homes' pages, and a rules or grants change
+ *   re-prices them all);
+ * - the application read.
+ * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
+ * Rounds & budget joins with slice 2's read. Definitions are static and never invalidated.
  */
-export function invalidateAidMoneyQueries(queryClient: {
-  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
-}): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.aidRemainingPrefix() })
+export function invalidateAidMoneyQueries(
+  queryClient: {
+    invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+  },
+  options: { readonly jumpIndex?: boolean } = {}
+): Promise<void> {
+  const keys: Array<readonly unknown[]> = [
+    queryKeys.aidRemainingPrefix(),
+    queryKeys.aidGridPrefix(),
+    queryKeys.aidTodayPrefix(),
+    queryKeys.aidHouseholdPagePrefix(),
+    queryKeys.aidApplicationPrefix(),
+  ]
+  if (options.jumpIndex === true) keys.push(queryKeys.aidJumpIndexPrefix())
+  // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
+  // awaits a promise returned from onSettled before mutateAsync resolves.
+  return Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey }))).then(
+    () => undefined
+  )
 }
 
 /**

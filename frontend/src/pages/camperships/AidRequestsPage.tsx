@@ -1,10 +1,15 @@
 import { ListChecks } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
+import { ACTION_LINK, AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../components/QueryGuard'
 import { aidHref } from '../../components/camperships/kit/asOf'
+import type { AidRowNav } from '../../components/camperships/kit/AidTable'
 import { campToday } from '../../components/camperships/kit/dates'
+import type { EditorSave } from '../../components/camperships/kit/RequestEditor'
+import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
+import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
 import { GridFiltersBar } from '../../components/camperships/requests/GridFiltersBar'
 import {
   RequestsGrid,
@@ -18,7 +23,10 @@ import {
   stripCsvName,
   type RequestLens,
 } from '../../components/camperships/requests/strip'
-import { useGridParams } from '../../components/camperships/requests/useGridParams'
+import {
+  useGridParams,
+  type GridParamName,
+} from '../../components/camperships/requests/useGridParams'
 import {
   filterRows,
   viewCounts,
@@ -27,9 +35,12 @@ import {
 } from '../../components/camperships/requests/views'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
+import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
+import { useAidKeyAsk } from '../../hooks/camperships/useAidWrites'
+import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow } from '../../types/api-types'
 
@@ -66,8 +77,11 @@ export default function AidRequestsPage() {
   const [highlighted, setHighlighted] = useState<string | null>(rowParam)
   // The URL follows each highlight move directly (replace); nothing mirrors it in an effect, so
   // nothing can race a navigation that follows.
+  // The last key `onHighlight` set, so "Go back" can tell whether the walk really moved there.
+  const lastMoved = useRef<string | null>(null)
   const onHighlight = useCallback(
     (key: string | null) => {
+      lastMoved.current = key
       setHighlighted(key)
       setParam('row', key)
     },
@@ -104,11 +118,74 @@ export default function AidRequestsPage() {
       ),
     [rows, approvedRules.data]
   )
+
+  const { hasPermission } = usePermissions()
+  // Casework edits a live read only: a past date shows what was, not what can change.
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && live
+  const { mutateAsync: keyAsk } = useAidKeyAsk()
+  const save = useCallback(
+    (requestId: string, entry: EditorSave) =>
+      keyAsk({
+        requestId,
+        // Decision 14: an appeal is dated the day it is keyed, camp time.
+        body: { round: 2, amount: entry.amount, asked_on: campToday(), note: entry.reason },
+      }),
+    [keyAsk]
+  )
+  // Build ruling 2: a failure on a row the read no longer has is pruned, so it can't block a leave.
+  const rowKeys = useMemo(() => new Set((rows ?? []).map((r) => r.request_id)), [rows])
+  // The page's own `onHighlight`, never the bare setter: every walk move (↓, a jump back, Go back,
+  // Esc) must write `?row=` too, or Back lands on a stale row (PR 2 final review, "PR 3 seams").
+  const walk = useEditorWalk({ highlighted, setHighlighted: onHighlight, save, rowKeys })
+  // Every way out the page owns saves first (Decision 4; I4). Without the walk, it just goes.
+  const { leave } = walk
+  // `leave` is stable while `onHighlight` and `save` are, so no ref is needed.
+  const leaveThen = useCallback(
+    (rowKey: string | null, go: () => void) => {
+      if (canWork) leave(rowKey, go)
+      else {
+        if (rowKey !== null) onHighlight(rowKey)
+        go()
+      }
+    },
+    [canWork, leave, onHighlight]
+  )
+  const changeFilter = useCallback(
+    (name: GridParamName, value: string | null) => leaveThen(null, () => setParam(name, value)),
+    [leaveThen, setParam]
+  )
   const onProgramPool = useCallback(
     (nextPool: string | null, nextProgram: string | null) =>
-      setParams({ pool: nextPool, program: nextProgram }),
-    [setParams]
+      leaveThen(null, () => setParams({ pool: nextPool, program: nextProgram })),
+    [leaveThen, setParams]
   )
+  const openView = useCallback(
+    (href: string) => leaveThen(null, () => void navigate(href)),
+    [leaveThen, navigate]
+  )
+  const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
+  const byKey = useMemo(() => new Map((rows ?? []).map((r) => [r.request_id, r] as const)), [rows])
+  // "Go back" (Decision 3): a click on that row (ruling B). A row the view or a filter hides is
+  // brought back on All (no `view` param: All is its absence) with no filters first (the PR 1 final review: `keep` would leave it hidden).
+  // A row the table's search hides needs nothing: AidTable keeps the highlighted row through a
+  // search (PR 1), out of the totals, group counts and CSV.
+  const goBack = (key: string) => {
+    lastMoved.current = null
+    // Move first: the walk's own `?row=` replace reads the URL as rendered, so a navigation made
+    // before it would be overwritten. The push after it carries `row` itself and wins.
+    walk.onHighlight(key)
+    // Read through a function: TypeScript would narrow the ref to the null just written above.
+    const movedTo = (): string | null => lastMoved.current
+    // Already highlighted counts too: a failed ↓ jumps back to its row before Go back is clicked.
+    if ((movedTo() === key || highlighted === key) && !visibleKeys.has(key)) {
+      void navigate(
+        aidHref('/aid/requests', viewState, {
+          row: key,
+          ...(showIds ? { ids: '1' } : {}),
+        })
+      )
+    }
+  }
 
   // The filters and Show IDs travel with every link out (view links, and the household page and
   // back: M5). Built with spreads: the index-signature dot form is a tsc error here (I1).
@@ -149,13 +226,17 @@ export default function AidRequestsPage() {
           ...keep,
         }),
       open: (r: ApiAidGridRow, href: string) => {
-        // Back lands on this row (§3.5): it is highlighted, and written to the URL, before leaving.
-        setHighlighted(r.request_id)
-        setParam('row', r.request_id)
-        void navigate(href)
+        // Back lands on this row (§3.5). With the editor open, what is typed is saved first, and
+        // every save in flight has landed (Decision 4; C1). The walk highlights the row through
+        // `onHighlight`, which writes `?row=` before `go` navigates; the explicit write stays for
+        // the no-walk path and costs nothing.
+        leaveThen(r.request_id, () => {
+          setParam('row', r.request_id)
+          void navigate(href)
+        })
       },
     }),
-    [viewState, from, lensKeep, keep, setParam, navigate]
+    [viewState, from, lensKeep, keep, setParam, navigate, leaveThen]
   )
 
   const csvFilename = stripCsvName(
@@ -174,7 +255,7 @@ export default function AidRequestsPage() {
       round={round}
       tick={tick}
       showIds={showIds}
-      onChange={setParam}
+      onChange={changeFilter}
       onProgramPool={onProgramPool}
     />
   )
@@ -197,6 +278,7 @@ export default function AidRequestsPage() {
         lensCounts={countsByLens}
         hrefOf={hrefOf}
         lensHrefOf={lensHrefOf}
+        onOpen={openView}
       />
       {!gridShown && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">{filtersBar}</div>
@@ -213,6 +295,23 @@ export default function AidRequestsPage() {
           each share.
         </p>
       )}
+      {[...walk.failures].map(([key, message]) => {
+        const failedRow = byKey.get(key)
+        const name =
+          failedRow === undefined
+            ? key
+            : failedRow.camper_name !== ''
+              ? failedRow.camper_name
+              : failedRow.family_name
+        return (
+          <p key={key} className={`${AMBER_NOTE} flex flex-wrap items-center gap-2`}>
+            {`Couldn't save ${name}'s Round 2 ask: ${message}`}
+            <button type="button" className={ACTION_LINK} onClick={() => goBack(key)}>
+              Go Back
+            </button>
+          </p>
+        )
+      })}
       <QueryGuard
         isLoading={grid.isLoading}
         // Decision 33: a failed background refetch keeps what loaded.
@@ -235,7 +334,20 @@ export default function AidRequestsPage() {
               today={today}
               csvFilename={csvFilename}
               highlighted={highlighted}
-              onHighlight={onHighlight}
+              onHighlight={canWork ? walk.onHighlight : onHighlight}
+              marked={canWork ? walk.failed : undefined}
+              renderBelowHighlighted={
+                canWork
+                  ? (r: ApiAidGridRow, nav: AidRowNav) => (
+                      <GridEditorRow
+                        key={walk.editorKey(r.request_id)}
+                        row={r}
+                        walk={walk.editorFor(r.request_id, nav)}
+                        links={links}
+                      />
+                    )
+                  : undefined
+              }
               links={links}
               filters={filtersBar}
             />

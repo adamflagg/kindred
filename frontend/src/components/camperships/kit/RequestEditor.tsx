@@ -64,8 +64,8 @@ interface RequestEditorProps {
   readonly onAmountChange: (amount: number | null) => void
   readonly onSave: (save: EditorSave) => void
   /**
-   * Grid only (Decision 6, RULED 2026-10-01): ↓ saves and moves on (D22), or just moves when
-   * nothing was typed (save = null); ↑ just moves back, and only when nothing was typed (D31).
+   * Grid only (Decision 6, RULED 2026-10-01): ↓ and ↑ save and move on (D22; ↑ since owner
+   * ruling 2026-10-03, A18), or just move when nothing was typed (save = null) (D31).
    */
   readonly onMove?: ((direction: 1 | -1, save: EditorSave | null) => void) | undefined
   readonly onCancel: () => void
@@ -96,6 +96,11 @@ interface RequestEditorProps {
    * each render doesn't report again.
    */
   readonly onDraftChange?: ((report: EditorDraftReport | null) => void) | undefined
+  /**
+   * Called once when the editor unmounts (a refetch took its row away, say), so the walk can drop
+   * typing that could never be saved and would otherwise hold every exit. Read through a ref.
+   */
+  readonly onGone?: (() => void) | undefined
   /**
    * Show the editor's own problem now, as if Enter had been tried: the walk sets it when a click
    * elsewhere found nothing it could save yet (slice 1 Decision 5; plan review M9).
@@ -152,7 +157,7 @@ interface Baseline {
  * place on the household page's request card.
  * - While typing it shows the computed award, the limit that bound it (the receipt's one-line
  *   form), the stage change, the recomputed payer shares and both CampMinder ids (D27).
- * - Enter saves, once (Ruling 2026-10-01 (plan review)). ↓ saves and moves on. Esc cancels.
+ * - Enter saves, once (Ruling 2026-10-01 (plan review)). ↓ and ↑ save and move on. Esc cancels.
  * - A Round 3 above the registrar's limit says it goes to finance (D79).
  */
 export function RequestEditor(props: RequestEditorProps) {
@@ -232,6 +237,16 @@ export function RequestEditor(props: RequestEditorProps) {
   useEffect(() => {
     reportTo.current = props.onDraftChange
   })
+  const goneTo = useRef(props.onGone)
+  useEffect(() => {
+    goneTo.current = props.onGone
+  })
+  useEffect(
+    () => () => {
+      goneTo.current?.()
+    },
+    []
+  )
   const readyAmount = parsed.kind === 'ok' ? parsed.amount : null
   useEffect(() => {
     if (untouched) {
@@ -280,16 +295,14 @@ export function RequestEditor(props: RequestEditorProps) {
       event.preventDefault()
       // A held arrow must not walk the table.
       if (event.repeat) return
-      if (event.key === 'ArrowDown') {
-        if (untouched) {
-          props.onMove(1, null)
-          return
-        }
-        const save = takeSave()
-        if (save) props.onMove(1, save)
-      } else if (untouched) {
-        props.onMove(-1, null)
+      // Both directions are exits: untouched just moves, typed text is saved first (A18).
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      if (untouched) {
+        props.onMove(direction, null)
+        return
       }
+      const save = takeSave()
+      if (save) props.onMove(direction, save)
     } else if (event.key === 'Escape') {
       event.preventDefault()
       props.onCancel()
@@ -364,7 +377,7 @@ export function RequestEditor(props: RequestEditorProps) {
         </label>
       )}
       <span className="text-muted-foreground text-xs">
-        Enter saves{props.onMove ? ' · ↓ saves and moves on' : ''} · Esc cancels
+        Enter saves{props.onMove ? ' · ↑ ↓ save and move on' : ''} · Esc cancels
       </span>
       {(tried || props.showProblem === true) && problem !== null && (
         <span className={AMBER_NOTE}>{problem}</span>

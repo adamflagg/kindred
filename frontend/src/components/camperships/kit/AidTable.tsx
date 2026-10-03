@@ -156,6 +156,11 @@ export interface AidTableProps<Row> {
    */
   readonly highlighted?: string | null | undefined
   readonly onHighlight?: ((key: string | null) => void) | undefined
+  /**
+   * Rows to mark (Decision 3: a save that failed). Read at row render, so a change re-renders rows
+   * without rebuilding columns. Pass a memoised Set.
+   */
+  readonly markedKeys?: ReadonlySet<string> | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
@@ -204,6 +209,7 @@ export function AidTable<Row>({
   highlighted: highlightedProp,
   onHighlight,
   footerLabel,
+  markedKeys,
   groupCount,
   emptyText = 'No rows match.',
   scrollBox = false,
@@ -429,8 +435,14 @@ export function AidTable<Row>({
       : pinClasses(column, fallback)
   // One shadow class per cell (Ruling 2026-10-01 (plan review)): a highlighted first cell that is
   // also the last pinned one gets the combined shadow, never two competing `shadow-[…]` classes.
-  const bodyEdge = (column: AidColumn<Row>, index: number, isHighlighted: boolean) => {
-    const highlightEdge = isHighlighted && index === 0
+  // A marked row (a failed save) wears the same amber bar as the highlight, on its first cell only.
+  const bodyEdge = (
+    column: AidColumn<Row>,
+    index: number,
+    isHighlighted: boolean,
+    isMarked: boolean
+  ) => {
+    const highlightEdge = (isHighlighted || isMarked) && index === 0
     const pinnedEdge = column.key === lastPinned
     if (highlightEdge && pinnedEdge) return HIGHLIGHT_PINNED_EDGE
     if (column.pinnedRight) return RIGHT_PINNED_EDGE
@@ -577,11 +589,13 @@ export function AidTable<Row>({
                 {g.rows.map((row) => {
                   const key = rowKey(row)
                   const isHighlighted = key === highlighted
+                  const isMarked = markedKeys?.has(key) === true
                   return (
                     <Fragment key={key}>
                       <tr
                         data-row-key={key}
                         data-highlighted={isHighlighted ? 'true' : undefined}
+                        data-marked={isMarked ? 'true' : undefined}
                         ref={(element) => {
                           if (element) rowRefs.current.set(key, element)
                           else rowRefs.current.delete(key)
@@ -600,7 +614,7 @@ export function AidTable<Row>({
                             className={join(
                               TD,
                               isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
-                              bodyEdge(c, index, isHighlighted),
+                              bodyEdge(c, index, isHighlighted, isMarked),
                               isPinned(c) && 'sticky z-10',
                               alignClass(c),
                               c.flex === true && isHighlighted

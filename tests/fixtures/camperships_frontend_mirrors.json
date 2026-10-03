@@ -8,5 +8,6 @@
     "refused": "Refused by finance",
     "posted": "Posted",
     "not_rebuilt": "Not rebuilt for that date"
-  }
+  },
+  "live_request_statuses": ["active", "unmatched_session"]
 }

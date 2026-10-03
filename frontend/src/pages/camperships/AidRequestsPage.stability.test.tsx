@@ -32,6 +32,13 @@ vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let granted: string[] = ['financial_aid.view']
+vi.mock('../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
+}))
+// One mutation function for the whole file, as react-query's own is stable.
+const mutateAsync = vi.fn()
+vi.mock('../../hooks/camperships/useAidWrites', () => ({ useAidKeyAsk: () => ({ mutateAsync }) }))
 
 function Where() {
   const { search } = useLocation()
@@ -45,25 +52,30 @@ function Where() {
 
 beforeEach(() => {
   seen.length = 0
+  granted = ['financial_aid.view']
 })
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/aid/requests']}>
+      <Routes>
+        <Route
+          path="/aid/requests"
+          element={
+            <>
+              <AidRequestsPage />
+              <Where />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>
+  )
+}
 
 describe('AidRequestsPage URL writes', () => {
   it('keeps links and onHighlight stable across a highlight move, and writes with replace', async () => {
-    render(
-      <MemoryRouter initialEntries={['/aid/requests']}>
-        <Routes>
-          <Route
-            path="/aid/requests"
-            element={
-              <>
-                <AidRequestsPage />
-                <Where />
-              </>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
-    )
+    renderPage()
     const first = seen[seen.length - 1]
     await userEvent.click(screen.getByRole('button', { name: 'Highlight' }))
     expect(screen.getByTestId('search')).toHaveTextContent('row=reqliam00000002')
@@ -72,5 +84,14 @@ describe('AidRequestsPage URL writes', () => {
     expect(seen.length).toBeGreaterThan(1)
     expect(last?.links).toBe(first?.links)
     expect(last?.onHighlight).toBe(first?.onHighlight)
+  })
+
+  it('keeps links stable across a highlight move for casework holders too (the walk is stable)', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderPage()
+    const first = seen[seen.length - 1]
+    await userEvent.click(screen.getByRole('button', { name: 'Highlight' }))
+    expect(screen.getByTestId('search')).toHaveTextContent('row=reqliam00000002')
+    expect(seen[seen.length - 1]?.links).toBe(first?.links)
   })
 })

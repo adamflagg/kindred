@@ -53,6 +53,8 @@ interface RequestsGridProps {
   /** The filter controls: they share the table's toolbar line with search and Download CSV. */
   readonly filters?: ReactNode
   readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
+  /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
+  readonly marked?: ReadonlySet<string> | undefined
 }
 
 const requestKey = (row: ApiAidGridRow) => row.request_id
@@ -196,6 +198,7 @@ export function RequestsGrid({
   links,
   filters,
   renderBelowHighlighted,
+  marked,
 }: RequestsGridProps) {
   const columns = useMemo(
     () => buildColumns(view, showIds, tickedSeason, today, links),
@@ -237,6 +240,7 @@ export function RequestsGrid({
       onHighlight={onHighlight}
       renderDetail={renderDetail}
       renderBelowHighlighted={renderBelowHighlighted}
+      markedKeys={marked}
       footerLabel={footer}
       groupCount={groupCount}
       emptyText="No requests in this view."
