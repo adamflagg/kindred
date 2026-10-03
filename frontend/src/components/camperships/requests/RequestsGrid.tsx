@@ -56,7 +56,8 @@ interface RequestsGridProps {
 }
 
 const requestKey = (row: ApiAidGridRow) => row.request_id
-const idsOf = (row: ApiAidGridRow) => [row.household_cm_id, row.person_cm_id]
+/** Searched beside the shown names (D27; Q-L2): the family name, though no column shows it, and the ids. */
+const searchExtra = (row: ApiAidGridRow) => [row.family_name, row.household_cm_id, row.person_cm_id]
 const footer = (rows: readonly ApiAidGridRow[]) => footerWords(viewCount(rows))
 const groupCount = (rows: readonly ApiAidGridRow[]) => countWords(viewCount(rows))
 const asMoney = (value: CellValue) => (typeof value === 'number' ? value : null)
@@ -76,16 +77,20 @@ function renderFor(
   links: HouseholdLinks
 ): AidColumn<ApiAidGridRow>['render'] {
   switch (key) {
-    case 'family':
+    case 'requestedBy':
       return (row, { query }) => {
         const matched = matchedId([row.household_cm_id, row.person_cm_id], query)
         // One line even on the highlighted row (batch 4: the opened row no longer grows tall), though
-        // the kit wraps a flexible column there.
+        // the kit wraps a flexible column there. No name, no link: the Camper opens the household too.
         return (
           <div className="min-w-0 truncate">
-            <HouseholdLink row={row} links={links} className={NAME_LINK}>
-              {row.family_name}
-            </HouseholdLink>
+            {row.requested_by ? (
+              <HouseholdLink row={row} links={links} className={NAME_LINK}>
+                {row.requested_by}
+              </HouseholdLink>
+            ) : (
+              '—'
+            )}
             {matched !== null && (
               <div>
                 <IdChip id={matched} />
@@ -164,8 +169,9 @@ function buildColumns(
       fitContent: spec.fitContent,
       inCsv: spec.inCsv,
       csv: spec.csv ? (row: ApiAidGridRow) => spec.csv?.(row, ctx) ?? '' : undefined,
-      searchable: key === 'family' || key === 'camper',
+      searchable: key === 'requestedBy' || key === 'camper',
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
+      sortValue: spec.sortValue,
       render: renderFor(key, ctx, links),
       total: spec.money
         ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
@@ -218,7 +224,7 @@ export function RequestsGrid({
       rows={rows}
       columns={columns}
       rowKey={requestKey}
-      searchExtra={idsOf}
+      searchExtra={searchExtra}
       groupings={groupings}
       defaultGrouping={view.groupBy === null ? undefined : 'reason'}
       csvFilename={csvFilename}

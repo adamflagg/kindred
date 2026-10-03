@@ -20,7 +20,7 @@ import { latestRound, requestStage, roundOf } from './stage'
 export type RequestViewKey = 'all' | ApiAidQueue
 
 export type GridColumnKey =
-  | 'family'
+  | 'requestedBy'
   | 'camper'
   | 'householdId'
   | 'personId'
@@ -50,7 +50,7 @@ export interface RequestView {
   /** The URL's `?view=` (D15). */
   readonly slug: string
   readonly label: string
-  /** Beyond the Camper, which every view pins, and the Family, which sits before Needs attention (D25, T2). */
+  /** Beyond the Camper, which every view pins, and Requested by, which sits before Needs attention (D25, T2, T3). */
   readonly columns: readonly GridColumnKey[]
   /** How it opens: by the reason, by round, all one group, or flat (null: All, D23). */
   readonly groupBy: 'reason' | 'round' | 'one' | null
@@ -189,6 +189,18 @@ export interface GridColumnSpec {
   /** The CSV's own text when it says more than the screen's (CM ✓'s full detail, batch 4). */
   readonly csv?: (row: ApiAidGridRow, ctx: ColumnContext) => string
   readonly value: (row: ApiAidGridRow, ctx: ColumnContext) => CellValue
+  /** What a header click sorts on, when it isn't the value (Requested by: the last name, T3). */
+  readonly sortValue?: (row: ApiAidGridRow) => CellValue
+}
+
+/**
+ * A name turned last-word-first, so a sort on it is a sort by last name (T3): "Ana Garcia" sorts as
+ * "Garcia Ana". The read sends one name string, so the last word is the last name.
+ */
+export function lastNameFirst(name: string): string {
+  const words = name.trim().split(/\s+/)
+  const last = words.pop() ?? ''
+  return words.length === 0 ? last : `${last} ${words.join(' ')}`
 }
 
 function lowest(rounds: readonly ApiAidRound[]): ApiAidRound | undefined {
@@ -267,9 +279,17 @@ export function confirmationDetail(confirmation: ApiAidConfirmation): string {
 export const CM_CHECK_HELP = `CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
 
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
+  // T3 (LOCKED): who filed the aid form, by name only (#2993's `requested_by`; null when the server
+  // can't name one person). It replaced Family, links to the household and sorts by last name.
   // Takes the spare width (batch 4): Needs attention is now only as wide as its chips, so in a
   // narrow view the gap opens here, beside it, and never at 130 or under.
-  family: { header: 'Family', width: 130, flex: true, value: (r) => r.family_name },
+  requestedBy: {
+    header: 'Requested by',
+    width: 130,
+    flex: true,
+    value: (r) => r.requested_by ?? null,
+    sortValue: (r) => (r.requested_by ? lastNameFirst(r.requested_by) : null),
+  },
   camper: { header: 'Camper', width: 130, pinned: true, value: (r) => r.camper_name },
   householdId: {
     header: 'Household',
@@ -408,15 +428,15 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
 }
 
 /**
- * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; the Family and Household id sit
- * just left of Needs attention, where Requested by will go (T3).
+ * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; Requested by (T3) and the
+ * Household id sit just left of Needs attention.
  */
 export function viewColumns(
   view: RequestView,
   showIds: boolean,
   tickedSeason: boolean
 ): GridColumnKey[] {
-  const tail: GridColumnKey[] = ['family', ...(showIds ? (['householdId'] as const) : [])]
+  const tail: GridColumnKey[] = ['requestedBy', ...(showIds ? (['householdId'] as const) : [])]
   // A season before the first ticked one (the read's `ticked_season`, #2994) has nothing to
   // confirm, so no CM ✓ (and no CSV column).
   const middle = view.columns.filter(

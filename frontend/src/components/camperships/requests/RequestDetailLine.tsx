@@ -14,8 +14,8 @@ const hashOf = (step: Extract<NextStep, { kind: 'link' }>, row: ApiAidGridRow) =
 /**
  * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6): the
  * chip and the full needs-attention text (attention.ts's, the server's own message for a check or
- * hold), the Family (interim: T3 makes it Requested by), the household link, CM ✓ in full, and the
- * next step on the right. #2943 has no writers, so the step is a link to where it is done today or
+ * hold), Requested by (T3: the name only, "—" when the server can't name one), the household
+ * link, CM ✓ in full, and the next step on the right. #2943 has no writers, so the step is a link to where it is done today or
  * plain words, never a button; a tick or the editor (#2951, #2948) draws nothing yet.
  */
 export function RequestDetailLine({
@@ -46,8 +46,8 @@ export function RequestDetailLine({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-        <span className={MUTED}>Family</span>
-        <span className="font-medium">{row.family_name}</span>
+        <span className={MUTED}>Requested by</span>
+        <span className="font-medium">{row.requested_by ?? '—'}</span>
         <span className={MUTED}>·</span>
         <HouseholdLink row={row} links={links} className={LINK}>
           Household {row.household_cm_id} ›

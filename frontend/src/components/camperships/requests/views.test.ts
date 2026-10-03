@@ -21,6 +21,7 @@ import {
   filterRows,
   footerWords,
   GRID_COLUMNS,
+  lastNameFirst,
   moneyTotal,
   NO_FILTERS,
   parseRoundFilter,
@@ -35,6 +36,7 @@ import {
 } from './views'
 
 const TODAY = '2027-04-01'
+const CTX = { view: 'all' as const, today: TODAY }
 /** CM ✓'s width: its widest chip, "reversed", plus the cell's padding (measured at 1440, batch 4). */
 const CM_WIDTH = 84
 
@@ -72,19 +74,20 @@ describe('REQUEST_VIEWS (§6.2)', () => {
       'Total',
       'Posted',
       'CM ✓',
-      'Family',
+      'Requested by',
       'Needs attention',
     ])
     const fixed = keys.reduce((sum, k) => sum + (GRID_COLUMNS[k].width ?? 0), 0)
-    // Family widened 110 → 130 now it is unpinned and truncated long names (integration ruling).
-    expect(GRID_COLUMNS.family.width).toBe(130)
+    // Family widened 110 → 130 now it is unpinned and truncated long names (integration ruling);
+    // Requested by took its place and width (T3).
+    expect(GRID_COLUMNS.requestedBy.width).toBe(130)
     // Batch 4 (owner rulings): CM ✓ is as wide as its widest one-word chip ("reversed"), and Needs
     // attention has no fixed width (it fits the chips on screen, measured), so Family takes the
-    // spare width at 130 or more. Was: CM ✓ 90 and Needs attention flexible, 1,486 with it at 250.
+    // spare width at 130 or more (Requested by since T3). Was: CM ✓ 90 and Needs attention flexible, 1,486 with it at 250.
     expect(GRID_COLUMNS.confirmed.width).toBe(CM_WIDTH)
     expect(GRID_COLUMNS.attention.width).toBeUndefined()
     expect(GRID_COLUMNS.attention.flex).toBeUndefined()
-    expect(GRID_COLUMNS.family.flex).toBe(true)
+    expect(GRID_COLUMNS.requestedBy.flex).toBe(true)
     expect(fixed).toBe(1236 - 90 + CM_WIDTH)
   })
 
@@ -103,23 +106,36 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     expect(viewColumns(requestView('not-reconciled'), false, false)).not.toContain('confirmed')
   })
 
-  it('brings the id columns back with Show IDs: Person pinned after the Camper, Household beside Family (D27, T2)', () => {
+  it('brings the id columns back with Show IDs: Person pinned after the Camper, Household beside Requested by (D27, T2, T3)', () => {
     const keys = viewColumns(requestView('holds'), true, true)
     expect(keys.slice(0, 2)).toEqual(['camper', 'personId'])
-    expect(keys.slice(-3)).toEqual(['family', 'householdId', 'attention'])
+    expect(keys.slice(-3)).toEqual(['requestedBy', 'householdId', 'attention'])
     expect(GRID_COLUMNS.personId.pinned).toBe(true)
     expect(GRID_COLUMNS.camper.pinned).toBe(true)
     expect(GRID_COLUMNS.householdId.pinned).toBeUndefined()
-    expect(GRID_COLUMNS.family.pinned).toBeUndefined()
+    expect(GRID_COLUMNS.requestedBy.pinned).toBeUndefined()
   })
 
-  it('puts Family just left of Needs attention in every view (interim until Requested by)', () => {
+  // T3 (LOCKED): Requested by replaces Family; no view keeps a Family column.
+  it('puts Requested by just left of Needs attention in every view, and no Family column (T3)', () => {
     for (const view of REQUEST_VIEWS) {
       const keys = viewColumns(view, false, true)
       expect(keys.at(-1)).toBe('attention')
-      expect(keys.at(-2)).toBe('family')
+      expect(keys.at(-2)).toBe('requestedBy')
       expect(keys[0]).toBe('camper')
+      expect(keys.map((k) => GRID_COLUMNS[k].header)).not.toContain('Family')
     }
+  })
+
+  it('says the requester by name only, and sorts it by last name (T3)', () => {
+    const spec = GRID_COLUMNS.requestedBy
+    expect(spec.header).toBe('Requested by')
+    expect(spec.value(gridRow({ requested_by: 'Ana Garcia' }), CTX)).toBe('Ana Garcia')
+    expect(spec.value(gridRow({ requested_by: null }), CTX)).toBeNull()
+    expect(lastNameFirst('Ana Garcia')).toBe('Garcia Ana')
+    expect(lastNameFirst('Mary Ann de la Cruz')).toBe('Cruz Mary Ann de la')
+    expect(lastNameFirst('Chen')).toBe('Chen')
+    expect(lastNameFirst('  Sarah   Johnson ')).toBe('Johnson Sarah')
   })
 
   it('opens a queue view grouped, All flat, and an unknown slug on All', () => {

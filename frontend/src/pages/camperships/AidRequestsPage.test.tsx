@@ -139,7 +139,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   it('opens the household from a name, with the view and season, and Back highlights the row (§3.5)', async () => {
     renderAt('/aid/requests')
-    await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/aid/households/1000003?from=all&year=2027'
     )
@@ -252,7 +252,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   it('carries the filters to the household page, so the walk and Back keep them (M5)', async () => {
     renderAt('/aid/requests?program=summer')
-    await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/aid/households/1000003?from=all&program=summer&year=2027'
     )
@@ -342,7 +342,7 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
     expect(headers()).not.toContain('Round')
   })
 
-  it("orders the Appeals view's columns by the identity rule under the lens: Camper first, Family just left of Needs attention (T2)", () => {
+  it("orders the Appeals view's columns by the identity rule under the lens: Camper first, Requested by just left of Needs attention (T2, T3)", () => {
     renderAt('/aid/requests?view=needs-offer&lens=appeals')
     expect(headers()).toEqual([
       'Camper',
@@ -353,7 +353,7 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
       'R2',
       'Total',
       'Posted',
-      'Family',
+      'Requested by',
       'Needs attention',
     ])
   })
@@ -374,7 +374,7 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
 
   it('carries the lens and the stage to the household page (from=<stage>, or all)', async () => {
     renderAt('/aid/requests?lens=appeals')
-    await userEvent.click(screen.getByRole('link', { name: 'The Chen Family' }))
+    await userEvent.click(screen.getByRole('link', { name: 'David Chen' }))
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/aid/households/1000005?from=all&lens=appeals&year=2027'
     )

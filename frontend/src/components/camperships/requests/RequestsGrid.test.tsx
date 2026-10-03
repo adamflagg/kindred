@@ -111,18 +111,18 @@ describe('RequestsGrid', () => {
       'Total',
       'Posted',
       'CM ✓',
-      'Family',
+      'Requested by',
       'Needs attention',
     ])
   })
 
-  it('pins the Camper and lets the Family scroll (grid layout T2, L3 d)', () => {
+  it('pins the Camper and lets Requested by scroll (grid layout T2, L3 d; T3)', () => {
     render(<Grid />)
     // Every header cell is held at the top in the screen box; only a pinned one is also held at the left.
     const pinnedLeft = (name: string) =>
       screen.getByRole('columnheader', { name }).style.left !== ''
     expect(pinnedLeft('Camper')).toBe(true)
-    expect(pinnedLeft('Family')).toBe(false)
+    expect(pinnedLeft('Requested by')).toBe(false)
     expect(pinnedLeft('Session')).toBe(false)
   })
 
@@ -137,14 +137,25 @@ describe('RequestsGrid', () => {
     expect(highlights).toEqual([])
   })
 
-  it('writes the CSV in the on-screen order: Camper first, Family before Needs attention (Q-L3)', async () => {
+  // T3 + Q-L3: the CSV is the screen, so Requested by (the name) and no Family column.
+  it('writes the CSV in the on-screen order: Camper first, Requested by before Needs attention (Q-L3, T3)', async () => {
     render(<Grid />)
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
-    const header = csvCells(content.split('\n')[0] ?? '')
+    const lines = content.split('\n')
+    const header = csvCells(lines[0] ?? '')
     expect(header[0]).toBe('Camper')
-    expect(header.indexOf('Family')).toBe(header.indexOf('Needs attention') - 1)
+    const at = header.indexOf('Requested by')
+    expect(at).toBe(header.indexOf('Needs attention') - 1)
+    expect(header).not.toContain('Family')
     expect(header).not.toContain('Household')
+    expect(lines.slice(1, 6).map((l) => csvCells(l)[at])).toEqual([
+      'Sarah Johnson',
+      'Sarah Johnson',
+      'Ana Garcia',
+      'David Chen',
+      '',
+    ])
   })
 
   // Spec change (owner, 2026-10-02): "By family" is gone, which leaves one grouping, so the
@@ -153,8 +164,47 @@ describe('RequestsGrid', () => {
     render(<Grid />)
     for (const name of ['By family', 'By reason', 'Flat'])
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('Search'), 'garcia')
+    await userEvent.type(screen.getByLabelText('Search'), 'garcia family')
     expect(screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key'))).toHaveLength(1)
+  })
+
+  // Q-L2: typing the requester's name finds their rows, though no other column says it.
+  it('finds rows by the requester’s name (Q-L2, T3)', async () => {
+    render(<Grid />)
+    await userEvent.type(screen.getByLabelText('Search'), 'sarah')
+    const found = screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key'))
+    expect(found.map((r) => r.getAttribute('data-row-key'))).toEqual([
+      'reqemma00000001',
+      'reqsamuel000005',
+    ])
+  })
+
+  it('sorts Requested by on the last name, with no requester last (T3)', async () => {
+    render(<Grid />)
+    await userEvent.click(screen.getByRole('button', { name: 'Requested by' }))
+    const keys = () =>
+      screen
+        .getAllByRole('row')
+        .filter((r) => r.hasAttribute('data-row-key'))
+        .map((r) => r.getAttribute('data-row-key'))
+    // Chen, Garcia, Johnson ×2, then the row the server could not name; by first name it would be
+    // Ana, David, Sarah.
+    expect(keys()).toEqual([
+      'reqolivia000003',
+      'reqliam00000002',
+      'reqemma00000001',
+      'reqsamuel000005',
+      'reqriley0000004',
+    ])
+  })
+
+  it('draws "—" with no link when the server could not name a requester (T3)', () => {
+    render(<Grid />)
+    const row = rowOf('Riley Sam')
+    const cells = within(row).getAllByRole('cell')
+    const requester = cells.at(-2) as HTMLElement
+    expect(requester).toHaveTextContent(/^—$/)
+    expect(within(requester).queryByRole('link')).toBeNull()
   })
 
   it("keeps each view's default grouping: All is flat, a queue view is grouped by reason", () => {
@@ -165,9 +215,9 @@ describe('RequestsGrid', () => {
     expect(document.querySelectorAll('[data-group-heading]').length).toBeGreaterThan(0)
   })
 
-  it('opens the household from a family name, without highlighting the row (Decision 1)', async () => {
+  it('opens the household from the requester’s name, without highlighting the row (Decision 1, T3)', async () => {
     render(<Grid />)
-    const link = screen.getByRole('link', { name: 'The Garcia Family' })
+    const link = screen.getByRole('link', { name: 'Ana Garcia' })
     expect(link).toHaveAttribute('href', '/aid/households/1000003?from=all&year=2027')
     await userEvent.click(link)
     expect(open).toHaveBeenCalledWith(ROW_LIAM, '/aid/households/1000003?from=all&year=2027')
@@ -176,14 +226,14 @@ describe('RequestsGrid', () => {
 
   it('does not highlight the row on a modified click on a name; the new tab opens alone', async () => {
     render(<Grid />)
-    const link = screen.getByRole('link', { name: 'The Garcia Family' })
+    const link = screen.getByRole('link', { name: 'Ana Garcia' })
     fireEvent.click(link, { ctrlKey: true })
     fireEvent.click(link, { metaKey: true })
     expect(highlights).toEqual([])
     expect(open).not.toHaveBeenCalled()
   })
 
-  it('gives the camper name the same href shape as the family name', () => {
+  it('gives the camper name the same href shape as the requester’s name', () => {
     render(<Grid />)
     expect(screen.getByRole('link', { name: 'Liam Garcia' })).toHaveAttribute(
       'href',
@@ -202,11 +252,11 @@ describe('RequestsGrid', () => {
     render(<Grid showIds />)
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
     expect(headers.slice(0, 2)).toEqual(['Camper', 'Person'])
-    expect(headers.slice(-3)).toEqual(['Family', 'Household', 'Needs attention'])
+    expect(headers.slice(-3)).toEqual(['Requested by', 'Household', 'Needs attention'])
     expect(within(rowOf('Liam Garcia')).getByText('1000004')).toBeInTheDocument()
   })
 
-  it('shows a matched id as a chip under the family name (D27)', async () => {
+  it('shows a matched id as a chip under the requester’s name (D27)', async () => {
     render(<Grid />)
     await userEvent.type(screen.getByLabelText('Search'), '1000004')
     expect(screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key'))).toHaveLength(1)
@@ -527,14 +577,16 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     expect(detail().previousElementSibling).toHaveAttribute('data-highlighted', 'true')
   })
 
-  it('holds the chip, the full text, the Family, the household link and the next step, with no button', async () => {
+  it('holds the chip, the full text, Requested by, the household link and the next step, with no button', async () => {
     render(<Grid />)
     await openRow('Liam Garcia')
     const line = within(detail())
     expect(line.getByText('Placeholder income')).toHaveClass('rounded-full')
     expect(line.getByText(LIAM_FACT)).toBeInTheDocument()
-    expect(line.getByText('Family')).toBeInTheDocument()
-    expect(line.getByText('The Garcia Family')).toBeInTheDocument()
+    expect(line.getByText('Requested by')).toBeInTheDocument()
+    expect(line.getByText('Ana Garcia')).toBeInTheDocument()
+    expect(line.queryByText('Family')).toBeNull()
+    expect(line.queryByText('The Garcia Family')).toBeNull()
     expect(line.getByRole('link', { name: 'Household 1000003 ›' })).toHaveAttribute('href', BASE)
     const next = line.getByRole('link', { name: 'Enter the income ›' })
     expect(next).toHaveAttribute('href', `${BASE}#income`)
@@ -607,8 +659,8 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     expect(row).toHaveAttribute('data-highlighted', 'true')
     expect(within(row).queryByText(LIAM_FACT)).toBeNull()
     expect(attentionCell('Liam Garcia')).not.toHaveClass('whitespace-normal')
-    const family = within(row).getByRole('link', { name: 'The Garcia Family' })
-    expect(family.parentElement).toHaveClass('truncate')
+    const requester = within(row).getByRole('link', { name: 'Ana Garcia' })
+    expect(requester.parentElement).toHaveClass('truncate')
   })
 
   it('spans every column, and keeps Person beside the pinned Camper with Show IDs (D25)', async () => {

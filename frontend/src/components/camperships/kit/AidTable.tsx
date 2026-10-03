@@ -101,6 +101,8 @@ export interface AidColumn<Row> {
    */
   readonly fitContent?: FitContent | undefined
   readonly value: (row: Row) => CellValue
+  /** What a header click sorts on, when it isn't the value (Requested by sorts on the last name, T3). */
+  readonly sortValue?: ((row: Row) => CellValue) | undefined
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
@@ -245,7 +247,7 @@ export function AidTable<Row>({
   const sorted = useCallback(
     (list: readonly Row[]) => {
       const column = sort ? columns.find((c) => c.key === sort.key) : undefined
-      return column && sort ? sortRows(list, column.value, sort.dir) : [...list]
+      return column && sort ? sortRows(list, column.sortValue ?? column.value, sort.dir) : [...list]
     },
     [columns, sort]
   )
@@ -401,7 +403,7 @@ export function AidTable<Row>({
   }, [columns])
   const lastPinned = [...pinnedLeft.keys()].at(-1)
   // A flexible column with a width of its own never gets narrower than it (the Requests grid's
-  // Family, which takes the spare width now Needs attention is fitted: batch 4).
+  // Requested by, which takes the spare width now Needs attention is fitted: batch 4, T3).
   const minWidth = columns.reduce(
     (sum, c) => sum + (c.flex ? (c.width ?? FLEX_MIN) : (widthOf(c) ?? 0)),
     0
