@@ -17,7 +17,17 @@ from typing import Any
 import pytest
 
 import api.services.financial_aid_decisions_service as decisions_service
-from api.schemas.financial_aid_decisions import GridRowOut, PostedIn, PostedRow, UnpostIn, UntickedMoneyOut
+from api.schemas.financial_aid_decisions import (
+    AcceptedIn,
+    GridRowOut,
+    PostedIn,
+    PostedRow,
+    RoundRef,
+    UnpostIn,
+    UntickedMoneyOut,
+)
+from api.services.financial_aid_decisions_service import DecisionRefusedError
+from api.services.financial_aid_march_file import MarchFileService
 from api.services.financial_aid_queues import UNTICKED_LABELS, offer_rounds, row_queues
 from api.services.financial_aid_reconciliation import (
     SeasonLedger,
@@ -38,7 +48,7 @@ from tests.unit.api.services.decisions_fakes import (
     share_row,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR
-from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _service
+from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _event, _posted, _service
 from tests.unit.api.services.test_financial_aid_reconciliation import TODAY, ledger_of, line
 from tests.unit.api.services.test_financial_aid_today import (
     _Drafts,
@@ -55,28 +65,45 @@ from tests.unit.bunking.financial_aid.test_decision_budget import priced, view
 
 NOTE = "in_campminder_not_ticked"
 
-SHORT_TEXT = "CampMinder holds $1,300 of Round 1's $1,500, so the overnight tick left it. Check the posting, then use Mark posted."
+# The owner's approved texts (10-03), verbatim, with the fixture's dollars. Pill · sentence.
+SHORT_TEXT = (
+    "CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click "
+    "Mark posted."
+)
 SHARES_TEXT = (
-    "The payer shares posted so far hold $600 of Round 1's $1,500. The round ticks once the shares cover it in full."
+    "The paying families have $600 of Round 1's $1,500 posted so far. This clears on its own once the rest is posted."
 )
 FAMILY_TEXT = (
-    "CampMinder holds $3,000 for this family that is not on any request yet. Place it in Money › To place; placing it "
-    "ticks the round it covers."
+    "CampMinder has $3,000 for this family that isn't attached to a request yet. Attach it in Money › To place, and "
+    "this round clears."
 )
-HELD_TEXT = "CampMinder holds $1,500 for this request, but Round 1 is on hold. This clears once the round is decided."
+HELD_TEXT = (
+    "CampMinder already has $1,500 for this request, but Round 1 is on hold. This clears once the round is decided."
+)
 UNDONE_TEXT = (
-    "Round 1 was un-ticked by hand, so the overnight tick leaves it for a person. Use Mark posted once it is right."
+    "Someone unmarked Round 1 as posted, so the overnight sync won't re-mark it. Click Mark posted once it's right."
 )
-AWAITING_TEXT = "CampMinder holds Round 1's $1,500 in full. Tonight's ledger sync ticks it, or use Mark posted now."
+PENDING_TEXT = "Posted in CampMinder ($1,500). Kindred marks it posted after tonight's sync."
 WITHHELD_TEXT = (
-    "Round 1 was not ticked automatically: after CampMinder posted it on Mar 8, the application was changed (Mar 9). "
-    "The nightly ledger sync leaves it too: tick it by hand. That locks the higher of its decided amount on Mar 8 "
-    "(where Kindred can rebuild that day) and today's. Check it against what the family was offered first."
+    "Round 1 wasn't marked posted automatically: after it was posted in CampMinder on Mar 8, the application was "
+    "changed (Mar 9). Check it against what the family was offered, then click Mark posted. That saves the higher of "
+    "its amount on Mar 8 and today's."
 )
+PILLS = {
+    "withheld": "Changed after posting",
+    "short_posting": "Short in CM",
+    "shares_short": "Payers short",
+    "family_level": "Money to place",
+    "on_hold": "On hold",
+    "awaiting_approval": "Awaiting approval",
+    "finance_declined": "Finance declined",
+    "not_decided": "Not decided",
+    "undone": "Unmarked by hand",
+}
 
 
 def _out(code: str, message: str, *, mark_posted: bool, n: int = 1) -> UntickedMoneyOut:
-    return UntickedMoneyOut(round=n, code=code, message=message, mark_posted=mark_posted)
+    return UntickedMoneyOut(round=n, code=code, message=message, mark_posted=mark_posted, label=PILLS[code])
 
 
 async def _rows(store: FakeDecisionsStore) -> dict[str, GridRowOut]:
@@ -117,11 +144,30 @@ def test_family_level_money_is_the_reason_over_a_short_placed_part() -> None:
     assert [(s.code, s.held) for s in walk.stops] == [("family_level", Decimal(900))]
 
 
-@pytest.mark.parametrize("status", ["held", "pending_approval", "refused", "not_decided"])
-def test_money_for_a_round_not_decided_yet_stops_the_walk_until_it_is(status: str) -> None:
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        ("held", "on_hold"),
+        ("pending_approval", "awaiting_approval"),
+        ("refused", "finance_declined"),
+        ("not_decided", "not_decided"),
+    ],
+)
+def test_money_for_a_round_not_decided_yet_stops_the_walk_until_it_is(status: str, code: str) -> None:
+    """Owner 10-03: the pill names the round's state, so each state is its own code (Today keys its breakdown by code,
+    and the grid's chip and Today's label read one map)."""
     rounds = (view(1, "posted", locked="1800"), view(2, status, ask="400"))  # type: ignore[arg-type]
     walk = ledger_walk([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "2100")), today=TODAY)
-    assert walk.stops == (TickStop("emma", 2, "not_decided", status, Decimal(300), None),)  # type: ignore[arg-type]
+    assert walk.stops == (TickStop("emma", 2, code, status, Decimal(300), None),)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("status", ["not_decided", "held"])
+def test_an_over_posting_with_nothing_asked_for_the_next_round_is_no_stop(status: str) -> None:
+    """H1: Round 1 locked $1,000 and CampMinder holds $1,200. Round 2 has no ask, so there is nothing to offer and the
+    "clears once decided" row would never clear; direction (a) already reads the request as over."""
+    rounds = (view(1, "posted", locked="1000"), view(2, status))  # type: ignore[arg-type]
+    walk = ledger_walk([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "1200")), today=TODAY)
+    assert (walk.ticks, walk.stops) == ((), ())
 
 
 def test_a_round_a_person_unticked_stops_the_walk() -> None:
@@ -196,20 +242,42 @@ def test_ledger_ticks_is_exactly_the_walks_ticks(case: int) -> None:
 
 
 def test_each_stop_reads_as_a_whole_sentence() -> None:
+    """Owner 10-03, verbatim: $X is what CampMinder holds, $Y the round's decided amount, both through dollars()."""
     assert stop_text(TickStop("e", 1, "short_posting", "needs_offer", Decimal(1300), Decimal(1500))) == SHORT_TEXT
     assert stop_text(TickStop("e", 1, "shares_short", "needs_offer", Decimal(600), Decimal(1500))) == SHARES_TEXT
     assert stop_text(TickStop("e", 1, "family_level", "needs_offer", Decimal(3000), Decimal(1500))) == FAMILY_TEXT
-    assert stop_text(TickStop("e", 1, "not_decided", "held", Decimal(1500), None)) == HELD_TEXT
+    assert stop_text(TickStop("e", 1, "on_hold", "held", Decimal(1500), None)) == HELD_TEXT
     assert stop_text(TickStop("e", 1, "undone", "needs_offer", Decimal(1500), Decimal(1500))) == UNDONE_TEXT
-    pending = TickStop("e", 3, "not_decided", "pending_approval", Decimal("300.50"), None)
+    pending = TickStop("e", 3, "awaiting_approval", "pending_approval", Decimal("300.50"), None)
     assert stop_text(pending) == (
-        "CampMinder holds $300.50 for this request, but Round 3 is pending finance's approval. "
+        "CampMinder already has $300.50 for this request, but Round 3 is waiting for finance's approval. "
         "This clears once the round is decided."
     )
-    refused = TickStop("e", 3, "not_decided", "refused", Decimal(300), None)
-    assert "but finance refused Round 3's amount." in stop_text(refused)
-    undecided = TickStop("e", 2, "not_decided", "not_decided", Decimal(300), None)
-    assert "but Round 2 is not decided yet." in stop_text(undecided)
+    refused = TickStop("e", 3, "finance_declined", "refused", Decimal(300), None)
+    assert stop_text(refused) == (
+        "CampMinder already has $300 for this request, but Round 3 was declined by finance. "
+        "This clears once the round is decided."
+    )
+    undecided = TickStop("e", 2, "not_decided", "not_decided", Decimal(250), None)
+    assert stop_text(undecided) == (
+        "CampMinder already has $250 for this request, but Round 2 hasn't been decided. "
+        "This clears once the round is decided."
+    )
+    short2 = TickStop("e", 2, "short_posting", "needs_offer", Decimal(100), Decimal(300))
+    assert stop_text(short2) == (
+        "CampMinder shows $100 posted for Round 2, but the offer is $300. Check the posting in CampMinder, then click "
+        "Mark posted."
+    )
+
+
+def test_the_pills_are_the_owners_words_one_per_code() -> None:
+    """Owner 10-03: one server map (D21) for the grid's chip and Today's breakdown; tonight's tick is no reason."""
+    assert UNTICKED_LABELS == PILLS
+    from typing import get_args
+
+    from api.schemas.financial_aid_decisions import UntickedReasonOut
+
+    assert "awaiting_tick" not in get_args(UntickedReasonOut)
 
 
 # --- the rows: Not reconciled (b), and out of Needs an offer (Q1) -----------------------------------------
@@ -256,7 +324,7 @@ async def test_money_for_a_held_request_clears_when_decided_and_has_no_mark_post
     seed_request(store, EMMA, session=0, status="unmatched_session")
     seed_line(store, 9001, "1500")
     row = (await _rows(store))[EMMA]
-    assert row.unticked == [_out("not_decided", HELD_TEXT, mark_posted=False)]
+    assert row.unticked == [_out("on_hold", HELD_TEXT, mark_posted=False)]
     assert "not_reconciled" in (row.queues or [])
     assert "needs_offer" not in (row.queues or [])
 
@@ -273,16 +341,40 @@ async def test_a_split_requests_first_share_waits_for_the_rest() -> None:
 
 
 @pytest.mark.asyncio
-async def test_money_in_full_before_tonights_tick_is_not_reconciled_until_it_ticks() -> None:
+async def test_money_in_full_is_waiting_on_the_family_pending_until_tonights_tick() -> None:
+    """C1 (D162, owner 10-03): CampMinder covers Round 1 in full and nothing blocks the tick. That is no exception: the
+    round waits on the family at once, its CampMinder cell reads pending until tonight's tick, and it is not Posted
+    money until the tick."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_line(store, 9001, "1500")
     row = (await _rows(store))[EMMA]
-    assert row.unticked == [_out("awaiting_tick", AWAITING_TEXT, mark_posted=True)]
-    assert row.queues == ["not_reconciled"]
+    assert (row.unticked, row.queues) == ([], ["waiting_on_family"])
+    r1 = row.rounds[0]
+    assert (r1.status, r1.cm_pending, r1.cm_pending_message) == ("needs_offer", True, PENDING_TEXT)
+    assert (r1.status_label, r1.posted, row.total_posted) == ("Posted", None, None)
     assert (await _service(store).ledger_ticks(YEAR)).ticked == 1
     after = (await _rows(store))[EMMA]
     assert (after.unticked, after.queues) == ([], ["waiting_on_family"])  # ticked from the ledger: confirmed
+    assert (after.rounds[0].status, after.rounds[0].cm_pending, after.rounds[0].cm_pending_message) == (
+        "posted",
+        False,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_pending_round_is_no_posted_money_before_the_tick() -> None:
+    """C1: the posted money figures follow the tick; Needs an offer's money keeps the round until then (C2)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    service = _service(store)
+    total = (await service.budget(YEAR)).total.total
+    assert (total.posted, total.needs_offer) == (0.0, 1500.0)
+    await service.ledger_ticks(YEAR)
+    total = (await service.budget(YEAR)).total.total
+    assert (total.posted, total.needs_offer) == (1500.0, 0.0)
 
 
 @pytest.mark.asyncio
@@ -296,6 +388,8 @@ async def test_a_withheld_round_says_why_in_the_placements_own_words() -> None:
     row = next(r for r in (await to_place_service(store)._decisions.grid(YEAR)).rows if r.request_id == EMMA)
     assert row.unticked == [_out("withheld", WITHHELD_TEXT, mark_posted=True)]
     assert row.queues == ["not_reconciled"]
+    # C1: the pending path never hides a withheld round, though CampMinder covers it in full
+    assert (row.rounds[0].cm_pending, row.rounds[0].cm_pending_message) == (False, None)
 
 
 @pytest.mark.asyncio
@@ -308,8 +402,8 @@ async def test_nothing_in_campminder_leaves_the_row_in_needs_an_offer() -> None:
 
 @pytest.mark.asyncio
 async def test_a_round_campminder_holds_nothing_for_stays_in_needs_an_offer_beside_one_that_ticks() -> None:
-    """Per round, not per request: Round 1 is in CampMinder in full (awaiting tonight's tick); Round 2 has nothing
-    there, so it still needs an offer, and Today's breakdown counts it under r2 only."""
+    """Per round, not per request: Round 1 is in CampMinder in full (pending tonight's tick, so waiting on the family);
+    Round 2 has nothing there, so it still needs an offer, and Today's breakdown counts it under r2 only."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_line(store, 9001, "1500")
@@ -322,8 +416,9 @@ async def test_a_round_campminder_holds_nothing_for_stays_in_needs_an_offer_besi
     season = replace(base, priced={**base.priced, EMMA: replace(base.priced[EMMA], rounds=(r1, r2))})
     service = _service(store)
     row = service.row_of(await service.with_unticked(season), ({}, {}), EMMA)
-    assert [(u.round, u.code) for u in row.unticked or []] == [(1, "awaiting_tick")]
-    assert row.queues == ["needs_offer", "not_reconciled"]
+    assert row.unticked == []
+    assert [r.cm_pending for r in row.rounds] == [True, False]
+    assert row.queues == ["needs_offer", "waiting_on_family"]
     assert [r.round for r in offer_rounds(row)] == [2]
 
 
@@ -340,8 +435,12 @@ async def test_every_row_carrying_the_note_has_a_reason_and_none_without_it() ->
     seed_request(store, "reqsamu00000002", household=1000006, person=1000062)
     seed_line(store, 9003, "3000", household=1000006, person=0)
     rows = await _rows(store)
-    assert {rid: bool(_notes(r)) for rid, r in rows.items()} == {rid: bool(r.unticked) for rid, r in rows.items()}
-    assert sum(bool(r.unticked) for r in rows.values()) == 4
+    # C1 (owner 10-03): Olivia's round, in CampMinder in full, is pending tonight's tick rather than an exception; the
+    # Note still marks it (its money is in CampMinder), so the Note's rows are (b)'s plus the pending ones.
+    marked = {rid: bool(r.unticked) or any(x.cm_pending for x in r.rounds) for rid, r in rows.items()}
+    assert {rid: bool(_notes(r)) for rid, r in rows.items()} == marked
+    assert sum(bool(r.unticked) for r in rows.values()) == 3
+    assert [rid for rid, r in rows.items() if any(x.cm_pending for x in r.rounds)] == ["reqoliv00000001"]
 
 
 @pytest.mark.asyncio
@@ -479,3 +578,289 @@ async def test_the_household_page_shows_the_grids_reason() -> None:
     assert [u.code for u in liam.unticked or []] == ["short_posting"]
     assert liam.unticked == grid[LIAM].unticked
     assert liam.queues == grid[LIAM].queues
+
+
+# --- C1: Accepted on the same day, for a round CampMinder covers in full (owner 10-03) --------------------
+
+
+def _accept(*keys: tuple[str, int], accepted: bool = True) -> AcceptedIn:
+    return AcceptedIn(rows=[RoundRef(request_id=rid, round=n) for rid, n in keys], accepted=accepted)
+
+
+@pytest.mark.asyncio
+async def test_accepted_is_allowed_the_same_day_on_a_round_campminder_covers_in_full() -> None:
+    """Owner GO (10-03): the family can accept before tonight's tick marks the round posted. Accepted then stands
+    through the tick, and the row waits on no one."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    service = _service(store)
+    out = await service.tick_accepted(YEAR, _accept((EMMA, 1)), ACTOR)
+    assert out.written == 1
+    row = (await _rows(store))[EMMA]
+    assert (row.rounds[0].accepted, row.rounds[0].cm_pending, row.queues) == (True, True, [])
+    assert (await service.ledger_ticks(YEAR)).ticked == 1
+    after = (await _rows(store))[EMMA]
+    assert (after.rounds[0].status, after.rounds[0].accepted, after.queues) == ("posted", True, [])
+
+
+@pytest.mark.asyncio
+async def test_accepted_in_bulk_takes_every_round_campminder_covers_in_full() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    seed_line(store, 9002, "1500", household=1000002, person=1000021)
+    out = await _service(store).tick_accepted(YEAR, _accept((EMMA, 1), (LIAM, 1)), ACTOR)
+    assert out.written == 2
+
+
+@pytest.mark.asyncio
+async def test_unaccepting_a_pending_round_puts_it_back_waiting_on_the_family() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    service = _service(store)
+    await service.tick_accepted(YEAR, _accept((EMMA, 1)), ACTOR)
+    out = await service.tick_accepted(YEAR, _accept((EMMA, 1), accepted=False), ACTOR)
+    assert out.written == 1
+    row = (await _rows(store))[EMMA]
+    assert (row.rounds[0].accepted, row.queues) == (False, ["waiting_on_family"])
+
+
+def _round3(store: FakeDecisionsStore, *, refused: bool) -> None:
+    """Rounds 1 and 2 posted, and a Round 3 amount keyed above the registrar's limit: pending, or refused by finance.
+    CampMinder holds all three."""
+    _posted(store, EMMA, 1, "1500")
+    _posted(store, EMMA, 2, "300")
+    _event(store, EMMA, 3, "ask", amount=Decimal(500), statement_of_need="A parent lost their job")
+    _event(store, EMMA, 3, "award", amount=Decimal(500), needs_approval=True)
+    if refused:
+        _event(store, EMMA, 3, "refuse")
+    seed_line(store, 9001, "2300")
+
+
+@pytest.mark.parametrize("case", ["nothing_in_campminder", "short", "held", "pending_approval", "refused"])
+@pytest.mark.asyncio
+async def test_accepted_is_still_refused_where_the_tick_would_not_post_the_round(case: str) -> None:
+    """Owner GO (10-03): ONLY a round CampMinder covers in full with nothing blocking the tick. Single and bulk."""
+    store = FakeDecisionsStore()
+    n = 1
+    if case == "held":
+        seed_request(store, EMMA, session=0, status="unmatched_session")
+    else:
+        seed_request(store, EMMA)
+    if case == "short":
+        seed_line(store, 9001, "1300")
+    elif case == "held":
+        seed_line(store, 9001, "1500")
+    elif case in ("pending_approval", "refused"):
+        _round3(store, refused=case == "refused")
+        n = 3
+    service = _service(store)
+    row = (await _rows(store))[EMMA]
+    assert row.rounds[n - 1].status == {
+        "held": "held",
+        "pending_approval": "pending_approval",
+        "refused": "refused",
+    }.get(case, "needs_offer")  # the premise
+    with pytest.raises(DecisionRefusedError, match=f"Round {n} is not posted"):
+        await service.tick_accepted(YEAR, _accept((EMMA, n)), ACTOR)
+    # bulk, beside a round it would take on its own: all or nothing
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    seed_line(store, 9002, "1500", household=1000002, person=1000021)
+    with pytest.raises(DecisionRefusedError, match=f"Round {n} is not posted"):
+        await service.tick_accepted(YEAR, _accept((LIAM, 1), (EMMA, n)), ACTOR)
+    assert not [e for e in store.events if e.kind == "accept"]
+
+
+@pytest.mark.asyncio
+async def test_accepted_on_a_withheld_round_is_refused() -> None:
+    """A round D152 withholds is blocked from the tick, so it is no pending round and Accepted waits for its tick."""
+    store = _store(then=LOW, now=HIGH)
+    service, _ = await _placed(store)
+    with pytest.raises(DecisionRefusedError, match="Round 1 is not posted"):
+        await service._decisions.tick_accepted(YEAR, _accept((EMMA, 1)), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_accepted_before_the_first_ticked_season_still_needs_the_posted_tick(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    with pytest.raises(DecisionRefusedError, match="Round 1 is not posted"):
+        await _service(store).tick_accepted(YEAR, _accept((EMMA, 1)), ACTOR)
+
+
+# --- H1, H3: the rows match what is real and what Mark posted accepts -------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_over_posting_is_direction_a_only_with_no_round_2_row() -> None:
+    """H1 repro: Round 1 locked $1,000, CampMinder holds $1,200, Round 2 has no ask. No "not decided" row that would
+    never clear; direction (a) reads it as over, and Today counts it once."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1000")
+    seed_line(store, 9001, "1200")
+    store.synced_at = T0.replace(hour=23)
+    row = (await _rows(store))[EMMA]
+    assert row.unticked == []
+    assert row.confirmation is not None
+    assert (row.confirmation.status, row.queues) == ("over", ["waiting_on_family", "not_reconciled"])
+    casework = build_today(_inputs([row]), casework=True, finance=False).casework
+    assert casework is not None
+    unreconciled = next(line for line in casework if line.key == "not_reconciled")
+    assert [(r.code, r.items) for r in unreconciled.reasons] == [("over", 1)]
+
+
+@pytest.mark.asyncio
+async def test_mark_posted_is_offered_only_where_the_hand_tick_accepts_one_round() -> None:
+    """H3: Round 1 is in CampMinder in full (pending) and Round 2 short. tick_posted refuses Round 2 alone while Round 1
+    is unposted, so Round 2's row offers no Mark posted; once Round 1 is posted, it does, and the click goes through."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))  # recorded directly: decided $300
+    seed_line(store, 9001, "1600")
+    service = _service(store)
+    row = (await _rows(store))[EMMA]
+    assert [r.cm_pending for r in row.rounds[:2]] == [True, False]
+    (r2,) = row.unticked or []
+    assert (r2.round, r2.code, r2.mark_posted) == (2, "short_posting", False)
+    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 2"):
+        await service.tick_posted(
+            YEAR, PostedIn(rows=[PostedRow(request_id=EMMA, round=2, amount=Decimal(300))]), ACTOR
+        )
+    assert (await service.ledger_ticks(YEAR)).ticked == 1  # tonight's tick posts Round 1
+    (r2,) = (await _rows(store))[EMMA].unticked or []
+    assert (r2.round, r2.code, r2.mark_posted) == (2, "short_posting", True)
+    out = await service.tick_posted(
+        YEAR, PostedIn(rows=[PostedRow(request_id=EMMA, round=2, amount=Decimal(300))]), ACTOR
+    )
+    assert out.written == 1
+
+
+# --- C2: Rounds & budget's Needs an offer count is the grid's list (owner 10-03) --------------------------
+
+
+def _three(store: FakeDecisionsStore) -> None:
+    """Emma short in CampMinder (Not reconciled), Liam covered in full (pending), Olivia with nothing there."""
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1300")
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    seed_line(store, 9002, "1500", household=1000002, person=1000021)
+    seed_request(store, "reqoliv00000001", household=1000003, person=1000031)
+
+
+@pytest.mark.asyncio
+async def test_the_budgets_needs_an_offer_count_is_the_grids_list_and_its_money_is_unchanged() -> None:
+    store = FakeDecisionsStore()
+    _three(store)
+    service = _service(store)
+    listed = [r.request_id for r in (await service.grid(YEAR)).rows if "needs_offer" in (r.queues or [])]
+    assert listed == ["reqoliv00000001"]
+    out = await service.budget(YEAR)
+    total = out.total.total
+    assert (total.needs_offer_count.families, total.needs_offer_count.requests) == (1, 1)
+    assert total.needs_offer == 4500.0  # the money and Remaining don't change
+    r1 = next(c for c in out.total.rounds if c.round == 1)
+    assert (r1.needs_offer_count.requests, r1.needs_offer) == (1, 4500.0)
+    strip = next(c for c in out.strip if c.round == 1)
+    assert strip.needs_offer is not None
+    assert (strip.needs_offer.families, strip.needs_offer.requests) == (1, 1)
+    pool = out.pools[0].total
+    assert (pool.needs_offer_count.requests, pool.needs_offer) == (1, 4500.0)
+
+
+@pytest.mark.asyncio
+async def test_before_the_first_ticked_season_the_budget_counts_every_decided_unposted_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
+    store = FakeDecisionsStore()
+    _three(store)
+    total = (await _service(store).budget(YEAR)).total.total
+    assert (total.needs_offer_count.requests, total.needs_offer) == (3, 4500.0)
+
+
+@pytest.mark.asyncio
+async def test_todays_lines_read_a_pending_round_as_waiting_on_the_family() -> None:
+    store = FakeDecisionsStore()
+    _three(store)
+    service = TodayService(
+        store=store,
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=True, finance=False)
+    assert out.casework is not None
+    lines = {line.key: line for line in out.casework}
+    assert [(k, lines[k].items) for k in ("needs_offer", "waiting_on_family", "not_reconciled")] == [
+        ("needs_offer", 1),
+        ("waiting_on_family", 1),
+        ("not_reconciled", 1),
+    ]
+    assert [(r.code, r.label) for r in lines["not_reconciled"].reasons] == [("short_posting", "Short in CM")]
+
+
+# --- each payer share's Needs an offer money follows the same rule (owner 10-03) --------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_split_rounds_shares_have_nothing_to_offer_once_campminder_holds_money_for_it() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    seed_line(store, 9001, "600", household=1000004)
+    row = (await _rows(store))[EMMA]
+    assert [(s.household_cm_id, s.needs_offer) for s in row.payer_shares] == [(1000001, None), (1000004, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_split_round_with_nothing_in_campminder_keeps_each_shares_part() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    row = (await _rows(store))[EMMA]
+    assert [(s.household_cm_id, s.needs_offer) for s in row.payer_shares] == [(1000001, 900.0), (1000004, 600.0)]
+
+
+@pytest.mark.asyncio
+async def test_before_the_first_ticked_season_a_shares_part_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    seed_line(store, 9001, "600", household=1000004)
+    row = (await _rows(store))[EMMA]
+    assert [(s.household_cm_id, s.needs_offer) for s in row.payer_shares] == [(1000001, 900.0), (1000004, 600.0)]
+
+
+# --- the March file sends no Round 1 CampMinder already holds money for (D162 Q1) ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_march_file_leaves_out_a_round_1_campminder_holds_money_for() -> None:
+    """Sending it again risks posting the family twice: a short posting (Not reconciled) and one covered in full
+    (pending tonight's tick) are both left out; a Round 1 with nothing in CampMinder is sent."""
+    store = FakeDecisionsStore()
+    _three(store)
+    store.camper_names = {1000011: ("Emma", "Johnson"), 1000021: ("Liam", "Garcia"), 1000031: ("Olivia", "Chen")}
+    out = await MarchFileService(_service(store), store).read(YEAR)
+    assert [(r.request_id, r.total_award) for r in out.rows] == [("reqoliv00000001", 1500.0)]
+
+
+@pytest.mark.asyncio
+async def test_before_the_first_ticked_season_the_march_file_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
+    store = FakeDecisionsStore()
+    _three(store)
+    store.camper_names = {1000011: ("Emma", "Johnson"), 1000021: ("Liam", "Garcia"), 1000031: ("Olivia", "Chen")}
+    out = await MarchFileService(_service(store), store).read(YEAR)
+    assert sorted(r.request_id for r in out.rows) == [EMMA, LIAM, "reqoliv00000001"]

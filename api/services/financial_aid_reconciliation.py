@@ -927,7 +927,16 @@ def ledger_ticks(
 # the walk would make: `withheld` (D152: D16 holds it on money a person placed) and `awaiting_tick` (tonight's tick
 # makes it). Each is a Not reconciled reason (§6.2), never a Needs an offer row (Q1).
 UntickedCode = Literal[
-    "awaiting_tick", "withheld", "short_posting", "shares_short", "family_level", "not_decided", "undone"
+    "awaiting_tick",
+    "withheld",
+    "short_posting",
+    "shares_short",
+    "family_level",
+    "on_hold",
+    "awaiting_approval",
+    "finance_declined",
+    "not_decided",
+    "undone",
 ]
 # The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2). Family-level money is placed in
 # Money › To place, whose placement ticks (D81, D151); a round not decided yet has nothing to lock.

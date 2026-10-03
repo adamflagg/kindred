@@ -82,6 +82,8 @@ class RoundOut(BaseModel):
     # Its words (ROUND_STATUS_LABELS; read 3): the screens keep no map of their own (§6.1, D21). Set on every row the
     # server builds.
     status_label: str = ""
+    cm_pending: bool = False
+    cm_pending_message: str | None = None
 
 
 class ReleasedHoldOut(BaseModel):
@@ -125,7 +127,16 @@ class ConfirmationOut(BaseModel):
 # D162: why CampMinder holds money for a round that has no Posted tick (Requests › Not reconciled, direction b).
 # api.services.financial_aid_reconciliation.UntickedCode; a test pins them equal, and the labels to these.
 UntickedReasonOut = Literal[
-    "awaiting_tick", "withheld", "short_posting", "shares_short", "family_level", "not_decided", "undone"
+    "awaiting_tick",
+    "withheld",
+    "short_posting",
+    "shares_short",
+    "family_level",
+    "on_hold",
+    "awaiting_approval",
+    "finance_declined",
+    "not_decided",
+    "undone",
 ]
 
 
@@ -141,6 +152,7 @@ class UntickedMoneyOut(BaseModel):
     code: UntickedReasonOut
     message: str
     mark_posted: bool
+    label: str = ""
 
 
 # D141's nine cancel reasons (api.services.financial_aid_cancellations.CancelReason; a test pins them equal).
