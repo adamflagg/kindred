@@ -446,7 +446,7 @@ def confirm(
 def test_a_tick_made_after_the_last_sync_awaits_tonights_sync() -> None:
     c = confirm([], synced=datetime(2027, 3, 9, 9, 0, tzinfo=UTC))
     assert c is not None
-    assert (c.status, c.reconciled) == ("awaiting_sync", False)
+    assert (c.status, c.reconciled) == ("awaiting_sync", True)  # V1 (owner 10-03): no exception until a sync runs
     never = confirm([line(1, "1800", posted=MAR9)], synced=None)
     assert never is not None
     assert never.status == "awaiting_sync"

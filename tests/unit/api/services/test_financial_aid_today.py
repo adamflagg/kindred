@@ -90,7 +90,7 @@ def _confirmation(status: str, gap: float) -> ConfirmationOut:
         in_campminder=1500.0 + gap,
         gap=gap,
         on=None,
-        reconciled=False,
+        reconciled=status == "awaiting_sync",  # V1 (owner 10-03): Confirmation.reconciled's rule for these states
         family_unplaced=0.0,
         shares=[],
     )
@@ -219,7 +219,8 @@ def test_not_reconciled_breaks_down_by_state_and_names_the_largest_gap() -> None
         _row("reqoliv00000001", 1000003, posted, confirmation=_confirmation("awaiting_sync", -1500.0)),
     ]
     line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "not_reconciled")
-    assert [(r.code, r.items) for r in line.reasons] == [("awaiting_sync", 1), ("over", 1), ("short", 1)]
+    # V1 (owner 10-03): a hand tick awaiting tonight's sync is no exception, so it is neither a reason nor an item
+    assert (line.items, [(r.code, r.items) for r in line.reasons]) == (2, [("over", 1), ("short", 1)])
     assert line.largest_gap == 300.0  # short and over only: awaiting tonight's sync is not a disagreement
 
 

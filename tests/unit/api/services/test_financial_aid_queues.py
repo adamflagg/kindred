@@ -65,7 +65,9 @@ def _row(*rounds: RoundOut, **over: Any) -> GridRowOut:
 
 
 def _confirmation(status: str, shares: list[ShareConfirmationOut] | None = None) -> ConfirmationOut:
-    reconciled = status == "reversed" or (status == "confirmed" and all(s.status == "confirmed" for s in shares or []))
+    # Confirmation.reconciled's rule: V1 (owner 10-03) reads a hand tick awaiting tonight's sync as reconciled for now.
+    ok = ("confirmed", "awaiting_sync")
+    reconciled = status == "reversed" or (status in ok and all(s.status in ok for s in shares or []))
     return ConfirmationOut(
         status=status,
         locked=1500.0,
@@ -125,7 +127,7 @@ def test_a_round_2_ask_is_an_appeal() -> None:
     assert row_queues(row) == ["needs_offer", "appeals"]
 
 
-@pytest.mark.parametrize("status", ["awaiting_sync", "short", "over", "not_in_campminder"])
+@pytest.mark.parametrize("status", ["short", "over", "not_in_campminder"])
 def test_a_posted_round_the_ledger_hasnt_confirmed_is_not_reconciled(status: str) -> None:
     row = _row(
         _round(1, "posted", posted=1500.0, accepted=True, posted_on=date(2031, 3, 9)),
@@ -134,8 +136,9 @@ def test_a_posted_round_the_ledger_hasnt_confirmed_is_not_reconciled(status: str
     assert row_queues(row) == ["not_reconciled"]
 
 
-@pytest.mark.parametrize("status", ["confirmed", "reversed"])
+@pytest.mark.parametrize("status", ["confirmed", "reversed", "awaiting_sync"])
 def test_confirmed_or_reversed_is_reconciled(status: str) -> None:
+    """V1 (owner 10-03): a hand tick awaiting tonight's sync is no exception until a sync has run and failed it."""
     row = _row(
         _round(1, "posted", posted=1500.0, accepted=True, posted_on=date(2031, 3, 9)),
         confirmation=_confirmation(status),
