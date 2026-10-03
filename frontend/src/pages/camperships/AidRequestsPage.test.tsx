@@ -80,7 +80,7 @@ function Back() {
   )
 }
 
-/** The grid's one toolbar line: the filters, search and Download CSV (owner, 2026-10-02). */
+/** The grid's one toolbar line: the filters, search and the ⤓ CSV chip (owner, 2026-10-02; 10-03). */
 const toolbar = () => screen.getByLabelText('Search').closest('[data-aid-toolbar]') as HTMLElement
 
 function renderAt(path: string) {
@@ -282,7 +282,9 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('tick=')
   })
 
-  it('puts Program, the chips, Show IDs, search and Download CSV on one toolbar line', () => {
+  // Owner (fast-follow, 10-03): the ⤓ CSV chip ends the line, replacing Download CSV. Was: "…search
+  // and Download CSV on one toolbar line", with the Posted chip and the Download CSV button.
+  it('puts Program, the Round chips, Show IDs, search and the ⤓ CSV chip on one toolbar line', () => {
     renderAt('/aid/requests')
     const line = toolbar()
     expect(line).not.toBeNull()
@@ -290,9 +292,11 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       screen.getByLabelText('Program'),
       within(line).getByRole('button', { name: 'R1' }),
       screen.getByLabelText('Show IDs'),
-      screen.getByRole('button', { name: 'Download CSV' }),
+      screen.getByRole('button', { name: '⤓ CSV' }),
     ])
       expect(line).toContainElement(el)
+    expect(line.lastElementChild).toContainElement(screen.getByRole('button', { name: '⤓ CSV' }))
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
   })
 
   it('carries the filters to the household page, so the walk and Back keep them (M5)', async () => {

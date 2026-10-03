@@ -359,7 +359,7 @@ export default function AidRequestsPage() {
       onProgramPool={onProgramPool}
     />
   )
-  // The filters share the grid's own toolbar line with search and Download CSV; with no grid on
+  // The filters share the grid's own toolbar line with search and the ⤓ CSV chip; with no grid on
   // screen (loading, failed, a past date) they stand on a line of their own.
   const gridShown = grid.data !== undefined && (live || view.key === 'all')
 
