@@ -173,7 +173,6 @@ from api.services.financial_aid_reconciliation import (
     placeable,
     request_scope,
     round_ledger,
-    shown_stops,
     stop_text,
     undone_rounds,
 )
@@ -1664,8 +1663,8 @@ class FinancialAidDecisionsService:
         rule ledger_ticks runs, so the two can't disagree) says where it stopped, and a round it would tick is either
         held by D152 (`withheld`, the same check the overnight tick runs) or is pending tonight's tick (C1, owner
         10-03: `pending`, no reason). The rows these mark are those D81's Note marks, less an over-posting with nothing
-        asked for the next round (H1, direction a's) and a round decided at $0 (owner 10-03: `shown_stops` leaves its
-        zero_round stop out until the owner words a reason). The Requests grid, Today and the household page read it
+        asked for the next round (H1, direction a's). A round decided at $0 is a reason too (owner 10-03: `decided_zero`,
+        "Decided $0"), on any round, beside direction (a)'s "over" on a later one. The Requests grid, Today and the household page read it
         (row_of), as do Rounds & budget's Needs an offer counts, the March file and the Accepted tick; D16's load runs
         only when such a round sits on money a person placed. A reason offers Mark posted only on the request's first
         unposted round, the only one tick_posted takes alone (H3)."""
@@ -1699,9 +1698,9 @@ class FinancialAidDecisionsService:
                 continue
             why = withheld_why(tick, reasons)
             found[tick.request_id].append(Unticked(tick.round, "withheld", why, first(tick.request_id, tick.round)))
-        for stop, code in shown_stops(walk.stops):
+        for stop in walk.stops:
             found[stop.request_id].append(
-                Unticked(stop.round, code, stop_text(stop), first(stop.request_id, stop.round))
+                Unticked(stop.round, stop.code, stop_text(stop), first(stop.request_id, stop.round))
             )
         return replace(season, unticked={rid: tuple(items) for rid, items in found.items()}, pending=pending)
 

@@ -961,16 +961,14 @@ UntickedCode = Literal[
     "finance_declined",
     "not_decided",
     "undone",
+    "decided_zero",
 ]
 # The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2). Family-level money is placed in
 # Money › To place, whose placement ticks (D81, D151); a round not decided yet has nothing to lock. The code alone
 # doesn't offer the button: tick_posted takes a request's first unposted round only (H3, `Unticked.mark_posted`).
-MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset({"withheld", "short_posting", "shares_short", "undone"})
-# The walk's stops that are no Not reconciled (b) reason yet. `zero_round` (owner 10-03, option i): a round decided at
-# $0 never auto-ticks, since money beyond the lock is no posting of a $0 round; the walk stops there, and direction (a)
-# reads the request as over. It has no approved pill or sentence, so the service leaves it out of the (b) rows
-# (`shown_stops`, the one place it is filtered) until the owner words one.
-StopCode = UntickedCode | Literal["zero_round"]
+MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset(
+    {"withheld", "short_posting", "shares_short", "undone", "decided_zero"}
+)
 # A round not decided yet, by its state (owner 10-03: the pill names the state).
 _UNDECIDED: Final[Mapping[str, UntickedCode]] = {
     "held": "on_hold",
@@ -987,7 +985,7 @@ class TickStop:
 
     request_id: str
     round: int
-    code: StopCode
+    code: UntickedCode
     status: RoundStatus
     held: Decimal
     decided: Decimal | None
@@ -1011,7 +1009,7 @@ def _stop_code(
     *,
     undone: Collection[tuple[str, int]],
     split: bool,
-) -> StopCode | Literal["ticks", "no_reason"]:
+) -> UntickedCode | Literal["ticks", "no_reason"]:
     """ledger_ticks' refusal of this round, with its reason; "ticks": it ticks. The caller has already stopped where
     nothing is left for the round and the family holds no money no request takes. The order of the refusals only
     picks the reason; any of them stops the walk, as before. "no_reason" stops it with no Not reconciled (b) row: an
@@ -1028,7 +1026,9 @@ def _stop_code(
     if (request.request_id, view.round) in undone:
         return "undone"
     if view.decided == 0:
-        return "zero_round"  # owner 10-03 (option i): never ticked on money beyond the lock, only by hand
+        # Owner 10-03: money beyond the lock is no posting of a $0 round, so it never auto-ticks; a person checks the
+        # posting and ticks it by hand (Mark posted). Its stop is a reason like any other ("Decided $0").
+        return "decided_zero"
     if in_campminder < locked + view.decided:
         if family > 0:
             return "family_level"  # placing comes first: the family's line may be the rest of the round
@@ -1125,20 +1125,11 @@ def stop_text(stop: TickStop) -> str:
             )
         case "withheld":
             raise ValueError("a withheld round's text is D16's (financial_aid_to_place.withheld_why)")
-        case "zero_round":
-            raise ValueError("a $0 round's stop has no text yet: it awaits the owner's words (shown_stops)")
-
-
-def shown_stops(stops: Iterable[TickStop]) -> list[tuple[TickStop, UntickedCode]]:
-    """The walk's stops that are Not reconciled (b) reasons, each with its code. The one place a stop with no approved
-    pill or sentence is left out: `zero_round` awaits the owner's words (owner 10-03, option i); giving it a row is
-    adding its code to UntickedCode, the schema and the labels, a sentence to stop_text, and dropping it here."""
-    out: list[tuple[TickStop, UntickedCode]] = []
-    for stop in stops:
-        if stop.code == "zero_round":
-            continue
-        out.append((stop, stop.code))
-    return out
+        case "decided_zero":
+            return (
+                f"CampMinder has {held} for this request, but Round {n} was decided at $0. "
+                "Check the posting in CampMinder, then click Mark posted if $0 is right."
+            )
 
 
 def pending_text(decided: Decimal) -> str:
