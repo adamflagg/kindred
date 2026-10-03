@@ -245,6 +245,11 @@ describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
     expect(scrolled).toHaveLength(1)
   })
 
+  it('scrolls to the income section for "#income" (the grid\'s Enter the Income step)', () => {
+    renderWithHash('#income')
+    expect(scrolled.map((el) => el.id)).toEqual(['income'])
+  })
+
   it('does nothing with no hash, or a hash naming nothing on the page', () => {
     renderWithHash('')
     renderWithHash('#request-nosuchrequest')
