@@ -1074,6 +1074,22 @@ async def test_payer_shares_read_confirmed_against_the_widened_lock() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_pending_round_widens_only_its_own_requests_lock() -> None:
+    """Emma's Round 2 is pending; Liam's Round 1 is posted at $1,500 and CampMinder holds exactly that. Emma's $300
+    widens Emma's lock alone: Liam stays confirmed against his own $1,500."""
+    store = FakeDecisionsStore()
+    _round2(store, held="1800")
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    seed_line(store, 9002, "1500", household=1000002, person=1000021)
+    rows = await _rows(store)
+    assert rows[EMMA].rounds[1].cm_pending is True  # the premise
+    c = rows[LIAM].confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.gap) == ("confirmed", True, 1500.0, 0.0)
+
+
+@pytest.mark.asyncio
 async def test_before_the_first_ticked_season_a_later_round_widens_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
     store = FakeDecisionsStore()
