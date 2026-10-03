@@ -9,12 +9,5 @@
     "posted": "Posted",
     "not_rebuilt": "Not rebuilt for that date"
   },
-  "ask_refusals": {
-    "round2_posted": "Round 2 is posted; its ask can't change",
-    "round1_not_posted": "An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask",
-    "round3_posted": "Round 3 is posted and builds on Round 2: its ask can't change now",
-    "cancelled_in_kindred": "Cancelled in Kindred: reopen it first",
-    "not_live": "a {status} request takes no new asks or amounts"
-  },
   "live_request_statuses": ["active", "unmatched_session"]
 }

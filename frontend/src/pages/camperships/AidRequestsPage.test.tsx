@@ -4,7 +4,11 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { APPROVED_RULES_2026 } from '../../components/camperships/requests/approvedRulesFixtures'
-import { GRID_ROWS, roundOut } from '../../components/camperships/requests/gridFixtures'
+import {
+  APPEAL_REFUSAL_R1,
+  GRID_ROWS,
+  roundOut,
+} from '../../components/camperships/requests/gridFixtures'
 import type { ApiAidApprovedRules, ApiAidGrid } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
@@ -50,6 +54,9 @@ const keyAsk = vi.fn(() =>
 vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidKeyAsk: () => ({ mutateAsync: keyAsk }),
 }))
+
+/** The write's refusal once Round 2 is posted, as the read's `appeal_refusal` carries it (#2997). */
+const R2_POSTED = "Round 2 is posted; its ask can't change"
 
 const LIVE: ApiAidGrid = { year: 2027, rules_version: 1, rows: [...GRID_ROWS], ticked_season: true }
 
@@ -440,11 +447,8 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
   it("says why where an appeal can't be keyed yet", async () => {
     renderAt('/aid/requests')
     await userEvent.click(sessionCell('Emma Johnson'))
-    expect(
-      screen.getByText(
-        'An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask'
-      )
-    ).toBeInTheDocument()
+    // The row's own `appeal_refusal` (#2997), drawn as the server sent it.
+    expect(screen.getByText(APPEAL_REFUSAL_R1)).toBeInTheDocument()
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
   })
 
@@ -611,7 +615,12 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
           ...LIVE,
           rows: LIVE.rows.map((r) =>
             r.request_id === 'reqolivia000003'
-              ? { ...r, rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 1300 })] }
+              ? {
+                  ...r,
+                  rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 1300 })],
+                  // The read says so too (#2997): the row carries the write's refusal.
+                  appeal_refusal: R2_POSTED,
+                }
               : r
           ),
         },
@@ -760,7 +769,12 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
         ...LIVE,
         rows: LIVE.rows.map((r) =>
           r.request_id === 'reqolivia000003' || r.request_id === 'reqsamuel000005'
-            ? { ...r, rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 900 })] }
+            ? {
+                ...r,
+                rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 900 })],
+                // The read says so too (#2997): the row carries the write's refusal.
+                appeal_refusal: R2_POSTED,
+              }
             : r
         ),
       },
@@ -781,7 +795,12 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
           ...LIVE,
           rows: LIVE.rows.map((r) =>
             r.request_id === 'reqolivia000003'
-              ? { ...r, rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 900 })] }
+              ? {
+                  ...r,
+                  rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 900 })],
+                  // The read says so too (#2997): the row carries the write's refusal.
+                  appeal_refusal: R2_POSTED,
+                }
               : r
           ),
         },

@@ -42,6 +42,10 @@ export function confirmationOut(over: Partial<ApiAidConfirmation> = {}): ApiAidC
   }
 }
 
+/** The write's refusal for an appeal before Round 1 is posted (#2997's owner wording, D162). */
+export const APPEAL_REFUSAL_R1 =
+  "Round 1 needs to show as posted before you can start an appeal. Once it's posted in CampMinder, this updates overnight. If it's waiting under Not reconciled, mark it posted there. If you meant to fix the original request, edit the Round 1 ask instead."
+
 export function gridRow(over: Partial<ApiAidGridRow> = {}): ApiAidGridRow {
   return {
     request_id: 'reqemma00000001',
@@ -59,6 +63,8 @@ export function gridRow(over: Partial<ApiAidGridRow> = {}): ApiAidGridRow {
     cost: 6760,
     rounds: [roundOut(1, 'needs_offer', { ask: 2000, decided: 1420 })],
     stage: { round: 1, code: 'needs_offer', label: 'R1 · Needs an offer' },
+    // The server's own word on the appeal (#2997): Round 1 isn't posted.
+    appeal_refusal: APPEAL_REFUSAL_R1,
     total_decided: 1420,
     total_posted: null,
     holds: [],
@@ -79,6 +85,7 @@ export const ROW_EMMA = gridRow()
 /** Round 1 posted Mar 9, not accepted; CampMinder shows $210 less. */
 export const ROW_SAMUEL = gridRow({
   stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+  appeal_refusal: null,
   request_id: 'reqsamuel000005',
   person_cm_id: 1000010,
   camper_name: 'Samuel Johnson',
@@ -126,6 +133,7 @@ export const ROW_LIAM = gridRow({
 /** Round 1 posted and accepted; an appeal keyed, Round 2 needs an offer. Quest, pool B. */
 export const ROW_OLIVIA = gridRow({
   stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+  appeal_refusal: null,
   request_id: 'reqolivia000003',
   household_cm_id: 1000005,
   family_name: 'The Chen Family',
@@ -156,6 +164,7 @@ export const ROW_OLIVIA = gridRow({
 /** CampMinder cancelled the enrollment with aid still live, and no reason recorded. */
 export const ROW_RILEY = gridRow({
   stage: { round: null, code: 'cancelled', label: 'Cancelled' },
+  appeal_refusal: null,
   request_id: 'reqriley0000004',
   household_cm_id: 1000007,
   family_name: 'The Sam Family',
