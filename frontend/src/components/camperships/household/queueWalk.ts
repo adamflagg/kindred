@@ -11,7 +11,6 @@ import {
   GRID_COLUMNS,
   NO_FILTERS,
   parseRoundFilter,
-  parseTickFilter,
   reasonGroup,
   viewColumns,
   type GridColumnKey,
@@ -56,21 +55,19 @@ export function gridFiltersFrom(params: URLSearchParams): {
   const program = params.get('program')
   const pool = params.get('pool')
   const round = parseRoundFilter(params.get('round'))
-  const tick = parseTickFilter(params.get('tick'))
   const sort = params.get('sort')
   const group = params.get('group')
   const showIds = params.get('ids') === '1'
   const todayParam = params.get('today')
   const todayKey = todayParam !== null && isListedTodayKey(todayParam) ? todayParam : null
   return {
-    filters: { program, pool, round, tick, ids: null },
+    filters: { program, pool, round, ids: null },
     keep: {
       // The lens (T4) rides along with the filters: a step and Back stay under it.
       ...(lens === 'appeals' ? { lens } : {}),
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
-      ...(tick !== null ? { tick } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(todayKey !== null ? { today: todayKey } : {}),
       ...(sort !== null ? { sort } : {}),

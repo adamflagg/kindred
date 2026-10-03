@@ -30,12 +30,14 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
     expect(stops.map((s) => s.householdCmId)).toEqual([1000005])
   })
 
-  it("reads the grid's filters and Show IDs back from the household link", () => {
+  // Owner ruling (fast-follow, 10-03): no checklist filter under D162, so an old link's `tick=`
+  // neither filters nor travels. Was: read back as `tick: 'posted'` and kept.
+  it("reads the grid's filters and Show IDs back from the household link, dropping an old tick=", () => {
     const { filters, keep } = gridFiltersFrom(
       new URLSearchParams('from=all&program=quest&round=2&tick=posted&ids=1&year=2027')
     )
-    expect(filters).toEqual({ program: 'quest', pool: null, round: 2, tick: 'posted', ids: null })
-    expect(keep).toEqual({ program: 'quest', round: '2', tick: 'posted', ids: '1' })
+    expect(filters).toEqual({ program: 'quest', pool: null, round: 2, ids: null })
+    expect(keep).toEqual({ program: 'quest', round: '2', ids: '1' })
   })
 
   it('keeps a Today line on the household link, so Back and the walk stay on it', () => {
