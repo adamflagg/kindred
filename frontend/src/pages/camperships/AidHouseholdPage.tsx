@@ -35,11 +35,11 @@ function HouseholdBody({ page, view }: { page: ApiAidHouseholdPage; view: AidVie
   )
 }
 
-/** What the grid keeps in its URL besides the view; a household link carries them back (M5). */
-const GRID_FILTERS = ['program', 'pool', 'round', 'tick', 'ids'] as const
+/** What the grid keeps in its URL besides the view (the lens too); a household link carries them back (M5). */
+const GRID_FILTERS = ['lens', 'program', 'pool', 'round', 'tick', 'ids'] as const
 
 /**
- * "← Back to requests": the grid's view and filters, rebuilt from the link that opened this page.
+ * "← Back to Requests": the grid's view and filters, rebuilt from the link that opened this page.
  * When the grid opened this entry (it marks it `aidFromGrid`) the click goes back through history,
  * so the grid lands on the row it left (§3.5: the grid wrote `?row=` onto its own entry first).
  * Anything else (a new tab, a jump, a queue step) follows the href, whose view carries the as-of.
@@ -51,7 +51,8 @@ function BackToRequests({ view }: { view: AidView }) {
   const fromGrid = (state as { aidFromGrid?: boolean } | null)?.aidFromGrid === true
   const from = params.get('from')
   if (from === null) return null
-  const extra: Record<string, string> = { view: from }
+  // One URL scheme (owner ruling 10-03, T4): `from=all` is All, which has no `view`.
+  const extra: Record<string, string> = from === 'all' ? {} : { view: from }
   for (const name of GRID_FILTERS) {
     const value = params.get(name)
     if (value !== null) extra[name] = value
@@ -68,7 +69,7 @@ function BackToRequests({ view }: { view: AidView }) {
         onClick={onClick}
         className={`text-primary ${ACTION_LINK}`}
       >
-        ← Back to requests
+        ← Back to Requests
       </Link>
     </div>
   )
