@@ -213,7 +213,8 @@ function buildColumns(
 /**
  * The Requests grid (§6.1; D23–D27, D29, D31; round7.html): one row per request, the view's own
  * columns, the names opening the family (Decision 1), and the needs-attention cell taking the spare
- * width. The server decided every row (D21); this only draws them.
+ * width. The server decided every row (D21); this draws them and decides which rows can take a
+ * tick (`ticks.ts`), and the pieces that open the editor and the tick dialog.
  */
 export function RequestsGrid({
   rows,
