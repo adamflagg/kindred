@@ -1008,7 +1008,7 @@ def _stop_code(
         # rounds already lock.
         return "family_level"
     if view.status != "needs_offer" or view.decided is None:
-        if view.ask is None and family <= 0:
+        if view.round > 1 and view.ask is None and family <= 0:  # Round 1 follows no posting, and its blank ask is real
             return "no_reason"
         return _UNDECIDED.get(view.status, "not_decided")
     if (request.request_id, view.round) in undone:

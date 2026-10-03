@@ -330,6 +330,19 @@ async def test_money_for_a_held_request_clears_when_decided_and_has_no_mark_post
 
 
 @pytest.mark.asyncio
+async def test_money_for_a_held_round_1_with_a_blank_ask_is_still_not_reconciled() -> None:
+    """H1 is an over-posting with nothing asked for the NEXT round. Round 1 follows no posting, and a blank Round 1 ask
+    is real (it stays blank, never 0): CampMinder's money for it still needs its row, or it shows nowhere."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=0, status="unmatched_session", ask=0)
+    seed_line(store, 9001, "1500")
+    row = (await _rows(store))[EMMA]
+    assert (row.rounds[0].status, row.rounds[0].ask) == ("held", None)  # the premise
+    assert row.unticked == [_out("on_hold", HELD_TEXT, mark_posted=False)]
+    assert "not_reconciled" in (row.queues or [])
+
+
+@pytest.mark.asyncio
 async def test_a_split_requests_first_share_waits_for_the_rest() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
@@ -626,6 +639,24 @@ async def test_unaccepting_a_pending_round_puts_it_back_waiting_on_the_family() 
     assert out.written == 1
     row = (await _rows(store))[EMMA]
     assert (row.rounds[0].accepted, row.queues) == (False, ["waiting_on_family"])
+
+
+@pytest.mark.asyncio
+async def test_a_same_day_accepted_can_be_undone_after_the_round_stops_being_pending() -> None:
+    """Accepted on a pending round, then CampMinder's money goes before tonight's tick: the round is back in Needs an
+    offer still marked Accepted (an accepted edge). Un-accepting it is how staff clear that, so it is never refused
+    as "not posted"."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    service = _service(store)
+    await service.tick_accepted(YEAR, _accept((EMMA, 1)), ACTOR)
+    store.camp_lines.clear()
+    before = (await _rows(store))[EMMA].rounds[0]
+    assert (before.status, before.accepted, before.cm_pending) == ("needs_offer", True, False)  # the premise
+    out = await service.tick_accepted(YEAR, _accept((EMMA, 1), accepted=False), ACTOR)
+    assert out.written == 1
+    assert (await _rows(store))[EMMA].rounds[0].accepted is False
 
 
 def _round3(store: FakeDecisionsStore, *, refused: bool) -> None:

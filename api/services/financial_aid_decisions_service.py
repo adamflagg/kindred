@@ -2877,8 +2877,8 @@ class FinancialAidDecisionsService:
             for rid, n in keys
             if rid in requests and not rounds.get(rid, {}).get(n, RoundState(round=n)).posted
         ]
-        # The walk prices the season: run only when a round isn't posted (with_unticked keeps the season gate).
-        pending = (await self.with_unticked(await self.season(year))).pending if unposted else {}
+        # The walk prices the season: run only to accept a round that isn't posted (with_unticked keeps the season gate).
+        pending = (await self.with_unticked(await self.season(year))).pending if unposted and body.accepted else {}
         writes: list[AidWrite] = []
         problems: list[str] = []
         unchanged = 0
@@ -2891,7 +2891,9 @@ class FinancialAidDecisionsService:
                 unchanged += 1
             elif body.accepted and request_id in in_kindred:
                 problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
-            elif not state.posted and (request_id, n) not in pending:
+            # An un-accept is always allowed: a same-day Accepted (C1) whose round then stops being pending would
+            # otherwise be stuck until it posts.
+            elif body.accepted and not state.posted and (request_id, n) not in pending:
                 problems.append(f"{request_id}: Round {n} is not posted")
             else:
                 writes.append(self._write(request, n, "accept" if body.accepted else "unaccept", actor))
