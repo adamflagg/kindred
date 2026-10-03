@@ -1,11 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import {
+  addAidCorrection,
   decideAidRound3,
   keyAidAsk,
   keyAidRound3Amount,
+  markAidDuplicate,
+  resolveAidSession,
   setAidCancellation,
+  setAidHeadcount,
   setAidHoldRelease,
+  setAidHouseholdShare,
   setAidManualHold,
   tickAidAccepted,
   tickAidPosted,
@@ -16,11 +21,16 @@ import type {
   ApiAidAcceptedIn,
   ApiAidAskIn,
   ApiAidCancellationIn,
+  ApiAidCorrectionIn,
+  ApiAidDuplicateIn,
+  ApiAidHeadcountIn,
   ApiAidHoldReleaseIn,
+  ApiAidHouseholdShareIn,
   ApiAidManualHoldIn,
   ApiAidPostedIn,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
+  ApiAidSessionIn,
   ApiAidUnpostIn,
 } from '../../types/api-types'
 import { invalidateAidMoneyQueries } from '../../utils/queryKeys'
@@ -131,5 +141,54 @@ export function useAidManualHold() {
 export function useAidCancellation() {
   return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidCancellationIn>) =>
     setAidCancellation(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+export interface CorrectionVars {
+  readonly year: number
+  readonly householdCmId: number
+  readonly body: ApiAidCorrectionIn
+}
+
+/** Correct an answer on the application (main spec §9.3). */
+export function useAidCorrection() {
+  return useAidWrite((fetchWithAuth, vars: CorrectionVars) =>
+    addAidCorrection(fetchWithAuth, vars.year, vars.householdCmId, vars.body)
+  )
+}
+
+export interface HouseholdShareVars {
+  readonly requestId: string
+  readonly householdCmId: number
+  readonly body: ApiAidHouseholdShareIn
+}
+
+/** One household's payer share. A household joining or leaving changes who has aid activity: the jump index too (#2924). */
+export function useAidHouseholdShare() {
+  return useAidWrite(
+    (fetchWithAuth, vars: HouseholdShareVars) =>
+      setAidHouseholdShare(fetchWithAuth, vars.requestId, vars.householdCmId, vars.body),
+    { jumpIndex: true }
+  )
+}
+
+/** Settle a request's session (main spec §9.1). */
+export function useAidSessionResolve() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidSessionIn>) =>
+    resolveAidSession(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** Mark a request the duplicate of the one kept (main spec §9.2). */
+export function useAidDuplicate() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidDuplicateIn>) =>
+    markAidDuplicate(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** A Family Camp headcount (main spec §8). */
+export function useAidHeadcount() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidHeadcountIn>) =>
+    setAidHeadcount(fetchWithAuth, vars.requestId, vars.body)
   )
 }

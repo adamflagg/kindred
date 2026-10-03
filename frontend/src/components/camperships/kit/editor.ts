@@ -17,8 +17,11 @@ const STATEMENT_MAX = 4000
 /** The server's limit on an aid amount (api/schemas/financial_aid_decisions.py `_Amount`). */
 const MAX_AMOUNT = 1_000_000
 
-/** "1,200", "$1,200.50", " 900 " → a non-negative amount, at most two places of cents. */
-export function parseMoneyInput(raw: string): MoneyInput {
+/**
+ * "1,200", "$1,200.50", " 900 " → a non-negative amount, at most two places of cents. `max` is the
+ * ceiling to refuse above; it defaults to the aid-amount limit.
+ */
+export function parseMoneyInput(raw: string, max: number = MAX_AMOUNT): MoneyInput {
   const text = raw.trim().replace(/^\$\s*/, '')
   if (text === '') return { kind: 'empty' }
   // Commas are thousands groups only: "12,50" is not twelve-fifty, and "1,2,3" is not 123.
@@ -29,7 +32,7 @@ export function parseMoneyInput(raw: string): MoneyInput {
   if (!/^\d+(\.\d{1,2})?$/.test(digits))
     return { kind: 'invalid', reason: 'Cents go to two places' }
   const amount = Number(digits)
-  if (amount > MAX_AMOUNT) return { kind: 'invalid', reason: 'More than $1,000,000' }
+  if (amount > max) return { kind: 'invalid', reason: `More than $${max.toLocaleString('en-US')}` }
   return { kind: 'ok', amount }
 }
 
