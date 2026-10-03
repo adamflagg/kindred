@@ -674,6 +674,8 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
       expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
     )
     expect(screen.getByTestId('where')).not.toHaveTextContent('pool=')
+    // All is the absence of a view param: Go Back clears the view, it never writes view=all.
+    expect(screen.getByTestId('where')).not.toHaveTextContent('view=')
     expect(screen.getByTestId('where')).toHaveTextContent('ids=1')
     expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')

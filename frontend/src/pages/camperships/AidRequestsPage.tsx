@@ -166,7 +166,7 @@ export default function AidRequestsPage() {
   const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
   const byKey = useMemo(() => new Map((rows ?? []).map((r) => [r.request_id, r] as const)), [rows])
   // "Go back" (Decision 3): a click on that row (ruling B). A row the view or a filter hides is
-  // brought back on All with no filters first (the PR 1 final review: `keep` would leave it hidden).
+  // brought back on All (no `view` param: All is its absence) with no filters first (the PR 1 final review: `keep` would leave it hidden).
   // A row the table's search hides needs nothing: AidTable keeps the highlighted row through a
   // search (PR 1), out of the totals, group counts and CSV.
   const goBack = (key: string) => {
@@ -180,7 +180,6 @@ export default function AidRequestsPage() {
     if ((movedTo() === key || highlighted === key) && !visibleKeys.has(key)) {
       void navigate(
         aidHref('/aid/requests', viewState, {
-          view: 'all',
           row: key,
           ...(showIds ? { ids: '1' } : {}),
         })
