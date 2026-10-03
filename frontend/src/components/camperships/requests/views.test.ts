@@ -217,6 +217,23 @@ describe('grouping', () => {
     })
   })
 
+  // Owner ruling V1 (10-03): the Not reconciled group says what the pill says. Was "Not in CampMinder".
+  it('heads a request missing in CampMinder "Missing in CM", as its pill does', () => {
+    const missing = gridRow({
+      confirmation: confirmationOut({
+        status: 'not_in_campminder',
+        locked: 1000,
+        in_campminder: 0,
+        reconciled: false,
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(reasonGroup(requestView('not-reconciled'), TODAY)(missing)).toEqual({
+      id: 'Missing in CM',
+      heading: 'Missing in CM',
+    })
+  })
+
   it("heads a confirmed request's group by its open share's own state, as Today's reasons do (Minor 1)", () => {
     const share = (status: 'confirmed' | 'short' | 'awaiting_sync') => ({
       household_cm_id: 1000001,

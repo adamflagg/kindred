@@ -556,7 +556,8 @@ const STATE_HEADINGS: Readonly<Record<ApiAidConfirmation['status'], string>> = {
   confirmed: 'A payer share',
   short: 'Short',
   over: 'Over',
-  not_in_campminder: 'Not in CampMinder',
+  // Owner ruling V1 (10-03): the same words as the Needs attention pill.
+  not_in_campminder: 'Missing in CM',
   reversed: 'Reversed',
 }
 

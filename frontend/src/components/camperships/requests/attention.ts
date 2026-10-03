@@ -182,7 +182,8 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
       )
     case 'not_in_campminder':
       return note(
-        'not in CampMinder',
+        // Owner ruling V1 (10-03): one vocabulary with the back end's "Short in CM".
+        'Missing in CM',
         `Posted ${formatMoney(c.locked)}; the last sync found nothing for it.`,
         'not_reconciled',
         CHECK_POSTING

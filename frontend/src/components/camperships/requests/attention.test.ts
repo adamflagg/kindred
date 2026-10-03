@@ -236,6 +236,8 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     expect(attentionFor(missing, 'not_reconciled', TODAY)?.item.fact).toBe(
       'Posted $1,000; the last sync found nothing for it.'
     )
+    // Owner ruling V1 (10-03): one vocabulary with the back end's "Short in CM". Was "not in CampMinder".
+    expect(attentionFor(missing, 'not_reconciled', TODAY)?.item.pill).toBe('Missing in CM')
   })
 
   it('words the payer-share fact as a to-do, not as a repeat of the pill (F6d)', () => {
