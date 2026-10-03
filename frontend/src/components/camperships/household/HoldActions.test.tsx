@@ -84,7 +84,7 @@ describe('HoldActions (Decision 25)', () => {
       ],
     })
     render(<ReleasedHolds request={request} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Put back…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put Back…' }))
     await userEvent.type(screen.getByLabelText('Why put it back'), 'Mistake{Enter}')
     expect(release).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
@@ -126,6 +126,6 @@ describe('holds on a request that is no longer live (m2)', () => {
       ],
     })
     render(<ReleasedHolds request={request} />)
-    expect(screen.queryByRole('button', { name: 'Put back…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put Back…' })).toBeNull()
   })
 })

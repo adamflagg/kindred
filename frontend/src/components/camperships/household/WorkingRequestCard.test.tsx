@@ -133,15 +133,15 @@ afterEach(() => vi.useRealTimers())
 describe('WorkingRequestCard (§6.3, casework)', () => {
   it("offers the card's money edits and opens the editor in place", async () => {
     renderCards()
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1200')
   })
 
   it('cancels a request with one of the nine reasons', async () => {
     renderCards([ROW_EMMA])
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel request…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel Request…' }))
     await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'medical')
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(cancel).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
       body: { cancelled: true, reason: 'medical', note: '' },
@@ -150,21 +150,21 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
 
   it('will not cancel without a reason', async () => {
     renderCards([ROW_EMMA])
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel request…' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel Request…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(cancel).not.toHaveBeenCalled()
     expect(screen.getByText('Pick a cancel reason')).toBeInTheDocument()
   })
 
   it('asks for the reason CampMinder’s cancellation lacks (D101)', () => {
     renderCards([ROW_RILEY])
-    expect(screen.getByRole('button', { name: 'Give a reason…' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Cancel request…' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Give a Reason…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
   })
 
   it('puts a request on hold by hand, with its reason', async () => {
     renderCards([ROW_EMMA])
-    await userEvent.click(screen.getByRole('button', { name: 'Put on hold…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put on Hold…' }))
     await userEvent.type(screen.getByLabelText('Reason for the hold'), 'Waiting on a call{Enter}')
     expect(manual).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
@@ -174,8 +174,8 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
 
   it('offers nothing to change without casework: the plain card', () => {
     renderCards([ROW_OLIVIA], false)
-    expect(screen.queryByRole('button', { name: 'Edit the appeal…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Cancel request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit the Appeal…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
     expect(screen.queryByRole('checkbox')).toBeNull()
   })
 })
@@ -201,8 +201,8 @@ describe('WorkingRequestCard reopen, liveness and approval', () => {
 
   it('offers no cancel or hold on a request that is no longer live', () => {
     renderCards([gridRow({ ...ROW_EMMA, request_status: 'withdrawn' })])
-    expect(screen.queryByRole('button', { name: 'Cancel request…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Put on hold…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put on Hold…' })).toBeNull()
   })
 
   it('leaves a form alone when another opened while its save was pending', async () => {
@@ -211,10 +211,10 @@ describe('WorkingRequestCard reopen, liveness and approval', () => {
       finish = resolve
     })
     renderCards([ROW_EMMA])
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel request…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel Request…' }))
     await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'medical')
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Put on hold…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put on Hold…' }))
     await act(async () => {
       finish({})
       await cancelGate
@@ -243,23 +243,23 @@ describe('WorkingRequestCard reopen, liveness and approval', () => {
 
 describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through the open editor)', () => {
   const typeAppeal = async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
   }
 
   it('switches at once when nothing is typed', async () => {
     renderCards()
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Put on hold…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put on Hold…' }))
     expect(screen.getByLabelText('Reason for the hold')).toBeInTheDocument()
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
     expect(ask).not.toHaveBeenCalled()
   })
 
   it.each([
-    ['Cancel request…', 'Cancel reason'],
-    ['Put on hold…', 'Reason for the hold'],
+    ['Cancel Request…', 'Cancel reason'],
+    ['Put on Hold…', 'Reason for the hold'],
   ])('saves what is typed before %s, and opens it once the save lands', async (button, field) => {
     mode = 'manual'
     renderCards()
@@ -279,7 +279,7 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
     mode = 'manual'
     renderCards()
     await typeAppeal()
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel request…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel Request…' }))
     const call = pending.shift()
     act(() => call?.onError?.(new Error('The server said no')))
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
@@ -295,7 +295,7 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
       camper_name: 'Samuel Johnson',
     })
     renderCards([ROW_OLIVIA, other])
-    const edits = () => screen.getAllByRole('button', { name: 'Edit the appeal…' })
+    const edits = () => screen.getAllByRole('button', { name: 'Edit the Appeal…' })
     await userEvent.click(edits()[0] as HTMLElement)
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
@@ -323,14 +323,14 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
     renderCards()
     act(() => exitsSeen?.beforeLeave(go))
     expect(go).toHaveBeenCalledTimes(1)
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     act(() => exitsSeen?.beforeLeave(go))
     expect(go).toHaveBeenCalledTimes(2)
   })
 
   it('the page stays put when what is typed cannot be saved', async () => {
     renderCards()
-    await userEvent.click(screen.getByRole('button', { name: 'Round 3 ask…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Round 3 Ask…' }))
     await userEvent.keyboard('450')
     act(() => exitsSeen?.beforeLeave(go))
     expect(go).not.toHaveBeenCalled()
@@ -349,22 +349,22 @@ describe('WorkingRequestCard: round actions beside an open money editor (I2)', (
 
   it('takes Mark posted away while an edit is open, and brings it back on Esc', async () => {
     renderCards([R2_OFFER])
-    expect(screen.getByRole('button', { name: 'Mark posted · locks $900' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    expect(screen.getByRole('button', { name: 'Mark Posted · locks $900' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
-    expect(screen.queryByRole('button', { name: /Mark posted/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
     expect(screen.getByText('save or close the edit first')).toBeInTheDocument()
     for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled()
     await userEvent.keyboard('{Escape}')
-    expect(screen.getByRole('button', { name: 'Mark posted · locks $900' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mark Posted · locks $900' })).toBeInTheDocument()
   })
 })
 
 describe('WorkingRequestCard: an editor the row stops offering closes (m1)', () => {
   it('drops the Round 3 ask editor once Round 1 is no longer posted', async () => {
     const { rerender } = renderCards([ROW_OLIVIA])
-    await userEvent.click(screen.getByRole('button', { name: 'Round 3 ask…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Round 3 Ask…' }))
     expect(screen.getByLabelText('Round 3 ask')).toBeInTheDocument()
     const undone = gridRow({
       ...ROW_OLIVIA,
@@ -378,14 +378,14 @@ describe('WorkingRequestCard: an editor the row stops offering closes (m1)', () 
 describe('WorkingRequestCard: a non-live request takes no cancellation write (m2)', () => {
   it('offers no reason on a withdrawn CampMinder cancellation', () => {
     renderCards([gridRow({ ...ROW_RILEY, request_status: 'withdrawn' })])
-    expect(screen.queryByRole('button', { name: 'Give a reason…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Change the reason…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Give a Reason…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Change the Reason…' })).toBeNull()
   })
 
   it('offers no reopen or change on a withdrawn Kindred cancellation', () => {
     renderCards([gridRow({ ...KINDRED_CANCELLED, request_status: 'withdrawn' })])
     expect(screen.queryByRole('button', { name: 'Reopen…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Change the reason…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Change the Reason…' })).toBeNull()
   })
 
   it('offers no Put back on a withdrawn request with a released hold', () => {
@@ -403,17 +403,17 @@ describe('WorkingRequestCard: a non-live request takes no cancellation write (m2
         ],
       }),
     ])
-    expect(screen.queryByRole('button', { name: 'Put back…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put Back…' })).toBeNull()
   })
 })
 
 describe('WorkingRequestCard: the open editor’s own button (m3)', () => {
   it('is a no-op: nothing is saved and the draft stays', async () => {
     renderCards()
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     expect(ask).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
   })
