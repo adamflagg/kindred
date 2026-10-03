@@ -28,6 +28,8 @@ import {
 import { BudgetStrip } from './BudgetStrip'
 import { BudgetTable } from './BudgetTable'
 import { BudgetTypeLines } from './BudgetTypeLines'
+import { demandGroups } from './demandModel'
+import { ForwardDemand } from './ForwardDemand'
 
 const SURFACE = 'season-rounds-budget'
 
@@ -42,6 +44,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const below = useMemo(() => belowTheLine(budget, pool, view), [budget, pool, view])
   const typeLines = useMemo(() => budgetTypeLines(budget, pool), [budget, pool])
   const strip = useMemo(() => stripRounds(budget.strip, view), [budget.strip, view])
+  const demand = useMemo(() => demandGroups(budget, pool, view), [budget, pool, view])
 
   // A fold is a view state, so it lives in the URL (D15), replaced rather than pushed: Back
   // returns to the page before, not through every fold.
@@ -125,6 +128,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
         onToggle={toggle}
         numberOf={numberOf}
       />
+      <ForwardDemand groups={demand} numberOf={numberOf} />
       <BudgetTypeLines lines={typeLines} />
     </div>
   )
