@@ -6,7 +6,7 @@ import type { ApiAidToday, ApiAidTodayLine } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
 import { codeWords } from '../requests/attention'
-import { REQUEST_VIEWS } from '../requests/views'
+import { CM_PENDING_WORD, REQUEST_VIEWS } from '../requests/views'
 
 export type TodayKey = ApiAidTodayLine['key']
 
@@ -19,6 +19,8 @@ export const LINE_NAMES = {
   session_not_settled: 'Session not settled',
   duplicates: 'Duplicates',
   cancel_reason: 'Cancelled: give a reason',
+  // Money › To place's open lines (#2973); the tab's own name.
+  to_place: 'To place',
   grants: 'Grants needing attention',
   late_full_coverage: 'A late full-coverage grant',
   pending_approval: 'Pending approval',
@@ -35,15 +37,19 @@ export function isTodayKey(value: string): value is TodayKey {
   return Object.hasOwn(LINE_NAMES, value)
 }
 
-/** Reason codes that aren't check codes: rounds, confirmation states, grant and description states. */
+/**
+ * Reason codes that aren't check codes and come with no server label: rounds, confirmation states,
+ * grant and description states. The confirmation states are the grid's words (owner V1: one
+ * vocabulary, "Missing in CM" and CM ✓'s pending word).
+ */
 const REASON_WORDS: Readonly<Record<string, string>> = {
   r1: 'R1',
   r2: 'R2',
   r3: 'R3',
-  awaiting_sync: "awaiting tonight's sync",
+  awaiting_sync: CM_PENDING_WORD,
   short: 'short',
   over: 'over',
-  not_in_campminder: 'not in CampMinder',
+  not_in_campminder: 'Missing in CM',
   needs_camper: 'needs a camper',
   not_posted: 'commitment not yet in CampMinder',
   posted_then_reversed: 'posted, then reversed',
@@ -51,11 +57,13 @@ const REASON_WORDS: Readonly<Record<string, string>> = {
   camper_cancelled: 'camper cancelled',
   no_grantor: 'no grantor',
   unclassified: 'unclassified',
+  // An outside source that needs a reporting group (D100, #2973).
+  needs_group: 'needs a group',
 }
 
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`
 
-/** "5 fam · 7 req", "3 grants", "1 section", "2 descriptions", "2 fields". */
+/** "5 fam · 7 req", "3 grants", "1 section", "2 descriptions", "2 fields", "3 lines". */
 export function countWords(line: ApiAidTodayLine): string {
   switch (line.item_kind) {
     case 'requests':
@@ -68,23 +76,38 @@ export function countWords(line: ApiAidTodayLine): string {
       return plural(line.items, 'description', 'descriptions')
     case 'fields':
       return plural(line.items, 'field', 'fields')
+    case 'lines':
+      return plural(line.items, 'line', 'lines')
   }
 }
 
-/** A reason's words: a rules section and an equity field show as the server named them, every other code in words. */
-function codeLabel(line: ApiAidTodayLine, code: string): string {
-  if (line.key === 'rules_sections' || line.key === 'equity_field_never_true') return code
-  return REASON_WORDS[code] ?? codeWords(code)
+type TodayReason = NonNullable<ApiAidTodayLine['reasons']>[number]
+
+/**
+ * A reason's words: the server's label where it sends one (an equity criterion's name, #2988; Not
+ * reconciled's hand-tick reasons, #2996), a rules section as the server named it, every other code in
+ * the grid's words.
+ */
+function codeLabel(line: ApiAidTodayLine, reason: TodayReason): string {
+  if (reason.label != null) return reason.label
+  if (line.key === 'rules_sections') return reason.code
+  return REASON_WORDS[reason.code] ?? codeWords(reason.code)
 }
 
-/** "Income conflict 1 · Placeholder income 1". */
+/**
+ * "Income conflict 1 · Placeholder income 1". An equity field is one item, so it shows no count (Q5):
+ * "Rents their home · Single parent".
+ */
 export function reasonWords(line: ApiAidTodayLine): string {
+  const counted = line.key !== 'equity_field_never_true'
   return (line.reasons ?? [])
-    .map((reason) => `${codeLabel(line, reason.code)} ${String(reason.items)}`)
+    .map((reason) =>
+      counted ? `${codeLabel(line, reason)} ${String(reason.items)}` : codeLabel(line, reason)
+    )
     .join(' · ')
 }
 
-/** The reasons, then the line's own facts (§6.4). The largest gap includes not in CampMinder (owner ruling). */
+/** The reasons, then the line's own facts (§6.4). The largest gap includes Missing in CM (owner ruling). */
 export function detailWords(line: ApiAidTodayLine): string {
   const parts: string[] = []
   const reasons = reasonWords(line)
@@ -125,7 +148,8 @@ export function openHref(line: ApiAidTodayLine, view: AidView): string | null {
   if (line.items === 0) return null
   const elsewhere = ELSEWHERE[line.key]
   if (elsewhere !== undefined) return aidHref(elsewhere, view)
-  if (LISTED.has(line.key)) return aidHref('/aid/requests', view, { view: 'all', today: line.key })
+  // All has no `view` (T4's one URL scheme, owner ruling 10-03).
+  if (LISTED.has(line.key)) return aidHref('/aid/requests', view, { today: line.key })
   const requestView = REQUEST_VIEWS.find((v) => v.key === line.key)
   return requestView ? aidHref('/aid/requests', view, { view: requestView.slug }) : null
 }
