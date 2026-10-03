@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidWriteError } from '../../../services/camperships/aidApi'
+import type { ApiAidUnticked } from '../../../types/api-types'
 import { gridRow, roundOut, ROW_EMMA, ROW_SAMUEL } from '../requests/gridFixtures'
 import { householdRequest } from './householdFixtures'
 import { roundLines } from './householdModel'
@@ -85,6 +86,63 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     expect(decide).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
       body: { approve: false, note: 'Over the reserve' },
+    })
+  })
+
+  describe('where Mark Posted is hidden (D162)', () => {
+    const MARK = { name: /Mark Posted/ }
+    const untickedFor = (mark_posted: boolean): ApiAidUnticked => ({
+      round: 1,
+      code: mark_posted ? 'short_posting' : 'on_hold',
+      label: mark_posted ? 'Short posting' : 'On hold',
+      message: 'Why it is not ticked',
+      mark_posted,
+    })
+
+    it('keeps the hand tick on an ordinary needs-offer round', () => {
+      const request = householdRequest(
+        gridRow({ rounds: [roundOut(1, 'needs_offer', { decided: 1420 })] })
+      )
+      render(
+        <RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove={false} />
+      )
+      expect(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' })).toBeInTheDocument()
+    })
+
+    it('hides it on a round whose CampMinder check is pending (C1)', () => {
+      const request = householdRequest(
+        gridRow({ rounds: [roundOut(1, 'needs_offer', { decided: 1420, cm_pending: true })] })
+      )
+      render(
+        <RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove={false} />
+      )
+      expect(screen.queryByRole('button', MARK)).toBeNull()
+    })
+
+    it('hides it where the server says the round cannot be hand-ticked (mark_posted false)', () => {
+      const request = householdRequest(
+        gridRow({
+          rounds: [roundOut(1, 'needs_offer', { decided: 1420 })],
+          unticked: [untickedFor(false)],
+        })
+      )
+      render(
+        <RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove={false} />
+      )
+      expect(screen.queryByRole('button', MARK)).toBeNull()
+    })
+
+    it('shows it where the server says the round can be hand-ticked (mark_posted true)', () => {
+      const request = householdRequest(
+        gridRow({
+          rounds: [roundOut(1, 'needs_offer', { decided: 1420 })],
+          unticked: [untickedFor(true)],
+        })
+      )
+      render(
+        <RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove={false} />
+      )
+      expect(screen.getByRole('button', { name: 'Mark Posted · locks $1,420' })).toBeInTheDocument()
     })
   })
 

@@ -162,6 +162,14 @@ export function RoundNextAction({
   const cancelled = cancelledInKindred(request.row)
   if (line.status === 'needs_offer' && line.decided !== null && round !== null) {
     const amount = line.decided
+    // D162 keeps the hand tick here, so an ordinary needs-offer round shows it. It hides where a
+    // tick is already on its way (C1/V1: `cm_pending`, shown as the grid does) or where the server
+    // says a hand tick is no answer (`unticked[]` for this round with `mark_posted` false).
+    const thisRound = request.row.rounds.find((r) => r.round === line.round)
+    if (thisRound?.cm_pending === true) return null
+    if ((request.row.unticked ?? []).some((u) => u.round === line.round && !u.mark_posted)) {
+      return null
+    }
     // The server posts rounds in order: a later round waits on the first one not yet posted.
     const blocking = request.row.rounds
       .filter((r) => r.round < line.round && r.status !== 'posted')
