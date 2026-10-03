@@ -990,3 +990,32 @@ describe("the detail line's Mark Posted (#2996)", () => {
     expect(detail().queryByRole('button', { name: /^Mark Posted/ })).toBeNull()
   })
 })
+
+describe("Needs an offer's split marker (⚠ Decision 39; #2941's payer_count)", () => {
+  // T3: the marker sits in Requested by, which replaced the Family column it was drawn in.
+  it('marks the Requested by cell "split · 2 households" when the request has two payers', () => {
+    render(<Grid slug="needs-offer" rows={[gridRow({ payer_count: 2 })]} />)
+    const cell = screen.getByText('Sarah Johnson').closest('td') as HTMLElement
+    // The kit's stone StatusPill, not bare text.
+    expect(within(cell).getByText('split · 2 households')).toHaveClass('bg-stone-200')
+  })
+
+  it('counts the payers it is given', () => {
+    render(<Grid slug="needs-offer" rows={[gridRow({ payer_count: 3 })]} />)
+    expect(screen.getByText('split · 3 households')).toBeInTheDocument()
+  })
+
+  it('draws no marker for one payer or an unreplayed past read (null)', () => {
+    const { rerender } = render(<Grid slug="needs-offer" rows={[gridRow({ payer_count: 1 })]} />)
+    expect(screen.queryByText(/^split ·/)).toBeNull()
+    rerender(<Grid slug="needs-offer" rows={[gridRow({ payer_count: null })]} />)
+    expect(screen.queryByText(/^split ·/)).toBeNull()
+    rerender(<Grid slug="needs-offer" rows={[gridRow()]} />)
+    expect(screen.queryByText(/^split ·/)).toBeNull()
+  })
+
+  it('draws the marker in Needs an offer only', () => {
+    render(<Grid slug="all" rows={[gridRow({ payer_count: 2 })]} />)
+    expect(screen.queryByText(/^split ·/)).toBeNull()
+  })
+})

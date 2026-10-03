@@ -119,3 +119,11 @@ def test_the_round_1_unmet_note_names_the_three_rules_the_figure_applies() -> No
     assert "Rounds outside the budget don't count" in text
     assert "offers that were clawed back don't count" in text
     assert "each family's gap is floored at $0" in text
+
+
+def test_the_grants_note_defines_grants_applied_not_the_counted_total() -> None:
+    """⚠38(b): the band's figure is grants APPLIED; the overflow shows on its own line."""
+    d = BY_KEY["grants"]
+    assert d.term == "Grants applied"
+    assert "beyond what was owed" in d.text
+    assert "still owed after camp aid" in d.text
