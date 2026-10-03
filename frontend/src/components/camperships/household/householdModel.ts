@@ -25,6 +25,7 @@ import { formatMoney, moneyCsv, toCents } from '../kit/money'
 import { codeWords } from '../requests/attention'
 import { LIVE_REQUEST_STATUSES } from '../requests/gridEditor'
 import { ROUND_STATUS_WORDS, roundTone } from '../requests/stage'
+import { CM_PENDING_WORD } from '../requests/views'
 
 const nonEmpty = (text: string) => text.trim() !== ''
 
@@ -63,9 +64,9 @@ export function stateWords(state: ApiAidConfirmationState): string {
     case 'over':
       return `${n} over ${formatMoney(Math.abs(state.gap))}`
     case 'awaiting_sync':
-      return `${n} awaiting tonight's sync`
+      return `${n} ${CM_PENDING_WORD}`
     case 'not_in_campminder':
-      return `${n} not in CampMinder`
+      return `${n} missing in CM`
     case 'confirmed':
       return `${n} confirmed`
     case 'reversed':

@@ -55,7 +55,17 @@ describe('the band (§6.3 item 1; D32, D77; Decision 18)', () => {
         { status: 'awaiting_sync', count: 2, gap: 0 },
         { status: 'over', count: 1, gap: 300 },
       ])
-    ).toBe("posted · 2 awaiting tonight's sync · 1 over $300")
+    ).toBe('posted · 2 pending · 1 over $300')
+  })
+
+  // Owner V1 (10-03): the grid's words, lowercase mid-line.
+  it('says pending and missing in CM, as the grid does', () => {
+    expect(
+      postedLabel([
+        { status: 'awaiting_sync', count: 1, gap: 0 },
+        { status: 'not_in_campminder', count: 2, gap: -880 },
+      ])
+    ).toBe('posted · 1 pending · 2 missing in CM')
   })
 })
 
