@@ -121,7 +121,7 @@ export interface CaseworkOffers {
 }
 
 /**
- * Whether Payer shares… is offered. Owner ruling (review ⚠1): the server refuses only a duplicate or
+ * Whether Payer Shares… is offered. Owner ruling (review ⚠1): the server refuses only a duplicate or
  * withdrawn request, but the button is also hidden on a cancelled request (CampMinder's or Kindred's:
  * its reversal follows its shares, and the card shows no consequence) and on a pending duplicate (not
  * priced; the second payer belongs on the survivor). Widening it is this one line.
@@ -140,8 +140,8 @@ function offersShares(row: ApiAidGridRow): boolean {
  */
 export function caseworkOffers(row: ApiAidGridRow): CaseworkOffers {
   const closed = row.request_status === 'duplicate' || row.request_status === 'withdrawn'
-  // Lead's parity call (final review m6), matching the owner's Payer shares… ruling: a cancelled
-  // request (CampMinder's or Kindred's) takes no Headcount… or Settle session… — reopen first. The
+  // Lead's parity call (final review m6), matching the owner's Payer Shares… ruling: a cancelled
+  // request (CampMinder's or Kindred's) takes no Headcount… or Settle Session… — reopen first. The
   // server allows both; this is product parity, not a refusal.
   const cancelled = row.cancellation !== null
   return {

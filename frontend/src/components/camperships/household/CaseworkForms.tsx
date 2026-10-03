@@ -185,7 +185,7 @@ function CorrectionForm({
   const label = answerWords(answer.field)
   return (
     <FormShell
-      submitLabel="Save the correction"
+      submitLabel="Save the Correction"
       busy={busy}
       error={error}
       onSubmit={() => send(value)}
@@ -214,7 +214,7 @@ function CorrectionForm({
       <ReasonInput value={reason} onChange={setReason} />
       {answer.corrected && (
         <button type="button" className={ACTION_LINK} disabled={busy} onClick={() => send(null)}>
-          Use the form&apos;s figure
+          Use the Form&apos;s Figure
         </button>
       )}
     </FormShell>
@@ -259,7 +259,7 @@ export function IncomeCorrection({
 }
 
 /**
- * "Payer shares…" (main spec §9.2): one household's share, as a percentage. With two shares the
+ * "Payer Shares…" (main spec §9.2): one household's share, as a percentage. With two shares the
  * tool fills the other. A household not on the page is added by its CampMinder id. Percent only:
  * the dollar path needs an award source it is not wired with (review I2).
  */
@@ -295,7 +295,7 @@ export function ShareForm({
 
   return (
     <FormShell
-      submitLabel="Set the share"
+      submitLabel="Set the Share"
       busy={busy}
       error={error}
       onSubmit={submit}
@@ -352,7 +352,7 @@ export function ShareForm({
 }
 
 /**
- * "Settle session…" (main spec §9.1): one of the candidates intake recorded, named by the server on
+ * "Settle Session…" (main spec §9.1): one of the candidates intake recorded, named by the server on
  * the row (`GridRowOut.session_candidates`, set while the request is unmatched).
  */
 export function SessionForm({
@@ -384,7 +384,7 @@ export function SessionForm({
     })
   return (
     <FormShell
-      submitLabel="Settle the session"
+      submitLabel="Settle the Session"
       busy={busy}
       error={error}
       onSubmit={submit}
@@ -411,7 +411,7 @@ export function SessionForm({
   )
 }
 
-/** "Keep the other request…" (main spec §9.2): this request is the duplicate of the one kept. */
+/** "Keep the Other Request…" (main spec §9.2): this request is the duplicate of the one kept. */
 export function DuplicateForm({
   request,
   page,
@@ -467,7 +467,7 @@ export function DuplicateForm({
     })
   return (
     <FormShell
-      submitLabel="Mark as the duplicate"
+      submitLabel="Mark as the Duplicate"
       busy={busy}
       error={error}
       onSubmit={submit}
@@ -554,7 +554,7 @@ export function HeadcountForm({
     })
   return (
     <FormShell
-      submitLabel="Set the headcount"
+      submitLabel="Set the Headcount"
       busy={busy}
       error={error}
       onSubmit={submit}
