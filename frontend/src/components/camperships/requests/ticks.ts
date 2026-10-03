@@ -50,7 +50,7 @@ function lowestWhere(
 }
 
 // A request cancelled in Kindred takes no tick (the server's CANCELLED_IN_KINDRED refusal).
-const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by === 'kindred'
+export const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by === 'kindred'
 
 /** Accepted ticks the lowest posted round the family hasn't accepted (Decision 15; D47). */
 export function acceptedTarget(row: ApiAidGridRow): { readonly round: 1 | 2 | 3 } | null {
