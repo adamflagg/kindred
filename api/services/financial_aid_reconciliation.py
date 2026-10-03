@@ -900,7 +900,7 @@ def ledger_note(
     return CalcIssue(
         code=NOTE_NOT_TICKED,
         severity="warn",
-        message=f"CampMinder shows {dollars(extra)} for this family; not yet ticked",
+        message=f"CampMinder shows {dollars(extra)} for this family; not yet marked posted",
         step="ledger",
     )
 
@@ -937,7 +937,9 @@ def ledger_ticks(
     night it runs (D146): a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's
     award, so a sliver or a short posting never ticks, and the registrar ticks it by hand. Over-postings
     still tick, at the decided amount. That includes a payer share's Round 2: it waits until the shares
-    posted cover it in full.
+    posted cover it in full. A round decided at $0 never ticks (owner 10-03): money beyond the lock is no
+    posting of it, so the walk stops there with its own Not reconciled reason ("Decided $0", `decided_zero`), and a
+    person ticks it by hand (Mark posted). On a later round the request also reads over (direction a).
 
     The walk itself is `ledger_walk`, which also says where it stopped (D162); these are its ticks."""
     return list(ledger_walk(priced, ledger, today=today, undone=undone).ticks)
@@ -960,11 +962,15 @@ UntickedCode = Literal[
     "finance_declined",
     "not_decided",
     "undone",
+    "decided_zero",
 ]
-# The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2). Family-level money is placed in
-# Money › To place, whose placement ticks (D81, D151); a round not decided yet has nothing to lock. The code alone
-# doesn't offer the button: tick_posted takes a request's first unposted round only (H3, `Unticked.mark_posted`).
-MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset({"withheld", "short_posting", "shares_short", "undone"})
+# The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2); a $0 round is ticked only so, once a
+# person has checked the posting (owner 10-03). Family-level money is placed in Money › To place, whose placement
+# ticks (D81, D151); a round not decided yet has nothing to lock. The code alone doesn't offer the button: tick_posted
+# takes a request's first unposted round only (H3, `Unticked.mark_posted`).
+MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset(
+    {"withheld", "short_posting", "shares_short", "undone", "decided_zero"}
+)
 # A round not decided yet, by its state (owner 10-03: the pill names the state).
 _UNDECIDED: Final[Mapping[str, UntickedCode]] = {
     "held": "on_hold",
@@ -1021,6 +1027,10 @@ def _stop_code(
         return _UNDECIDED.get(view.status, "not_decided")
     if (request.request_id, view.round) in undone:
         return "undone"
+    if view.decided == 0:
+        # Owner 10-03: money beyond the lock is no posting of a $0 round, so it never auto-ticks; a person checks the
+        # posting and ticks it by hand (Mark posted). Its stop is a reason like any other ("Decided $0").
+        return "decided_zero"
     if in_campminder < locked + view.decided:
         if family > 0:
             return "family_level"  # placing comes first: the family's line may be the rest of the round
@@ -1117,6 +1127,11 @@ def stop_text(stop: TickStop) -> str:
             )
         case "withheld":
             raise ValueError("a withheld round's text is D16's (financial_aid_to_place.withheld_why)")
+        case "decided_zero":
+            return (
+                f"CampMinder has {held} for this request, but Round {n} was decided at $0. "
+                "Check the posting in CampMinder, then click Mark posted if $0 is right."
+            )
 
 
 def pending_text(decided: Decimal) -> str:

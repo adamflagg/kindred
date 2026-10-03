@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
@@ -65,6 +65,19 @@ from tests.unit.bunking.financial_aid.test_decision_budget import priced, view
 
 NOTE = "in_campminder_not_ticked"
 
+# Owner 10-03 (option 1, words verbatim): a $0 round's stop is a visible Not reconciled (b) reason. Code, pill and
+# sentence; `held` is what CampMinder holds beyond the lock the walk stopped with, through dollars().
+DECIDED_ZERO: Final = "decided_zero"
+DECIDED_ZERO_PILL: Final = "Decided $0"
+
+
+def decided_zero_text(held: str, n: int) -> str:
+    return (
+        f"CampMinder has {held} for this request, but Round {n} was decided at $0. Check the posting in CampMinder, "
+        "then click Mark posted if $0 is right."
+    )
+
+
 # The owner's approved texts (10-03), verbatim, with the fixture's dollars. Pill · sentence.
 SHORT_TEXT = (
     "CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click "
@@ -99,6 +112,7 @@ PILLS = {
     "finance_declined": "Finance declined",
     "not_decided": "Not decided",
     "undone": "Unmarked by hand",
+    DECIDED_ZERO: DECIDED_ZERO_PILL,
 }
 
 
@@ -437,7 +451,8 @@ async def test_a_round_campminder_holds_nothing_for_stays_in_needs_an_offer_besi
 
 @pytest.mark.asyncio
 async def test_every_row_carrying_the_note_has_a_reason_and_none_without_it() -> None:
-    """D81 as amended: the Note's rows are exactly Not reconciled (b)'s, so the two never disagree."""
+    """D81 as amended: the Note's rows are exactly Not reconciled (b)'s, so the two never disagree (a $0 Round 1 among
+    them: test_every_note_row_has_a_reason_with_a_zero_round_1_among_them)."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_line(store, 9001, "1300")
@@ -761,7 +776,7 @@ async def test_mark_posted_is_offered_only_where_the_hand_tick_accepts_one_round
     assert [r.cm_pending for r in row.rounds[:2]] == [True, False]
     (r2,) = row.unticked or []
     assert (r2.round, r2.code, r2.mark_posted) == (2, "short_posting", False)
-    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 2"):
+    with pytest.raises(DecisionRefusedError, match=f"^{EMMA}: mark Round 1 posted before Round 2$"):
         await service.tick_posted(
             YEAR, PostedIn(rows=[PostedRow(request_id=EMMA, round=2, amount=Decimal(300))]), ACTOR
         )
@@ -1128,3 +1143,284 @@ async def test_the_budget_and_todays_counts_follow_a_pending_round_2() -> None:
     assert strip[1].needs_offer is not None
     assert strip[2].needs_offer is not None
     assert (strip[1].needs_offer.requests, strip[2].needs_offer.requests) == (1, 0)
+
+
+# --- a $0 round never auto-ticks on money beyond the lock (owner 10-03, option i) ----------------------------
+#
+# Round 3 is decided at $0 (not eligible: no statement of need) beside Rounds 1 and 2 posted, and CampMinder holds more
+# than the two posted rounds lock. That excess is no posting of a $0 round: the walk stops at it with no tick, so the
+# round is no C1 pending round, tonight's tick posts nothing, and the request reads over through direction (a). A $0 round
+# is ticked by hand (Mark posted) only. The stop is a Not reconciled (b) reason, "Decided $0" (owner 10-03, option 1,
+# pinned below).
+
+
+def _round3_zero(store: FakeDecisionsStore, *, held: str) -> None:
+    """Emma: Rounds 1 and 2 posted ($1,500 and $300) before last night's sync, and a Round 3 ask with no statement of
+    need, so the calculator decides it at $0 (not eligible). CampMinder holds `held` on her request."""
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))  # Round 3 needs a Round 2 decision
+    _posted(store, EMMA, 2, "300")
+    _event(store, EMMA, 3, "ask", amount=Decimal(500))  # no statement of need: not eligible
+    _event(store, EMMA, 3, "award", amount=Decimal(500))
+    seed_line(store, 9001, held)
+    store.synced_at = T0.replace(hour=23)
+
+
+_ZERO_R3 = (view(1, "posted", locked="1500"), view(2, "posted", locked="300"), view(3, "needs_offer", decided="0"))
+
+
+def test_a_zero_round_1_on_money_in_campminder_makes_no_tick() -> None:
+    walk = ledger_walk(
+        [priced("emma", 1000001, view(1, "needs_offer", decided="0"))], ledger_of("emma", line(1, "500")), today=TODAY
+    )
+    assert walk.ticks == ()
+
+
+def test_a_zero_round_with_nothing_beyond_the_lock_is_no_stop() -> None:
+    """The $1,800 case: CampMinder holds exactly Rounds 1 and 2, so nothing is left for Round 3 and the walk ends there,
+    as it did before."""
+    walk = ledger_walk([priced("emma", 1000001, *_ZERO_R3)], ledger_of("emma", line(1, "1800")), today=TODAY)
+    assert (walk.ticks, walk.stops) == ((), ())
+
+
+def test_a_zero_round_someone_unmarked_still_reads_unmarked_by_hand() -> None:
+    """Undone comes first: a $0 round a person un-ticked keeps its Unmarked by hand reason, not Decided $0."""
+    walk = ledger_walk(
+        [priced("emma", 1000001, *_ZERO_R3)], ledger_of("emma", line(1, "2000")), today=TODAY, undone={("emma", 3)}
+    )
+    assert walk.ticks == ()
+    assert [(s.round, s.code) for s in walk.stops] == [(3, "undone")]
+
+
+def test_a_non_zero_round_on_an_over_posting_still_ticks_at_its_decided_amount() -> None:
+    rounds = (*_ZERO_R3[:2], view(3, "needs_offer", decided="100"))
+    walk = ledger_walk([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "2000")), today=TODAY)
+    assert [(t.round, t.amount) for t in walk.ticks] == [(3, Decimal(100))]
+    assert walk.stops == ()
+
+
+@pytest.mark.parametrize("held", ["2000", "1800", "1500"])
+def test_ledger_ticks_is_the_walks_ticks_beside_a_zero_round(held: str) -> None:
+    for rounds in (_ZERO_R3, (view(1, "needs_offer", decided="0"), view(2, "needs_offer", decided="300"))):
+        requests = [priced("emma", 1000001, *rounds)]
+        walk = ledger_walk(
+            requests, ledger_of("emma", line(1, held)), today=TODAY, family_unplaced={"emma": Decimal(500)}
+        )
+        assert list(walk.ticks) == ledger_ticks(requests, ledger_of("emma", line(1, held)), today=TODAY)
+
+
+@pytest.mark.asyncio
+async def test_a_zero_round_3_reads_as_it_did_where_campminder_holds_exactly_the_posted_rounds() -> None:
+    """CampMinder holds $1,800, Rounds 1 and 2 exactly: Round 3 ($0) is not ticked, as before (pinned on main)."""
+    store = FakeDecisionsStore()
+    _round3_zero(store, held="1800")
+    row = (await _rows(store))[EMMA]
+    r3 = row.rounds[2]
+    assert (r3.status, r3.decided, r3.cm_pending, r3.cm_pending_message) == ("needs_offer", 0.0, False, None)
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.gap) == ("confirmed", True, 0.0)
+    assert (row.unticked, row.queues) == ([], ["needs_offer", "waiting_on_family", "appeals"])
+    assert [r.round for r in offer_rounds(row)] == [3]
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 0
+    assert (await _rows(store))[EMMA].rounds[2].status == "needs_offer"
+
+
+def _zero_round_1(store: FakeDecisionsStore) -> FakeRules:
+    """Emma's family above the income ceiling, so Round 1 is decided at $0, and CampMinder holding $500 on her request
+    with nothing posted. Returns the rules that price it so."""
+    from tests.unit.api.services.financial_aid_fakes import intake_rules
+    from tests.unit.bunking.financial_aid.fixtures import with_lever
+
+    seed_request(store, EMMA, income=900000.0)
+    seed_line(store, 9001, "500")
+    store.synced_at = T0.replace(hour=23)
+    return FakeRules(approved(with_lever(intake_rules(), "tiers.income_ceiling", "100000")))
+
+
+@pytest.mark.asyncio
+async def test_a_non_zero_round_3_on_an_over_posting_still_pends_at_its_decided_amount() -> None:
+    """Round 3 decided at $100 and CampMinder holding $2,000: Round 3 pends (and ticks) at $100, and the request is over
+    by the $100 beyond Rounds 1 to 3."""
+    store = FakeDecisionsStore()
+    _round3_pending(store, held="2000")
+    row = (await _rows(store))[EMMA]
+    r3 = row.rounds[2]
+    assert (r3.cm_pending, r3.cm_pending_message) == (
+        True,
+        "Posted in CampMinder ($100). Kindred marks it posted after tonight's sync.",
+    )
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.locked, c.gap) == ("over", 1900.0, 100.0)
+    assert "not_reconciled" in (row.queues or [])
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 1
+    assert (await _rows(store))[EMMA].rounds[2].status == "posted"
+
+
+@pytest.mark.asyncio
+async def test_a_zero_round_3_can_still_be_marked_posted_by_hand() -> None:
+    store = FakeDecisionsStore()
+    _round3_zero(store, held="2000")
+    body = PostedIn(rows=[PostedRow(request_id=EMMA, round=3, amount=Decimal(0))])
+    assert (await _service(store).tick_posted(YEAR, body, ACTOR)).written == 1
+    assert (await _rows(store))[EMMA].rounds[2].status == "posted"
+
+
+@pytest.mark.asyncio
+async def test_before_the_first_ticked_season_a_zero_round_3_reads_as_before(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(decisions_service, "FIRST_TICKED_SEASON", YEAR + 1)
+    store = FakeDecisionsStore()
+    _round3_zero(store, held="2000")
+    row = (await _rows(store))[EMMA]
+    assert (row.confirmation, row.rounds[2].cm_pending, row.unticked) == (None, False, [])
+
+
+# --- owner 10-03 (option 1): a $0 round's stop is a visible Not reconciled (b) reason ---------------------------------
+#
+# A $0 round is not only a typed $0 from 2027: the calculator also decides $0 above the income ceiling, where grants
+# cover the cost with minimum_when_fully_covered off, on a $0 ask, and at an incentive floor. So the walk's stop at a $0
+# round is a reason like any other ("Decided $0"), with Mark posted on the request's first unposted round only (H3). It
+# leaves Needs an offer (D162 Q1), and on a later round "over" and "Decided $0" both show.
+
+
+def _reasons_of(row: GridRowOut) -> list[tuple[int, str, str, str, bool]]:
+    """The row's (b) reasons as plain tuples."""
+    return [(u.round, u.code, u.label, u.message, u.mark_posted) for u in row.unticked or []]
+
+
+def test_the_walk_stops_at_a_zero_round_with_the_public_reason() -> None:
+    walk = ledger_walk([priced("emma", 1000001, *_ZERO_R3)], ledger_of("emma", line(1, "2000")), today=TODAY)
+    assert walk.ticks == ()
+    assert [(s.round, s.code, s.held, s.decided) for s in walk.stops] == [(3, DECIDED_ZERO, Decimal(200), Decimal(0))]
+    r1 = ledger_walk(
+        [priced("emma", 1000001, view(1, "needs_offer", decided="0"))], ledger_of("emma", line(1, "500")), today=TODAY
+    )
+    assert [(s.round, s.code, s.held) for s in r1.stops] == [(1, DECIDED_ZERO, Decimal(500))]
+    assert ledger_ticks([priced("emma", 1000001, *_ZERO_R3)], ledger_of("emma", line(1, "2000")), today=TODAY) == []
+
+
+def test_the_walk_stops_at_a_zero_round_so_nothing_after_it_ticks() -> None:
+    """Option i: a stop, not a skip. CampMinder covers Round 2 in full, but Round 1 ($0) is never ticked by the walk,
+    and a later round is never ticked before the one before it."""
+    rounds = (view(1, "needs_offer", decided="0"), view(2, "needs_offer", decided="300"))
+    walk = ledger_walk([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "300")), today=TODAY)
+    assert walk.ticks == ()
+    assert [(s.round, s.code) for s in walk.stops] == [(1, DECIDED_ZERO)]
+
+
+def test_the_zero_round_reason_reads_as_a_whole_sentence() -> None:
+    assert stop_text(TickStop("e", 1, DECIDED_ZERO, "needs_offer", Decimal(500), Decimal(0))) == decided_zero_text(
+        "$500", 1
+    )
+    assert stop_text(TickStop("e", 3, DECIDED_ZERO, "needs_offer", Decimal("200.50"), Decimal(0))) == (
+        decided_zero_text("$200.50", 3)
+    )
+
+
+def test_the_zero_round_reason_is_a_public_code_with_mark_posted() -> None:
+    from typing import get_args
+
+    from api.schemas.financial_aid_decisions import UntickedReasonOut
+    from api.services.financial_aid_reconciliation import MARK_POSTED, UntickedCode
+
+    assert DECIDED_ZERO in get_args(UntickedCode)
+    assert DECIDED_ZERO in get_args(UntickedReasonOut)
+    assert DECIDED_ZERO in MARK_POSTED
+    assert UNTICKED_LABELS[DECIDED_ZERO] == DECIDED_ZERO_PILL
+
+
+@pytest.mark.asyncio
+async def test_a_zero_round_1_on_money_in_campminder_has_the_decided_zero_reason() -> None:
+    store = FakeDecisionsStore()
+    rules = _zero_round_1(store)
+    service = _service(store, rules)
+    row = {r.request_id: r for r in (await service.grid(YEAR)).rows}[EMMA]
+    assert (row.rounds[0].status, row.rounds[0].decided) == ("needs_offer", 0.0)  # the premise
+    assert _reasons_of(row) == [(1, DECIDED_ZERO, DECIDED_ZERO_PILL, decided_zero_text("$500", 1), True)]
+    assert row.queues == ["not_reconciled"]  # Q1: a round with a reason leaves Needs an offer
+    assert (row.rounds[0].cm_pending, row.rounds[0].cm_pending_message) == (False, None)
+    assert offer_rounds(row) == []
+    today = TodayService(
+        store=store,
+        pricing=rules,
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        clock=lambda: T0,
+    )
+    out = await today.read(YEAR, casework=True, finance=False)
+    assert out.casework is not None
+    unreconciled = next(line for line in out.casework if line.key == "not_reconciled")
+    assert [(r.code, r.items, r.label) for r in unreconciled.reasons] == [(DECIDED_ZERO, 1, DECIDED_ZERO_PILL)]
+    assert (unreconciled.items, unreconciled.largest_gap) == (1, None)
+    assert _notes(row) == [
+        "CampMinder shows $500 for this family; not yet marked posted"
+    ]  # the D81 Note, beside its reason
+    assert dict((await service.with_unticked(await service.season(YEAR))).pending) == {}
+    assert (await service.ledger_ticks(YEAR)).ticked == 0  # still never auto-ticked
+    assert {r.request_id: r for r in (await service.grid(YEAR)).rows}[EMMA].rounds[0].status == "needs_offer"
+
+
+@pytest.mark.asyncio
+async def test_the_zero_round_3_repro_has_the_reason_beside_over() -> None:
+    """Round 3 ($0) is the first unposted round, so its reason offers Mark posted; direction (a) still reads over $200,
+    and Today's breakdown counts both codes for the one row (tied at 1, so by code)."""
+    store = FakeDecisionsStore()
+    _round3_zero(store, held="2000")
+    row = (await _rows(store))[EMMA]
+    assert (row.rounds[2].status, row.rounds[2].decided) == ("needs_offer", 0.0)  # the premise: Round 3 decided at $0
+    assert _reasons_of(row) == [(3, DECIDED_ZERO, DECIDED_ZERO_PILL, decided_zero_text("$200", 3), True)]
+    c = row.confirmation
+    assert c is not None
+    assert (c.status, c.reconciled, c.locked, c.in_campminder, c.gap) == ("over", False, 1800.0, 2000.0, 200.0)
+    assert row.queues == ["waiting_on_family", "appeals", "not_reconciled"]
+    assert offer_rounds(row) == []
+    assert (row.rounds[2].cm_pending, row.rounds[2].cm_pending_message) == (False, None)
+    assert row.stage is not None
+    assert row.stage.label != "R3 · Posted"
+    unreconciled = (await _today_lines(store))["not_reconciled"]
+    assert [(r.code, r.items, r.label) for r in unreconciled.reasons] == [
+        (DECIDED_ZERO, 1, DECIDED_ZERO_PILL),
+        ("over", 1, None),
+    ]
+    assert (unreconciled.items, unreconciled.largest_gap) == (1, 200.0)
+    service = _service(store)
+    with pytest.raises(DecisionRefusedError, match="Round 3 is not posted"):
+        await service.tick_accepted(YEAR, _accept((EMMA, 3)), ACTOR)  # no pending round: Accepted waits for a tick
+    assert (await service.ledger_ticks(YEAR)).ticked == 0
+    after = (await _rows(store))[EMMA]
+    assert after.rounds[2].status == "needs_offer"
+    assert after.confirmation is not None
+    assert (after.confirmation.status, after.confirmation.gap) == ("over", 200.0)
+
+
+@pytest.mark.asyncio
+async def test_a_zero_round_behind_a_pending_round_offers_no_mark_posted() -> None:
+    """H3: tick_posted takes a request's first unposted round alone. Round 1 ($1,500) is pending tonight's tick and
+    Round 2 is decided at $0 on a $0 ask, with $200 beyond: Round 2's reason shows, but offers no Mark posted yet."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _event(store, EMMA, 2, "ask", amount=Decimal(0))  # a $0 ask decides Round 2 at $0
+    seed_line(store, 9001, "1700")
+    row = (await _rows(store))[EMMA]
+    assert [(r.decided, r.cm_pending) for r in row.rounds[:2]] == [(1500.0, True), (0.0, False)]  # the premise
+    assert _reasons_of(row) == [(2, DECIDED_ZERO, DECIDED_ZERO_PILL, decided_zero_text("$200", 2), False)]
+    assert "not_reconciled" in (row.queues or [])
+
+
+@pytest.mark.asyncio
+async def test_every_note_row_has_a_reason_with_a_zero_round_1_among_them() -> None:
+    """Option (1) restores the general rule with no exception: the $0 Round 1's Note row has its reason too."""
+    store = FakeDecisionsStore()
+    service = _service(store, _zero_round_1(store))
+    seed_request(store, "reqoliv00000001", household=1000003, person=1000031, income=60000.0)
+    seed_line(store, 9002, "1300", household=1000003, person=1000031)
+    seed_request(store, "reqriley0000001", household=1000005, person=1000051, income=60000.0)
+    seed_line(store, 9003, "1500", household=1000005, person=1000051)  # pending tonight's tick
+    seed_request(store, "reqsamu00000001", household=1000006, person=1000061, income=60000.0)  # nothing there
+    rows = {r.request_id: r for r in (await service.grid(YEAR)).rows}
+    marked = {rid: bool(r.unticked) or any(x.cm_pending for x in r.rounds) for rid, r in rows.items()}
+    assert {rid: bool(_notes(r)) for rid, r in rows.items()} == marked
+    assert marked == {EMMA: True, "reqoliv00000001": True, "reqriley0000001": True, "reqsamu00000001": False}

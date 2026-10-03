@@ -59,6 +59,7 @@ UNTICKED_LABELS: Final[dict[UntickedReasonOut, str]] = {
     "finance_declined": "Finance declined",
     "not_decided": "Not decided",
     "undone": "Unmarked by hand",
+    "decided_zero": "Decided $0",
 }
 
 

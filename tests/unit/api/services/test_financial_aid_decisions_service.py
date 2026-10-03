@@ -569,7 +569,7 @@ async def test_a_tick_whose_amount_moved_writes_nothing_and_names_the_row() -> N
     assert store.operations == []
     # The household page ticks one amount and has no rows to check, so the message must not point at rows.
     assert str(raised.value) == (
-        "A decided amount moved since it was shown, so nothing was posted: check the amount and tick again"
+        "A decided amount moved since it was shown, so nothing was posted: check the amount and mark it posted again"
     )
 
 
@@ -601,7 +601,7 @@ async def test_a_later_round_is_ticked_only_with_or_after_the_one_before_it() ->
     seed_request(store, EMMA)
     _event(store, EMMA, 2, "ask", amount=Decimal(400))  # recorded directly: the service would refuse it
     service = _service(store)
-    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 2"):
+    with pytest.raises(DecisionRefusedError, match=f"^{EMMA}: mark Round 1 posted before Round 2$"):
         await service.tick_posted(YEAR, _tick((EMMA, 2, "300")), ACTOR)
     both = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 2, "300")), ACTOR)
     assert both.written == 2
@@ -729,12 +729,29 @@ async def _key_round_3(store: FakeDecisionsStore) -> FinancialAidDecisionsServic
 
 
 @pytest.mark.asyncio
+async def test_a_tick_too_big_for_one_batch_is_refused_to_mark_posted_in_smaller_groups() -> None:
+    """The refusal's words say Mark posted, as the button does (D162/O4), never "tick"."""
+    from bunking.pocketbase_batch import BatchLimitError
+
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+
+    async def commit(*args: object, **kwargs: object) -> None:
+        raise BatchLimitError("too many")
+
+    store.commit = commit  # type: ignore[method-assign,assignment]
+    with pytest.raises(DecisionRefusedError) as raised:
+        await _service(store).tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+    assert str(raised.value) == "1 rounds are too many to mark posted at once; mark them posted in smaller groups"
+
+
+@pytest.mark.asyncio
 async def test_a_round_3_tick_is_refused_while_an_earlier_round_is_unposted_even_without_a_round_2() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     service = await _key_round_3(store)
     ops = len(store.operations)
-    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 3"):
+    with pytest.raises(DecisionRefusedError, match=f"^{EMMA}: mark Round 1 posted before Round 3$"):
         await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
     assert len(store.operations) == ops
     both = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 3, "250")), ACTOR)
