@@ -30,10 +30,10 @@ ROUND_STATUS_LABELS: Final[dict[RoundStatusOut, str]] = {
     "posted": "Posted",
     "not_rebuilt": "Not rebuilt for that date",
 }
-# The states a request or a payer share is in while Not reconciled (D59): not yet confirmed by the
-# ledger, or disagreeing with it. A row is off direction (a) once ConfirmationOut.reconciled; direction (b) is
-# GridRowOut.unticked (D162).
-UNRECONCILED: Final = frozenset({"awaiting_sync", "short", "over", "not_in_campminder"})
+# The states a request or a payer share is in while Not reconciled (D59): a sync has run and CampMinder disagrees
+# with the lock. A hand tick awaiting tonight's sync is none of them (V1, owner 10-03): it waits on the family, CM ✓
+# "pending". A row is off direction (a) once ConfirmationOut.reconciled; direction (b) is GridRowOut.unticked (D162).
+UNRECONCILED: Final = frozenset({"short", "over", "not_in_campminder"})
 
 
 # D162: Not reconciled's direction (b) reasons, as pills (owner 10-03, verbatim). One map on the server (D21): the

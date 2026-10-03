@@ -82,11 +82,15 @@ class RoundOut(BaseModel):
     # Its words (ROUND_STATUS_LABELS; read 3): the screens keep no map of their own (§6.1, D21). Set on every row the
     # server builds.
     status_label: str = ""
-    # C1 (D162, owner 10-03): CampMinder covers this round in full and nothing blocks tonight's overnight tick, so it
-    # waits on the family at once (status_label "Posted"; the CM ✓ cell "pending"). `status` and `posted` still follow
-    # the tick (needs_offer, None) until tonight, as do the posted money totals. `cm_pending_message` is the opened
-    # row's detail line; both are set only on the live read from the first ticked season.
-    cm_pending: bool = False
+    # The CM ✓ cell reads "pending", and `cm_pending_message` is the opened row's detail line. Two cases, both set
+    # only on the live read from the first ticked season:
+    # - C1 (D162, owner 10-03): CampMinder covers this unposted round in full and nothing blocks tonight's overnight
+    #   tick, so it waits on the family at once (status_label "Posted"). `status` and `posted` still follow the tick
+    #   (needs_offer, None) until tonight, as do the posted money totals.
+    # - V1 (owner 10-03): a posted round whose hand tick awaits tonight's sync (the request's confirmation reads
+    #   awaiting_sync). It is no Not reconciled exception until a sync runs and fails to confirm it.
+    # None on a past read, which rebuilds neither (GRID_GAPS).
+    cm_pending: bool | None = False
     cm_pending_message: str | None = None
 
 
@@ -116,7 +120,8 @@ class ConfirmationOut(BaseModel):
     """Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
     in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
     the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
-    is the family's camp aid no single request takes yet (D81)."""
+    is the family's camp aid no single request takes yet (D81). reconciled: off Requests › Not reconciled's
+    direction (a), which a hand tick awaiting tonight's sync is too (V1, owner 10-03: status stays awaiting_sync)."""
 
     status: ConfirmationStatusOut
     locked: float

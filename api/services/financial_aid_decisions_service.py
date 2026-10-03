@@ -149,6 +149,7 @@ from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, row_queues
 from api.services.financial_aid_reconciliation import (
+    AWAITING_SYNC_TEXT,
     CampLine,
     Confirmation,
     LedgerTick,
@@ -158,6 +159,7 @@ from api.services.financial_aid_reconciliation import (
     Unticked,
     apply_clawback,
     as_recorded,
+    awaits_sync,
     build_ledger,
     camp_date,
     clawback_eligible,
@@ -817,6 +819,14 @@ def _pending_round(view: RoundOut, decided: Decimal | None) -> RoundOut:
             "status_label": ROUND_STATUS_LABELS["posted"],
         }
     )
+
+
+def _awaiting_round(view: RoundOut, awaiting: Collection[int]) -> RoundOut:
+    """V1 (owner 10-03): a posted round whose hand tick awaits tonight's sync reads CM ✓ "pending" with its line.
+    `awaiting`: the request's rounds that do (row_of)."""
+    if view.round not in awaiting:
+        return view
+    return view.model_copy(update={"cm_pending": True, "cm_pending_message": AWAITING_SYNC_TEXT})
 
 
 def _count(count: Count) -> CountOut:
@@ -2135,6 +2145,9 @@ class FinancialAidDecisionsService:
                     update={
                         "queues": None,
                         "unticked": None,
+                        "rounds": [
+                            r.model_copy(update={"cm_pending": None, "cm_pending_message": None}) for r in row.rounds
+                        ],
                         "to_reverse": None,
                         "appeal_refusal": None,
                         **(
@@ -2205,6 +2218,19 @@ class FinancialAidDecisionsService:
         standing = season.cost_overrides.get(request_id)
         parsed = parse_cost_override(standing.new_value) if standing is not None else None
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
+        # V1 (owner 10-03): while the request reads awaiting_sync, each posted round whose own hand tick awaits
+        # tonight's sync is CM ✓ "pending" (its Not reconciled exclusion is Confirmation.reconciled's).
+        awaiting = (
+            {
+                r.round
+                for r in row.rounds
+                if r.status == "posted"
+                and not r.clawed_back
+                and awaits_sync(season.rounds.get(request_id, {}).get(r.round), season.ledger.synced_at)
+            }
+            if row.confirmation is not None and row.confirmation.status == "awaiting_sync"
+            else set()
+        )
         row = row.model_copy(
             update={
                 "unticked": [
@@ -2217,7 +2243,10 @@ class FinancialAidDecisionsService:
                     )
                     for u in season.unticked.get(request_id, ())
                 ],
-                "rounds": [_pending_round(r, season.pending.get((request_id, r.round))) for r in row.rounds],
+                "rounds": [
+                    _awaiting_round(_pending_round(r, season.pending.get((request_id, r.round))), awaiting)
+                    for r in row.rounds
+                ],
             }
         )
         return row.model_copy(

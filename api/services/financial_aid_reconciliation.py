@@ -658,6 +658,11 @@ def apply_clawback(
 
 ConfirmationStatus = Literal["awaiting_sync", "confirmed", "short", "over", "not_in_campminder", "reversed"]
 NOTE_NOT_TICKED: Final = "in_campminder_not_ticked"
+# The states a request or payer share is reconciled in (V1, owner 10-03): confirmed, or a hand tick awaiting
+# tonight's sync, which no sync has failed yet.
+_NOT_YET_FAILED: Final[frozenset[ConfirmationStatus]] = frozenset({"confirmed", "awaiting_sync"})
+# V1: the CM ✓ "pending" line on a posted round whose hand tick awaits tonight's sync (the approved wording).
+AWAITING_SYNC_TEXT: Final = "Ticked today; tonight's sync checks it."
 
 
 @dataclass(frozen=True)
@@ -693,10 +698,13 @@ class Confirmation:
 
     @property
     def reconciled(self) -> bool:
-        """Off Requests > Not reconciled (D59): confirmed with every share confirmed, or reversed."""
+        """Off Requests > Not reconciled (D59): confirmed with every share confirmed, or reversed. A hand tick
+        awaiting tonight's sync is off it too (V1, owner 10-03): nothing has failed yet, so it waits on the family
+        with its round CM ✓ "pending", and is an exception only once a sync has run and not confirmed it (short,
+        over, not_in_campminder). `status` still says awaiting_sync."""
         if self.status == "reversed":
             return True
-        return self.status == "confirmed" and all(s.status == "confirmed" for s in self.shares)
+        return self.status in _NOT_YET_FAILED and all(s.status in _NOT_YET_FAILED for s in self.shares)
 
 
 def _status(awaiting: bool, held: Decimal, due: Decimal) -> ConfirmationStatus:
@@ -720,6 +728,12 @@ def _awaiting(state: RoundState | None, synced_at: datetime | None) -> bool:
     if state is None or state.lock_source in FROM_THE_LEDGER:
         return False
     return synced_at is None or state.locked_at is None or state.locked_at > synced_at
+
+
+def awaits_sync(state: RoundState | None, synced_at: datetime | None) -> bool:
+    """A posted round's own tick awaits tonight's sync (`_awaiting`): a person's tick made after the last successful
+    sync. V1 marks such a round CM ✓ "pending" (AWAITING_SYNC_TEXT)."""
+    return _awaiting(state, synced_at)
 
 
 def _live_net(lines: Iterable[CampLine], at: datetime | None = None) -> Decimal:
