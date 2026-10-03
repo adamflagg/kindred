@@ -679,7 +679,8 @@ class ShareConfirmation:
 @dataclass(frozen=True)
 class Confirmation:
     """Beside every Posted figure (D59). `locked` is the locked total of the request's posted rounds
-    still counted; `in_campminder` is the net of the live camp-aid lines placed on it. `on` is the
+    still counted, plus what tonight's tick locks on its C1 pending rounds (owner 10-03); `in_campminder` is the net
+    of the live camp-aid lines placed on it. `on` is the
     day behind "confirmed (date)" (the latest live line's camp day), or a reversal's day.
     `family_unplaced` is the family's camp aid no single request takes: shown as its own figure
     (D81), it never enters `status`, `in_campminder` or `gap`."""
@@ -786,13 +787,19 @@ def confirmation(
     synced_at: datetime | None,
     family_unplaced: Decimal = ZERO,
     reversed_on: date | None = None,
+    pending: Mapping[int, Decimal] | None = None,
 ) -> Confirmation | None:
     """The request's confirmation state, or None while nothing on it is posted. `lines` are the
     lines placed on this request (a closed request passes `SeasonLedger.closed_lines`), never
     family-level money. For a clawed-back request `reversed_on` must be the day `apply_clawback`
     returned: without it the request is read against a locked total of 0, so it reads confirmed when
     nothing is live and over when anything is, never reversed. The season gate (no confirmation
-    before the first ticked season) is the caller's."""
+    before the first ticked season) is the caller's.
+
+    `pending`: round -> the amount tonight's tick locks on each of the request's C1 pending rounds (owner 10-03,
+    `Season.pending`, from the walk's own ticks). It counts as locked, the payer shares' split included: CampMinder's
+    money for a round the tick is about to post is no over-posting, so a Round 2 or 3 pending beside a posted round
+    waits on the family rather than reading over (F1). Only the live read passes it (with_unticked's gate)."""
     posted = [view for view in priced.rounds if view.status == "posted"]
     if not posted:
         return None
@@ -800,7 +807,7 @@ def confirmation(
         return Confirmation("reversed", ZERO, ZERO, reversed_on, (), family_unplaced)
     live = [line for line in lines if line.live()]
     held = _live_net(live)
-    locked = _locked(priced)
+    locked = _locked(priced) + sum((pending or {}).values(), ZERO)
     awaiting = any(_awaiting(rounds.get(view.round), synced_at) for view in posted)
     days = [camp_date(line.post_date) for line in live if line.post_date is not None]
     by_household: dict[int, Decimal] = defaultdict(Decimal)

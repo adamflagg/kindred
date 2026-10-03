@@ -2296,7 +2296,9 @@ class FinancialAidDecisionsService:
     @staticmethod
     def _confirmation(season: Season, request_id: str) -> Confirmation | None:
         """The request's confirmation state (D59); None on a read that loaded no ledger (a past date),
-        and before the first ticked season (nothing then was ticked, SP10b Decision 9)."""
+        and before the first ticked season (nothing then was ticked, SP10b Decision 9). A C1 pending round counts as
+        locked at what tonight's tick locks (owner 10-03): `Season.pending`, which with_unticked fills on the live read
+        only, before row_of builds the row."""
         if not season.ledger.read or season.year < FIRST_TICKED_SEASON:
             return None
         request = season.requests[request_id]
@@ -2312,6 +2314,7 @@ class FinancialAidDecisionsService:
             synced_at=ledger.synced_at,
             family_unplaced=ledger.family_unplaced(request_scope(request, shares)),
             reversed_on=season.reversed_on.get(request_id),
+            pending={n: amount for (rid, n), amount in season.pending.items() if rid == request_id},
         )
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:

@@ -1104,9 +1104,11 @@ async def test_the_budget_and_todays_counts_follow_a_pending_round_2() -> None:
     assert lines["not_reconciled"].largest_gap is None
     out = await _service(store).budget(YEAR)
     strip = {c.round: c for c in out.strip}
-    assert strip[1].awaiting_sync is not None and strip[1].not_reconciled is not None
+    assert strip[1].awaiting_sync is not None
+    assert strip[1].not_reconciled is not None
     assert (strip[1].awaiting_sync.requests, strip[1].not_reconciled.requests) == (0, 0)
     assert strip[2].not_reconciled is not None
     assert strip[2].not_reconciled.requests == 0
-    assert strip[1].needs_offer is not None and strip[2].needs_offer is not None
+    assert strip[1].needs_offer is not None
+    assert strip[2].needs_offer is not None
     assert (strip[1].needs_offer.requests, strip[2].needs_offer.requests) == (1, 0)
