@@ -881,6 +881,15 @@ describe('ticks (§4.10, §5.2)', () => {
     expect(screen.getByText('Tick Accepted on 2 requests · 2 families')).toBeInTheDocument()
   })
 
+  it("ticks one row from the opened row's Tick Accepted step through the same confirmation (Full GO)", async () => {
+    renderAt('/aid/requests?view=waiting')
+    const row = screen.getByText('Samuel Johnson').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
+    const detail = document.querySelector('[data-aid-detail]') as HTMLElement
+    await userEvent.click(within(detail).getByRole('button', { name: 'Tick Accepted' }))
+    expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+  })
+
   it("ticks one row from Waiting on the family's Tick column through the same confirmation", async () => {
     renderAt('/aid/requests?view=waiting')
     await userEvent.click(inRows().getByRole('button', { name: 'Accepted' }))

@@ -762,38 +762,67 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
     expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
   })
 
-  it('ticks Accepted from Waiting on the family, and from Mark accepted on All', async () => {
+  it("ticks Accepted from Waiting on the family's Tick column, without highlighting the row", async () => {
     const onTick = vi.fn()
-    const { unmount } = render(<Grid slug="waiting" onTick={onTick} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Accepted' }))
+    render(<Grid slug="waiting" onTick={onTick} />)
+    await userEvent.click(within(rowOf('Samuel Johnson')).getByRole('button', { name: 'Accepted' }))
     expect(onTick).toHaveBeenCalledWith(
       expect.objectContaining({ request_id: 'reqsamuel000005' }),
-      'accepted'
-    )
-    unmount()
-    onTick.mockClear()
-    render(<Grid slug="all" rows={[WAITING]} onTick={onTick} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Mark accepted' }))
-    expect(onTick).toHaveBeenCalledWith(
-      expect.objectContaining({ request_id: 'reqwaiting00001' }),
       'accepted'
     )
     expect(highlights).toEqual([])
   })
 
-  it('offers no Mark accepted tick on a waiting row cancelled in Kindred: the server refuses it (review M3)', () => {
-    const cancelled = gridRow({
-      ...WAITING,
-      request_id: 'reqcancelled0001',
-      cancellation: { by: 'kindred', on: null, reason: 'medical', note: '' },
-    })
-    render(<Grid slug="all" rows={[cancelled]} onTick={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: 'Mark accepted' })).toBeNull()
-  })
+  // Owner LOCKED batch 4: the Needs attention cell is the chip only, so the All cell's old "Mark
+  // accepted" moved to the opened row's detail line as the Full-GO "Tick Accepted" next step (the
+  // row's own Accepted tick: no new write path). Replaces "ticks Accepted from Waiting on the
+  // family, and from Mark accepted on All", "offers no Mark accepted tick on a waiting row cancelled
+  // in Kindred: the server refuses it (review M3)" and "leaves Mark accepted a household link when
+  // the viewer cannot tick".
+  describe("the detail line's Tick Accepted (Full GO)", () => {
+    const detail = () => within(document.querySelector('[data-aid-detail]') as HTMLElement)
+    const openRow = (camper: string) =>
+      userEvent.click(within(rowOf(camper)).getAllByRole('cell').at(-2) as HTMLElement)
 
-  it('leaves Mark accepted a household link when the viewer cannot tick', () => {
-    render(<Grid slug="all" rows={[WAITING]} />)
-    expect(screen.getByRole('link', { name: 'Mark accepted' })).toBeInTheDocument()
+    it('ticks Accepted from the opened row, on All and on Waiting, and leaves the highlight be', async () => {
+      const onTick = vi.fn()
+      const { unmount } = render(<Grid slug="all" rows={[WAITING]} onTick={onTick} />)
+      await openRow('Emma Johnson')
+      const before = [...highlights]
+      await userEvent.click(detail().getByRole('button', { name: 'Tick Accepted' }))
+      expect(onTick).toHaveBeenCalledWith(
+        expect.objectContaining({ request_id: 'reqwaiting00001' }),
+        'accepted'
+      )
+      expect(highlights).toEqual(before)
+      unmount()
+      onTick.mockClear()
+      render(<Grid slug="waiting" onTick={onTick} />)
+      await openRow('Samuel Johnson')
+      await userEvent.click(detail().getByRole('button', { name: 'Tick Accepted' }))
+      expect(onTick).toHaveBeenCalledWith(
+        expect.objectContaining({ request_id: 'reqsamuel000005' }),
+        'accepted'
+      )
+    })
+
+    it('offers no Tick Accepted on a waiting row cancelled in Kindred: the server refuses it (review M3)', async () => {
+      const cancelled = gridRow({
+        ...WAITING,
+        request_id: 'reqcancelled0001',
+        cancellation: { by: 'kindred', on: null, reason: 'medical', note: '' },
+      })
+      render(<Grid slug="all" rows={[cancelled]} onTick={vi.fn()} />)
+      await openRow('Emma Johnson')
+      expect(detail().queryByRole('button', { name: 'Tick Accepted' })).toBeNull()
+    })
+
+    it('draws nothing in the step for a viewer who cannot tick', async () => {
+      render(<Grid slug="all" rows={[WAITING]} />)
+      await openRow('Emma Johnson')
+      expect(detail().queryByRole('button', { name: 'Tick Accepted' })).toBeNull()
+      expect(detail().queryByRole('link', { name: /Tick Accepted/ })).toBeNull()
+    })
   })
 })
 

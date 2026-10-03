@@ -13,6 +13,7 @@ import { formatShortDate } from '../kit/dates'
 import { formatMoney, moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { NeedsAttentionCell } from '../kit/NeedsAttentionCell'
+import { TICK_BUTTON } from '../kit/kitStyles'
 import { IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
@@ -79,8 +80,6 @@ const R3_PENDING_CSV: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
 ]
 
 const NAME_LINK = 'text-primary font-medium hover:underline'
-const TICK_BUTTON =
-  'border-border hover:bg-muted rounded border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap'
 
 function renderFor(
   key: GridColumnKey,
@@ -243,9 +242,10 @@ export function RequestsGrid({
         ctx={columnContext(view, today)}
         links={links}
         showConfirmation={tickedSeason}
+        onTick={onTick}
       />
     ),
-    [view, today, links, tickedSeason]
+    [view, today, links, tickedSeason, onTick]
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [

@@ -98,7 +98,8 @@ describe('attentionFor (§4.4; D24, D31)', () => {
         fact: "The family hasn't replied: follow up, then tick Accepted.",
       },
       queue: 'waiting_on_family',
-      next: null,
+      // The Accepted tick, as for any waiting row (Full GO, #2951).
+      next: { kind: 'tick', label: 'Tick Accepted' },
     })
   })
 
@@ -349,10 +350,15 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
     expect(nextOf(hold('multiple_grants'), 'holds')).toEqual(OPEN_REQUEST)
   })
 
-  it('leaves the editor and the ticks to the PRs that add them', () => {
-    // "Edit the award" opens the editor (#2948); "Tick Accepted" and "Mark posted" are ticks (#2951).
+  // Full GO (owner, 10-03): Waiting's next step is the row's own Accepted tick, a button. "Edit the
+  // Award" is an owner decision (it needs an award editor) and the hand "Mark Posted" waits for
+  // #2996's reason codes, so both stay null. Was: all three null.
+  it("makes Waiting's next step the Accepted tick, and leaves the award editor and Mark Posted for later", () => {
     expect(nextOf(hold('award_above_cost'), 'holds')).toBeNull()
-    expect(nextOf(ROW_SAMUEL, 'waiting_on_family')).toBeNull()
+    expect(nextOf(ROW_SAMUEL, 'waiting_on_family')).toEqual({
+      kind: 'tick',
+      label: 'Tick Accepted',
+    })
     const marked = gridRow({
       notes: [{ code: 'in_campminder_not_ticked', severity: 'warn', message: 'In CampMinder.' }],
     })

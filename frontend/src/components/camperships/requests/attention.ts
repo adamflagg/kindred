@@ -87,11 +87,14 @@ export function waitingSince(row: Pick<ApiAidGridRow, 'rounds'>): string | null 
  * The opened row's next step (batch 4). #2943 has no writers, so a step is a link to where it is
  * done today (the household page, at its income section or at the request's card), or plain words
  * where nothing can be done in Kindred. The labels are round 6's mock (grid-layout-options.html
- * nextAction), owner-APPROVED in title case (10-03); plain-words steps stay sentence case.
+ * nextAction), owner-APPROVED in title case (10-03); plain-words steps stay sentence case. A `tick`
+ * step is a button for the row's own Accepted tick (Full GO, #2951): the grid already does it, so
+ * it is no new write path.
  */
 export type NextStep =
   | { readonly kind: 'link'; readonly label: string; readonly at: 'income' | 'request' }
   | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'tick'; readonly label: string }
 
 const toRequest = (label: string): NextStep => ({ kind: 'link', label, at: 'request' })
 const say = (text: string): NextStep => ({ kind: 'text', text })
@@ -104,8 +107,9 @@ export interface GridAttention {
   /** The Requests view this item belongs to; null for a note that has none. */
   readonly queue: ApiAidQueue | null
   /**
-   * Its next step for the detail line. Null where the mock's step is a tick or the editor (a
-   * button): #2943 has none, and #2951 (ticks) / #2948 (editor) add them.
+   * Its next step for the detail line. Null where the mock's step is a button the grid can't do
+   * yet: "Edit the Award" (owner decision: #2948's editor keys only the Round 2 ask) and the hand
+   * "Mark Posted" (waits on #2996's Not reconciled reason codes).
    */
   readonly next: NextStep | null
 }
@@ -122,7 +126,8 @@ const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   manual_hold: toRequest('Release the Hold…'),
   unmatched_session: PICK_SESSION,
   duplicate_survivor_withdrawn: KEEP_ONE,
-  // The editor's "Edit the award" (#2948) and the Posted tick (#2951).
+  // "Edit the Award" (an owner decision: it needs an award editor) and the hand "Mark Posted"
+  // (#2996's reason codes): no step until they land.
   award_above_cost: null,
   in_campminder_not_ticked: null,
 }
@@ -167,6 +172,8 @@ const note = (
 })
 
 const CHECK_POSTING = toRequest('Check the Posting')
+/** The mock's "Tick Accepted": the row's own Accepted tick (owner, title case). */
+const TICK_ACCEPTED: NextStep = { kind: 'tick', label: 'Tick Accepted' }
 
 function reconciliation(row: ApiAidGridRow): GridAttention | null {
   const c = row.confirmation
@@ -302,8 +309,7 @@ export function attentionItems(
           : `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
         "The family hasn't replied: follow up, then tick Accepted.",
         'waiting_on_family',
-        // The mock's "Tick Accepted" is the Accepted tick (#2951).
-        null
+        TICK_ACCEPTED
       )
     )
   }
