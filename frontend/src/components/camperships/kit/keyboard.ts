@@ -45,3 +45,20 @@ export function isPageKey(event: PageKeyEvent): boolean {
   if (event.ctrlKey || event.metaKey || event.altKey) return false
   return !isTypingTarget(event.target) && !hasOpenModal()
 }
+
+/** The page's own character keys (D13): the jump box's `/` and the walk's `[` and `]`. */
+const PAGE_CHARACTERS: ReadonlySet<string> = new Set(['/', '[', ']'])
+
+/**
+ * Someone trying to type where the page owns the key (owner fast-follow (a), 10-03): one printable
+ * character, not a space and not one of the page's own keys. A row that can't take an ask says
+ * why only then, not every time it opens.
+ */
+export function isTypingAttempt(event: PageKeyEvent & { readonly key: string }): boolean {
+  return (
+    event.key.length === 1 &&
+    event.key.trim() !== '' &&
+    !PAGE_CHARACTERS.has(event.key) &&
+    isPageKey(event)
+  )
+}

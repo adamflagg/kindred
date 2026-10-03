@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { AMBER_NOTE, FIELD, FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
 import { STATUS_TONE } from './kitStyles'
@@ -106,8 +106,53 @@ interface RequestEditorProps {
    * elsewhere found nothing it could save yet (slice 1 Decision 5; plan review M9).
    */
   readonly showProblem?: boolean | undefined
-  /** 'row' under the highlighted grid row; 'card' in place on the household page's request card (D22). */
-  readonly layout?: 'row' | 'card' | undefined
+  /**
+   * 'row' under a highlighted table row; 'card' in place on the household page's request card (D22);
+   * 'panel' the Requests grid's opened row, beside its detail text (owner fast-follow 10-03,
+   * opened-row-options.html arrangement 3): the ask, Award / Stage, the note and `trailing` on one
+   * line, the receipt, shares and key hint under it, and no caption (the detail line names the
+   * household once).
+   */
+  readonly layout?: 'row' | 'card' | 'panel' | undefined
+  /** 'panel' only: the row's next step, at the end of the first line. */
+  readonly trailing?: ReactNode
+}
+
+function ShareFigure({ share }: { share: EditorShare }) {
+  const name = share.householdName ?? 'Another household'
+  return (
+    <span className="inline-flex items-center gap-1 text-xs">
+      {share.chip ? <HouseholdChip index={share.chip} name={name} /> : <span>{name}</span>}{' '}
+      {share.pct}% · <Money value={share.amount} />
+    </span>
+  )
+}
+
+/** 'panel': the award with the stage change under it, or what stands in their place. */
+function PanelFigures({ preview }: { preview: EditorPreview }) {
+  if (preview.status === 'idle') return null
+  if (preview.status === 'loading')
+    return <span className="text-muted-foreground text-xs">Working it out…</span>
+  if (preview.status === 'error') {
+    return <span className={AMBER_NOTE}>{preview.error ?? "Couldn't work out the award"}</span>
+  }
+  return (
+    <span className="flex flex-col leading-tight">
+      <span className="flex items-center gap-2 whitespace-nowrap">
+        <span>
+          Award <Money value={preview.award ?? null} className="font-semibold" />
+        </span>
+        {preview.pendingApproval === true && (
+          <StatusPill tone={STATUS_TONE.round3}>Pending approval</StatusPill>
+        )}
+      </span>
+      {preview.stageChange ? (
+        <span className="text-muted-foreground text-xs whitespace-nowrap">
+          Stage → {preview.stageChange}
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function EditorResult({ preview }: { preview: EditorPreview }) {
@@ -131,21 +176,17 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
       {preview.stageChange ? (
         <span className="text-muted-foreground text-xs">Stage → {preview.stageChange}</span>
       ) : null}
-      {preview.shares?.map((share) => {
-        const name = share.householdName ?? 'Another household'
-        return (
-          <span key={share.householdCmId} className="inline-flex items-center gap-1 text-xs">
-            {share.chip ? <HouseholdChip index={share.chip} name={name} /> : <span>{name}</span>}{' '}
-            {share.pct}% · <Money value={share.amount} />
-          </span>
-        )
-      })}
+      {preview.shares?.map((share) => (
+        <ShareFigure key={share.householdCmId} share={share} />
+      ))}
     </span>
   )
 }
 
 /** A reason limit above this is a statement, not a line: it gets a text area. */
 const LONG_TEXT = 2000
+/** 'panel': the mock's 4px-padded fields, so the one line stays as low as the detail text beside it. */
+const FIELD_PANEL = FIELD_INLINE.replace('py-1.5', 'py-1')
 
 interface Baseline {
   amount: number | null
@@ -309,6 +350,111 @@ export function RequestEditor(props: RequestEditorProps) {
     }
   }
 
+  const amountField = (
+    <label className="flex items-center gap-2 whitespace-nowrap">
+      {props.amountLabel}
+      <input
+        ref={amountRef}
+        type="text"
+        inputMode="decimal"
+        value={raw}
+        onChange={(event) => {
+          submitted.current = false
+          setRaw(event.target.value)
+          const next = parseMoneyInput(event.target.value)
+          props.onAmountChange(next.kind === 'ok' ? next.amount : null)
+        }}
+        onKeyDown={onKeyDown}
+        className={`${props.layout === 'panel' ? FIELD_PANEL : FIELD_INLINE} w-28 text-right tabular-nums`}
+      />
+    </label>
+  )
+  const noteField =
+    props.policy.kind === 'none' ? null : (
+      <label
+        className={
+          props.layout === 'card'
+            ? 'flex items-center gap-2'
+            : props.layout === 'panel'
+              ? 'flex min-w-0 flex-[1_1_12.5rem] items-center gap-2'
+              : 'flex min-w-[16rem] flex-1 items-center gap-2'
+        }
+      >
+        {props.policy.label}
+        {props.policy.maxLength > LONG_TEXT ? (
+          // The statement of need (4000 characters): a small text area that grows with its text.
+          // Enter still saves; Shift+Enter is a new line.
+          <textarea
+            rows={2}
+            maxLength={props.policy.maxLength}
+            value={reason}
+            onChange={(event) => {
+              submitted.current = false
+              setReason(event.target.value)
+            }}
+            onKeyDown={onKeyDown}
+            className={`${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`}
+          />
+        ) : (
+          <input
+            type="text"
+            maxLength={props.policy.maxLength}
+            value={reason}
+            onChange={(event) => {
+              submitted.current = false
+              setReason(event.target.value)
+            }}
+            onKeyDown={onKeyDown}
+            className={props.layout === 'panel' ? `${FIELD_PANEL} w-full min-w-0` : FIELD}
+          />
+        )}
+      </label>
+    )
+  const hint = (
+    <span className="text-muted-foreground text-xs whitespace-nowrap">
+      Enter saves{props.onMove ? ' · ↑ ↓ save and move on' : ''} · Esc cancels
+    </span>
+  )
+  const problemNote =
+    (tried || props.showProblem === true) && problem !== null ? (
+      <span className={AMBER_NOTE}>{problem}</span>
+    ) : null
+  const saveErrorNote = props.saveError ? (
+    <span className={AMBER_NOTE}>{props.saveError}</span>
+  ) : null
+
+  if (props.layout === 'panel') {
+    const ready = props.preview.status === 'ready'
+    return (
+      <div className="flex flex-col gap-0.5 text-sm">
+        <div data-editor-top="" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {amountField}
+          <PanelFigures preview={props.preview} />
+          {problemNote}
+          {saveErrorNote}
+          {noteField}
+          {props.trailing ? <span className="ml-auto">{props.trailing}</span> : null}
+        </div>
+        <div
+          data-editor-foot=""
+          className="text-muted-foreground flex flex-wrap items-baseline gap-x-3 text-xs"
+        >
+          {ready && props.preview.trace !== undefined && props.preview.trace.length > 0 && (
+            <ReceiptSentence
+              trace={props.preview.trace}
+              className="text-muted-foreground text-xs"
+            />
+          )}
+          {ready &&
+            props.preview.shares?.map((share) => (
+              <ShareFigure key={share.householdCmId} share={share} />
+            ))}
+          <span className="ml-auto">{hint}</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className={
@@ -320,69 +466,12 @@ export function RequestEditor(props: RequestEditorProps) {
       <span className="text-muted-foreground text-xs">
         {props.familyName} · household {props.householdCmId} · person {props.personCmId}
       </span>
-      <label className="flex items-center gap-2">
-        {props.amountLabel}
-        <input
-          ref={amountRef}
-          type="text"
-          inputMode="decimal"
-          value={raw}
-          onChange={(event) => {
-            submitted.current = false
-            setRaw(event.target.value)
-            const next = parseMoneyInput(event.target.value)
-            props.onAmountChange(next.kind === 'ok' ? next.amount : null)
-          }}
-          onKeyDown={onKeyDown}
-          className={`${FIELD_INLINE} w-28 text-right tabular-nums`}
-        />
-      </label>
+      {amountField}
       <EditorResult preview={props.preview} />
-      {props.policy.kind !== 'none' && (
-        <label
-          className={
-            props.layout === 'card'
-              ? 'flex items-center gap-2'
-              : 'flex min-w-[16rem] flex-1 items-center gap-2'
-          }
-        >
-          {props.policy.label}
-          {props.policy.maxLength > LONG_TEXT ? (
-            // The statement of need (4000 characters): a small text area that grows with its text.
-            // Enter still saves; Shift+Enter is a new line.
-            <textarea
-              rows={2}
-              maxLength={props.policy.maxLength}
-              value={reason}
-              onChange={(event) => {
-                submitted.current = false
-                setReason(event.target.value)
-              }}
-              onKeyDown={onKeyDown}
-              className={`${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`}
-            />
-          ) : (
-            <input
-              type="text"
-              maxLength={props.policy.maxLength}
-              value={reason}
-              onChange={(event) => {
-                submitted.current = false
-                setReason(event.target.value)
-              }}
-              onKeyDown={onKeyDown}
-              className={FIELD}
-            />
-          )}
-        </label>
-      )}
-      <span className="text-muted-foreground text-xs">
-        Enter saves{props.onMove ? ' · ↑ ↓ save and move on' : ''} · Esc cancels
-      </span>
-      {(tried || props.showProblem === true) && problem !== null && (
-        <span className={AMBER_NOTE}>{problem}</span>
-      )}
-      {props.saveError ? <span className={AMBER_NOTE}>{props.saveError}</span> : null}
+      {noteField}
+      {hint}
+      {problemNote}
+      {saveErrorNote}
     </div>
   )
 }

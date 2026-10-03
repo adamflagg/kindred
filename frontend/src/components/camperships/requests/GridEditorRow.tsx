@@ -1,4 +1,4 @@
-import { useCallback, type MouseEvent } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 
 import { ACTION_LINK } from '../../admin/lodging/lodgingStyles'
 import { useAidEditorPreview } from '../../../hooks/camperships/useAidEditorPreview'
@@ -6,19 +6,21 @@ import type { ApiAidGridRow } from '../../../types/api-types'
 import { campToday } from '../kit/dates'
 import { REASON_POLICY } from '../kit/editor'
 import type { PreviewHousehold } from '../kit/editorPreview'
+import { isTypingAttempt } from '../kit/keyboard'
 import { RequestEditor } from '../kit/RequestEditor'
 import type { WalkEditorProps } from '../kit/useEditorWalk'
 import { appealTarget } from './gridEditor'
-import type { HouseholdLinks } from './RequestsGrid'
 
 function AppealEditor({
   row,
   initialAmount,
   walk,
+  step,
 }: {
   row: ApiAidGridRow
   initialAmount: number | null
   walk: WalkEditorProps
+  step: ReactNode
 }) {
   // The grid knows only the row's own household by name; another payer reads "Another household".
   const householdOf = useCallback(
@@ -40,48 +42,32 @@ function AppealEditor({
       today={campToday()}
       preview={preview}
       onAmountChange={onAmountChange}
-      layout="row"
+      layout="panel"
+      trailing={step}
       {...walk}
     />
   )
 }
 
 /**
- * The editor row under the highlighted grid row (§4.6; D22; Decision 13): the Round 2 ask, or why
- * none can be keyed here, with the way to the household page, where every other edit lives.
+ * Why no ask can be keyed on this row, in the server's words (#2997), shown only once someone tries
+ * to type on it (owner fast-follow (a), 10-03; `isTypingAttempt`), not every time it opens. A save
+ * refused on a row that can no longer be keyed always shows, with Dismiss.
  */
-export function GridEditorRow({
-  row,
-  walk,
-  links,
-}: {
-  row: ApiAidGridRow
-  walk: WalkEditorProps
-  links: HouseholdLinks
-}) {
-  const target = appealTarget(row)
-  if (target.kind === 'appeal') {
-    return (
-      <AppealEditor
-        key={row.request_id}
-        row={row}
-        initialAmount={target.initialAmount}
-        walk={walk}
-      />
-    )
-  }
-  const href = links.href(row)
-  const open = (event: MouseEvent<HTMLAnchorElement>) => {
-    // As RequestsGrid's HouseholdLink (PR 2): before the modifier check, so a ⌘/Ctrl click that
-    // opens a new tab doesn't also reach the row or the editor.
-    event.stopPropagation()
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-    event.preventDefault()
-    links.open(row, href)
-  }
+function Refusal({ why, walk }: { why: string; walk: WalkEditorProps }) {
+  const [tried, setTried] = useState(false)
+  useEffect(() => {
+    if (tried) return
+    const onKey = (event: KeyboardEvent) => {
+      if (isTypingAttempt(event)) setTried(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tried])
+  if (!tried && walk.saveError === null) return null
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
-      <span className="text-muted-foreground">{target.why}</span>
+      {tried && <span className="text-muted-foreground">{why}</span>}
       {walk.saveError !== null && (
         // A refused save can leave a row nothing can be keyed on (posted or cancelled meanwhile):
         // with no editor to clear it, "Dismiss" does (Esc's clear), so it can't hold every exit.
@@ -92,9 +78,37 @@ export function GridEditorRow({
           </button>
         </>
       )}
-      <a href={href} onClick={open} className="text-primary font-medium hover:underline">
-        Open the Household ›
-      </a>
     </div>
   )
+}
+
+/**
+ * The opened row's editing part (§4.6; D22; Decision 13): the Round 2 ask as the right-hand panel
+ * beside the detail text, with the row's next step at the end of its line (owner fast-follow,
+ * opened-row-options.html arrangement 3), or why none can be keyed here. The detail line beside it
+ * names and links the household, once.
+ */
+export function GridEditorRow({
+  row,
+  walk,
+  step,
+}: {
+  row: ApiAidGridRow
+  walk: WalkEditorProps
+  /** The detail line's next step: drawn at the end of the editor's line when there is an editor. */
+  step: ReactNode
+}) {
+  const target = appealTarget(row)
+  if (target.kind === 'appeal') {
+    return (
+      <AppealEditor
+        key={row.request_id}
+        row={row}
+        initialAmount={target.initialAmount}
+        walk={walk}
+        step={step}
+      />
+    )
+  }
+  return <Refusal key={row.request_id} why={target.why} walk={walk} />
 }

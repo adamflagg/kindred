@@ -464,12 +464,25 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1200')
   })
 
-  it("says why where an appeal can't be keyed yet", async () => {
+  // Owner fast-follow (a), 10-03: the refusal shows only once someone tries to type on the row.
+  // Was: shown as soon as the row opened.
+  it("says why where an appeal can't be keyed yet, once someone tries to type on the row", async () => {
     renderAt('/aid/requests')
     await userEvent.click(sessionCell('Emma Johnson'))
+    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+    expect(screen.queryByText(APPEAL_REFUSAL_R1)).toBeNull()
+    await userEvent.keyboard('1')
     // The row's own `appeal_refusal` (#2997), drawn as the server sent it.
     expect(screen.getByText(APPEAL_REFUSAL_R1)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+  })
+
+  it('opens the editor inside the detail line, beside its text, with no household caption of its own', async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(sessionCell('Olivia Chen'))
+    const detail = document.querySelector('[data-aid-detail]') as HTMLElement
+    expect(detail).toContainElement(screen.getByLabelText('Round 2 ask'))
+    expect(within(detail).queryByText(/· household 1000005/)).toBeNull()
+    expect(within(detail).getAllByRole('link', { name: /^Household 1000005/ })).toHaveLength(1)
   })
 
   it('saves an appeal with ↓, dated today, and moves on at once (ruling A)', async () => {
