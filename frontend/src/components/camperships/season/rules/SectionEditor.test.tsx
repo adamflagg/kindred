@@ -125,7 +125,7 @@ describe('SectionEditor', () => {
     )
     expect(screen.getByText(/Row 3 of Income bands is gone; retype it/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Drop what has gone' }))
+    await user.click(screen.getByRole('button', { name: 'Drop What Has Gone' }))
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 })

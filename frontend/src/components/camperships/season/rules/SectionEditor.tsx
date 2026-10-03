@@ -188,7 +188,7 @@ export function SectionEditor({
         )}
         {applied.gone.size > 0 && (
           <button type="button" className={BUTTON_SECONDARY} onClick={dropGone}>
-            Drop what has gone
+            Drop What Has Gone
           </button>
         )}
       </div>
