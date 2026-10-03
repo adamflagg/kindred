@@ -223,7 +223,8 @@ export function viewRound(row: ApiAidGridRow, view: RequestViewKey): ApiAidRound
 
 /**
  * The word CM ✓ shows while a tick waits for tonight's sync (owner ruling A2: "pending"). One
- * constant, used by the chip, the header's explanation and the CSV, because the owner may rename it.
+ * constant, used by the chip and the header's explanation, because the owner may rename it. The CSV
+ * and the detail line write the full detail instead (confirmationDetail; owner ruling, batch 4).
  */
 export const CM_PENDING_WORD = 'pending'
 

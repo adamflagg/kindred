@@ -10,10 +10,10 @@
 const PILL_SHAPE =
   'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap'
 
-/** A pill that wraps inside a narrow column rather than being cut off by it (the Stage and Confirmed columns). */
 /** A header (or label) that explains itself on hover and click: the dotted underline the journey rows use for a Tooltip trigger, and the help cursor. */
 export const HELP_HEADER =
   'decoration-muted-foreground/60 cursor-help text-left underline decoration-dotted underline-offset-2'
+/** A pill that wraps inside a narrow column rather than being cut off by it (the Stage column). */
 export const PILL_WRAP = 'whitespace-normal text-center rounded-xl'
 
 export type PillTone = 'red' | 'amber' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted'
