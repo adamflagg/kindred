@@ -232,6 +232,10 @@ export const DETAIL_SHARE: ApiAidHistoryOperationDetail = {
       entity_id: 'req000000000009:1000001',
       action: 'set_household_share',
       reason: 'Family emailed',
+      // H2: the server names who the row is about, from its id (the update itself records no household).
+      household_cm_id: 1000001,
+      household_name: 'The Johnson Family',
+      camper_name: 'Emma Johnson',
       // An update logs only the keys that changed (`changed_fields`), so no household or request here.
       before: { actor: 'system:intake', note: '', share_pct: '100', source: 'intake_default' },
       after: { actor: REGISTRAR_EMAIL, note: 'Family emailed', share_pct: '60', source: 'staff' },
@@ -247,6 +251,9 @@ export const DETAIL_SHARE: ApiAidHistoryOperationDetail = {
       entity_id: 'req000000000009:1000002',
       action: 'set_household_share',
       reason: 'Family emailed',
+      household_cm_id: 1000002,
+      household_name: 'The Chen Family',
+      camper_name: 'Emma Johnson',
       after: {
         actor: REGISTRAR_EMAIL,
         entered: { household_cm_id: 1000002, share_pct: '40' },
@@ -440,6 +447,29 @@ export const DETAIL_RULES_APPROVE: ApiAidHistoryOperationDetail = {
       changes: approvalChanges(section),
     })
   ),
+}
+
+/**
+ * The same created version as the detail read sends it with H4: its diff against the version it was
+ * copied from, in the paths a save's diff uses.
+ */
+export const AGAINST_PARENT = {
+  year: 2027,
+  version: 4,
+  changes: [
+    {
+      path: ['document', 'awards', 'minimum'],
+      kind: 'changed' as const,
+      before: '300',
+      after: '350',
+    },
+    {
+      path: ['section_status', 'awards', 'state'],
+      kind: 'changed' as const,
+      before: 'approved',
+      after: 'draft',
+    },
+  ],
 }
 
 /** A branching save: the log holds the whole new version, so every leaf is "added". */

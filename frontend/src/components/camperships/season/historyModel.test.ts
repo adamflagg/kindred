@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ApiAidHistoryRow } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
 import {
+  AGAINST_PARENT,
   DETAIL_POSTED,
   DETAIL_RELEASE,
   DETAIL_RULES_APPROVE,
@@ -286,21 +287,30 @@ describe("an operation's line (D49: one readable line per operation)", () => {
     expect(operationWords(OP_POSTED)).toEqual({
       when: 'Apr 9 16:05',
       who: REGISTRAR_EMAIL,
-      what: 'Posted · 30 decisions',
+      what: 'Posted · 30 requests · 28 families · $42,600 locked',
       reason: null,
     })
-    expect(operationWords(OP_RELEASE).what).toBe('Released · 1 hold')
+    expect(operationWords(OP_RELEASE).what).toBe('Released · 1 request · 1 family')
     expect(operationWords(OP_RELEASE).reason).toBe('Income confirmed by phone')
-    expect(operationWords(OP_SHARE).what).toBe('Household share set · 2 payer shares')
+    expect(operationWords(OP_SHARE).what).toBe('Household share set · 1 request · 2 families')
   })
 
-  it('lists each count of an operation that wrote several kinds of record', () => {
-    expect(operationWords(OP_INTAKE).what).toBe('Create · 3 applications; Update · 5 requests')
+  it("leads with the screen's action words, then the server's summary as sent (H1: never recomputed)", () => {
+    expect(
+      operationWords({ ...OP_POSTED, summary: '7 requests · 6 families · $9,840 locked' }).what
+    ).toBe('Posted · 7 requests · 6 families · $9,840 locked')
+    expect(operationWords(OP_INTAKE).what).toBe('Create, Update · 5 requests · 3 families')
     expect(operationWords(OP_INTAKE).who).toBe('Intake')
   })
 
+  it('falls back to the counts where the server has no summary (no request or family in it)', () => {
+    expect(operationWords({ ...OP_INTAKE, summary: '' }).what).toBe(
+      'Create · 3 applications; Update · 5 requests'
+    )
+  })
+
   it('names a rules operation by its version and sections, as the Rules tab names them', () => {
-    expect(operationWords(OP_RULES_APPROVE).what).toBe(
+    expect(operationWords({ ...OP_RULES_APPROVE, summary: '', effect: null }).what).toBe(
       `Rules v3 · ${SECTION_TITLES.awards}, ${SECTION_TITLES.budget} · Approved`
     )
     expect(operationWords(OP_RULES_APPROVE).reason).toBe('Finance committee')
@@ -318,6 +328,8 @@ describe("an operation's line (D49: one readable line per operation)", () => {
     expect(
       operationWords({
         ...OP_RULES_APPROVE,
+        summary: '',
+        effect: null,
         rules_sections: ['income', 'tiers', 'equity', 'awards'],
         counts: [{ entity: 'aid_rules', action: 'approve', rows: 4 }],
       }).what
@@ -326,12 +338,20 @@ describe("an operation's line (D49: one readable line per operation)", () => {
 
   it('words a Posted tick that locked rules sections by both: its decisions, then its locks (I1)', () => {
     expect(operationWords(OP_POSTED_LOCKING).what).toBe(
-      `Posted · 380 decisions; Rules v3 · ${SECTION_TITLES.income}, ${SECTION_TITLES.tiers} · Locked`
+      `Posted · 380 requests · 352 families · $539,600 locked; Rules v3 · ${SECTION_TITLES.income}, ${SECTION_TITLES.tiers} · Locked`
+    )
+  })
+
+  it("follows an approval with its recorded effect, the server's words (H3, #2980)", () => {
+    expect(operationWords(OP_RULES_APPROVE).what).toBe(
+      `Rules v3 · ${SECTION_TITLES.awards}, ${SECTION_TITLES.budget} · Approved · v3 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged`
     )
   })
 
   it("words a registrar's view of the first Posted tick: its decisions alone, no rules part (H6)", () => {
-    expect(operationWords(OP_POSTED_LOCKING_REGISTRAR).what).toBe('Posted · 380 decisions')
+    expect(operationWords(OP_POSTED_LOCKING_REGISTRAR).what).toBe(
+      'Posted · 380 requests · 352 families · $539,600 locked'
+    )
   })
 
   it('words a capacity operation (a rules kind with no version) by its count', () => {
@@ -360,7 +380,23 @@ describe("a rules row's lines (the Rules tab's words; D49)", () => {
     ])
   })
 
-  it('says a created version in one line, never its every setting as "added" (Decision 3)', () => {
+  it('lists a created version against the version it was copied from (H4)', () => {
+    const created = { ...first(DETAIL_RULES_CREATE.rows), against_parent: AGAINST_PARENT }
+    expect(rulesLines(created)).toEqual([
+      'New version v5, from v4:',
+      `${SECTION_TITLES.awards} › ${changeWords({ path: ['minimum'], kind: 'changed', before: '300', after: '350' })}`,
+      `${SECTION_TITLES.awards}: Approved → Draft`,
+    ])
+    // Start from last year: the parent is another season's version.
+    expect(
+      rulesLines({ ...created, against_parent: { ...AGAINST_PARENT, year: 2026, version: 6 } })[0]
+    ).toBe('New version v5, from 2026 v6:')
+    expect(rulesLines({ ...created, against_parent: { ...AGAINST_PARENT, changes: [] } })).toEqual([
+      'New version v5, from v4: no setting changed',
+    ])
+  })
+
+  it('says a created version with no parent diff in one line, never its every setting as "added" (Decision 3)', () => {
     const created = first(DETAIL_RULES_CREATE.rows)
     expect(created.changes.length).toBeGreaterThan(100)
     expect(rulesLines(created)).toEqual(['New version v5, from v4: its settings open in Rules'])
@@ -380,8 +416,10 @@ describe("a row's view in an opened line", () => {
         'Source: intake_default → staff',
       ],
       hidden: 0,
-      // An update logs only what changed, so the row names no household (the server sends none).
-      householdCmId: null,
+      // An update logs only what changed; the server names who the row is about (H2).
+      householdCmId: 1000001,
+      householdName: 'The Johnson Family',
+      camperName: 'Emma Johnson',
     })
     expect(rowView(rowAt(DETAIL_SHARE.rows, 1))).toEqual({
       head: 'Household share set · payer share req000000000009:1000002 · Family emailed',
@@ -395,6 +433,8 @@ describe("a row's view in an opened line", () => {
       // The nested `entered` copy (two values) is counted, not listed.
       hidden: 2,
       householdCmId: 1000002,
+      householdName: 'The Chen Family',
+      camperName: 'Emma Johnson',
     })
   })
 
@@ -411,6 +451,8 @@ describe("a row's view in an opened line", () => {
       ],
       hidden: 0,
       householdCmId: null,
+      householdName: null,
+      camperName: null,
     })
   })
 
@@ -432,6 +474,8 @@ describe("a row's view in an opened line", () => {
       ],
       hidden: 0,
       householdCmId: null,
+      householdName: null,
+      camperName: null,
     })
   })
 
@@ -545,5 +589,20 @@ describe("links (D148: the season; D15: the page's as-of, as the Rules tab keeps
 
   it("opens a household on the season, keeping the page's as-of", () => {
     expect(householdHref(1000002, VIEW)).toBe('/aid/households/1000002?year=2027&as_of=2027-03-15')
+  })
+})
+
+describe("who a row is about (H2: the server's names)", () => {
+  it('names the household the server names, "Household N" where it has no record this season', () => {
+    const named = rowAt(DETAIL_SHARE.rows, 1)
+    expect(rowView({ ...named, household_name: null }).householdName).toBe('Household 1000002')
+    expect(rowView({ ...named, household_name: null, camper_name: null }).camperName).toBeNull()
+  })
+
+  it('falls back to the household the row recorded when the server names none', () => {
+    const named = rowAt(DETAIL_SHARE.rows, 1)
+    const view = rowView({ ...named, household_cm_id: null, household_name: null })
+    expect(view.householdCmId).toBe(1000002)
+    expect(view.householdName).toBe('Household 1000002')
   })
 })

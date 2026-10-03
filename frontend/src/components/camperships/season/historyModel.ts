@@ -6,6 +6,7 @@
 import type {
   ApiAidFieldChange,
   ApiAidHistoryKind,
+  ApiAidHistoryKindCount,
   ApiAidHistoryOperation,
   ApiAidHistoryPage,
   ApiAidHistoryRow,
@@ -38,6 +39,21 @@ const CHIP_ORDER: readonly ApiAidHistoryKind[] = ['rules', 'offers', 'money', 'h
 /** The kind chips, in the spec's order; Rules only for `rules` (D49, D76). */
 export function chipKinds(canSeeRules: boolean): ApiAidHistoryKind[] {
   return CHIP_ORDER.filter((kind) => canSeeRules || kind !== 'rules')
+}
+
+/**
+ * A kind chip's words: its label, then the server's count once the read has it (H5), as the Requests
+ * strip counts its views ("Holds 11"). The server counts each chip with that chip alone picked and
+ * every other filter kept; a chip it doesn't count reads as its label alone.
+ */
+export function chipWords(
+  kind: ApiAidHistoryKind,
+  counts: readonly ApiAidHistoryKindCount[] | undefined
+): string {
+  const count = counts?.find((c) => c.kind === kind)
+  return count === undefined
+    ? KIND_LABELS[kind]
+    : `${KIND_LABELS[kind]} ${String(count.operations)}`
 }
 
 export interface HistoryFilters {
@@ -294,21 +310,33 @@ export interface OperationWords {
 }
 
 /**
- * An operation's line (D49; history.html B "What happened"): what was done to how many records,
- * from the server's counts, then, for an operation that touched the rules, its version, sections and
- * what was done to them. A round's first Posted tick locks its rules sections in the same operation
- * (plan review I1), so it reads "Posted · 380 decisions; Rules v3 · … · Locked", never the locks
- * alone. The reason follows as written (an approval's note names the approving body, D39). No names
- * and no totals: the read sends neither (Decision 1).
+ * An operation's line (D49; history.html B "What happened"): the screen's action words, then the
+ * server's summary as sent (H1: "7 requests · 6 families · $9,840 locked", counted and summed from
+ * the rows as recorded, never here). Where the server has no summary (no request or family in it:
+ * a rules save, a capacity) each count reads "Saved · 1 rules version" as before. An operation that
+ * touched the rules adds its version, sections and what was done to them; a round's first Posted
+ * tick locks its rules sections in the same operation (plan review I1), so it reads "Posted · …
+ * locked; Rules v3 · … · Locked", never the locks alone. A rules approval's summary is its recorded
+ * effect (H3, #2980), so it follows the rules part. The reason follows as written (an approval's
+ * note names the approving body, D39).
  */
 export function operationWords(op: ApiAidHistoryOperation): OperationWords {
   const versioned = op.rules_versions.length > 0
-  const parts = op.counts
-    .filter((count) => !versioned || count.entity !== RULES)
-    .map(
-      (count) =>
-        `${actionWords(count.entity, count.action)} · ${String(count.rows)} ${recordWords(count.entity, count.rows)}`
-    )
+  const counts = op.counts.filter((count) => !versioned || count.entity !== RULES)
+  // An approval's summary is its effect, worded for the rules part it follows.
+  const summary = op.effect === null ? op.summary : ''
+  const parts =
+    summary === '' || counts.length === 0
+      ? counts.map(
+          (count) =>
+            `${actionWords(count.entity, count.action)} · ${String(count.rows)} ${recordWords(count.entity, count.rows)}`
+        )
+      : [
+          joined([
+            [...new Set(counts.map((count) => actionWords(count.entity, count.action)))].join(', '),
+            summary,
+          ]),
+        ]
   if (versioned) {
     const sections =
       op.rules_sections.length > SECTIONS_NAMED
@@ -326,6 +354,7 @@ export function operationWords(op: ApiAidHistoryOperation): OperationWords {
         `Rules ${op.rules_versions.map((v) => `v${String(v)}`).join(', ')}`,
         sections,
         actions,
+        op.effect === null ? '' : op.summary,
       ])
     )
   }
@@ -349,19 +378,34 @@ const positiveInt = (
  * A rules row's lines, in the Rules tab's words (PR 3's `changeWords`), each led by its section: a
  * setting change, and a section's status move ("Draft → Approved"). Stamps (who, when, the note) are
  * the line's own words, so they are left out. A created version holds its whole document in the log,
- * so it reads as one line, never every setting as "added" (Decision 3).
+ * so it lists its diff against the version it was copied from (H4, `against_parent`), never every
+ * setting as "added"; with no such diff (a season's first version) it reads as one line.
  */
 export function rulesLines(row: ApiAidHistoryRow): string[] {
   if (row.before === null) {
     const version = positiveInt(row.after, 'version')
-    const parent = positiveInt(row.after, 'parent_version')
     const name = version === null ? 'A new version' : `New version v${String(version)}`
+    const against = row.against_parent
+    if (against !== null) {
+      const [rowYear] = row.entity_id.split(':')
+      const from = `${against.year === Number(rowYear) ? '' : `${String(against.year)} `}v${String(against.version)}`
+      const lines = changeLines(against.changes)
+      return lines.length === 0
+        ? [`${name}, from ${from}: no setting changed`]
+        : [`${name}, from ${from}:`, ...lines]
+    }
+    const parent = positiveInt(row.after, 'parent_version')
     return [
       `${name}${parent === null ? '' : `, from v${String(parent)}`}: its settings open in Rules`,
     ]
   }
+  return changeLines(row.changes)
+}
+
+/** A rules diff's lines: a setting change in the section's words, and a section's status move. */
+function changeLines(changes: readonly ApiAidFieldChange[]): string[] {
   const lines: string[] = []
-  for (const change of row.changes) {
+  for (const change of changes) {
     const [root, section, ...rest] = change.path
     if (section === undefined) continue
     if (root === 'document') {
@@ -456,6 +500,9 @@ export interface RowView {
   /** Nested values the row recorded that are not listed. */
   readonly hidden: number
   readonly householdCmId: number | null
+  /** The household's link words: the server's name (H2), or "Household N" as the grid says. */
+  readonly householdName: string | null
+  readonly camperName: string | null
 }
 
 function rulesHead(row: ApiAidHistoryRow): string {
@@ -471,8 +518,17 @@ function rulesHead(row: ApiAidHistoryRow): string {
 /** One row of an opened line: its action, record and reason, then the fields it recorded. */
 export function rowView(row: ApiAidHistoryRow): RowView {
   if (row.entity === RULES) {
-    return { head: rulesHead(row), lines: rulesLines(row), hidden: 0, householdCmId: null }
+    return {
+      head: rulesHead(row),
+      lines: rulesLines(row),
+      hidden: 0,
+      householdCmId: null,
+      householdName: null,
+      camperName: null,
+    }
   }
+  // Who the row is about: the server's subject (H2), else the household the row itself recorded.
+  const householdCmId = row.household_cm_id ?? householdOf(row)
   const topLevel = row.changes.filter((change) => change.path.length === 1)
   const unlisted = topLevel.filter((change) => UNLISTED.has(change.path[0] ?? ''))
   const listed = topLevel.filter(
@@ -487,7 +543,10 @@ export function rowView(row: ApiAidHistoryRow): RowView {
     ]),
     lines: listed.map((change) => fieldLine(row.entity, change)),
     hidden: row.changes.length - listed.length - unlisted.length,
-    householdCmId: householdOf(row),
+    householdCmId,
+    householdName:
+      householdCmId === null ? null : (row.household_name ?? `Household ${String(householdCmId)}`),
+    camperName: row.camper_name,
   }
 }
 

@@ -83,7 +83,9 @@ describe('HistoryTable', () => {
     expect(posted.getByText(/Apr 9 16:05/)).toBeInTheDocument()
     expect(posted.getByText(REGISTRAR_EMAIL)).toBeInTheDocument()
     expect(posted.getByText('Offers & stages')).toBeInTheDocument()
-    expect(posted.getByText('Posted · 30 decisions')).toBeInTheDocument()
+    expect(
+      posted.getByText('Posted · 30 requests · 28 families · $42,600 locked')
+    ).toBeInTheDocument()
     expect(posted.getByText('30')).toBeInTheDocument()
     expect(
       within(line(OP_RELEASE.operation_id)).getByText(/“Income confirmed by phone”/)
@@ -93,11 +95,13 @@ describe('HistoryTable', () => {
 
   it('toggles a line on a click anywhere on it', async () => {
     renderTable([])
-    await userEvent.click(within(line(OP_RELEASE.operation_id)).getByText('Released · 1 hold'))
+    await userEvent.click(
+      within(line(OP_RELEASE.operation_id)).getByText('Released · 1 request · 1 family')
+    )
     expect(onToggle).toHaveBeenCalledWith(OP_RELEASE.operation_id)
   })
 
-  it('opens a line to its rows, its reason and its household where the row recorded one', () => {
+  it('opens a line to its rows, its reason, and who each row is about by name (H2)', () => {
     renderTable([OP_SHARE.operation_id])
     expect(line(OP_SHARE.operation_id)).toHaveTextContent('▾')
     expect(screen.getByText('Reason: “Family emailed”')).toBeInTheDocument()
@@ -105,10 +109,15 @@ describe('HistoryTable', () => {
       screen.getByText(/Household share set · payer share req000000000009:1000002/)
     ).toBeInTheDocument()
     expect(screen.getByText('Share pct: 40%')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Household 1000002 ›' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'The Chen Family ›' })).toHaveAttribute(
       'href',
       '/aid/households/1000002?year=2027'
     )
+    expect(screen.getByRole('link', { name: 'The Johnson Family ›' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000001?year=2027'
+    )
+    expect(screen.getAllByText(/Emma Johnson/)).toHaveLength(2)
   })
 
   it('shows the first 25 rows, then all of them on asking (a bulk tick is one line, D49)', async () => {
@@ -165,7 +174,7 @@ describe('HistoryTable', () => {
       asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' },
     }
     renderTable([OP_SHARE.operation_id, OP_RULES_APPROVE.operation_id], undefined, past)
-    expect(screen.getByRole('link', { name: 'Household 1000002 ›' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'The Chen Family ›' })).toHaveAttribute(
       'href',
       '/aid/households/1000002?year=2027&as_of=2027-03-15'
     )

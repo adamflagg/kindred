@@ -67,11 +67,12 @@ function OperationDetail({
           return (
             <li key={`${row.entity}:${row.entity_id}:${String(index)}`} data-history-row>
               <span className="font-medium">{v.head}</span>
+              {v.camperName !== null && ` · ${v.camperName}`}
               {v.householdCmId !== null && (
                 <>
                   {' · '}
                   <Link to={householdHref(v.householdCmId, view)} className={LINK}>
-                    {`Household ${String(v.householdCmId)} ›`}
+                    {`${v.householdName ?? `Household ${String(v.householdCmId)}`} ›`}
                   </Link>
                 </>
               )}
