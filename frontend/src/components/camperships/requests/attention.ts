@@ -84,12 +84,13 @@ export function waitingSince(row: Pick<ApiAidGridRow, 'rounds'>): string | null 
 }
 
 /**
- * The opened row's next step (batch 4). #2943 has no writers, so a step is a link to where it is
- * done today (the household page, at its income section or at the request's card), or plain words
- * where nothing can be done in Kindred. The labels are round 6's mock (grid-layout-options.html
- * nextAction), owner-APPROVED in title case (10-03); plain-words steps stay sentence case. A `tick`
- * step is a button for the row's own Accepted tick (Full GO, #2951): the grid already does it, so
- * it is no new write path.
+ * The opened row's next step (batch 4): a link to where it is done (the household page, at its
+ * income section or at the request's card), or plain words where nothing can be done in Kindred.
+ * The labels are round 6's mock (grid-layout-options.html nextAction), owner-APPROVED in title case
+ * (10-03); plain-words steps stay sentence case. Two kinds are buttons, both of writes the grid
+ * already has (#2951, no new write path): `tick` is the row's own Accepted tick, and `markPosted`
+ * is the hand Posted tick for one round (#2996), built from an `unticked[]` entry the server marks
+ * `mark_posted`.
  */
 export type NextStep =
   | { readonly kind: 'link'; readonly label: string; readonly at: 'income' | 'request' }
@@ -108,9 +109,10 @@ export interface GridAttention {
   /** The Requests view this item belongs to; null for a note that has none. */
   readonly queue: ApiAidQueue | null
   /**
-   * Its next step for the detail line. Null where the mock's step is a button the grid can't do
-   * yet: "Edit the Award" (owner decision: #2948's editor keys only the Round 2 ask) and the hand
-   * "Mark Posted" (waits on #2996's Not reconciled reason codes).
+   * Its next step for the detail line. Null only where the mock's step is a button the grid can't
+   * do: "Edit the Award" (owner decision: #2948's editor keys only the Round 2 ask). The hand
+   * "Mark Posted" is a `markPosted` step on a Not reconciled row whose `unticked[]` entry says
+   * `mark_posted`; other unticked entries have no step.
    */
   readonly next: NextStep | null
 }
@@ -127,8 +129,8 @@ const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   manual_hold: toRequest('Release the Hold…'),
   unmatched_session: PICK_SESSION,
   duplicate_survivor_withdrawn: KEEP_ONE,
-  // "Edit the Award" (an owner decision: it needs an award editor) and the hand "Mark Posted"
-  // (#2996's reason codes): no step until they land.
+  // "Edit the Award" (an owner decision: it needs an award editor): no step. The hand "Mark Posted"
+  // is not here: it rides `unticked[].mark_posted`, so `in_campminder_not_ticked` stays null.
   award_above_cost: null,
   in_campminder_not_ticked: null,
 }
