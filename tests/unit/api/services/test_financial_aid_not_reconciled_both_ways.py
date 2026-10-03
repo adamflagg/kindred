@@ -437,7 +437,8 @@ async def test_a_round_campminder_holds_nothing_for_stays_in_needs_an_offer_besi
 
 @pytest.mark.asyncio
 async def test_every_row_carrying_the_note_has_a_reason_and_none_without_it() -> None:
-    """D81 as amended: the Note's rows are exactly Not reconciled (b)'s, so the two never disagree."""
+    """D81 as amended: the Note's rows are exactly Not reconciled (b)'s, so the two never disagree (bar a $0 Round 1,
+    the one named exception, pinned below)."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     seed_line(store, 9001, "1300")

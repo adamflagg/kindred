@@ -1664,7 +1664,8 @@ class FinancialAidDecisionsService:
         rule ledger_ticks runs, so the two can't disagree) says where it stopped, and a round it would tick is either
         held by D152 (`withheld`, the same check the overnight tick runs) or is pending tonight's tick (C1, owner
         10-03: `pending`, no reason). The rows these mark are those D81's Note marks, less an over-posting with nothing
-        asked for the next round (H1, direction a's). The Requests grid, Today and the household page read it
+        asked for the next round (H1, direction a's) and a round decided at $0 (owner 10-03: `shown_stops` leaves its
+        zero_round stop out until the owner words a reason). The Requests grid, Today and the household page read it
         (row_of), as do Rounds & budget's Needs an offer counts, the March file and the Accepted tick; D16's load runs
         only when such a round sits on money a person placed. A reason offers Mark posted only on the request's first
         unposted round, the only one tick_posted takes alone (H3)."""
