@@ -6,6 +6,7 @@ import { TICK_BUTTON } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
+import { appealTarget } from './gridEditor'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import { roundOf } from './stage'
 import { acceptedTarget, nameOf, type TickAction } from './ticks'
@@ -149,13 +150,24 @@ function stepOf(
   )
 }
 
+/** The left panel's width beside an editor (opened-row-options.html arrangement 3: 384px). */
+const SIDE_BY_SIDE = 'grid grid-cols-[24rem_minmax(0,1fr)] items-stretch text-sm'
+const LEFT_BESIDE_EDITOR =
+  'flex min-w-0 flex-col gap-1 border-r border-dashed border-amber-300 pr-4 dark:border-amber-800'
+const RIGHT_PANEL = 'min-w-0 pl-4'
+
 /**
- * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6): the
- * chip and the full needs-attention text (attention.ts's, the server's own message for a check or
- * hold), Requested by (T3: the name only, "—" when the server can't name one), the household
- * link, CM ✓ in full, and the next step on the right: a link to where it is done today, plain
- * words, or (Full GO) a button for the row's own Accepted tick, drawn only for someone who can tick
- * and a row the tick takes.
+ * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6), laid
+ * out as opened-row-options.html arrangement 3 "Side by side" (owner fast-follow, 10-03). The left
+ * panel: the chip and the full needs-attention text (attention.ts's, the server's own message for a
+ * check or hold), then Requested by (T3: the name only, "—" when the server can't name one), the
+ * household link (the household is named once, here) and CM ✓ in full. No Person id (owner, (c)).
+ * The next step: a link to where it is done, plain words, or (Full GO) a button for the row's own
+ * Accepted tick, drawn only for someone who can tick and a row the tick takes.
+ *
+ * With an `editor` and a row that takes an ask, the editor is the right panel and the step ends its
+ * line. Otherwise the left content takes the width with the step top right, and whatever the
+ * editor says about the row (why it takes no ask, a refused save) sits under it.
  */
 export function RequestDetailLine({
   row,
@@ -164,6 +176,7 @@ export function RequestDetailLine({
   showConfirmation,
   onTick,
   onMarkPosted,
+  editor,
 }: {
   row: ApiAidGridRow
   ctx: ColumnContext
@@ -174,13 +187,19 @@ export function RequestDetailLine({
   onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
   /** The hand Posted tick (#2996; casework on a live read); without it Mark Posted draws nothing. */
   onMarkPosted?: MarkPosted | undefined
+  /** The row's editor, handed the step to end its line with (null where it draws no editor). */
+  editor?: ((step: ReactNode) => ReactNode) | undefined
 }) {
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
   const next = found === null ? OPEN_REQUEST : found.next
   const confirmation = showConfirmation ? cmDetail(row) : null
   const step = stepOf(next, row, links, onTick, onMarkPosted)
-  return (
-    <div className="flex flex-col gap-1 text-sm">
+  const beside = editor !== undefined && appealTarget(row).kind === 'appeal'
+  const left = (
+    <div
+      data-detail-left=""
+      className={beside ? LEFT_BESIDE_EDITOR : 'flex min-w-0 flex-col gap-1'}
+    >
       <div>
         {found === null ? (
           <span className={MUTED}>Nothing needs attention on this request.</span>
@@ -205,8 +224,32 @@ export function RequestDetailLine({
             <span>{confirmation}</span>
           </>
         )}
-        {step !== null && <span className="ml-auto pl-3">{step}</span>}
       </div>
+    </div>
+  )
+  if (beside) {
+    return (
+      <div className={SIDE_BY_SIDE}>
+        {left}
+        {/* The editor's own keys (↑/↓ save and move on) stay its own: AidTable stands aside here,
+            but not on the step at the end of its line, which is the row's (scan K1). */}
+        <div data-aid-editor="" className={RIGHT_PANEL}>
+          {editor(step === null ? null : <span data-aid-step="">{step}</span>)}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start">
+        {left}
+        {step !== null && <div className="pl-3 text-xs">{step}</div>}
+      </div>
+      {editor !== undefined && (
+        <div data-aid-editor="" className="empty:hidden">
+          {editor(null)}
+        </div>
+      )}
     </div>
   )
 }

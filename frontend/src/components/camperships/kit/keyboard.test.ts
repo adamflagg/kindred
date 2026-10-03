@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { isPageKey, isTypingTarget } from './keyboard'
+import { isPageKey, isTypingAttempt, isTypingTarget } from './keyboard'
 
 let modalOpen = false
 vi.mock('../../ui/modalStack', () => ({ hasOpenModal: () => modalOpen }))
@@ -88,5 +88,29 @@ describe('isPageKey', () => {
     expect(isPageKey({ target: input('text'), ...plain })).toBe(false)
     modalOpen = true
     expect(isPageKey({ target: document.body, ...plain })).toBe(false)
+  })
+})
+
+// Owner fast-follow (a), 10-03: a row that can't take an ask says why only when someone tries to
+// type on it. "Tries to type" = one printable character, pressed where the page owns the key (no
+// field typing, no modifier, no modal, not held or composing), other than the page's own `/`, `[`
+// and `]` (D13) and a bare space.
+describe('isTypingAttempt (a refusing row says why only on a try)', () => {
+  const body = document.body
+  it.each(['5', '0', 'a', 'Z', '$', ','])('counts %s', (key) => {
+    expect(isTypingAttempt({ ...plain, key, target: body })).toBe(true)
+  })
+  it.each(['/', '[', ']', ' ', 'ArrowDown', 'Enter', 'Escape', 'Tab', 'Shift', 'Backspace'])(
+    'does not count %s',
+    (key) => {
+      expect(isTypingAttempt({ ...plain, key, target: body })).toBe(false)
+    }
+  )
+  it('does not count a key typed in a field, a modified key, a held key or one under a modal', () => {
+    expect(isTypingAttempt({ ...plain, key: '5', target: input('search') })).toBe(false)
+    expect(isTypingAttempt({ ...plain, key: '5', ctrlKey: true, target: body })).toBe(false)
+    expect(isTypingAttempt({ ...plain, key: '5', repeat: true, target: body })).toBe(false)
+    modalOpen = true
+    expect(isTypingAttempt({ ...plain, key: '5', target: body })).toBe(false)
   })
 })

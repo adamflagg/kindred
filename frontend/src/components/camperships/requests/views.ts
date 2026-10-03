@@ -514,24 +514,19 @@ export function viewColumns(
 }
 
 export type RoundFilter = 1 | 2 | 3
-/** A round's checklist state (§5.2): posted, or posted and accepted. */
-export type TickFilter = 'posted' | 'accepted'
 
 export function parseRoundFilter(raw: string | null): RoundFilter | null {
   return raw === '1' ? 1 : raw === '2' ? 2 : raw === '3' ? 3 : null
 }
 
-export function parseTickFilter(raw: string | null): TickFilter | null {
-  return raw === 'posted' || raw === 'accepted' ? raw : null
-}
-
 export interface GridFilters {
   readonly program: string | null
   readonly pool: string | null
-  /** Rows with this round (Decision 9; owner ruling Group 2c Q3). */
+  /**
+   * Rows with this round (Decision 9; owner ruling Group 2c Q3). The checklist filter (posted /
+   * accepted, `tick=`) is gone: under D162 there are no Posted ticks (owner, fast-follow 10-03).
+   */
   readonly round: RoundFilter | null
-  /** Rows whose round (this one, or any) is posted, or posted and accepted. */
-  readonly tick: TickFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
   readonly ids: ReadonlySet<string> | null
 }
@@ -540,21 +535,11 @@ export const NO_FILTERS: GridFilters = {
   program: null,
   pool: null,
   round: null,
-  tick: null,
   ids: null,
 }
 
-function matchesRound(
-  row: ApiAidGridRow,
-  round: RoundFilter | null,
-  tick: TickFilter | null
-): boolean {
-  if (round === null && tick === null) return true
-  const rounds = round === null ? row.rounds : row.rounds.filter((r) => r.round === round)
-  if (tick === null) return rounds.length > 0
-  return rounds.some(
-    (r) => r.status === 'posted' && r.clawed_back !== true && (tick === 'posted' || r.accepted)
-  )
+function matchesRound(row: ApiAidGridRow, round: RoundFilter | null): boolean {
+  return round === null || row.rounds.some((r) => r.round === round)
 }
 
 export function filterRows(
@@ -567,7 +552,7 @@ export function filterRows(
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
-      matchesRound(row, filters.round, filters.tick) &&
+      matchesRound(row, filters.round) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }
@@ -656,10 +641,10 @@ export function moneyTotal(values: readonly CellValue[]): number | null {
   return numbers.reduce((cents, value) => cents + toCents(value), 0) / 100
 }
 
-/** D70's file name (Decision 32): camperships-requests-<view>[-<program>][-<pool>][-round-<n>][-<tick>]-<season>[-as-of-<date>].csv. */
+/** D70's file name (Decision 32): camperships-requests-<view>[-<program>][-<pool>][-round-<n>]-<season>[-as-of-<date>].csv. */
 export function requestsCsvName(
   view: RequestView,
-  filters: Pick<GridFilters, 'program' | 'pool' | 'round' | 'tick'>,
+  filters: Pick<GridFilters, 'program' | 'pool' | 'round'>,
   season: number,
   asOf: string | null,
   /** An active Today line (Decision 10), so its partial export is not named like the season's. */
@@ -669,7 +654,6 @@ export function requestsCsvName(
     filters.program,
     filters.pool,
     filters.round === null ? null : `round ${String(filters.round)}`,
-    filters.tick,
     todayKey === null ? null : `today ${todayKey.replaceAll('_', ' ')}`,
   ]
   return aidCsvFilename({

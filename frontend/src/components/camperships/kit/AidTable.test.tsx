@@ -386,6 +386,32 @@ describe('AidTable', () => {
     expect(lines[4]).toMatch(/^Link,http/)
   })
 
+  // Owner (fast-follow, 10-03): the Requests grid's download is a "⤓ CSV" chip at the end of the
+  // filter line, the Round chips' height and always visible, replacing the Download CSV button.
+  it('draws the download as a ⤓ CSV chip at the end of the toolbar, in a chip group, with csvChip', async () => {
+    renderTable('/aid/requests', { csvChip: true })
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
+    const chip = screen.getByRole('button', { name: '⤓ CSV' })
+    const toolbar = chip.closest('[data-aid-toolbar]') as HTMLElement
+    expect(toolbar.lastElementChild).toContainElement(chip)
+    // The chips' segmented group and button classes (auditStyles GROUP / GROUP_BUTTON_OFF).
+    expect(chip.parentElement).toHaveClass('rounded-xl', 'border', 'p-1')
+    expect(chip).toHaveClass('rounded-md', 'px-3', 'py-1.5', 'text-xs')
+    expect(chip.className).not.toMatch(/opacity-0|group-hover/)
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'johnson')
+    await userEvent.click(chip)
+    expect(downloadSpy).toHaveBeenCalledTimes(1)
+    const [content, filename] = downloadSpy.mock.calls[0] as [string, string]
+    expect(filename).toBe('camperships-requests-all-2027.csv')
+    expect(content.split('\n')[1]).toMatch(/^Johnson,Emma Johnson,/)
+  })
+
+  it('keeps the Download CSV button without csvChip', () => {
+    renderTable()
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
+  })
+
   it('pins the identity columns, each at its left offset, with the edge shadow on the last (D25)', () => {
     renderTable()
     const family = screen.getByRole('columnheader', { name: 'Family' })

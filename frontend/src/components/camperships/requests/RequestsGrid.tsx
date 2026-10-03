@@ -52,9 +52,15 @@ interface RequestsGridProps {
   readonly onHighlight: (key: string | null) => void
   /** Stable (useMemo): the columns memo depends on it. */
   readonly links: HouseholdLinks
-  /** The filter controls: they share the table's toolbar line with search and Download CSV. */
+  /** The filter controls: they share the table's toolbar line with search and the ⤓ CSV chip. */
   readonly filters?: ReactNode
-  readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
+  /**
+   * The opened row's editor (owner fast-follow 10-03, arrangement 3): drawn inside the detail line,
+   * as its right panel on a row that takes an ask, handed the row's next step to end its line with
+   * (null on a row that takes none, where the step stays in the detail line).
+   */
+  readonly renderEditor?:
+    ((row: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => ReactNode) | undefined
   /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
   readonly marked?: ReadonlySet<string> | undefined
   readonly selected?: ReadonlySet<string> | undefined
@@ -232,7 +238,7 @@ export function RequestsGrid({
   onHighlight,
   links,
   filters,
-  renderBelowHighlighted,
+  renderEditor,
   marked,
   selected,
   onSelectedChange,
@@ -245,7 +251,7 @@ export function RequestsGrid({
     [view, showIds, tickedSeason, today, links, onTick]
   )
   const renderDetail = useCallback(
-    (row: ApiAidGridRow) => (
+    (row: ApiAidGridRow, nav: AidRowNav) => (
       <RequestDetailLine
         row={row}
         ctx={columnContext(view, today)}
@@ -253,9 +259,10 @@ export function RequestsGrid({
         showConfirmation={tickedSeason}
         onTick={onTick}
         onMarkPosted={onMarkPosted}
+        editor={renderEditor ? (step: ReactNode) => renderEditor(row, nav, step) : undefined}
       />
     ),
-    [view, today, links, tickedSeason, onTick, onMarkPosted]
+    [view, today, links, tickedSeason, onTick, onMarkPosted, renderEditor]
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [
@@ -272,6 +279,7 @@ export function RequestsGrid({
       groupings={groupings}
       defaultGrouping={view.groupBy === null ? undefined : 'reason'}
       csvFilename={csvFilename}
+      csvChip
       csvExtra={
         view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
       }
@@ -281,7 +289,6 @@ export function RequestsGrid({
       highlighted={highlighted}
       onHighlight={onHighlight}
       renderDetail={renderDetail}
-      renderBelowHighlighted={renderBelowHighlighted}
       markedKeys={marked}
       selected={selected}
       onSelectedChange={onSelectedChange}

@@ -200,6 +200,44 @@ describe('AidTable: the opened row and its detail line', () => {
     expect(within(screen.getByRole('table')).getAllByText(/^Detail of/)).toHaveLength(1)
   })
 
+  // Owner fast-follow (10-03, arrangement 3): the editor sits inside the detail line, so the line
+  // is handed the same row moves the editor row was (save-and-move, close).
+  it("hands renderDetail the table's row moves, so an editor inside it can walk and close", async () => {
+    function WithNav() {
+      const [highlighted, setHighlighted] = useState<string | null>(null)
+      return (
+        <MemoryRouter>
+          <AidTable<Row>
+            rows={ROWS}
+            columns={COLUMNS}
+            rowKey={(r) => r.id}
+            csvFilename="x.csv"
+            scrollBox
+            highlighted={highlighted}
+            onHighlight={setHighlighted}
+            renderDetail={(r: Row, nav) => (
+              <span>
+                Detail of {r.camper}
+                <button type="button" onClick={nav.next}>
+                  Next
+                </button>
+                <button type="button" onClick={nav.close}>
+                  Close
+                </button>
+              </span>
+            )}
+          />
+        </MemoryRouter>
+      )
+    }
+    render(<WithNav />)
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByText(/^Detail of Liam Garcia/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(document.querySelector('[data-aid-detail]')).toBeNull()
+  })
+
   it('draws no detail line without renderDetail', async () => {
     render(<Table detail={false} />)
     await userEvent.click(screen.getByText('Liam Garcia'))

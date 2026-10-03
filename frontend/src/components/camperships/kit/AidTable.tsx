@@ -65,11 +65,12 @@ export interface CellContext {
 }
 
 /**
- * Handed to the editor row (Ruling 2026-10-01 (plan review)): while the editor holds focus the
- * table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside the editor row, so a focused Save or
- * Cancel button never lets ↓ unmount the editor with unsaved input), so the editor moves the
- * highlight through these. `highlight` puts it on any row: owner ruling A (2026-10-01) jumps back to
- * a row whose save failed.
+ * Handed to the editor, in the detail line or the row under (Ruling 2026-10-01 (plan review)):
+ * while the editor holds focus the table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside
+ * `data-aid-editor`, so a focused Save or Cancel button never lets ↓ unmount the editor with
+ * unsaved input; the row's next step drawn there, `data-aid-step`, is the table's again), so the
+ * editor moves the highlight through these. `highlight` puts it on any row: owner ruling A
+ * (2026-10-01) jumps back to a row whose save failed.
  */
 export interface AidRowNav {
   readonly next: () => void
@@ -107,7 +108,7 @@ export interface AidColumn<Row> {
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
   readonly searchable?: boolean | undefined
-  /** False leaves the column out of Download CSV: an action column has nothing to export (M16). */
+  /** False leaves the column out of the CSV download: an action column has nothing to export (M16). */
   readonly inCsv?: boolean | undefined
 }
 
@@ -137,20 +138,34 @@ export interface AidTableProps<Row> {
   readonly defaultGrouping?: string | undefined
   readonly urlPrefix?: string | undefined
   readonly csvFilename: string
+  /**
+   * The download as a "⤓ CSV" chip at the end of the toolbar line, the height of the filter chips
+   * beside it and always visible (the Requests grid, owner fast-follow 10-03), instead of the
+   * "Download CSV" button. It does the same download.
+   */
+  readonly csvChip?: boolean | undefined
   readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
+  /**
+   * An editor row under the highlighted one (D22), marked `data-aid-editor`. The Requests grid moved
+   * its editor into `renderDetail` (owner fast-follow 10-03); money's To place (#2990) still uses it.
+   */
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   /**
    * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i): a row
    * straight under the highlighted one, as wide as the box's visible width and stuck at its left,
    * so it wraps and stays put while the rows scroll sideways. Esc closes the row (with `arrowKeys`).
+   * It gets the row moves too, for an editor drawn inside it (the Requests grid, owner fast-follow
+   * 10-03, arrangement 3); mark that editor's element `data-aid-editor` so ↑/↓ stay its own, and
+   * any control drawn inside it that is not the editor's (the row's next step) `data-aid-step`, so
+   * Esc and ↑/↓ stay the table's there.
    */
-  readonly renderDetail?: ((row: Row) => ReactNode) | undefined
+  readonly renderDetail?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
   /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
   readonly toolbarLead?: ReactNode
   /**
-   * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor row's
+   * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor's
    * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
    * and keep the row in its URL. Without them the table keeps the highlight itself.
    */
@@ -199,8 +214,9 @@ const join = (...classes: Array<string | false | undefined>) => classes.filter(B
  * The finance kit's table (§4.3; D18, D20, D24, D25, D28, D29, D31; round7.html): sortable by
  * every column and searchable (names and CampMinder ids), sort and grouping in the URL,
  * identity columns pinned while the money scrolls under them, one flexible column, a footer of
- * totals that each open their rows, a highlighted row (click, or ↑/↓) with the editor row under
- * it, and "Download CSV" of exactly what is on screen. It renders rows it was given (D21).
+ * totals that each open their rows, a highlighted row (click, or ↑/↓) with its detail line (and
+ * the editor in it) or an editor row under it, and a CSV download (the "Download CSV" button, or
+ * the "⤓ CSV" chip) of exactly what is on screen. It renders rows it was given (D21).
  */
 export function AidTable<Row>({
   rows,
@@ -211,6 +227,7 @@ export function AidTable<Row>({
   defaultGrouping,
   urlPrefix = '',
   csvFilename,
+  csvChip = false,
   csvExtra,
   onOpenTotal,
   renderBelowHighlighted,
@@ -337,8 +354,13 @@ export function AidTable<Row>({
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && !escape) return
       // Not while a field (the search box, the editor) owns the key, a modifier is held, a modal is
       // open, or the key was already handled, held down or part of an IME composition (isPageKey).
-      // Nor while focus is anywhere in the editor row (a Save button is not a typing target).
-      if (event.target instanceof Element && event.target.closest('[data-aid-editor]') !== null)
+      // Nor while focus is anywhere in the editor (a Save button is not a typing target), except on
+      // a control drawn there that is not the editor's own, the row's next step (scan K1, #3000).
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[data-aid-editor]') !== null &&
+        event.target.closest('[data-aid-step]') === null
+      )
         return
       if (!isPageKey(event)) return
       // Esc closes the opened row (batch 4); an open tooltip or modal takes it first (isPageKey).
@@ -573,10 +595,18 @@ export function AidTable<Row>({
             ))}
           </div>
         )}
-        <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
-          <Download className="h-4 w-4" />
-          Download CSV
-        </button>
+        {csvChip ? (
+          <span className={`${GROUP} ml-auto`}>
+            <button type="button" className={GROUP_BUTTON_OFF} onClick={download}>
+              ⤓ CSV
+            </button>
+          </span>
+        ) : (
+          <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
+            <Download className="h-4 w-4" />
+            Download CSV
+          </button>
+        )}
       </div>
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
@@ -728,7 +758,7 @@ export function AidTable<Row>({
                               className={DETAIL_LINE}
                               style={boxWidth > 0 ? { width: boxWidth } : undefined}
                             >
-                              {renderDetail(row)}
+                              {renderDetail(row, nav)}
                             </div>
                           </td>
                         </tr>

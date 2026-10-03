@@ -102,7 +102,7 @@ function Back() {
   )
 }
 
-/** The grid's one toolbar line: the filters, search and Download CSV (owner, 2026-10-02). */
+/** The grid's one toolbar line: the filters, search and the ⤓ CSV chip (owner, 2026-10-02; 10-03). */
 const toolbar = () => screen.getByLabelText('Search').closest('[data-aid-toolbar]') as HTMLElement
 
 function renderAt(path: string) {
@@ -296,28 +296,40 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByText(/isn't rebuilt for a past date/)).toBeInTheDocument()
   })
 
-  it('narrows to a round and a checklist state, kept in the URL (Decision 9)', async () => {
+  // Owner ruling (fast-follow, 10-03): the checklist chips are gone under D162 (no Posted ticks).
+  // Was: "narrows to a round and a checklist state", clicking Accepted to write `tick=accepted`.
+  it('narrows to a round, kept in the URL (Decision 9)', async () => {
     renderAt('/aid/requests')
-    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Accepted' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('tick=accepted')
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'R2' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('round=2')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
-    await userEvent.click(within(toolbar()).getByRole('button', { name: 'R2' }))
-    expect(screen.queryByText('Olivia Chen')).toBeNull()
   })
 
-  it('puts Program, the chips, Show IDs, search and Download CSV on one toolbar line', () => {
+  it('ignores an old tick= link: it narrows nothing and no link carries it on', async () => {
+    renderAt('/aid/requests?tick=accepted')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(within(toolbar()).queryByRole('button', { name: 'Accepted' })).toBeNull()
+    await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
+    expect(screen.getByTestId('where')).not.toHaveTextContent('tick=')
+  })
+
+  // Owner (fast-follow, 10-03): the ⤓ CSV chip ends the line, replacing Download CSV. Was: "…search
+  // and Download CSV on one toolbar line", with the Posted chip and the Download CSV button.
+  it('puts Program, the Round chips, Show IDs, search and the ⤓ CSV chip on one toolbar line', () => {
     renderAt('/aid/requests')
     const line = toolbar()
     expect(line).not.toBeNull()
     for (const el of [
       screen.getByLabelText('Program'),
       within(line).getByRole('button', { name: 'R1' }),
-      within(line).getByRole('button', { name: 'Posted' }),
       screen.getByLabelText('Show IDs'),
-      screen.getByRole('button', { name: 'Download CSV' }),
+      screen.getByRole('button', { name: '⤓ CSV' }),
     ])
       expect(line).toContainElement(el)
+    expect(line.lastElementChild).toContainElement(screen.getByRole('button', { name: '⤓ CSV' }))
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
   })
 
   it('carries the filters to the household page, so the walk and Back keep them (M5)', async () => {
@@ -485,12 +497,25 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1200')
   })
 
-  it("says why where an appeal can't be keyed yet", async () => {
+  // Owner fast-follow (a), 10-03: the refusal shows only once someone tries to type on the row.
+  // Was: shown as soon as the row opened.
+  it("says why where an appeal can't be keyed yet, once someone tries to type on the row", async () => {
     renderAt('/aid/requests')
     await userEvent.click(sessionCell('Emma Johnson'))
+    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+    expect(screen.queryByText(APPEAL_REFUSAL_R1)).toBeNull()
+    await userEvent.keyboard('1')
     // The row's own `appeal_refusal` (#2997), drawn as the server sent it.
     expect(screen.getByText(APPEAL_REFUSAL_R1)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+  })
+
+  it('opens the editor inside the detail line, beside its text, with no household caption of its own', async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(sessionCell('Olivia Chen'))
+    const detail = document.querySelector('[data-aid-detail]') as HTMLElement
+    expect(detail).toContainElement(screen.getByLabelText('Round 2 ask'))
+    expect(within(detail).queryByText(/· household 1000005/)).toBeNull()
+    expect(within(detail).getAllByRole('link', { name: /^Household 1000005/ })).toHaveLength(1)
   })
 
   it('saves an appeal with ↓, dated today, and moves on at once (ruling A)', async () => {
