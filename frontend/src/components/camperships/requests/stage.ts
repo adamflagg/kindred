@@ -1,8 +1,8 @@
 /**
- * A request's stage, derived from its rounds (§6.1; SP10a: stage is derived, not stored). Each round
- * has one state; the words are the server's (slice 1 Decision 6).
+ * A request's stage (§6.1; SP10a: stage is derived, not stored): the server derives it (#2996) and
+ * sends it on the row; the words are the server's (slice 1 Decision 6).
  */
-import type { ApiAidGridRow, ApiAidRound } from '../../../types/api-types'
+import type { ApiAidGridRow, ApiAidRound, ApiAidRowStage } from '../../../types/api-types'
 import type { PillTone } from '../kit/kitStyles'
 
 /**
@@ -45,12 +45,20 @@ export function roundTone(round: ApiAidRound): PillTone {
   return ROUND_TONE[round.round] ?? 'muted'
 }
 
-/** The grid's Stage: "R2 · Needs an offer", "R1 · Accepted", or "Cancelled". */
-export function requestStage(row: Pick<ApiAidGridRow, 'rounds' | 'cancellation'>): Stage | null {
-  if (row.cancellation) return { text: 'Cancelled', tone: 'stone' }
-  const round = latestRound(row)
-  if (round === undefined) return null
-  const words =
-    round.status === 'posted' && round.accepted ? 'Accepted' : ROUND_STATUS_WORDS[round.status]
-  return { text: `R${String(round.round)} · ${words}`, tone: roundTone(round) }
+/** §4.5's tone for the server's stage code: on hold red, accepted emerald, cancelled stone, else the round's. */
+function stageTone(stage: ApiAidRowStage): PillTone {
+  if (stage.code === 'held') return 'red'
+  if (stage.code === 'accepted') return 'emerald'
+  if (stage.code === 'cancelled') return 'stone'
+  return stage.round === null ? 'muted' : (ROUND_TONE[stage.round] ?? 'muted')
+}
+
+/**
+ * The Stage ("R2 · Needs an offer", "R1 · Accepted", "Cancelled"): the server's `stage` (#2996), its
+ * label drawn as sent and its code choosing the tone. The server derives it once for the grid and
+ * the household page (a C1 round, in CampMinder in full but not yet ticked, reads Posted).
+ */
+export function requestStage(row: Pick<ApiAidGridRow, 'stage'>): Stage | null {
+  const stage = row.stage
+  return stage ? { text: stage.label, tone: stageTone(stage) } : null
 }

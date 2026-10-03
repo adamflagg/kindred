@@ -48,9 +48,11 @@ import type {
   RemainingResponse,
   RequestsGridResponse,
   RoundOut,
+  RowStageOut,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
+  UntickedMoneyOut,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -105,6 +107,10 @@ export type ApiPermissionScreen = PermissionScreen
 export type ApiAidGrid = RequestsGridResponse
 export type ApiAidGridRow = GridRowOut
 export type ApiAidRound = RoundOut
+/** A row's Stage, the server's (#2996; one source with the household page). */
+export type ApiAidRowStage = RowStageOut
+/** A round CampMinder holds money for with no Posted tick, and why (#2996, D162). */
+export type ApiAidUnticked = UntickedMoneyOut
 /** A Requests view a row is in (#2924's `QueueOut`). */
 export type ApiAidQueue = NonNullable<GridRowOut['queues']>[number]
 /** A request's confirmation state (D59) and its cancellation (D101). Mirror Python's models (M4). */

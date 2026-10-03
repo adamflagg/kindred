@@ -58,6 +58,7 @@ export function gridRow(over: Partial<ApiAidGridRow> = {}): ApiAidGridRow {
     tier: 4,
     cost: 6760,
     rounds: [roundOut(1, 'needs_offer', { ask: 2000, decided: 1420 })],
+    stage: { round: 1, code: 'needs_offer', label: 'R1 · Needs an offer' },
     total_decided: 1420,
     total_posted: null,
     holds: [],
@@ -77,6 +78,7 @@ export const ROW_EMMA = gridRow()
 
 /** Round 1 posted Mar 9, not accepted; CampMinder shows $210 less. */
 export const ROW_SAMUEL = gridRow({
+  stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
   request_id: 'reqsamuel000005',
   person_cm_id: 1000010,
   camper_name: 'Samuel Johnson',
@@ -100,6 +102,7 @@ export const ROW_SAMUEL = gridRow({
 
 /** On hold: placeholder income. */
 export const ROW_LIAM = gridRow({
+  stage: { round: 1, code: 'held', label: 'R1 · On hold' },
   request_id: 'reqliam00000002',
   household_cm_id: 1000003,
   family_name: 'The Garcia Family',
@@ -122,6 +125,7 @@ export const ROW_LIAM = gridRow({
 
 /** Round 1 posted and accepted; an appeal keyed, Round 2 needs an offer. Quest, pool B. */
 export const ROW_OLIVIA = gridRow({
+  stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
   request_id: 'reqolivia000003',
   household_cm_id: 1000005,
   family_name: 'The Chen Family',
@@ -151,6 +155,7 @@ export const ROW_OLIVIA = gridRow({
 
 /** CampMinder cancelled the enrollment with aid still live, and no reason recorded. */
 export const ROW_RILEY = gridRow({
+  stage: { round: null, code: 'cancelled', label: 'Cancelled' },
   request_id: 'reqriley0000004',
   household_cm_id: 1000007,
   family_name: 'The Sam Family',
