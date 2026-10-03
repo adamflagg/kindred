@@ -4,12 +4,14 @@
  * `fetchWithAuth` from `useApiWithAuth()`.
  */
 import type {
+  ApiAidAcceptedIn,
   ApiAidApprovedRules,
   ApiAidAskIn,
   ApiAidDefinitions,
   ApiAidGrid,
   ApiAidJumpIndex,
   ApiAidPreview,
+  ApiAidPostedIn,
   ApiAidPreviewIn,
   ApiAidRemaining,
   ApiAidWriteOut,
@@ -215,5 +217,35 @@ export function keyAidAsk(
     `${BASE}/requests/${requestId}/asks`,
     body,
     "Couldn't save the ask"
+  )
+}
+
+/** Tick Posted on these rounds, each at the decided amount confirmed (D51, D52). All or nothing: a moved amount is a 409. */
+export function tickAidPosted(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidPostedIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/decisions/${String(year)}/posted`,
+    body,
+    "Couldn't tick Posted"
+  )
+}
+
+/** Tick (or untick) Accepted on these rounds (D47). All or nothing. */
+export function tickAidAccepted(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidAcceptedIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/decisions/${String(year)}/accepted`,
+    body,
+    "Couldn't tick Accepted"
   )
 }

@@ -555,3 +555,43 @@ describe('Not reconciled groups for money with no Posted tick (#2996)', () => {
     })
   })
 })
+
+describe('the Tick column (Decision 8, 15)', () => {
+  it('shows only for someone who can tick, and only on Waiting on the family (Posted is not ticked here)', () => {
+    expect(viewColumns(requestView('needs-offer'), false, true, true)).not.toContain('tick')
+    expect(viewColumns(requestView('waiting'), false, true, true)).toContain('tick')
+    expect(viewColumns(requestView('waiting'), false, true, false)).not.toContain('tick')
+    expect(viewColumns(requestView('all'), false, true, true)).not.toContain('tick')
+  })
+
+  it('stays out of Download CSV: a button has nothing to export (M16; build ruling 3)', () => {
+    expect(GRID_COLUMNS.tick.inCsv).toBe(false)
+  })
+})
+
+describe("Needs an offer's new total (⚠ Decision 40, ruled)", () => {
+  const CTX = { view: 'needs_offer', today: '2027-04-01' } as const
+
+  it("shows the request's new total beside a Round 2 or 3 amount, and nothing on a Round 1 row", () => {
+    expect(viewColumns(requestView('needs-offer'), false, true, true)).toEqual(
+      expect.arrayContaining(['decided', 'newTotal'])
+    )
+    expect(GRID_COLUMNS.newTotal.value(ROW_OLIVIA, CTX)).toBe(2200)
+    expect(GRID_COLUMNS.newTotal.value(ROW_EMMA, CTX)).toBeNull()
+  })
+
+  // Owner ruling 2026-10-02: New total includes clawed-back rounds (a reversal mid-appeal before the
+  // repost syncs). CampMinder then holds $0 for the request, so the figure to type is R1 + R2, which
+  // is the server's total_decided as it stands.
+  it("includes a clawed-back Round 1 in the new total: it is the server's total_decided", () => {
+    const reversed = gridRow({
+      request_id: 'reqreversed0001',
+      rounds: [
+        roundOut(1, 'posted', { decided: 1000, posted: 1000, clawed_back: true }),
+        roundOut(2, 'needs_offer', { decided: 500 }),
+      ],
+      total_decided: 1500,
+    })
+    expect(GRID_COLUMNS.newTotal.value(reversed, CTX)).toBe(1500)
+  })
+})

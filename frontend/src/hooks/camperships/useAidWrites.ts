@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { keyAidAsk } from '../../services/camperships/aidApi'
+import { keyAidAsk, tickAidAccepted, tickAidPosted } from '../../services/camperships/aidApi'
 import type { FetchWithAuth } from '../../services/lodgingApi'
-import type { ApiAidAskIn } from '../../types/api-types'
+import type { ApiAidAcceptedIn, ApiAidAskIn, ApiAidPostedIn } from '../../types/api-types'
 import { invalidateAidMoneyQueries } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 
@@ -34,5 +34,29 @@ export interface AskVars {
 export function useAidKeyAsk() {
   return useAidWrite((fetchWithAuth, vars: AskVars) =>
     keyAidAsk(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+export interface PostedVars {
+  readonly year: number
+  readonly body: ApiAidPostedIn
+}
+
+/** The Posted tick, one row or many (§4.10; D51, D52). */
+export function useAidTickPosted() {
+  return useAidWrite((fetchWithAuth, vars: PostedVars) =>
+    tickAidPosted(fetchWithAuth, vars.year, vars.body)
+  )
+}
+
+export interface AcceptedVars {
+  readonly year: number
+  readonly body: ApiAidAcceptedIn
+}
+
+/** The Accepted tick, one row or many (§5.2; D47). */
+export function useAidTickAccepted() {
+  return useAidWrite((fetchWithAuth, vars: AcceptedVars) =>
+    tickAidAccepted(fetchWithAuth, vars.year, vars.body)
   )
 }

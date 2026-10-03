@@ -84,14 +84,19 @@ export function waitingSince(row: Pick<ApiAidGridRow, 'rounds'>): string | null 
 }
 
 /**
- * The opened row's next step (batch 4). #2943 has no writers, so a step is a link to where it is
- * done today (the household page, at its income section or at the request's card), or plain words
- * where nothing can be done in Kindred. The labels are round 6's mock (grid-layout-options.html
- * nextAction), owner-APPROVED in title case (10-03); plain-words steps stay sentence case.
+ * The opened row's next step (batch 4): a link to where it is done (the household page, at its
+ * income section or at the request's card), or plain words where nothing can be done in Kindred.
+ * The labels are round 6's mock (grid-layout-options.html nextAction), owner-APPROVED in title case
+ * (10-03); plain-words steps stay sentence case. Two kinds are buttons, both of writes the grid
+ * already has (#2951, no new write path): `tick` is the row's own Accepted tick, and `markPosted`
+ * is the hand Posted tick for one round (#2996), built from an `unticked[]` entry the server marks
+ * `mark_posted`.
  */
 export type NextStep =
   | { readonly kind: 'link'; readonly label: string; readonly at: 'income' | 'request' }
   | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'tick'; readonly label: string }
+  | { readonly kind: 'markPosted'; readonly label: string; readonly round: number }
 
 const toRequest = (label: string): NextStep => ({ kind: 'link', label, at: 'request' })
 const say = (text: string): NextStep => ({ kind: 'text', text })
@@ -104,8 +109,10 @@ export interface GridAttention {
   /** The Requests view this item belongs to; null for a note that has none. */
   readonly queue: ApiAidQueue | null
   /**
-   * Its next step for the detail line. Null where the mock's step is a tick or the editor (a
-   * button): #2943 has none, and #2951 (ticks) / #2948 (editor) add them.
+   * Its next step for the detail line. Null only where the mock's step is a button the grid can't
+   * do: "Edit the Award" (owner decision: #2948's editor keys only the Round 2 ask). The hand
+   * "Mark Posted" is a `markPosted` step on a Not reconciled row whose `unticked[]` entry says
+   * `mark_posted`; other unticked entries have no step.
    */
   readonly next: NextStep | null
 }
@@ -122,7 +129,8 @@ const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   manual_hold: toRequest('Release the Hold…'),
   unmatched_session: PICK_SESSION,
   duplicate_survivor_withdrawn: KEEP_ONE,
-  // The editor's "Edit the award" (#2948) and the Posted tick (#2951).
+  // "Edit the Award" (an owner decision: it needs an award editor): no step. The hand "Mark Posted"
+  // is not here: it rides `unticked[].mark_posted`, so `in_campminder_not_ticked` stays null.
   award_above_cost: null,
   in_campminder_not_ticked: null,
 }
@@ -167,6 +175,8 @@ const note = (
 })
 
 const CHECK_POSTING = toRequest('Check the Posting')
+/** The mock's "Tick Accepted": the row's own Accepted tick (owner, title case). */
+const TICK_ACCEPTED: NextStep = { kind: 'tick', label: 'Tick Accepted' }
 
 function reconciliation(row: ApiAidGridRow): GridAttention | null {
   const c = row.confirmation
@@ -287,9 +297,17 @@ export function attentionItems(
   const reconcile = reconciliation(row)
   if (reconcile !== null) items.push(reconcile)
   // #2996 direction (b): CampMinder holds money for a round the overnight tick refused. Why, as the
-  // server says it: the pill (`label`) and a whole sentence (`message`). Mark Posted is #2951's.
+  // server says it: the pill (`label`) and a whole sentence (`message`). Where the server says a hand
+  // tick is the way through (`mark_posted`), the step is Mark Posted on that round (owner, title case).
   for (const money of row.unticked ?? []) {
-    items.push(note(money.label, money.message, 'not_reconciled', null))
+    items.push(
+      note(
+        money.label,
+        money.message,
+        'not_reconciled',
+        money.mark_posted ? { kind: 'markPosted', label: 'Mark Posted', round: money.round } : null
+      )
+    )
   }
   if (row.queues?.includes('waiting_on_family') ?? false) {
     // A C1 round (#2996, `cm_pending`) waits before tonight's tick gives it a posting date: no count.
@@ -302,8 +320,7 @@ export function attentionItems(
           : `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
         "The family hasn't replied: follow up, then tick Accepted.",
         'waiting_on_family',
-        // The mock's "Tick Accepted" is the Accepted tick (#2951).
-        null
+        TICK_ACCEPTED
       )
     )
   }

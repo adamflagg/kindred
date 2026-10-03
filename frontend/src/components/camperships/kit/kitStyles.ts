@@ -99,6 +99,10 @@ export const GROUP_ROW =
 export const DETAIL_ROW = `${ROW_HIGHLIGHT} overflow-visible border-b border-amber-300 px-0 py-1.5 dark:border-amber-800`
 /** The line itself: stuck at the box's left, as wide as the box (set inline), wrapping. */
 export const DETAIL_LINE = 'sticky left-0 box-border px-3 whitespace-normal'
+
+/** A row's own tick (the Tick column, and the detail line's Tick Accepted). */
+export const TICK_BUTTON =
+  'border-border hover:bg-muted rounded border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap'
 /** The editor row under the highlighted row (D22). */
 export const EDITOR_ROW = 'bg-forest-50 dark:bg-forest-900 border-border border-b px-3 py-2.5'
 export const TOTAL_BUTTON = 'tabular-nums hover:underline'

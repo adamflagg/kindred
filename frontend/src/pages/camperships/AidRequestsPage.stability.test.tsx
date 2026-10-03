@@ -38,7 +38,11 @@ vi.mock('../../hooks/usePermissions', () => ({
 }))
 // One mutation function for the whole file, as react-query's own is stable.
 const mutateAsync = vi.fn()
-vi.mock('../../hooks/camperships/useAidWrites', () => ({ useAidKeyAsk: () => ({ mutateAsync }) }))
+vi.mock('../../hooks/camperships/useAidWrites', () => ({
+  useAidKeyAsk: () => ({ mutateAsync }),
+  useAidTickAccepted: () => ({ mutateAsync, isPending: false }),
+  useAidTickPosted: () => ({ mutateAsync, isPending: false }),
+}))
 
 function Where() {
   const { search } = useLocation()

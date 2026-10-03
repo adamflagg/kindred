@@ -9,6 +9,8 @@ import type { AidRowNav } from '../../components/camperships/kit/AidTable'
 import { campToday } from '../../components/camperships/kit/dates'
 import type { EditorSave } from '../../components/camperships/kit/RequestEditor'
 import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
+import { BulkBar, type TickResult } from '../../components/camperships/requests/BulkBar'
+import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
 import { GridFiltersBar } from '../../components/camperships/requests/GridFiltersBar'
 import {
@@ -23,6 +25,13 @@ import {
   stripCsvName,
   type RequestLens,
 } from '../../components/camperships/requests/strip'
+import {
+  hiddenTicks,
+  tickedLine,
+  tickPlan,
+  type TickAction,
+  type TickPlan,
+} from '../../components/camperships/requests/ticks'
 import {
   useGridParams,
   type GridParamName,
@@ -39,10 +48,10 @@ import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
-import { useAidKeyAsk } from '../../hooks/camperships/useAidWrites'
+import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
-import type { ApiAidGridRow } from '../../types/api-types'
+import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
 
 /**
  * `/aid/requests` (§6.1, §6.2): the spine. One read, every view filtered from it in memory (D21,
@@ -123,6 +132,16 @@ export default function AidRequestsPage() {
   // Casework edits a live read only: a past date shows what was, not what can change.
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && live
   const { mutateAsync: keyAsk } = useAidKeyAsk()
+  // The hand Posted tick (#2996): the existing Posted write, one round at its decided amount.
+  const { mutateAsync: tickPosted } = useAidTickPosted()
+  const markPosted = useCallback(
+    (r: ApiAidGridRow, round: number, amount: number) => {
+      if (round !== 1 && round !== 2 && round !== 3)
+        return Promise.reject(new Error('No such round'))
+      return tickPosted({ year, body: { rows: [{ request_id: r.request_id, round, amount }] } })
+    },
+    [tickPosted, year]
+  )
   const save = useCallback(
     (requestId: string, entry: EditorSave) =>
       keyAsk({
@@ -150,6 +169,91 @@ export default function AidRequestsPage() {
     },
     [canWork, leave, onHighlight]
   )
+  // Bulk ticks (§4.10). Ticks persist across a search, a view and a filter (owner ruling
+  // 2026-10-02): the selection is request ids, and what a tick does is chosen at the bar, not by the
+  // view, so a row ticked anywhere means the same thing everywhere.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [plan, setPlan] = useState<TickPlan | null>(null)
+  const [result, setResult] = useState<TickResult | null>(null)
+  // The rows the table's search matches, told by the table (it owns the search); null until it has.
+  const [matching, setMatching] = useState<ReadonlySet<string> | null>(null)
+  const onMatchingChange = useCallback(
+    (keys: ReadonlySet<string>) =>
+      setMatching((prev) =>
+        prev !== null && prev.size === keys.size && [...keys].every((k) => prev.has(k))
+          ? prev
+          : keys
+      ),
+    []
+  )
+  // Every ticked row the read still has, on screen or not.
+  const selectedRows = useMemo(
+    () => (rows ? rows.filter((r) => selected.has(r.request_id)) : []),
+    [rows, selected]
+  )
+  // Ticked, but not on screen: the search, the view or a filter hides it.
+  const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
+  const hiddenKeys = useMemo(
+    () =>
+      hiddenTicks(
+        selectedRows.map((r) => r.request_id),
+        matching,
+        visibleKeys
+      ),
+    [selectedRows, matching, visibleKeys]
+  )
+  // A tick leaves through the walk's save-first exit like every page-owned exit (Decision 4; F2-4):
+  // a typed ask on the row is saved first, a failed save opens nothing. The plan is then built in the
+  // next render from the rows as they stand after that save, never from the click's stale closure.
+  const [tickRequest, setTickRequest] = useState<{
+    keys: readonly string[]
+    action: TickAction
+  } | null>(null)
+  const startTick = useCallback(
+    (keys: readonly string[], action: TickAction) =>
+      leaveThen(null, () => {
+        setResult(null)
+        setTickRequest({ keys, action })
+      }),
+    [leaveThen]
+  )
+  if (tickRequest !== null) {
+    const asked = new Set(tickRequest.keys)
+    setTickRequest(null)
+    setPlan(
+      tickPlan(
+        (rows ?? []).filter((r) => asked.has(r.request_id)),
+        tickRequest.action,
+        new Set([...asked].filter((k) => hiddenKeys.has(k)))
+      )
+    )
+  }
+  const onTick = useCallback(
+    (r: ApiAidGridRow, action: TickAction) => startTick([r.request_id], action),
+    [startTick]
+  )
+  // A checkbox is an exit like ↓ and a filter (A18): what is typed on the open row is saved first,
+  // then the selection changes. A failed save keeps the person here and leaves the box as it was.
+  const changeSelected = useCallback(
+    (next: ReadonlySet<string>) => leaveThen(null, () => setSelected(next)),
+    [leaveThen]
+  )
+  const closePlan = useCallback(() => setPlan(null), [])
+  const tickDone = useCallback(
+    (words: string, out: ApiAidWriteOut) => {
+      // Only the rows this tick wrote leave the selection: the person may have changed it while
+      // the write was in flight, and a row that had nothing to tick stays selected.
+      const ticked = new Set((plan?.rows ?? []).map((r) => r.requestId))
+      setSelected((current) => new Set([...current].filter((key) => !ticked.has(key))))
+      setResult({
+        words,
+        lines: (plan?.rows ?? []).map(tickedLine),
+        someAlreadyTicked: out.unchanged > 0,
+      })
+      setPlan(null)
+    },
+    [plan]
+  )
   const changeFilter = useCallback(
     (name: GridParamName, value: string | null) => leaveThen(null, () => setParam(name, value)),
     [leaveThen, setParam]
@@ -163,7 +267,6 @@ export default function AidRequestsPage() {
     (href: string) => leaveThen(null, () => void navigate(href)),
     [leaveThen, navigate]
   )
-  const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
   const byKey = useMemo(() => new Map((rows ?? []).map((r) => [r.request_id, r] as const)), [rows])
   // "Go back" (Decision 3): a click on that row (ruling B). A row the view or a filter hides is
   // brought back on All (no `view` param: All is its absence) with no filters first (the PR 1 final review: `keep` would leave it hidden).
@@ -312,6 +415,23 @@ export default function AidRequestsPage() {
           </p>
         )
       })}
+      {canWork && (
+        <BulkBar
+          count={selectedRows.length}
+          hidden={hiddenKeys.size}
+          onTick={(action) =>
+            startTick(
+              selectedRows.map((r) => r.request_id),
+              action
+            )
+          }
+          onClear={() => setSelected(new Set())}
+          result={result}
+        />
+      )}
+      {canWork && (
+        <BulkConfirmDialog plan={plan} year={year} onClose={closePlan} onDone={tickDone} />
+      )}
       <QueryGuard
         isLoading={grid.isLoading}
         // Decision 33: a failed background refetch keeps what loaded.
@@ -350,6 +470,11 @@ export default function AidRequestsPage() {
               }
               links={links}
               filters={filtersBar}
+              selected={canWork ? selected : undefined}
+              onSelectedChange={canWork ? changeSelected : undefined}
+              onMatchingChange={canWork ? onMatchingChange : undefined}
+              onTick={canWork ? onTick : undefined}
+              onMarkPosted={canWork ? markPosted : undefined}
             />
           )
         }

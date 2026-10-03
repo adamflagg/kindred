@@ -1,7 +1,14 @@
+import { useState, type ReactNode } from 'react'
+
+import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidGridRow } from '../../../types/api-types'
+import { TICK_BUTTON } from '../kit/kitStyles'
+import { formatMoney } from '../kit/money'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
+import { roundOf } from './stage'
+import { acceptedTarget, nameOf, type TickAction } from './ticks'
 import { cmDetail, type ColumnContext } from './views'
 
 const LINK = 'text-primary font-medium hover:underline'
@@ -11,28 +18,167 @@ const MUTED = 'text-muted-foreground'
 const hashOf = (step: Extract<NextStep, { kind: 'link' }>, row: ApiAidGridRow) =>
   step.at === 'income' ? 'income' : `request-${row.request_id}`
 
+/** The hand Posted write (#2996): resolves once written, rejects with the server's refusal. */
+export type MarkPosted = (row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>
+
+/**
+ * "Mark Posted · locks $X" (#2996 hand tick, the existing Posted write): the label is the
+ * confirmation, as the household page's. A refusal says the server's sentence beside it, naming
+ * the row, not the request id the server prefixes it with. A withheld round's decided_now is what
+ * the tick WOULD lock, so refreshing and marking it posted again can only be refused again: a 409
+ * that names a different amount offers it (#2981).
+ */
+function MarkPostedStep({
+  row,
+  round,
+  amount,
+  label,
+  onMarkPosted,
+}: {
+  row: ApiAidGridRow
+  round: number
+  amount: number
+  label: string
+  onMarkPosted: MarkPosted
+}) {
+  const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [offer, setOffer] = useState<number | null>(null)
+  // A refusal belongs to the round and amount it was made on: a change under it clears it.
+  const stepKey = `${String(round)}:${String(amount)}`
+  const [seenKey, setSeenKey] = useState(stepKey)
+  if (seenKey !== stepKey) {
+    setSeenKey(stepKey)
+    setRefusal(null)
+    setOffer(null)
+  }
+  const mark = (at: number) => {
+    setBusy(true)
+    setRefusal(null)
+    setOffer(null)
+    onMarkPosted(row, round, at).then(
+      () => setBusy(false),
+      (error: unknown) => {
+        setBusy(false)
+        const text = error instanceof Error ? error.message : String(error)
+        setRefusal(text.replaceAll(row.request_id, nameOf(row)))
+        if (error instanceof AidWriteError && error.status === 409) {
+          const moved = error.rows.find((r) => r.request_id === row.request_id && r.round === round)
+          if (moved?.decided_now != null && moved.decided_now !== at) setOffer(moved.decided_now)
+        }
+      }
+    )
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {refusal !== null && (
+        <span className="text-amber-700 dark:text-amber-400">{`Couldn't mark it posted: ${refusal}`}</span>
+      )}
+      <button
+        type="button"
+        className={TICK_BUTTON}
+        disabled={busy}
+        onClick={(event) => {
+          event.stopPropagation()
+          mark(amount)
+        }}
+      >
+        {`${label} · locks ${formatMoney(amount)}`}
+      </button>
+      {offer !== null && (
+        <button
+          type="button"
+          className={TICK_BUTTON}
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation()
+            mark(offer)
+          }}
+        >
+          {`${label} at ${formatMoney(offer)}`}
+        </button>
+      )}
+    </span>
+  )
+}
+
+function stepOf(
+  next: NextStep | null,
+  row: ApiAidGridRow,
+  links: HouseholdLinks,
+  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined,
+  onMarkPosted: MarkPosted | undefined
+): ReactNode {
+  if (next === null) return null
+  if (next.kind === 'markPosted') {
+    // Only for someone who can tick, and a round with a decided amount to lock.
+    const amount = roundOf(row, next.round)?.decided ?? null
+    if (onMarkPosted === undefined || amount === null) return null
+    return (
+      <MarkPostedStep
+        row={row}
+        round={next.round}
+        amount={amount}
+        label={next.label}
+        onMarkPosted={onMarkPosted}
+      />
+    )
+  }
+  if (next.kind === 'link') {
+    return (
+      <HouseholdLink row={row} links={links} className={LINK} hash={hashOf(next, row)}>
+        {next.label} ›
+      </HouseholdLink>
+    )
+  }
+  if (next.kind === 'text') return <span className={MUTED}>{next.text}</span>
+  // The row's own Accepted tick, the same one its Tick column does (no new write path); nothing
+  // when the viewer can't tick or the server would refuse it (cancelled in Kindred, review M3).
+  if (onTick === undefined || acceptedTarget(row) === null) return null
+  return (
+    <button
+      type="button"
+      className={TICK_BUTTON}
+      onClick={(event) => {
+        event.stopPropagation()
+        onTick(row, 'accepted')
+      }}
+    >
+      {next.label}
+    </button>
+  )
+}
+
 /**
  * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6): the
  * chip and the full needs-attention text (attention.ts's, the server's own message for a check or
  * hold), Requested by (T3: the name only, "—" when the server can't name one), the household
- * link, CM ✓ in full, and the next step on the right. #2943 has no writers, so the step is a link to where it is done today or
- * plain words, never a button; a tick or the editor (#2951, #2948) draws nothing yet.
+ * link, CM ✓ in full, and the next step on the right: a link to where it is done today, plain
+ * words, or (Full GO) a button for the row's own Accepted tick, drawn only for someone who can tick
+ * and a row the tick takes.
  */
 export function RequestDetailLine({
   row,
   ctx,
   links,
   showConfirmation,
+  onTick,
+  onMarkPosted,
 }: {
   row: ApiAidGridRow
   ctx: ColumnContext
   links: HouseholdLinks
   /** From the first ticked season, as the CM ✓ column. */
   showConfirmation: boolean
+  /** The grid's own row tick (casework on a live read); without it a tick step draws nothing. */
+  onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
+  /** The hand Posted tick (#2996; casework on a live read); without it Mark Posted draws nothing. */
+  onMarkPosted?: MarkPosted | undefined
 }) {
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
   const next = found === null ? OPEN_REQUEST : found.next
   const confirmation = showConfirmation ? cmDetail(row) : null
+  const step = stepOf(next, row, links, onTick, onMarkPosted)
   return (
     <div className="flex flex-col gap-1 text-sm">
       <div>
@@ -59,17 +205,7 @@ export function RequestDetailLine({
             <span>{confirmation}</span>
           </>
         )}
-        {next !== null && (
-          <span className="ml-auto pl-3">
-            {next.kind === 'link' ? (
-              <HouseholdLink row={row} links={links} className={LINK} hash={hashOf(next, row)}>
-                {next.label} ›
-              </HouseholdLink>
-            ) : (
-              <span className={MUTED}>{next.text}</span>
-            )}
-          </span>
-        )}
+        {step !== null && <span className="ml-auto pl-3">{step}</span>}
       </div>
     </div>
   )

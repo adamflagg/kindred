@@ -40,7 +40,9 @@ export type GridColumnKey =
   | 'confirmed'
   | 'round'
   | 'decided'
+  | 'newTotal'
   | 'daysWaiting'
+  | 'tick'
   | 'cancelledOn'
   | 'daysSinceCancelled'
   | 'attention'
@@ -85,7 +87,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'needs-offer',
     label: 'Needs an offer',
     groupBy: 'round',
-    columns: ['session', 'stage', 'round', 'decided', 'attention'],
+    columns: ['session', 'stage', 'round', 'decided', 'newTotal', 'attention'],
   },
   {
     key: 'holds',
@@ -106,7 +108,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'waiting',
     label: 'Waiting on the family',
     groupBy: 'one',
-    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'attention'],
+    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'tick', 'attention'],
   },
   {
     key: 'appeals',
@@ -180,6 +182,8 @@ export interface GridColumnSpec {
   readonly fitContent?: FitContent
   /** A money column: the footer totals it, and the CSV writes it through moneyCsv. */
   readonly money?: true
+  /** True: still money in the cell and the CSV, but the footer shows no total (no ruled figure to sum). */
+  readonly noTotal?: true
   /** False keeps an action column out of the CSV (M16). */
   readonly inCsv?: false
   /** What the header says on hover and on click; the header then does not sort. */
@@ -438,6 +442,19 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     money: true,
     value: (r, { view }) => viewRound(r, view)?.decided ?? null,
   },
+  // ⚠ Decision 40 (owner approved): under reverse-and-repost, what is typed into CampMinder for an
+  // appeal is the request's new total, so it sits beside the round's own amount on Round 2/3 rows.
+  // It is the server's `total_decided` as it stands, clawed-back rounds included (owner ruling
+  // 2026-10-02: a reversal mid-appeal, before the repost syncs, leaves R1 + R2 to type).
+  newTotal: {
+    header: 'New total',
+    width: 78,
+    align: 'right',
+    money: true,
+    // The ruling covered the per-row cell; a sum of these is a new figure nobody ruled (PR 4 review I1).
+    noTotal: true,
+    value: (r) => ((viewRound(r, 'needs_offer')?.round ?? 1) > 1 ? r.total_decided : null),
+  },
   daysWaiting: {
     header: 'Days waiting',
     width: 84,
@@ -447,6 +464,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
       return since === null ? null : daysBetween(since, today)
     },
   },
+  // A button has nothing to export (M16; build ruling 3).
+  tick: { header: 'Tick', width: 150, inCsv: false, value: () => null },
   cancelledOn: { header: 'Cancelled on', width: 96, value: (r) => r.cancellation?.on ?? null },
   daysSinceCancelled: {
     header: 'Days since cancelled',
@@ -473,18 +492,21 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
 
 /**
  * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; Requested by (T3) and the
- * Household id sit just left of Needs attention.
+ * Household id sit just left of Needs attention. Tick shows only for someone who can tick
+ * (`casework`, on a live read).
  */
 export function viewColumns(
   view: RequestView,
   showIds: boolean,
-  tickedSeason: boolean
+  tickedSeason: boolean,
+  canTick = false
 ): GridColumnKey[] {
   const tail: GridColumnKey[] = ['requestedBy', ...(showIds ? (['householdId'] as const) : [])]
   // A season before the first ticked one (the read's `ticked_season`, #2994) has nothing to
   // confirm, so no CM ✓ (and no CSV column).
   const middle = view.columns.filter(
-    (key) => key !== 'attention' && (key !== 'confirmed' || tickedSeason)
+    (key) =>
+      key !== 'attention' && (key !== 'confirmed' || tickedSeason) && (key !== 'tick' || canTick)
   )
   const attention = view.columns.filter((key) => key === 'attention')
   return ['camper', ...(showIds ? (['personId'] as const) : []), ...middle, ...tail, ...attention]

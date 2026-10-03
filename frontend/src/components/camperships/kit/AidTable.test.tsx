@@ -764,3 +764,190 @@ describe('marked rows (Decision 3: a save that failed)', () => {
     expect(rowOf('Liam Garcia')).not.toHaveAttribute('data-marked')
   })
 })
+
+let selections: Array<ReadonlySet<string>> = []
+let matchings: Array<ReadonlySet<string>> = []
+
+const MARKED_R1: ReadonlySet<string> = new Set(['r1'])
+
+function Selectable({
+  highlightedKey = null,
+  withLabel = true,
+  marked,
+}: {
+  highlightedKey?: string | null
+  withLabel?: boolean
+  marked?: ReadonlySet<string>
+}) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [highlighted, setHighlighted] = useState<string | null>(highlightedKey)
+  return (
+    <MemoryRouter initialEntries={['/aid/requests']}>
+      <AidTable<Row>
+        rows={ROWS}
+        columns={COLUMNS}
+        rowKey={(r) => r.id}
+        searchExtra={(r) => [r.householdCmId, r.personCmId]}
+        csvFilename="camperships-requests-all-2027.csv"
+        footerLabel={withLabel ? (rows) => `${String(rows.length)} requests` : undefined}
+        markedKeys={marked}
+        arrowKeys
+        highlighted={highlighted}
+        onHighlight={setHighlighted}
+        onMatchingChange={(keys) => matchings.push(keys)}
+        selected={selected}
+        onSelectedChange={(next) => {
+          selections.push(next)
+          setSelected(next)
+        }}
+      />
+    </MemoryRouter>
+  )
+}
+
+describe('AidTable with a selection (§4.10)', () => {
+  beforeEach(() => {
+    selections = []
+    matchings = []
+  })
+
+  it('leads with a checkbox; ticking one selects it without highlighting the row', async () => {
+    render(<Selectable />)
+    const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+    const box = within(row).getByRole('checkbox', { name: 'Select' })
+    await userEvent.click(box)
+    expect(box).toBeChecked()
+    expect([...(selections.at(-1) ?? [])]).toEqual(['r3'])
+    expect(row).not.toHaveAttribute('data-highlighted')
+  })
+
+  it('selects every row the search matches with Select all, and clears them with it again', async () => {
+    render(<Selectable />)
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect([...(selections.at(-1) ?? [])].sort()).toEqual(['r1', 'r4'])
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect(selections.at(-1)?.size).toBe(0)
+  })
+
+  it('leaves the row kept only by the highlight out of Select all, as it is out of the totals', async () => {
+    render(<Selectable highlightedKey="r3" />)
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect([...(selections.at(-1) ?? [])].sort()).toEqual(['r1', 'r4'])
+  })
+
+  it('spans the footer label over the checkbox and the pinned columns (PR 2 I1)', () => {
+    const { container } = render(<Selectable />)
+    const label = container.querySelector('tfoot td') as HTMLElement
+    expect(label).toHaveAttribute('colspan', '3')
+    expect(label).toHaveStyle({ left: '0px' })
+  })
+
+  it('pins the identity columns after the checkbox column', () => {
+    render(<Selectable />)
+    const [, family, camper] = screen.getAllByRole('columnheader')
+    expect(family).toHaveStyle({ left: '32px' })
+    expect(camper).toHaveStyle({ left: '142px' })
+  })
+
+  it('moves the highlight edge to the checkbox cell', () => {
+    render(<Selectable highlightedKey="r3" />)
+    const cells = (screen.getByText('Olivia Chen').closest('tr') as HTMLElement).querySelectorAll(
+      'td'
+    )
+    expect(cells[0]?.className).toContain('shadow-[inset_3px_0_0')
+    expect(cells[1]?.className).not.toContain('shadow-[inset_3px_0_0')
+  })
+  // Owner ruling 2026-10-02 (Task 16 fix round): ticks persist across searches. This replaces the
+  // three tests that pinned the earlier untick-on-search default (a spec change, not a fit).
+  it('keeps the ticks a search hides: someone ticks a few families at a time, then ticks them all', async () => {
+    render(<Selectable />)
+    for (const name of ['Emma Johnson', 'Liam Garcia']) {
+      const row = screen.getByText(name).closest('tr') as HTMLElement
+      await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+    }
+    const before = selections.length
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    expect(selections.length).toBe(before)
+    await userEvent.clear(screen.getByLabelText('Search'))
+    expect(
+      within(screen.getByText('Liam Garcia').closest('tr') as HTMLElement).getByRole('checkbox', {
+        name: 'Select',
+      })
+    ).toBeChecked()
+  })
+
+  it('clears only the matching rows with the second Select all, and leaves a hidden tick alone', async () => {
+    render(<Selectable />)
+    const row = screen.getByText('Liam Garcia').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect([...(selections.at(-1) ?? [])]).toEqual(['r2'])
+  })
+
+  it('tells the page which keys the search matches, again whenever they change', async () => {
+    render(<Selectable highlightedKey="r3" />)
+    expect([...(matchings.at(-1) ?? [])].sort()).toEqual(['r1', 'r2', 'r3', 'r4'])
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    // The kept row (Olivia, shown only for the highlight) is not a match.
+    expect([...(matchings.at(-1) ?? [])].sort()).toEqual(['r1', 'r4'])
+  })
+
+  it('gives the row kept only by the highlight no checkbox: it cannot be ticked (R1; review I3)', async () => {
+    render(<Selectable highlightedKey="r3" />)
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    const kept = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+    expect(within(kept).queryByRole('checkbox')).toBeNull()
+    const matching = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
+    expect(within(matching).getByRole('checkbox', { name: 'Select' })).toBeInTheDocument()
+  })
+
+  // Tightened (PR 4 review M7): the old version ticked a row the search kept, so it passed with or
+  // without a prune. This one hides EVERY ticked row, so any untick-on-search would show.
+  it('leaves the selection alone when a search hides every ticked row, and restores the box on clearing it', async () => {
+    render(<Selectable />)
+    const row = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+    const before = selections.length
+    await userEvent.type(screen.getByLabelText('Search'), 'zzz')
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+    expect(selections.length).toBe(before)
+    expect([...(selections.at(-1) ?? [])]).toEqual(['r1'])
+    await userEvent.clear(screen.getByLabelText('Search'))
+    expect(
+      within(screen.getByText('Emma Johnson').closest('tr') as HTMLElement).getByRole('checkbox', {
+        name: 'Select',
+      })
+    ).toBeChecked()
+  })
+
+  it('spans only the checkbox column when there is no footer label (colspan 2, never 1)', () => {
+    const { container } = render(<Selectable withLabel={false} />)
+    expect(container.querySelector('tfoot td')).toHaveAttribute('colspan', '2')
+  })
+
+  it('sets no colspan on a footer without a selection', () => {
+    const { container } = renderTable('/aid/requests', { footerLabel: undefined })
+    expect(container.querySelector('tfoot td')).not.toHaveAttribute('colspan')
+  })
+
+  it('puts the amber edge of a marked row on its checkbox cell', () => {
+    render(<Selectable marked={MARKED_R1} />)
+    const cells = (screen.getByText('Emma Johnson').closest('tr') as HTMLElement).querySelectorAll(
+      'td'
+    )
+    expect(cells[0]?.className).toContain('shadow-[inset_3px_0_0')
+    expect(cells[1]?.className).not.toContain('shadow-[inset_3px_0_0')
+  })
+
+  it('does not highlight the row on a click in the checkbox cell beside the box', async () => {
+    render(<Selectable />)
+    const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+    await userEvent.click(row.querySelectorAll('td')[0] as HTMLElement)
+    expect(row).not.toHaveAttribute('data-highlighted')
+  })
+})
