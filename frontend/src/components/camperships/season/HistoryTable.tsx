@@ -50,7 +50,7 @@ function OperationDetail({
       <p className="text-xs text-red-700 dark:text-red-400">
         Its rows didn&apos;t load.{' '}
         <button type="button" className={LINK} onClick={() => void detail.refetch()}>
-          Try again
+          Try Again
         </button>
       </p>
     )
