@@ -308,7 +308,7 @@ export default function AidRequestsPage() {
           <p key={key} className={`${AMBER_NOTE} flex flex-wrap items-center gap-2`}>
             {`Couldn't save ${name}'s Round 2 ask: ${message}`}
             <button type="button" className={ACTION_LINK} onClick={() => goBack(key)}>
-              Go back
+              Go Back
             </button>
           </p>
         )

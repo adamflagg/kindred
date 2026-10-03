@@ -669,7 +669,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     }
     await act(async () => fail?.(new Error('The server is down')))
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Go Back' }))
     await waitFor(() =>
       expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
     )
@@ -703,7 +703,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300{ArrowDown}1')
     await act(async () => fail?.(new Error('The server is down')))
-    await userEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Go Back' }))
     expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
   })
@@ -731,7 +731,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
       expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
     )
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
-    await userEvent.click(await screen.findByRole('button', { name: 'Go back' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Go Back' }))
     await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('pool='))
     expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
@@ -781,10 +781,10 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     }
     await act(async () => fails[0]?.(new Error('Round 2 is posted')))
     await act(async () => fails[1]?.(new Error('Round 2 is posted')))
-    expect(screen.getAllByRole('button', { name: 'Go back' })).toHaveLength(2)
-    await userEvent.click(screen.getAllByRole('button', { name: 'Go back' })[1] as HTMLElement)
+    expect(screen.getAllByRole('button', { name: 'Go Back' })).toHaveLength(2)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Go Back' })[1] as HTMLElement)
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
-    expect(screen.getAllByRole('button', { name: 'Go back' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Go Back' })).toHaveLength(1)
   })
 
   describe('an entry typed on a row whose editor a refetch takes away (I2)', () => {
