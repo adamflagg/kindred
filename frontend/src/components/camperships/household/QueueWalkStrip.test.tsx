@@ -176,7 +176,8 @@ describe('beforeLeave (owner F2 4)', () => {
   it('a click goes once go() runs, to the link href', async () => {
     render(tree('/aid/households/1000005?from=all', (go) => go()))
     await userEvent.click(screen.getByRole('link', { name: '← Back to All' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?view=all')
+    // T4's one URL scheme: All has no `view`.
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/aid\/requests\?row=/)
   })
 
   it('leaves a modified click to the browser', () => {
