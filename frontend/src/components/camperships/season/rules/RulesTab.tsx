@@ -111,7 +111,7 @@ function ApprovedBody({
             : `The approved rules: v${String(rules.version)} prices the season. `}
         {version !== null && (
           <Link to={href({ version: null })} className="text-primary hover:underline">
-            The rules as they price the season ›
+            The Rules as They Price the Season ›
           </Link>
         )}
       </p>
@@ -278,7 +278,7 @@ export function RulesTab() {
         >
           {version !== null && (
             <Link to={href({ version: null })} className="text-primary hover:underline">
-              The rules as they price the season ›
+              The Rules as They Price the Season ›
             </Link>
           )}
         </Missing>

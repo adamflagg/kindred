@@ -89,7 +89,7 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
     expect(askedVersion).toContain(2)
     expect(screen.getByText(/Rules v2, the version a receipt names/)).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'The rules as they price the season ›' })
+      screen.getByRole('link', { name: 'The Rules as They Price the Season ›' })
     ).toHaveAttribute('href', '/aid/season/rules?year=2027')
   })
 
@@ -128,7 +128,7 @@ describe('RulesTab review fixes', () => {
     renderAt('/aid/season/rules?version=99&year=2027')
     expect(screen.getByText("Rules v99 doesn't exist for 2027.")).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'The rules as they price the season ›' })
+      screen.getByRole('link', { name: 'The Rules as They Price the Season ›' })
     ).toHaveAttribute('href', '/aid/season/rules?year=2027')
   })
 
