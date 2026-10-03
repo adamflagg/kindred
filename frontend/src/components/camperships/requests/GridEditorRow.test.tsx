@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -42,5 +42,18 @@ describe('GridEditorRow', () => {
     const first = seen[seen.length - 1]
     rerender(row(ROW_SAMUEL))
     expect(seen[seen.length - 1]).not.toBe(first)
+  })
+
+  it('words its action links in title case (owner rule)', () => {
+    render(
+      <MemoryRouter>
+        <GridEditorRow
+          row={{ ...ROW_OLIVIA, appeal_refusal: 'Round 1 is not posted yet.' }}
+          walk={WALK}
+          links={LINKS}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('link', { name: 'Open the Household ›' })).toBeInTheDocument()
   })
 })

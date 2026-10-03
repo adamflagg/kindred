@@ -93,7 +93,7 @@ export function GridEditorRow({
         </>
       )}
       <a href={href} onClick={open} className="text-primary font-medium hover:underline">
-        Open the household ›
+        Open the Household ›
       </a>
     </div>
   )
