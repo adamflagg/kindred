@@ -27,7 +27,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 function undoHint(line: RoundLine): string {
   const mistake = 'For a tick made by mistake.'
   if (line.decided !== null && line.amount !== null && line.decided !== line.amount) {
-    return `${mistake} Undoing returns Round ${String(line.round)} to today's ${formatMoney(line.decided)}; ticking Posted again locks that.`
+    return `${mistake} Undoing returns Round ${String(line.round)} to today's ${formatMoney(line.decided)}; marking it posted again locks that.`
   }
   if (line.clawedBack || line.wouldChangeBy !== null) return mistake
   return `${mistake} A posted amount stands: a later change to the award never lowers it.`
