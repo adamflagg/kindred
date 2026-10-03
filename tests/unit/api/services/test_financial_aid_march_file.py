@@ -221,7 +221,7 @@ async def _fc_rows(store: FakeDecisionsStore, decided: str = "800") -> list[tupl
     async def season(year: int) -> SimpleNamespace:
         return _season(store, priced_by_id)
 
-    service = SimpleNamespace(season=season)
+    service = SimpleNamespace(season=season, with_unticked=_as_is)
     out = await MarchFileService(cast("FinancialAidDecisionsService", service), store).read(YEAR)
     return [(r.camper_first, r.camper_last, r.total_award, r.primary_childhood_id, r.personal_id) for r in out.rows]
 
@@ -232,7 +232,13 @@ def _season(store: FakeDecisionsStore, priced_by_id: dict[str, Any]) -> SimpleNa
         priced=priced_by_id,
         shares=_shares(store),
         sessions={s.cm_id: s for s in store.sessions},
+        in_campminder=frozenset,  # no ledger here: CampMinder holds money for no round (D162)
     )
+
+
+async def _as_is(season: SimpleNamespace) -> SimpleNamespace:
+    """The service's with_unticked on a season with no ledger read: the season unchanged."""
+    return season
 
 
 @pytest.mark.asyncio
@@ -326,7 +332,7 @@ async def test_two_family_camp_requests_share_one_read_and_each_names_its_own_ch
     async def season(year: int) -> SimpleNamespace:
         return _season(store, priced_by_id)
 
-    service = SimpleNamespace(season=season)
+    service = SimpleNamespace(season=season, with_unticked=_as_is)
     out = await MarchFileService(cast("FinancialAidDecisionsService", service), store).read(YEAR)
     assert store.household_attendee_reads == [frozenset({HOUSEHOLD, 1000004})]
     assert sorted((r.primary_childhood_id, r.personal_id) for r in out.rows) == [

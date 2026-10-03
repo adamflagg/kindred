@@ -11,7 +11,10 @@ Never in the file:
   * a posted Round 1, whatever its later rounds need: sending it again double-posts (D73's risk);
   * a held, pending or undecided Round 1: nothing is decided to send (D44);
   * a request that isn't live (withdrawn, duplicate, cancelled in Kindred or CampMinder): pricing gives it no Round 1
-    to offer (Decision 14).
+    to offer (Decision 14);
+  * from the first ticked season, a Round 1 CampMinder already holds money for (D162 Q1; Season.in_campminder): one
+    short of its offer or otherwise in Requests > Not reconciled, or one covered in full that tonight's tick posts (C1).
+    Sending it again risks posting the family twice.
 A $0 Round 1 is a real zero (D74) and still needs its offer: it is a $0 row (owner question 2, default).
 
 A FAMILY CAMP ROW (owner ruling A3 (a), 2026-10-02). A household's own request has no camper (person_cm_id 0), so its
@@ -83,14 +86,16 @@ def march_shares(
     priced: Mapping[str, PricedRequest],
     shares: Mapping[str, Sequence[PayerShareRecord]],
     left_out: list[str] | None = None,
+    in_campminder: Collection[tuple[str, int]] = frozenset(),
 ) -> list[MarchShare]:
     """Every payer share of every Round 1 offer still to make, by request. A request whose shares don't split is left
-    out; its id is appended to `left_out` when the caller passes one, so the read can count it."""
+    out; its id is appended to `left_out` when the caller passes one, so the read can count it. `in_campminder`: the
+    (request, round)s CampMinder already holds money for (Season.in_campminder), whose Round 1 is never sent."""
     out: list[MarchShare] = []
     for request_id, request in sorted(requests.items()):
         item = priced.get(request_id)
         decided = round1_to_offer(item) if item is not None else None
-        if decided is None:
+        if decided is None or (request_id, 1) in in_campminder:
             continue
         applicant = request.household_cm_id
         parts = split(decided, payers(request_id, applicant, shares.get(request_id, ())), applicant)
@@ -193,9 +198,11 @@ class MarchFileService:
 
     async def read(self, year: int) -> MarchFileOut:
         """The season's March file, live (§8.3: made the morning it is sent). Changes nothing."""
-        season = await self._decisions.season(year)
+        # D162 Q1: the ledger walk the grid runs says which Round 1s CampMinder already holds money for (from the
+        # first ticked season; before it, the season comes back unchanged).
+        season = await self._decisions.with_unticked(await self._decisions.season(year))
         left_out: list[str] = []
-        shares = march_shares(season.requests, season.priced, season.shares, left_out)
+        shares = march_shares(season.requests, season.priced, season.shares, left_out, season.in_campminder())
         shares = await self._name_family_camp_children(year, season, shares)
         people = sorted({share.person_cm_id for share in shares if share.person_cm_id > 0})
         names = await self._store.fetch_camper_names(year, people)

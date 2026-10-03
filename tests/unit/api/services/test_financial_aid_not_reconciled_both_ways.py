@@ -764,14 +764,17 @@ async def test_the_budgets_needs_an_offer_count_is_the_grids_list_and_its_money_
     assert listed == ["reqoliv00000001"]
     out = await service.budget(YEAR)
     total = out.total.total
+    assert total.needs_offer_count is not None  # set on a live read; narrows the type
     assert (total.needs_offer_count.families, total.needs_offer_count.requests) == (1, 1)
     assert total.needs_offer == 4500.0  # the money and Remaining don't change
     r1 = next(c for c in out.total.rounds if c.round == 1)
+    assert r1.needs_offer_count is not None
     assert (r1.needs_offer_count.requests, r1.needs_offer) == (1, 4500.0)
     strip = next(c for c in out.strip if c.round == 1)
     assert strip.needs_offer is not None
     assert (strip.needs_offer.families, strip.needs_offer.requests) == (1, 1)
     pool = out.pools[0].total
+    assert pool.needs_offer_count is not None
     assert (pool.needs_offer_count.requests, pool.needs_offer) == (1, 4500.0)
 
 
@@ -783,6 +786,7 @@ async def test_before_the_first_ticked_season_the_budget_counts_every_decided_un
     store = FakeDecisionsStore()
     _three(store)
     total = (await _service(store).budget(YEAR)).total.total
+    assert total.needs_offer_count is not None
     assert (total.needs_offer_count.requests, total.needs_offer) == (3, 4500.0)
 
 

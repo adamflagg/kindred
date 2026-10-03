@@ -82,6 +82,10 @@ class RoundOut(BaseModel):
     # Its words (ROUND_STATUS_LABELS; read 3): the screens keep no map of their own (§6.1, D21). Set on every row the
     # server builds.
     status_label: str = ""
+    # C1 (D162, owner 10-03): CampMinder covers this round in full and nothing blocks tonight's overnight tick, so it
+    # waits on the family at once (status_label "Posted"; the CM ✓ cell "pending"). `status` and `posted` still follow
+    # the tick (needs_offer, None) until tonight, as do the posted money totals. `cm_pending_message` is the opened
+    # row's detail line; both are set only on the live read from the first ticked season.
     cm_pending: bool = False
     cm_pending_message: str | None = None
 
@@ -127,7 +131,6 @@ class ConfirmationOut(BaseModel):
 # D162: why CampMinder holds money for a round that has no Posted tick (Requests › Not reconciled, direction b).
 # api.services.financial_aid_reconciliation.UntickedCode; a test pins them equal, and the labels to these.
 UntickedReasonOut = Literal[
-    "awaiting_tick",
     "withheld",
     "short_posting",
     "shares_short",
@@ -142,17 +145,20 @@ UntickedReasonOut = Literal[
 
 class UntickedMoneyOut(BaseModel):
     """One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
-    stopped there (short posting, family-level money, a round not decided yet, un-ticked by hand, payer shares not
-    covering it), D152 withheld it (priced since the posting), or tonight's tick will make it. `message` is in whole
-    sentences (the household page shows it without a pill). `mark_posted`: a hand tick ("Mark posted",
-    POST /decisions/{year}/posted) is the way through; family-level money is placed in Money › To place instead,
-    and a round not decided yet has nothing to lock. A round here is never in Needs an offer (Q1)."""
+    stopped there (short posting, family-level money, a round on hold, awaiting approval, declined by finance or not
+    decided, unmarked by hand, payer shares not covering it), or D152 withheld it (changed after posting). A round
+    CampMinder covers in full that tonight's tick posts is none of these (C1: RoundOut.cm_pending). `label` is the
+    pill (UNTICKED_LABELS, one map with Today's breakdown, D21); `message` is in whole sentences (the household page
+    shows it without a pill). `mark_posted`: a hand tick ("Mark posted", POST /decisions/{year}/posted) is the way
+    through and would be taken for this round alone (H3: only the request's first unposted round); family-level money
+    is placed in Money › To place instead, and a round not decided yet has nothing to lock. A round here is never in
+    Needs an offer (Q1)."""
 
     round: int
     code: UntickedReasonOut
     message: str
     mark_posted: bool
-    label: str = ""
+    label: str
 
 
 # D141's nine cancel reasons (api.services.financial_aid_cancellations.CancelReason; a test pins them equal).

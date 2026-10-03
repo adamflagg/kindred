@@ -36,33 +36,38 @@ ROUND_STATUS_LABELS: Final[dict[RoundStatusOut, str]] = {
 UNRECONCILED: Final = frozenset({"awaiting_sync", "short", "over", "not_in_campminder"})
 
 
-# D162: Not reconciled's direction (b) reasons, in the words Today's breakdown shows (D21: one map, on the server).
+# D162: Not reconciled's direction (b) reasons, as pills (owner 10-03, verbatim). One map on the server (D21): the
+# grid's chip (UntickedMoneyOut.label) and Today's breakdown both read it.
 UNTICKED_LABELS: Final[dict[UntickedReasonOut, str]] = {
-    "awaiting_tick": "awaiting tonight's tick",
-    "withheld": "withheld: priced since the posting",
-    "short_posting": "short posting",
-    "shares_short": "payer shares not covering",
-    "family_level": "family-level money",
-    "not_decided": "not decided yet",
-    "undone": "un-ticked by hand",
+    "withheld": "Changed after posting",
+    "short_posting": "Short in CM",
+    "shares_short": "Payers short",
+    "family_level": "Money to place",
+    "on_hold": "On hold",
+    "awaiting_approval": "Awaiting approval",
+    "finance_declined": "Finance declined",
+    "not_decided": "Not decided",
+    "undone": "Unmarked by hand",
 }
 
 
 def offer_rounds(row: GridRowOut) -> list[RoundOut]:
-    """The rounds Needs an offer holds (§6.2): decided, not posted, and with no money in CampMinder the tick passed
-    over. A round CampMinder holds money for is Not reconciled's only (D162, Q1): it has money in CampMinder, and
-    leaving it in Needs an offer invites posting the family twice."""
+    """The rounds Needs an offer holds (§6.2): decided, not posted, and with no money in CampMinder for them. A round
+    CampMinder holds money for is out (D162, Q1): Not reconciled's when the tick passed over it, waiting on the family
+    when it covers the round in full and tonight's tick posts it (C1, `cm_pending`). Leaving either in Needs an offer
+    invites posting the family twice."""
     unticked = {u.round for u in row.unticked or []}
-    return [r for r in row.rounds if r.status == "needs_offer" and r.round not in unticked]
+    return [r for r in row.rounds if r.status == "needs_offer" and not r.cm_pending and r.round not in unticked]
 
 
 def _waiting_on_family(row: GridRowOut) -> bool:
-    """§6.2: posted rounds not yet ticked Accepted. A clawed-back round waits on no one, nor does a request on
+    """§6.2: posted rounds not yet ticked Accepted, and a round CampMinder covers in full that tonight's tick posts
+    (C1, `cm_pending`: it waits on the family at once). A clawed-back round waits on no one, nor does a request on
     To reverse (cancelled, or withdrawn with its aid live): that one is To reverse's (Decision 10)."""
     return (
         row.cancellation is None
         and not row.to_reverse
-        and any(r.status == "posted" and not r.accepted and not r.clawed_back for r in row.rounds)
+        and any((r.status == "posted" or r.cm_pending) and not r.accepted and not r.clawed_back for r in row.rounds)
     )
 
 

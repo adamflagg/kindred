@@ -13,6 +13,7 @@ from api.schemas.financial_aid_decisions import GridRowOut, GridShareOut, RoundO
 from api.services.financial_aid_intake_types import PayerShareRecord
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
+from api.services.financial_aid_queues import offer_rounds
 
 _ZERO: Final = Decimal(0)
 
@@ -49,9 +50,10 @@ def split(total: Decimal | None, shares: Sequence[PayerShareRecord], applicant: 
 
 
 def _open_rounds(row: GridRowOut) -> list[RoundOut]:
-    """The rounds that need an offer. Whether there are any is a question about rounds, never about money: a $0 round
-    is a real zero (D74) and still needs its offer."""
-    return [r for r in row.rounds if r.status == "needs_offer" and r.decided is not None]
+    """The rounds that need an offer: the row's Needs an offer rounds (offer_rounds), so a round CampMinder already
+    holds money for has nothing to offer on any payer share (D162, owner 10-03, as C2). Whether there are any is a
+    question about rounds, never about money: a $0 round is a real zero (D74) and still needs its offer."""
+    return [r for r in offer_rounds(row) if r.decided is not None]
 
 
 def grid_shares(row: GridRowOut, shares: Sequence[PayerShareRecord], families: Mapping[int, str]) -> list[GridShareOut]:

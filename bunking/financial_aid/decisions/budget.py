@@ -42,6 +42,9 @@ NO_POOL_LABEL: Final = "No pool"
 TOTAL: Final = "*"
 _CENT: Final = Decimal("0.01")
 _STRIP: Final = ("needs_offer", "posted", "accepted", "held", "pending_approval")
+# D162 C2 (owner 10-03): the Needs an offer rounds the Requests grid lists. Every count of Needs an offer reads this;
+# its money reads "needs_offer", which keeps a round CampMinder already holds money for.
+_LISTED: Final = "needs_offer_listed"
 
 
 def _cents(value: Decimal) -> Decimal:
@@ -274,7 +277,13 @@ def _tally_round(
     request: PricedRequest,
     view: RoundView,
     ledger: Mapping[int, RoundLedger] | None = None,
+    *,
+    listed: bool = True,
 ) -> None:
+    """`listed`: a round needing an offer is on the Requests grid's Needs an offer list (D162 C2, owner 10-03). One
+    that isn't (CampMinder already holds money for it) keeps its money in Needs an offer, and Remaining with it, but
+    leaves the count, so the count is the list it opens."""
+
     def add(measure: str, amount: Decimal) -> None:
         tallies[(pool, view.round, measure)].add(request, amount)
 
@@ -302,6 +311,8 @@ def _tally_round(
         outside = decided if whole else ZERO
         if not whole:
             add("needs_offer", decided)
+            if listed:
+                add(_LISTED, ZERO)
         if outside:
             add("outside_budget", outside)
     elif view.status == "pending_approval":
@@ -393,7 +404,7 @@ def _pool_budget(
             accepted=amount(n, "accepted"),
             needs_offer=amount(n, "needs_offer"),
             pending_approval=amount(n, "pending_approval"),
-            needs_offer_count=count(n, "needs_offer"),
+            needs_offer_count=count(n, _LISTED),
             pending_approval_count=count(n, "pending_approval"),
             unconfirmed=amount(n, "unconfirmed") if confirmed else None,
             unconfirmed_count=_tally_of(tallies, pool, n, "unconfirmed").count() if confirmed else None,
@@ -407,7 +418,7 @@ def _pool_budget(
         accepted=sum((c.accepted for c in cells), ZERO),
         needs_offer=sum((c.needs_offer for c in cells), ZERO),
         pending_approval=sum((c.pending_approval for c in cells), ZERO),
-        needs_offer_count=_merged(_tally_of(tallies, pool, n, "needs_offer") for n in ROUNDS).count(),
+        needs_offer_count=_merged(_tally_of(tallies, pool, n, _LISTED) for n in ROUNDS).count(),
         pending_approval_count=_merged(_tally_of(tallies, pool, n, "pending_approval") for n in ROUNDS).count(),
         unconfirmed=sum((amount(n, "unconfirmed") for n in ROUNDS), ZERO) if confirmed else None,
         unconfirmed_count=(
@@ -451,12 +462,15 @@ def season_budget(
     outside_grants_off_requests: Decimal = ZERO,
     not_demand: Collection[str] = frozenset(),
     ledger: Mapping[str, Mapping[int, RoundLedger]] | None = None,
+    off_list: Collection[tuple[str, int]] = frozenset(),
 ) -> SeasonBudget:
     """`outside_grants` is each request's counted outside grants (the grants register's shares,
     summed, a pays-after-camp-aid grant included, D143); `outside_grants_off_requests` the counted
     outside grants on no request (Decision 14). `not_demand` are requests forward demand leaves out although
     they are live (owner ruling 2026-10-02: CampMinder cancelled them; `live` itself is not changed). `ledger` is each
-    request's posted rounds against CampMinder's live net (`round_ledger`); None: no ledger read."""
+    request's posted rounds against CampMinder's live net (`round_ledger`); None: no ledger read. `off_list` are the
+    (request, round)s needing an offer that the Requests grid's Needs an offer list leaves out (D162 C2: CampMinder
+    already holds money for them): their money stays in Needs an offer, and they leave its counts."""
     allocated = allocations(rules) if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
     tallies: _Tallies = defaultdict(_Tally)
@@ -470,7 +484,9 @@ def season_budget(
         mine = ledger.get(request.request_id, {}) if ledger is not None else None
         for view in request.rounds:
             for pool in (view.pool or NO_POOL, TOTAL):
-                _tally_round(tallies, pool, request, view, mine)
+                _tally_round(
+                    tallies, pool, request, view, mine, listed=(request.request_id, view.round) not in off_list
+                )
                 _tally_type(types, pool, request, view)
             if view.status == "not_rebuilt":  # a past read's: its status is unknown, but it sits in its pool (3c)
                 unrebuilt.add(view.pool or NO_POOL)
@@ -514,7 +530,10 @@ def season_budget(
     )
     strip = {
         n: RoundCounts(
-            **{measure: _tally_of(tallies, TOTAL, n, measure).count() for measure in _STRIP},
+            **{
+                measure: _tally_of(tallies, TOTAL, n, _LISTED if measure == "needs_offer" else measure).count()
+                for measure in _STRIP
+            },
             awaiting_sync=_tally_of(tallies, TOTAL, n, "awaiting_sync").count() if ledger is not None else None,
             not_reconciled=_tally_of(tallies, TOTAL, n, "not_reconciled").count() if ledger is not None else None,
         )

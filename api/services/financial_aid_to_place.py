@@ -887,14 +887,14 @@ def _joined(texts: Sequence[str]) -> str:
 
 def withheld_why(tick: LedgerTick, reasons: Sequence[ChangedReason]) -> str:
     """Why D16 withheld this round's automatic tick, in whole sentences: To place's confirmation and Requests › Not
-    reconciled (D162) both show it. A person's tick locks the higher of its decided amount at the end of the posting
-    day (where 3c-2 rebuilds it) and today's (D152; owner, B1 Q1 2026-10-02), so the text says that."""
+    reconciled (D162, "Changed after posting") both show it. A person's tick locks the higher of its decided amount at
+    the end of the posting day (where 3c-2 rebuilds it) and today's (D152; owner, B1 Q1 2026-10-02), so the text says
+    that. The owner's words (10-03), verbatim."""
     n, day = tick.round, f"{tick.posted_on:%b} {tick.posted_on.day}"
     return (
-        f"Round {n} was not ticked automatically: after CampMinder posted it on {day}, "
-        f"{_joined([r.text for r in reasons])}. The nightly ledger sync leaves it too: tick it by hand. That locks "
-        f"the higher of its decided amount on {day} (where Kindred can rebuild that day) and today's. Check it "
-        "against what the family was offered first."
+        f"Round {n} wasn't marked posted automatically: after it was posted in CampMinder on {day}, "
+        f"{_joined([r.text for r in reasons])}. Check it against what the family was offered, then click Mark posted. "
+        f"That saves the higher of its amount on {day} and today's."
     )
 
 

@@ -81,6 +81,12 @@ class FakeDecisionsStore:
         self.log: list[dict[str, Any]] = []  # every aid_change_log row that committed
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
         self.rules_revision: dict[str, int] = {}  # aid_rules record id -> revision, as pocketbase/aidguard keeps it
+        # The aid_rules saves this store's own commits made. FakeRules reads the record once per test (revision 0, or
+        # its `revision_reads`), while the real rules service re-reads it before every lock: so a reader is taken to
+        # have seen the store's own earlier saves, and only a revision a test set directly (someone else's save)
+        # makes a read stale. Without it a second lock in one test (an overnight tick, then a hand tick of the next
+        # round) would read as a race.
+        self._own_rules_saves: dict[str, int] = {}
         self.camp_lines: list[CampLine] = []
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
@@ -257,16 +263,19 @@ class FakeDecisionsStore:
         # pocketbase/aidguard (G6), checked before anything applies: one transaction, so a failed If-Match
         # anywhere leaves every collection untouched. Every aid_rules save moves its revision on by one.
         revisions = dict(self.rules_revision)
+        own = dict(self._own_rules_saves)
         for index, item in enumerate(requests):
             parts = item["url"].strip("/").split("/")
             if parts[2] != AID_RULES or item["method"] != "PATCH":
                 continue
             stored = revisions.get(parts[4], 0)
             wanted = (item.get("headers") or {}).get(IF_MATCH)
-            if wanted is not None and wanted != if_match(stored):
+            if wanted is not None and wanted != if_match(stored - self._own_rules_saves.get(parts[4], 0)):
                 return precondition_failed(index, f"aid_rules {parts[4]}")
             revisions[parts[4]] = stored + 1
+            own[parts[4]] = own.get(parts[4], 0) + 1
         self.rules_revision = revisions
+        self._own_rules_saves = own
         results: list[dict[str, Any]] = []
         for item in requests:
             collection = item["url"].strip("/").split("/")[2]
