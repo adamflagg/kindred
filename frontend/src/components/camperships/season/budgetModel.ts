@@ -69,9 +69,10 @@ const STRIP_LABELS: Readonly<Record<StripMeasure, string>> = {
 
 /**
  * Where a strip count opens (§7.2; D153, owner ruling Group 2c Q3): needs an offer, held and pending
- * approval open their Requests views; posted and accepted open All filtered to that round and tick,
- * slice 1's `round=` and `tick=`, so the list holds the rows the count counts. Every count but held
- * also carries `counted=1` (Decision 6): only rounds that count toward the budget make these figures.
+ * approval open their Requests views; posted and accepted open All (no `view`: All is its absence)
+ * filtered to that round and tick, slice 1's `round=` and `tick=`, so the list holds the rows the
+ * count counts. Every count but held also carries `counted=1` (Decision 6): only rounds that count
+ * toward the budget make these figures.
  * Needs an offer and pending approval carry the count's round too: the grid binds `counted` and
  * `round=` to the round in that status (views.ts), so the list is that round's. Held carries no
  * round (its view isn't bound to one). Null where it opens nothing: a queue view on a past date
@@ -87,9 +88,9 @@ function stripTarget(
     case 'needs_offer':
       return queues ? { view: viewSlug('needs_offer'), round: String(round), counted: '1' } : null
     case 'posted':
-      return { view: viewSlug('all'), round: String(round), tick: 'posted', counted: '1' }
+      return { round: String(round), tick: 'posted', counted: '1' }
     case 'accepted':
-      return { view: viewSlug('all'), round: String(round), tick: 'accepted', counted: '1' }
+      return { round: String(round), tick: 'accepted', counted: '1' }
     case 'held':
       return queues ? { view: viewSlug('holds') } : null
     case 'pending_approval':
@@ -277,7 +278,6 @@ export function cellHref(
   switch (column) {
     case 'posted':
       return requests(view, {
-        view: viewSlug('all'),
         ...pool,
         ...round,
         tick: 'posted',
@@ -285,7 +285,6 @@ export function cellHref(
       })
     case 'accepted':
       return requests(view, {
-        view: viewSlug('all'),
         ...pool,
         ...round,
         tick: 'accepted',

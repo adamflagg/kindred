@@ -71,7 +71,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
       <p className="text-muted-foreground text-sm">
         {`No pool "${pool ?? ''}" in ${String(view.year)}'s budget. `}
         <Link to={allPools} className="text-primary hover:underline">
-          All pools ›
+          All Pools ›
         </Link>
       </p>
     )
@@ -107,7 +107,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
           <span className="text-sm">
             <b>{scope.label}</b> only ·{' '}
             <Link to={allPools} className="text-primary hover:underline">
-              All pools ›
+              All Pools ›
             </Link>
           </span>
         )}
