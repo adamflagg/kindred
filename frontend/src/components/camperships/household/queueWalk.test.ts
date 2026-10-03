@@ -52,10 +52,10 @@ describe("the grid's sort and grouping (I1)", () => {
 
   it('reads sort and group back from the household link, and keeps them for the links', () => {
     const { keep, order } = gridFiltersFrom(
-      new URLSearchParams('from=all&sort=total:desc&group=family&ids=1')
+      new URLSearchParams('from=all&lens=appeals&sort=total:desc&group=reason&ids=1')
     )
-    expect(keep).toEqual({ ids: '1', sort: 'total:desc', group: 'family' })
-    expect(order).toEqual({ sort: 'total:desc', group: 'family', showIds: true })
+    expect(keep).toEqual({ lens: 'appeals', ids: '1', sort: 'total:desc', group: 'reason' })
+    expect(order).toEqual({ sort: 'total:desc', group: 'reason', showIds: true })
   })
 
   it('steps in the sorted order, as the grid listed it', () => {
@@ -71,7 +71,9 @@ describe("the grid's sort and grouping (I1)", () => {
     ])
   })
 
-  it("follows the grid's grouping choice: by reason pulls a reason together, flat and By family do not", () => {
+  // By family is gone from the grid (owner ruling A2): an unknown group reads as the view's own, as the
+  // grid's table does (useAidTableUrl).
+  it("follows the grid's grouping choice: by reason pulls a reason together, flat does not, an unknown one is the view's own", () => {
     // All opens flat; By reason groups Johnson and Chen (nothing waiting) ahead of Garcia.
     expect(ids('all', { sort: null, group: null })).toEqual([1000001, 1000003, 1000005, 1000007])
     expect(ids('all', { sort: null, group: 'reason' })).toEqual([
@@ -80,6 +82,10 @@ describe("the grid's sort and grouping (I1)", () => {
     expect(ids('all', { sort: null, group: 'family' })).toEqual([
       1000001, 1000003, 1000005, 1000007,
     ])
+    // Needs an offer opens by reason (its rounds): an unknown group keeps that, as `null` does.
+    expect(ids('needs-offer', { sort: 'decided:asc', group: 'family' })).toEqual(
+      ids('needs-offer', { sort: 'decided:asc', group: null })
+    )
   })
 
   it("follows a queue view's groups in the order the sorted rows first reach them, and group=flat drops them", () => {

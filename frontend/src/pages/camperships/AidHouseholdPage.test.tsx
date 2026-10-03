@@ -147,7 +147,7 @@ describe('the queue walk (§3.5; D14)', () => {
     renderAt('/aid/households/1000005?from=all')
     expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&row=reqolivia000003&year=2027'
+      '/aid/requests?row=reqolivia000003&year=2027'
     )
     expect(screen.getByText(/3 of 4 families/)).toBeInTheDocument()
     expect(
@@ -176,7 +176,7 @@ describe('the queue walk (§3.5; D14)', () => {
     renderAt('/aid/households/1000005?from=all&program=quest')
     expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&program=quest&row=reqolivia000003&year=2027'
+      '/aid/requests?program=quest&row=reqolivia000003&year=2027'
     )
     // Only the Chen family is in Quest: no neighbours to step to.
     expect(screen.queryByRole('link', { name: /The Sam Family/ })).toBeNull()
@@ -196,7 +196,7 @@ describe('the queue walk (§3.5; D14)', () => {
     renderAt('/aid/households/1000005?from=all&as_of=2027-03-01')
     expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&row=reqolivia000003&year=2027&as_of=2027-03-01'
+      '/aid/requests?row=reqolivia000003&year=2027&as_of=2027-03-01'
     )
     await userEvent.keyboard(']')
     expect(screen.getByTestId('where')).toHaveTextContent(
@@ -208,7 +208,36 @@ describe('the queue walk (§3.5; D14)', () => {
     renderAt('/aid/households/1000005?from=all')
     await userEvent.click(screen.getByRole('link', { name: '← Back to All' }))
     expect(screen.getByTestId('where')).toHaveTextContent(
-      '/aid/requests?view=all&row=reqolivia000003&year=2027'
+      '/aid/requests?row=reqolivia000003&year=2027'
+    )
+  })
+
+  // One URL scheme (owner ruling 10-03, T4): the grid's link carries `from=<stage slug>` (or `all`)
+  // and `lens=appeals`; the walk steps through what that lens and stage showed, and Back returns there.
+  it('walks the Appeals lens: appeals only, and Back keeps the lens with no view', async () => {
+    renderAt('/aid/households/1000005?from=all&lens=appeals')
+    expect(screen.getByRole('link', { name: '← Back to Appeals' })).toHaveAttribute(
+      'href',
+      '/aid/requests?lens=appeals&row=reqolivia000003&year=2027'
+    )
+    expect(screen.getByText(/1 of 1 families/)).toBeInTheDocument()
+  })
+
+  it('walks a stage under the Appeals lens, and every link keeps both', () => {
+    renderAt('/aid/households/1000001?from=needs-offer&lens=appeals')
+    // Johnson's request is no appeal: not in the walk under the Appeals lens.
+    expect(screen.getByText(/not in Needs an offer now/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '← Back to Needs an offer' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=needs-offer&lens=appeals&year=2027'
+    )
+  })
+
+  it('steps through a stage with its slug and the lens on the link', async () => {
+    renderAt('/aid/households/1000001?from=needs-offer')
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000005?from=needs-offer&year=2027'
     )
   })
 
@@ -277,16 +306,16 @@ describe('the queue walk (§3.5; D14)', () => {
 
   it("keeps the grid's sort and grouping on Back, and steps in that order (I1)", async () => {
     // Total decided, largest first: Chen, Johnson, Sam, Garcia.
-    renderAt('/aid/households/1000005?from=all&sort=total:desc&group=family')
+    renderAt('/aid/households/1000005?from=all&sort=total:desc&group=reason')
     const back = screen.getByRole('link', { name: '← Back to All' }).getAttribute('href') ?? ''
     const params = new URL(back, 'http://x').searchParams
     expect(params.get('sort')).toBe('total:desc')
-    expect(params.get('group')).toBe('family')
+    expect(params.get('group')).toBe('reason')
     await userEvent.keyboard(']')
     const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
     expect(where.pathname).toBe('/aid/households/1000001')
     expect(where.searchParams.get('sort')).toBe('total:desc')
-    expect(where.searchParams.get('group')).toBe('family')
+    expect(where.searchParams.get('group')).toBe('reason')
   })
 })
 
@@ -301,7 +330,7 @@ describe('Back when the walk has no place for the family (I2)', () => {
     renderAt('/aid/households/1000005?from=all')
     expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&year=2027'
+      '/aid/requests?year=2027'
     )
     expect(screen.queryByText(/not in All now/)).toBeNull()
     noWalk()
