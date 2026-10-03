@@ -1217,7 +1217,7 @@ describe("a Today line's rows (Decision 10)", () => {
 
   it('shows exactly the requests the line counted, says where they came from, and clears', async () => {
     todayRead = loaded(WOULD_CHANGE)
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
     expect(
@@ -1245,13 +1245,13 @@ describe("a Today line's rows (Decision 10)", () => {
 
   it("says Today's own count when no other filter narrows the list", () => {
     todayRead = loaded(TWO_LINES)
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(screen.getByText(/From Today: .* · 2 requests/)).toBeInTheDocument()
   })
 
   it('says the count the list shows when another filter narrows it', () => {
     todayRead = loaded(TWO_LINES)
-    renderAt('/aid/requests?view=all&today=would_change&program=quest')
+    renderAt('/aid/requests?today=would_change&program=quest')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
     expect(screen.getByText(/From Today: .* · 1 request(?!s)/)).toBeInTheDocument()
@@ -1259,21 +1259,22 @@ describe("a Today line's rows (Decision 10)", () => {
 
   it('counts the view links over the line only, so the totals match the rows (R1)', () => {
     todayRead = loaded(WOULD_CHANGE)
-    renderAt('/aid/requests?view=all&today=would_change')
-    expect(viewLink('All')).toHaveTextContent('1 fam · 1 req')
+    renderAt('/aid/requests?today=would_change')
+    // T4: a strip count is requests only.
+    expect(viewLink('All')).toHaveTextContent('All 1')
   })
 
   it('carries the line on the household link, so the walk and Back keep it', () => {
     todayRead = loaded(WOULD_CHANGE)
-    renderAt('/aid/requests?view=all&today=would_change')
-    expect(screen.getByRole('link', { name: 'The Chen Family' })).toHaveAttribute(
+    renderAt('/aid/requests?today=would_change')
+    expect(screen.getByRole('link', { name: 'David Chen' })).toHaveAttribute(
       'href',
       expect.stringContaining('today=would_change')
     )
   })
 
   it('ignores a today key the server does not send', () => {
-    renderAt('/aid/requests?view=all&today=bogus')
+    renderAt('/aid/requests?today=bogus')
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.queryByText(/From Today/)).toBeNull()
   })
@@ -1281,7 +1282,7 @@ describe("a Today line's rows (Decision 10)", () => {
   // I1: a missing Today line is unknown, never an empty one.
   it('says it is loading while Today loads: no zero, no empty grid, no zeroed counts', () => {
     todayRead = { data: undefined, isLoading: true, error: null }
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(screen.getByText(/From Today: .* · loading…/)).toBeInTheDocument()
     expect(screen.queryByText(/0 requests/)).toBeNull()
     expect(screen.queryByText('No requests in this view.')).toBeNull()
@@ -1292,7 +1293,7 @@ describe("a Today line's rows (Decision 10)", () => {
 
   it("shows the error when Today's read failed, never an empty or unfiltered list", () => {
     todayRead = { data: undefined, isLoading: false, error: new Error('boom') }
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(screen.getByText(/couldn't load Today's list/)).toBeInTheDocument()
     expect(screen.getByText(/Failed to load .*boom/)).toBeInTheDocument()
     expect(screen.queryByText(/0 requests/)).toBeNull()
@@ -1301,7 +1302,7 @@ describe("a Today line's rows (Decision 10)", () => {
 
   it("says so, and does not filter, when the line's section is not sent to this role", () => {
     todayRead = loaded({ year: 2027, casework: [], finance: null })
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(screen.getByText(/isn't one of your Today lines/)).toBeInTheDocument()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.queryByText(/0 requests/)).toBeNull()
@@ -1322,7 +1323,7 @@ describe("a Today line's rows (Decision 10)", () => {
         },
       ],
     })
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(screen.getByText(/· 0 requests/)).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
   })
@@ -1343,7 +1344,7 @@ describe("a Today line's rows (Decision 10)", () => {
       ],
       finance: null,
     })
-    renderAt('/aid/requests?view=all&today=holds')
+    renderAt('/aid/requests?today=holds')
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.queryByText(/From Today/)).toBeNull()
   })
@@ -1355,7 +1356,7 @@ describe("a Today line's rows (Decision 10)", () => {
     expect(todayAsked.every((e) => e === false)).toBe(true)
     todayAsked.length = 0
     todayRead = loaded(WOULD_CHANGE)
-    renderAt('/aid/requests?view=all&today=would_change')
+    renderAt('/aid/requests?today=would_change')
     expect(todayAsked).toContain(true)
   })
 })
