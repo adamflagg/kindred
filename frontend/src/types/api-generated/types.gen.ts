@@ -11000,7 +11000,8 @@ export type PlaceLinesRow = {
  *
  * What a placement did: the lines it placed, the rounds it ticked, and the rounds it left for a person.
  * not_ticked: the rounds the money covers whose automatic tick was withheld because something that prices the
- * request changed after the posting (D16), each with why and a prompt to tick it by hand.
+ * request changed after the posting (D16), each with why and a prompt to click Mark posted (the same sentence
+ * Requests › Not reconciled shows as "Changed after posting", D162).
  */
 export type PlaceOut = {
   /**
@@ -14412,6 +14413,14 @@ export type RoundOut = {
    * Status Label
    */
   status_label?: string
+  /**
+   * Cm Pending
+   */
+  cm_pending?: boolean
+  /**
+   * Cm Pending Message
+   */
+  cm_pending_message?: string | null
 }
 
 /**
@@ -16444,7 +16453,8 @@ export type SubjectNotesResponse = {
  * confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
  * it locks); would_leave names the rounds it leaves for a person to tick, and why. would_not_tick names the
  * rounds the money covers that confirming will NOT tick, from the same check the write runs (D16): the line
- * is still placed, and each of those rounds waits for a person to tick it by hand.
+ * is still placed, and each of those rounds waits for a person to click Mark posted (D162: Not reconciled's
+ * "Changed after posting").
  */
 export type SuggestionOut = {
   /**
@@ -17587,11 +17597,14 @@ export type UnpushResponse = {
  * UntickedMoneyOut
  *
  * One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
- * stopped there (short posting, family-level money, a round not decided yet, un-ticked by hand, payer shares not
- * covering it), D152 withheld it (priced since the posting), or tonight's tick will make it. `message` is in whole
- * sentences (the household page shows it without a pill). `mark_posted`: a hand tick ("Mark posted",
- * POST /decisions/{year}/posted) is the way through; family-level money is placed in Money › To place instead,
- * and a round not decided yet has nothing to lock. A round here is never in Needs an offer (Q1).
+ * stopped there (short posting, family-level money, a round on hold, awaiting approval, declined by finance or not
+ * decided, unmarked by hand, payer shares not covering it), or D152 withheld it (changed after posting). A round
+ * CampMinder covers in full that tonight's tick posts is none of these (C1: RoundOut.cm_pending). `label` is the
+ * pill (UNTICKED_LABELS, one map with Today's breakdown, D21); `message` is in whole sentences (the household page
+ * shows it without a pill). `mark_posted`: a hand tick ("Mark posted", POST /decisions/{year}/posted) is the way
+ * through and would be taken for this round alone (H3: only the request's first unposted round); family-level money
+ * is placed in Money › To place instead, and a round not decided yet has nothing to lock. A round here is never in
+ * Needs an offer (Q1).
  */
 export type UntickedMoneyOut = {
   /**
@@ -17602,11 +17615,13 @@ export type UntickedMoneyOut = {
    * Code
    */
   code:
-    | 'awaiting_tick'
     | 'withheld'
     | 'short_posting'
     | 'shares_short'
     | 'family_level'
+    | 'on_hold'
+    | 'awaiting_approval'
+    | 'finance_declined'
     | 'not_decided'
     | 'undone'
   /**
@@ -17617,6 +17632,10 @@ export type UntickedMoneyOut = {
    * Mark Posted
    */
   mark_posted: boolean
+  /**
+   * Label
+   */
+  label: string
 }
 
 /**
