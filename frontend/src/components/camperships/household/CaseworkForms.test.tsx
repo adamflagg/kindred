@@ -92,7 +92,7 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     render(<IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: true }} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
-    await userEvent.click(screen.getByRole('button', { name: "Use the form's figure" }))
+    await userEvent.click(screen.getByRole('button', { name: "Use the Form's Figure" }))
     expect(spies.correction).toHaveBeenCalledWith(
       expect.objectContaining({
         body: { field: 'num_children', new_value: null, reason: 'The family was right' },
@@ -151,7 +151,7 @@ describe('IncomeCorrection (main spec §9.3)', () => {
       <IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: false }} />
     )
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    expect(screen.queryByRole('button', { name: "Use the form's figure" })).toBeNull()
+    expect(screen.queryByRole('button', { name: "Use the Form's Figure" })).toBeNull()
     rerender(
       <IncomeCorrection
         page={PAGE}
@@ -171,7 +171,7 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Save the correction' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
     expect(screen.getByText('A reason is required')).toBeInTheDocument()
     await userEvent.clear(screen.getByLabelText('Children'))
     await userEvent.type(screen.getByLabelText('Children'), '4.5')
@@ -207,7 +207,7 @@ describe('IncomeCorrection (main spec §9.3)', () => {
       fireEvent.submit(form)
     })
     expect(spies.correction).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: 'Save the correction' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save the Correction' })).toBeDisabled()
     await act(async () => {
       settle()
       await outcome
