@@ -27,7 +27,6 @@ import {
   moneyTotal,
   NO_FILTERS,
   parseRoundFilter,
-  parseTickFilter,
   reasonGroup,
   REQUEST_VIEWS,
   requestsCsvName,
@@ -161,17 +160,15 @@ describe('filterRows', () => {
     ).toEqual([ROW_EMMA])
   })
 
-  it('narrows to a round, and to rounds posted or accepted (owner ruling Group 2c Q3)', () => {
+  // Owner ruling (fast-follow, 10-03): the Posted / Accepted checklist filter is gone under D162.
+  // Was: "narrows to a round, and to rounds posted or accepted", with the tick filter's cases.
+  it('narrows to a round (owner ruling Group 2c Q3)', () => {
     const names = (filters: Partial<typeof NO_FILTERS>) =>
       filterRows(GRID_ROWS, 'all', { ...NO_FILTERS, ...filters }).map((r) => r.camper_name)
     expect(names({ round: 2 })).toEqual(['Olivia Chen'])
-    expect(names({ tick: 'posted' })).toEqual(['Samuel Johnson', 'Olivia Chen', 'Riley Sam'])
-    expect(names({ tick: 'accepted' })).toEqual(['Olivia Chen'])
-    expect(names({ round: 2, tick: 'posted' })).toEqual([])
+    expect(Object.keys(NO_FILTERS)).not.toContain('tick')
     expect(parseRoundFilter('2')).toBe(2)
     expect(parseRoundFilter('4')).toBeNull()
-    expect(parseTickFilter('accepted')).toBe('accepted')
-    expect(parseTickFilter('bogus')).toBeNull()
   })
 
   it('finds no queue rows on a past-date read, whose queues are null', () => {
@@ -372,19 +369,14 @@ describe('requestsCsvName (§11, D70; Decision 32)', () => {
     expect(
       requestsCsvName(
         requestView('holds'),
-        { program: 'summer', pool: null, round: null, tick: null },
+        { program: 'summer', pool: null, round: null },
         2027,
         '2027-04-10'
       )
     ).toBe('camperships-requests-holds-summer-2027-as-of-2027-04-10.csv')
     expect(
-      requestsCsvName(
-        requestView('all'),
-        { program: null, pool: null, round: 2, tick: 'posted' },
-        2027,
-        null
-      )
-    ).toBe('camperships-requests-all-round-2-posted-2027.csv')
+      requestsCsvName(requestView('all'), { program: null, pool: null, round: 2 }, 2027, null)
+    ).toBe('camperships-requests-all-round-2-2027.csv')
   })
 })
 

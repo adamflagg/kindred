@@ -2,15 +2,9 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { resolveStrip, shownView, type RequestLens } from './strip'
-import {
-  parseRoundFilter,
-  parseTickFilter,
-  type RequestView,
-  type RoundFilter,
-  type TickFilter,
-} from './views'
+import { parseRoundFilter, type RequestView, type RoundFilter } from './views'
 
-export type GridParamName = 'program' | 'pool' | 'round' | 'tick' | 'ids' | 'row'
+export type GridParamName = 'program' | 'pool' | 'round' | 'ids' | 'row'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
@@ -22,7 +16,6 @@ export interface GridParams {
   readonly program: string | null
   readonly pool: string | null
   readonly round: RoundFilter | null
-  readonly tick: TickFilter | null
   readonly showIds: boolean
   /** The highlighted request as the URL has it: the page seeds its state from it, once (Decision 2). */
   readonly row: string | null
@@ -76,7 +69,6 @@ export function useGridParams(): GridParams {
     program: params.get('program'),
     pool: params.get('pool'),
     round: parseRoundFilter(params.get('round')),
-    tick: parseTickFilter(params.get('tick')),
     showIds: params.get('ids') === '1',
     row: params.get('row'),
     today: params.get('today'),

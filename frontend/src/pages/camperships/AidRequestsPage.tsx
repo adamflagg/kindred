@@ -69,7 +69,6 @@ export default function AidRequestsPage() {
     program,
     pool,
     round,
-    tick,
     showIds,
     row: rowParam,
     setParam,
@@ -101,8 +100,8 @@ export default function AidRequestsPage() {
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, tick, ids: null }),
-    [program, pool, round, tick]
+    (): GridFilters => ({ program, pool, round, ids: null }),
+    [program, pool, round]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -297,10 +296,9 @@ export default function AidRequestsPage() {
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
-      ...(tick !== null ? { tick } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, tick, showIds]
+    [program, pool, round, showIds]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -356,7 +354,6 @@ export default function AidRequestsPage() {
       program={program}
       pool={pool}
       round={round}
-      tick={tick}
       showIds={showIds}
       onChange={changeFilter}
       onProgramPool={onProgramPool}
