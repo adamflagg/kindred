@@ -116,12 +116,12 @@ describe('AidHouseholdPage (§6.3)', () => {
   // Regression guard: passed against the first build too (no `from` means no link).
   it('has no way back when it was not opened from the grid', () => {
     renderAt('/aid/households/1000001?year=2027')
-    expect(screen.queryByRole('link', { name: /Back to requests/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: '← Back to Requests' })).toBeNull()
   })
 
   it('links back to the grid view and filters it came from (fresh tab, no history)', async () => {
     renderAt('/aid/households/1000001?year=2027&from=approved&pool=pool_a&ids=1')
-    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
+    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
     const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
     expect(where.pathname).toBe('/aid/requests')
     expect(Object.fromEntries(where.searchParams)).toEqual({
@@ -134,25 +134,41 @@ describe('AidHouseholdPage (§6.3)', () => {
 
   it('keeps the as-of of the view it came from in the fallback href', () => {
     renderAt('/aid/households/1000001?year=2027&from=all&as_of=2027-03-01')
-    const href = screen.getByRole('link', { name: /Back to requests/ }).getAttribute('href') ?? ''
+    const href = screen.getByRole('link', { name: '← Back to Requests' }).getAttribute('href') ?? ''
     expect(new URL(href, 'http://x').searchParams.get('as_of')).toBe('2027-03-01')
   })
 
   it('goes back through history when the grid opened it, so the grid lands on its row (§3.5)', async () => {
-    renderAt(
-      '/aid/households/1000001?year=2027&from=all',
-      ['/aid/requests?view=all&row=req-7&year=2027'],
-      { aidFromGrid: true }
-    )
-    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
-    expect(screen.getByTestId('where')).toHaveTextContent(
-      '/aid/requests?view=all&row=req-7&year=2027'
-    )
+    renderAt('/aid/households/1000001?year=2027&from=all', ['/aid/requests?row=req-7&year=2027'], {
+      aidFromGrid: true,
+    })
+    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?row=req-7&year=2027')
   })
 
+  // One URL scheme (owner ruling 10-03, T4): All has no `view`, and the lens rides along.
   it('follows the href, not history, when something else opened it (a queue step, a jump)', async () => {
     renderAt('/aid/households/1000001?year=2027&from=all', ['/aid/households/1000002?from=all'])
-    await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?view=all&year=2027')
+    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/aid\/requests\?year=2027$/)
+  })
+
+  it('goes back to the stage and the lens it came from (T4: view=<stage>, lens=appeals)', async () => {
+    renderAt('/aid/households/1000001?year=2027&from=needs-offer&lens=appeals&program=quest')
+    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
+    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
+    expect(Object.fromEntries(where.searchParams)).toEqual({
+      view: 'needs-offer',
+      lens: 'appeals',
+      program: 'quest',
+      year: '2027',
+    })
+  })
+
+  it('goes back to All under the Appeals lens with no view at all', async () => {
+    renderAt('/aid/households/1000001?year=2027&from=all&lens=appeals')
+    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
+    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
+    expect(Object.fromEntries(where.searchParams)).toEqual({ lens: 'appeals', year: '2027' })
   })
 })
