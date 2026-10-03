@@ -286,6 +286,11 @@ export function attentionItems(
   }
   const reconcile = reconciliation(row)
   if (reconcile !== null) items.push(reconcile)
+  // #2996 direction (b): CampMinder holds money for a round the overnight tick refused. Why, as the
+  // server says it: the pill (`label`) and a whole sentence (`message`). Mark Posted is #2951's.
+  for (const money of row.unticked ?? []) {
+    items.push(note(money.label, money.message, 'not_reconciled', null))
+  }
   if (row.queues?.includes('waiting_on_family') ?? false) {
     // A C1 round (#2996, `cm_pending`) waits before tonight's tick gives it a posting date: no count.
     const since = waitingSince(row)

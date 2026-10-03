@@ -408,3 +408,31 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
     expect(nextOf(share, 'not_reconciled')).toEqual(link('Check the Payer Shares'))
   })
 })
+
+// #2996 direction (b): money CampMinder holds for a round the overnight tick refused. The server sends
+// why (`unticked`): the pill (`label`) and a whole sentence (`message`), both drawn as sent.
+describe('Not reconciled: money with no Posted tick (#2996)', () => {
+  const SENTENCE =
+    'CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click Mark posted.'
+  const short = gridRow({
+    rounds: [roundOut(1, 'needs_offer', { decided: 1500 })],
+    unticked: [
+      {
+        round: 1,
+        code: 'short_posting',
+        label: 'Short in CM',
+        message: SENTENCE,
+        mark_posted: true,
+      },
+    ],
+    queues: ['not_reconciled'],
+  })
+
+  it("puts the server's pill and sentence on the row, in Not reconciled", () => {
+    expect(attentionFor(short, 'not_reconciled', TODAY)).toEqual({
+      item: { level: 'note', pill: 'Short in CM', fact: SENTENCE },
+      queue: 'not_reconciled',
+      next: null,
+    })
+  })
+})

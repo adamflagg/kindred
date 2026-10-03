@@ -533,3 +533,25 @@ describe('CM ✓ pending (#2996)', () => {
     expect(cmDetail(gridRow())).toBeNull()
   })
 })
+
+describe('Not reconciled groups for money with no Posted tick (#2996)', () => {
+  it("heads the group by the server's pill when the confirmation itself is reconciled", () => {
+    const row = gridRow({
+      confirmation: confirmationOut({ status: 'confirmed', reconciled: true }),
+      unticked: [
+        {
+          round: 2,
+          code: 'withheld',
+          label: 'Changed after posting',
+          message: 'A sentence.',
+          mark_posted: true,
+        },
+      ],
+      queues: ['not_reconciled'],
+    })
+    expect(reasonGroup(requestView('not-reconciled'), TODAY)(row)).toEqual({
+      id: 'Changed after posting',
+      heading: 'Changed after posting',
+    })
+  })
+})
