@@ -141,7 +141,7 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
 
   it('downloads the posting history, numbers plain, with the page link last (§11)', async () => {
     render(<GrantsPostingsSection page={PAGE} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Download postings' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download Postings' }))
     const [content, filename] = downloadSpy.mock.calls[0] as [string, string]
     expect(filename).toBe('camperships-household-1000001-postings-2027.csv')
     expect(content.split('\n')[1]).toBe(
@@ -159,7 +159,7 @@ describe('HistorySection (§6.3 item 7)', () => {
     expect(items[1]).toHaveTextContent(
       'test@example.com · Tick posted · decision events reqsamuel000005:1 · Entered in CampMinder'
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Download history' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download History' }))
     expect(downloadSpy.mock.calls[0]?.[1]).toBe('camperships-household-1000001-history-2027.csv')
   })
 })
@@ -168,7 +168,7 @@ describe('HistorySection, empty', () => {
   it('offers no download when nothing is recorded', () => {
     render(<HistorySection page={householdPage({ history: [] })} />)
     expect(screen.getByText('Nothing recorded yet.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Download history' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download History' })).toBeNull()
   })
 
   it('does not repeat a key for two entries of one operation and record', () => {
