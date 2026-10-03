@@ -231,9 +231,10 @@ export function RequestDetailLine({
     return (
       <div className={SIDE_BY_SIDE}>
         {left}
-        {/* The editor's own keys (↑/↓ save and move on) stay its own: AidTable stands aside here. */}
+        {/* The editor's own keys (↑/↓ save and move on) stay its own: AidTable stands aside here,
+            but not on the step at the end of its line, which is the row's (scan K1). */}
         <div data-aid-editor="" className={RIGHT_PANEL}>
-          {editor(step)}
+          {editor(step === null ? null : <span data-aid-step="">{step}</span>)}
         </div>
       </div>
     )

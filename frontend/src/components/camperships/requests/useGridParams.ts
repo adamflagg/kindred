@@ -46,6 +46,8 @@ export function useGridParams(): GridParams {
     setParamsRef.current(
       (previous) => {
         const next = new URLSearchParams(previous)
+        // The retired Checklist chips' `?tick=` (#3000): nothing reads it, so an old link's goes.
+        next.delete('tick')
         for (const [name, value] of Object.entries(changes)) {
           if (value === null) next.delete(name)
           else next.set(name, value)

@@ -103,7 +103,7 @@ export const DETAIL_LINE = 'sticky left-0 box-border px-3 whitespace-normal'
 /** A row's own tick (the Tick column, and the detail line's Tick Accepted). */
 export const TICK_BUTTON =
   'border-border hover:bg-muted rounded border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap'
-/** The editor row under the highlighted row (D22). */
+/** The editor row under the highlighted row (D22; `renderBelowHighlighted`, money's To place). */
 export const EDITOR_ROW = 'bg-forest-50 dark:bg-forest-900 border-border border-b px-3 py-2.5'
 export const TOTAL_BUTTON = 'tabular-nums hover:underline'
 

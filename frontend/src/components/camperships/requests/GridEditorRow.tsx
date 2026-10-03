@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { ACTION_LINK } from '../../admin/lodging/lodgingStyles'
 import { useAidEditorPreview } from '../../../hooks/camperships/useAidEditorPreview'
@@ -56,6 +56,12 @@ function AppealEditor({
  */
 function Refusal({ why, walk }: { why: string; walk: WalkEditorProps }) {
   const [tried, setTried] = useState(false)
+  const sentenceRef = useRef<HTMLSpanElement>(null)
+  // The sentence grows the opened row after AidTable scrolled it into view on opening, so a row
+  // walked to with ↓ (flush with the box's bottom) would show it out of sight (scan K2, #3000).
+  useEffect(() => {
+    if (tried) sentenceRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [tried])
   useEffect(() => {
     if (tried) return
     const onKey = (event: KeyboardEvent) => {
@@ -67,7 +73,11 @@ function Refusal({ why, walk }: { why: string; walk: WalkEditorProps }) {
   if (!tried && walk.saveError === null) return null
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
-      {tried && <span className="text-muted-foreground">{why}</span>}
+      {tried && (
+        <span ref={sentenceRef} className="text-muted-foreground">
+          {why}
+        </span>
+      )}
       {walk.saveError !== null && (
         // A refused save can leave a row nothing can be keyed on (posted or cancelled meanwhile):
         // with no editor to clear it, "Dismiss" does (Esc's clear), so it can't hold every exit.

@@ -1050,6 +1050,7 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
         <label>
           Round 2 ask <input />
         </label>
+        <button type="button">Save</button>
         {step}
       </div>
     )
@@ -1078,6 +1079,31 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
     // Two panels: a fixed-width left one, then the editor.
     expect(left().parentElement).toBe(right.parentElement)
     expect(left().parentElement).toHaveClass('grid')
+  })
+
+  // Scan K1 (#3000): the step sits inside the editor's panel now, but it is not the editor. With
+  // focus on it (after clicking Tick Accepted, say), Esc and ↑/↓ are the table's, as they were
+  // when the step stood in the detail line.
+  it('leaves Esc and ↑/↓ to the table while focus is on the next step at the end of the editor line (scan K1)', async () => {
+    render(<Grid rows={[ROW_OLIVIA, ROW_LIAM]} renderEditor={editorStub} />)
+    await openRow('Olivia Chen')
+    const opened = highlights.at(-1)
+    within(detail()).getByRole('link', { name: 'Open the Request ›' }).focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(highlights.at(-1)).not.toBe(opened)
+    await openRow('Olivia Chen')
+    within(detail()).getByRole('link', { name: 'Open the Request ›' }).focus()
+    await userEvent.keyboard('{Escape}')
+    expect(document.querySelector('[data-aid-detail]')).toBeNull()
+  })
+
+  it('keeps ↑/↓ and Esc the editor’s own while focus is on its own buttons (a focused Save)', async () => {
+    render(<Grid rows={[ROW_OLIVIA, ROW_LIAM]} renderEditor={editorStub} />)
+    await openRow('Olivia Chen')
+    const opened = highlights.at(-1)
+    within(detail()).getByRole('button', { name: 'Save' }).focus()
+    await userEvent.keyboard('{ArrowDown}{Escape}')
+    expect(highlights.at(-1)).toBe(opened)
   })
 
   it('keeps the left content full width on a row the editor refuses, the next step top right, and draws what the editor says under it', async () => {
