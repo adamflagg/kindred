@@ -172,3 +172,82 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(Object.fromEntries(where.searchParams)).toEqual({ lens: 'appeals', year: '2027' })
   })
 })
+
+// Scan H1 (scan-974cb9f4): the grid's next-step links land at "#income" or "#request-<id>". The app
+// has no scroll restoration, and a click goes through navigate(), so the page scrolls there itself
+// once the section has rendered.
+describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
+  let scrolled: Element[]
+  const original = Element.prototype.scrollIntoView
+  beforeEach(() => {
+    scrolled = []
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this)
+    })
+  })
+  afterEach(() => {
+    Element.prototype.scrollIntoView = original
+  })
+
+  function renderWithHash(hash: string) {
+    return render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/aid/households/1000001', search: '?year=2027', hash }]}
+      >
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it("scrolls to the request's card named in the hash", () => {
+    const id = householdPage().requests[1]!.row.request_id
+    renderWithHash(`#request-${id}`)
+    expect(scrolled.map((el) => el.id)).toEqual([`request-${id}`])
+  })
+
+  it('waits for the read: nothing while loading, then the card once it renders', () => {
+    const id = householdPage().requests[0]!.row.request_id
+    result = { data: undefined, isLoading: true, error: null }
+    const { rerender } = renderWithHash(`#request-${id}`)
+    expect(scrolled).toEqual([])
+    result = { data: householdPage(), isLoading: false, error: null }
+    rerender(
+      <MemoryRouter
+        initialEntries={[
+          { pathname: '/aid/households/1000001', search: '?year=2027', hash: `#request-${id}` },
+        ]}
+      >
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(scrolled.map((el) => el.id)).toEqual([`request-${id}`])
+  })
+
+  it('scrolls once: a refetch does not pull the page back to the card', () => {
+    const id = householdPage().requests[0]!.row.request_id
+    const { rerender } = renderWithHash(`#request-${id}`)
+    result = { data: householdPage(), isLoading: false, error: null }
+    rerender(
+      <MemoryRouter
+        initialEntries={[
+          { pathname: '/aid/households/1000001', search: '?year=2027', hash: `#request-${id}` },
+        ]}
+      >
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(scrolled).toHaveLength(1)
+  })
+
+  it('does nothing with no hash, or a hash naming nothing on the page', () => {
+    renderWithHash('')
+    renderWithHash('#request-nosuchrequest')
+    expect(scrolled).toEqual([])
+  })
+})
