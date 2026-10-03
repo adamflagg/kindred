@@ -147,7 +147,7 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
-from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, row_queues
+from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, row_queues, row_stage
 from api.services.financial_aid_reconciliation import (
     AWAITING_SYNC_TEXT,
     CampLine,
@@ -2159,6 +2159,8 @@ class FinancialAidDecisionsService:
                 )
                 for row in rows
             ]
+            # The Stage reads the status alone here (cm_pending is not rebuilt), so it is no GRID_GAPS figure.
+            rows = [row.model_copy(update={"stage": row_stage(row)}) for row in rows]
             rows = [_decided_unknown(row) if row.request_id in season.gapped else row for row in rows]
             rows = [
                 row.model_copy(update={"payer_count": None, "payer_shares": []})
@@ -2252,6 +2254,7 @@ class FinancialAidDecisionsService:
         return row.model_copy(
             update={
                 "queues": row_queues(row),
+                "stage": row_stage(row),
                 "payer_count": len(paying),
                 "payer_shares": grid_shares(row, paying, families),
                 "campminder_description": description,

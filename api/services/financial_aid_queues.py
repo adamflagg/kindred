@@ -10,7 +10,14 @@ from __future__ import annotations
 
 from typing import Final, get_args
 
-from api.schemas.financial_aid_decisions import GridRowOut, QueueOut, RoundOut, RoundStatusOut, UntickedReasonOut
+from api.schemas.financial_aid_decisions import (
+    GridRowOut,
+    QueueOut,
+    RoundOut,
+    RoundStatusOut,
+    RowStageOut,
+    UntickedReasonOut,
+)
 from api.services.financial_aid_cancellations import TODO_CANCEL_REASON
 from api.services.financial_aid_intake_types import (
     FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
@@ -30,6 +37,10 @@ ROUND_STATUS_LABELS: Final[dict[RoundStatusOut, str]] = {
     "posted": "Posted",
     "not_rebuilt": "Not rebuilt for that date",
 }
+# The two Stage words that are no round's state (the grid's Stage column; row_stage). Beside ROUND_STATUS_LABELS so the
+# screens keep no words of their own.
+STAGE_ACCEPTED_WORDS: Final = "Accepted"
+STAGE_CANCELLED_WORDS: Final = "Cancelled"
 # The states a request or a payer share is in while Not reconciled (D59): a sync has run and CampMinder disagrees
 # with the lock. A hand tick awaiting tonight's sync is none of them (V1, owner 10-03): it waits on the family, CM ✓
 # "pending". A row is off direction (a) once ConfirmationOut.reconciled; direction (b) is GridRowOut.unticked (D162).
@@ -89,3 +100,22 @@ def row_queues(row: GridRowOut) -> list[QueueOut]:
         "cancel_reason": any(todo.code == TODO_CANCEL_REASON for todo in row.todos or []),
     }
     return [queue for queue in QUEUES if member[queue]]
+
+
+def row_stage(row: GridRowOut) -> RowStageOut | None:
+    """The request's Stage column, from its latest round (the screens read this, never derive it): Cancelled, else
+    "R{n} · {words}". An accepted round reads Accepted, whether posted or still pending (C1, `cm_pending`). A C1 round
+    (CampMinder covers it in full, tonight's tick posts it) reads Posted though its status is still needs_offer. None
+    when the row has no rounds. A past read has no cm_pending, so it reads the status alone."""
+    if row.cancellation is not None:
+        return RowStageOut(round=None, code="cancelled", label=STAGE_CANCELLED_WORDS)
+    if not row.rounds:
+        return None
+    latest = max(row.rounds, key=lambda r: r.round)
+    if (latest.status == "posted" or latest.cm_pending) and latest.accepted:
+        code, words = "accepted", STAGE_ACCEPTED_WORDS
+    elif latest.cm_pending and latest.status == "needs_offer":
+        code, words = "posted", ROUND_STATUS_LABELS["posted"]
+    else:
+        code, words = latest.status, ROUND_STATUS_LABELS[latest.status]
+    return RowStageOut(round=latest.round, code=code, label=f"R{latest.round} · {words}")

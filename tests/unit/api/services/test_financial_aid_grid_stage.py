@@ -147,11 +147,12 @@ async def test_the_household_page_card_carries_the_grids_stage() -> None:
 
 @pytest.mark.asyncio
 async def test_a_past_read_reads_the_stage_from_the_status_alone() -> None:
-    """cm_pending is not rebuilt on a past read (None), so a C1 round reads its status. `stage` is no GRID_GAPS
-    figure: it is computed only from the status, accepted and cancellation that a past read already carries."""
+    """cm_pending is not rebuilt on a past read (None), so the stage is the round's status in its words, never C1's
+    Posted. `stage` is no GRID_GAPS figure: it is computed only from the status, accepted and cancellation that a past
+    read already carries."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    seed_line(store, 9001, "1500")
+    seed_line(store, 9001, "1500")  # C1 on a live read
     log_seeded(store, T0 - timedelta(days=36))
 
     async def register(year: int) -> Sequence[RegisterRow]:
@@ -161,7 +162,7 @@ async def test_a_past_read_reads_the_stage_from_the_status_alone() -> None:
     out = await later.grid(YEAR, as_of=date(2027, 3, 9))
     (row,) = out.rows
     assert row.rounds[0].cm_pending is None
-    assert _stage(row) == ("needs_offer", 1, "R1 · Needs an offer")
+    assert _stage(row) == ("not_rebuilt", 1, "R1 · Not rebuilt for that date")  # the status, worded; not Posted
     assert "stage" not in [g.figure for g in out.not_rebuilt]
 
 
