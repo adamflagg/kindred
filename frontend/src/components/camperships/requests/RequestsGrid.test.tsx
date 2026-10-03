@@ -158,14 +158,38 @@ describe('RequestsGrid', () => {
     ])
   })
 
-  // Spec change (owner, 2026-10-02): "By family" is gone, which leaves one grouping, so the
-  // Flat / By reason control is gone too. This replaces the test that clicked "By family".
-  it('has no grouping control, and finds a row by the family name', async () => {
+  // Owner ruling G1 (10-03): "By family" stays gone, but the Flat / By reason switch comes back,
+  // so All can be grouped by reason and a queue view can go flat. Replaces "has no grouping
+  // control, and finds a row by the family name" (its find-a-row half is the next test).
+  it('offers Flat and By reason, never By family, and switches both ways on All and on a queue view', async () => {
+    const headings = () => document.querySelectorAll('[data-group-heading]').length
+    const { unmount } = render(<Grid slug="all" />)
+    expect(screen.queryByRole('button', { name: 'By family' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Flat' })).toBeInTheDocument()
+    expect(headings()).toBe(0)
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    expect(headings()).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole('button', { name: 'Flat' }))
+    expect(headings()).toBe(0)
+    unmount()
+    render(<Grid slug="holds" />)
+    expect(screen.queryByRole('button', { name: 'By family' })).not.toBeInTheDocument()
+    expect(headings()).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole('button', { name: 'Flat' }))
+    expect(headings()).toBe(0)
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    expect(headings()).toBeGreaterThan(0)
+  })
+
+  it('finds a row by the requester’s name or the family name (T3, Q-L2)', async () => {
     render(<Grid />)
-    for (const name of ['By family', 'By reason', 'Flat'])
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    const shown = () =>
+      screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key')).length
+    await userEvent.type(screen.getByLabelText('Search'), 'ana garcia')
+    expect(shown()).toBe(1)
+    await userEvent.clear(screen.getByLabelText('Search'))
     await userEvent.type(screen.getByLabelText('Search'), 'garcia family')
-    expect(screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key'))).toHaveLength(1)
+    expect(shown()).toBe(1)
   })
 
   // Q-L2: typing the requester's name finds their rows, though no other column says it.
