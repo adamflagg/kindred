@@ -42,16 +42,44 @@ import {
   type GridFilters,
   type RequestView,
 } from '../../components/camperships/requests/views'
+import {
+  isListedTodayKey,
+  LINE_NAMES,
+  todayFilter,
+  type ListedTodayKey,
+  type TodayFilter,
+} from '../../components/camperships/today/todayModel'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
+import { useAidToday } from '../../hooks/camperships/useAidToday'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
+
+/** The From Today line's words for each state of the filter (I1). */
+function todayWords(key: ListedTodayKey, state: TodayFilter, shown: number | null): string {
+  const name = `From Today: ${LINE_NAMES[key]}`
+  switch (state.state) {
+    case 'ready': {
+      // Today's own count, unless another filter narrows the list: then the count the list shows.
+      const n = shown ?? state.ids.size
+      return `${name} · ${String(n)} ${n === 1 ? 'request' : 'requests'}`
+    }
+    case 'pending':
+      return `${name} · loading…`
+    case 'failed':
+      return `${name} · couldn't load Today's list`
+    case 'withheld':
+      return `${name} isn't one of your Today lines · showing every request`
+    case 'off':
+      return name
+  }
+}
 
 /**
  * `/aid/requests` (§6.1, §6.2): the spine. One read, every view filtered from it in memory (D21,
@@ -74,6 +102,7 @@ export default function AidRequestsPage() {
     sort,
     group,
     row: rowParam,
+    today: todayParam,
     setParam,
     setParams,
   } = useGridParams()
@@ -102,9 +131,22 @@ export default function AidRequestsPage() {
   const rows = grid.data?.rows
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
+  // Decision 10: a Today line that is no view (would change, intake, a late grant) opens its exact rows.
+  const todayKey = todayParam !== null && isListedTodayKey(todayParam) ? todayParam : null
+  const todayRead = useAidToday({ enabled: todayKey !== null })
+  const todayData = todayRead.data
+  const todayError = todayRead.error
+  // One tri-state, shared with the queue walk: a Today line that is loading, failed or not sent to
+  // this role is unknown, never an empty one.
+  const todayState = useMemo(
+    () => todayFilter(todayKey, { data: todayData, error: todayError }),
+    [todayKey, todayData, todayError]
+  )
+  const todayIds = todayState.state === 'ready' ? todayState.ids : null
+  const todayUnknown = todayState.state === 'pending' || todayState.state === 'failed'
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, tick, ids: null }),
-    [program, pool, round, tick]
+    (): GridFilters => ({ program, pool, round, tick, ids: todayIds }),
+    [program, pool, round, tick, todayIds]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -112,13 +154,16 @@ export default function AidRequestsPage() {
     () => (lensed ? filterRows(lensed, view.key, filters) : []),
     [lensed, view.key, filters]
   )
+  // The view or another filter narrows the list past the Today line's own rows.
+  const narrowed =
+    view.key !== 'all' || program !== null || pool !== null || round !== null || tick !== null
   const counts = useMemo(
-    () => (lensed ? viewCounts(lensed, filters, live) : null),
-    [lensed, filters, live]
+    () => (lensed && !todayUnknown ? viewCounts(lensed, filters, live) : null),
+    [lensed, filters, live, todayUnknown]
   )
   const countsByLens = useMemo(
-    () => (rows ? lensCounts(rows, filters, live) : null),
-    [rows, filters, live]
+    () => (rows && !todayUnknown ? lensCounts(rows, filters, live) : null),
+    [rows, filters, live, todayUnknown]
   )
   // T6: one Program dropdown, each budget pool a heading over its programs.
   const groups = useMemo(
@@ -300,9 +345,10 @@ export default function AidRequestsPage() {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(tick !== null ? { tick } : {}),
+      ...(todayKey !== null ? { today: todayKey } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, tick, showIds]
+    [program, pool, round, tick, todayKey, showIds]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -352,7 +398,8 @@ export default function AidRequestsPage() {
     view,
     filters,
     year,
-    asOf.kind === 'past' ? asOf.date : null
+    asOf.kind === 'past' ? asOf.date : null,
+    todayIds === null ? null : todayKey
   )
 
   const filtersBar = (
@@ -388,6 +435,15 @@ export default function AidRequestsPage() {
         lensHrefOf={lensHrefOf}
         onOpen={openView}
       />
+      {todayKey !== null && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          {todayWords(todayKey, todayState, narrowed ? visible.length : null)}
+          {/* Through the walk, like any filter change: what is typed is saved first (Decision 4). */}
+          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('today', null)}>
+            Clear
+          </button>
+        </p>
+      )}
       {!gridShown && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">{filtersBar}</div>
       )}
@@ -438,9 +494,9 @@ export default function AidRequestsPage() {
         <BulkConfirmDialog plan={plan} year={year} onClose={closePlan} onDone={tickDone} />
       )}
       <QueryGuard
-        isLoading={grid.isLoading}
+        isLoading={grid.isLoading || todayState.state === 'pending'}
         // Decision 33: a failed background refetch keeps what loaded.
-        error={grid.data ? null : grid.error}
+        error={grid.data ? (todayState.state === 'failed' ? todayError : null) : grid.error}
         data={grid.data}
         label="Requests"
       >

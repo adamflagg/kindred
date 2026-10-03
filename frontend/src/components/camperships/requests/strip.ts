@@ -98,9 +98,11 @@ export function stripCsvName(
   view: RequestView,
   filters: Pick<GridFilters, 'program' | 'pool' | 'round' | 'tick'>,
   season: number,
-  asOf: string | null
+  asOf: string | null,
+  /** An active Today line (Decision 10): requestsCsvName names it. */
+  todayKey: string | null = null
 ): string {
   const named =
     lens === 'appeals' && view.key !== 'appeals' ? { ...view, slug: `${view.slug}-appeals` } : view
-  return requestsCsvName(named, filters, season, asOf)
+  return requestsCsvName(named, filters, season, asOf, todayKey)
 }
