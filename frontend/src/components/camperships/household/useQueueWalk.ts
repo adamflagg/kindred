@@ -6,7 +6,8 @@ import { usePrefetchHousehold } from '../../../hooks/camperships/useAidHousehold
 import { aidHref, type AidView } from '../kit/asOf'
 import { campToday } from '../kit/dates'
 import { isPageKey } from '../kit/keyboard'
-import { requestView, type RequestView } from '../requests/views'
+import { lensRows, resolveStrip, shownView } from '../requests/strip'
+import type { RequestView } from '../requests/views'
 import {
   gridFiltersFrom,
   walkPosition,
@@ -39,12 +40,26 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
   useEffect(() => {
     navigateRef.current = navigate
   }, [navigate])
+  // The grid's link says `from=<stage slug>` (or `all`) and the lens (T4's one URL scheme).
   const from = params.get('from')
-  const walkView = from === null ? null : requestView(from)
+  const lensParam = params.get('lens')
+  const strip = useMemo(
+    () => resolveStrip(from === 'all' ? null : from, lensParam),
+    [from, lensParam]
+  )
+  // Held: under the Appeals lens shownView makes a new object, which would re-run every memo below.
+  const walkView = useMemo(
+    () => (from === null ? null : shownView(strip.lens, strip.stage)),
+    [from, strip]
+  )
   // The household page is live only (Decision 36), so the walk reads the live grid.
   const grid = useAidGrid({ enabled: walkView !== null, live: true })
   const today = campToday()
-  const rows = grid.data?.rows
+  const allRows = grid.data?.rows
+  const rows = useMemo(
+    () => (allRows ? lensRows(allRows, strip.lens) : undefined),
+    [allRows, strip.lens]
+  )
   // The grid's filters ride along on the link (M5): same rows, and Back lands on the same view.
   const search = params.toString()
   const { filters, keep, order } = useMemo(
@@ -56,7 +71,7 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
     [rows, walkView, today, filters, order]
   )
   const position = useMemo(() => walkPosition(stops, householdCmId), [stops, householdCmId])
-  const slug = walkView?.slug ?? null
+  const slug = walkView === null ? null : (strip.stage?.slug ?? 'all')
   const hrefOf = useMemo(
     () => (stop: WalkStop) =>
       aidHref(
@@ -98,7 +113,8 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
     // Only a loaded read can say the family left the view: loading and failed claim nothing.
     absent: rows !== undefined && position === null,
     backHref: aidHref('/aid/requests', view, {
-      view: walkView.slug,
+      // All has no `view` (T4); the lens is in `keep`.
+      ...(strip.stage === null ? {} : { view: strip.stage.slug }),
       ...keep,
       ...(here ? { row: here.firstRequestId } : {}),
     }),
