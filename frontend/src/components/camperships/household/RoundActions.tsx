@@ -35,7 +35,7 @@ function undoHint(line: RoundLine): string {
 
 /**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
- * "Mark posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
+ * "Mark Posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
  * ticks a posted round only.
  */
 export function RoundChecklist({
@@ -122,7 +122,7 @@ export function RoundChecklist({
 }
 
 /**
- * A round's next action (decision-panel.html; D51, D79; Decision 22): "Mark posted · locks $X" once
+ * A round's next action (decision-panel.html; D51, D79; Decision 22): "Mark Posted · locks $X" once
  * the award is entered in CampMinder (the label is the confirmation); finance's decision on a Round 3
  * waiting on it, with a note.
  */
@@ -137,7 +137,7 @@ export function RoundNextAction({
   line: RoundLine
   year: number
   canApprove: boolean
-  /** This card has a money editor open: Mark posted and the decision wait for it. */
+  /** This card has a money editor open: Mark Posted and the decision wait for it. */
   editing?: boolean | undefined
 }) {
   const posted = useAidTickPosted()
@@ -198,7 +198,7 @@ export function RoundNextAction({
           disabled={posted.isPending}
           onClick={() => send(amount)}
         >
-          {`Mark posted · locks ${formatMoney(amount)}`}
+          {`Mark Posted · locks ${formatMoney(amount)}`}
         </button>
         {error !== null && <span className={AMBER_NOTE}>{error}</span>}
         {offer !== null && (
@@ -208,7 +208,7 @@ export function RoundNextAction({
             disabled={posted.isPending}
             onClick={() => send(offer)}
           >
-            {`Tick at ${formatMoney(offer)}`}
+            {`Mark Posted at ${formatMoney(offer)}`}
           </button>
         )}
       </div>

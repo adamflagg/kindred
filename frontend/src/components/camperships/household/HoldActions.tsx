@@ -31,7 +31,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
     return code === 'manual_hold' ? (
       <ReasonForm
         label="Why lift the hold"
-        submitLabel="Lift the hold"
+        submitLabel="Lift the Hold"
         onSubmit={(note) =>
           manual.mutateAsync({ requestId, body: { held: false, note } }).then(close)
         }
@@ -40,7 +40,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
     ) : (
       <ReasonForm
         label="Release note"
-        submitLabel="Release the hold"
+        submitLabel="Release the Hold"
         onSubmit={(note) =>
           release.mutateAsync({ requestId, body: { code, released: true, note } }).then(close)
         }
@@ -87,7 +87,7 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
           {putting === held.code ? (
             <ReasonForm
               label="Why put it back"
-              submitLabel="Put the hold back"
+              submitLabel="Put the Hold Back"
               onSubmit={(note) =>
                 release
                   .mutateAsync({ requestId, body: { code: held.code, released: false, note } })
@@ -98,7 +98,7 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
           ) : (
             live && (
               <button type="button" className={ACTION_LINK} onClick={() => setPutting(held.code)}>
-                Put back…
+                Put Back…
               </button>
             )
           )}

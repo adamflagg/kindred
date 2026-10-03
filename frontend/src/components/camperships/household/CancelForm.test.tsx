@@ -10,21 +10,21 @@ describe('CancelForm (D101, D141)', () => {
     render(
       <CancelForm
         initial={null}
-        submitLabel="Cancel the request"
+        submitLabel="Cancel the Request"
         onSubmit={onSubmit}
         onCancel={() => undefined}
       />
     )
     expect(screen.getAllByRole('option')).toHaveLength(10)
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(screen.getByText('Pick a cancel reason')).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
     await userEvent.selectOptions(screen.getByLabelText('Cancel reason'), 'another_reason')
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(screen.getByText('"another reason" needs a note')).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
     await userEvent.type(screen.getByLabelText('Note'), 'Moved away')
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel the request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel the Request' }))
     expect(onSubmit).toHaveBeenCalledWith('another_reason', 'Moved away')
   })
 
@@ -32,7 +32,7 @@ describe('CancelForm (D101, D141)', () => {
     render(
       <CancelForm
         initial={{ reason: 'medical', note: '' }}
-        submitLabel="Save the reason"
+        submitLabel="Save the Reason"
         onSubmit={() => Promise.resolve()}
         onCancel={() => undefined}
       />
@@ -44,12 +44,12 @@ describe('CancelForm (D101, D141)', () => {
     render(
       <CancelForm
         initial={{ reason: 'medical', note: '' }}
-        submitLabel="Save the reason"
+        submitLabel="Save the Reason"
         onSubmit={() => Promise.reject(new Error('Refused'))}
         onCancel={() => undefined}
       />
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Save the reason' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Reason' }))
     expect(await screen.findByText('Refused')).toBeInTheDocument()
     expect(screen.getByLabelText('Cancel reason')).toHaveValue('medical')
   })
