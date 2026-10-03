@@ -1150,8 +1150,8 @@ async def test_the_budget_and_todays_counts_follow_a_pending_round_2() -> None:
 # Round 3 is decided at $0 (not eligible: no statement of need) beside Rounds 1 and 2 posted, and CampMinder holds more
 # than the two posted rounds lock. That excess is no posting of a $0 round: the walk stops at it with no tick, so the
 # round is no C1 pending round, tonight's tick posts nothing, and the request reads over through direction (a). A $0 round
-# is ticked by hand (Mark posted) only. The stop is internal for now: it gets no Not reconciled (b) row until the owner
-# words one.
+# is ticked by hand (Mark posted) only. The stop is a Not reconciled (b) reason, "Decided $0" (owner 10-03, option 1,
+# pinned below).
 
 
 def _round3_zero(store: FakeDecisionsStore, *, held: str) -> None:
@@ -1302,8 +1302,8 @@ def test_the_walk_stops_at_a_zero_round_with_the_public_reason() -> None:
 
 
 def test_the_walk_stops_at_a_zero_round_so_nothing_after_it_ticks() -> None:
-    """Option i: a stop, not a skip. CampMinder covers Round 2 in full, but Round 1 ($0) is never ticked by the walk, and
-    a later round is never ticked before the one before it."""
+    """Option i: a stop, not a skip. CampMinder covers Round 2 in full, but Round 1 ($0) is never ticked by the walk,
+    and a later round is never ticked before the one before it."""
     rounds = (view(1, "needs_offer", decided="0"), view(2, "needs_offer", decided="300"))
     walk = ledger_walk([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "300")), today=TODAY)
     assert walk.ticks == ()
