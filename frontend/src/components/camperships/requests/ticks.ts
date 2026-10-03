@@ -67,7 +67,8 @@ export function acceptedTarget(row: ApiAidGridRow): { readonly round: 1 | 2 | 3 
   return n === null ? null : { round: n }
 }
 
-const nameOf = (row: ApiAidGridRow) => (row.camper_name !== '' ? row.camper_name : row.family_name)
+export const nameOf = (row: ApiAidGridRow) =>
+  row.camper_name !== '' ? row.camper_name : row.family_name
 
 /**
  * What a tick would write on these rows as they stand now. Called at the click, never later.

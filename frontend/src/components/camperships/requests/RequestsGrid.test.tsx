@@ -10,6 +10,7 @@ vi.mock('../../../utils/csvExport', async (importActual) => ({
   downloadCsv: (...args: unknown[]) => downloadSpy(...args),
 }))
 
+import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { confirmationOut, GRID_ROWS, gridRow, roundOut, ROW_LIAM } from './gridFixtures'
 import { RequestsGrid } from './RequestsGrid'
@@ -899,6 +900,82 @@ describe("the detail line's Mark Posted (#2996)", () => {
     expect(
       await detail().findByText("Couldn't mark it posted: The decided amount moved.")
     ).toBeInTheDocument()
+  })
+
+  it("names the family's row, not the request id, in a refusal the server prefixed with the id", async () => {
+    const onMarkPosted = vi.fn(() =>
+      Promise.reject(new Error('reqrefused00001: Round 1 was cancelled in Kindred'))
+    )
+    render(<Grid slug="not-reconciled" rows={[refused(true)]} onMarkPosted={onMarkPosted} />)
+    await openRow()
+    await userEvent.click(detail().getByRole('button', { name: /^Mark Posted/ }))
+    expect(
+      await detail().findByText(
+        "Couldn't mark it posted: Emma Johnson: Round 1 was cancelled in Kindred"
+      )
+    ).toBeInTheDocument()
+  })
+
+  // A withheld round's decided_now is what the tick WOULD lock, so refreshing and marking it
+  // posted again can only be refused again: a 409 that names a different amount offers it (#2981).
+  describe('Mark Posted at the amount the server named (#2981)', () => {
+    const moved = (decidedNow: number | null) => {
+      const error = new AidWriteError('A decided amount moved since it was shown', 409)
+      error.rows = [
+        { request_id: 'reqrefused00001', round: 1, confirmed: 1300, decided_now: decidedNow },
+      ]
+      return error
+    }
+
+    it('re-sends the round at decided_now, and the offer goes away', async () => {
+      const onMarkPosted = vi
+        .fn<(row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>>()
+        .mockRejectedValueOnce(moved(1600))
+        .mockResolvedValue(undefined)
+      render(<Grid slug="not-reconciled" rows={[refused(true)]} onMarkPosted={onMarkPosted} />)
+      await openRow()
+      await userEvent.click(detail().getByRole('button', { name: 'Mark Posted · locks $1,500' }))
+      await userEvent.click(await detail().findByRole('button', { name: 'Mark Posted at $1,600' }))
+      expect(onMarkPosted).toHaveBeenCalledTimes(2)
+      expect(onMarkPosted).toHaveBeenLastCalledWith(
+        expect.objectContaining({ request_id: 'reqrefused00001' }),
+        1,
+        1600
+      )
+      expect(detail().queryByRole('button', { name: /Mark Posted at/ })).toBeNull()
+      expect(detail().queryByText(/moved since/)).toBeNull()
+    })
+
+    it('offers nothing when decided_now is null or equals the amount sent', async () => {
+      const onMarkPosted = vi
+        .fn<(row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>>()
+        .mockRejectedValueOnce(moved(null))
+        .mockRejectedValueOnce(moved(1500))
+      render(<Grid slug="not-reconciled" rows={[refused(true)]} onMarkPosted={onMarkPosted} />)
+      await openRow()
+      const button = () => detail().getByRole('button', { name: 'Mark Posted · locks $1,500' })
+      await userEvent.click(button())
+      expect(await detail().findByText(/moved since/)).toBeInTheDocument()
+      expect(detail().queryByRole('button', { name: /Mark Posted at/ })).toBeNull()
+      await userEvent.click(button())
+      await detail().findByText(/moved since/)
+      expect(detail().queryByRole('button', { name: /Mark Posted at/ })).toBeNull()
+    })
+  })
+
+  it('clears a refusal and an offer when the round or its amount changes under them', async () => {
+    const onMarkPosted = vi.fn(() => Promise.reject(new Error('The decided amount moved.')))
+    const at = (decided: number) =>
+      gridRow({ ...refused(true), rounds: [roundOut(1, 'needs_offer', { decided })] })
+    const { rerender } = render(
+      <Grid slug="not-reconciled" rows={[at(1500)]} onMarkPosted={onMarkPosted} />
+    )
+    await openRow()
+    await userEvent.click(detail().getByRole('button', { name: /^Mark Posted/ }))
+    await detail().findByText(/The decided amount moved\./)
+    rerender(<Grid slug="not-reconciled" rows={[at(1420)]} onMarkPosted={onMarkPosted} />)
+    expect(detail().getByRole('button', { name: 'Mark Posted · locks $1,420' })).toBeInTheDocument()
+    expect(detail().queryByText(/The decided amount moved\./)).toBeNull()
   })
 
   it('offers no Mark Posted where the server says a hand tick is not the way, or to a viewer who cannot tick', async () => {

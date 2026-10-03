@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 
+import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { TICK_BUTTON } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
@@ -7,7 +8,7 @@ import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import { roundOf } from './stage'
-import { acceptedTarget, type TickAction } from './ticks'
+import { acceptedTarget, nameOf, type TickAction } from './ticks'
 import { cmDetail, type ColumnContext } from './views'
 
 const LINK = 'text-primary font-medium hover:underline'
@@ -22,7 +23,10 @@ export type MarkPosted = (row: ApiAidGridRow, round: number, amount: number) => 
 
 /**
  * "Mark Posted · locks $X" (#2996 hand tick, the existing Posted write): the label is the
- * confirmation, as the household page's. A refusal says the server's sentence beside it.
+ * confirmation, as the household page's. A refusal says the server's sentence beside it, naming
+ * the row, not the request id the server prefixes it with. A withheld round's decided_now is what
+ * the tick WOULD lock, so refreshing and marking it posted again can only be refused again: a 409
+ * that names a different amount offers it (#2981).
  */
 function MarkPostedStep({
   row,
@@ -39,14 +43,29 @@ function MarkPostedStep({
 }) {
   const [busy, setBusy] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
-  const mark = () => {
+  const [offer, setOffer] = useState<number | null>(null)
+  // A refusal belongs to the round and amount it was made on: a change under it clears it.
+  const stepKey = `${String(round)}:${String(amount)}`
+  const [seenKey, setSeenKey] = useState(stepKey)
+  if (seenKey !== stepKey) {
+    setSeenKey(stepKey)
+    setRefusal(null)
+    setOffer(null)
+  }
+  const mark = (at: number) => {
     setBusy(true)
     setRefusal(null)
-    onMarkPosted(row, round, amount).then(
+    setOffer(null)
+    onMarkPosted(row, round, at).then(
       () => setBusy(false),
       (error: unknown) => {
         setBusy(false)
-        setRefusal(error instanceof Error ? error.message : String(error))
+        const text = error instanceof Error ? error.message : String(error)
+        setRefusal(text.replaceAll(row.request_id, nameOf(row)))
+        if (error instanceof AidWriteError && error.status === 409) {
+          const moved = error.rows.find((r) => r.request_id === row.request_id && r.round === round)
+          if (moved?.decided_now != null && moved.decided_now !== at) setOffer(moved.decided_now)
+        }
       }
     )
   }
@@ -61,11 +80,24 @@ function MarkPostedStep({
         disabled={busy}
         onClick={(event) => {
           event.stopPropagation()
-          mark()
+          mark(amount)
         }}
       >
         {`${label} · locks ${formatMoney(amount)}`}
       </button>
+      {offer !== null && (
+        <button
+          type="button"
+          className={TICK_BUTTON}
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation()
+            mark(offer)
+          }}
+        >
+          {`${label} at ${formatMoney(offer)}`}
+        </button>
+      )}
     </span>
   )
 }
