@@ -174,21 +174,13 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
   })
 
-  it('marks the household entry as opened from the grid, so its Back link may go back through history', async () => {
-    function State() {
-      const { state } = useLocation()
-      return <div data-testid="state">{JSON.stringify(state)}</div>
-    }
-    render(
-      <MemoryRouter initialEntries={['/aid/requests']}>
-        <Routes>
-          <Route path="/aid/requests" element={<AidRequestsPage />} />
-          <Route path="/aid/households/:householdCmId" element={<State />} />
-        </Routes>
-      </MemoryRouter>
-    )
+  it("carries the grid's sort and grouping on the household link, so Back restores them (I1)", async () => {
+    renderAt('/aid/requests?sort=total:desc&group=reason')
     await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
-    expect(screen.getByTestId('state')).toHaveTextContent('{"aidFromGrid":true}')
+    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
+    expect(where.pathname).toBe('/aid/households/1000003')
+    expect(where.searchParams.get('sort')).toBe('total:desc')
+    expect(where.searchParams.get('group')).toBe('reason')
   })
 
   it('opens the household from a name, with the view and season, and Back highlights the row (§3.5)', async () => {
