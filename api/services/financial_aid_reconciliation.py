@@ -937,8 +937,9 @@ def ledger_ticks(
     night it runs (D146): a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's
     award, so a sliver or a short posting never ticks, and the registrar ticks it by hand. Over-postings
     still tick, at the decided amount. That includes a payer share's Round 2: it waits until the shares
-    posted cover it in full. A round decided at $0 never ticks (owner 10-03, option i): money beyond the
-    lock is no posting of it, so the walk stops there and the request reads over; a person ticks it by hand.
+    posted cover it in full. A round decided at $0 never ticks (owner 10-03): money beyond the lock is no
+    posting of it, so the walk stops there with its own Not reconciled reason ("Decided $0", `decided_zero`), and a
+    person ticks it by hand (Mark posted). On a later round the request also reads over (direction a).
 
     The walk itself is `ledger_walk`, which also says where it stopped (D162); these are its ticks."""
     return list(ledger_walk(priced, ledger, today=today, undone=undone).ticks)
@@ -963,9 +964,10 @@ UntickedCode = Literal[
     "undone",
     "decided_zero",
 ]
-# The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2). Family-level money is placed in
-# Money › To place, whose placement ticks (D81, D151); a round not decided yet has nothing to lock. The code alone
-# doesn't offer the button: tick_posted takes a request's first unposted round only (H3, `Unticked.mark_posted`).
+# The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2); a $0 round is ticked only so, once a
+# person has checked the posting (owner 10-03). Family-level money is placed in Money › To place, whose placement
+# ticks (D81, D151); a round not decided yet has nothing to lock. The code alone doesn't offer the button: tick_posted
+# takes a request's first unposted round only (H3, `Unticked.mark_posted`).
 MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset(
     {"withheld", "short_posting", "shares_short", "undone", "decided_zero"}
 )
