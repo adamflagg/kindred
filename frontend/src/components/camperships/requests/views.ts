@@ -506,9 +506,7 @@ export function viewColumns(
   // confirm, so no CM ✓ (and no CSV column).
   const middle = view.columns.filter(
     (key) =>
-      key !== 'attention' &&
-      (key !== 'confirmed' || tickedSeason) &&
-      (key !== 'tick' || canTick)
+      key !== 'attention' && (key !== 'confirmed' || tickedSeason) && (key !== 'tick' || canTick)
   )
   const attention = view.columns.filter((key) => key === 'attention')
   return ['camper', ...(showIds ? (['personId'] as const) : []), ...middle, ...tail, ...attention]
