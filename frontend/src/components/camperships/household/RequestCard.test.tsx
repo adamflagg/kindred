@@ -27,6 +27,21 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(screen.getByText('$6,760')).toBeInTheDocument()
   })
 
+  // #2996: the card's stage is the server's (card.row is the grid's own row). A C1 round still reads
+  // needs_offer in rounds[] until tonight's tick, but the server already calls the request posted.
+  it("reads the server's stage on a C1 round, not the round's own status", () => {
+    renderCard(
+      householdRequest(
+        gridRow({
+          rounds: [roundOut(1, 'needs_offer', { decided: 1500, cm_pending: true })],
+          stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+        })
+      )
+    )
+    expect(screen.getByText('R1 · Posted')).toBeInTheDocument()
+    expect(screen.queryByText('R1 · Needs an offer')).toBeNull()
+  })
+
   it('folds the receipt under its sentence (D34), and opens it by itself on a hold', () => {
     const { unmount } = renderCard()
     expect(screen.getByRole('button', { name: /^Show the receipt/ })).toBeInTheDocument()
