@@ -1204,6 +1204,16 @@ def test_a_zero_round_with_nothing_beyond_the_lock_is_no_stop() -> None:
     assert (walk.ticks, walk.stops) == ((), ())
 
 
+def test_a_zero_round_someone_unmarked_still_reads_unmarked_by_hand() -> None:
+    """Undone comes first: a $0 round a person un-ticked keeps its Unmarked by hand reason (a visible row with Mark
+    posted), not the internal zero_round stop, which shows no row at all."""
+    walk = ledger_walk(
+        [priced("emma", 1000001, *_ZERO_R3)], ledger_of("emma", line(1, "2000")), today=TODAY, undone={("emma", 3)}
+    )
+    assert walk.ticks == ()
+    assert [(s.round, s.code) for s in walk.stops] == [(3, "undone")]
+
+
 def test_a_non_zero_round_on_an_over_posting_still_ticks_at_its_decided_amount() -> None:
     rounds = (*_ZERO_R3[:2], view(3, "needs_offer", decided="100"))
     walk = ledger_walk([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "2000")), today=TODAY)
