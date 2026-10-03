@@ -194,8 +194,9 @@ interface Baseline {
 }
 
 /**
- * The one shared request editor (§4.6; D22): an editor row under the highlighted grid row, or in
- * place on the household page's request card.
+ * The one shared request editor (§4.6; D22): an editor row under a highlighted table row, the
+ * right-hand panel of the Requests grid's opened row, or in place on the household page's request
+ * card.
  * - While typing it shows the computed award, the limit that bound it (the receipt's one-line
  *   form), the stage change, the recomputed payer shares and both CampMinder ids (D27).
  * - Enter saves, once (Ruling 2026-10-01 (plan review)). ↓ and ↑ save and move on. Esc cancels.

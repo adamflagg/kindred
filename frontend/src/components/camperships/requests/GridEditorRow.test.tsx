@@ -84,6 +84,19 @@ describe('GridEditorRow', () => {
       expect(screen.getByText(REFUSAL)).toBeInTheDocument()
     })
 
+    // Scan K2 (#3000): the sentence grows the opened row after the table scrolled it into view, so
+    // on a row walked to with ↓ (flush with the box's bottom) it would land out of sight.
+    it('brings the sentence into view when it appears', async () => {
+      renderRefusing()
+      const scroll = vi.mocked(Element.prototype.scrollIntoView)
+      scroll.mockClear()
+      await userEvent.keyboard('5')
+      const sentence = screen.getByText(REFUSAL)
+      const scrolled: unknown[] = scroll.mock.contexts
+      expect(scrolled.some((el) => el instanceof Element && el.contains(sentence))).toBe(true)
+      expect(scroll).toHaveBeenCalledWith({ block: 'nearest' })
+    })
+
     it('ignores the arrows, Esc, the page keys / [ ], a modified key, and typing in a field', async () => {
       renderRefusing()
       await userEvent.keyboard('{ArrowDown}{ArrowUp}{Escape}/[[]] ')
