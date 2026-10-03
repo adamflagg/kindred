@@ -84,7 +84,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     const strip = screen.getByTestId('budget-strip')
     expect(within(strip).getByRole('link', { name: '340 fam · 367 req' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&round=1&tick=posted&counted=1&year=2027'
+      '/aid/requests?round=1&tick=posted&counted=1&year=2027'
     )
     expect(within(strip).getByText('pending approval')).toBeInTheDocument()
     // Owner Q1 = A: no awaiting-sync or not-reconciled counts on the strip.
@@ -96,7 +96,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(screen.getByRole('columnheader', { name: 'Allocated1' })).toBeInTheDocument()
     expect(within(line('pool_a:1')).getByRole('link', { name: '$764,540' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&pool=pool_a&round=1&tick=posted&counted=1&year=2027'
+      '/aid/requests?pool=pool_a&round=1&tick=posted&counted=1&year=2027'
     )
     expect(within(line('total')).getByText('$194,890')).toBeInTheDocument()
   })
@@ -141,7 +141,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     renderAt('/aid/season/rounds-budget?pool=pool_b&year=2027')
     expect(line('pool_b:all')).toBeInTheDocument()
     expect(document.querySelector('[data-budget-row="pool_a:all"]')).toBeNull()
-    expect(screen.getByRole('link', { name: 'All pools ›' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'All Pools ›' })).toHaveAttribute(
       'href',
       '/aid/season/rounds-budget?year=2027'
     )
@@ -178,7 +178,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(within(below('held')).queryByRole('link')).toBeNull()
     expect(within(line('pool_a:1')).getByRole('link', { name: '$764,540' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=all&pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
     )
   })
 
@@ -187,16 +187,16 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(screen.getByText(/No pool "pool_zz" in 2027's budget/)).toBeInTheDocument()
   })
 
-  it('keeps a past date on "All pools ›", from an unknown pool and from one pool (Task 4 m5)', () => {
+  it('keeps a past date on "All Pools ›", from an unknown pool and from one pool (Task 4 m5)', () => {
     const first = renderAt('/aid/season/rounds-budget?pool=pool_zz&as_of=2027-03-15')
-    expect(screen.getByRole('link', { name: 'All pools ›' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'All Pools ›' })).toHaveAttribute(
       'href',
       '/aid/season/rounds-budget?year=2027&as_of=2027-03-15'
     )
     first.unmount()
     read = { data: pastBudget(), isLoading: false, error: null }
     renderAt('/aid/season/rounds-budget?pool=pool_b&as_of=2027-03-15')
-    expect(screen.getByRole('link', { name: 'All pools ›' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'All Pools ›' })).toHaveAttribute(
       'href',
       '/aid/season/rounds-budget?year=2027&as_of=2027-03-15'
     )
