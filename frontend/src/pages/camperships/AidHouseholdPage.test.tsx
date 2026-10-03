@@ -613,7 +613,7 @@ describe('Correct… and the open editor (one open editor per page)', () => {
 
   it("saves what is typed in the card's editor before the correction form opens", async () => {
     renderAt('/aid/households/1000005')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
     await userEvent.click(screen.getAllByRole('button', { name: 'Correct…' })[0]!)

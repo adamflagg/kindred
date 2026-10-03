@@ -71,7 +71,7 @@ describe('IncomeCorrection on the wire', () => {
     renderCorrection(true)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
-    await userEvent.click(screen.getByRole('button', { name: "Use the form's figure" }))
+    await userEvent.click(screen.getByRole('button', { name: "Use the Form's Figure" }))
     const sent = sentBody()
     expect(sent.method).toBe('POST')
     expect(sent.url).toContain('1000001')
