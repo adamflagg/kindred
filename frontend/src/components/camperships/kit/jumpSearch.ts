@@ -1,5 +1,6 @@
 /**
- * The jump box's in-memory search (§3.5; D13): a family, camper or parent name (results lead with the matched person), or a CampMinder
+ * The jump box's in-memory search (§3.5; D13): a family, camper, parent or requester name (results
+ * lead with the matched person; a requester may live in another household, #2993), or a CampMinder
  * household or person id. One match per household, best first.
  */
 import type { ApiAidJumpHousehold } from '../../../types/api-types'
@@ -44,7 +45,7 @@ function idCandidates(household: ApiAidJumpHousehold, query: string): Candidate[
   if (id === query) out.push({ score: 100, lead, detail: `household ${id}` })
   else if (id.startsWith(query)) out.push({ score: 60, lead, detail: `household ${id}` })
   for (const person of household.people) {
-    // A parent carries no CampMinder id in the read.
+    // Only a camper carries a CampMinder id in the read; a parent or requester has none.
     if (person.person_cm_id === null) continue
     const pid = String(person.person_cm_id)
     if (pid === query) out.push(personCandidate(household, person, 95, ` person ${pid} ·`))
