@@ -443,20 +443,20 @@ describe('WorkingRequestCard: the casework forms', () => {
 
   it('offers payer shares on a live request, and each intake fix only where it applies', () => {
     renderCards([ROW_EMMA])
-    expect(screen.getByRole('button', { name: 'Payer shares…' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Settle session…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Keep the other request…' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Payer Shares…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Settle Session…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Keep the Other Request…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
   })
 
-  it('offers Settle session… on a request whose session is not settled', () => {
+  it('offers Settle Session… on a request whose session is not settled', () => {
     renderCards([{ ...ROW_EMMA, request_status: 'unmatched_session' }])
-    expect(screen.getByRole('button', { name: 'Settle session…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Settle Session…' })).toBeInTheDocument()
   })
 
-  it('offers Keep the other request… only on a pending duplicate', () => {
+  it('offers Keep the Other Request… only on a pending duplicate', () => {
     renderCards([{ ...ROW_EMMA, request_status: 'duplicate_pending' }])
-    expect(screen.getByRole('button', { name: 'Keep the other request…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Keep the Other Request…' })).toBeInTheDocument()
   })
 
   it('offers Headcount… on a Family Camp household request only', () => {
@@ -471,19 +471,19 @@ describe('WorkingRequestCard: the casework forms', () => {
 
   it('offers none of them where the server refuses the write (a duplicate or withdrawn request)', () => {
     renderCards([{ ...ROW_EMMA, request_status: 'withdrawn' }])
-    expect(screen.queryByRole('button', { name: 'Payer shares…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Payer Shares…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
   })
 
   it('is the plain card, with none of them, without casework permission', () => {
     renderCards([{ ...ROW_EMMA, request_status: 'unmatched_session' }], false)
-    expect(screen.queryByRole('button', { name: 'Payer shares…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Settle session…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Payer Shares…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Settle Session…' })).toBeNull()
   })
 
   it('opens a form in place, and Back closes it', async () => {
     renderCards([ROW_EMMA])
-    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
     expect(screen.getByLabelText('Household')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(screen.queryByLabelText('Household')).toBeNull()
@@ -491,17 +491,17 @@ describe('WorkingRequestCard: the casework forms', () => {
 
   it("leaves the card's money editor before opening a form: one open editor", async () => {
     renderCards([ROW_OLIVIA])
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     expect(screen.getByLabelText('Round 2 ask')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
     expect(screen.getByLabelText('Household')).toBeInTheDocument()
   })
 
   it('closes the money editor of another card when a form opens on this one', async () => {
     renderCards([ROW_OLIVIA, ROW_EMMA])
-    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
-    const shares = screen.getAllByRole('button', { name: 'Payer shares…' })
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
+    const shares = screen.getAllByRole('button', { name: 'Payer Shares…' })
     await userEvent.click(shares[1]!)
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
     expect(screen.getByLabelText('Household')).toBeInTheDocument()
@@ -515,7 +515,7 @@ describe('WorkingRequestCard: the casework forms', () => {
 
   it('drops a form once the request no longer takes it (a refetch moved the status)', async () => {
     const { rerender } = render(<Cards rows={[UNSETTLED]} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Settle session…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Settle Session…' }))
     expect(screen.getByLabelText('Session')).toBeInTheDocument()
     rerender(<Cards rows={[{ ...UNSETTLED, request_status: 'active' }]} />)
     expect(screen.queryByLabelText('Session')).toBeNull()
@@ -527,7 +527,7 @@ describe('WorkingRequestCard: the casework forms', () => {
       settle = resolve
     })
     const { rerender } = render(<Cards rows={[UNSETTLED]} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Settle session…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Settle Session…' }))
     await userEvent.selectOptions(screen.getByLabelText('Session'), '1000101')
     await userEvent.type(screen.getByLabelText('Reason'), 'Registered for Session 2{Enter}')
     // The refetch lands before the write's promise resolves, and the row is no longer unmatched.
@@ -538,7 +538,7 @@ describe('WorkingRequestCard: the casework forms', () => {
       await resolveGate
     })
     expect(screen.queryByText(/Couldn|required|refused/)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
     expect(screen.getByLabelText('Household')).toBeInTheDocument()
   })
 
@@ -548,10 +548,10 @@ describe('WorkingRequestCard: the casework forms', () => {
       settle = resolve
     })
     renderCards([ROW_OLIVIA])
-    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
     await userEvent.type(screen.getByLabelText('Share'), '40')
     await userEvent.type(screen.getByLabelText('Reason'), 'Court order{Enter}')
-    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Payer Shares…' }))
     await act(async () => {
       settle()
       await shareGate
