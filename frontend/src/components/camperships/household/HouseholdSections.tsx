@@ -171,7 +171,7 @@ export function GrantsPostingsSection({ page }: { page: ApiAidHouseholdPage }) {
           onClick={() => download(postingsCsv(page), householdCsvName(page, 'postings'))}
         >
           <Download className="h-4 w-4" />
-          Download postings
+          Download Postings
         </button>
       }
     >
@@ -295,7 +295,7 @@ export function HistorySection({ page }: { page: ApiAidHouseholdPage }) {
             onClick={() => download(historyCsv(page), householdCsvName(page, 'history'))}
           >
             <Download className="h-4 w-4" />
-            Download history
+            Download History
           </button>
         )
       }
