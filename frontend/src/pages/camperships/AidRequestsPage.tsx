@@ -97,7 +97,6 @@ export default function AidRequestsPage() {
     program,
     pool,
     round,
-    tick,
     showIds,
     sort,
     group,
@@ -145,8 +144,8 @@ export default function AidRequestsPage() {
   const todayIds = todayState.state === 'ready' ? todayState.ids : null
   const todayUnknown = todayState.state === 'pending' || todayState.state === 'failed'
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, tick, ids: todayIds }),
-    [program, pool, round, tick, todayIds]
+    (): GridFilters => ({ program, pool, round, ids: todayIds }),
+    [program, pool, round, todayIds]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -155,8 +154,7 @@ export default function AidRequestsPage() {
     [lensed, view.key, filters]
   )
   // The view or another filter narrows the list past the Today line's own rows.
-  const narrowed =
-    view.key !== 'all' || program !== null || pool !== null || round !== null || tick !== null
+  const narrowed = view.key !== 'all' || program !== null || pool !== null || round !== null
   const counts = useMemo(
     () => (lensed && !todayUnknown ? viewCounts(lensed, filters, live) : null),
     [lensed, filters, live, todayUnknown]
@@ -344,11 +342,10 @@ export default function AidRequestsPage() {
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
-      ...(tick !== null ? { tick } : {}),
       ...(todayKey !== null ? { today: todayKey } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, tick, todayKey, showIds]
+    [program, pool, round, todayKey, showIds]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -408,7 +405,6 @@ export default function AidRequestsPage() {
       program={program}
       pool={pool}
       round={round}
-      tick={tick}
       showIds={showIds}
       onChange={changeFilter}
       onProgramPool={onProgramPool}

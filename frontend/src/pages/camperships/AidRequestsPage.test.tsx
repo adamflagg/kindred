@@ -296,14 +296,23 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByText(/isn't rebuilt for a past date/)).toBeInTheDocument()
   })
 
-  it('narrows to a round and a checklist state, kept in the URL (Decision 9)', async () => {
+  // Owner ruling (fast-follow, 10-03): the checklist chips are gone under D162 (no Posted ticks).
+  // Was: "narrows to a round and a checklist state", clicking Accepted to write `tick=accepted`.
+  it('narrows to a round, kept in the URL (Decision 9)', async () => {
     renderAt('/aid/requests')
-    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Accepted' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('tick=accepted')
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'R2' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('round=2')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
-    await userEvent.click(within(toolbar()).getByRole('button', { name: 'R2' }))
-    expect(screen.queryByText('Olivia Chen')).toBeNull()
+  })
+
+  it('ignores an old tick= link: it narrows nothing and no link carries it on', async () => {
+    renderAt('/aid/requests?tick=accepted')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(within(toolbar()).queryByRole('button', { name: 'Accepted' })).toBeNull()
+    await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
+    expect(screen.getByTestId('where')).not.toHaveTextContent('tick=')
   })
 
   it('puts Program, the chips, Show IDs, search and Download CSV on one toolbar line', () => {
@@ -313,7 +322,6 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     for (const el of [
       screen.getByLabelText('Program'),
       within(line).getByRole('button', { name: 'R1' }),
-      within(line).getByRole('button', { name: 'Posted' }),
       screen.getByLabelText('Show IDs'),
       screen.getByRole('button', { name: 'Download CSV' }),
     ])

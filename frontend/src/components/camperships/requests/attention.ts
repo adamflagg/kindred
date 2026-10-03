@@ -109,10 +109,8 @@ export interface GridAttention {
   /** The Requests view this item belongs to; null for a note that has none. */
   readonly queue: ApiAidQueue | null
   /**
-   * Its next step for the detail line. Null only where the mock's step is a button the grid can't
-   * do: "Edit the Award" (owner decision: #2948's editor keys only the Round 2 ask). The hand
-   * "Mark Posted" is a `markPosted` step on a Not reconciled row whose `unticked[]` entry says
-   * `mark_posted`; other unticked entries have no step.
+   * Its next step for the detail line. The hand "Mark Posted" is a `markPosted` step on a Not
+   * reconciled row whose `unticked[]` entry says `mark_posted`; other unticked entries have no step.
    */
   readonly next: NextStep | null
 }
@@ -129,9 +127,10 @@ const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   manual_hold: toRequest('Release the Hold…'),
   unmatched_session: PICK_SESSION,
   duplicate_survivor_withdrawn: KEEP_ONE,
-  // "Edit the Award" (an owner decision: it needs an award editor): no step. The hand "Mark Posted"
-  // is not here: it rides `unticked[].mark_posted`, so `in_campminder_not_ticked` stays null.
-  award_above_cost: null,
+  // Owner ruling (b), 10-03: the award is edited on the request's card, so the step links there.
+  // The hand "Mark Posted" is not here: it rides `unticked[].mark_posted`, so
+  // `in_campminder_not_ticked` stays null.
+  award_above_cost: toRequest('Edit the Award'),
   in_campminder_not_ticked: null,
 }
 
