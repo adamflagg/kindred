@@ -6006,6 +6006,7 @@ export type GridRowOut = {
    * Requested By
    */
   requested_by?: string | null
+  stage?: RowStageOut | null
 }
 
 /**
@@ -14436,6 +14437,36 @@ export type RoundRef = {
    * Round
    */
   round: 1 | 2 | 3
+}
+
+/**
+ * RowStageOut
+ *
+ * A request's grid Stage, derived on the server so the Requests grid and the household page read one source
+ * (ROUND_STATUS_LABELS words; a C1 round reads Posted).
+ */
+export type RowStageOut = {
+  /**
+   * Round
+   */
+  round: number | null
+  /**
+   * Code
+   */
+  code:
+    | 'posted'
+    | 'held'
+    | 'pending_approval'
+    | 'refused'
+    | 'not_decided'
+    | 'needs_offer'
+    | 'not_rebuilt'
+    | 'accepted'
+    | 'cancelled'
+  /**
+   * Label
+   */
+  label: string
 }
 
 /**

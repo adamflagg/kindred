@@ -1258,6 +1258,7 @@ export type {
   RoundCountsOut,
   RoundOut,
   RoundRef,
+  RowStageOut,
   RulesApproveIn,
   RulesDocumentIn,
   RulesDraftOut,
