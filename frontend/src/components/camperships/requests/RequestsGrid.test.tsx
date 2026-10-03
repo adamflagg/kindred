@@ -24,12 +24,14 @@ function Grid({
   rows = GRID_ROWS,
   tickedSeason = true,
   onTick,
+  onMarkPosted,
 }: {
   slug?: string
   showIds?: boolean
   rows?: readonly ApiAidGridRow[]
   tickedSeason?: boolean
   onTick?: (row: ApiAidGridRow, action: 'accepted') => void
+  onMarkPosted?: (row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -57,6 +59,7 @@ function Grid({
         }}
         links={links}
         onTick={onTick}
+        onMarkPosted={onMarkPosted}
       />
     </MemoryRouter>
   )
@@ -847,5 +850,66 @@ describe("Needs an offer's new total column (⚠ Decision 40, ruled)", () => {
     // The footer ends ... Decided, New total, Requested by, Needs attention (T2, T3).
     expect(footer.at(-4)).toHaveTextContent('$2,200')
     expect(footer.at(-3)?.textContent).toBe('')
+  })
+})
+
+// #2996 hand tick: a Not reconciled row whose money the overnight tick refused, where the server says a
+// hand tick is the way through (`unticked[].mark_posted`), offers "Mark Posted" in its opened row: the
+// existing Posted write, at the round's decided amount (the label is the confirmation). Only then.
+describe("the detail line's Mark Posted (#2996)", () => {
+  const SENTENCE = 'CampMinder shows $1,300 posted for Round 1, but the offer is $1,500.'
+  const refused = (markPosted: boolean) =>
+    gridRow({
+      request_id: 'reqrefused00001',
+      rounds: [roundOut(1, 'needs_offer', { decided: 1500 })],
+      unticked: [
+        {
+          round: 1,
+          code: markPosted ? 'short_posting' : 'family_level',
+          label: markPosted ? 'Short in CM' : 'Money to place',
+          message: SENTENCE,
+          mark_posted: markPosted,
+        },
+      ],
+      queues: ['not_reconciled'],
+    })
+  const detail = () => within(document.querySelector('[data-aid-detail]') as HTMLElement)
+  const openRow = () =>
+    userEvent.click(within(rowOf('Emma Johnson')).getAllByRole('cell').at(-2) as HTMLElement)
+
+  it('marks the round posted at its decided amount, with the pill and sentence beside it', async () => {
+    const onMarkPosted = vi.fn(() => Promise.resolve())
+    render(<Grid slug="not-reconciled" rows={[refused(true)]} onMarkPosted={onMarkPosted} />)
+    await openRow()
+    expect(detail().getByText('Short in CM')).toBeInTheDocument()
+    expect(detail().getByText(SENTENCE)).toBeInTheDocument()
+    await userEvent.click(detail().getByRole('button', { name: 'Mark Posted · locks $1,500' }))
+    expect(onMarkPosted).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqrefused00001' }),
+      1,
+      1500
+    )
+  })
+
+  it("says the server's refusal beside the button when the write is refused", async () => {
+    const onMarkPosted = vi.fn(() => Promise.reject(new Error('The decided amount moved.')))
+    render(<Grid slug="not-reconciled" rows={[refused(true)]} onMarkPosted={onMarkPosted} />)
+    await openRow()
+    await userEvent.click(detail().getByRole('button', { name: /^Mark Posted/ }))
+    expect(
+      await detail().findByText("Couldn't mark it posted: The decided amount moved.")
+    ).toBeInTheDocument()
+  })
+
+  it('offers no Mark Posted where the server says a hand tick is not the way, or to a viewer who cannot tick', async () => {
+    const { unmount } = render(
+      <Grid slug="not-reconciled" rows={[refused(false)]} onMarkPosted={vi.fn()} />
+    )
+    await openRow()
+    expect(detail().queryByRole('button', { name: /^Mark Posted/ })).toBeNull()
+    unmount()
+    render(<Grid slug="not-reconciled" rows={[refused(true)]} />)
+    await openRow()
+    expect(detail().queryByRole('button', { name: /^Mark Posted/ })).toBeNull()
   })
 })

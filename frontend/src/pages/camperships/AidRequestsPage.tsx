@@ -48,7 +48,7 @@ import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
-import { useAidKeyAsk } from '../../hooks/camperships/useAidWrites'
+import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
@@ -132,6 +132,16 @@ export default function AidRequestsPage() {
   // Casework edits a live read only: a past date shows what was, not what can change.
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && live
   const { mutateAsync: keyAsk } = useAidKeyAsk()
+  // The hand Posted tick (#2996): the existing Posted write, one round at its decided amount.
+  const { mutateAsync: tickPosted } = useAidTickPosted()
+  const markPosted = useCallback(
+    (r: ApiAidGridRow, round: number, amount: number) => {
+      if (round !== 1 && round !== 2 && round !== 3)
+        return Promise.reject(new Error('No such round'))
+      return tickPosted({ year, body: { rows: [{ request_id: r.request_id, round, amount }] } })
+    },
+    [tickPosted, year]
+  )
   const save = useCallback(
     (requestId: string, entry: EditorSave) =>
       keyAsk({
@@ -464,6 +474,7 @@ export default function AidRequestsPage() {
               onSelectedChange={canWork ? changeSelected : undefined}
               onMatchingChange={canWork ? onMatchingChange : undefined}
               onTick={canWork ? onTick : undefined}
+              onMarkPosted={canWork ? markPosted : undefined}
             />
           )
         }

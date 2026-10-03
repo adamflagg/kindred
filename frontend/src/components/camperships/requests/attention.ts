@@ -95,6 +95,7 @@ export type NextStep =
   | { readonly kind: 'link'; readonly label: string; readonly at: 'income' | 'request' }
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'tick'; readonly label: string }
+  | { readonly kind: 'markPosted'; readonly label: string; readonly round: number }
 
 const toRequest = (label: string): NextStep => ({ kind: 'link', label, at: 'request' })
 const say = (text: string): NextStep => ({ kind: 'text', text })
@@ -294,9 +295,17 @@ export function attentionItems(
   const reconcile = reconciliation(row)
   if (reconcile !== null) items.push(reconcile)
   // #2996 direction (b): CampMinder holds money for a round the overnight tick refused. Why, as the
-  // server says it: the pill (`label`) and a whole sentence (`message`). Mark Posted is #2951's.
+  // server says it: the pill (`label`) and a whole sentence (`message`). Where the server says a hand
+  // tick is the way through (`mark_posted`), the step is Mark Posted on that round (owner, title case).
   for (const money of row.unticked ?? []) {
-    items.push(note(money.label, money.message, 'not_reconciled', null))
+    items.push(
+      note(
+        money.label,
+        money.message,
+        'not_reconciled',
+        money.mark_posted ? { kind: 'markPosted', label: 'Mark Posted', round: money.round } : null
+      )
+    )
   }
   if (row.queues?.includes('waiting_on_family') ?? false) {
     // A C1 round (#2996, `cm_pending`) waits before tonight's tick gives it a posting date: no count.

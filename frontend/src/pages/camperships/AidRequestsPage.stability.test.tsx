@@ -41,6 +41,7 @@ const mutateAsync = vi.fn()
 vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidKeyAsk: () => ({ mutateAsync }),
   useAidTickAccepted: () => ({ mutateAsync, isPending: false }),
+  useAidTickPosted: () => ({ mutateAsync, isPending: false }),
 }))
 
 function Where() {

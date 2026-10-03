@@ -434,11 +434,26 @@ describe('Not reconciled: money with no Posted tick (#2996)', () => {
     queues: ['not_reconciled'],
   })
 
-  it("puts the server's pill and sentence on the row, in Not reconciled", () => {
+  // #2951 (hand tick): where the server says a hand tick is the way through, the step is Mark
+  // Posted on that round. Was: no step (#2943 has no writers).
+  it("puts the server's pill and sentence on the row, and Mark Posted where the server allows it", () => {
     expect(attentionFor(short, 'not_reconciled', TODAY)).toEqual({
       item: { level: 'note', pill: 'Short in CM', fact: SENTENCE },
       queue: 'not_reconciled',
-      next: null,
+      next: { kind: 'markPosted', label: 'Mark Posted', round: 1 },
     })
+    const toPlace = gridRow({
+      unticked: [
+        {
+          round: 1,
+          code: 'family_level',
+          label: 'Money to place',
+          message: 'A sentence.',
+          mark_posted: false,
+        },
+      ],
+      queues: ['not_reconciled'],
+    })
+    expect(attentionFor(toPlace, 'not_reconciled', TODAY)?.next).toBeNull()
   })
 })

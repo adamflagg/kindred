@@ -52,9 +52,13 @@ const keyAsk = vi.fn(() =>
   Promise.resolve({ year: 2027, written: 1, unchanged: 0, operation_id: 'op0000000000001' })
 )
 const tickAccepted = vi.fn()
+const tickPosted = vi.fn(() =>
+  Promise.resolve({ year: 2027, written: 1, unchanged: 0, operation_id: 'op0000000000002' })
+)
 vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidKeyAsk: () => ({ mutateAsync: keyAsk }),
   useAidTickAccepted: () => ({ mutateAsync: tickAccepted, isPending: false }),
+  useAidTickPosted: () => ({ mutateAsync: tickPosted, isPending: false }),
 }))
 
 /** The write's refusal once Round 2 is posted, as the read's `appeal_refusal` carries it (#2997). */
@@ -1095,6 +1099,44 @@ describe('ticks (§4.10, §5.2)', () => {
       expect(screen.getByText('1 selected · 1 hidden by the search or filters')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
       expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+    })
+  })
+})
+
+// #2996 hand tick: "Mark Posted" in a Not reconciled row's opened line is the existing Posted write.
+describe('Mark Posted on a Not reconciled row (#2996)', () => {
+  beforeEach(() => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    tickPosted.mockClear()
+  })
+
+  it('writes the Posted tick for that round at its decided amount', async () => {
+    const refused = {
+      ...GRID_ROWS[0]!,
+      request_id: 'reqrefused00001',
+      rounds: [roundOut(1, 'needs_offer', { decided: 1500 })],
+      unticked: [
+        {
+          round: 1,
+          code: 'short_posting' as const,
+          label: 'Short in CM',
+          message: 'A sentence from the server.',
+          mark_posted: true,
+        },
+      ],
+      queues: ['not_reconciled' as const],
+    }
+    grid = { data: { ...LIVE, rows: [refused] }, isLoading: false, error: null }
+    renderAt('/aid/requests?view=not-reconciled')
+    const row = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
+    const detail = document.querySelector('[data-aid-detail]') as HTMLElement
+    await userEvent.click(
+      within(detail).getByRole('button', { name: 'Mark Posted · locks $1,500' })
+    )
+    expect(tickPosted).toHaveBeenCalledWith({
+      year: 2027,
+      body: { rows: [{ request_id: 'reqrefused00001', round: 1, amount: 1500 }] },
     })
   })
 })

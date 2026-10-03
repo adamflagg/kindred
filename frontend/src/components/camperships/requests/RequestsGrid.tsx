@@ -18,7 +18,7 @@ import { IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
-import { RequestDetailLine } from './RequestDetailLine'
+import { RequestDetailLine, type MarkPosted } from './RequestDetailLine'
 import { requestStage, roundOf } from './stage'
 import { acceptedTarget, type TickAction } from './ticks'
 import {
@@ -63,6 +63,8 @@ interface RequestsGridProps {
   readonly onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
   /** `casework` only: a single tick opens the same confirmation as bulk (Decision 15). Stable. */
   readonly onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
+  /** `casework` only: the hand Posted tick on a Not reconciled row the server allows it on (#2996). Stable. */
+  readonly onMarkPosted?: MarkPosted | undefined
 }
 
 const requestKey = (row: ApiAidGridRow) => row.request_id
@@ -230,6 +232,7 @@ export function RequestsGrid({
   onSelectedChange,
   onMatchingChange,
   onTick,
+  onMarkPosted,
 }: RequestsGridProps) {
   const columns = useMemo(
     () => buildColumns(view, showIds, tickedSeason, today, links, onTick),
@@ -243,9 +246,10 @@ export function RequestsGrid({
         links={links}
         showConfirmation={tickedSeason}
         onTick={onTick}
+        onMarkPosted={onMarkPosted}
       />
     ),
-    [view, today, links, tickedSeason, onTick]
+    [view, today, links, tickedSeason, onTick, onMarkPosted]
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [

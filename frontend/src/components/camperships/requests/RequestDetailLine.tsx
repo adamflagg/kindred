@@ -1,10 +1,12 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { TICK_BUTTON } from '../kit/kitStyles'
+import { formatMoney } from '../kit/money'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
+import { roundOf } from './stage'
 import { acceptedTarget, type TickAction } from './ticks'
 import { cmDetail, type ColumnContext } from './views'
 
@@ -15,13 +17,81 @@ const MUTED = 'text-muted-foreground'
 const hashOf = (step: Extract<NextStep, { kind: 'link' }>, row: ApiAidGridRow) =>
   step.at === 'income' ? 'income' : `request-${row.request_id}`
 
+/** The hand Posted write (#2996): resolves once written, rejects with the server's refusal. */
+export type MarkPosted = (row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>
+
+/**
+ * "Mark Posted · locks $X" (#2996 hand tick, the existing Posted write): the label is the
+ * confirmation, as the household page's. A refusal says the server's sentence beside it.
+ */
+function MarkPostedStep({
+  row,
+  round,
+  amount,
+  label,
+  onMarkPosted,
+}: {
+  row: ApiAidGridRow
+  round: number
+  amount: number
+  label: string
+  onMarkPosted: MarkPosted
+}) {
+  const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const mark = () => {
+    setBusy(true)
+    setRefusal(null)
+    onMarkPosted(row, round, amount).then(
+      () => setBusy(false),
+      (error: unknown) => {
+        setBusy(false)
+        setRefusal(error instanceof Error ? error.message : String(error))
+      }
+    )
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {refusal !== null && (
+        <span className="text-amber-700 dark:text-amber-400">{`Couldn't mark it posted: ${refusal}`}</span>
+      )}
+      <button
+        type="button"
+        className={TICK_BUTTON}
+        disabled={busy}
+        onClick={(event) => {
+          event.stopPropagation()
+          mark()
+        }}
+      >
+        {`${label} · locks ${formatMoney(amount)}`}
+      </button>
+    </span>
+  )
+}
+
 function stepOf(
   next: NextStep | null,
   row: ApiAidGridRow,
   links: HouseholdLinks,
-  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
+  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined,
+  onMarkPosted: MarkPosted | undefined
 ): ReactNode {
   if (next === null) return null
+  if (next.kind === 'markPosted') {
+    // Only for someone who can tick, and a round with a decided amount to lock.
+    const amount = roundOf(row, next.round)?.decided ?? null
+    if (onMarkPosted === undefined || amount === null) return null
+    return (
+      <MarkPostedStep
+        row={row}
+        round={next.round}
+        amount={amount}
+        label={next.label}
+        onMarkPosted={onMarkPosted}
+      />
+    )
+  }
   if (next.kind === 'link') {
     return (
       <HouseholdLink row={row} links={links} className={LINK} hash={hashOf(next, row)}>
@@ -61,6 +131,7 @@ export function RequestDetailLine({
   links,
   showConfirmation,
   onTick,
+  onMarkPosted,
 }: {
   row: ApiAidGridRow
   ctx: ColumnContext
@@ -69,11 +140,13 @@ export function RequestDetailLine({
   showConfirmation: boolean
   /** The grid's own row tick (casework on a live read); without it a tick step draws nothing. */
   onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
+  /** The hand Posted tick (#2996; casework on a live read); without it Mark Posted draws nothing. */
+  onMarkPosted?: MarkPosted | undefined
 }) {
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
   const next = found === null ? OPEN_REQUEST : found.next
   const confirmation = showConfirmation ? cmDetail(row) : null
-  const step = stepOf(next, row, links, onTick)
+  const step = stepOf(next, row, links, onTick, onMarkPosted)
   return (
     <div className="flex flex-col gap-1 text-sm">
       <div>
