@@ -89,6 +89,7 @@ from api.schemas.financial_aid_decisions import (
     TodoOut,
     UnconfirmedOut,
     UnpostIn,
+    UntickedMoneyOut,
 )
 from api.schemas.financial_aid_intake import IssueOut
 from api.services.camp_calendar import CAMP_TZ
@@ -146,27 +147,33 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
-from api.services.financial_aid_queues import ROUND_STATUS_LABELS, row_queues
+from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, row_queues, row_stage
 from api.services.financial_aid_reconciliation import (
+    AWAITING_SYNC_TEXT,
     CampLine,
     Confirmation,
     LedgerTick,
     LineOverride,
     SeasonLedger,
     SplitPart,
+    Unticked,
     apply_clawback,
     as_recorded,
+    awaits_sync,
     build_ledger,
     camp_date,
     clawback_eligible,
     confirmation,
     ledger_note,
     ledger_ticks,
+    ledger_walk,
     override_placement,
     override_split,
+    pending_text,
     placeable,
     request_scope,
     round_ledger,
+    stop_text,
     undone_rounds,
 )
 from api.services.financial_aid_request_overrides import (
@@ -188,10 +195,12 @@ from api.services.financial_aid_rules_service import (
 from api.services.financial_aid_share_split import grid_shares, payers
 from api.services.financial_aid_to_place import (
     SYNC_HISTORY,
+    ChangedReason,
     SinceInputs,
     SinceRecords,
     on_placed_money,
     reads_person_fields,
+    withheld_why,
     withhold,
 )
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
@@ -413,6 +422,22 @@ class Season:
     # the read's day on a past read.
     cost_overrides: Mapping[str, CorrectionRecord] = field(default_factory=dict)
     splits: Mapping[int, tuple[SplitPart, ...]] = field(default_factory=dict)
+    # D162: each request's rounds CampMinder holds money for with no Posted tick, and why (with_unticked). Filled
+    # only by the reads that show it (the grid, Today, the household page, Rounds & budget's counts, the March file,
+    # the Accepted tick); empty elsewhere and on a past read.
+    unticked: Mapping[str, tuple[Unticked, ...]] = field(default_factory=dict)
+    # C1 (owner 10-03): the rounds CampMinder covers in full with nothing blocking tonight's tick, each with its
+    # decided amount. No Not reconciled reason: they wait on the family at once, CampMinder "pending". Filled with
+    # `unticked`, by the same walk.
+    pending: Mapping[tuple[str, int], Decimal] = field(default_factory=dict)
+
+    def in_campminder(self) -> frozenset[tuple[str, int]]:
+        """The (request, round)s with no Posted tick that CampMinder already holds money for (D162, Q1): Not
+        reconciled's direction (b) and C1's pending rounds. None of them is a Needs an offer round: posting them
+        again risks posting the family twice."""
+        return frozenset(self.pending) | frozenset(
+            (rid, u.round) for rid, items in self.unticked.items() for u in items
+        )
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -778,6 +803,30 @@ def grid_row(
             else []
         ),
     )
+
+
+def _pending_round(view: RoundOut, decided: Decimal | None) -> RoundOut:
+    """C1 (owner 10-03): a round CampMinder covers in full with nothing blocking tonight's tick reads "Posted" and
+    waits on the family at once, its CampMinder cell "pending". Its status and Posted figure still follow the tick
+    (status needs_offer, posted None until tonight), so the posted money totals do too. `decided`: the round's decided
+    amount while it is pending (Season.pending); None leaves the round as it is."""
+    if decided is None:
+        return view
+    return view.model_copy(
+        update={
+            "cm_pending": True,
+            "cm_pending_message": pending_text(decided),
+            "status_label": ROUND_STATUS_LABELS["posted"],
+        }
+    )
+
+
+def _awaiting_round(view: RoundOut, awaiting: Collection[int]) -> RoundOut:
+    """V1 (owner 10-03): a posted round whose hand tick awaits tonight's sync reads CM ✓ "pending" with its line.
+    `awaiting`: the request's rounds that do (row_of)."""
+    if view.round not in awaiting:
+        return view
+    return view.model_copy(update={"cm_pending": True, "cm_pending_message": AWAITING_SYNC_TEXT})
 
 
 def _count(count: Count) -> CountOut:
@@ -1589,18 +1638,70 @@ class FinancialAidDecisionsService:
             now=now, history_from=now - SYNC_HISTORY, records=records, rules_at=rules_at, rules_unknown=unknown
         )
 
-    async def _without_withheld(self, season: Season, ticks: Sequence[LedgerTick]) -> list[LedgerTick]:
+    async def _withheld(
+        self, season: Season, ticks: Sequence[LedgerTick]
+    ) -> list[tuple[LedgerTick, tuple[ChangedReason, ...]]]:
         """D152 (owner, B1 Q1 2026-10-02): money a person placed is the placement's to tick, so a round D16 withholds
         there stays withheld at night too, for a person to tick at its posting-day price. The rest (money CampMinder
         posted to the camper) is the overnight tick's own, priced at the sync (SP10b-1 Decision 2). Withheld is per
         request and as broad as D16's check: a later camper-posted round, or a top-up of a short placement, on a
-        request with a placed line waits too."""
+        request with a placed line waits too. The ticks among `ticks` it holds, with why."""
         placed = on_placed_money(season, ticks)
         if not placed:
-            return list(ticks)
+            return []
         _, held = withhold(season, placed, await self.since_inputs(season, placed))
-        left = {(tick.request_id, tick.round) for tick, _ in held}
+        return held
+
+    async def _without_withheld(self, season: Season, ticks: Sequence[LedgerTick]) -> list[LedgerTick]:
+        """The ticks the overnight tick writes: `ticks` less the ones D152 withholds (`_withheld`)."""
+        left = {(tick.request_id, tick.round) for tick, _ in await self._withheld(season, ticks)}
         return [tick for tick in ticks if (tick.request_id, tick.round) not in left]
+
+    async def with_unticked(self, season: Season) -> Season:
+        """D162: Requests › Not reconciled's direction (b), on the live read from the first ticked season. For every
+        round CampMinder holds money for that has no Posted tick, why: the overnight tick's own walk (ledger_walk, the
+        rule ledger_ticks runs, so the two can't disagree) says where it stopped, and a round it would tick is either
+        held by D152 (`withheld`, the same check the overnight tick runs) or is pending tonight's tick (C1, owner
+        10-03: `pending`, no reason). The rows these mark are those D81's Note marks, less an over-posting with nothing
+        asked for the next round (H1, direction a's). The Requests grid, Today and the household page read it
+        (row_of), as do Rounds & budget's Needs an offer counts, the March file and the Accepted tick; D16's load runs
+        only when such a round sits on money a person placed. A reason offers Mark posted only on the request's first
+        unposted round, the only one tick_posted takes alone (H3)."""
+        if season.as_of is not None or not season.ledger.read or season.year < FIRST_TICKED_SEASON:
+            return season
+        ledger = season.ledger
+        walk = ledger_walk(
+            season.priced.values(),
+            ledger,
+            today=self._today(),
+            undone=season.undone,
+            family_unplaced={
+                rid: ledger.family_unplaced(request_scope(request, season.shares.get(rid, ())))
+                for rid, request in season.requests.items()
+            },
+            split=frozenset(rid for rid, shares in season.shares.items() if len(shares) > 1),
+        )
+        held = {(tick.request_id, tick.round): reasons for tick, reasons in await self._withheld(season, walk.ticks)}
+
+        def first(request_id: str, n: int) -> bool:
+            return all(
+                v.status == "posted" for v in season.priced[request_id].rounds if v.round < n
+            )  # H3: tick_posted's "tick Round m Posted before Round n"
+
+        found: dict[str, list[Unticked]] = defaultdict(list)
+        pending: dict[tuple[str, int], Decimal] = {}
+        for tick in walk.ticks:
+            reasons = held.get((tick.request_id, tick.round))
+            if reasons is None:
+                pending[(tick.request_id, tick.round)] = tick.amount
+                continue
+            why = withheld_why(tick, reasons)
+            found[tick.request_id].append(Unticked(tick.round, "withheld", why, first(tick.request_id, tick.round)))
+        for stop in walk.stops:
+            found[stop.request_id].append(
+                Unticked(stop.round, stop.code, stop_text(stop), first(stop.request_id, stop.round))
+            )
+        return replace(season, unticked={rid: tuple(items) for rid, items in found.items()}, pending=pending)
 
     async def _posting_day_locks(
         self, season: Season, keys: Collection[tuple[str, int]]
@@ -2000,6 +2101,7 @@ class FinancialAidDecisionsService:
             outside_grants_off_requests=off,
             not_demand=season.cancelled_in_campminder,
             ledger=self._round_ledgers(season) if confirmed else None,
+            off_list=season.in_campminder(),  # C2: empty unless the read ran with_unticked (budget() does)
         )
 
     def budget_of(self, season: Season) -> SeasonBudget:
@@ -2015,6 +2117,7 @@ class FinancialAidDecisionsService:
         async def load() -> tuple[Season, dict[int, str], dict[int, str]]:
             if day is None:
                 live, (fam, cam) = await self._season(year, names=True)
+                live = await self.with_unticked(live)
                 unnamed = _payer_households(live) - fam.keys()
                 if unnamed:  # a household that pays a share but applied for nothing (⚠39)
                     more, _ = await self._store.fetch_names(year, unnamed, set())
@@ -2041,6 +2144,10 @@ class FinancialAidDecisionsService:
                 row.model_copy(
                     update={
                         "queues": None,
+                        "unticked": None,
+                        "rounds": [
+                            r.model_copy(update={"cm_pending": None, "cm_pending_message": None}) for r in row.rounds
+                        ],
                         "to_reverse": None,
                         "appeal_refusal": None,
                         **(
@@ -2052,6 +2159,8 @@ class FinancialAidDecisionsService:
                 )
                 for row in rows
             ]
+            # The Stage reads the status alone here (cm_pending is not rebuilt), so it is no GRID_GAPS figure.
+            rows = [row.model_copy(update={"stage": row_stage(row)}) for row in rows]
             rows = [_decided_unknown(row) if row.request_id in season.gapped else row for row in rows]
             rows = [
                 row.model_copy(update={"payer_count": None, "payer_shares": []})
@@ -2111,9 +2220,41 @@ class FinancialAidDecisionsService:
         standing = season.cost_overrides.get(request_id)
         parsed = parse_cost_override(standing.new_value) if standing is not None else None
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
+        # V1 (owner 10-03): while the request reads awaiting_sync, each posted round whose own hand tick awaits
+        # tonight's sync is CM ✓ "pending" (its Not reconciled exclusion is Confirmation.reconciled's).
+        awaiting = (
+            {
+                r.round
+                for r in row.rounds
+                if r.status == "posted"
+                and not r.clawed_back
+                and awaits_sync(season.rounds.get(request_id, {}).get(r.round), season.ledger.synced_at)
+            }
+            if row.confirmation is not None and row.confirmation.status == "awaiting_sync"
+            else set()
+        )
+        row = row.model_copy(
+            update={
+                "unticked": [
+                    UntickedMoneyOut(
+                        round=u.round,
+                        code=u.code,
+                        message=u.message,
+                        mark_posted=u.mark_posted,
+                        label=UNTICKED_LABELS[u.code],
+                    )
+                    for u in season.unticked.get(request_id, ())
+                ],
+                "rounds": [
+                    _awaiting_round(_pending_round(r, season.pending.get((request_id, r.round))), awaiting)
+                    for r in row.rounds
+                ],
+            }
+        )
         return row.model_copy(
             update={
                 "queues": row_queues(row),
+                "stage": row_stage(row),
                 "payer_count": len(paying),
                 "payer_shares": grid_shares(row, paying, families),
                 "campminder_description": description,
@@ -2174,7 +2315,9 @@ class FinancialAidDecisionsService:
         )
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:
-        season = await self._season_for(year, as_of, as_of_axis)
+        # C2 (D162, owner 10-03): Needs an offer's counts are the grid's list, so the read walks the ledger as the grid
+        # does (a past read and a season before the first ticked one are returned unchanged).
+        season = await self.with_unticked(await self._season_for(year, as_of, as_of_axis))
         out = budget_out(year, season.rules, self._budget(season, confirmed=True))
         return out if season.as_of is None else past_budget(out, season)
 
@@ -2715,7 +2858,10 @@ class FinancialAidDecisionsService:
         return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
 
     async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
-        """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""
+        """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53). All or nothing. A
+        round must be posted, or (from the first ticked season) be one CampMinder covers in full with nothing blocking
+        tonight's tick (C1, owner 10-03: Season.pending, from the same ledger walk the grid reads), so the family can
+        accept before tonight's tick marks it posted."""
         requests = {r.id: r for r in await self._store.fetch_requests(year)}
         # Only the requests being ticked: their registrations, never every aid camper of the season.
         ticked = [requests[rid] for rid in dict.fromkeys(row.request_id for row in body.rows) if rid in requests]
@@ -2728,10 +2874,18 @@ class FinancialAidDecisionsService:
         rounds = fold_rounds(events)
         cancelled = cancellations_by_request(ticked, cancel_events, enrollments, sessions)
         in_kindred = {rid for rid, c in cancelled.items() if c.by == "kindred"}
+        keys = dict.fromkeys((row.request_id, row.round) for row in body.rows)
+        unposted = [
+            (rid, n)
+            for rid, n in keys
+            if rid in requests and not rounds.get(rid, {}).get(n, RoundState(round=n)).posted
+        ]
+        # The walk prices the season: run only to accept a round that isn't posted (with_unticked keeps the season gate).
+        pending = (await self.with_unticked(await self.season(year))).pending if unposted and body.accepted else {}
         writes: list[AidWrite] = []
         problems: list[str] = []
         unchanged = 0
-        for request_id, n in dict.fromkeys((row.request_id, row.round) for row in body.rows):
+        for request_id, n in keys:
             request = requests.get(request_id)
             if request is None:
                 raise DecisionNotFoundError(f"request {request_id} is not in {year}")
@@ -2740,7 +2894,9 @@ class FinancialAidDecisionsService:
                 unchanged += 1
             elif body.accepted and request_id in in_kindred:
                 problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
-            elif not state.posted:
+            # An un-accept is always allowed: a same-day Accepted (C1) whose round then stops being pending would
+            # otherwise be stuck until it posts.
+            elif body.accepted and not state.posted and (request_id, n) not in pending:
                 problems.append(f"{request_id}: Round {n} is not posted")
             else:
                 writes.append(self._write(request, n, "accept" if body.accepted else "unaccept", actor))

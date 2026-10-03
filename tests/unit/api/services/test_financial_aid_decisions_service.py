@@ -194,8 +194,9 @@ async def test_each_grid_row_names_the_requests_views_it_is_in() -> None:
     _posted(store, LIAM, 1, "1500")
     rows = {row.request_id: row for row in (await _service(store).grid(YEAR)).rows}
     assert rows[EMMA].queues == ["needs_offer"]
-    # Ticked, and nothing of it in CampMinder yet: the family hasn't accepted, and the ledger hasn't confirmed it.
-    assert rows[LIAM].queues == ["waiting_on_family", "not_reconciled"]
+    # Ticked by hand, and nothing of it in CampMinder yet: the family hasn't accepted. No sync has run since the tick,
+    # so it is no Not reconciled exception yet (V1, owner 10-03: its CM ✓ reads pending).
+    assert rows[LIAM].queues == ["waiting_on_family"]
 
 
 @pytest.mark.asyncio

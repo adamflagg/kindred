@@ -33,7 +33,7 @@ from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoa
 from api.services.financial_aid_intake_service import never_true_labels
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
 from api.services.financial_aid_ledger_service import money
-from api.services.financial_aid_queues import UNRECONCILED
+from api.services.financial_aid_queues import UNRECONCILED, UNTICKED_LABELS, offer_rounds
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_to_place_service import NO_OPEN_LINES, OpenToPlace, ToPlaceCounts, open_to_place
 from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES
@@ -85,7 +85,8 @@ def _families(rows: Iterable[GridRowOut]) -> int:
 
 def _reasons(pairs: Iterable[tuple[str, int]], labels: Mapping[str, str] | None = None) -> list[TodayReasonOut]:
     """(code, household) pairs, one per item, into reasons: largest first, then by code.
-    `labels` names a code where it has a label (the never-true line); the rest stay None."""
+    `labels` names a code where it has a label (the never-true line, and Not reconciled's direction (b) reasons,
+    D162); the rest stay None."""
     items: dict[str, int] = defaultdict(int)
     households: dict[str, set[int]] = defaultdict(set)
     for code, household in pairs:
@@ -139,13 +140,15 @@ def _waiting_since(row: GridRowOut) -> date | None:
 
 
 def _unreconciled(row: GridRowOut) -> set[str]:
-    """Why a row is Not reconciled: the request's state, or, when it is confirmed, its shares' (D59)."""
+    """Why a row is Not reconciled: (a) the request's state, or, when it is confirmed, its shares' (D59); and (b) why
+    CampMinder's money for a round has no Posted tick (D162)."""
+    unticked: set[str] = {u.code for u in row.unticked or []}
     c = row.confirmation
     if c is None:
-        return set()
+        return unticked
     if c.status in UNRECONCILED:
-        return {c.status}
-    return {s.status for s in c.shares if s.status in UNRECONCILED}
+        return {c.status} | unticked
+    return {s.status for s in c.shares if s.status in UNRECONCILED} | unticked
 
 
 DISAGREEING: Final = frozenset({"short", "over", "not_in_campminder"})
@@ -228,12 +231,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
         "needs_offer": _line(
             "needs_offer",
             needs_offer,
-            reasons=_reasons(
-                (f"r{r.round}", row.household_cm_id)
-                for row in needs_offer
-                for r in row.rounds
-                if r.status == "needs_offer"
-            ),
+            reasons=_reasons((f"r{r.round}", row.household_cm_id) for row in needs_offer for r in offer_rounds(row)),
         ),
         "holds": _line(
             "holds", holds, reasons=_reasons((h.code, row.household_cm_id) for row in holds for h in row.holds)
@@ -247,7 +245,12 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
         "not_reconciled": _line(
             "not_reconciled",
             unreconciled,
-            reasons=_reasons((code, row.household_cm_id) for row in unreconciled for code in _unreconciled(row)),
+            reasons=_reasons(
+                ((code, row.household_cm_id) for row in unreconciled for code in _unreconciled(row)),
+                {str(code): label for code, label in UNTICKED_LABELS.items()},
+            ),
+            # D150, unchanged by D162: the largest disagreement between a Posted figure and CampMinder. Direction (b)'s
+            # money has no Posted figure to disagree with, so it adds no gap.
             largest_gap=max(gaps) if gaps else None,
         ),
         "to_reverse": _line("to_reverse", _in(rows, "to_reverse")),
@@ -415,6 +418,7 @@ class TodayService:
             _descriptions(self._ledger, year) if finance else _no_descriptions(),
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
+        season = await decisions.with_unticked(season)
         rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
         open_lines = await open_to_place(season, self._to_place) if casework and self._to_place is not None else None
         inputs = TodayInputs(

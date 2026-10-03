@@ -2867,7 +2867,8 @@ export type ComparisonMetricsResponse = {
  * Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
  * in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
  * the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
- * is the family's camp aid no single request takes yet (D81).
+ * is the family's camp aid no single request takes yet (D81). reconciled: off Requests › Not reconciled's
+ * direction (a), which a hand tick awaiting tonight's sync is too (V1, owner 10-03: status stays awaiting_sync).
  */
 export type ConfirmationOut = {
   /**
@@ -5948,6 +5949,10 @@ export type GridRowOut = {
    */
   notes: Array<IssueOut> | null
   confirmation?: ConfirmationOut | null
+  /**
+   * Unticked
+   */
+  unticked?: Array<UntickedMoneyOut> | null
   cancellation?: CancellationOut | null
   /**
    * To Reverse
@@ -6001,6 +6006,7 @@ export type GridRowOut = {
    * Requested By
    */
   requested_by?: string | null
+  stage?: RowStageOut | null
 }
 
 /**
@@ -10996,7 +11002,8 @@ export type PlaceLinesRow = {
  *
  * What a placement did: the lines it placed, the rounds it ticked, and the rounds it left for a person.
  * not_ticked: the rounds the money covers whose automatic tick was withheld because something that prices the
- * request changed after the posting (D16), each with why and a prompt to tick it by hand.
+ * request changed after the posting (D16), each with why and a prompt to click Mark posted (the same sentence
+ * Requests › Not reconciled shows as "Changed after posting", D162).
  */
 export type PlaceOut = {
   /**
@@ -14408,6 +14415,14 @@ export type RoundOut = {
    * Status Label
    */
   status_label?: string
+  /**
+   * Cm Pending
+   */
+  cm_pending?: boolean | null
+  /**
+   * Cm Pending Message
+   */
+  cm_pending_message?: string | null
 }
 
 /**
@@ -14422,6 +14437,36 @@ export type RoundRef = {
    * Round
    */
   round: 1 | 2 | 3
+}
+
+/**
+ * RowStageOut
+ *
+ * A request's grid Stage, derived on the server so the Requests grid and the household page read one source
+ * (ROUND_STATUS_LABELS words; a C1 round reads Posted).
+ */
+export type RowStageOut = {
+  /**
+   * Round
+   */
+  round: number | null
+  /**
+   * Code
+   */
+  code:
+    | 'posted'
+    | 'held'
+    | 'pending_approval'
+    | 'refused'
+    | 'not_decided'
+    | 'needs_offer'
+    | 'not_rebuilt'
+    | 'accepted'
+    | 'cancelled'
+  /**
+   * Label
+   */
+  label: string
 }
 
 /**
@@ -16440,7 +16485,8 @@ export type SubjectNotesResponse = {
  * confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
  * it locks); would_leave names the rounds it leaves for a person to tick, and why. would_not_tick names the
  * rounds the money covers that confirming will NOT tick, from the same check the write runs (D16): the line
- * is still placed, and each of those rounds waits for a person to tick it by hand.
+ * is still placed, and each of those rounds waits for a person to click Mark posted (D162: Not reconciled's
+ * "Changed after posting").
  */
 export type SuggestionOut = {
   /**
@@ -17577,6 +17623,51 @@ export type UnpushResponse = {
    * Deleted
    */
   deleted?: number
+}
+
+/**
+ * UntickedMoneyOut
+ *
+ * One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
+ * stopped there (short posting, family-level money, a round on hold, awaiting approval, declined by finance or not
+ * decided, unmarked by hand, payer shares not covering it), or D152 withheld it (changed after posting). A round
+ * CampMinder covers in full that tonight's tick posts is none of these (C1: RoundOut.cm_pending). `label` is the
+ * pill (UNTICKED_LABELS, one map with Today's breakdown, D21); `message` is in whole sentences (the household page
+ * shows it without a pill). `mark_posted`: a hand tick ("Mark posted", POST /decisions/{year}/posted) is the way
+ * through and would be taken for this round alone (H3: only the request's first unposted round); family-level money
+ * is placed in Money › To place instead, and a round not decided yet has nothing to lock. A round here is never in
+ * Needs an offer (Q1).
+ */
+export type UntickedMoneyOut = {
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Code
+   */
+  code:
+    | 'withheld'
+    | 'short_posting'
+    | 'shares_short'
+    | 'family_level'
+    | 'on_hold'
+    | 'awaiting_approval'
+    | 'finance_declined'
+    | 'not_decided'
+    | 'undone'
+  /**
+   * Message
+   */
+  message: string
+  /**
+   * Mark Posted
+   */
+  mark_posted: boolean
+  /**
+   * Label
+   */
+  label: string
 }
 
 /**

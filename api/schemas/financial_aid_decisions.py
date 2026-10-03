@@ -82,6 +82,16 @@ class RoundOut(BaseModel):
     # Its words (ROUND_STATUS_LABELS; read 3): the screens keep no map of their own (§6.1, D21). Set on every row the
     # server builds.
     status_label: str = ""
+    # The CM ✓ cell reads "pending", and `cm_pending_message` is the opened row's detail line. Two cases, both set
+    # only on the live read from the first ticked season:
+    # - C1 (D162, owner 10-03): CampMinder covers this unposted round in full and nothing blocks tonight's overnight
+    #   tick, so it waits on the family at once (status_label "Posted"). `status` and `posted` still follow the tick
+    #   (needs_offer, None) until tonight, as do the posted money totals.
+    # - V1 (owner 10-03): a posted round whose hand tick awaits tonight's sync (the request's confirmation reads
+    #   awaiting_sync). It is no Not reconciled exception until a sync runs and fails to confirm it.
+    # None on a past read, which rebuilds neither (GRID_GAPS).
+    cm_pending: bool | None = False
+    cm_pending_message: str | None = None
 
 
 class ReleasedHoldOut(BaseModel):
@@ -110,7 +120,8 @@ class ConfirmationOut(BaseModel):
     """Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
     in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
     the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
-    is the family's camp aid no single request takes yet (D81)."""
+    is the family's camp aid no single request takes yet (D81). reconciled: off Requests › Not reconciled's
+    direction (a), which a hand tick awaiting tonight's sync is too (V1, owner 10-03: status stays awaiting_sync)."""
 
     status: ConfirmationStatusOut
     locked: float
@@ -120,6 +131,39 @@ class ConfirmationOut(BaseModel):
     reconciled: bool
     family_unplaced: float
     shares: list[ShareConfirmationOut]
+
+
+# D162: why CampMinder holds money for a round that has no Posted tick (Requests › Not reconciled, direction b).
+# api.services.financial_aid_reconciliation.UntickedCode; a test pins them equal, and the labels to these.
+UntickedReasonOut = Literal[
+    "withheld",
+    "short_posting",
+    "shares_short",
+    "family_level",
+    "on_hold",
+    "awaiting_approval",
+    "finance_declined",
+    "not_decided",
+    "undone",
+]
+
+
+class UntickedMoneyOut(BaseModel):
+    """One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
+    stopped there (short posting, family-level money, a round on hold, awaiting approval, declined by finance or not
+    decided, unmarked by hand, payer shares not covering it), or D152 withheld it (changed after posting). A round
+    CampMinder covers in full that tonight's tick posts is none of these (C1: RoundOut.cm_pending). `label` is the
+    pill (UNTICKED_LABELS, one map with Today's breakdown, D21); `message` is in whole sentences (the household page
+    shows it without a pill). `mark_posted`: a hand tick ("Mark posted", POST /decisions/{year}/posted) is the way
+    through and would be taken for this round alone (H3: only the request's first unposted round); family-level money
+    is placed in Money › To place instead, and a round not decided yet has nothing to lock. A round here is never in
+    Needs an offer (Q1)."""
+
+    round: int
+    code: UntickedReasonOut
+    message: str
+    mark_posted: bool
+    label: str
 
 
 # D141's nine cancel reasons (api.services.financial_aid_cancellations.CancelReason; a test pins them equal).
@@ -202,6 +246,28 @@ class CostOverrideOut(BaseModel):
     actor: str
 
 
+RowStageCode = Literal[
+    "posted",
+    "held",
+    "pending_approval",
+    "refused",
+    "not_decided",
+    "needs_offer",
+    "not_rebuilt",
+    "accepted",
+    "cancelled",
+]
+
+
+class RowStageOut(BaseModel):
+    """A request's grid Stage, derived on the server so the Requests grid and the household page read one source
+    (ROUND_STATUS_LABELS words; a C1 round reads Posted)."""
+
+    round: int | None  # the latest round's number; None when Cancelled
+    code: RowStageCode
+    label: str  # the whole column text: "Cancelled" or "R{n} · {words}"
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -224,6 +290,8 @@ class GridRowOut(BaseModel):
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
     confirmation: ConfirmationOut | None = None
+    # D162: Not reconciled's direction (b), from the first ticked season. None on a past read (not_rebuilt names it).
+    unticked: list[UntickedMoneyOut] | None = Field(default_factory=list)
     # Sub-project 10b-2. On a past read, as of the day (Decision 11); a registration whose status changed since
     # reads by today's status (not_rebuilt's cancellation).
     cancellation: CancellationOut | None = None
@@ -249,6 +317,8 @@ class GridRowOut(BaseModel):
     # Who submitted the aid form (the parent or guardian's name, from the form's contact fields); None when it can't
     # be named, e.g. the household's forms name two different people. The grid is to link it to the household page.
     requested_by: str | None = None
+    # The Stage column's value (RowStageOut). None only when the row has no rounds.
+    stage: RowStageOut | None = None
 
 
 class RequestsGridResponse(BaseModel):

@@ -385,7 +385,9 @@ def _view(
         ask=ask,
         decided=decided,
         locked=None,
-        accepted=False,
+        # Only C1's same-day Accepted (D162, owner 10-03) ticks an unposted round: CampMinder covers it in full and
+        # tonight's tick posts it. Anything else can't (tick_accepted), and an undo of the Posted tick clears it.
+        accepted=state.accepted,
         pending=pending,
         would_change_by=None,
         counts_toward_budget=counts,

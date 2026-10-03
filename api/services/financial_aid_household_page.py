@@ -467,6 +467,7 @@ class HouseholdPageService:
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
         season, (grants, _) = await asyncio.gather(decisions.season(year), shared.read())
+        season = await decisions.with_unticked(season)  # D162: the grid's own rows, Not reconciled's reasons and all
         scope = page_scope(household_cm_id, season.requests, season.shares)
         households = set(scope.households)
         request_ids = set(scope.request_ids)

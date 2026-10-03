@@ -68,7 +68,14 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
-from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundLedger, RoundState
+from bunking.financial_aid.decisions import (
+    DecisionEvent,
+    PricedRequest,
+    RoundLedger,
+    RoundState,
+    RoundStatus,
+    RoundView,
+)
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.logging_config import get_logger
 
@@ -651,6 +658,11 @@ def apply_clawback(
 
 ConfirmationStatus = Literal["awaiting_sync", "confirmed", "short", "over", "not_in_campminder", "reversed"]
 NOTE_NOT_TICKED: Final = "in_campminder_not_ticked"
+# The states a request or payer share is reconciled in (V1, owner 10-03): confirmed, or a hand tick awaiting
+# tonight's sync, which no sync has failed yet.
+_NOT_YET_FAILED: Final[frozenset[ConfirmationStatus]] = frozenset({"confirmed", "awaiting_sync"})
+# V1: the CM ✓ "pending" line on a posted round whose hand tick awaits tonight's sync (the approved wording).
+AWAITING_SYNC_TEXT: Final = "Ticked today; tonight's sync checks it."
 
 
 @dataclass(frozen=True)
@@ -686,10 +698,13 @@ class Confirmation:
 
     @property
     def reconciled(self) -> bool:
-        """Off Requests > Not reconciled (D59): confirmed with every share confirmed, or reversed."""
+        """Off Requests > Not reconciled (D59): confirmed with every share confirmed, or reversed. A hand tick
+        awaiting tonight's sync is off it too (V1, owner 10-03): nothing has failed yet, so it waits on the family
+        with its round CM ✓ "pending", and is an exception only once a sync has run and not confirmed it (short,
+        over, not_in_campminder). `status` still says awaiting_sync."""
         if self.status == "reversed":
             return True
-        return self.status == "confirmed" and all(s.status == "confirmed" for s in self.shares)
+        return self.status in _NOT_YET_FAILED and all(s.status in _NOT_YET_FAILED for s in self.shares)
 
 
 def _status(awaiting: bool, held: Decimal, due: Decimal) -> ConfirmationStatus:
@@ -713,6 +728,12 @@ def _awaiting(state: RoundState | None, synced_at: datetime | None) -> bool:
     if state is None or state.lock_source in FROM_THE_LEDGER:
         return False
     return synced_at is None or state.locked_at is None or state.locked_at > synced_at
+
+
+def awaits_sync(state: RoundState | None, synced_at: datetime | None) -> bool:
+    """A posted round's own tick awaits tonight's sync (`_awaiting`): a person's tick made after the last successful
+    sync. V1 marks such a round CM ✓ "pending" (AWAITING_SYNC_TEXT)."""
+    return _awaiting(state, synced_at)
 
 
 def _live_net(lines: Iterable[CampLine], at: datetime | None = None) -> Decimal:
@@ -908,35 +929,207 @@ def ledger_ticks(
     night it runs (D146): a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's
     award, so a sliver or a short posting never ticks, and the registrar ticks it by hand. Over-postings
     still tick, at the decided amount. That includes a payer share's Round 2: it waits until the shares
-    posted cover it in full."""
+    posted cover it in full.
+
+    The walk itself is `ledger_walk`, which also says where it stopped (D162); these are its ticks."""
+    return list(ledger_walk(priced, ledger, today=today, undone=undone).ticks)
+
+
+# --- D162: why CampMinder's money is not ticked (Requests > Not reconciled, direction b) ---------------
+
+# Why a round CampMinder holds money for has no Posted tick. The walk's own stops, plus one the service adds to a tick
+# the walk would make: `withheld` (D152: D16 holds it on money a person placed). Each is a Not reconciled reason
+# (§6.2), never a Needs an offer row (Q1). A round the walk ticks and nothing withholds is no reason at all (C1, owner
+# 10-03): it waits on the family at once, CampMinder "pending" until tonight's tick (PENDING_TEXT). A round not decided
+# has one code per state, since the pill names the state (owner 10-03).
+UntickedCode = Literal[
+    "withheld",
+    "short_posting",
+    "shares_short",
+    "family_level",
+    "on_hold",
+    "awaiting_approval",
+    "finance_declined",
+    "not_decided",
+    "undone",
+]
+# The reasons a hand tick ("Mark posted", tick_posted) is the way through (§6.2). Family-level money is placed in
+# Money › To place, whose placement ticks (D81, D151); a round not decided yet has nothing to lock. The code alone
+# doesn't offer the button: tick_posted takes a request's first unposted round only (H3, `Unticked.mark_posted`).
+MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset({"withheld", "short_posting", "shares_short", "undone"})
+# A round not decided yet, by its state (owner 10-03: the pill names the state).
+_UNDECIDED: Final[Mapping[str, UntickedCode]] = {
+    "held": "on_hold",
+    "pending_approval": "awaiting_approval",
+    "refused": "finance_declined",
+}
+
+
+@dataclass(frozen=True)
+class TickStop:
+    """Where the automatic tick stopped on a request while CampMinder holds money beyond its locks (D162). `held` is
+    that money: the placed net beyond the locks before this round, or for `family_level` the family's money no single
+    request takes (D81). `decided` is the round's decided amount, None while it isn't decided."""
+
+    request_id: str
+    round: int
+    code: UntickedCode
+    status: RoundStatus
+    held: Decimal
+    decided: Decimal | None
+
+
+@dataclass(frozen=True)
+class LedgerWalk:
+    """The automatic tick's walk over the live requests (D78, D146): the rounds it ticks, and where it stopped with
+    money left. `ledger_ticks` is `ticks`, so the tick and its reasons come from one loop and can't disagree."""
+
+    ticks: tuple[LedgerTick, ...]
+    stops: tuple[TickStop, ...]
+
+
+def _stop_code(
+    request: PricedRequest,
+    view: RoundView,
+    in_campminder: Decimal,
+    locked: Decimal,
+    family: Decimal,
+    *,
+    undone: Collection[tuple[str, int]],
+    split: bool,
+) -> UntickedCode | Literal["ticks", "no_reason"]:
+    """ledger_ticks' refusal of this round, with its reason; "ticks": it ticks. The caller has already stopped where
+    nothing is left for the round and the family holds no money no request takes. The order of the refusals only
+    picks the reason; any of them stops the walk, as before. "no_reason" stops it with no Not reconciled (b) row: an
+    over-posting with nothing asked for the round (H1) has nothing to decide, so a "clears once decided" row would
+    never clear, and direction (a) already reads the request as over."""
+    if in_campminder <= locked:
+        # Full cover below implies this for any round above $0; it stops a $0 round ticking on money the earlier
+        # rounds already lock.
+        return "family_level"
+    if view.status != "needs_offer" or view.decided is None:
+        if view.round > 1 and view.ask is None and family <= 0:  # Round 1 follows no posting, and its blank ask is real
+            return "no_reason"
+        return _UNDECIDED.get(view.status, "not_decided")
+    if (request.request_id, view.round) in undone:
+        return "undone"
+    if in_campminder < locked + view.decided:
+        if family > 0:
+            return "family_level"  # placing comes first: the family's line may be the rest of the round
+        return "shares_short" if split else "short_posting"
+    return "ticks"
+
+
+def ledger_walk(
+    priced: Iterable[PricedRequest],
+    ledger: SeasonLedger,
+    *,
+    today: date,
+    undone: Collection[tuple[str, int]] = frozenset(),
+    family_unplaced: Mapping[str, Decimal] | None = None,
+    split: Collection[str] = frozenset(),
+) -> LedgerWalk:
+    """ledger_ticks' walk (its rule is there), reporting where it stopped while CampMinder holds money beyond the
+    request's locks (D162). `family_unplaced`: each request's D81 family-level money (SeasonLedger.family_unplaced
+    over its request_scope); a request with none placed beyond its locks stops at its first unticked round as
+    `family_level`, exactly the rows D81's Note marks (ledger_note). `split`: requests two or more households pay,
+    whose short round waits for the payer shares (D81). Neither changes what ticks."""
+    families = family_unplaced or {}
     ticks: list[LedgerTick] = []
+    stops: list[TickStop] = []
     for request in priced:
         if not request.live:
             continue
         live = [line for line in ledger.lines(request.request_id) if line.live()]
         in_campminder = sum((line.amount for line in live), ZERO)
         locked = _locked(request)
-        if in_campminder <= locked:
+        family = families.get(request.request_id, ZERO)
+        if in_campminder <= locked and family <= 0:
             continue
         days = [camp_date(line.post_date) for line in live if line.post_date is not None]
         posted_on = min(max(days), today) if days else today
         for view in sorted(request.rounds, key=lambda v: v.round):
             if view.status == "posted":
                 continue
-            if (
-                view.status != "needs_offer"
-                or view.decided is None
-                or (request.request_id, view.round) in undone
-                # Full cover below implies this for any round above $0; it stops a $0 round ticking on
-                # money the earlier rounds already lock.
-                or in_campminder <= locked
-            ):
-                break
-            if in_campminder < locked + view.decided:
-                break
-            ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
-            locked += view.decided
-    return ticks
+            if in_campminder <= locked and family <= 0:
+                break  # nothing in CampMinder is left for it: it needs an offer (or the net fell, direction a's)
+            code = _stop_code(
+                request, view, in_campminder, locked, family, undone=undone, split=request.request_id in split
+            )
+            if code == "ticks" and view.decided is not None:
+                ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
+                locked += view.decided
+                continue
+            if code != "ticks" and code != "no_reason":
+                held = family if code == "family_level" else in_campminder - locked
+                stops.append(TickStop(request.request_id, view.round, code, view.status, held, view.decided))
+            break
+    return LedgerWalk(tuple(ticks), tuple(stops))
+
+
+# The undecided round's state, as its sentence says it (owner 10-03).
+_UNDECIDED_TEXT: Final[Mapping[UntickedCode, str]] = {
+    "on_hold": "is on hold",
+    "awaiting_approval": "is waiting for finance's approval",
+    "finance_declined": "was declined by finance",
+    "not_decided": "hasn't been decided",
+}
+
+
+def stop_text(stop: TickStop) -> str:
+    """The reason in whole sentences (§6.2): the household page shows it without a pill, so it reads alone. The
+    owner's words (10-03), verbatim: `held` is what CampMinder holds, `decided` the round's decided amount."""
+    n, held = stop.round, dollars(stop.held)
+    decided = dollars(stop.decided) if stop.decided is not None else ""
+    match stop.code:
+        case "short_posting":
+            return (
+                f"CampMinder shows {held} posted for Round {n}, but the offer is {decided}. "
+                "Check the posting in CampMinder, then click Mark posted."
+            )
+        case "shares_short":
+            return (
+                f"The paying families have {held} of Round {n}'s {decided} posted so far. "
+                "This clears on its own once the rest is posted."
+            )
+        case "family_level":
+            return (
+                f"CampMinder has {held} for this family that isn't attached to a request yet. "
+                "Attach it in Money › To place, and this round clears."
+            )
+        case "on_hold" | "awaiting_approval" | "finance_declined" | "not_decided":
+            return (
+                f"CampMinder already has {held} for this request, but Round {n} {_UNDECIDED_TEXT[stop.code]}. "
+                "This clears once the round is decided."
+            )
+        case "undone":
+            return (
+                f"Someone unmarked Round {n} as posted, so the overnight sync won't re-mark it. "
+                "Click Mark posted once it's right."
+            )
+        case "withheld":
+            raise ValueError("a withheld round's text is D16's (financial_aid_to_place.withheld_why)")
+
+
+def pending_text(decided: Decimal) -> str:
+    """C1 (owner 10-03): a round CampMinder covers in full with nothing blocking tonight's tick waits on the family at
+    once; its CampMinder cell reads "pending", and its detail line says so. `decided` is the round's decided amount."""
+    return f"Posted in CampMinder ({dollars(decided)}). Kindred marks it posted after tonight's sync."
+
+
+@dataclass(frozen=True)
+class Unticked:
+    """One Not reconciled (b) reason on a request's round (D162), as the grid row carries it."""
+
+    round: int
+    code: UntickedCode
+    message: str
+    # H3: tick_posted takes a request's first unposted round alone, so a later round's reason can't offer it yet.
+    first: bool = True
+
+    @property
+    def mark_posted(self) -> bool:
+        return self.first and self.code in MARK_POSTED
 
 
 def undone_rounds(events: Iterable[DecisionEvent]) -> frozenset[tuple[str, int]]:

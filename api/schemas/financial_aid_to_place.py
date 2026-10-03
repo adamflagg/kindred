@@ -67,7 +67,8 @@ class SuggestionOut(BaseModel):
     confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
     it locks); would_leave names the rounds it leaves for a person to tick, and why. would_not_tick names the
     rounds the money covers that confirming will NOT tick, from the same check the write runs (D16): the line
-    is still placed, and each of those rounds waits for a person to tick it by hand."""
+    is still placed, and each of those rounds waits for a person to click Mark posted (D162: Not reconciled's
+    "Changed after posting")."""
 
     parts: list[PartOut]
     evidence: list[EvidenceOut]
@@ -225,7 +226,8 @@ class ReclassifyLineIn(BaseModel):
 class PlaceOut(BaseModel):
     """What a placement did: the lines it placed, the rounds it ticked, and the rounds it left for a person.
     not_ticked: the rounds the money covers whose automatic tick was withheld because something that prices the
-    request changed after the posting (D16), each with why and a prompt to tick it by hand."""
+    request changed after the posting (D16), each with why and a prompt to click Mark posted (the same sentence
+    Requests › Not reconciled shows as "Changed after posting", D162)."""
 
     year: int
     operation_id: str
