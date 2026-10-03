@@ -150,8 +150,10 @@ export interface AidTableProps<Row> {
    * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i): a row
    * straight under the highlighted one, as wide as the box's visible width and stuck at its left,
    * so it wraps and stays put while the rows scroll sideways. Esc closes the row (with `arrowKeys`).
+   * It gets the row moves too, for an editor drawn inside it (the Requests grid, owner fast-follow
+   * 10-03, arrangement 3); mark that editor's element `data-aid-editor` so ↑/↓ stay its own.
    */
-  readonly renderDetail?: ((row: Row) => ReactNode) | undefined
+  readonly renderDetail?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
   /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
   readonly toolbarLead?: ReactNode
@@ -743,7 +745,7 @@ export function AidTable<Row>({
                               className={DETAIL_LINE}
                               style={boxWidth > 0 ? { width: boxWidth } : undefined}
                             >
-                              {renderDetail(row)}
+                              {renderDetail(row, nav)}
                             </div>
                           </td>
                         </tr>

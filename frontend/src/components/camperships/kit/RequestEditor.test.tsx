@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -424,6 +424,53 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
     setup({ layout: 'card' })
     const root = screen.getByText(/^Johnson · household/).parentElement
     expect(root).toHaveClass('flex', 'flex-col', 'items-start')
+  })
+})
+
+// Owner fast-follow (10-03), opened-row-options.html arrangement 3 "Side by side": in the grid the
+// editor is the right panel of the opened row. One line holds the ask, Award / Stage, the note and
+// the row's next step; the receipt, the payer shares and the key hint sit on the line under it. The
+// household is named once, by the detail line beside it, so the panel has no caption.
+describe('RequestEditor: the panel layout (the grid, side by side)', () => {
+  const STEP = <button type="button">Tick Accepted</button>
+  const top = () => screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
+  const foot = () => document.querySelector('[data-editor-foot]') as HTMLElement
+
+  it('drops the family · household · person caption', () => {
+    setup({ layout: 'panel' })
+    expect(screen.queryByText(/household 1000001/)).toBeNull()
+    expect(screen.queryByText(/person 1000002/)).toBeNull()
+  })
+
+  it('puts the ask, the award and stage, the note and the next step on one line, the step last', () => {
+    setup({ layout: 'panel', trailing: STEP })
+    const line = top()
+    expect(line).toContainElement(screen.getByLabelText('Note'))
+    expect(line).toContainElement(screen.getByText('Stage → Needs an offer'))
+    expect(within(line).getByText(/^Award/)).toBeInTheDocument()
+    const step = screen.getByRole('button', { name: 'Tick Accepted' })
+    expect(line.lastElementChild).toContainElement(step)
+    expect(line.lastElementChild).toHaveClass('ml-auto')
+  })
+
+  it('puts the receipt, the payer shares and the key hint on the line under it', () => {
+    setup({ layout: 'panel' })
+    const under = foot()
+    expect(under).toContainElement(screen.getByText(/Enter saves/))
+    expect(within(under).getByText(/60%/)).toBeInTheDocument()
+    expect(within(top()).queryByText(/Enter saves/)).toBeNull()
+    expect(within(top()).queryByText(/60%/)).toBeNull()
+  })
+
+  it('shows a problem in the figures slot on the first line once Enter is tried', async () => {
+    setup({ layout: 'panel', preview: { status: 'idle' } })
+    await userEvent.keyboard('{Enter}')
+    expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+  })
+
+  it('keeps the caption in the card layout, where nothing else names the household', () => {
+    setup({ layout: 'card' })
+    expect(screen.getByText('Johnson · household 1000001 · person 1000002')).toBeInTheDocument()
   })
 })
 

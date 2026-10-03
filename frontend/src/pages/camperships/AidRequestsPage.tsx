@@ -1,5 +1,5 @@
 import { ListChecks } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 
 import { ACTION_LINK, AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
@@ -513,14 +513,14 @@ export default function AidRequestsPage() {
               highlighted={highlighted}
               onHighlight={canWork ? walk.onHighlight : onHighlight}
               marked={canWork ? walk.failed : undefined}
-              renderBelowHighlighted={
+              renderEditor={
                 canWork
-                  ? (r: ApiAidGridRow, nav: AidRowNav) => (
+                  ? (r: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => (
                       <GridEditorRow
                         key={walk.editorKey(r.request_id)}
                         row={r}
                         walk={walk.editorFor(r.request_id, nav)}
-                        links={links}
+                        step={step}
                       />
                     )
                   : undefined
