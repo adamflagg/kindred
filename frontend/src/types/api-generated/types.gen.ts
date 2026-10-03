@@ -17631,7 +17631,7 @@ export type UnpushResponse = {
  *
  * One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
  * stopped there (short posting, family-level money, a round on hold, awaiting approval, declined by finance or not
- * decided, unmarked by hand, payer shares not covering it), or D152 withheld it (changed after posting). A round
+ * decided, unmarked by hand, payer shares not covering it, a round decided at $0), or D152 withheld it (changed after posting). A round
  * CampMinder covers in full that tonight's tick posts is none of these (C1: RoundOut.cm_pending). `label` is the
  * pill (UNTICKED_LABELS, one map with Today's breakdown, D21); `message` is in whole sentences (the household page
  * shows it without a pill). `mark_posted`: a hand tick ("Mark posted", POST /decisions/{year}/posted) is the way
@@ -17657,6 +17657,7 @@ export type UntickedMoneyOut = {
     | 'finance_declined'
     | 'not_decided'
     | 'undone'
+    | 'decided_zero'
   /**
    * Message
    */
