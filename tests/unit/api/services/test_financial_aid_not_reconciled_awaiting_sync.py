@@ -182,3 +182,35 @@ async def test_before_the_first_ticked_season_nothing_is_pending(monkeypatch: py
     row = await _emma(store)
     assert row.confirmation is None
     assert (row.rounds[0].cm_pending, row.rounds[0].cm_pending_message) == (False, None)
+
+
+def test_todays_breakdown_never_names_awaiting_sync_beside_a_direction_b_reason() -> None:
+    """A row in Not reconciled for a (b) reason while its hand tick awaits the sync: the breakdown names the (b) reason
+    only, since the awaiting tick is no exception (V1)."""
+    from tests.unit.api.services.test_financial_aid_not_reconciled_both_ways import _out
+    from tests.unit.api.services.test_financial_aid_today import _confirmation, _round
+    from tests.unit.api.services.test_financial_aid_today import _row as _today_row
+
+    row = _today_row(
+        EMMA,
+        1000001,
+        _round(1, "posted", posted=1500.0, posted_on=date(2027, 3, 9)),
+        _round(2, "needs_offer", decided=300.0),
+        confirmation=_confirmation("awaiting_sync", -1500.0),
+        unticked=[_out("short_posting", "x", mark_posted=True, n=2)],
+    )
+    assert _not_reconciled(row) == (1, [("short_posting", 1)])
+
+
+@pytest.mark.asyncio
+async def test_a_past_read_rebuilds_no_pending_round() -> None:
+    """A past date can't rebuild the ledger's sync time, so a round's CM ✓ pending is a named gap there: empty, not
+    False."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _tick(store, 1, "1500", at=T0 - timedelta(days=2))  # Mar 7: live, it still awaits a sync (none has run)
+    assert (await _emma(store)).rounds[0].cm_pending is True  # the premise
+    out = await _service(store).grid(YEAR, as_of=date(2027, 3, 8))  # a day the clock (Mar 9) has passed
+    (row,) = out.rows
+    assert [(r.cm_pending, r.cm_pending_message) for r in row.rounds] == [(None, None)]
+    assert {"cm_pending", "cm_pending_message"} <= {g.figure for g in out.not_rebuilt}
