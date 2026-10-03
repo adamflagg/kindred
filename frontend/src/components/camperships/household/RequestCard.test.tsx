@@ -152,7 +152,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     const shares = screen.getByRole('table', { name: 'Payer shares' })
     expect(within(shares).getByText('2 · The Garcia Family')).toBeInTheDocument()
     expect(within(shares).getByText('40%')).toBeInTheDocument()
-    expect(within(shares).getByText('not in CampMinder')).toBeInTheDocument()
+    expect(within(shares).getByText('Missing in CM')).toBeInTheDocument()
     expect(within(shares).getByText(/confirmed/)).toBeInTheDocument()
   })
 

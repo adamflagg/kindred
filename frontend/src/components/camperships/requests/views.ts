@@ -243,9 +243,10 @@ export function viewRound(row: ApiAidGridRow, view: RequestViewKey): ApiAidRound
 /**
  * The word CM ✓ shows while a round's CampMinder check is pending (owner ruling A2: "pending"):
  * C1, money already in CampMinder that tonight's tick posts, or V1, a hand tick that tonight's sync
- * checks. One constant, used by the chip (cmChip) and the header's explanation, because the owner
- * may rename it. The detail line and the CSV write the server's own sentence
- * (`cm_pending_message`) and fall back to this word only when there is none, as on a past read.
+ * checks. One constant, used by the chip (cmChip), the header's explanation and the household
+ * page's confirmation pill and count line (owner V1: one vocabulary), because the owner may rename
+ * it. The detail line and the CSV write the server's own sentence (`cm_pending_message`) and fall
+ * back to this word only when there is none, as on a past read.
  */
 export const CM_PENDING_WORD = 'pending'
 
