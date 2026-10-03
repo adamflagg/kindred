@@ -8,7 +8,7 @@ import type { ApiAidBudget, ApiAidBudgetPool, ApiAidCount } from '../../../types
 import { aidHref, type AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
 import { countWords } from '../requests/views'
-import { NO_POOL, opensQueueViews, viewSlug } from './budgetModel'
+import { NO_POOL, opensQueueViews } from './budgetModel'
 
 export interface DemandLine {
   /** The line's key in the definitions registry, for its note number. */
@@ -58,7 +58,8 @@ function groupOf(pool: ApiAidBudgetPool, view: AidView, onPool: boolean): Demand
         heldAsked: demand.round2_held_asked ?? null,
         href: opens
           ? aidHref('/aid/requests', view, {
-              view: viewSlug('appeals'),
+              // Appeals is a lens, not a stage (one URL scheme, owner ruling 2026-10-03).
+              lens: 'appeals',
               ...(onPool ? { pool: pool.pool } : {}),
               // Only live requests ask (budget.py: `request.live`); owner ruling 2026-10-02, Decision 6(b).
               live: '1',

@@ -353,7 +353,7 @@ describe('forward demand below the line (D82)', () => {
     const asks = demandLine('pool_a:round2_asks')
     expect(within(asks).getByRole('link', { name: '30 fam · 31 req' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=appeals&pool=pool_a&live=1&year=2027'
+      '/aid/requests?lens=appeals&pool=pool_a&live=1&year=2027'
     )
     expect(within(asks).getByText('$33,000')).toBeInTheDocument()
     expect(within(asks).getByText('$20,500')).toBeInTheDocument()

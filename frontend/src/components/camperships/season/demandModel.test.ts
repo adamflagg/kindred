@@ -27,7 +27,7 @@ describe('forward demand (§5.9, §7.2; D82)', () => {
       unmet: null,
       held: { families: 2, requests: 2 },
       heldAsked: 2600,
-      href: '/aid/requests?view=appeals&pool=pool_a&live=1&year=2027',
+      href: '/aid/requests?lens=appeals&pool=pool_a&live=1&year=2027',
     })
   })
 
@@ -49,7 +49,7 @@ describe('forward demand (§5.9, §7.2; D82)', () => {
 
   it("opens the total's appeals without a pool, and one pool alone when the page is on it", () => {
     const total = demandGroups(BUDGET, null, LIVE).at(-1)
-    expect(total?.lines[0]?.href).toBe('/aid/requests?view=appeals&live=1&year=2027')
+    expect(total?.lines[0]?.href).toBe('/aid/requests?lens=appeals&live=1&year=2027')
     expect(demandGroups(BUDGET, 'pool_b', LIVE).map((g) => g.label)).toEqual(['Pool B'])
     expect(demandGroups(BUDGET, 'pool_zz', LIVE)).toEqual([])
   })
