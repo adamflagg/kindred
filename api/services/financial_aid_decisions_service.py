@@ -173,6 +173,7 @@ from api.services.financial_aid_reconciliation import (
     placeable,
     request_scope,
     round_ledger,
+    shown_stops,
     stop_text,
     undone_rounds,
 )
@@ -1697,9 +1698,9 @@ class FinancialAidDecisionsService:
                 continue
             why = withheld_why(tick, reasons)
             found[tick.request_id].append(Unticked(tick.round, "withheld", why, first(tick.request_id, tick.round)))
-        for stop in walk.stops:
+        for stop, code in shown_stops(walk.stops):
             found[stop.request_id].append(
-                Unticked(stop.round, stop.code, stop_text(stop), first(stop.request_id, stop.round))
+                Unticked(stop.round, code, stop_text(stop), first(stop.request_id, stop.round))
             )
         return replace(season, unticked={rid: tuple(items) for rid, items in found.items()}, pending=pending)
 

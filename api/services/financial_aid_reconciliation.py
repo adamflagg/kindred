@@ -937,7 +937,8 @@ def ledger_ticks(
     night it runs (D146): a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's
     award, so a sliver or a short posting never ticks, and the registrar ticks it by hand. Over-postings
     still tick, at the decided amount. That includes a payer share's Round 2: it waits until the shares
-    posted cover it in full.
+    posted cover it in full. A round decided at $0 never ticks (owner 10-03, option i): money beyond the
+    lock is no posting of it, so the walk stops there and the request reads over; a person ticks it by hand.
 
     The walk itself is `ledger_walk`, which also says where it stopped (D162); these are its ticks."""
     return list(ledger_walk(priced, ledger, today=today, undone=undone).ticks)
@@ -965,6 +966,11 @@ UntickedCode = Literal[
 # Money › To place, whose placement ticks (D81, D151); a round not decided yet has nothing to lock. The code alone
 # doesn't offer the button: tick_posted takes a request's first unposted round only (H3, `Unticked.mark_posted`).
 MARK_POSTED: Final[frozenset[UntickedCode]] = frozenset({"withheld", "short_posting", "shares_short", "undone"})
+# The walk's stops that are no Not reconciled (b) reason yet. `zero_round` (owner 10-03, option i): a round decided at
+# $0 never auto-ticks, since money beyond the lock is no posting of a $0 round; the walk stops there, and direction (a)
+# reads the request as over. It has no approved pill or sentence, so the service leaves it out of the (b) rows
+# (`shown_stops`, the one place it is filtered) until the owner words one.
+StopCode = UntickedCode | Literal["zero_round"]
 # A round not decided yet, by its state (owner 10-03: the pill names the state).
 _UNDECIDED: Final[Mapping[str, UntickedCode]] = {
     "held": "on_hold",
@@ -981,7 +987,7 @@ class TickStop:
 
     request_id: str
     round: int
-    code: UntickedCode
+    code: StopCode
     status: RoundStatus
     held: Decimal
     decided: Decimal | None
@@ -1005,7 +1011,7 @@ def _stop_code(
     *,
     undone: Collection[tuple[str, int]],
     split: bool,
-) -> UntickedCode | Literal["ticks", "no_reason"]:
+) -> StopCode | Literal["ticks", "no_reason"]:
     """ledger_ticks' refusal of this round, with its reason; "ticks": it ticks. The caller has already stopped where
     nothing is left for the round and the family holds no money no request takes. The order of the refusals only
     picks the reason; any of them stops the walk, as before. "no_reason" stops it with no Not reconciled (b) row: an
@@ -1021,6 +1027,8 @@ def _stop_code(
         return _UNDECIDED.get(view.status, "not_decided")
     if (request.request_id, view.round) in undone:
         return "undone"
+    if view.decided == 0:
+        return "zero_round"  # owner 10-03 (option i): never ticked on money beyond the lock, only by hand
     if in_campminder < locked + view.decided:
         if family > 0:
             return "family_level"  # placing comes first: the family's line may be the rest of the round
@@ -1117,6 +1125,20 @@ def stop_text(stop: TickStop) -> str:
             )
         case "withheld":
             raise ValueError("a withheld round's text is D16's (financial_aid_to_place.withheld_why)")
+        case "zero_round":
+            raise ValueError("a $0 round's stop has no text yet: it awaits the owner's words (shown_stops)")
+
+
+def shown_stops(stops: Iterable[TickStop]) -> list[tuple[TickStop, UntickedCode]]:
+    """The walk's stops that are Not reconciled (b) reasons, each with its code. The one place a stop with no approved
+    pill or sentence is left out: `zero_round` awaits the owner's words (owner 10-03, option i); giving it a row is
+    adding its code to UntickedCode, the schema and the labels, a sentence to stop_text, and dropping it here."""
+    out: list[tuple[TickStop, UntickedCode]] = []
+    for stop in stops:
+        if stop.code == "zero_round":
+            continue
+        out.append((stop, stop.code))
+    return out
 
 
 def pending_text(decided: Decimal) -> str:
