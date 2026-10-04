@@ -155,7 +155,7 @@ const ROUNDS: readonly FilterOption[] = [
  * Program (pools as its headings, T6), Round chips (Decision 9; owner ruling Group 2c Q3) and Show
  * IDs (D27), all held in the URL. No Checklist chips: under D162 there are no Posted ticks (owner,
  * fast-follow 10-03). Controls only, as one fragment: the grid's toolbar (`AidTable`'s
- * `toolbarLead`) lays them out on its own line, beside search and the CSV chip.
+ * `toolbarLead`) lays them out on its own line, beside search and Download CSV.
  */
 export function GridFiltersBar({
   groups,

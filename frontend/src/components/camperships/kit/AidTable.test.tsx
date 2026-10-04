@@ -386,29 +386,16 @@ describe('AidTable', () => {
     expect(lines[4]).toMatch(/^Link,http/)
   })
 
-  // Owner (fast-follow, 10-03): the Requests grid's download is a "⤓ CSV" chip at the end of the
-  // filter line, the Round chips' height and always visible, replacing the Download CSV button.
-  it('draws the download as a ⤓ CSV chip at the end of the toolbar, in a chip group, with csvChip', async () => {
-    renderTable('/aid/requests', { csvChip: true })
-    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
-    const chip = screen.getByRole('button', { name: '⤓ CSV' })
-    const toolbar = chip.closest('[data-aid-toolbar]') as HTMLElement
-    expect(toolbar.lastElementChild).toContainElement(chip)
-    // The chips' segmented group and button classes (auditStyles GROUP / GROUP_BUTTON_OFF).
-    expect(chip.parentElement).toHaveClass('rounded-xl', 'border', 'p-1')
-    expect(chip).toHaveClass('rounded-md', 'px-3', 'py-1.5', 'text-xs')
-    expect(chip.className).not.toMatch(/opacity-0|group-hover/)
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'johnson')
-    await userEvent.click(chip)
-    expect(downloadSpy).toHaveBeenCalledTimes(1)
-    const [content, filename] = downloadSpy.mock.calls[0] as [string, string]
-    expect(filename).toBe('camperships-requests-all-2027.csv')
-    expect(content.split('\n')[1]).toMatch(/^Johnson,Emma Johnson,/)
-  })
-
-  it('keeps the Download CSV button without csvChip', () => {
-    renderTable()
-    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+  // Owner (10-04, csv-options.html option A): one CSV control across the app, the kit's own
+  // "Download CSV" secondary button with lucide Download, ending the toolbar line. Replaces the
+  // "⤓ CSV" chip variant (csvChip) and its two tests.
+  it('ends the toolbar with the one Download CSV button: a secondary button with the Download icon', () => {
+    renderTable('/aid/requests')
+    const button = screen.getByRole('button', { name: 'Download CSV' })
+    const toolbar = button.closest('[data-aid-toolbar]') as HTMLElement
+    expect(toolbar.lastElementChild).toBe(button)
+    expect(button).toHaveClass('ml-auto', 'rounded-lg', 'border', 'px-4', 'py-2', 'text-sm')
+    expect(button.querySelector('svg.lucide-download')).not.toBeNull()
     expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })
 

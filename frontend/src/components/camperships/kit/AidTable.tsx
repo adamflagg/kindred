@@ -138,12 +138,6 @@ export interface AidTableProps<Row> {
   readonly defaultGrouping?: string | undefined
   readonly urlPrefix?: string | undefined
   readonly csvFilename: string
-  /**
-   * The download as a "⤓ CSV" chip at the end of the toolbar line, the height of the filter chips
-   * beside it and always visible (the Requests grid, owner fast-follow 10-03), instead of the
-   * "Download CSV" button. It does the same download.
-   */
-  readonly csvChip?: boolean | undefined
   readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   /**
@@ -215,8 +209,8 @@ const join = (...classes: Array<string | false | undefined>) => classes.filter(B
  * every column and searchable (names and CampMinder ids), sort and grouping in the URL,
  * identity columns pinned while the money scrolls under them, one flexible column, a footer of
  * totals that each open their rows, a highlighted row (click, or ↑/↓) with its detail line (and
- * the editor in it) or an editor row under it, and a CSV download (the "Download CSV" button, or
- * the "⤓ CSV" chip) of exactly what is on screen. It renders rows it was given (D21).
+ * the editor in it) or an editor row under it, and "Download CSV" of exactly what is on screen.
+ * It renders rows it was given (D21).
  */
 export function AidTable<Row>({
   rows,
@@ -227,7 +221,6 @@ export function AidTable<Row>({
   defaultGrouping,
   urlPrefix = '',
   csvFilename,
-  csvChip = false,
   csvExtra,
   onOpenTotal,
   renderBelowHighlighted,
@@ -595,18 +588,11 @@ export function AidTable<Row>({
             ))}
           </div>
         )}
-        {csvChip ? (
-          <span className={`${GROUP} ml-auto`}>
-            <button type="button" className={GROUP_BUTTON_OFF} onClick={download}>
-              ⤓ CSV
-            </button>
-          </span>
-        ) : (
-          <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
-            <Download className="h-4 w-4" />
-            Download CSV
-          </button>
-        )}
+        {/* The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant). */}
+        <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
+          <Download className="h-4 w-4" />
+          Download CSV
+        </button>
       </div>
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>

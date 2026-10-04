@@ -52,7 +52,7 @@ interface RequestsGridProps {
   readonly onHighlight: (key: string | null) => void
   /** Stable (useMemo): the columns memo depends on it. */
   readonly links: HouseholdLinks
-  /** The filter controls: they share the table's toolbar line with search and the ⤓ CSV chip. */
+  /** The filter controls: they share the table's toolbar line with search and Download CSV. */
   readonly filters?: ReactNode
   /**
    * The opened row's editor (owner fast-follow 10-03, arrangement 3): drawn inside the detail line,
@@ -273,7 +273,6 @@ export function RequestsGrid({
       groupings={groupings}
       defaultGrouping={view.groupBy === null ? undefined : 'reason'}
       csvFilename={csvFilename}
-      csvChip
       csvExtra={
         view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
       }

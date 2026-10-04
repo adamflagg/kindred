@@ -151,7 +151,7 @@ describe('RequestsGrid', () => {
   // T3 + Q-L3: the CSV is the screen, so Requested by (the name) and no Family column.
   it('writes the CSV in the on-screen order: Camper first, Requested by before Needs attention (Q-L3, T3)', async () => {
     render(<Grid />)
-    await userEvent.click(screen.getByRole('button', { name: '⤓ CSV' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const lines = content.split('\n')
     const header = csvCells(lines[0] ?? '')
@@ -172,12 +172,12 @@ describe('RequestsGrid', () => {
   // Owner ruling G1 (10-03): "By family" stays gone, but the Flat / By reason switch comes back,
   // so All can be grouped by reason and a queue view can go flat. Replaces "has no grouping
   // control, and finds a row by the family name" (its find-a-row half is the next test).
-  // Owner (fast-follow, 10-03): the "⤓ CSV" chip replaces the Download CSV button. Every CSV test
-  // in this file now clicks the chip. Was: the "Download CSV" button.
-  it('downloads from a ⤓ CSV chip, with no Download CSV button', () => {
+  // Owner (10-04, csv-options.html option A): the grid downloads from the app's one CSV control,
+  // the kit's "Download CSV" button; the "⤓ CSV" chip (10-03) is gone. Every CSV test here clicks it.
+  it('downloads from the Download CSV button, with no ⤓ CSV chip', () => {
     render(<Grid />)
-    expect(screen.getByRole('button', { name: '⤓ CSV' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })
 
   it('offers Flat and By reason, never By family, and switches both ways on All and on a queue view', async () => {
@@ -354,7 +354,7 @@ describe('RequestsGrid', () => {
       queues: ['pending_approval'],
     })
     render(<Grid rows={[pending]} />)
-    await userEvent.click(screen.getByRole('button', { name: '⤓ CSV' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const [header, row] = content.split('\n')
     expect(csvCells(header ?? '').at(-1)).toBe('R3 pending approval')
@@ -397,7 +397,7 @@ describe('RequestsGrid', () => {
 
     it("writes the round's $500 to the CSV", async () => {
       render(<Grid slug="waiting" rows={[split]} />)
-      await userEvent.click(screen.getByRole('button', { name: '⤓ CSV' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
       const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
       const [header, row] = content.split('\n')
       const at = csvCells(header ?? '').indexOf('Posted')
@@ -590,7 +590,7 @@ describe('RequestsGrid: the CM ✓ column', () => {
   // screen's words".
   it('writes the CSV with the full header name and the full detail, and drops the column in a season not ticked', async () => {
     const { unmount } = render(<Grid rows={ROWS} />)
-    await userEvent.click(screen.getByRole('button', { name: '⤓ CSV' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const lines = content.split('\n')
     const at = csvCells(lines[0] ?? '').indexOf('Confirmed by CampMinder')
@@ -604,7 +604,7 @@ describe('RequestsGrid: the CM ✓ column', () => {
     ])
     unmount()
     render(<Grid rows={ROWS} tickedSeason={false} />)
-    await userEvent.click(screen.getByRole('button', { name: '⤓ CSV' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [older] = downloadSpy.mock.calls.at(-1) as [string, string]
     expect(csvCells(older.split('\n')[0] ?? '')).not.toContain('Confirmed by CampMinder')
   })
