@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { STRIP_BADGE_ON } from '../kit/kitStyles'
 import { RequestViewNav } from './RequestViewNav'
-import type { RequestLens } from './strip'
-import type { RequestView, RequestViewKey, ViewCount } from './views'
+import { EXCEPTION_BADGES, STRIP_LEGEND, type RequestLens } from './strip'
+import { REQUEST_VIEWS, type RequestView, type RequestViewKey, type ViewCount } from './views'
 
 const count = (requests: number): ViewCount => ({ families: requests, requests })
 
@@ -15,11 +16,10 @@ const COUNTS: ReadonlyMap<RequestViewKey, ViewCount> = new Map<RequestViewKey, V
   ['not_reconciled', count(0)],
   ['waiting_on_family', count(5)],
   ['holds', count(2)],
-  ['duplicates', count(0)],
+  ['duplicates', count(3)],
   ['session_not_settled', count(1)],
   ['to_reverse', count(4)],
   ['appeals', count(6)],
-  ['cancel_reason', count(1)],
 ])
 const LENS_COUNTS: ReadonlyMap<RequestLens, ViewCount> = new Map<RequestLens, ViewCount>([
   ['all', count(186)],
@@ -75,24 +75,38 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('Needs an offer')).toHaveAttribute('href', '/s/needs-offer')
   })
 
-  it('puts the exception badges on the right: Holds, Duplicates, Session not settled, To reverse, Cancelled: give a reason', () => {
+  it('puts the exception badges on the right: Holds, Duplicates, Session unclear, To reverse (no cancel-reason badge: owner ruling B)', () => {
     strip()
     expect(names(screen.getByTestId('strip-exceptions'))).toEqual([
       'Holds 2',
-      'Duplicates 0',
-      'Session not settled 1',
+      'Duplicates 3',
+      'Session unclear 1',
       'To reverse 4',
-      'Cancelled: give a reason 1',
     ])
     expect(link('To reverse')).toHaveAttribute('href', '/s/to-reverse')
-    expect(link('Cancelled: give a reason')).toHaveAttribute('href', '/s/cancel-reason')
   })
 
+  // Owner 2026-10-04: a badge it cannot count is not due, so it is not drawn; the picked one reads "—".
   it('reads "—" for a count it does not have (a past date counts only All, Decision 11)', () => {
-    strip({ counts: new Map([['all', count(9)]]), lensCounts: new Map([['all', count(9)]]) })
-    expect(link('Holds')).toHaveTextContent('Holds —')
+    const { unmount } = strip({
+      counts: new Map([['all', count(9)]]),
+      lensCounts: new Map([['all', count(9)]]),
+    })
+    expect(link('Needs an offer')).toHaveTextContent('Needs an offer —')
     expect(link('Appeals')).toHaveTextContent('Appeals —')
     expect(link('All')).toHaveTextContent('All 9')
+    expect(within(screen.getByTestId('strip-exceptions')).queryAllByRole('link')).toEqual([])
+    unmount()
+    strip({ counts: new Map([['all', count(9)]]), stage: 'holds' })
+    expect(link('Holds')).toHaveTextContent('Holds —')
+  })
+
+  it('draws no badge while the counts load (no flash of zeros), but keeps the picked one', () => {
+    const { unmount } = strip({ counts: null })
+    expect(within(screen.getByTestId('strip-exceptions')).queryAllByRole('link')).toEqual([])
+    unmount()
+    strip({ counts: null, stage: 'to_reverse' })
+    expect(names(screen.getByTestId('strip-exceptions'))).toEqual(['To reverse —'])
   })
 
   it('fills the picked lens when no stage is picked', () => {
@@ -114,33 +128,51 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('All')).toHaveAttribute('data-state', 'lens')
   })
 
-  // RULED D-a, revised to option (3): the fifth badge shows only when non-zero, or while picked,
-  // so it appears exactly when Today's Open › can link to it. Full label, red like the others.
-  it('shows Cancelled: give a reason, red, when its count is non-zero', () => {
+  // Owner 2026-10-04 (RULED D-a's option 3, for every badge): a badge shows only when something is
+  // in it, or while it is picked. Full label, red unless amber.
+  it('shows To reverse, red, when its count is non-zero', () => {
     strip()
-    expect(link('Cancelled: give a reason').className).toContain('bg-red-100')
-    expect(link('Cancelled: give a reason')).not.toHaveAttribute('data-state')
+    expect(link('To reverse').className).toContain('bg-red-100')
+    expect(link('To reverse')).not.toHaveAttribute('data-state')
   })
 
-  it('hides Cancelled: give a reason at 0, and while its count is unknown (a past date)', () => {
-    const { unmount } = strip({ counts: new Map([...COUNTS, ['cancel_reason', count(0)]]) })
-    expect(screen.queryByRole('link', { name: /^Cancelled: give a reason/ })).toBeNull()
-    expect(names(screen.getByTestId('strip-exceptions'))).toHaveLength(4)
-    unmount()
-    strip({ counts: new Map([['all', count(9)]]) })
-    expect(screen.queryByRole('link', { name: /^Cancelled: give a reason/ })).toBeNull()
+  const labelOf = (key: RequestViewKey) => REQUEST_VIEWS.find((v) => v.key === key)?.label ?? key
+  const badgeLink = (key: RequestViewKey) =>
+    screen.queryByRole('link', { name: new RegExp(`^${labelOf(key)} `) })
+
+  it.each(EXCEPTION_BADGES)('hides the %s badge at 0, leaving the others', (key) => {
+    strip({ counts: new Map([...COUNTS, [key, count(0)]]) })
+    expect(badgeLink(key)).toBeNull()
+    expect(names(screen.getByTestId('strip-exceptions'))).toHaveLength(EXCEPTION_BADGES.length - 1)
   })
 
-  it('keeps Cancelled: give a reason while it is the picked stage, muted at 0', () => {
-    strip({ counts: new Map([...COUNTS, ['cancel_reason', count(0)]]), stage: 'cancel_reason' })
-    expect(link('Cancelled: give a reason')).toHaveAttribute('data-state', 'on')
-    expect(link('Cancelled: give a reason').className).not.toContain('bg-red-100')
+  it.each(EXCEPTION_BADGES)(
+    'keeps the %s badge at 0 while it is the picked stage, muted',
+    (key) => {
+      strip({ counts: new Map([...COUNTS, [key, count(0)]]), stage: key })
+      expect(badgeLink(key)).toHaveAttribute('data-state', 'on')
+      expect(badgeLink(key)).toHaveTextContent(`${labelOf(key)} 0`)
+      expect(badgeLink(key)?.className).not.toMatch(/bg-(red|amber)-100/)
+    }
+  )
+
+  it.each(EXCEPTION_BADGES)('shows the %s badge when its count is above 0', (key) => {
+    const zero = new Map(EXCEPTION_BADGES.map((k) => [k, count(0)] as const))
+    strip({ counts: new Map([...COUNTS, ...zero, [key, count(1)]]) })
+    expect(names(screen.getByTestId('strip-exceptions'))).toEqual([`${labelOf(key)} 1`])
+  })
+
+  it('keeps normal-width badges with their full labels', () => {
+    strip()
+    expect(link('Session unclear').className).toContain('px-2')
+    expect(link('Session unclear').className).not.toContain('px-[6px]')
   })
 
   it('says under the strip how to read it, verbatim, and that only appeals show under that lens', () => {
     const { unmount } = strip()
     const legend =
-      'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count.'
+      'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count · Session unclear: no one enrolled session matches the request yet.'
+    expect(STRIP_LEGEND).toBe(legend)
     expect(screen.getByTestId('strip-legend')).toHaveTextContent(legend, {
       normalizeWhitespace: true,
     })
@@ -166,8 +198,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
       'bg-amber-100'
     )
     expect(link('Holds').className).toContain('bg-red-100')
-    expect(link('Session not settled').className).toContain('bg-amber-100')
-    expect(link('Duplicates').className).not.toContain('bg-red-100')
+    expect(link('Session unclear').className).toContain('bg-amber-100')
   })
 
   it('hands a plain click to onOpen, and leaves a modified click to the browser (new tab)', () => {
@@ -180,5 +211,222 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     onOpen.mockClear()
     fireEvent.click(link('Holds'), { metaKey: true })
     expect(onOpen).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * jsdom has no layout, so the strip's widths are stubbed: the nav's own width, the lenses and the
+ * pipeline, and the measuring copy's badges and chip (`data-measure`). Padding, borders and gaps
+ * read as 0 here (jsdom computes no Tailwind), which keeps the arithmetic plain: the badges get the
+ * nav's width less the lenses (150) and the pipeline (500).
+ */
+describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
+  let navWidth = 0
+  const observers: Array<() => void> = []
+
+  beforeEach(() => {
+    navWidth = 1150
+    observers.length = 0
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return this.tagName === 'NAV' ? navWidth : 0
+    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      const width =
+        this.dataset['testid'] === 'strip-lenses'
+          ? 150
+          : this.dataset['testid'] === 'strip-pipeline'
+            ? 500
+            : this.dataset['measure'] === 'badge'
+              ? 100
+              : this.dataset['measure'] === 'chip'
+                ? 40
+                : 0
+      return { x: 0, y: 0, top: 0, left: 0, bottom: 30, right: width, width, height: 30 } as DOMRect
+    })
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          observers.push(callback)
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  const shownBadges = () => names(screen.getByTestId('strip-exceptions'))
+  const chip = () => screen.queryByRole('button', { name: /^\+\d+$/ })
+  const resize = (width: number) => {
+    navWidth = width
+    act(() => {
+      for (const notify of observers) notify()
+    })
+  }
+
+  it('draws every badge and no chip when they all fit', () => {
+    strip()
+    expect(shownBadges()).toHaveLength(4)
+    expect(chip()).toBeNull()
+  })
+
+  it('folds the trailing badges into +N when they do not fit (To reverse first)', () => {
+    navWidth = 1000 // 350 for badges: three of them (300) and the chip (40); four need 400
+    strip()
+    expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3', 'Session unclear 1'])
+    expect(chip()).toHaveTextContent('+1')
+  })
+
+  it('folds again when the strip is resized, and unfolds when it grows back', () => {
+    strip()
+    expect(chip()).toBeNull()
+    resize(900) // 250: two badges and the chip
+    expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3'])
+    expect(chip()).toHaveTextContent('+2')
+    resize(1150)
+    expect(shownBadges()).toHaveLength(4)
+    expect(chip()).toBeNull()
+  })
+
+  it('opens the folded badges on a click, each with its count and a link into its view', () => {
+    navWidth = 900 // two badges and the chip: Session unclear and To reverse fold
+    strip()
+    expect(screen.queryByTestId('strip-folded')).toBeNull()
+    fireEvent.click(chip() as HTMLElement)
+    const list = screen.getByTestId('strip-folded')
+    expect(names(list)).toEqual(['Session unclear 1', 'To reverse 4'])
+    expect(within(list).getByRole('link', { name: /^To reverse/ })).toHaveAttribute(
+      'href',
+      '/s/to-reverse'
+    )
+    expect(within(list).getByRole('link', { name: /^To reverse/ }).className).toContain(
+      'bg-red-100'
+    )
+  })
+
+  it('does not open on hover', () => {
+    navWidth = 1000
+    strip()
+    fireEvent.mouseEnter(chip() as HTMLElement)
+    fireEvent.mouseOver(chip() as HTMLElement)
+    expect(screen.queryByTestId('strip-folded')).toBeNull()
+  })
+
+  it('closes the list on Escape, on a click outside it, and on a second click of the chip', () => {
+    navWidth = 1000
+    strip()
+    fireEvent.click(chip() as HTMLElement)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('strip-folded')).toBeNull()
+    fireEvent.click(chip() as HTMLElement)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByTestId('strip-folded')).toBeNull()
+    fireEvent.click(chip() as HTMLElement)
+    fireEvent.mouseDown(chip() as HTMLElement)
+    fireEvent.click(chip() as HTMLElement)
+    expect(screen.queryByTestId('strip-folded')).toBeNull()
+  })
+
+  it("takes the nav's padding and gaps and the group's border, padding and gap off the badges' room", () => {
+    // Real CSS (jsdom computes none): nav padding 4 + 4, gap 8 between lenses, pipeline and group;
+    // group border 1, padding 8, gap 4 between badges. Room = width − 8 − 150 − 500 − 16 − 1 − 8 =
+    // width − 683; four badges need 400 + 3 × 4 = 412, so 1095 is the exact edge.
+    const realStyle = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = realStyle(element, pseudo)
+      const html = element as HTMLElement
+      const set: Record<string, string> =
+        html.tagName === 'NAV'
+          ? { paddingLeft: '4px', paddingRight: '4px', columnGap: '8px' }
+          : html.dataset['testid'] === 'strip-exceptions'
+            ? { borderLeftWidth: '1px', paddingLeft: '8px', columnGap: '4px' }
+            : {}
+      return new Proxy(style, {
+        get: (target, key) => {
+          if (typeof key === 'string' && key in set) return set[key]
+          const value: unknown = Reflect.get(target, key, target)
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value
+        },
+      })
+    })
+    navWidth = 1095
+    strip()
+    expect(shownBadges()).toHaveLength(4)
+    expect(chip()).toBeNull()
+    resize(1094) // one pixel short: three badges and the chip (300 + 40 + 3 × 4 = 352 ≤ 411)
+    expect(shownBadges()).toHaveLength(3)
+    expect(chip()).toHaveTextContent('+1')
+  })
+
+  it('opens a folded view through onOpen like any badge, and closes the list', () => {
+    const onOpen = vi.fn()
+    navWidth = 1000
+    strip({ onOpen })
+    fireEvent.click(chip() as HTMLElement)
+    const list = screen.getByTestId('strip-folded')
+    const folded = within(list).getByRole('link', { name: /^To reverse/ })
+    // A real press sends mousedown first: a press inside the list must not count as outside.
+    fireEvent.mouseDown(folded)
+    expect(screen.getByTestId('strip-folded')).toBeInTheDocument()
+    fireEvent.click(folded)
+    expect(onOpen).toHaveBeenCalledWith('/s/to-reverse')
+    expect(screen.queryByTestId('strip-folded')).toBeNull()
+  })
+
+  it('rings the chip when the picked stage is among the folded badges, and rings it in the list', () => {
+    navWidth = 1000
+    strip({ stage: 'to_reverse' })
+    expect(chip()).toHaveAttribute('data-state', 'on')
+    expect(chip()?.className).toContain(STRIP_BADGE_ON)
+    fireEvent.click(chip() as HTMLElement)
+    expect(
+      within(screen.getByTestId('strip-folded')).getByRole('link', { name: /^To reverse/ })
+    ).toHaveAttribute('data-state', 'on')
+  })
+
+  it('leaves the chip unringed when the picked stage is still on the line', () => {
+    navWidth = 1000
+    strip({ stage: 'holds' })
+    expect(chip()).not.toHaveAttribute('data-state')
+    expect(chip()?.className).not.toContain(STRIP_BADGE_ON)
+  })
+
+  it('tones the chip red when a folded red badge has requests', () => {
+    navWidth = 1000
+    strip()
+    expect(chip()?.className).toContain('bg-red-100')
+  })
+
+  it('tones the chip amber when only an amber badge is folded', () => {
+    navWidth = 900 // three badges shown: two fit beside the chip, Session unclear folds
+    strip({ counts: new Map([...COUNTS, ['to_reverse', count(0)]]) })
+    expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3'])
+    expect(chip()).toHaveTextContent('+1')
+    expect(chip()?.className).toContain('bg-amber-100')
+  })
+
+  it('tones the chip muted when the only folded badge is a picked one at 0', () => {
+    navWidth = 1000
+    strip({ counts: new Map([...COUNTS, ['to_reverse', count(0)]]), stage: 'to_reverse' })
+    // Holds, Duplicates, Session unclear, To reverse (picked, 0): To reverse folds alone.
+    expect(chip()).toHaveTextContent('+1')
+    expect(chip()?.className).not.toMatch(/bg-(red|amber)-100/)
+  })
+
+  it('does not fold before the strip has a width (jsdom, or a hidden strip)', () => {
+    navWidth = 0
+    strip()
+    expect(shownBadges()).toHaveLength(4)
+    expect(chip()).toBeNull()
   })
 })

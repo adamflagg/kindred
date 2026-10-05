@@ -69,13 +69,16 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     })
   })
 
+  // Owner ruling B (#3001): the server sends no to-dos (a missing cancel reason was the only one), so
+  // the row has no to-do path; a stray to-do changes nothing and draws no pill no mock shows.
+  it('reads a row the same with or without a to-do (the server retired them; no cancel-reason special case)', () => {
+    expect(ROW_RILEY.todos).toEqual([])
+    const withTodo = gridRow({ todos: [{ code: 'something_new', message: 'Check the new thing' }] })
+    expect(attentionFor(withTodo, 'all', TODAY)).toEqual(attentionFor(gridRow({}), 'all', TODAY))
+  })
+
   it('shows a queue view its own item first, and All the first that matters', () => {
     expect(attentionFor(ROW_RILEY, 'all', TODAY)?.item.pill).toBe('Reverse posting')
-    expect(attentionFor(ROW_RILEY, 'cancel_reason', TODAY)?.item).toEqual({
-      level: 'note',
-      pill: 'Give a reason',
-      fact: 'No reason recorded',
-    })
     expect(attentionFor(ROW_SAMUEL, 'not_reconciled', TODAY)?.item.pill).toBe('short $210')
     expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', TODAY)?.item).toEqual({
       level: 'note',
@@ -389,7 +392,6 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
   })
 
   it("sends the queue items to the request's card", () => {
-    expect(nextOf(ROW_RILEY, 'cancel_reason')).toEqual(link('Pick a Reason'))
     expect(nextOf(ROW_SAMUEL, 'not_reconciled')).toEqual(link('Check the Posting'))
     const pending = gridRow({
       rounds: [roundOut(3, 'pending_approval', { pending_approval: 450 })],

@@ -26,19 +26,82 @@ export const PIPELINE_STAGES: readonly RequestViewKey[] = [
   'waiting_on_family',
 ]
 
-/** No Finance approval badge: no view of that name exists (Pending approval is the pipeline's). */
+/**
+ * No Finance approval badge: no view of that name exists (Pending approval is the pipeline's). In
+ * folding order: the trailing badges fold into the +N chip first.
+ */
 export const EXCEPTION_BADGES: readonly RequestViewKey[] = [
   'holds',
   'duplicates',
   'session_not_settled',
   'to_reverse',
-  // RULED D-a: a permanent fifth badge (0 until 2027, when cancellations need a reason).
-  'cancel_reason',
 ]
 
+/**
+ * Session unclear: the request's session is 0 because registration settles it on no one session
+ * (financial_aid_session_resolver: the family is enrolled in none of the answer's program, or in
+ * several the answer's text does not tell apart). It resolves on enrollment, or by staff.
+ */
 export const STRIP_LEGEND =
-  'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count.'
+  'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count · Session unclear: no one enrolled session matches the request yet.'
 export const APPEALS_LEGEND = 'Showing appeals only.'
+
+export type BadgeTone = 'red' | 'amber' | 'zero'
+
+/** An unsettled session waits on a rule, not a fault: amber, as the mock tones it. */
+const AMBER_BADGES: ReadonlySet<RequestViewKey> = new Set(['session_not_settled'])
+
+/**
+ * The badges drawn (owner 2026-10-04, RULED D-a's option 3 for every badge): one shows only when
+ * something is in it, or while it is the picked stage. A count not known (the grid loading, or a
+ * past date, whose queues aren't rebuilt: Decision 11) is not due either, so nothing flashes.
+ */
+export function shownBadges(
+  stage: RequestViewKey | null,
+  counts: ReadonlyMap<RequestViewKey, ViewCount> | null
+): RequestViewKey[] {
+  return EXCEPTION_BADGES.filter((key) => key === stage || (counts?.get(key)?.requests ?? 0) > 0)
+}
+
+/** A badge's tone: red, amber for an unsettled session, or zero (muted) when empty. */
+export function badgeTone(key: RequestViewKey, count: ViewCount | undefined): BadgeTone {
+  if (!count?.requests) return 'zero'
+  return AMBER_BADGES.has(key) ? 'amber' : 'red'
+}
+
+/** The +N chip's tone: red if any folded badge is red, else amber if any is amber, else zero. */
+export function foldTone(
+  folded: readonly RequestViewKey[],
+  counts: ReadonlyMap<RequestViewKey, ViewCount> | null
+): BadgeTone {
+  const tones = folded.map((key) => badgeTone(key, counts?.get(key)))
+  return tones.includes('red') ? 'red' : tones.includes('amber') ? 'amber' : 'zero'
+}
+
+/** Floating-point noise in summed widths, not a real overrun. */
+const FIT_EPSILON = 0.01
+
+/**
+ * How many badges stay on the strip's line (owner 2026-10-04): all of them when they fit in
+ * `available`, else the most leading ones that fit beside the +N chip (`gap` between each). The
+ * rest, trailing, fold into the chip. 0 when not even one fits beside it.
+ */
+export function foldBadges(
+  widths: readonly number[],
+  chipWidth: number,
+  available: number,
+  gap: number
+): number {
+  const fits = (shown: number, chip: boolean) => {
+    const items = shown + (chip ? 1 : 0)
+    let width = chip ? chipWidth : 0
+    for (let i = 0; i < shown; i++) width += widths[i] ?? 0
+    return width + gap * Math.max(0, items - 1) <= available + FIT_EPSILON
+  }
+  if (fits(widths.length, false)) return widths.length
+  for (let shown = widths.length - 1; shown > 0; shown--) if (fits(shown, true)) return shown
+  return 0
+}
 
 const APPEALS = requestView('appeals')
 const ALL = requestView('all')

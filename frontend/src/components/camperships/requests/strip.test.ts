@@ -2,15 +2,31 @@ import { describe, expect, it } from 'vitest'
 
 import { GRID_ROWS, ROW_EMMA, ROW_OLIVIA } from './gridFixtures'
 import {
+  badgeTone,
   EXCEPTION_BADGES,
+  foldBadges,
+  foldTone,
   lensCounts,
   lensRows,
   PIPELINE_STAGES,
   resolveStrip,
+  shownBadges,
   shownView,
+  STRIP_LEGEND,
   stripCsvName,
 } from './strip'
-import { NO_FILTERS, REQUEST_VIEWS, requestView, viewCounts } from './views'
+import {
+  NO_FILTERS,
+  REQUEST_VIEWS,
+  requestView,
+  viewCounts,
+  type RequestViewKey,
+  type ViewCount,
+} from './views'
+
+const count = (requests: number): ViewCount => ({ families: requests, requests })
+const countsOf = (entries: ReadonlyArray<[RequestViewKey, number]>) =>
+  new Map<RequestViewKey, ViewCount>(entries.map(([key, n]) => [key, count(n)]))
 
 describe('the views strip (T4; RULED P1, P2, P4)', () => {
   it('runs the pipeline in order (b): Pending approval › Needs an offer › Not reconciled › Waiting on the family', () => {
@@ -22,14 +38,117 @@ describe('the views strip (T4; RULED P1, P2, P4)', () => {
     ])
   })
 
-  it('puts Holds, Duplicates, Session not settled, To reverse and Cancelled: give a reason (RULED D-a) on the right, and no Finance approval (no such view)', () => {
-    expect(EXCEPTION_BADGES).toEqual([
-      'holds',
-      'duplicates',
-      'session_not_settled',
-      'to_reverse',
-      'cancel_reason',
+  it('puts Holds, Duplicates, Session unclear and To reverse on the right, and no Finance approval (no such view) and no cancel-reason badge (owner ruling B: the reason is optional)', () => {
+    expect(EXCEPTION_BADGES).toEqual(['holds', 'duplicates', 'session_not_settled', 'to_reverse'])
+  })
+})
+
+describe('the legend (owner 2026-10-04)', () => {
+  it('explains Session unclear in one clause: no one enrolled session matches the request yet', () => {
+    expect(STRIP_LEGEND).toBe(
+      'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count · Session unclear: no one enrolled session matches the request yet.'
+    )
+  })
+})
+
+describe('shownBadges (owner 2026-10-04: a badge shows only when something is in it, or it is picked)', () => {
+  const allZero = countsOf(EXCEPTION_BADGES.map((key) => [key, 0]))
+
+  it.each(EXCEPTION_BADGES)('hides %s at 0', (key) => {
+    expect(shownBadges(null, allZero)).not.toContain(key)
+  })
+
+  it.each(EXCEPTION_BADGES)('keeps %s at 0 while it is the picked stage', (key) => {
+    expect(shownBadges(key, allZero)).toEqual([key])
+  })
+
+  it.each(EXCEPTION_BADGES)('shows %s when its count is above 0', (key) => {
+    expect(shownBadges(null, countsOf([[key, 1]]))).toEqual([key])
+  })
+
+  it('keeps the badge order whatever is shown', () => {
+    expect(
+      shownBadges(
+        'duplicates',
+        countsOf([
+          ['to_reverse', 1],
+          ['holds', 2],
+          ['session_not_settled', 0],
+        ])
+      )
+    ).toEqual(['holds', 'duplicates', 'to_reverse'])
+  })
+
+  it('draws no badge while the counts load (no flash of zeros), but keeps the picked one', () => {
+    expect(shownBadges(null, null)).toEqual([])
+    expect(shownBadges('holds', null)).toEqual(['holds'])
+  })
+
+  it('draws no badge it cannot count (a past date counts only All, Decision 11), but keeps the picked one', () => {
+    const past = countsOf([['all', 9]])
+    expect(shownBadges(null, past)).toEqual([])
+    expect(shownBadges('to_reverse', past)).toEqual(['to_reverse'])
+  })
+})
+
+describe('badgeTone and foldTone', () => {
+  it('tones a badge red, an unsettled session amber, and an empty one zero', () => {
+    expect(badgeTone('holds', count(2))).toBe('red')
+    expect(badgeTone('session_not_settled', count(1))).toBe('amber')
+    expect(badgeTone('holds', count(0))).toBe('zero')
+    expect(badgeTone('session_not_settled', undefined)).toBe('zero')
+  })
+
+  it('tones the +N chip red if any folded badge is red, else amber if any is amber, else zero', () => {
+    const counts = countsOf([
+      ['session_not_settled', 1],
+      ['to_reverse', 2],
+      ['holds', 0],
     ])
+    expect(foldTone(['session_not_settled', 'to_reverse'], counts)).toBe('red')
+    expect(foldTone(['session_not_settled', 'holds'], counts)).toBe('amber')
+    expect(foldTone(['holds'], counts)).toBe('zero')
+    expect(foldTone(['to_reverse'], null)).toBe('zero')
+  })
+})
+
+describe('foldBadges (how many badges stay on the line; the rest fold into +N)', () => {
+  it('keeps every badge when they fit, gaps included, exactly at the edge', () => {
+    expect(foldBadges([100, 100, 100], 40, 308, 4)).toBe(3)
+    expect(foldBadges([100, 100, 100], 40, 400, 4)).toBe(3)
+  })
+
+  it('folds the trailing badges, leaving room for the chip and its gap', () => {
+    // 100 + 4 + 100 + 4 + 40 = 248
+    expect(foldBadges([100, 100, 100], 40, 307, 4)).toBe(2)
+    expect(foldBadges([100, 100, 100], 40, 248, 4)).toBe(2)
+    expect(foldBadges([100, 100, 100], 40, 247, 4)).toBe(1)
+    expect(foldBadges([100, 100, 100], 40, 144, 4)).toBe(1)
+  })
+
+  it('folds everything into the chip when not even one badge fits beside it', () => {
+    expect(foldBadges([100, 100, 100], 40, 143, 4)).toBe(0)
+    expect(foldBadges([100, 100, 100], 40, 0, 4)).toBe(0)
+    expect(foldBadges([100, 100, 100], 40, -50, 4)).toBe(0)
+  })
+
+  it('reads each badge at its own width, folding from the end', () => {
+    // All four: 350 + 3 gaps = 362. Three and the chip: 270 + 40 + 3 gaps = 322. Two: 198.
+    expect(foldBadges([60, 90, 120, 80], 40, 362, 4)).toBe(4)
+    expect(foldBadges([60, 90, 120, 80], 40, 361, 4)).toBe(3)
+    expect(foldBadges([60, 90, 120, 80], 40, 322, 4)).toBe(3)
+    expect(foldBadges([60, 90, 120, 80], 40, 321, 4)).toBe(2)
+    expect(foldBadges([60, 90, 120, 80], 40, 198, 4)).toBe(2)
+    expect(foldBadges([60, 90, 120, 80], 40, 197, 4)).toBe(1)
+  })
+
+  it('has nothing to fold with no badges', () => {
+    expect(foldBadges([], 40, 0, 4)).toBe(0)
+  })
+
+  it('tolerates floating-point noise at the edge, not a real overrun', () => {
+    expect(foldBadges([100.4, 100.4], 40, 204.8, 4)).toBe(2)
+    expect(foldBadges([100.4, 100.4], 40, 204.7, 4)).toBe(1)
   })
 })
 
@@ -53,9 +172,9 @@ describe('resolveStrip (the URL: ?lens=appeals, absent All; ?view=<stage slug>, 
     expect(resolveStrip('bogus', null)).toEqual({ lens: 'all', stage: null })
   })
 
-  it('reads an unknown lens as All, and reads Cancelled: give a reason as a stage', () => {
+  it('reads an unknown lens as All, and the retired ?view=cancel-reason as no stage (owner ruling B)', () => {
     expect(resolveStrip(null, 'bogus').lens).toBe('all')
-    expect(resolveStrip('cancel-reason', null).stage?.key).toBe('cancel_reason')
+    expect(resolveStrip('cancel-reason', null)).toEqual({ lens: 'all', stage: null })
   })
 })
 

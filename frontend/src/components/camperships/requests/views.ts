@@ -134,7 +134,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
   {
     key: 'session_not_settled',
     slug: 'session-not-settled',
-    label: 'Session not settled',
+    label: 'Session unclear',
     groupBy: 'reason',
     columns: ['session', 'attention'],
   },
@@ -144,13 +144,6 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     label: 'Duplicates',
     groupBy: 'reason',
     columns: ['session', 'stage', 'attention'],
-  },
-  {
-    key: 'cancel_reason',
-    slug: 'cancel-reason',
-    label: 'Cancelled: give a reason',
-    groupBy: 'one',
-    columns: ['session', 'stage', 'posted', 'attention'],
   },
 ]
 

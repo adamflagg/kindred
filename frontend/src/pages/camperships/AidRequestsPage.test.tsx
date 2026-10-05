@@ -367,7 +367,8 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
     expect(viewLink('Appeals')).toHaveTextContent('Appeals 1')
     expect(viewLink('All')).toHaveTextContent('All 5')
     expect(viewLink('Needs an offer')).toHaveTextContent('Needs an offer 1')
-    expect(viewLink('Holds')).toHaveTextContent('Holds 0')
+    // Owner 2026-10-04: a badge with nothing in it under the lens is not drawn.
+    expect(screen.queryByRole('link', { name: /^Holds / })).toBeNull()
     expect(headers()).toContain('Appeal ask')
     expect(screen.getByText('Showing appeals only.')).toBeInTheDocument()
   })

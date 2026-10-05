@@ -24,7 +24,7 @@ const CODE_WORDS: Readonly<Record<string, string>> = {
   income_above: 'High income',
   expense_above: 'High expenses',
   multiple_grants: 'Several grants',
-  unmatched_session: 'Session not settled',
+  unmatched_session: 'Session unclear',
   duplicate_survivor_withdrawn: 'Duplicate revived',
   awaiting_approved_rules: 'Awaiting rules',
   no_approved_rules: 'No approved rules',
@@ -243,16 +243,6 @@ export function attentionItems(
         }`,
         'to_reverse',
         say('Reverse it in CampMinder; nothing to do here')
-      )
-    )
-  }
-  for (const todo of row.todos ?? []) {
-    items.push(
-      note(
-        'Give a reason',
-        todo.code === 'cancel_reason_missing' ? 'No reason recorded' : todo.message,
-        todo.code === 'cancel_reason_missing' ? 'cancel_reason' : null,
-        toRequest('Pick a Reason')
       )
     )
   }
