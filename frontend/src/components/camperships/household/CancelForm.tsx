@@ -70,7 +70,7 @@ export function CancelForm({
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault()
-            onCancel()
+            if (!inFlight.current) onCancel()
           }
         }}
       >

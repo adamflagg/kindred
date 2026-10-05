@@ -110,7 +110,7 @@ function FormShell({
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault()
-            onCancel()
+            if (!busy) onCancel()
           }
         }}
       >

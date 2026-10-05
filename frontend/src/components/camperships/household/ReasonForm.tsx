@@ -56,7 +56,8 @@ export function FormActions({
       <button type="submit" className={HH_BUTTON_PRIMARY} disabled={busy}>
         {submitLabel}
       </button>
-      <button type="button" className={HH_BUTTON} onClick={onCancel}>
+      {/* A write in flight finishes on this form: leaving would drop its refusal unseen. */}
+      <button type="button" className={HH_BUTTON} onClick={onCancel} disabled={busy}>
         Back
       </button>
       {children}
@@ -131,7 +132,7 @@ export function ReasonForm({
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault()
-            onCancel()
+            if (!inFlight.current) onCancel()
           }
         }}
       >

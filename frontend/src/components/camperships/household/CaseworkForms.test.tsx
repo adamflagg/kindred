@@ -215,6 +215,20 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     expect(screen.queryByLabelText('Reason')).toBeNull()
   })
 
+  it('keeps the form open while a save is outstanding: Back is disabled and Esc does nothing', async () => {
+    outcome = new Promise<void>(() => undefined)
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone')
+    act(() => {
+      fireEvent.submit(screen.getByLabelText('Reason').closest('form')!)
+    })
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+    fireEvent.keyDown(screen.getByLabelText('Reason'), { key: 'Escape' })
+    expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  })
+
   it('reopens from the answer as it stands, with a blank reason, after Back', async () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)

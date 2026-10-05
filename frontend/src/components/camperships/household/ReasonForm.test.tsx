@@ -70,6 +70,21 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the form open while a submit is in flight: Back is disabled and Esc does nothing', () => {
+    const onSubmit = vi.fn(() => new Promise<void>(() => undefined))
+    const onCancel = vi.fn()
+    const { container } = render(
+      <ReasonForm label="Why" submitLabel="Send" onSubmit={onSubmit} onCancel={onCancel} />
+    )
+    fireEvent.change(screen.getByLabelText('Why'), { target: { value: 'Because' } })
+    act(() => {
+      fireEvent.submit(container.querySelector('form') as HTMLFormElement)
+    })
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+    fireEvent.keyDown(screen.getByLabelText('Why'), { key: 'Escape' })
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('a new submit clears the previous refusal', async () => {
     const onSubmit = vi
       .fn<(note: string) => Promise<void>>()
