@@ -35,9 +35,10 @@ function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAid
         )}
         {camper !== null && (
           <span className="ml-auto">
+            {/* The href is the first camper's Person record, so say "Person" until CampMinder's household URL is known (ruled 2026-10-05). */}
             <CampMinderLink
               href={campMinderPersonUrl(camper.personCmId, page.year)}
-              label="Household"
+              label="Person"
             />
           </span>
         )}

@@ -39,8 +39,9 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     expect(
       within(johnson).getByText('Samuel Johnson · 555-0100 · test@example.com')
     ).toBeInTheDocument()
-    // N7: "Household", CampMinder's link, opening its first camper's record (Decision 20).
-    const link = within(johnson).getByRole('link', { name: 'Household' })
+    // N7: "Person" (ruled 2026-10-05), CampMinder's link, opening its first camper's record (Decision 20).
+    const link = within(johnson).getByRole('link', { name: 'Person' })
+    expect(within(johnson).queryByRole('link', { name: 'Household' })).toBeNull()
     expect(link).toHaveAttribute(
       'href',
       'https://system.campminder.com/ui/person/Record#1000002:2027'
