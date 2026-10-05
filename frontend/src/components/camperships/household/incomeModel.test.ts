@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { householdPage, householdRequest, receiptOut } from './householdFixtures'
 import {
-  conflictParts,
-  conflictWords,
   conflictsOf,
   exceptionsOf,
   grantsTabMeta,
@@ -23,9 +21,7 @@ import {
   income,
   plainAnswers,
 } from './sectionsFixtures'
-import { ROW_EMMA, ROW_SAMUEL } from '../requests/gridFixtures'
-
-const flaggedIncome = FLAGGED_PAGE.incomes[0]!
+import { ROW_EMMA } from '../requests/gridFixtures'
 
 describe('conflictsOf (the server variant shape, financial_aid_household.py)', () => {
   it('reads each conflicting field of income_conflict and household_answer_conflict', () => {
@@ -101,151 +97,6 @@ describe('moreWords: the toggle under the exceptions', () => {
     expect(moreWords(14, 0, false)).toBe('All 14 answers match ▸')
     expect(moreWords(14, 13, false)).toBe('1 more answer matches ▸')
     expect(moreWords(14, 2, true)).toBe('Show Only the Exceptions ▴')
-  })
-})
-
-describe('conflictWords: the "why" under a flagged answer', () => {
-  it("names the campers' forms when every variant maps to a camper on the page", () => {
-    const [conflict] = conflictsOf(flaggedIncome)
-    expect(conflictWords(FLAGGED_PAGE, flaggedIncome, conflict!)).toBe(
-      "Emma's form says $84,000; Samuel's says $90,000."
-    )
-  })
-
-  it('falls back to "the campers\' forms" when a person is not on the page', () => {
-    const inc = income({
-      flags: [
-        {
-          code: 'income_conflict',
-          detail: {
-            fields: {
-              total_gross_income: [
-                { value: 84000, person_cm_ids: [1000002] },
-                { value: 90000, person_cm_ids: [1999999] },
-              ],
-            },
-          },
-        },
-      ],
-    })
-    expect(conflictWords(PLAIN_PAGE, inc, conflictsOf(inc)[0]!)).toBe(
-      "The campers' forms disagree: $84,000 on one, $90,000 on another."
-    )
-  })
-
-  it('lists three or more figures', () => {
-    const inc = income({
-      flags: [
-        {
-          code: 'income_conflict',
-          detail: {
-            fields: {
-              total_gross_income: [
-                { value: 1, person_cm_ids: [1999997] },
-                { value: 2, person_cm_ids: [1999998] },
-                { value: 3, person_cm_ids: [1999999] },
-              ],
-            },
-          },
-        },
-      ],
-    })
-    expect(conflictWords(PLAIN_PAGE, inc, conflictsOf(inc)[0]!)).toBe(
-      "The campers' forms disagree: $1, $2 and $3."
-    )
-  })
-
-  it('joins two campers who share a figure, and keeps a count a count', () => {
-    const page = householdPage({
-      requests: [
-        householdRequest(ROW_EMMA),
-        householdRequest(ROW_SAMUEL),
-        householdRequest({
-          ...ROW_SAMUEL,
-          request_id: 'reqnoah00000009',
-          person_cm_id: 1000011,
-          camper_name: 'Noah Johnson',
-        }),
-      ],
-    })
-    const inc = income({
-      flags: [
-        {
-          code: 'household_answer_conflict',
-          detail: {
-            fields: {
-              num_children: [
-                { value: 2, person_cm_ids: [1000002, 1000011] },
-                { value: 3, person_cm_ids: [1000010] },
-              ],
-            },
-          },
-        },
-      ],
-    })
-    expect(conflictWords(page, inc, conflictsOf(inc)[0]!)).toBe(
-      "Emma's and Noah's forms say 2; Samuel's says 3."
-    )
-  })
-
-  it('says a resolved conflict is settled, by the correction or by the income override', () => {
-    const resolved = {
-      ...GROSS_CONFLICT,
-      detail: { ...GROSS_CONFLICT.detail, resolved_by_correction: true },
-    }
-    const corrected = income({
-      answers: plainAnswers().map((a) =>
-        a.field === 'total_gross_income' ? { ...a, effective: '87000.00', corrected: true } : a
-      ),
-      flags: [resolved],
-    })
-    expect(conflictWords(FLAGGED_PAGE, corrected, conflictsOf(corrected)[0]!)).toBe(
-      "Emma's form says $84,000; Samuel's says $90,000. The correction settles it."
-    )
-    const overridden = income({
-      answers: plainAnswers().map((a) =>
-        a.field === 'income_override' ? { ...a, effective: 'prior_year_only', corrected: true } : a
-      ),
-      flags: [resolved],
-    })
-    expect(conflictWords(FLAGGED_PAGE, overridden, conflictsOf(overridden)[0]!)).toBe(
-      "Emma's form says $84,000; Samuel's says $90,000. The income override settles it."
-    )
-  })
-})
-
-describe("conflictParts: the why line's pieces, the other forms' figures struck once settled (round 3, section 3)", () => {
-  const settledOn = (effective: string) =>
-    income({
-      answers: plainAnswers().map((a) =>
-        a.field === 'total_gross_income' ? { ...a, effective, corrected: true } : a
-      ),
-      flags: [
-        { ...GROSS_CONFLICT, detail: { ...GROSS_CONFLICT.detail, resolved_by_correction: true } },
-      ],
-    })
-
-  it('strikes the figure of each form the correction did not use, and reads as conflictWords', () => {
-    const settled = settledOn('84000.00')
-    const parts = conflictParts(FLAGGED_PAGE, settled, conflictsOf(settled)[0]!)
-    expect(parts.filter((p) => p.struck === true).map((p) => p.text)).toEqual(['$90,000'])
-    expect(parts.map((p) => p.text).join('')).toBe(
-      conflictWords(FLAGGED_PAGE, settled, conflictsOf(settled)[0]!)
-    )
-  })
-
-  it('strikes both on a figure neither form gave, and none while the conflict is open', () => {
-    const settled = settledOn('87000.00')
-    expect(
-      conflictParts(FLAGGED_PAGE, settled, conflictsOf(settled)[0]!).filter(
-        (p) => p.struck === true
-      )
-    ).toHaveLength(2)
-    expect(
-      conflictParts(FLAGGED_PAGE, flaggedIncome, conflictsOf(flaggedIncome)[0]!).some(
-        (p) => p.struck === true
-      )
-    ).toBe(false)
   })
 })
 

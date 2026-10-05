@@ -37,7 +37,15 @@ import {
   HH_TOGGLE,
 } from './householdStyles'
 import {
-  conflictParts,
+  answerState,
+  formColumns,
+  formFigure,
+  usingNote,
+  whyWords,
+  type FormColumn,
+  type FormFigure,
+} from './incomeColumns'
+import {
   conflictsOf,
   exceptionsOf,
   moreWords,
@@ -45,7 +53,6 @@ import {
   otherFlags,
   pricedFacts,
   type FieldConflict,
-  type WhyPart,
 } from './incomeModel'
 
 /**
@@ -122,32 +129,39 @@ function LastYearLine({ page, income }: { page: ApiAidHouseholdPage; income: Api
   )
 }
 
+/** The muted note under a disagreeing answer's "Using" figure (the mock's .un). */
+const USING_NOTE =
+  'text-muted-foreground block text-[11px] leading-tight font-normal whitespace-normal'
 /**
- * A conflict's why line: one sentence, with each form's figure the settling correction did not use
- * struck in red (round 3, section 3), the weekend diff's DEL grammar. Plain text when nothing is.
+ * A cell that wraps. Appending `whitespace-normal` to HH_TD does nothing: Tailwind emits
+ * `whitespace-nowrap` after it, so HH_TD's nowrap wins and a long why line widened the table past a
+ * household's half. Swap the class instead.
  */
-function WhyLine({ parts }: { parts: readonly WhyPart[] }) {
-  if (!parts.some((part) => part.struck === true)) return <>{parts.map((p) => p.text).join('')}</>
+const WRAP_TD = HH_TD.replace('whitespace-nowrap', 'whitespace-normal')
+/** A form's header (the mock's th.fc): it may wrap ("Olivia's / form"), so a household's half fits. */
+const FORM_TH = `${HH_TH_NUM.replace('whitespace-nowrap', 'whitespace-normal')} leading-tight align-bottom`
+
+/** One form's figure in its column, struck in red once a correction used another (the weekend diff's DEL). */
+function FormFigureCell({ figure, className }: { figure: FormFigure; className: string }) {
   return (
-    <>
-      {parts.map((part, i) =>
-        part.struck === true ? (
-          <del key={i} className={HH_DIFF_DEL}>
-            {part.text}
-          </del>
-        ) : (
-          <span key={i}>{part.text}</span>
-        )
-      )}
-    </>
+    <td className={className}>
+      {figure.struck ? <del className={HH_DIFF_DEL}>{figure.text}</del> : figure.text}
+    </td>
   )
 }
 
+/**
+ * One answer's row (household-v4 section 3): its name, each form's figure (one "Family's answer"
+ * with one form), the figure used, and its pills and casework button. An answer the forms still
+ * disagree on is tinted amber with its why tight under it, in the next row; a settled one strikes
+ * the unused figures in their columns. Correct… opens in a row of its own (B30).
+ */
 function AnswerRows({
   page,
   income,
   answer,
   conflict,
+  columns,
   correct,
   fixed,
 }: {
@@ -155,12 +169,22 @@ function AnswerRows({
   income: ApiAidIncome
   answer: ApiAidAnswer
   conflict: FieldConflict | undefined
+  /** The household's forms, two or more; null for the one-form table. */
+  columns: readonly FormColumn[] | null
   correct: CorrectRender | undefined
   fixed: boolean
 }) {
   const [correcting, setCorrecting] = useState(false)
-  const open = conflict !== undefined && !conflict.resolved
-  const cell = conflict === undefined ? HH_TD : `${HH_TD} border-b-0`
+  const open = answerState(answer, conflict) === 'open'
+  const why = whyWords(page, income, answer, conflict)
+  const note = usingNote(page, answer, conflict)
+  const span = (columns?.length ?? 1) + 3
+  // A note under Using makes the row two lines: every cell then sits at the top, so the figures line up.
+  const top = (classes: string) =>
+    note === null ? classes : classes.replace('align-middle', 'align-top')
+  const cell = top(why === null ? HH_TD : `${HH_TD} border-b-0`)
+  const num = top(why === null ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`)
+  const width = fixed ? 'w-[104px]' : 'xl:w-[104px]'
   const edge = open ? FLAGGED_EDGE : ''
   return (
     <>
@@ -168,17 +192,28 @@ function AnswerRows({
         <td className={`${cell} ${edge} ${fixed ? 'w-[210px]' : 'xl:w-[210px]'}`}>
           {answerWords(answer.field)}
         </td>
-        <td
-          className={`${conflict === undefined ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`} ${fixed ? 'w-[104px]' : 'xl:w-[104px]'}`}
-        >
-          {answerValue(answer.field, answer.synced)}
+        {columns === null ? (
+          <td className={`${num} ${width}`}>{answerValue(answer.field, answer.synced)}</td>
+        ) : (
+          columns.map((column) => (
+            <FormFigureCell
+              key={column.personCmId}
+              figure={formFigure(answer, conflict, column.personCmId)}
+              className={`${num} ${width}`}
+            />
+          ))
+        )}
+        <td className={`${num} ${width} ${answer.corrected ? 'font-bold' : ''}`}>
+          {note === null ? (
+            answerValue(answer.field, answer.effective)
+          ) : (
+            <>
+              <span className="block">{answerValue(answer.field, answer.effective)}</span>
+              <span className={USING_NOTE}>{note}</span>
+            </>
+          )}
         </td>
-        <td
-          className={`${conflict === undefined ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`} ${fixed ? 'w-[104px]' : 'xl:w-[104px]'} ${answer.corrected ? 'font-bold' : ''}`}
-        >
-          {answerValue(answer.field, answer.effective)}
-        </td>
-        <td className={`${cell} whitespace-normal`}>
+        <td className={cell.replace('whitespace-nowrap', 'whitespace-normal')}>
           <div className="flex flex-wrap items-center gap-2">
             {answer.corrected && <StatusPill tone="amber">corrected</StatusPill>}
             {answer.changed_since_correction && (
@@ -188,13 +223,13 @@ function AnswerRows({
           </div>
         </td>
       </tr>
-      {conflict !== undefined && (
+      {why !== null && (
         <tr className={open ? FLAGGED_ROW : ''}>
           <td
-            colSpan={4}
-            className={`${HH_TD} ${edge} pt-0 text-[12.5px] whitespace-normal ${open ? WHY_FLAGGED : WHY_SETTLED}`}
+            colSpan={span}
+            className={`${WRAP_TD} ${edge} pt-0 text-[12.5px] ${open ? WHY_FLAGGED : WHY_SETTLED}`}
           >
-            <WhyLine parts={conflictParts(page, income, conflict)} />
+            {why}
           </td>
         </tr>
       )}
@@ -203,7 +238,7 @@ function AnswerRows({
         // table, which runs the tab's full width (round 3 (E)), and the box adds no width of its own
         // (0 wide, at least the cell's), so the form wraps to the answers' width.
         <tr>
-          <td colSpan={4} className={`${HH_TD} whitespace-normal`}>
+          <td colSpan={span} className={WRAP_TD}>
             <div className="w-0 min-w-full">
               {correct(income, answer, { open: true, setOpen: setCorrecting })}
             </div>
@@ -234,6 +269,8 @@ function Exceptions({
   const conflicts = conflictsOf(income)
   const shown = all ? income.answers : exceptions
   const others = otherFlags(income)
+  const forms = formColumns(page, income)
+  const columns = forms.length > 1 ? forms : null
   return (
     <div className="min-w-0">
       {formStrip?.(income)}
@@ -247,8 +284,16 @@ function Exceptions({
           <thead>
             <tr>
               <th className={HH_TH}>Answer</th>
-              <th className={HH_TH_NUM}>On the form</th>
-              <th className={HH_TH_NUM}>Used</th>
+              {columns === null ? (
+                <th className={HH_TH_NUM}>Family&apos;s answer</th>
+              ) : (
+                columns.map((column) => (
+                  <th key={column.personCmId} className={FORM_TH}>
+                    {column.head}
+                  </th>
+                ))
+              )}
+              <th className={HH_TH_NUM}>Using</th>
               <th className={HH_TH} />
             </tr>
           </thead>
@@ -260,6 +305,7 @@ function Exceptions({
                 income={income}
                 answer={answer}
                 conflict={conflicts.find((c) => c.field === answer.field)}
+                columns={columns}
                 correct={correct}
                 fixed={fixed}
               />

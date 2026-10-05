@@ -21,24 +21,29 @@ const PAGE = householdPage()
 const rowOf = (text: string) => screen.getByText(text).closest('tr') as HTMLElement
 
 describe('IncomePanel: the exceptions only (income (e); N8)', () => {
-  it('lists only the corrected and flagged answers, each as sent and as used', () => {
+  it("lists only the corrected and flagged answers, each form's figure and the one used", () => {
     render(<IncomePanel page={FLAGGED_PAGE} />)
     const children = rowOf('Children')
-    expect(within(children).getByText('2')).toBeInTheDocument()
+    expect(within(children).getAllByText('2')).toHaveLength(2)
     expect(within(children).getByText('3')).toBeInTheDocument()
     expect(within(children).getByText('corrected')).toBeInTheDocument()
     expect(screen.getByText('Gross income')).toBeInTheDocument()
     expect(screen.queryByText('Housing expenses')).toBeNull()
   })
 
-  it("puts a flagged answer's why under it, in the server's figures, tinted amber", () => {
+  it("puts only the why under a flagged answer, tinted amber: each form's figure is in its column", () => {
     render(<IncomePanel page={FLAGGED_PAGE} />)
-    const why = screen.getByText("Emma's form says $84,000; Samuel's says $90,000.")
+    const why = screen.getByText('The forms disagree. No income is used until one is picked.')
     expect(why.closest('tr')?.className).toMatch(/amber/)
     expect(rowOf('Gross income').className).toMatch(/amber/)
+    expect(why.closest('tr')).not.toHaveTextContent('$84,000')
+    const gross = rowOf('Gross income')
+    const cells = within(gross).getAllByRole('cell')
+    expect(cells[1]).toHaveTextContent('$84,000')
+    expect(cells[2]).toHaveTextContent('$90,000')
   })
 
-  it('leaves a resolved conflict untinted, its why muted and saying what settled it', () => {
+  it('leaves a settled conflict untinted, with no why line: the corrected pill says it', () => {
     const page = householdPage({
       incomes: [
         income({
@@ -55,12 +60,14 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
       ],
     })
     render(<IncomePanel page={page} />)
-    expect(rowOf('Gross income').className).not.toMatch(/amber/)
-    const why = screen.getByText(/The correction settles it\.$/)
-    expect(why.closest('tr')?.className).not.toMatch(/amber/)
+    const gross = rowOf('Gross income')
+    expect(gross.className).not.toMatch(/amber/)
+    expect(within(gross).getByText('corrected')).toBeInTheDocument()
+    expect(screen.queryByText(/settles it/)).toBeNull()
+    expect(screen.queryByText(/The forms disagree/)).toBeNull()
   })
 
-  it("strikes the other form's figure in red once a correction settles the conflict (round 3, section 3)", () => {
+  it("strikes each unused form's figure in its own column, the used one bold under Using (household-v4 section 3)", () => {
     const page = householdPage({
       incomes: [
         income({
@@ -77,12 +84,15 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
       ],
     })
     render(<IncomePanel page={page} />)
-    const struck = screen.getByText('$90,000')
+    const cells = within(rowOf('Gross income')).getAllByRole('cell')
+    // Answer | Emma's form | Samuel's form | Using | actions
+    expect(cells[1]).toHaveTextContent('$84,000')
+    expect(cells[1]!.querySelector('del')).toBeNull()
+    const struck = within(cells[2]!).getByText('$90,000')
     expect(struck.tagName).toBe('DEL')
     expect(struck.className).toMatch(/red/)
-    expect(struck.closest('tr')).toHaveTextContent(
-      "Emma's form says $84,000; Samuel's says $90,000. The correction settles it."
-    )
+    expect(cells[3]).toHaveTextContent('$84,000')
+    expect(cells[3]!.className).toMatch(/font-bold/)
   })
 
   it("puts the Use X's Form strip above the answers, once per household (round 3, section 3)", () => {
@@ -150,6 +160,161 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
   it('says so when the household has no income form', () => {
     render(<IncomePanel page={householdPage({ incomes: [] })} />)
     expect(screen.getByText('No income form on file.')).toBeInTheDocument()
+  })
+})
+
+// household-v4 section 3 (owner ruling 10-05): one right-aligned column per form, then "Using".
+describe('IncomePanel: a column per form, then Using (household-v4 section 3)', () => {
+  const heads = () => screen.getAllByRole('columnheader').map((th) => th.textContent)
+  const HOUSING_MOST = {
+    code: 'household_answer_conflict',
+    detail: {
+      fields: {
+        total_housing_expenses: [
+          { value: 30000, person_cm_ids: [1000002] },
+          { value: 36000, person_cm_ids: [1000010, 1000099] },
+        ],
+        num_children: [
+          { value: 3, person_cm_ids: [1000002] },
+          { value: 2, person_cm_ids: [1000010] },
+        ],
+      },
+      resolved_by_correction: false,
+    },
+  }
+  const threeForms = () =>
+    householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_housing_expenses'
+              ? { ...a, synced: '36000.00', effective: '36000.00' }
+              : a.field === 'num_children'
+                ? { ...a, synced: '3', effective: '3' }
+                : a
+          ),
+          flags: [HOUSING_MOST],
+          form_people: [{ person_cm_id: 1000099, first_name: 'Noah', last_name: 'Johnson' }],
+        }),
+      ],
+    })
+
+  it("heads one right-aligned column per form, then Using, with no 'On the form' or 'Used'", () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    expect(heads()).toEqual(['Answer', "Emma's form", "Samuel's form", 'Using', ''])
+    const [, emma, samuel, using] = screen.getAllByRole('columnheader')
+    for (const th of [emma, samuel, using]) expect(th!.className).toMatch(/text-right/)
+    expect(screen.queryByText('On the form')).toBeNull()
+    expect(screen.queryByText('Used')).toBeNull()
+  })
+
+  it('heads a household with one form "Family\'s answer" and Using', () => {
+    const page = householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_rent'
+              ? { ...a, synced: '900.00', effective: '1200', corrected: true }
+              : a
+          ),
+          form_people: [{ person_cm_id: 1000002, first_name: 'Emma', last_name: 'Johnson' }],
+        }),
+      ],
+    })
+    render(<IncomePanel page={page} />)
+    expect(heads()).toEqual(['Answer', "Family's answer", 'Using', ''])
+    const cells = within(rowOf('Rent')).getAllByRole('cell')
+    expect(cells[1]).toHaveTextContent('$900')
+    expect(cells[2]).toHaveTextContent('$1,200')
+  })
+
+  it('draws three forms as three columns, a form with no figure as a dash', () => {
+    render(<IncomePanel page={threeForms()} />)
+    expect(heads()).toEqual(['Answer', "Emma's form", "Samuel's form", "Noah's form", 'Using', ''])
+    const cells = within(rowOf('Children')).getAllByRole('cell')
+    expect(cells.map((c) => c.textContent)).toEqual(expect.arrayContaining(['3', '2', '—']))
+  })
+
+  it('shows the figure most forms give under Using, saying so', () => {
+    render(<IncomePanel page={threeForms()} />)
+    const cells = within(rowOf('Housing expenses')).getAllByRole('cell')
+    expect(cells[4]).toHaveTextContent('$36,000')
+    expect(within(cells[4]!).getByText('2 of 3 forms')).toBeInTheDocument()
+  })
+
+  it('names the form a tie went to under Using', () => {
+    render(<IncomePanel page={threeForms()} />)
+    const cells = within(rowOf('Children')).getAllByRole('cell')
+    expect(within(cells[4]!).getByText("tie: Emma's form")).toBeInTheDocument()
+  })
+
+  it('shows no income under Using while the income forms disagree: a dash, on hold', () => {
+    const page = householdPage({
+      requests: [
+        householdRequest({
+          ...ROW_EMMA,
+          holds: [{ code: 'household_income_conflict', severity: 'hold', message: 'm' }],
+          stage: { round: 2, code: 'held', label: 'R2 · On hold' },
+        }),
+      ],
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_gross_income' ? { ...a, synced: '', effective: '' } : a
+          ),
+          flags: [GROSS_CONFLICT],
+        }),
+      ],
+    })
+    render(<IncomePanel page={page} />)
+    const cells = within(rowOf('Gross income')).getAllByRole('cell')
+    expect(cells[3]).toHaveTextContent('—')
+    expect(within(cells[3]!).getByText('on hold')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'The forms disagree. No income is used until one is picked, so Round 2 waits on hold.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('sits the amber line tight under its own answer: the next row, no gap row', () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    const gross = rowOf('Gross income')
+    const why = screen.getByText(/^The forms disagree/).closest('tr')
+    expect(gross.nextElementSibling).toBe(why)
+    for (const cell of within(gross).getAllByRole('cell'))
+      expect(cell.className).toMatch(/border-b-0/)
+    expect(why!.querySelector('td')!.className).toMatch(/pt-0/)
+    expect(why!.querySelector('td')).toHaveAttribute('colspan', '5')
+  })
+
+  it('draws no "Forms disagree" chip', () => {
+    render(<IncomePanel page={threeForms()} />)
+    expect(screen.queryByText(/^Forms disagree$/i)).toBeNull()
+  })
+
+  it('gives each household of two its own columns', () => {
+    const page = {
+      ...TWO_HOUSEHOLD_PAGE,
+      incomes: [
+        TWO_HOUSEHOLD_PAGE.incomes[0]!,
+        { ...TWO_HOUSEHOLD_PAGE.incomes[1]!, flags: [HOUSING_MOST] },
+      ],
+    }
+    render(<IncomePanel page={page} />)
+    const [johnson, garcia] = screen.getAllByTestId('income-household')
+    expect(within(johnson!).queryByRole('table')).toBeNull()
+    const garciaHeads = within(garcia!)
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent)
+    expect(garciaHeads).toEqual([
+      'Answer',
+      "Emma's form",
+      "Samuel's form",
+      "person 1000099's form",
+      'Using',
+      '',
+    ])
   })
 })
 

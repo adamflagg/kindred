@@ -16,7 +16,6 @@ import type {
   ApiAidIncome,
   ApiAidReceipt,
 } from '../../../types/api-types'
-import { answerValue } from './householdModel'
 import { formatMoney } from '../kit/money'
 
 type Flag = ApiAidIncome['flags'][number]
@@ -26,7 +25,6 @@ const CONFLICT_CODES: ReadonlySet<string> = new Set([
   'income_conflict',
   'household_answer_conflict',
 ])
-const OVERRIDE_FIELD = 'income_override'
 
 export interface Variant {
   readonly value: number
@@ -86,98 +84,6 @@ export function moreWords(total: number, exceptions: number, open: boolean): str
   const rest = total - exceptions
   if (exceptions === 0) return `All ${String(rest)} answers match ▸`
   return rest === 1 ? '1 more answer matches ▸' : `${String(rest)} more answers match ▸`
-}
-
-const firstName = (name: string) => name.split(' ')[0] ?? name
-
-/** The campers' first names for a variant, or null when any of its people is not a camper on the page. */
-function namesOf(page: ApiAidHouseholdPage, ids: readonly number[]): string | null {
-  const names = ids.map((id) => {
-    const row = page.requests.find((r) => r.row.person_cm_id === id && id > 0)?.row
-    return row === undefined || row.camper_name === '' ? null : `${firstName(row.camper_name)}'s`
-  })
-  const known = names.filter((n): n is string => n !== null)
-  if (known.length === 0 || known.length < names.length) return null
-  return listWords(known)
-}
-
-/** "a", "a and b", "a, b and c". */
-function listWords(items: readonly string[]): string {
-  const last = items.at(-1) ?? ''
-  return items.length <= 1 ? last : `${items.slice(0, -1).join(', ')} and ${last}`
-}
-
-/** A piece of the why line; `struck`: a form's figure the settling correction did not use. */
-export interface WhyPart {
-  readonly text: string
-  readonly struck?: boolean
-}
-
-/**
- * The "why" line under a flagged answer, from the server's variants: "Emma's form says $84,000;
- * Samuel's says $90,000." Campers are named only when every variant's people are campers on the
- * page; otherwise it reads as "the campers' forms". A resolved conflict says what settled it, and
- * once a correction settles it, each form's figure the correction did not use is struck (round 3,
- * section 3: the other form's figure struck in red).
- */
-export function conflictParts(
-  page: ApiAidHouseholdPage,
-  income: ApiAidIncome,
-  conflict: FieldConflict
-): WhyPart[] {
-  const used = income.answers.find((a) => a.field === conflict.field)
-  const settledByCorrection = conflict.resolved && used?.corrected === true
-  const value = (v: Variant): WhyPart => ({
-    text: answerValue(conflict.field, String(v.value)),
-    ...(settledByCorrection && v.value !== Number(used.effective) ? { struck: true } : {}),
-  })
-  const named = conflict.variants.map((v) => ({ v, who: namesOf(page, v.personCmIds) }))
-  let parts: WhyPart[]
-  if (named.every(({ who }) => who !== null)) {
-    parts = named.flatMap(({ v, who }, i) => {
-      const several = v.personCmIds.length > 1
-      const lead =
-        i === 0
-          ? `${who ?? ''} ${several ? 'forms say' : 'form says'} `
-          : `; ${who ?? ''} ${several ? 'say' : 'says'} `
-      return [{ text: lead }, value(v)]
-    })
-  } else if (conflict.variants.length === 2) {
-    const [a, b] = conflict.variants as [Variant, Variant]
-    parts = [
-      { text: "The campers' forms disagree: " },
-      value(a),
-      { text: ' on one, ' },
-      value(b),
-      { text: ' on another' },
-    ]
-  } else {
-    const values = conflict.variants.map(value)
-    parts = [{ text: "The campers' forms disagree: " }]
-    values.forEach((part, i) => {
-      if (i > 0) parts.push({ text: i === values.length - 1 ? ' and ' : ', ' })
-      parts.push(part)
-    })
-  }
-  if (!conflict.resolved) return [...parts, { text: '.' }]
-  const overridden =
-    income.answers.find((a) => a.field === OVERRIDE_FIELD)?.effective.trim() !== '' &&
-    used?.corrected !== true
-  return [
-    ...parts,
-    { text: `. ${overridden ? 'The income override' : 'The correction'} settles it.` },
-  ]
-}
-
-/** The why line as one sentence. */
-export function conflictWords(
-  page: ApiAidHouseholdPage,
-  income: ApiAidIncome,
-  conflict: FieldConflict
-): string {
-  return conflictParts(page, income, conflict)
-    .map((part) => part.text)
-    .join('')
 }
 
 /** One household's open flags: each open conflicting answer, and each other flag. */

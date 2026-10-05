@@ -89,6 +89,18 @@ export function disagreeWords(
   }
 }
 
+/**
+ * The answer's casework button (household-v4 section 3, owner ruling 10-05): "Choose Which Form…" on
+ * an answer the forms still disagree on, nothing settled; "Correct…" on a corrected or matching one.
+ * Both open the same Correct… row, with its quick picks.
+ */
+export function correctLabel(income: ApiAidIncome, answer: ApiAidAnswer): string {
+  if (answer.corrected) return 'Correct…'
+  return conflictsOf(income).some((c) => c.field === answer.field && !c.resolved)
+    ? 'Choose Which Form…'
+    : 'Correct…'
+}
+
 const NUMBER_WORDS = [
   'zero',
   'one',

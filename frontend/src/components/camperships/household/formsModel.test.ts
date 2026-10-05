@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ApiAidUseFormOut } from '../../../types/api-types'
 import { householdPage } from './householdFixtures'
 import {
+  correctLabel,
   correctionPicks,
   disagreeWords,
   formChoices,
@@ -286,7 +287,7 @@ describe('formOutcomeWords: what a Use X’s Form did', () => {
 // form first, then the page's campers, then the person id (someone with no persons row is left out).
 describe('formOwner: form_people first, then the campers, then the id (item 9)', () => {
   const NOAH = { person_cm_id: 1000099, first_name: 'Noah', last_name: 'Johnson' }
-  const withPeople = (people: (typeof NOAH)[]) =>
+  const withPeople = (people: Array<typeof NOAH>) =>
     householdPage({ incomes: [income({ form_people: people })] })
 
   it('names a form owner who is not a camper on the page from form_people', () => {
@@ -331,5 +332,23 @@ describe('formOwner: form_people first, then the campers, then the id (item 9)',
       { personCmId: 1000002, name: 'Emma' },
       { personCmId: 1000099, name: 'Noah' },
     ])
+  })
+})
+
+// household-v4 section 3 (owner ruling 10-05): only an unsettled disagreeing answer changes its button.
+describe('correctLabel: Choose Which Form… on an unsettled disagreeing answer, else Correct…', () => {
+  const housing = (over: Parameters<typeof answer>[2] = {}) =>
+    answer('total_housing_expenses', '30000.00', over)
+
+  it('reads Choose Which Form… while the forms disagree and nothing settled it', () => {
+    expect(correctLabel(income({ flags: [INCOME_FLAG] }), housing())).toBe('Choose Which Form…')
+  })
+
+  it('keeps Correct… on a corrected answer, a resolved flag, and a matching answer', () => {
+    expect(
+      correctLabel(income({ flags: [INCOME_FLAG] }), housing({ corrected: true, effective: '1' }))
+    ).toBe('Correct…')
+    expect(correctLabel(income({ flags: [resolved(INCOME_FLAG)] }), housing())).toBe('Correct…')
+    expect(correctLabel(income(), housing())).toBe('Correct…')
   })
 })

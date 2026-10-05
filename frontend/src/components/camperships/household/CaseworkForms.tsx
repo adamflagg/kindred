@@ -25,7 +25,7 @@ import {
   parsePercent,
 } from './caseworkModel'
 import type { EditorExits } from './editorExits'
-import { correctionPicks, formsSayWords, settleWords } from './formsModel'
+import { correctLabel, correctionPicks, formsSayWords, settleWords } from './formsModel'
 import { answerWords, camperOf } from './householdModel'
 import {
   HH_AMBER_NOTE as AMBER_NOTE,
@@ -335,6 +335,8 @@ function CorrectionForm({
  * now stands. Opening it first leaves the page's open money editor, when `exits` is given (one open
  * editor).
  * The income panel holds `open` (`onOpenChange`), so it can draw the form in a row of its own (B30).
+ * On an answer the forms still disagree on, the button reads "Choose Which Form…" (household-v4
+ * section 3) and opens the same row.
  */
 export function IncomeCorrection({
   page,
@@ -366,7 +368,7 @@ export function IncomeCorrection({
           else exits.beforeLeave(() => setOpen(true))
         }}
       >
-        Correct…
+        {correctLabel(income, answer)}
       </button>
     )
   }

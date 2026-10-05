@@ -305,8 +305,32 @@ describe('Correct… where the forms disagree: quick picks (round 3, section 3)'
   const housing = torn.answers.find((a) => a.field === 'total_housing_expenses')!
   const open = async () => {
     render(<IncomeCorrection page={page} income={torn} answer={housing} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Which Form…' }))
   }
+
+  // household-v4 section 3 (owner ruling 10-05): only an unsettled disagreeing answer says so.
+  it('reads Choose Which Form… on an answer the forms still disagree on, and opens the same row', async () => {
+    await open()
+    expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
+    expect(document.querySelector('[data-editor-box]')).toHaveTextContent(
+      'Correcting · Housing expenses'
+    )
+  })
+
+  it('keeps Correct… on a corrected answer and on one the forms agree on', () => {
+    const { unmount } = render(
+      <IncomeCorrection
+        page={page}
+        income={torn}
+        answer={{ ...housing, effective: '33000', corrected: true }}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Correct…' })).toBeInTheDocument()
+    unmount()
+    const rent = torn.answers.find((a) => a.field === 'total_rent')!
+    render(<IncomeCorrection page={page} income={torn} answer={rent} />)
+    expect(screen.getByRole('button', { name: 'Correct…' })).toBeInTheDocument()
+  })
 
   it("heads the row with the answer and the forms' figures", async () => {
     await open()
