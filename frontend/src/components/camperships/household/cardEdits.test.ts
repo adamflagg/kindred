@@ -32,6 +32,15 @@ describe('cardEdits (§4.6; Decisions 13, 23)', () => {
     ).toEqual([])
   })
 
+  it('offers nothing on a CampMinder cancellation either (B35)', () => {
+    const asked = gridRow({
+      rounds: [roundOut(1, 'posted'), roundOut(3, 'not_decided', { ask: 450 })],
+      appeal_refusal: null,
+      cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+    })
+    expect(cardEdits(asked)).toEqual([])
+  })
+
   it('offers no appeal once Round 2 is posted', () => {
     const r2Posted = gridRow({
       rounds: [roundOut(1, 'posted'), roundOut(2, 'posted', { ask: 900 })],

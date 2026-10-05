@@ -534,6 +534,35 @@ describe('a request cancelled in Kindred takes no tick (the server refuses it: r
   })
 })
 
+// B35 (owner ruling 10-05): ANY cancelled request takes no money write, CampMinder's as well.
+describe('a request cancelled in CampMinder takes no money write either (B35)', () => {
+  const cancelled = (rounds: Array<ReturnType<typeof roundOut>>) =>
+    householdRequest(
+      gridRow({
+        rounds,
+        cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+      })
+    )
+
+  it('offers no Mark Posted, and says it was cancelled in CampMinder', () => {
+    const request = cancelled([roundOut(1, 'needs_offer', { ask: 1500, decided: 900 })])
+    render(<RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove />)
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
+    expect(screen.getByText('Cancelled in CampMinder')).toBeInTheDocument()
+  })
+
+  it('offers no Approve or Refuse on a pending Round 3', () => {
+    const request = cancelled([
+      roundOut(1, 'posted', { posted: 1420 }),
+      roundOut(3, 'pending_approval', { pending_approval: 450 }),
+    ])
+    render(<RoundNextAction request={request} line={lineOf(request, 3)} year={2027} canApprove />)
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Refuse…' })).toBeNull()
+    expect(screen.getByText('Cancelled in CampMinder')).toBeInTheDocument()
+  })
+})
+
 describe('while the card has a money editor open (editing)', () => {
   it('hides Mark posted, and says to save or close the edit first', () => {
     render(

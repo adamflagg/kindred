@@ -181,6 +181,15 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
     expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
   })
 
+  it('offers a CampMinder cancellation only its reason, no money edit (B35)', () => {
+    renderCards([ROW_RILEY])
+    const offered = screen
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+      .filter((text) => text?.endsWith('…'))
+    expect(offered).toEqual(['Give a Reason…'])
+  })
+
   it('puts a request on hold by hand, with its reason', async () => {
     renderCards([ROW_EMMA])
     await userEvent.click(screen.getByRole('button', { name: 'Put on Hold…' }))

@@ -205,7 +205,15 @@ export function RoundNextAction({
     setOffer(null)
   }
 
-  const cancelled = cancelledInKindred(request.row)
+  // B35 (owner ruling 10-05): any cancellation stops the round's money writes. A Kindred one says to
+  // reopen first; CampMinder's has no Reopen here, so it says only where it was cancelled.
+  const by = request.row.cancellation?.by ?? null
+  const cancelledWords =
+    by === null
+      ? null
+      : by === 'kindred'
+        ? 'Cancelled in the dashboard: reopen it first'
+        : 'Cancelled in CampMinder'
   if (line.status === 'needs_offer' && line.decided !== null && round !== null) {
     const amount = line.decided
     // D162 keeps the hand tick here, so an ordinary needs-offer round shows it. It hides where a
@@ -223,7 +231,7 @@ export function RoundNextAction({
     if (blocking !== undefined) {
       return <span className={MUTED}>{`after Round ${String(blocking.round)} is posted`}</span>
     }
-    if (cancelled) return <span className={MUTED}>Cancelled in the dashboard: reopen it first</span>
+    if (cancelledWords !== null) return <span className={MUTED}>{cancelledWords}</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
     const send = (at: number) => {
       setError(null)
@@ -267,7 +275,7 @@ export function RoundNextAction({
     )
   }
   if (line.status === 'pending_approval' && canApprove) {
-    if (cancelled) return <span className={MUTED}>Cancelled in the dashboard: reopen it first</span>
+    if (cancelledWords !== null) return <span className={MUTED}>{cancelledWords}</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
     if (deciding === null) {
       return (
