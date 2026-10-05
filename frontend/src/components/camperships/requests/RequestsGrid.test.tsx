@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,7 +12,8 @@ vi.mock('../../../utils/csvExport', async (importActual) => ({
 
 import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidGridRow } from '../../../types/api-types'
-import { confirmationOut, GRID_ROWS, gridRow, roundOut, ROW_LIAM } from './gridFixtures'
+import type { AidRowNav } from '../kit/AidTable'
+import { confirmationOut, GRID_ROWS, gridRow, roundOut, ROW_LIAM, ROW_OLIVIA } from './gridFixtures'
 import { RequestsGrid } from './RequestsGrid'
 import { CM_PENDING_WORD, filterRows, GRID_COLUMNS, NO_FILTERS, requestView } from './views'
 
@@ -26,6 +27,7 @@ function Grid({
   tickedSeason = true,
   onTick,
   onMarkPosted,
+  renderEditor,
 }: {
   slug?: string
   showIds?: boolean
@@ -33,6 +35,7 @@ function Grid({
   tickedSeason?: boolean
   onTick?: (row: ApiAidGridRow, action: 'accepted') => void
   onMarkPosted?: (row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>
+  renderEditor?: (row: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => ReactNode
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -61,6 +64,7 @@ function Grid({
         links={links}
         onTick={onTick}
         onMarkPosted={onMarkPosted}
+        renderEditor={renderEditor}
       />
     </MemoryRouter>
   )
@@ -168,6 +172,14 @@ describe('RequestsGrid', () => {
   // Owner ruling G1 (10-03): "By family" stays gone, but the Flat / By reason switch comes back,
   // so All can be grouped by reason and a queue view can go flat. Replaces "has no grouping
   // control, and finds a row by the family name" (its find-a-row half is the next test).
+  // Owner (10-04, csv-options.html option A): the grid downloads from the app's one CSV control,
+  // the kit's "Download CSV" button; the "⤓ CSV" chip (10-03) is gone. Every CSV test here clicks it.
+  it('downloads from the Download CSV button, with no ⤓ CSV chip', () => {
+    render(<Grid />)
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
+  })
+
   it('offers Flat and By reason, never By family, and switches both ways on All and on a queue view', async () => {
     const headings = () => document.querySelectorAll('[data-group-heading]').length
     const { unmount } = render(<Grid slug="all" />)
@@ -988,5 +1000,121 @@ describe("the detail line's Mark Posted (#2996)", () => {
     render(<Grid slug="not-reconciled" rows={[refused(true)]} />)
     await openRow()
     expect(detail().queryByRole('button', { name: /^Mark Posted/ })).toBeNull()
+  })
+})
+
+// Owner fast-follow (10-03): the opened row as opened-row-options.html arrangement 3 "Side by side".
+// The editor goes inside the detail line (option A): the left panel holds the pill and full text,
+// then Requested by · Household › · CM ✓; the right panel is the editor, whose line ends with the
+// next step. A row with no editor keeps the left content full width, the next step top right. The
+// household is named once, and the line names no Person id (c).
+describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)', () => {
+  const detail = () => document.querySelector('[data-aid-detail]') as HTMLElement
+  const left = () => detail().querySelector('[data-detail-left]') as HTMLElement
+  const openRow = (camper: string) =>
+    userEvent.click(within(rowOf(camper)).getAllByRole('cell')[1] as HTMLElement)
+  const editorStub = vi.fn((row: ApiAidGridRow, _nav: AidRowNav, step: ReactNode) =>
+    row.appeal_refusal ? (
+      <span>Refusal stub</span>
+    ) : (
+      <div data-testid="editor">
+        <label>
+          Round 2 ask <input />
+        </label>
+        <button type="button">Save</button>
+        {step}
+      </div>
+    )
+  )
+  beforeEach(() => {
+    editorStub.mockClear()
+  })
+
+  it('puts the editor in the right panel of the detail line, the next step at its end', async () => {
+    render(<Grid rows={[ROW_OLIVIA]} renderEditor={editorStub} />)
+    await openRow('Olivia Chen')
+    const editor = within(detail()).getByTestId('editor')
+    const right = editor.closest('[data-aid-editor]') as HTMLElement
+    expect(detail()).toContainElement(right)
+    expect(right).not.toContainElement(left())
+    expect(within(left()).getByText('Requested by')).toBeInTheDocument()
+    expect(
+      within(left())
+        .getAllByRole('link')
+        .map((a) => a.textContent)
+    ).toEqual(['Household 1000005 ›'])
+    // The step is handed to the editor, and drawn there only.
+    const step = within(editor).getByRole('link', { name: 'Open the Request ›' })
+    expect(step).toHaveAttribute('href', expect.stringContaining('#request-reqolivia000003'))
+    expect(within(detail()).getAllByRole('link', { name: 'Open the Request ›' })).toHaveLength(1)
+    // Two panels: a fixed-width left one, then the editor.
+    expect(left().parentElement).toBe(right.parentElement)
+    expect(left().parentElement).toHaveClass('grid')
+  })
+
+  // Scan K1 (#3000): the step sits inside the editor's panel now, but it is not the editor. With
+  // focus on it (after clicking Tick Accepted, say), Esc and ↑/↓ are the table's, as they were
+  // when the step stood in the detail line.
+  it('leaves Esc and ↑/↓ to the table while focus is on the next step at the end of the editor line (scan K1)', async () => {
+    render(<Grid rows={[ROW_OLIVIA, ROW_LIAM]} renderEditor={editorStub} />)
+    await openRow('Olivia Chen')
+    const opened = highlights.at(-1)
+    within(detail()).getByRole('link', { name: 'Open the Request ›' }).focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(highlights.at(-1)).not.toBe(opened)
+    await openRow('Olivia Chen')
+    within(detail()).getByRole('link', { name: 'Open the Request ›' }).focus()
+    await userEvent.keyboard('{Escape}')
+    expect(document.querySelector('[data-aid-detail]')).toBeNull()
+  })
+
+  it('keeps ↑/↓ and Esc the editor’s own while focus is on its own buttons (a focused Save)', async () => {
+    render(<Grid rows={[ROW_OLIVIA, ROW_LIAM]} renderEditor={editorStub} />)
+    await openRow('Olivia Chen')
+    const opened = highlights.at(-1)
+    within(detail()).getByRole('button', { name: 'Save' }).focus()
+    await userEvent.keyboard('{ArrowDown}{Escape}')
+    expect(highlights.at(-1)).toBe(opened)
+  })
+
+  it('keeps the left content full width on a row the editor refuses, the next step top right, and draws what the editor says under it', async () => {
+    render(<Grid rows={[ROW_LIAM]} renderEditor={editorStub} />)
+    await openRow('Liam Garcia')
+    expect(within(detail()).queryByTestId('editor')).toBeNull()
+    expect(editorStub).toHaveBeenLastCalledWith(ROW_LIAM, expect.anything(), null)
+    const step = within(detail()).getByRole('link', { name: 'Enter the Income ›' })
+    expect(left()).not.toContainElement(step)
+    expect(left().parentElement).toContainElement(step)
+    expect(within(detail()).getByText('Refusal stub')).toBeInTheDocument()
+    expect(within(left()).queryByText('Refusal stub')).toBeNull()
+  })
+
+  it('lays a row out the same way for a viewer with no editor', async () => {
+    render(<Grid rows={[ROW_OLIVIA]} />)
+    await openRow('Olivia Chen')
+    expect(detail().querySelector('[data-aid-editor]')).toBeNull()
+    const step = within(detail()).getByRole('link', { name: 'Open the Request ›' })
+    expect(left()).not.toContainElement(step)
+  })
+
+  it('names no Person id in the detail line, Show IDs or not (c)', async () => {
+    render(<Grid rows={[ROW_OLIVIA]} showIds renderEditor={editorStub} />)
+    await openRow('Olivia Chen')
+    expect(detail()).not.toHaveTextContent('1000006')
+    expect(within(detail()).queryByText(/^Person/)).toBeNull()
+  })
+
+  it('links an award above cost to the request on the household page: "Edit the Award ›" (b)', async () => {
+    const row = gridRow({
+      request_id: 'reqemma00000001',
+      holds: [{ code: 'award_above_cost', severity: 'hold', message: 'The award is above cost.' }],
+      queues: ['holds'],
+    })
+    render(<Grid rows={[row]} />)
+    await openRow('Emma Johnson')
+    expect(within(detail()).getByRole('link', { name: 'Edit the Award ›' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000001?from=all&year=2027#request-reqemma00000001'
+    )
   })
 })

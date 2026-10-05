@@ -386,6 +386,19 @@ describe('AidTable', () => {
     expect(lines[4]).toMatch(/^Link,http/)
   })
 
+  // Owner (10-04, csv-options.html option A): one CSV control across the app, the kit's own
+  // "Download CSV" secondary button with lucide Download, ending the toolbar line. Replaces the
+  // "⤓ CSV" chip variant (csvChip) and its two tests.
+  it('ends the toolbar with the one Download CSV button: a secondary button with the Download icon', () => {
+    renderTable('/aid/requests')
+    const button = screen.getByRole('button', { name: 'Download CSV' })
+    const toolbar = button.closest('[data-aid-toolbar]') as HTMLElement
+    expect(toolbar.lastElementChild).toBe(button)
+    expect(button).toHaveClass('ml-auto', 'rounded-lg', 'border', 'px-4', 'py-2', 'text-sm')
+    expect(button.querySelector('svg.lucide-download')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
+  })
+
   it('pins the identity columns, each at its left offset, with the edge shadow on the last (D25)', () => {
     renderTable()
     const family = screen.getByRole('columnheader', { name: 'Family' })

@@ -96,7 +96,7 @@ export function lensCounts(
 export function stripCsvName(
   lens: RequestLens,
   view: RequestView,
-  filters: Pick<GridFilters, 'program' | 'pool' | 'round' | 'tick'>,
+  filters: Pick<GridFilters, 'program' | 'pool' | 'round'>,
   season: number,
   asOf: string | null
 ): string {

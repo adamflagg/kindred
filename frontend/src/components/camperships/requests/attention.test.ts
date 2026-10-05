@@ -350,11 +350,9 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
     expect(nextOf(hold('multiple_grants'), 'holds')).toEqual(OPEN_REQUEST)
   })
 
-  // Full GO (owner, 10-03): Waiting's next step is the row's own Accepted tick, a button. "Edit the
-  // Award" is an owner decision (it needs an award editor) and the hand "Mark Posted" waits for
-  // #2996's reason codes, so both stay null. Was: all three null.
-  it("makes Waiting's next step the Accepted tick, and leaves the award editor and Mark Posted for later", () => {
-    expect(nextOf(hold('award_above_cost'), 'holds')).toBeNull()
+  // Full GO (owner, 10-03): Waiting's next step is the row's own Accepted tick, a button. The hand
+  // "Mark Posted" rides `unticked[]`, so the note stays null. Was: all three null.
+  it("makes Waiting's next step the Accepted tick, and leaves Mark Posted to unticked[]", () => {
     expect(nextOf(ROW_SAMUEL, 'waiting_on_family')).toEqual({
       kind: 'tick',
       label: 'Tick Accepted',
@@ -363,6 +361,12 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
       notes: [{ code: 'in_campminder_not_ticked', severity: 'warn', message: 'In CampMinder.' }],
     })
     expect(nextOf(marked, 'all')).toBeNull()
+  })
+
+  // Owner ruling (b), fast-follow 10-03: an award above cost is fixed on the request's card, so its
+  // step is the link "Edit the Award ›" there (title case). Was: null (no award editor on the grid).
+  it("sends an award above cost to the request's card to edit the award", () => {
+    expect(nextOf(hold('award_above_cost'), 'holds')).toEqual(link('Edit the Award'))
   })
 
   it('says where nothing can be done in Kindred', () => {

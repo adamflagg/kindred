@@ -20,12 +20,7 @@ const GROUPS: readonly ProgramGroup[] = [
   { pool: null, programs: [{ value: 'not_aided', label: 'Not aided' }] },
 ]
 
-function bar(props: {
-  program?: string | null
-  pool?: string | null
-  round?: 1 | 2 | 3 | null
-  tick?: 'posted' | 'accepted' | null
-}) {
+function bar(props: { program?: string | null; pool?: string | null; round?: 1 | 2 | 3 | null }) {
   const onChange = vi.fn()
   const onProgramPool = vi.fn()
   render(
@@ -34,7 +29,6 @@ function bar(props: {
       program={props.program ?? null}
       pool={props.pool ?? null}
       round={props.round ?? null}
-      tick={props.tick ?? null}
       showIds={false}
       onChange={onChange}
       onProgramPool={onProgramPool}
@@ -129,14 +123,24 @@ describe('GridFiltersBar out-of-list values (A5)', () => {
 // Spec change (owner, 2026-10-02): Round and Checklist are toggle chips, not <select>s. A URL value
 // outside the list parses to null before it reaches the bar, so the old "shows a checklist value the
 // options do not hold" select test has no chip equivalent and is gone.
-describe('GridFiltersBar: Round and Checklist chips', () => {
+// Owner ruling (fast-follow, 10-03): under D162 there are no Posted ticks, so the Checklist chips
+// (Posted, Accepted) are gone. Was: "Round and Checklist chips", with a checklist chip test and
+// Posted/Accepted in the lit checks.
+describe('GridFiltersBar: Round chips', () => {
   const lit = (name: string) =>
     screen.getByRole('button', { name }).className.includes('bg-primary ')
 
-  it('lights none when no round or checklist is picked', () => {
+  it('lights none when no round is picked', () => {
     bar({})
-    for (const name of ['R1', 'R2', 'R3', 'Posted', 'Accepted']) expect(lit(name)).toBe(false)
+    for (const name of ['R1', 'R2', 'R3']) expect(lit(name)).toBe(false)
     expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('draws no Checklist chips: Posted and Accepted are gone (D162)', () => {
+    bar({})
+    expect(screen.queryByText('Checklist')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Posted' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Accepted' })).toBeNull()
   })
 
   it('sets the round param from a chip, with the same value the select used', async () => {
@@ -145,22 +149,12 @@ describe('GridFiltersBar: Round and Checklist chips', () => {
     expect(onChange).toHaveBeenCalledWith('round', '2')
   })
 
-  it('sets the checklist param from a chip', async () => {
-    const { onChange } = bar({})
-    await userEvent.click(screen.getByRole('button', { name: 'Accepted' }))
-    expect(onChange).toHaveBeenCalledWith('tick', 'accepted')
-  })
-
   it('lights only the picked chip, and clicking it clears the param', async () => {
-    const { onChange } = bar({ round: 3, tick: 'posted' })
+    const { onChange } = bar({ round: 3 })
     expect(lit('R3')).toBe(true)
     expect(lit('R1')).toBe(false)
-    expect(lit('Posted')).toBe(true)
-    expect(lit('Accepted')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: 'R3' }))
     expect(onChange).toHaveBeenLastCalledWith('round', null)
-    await userEvent.click(screen.getByRole('button', { name: 'Posted' }))
-    expect(onChange).toHaveBeenLastCalledWith('tick', null)
   })
 
   it('moves to another round in one click, one at a time', async () => {
