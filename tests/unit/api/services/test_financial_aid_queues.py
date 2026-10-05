@@ -160,7 +160,9 @@ def test_a_confirmed_request_with_a_payer_share_short_is_still_not_reconciled() 
     assert row_queues(row) == ["not_reconciled"]
 
 
-def test_cancelled_with_aid_live_is_to_reverse_and_asks_for_a_reason() -> None:
+def test_cancelled_with_aid_live_and_no_reason_is_to_reverse_only() -> None:
+    """Owner ruling B (2026-10-04): the cancel reason is optional, so a missing one puts the row in no view. Even a row
+    still carrying the retired to-do (a stale client fixture) joins no "cancel_reason" view."""
     row = _row(
         _round(1, "posted", posted=1500.0, posted_on=date(2031, 3, 9)),
         request_status="active",
@@ -168,7 +170,15 @@ def test_cancelled_with_aid_live_is_to_reverse_and_asks_for_a_reason() -> None:
         to_reverse=True,
         todos=[TodoOut(code="cancel_reason_missing", message="Cancelled: give a reason")],
     )
-    assert row_queues(row) == ["to_reverse", "cancel_reason"]
+    assert row_queues(row) == ["to_reverse"]
+
+
+def test_a_cancelled_row_with_no_reason_and_nothing_to_reverse_is_in_no_view() -> None:
+    row = _row(
+        request_status="active",
+        cancellation=CancellationOut(by="kindred", on=date(2031, 5, 2), reason=None, note=""),
+    )
+    assert row_queues(row) == []
 
 
 def test_an_unmatched_session_is_session_not_settled() -> None:

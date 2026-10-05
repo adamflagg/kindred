@@ -86,7 +86,6 @@ from api.schemas.financial_aid_decisions import (
     RoundOut,
     SessionCandidateOut,
     ShareConfirmationOut,
-    TodoOut,
     UnconfirmedOut,
     UnpostIn,
     UntickedMoneyOut,
@@ -102,8 +101,6 @@ from api.services.financial_aid_calc_inputs import (
 )
 from api.services.financial_aid_cancellations import (
     CANCEL_REASON_LABELS,
-    TODO_CANCEL_REASON,
-    TODO_CANCEL_REASON_TEXT,
     CancelEvent,
     Cancellation,
     CancelState,
@@ -113,7 +110,6 @@ from api.services.financial_aid_cancellations import (
     enrollment_cancelled,
     first_cancelled_on,
     fold_cancellations,
-    needs_reason,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REVERT, effective_values
 from api.services.financial_aid_grant_placements import (
@@ -798,11 +794,6 @@ def grid_row(
         to_reverse=to_reverse,
         appeal_refusal=appeal,
         session_candidates=_candidates(request, sessions),
-        todos=(
-            [TodoOut(code=TODO_CANCEL_REASON, message=TODO_CANCEL_REASON_TEXT)]
-            if needs_reason(cancellation, request.year)
-            else []
-        ),
     )
 
 

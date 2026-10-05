@@ -67,7 +67,6 @@ TodayKey = Literal[
     "to_reverse",
     "session_not_settled",
     "duplicates",
-    "cancel_reason",
     "to_place",
     "grants",
     "late_full_coverage",

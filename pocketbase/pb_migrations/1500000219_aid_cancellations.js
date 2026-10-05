@@ -23,7 +23,8 @@
  *            reads from attendees.
  *   reopen   a Kindred cancellation undone; the note says why. It clears the reason.
  *
- * A cancelled request with no reason carries "Cancelled: give a reason", a to-do, never a hold.
+ * The reason is optional (owner ruling B, 2026-10-04): a cancelled request with none carries no
+ * to-do, queue or Today line, and the reports read it as "no reason recorded".
  * All five rules are null (spec 14.3): only the superuser (FastAPI) reads or writes it.
  */
 migrate((app) => {

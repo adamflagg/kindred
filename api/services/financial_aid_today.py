@@ -47,7 +47,6 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "to_reverse",
     "session_not_settled",
     "duplicates",
-    "cancel_reason",
     "to_place",
     "grants",
     "late_full_coverage",
@@ -256,7 +255,6 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
         "to_reverse": _line("to_reverse", _in(rows, "to_reverse")),
         "session_not_settled": _line("session_not_settled", _in(rows, "session_not_settled")),
         "duplicates": _line("duplicates", _in(rows, "duplicates")),
-        "cancel_reason": _line("cancel_reason", _in(rows, "cancel_reason")),
         "grants": TodayLineOut(
             key="grants",
             families=len(grant_households),
