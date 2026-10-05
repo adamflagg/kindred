@@ -134,7 +134,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
   {
     key: 'session_not_settled',
     slug: 'session-not-settled',
-    label: 'Session not settled',
+    label: 'Session unclear',
     groupBy: 'reason',
     columns: ['session', 'attention'],
   },

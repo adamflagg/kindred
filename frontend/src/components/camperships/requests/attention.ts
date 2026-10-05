@@ -24,7 +24,7 @@ const CODE_WORDS: Readonly<Record<string, string>> = {
   income_above: 'High income',
   expense_above: 'High expenses',
   multiple_grants: 'Several grants',
-  unmatched_session: 'Session not settled',
+  unmatched_session: 'Session unclear',
   duplicate_survivor_withdrawn: 'Duplicate revived',
   awaiting_approved_rules: 'Awaiting rules',
   no_approved_rules: 'No approved rules',

@@ -322,7 +322,7 @@ describe('cells', () => {
   })
 })
 
-describe('Session not settled (Minor 2)', () => {
+describe('Session unclear (Minor 2; owner 2026-10-04: one concept, one name)', () => {
   it('always shows an item and a session, even when the rules only warn about the session', () => {
     const row = gridRow({
       request_status: 'unmatched_session',
@@ -331,11 +331,17 @@ describe('Session not settled (Minor 2)', () => {
       queues: ['session_not_settled'],
     })
     const ctx = { view: 'session_not_settled' as const, today: TODAY }
-    expect(GRID_COLUMNS.attention.value(row, ctx)).toContain('Session not settled')
+    expect(GRID_COLUMNS.attention.value(row, ctx)).toContain('Session unclear')
     expect(reasonGroup(requestView('session-not-settled'), TODAY)(row).heading).toBe(
-      'Session not settled'
+      'Session unclear'
     )
     expect(GRID_COLUMNS.session.value(row, ctx)).toBeNull()
+  })
+
+  it('names the view Session unclear and keeps its slug and key, so links still work', () => {
+    const view = requestView('session-not-settled')
+    expect(view.key).toBe('session_not_settled')
+    expect(view.label).toBe('Session unclear')
   })
 })
 

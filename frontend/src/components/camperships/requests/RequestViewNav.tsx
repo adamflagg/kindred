@@ -15,16 +15,21 @@ import {
   STRIP_LENS_ON,
   STRIP_LENS_UNDER,
   STRIP_LENSES,
+  STRIP_MEASURE,
   STRIP_PIPE,
   STRIP_SEG,
 } from '../kit/kitStyles'
+import { FoldedBadges } from './FoldedBadges'
 import {
   APPEALS_LEGEND,
-  EXCEPTION_BADGES,
+  badgeTone,
+  foldTone,
   PIPELINE_STAGES,
+  shownBadges,
   STRIP_LEGEND,
   type RequestLens,
 } from './strip'
+import { useBadgeFold } from './useBadgeFold'
 import { REQUEST_VIEWS, type RequestView, type RequestViewKey, type ViewCount } from './views'
 
 const LENSES: ReadonlyArray<{ readonly lens: RequestLens; readonly label: string }> = [
@@ -34,10 +39,6 @@ const LENSES: ReadonlyArray<{ readonly lens: RequestLens; readonly label: string
 
 /** Watched, not to do (rv=todo): the family has it, so its chevron and count stay muted. */
 const WATCHED: ReadonlySet<RequestViewKey> = new Set(['waiting_on_family'])
-/** Badges drawn only while something is in them (or picked): the strip has no room for a standing 0. */
-const SHOWN_WHEN_DUE: ReadonlySet<RequestViewKey> = new Set(['cancel_reason'])
-/** An unsettled session waits on a rule, not a fault: amber, as the mock tones it. */
-const AMBER_BADGES: ReadonlySet<RequestViewKey> = new Set(['session_not_settled'])
 
 function viewOf(key: RequestViewKey): RequestView {
   const view = REQUEST_VIEWS.find((v) => v.key === key)
@@ -62,8 +63,9 @@ function Count({ count, tone }: { count: ViewCount | undefined; tone: 'todo' | '
 /**
  * The views strip (slice 1 grid layout T4; grid-layout-options.html v=f, ls=b, po=b, rv=todo,
  * ap=lens): the lenses (All, Appeals) on the left narrow every count; the pipeline runs left to
- * right per round; the exception badges on the right block a request at any stage. Every count is a
- * link (D15, D20). `onOpen` lets the page save what is typed first (Decision 4); a modified click
+ * right per round; the exception badges on the right block a request at any stage, each drawn only
+ * while something is in it or it is picked, the trailing ones folding into a +N chip when the line
+ * is full (owner 2026-10-04). Every count is a link (D15, D20). `onOpen` lets the page save what is typed first (Decision 4); a modified click
  * still opens a new tab.
  */
 export function RequestViewNav({
@@ -103,16 +105,34 @@ export function RequestViewNav({
     </Link>
   )
 
-  // RULED D-a (revised, option 3): Cancelled: give a reason shows only when its count is non-zero
-  // or it is the picked stage: exactly when Today's Open › can link to it. It is 0 until 2027.
-  const badges = EXCEPTION_BADGES.filter(
-    (key) => !SHOWN_WHEN_DUE.has(key) || key === stage || (counts?.get(key)?.requests ?? 0) > 0
+  const badges = shownBadges(stage, counts)
+  const said = (key: RequestViewKey) => {
+    const count = counts?.get(key)
+    return { view: viewOf(key), count, tone: badgeTone(key, count) }
+  }
+  const { navRef, lensesRef, pipeRef, groupRef, measureRef, shown } = useBadgeFold(
+    badges.map((key) => `${key}:${String(counts?.get(key)?.requests ?? '-')}`).join('|')
   )
+  const onLine = shown === null ? badges : badges.slice(0, shown)
+  const folded = shown === null ? [] : badges.slice(shown)
+  const badge = (key: RequestViewKey) => {
+    const { view, count, tone } = said(key)
+    const on = key === stage
+    return to(
+      key,
+      hrefOf(view),
+      on ? `${STRIP_BADGE[tone]} ${STRIP_BADGE_ON}` : STRIP_BADGE[tone],
+      on ? 'on' : undefined,
+      <>
+        {view.label} <i>{count === undefined ? '—' : count.requests}</i>
+      </>
+    )
+  }
 
   return (
     <div>
-      <nav className={STRIP}>
-        <span className={STRIP_LENSES} data-testid="strip-lenses">
+      <nav ref={navRef} className={STRIP}>
+        <span ref={lensesRef} className={STRIP_LENSES} data-testid="strip-lenses">
           {LENSES.map(({ lens: key, label }) => {
             const picked = key === lens
             const filled = picked && stage === null
@@ -127,7 +147,7 @@ export function RequestViewNav({
             )
           })}
         </span>
-        <span className={STRIP_PIPE} data-testid="strip-pipeline">
+        <span ref={pipeRef} className={STRIP_PIPE} data-testid="strip-pipeline">
           {PIPELINE_STAGES.map((key) => {
             const view = viewOf(key)
             const on = key === stage
@@ -144,22 +164,31 @@ export function RequestViewNav({
             )
           })}
         </span>
-        <span className={STRIP_EXCEPTIONS} data-testid="strip-exceptions">
+        <span ref={groupRef} className={STRIP_EXCEPTIONS} data-testid="strip-exceptions">
+          {onLine.map(badge)}
+          {folded.length > 0 && (
+            <FoldedBadges
+              count={folded.length}
+              tone={foldTone(folded, counts)}
+              on={stage !== null && folded.includes(stage)}
+            >
+              {folded.map(badge)}
+            </FoldedBadges>
+          )}
+        </span>
+        {/* Every shown badge at its natural width, and the chip at its widest, for useBadgeFold. */}
+        <span ref={measureRef} className={STRIP_MEASURE}>
           {badges.map((key) => {
-            const view = viewOf(key)
-            const count = counts?.get(key)
-            const tone = !count?.requests ? 'zero' : AMBER_BADGES.has(key) ? 'amber' : 'red'
-            const on = key === stage
-            return to(
-              key,
-              hrefOf(view),
-              on ? `${STRIP_BADGE[tone]} ${STRIP_BADGE_ON}` : STRIP_BADGE[tone],
-              on ? 'on' : undefined,
-              <>
+            const { view, count, tone } = said(key)
+            return (
+              <span key={key} data-measure="badge" className={STRIP_BADGE[tone]}>
                 {view.label} <i>{count === undefined ? '—' : count.requests}</i>
-              </>
+              </span>
             )
           })}
+          <span data-measure="chip" className={STRIP_BADGE.red}>
+            +{badges.length}
+          </span>
         </span>
       </nav>
       <p className={STRIP_LEGEND_LINE} data-testid="strip-legend">

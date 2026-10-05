@@ -115,9 +115,12 @@ export const BINDING_TEXT = 'font-medium text-amber-700 dark:text-amber-400'
 
 // ── The Requests views strip (slice 1 grid layout T4; grid-layout-options.html v=f) ────────
 
-/** One line (nothing wraps at 1280): lenses │ pipeline │ exception badges. */
+/**
+ * One line, never wrapping: lenses │ pipeline │ exception badges, the trailing badges folding into
+ * +N when they do not fit (owner 2026-10-04). `relative` anchors the badges' measuring copy.
+ */
 export const STRIP =
-  'border-border flex items-center gap-2 rounded-xl border bg-[color-mix(in_oklab,var(--color-muted)_45%,var(--color-card))] p-1 whitespace-nowrap'
+  'border-border relative flex items-center gap-2 rounded-xl border bg-[color-mix(in_oklab,var(--color-muted)_45%,var(--color-card))] p-1 whitespace-nowrap'
 export const STRIP_LENSES = 'border-border flex gap-0.5 border-r pr-2'
 const STRIP_LENS_SHAPE =
   'inline-flex items-center gap-1 rounded-lg px-[7px] py-[5px] text-[12.5px] leading-[18px]'
@@ -161,6 +164,16 @@ export const STRIP_BADGE = {
 } as const
 /** The badge picked: ringed in primary. */
 export const STRIP_BADGE_ON = 'outline-primary outline-2 outline-offset-1 outline-solid'
+/**
+ * The badges' measuring copy: every badge at its natural width, laid out where nothing sees it. A
+ * 0×0 box clipping its content, so it neither shows nor widens the strip, and folding never reads
+ * a width it changed itself.
+ */
+export const STRIP_MEASURE =
+  'pointer-events-none invisible absolute top-0 left-0 h-0 w-0 overflow-hidden'
+/** The +N chip's list of folded badges, anchored under the chip. */
+export const STRIP_FOLDED =
+  'bg-popover border-border fixed z-[200] flex flex-col items-stretch gap-1 rounded-lg border p-1.5 whitespace-nowrap shadow-lg'
 
 export const STRIP_LEGEND_LINE = 'text-muted-foreground mt-1 mb-2 ml-1 text-[11.5px]'
 export const STRIP_LEGEND_LENS = 'text-primary font-semibold'
