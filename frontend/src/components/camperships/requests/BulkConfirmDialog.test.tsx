@@ -7,6 +7,9 @@ import { BulkConfirmDialog } from './BulkConfirmDialog'
 import { ROW_EMMA, ROW_LIAM, ROW_RILEY, ROW_SAMUEL } from './gridFixtures'
 import { tickPlan } from './ticks'
 
+/** Riley, not cancelled: a second checkable family (its fixture's CampMinder cancellation refuses a check since #3023). */
+const RILEY = { ...ROW_RILEY, cancellation: null }
+
 const accepted = vi.fn()
 vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidTickAccepted: () => ({ mutateAsync: accepted, isPending: false }),
@@ -21,7 +24,7 @@ beforeEach(() => {
 })
 
 function open(
-  rows = [ROW_SAMUEL, ROW_RILEY],
+  rows = [ROW_SAMUEL, RILEY],
   props: { onClose?: () => void; hidden?: ReadonlySet<string> } = {}
 ) {
   return render(

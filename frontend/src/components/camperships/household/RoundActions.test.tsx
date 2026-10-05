@@ -561,6 +561,26 @@ describe('a request cancelled in CampMinder takes no money write either (B35)', 
     expect(screen.queryByRole('button', { name: 'Refuse…' })).toBeNull()
     expect(screen.getByText('Cancelled in CampMinder')).toBeInTheDocument()
   })
+
+  it('disables Accepted on a posted round not yet accepted (#3023)', () => {
+    const request = cancelled([roundOut(1, 'posted', { posted: 900, decided: 900 })])
+    render(<RoundChecklist request={request} line={lineOf(request)} year={2027} />)
+    expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+  })
+
+  it('still lets an accepted round be unchecked, sending accepted: false', async () => {
+    const request = cancelled([
+      roundOut(1, 'posted', { posted: 900, decided: 900, accepted: true }),
+    ])
+    render(<RoundChecklist request={request} line={lineOf(request)} year={2027} />)
+    const box = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(box).toBeEnabled()
+    await userEvent.click(box)
+    expect(accepted).toHaveBeenCalledWith({
+      year: 2027,
+      body: { rows: [{ request_id: request.row.request_id, round: 1 }], accepted: false },
+    })
+  })
 })
 
 describe('while the card has a money editor open (editing)', () => {

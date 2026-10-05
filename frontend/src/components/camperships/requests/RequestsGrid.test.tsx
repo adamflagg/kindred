@@ -868,6 +868,17 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
       expect(detail().queryByRole('button', { name: 'Check Accepted' })).toBeNull()
     })
 
+    it('offers no Check Accepted on a waiting row cancelled in CampMinder either (#3023)', async () => {
+      const cancelled = gridRow({
+        ...WAITING,
+        request_id: 'reqcancelled0002',
+        cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+      })
+      render(<Grid slug="all" rows={[cancelled]} onTick={vi.fn()} />)
+      await openRow('Emma Johnson')
+      expect(detail().queryByRole('button', { name: 'Check Accepted' })).toBeNull()
+    })
+
     it('draws nothing in the step for a viewer who cannot tick', async () => {
       render(<Grid slug="all" rows={[WAITING]} />)
       await openRow('Emma Johnson')

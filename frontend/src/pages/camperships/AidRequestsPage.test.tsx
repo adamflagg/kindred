@@ -65,6 +65,13 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
 const R2_POSTED = "Round 2 is posted; its ask can't change"
 
 const LIVE: ApiAidGrid = { year: 2027, rules_version: 1, rows: [...GRID_ROWS], ticked_season: true }
+/** LIVE with Riley's request not cancelled, so a bulk check takes it (#3023 refuses any cancellation). */
+const OPEN_RILEY: ApiAidGrid = {
+  ...LIVE,
+  rows: LIVE.rows.map((r) =>
+    r.request_id === 'reqriley0000004' ? { ...r, cancellation: null } : r
+  ),
+}
 
 function Where() {
   const { pathname, search } = useLocation()
@@ -976,6 +983,9 @@ describe('ticks (§4.10, §5.2)', () => {
   beforeEach(() => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     tickAccepted.mockReset()
+    // Riley stands in for a second checkable family here: its fixture's CampMinder cancellation
+    // would refuse the check since #3023 (any cancellation), so these bulk tests drop it.
+    grid = { data: OPEN_RILEY, isLoading: false, error: null }
   })
 
   async function selectCampers(...campers: string[]) {
