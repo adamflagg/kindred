@@ -591,7 +591,7 @@ class _Ledger:
         self.member_reads.append(frozenset(household_ids))
         people = [
             SimpleNamespace(
-                cm_id=1000021,
+                cm_id=1000041,
                 first_name="Olivia",
                 preferred_name="",
                 last_name="Chen",
@@ -600,7 +600,7 @@ class _Ledger:
                 parent_names=[{"first": "Sam", "last": "Chen"}, {"first": "Riley", "last": "Sam"}],
             ),
             SimpleNamespace(
-                cm_id=1000022,
+                cm_id=1000042,
                 first_name="Liam",
                 preferred_name="",
                 last_name="Chen",
@@ -824,6 +824,44 @@ async def test_each_linked_household_carries_its_name_adults_and_city_as_a_card_
     )
     # The existing fields stay.
     assert (page.links[1].id, page.links[1].family_key, page.links[1].source) == ("lnk000000000002", "fam-1", "auto")
+
+
+@pytest.mark.asyncio
+async def test_a_linked_household_in_the_scope_names_only_its_own_campers_parents() -> None:
+    """The page's campers span its scope households; a link row takes the adults of its own household only, as its
+    card does."""
+
+    class _TwoFamilies(_Ledger):
+        async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+            liam = SimpleNamespace(
+                cm_id=1000021,
+                first_name="Liam",
+                preferred_name="",
+                last_name="Garcia",
+                household_id=GARCIA,
+                primary_email="",
+                parent_names=[{"first": "Riley", "last": "Garcia"}],
+            )
+            return [*await super().fetch_persons(year, cm_ids), *([liam] if liam.cm_id in cm_ids else [])]
+
+        async def fetch_links(self, year: int) -> list[Any]:
+            garcia = SimpleNamespace(
+                id="lnk000000000004",
+                year=YEAR,
+                household_cm_id=GARCIA,
+                family_key="fam-1",
+                source="manual",
+                excluded=False,
+                note="",
+                actor=ACTOR,
+            )
+            return [*await super().fetch_links(year), garcia]
+
+    page = await _page_service(_family(), ledger=_TwoFamilies()).read(YEAR, JOHNSON)
+    adults = {ln.household_cm_id: ln.adults for ln in page.links}
+    assert (adults[JOHNSON], adults[GARCIA]) == (["Alex Garcia", "Pat Johnson"], ["Riley Garcia"])
+    assert adults[JOHNSON] == page.households[0].adults
+    assert adults[GARCIA] == page.households[1].adults
 
 
 @pytest.mark.asyncio
