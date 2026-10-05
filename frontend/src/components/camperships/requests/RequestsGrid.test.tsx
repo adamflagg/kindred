@@ -521,7 +521,7 @@ describe('RequestsGrid: the CM ✓ column', () => {
       screen.getByRole('columnheader', { name: 'CM ✓' }).firstElementChild as HTMLElement
     )
   // Owner ruling (A2, batch 4): verbatim, the pending word from its one constant.
-  const EXPLAIN = `CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
+  const EXPLAIN = `CampMinder check: did the money posted in CampMinder match what was checked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
 
   // Owner ruling (A2, batch 4): chips only, one word each. Was "✓ Mar 10", "short $50",
   // "over $50", "tonight" and the interim "not in CM".
@@ -796,18 +796,18 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
     highlights = []
   })
 
-  it('draws no Tick column without a tick handler', () => {
+  it('draws no Check column without a tick handler', () => {
     render(<Grid slug="needs-offer" />)
-    expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
+    expect(screen.queryByRole('columnheader', { name: 'Check' })).toBeNull()
   })
 
-  it('draws no Posted button and no Tick column on Needs an offer, even with a tick handler', () => {
+  it('draws no Posted button and no Check column on Needs an offer, even with a tick handler', () => {
     render(<Grid slug="needs-offer" onTick={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /^Posted/ })).toBeNull()
-    expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
+    expect(screen.queryByRole('columnheader', { name: 'Check' })).toBeNull()
   })
 
-  it("ticks Accepted from Waiting on the family's Tick column, without highlighting the row", async () => {
+  it("ticks Accepted from Waiting on the family's Check column, without highlighting the row", async () => {
     const onTick = vi.fn()
     render(<Grid slug="waiting" onTick={onTick} />)
     await userEvent.click(within(rowOf('Samuel Johnson')).getByRole('button', { name: 'Accepted' }))
@@ -818,13 +818,19 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
     expect(highlights).toEqual([])
   })
 
+  it('heads the Waiting column of Accepted buttons "Check", so a row reads Check Accepted (plain words, 10-05)', () => {
+    render(<Grid slug="waiting" onTick={vi.fn()} />)
+    expect(screen.getByRole('columnheader', { name: 'Check' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
+  })
+
   // Owner LOCKED batch 4: the Needs attention cell is the chip only, so the All cell's old "Mark
-  // accepted" moved to the opened row's detail line as the Full-GO "Tick Accepted" next step (the
+  // accepted" moved to the opened row's detail line as the Full-GO "Check Accepted" next step (the
   // row's own Accepted tick: no new write path). Replaces "ticks Accepted from Waiting on the
   // family, and from Mark accepted on All", "offers no Mark accepted tick on a waiting row cancelled
   // in Kindred: the server refuses it (review M3)" and "leaves Mark accepted a household link when
   // the viewer cannot tick".
-  describe("the detail line's Tick Accepted (Full GO)", () => {
+  describe("the detail line's Check Accepted (Full GO)", () => {
     const detail = () => within(document.querySelector('[data-aid-detail]') as HTMLElement)
     const openRow = (camper: string) =>
       userEvent.click(within(rowOf(camper)).getAllByRole('cell').at(-2) as HTMLElement)
@@ -834,7 +840,7 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
       const { unmount } = render(<Grid slug="all" rows={[WAITING]} onTick={onTick} />)
       await openRow('Emma Johnson')
       const before = [...highlights]
-      await userEvent.click(detail().getByRole('button', { name: 'Tick Accepted' }))
+      await userEvent.click(detail().getByRole('button', { name: 'Check Accepted' }))
       expect(onTick).toHaveBeenCalledWith(
         expect.objectContaining({ request_id: 'reqwaiting00001' }),
         'accepted'
@@ -844,14 +850,14 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
       onTick.mockClear()
       render(<Grid slug="waiting" onTick={onTick} />)
       await openRow('Samuel Johnson')
-      await userEvent.click(detail().getByRole('button', { name: 'Tick Accepted' }))
+      await userEvent.click(detail().getByRole('button', { name: 'Check Accepted' }))
       expect(onTick).toHaveBeenCalledWith(
         expect.objectContaining({ request_id: 'reqsamuel000005' }),
         'accepted'
       )
     })
 
-    it('offers no Tick Accepted on a waiting row cancelled in Kindred: the server refuses it (review M3)', async () => {
+    it('offers no Check Accepted on a waiting row cancelled in Kindred: the server refuses it (review M3)', async () => {
       const cancelled = gridRow({
         ...WAITING,
         request_id: 'reqcancelled0001',
@@ -859,14 +865,14 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
       })
       render(<Grid slug="all" rows={[cancelled]} onTick={vi.fn()} />)
       await openRow('Emma Johnson')
-      expect(detail().queryByRole('button', { name: 'Tick Accepted' })).toBeNull()
+      expect(detail().queryByRole('button', { name: 'Check Accepted' })).toBeNull()
     })
 
     it('draws nothing in the step for a viewer who cannot tick', async () => {
       render(<Grid slug="all" rows={[WAITING]} />)
       await openRow('Emma Johnson')
-      expect(detail().queryByRole('button', { name: 'Tick Accepted' })).toBeNull()
-      expect(detail().queryByRole('link', { name: /Tick Accepted/ })).toBeNull()
+      expect(detail().queryByRole('button', { name: 'Check Accepted' })).toBeNull()
+      expect(detail().queryByRole('link', { name: /Check Accepted/ })).toBeNull()
     })
   })
 })
@@ -1082,7 +1088,7 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
   })
 
   // Scan K1 (#3000): the step sits inside the editor's panel now, but it is not the editor. With
-  // focus on it (after clicking Tick Accepted, say), Esc and ↑/↓ are the table's, as they were
+  // focus on it (after clicking Check Accepted, say), Esc and ↑/↓ are the table's, as they were
   // when the step stood in the detail line.
   it('leaves Esc and ↑/↓ to the table while focus is on the next step at the end of the editor line (scan K1)', async () => {
     render(<Grid rows={[ROW_OLIVIA, ROW_LIAM]} renderEditor={editorStub} />)

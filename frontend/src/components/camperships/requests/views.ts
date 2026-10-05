@@ -318,7 +318,7 @@ export function cmDetail(row: ApiAidGridRow): string | null {
 }
 
 /** The CM ✓ header's explanation (owner ruling, batch 4), verbatim but for the pending word. */
-export const CM_CHECK_HELP = `CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
+export const CM_CHECK_HELP = `CampMinder check: did the money posted in CampMinder match what was checked Posted? ✓ = matched; short/over = CampMinder's ledger differs; missing = nothing in CampMinder for it; reversed = the posting was reversed; ${CM_PENDING_WORD} = waiting for tonight's sync.`
 
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   // T3 (LOCKED): who filed the aid form, by name only (#2993's `requested_by`; null when the server
@@ -459,7 +459,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     },
   },
   // A button has nothing to export (M16; build ruling 3).
-  tick: { header: 'Tick', width: 150, inCsv: false, value: () => null },
+  tick: { header: 'Check', width: 150, inCsv: false, value: () => null },
   cancelledOn: { header: 'Cancelled on', width: 96, value: (r) => r.cancellation?.on ?? null },
   daysSinceCancelled: {
     header: 'Days since cancelled',

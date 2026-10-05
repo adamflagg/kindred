@@ -188,8 +188,8 @@ const note = (
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 const CHECK_POSTING = toRequest('Check the Posting')
-/** The mock's "Tick Accepted": the row's own Accepted tick (owner, title case). */
-const TICK_ACCEPTED: NextStep = { kind: 'tick', label: 'Tick Accepted' }
+/** The mock's "Tick Accepted", in plain words (10-05): the row's own Accepted box (owner, title case). */
+const TICK_ACCEPTED: NextStep = { kind: 'tick', label: 'Check Accepted' }
 
 function reconciliation(row: ApiAidGridRow): GridAttention | null {
   const c = row.confirmation
@@ -325,7 +325,7 @@ export function attentionItems(
         waited === null
           ? 'Waiting on the family'
           : `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
-        "The family hasn't replied: follow up, then tick Accepted.",
+        "The family hasn't replied: follow up, then check Accepted.",
         'waiting_on_family',
         TICK_ACCEPTED,
         'Waiting on the family'

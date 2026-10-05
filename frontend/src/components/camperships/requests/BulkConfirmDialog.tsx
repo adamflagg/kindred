@@ -78,7 +78,7 @@ export function BulkConfirmDialog({
       isOpen
       onClose={close}
       closeDisabled={busy}
-      title="Tick Accepted"
+      title="Check Accepted"
       size="md"
       footer={
         <div className="flex justify-end gap-2">
@@ -91,14 +91,14 @@ export function BulkConfirmDialog({
             disabled={busy || plan.rows.length === 0 || tooMany}
             onClick={() => void confirm()}
           >
-            {busy ? 'Ticking…' : 'Confirm'}
+            {busy ? 'Checking…' : 'Confirm'}
           </button>
         </div>
       }
     >
       <div className="space-y-2 text-sm">
         <p className="font-medium">
-          {plan.rows.length === 0 ? 'Nothing to tick' : tickWords(plan)}
+          {plan.rows.length === 0 ? 'Nothing to check' : tickWords(plan)}
         </p>
         <ul className="text-muted-foreground max-h-48 overflow-y-auto text-xs">
           {plan.rows.map((r) => (
@@ -109,22 +109,22 @@ export function BulkConfirmDialog({
           ))}
         </ul>
         {plan.skipped.length > 0 && (
-          <p className={AMBER_NOTE}>Nothing to tick on {namesOf(plan.skipped)}: left out.</p>
+          <p className={AMBER_NOTE}>Nothing to check on {namesOf(plan.skipped)}: left out.</p>
         )}
         {tooMany && (
           <p className={AMBER_NOTE}>
-            A tick is all or nothing, and takes at most {MAX_TICK_ROWS} requests: select fewer.
+            Checking is all or nothing, and takes at most {MAX_TICK_ROWS} requests: select fewer.
           </p>
         )}
         {error && (
           <div className={`${AMBER_NOTE} space-y-1`}>
             <p>{named(error.message)}</p>
             {wroteNothing(error.status) ? (
-              <p>Nothing was ticked.</p>
+              <p>Nothing was checked.</p>
             ) : (
               <p>
-                We can&apos;t tell whether this was saved. Check the grid, or confirm again: ticking
-                again is safe, and a round already ticked is left as it is.
+                We can&apos;t tell whether this was saved. Check the grid, or confirm again:
+                checking again is safe, and a round already checked is left as it is.
               </p>
             )}
           </div>

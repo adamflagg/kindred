@@ -60,16 +60,16 @@ describe('tickPlan (§4.10; Decision 17)', () => {
 
   it('words the confirmation and the result', () => {
     expect(tickWords(tickPlan([ROW_SAMUEL], 'accepted'))).toBe(
-      'Tick Accepted on 1 request · 1 family'
+      'Check Accepted on 1 request · 1 family'
     )
     expect(doneWords({ year: 2027, written: 1, unchanged: 0, operation_id: 'op2' })).toBe(
-      'Ticked Accepted on 1 request'
+      'Checked Accepted on 1 request'
     )
     expect(doneWords({ year: 2027, written: 2, unchanged: 1, operation_id: 'op3' })).toBe(
-      'Ticked Accepted on 2 requests (1 was already ticked)'
+      'Checked Accepted on 2 requests (1 was already checked)'
     )
     expect(doneWords({ year: 2027, written: 0, unchanged: 2, operation_id: '' })).toBe(
-      'Nothing changed: 2 were already ticked'
+      'Nothing changed: 2 were already checked'
     )
   })
 

@@ -39,7 +39,7 @@ export function BulkBar({
             {hidden > 0 ? ` · ${String(hidden)} hidden by the search or filters` : ''}
           </span>
           <button type="button" className={BUTTON_SECONDARY} onClick={() => onTick('accepted')}>
-            Tick Accepted…
+            Check Accepted…
           </button>
           <button type="button" className={ACTION_LINK} onClick={onClear}>
             Clear

@@ -85,7 +85,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', TODAY)?.item).toEqual({
       level: 'note',
       pill: 'Waiting 23 days',
-      fact: "The family hasn't replied: follow up, then tick Accepted.",
+      fact: "The family hasn't replied: follow up, then check Accepted.",
     })
   })
 
@@ -100,12 +100,12 @@ describe('attentionFor (§4.4; D24, D31)', () => {
       item: {
         level: 'note',
         pill: 'Waiting on the family',
-        fact: "The family hasn't replied: follow up, then tick Accepted.",
+        fact: "The family hasn't replied: follow up, then check Accepted.",
       },
       reason: 'Waiting on the family',
       queue: 'waiting_on_family',
       // The Accepted tick, as for any waiting row (Full GO, #2951).
-      next: { kind: 'tick', label: 'Tick Accepted' },
+      next: { kind: 'tick', label: 'Check Accepted' },
     })
   })
 
@@ -429,7 +429,7 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
   it("makes Waiting's next step the Accepted tick, and leaves Mark Posted to unticked[]", () => {
     expect(nextOf(ROW_SAMUEL, 'waiting_on_family')).toEqual({
       kind: 'tick',
-      label: 'Tick Accepted',
+      label: 'Check Accepted',
     })
     const marked = gridRow({
       notes: [{ code: 'in_campminder_not_ticked', severity: 'warn', message: 'In CampMinder.' }],

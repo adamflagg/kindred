@@ -38,7 +38,7 @@ describe('BulkConfirmDialog (§4.10)', () => {
   it('shows what it will tick, and writes exactly that, with accepted: true', async () => {
     accepted.mockResolvedValue({ ...OK, written: 2 })
     open()
-    expect(screen.getByText('Tick Accepted on 2 requests · 2 families')).toBeInTheDocument()
+    expect(screen.getByText('Check Accepted on 2 requests · 2 families')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(accepted).toHaveBeenCalledWith({
       year: 2027,
@@ -51,33 +51,35 @@ describe('BulkConfirmDialog (§4.10)', () => {
       },
     })
     expect(onDone).toHaveBeenCalledWith(
-      'Ticked Accepted on 2 requests',
+      'Checked Accepted on 2 requests',
       expect.objectContaining({ written: 2, unchanged: 0 })
     )
   })
 
-  it('is titled Tick Accepted, and says nothing about locking an amount', () => {
+  it('is titled Check Accepted, and says nothing about locking an amount', () => {
     open()
-    expect(screen.getByText('Tick Accepted', { selector: 'h2, h3, [id]' })).toBeInTheDocument()
+    expect(screen.getByText('Check Accepted', { selector: 'h2, h3, [id]' })).toBeInTheDocument()
     expect(screen.queryByText(/lock/i)).toBeNull()
   })
 
-  it("quotes the server's words on a refusal, and says nothing was ticked (all or nothing)", async () => {
+  it("quotes the server's words on a refusal, and says nothing was checked (all or nothing)", async () => {
     accepted.mockRejectedValue(new AidWriteError('reqsamuel000005: round 1 is not posted', 422))
     open()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(screen.getByText('Samuel Johnson: round 1 is not posted')).toBeInTheDocument()
     expect(screen.queryByText(/reqsamuel/)).toBeNull()
-    expect(screen.getByText(/Nothing was ticked/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing was checked/)).toBeInTheDocument()
   })
 
-  it('does not claim nothing was ticked when the answer never arrived, and says ticking again is safe', async () => {
+  it('does not claim nothing was checked when the answer never arrived, and says checking again is safe', async () => {
     accepted.mockRejectedValue(new TypeError('Failed to fetch'))
     open([ROW_SAMUEL])
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(screen.queryByText(/Nothing was ticked/)).toBeNull()
+    expect(screen.queryByText(/Nothing was checked/)).toBeNull()
     expect(screen.getByText(/can't tell whether/)).toBeInTheDocument()
-    expect(screen.getByText(/ticking again is safe/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/checking again is safe, and a round already checked is left as it is/)
+    ).toBeInTheDocument()
   })
 
   it('refuses a plan over the server limit instead of splitting it', () => {
@@ -87,12 +89,14 @@ describe('BulkConfirmDialog (§4.10)', () => {
     }))
     open(many)
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
-    expect(screen.getByText(/at most 900/)).toBeInTheDocument()
+    expect(
+      screen.getByText('Checking is all or nothing, and takes at most 900 requests: select fewer.')
+    ).toBeInTheDocument()
   })
 
   it('names the selected rows it leaves out', () => {
     open([ROW_SAMUEL, ROW_LIAM])
-    expect(screen.getByText(/Nothing to tick on Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing to check on Liam Garcia/)).toBeInTheDocument()
   })
 
   // Two guards stop a double submit (`disabled={busy}` and `if (busy) return` in confirm), so dropping
@@ -106,13 +110,13 @@ describe('BulkConfirmDialog (§4.10)', () => {
     await act(async () => finish(OK))
   })
 
-  it('shows Ticking… while the write is in flight, and cannot be closed by Cancel or Escape', async () => {
+  it('shows Checking… while the write is in flight, and cannot be closed by Cancel or Escape', async () => {
     let finish: (v: unknown) => void = () => undefined
     accepted.mockImplementation(() => new Promise((resolve) => (finish = resolve)))
     const onClose = vi.fn()
     open([ROW_SAMUEL], { onClose })
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(screen.getByRole('button', { name: 'Ticking…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
     await userEvent.keyboard('{Escape}')
     expect(onClose).not.toHaveBeenCalled()
@@ -144,9 +148,9 @@ describe('BulkConfirmDialog (§4.10)', () => {
     expect(screen.getByText(/and 3 more/)).toBeInTheDocument()
   })
 
-  it('reads "Nothing to tick" for an empty plan', () => {
+  it('reads "Nothing to check" for an empty plan', () => {
     open([ROW_EMMA])
-    expect(screen.getByText('Nothing to tick')).toBeInTheDocument()
+    expect(screen.getByText('Nothing to check')).toBeInTheDocument()
     expect(screen.queryByText(/0 requests/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   })
