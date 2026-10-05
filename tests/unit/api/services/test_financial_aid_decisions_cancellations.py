@@ -266,9 +266,9 @@ async def test_a_cancelled_request_keeps_its_program_and_pool_and_its_outside_gr
 
 
 @pytest.mark.asyncio
-async def test_a_season_before_2027_counts_the_cancellation_but_asks_for_no_reason() -> None:
-    """Clean spec §5.6: cancel reasons exist from 2027. 2026's cancelled requests still leave Needs an
-    offer, and carry no to-do."""
+async def test_a_2026_cancellation_counts_nowhere_and_carries_no_to_do() -> None:
+    """A cancelled request in any season, 2026 included, leaves Needs an offer and carries no to-do (owner
+    ruling B, 2026-10-04)."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     store.requests[EMMA] = replace(store.requests[EMMA], year=2026)
@@ -484,7 +484,7 @@ async def test_a_campminder_cancellation_with_a_pending_round3_ask_drops_the_sam
 
 
 @pytest.mark.asyncio
-async def test_a_reason_for_a_campminder_cancellation_clears_the_to_do_and_only_campminder_reopens_it() -> None:
+async def test_a_reason_is_recorded_for_a_campminder_cancellation_and_only_campminder_reopens_it() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     _enrol(store, 32, on=date(2027, 3, 1))  # before the fake clock: the reason answers this cancellation

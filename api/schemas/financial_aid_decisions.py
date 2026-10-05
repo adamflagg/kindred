@@ -184,7 +184,8 @@ CancelReasonOut = Literal[
 
 class CancellationOut(BaseModel):
     """A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
-    Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet."""
+    Kindred (the registrar; `on` is the day it was recorded). reason None = none recorded
+    (optional, owner ruling B 2026-10-04)."""
 
     by: Literal["campminder", "kindred"]
     on: date | None

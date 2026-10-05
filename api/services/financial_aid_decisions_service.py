@@ -2131,8 +2131,9 @@ class FinancialAidDecisionsService:
         if season.as_of is not None:
             # 3c-2: a row is exact unless a gap reaches its request; then it keeps 3c-1's figures. Every past
             # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS). Included
-            # and the to-do read the row's cancellation as of the day (Decision 11), so they are filled, except for
-            # a request whose status can't be replayed (request_history), where they stay empty with its status.
+            # reads the row's cancellation as of the day (Decision 11), so it is filled, except for a request whose
+            # status can't be replayed (request_history), where it and the to-dos (none since owner ruling B,
+            # 2026-10-04) stay empty with its status.
             rows = [
                 row.model_copy(
                     update={

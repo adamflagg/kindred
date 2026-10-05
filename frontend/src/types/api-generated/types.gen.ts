@@ -2079,7 +2079,8 @@ export type CancellationMetricsResponse = {
  * CancellationOut
  *
  * A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
- * Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet.
+ * Kindred (the registrar; `on` is the day it was recorded). reason None = none recorded
+ * (optional, owner ruling B 2026-10-04).
  */
 export type CancellationOut = {
   /**
