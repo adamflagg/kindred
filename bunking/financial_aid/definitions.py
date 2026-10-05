@@ -62,17 +62,6 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D59", "D74"),
     ),
     Definition(
-        key="would_change_by",
-        term="Would change by",
-        text=(
-            "Would change by: after the lock, a later change (rules, cost, a late grant, a correction) never "
-            'rewrites the decision. It raises "would change by $X", information only once the family is told '
-            "(no clawback)."
-        ),
-        spec="§5.1",
-        rulings=("D43",),
-    ),
-    Definition(
         key="cost",
         term="Cost",
         text=(
@@ -617,8 +606,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
 SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
-    "requests": ("decided", "posted", "confirmation", "would_change_by", "cost"),
-    "household": ("cost", "decided", "grants", "family_share", "posted", "confirmation", "would_change_by"),
+    "requests": ("decided", "posted", "confirmation", "cost"),
+    "household": ("cost", "decided", "grants", "family_share", "posted", "confirmation"),
     "season-rounds-budget": (
         "allocated",
         "budget_posted",

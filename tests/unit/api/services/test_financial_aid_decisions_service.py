@@ -211,6 +211,19 @@ async def test_a_posted_round_shows_its_lock_and_the_day_it_was_posted() -> None
 
 
 @pytest.mark.asyncio
+async def test_a_posted_round_the_rules_now_price_differently_carries_no_would_change_figure() -> None:
+    """Owner 2026-10-05: posted rounds are history. Round 1 posted at $1,300 while today's rules work it out to $1,500
+    keeps its $1,300 and says nothing about the difference: `would_change_by` is never emitted (it stays on the schema,
+    always null, until slice 1 lands)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1300")
+    (row,) = (await _service(store).grid(YEAR)).rows
+    (r1,) = row.rounds
+    assert (r1.status, r1.posted, r1.decided, r1.would_change_by) == ("posted", 1300.0, 1300.0, None)
+
+
+@pytest.mark.asyncio
 async def test_the_budget_and_the_remaining_line_count_posted_and_needs_an_offer() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)

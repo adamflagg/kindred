@@ -47,7 +47,6 @@ def view(
         locked=_d(locked),
         accepted=accepted,
         pending=_d(pending),
-        would_change_by=None,
         counts_toward_budget=counts,
         # A non-counting view with no stated extra is all decision-type money (a bare discretionary round).
         extra=Decimal(extra) if extra is not None else (ZERO if counts else (_d(decided) or _d(locked) or ZERO)),

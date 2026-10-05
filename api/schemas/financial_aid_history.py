@@ -36,7 +36,9 @@ class HistoryEffectOut(BaseModel):
     from_version: int | None  # the rules version pricing the season before; None: none did
     to_version: int | None  # the one pricing it after; equal to from_version when the approval moved no pricing
     repriced: int  # live requests with an unsent round whose decided amount moved
-    flagged: int  # sent offers (posted, not clawed-back rounds) whose "would change by" moved to a new non-zero amount
+    # Never emitted since 2026-10-05 (owner: posted rounds are history, so no sent offer is flagged): always 0, and an
+    # older row's "flagged" is ignored. The field is removed after slice 1 lands.
+    flagged: int = 0
 
 
 class HistoryOperationOut(BaseModel):

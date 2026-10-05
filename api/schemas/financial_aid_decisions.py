@@ -73,6 +73,8 @@ class RoundOut(BaseModel):
     posted_on: date | None
     accepted: bool
     pending_approval: float | None
+    # Never emitted since 2026-10-05 (owner: posted rounds are history): always None. The field is removed after slice 1
+    # lands, once the frontend stack no longer reads it.
     would_change_by: float | None
     counts_toward_budget: bool
     rules_version: int | None

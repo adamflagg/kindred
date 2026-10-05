@@ -61,8 +61,7 @@ def test_a_surfaces_notes_are_numbered_from_1_with_the_camp_name_filled_in() -> 
         (4, "family_share"),
         (5, "posted"),
         (6, "confirmation"),
-        (7, "would_change_by"),
-    ]
+    ]  # owner 2026-10-05: the "would change by" note is gone, so nothing follows confirmation
     assert body["notes"][3] == {
         "key": "family_share",
         "n": 4,

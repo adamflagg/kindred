@@ -186,7 +186,6 @@ def _view(
         locked=None,
         accepted=False,
         pending=None,
-        would_change_by=None,
         counts_toward_budget=counts,
         pool=pool,
         extra=ZERO,
