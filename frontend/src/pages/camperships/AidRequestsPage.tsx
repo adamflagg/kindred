@@ -154,8 +154,7 @@ export default function AidRequestsPage() {
     [lensed, view.key, filters]
   )
   // The view or another filter narrows the list past the Today line's own rows.
-  const narrowed =
-    view.key !== 'all' || program !== null || pool !== null || round !== null || tick !== null
+  const narrowed = view.key !== 'all' || program !== null || pool !== null || round !== null
   const counts = useMemo(
     () => (lensed && !todayUnknown ? viewCounts(lensed, filters, live) : null),
     [lensed, filters, live, todayUnknown]

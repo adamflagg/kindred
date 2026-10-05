@@ -18,7 +18,6 @@ export const LINE_NAMES = {
   to_reverse: 'To reverse',
   session_not_settled: 'Session not settled',
   duplicates: 'Duplicates',
-  cancel_reason: 'Cancelled: give a reason',
   // Money › To place's open lines (#2973); the tab's own name.
   to_place: 'To place',
   grants: 'Grants needing attention',

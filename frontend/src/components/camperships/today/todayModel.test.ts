@@ -32,9 +32,9 @@ function line(over: Partial<ApiAidTodayLine> & Pick<ApiAidTodayLine, 'key'>): Ap
 
 describe('Today’s words (§6.4; D24; Decision 30)', () => {
   it('names every line the server sends', () => {
-    // The server's TodayKey has 17 keys (equity_field_never_true arrived with #2950, to_place with #2973).
-    expect(Object.keys(LINE_NAMES)).toHaveLength(17)
-    expect(LINE_NAMES.cancel_reason).toBe('Cancelled: give a reason')
+    // The server's TodayKey has 16 keys (equity_field_never_true arrived with #2950, to_place with #2973;
+    // #3001 retired cancel_reason).
+    expect(Object.keys(LINE_NAMES)).toHaveLength(16)
     expect(LINE_NAMES.equity_field_never_true).toBe('Equity question never answered yes')
     // m3: every name pinned by value, so a typo fails.
     expect(LINE_NAMES).toEqual({
@@ -45,7 +45,6 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
       to_reverse: 'To reverse',
       session_not_settled: 'Session not settled',
       duplicates: 'Duplicates',
-      cancel_reason: 'Cancelled: give a reason',
       to_place: 'To place',
       grants: 'Grants needing attention',
       late_full_coverage: 'A late full-coverage grant',
@@ -261,7 +260,6 @@ describe('Today’s words (§6.4; D24; Decision 30)', () => {
       ['to_reverse', 'to-reverse'],
       ['session_not_settled', 'session-not-settled'],
       ['duplicates', 'duplicates'],
-      ['cancel_reason', 'cancel-reason'],
       ['pending_approval', 'pending-approval'],
     ] as const) {
       expect(openHref(line({ key, items: 1 }), VIEW)).toBe(`/aid/requests?view=${slug}&year=2027`)
