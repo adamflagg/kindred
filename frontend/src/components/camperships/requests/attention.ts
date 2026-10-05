@@ -247,14 +247,7 @@ export function attentionItems(
     )
   }
   for (const todo of row.todos ?? []) {
-    items.push(
-      note(
-        'Give a reason',
-        todo.code === 'cancel_reason_missing' ? 'No reason recorded' : todo.message,
-        todo.code === 'cancel_reason_missing' ? 'cancel_reason' : null,
-        toRequest('Pick a Reason')
-      )
-    )
+    items.push(note('To do', todo.message, null, OPEN_REQUEST))
   }
   const pending = row.rounds.find((r) => r.status === 'pending_approval')
   if (pending !== undefined) {

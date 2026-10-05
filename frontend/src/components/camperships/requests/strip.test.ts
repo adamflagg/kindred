@@ -38,14 +38,8 @@ describe('the views strip (T4; RULED P1, P2, P4)', () => {
     ])
   })
 
-  it('puts Holds, Duplicates, Session unclear, To reverse and Cancelled: give a reason (RULED D-a) on the right, and no Finance approval (no such view)', () => {
-    expect(EXCEPTION_BADGES).toEqual([
-      'holds',
-      'duplicates',
-      'session_not_settled',
-      'to_reverse',
-      'cancel_reason',
-    ])
+  it('puts Holds, Duplicates, Session unclear and To reverse on the right, and no Finance approval (no such view) and no cancel-reason badge (owner ruling B: the reason is optional)', () => {
+    expect(EXCEPTION_BADGES).toEqual(['holds', 'duplicates', 'session_not_settled', 'to_reverse'])
   })
 })
 
@@ -77,12 +71,12 @@ describe('shownBadges (owner 2026-10-04: a badge shows only when something is in
       shownBadges(
         'duplicates',
         countsOf([
-          ['cancel_reason', 1],
+          ['to_reverse', 1],
           ['holds', 2],
-          ['to_reverse', 0],
+          ['session_not_settled', 0],
         ])
       )
-    ).toEqual(['holds', 'duplicates', 'cancel_reason'])
+    ).toEqual(['holds', 'duplicates', 'to_reverse'])
   })
 
   it('draws no badge while the counts load (no flash of zeros), but keeps the picked one', () => {
@@ -109,11 +103,11 @@ describe('badgeTone and foldTone', () => {
     const counts = countsOf([
       ['session_not_settled', 1],
       ['to_reverse', 2],
-      ['cancel_reason', 0],
+      ['holds', 0],
     ])
     expect(foldTone(['session_not_settled', 'to_reverse'], counts)).toBe('red')
-    expect(foldTone(['session_not_settled', 'cancel_reason'], counts)).toBe('amber')
-    expect(foldTone(['cancel_reason'], counts)).toBe('zero')
+    expect(foldTone(['session_not_settled', 'holds'], counts)).toBe('amber')
+    expect(foldTone(['holds'], counts)).toBe('zero')
     expect(foldTone(['to_reverse'], null)).toBe('zero')
   })
 })
@@ -178,9 +172,9 @@ describe('resolveStrip (the URL: ?lens=appeals, absent All; ?view=<stage slug>, 
     expect(resolveStrip('bogus', null)).toEqual({ lens: 'all', stage: null })
   })
 
-  it('reads an unknown lens as All, and reads Cancelled: give a reason as a stage', () => {
+  it('reads an unknown lens as All, and the retired ?view=cancel-reason as no stage (owner ruling B)', () => {
     expect(resolveStrip(null, 'bogus').lens).toBe('all')
-    expect(resolveStrip('cancel-reason', null).stage?.key).toBe('cancel_reason')
+    expect(resolveStrip('cancel-reason', null)).toEqual({ lens: 'all', stage: null })
   })
 })
 

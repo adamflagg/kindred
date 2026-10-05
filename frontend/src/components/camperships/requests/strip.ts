@@ -35,8 +35,6 @@ export const EXCEPTION_BADGES: readonly RequestViewKey[] = [
   'duplicates',
   'session_not_settled',
   'to_reverse',
-  // RULED D-a: a fifth badge (0 until 2027, when cancellations need a reason).
-  'cancel_reason',
 ]
 
 /**

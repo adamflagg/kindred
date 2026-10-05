@@ -182,8 +182,8 @@ export const ROW_RILEY = gridRow({
   confirmation: confirmationOut({ locked: 1500, in_campminder: 1500 }),
   cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
   to_reverse: true,
-  todos: [{ code: 'cancel_reason_missing', message: 'Cancelled: give a reason' }],
-  queues: ['to_reverse', 'cancel_reason'],
+  todos: [],
+  queues: ['to_reverse'],
 })
 
 export const GRID_ROWS: readonly ApiAidGridRow[] = [

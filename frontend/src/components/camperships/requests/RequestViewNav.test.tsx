@@ -20,7 +20,6 @@ const COUNTS: ReadonlyMap<RequestViewKey, ViewCount> = new Map<RequestViewKey, V
   ['session_not_settled', count(1)],
   ['to_reverse', count(4)],
   ['appeals', count(6)],
-  ['cancel_reason', count(1)],
 ])
 const LENS_COUNTS: ReadonlyMap<RequestLens, ViewCount> = new Map<RequestLens, ViewCount>([
   ['all', count(186)],
@@ -76,17 +75,15 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('Needs an offer')).toHaveAttribute('href', '/s/needs-offer')
   })
 
-  it('puts the exception badges on the right: Holds, Duplicates, Session unclear, To reverse, Cancelled: give a reason', () => {
+  it('puts the exception badges on the right: Holds, Duplicates, Session unclear, To reverse (no cancel-reason badge: owner ruling B)', () => {
     strip()
     expect(names(screen.getByTestId('strip-exceptions'))).toEqual([
       'Holds 2',
       'Duplicates 3',
       'Session unclear 1',
       'To reverse 4',
-      'Cancelled: give a reason 1',
     ])
     expect(link('To reverse')).toHaveAttribute('href', '/s/to-reverse')
-    expect(link('Cancelled: give a reason')).toHaveAttribute('href', '/s/cancel-reason')
   })
 
   // Owner 2026-10-04: a badge it cannot count is not due, so it is not drawn; the picked one reads "—".
@@ -131,12 +128,12 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('All')).toHaveAttribute('data-state', 'lens')
   })
 
-  // Owner 2026-10-04 (generalising RULED D-a option 3 from the fifth badge to every badge): a badge
-  // shows only when something is in it, or while it is picked. Full label, red unless amber.
-  it('shows Cancelled: give a reason, red, when its count is non-zero', () => {
+  // Owner 2026-10-04 (RULED D-a's option 3, for every badge): a badge shows only when something is
+  // in it, or while it is picked. Full label, red unless amber.
+  it('shows To reverse, red, when its count is non-zero', () => {
     strip()
-    expect(link('Cancelled: give a reason').className).toContain('bg-red-100')
-    expect(link('Cancelled: give a reason')).not.toHaveAttribute('data-state')
+    expect(link('To reverse').className).toContain('bg-red-100')
+    expect(link('To reverse')).not.toHaveAttribute('data-state')
   })
 
   const labelOf = (key: RequestViewKey) => REQUEST_VIEWS.find((v) => v.key === key)?.label ?? key
@@ -279,15 +276,15 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
 
   it('draws every badge and no chip when they all fit', () => {
     strip()
-    expect(shownBadges()).toHaveLength(5)
+    expect(shownBadges()).toHaveLength(4)
     expect(chip()).toBeNull()
   })
 
-  it('folds the trailing badges into +N when they do not fit (To reverse before Session unclear)', () => {
-    navWidth = 1000 // 350 for badges: three of them (300) and the chip (40)
+  it('folds the trailing badges into +N when they do not fit (To reverse first)', () => {
+    navWidth = 1000 // 350 for badges: three of them (300) and the chip (40); four need 400
     strip()
     expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3', 'Session unclear 1'])
-    expect(chip()).toHaveTextContent('+2')
+    expect(chip()).toHaveTextContent('+1')
   })
 
   it('folds again when the strip is resized, and unfolds when it grows back', () => {
@@ -295,19 +292,19 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
     expect(chip()).toBeNull()
     resize(900) // 250: two badges and the chip
     expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3'])
-    expect(chip()).toHaveTextContent('+3')
+    expect(chip()).toHaveTextContent('+2')
     resize(1150)
-    expect(shownBadges()).toHaveLength(5)
+    expect(shownBadges()).toHaveLength(4)
     expect(chip()).toBeNull()
   })
 
   it('opens the folded badges on a click, each with its count and a link into its view', () => {
-    navWidth = 1000
+    navWidth = 900 // two badges and the chip: Session unclear and To reverse fold
     strip()
     expect(screen.queryByTestId('strip-folded')).toBeNull()
     fireEvent.click(chip() as HTMLElement)
     const list = screen.getByTestId('strip-folded')
-    expect(names(list)).toEqual(['To reverse 4', 'Cancelled: give a reason 1'])
+    expect(names(list)).toEqual(['Session unclear 1', 'To reverse 4'])
     expect(within(list).getByRole('link', { name: /^To reverse/ })).toHaveAttribute(
       'href',
       '/s/to-reverse'
@@ -343,7 +340,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
   it("takes the nav's padding and gaps and the group's border, padding and gap off the badges' room", () => {
     // Real CSS (jsdom computes none): nav padding 4 + 4, gap 8 between lenses, pipeline and group;
     // group border 1, padding 8, gap 4 between badges. Room = width − 8 − 150 − 500 − 16 − 1 − 8 =
-    // width − 683; five badges need 500 + 4 × 4 = 516, so 1199 is the exact edge.
+    // width − 683; four badges need 400 + 3 × 4 = 412, so 1095 is the exact edge.
     const realStyle = window.getComputedStyle.bind(window)
     vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
       const style = realStyle(element, pseudo)
@@ -362,12 +359,12 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
         },
       })
     })
-    navWidth = 1199
+    navWidth = 1095
     strip()
-    expect(shownBadges()).toHaveLength(5)
-    expect(chip()).toBeNull()
-    resize(1198) // one pixel short: four badges and the chip (400 + 40 + 4 × 4 = 456 ≤ 515)
     expect(shownBadges()).toHaveLength(4)
+    expect(chip()).toBeNull()
+    resize(1094) // one pixel short: three badges and the chip (300 + 40 + 3 × 4 = 352 ≤ 411)
+    expect(shownBadges()).toHaveLength(3)
     expect(chip()).toHaveTextContent('+1')
   })
 
@@ -377,12 +374,12 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
     strip({ onOpen })
     fireEvent.click(chip() as HTMLElement)
     const list = screen.getByTestId('strip-folded')
-    const folded = within(list).getByRole('link', { name: /^Cancelled: give a reason/ })
+    const folded = within(list).getByRole('link', { name: /^To reverse/ })
     // A real press sends mousedown first: a press inside the list must not count as outside.
     fireEvent.mouseDown(folded)
     expect(screen.getByTestId('strip-folded')).toBeInTheDocument()
     fireEvent.click(folded)
-    expect(onOpen).toHaveBeenCalledWith('/s/cancel-reason')
+    expect(onOpen).toHaveBeenCalledWith('/s/to-reverse')
     expect(screen.queryByTestId('strip-folded')).toBeNull()
   })
 
@@ -412,9 +409,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
 
   it('tones the chip amber when only an amber badge is folded', () => {
     navWidth = 900 // three badges shown: two fit beside the chip, Session unclear folds
-    strip({
-      counts: new Map([...COUNTS, ['to_reverse', count(0)], ['cancel_reason', count(0)]]),
-    })
+    strip({ counts: new Map([...COUNTS, ['to_reverse', count(0)]]) })
     expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3'])
     expect(chip()).toHaveTextContent('+1')
     expect(chip()?.className).toContain('bg-amber-100')
@@ -422,11 +417,8 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
 
   it('tones the chip muted when the only folded badge is a picked one at 0', () => {
     navWidth = 1000
-    strip({
-      counts: new Map([...COUNTS, ['to_reverse', count(0)], ['cancel_reason', count(0)]]),
-      stage: 'cancel_reason',
-    })
-    // Holds, Duplicates, Session unclear, Cancelled (picked, 0): Cancelled folds alone.
+    strip({ counts: new Map([...COUNTS, ['to_reverse', count(0)]]), stage: 'to_reverse' })
+    // Holds, Duplicates, Session unclear, To reverse (picked, 0): To reverse folds alone.
     expect(chip()).toHaveTextContent('+1')
     expect(chip()?.className).not.toMatch(/bg-(red|amber)-100/)
   })
@@ -434,7 +426,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
   it('does not fold before the strip has a width (jsdom, or a hidden strip)', () => {
     navWidth = 0
     strip()
-    expect(shownBadges()).toHaveLength(5)
+    expect(shownBadges()).toHaveLength(4)
     expect(chip()).toBeNull()
   })
 })

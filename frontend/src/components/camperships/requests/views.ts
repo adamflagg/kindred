@@ -145,13 +145,6 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     groupBy: 'reason',
     columns: ['session', 'stage', 'attention'],
   },
-  {
-    key: 'cancel_reason',
-    slug: 'cancel-reason',
-    label: 'Cancelled: give a reason',
-    groupBy: 'one',
-    columns: ['session', 'stage', 'posted', 'attention'],
-  },
 ]
 
 export function requestView(slug: string | null): RequestView {

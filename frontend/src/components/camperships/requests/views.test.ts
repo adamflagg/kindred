@@ -43,7 +43,7 @@ const CTX = { view: 'all' as const, today: TODAY }
 const CM_WIDTH = 84
 
 describe('REQUEST_VIEWS (§6.2)', () => {
-  it('has All and one view per queue the server names, in its order', () => {
+  it('has All and one view per live queue the server names, in its order (no cancel-reason view: owner ruling B)', () => {
     expect(REQUEST_VIEWS.map((v) => v.key)).toEqual([
       'all',
       'needs_offer',
@@ -55,7 +55,6 @@ describe('REQUEST_VIEWS (§6.2)', () => {
       'to_reverse',
       'session_not_settled',
       'duplicates',
-      'cancel_reason',
     ])
   })
 
