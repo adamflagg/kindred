@@ -6,7 +6,8 @@ Scope (D26): the household it was opened from, plus every household holding a pa
 requests, both ways (the requests it applied for and the requests it pays a share of). The scope is households,
 and everything on the page follows it (Decision 4): every request a scope household applied for, and the scope
 households' postings, grants, incomes, links and log. A linked household outside the scope is read only to name
-it on its link row (its row and members: owner ruling 2026-10-04, late).
+it on its link row (its row and members: owner ruling 2026-10-04, late), and a scope household with no camper on the
+page (a second payer) has its members read for its card's adults and emails (owner N11, 2026-10-04 late).
 
 Included requests (D77's band) are live ones: not withdrawn, duplicate or cancelled (the budget's `live`).
 """
@@ -417,13 +418,17 @@ def _household_of(person: Any) -> int:
     return int(getattr(person, "household_id", 0) or 0)
 
 
+def _emails(people: Iterable[Any]) -> list[str]:
+    return sorted({str(getattr(p, "primary_email", "") or "").strip() for p in people} - {""})
+
+
 def _link_row(link: Any, household: Any | None, people: Iterable[Any]) -> HouseholdPageLinkOut:
-    """The link, and its household named as a card names it. `people`: whose parent names give the adults (the
-    page's campers for a household in its scope, as its card reads them; else the household's own members)."""
+    """The link, and its household named as a card names it. `people`: the household's own people, the ones its card
+    reads (`HouseholdPageService`'s `household_people`), whose parent names give the adults."""
     cm_id = int(link.household_cm_id)
     return HouseholdPageLinkOut(
         family_name=household_display_name(household, cm_id),
-        adults=_adults(p for p in people if _household_of(p) == cm_id),
+        adults=_adults(people),
         city=_city(household),
         id=str(link.id),
         year=int(link.year),
@@ -565,9 +570,12 @@ class HouseholdPageService:
             if str(ln.family_key) in family_keys or int(ln.household_cm_id) in households
         ]
         # A linked household outside the scope has no card, so its row and members are read here, for its name (the
-        # same reads a household search makes); one in the scope reads as its card does.
+        # same reads a household search makes); one in the scope reads as its card does. A card with no camper on the
+        # page (a second payer) has its own members read too, for its adults and emails (owner N11, 2026-10-04 late).
         outside = sorted({int(ln.household_cm_id) for ln in family_links} - households)
-        log, (linked_rows, linked_people) = await asyncio.gather(
+        camper_less = households - {_household_of(p) for p in persons}
+        members_of = sorted(set(outside) | camper_less)
+        log, (linked_rows, members) = await asyncio.gather(
             self._history.fetch_entity_log(
                 year,
                 exact={
@@ -580,16 +588,23 @@ class HouseholdPageService:
                 containing=request_ids,
             ),
             asyncio.gather(
-                self._ledger.fetch_households(year, outside), self._ledger.fetch_household_members(year, outside)
-            )
-            if outside
-            else _no_reads(),
+                self._ledger.fetch_households(year, outside) if outside else _nothing(),
+                self._ledger.fetch_household_members(year, members_of) if members_of else _nothing(),
+            ),
         )
         chips = {h: i + 1 for i, h in enumerate(scope.households)}
         asks = {r.id: r for d in incomes for r in d.requests}
         by_household = {int(h.cm_id): h for h in household_rows}
         people = {int(p.cm_id): p for p in persons}
         linked_households = {int(h.cm_id): h for h in linked_rows}
+
+        def household_people(h: int) -> list[Any]:
+            """Whose parent names and emails give household `h`'s adults and emails, on its card and its link alike:
+            the page's campers in it, or, with none (a second payer, or a linked household outside the scope), its
+            own members. The short name never reads members: it stays children-based (coordinator, N11; #3007)."""
+            campers_in = [p for p in people.values() if _household_of(p) == h] if h in households else []
+            return campers_in or [p for p in members if _household_of(p) == h]
+
         accepted = accepted_index(dispositions)
         rules_version = season.rules.version if season.rules is not None else None
         band = band_grants_by_request(season.register)
@@ -616,9 +631,8 @@ class HouseholdPageService:
 
         def link_out(link: Any) -> HouseholdPageLinkOut:
             h = int(link.household_cm_id)
-            if h in households:
-                return _link_row(link, by_household.get(h), people.values())
-            return _link_row(link, linked_households.get(h), linked_people)
+            row = by_household.get(h) if h in households else linked_households.get(h)
+            return _link_row(link, row, household_people(h))
 
         return HouseholdPageResponse(
             year=year,
@@ -636,16 +650,9 @@ class HouseholdPageService:
                         ),
                         household_display_name(by_household.get(h), h),
                     ),
-                    adults=_adults(p for p in people.values() if _household_of(p) == h),
+                    adults=_adults(household_people(h)),
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
-                    emails=sorted(
-                        {
-                            str(getattr(p, "primary_email", "") or "").strip()
-                            for p in people.values()
-                            if _household_of(p) == h
-                        }
-                        - {""}
-                    ),
+                    emails=_emails(household_people(h)),
                     city=_city(by_household.get(h)),
                     county=county_for_postal_code(str(getattr(by_household.get(h), "billing_postal_code", "") or "")),
                     money=household_money(h, rows, season.shares, chips),
@@ -688,10 +695,6 @@ class HouseholdPageService:
 
 async def _nothing() -> list[Any]:
     return []
-
-
-async def _no_reads() -> tuple[list[Any], list[Any]]:
-    return [], []
 
 
 async def _no_names() -> dict[str, str]:

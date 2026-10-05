@@ -6455,7 +6455,8 @@ export type HoldReleaseIn = {
  * HouseholdCardOut
  *
  * One household with a financial stake (D26). `chip` is D32's 1 · 2 · 3, the opened household first.
- * `adults` are the parents its campers' records name; `request_ids` the page's requests it pays a share of
+ * `adults` are the parents its campers' records name, or, with no camper on the page (a second payer), its own
+ * members' (owner N11); `emails` come from the same people; `request_ids` the page's requests it pays a share of
  * or applied for.
  */
 export type HouseholdCardOut = {

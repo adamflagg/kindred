@@ -936,7 +936,8 @@ async def test_only_linked_households_outside_the_scope_are_read_for_their_detai
     ledger = _Ledger()
     await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
     assert ledger.household_reads == [frozenset({JOHNSON, GARCIA}), frozenset({LINKED})]
-    assert ledger.member_reads == [frozenset({LINKED})]
+    # One members read: the linked household outside the scope, and the Garcia card with no camper on the page (N11).
+    assert ledger.member_reads == [frozenset({LINKED, GARCIA})]
 
 
 @pytest.mark.asyncio
@@ -953,16 +954,130 @@ async def test_a_linked_household_with_no_record_reads_as_its_number_with_no_adu
     assert (linked.family_name, linked.adults, linked.city) == ("Household 1000004", [], "")
 
 
-@pytest.mark.asyncio
-async def test_no_extra_household_read_when_every_link_is_in_the_scope() -> None:
-    class _InScope(_Ledger):
-        async def fetch_links(self, year: int) -> list[Any]:
-            return [ln for ln in await super().fetch_links(year) if ln.household_cm_id != LINKED]
+class _InScope(_Ledger):
+    async def fetch_links(self, year: int) -> list[Any]:
+        return [ln for ln in await super().fetch_links(year) if ln.household_cm_id != LINKED]
 
-    ledger = _InScope()
+
+@pytest.mark.asyncio
+async def test_no_extra_read_when_every_link_is_in_the_scope_and_every_card_has_a_camper() -> None:
+    class _EveryCardHasACamper(_InScope):
+        async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+            liam = SimpleNamespace(
+                cm_id=1000021,
+                first_name="Liam",
+                preferred_name="",
+                last_name="Garcia",
+                household_id=GARCIA,
+                primary_email="",
+                parent_names=[{"first": "Riley", "last": "Garcia"}],
+            )
+            return [*await super().fetch_persons(year, cm_ids), *([liam] if liam.cm_id in cm_ids else [])]
+
+    ledger = _EveryCardHasACamper()
     page = await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
     assert [ln.household_cm_id for ln in page.links] == [JOHNSON]
     assert (ledger.household_reads, ledger.member_reads) == ([frozenset({JOHNSON, GARCIA})], [])
+
+
+# N11 (owner 2026-10-04, late): "two-household cards list parents and contacts". A card takes its adults and emails
+# from the page's campers in its household; a household with no camper on the page (a second payer) has none, so
+# its own members name it instead, read exactly as a linked household outside the scope is (#3004).
+class _SecondPayer(_Ledger):
+    """The Garcia household pays half of Emma's request and has no camper on the page (Liam's record isn't read)."""
+
+    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+        garcia = [
+            SimpleNamespace(
+                cm_id=1000022,
+                first_name="Riley",
+                preferred_name="",
+                last_name="Chen",
+                household_id=GARCIA,
+                primary_email="garcia@example.com",
+                parent_names=[{"first": "Samuel", "last": "Garcia"}, {"first": "Olivia", "last": "Garcia"}],
+            ),
+            SimpleNamespace(
+                cm_id=1000023,
+                first_name="Samuel",
+                preferred_name="",
+                last_name="Sam",
+                household_id=GARCIA,
+                primary_email=" test@example.com ",
+                parent_names=[{"first": "Samuel", "last": "Garcia"}],
+            ),
+            SimpleNamespace(
+                cm_id=1000012,
+                first_name="Liam",
+                preferred_name="",
+                last_name="Johnson",
+                household_id=JOHNSON,
+                primary_email="johnson@example.com",
+                parent_names=[{"first": "Riley", "last": "Johnson"}],
+            ),
+        ]
+        members = await super().fetch_household_members(year, household_ids)
+        return [*members, *(p for p in garcia if p.household_id in household_ids)]
+
+
+@pytest.mark.asyncio
+async def test_a_card_with_no_camper_on_the_page_lists_its_own_members_adults_and_emails() -> None:
+    page = await _page_service(_family(), ledger=_SecondPayer()).read(YEAR, JOHNSON)
+    johnson, garcia = page.households
+    assert (garcia.household_cm_id, garcia.adults, garcia.emails) == (
+        GARCIA,
+        ["Olivia Garcia", "Samuel Garcia"],
+        ["garcia@example.com", "test@example.com"],
+    )
+    # A card with a camper on the page still reads only its campers, never its members.
+    assert (johnson.adults, johnson.emails) == (["Alex Garcia", "Pat Johnson"], ["test@example.com"])
+    # Additive only: the money and the band don't move.
+    plain = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [h.money for h in page.households] == [h.money for h in plain.households]
+    assert page.totals == plain.totals
+
+
+@pytest.mark.asyncio
+async def test_a_camper_less_households_members_are_read_without_another_household_read() -> None:
+    """The card already has its household row; only its members are read, and only for the card with no camper."""
+
+    class _SecondPayerInScope(_InScope, _SecondPayer):
+        pass
+
+    ledger = _SecondPayerInScope()
+    await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
+    assert (ledger.household_reads, ledger.member_reads) == ([frozenset({JOHNSON, GARCIA})], [frozenset({GARCIA})])
+
+
+@pytest.mark.asyncio
+async def test_a_camper_less_households_card_and_its_link_name_the_same_adults() -> None:
+    class _LinkedSecondPayer(_SecondPayer):
+        async def fetch_links(self, year: int) -> list[Any]:
+            garcia = SimpleNamespace(
+                id="lnk000000000004",
+                year=YEAR,
+                household_cm_id=GARCIA,
+                family_key="fam-1",
+                source="manual",
+                excluded=False,
+                note="",
+                actor=ACTOR,
+            )
+            return [*await super().fetch_links(year), garcia]
+
+    page = await _page_service(_family(), ledger=_LinkedSecondPayer()).read(YEAR, JOHNSON)
+    card = page.households[1]
+    link = next(ln for ln in page.links if ln.household_cm_id == GARCIA)
+    assert (link.family_name, link.adults, link.city) == (card.family_name, card.adults, card.city)
+    assert link.adults == ["Olivia Garcia", "Samuel Garcia"]
+
+
+@pytest.mark.asyncio
+async def test_a_camper_less_households_members_do_not_feed_its_short_name() -> None:
+    """Coordinator ruling inside N11: the short name stays children-based ("a family name based off the kids"), so a
+    household with no camper on the page keeps its full family name; centralizing the rule is issue #3007."""
+    page = await _page_service(_family(), ledger=_SecondPayer()).read(YEAR, JOHNSON)
+    assert page.households[1].short_name == "The Garcia Family"
 
 
 @pytest.mark.asyncio
