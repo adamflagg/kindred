@@ -327,6 +327,25 @@ describe('RoundChecklist (§5.2; D47)', () => {
     expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
   })
 
+  // P1 (owner, sitting B): the grid's acceptedTarget offers Accepted on a C1 round (in CampMinder in
+  // full, tonight's tick posts it); the household page offers it too.
+  it('offers Accepted on a C1 (cm_pending) round and sends the write', async () => {
+    const c1 = householdRequest(
+      gridRow({
+        rounds: [roundOut(1, 'needs_offer', { decided: 900, cm_pending: true })],
+      })
+    )
+    render(<RoundChecklist request={c1} line={lineOf(c1)} year={2027} />)
+    expect(screen.getByRole('checkbox', { name: /^Posted/ })).toBeDisabled()
+    const box = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(box).toBeEnabled()
+    await userEvent.click(box)
+    expect(accepted).toHaveBeenCalledWith({
+      year: 2027,
+      body: { rows: [{ request_id: c1.row.request_id, round: 1 }], accepted: true },
+    })
+  })
+
   it('keeps the Posted box ticked on a CampMinder-reversed round', () => {
     const reversed = householdRequest(
       gridRow({

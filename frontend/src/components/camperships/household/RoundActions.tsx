@@ -90,8 +90,8 @@ function undoHint(line: RoundLine): string {
 /**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
  * "Mark Posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
- * ticks a posted round only, never a reversed one. A C1 round (`cm_pending`) is not offered here,
- * though the grid's `acceptedTarget` offers it.
+ * ticks a posted round or a C1 round (`cm_pending`, as the grid's `acceptedTarget` offers it), never
+ * a reversed one.
  */
 export function RoundChecklist({
   request,
@@ -129,7 +129,7 @@ export function RoundChecklist({
           // The server refuses ticking Accepted on a Kindred cancellation, never unticking it. A
           // reversed round is the same: the grid never offers it (ticks.ts), unticking stays open.
           disabled={
-            !line.posted ||
+            !(line.posted || line.cmPending) ||
             accept.isPending ||
             editing ||
             ((cancelledInKindred(request.row) || line.clawedBack) && !line.accepted)

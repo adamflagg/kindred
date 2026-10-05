@@ -253,6 +253,12 @@ export interface RoundLine {
   readonly postedOn: string | null
   readonly accepted: boolean
   /**
+   * The round's CampMinder check is pending (`cm_pending`): C1, money already in CampMinder in full
+   * that tonight's tick posts, or V1, a hand tick tonight's sync checks. The grid offers Accepted on
+   * it (ticks.ts acceptedTarget), so the page does too.
+   */
+  readonly cmPending: boolean
+  /**
    * A posted round whose money CampMinder reversed (D54): its `posted` still carries the locked
    * amount, but the budget counts that money nowhere, so it never reads as standing posted money.
    */
@@ -321,6 +327,7 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         posted,
         postedOn: r.posted_on,
         accepted: r.accepted,
+        cmPending: r.cm_pending === true,
         clawedBack,
         wouldChangeBy: would !== null && would !== 0 ? would : null,
       }
