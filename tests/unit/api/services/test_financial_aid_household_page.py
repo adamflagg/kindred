@@ -10,7 +10,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -32,9 +32,11 @@ from api.services.financial_aid_grants_register import RegisterRow, RequestShare
 from api.services.financial_aid_household_page import (
     HouseholdNotFoundError,
     HouseholdPageService,
+    adults_label,
     band_grants_by_request,
     grant_rows_with_band_flag,
     household_money,
+    label_tiebreaks,
     page_scope,
     request_grants,
     share_lines,
@@ -544,6 +546,7 @@ class _Ledger:
         self.count_reads: list[frozenset[int]] = []
         self.household_reads: list[frozenset[int]] = []
         self.member_reads: list[frozenset[int]] = []
+        self.adults_reads: list[bool] = []
 
     async def fetch_postings(
         self, year: int, household_ids: Collection[int] | None = None, *, include_reversed: bool = False
@@ -555,8 +558,9 @@ class _Ledger:
     async def fetch_dispositions(self, year: int) -> list[Any]:
         return []
 
-    async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+    async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
         self.household_reads.append(frozenset(cm_ids))
+        self.adults_reads.append(adults)
         rows = [
             SimpleNamespace(
                 cm_id=JOHNSON,
@@ -993,8 +997,8 @@ async def test_only_linked_households_outside_the_scope_are_read_for_their_detai
 @pytest.mark.asyncio
 async def test_a_linked_household_with_no_record_reads_as_its_number_with_no_adults_or_city() -> None:
     class _Unknown(_Ledger):
-        async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
-            return [h for h in await super().fetch_households(year, cm_ids) if h.cm_id != LINKED]
+        async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
+            return [h for h in await super().fetch_households(year, cm_ids, adults=adults) if h.cm_id != LINKED]
 
         async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
             return []
@@ -1717,3 +1721,194 @@ async def test_the_page_rows_carry_requested_by_like_the_grids() -> None:
     page = await _page_service(store).read(YEAR, JOHNSON)
     by_id = {card.row.request_id: card.row.requested_by for card in page.requests}
     assert by_id == {EMMA: "Maria Garcia", LIAM: None}
+
+
+# aid_adults (owner-approved build, 2026-10-05): the persons sync names each aid household's adults from CampMinder's
+# relatives (households.aid_adults: {cm_id, first, last, preferred, role, is_guardian}, role 1/2 = First/Second
+# Principal). A card names them first; its older sources are the fallback. The label rule (owner, 2026-10-05): a
+# household reads as its adults' names alone, then its mailing title, with the billing city and then the CampMinder
+# household id added only to tell apart two households on the page that would still read the same.
+def _adult(
+    cm_id: int, first: str, last: str, role: int, *, preferred: str = "", guardian: bool = False
+) -> dict[str, Any]:
+    return {"cm_id": cm_id, "first": first, "last": last, "preferred": preferred, "role": role, "is_guardian": guardian}
+
+
+class _AidAdults(_Ledger):
+    """CampMinder names the Johnsons' two principals and the Garcia second payer's two; the linked Chen household has
+    none, so its card falls back to its members."""
+
+    adults_by_household: ClassVar[dict[int, list[dict[str, Any]]]] = {
+        JOHNSON: [
+            _adult(1000052, "Alex", "Garcia", 2),
+            _adult(1000051, "Patricia", "Johnson", 1, preferred="Pat", guardian=True),
+        ],
+        GARCIA: [_adult(1000061, "Samuel", "Garcia", 1), _adult(1000062, "Olivia", "Chen", 2)],
+    }
+
+    async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
+        rows = await super().fetch_households(year, cm_ids, adults=adults)
+        if not adults:
+            return rows
+        return [SimpleNamespace(**vars(h), aid_adults=self.adults_by_household.get(h.cm_id)) for h in rows]
+
+
+@pytest.mark.asyncio
+async def test_the_page_reads_households_with_their_aid_adults() -> None:
+    ledger = _Ledger()
+    await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
+    assert ledger.adults_reads == [True, True]  # the scope's households, then the linked one outside it
+
+
+@pytest.mark.asyncio
+async def test_a_card_names_campminders_adults_first_then_second_principal() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    johnson, garcia = page.households
+    assert johnson.adults == ["Pat Johnson", "Alex Garcia"]
+    assert garcia.adults == ["Samuel Garcia", "Olivia Chen"]
+    assert [(a.cm_id, a.name, a.role, a.role_label, a.is_guardian) for a in johnson.adults_by_role] == [
+        (1000051, "Pat Johnson", 1, "Adult 1", True),
+        (1000052, "Alex Garcia", 2, "Adult 2", False),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_household_campminder_names_no_adults_for_keeps_its_older_sources() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    linked = next(ln for ln in page.links if ln.household_cm_id == LINKED)
+    assert (linked.adults, linked.adults_by_role) == (["Riley Sam", "Sam Chen"], [])
+    plain = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [(h.adults, h.adults_by_role) for h in plain.households] == [
+        (["Alex Garcia", "Pat Johnson"], []),
+        ([], []),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_camper_less_household_takes_its_short_name_from_campminders_adults() -> None:
+    """P3 over the new source: the second payer's adults' surnames, First Principal first. The camper household's
+    chip stays its campers' surnames (owner)."""
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    assert [h.short_name for h in page.households] == ["Johnson", "Garcia & Chen"]
+
+
+@pytest.mark.parametrize(
+    ("adults", "expected"),
+    [
+        ([("Liam", "Becker"), ("Olivia", "Becker")], "Liam & Olivia Becker"),
+        ([("Liam", "Becker"), ("Olivia", "becker ")], "Liam & Olivia Becker"),
+        ([("Pat", "Johnson"), ("Alex", "Garcia")], "Pat Johnson & Alex Garcia"),
+        ([("Samuel", "Chen")], "Samuel Chen"),
+        ([("Emma", "Chen"), ("Liam", "Chen"), ("Riley", "Chen")], "Emma, Liam & Riley Chen"),
+        ([("Emma", "Chen"), ("Liam", "Sam"), ("Riley", "Chen")], "Emma Chen, Liam Sam & Riley Chen"),
+        ([("", "Chen"), ("Liam", "")], "Chen & Liam"),
+        ([], ""),
+    ],
+)
+def test_a_label_is_the_adults_names_with_one_shared_surname_said_once(
+    adults: list[tuple[str, str]], expected: str
+) -> None:
+    assert adults_label(adults) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_household_reads_as_its_adults_names_alone() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    assert [(h.label, h.label_tiebreak) for h in page.households] == [
+        ("Pat Johnson & Alex Garcia", ""),
+        ("Samuel Garcia & Olivia Chen", ""),
+    ]
+    # The camper household's label is its adults, never its camper.
+    assert "Emma" not in page.households[0].label
+
+
+@pytest.mark.asyncio
+async def test_with_no_campminder_adults_a_label_reads_the_adults_the_card_names_then_its_mailing_title() -> None:
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    # Johnson: the card's adults (its camper's parent names); Garcia: none known, so its mailing title.
+    assert [h.label for h in page.households] == ["Alex Garcia & Pat Johnson", "The Garcia Family"]
+    linked = next(ln for ln in page.links if ln.household_cm_id == LINKED)
+    assert linked.label == "Riley Sam & Sam Chen"
+
+
+@pytest.mark.asyncio
+async def test_a_link_reads_exactly_as_its_card() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    card = page.households[0]
+    link = next(ln for ln in page.links if ln.household_cm_id == JOHNSON)
+    assert (link.label, link.label_tiebreak, link.adults_by_role) == (
+        card.label,
+        card.label_tiebreak,
+        card.adults_by_role,
+    )
+
+
+def test_a_tiebreak_is_added_only_where_two_households_would_read_the_same() -> None:
+    labels = {
+        1: ("Liam & Olivia Becker", "Riverside, CA"),
+        2: ("liam & olivia becker", "Oak Valley, CA"),
+        3: ("Emma Chen", "Riverside, CA"),
+    }
+    assert label_tiebreaks(labels) == {1: "Riverside, CA", 2: "Oak Valley, CA", 3: ""}
+
+
+def test_a_tiebreak_falls_back_to_the_campminder_household_id_when_the_city_cannot_tell_them_apart() -> None:
+    labels = {
+        1000001: ("The Becker Family", "Riverside, CA"),
+        1000002: ("The Becker Family", "riverside, ca"),
+        1000003: ("The Becker Family", ""),
+        1000004: ("The Becker Family", "Oak Valley, CA"),
+    }
+    assert label_tiebreaks(labels) == {
+        1000001: "#1000001",
+        1000002: "#1000002",
+        1000003: "#1000003",
+        1000004: "Oak Valley, CA",
+    }
+
+
+@pytest.mark.asyncio
+async def test_two_households_on_a_page_that_read_the_same_carry_a_tiebreak_cards_and_links_alike() -> None:
+    class _Twins(_AidAdults):
+        adults_by_household: ClassVar[dict[int, list[dict[str, Any]]]] = {
+            JOHNSON: [_adult(1000051, "Liam", "Becker", 1), _adult(1000052, "Olivia", "Becker", 2)],
+            GARCIA: [_adult(1000061, "Liam", "Becker", 1), _adult(1000062, "Olivia", "Becker", 2)],
+        }
+
+        async def fetch_links(self, year: int) -> list[Any]:
+            garcia = SimpleNamespace(
+                id="lnk000000000004",
+                year=YEAR,
+                household_cm_id=GARCIA,
+                family_key="fam-1",
+                source="manual",
+                excluded=False,
+                note="",
+                actor=ACTOR,
+            )
+            return [*await super().fetch_links(year), garcia]
+
+    page = await _page_service(_family(), ledger=_Twins()).read(YEAR, JOHNSON)
+    # Johnson's billing city is Riverside; Garcia's is blank, so the city cannot tell Garcia apart: its id does.
+    assert [(h.label, h.label_tiebreak) for h in page.households] == [
+        ("Liam & Olivia Becker", "Riverside, CA"),
+        ("Liam & Olivia Becker", f"#{GARCIA}"),
+    ]
+    links = {ln.household_cm_id: (ln.label, ln.label_tiebreak) for ln in page.links}
+    assert links[GARCIA] == ("Liam & Olivia Becker", f"#{GARCIA}")
+    assert links[LINKED] == ("Riley Sam & Sam Chen", "")
+
+
+@pytest.mark.asyncio
+async def test_campminders_adults_move_no_number() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    plain = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [h.money for h in page.households] == [h.money for h in plain.households]
+    assert (page.totals, page.requests) == (plain.totals, plain.requests)
+
+
+@pytest.mark.asyncio
+async def test_staff_read_adult_1_and_adult_2_never_a_parent_role() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    labels = {a.role_label for h in page.households for a in h.adults_by_role}
+    assert labels == {"Adult 1", "Adult 2"}

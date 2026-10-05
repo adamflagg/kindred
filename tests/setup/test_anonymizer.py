@@ -217,10 +217,12 @@ def test_anonymize_db_fakes_household_aid_adults(anon, scan, tmp_path):
     assert isinstance(faked, list)
     assert [(a["cm_id"], a["role"], a["is_guardian"]) for a in faked] == [(2001, 1, True), (2002, 2, False)]
     for adult in faked:
-        assert adult["first"] and adult["last"], adult
+        assert adult["first"], adult
+        assert adult["last"], adult
         assert adult["preferred"] == ""
         text = json.dumps(adult)
-        assert REAL_FIRST not in text and REAL_LAST not in text and "Barnaby" not in text
+        for real in (REAL_FIRST, REAL_LAST, "Barnaby"):
+            assert real not in text
     # One household's adults share its fake surname, as its fake mailing title does.
     assert len({a["last"] for a in faked}) == 1
     violations = scan.scan(str(db), denylist=[REAL_FIRST, REAL_LAST, "Barnaby", "Zeph"], drop_list=[])

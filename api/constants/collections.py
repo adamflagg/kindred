@@ -36,6 +36,13 @@ FIELD_DEFINITIONS = "field_definitions"
 
 # Households & family-camp derived profile data
 HOUSEHOLDS = "households"
+# Every households column a read may name, in PocketBase's `fields` syntax: all of them but the hidden, Camperships-only
+# adults list, which only the household page asks for (FinancialAidRepository.fetch_households(adults=True)). The
+# service reads PocketBase as a superuser, which sees hidden fields, so a whole-record read would carry it.
+HOUSEHOLD_COLUMNS = (
+    "id,cm_id,year,greeting,mailing_title,alternate_mailing_title,billing_mailing_title,household_phone,"
+    "billing_address1,billing_address2,billing_city,billing_state,billing_postal_code,billing_country,created,updated"
+)
 FAMILY_CAMP_ADULTS = "family_camp_adults"
 FAMILY_CAMP_REGISTRATIONS = "family_camp_registrations"
 FAMILY_CAMP_MEDICAL = "family_camp_medical"

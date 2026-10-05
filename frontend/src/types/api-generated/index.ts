@@ -755,6 +755,7 @@ export type {
   HistoryParentDiffOut,
   HistoryRowOut,
   HoldReleaseIn,
+  HouseholdAdultOut,
   HouseholdCardOut,
   HouseholdDetailResponse,
   HouseholdEnrollment,

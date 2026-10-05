@@ -72,6 +72,7 @@ from api.constants.collections import (
     FAMILY_CAMP_ADULTS,
     FAMILY_CAMP_MEDICAL,
     FAMILY_CAMP_REGISTRATIONS,
+    HOUSEHOLD_COLUMNS,
     HOUSEHOLDS,
     JOTFORM_ANSWERS,
     JOTFORM_FORMS,
@@ -1118,7 +1119,7 @@ class LodgingRepository:
         """
         rows = await self._page(
             HOUSEHOLDS,
-            query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
+            query_params={"filter": f"year = {year}", "fields": HOUSEHOLD_COLUMNS, "sort": STABLE_SORT},
         )
         return {row.id: row for row in rows}
 
@@ -1147,7 +1148,9 @@ class LodgingRepository:
         if not household_pb_ids:
             return {}
         ids_clause = " || ".join(f'id = "{pb_escape(hid)}"' for hid in household_pb_ids)
-        rows = await self._page(HOUSEHOLDS, query_params={"filter": ids_clause, "sort": STABLE_SORT})
+        rows = await self._page(
+            HOUSEHOLDS, query_params={"filter": ids_clause, "fields": HOUSEHOLD_COLUMNS, "sort": STABLE_SORT}
+        )
         return {row.id: row for row in rows}
 
     async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
@@ -1160,6 +1163,7 @@ class LodgingRepository:
             HOUSEHOLDS,
             query_params={
                 "filter": f"year = {year} && cm_id = {household_cm_id}",
+                "fields": HOUSEHOLD_COLUMNS,
                 "sort": STABLE_SORT,
             },
         )

@@ -141,9 +141,9 @@ func (s *PersonsSync) syncAidAdults(
 	placed := map[int][]aidAdult{}
 	seen := map[int]bool{}
 	for batch := range slices.Chunk(relativeIDs, aidAdultsBatchSize) {
-		people, err := fetch(batch)
-		if err != nil {
-			return aidAdultsStats{}, fmt.Errorf("aid adults: fetching relatives: %w", err)
+		people, fetchErr := fetch(batch)
+		if fetchErr != nil {
+			return aidAdultsStats{}, fmt.Errorf("aid adults: fetching relatives: %w", fetchErr)
 		}
 		for _, person := range people {
 			id, _ := person["ID"].(float64)
