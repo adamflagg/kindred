@@ -76,8 +76,12 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
 vi.mock('../../../hooks/camperships/useAidApplication', () => ({
   useAidApplication: () => ({ data: applicationOut(), isLoading: false, error: null }),
 }))
+const prefetch = vi.fn()
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
+  usePrefetchAidPreview: (...args: unknown[]) => {
+    prefetch(...args)
+  },
 }))
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
@@ -130,6 +134,7 @@ const renderCards = (rows = [ROW_OLIVIA], canWork = true, canApprove = false) =>
 
 beforeEach(() => {
   cancel.mockReset()
+  prefetch.mockReset()
   cancelGate = null
   resolveGate = null
   shareGate = null
@@ -184,6 +189,17 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
       requestId: 'reqemma00000001',
       body: { held: true, note: 'Waiting on a call' },
     })
+  })
+
+  it('prefetches the preview its money editor would open on (R2)', () => {
+    renderCards()
+    expect(prefetch).toHaveBeenCalledWith('reqolivia000003', 2, 1200)
+  })
+
+  it('prefetches nothing without casework, which opens no editor (R2)', () => {
+    renderCards([ROW_OLIVIA], false)
+    expect(prefetch).toHaveBeenCalled()
+    expect(prefetch.mock.calls.every((call) => (call as unknown[])[2] === null)).toBe(true)
   })
 
   it('offers nothing to change without casework: the plain card', () => {

@@ -6,6 +6,7 @@ import type { AidView } from '../kit/asOf'
 import { CancelForm } from './CancelForm'
 import { CardEditor, type CardEditorHandle } from './CardEditor'
 import { CARD_EDIT_LABEL, cardEdits, type CardEditKind } from './cardEdits'
+import { usePrefetchCardPreviews } from './cardPreviews'
 import { caseworkOffers } from './caseworkModel'
 import { DuplicateForm, HeadcountForm, SessionForm, ShareForm } from './CaseworkForms'
 import { isLiveRequest } from '../requests/gridEditor'
@@ -99,6 +100,8 @@ export function WorkingRequestCard({
       })
     )
   }, [exits, editing, requestId, leaveOwn])
+  // R2: the preview each offered money editor would open on, read while the card rests.
+  usePrefetchCardPreviews(request.row, canWork ? cardEdits(request.row) : [])
   if (!canWork) return <RequestCard request={request} page={page} view={view} />
 
   const row = request.row

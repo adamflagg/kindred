@@ -86,6 +86,7 @@ vi.mock('../../hooks/camperships/useAidApplication', () => ({
 }))
 vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
+  usePrefetchAidPreview: () => undefined,
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 // The approved rules name the programs (D31): the postings read them, as the grid does.
