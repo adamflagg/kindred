@@ -122,7 +122,7 @@ export const HH_FORM_ROW = 'flex flex-wrap items-center gap-x-4 gap-y-2 text-[13
 export const HH_FORM_LABEL = 'inline-flex items-center gap-2 whitespace-nowrap'
 /** A field (the mock's .erow input): sized to what it holds, never stretched to the row. */
 export const HH_FIELD =
-  'rounded-[7px] border border-forest-700 bg-white px-2 py-1 text-[13px] focus:ring-2 focus:ring-forest-700/30 focus:outline-none dark:border-forest-400 dark:bg-card'
+  'rounded-[7px] border border-forest-700 bg-white px-2 py-1 text-[13px] focus:ring-2 focus:ring-forest-700/30 focus:outline-none dark:border-forest-400 dark:focus:ring-forest-300/30 dark:bg-card'
 /** A typed reason or note (the mock's input.t): 300px. */
 export const HH_FIELD_TEXT = `${HH_FIELD} w-[300px] max-w-full`
 /** A figure (the mock's input.n): 90px, right-aligned. */
