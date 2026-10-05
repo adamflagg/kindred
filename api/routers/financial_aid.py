@@ -113,6 +113,8 @@ from api.schemas.financial_aid_intake import (
     RequestQueueResponse,
     RequestStatus,
     SessionResolve,
+    UseFormIn,
+    UseFormOut,
 )
 from api.schemas.financial_aid_march_file import MarchFileOut
 from api.schemas.financial_aid_money_ledger import LedgerLevelOut, LedgerTotalOut, MoneyLedgerLinesOut, MoneyLedgerOut
@@ -525,6 +527,21 @@ async def add_aid_correction(
             user.email,
             body.request_id,
         )
+    except _ERRORS as exc:
+        _raise_http(exc)
+
+
+@router.post("/applications/{year}/{household_cm_id}/use-form", response_model=UseFormOut, status_code=201)
+async def use_aid_form(
+    body: UseFormIn,
+    year: int = Path(ge=2017, le=2100),
+    household_cm_id: int = Path(gt=0),
+    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
+) -> UseFormOut:
+    """Use X's Form: one sibling's form answers every question the household's forms disagree on, as one operation of
+    ordinary corrections (household-v3 section 3)."""
+    try:
+        return await _casework().use_form(year, household_cm_id, body.person_cm_id, body.reason, user.email)
     except _ERRORS as exc:
         _raise_http(exc)
 

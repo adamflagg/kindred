@@ -42,6 +42,7 @@ from api.schemas.financial_aid_intake import (
     PayerShareOut,
     RequestOut,
     RequestQueueResponse,
+    UseFormOut,
 )
 from api.services.financial_aid_calc_inputs import (
     CalculatorInputs,
@@ -55,10 +56,11 @@ from api.services.financial_aid_corrections import (
     REVERT,
     CorrectionError,
     EffectiveValue,
+    FieldKind,
     effective_values,
     parse_new_value,
 )
-from api.services.financial_aid_household import TEXT_FIELDS
+from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS, TEXT_FIELDS
 from api.services.financial_aid_intake_plan import request_fields, share_entity_id
 from api.services.financial_aid_intake_service import season_lock
 from api.services.financial_aid_intake_types import (
@@ -173,6 +175,28 @@ _CONFLICT_CODES = frozenset({"income_conflict", "household_answer_conflict"})
 
 
 _ANSWER_FIELDS: Final = frozenset(APPLICATION_CORRECTABLE) | frozenset(REQUEST_CORRECTABLE)
+
+
+def disagreeing_fields(flags: Sequence[Mapping[str, Any]]) -> dict[str, list[Mapping[str, Any]]]:
+    """Every answer the household's forms disagree on (income_conflict and household_answer_conflict alike), with
+    its variants ({"value", "person_cm_ids"}), in the household answers' own order, so a reply never depends on how
+    the flag's JSON was stored. Only correctable answers: a conflict is cleared by correcting it."""
+    found: dict[str, list[Mapping[str, Any]]] = {}
+    for flag in flags:
+        if str(flag.get("code", "")) in _CONFLICT_CODES:
+            for name, variants in dict(dict(flag.get("detail", {})).get("fields", {})).items():
+                if name in APPLICATION_CORRECTABLE:
+                    found[name] = [v for v in variants if isinstance(v, Mapping)]
+    order = {name: i for i, name in enumerate(HOUSEHOLD_ANSWER_FIELDS)}
+    return dict(sorted(found.items(), key=lambda item: order.get(item[0], len(order))))
+
+
+def _form_text(kind: FieldKind, value: Any) -> str:
+    """A conflict variant's number (a float in the flag) as the text a correction parses: a count is a whole number."""
+    number = Decimal(str(value))
+    if kind is FieldKind.COUNT and number == number.to_integral_value():
+        return str(int(number))
+    return str(number)
 
 
 def _live_correction_count(corrections: Sequence[CorrectionRecord]) -> int:
@@ -353,6 +377,105 @@ class FinancialAidCaseworkService:
                 actor=actor,
                 created=str(stored.get("created", "")),
             )
+        )
+
+    async def use_form(self, year: int, household_cm_id: int, person_cm_id: int, reason: str, actor: str) -> UseFormOut:
+        """Use X's Form (owner-approved, household-v3 section 3): one sibling's form answers every question the
+        household's forms disagree on (both conflict flags), as ONE atomic operation of ordinary corrections, so the
+        income hold clears once no income answer still disagrees. Each value passes the same validation as a hand
+        correction. The chosen form overwrites a hand correction (its log row keeps the value it replaced); an answer
+        already corrected to this form's value gets no write; one this form left blank is skipped. Each log row is a
+        "correct" with `form_person_cm_id` in its `after`, which is how History groups the operation."""
+        application = await self._require_application(year, household_cm_id)
+        if person_cm_id not in application.member_person_cm_ids:
+            raise CorrectionError("that is not one of this household's forms")
+        fields = disagreeing_fields(application.flags)
+        if not fields:
+            raise CorrectionError("nothing on this application disagrees")
+        existing = await self._store.fetch_corrections(year, application.id)
+        current = effective_values(dict(application.answers), APPLICATION_CORRECTABLE, existing)
+        reason = reason.strip()
+        writes: list[AidWrite] = []
+        planned: list[tuple[str, str, str]] = []  # field, value, synced
+        skipped: list[str] = []
+        unchanged: list[str] = []
+        for field, variants in fields.items():
+            raw = next((v.get("value") for v in variants if person_cm_id in v.get("person_cm_ids", ())), None)
+            if raw is None:
+                skipped.append(field)
+                continue
+            value = parse_new_value(APPLICATION_CORRECTABLE[field], _form_text(APPLICATION_CORRECTABLE[field], raw))
+            now = current[field]
+            if now.corrected and now.effective == value:
+                unchanged.append(field)
+                continue
+            planned.append((field, value, now.synced))
+            writes.append(
+                AidWrite(
+                    collection=AID_APPLICATION_CORRECTIONS,
+                    action="create",
+                    year=year,
+                    data={
+                        "year": year,
+                        "application": application.id,
+                        "request": "",
+                        "field": field,
+                        "new_value": value,
+                        "original_value": now.synced,
+                        "reason": reason,
+                        "actor": actor,
+                    },
+                    log_action="correct",
+                    after={
+                        "field": field,
+                        "value": value,
+                        "previous_value": now.effective,
+                        "form_person_cm_id": person_cm_id,
+                    },
+                )
+            )
+        if not writes and not unchanged:
+            raise CorrectionError("that form leaves every disagreeing answer blank")
+        corrected = {f for f in fields if current[f].corrected} | {f for f, _, _ in planned}
+        still = [f for f in fields if f not in corrected]
+        if not writes:
+            return UseFormOut(
+                household_cm_id=household_cm_id,
+                person_cm_id=person_cm_id,
+                operation_id="",
+                applied=[],
+                skipped_blank=skipped,
+                unchanged=unchanged,
+                still_disagreeing=still,
+            )
+        result = await self._store.commit(writes, actor=actor, reason=reason, require_reason=False)
+        applied = [
+            correction_out(
+                CorrectionRecord(
+                    id=record_id,
+                    year=year,
+                    application_id=application.id,
+                    request_id="",
+                    field=field,
+                    new_value=value,
+                    original_value=synced,
+                    reason=reason,
+                    actor=actor,
+                    created=str((stored or {}).get("created", "")),
+                )
+            )
+            for (field, value, synced), record_id, stored in zip(
+                planned, result.record_ids, result.records, strict=True
+            )
+        ]
+        return UseFormOut(
+            household_cm_id=household_cm_id,
+            person_cm_id=person_cm_id,
+            operation_id=result.operation_id,
+            applied=applied,
+            skipped_blank=skipped,
+            unchanged=unchanged,
+            still_disagreeing=still,
         )
 
     async def _require_request(self, request_id: str) -> RequestRecord:
