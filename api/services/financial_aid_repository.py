@@ -193,6 +193,10 @@ class FinancialAidRepository:
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
         return await self._by_ids(PERSONS, f"year = {int(year)}", "cm_id", cm_ids)
 
+    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+        """This season's people whose own household is one of these (chunked by id, ID_CHUNK at a time)."""
+        return await self._by_ids(PERSONS, f"year = {int(year)}", "household_id", household_ids)
+
     async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]:
         """Each session's enrolled (status 2, as the solver counts them) and waitlisted (status 8) registrations this
         season: Round 3's context (§6.3 item 4)."""

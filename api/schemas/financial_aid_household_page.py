@@ -184,6 +184,16 @@ class HouseholdGrantRowOut(GrantRowOut):
     )
 
 
+class HouseholdPageLinkOut(HouseholdLinkRow):
+    """A Linked households row (owner ruling 2026-10-04, late): the link, plus the household as its card names it
+    (HouseholdCardOut's family_name, adults and city, read the same way), so it reads as a family and not a number.
+    Defaulted only so older clients' fixtures still type-check; the page always fills them."""
+
+    family_name: str = ""
+    adults: list[str] = Field(default_factory=list)
+    city: str = ""
+
+
 class HouseholdPageResponse(BaseModel):
     year: int
     household_cm_id: int
@@ -195,7 +205,7 @@ class HouseholdPageResponse(BaseModel):
     grants: list[HouseholdGrantRowOut]
     expected: list[ExpectedOut]
     postings: list[AidPostingLine]
-    links: list[HouseholdLinkRow]
+    links: list[HouseholdPageLinkOut]
     history: list[HistoryEntryOut]
     override_reasons: list[str] = Field(
         default_factory=list

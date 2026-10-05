@@ -56,6 +56,7 @@ from tests.unit.api.services.decisions_fakes import (
 from tests.unit.api.services.financial_aid_fakes import YEAR
 
 JOHNSON, GARCIA, OTHER = 1000001, 1000002, 1000003
+LINKED = 1000004  # a household linked into the Johnsons' family, outside the page's scope
 EMMA, LIAM, OLIVIA = "reqemma00000001", "reqliam00000001", "reqoliv00000001"
 
 
@@ -540,6 +541,8 @@ class _Ledger:
         self.posting_reads: list[frozenset[int]] = []
         self.name_reads: list[frozenset[str]] = []
         self.count_reads: list[frozenset[int]] = []
+        self.household_reads: list[frozenset[int]] = []
+        self.member_reads: list[frozenset[int]] = []
 
     async def fetch_postings(
         self, year: int, household_ids: Collection[int] | None = None, *, include_reversed: bool = False
@@ -552,6 +555,7 @@ class _Ledger:
         return []
 
     async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+        self.household_reads.append(frozenset(cm_ids))
         rows = [
             SimpleNamespace(
                 cm_id=JOHNSON,
@@ -571,8 +575,41 @@ class _Ledger:
                 billing_state="",
                 billing_postal_code="",
             ),
+            SimpleNamespace(
+                cm_id=LINKED,
+                mailing_title="",
+                greeting="The Chen Family",
+                household_phone="555-0100",
+                billing_city="Oak Valley",
+                billing_state="CA",
+                billing_postal_code="",
+            ),
         ]
         return [h for h in rows if h.cm_id in cm_ids]
+
+    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+        self.member_reads.append(frozenset(household_ids))
+        people = [
+            SimpleNamespace(
+                cm_id=1000021,
+                first_name="Olivia",
+                preferred_name="",
+                last_name="Chen",
+                household_id=LINKED,
+                primary_email="",
+                parent_names=[{"first": "Sam", "last": "Chen"}, {"first": "Riley", "last": "Sam"}],
+            ),
+            SimpleNamespace(
+                cm_id=1000022,
+                first_name="Liam",
+                preferred_name="",
+                last_name="Chen",
+                household_id=LINKED,
+                primary_email="",
+                parent_names=[{"first": "Sam", "last": "Chen"}],
+            ),
+        ]
+        return [p for p in people if p.household_id in household_ids]
 
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
         people = [
@@ -614,7 +651,7 @@ class _Ledger:
             SimpleNamespace(
                 id="lnk000000000002",
                 year=YEAR,
-                household_cm_id=1000004,
+                household_cm_id=LINKED,
                 family_key="fam-1",
                 source="auto",
                 excluded=False,
@@ -766,7 +803,61 @@ async def test_the_page_lists_the_scopes_postings_grants_incomes_and_links_only(
     assert ledger.posting_reads == [frozenset({JOHNSON, GARCIA})]
     assert [g.transaction_cm_id for g in page.grants] == [9001]
     assert [i.household_cm_id for i in page.incomes] == [JOHNSON, GARCIA]
-    assert [ln.household_cm_id for ln in page.links] == [JOHNSON, 1000004]  # the whole linked family, D26 aside
+    assert [ln.household_cm_id for ln in page.links] == [JOHNSON, LINKED]  # the whole linked family, D26 aside
+
+
+@pytest.mark.asyncio
+async def test_each_linked_household_carries_its_name_adults_and_city_as_a_card_shows_them() -> None:
+    """Owner ruling 2026-10-04 (late): a linked household reads as a family, not "household 1000004 · auto". Its
+    name, adults and city are read the way a household card's are, so a linked household in the page's scope says
+    exactly what its card says."""
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [(ln.household_cm_id, ln.family_name, ln.adults, ln.city) for ln in page.links] == [
+        (JOHNSON, "The Johnson Family", ["Alex Garcia", "Pat Johnson"], "Riverside, CA"),
+        (LINKED, "The Chen Family", ["Riley Sam", "Sam Chen"], "Oak Valley, CA"),
+    ]
+    card = page.households[0]
+    assert (page.links[0].family_name, page.links[0].adults, page.links[0].city) == (
+        card.family_name,
+        card.adults,
+        card.city,
+    )
+    # The existing fields stay.
+    assert (page.links[1].id, page.links[1].family_key, page.links[1].source) == ("lnk000000000002", "fam-1", "auto")
+
+
+@pytest.mark.asyncio
+async def test_only_linked_households_outside_the_scope_are_read_for_their_details() -> None:
+    ledger = _Ledger()
+    await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
+    assert ledger.household_reads == [frozenset({JOHNSON, GARCIA}), frozenset({LINKED})]
+    assert ledger.member_reads == [frozenset({LINKED})]
+
+
+@pytest.mark.asyncio
+async def test_a_linked_household_with_no_record_reads_as_its_number_with_no_adults_or_city() -> None:
+    class _Unknown(_Ledger):
+        async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+            return [h for h in await super().fetch_households(year, cm_ids) if h.cm_id != LINKED]
+
+        async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+            return []
+
+    page = await _page_service(_family(), ledger=_Unknown()).read(YEAR, JOHNSON)
+    linked = page.links[1]
+    assert (linked.family_name, linked.adults, linked.city) == ("Household 1000004", [], "")
+
+
+@pytest.mark.asyncio
+async def test_no_extra_household_read_when_every_link_is_in_the_scope() -> None:
+    class _InScope(_Ledger):
+        async def fetch_links(self, year: int) -> list[Any]:
+            return [ln for ln in await super().fetch_links(year) if ln.household_cm_id != LINKED]
+
+    ledger = _InScope()
+    page = await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
+    assert [ln.household_cm_id for ln in page.links] == [JOHNSON]
+    assert (ledger.household_reads, ledger.member_reads) == ([frozenset({JOHNSON, GARCIA})], [])
 
 
 @pytest.mark.asyncio
