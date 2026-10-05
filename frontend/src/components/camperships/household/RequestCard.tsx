@@ -1,10 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
-import type {
-  ApiAidHouseholdPage,
-  ApiAidHouseholdRequest,
-  ApiAidReceipt,
-} from '../../../types/api-types'
+import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { ExternalLink } from 'lucide-react'
 
 import { CampMinderIcon } from '../../icons'
@@ -12,7 +8,6 @@ import type { AidView } from '../kit/asOf'
 import { Money } from '../kit/MoneyText'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { ConfirmationState, HouseholdChip, StatusPill } from '../kit/Pills'
-import { Receipt } from '../kit/Receipt'
 import { requestStage } from '../requests/stage'
 import { DecisionPanel } from './DecisionPanel'
 import {
@@ -21,17 +16,15 @@ import {
   camperOf,
   cancellationWords,
   cardCost,
-  earlierReceipts,
   householdChipName,
-  latestReceipt,
-  opensByItself,
   requestStatusWords,
   roundLines,
   shareConfirmation,
   unreachedRounds,
   type RoundLine,
 } from './householdModel'
-import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE, HH_TOGGLE } from './householdStyles'
+import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE } from './householdStyles'
+import { ReceiptVersions } from './ReceiptVersions'
 
 /**
  * A CampMinder link (N7): "Person" in Title Case (CampMinder has no household record; Decision 2), drawn as the summer camper panel
@@ -48,47 +41,6 @@ export function CampMinderLink({ href, label }: { href: string; label: 'Person' 
       <span>{label}</span>
       <ExternalLink className="h-3 w-3 opacity-60" />
     </a>
-  )
-}
-
-function EarlierReceipts({
-  receipts,
-  view,
-}: {
-  receipts: readonly ApiAidReceipt[]
-  view: AidView
-}) {
-  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set())
-  if (receipts.length === 0) return null
-  const toggle = (round: number) =>
-    setOpen((previous) => {
-      const next = new Set(previous)
-      if (next.has(round)) next.delete(round)
-      else next.add(round)
-      return next
-    })
-  return (
-    <div className="space-y-1">
-      {receipts.map((receipt) => {
-        const n = String(receipt.round)
-        const shown = open.has(receipt.round)
-        // M18: a 2026 receipt is reproduced from the sheet, not what was posted.
-        const as =
-          receipt.label.kind === 'live'
-            ? 'worked out now'
-            : receipt.label.kind === 'reproduced'
-              ? `reproduced from the ${String(receipt.label.season)} sheet`
-              : 'posted'
-        return (
-          <div key={receipt.round}>
-            <button type="button" className={HH_TOGGLE} onClick={() => toggle(receipt.round)}>
-              {shown ? `Hide Round ${n}'s receipt ▴` : `Round ${n} as ${as} ▾`}
-            </button>
-            {shown && <Receipt trace={receipt.trace} label={receipt.label} view={view} />}
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
@@ -199,8 +151,8 @@ interface RequestCardProps {
 
 /**
  * One request's card (§6.3 item 4; D32, D34, D50, D59, D81; decision-panel.html, round7.html): its
- * header, the latest receipt folded under its sentence (opening by itself on a hold or a would-change
- * flag), the per-round decision panel, and its money: one line for one payer, a share table with
+ * header, the receipt folded under its sentence with a switcher across its versions (opening by
+ * itself on a hold), the per-round decision panel, and its money: one line for one payer, a share table with
  * each share's own confirmation for several.
  */
 export function RequestCard({
@@ -215,7 +167,6 @@ export function RequestCard({
   const row = request.row
   const stage = requestStage(row)
   const applied = appliedBy(request, page)
-  const latest = latestReceipt(request)
   const lines = roundLines(request)
   const statusWords = requestStatusWords(row.request_status)
   const cost = cardCost(request)
@@ -246,22 +197,8 @@ export function RequestCard({
           <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>
         </div>
       )}
-      {latest && (
-        <Receipt
-          trace={latest.trace}
-          label={latest.label}
-          view={view}
-          folded
-          openByItself={opensByItself(request)}
-        />
-      )}
-      <EarlierReceipts
-        // The server gives every unposted round the same live receipt: shown once, under the sentence (M8).
-        receipts={earlierReceipts(request).filter(
-          (receipt) => !(receipt.label.kind === 'live' && latest?.label.kind === 'live')
-        )}
-        view={view}
-      />
+      {/* Round 3 (B): one receipt, a switcher across its versions, each diffed against the one before. */}
+      <ReceiptVersions request={request} view={view} />
       {/* The server's notes (calculator warnings, D81's "not yet marked posted"), as the grid's attention cell words them. */}
       {(row.notes ?? []).map((issue, index) => (
         <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>

@@ -173,29 +173,31 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(screen.getByText('applied by')).toBeInTheDocument()
   })
 
-  it('calls a 2026 receipt reproduced, never posted (M18)', () => {
+  it('calls a 2026 receipt reproduced, never posted (M18)', async () => {
     renderCard(
       householdRequest(ROW_EMMA, {
         receipts: [receiptOut(1, { kind: 'reproduced', season: 2026 }), receiptOut(2)],
       })
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
     expect(
-      screen.getByRole('button', { name: 'Round 1 as reproduced from the 2026 sheet ▾' })
+      screen.getByRole('button', { name: /^Round 1 as reproduced from the 2026 sheet/ })
     ).toBeInTheDocument()
   })
 
-  it("names the receipt's own season, never a hardcoded year (M5)", () => {
+  it("names the receipt's own season, never a hardcoded year (M5)", async () => {
     renderCard(
       householdRequest(ROW_EMMA, {
         receipts: [receiptOut(1, { kind: 'reproduced', season: 2025 }), receiptOut(2)],
       })
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
     expect(
-      screen.getByRole('button', { name: 'Round 1 as reproduced from the 2025 sheet ▾' })
+      screen.getByRole('button', { name: /^Round 1 as reproduced from the 2025 sheet/ })
     ).toBeInTheDocument()
   })
 
-  it("opens an earlier round's receipt on click (Decision 35)", async () => {
+  it("opens an earlier round's receipt from the version switcher (Decision 35; round 3 (B))", async () => {
     renderCard(
       householdRequest(ROW_EMMA, {
         receipts: [
@@ -209,7 +211,8 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         ],
       })
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Round 1 as posted ▾' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Round 1 as posted/ }))
     expect(screen.getByText(/locked Mar 9 by Test User's Posted tick/)).toBeInTheDocument()
   })
 
@@ -342,6 +345,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
 
     it('shows the live receipt once when several unposted rounds share it (M8)', () => {
       renderCard(householdRequest(ROW_OLIVIA, { receipts: [receiptOut(1), receiptOut(2)] }))
+      expect(screen.getByRole('button', { name: 'Show the receipt ▾' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^Round 1 as/ })).toBeNull()
     })
 

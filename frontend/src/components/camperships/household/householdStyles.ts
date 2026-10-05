@@ -132,3 +132,39 @@ export const HH_FIELD =
 export const HH_FIELD_TEXT = `${HH_FIELD} w-[300px] max-w-full`
 /** A figure (the mock's input.n): 90px, right-aligned. */
 export const HH_FIELD_NUMBER = `${HH_FIELD} w-[90px] text-right tabular-nums`
+
+// round 3 · receipt versions (household-v3.html section 1 (B)) ─────────────────────────────────
+
+/** The version switcher (the mock's .seg): a tinted well of buttons, the picked one raised. */
+export const HH_SEG =
+  'bg-muted/55 border-border inline-flex flex-wrap gap-1 rounded-[10px] border p-1'
+export const HH_SEG_BUTTON =
+  'inline-flex cursor-pointer items-baseline gap-[7px] whitespace-nowrap rounded-[7px] border px-[11px] py-1 text-[12.5px]'
+export const HH_SEG_OFF = 'text-muted-foreground border-transparent'
+export const HH_SEG_ON = 'bg-card border-border text-foreground shadow-sm'
+/** The switcher's version name; forest on the picked one. */
+export const HH_SEG_NAME = 'text-foreground font-semibold'
+export const HH_SEG_NAME_ON = 'text-forest-800 font-semibold dark:text-forest-200'
+/** The receipt across the card in three columns (the mock's .hrc). */
+export const HH_RECEIPT_COLUMNS =
+  'border-border divide-border grid grid-cols-3 divide-x overflow-hidden rounded-[10px] border'
+/** A section's name in a column (the mock's .hrc .sh): 11.5px bold, muted. */
+export const HH_RECEIPT_SECTION = 'text-muted-foreground px-3 pt-1.5 pb-px text-[11.5px] font-bold'
+/** One line (the mock's .hrc .ln): label left, value right, a click opens how it was worked out. */
+export const HH_RECEIPT_LINE =
+  'grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-3 py-[3px] text-left text-[13px]'
+/** The weekend multi-submission diff grammar (BunkingRequestPanel's ADD / DEL). */
+export const HH_DIFF_ADD = 'font-semibold text-green-700 no-underline dark:text-green-300'
+export const HH_DIFF_DEL = 'text-red-600 line-through dark:text-red-400'
+/** A changed or new line: a 3px green edge on a light green tint. */
+export const HH_LINE_CHANGED =
+  'bg-green-50 shadow-[inset_3px_0_0_var(--color-green-700)] dark:bg-green-900/20 dark:shadow-[inset_3px_0_0_var(--color-green-300)]'
+/** A line the earlier version had and this one doesn't: a 3px red edge on a light red tint. */
+export const HH_LINE_GONE =
+  'bg-red-50 shadow-[inset_3px_0_0_var(--color-red-600)] dark:bg-red-900/25 dark:shadow-[inset_3px_0_0_var(--color-red-400)]'
+/** The "new" / "gone" tag beside a line's label (the mock's .newtag). */
+export const HH_LINE_TAG =
+  'ml-1.5 rounded border border-current px-1 align-[1px] text-[10.5px] font-bold'
+/** The total line closing the last column (the mock's .hrc .tot). */
+export const HH_RECEIPT_TOTAL =
+  'border-border mt-1 grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2.5 border-t px-3 pt-[7px] pb-1 text-left text-sm font-bold'

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { NEGATIVE_INK } from './aidStyles'
@@ -72,8 +72,21 @@ interface ReceiptProps {
   view?: AidView | undefined
   /** The household page folds receipts under their sentence (D34). */
   folded?: boolean | undefined
-  /** …except on a hold, or while a would-change flag shows (D34), including one that arrives later. */
+  /** …except on a hold (D34), including one that arrives later. */
   openByItself?: boolean | undefined
+  /**
+   * The household page's receipt versions (round 3; household-v3.html section 1 (B)): when given, the
+   * fold toggle reads `showWords`, `head` (the version switcher) heads the opened receipt above its
+   * label, `lines` replaces the line box, and `onFold` hears the receipt fold. Absent, nothing changes.
+   */
+  versions?: ReceiptVersionsSlot | undefined
+}
+
+export interface ReceiptVersionsSlot {
+  readonly showWords: string
+  readonly head: ReactNode
+  readonly lines: ReactNode
+  readonly onFold?: (() => void) | undefined
 }
 
 /** K3: 14px at line-height 1.55, padding 8/12, a 30% muted tint, radius 10. */
@@ -93,12 +106,13 @@ export function Receipt({
   view,
   folded = false,
   openByItself = false,
+  versions,
 }: ReceiptProps) {
   const [open, setOpen] = useState(!folded || openByItself)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
   const sections = useMemo(() => receiptSections(trace), [trace])
 
-  // Ruling 2026-10-01 (plan review): a hold or flag that arrives after the first render opens it
+  // Ruling 2026-10-01 (plan review): a hold that arrives after the first render opens it
   // too. Adjusted during render (React's pattern for state that follows a prop), not in an effect.
   const [sawOpenByItself, setSawOpenByItself] = useState(openByItself)
   if (openByItself !== sawOpenByItself) {
@@ -116,17 +130,27 @@ export function Receipt({
 
   return (
     <div className="space-y-1.5">
+      {versions !== undefined && open && versions.head}
       <ReceiptLabelLine label={label} view={view} />
       {/* K3: the sentence in a tinted rounded box (receipt.html D; the household mock's .sentence). */}
       <ReceiptSentence trace={trace} className={SENTENCE_BOX} />
       {folded && (
-        <button type="button" className={FOLD_TOGGLE} onClick={() => setOpen((o) => !o)}>
+        <button
+          type="button"
+          className={FOLD_TOGGLE}
+          onClick={() => {
+            if (open) versions?.onFold?.()
+            setOpen(!open)
+          }}
+        >
           {open
             ? 'Hide the receipt ▴'
-            : `Show the receipt (${String(receiptLineCount(trace))} lines) ▾`}
+            : (versions?.showWords ??
+              `Show the receipt (${String(receiptLineCount(trace))} lines) ▾`)}
         </button>
       )}
-      {(!folded || open) && (
+      {versions !== undefined && (!folded || open) && versions.lines}
+      {versions === undefined && (!folded || open) && (
         // K4: the opened lines stay near their labels (capped narrower than the mock's ~640px, since
         // these lines have no note column), never the page's full width.
         <div className="border-border divide-border max-w-[520px] divide-y rounded-lg border text-[13px]">
