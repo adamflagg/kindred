@@ -9,7 +9,7 @@ import {
   cardPlaceLine,
   cardShares,
   firstCamperOf,
-  householdName,
+  householdChipName,
 } from './householdModel'
 import { HH_HOUSEHOLD_CARD, HH_NOTE, stripeOf } from './householdStyles'
 import { CampMinderLink } from './RequestCard'
@@ -29,7 +29,7 @@ function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAid
       className={`${HH_HOUSEHOLD_CARD} ${stripeOf(card.chip)}`}
     >
       <div className="flex items-start gap-2">
-        <HouseholdChip index={card.chip} name={householdName(page, card.household_cm_id)} />
+        <HouseholdChip index={card.chip} name={householdChipName(page, card.household_cm_id)} />
         {card.household_cm_id === page.household_cm_id && (
           <span className={HH_NOTE}>opened from</span>
         )}

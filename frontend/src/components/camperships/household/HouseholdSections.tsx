@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import type {
   ApiAidAnswer,
   ApiAidHouseholdLink,
+  ApiAidHouseholdPageLink,
   ApiAidHouseholdPage,
   ApiAidIncome,
 } from '../../../types/api-types'
@@ -19,7 +20,7 @@ import {
   answerWords,
   expectedWords,
   householdChip,
-  householdName,
+  householdChipName,
   multiHousehold,
   noteWords,
 } from './householdModel'
@@ -220,7 +221,7 @@ function PricedCard({ page, income }: { page: ApiAidHouseholdPage; income: ApiAi
   const pct = pctWords(facts.adjusted, facts.confirmed)
   const rows: Array<[string, ReactNode]> = []
   if (facts.adjusted !== null) {
-    rows.push(['Adjusted income', <b key="v">{formatMoney(facts.adjusted)}</b>])
+    rows.push(['Adjusted income (as priced)', <b key="v">{formatMoney(facts.adjusted)}</b>])
   }
   if (facts.confirmed !== null) {
     rows.push([
@@ -329,7 +330,7 @@ export function IncomePanel({
         {multiHousehold(page) && (
           <HouseholdChip
             index={householdChip(page, first.household_cm_id) ?? 0}
-            name={householdName(page, first.household_cm_id)}
+            name={householdChipName(page, first.household_cm_id)}
           />
         )}
         <div className="grid items-start gap-x-8 gap-y-3 lg:grid-cols-[max-content_minmax(0,1fr)]">
@@ -346,7 +347,7 @@ export function IncomePanel({
           <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <HouseholdChip
               index={householdChip(page, income.household_cm_id) ?? 0}
-              name={householdName(page, income.household_cm_id)}
+              name={householdChipName(page, income.household_cm_id)}
             />
             <HalfMeta page={page} income={income} />
           </div>
@@ -491,21 +492,12 @@ export function GrantsPostingsPanel({
 
 // ── Linked households (§6.3 †; Decision 27: read only; N9) ───────────────────
 
-/**
- * The family details #3004 adds to each link. Typed optional here until the restack brings the
- * regenerated types; the lead tightens it then.
- */
-type LinkWithFamily = ApiAidHouseholdLink & {
-  readonly family_name?: string | undefined
-  readonly adults?: readonly string[] | undefined
-  readonly city?: string | undefined
-}
-
-/** "The Lee Family · Ava Lee, Noah Lee · Riverside, CA", when the page carries them (owner 10-04). */
-function familyWords(link: LinkWithFamily): string {
-  return [link.family_name ?? '', (link.adults ?? []).join(', '), link.city ?? '']
-    .filter(nonEmpty)
-    .join(' · ')
+/** "The Lee Family · Ava Lee, Noah Lee · Riverside, CA"; blank when the page carries no family name (owner 10-04). */
+function familyWords(link: ApiAidHouseholdPageLink): string {
+  // The server defaults family_name and city to "" and adults to []: test for blank, never `??`.
+  const name = link.family_name ?? ''
+  if (!nonEmpty(name)) return ''
+  return [name, (link.adults ?? []).join(', '), link.city ?? ''].filter(nonEmpty).join(' · ')
 }
 
 /** The link itself: "household 1000004 · staff · excluded · <note>". */
@@ -523,7 +515,7 @@ function linkDetail(link: ApiAidHouseholdLink): string {
 export function LinksPanel({ page }: { page: ApiAidHouseholdPage }) {
   return (
     <ul className="text-[13px]">
-      {page.links.map((link: LinkWithFamily) => {
+      {page.links.map((link) => {
         const family = familyWords(link)
         return (
           <li key={link.id} className="border-border border-b py-1 last:border-b-0">

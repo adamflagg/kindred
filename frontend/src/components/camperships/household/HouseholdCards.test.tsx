@@ -5,6 +5,23 @@ import { householdPage, SPLIT_PAGE } from './householdFixtures'
 import { HouseholdCards } from './HouseholdCards'
 
 describe('HouseholdCards (§6.3 item 2; D32)', () => {
+  it('chips carry the short name when there is one, else the family name (O3)', () => {
+    const [a, b] = SPLIT_PAGE.households
+    render(
+      <HouseholdCards
+        page={{
+          ...SPLIT_PAGE,
+          households: [
+            { ...a!, short_name: 'Johnsons' },
+            { ...b!, short_name: '' },
+          ],
+        }}
+      />
+    )
+    expect(screen.getByText('1 · Johnsons')).toBeInTheDocument()
+    expect(screen.getByText('2 · The Garcia Family')).toBeInTheDocument()
+  })
+
   it('draws nothing for one household: its details are in the band', () => {
     const { container } = render(<HouseholdCards page={householdPage()} />)
     expect(container).toBeEmptyDOMElement()

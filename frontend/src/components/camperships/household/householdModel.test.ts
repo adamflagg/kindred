@@ -20,11 +20,10 @@ import {
   earlierReceipts,
   expectedWords,
   firstCamperOf,
-  historyLine,
   householdCsvName,
+  householdChipName,
   householdName,
   latestReceipt,
-  linkWords,
   noteWords,
   opensByItself,
   cardConfirmation,
@@ -51,6 +50,29 @@ describe('the band (§6.3 item 1; D32, D77; Decision 18)', () => {
     expect(bandSubtitle(SPLIT_PAGE)).toBe(
       '2 households with a financial stake · opened from The Johnson Family'
     )
+  })
+
+  it('chips name a household by its short name, falling back to the family name on ""', () => {
+    const page = householdPage({
+      households: [
+        householdCard({
+          household_cm_id: 1000001,
+          family_name: 'The Johnson Family',
+          short_name: 'Johnson',
+        }),
+        householdCard({
+          household_cm_id: 1000002,
+          family_name: 'The Garcia Family',
+          short_name: '',
+          chip: 2,
+        }),
+      ],
+    })
+    expect(householdChipName(page, 1000001)).toBe('Johnson')
+    expect(householdChipName(page, 1000002)).toBe('The Garcia Family')
+    expect(householdChipName(page, 9999999)).toBe('Household 9999999')
+    // The full name is untouched: the band and sentences keep it.
+    expect(householdName(page, 1000001)).toBe('The Johnson Family')
   })
 
   // Guard: the server never sends a blank family_name today.
@@ -332,19 +354,7 @@ describe('words', () => {
     )
   })
 
-  it('words a household link and a note key (review M3)', () => {
-    expect(
-      linkWords({
-        id: 'link00000000001',
-        year: 2027,
-        household_cm_id: 1000003,
-        family_key: 'k',
-        source: 'staff',
-        excluded: true,
-        note: 'Same family',
-        actor: 'Test User',
-      })
-    ).toBe('household 1000003 · staff · excluded · Same family')
+  it('words a note key (review M3)', () => {
     expect(noteWords('special_circumstances')).toBe('Special financial circumstances')
   })
 
@@ -357,12 +367,6 @@ describe('words', () => {
     expect(expectedWords(PAGE.expected[0]!)).toBe('Expected: synagogue grant · Emma Johnson')
     expect(expectedWords({ ...PAGE.expected[0]!, kind: 'one_happy_camper' })).toBe(
       'Expected: incentive grant (family says it applied) · Emma Johnson'
-    )
-  })
-
-  it('reads a history entry as who, what and why', () => {
-    expect(historyLine(PAGE.history[1]!)).toBe(
-      'test@example.com · Tick posted · decision events reqsamuel000005:1 · Entered in CampMinder'
     )
   })
 })

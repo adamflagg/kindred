@@ -59,6 +59,7 @@ import type {
   HoldReleaseIn,
   HouseholdCardOut,
   HouseholdLinkRow,
+  HouseholdPageLinkOut,
   HouseholdPageResponse,
   HouseholdRequestOut,
   HouseholdShareSet,
@@ -196,5 +197,7 @@ export type ApiAidSessionIn = SessionResolve
 export type ApiAidDuplicateIn = DuplicateMark
 export type ApiAidHeadcountIn = HeadcountSet
 export type ApiAidHouseholdLink = HouseholdLinkRow
+/** A link as the household page carries it: the row plus its family's name, adults and city (#3004). */
+export type ApiAidHouseholdPageLink = HouseholdPageLinkOut
 /** A hold, note or check on a request. Mirrors Python `IssueOut`. */
 export type ApiAidIssue = IssueOut

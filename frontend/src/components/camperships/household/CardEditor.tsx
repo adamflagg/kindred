@@ -15,7 +15,7 @@ import {
 } from '../kit/RequestEditor'
 import { roundOf } from '../requests/stage'
 import type { CardEditKind } from './cardEdits'
-import { householdChip, householdName } from './householdModel'
+import { householdChip, householdChipName, householdName } from './householdModel'
 import { HH_EDITOR_BOX, HH_EDITOR_HEAD } from './householdStyles'
 
 const KIND = {
@@ -71,7 +71,7 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
   const householdOf = useCallback(
     (id: number): PreviewHousehold => ({
       chip: householdChip(page, id),
-      name: householdName(page, id),
+      name: householdChipName(page, id),
     }),
     [page]
   )

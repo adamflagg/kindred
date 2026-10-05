@@ -8,9 +8,7 @@ import type {
   ApiAidConfirmation,
   ApiAidConfirmationState,
   ApiAidExpected,
-  ApiAidHistoryEntry,
   ApiAidHouseholdCard,
-  ApiAidHouseholdLink,
   ApiAidHouseholdPage,
   ApiAidHouseholdRequest,
   ApiAidReceipt,
@@ -140,6 +138,15 @@ export function householdName(page: ApiAidHouseholdPage, householdCmId: number):
   return name !== undefined && nonEmpty(name) ? name : `Household ${String(householdCmId)}`
 }
 
+/**
+ * What a household CHIP says (O3): the short name, else the family name. `||`, not `??`: the server
+ * defaults short_name to "" so `??` would never fall back. The band and sentences keep householdName.
+ */
+export function householdChipName(page: ApiAidHouseholdPage, householdCmId: number): string {
+  const short = page.households.find((h) => h.household_cm_id === householdCmId)?.short_name
+  return (short !== undefined && nonEmpty(short) ? short : '') || householdName(page, householdCmId)
+}
+
 export function householdChip(page: ApiAidHouseholdPage, householdCmId: number): number | null {
   return page.households.find((h) => h.household_cm_id === householdCmId)?.chip ?? null
 }
@@ -180,7 +187,7 @@ export function appliedBy(
 ): { chip: number; name: string } | null {
   if (!multiHousehold(page)) return null
   const id = request.row.household_cm_id
-  return { chip: householdChip(page, id) ?? 0, name: householdName(page, id) }
+  return { chip: householdChip(page, id) ?? 0, name: householdChipName(page, id) }
 }
 
 /**
@@ -475,24 +482,6 @@ const EXPECTED_WORDS = {
 /** D56's Expected chip, naming no funder (Decision 21). */
 export function expectedWords(expected: ApiAidExpected): string {
   return [EXPECTED_WORDS[expected.kind], ...expected.camper_names].join(' · ')
-}
-
-/** "test@example.com · Tick posted · decision events reqsamuel000005:1 · Entered in CampMinder". */
-export function historyLine(entry: ApiAidHistoryEntry): string {
-  const record = `${entry.entity.replace(/^aid_/, '').replaceAll('_', ' ')} ${entry.entity_id}`
-  return [entry.actor, codeWords(entry.action), record, entry.reason].filter(nonEmpty).join(' · ')
-}
-
-/** A linked household (§6.3 †; Decision 27: read only). */
-export function linkWords(link: ApiAidHouseholdLink): string {
-  return [
-    `household ${String(link.household_cm_id)}`,
-    link.source,
-    link.excluded ? 'excluded' : '',
-    link.note,
-  ]
-    .filter(nonEmpty)
-    .join(' · ')
 }
 
 export interface CsvTable {

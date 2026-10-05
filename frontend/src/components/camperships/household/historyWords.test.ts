@@ -188,6 +188,7 @@ describe('who: staff by a readable name, the system by its job', () => {
 
   it("falls back to the sign-in's first word, capitalised, never the whole email", () => {
     expect(whoWords('riley.sam@example.org', new Map())).toBe('Riley')
+    expect(whoWords('sam_riley@example.org', new Map())).toBe('Sam')
     expect(whoWords('', new Map())).toBe('Someone')
   })
 })

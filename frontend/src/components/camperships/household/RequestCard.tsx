@@ -23,7 +23,7 @@ import {
   cancellationWords,
   cardCost,
   earlierReceipts,
-  householdName,
+  householdChipName,
   latestReceipt,
   opensByItself,
   requestStatusWords,
@@ -131,7 +131,7 @@ function MoneyLine({
       {other && (
         <span className="inline-flex items-center gap-1.5">
           <span className={HH_NOTE}>paid by</span>
-          <PayerLabel chip={other.chip} name={householdName(page, other.household_cm_id)} />
+          <PayerLabel chip={other.chip} name={householdChipName(page, other.household_cm_id)} />
         </span>
       )}
       {/* D13: the mock's "Decided $X · Posted $Y". */}
@@ -174,7 +174,10 @@ function ShareTable({
           return (
             <tr key={share.household_cm_id}>
               <td className={SHARE_TD}>
-                <PayerLabel chip={share.chip} name={householdName(page, share.household_cm_id)} />
+                <PayerLabel
+                  chip={share.chip}
+                  name={householdChipName(page, share.household_cm_id)}
+                />
               </td>
               <td
                 className={`${SHARE_TD} text-right tabular-nums`}

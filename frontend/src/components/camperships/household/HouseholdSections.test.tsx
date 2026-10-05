@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ApiAidHouseholdLink } from '../../../types/api-types'
+import type { ApiAidHouseholdPageLink } from '../../../types/api-types'
 import { householdPage, householdRequest } from './householdFixtures'
 import { GrantsPostingsPanel, HistoryPanel, IncomePanel, LinksPanel } from './HouseholdSections'
 import {
@@ -108,9 +108,9 @@ describe('IncomePanel, one household: "What priced it" (owner kept the card)', (
     render(<IncomePanel page={PLAIN_PAGE} />)
     const card = screen.getByTestId('priced')
     expect(within(card).getByText('What priced it')).toBeInTheDocument()
-    expect(within(card).getByText('Adjusted income').nextElementSibling).toHaveTextContent(
-      '$120,000'
-    )
+    expect(
+      within(card).getByText('Adjusted income (as priced)').nextElementSibling
+    ).toHaveTextContent('$120,000')
     expect(within(card).getByText("Last year's confirmed").nextElementSibling).toHaveTextContent(
       '$81,000 +48%'
     )
@@ -136,7 +136,7 @@ describe('IncomePanel, one household: "What priced it" (owner kept the card)', (
       />
     )
     const card = screen.getByTestId('priced')
-    expect(within(card).queryByText('Adjusted income')).toBeNull()
+    expect(within(card).queryByText('Adjusted income (as priced)')).toBeNull()
     expect(within(card).queryByText('Income tier')).toBeNull()
     expect(within(card).getByText("Last year's confirmed").nextElementSibling).toHaveTextContent(
       '$81,000'
@@ -260,7 +260,7 @@ describe('GrantsPostingsPanel (§6.3 item 6; D30, D31, D56, D74, D127)', () => {
 })
 
 describe('LinksPanel (§6.3 †; Decision 27; owner 10-04: links read as families)', () => {
-  const link: ApiAidHouseholdLink = TWO_HOUSEHOLD_PAGE.links[0]!
+  const link: ApiAidHouseholdPageLink = TWO_HOUSEHOLD_PAGE.links[0]!
 
   it("reads a link as today's words while the page carries no family details", () => {
     render(<LinksPanel page={TWO_HOUSEHOLD_PAGE} />)
@@ -268,6 +268,20 @@ describe('LinksPanel (§6.3 †; Decision 27; owner 10-04: links read as familie
       screen.getByText('household 1000004 · staff · excluded · Grandparent address, not a payer')
     ).toBeInTheDocument()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('falls back to the words when the family name is blank, even if adults and city came', () => {
+    render(
+      <LinksPanel
+        page={{
+          ...TWO_HOUSEHOLD_PAGE,
+          links: [{ ...link, family_name: '', adults: ['Ava Lee'], city: 'Riverside, CA' }],
+        }}
+      />
+    )
+    expect(screen.getByRole('listitem').textContent).toBe(
+      'household 1000004 · staff · excluded · Grandparent address, not a payer'
+    )
   })
 
   it('reads a link as a family once the page carries its name, adults and city (#3004)', () => {
@@ -281,7 +295,7 @@ describe('LinksPanel (§6.3 †; Decision 27; owner 10-04: links read as familie
               family_name: 'The Lee Family',
               adults: ['Ava Lee', 'Noah Lee'],
               city: 'Riverside, CA',
-            } as ApiAidHouseholdLink,
+            },
           ],
         }}
       />

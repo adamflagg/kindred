@@ -32,7 +32,7 @@ describe('holds (main spec §10.5; Decision 25)', () => {
   // B26 (ruled 10-04 late): an above-cost hold names its three fixes; the amount is the card's editor.
   it('points an above-cost hold at the award on its card, and names the three fixes', () => {
     expect(fixLink('award_above_cost', 'reqliam00000002')).toEqual({
-      label: 'Edit the Award ↓',
+      label: 'Change the Amount ↓',
       href: '#request-reqliam00000002',
     })
     expect(fixWords('award_above_cost')).toBe('Three fixes: the cost, the grants, or the amount.')

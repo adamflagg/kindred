@@ -25,8 +25,6 @@ export function stripeOf(chip: number): string {
   )
 }
 
-/** D27: a section title is the request card's title (DM Sans 13.5 bold); Fraunces belongs to the band alone. */
-export const SECTION_TITLE = 'font-sans text-[13.5px] font-bold tracking-[-0.011em]'
 /** The family's share is the band's answer (D77): amber on the forest band. */
 export const FAMILY_SHARE_INK = 'text-amber-300 dark:text-amber-300'
 

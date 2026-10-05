@@ -15,7 +15,7 @@ export const UNRELEASABLE_CODES: ReadonlySet<string> = new Set([
 
 /**
  * Where on the page a hold's cause is fixed (B30: Title Case, as the grid's next steps): "Enter the
- * Income ↓" to the income, "Set the Shares ↓" and "Edit the Award ↓" to the request's card, where
+ * Income ↓" to the income, "Set the Shares ↓" and "Change the Amount ↓" to the request's card, where
  * Payer Shares… and the money editors are.
  */
 export function fixLink(code: string, requestId: string): { label: string; href: string } | null {
@@ -25,7 +25,7 @@ export function fixLink(code: string, requestId: string): { label: string; href:
   if (code === 'payer_shares_incomplete')
     return { label: 'Set the Shares ↓', href: `#request-${requestId}` }
   if (code === 'award_above_cost')
-    return { label: 'Edit the Award ↓', href: `#request-${requestId}` }
+    return { label: 'Change the Amount ↓', href: `#request-${requestId}` }
   return null
 }
 

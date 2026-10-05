@@ -71,7 +71,7 @@ describe('HoldActions (Decision 25)', () => {
     expect(
       screen.getByText('Three fixes: the cost, the grants, or the amount.')
     ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Edit the Award ↓' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Change the Amount ↓' })).toHaveAttribute(
       'href',
       '#request-reqemma00000001'
     )
