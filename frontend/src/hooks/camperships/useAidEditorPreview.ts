@@ -28,8 +28,9 @@ function openingPreview(
 ) {
   return {
     queryKey: queryKeys.aidPreview(requestId, round, amount),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      previewAidEdit(fetchWithAuth, requestId, { round, amount }, signal),
+    // No abort signal: a card that unmounts (StrictMode's dev remount, a tab switch) would cancel
+    // and re-ask a read worth one season read; its answer is cheap to keep instead.
+    queryFn: () => previewAidEdit(fetchWithAuth, requestId, { round, amount }),
     retry: false,
   } as const
 }

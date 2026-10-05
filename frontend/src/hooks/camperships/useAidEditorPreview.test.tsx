@@ -229,6 +229,25 @@ describe('useAidEditorPreview: the amount an editor opens on (R2)', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps a prefetch whose card remounted mid-read, rather than asking twice', async () => {
+    let answer: ((response: Response) => void) | undefined
+    fetchSpy.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve
+        })
+    )
+    const first = renderHook(() => usePrefetchAidPreview('reqolivia000003', 3, 500), { wrapper })
+    await advance(0)
+    first.unmount()
+    renderHook(() => usePrefetchAidPreview('reqolivia000003', 3, 500), { wrapper })
+    await act(async () => {
+      answer?.(ok(OUT))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('prefetches nothing for a card whose editor opens empty', async () => {
     renderHook(() => usePrefetchAidPreview('reqolivia000003', 3, null), { wrapper })
     await advance(300)
