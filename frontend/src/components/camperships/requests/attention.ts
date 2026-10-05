@@ -37,7 +37,7 @@ const CODE_WORDS: Readonly<Record<string, string>> = {
   r2_cap_negative: 'Round 2 cap',
   unknown_override_reason: 'Unknown reason',
   // Already in CampMinder, not yet ticked here (owner ruling O4): the next step is to tick Posted.
-  in_campminder_not_ticked: 'Mark posted',
+  in_campminder_not_ticked: 'Mark Posted',
 }
 
 export function codeWords(code: string): string {

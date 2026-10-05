@@ -27,7 +27,7 @@ describe('codeWords (Decision 7)', () => {
   })
 
   it('has real words, not code words, for every pill that read as one', () => {
-    expect(codeWords('in_campminder_not_ticked')).toBe('Mark posted')
+    expect(codeWords('in_campminder_not_ticked')).toBe('Mark Posted')
     expect(codeWords('no_round1_table')).toBe('No Round 1 table')
     expect(codeWords('round3_not_allowed')).toBe('No Round 3')
     expect(codeWords('round3_not_eligible')).toBe('Round 3 not eligible')
@@ -497,7 +497,7 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
 // why (`unticked`): the pill (`label`) and a whole sentence (`message`), both drawn as sent.
 describe('Not reconciled: money with no Posted tick (#2996)', () => {
   const SENTENCE =
-    'CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click Mark posted.'
+    'CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click Mark Posted.'
   const short = gridRow({
     rounds: [roundOut(1, 'needs_offer', { decided: 1500 })],
     unticked: [
