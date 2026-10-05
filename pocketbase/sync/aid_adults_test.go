@@ -155,6 +155,7 @@ func seedAidAdultsCohort(t *testing.T, app core.App) (
 }
 
 func TestSyncAidAdults_PlacesEveryCohortRelativeByPrincipalRole(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	for _, h := range []int{9410001, 9410002, 9410003, 9410004} {
 		aidAdultsHousehold(t, app, h, nil)
@@ -196,6 +197,7 @@ func TestSyncAidAdults_PlacesEveryCohortRelativeByPrincipalRole(t *testing.T) {
 }
 
 func TestSyncAidAdults_RewritesEachRunAndClearsHouseholdsThatLeave(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	stale := []aidAdult{{CMID: 9499999, First: "Olivia", Last: "Chen", Role: 1}}
 	aidAdultsHousehold(t, app, 9410001, stale)
@@ -227,6 +229,7 @@ func TestSyncAidAdults_RewritesEachRunAndClearsHouseholdsThatLeave(t *testing.T)
 }
 
 func TestSyncAidAdults_FetchFailureWritesNothing(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	held := []aidAdult{{CMID: 9400101, First: "Maria", Last: "Garcia", Role: 1, IsGuardian: true}}
 	aidAdultsHousehold(t, app, 9410001, nil)
@@ -246,6 +249,7 @@ func TestSyncAidAdults_FetchFailureWritesNothing(t *testing.T) {
 }
 
 func TestSyncAidAdults_DryRunWritesNothing(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	for _, h := range []int{9410001, 9410002, 9410003, 9410004} {
 		aidAdultsHousehold(t, app, h, nil)
@@ -267,6 +271,7 @@ func TestSyncAidAdults_DryRunWritesNothing(t *testing.T) {
 }
 
 func TestSyncAidAdults_FetchesRelativesInGetPersonsBatches(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	aidAdultsHousehold(t, app, 9410001, nil)
 	aidAdultsPerson(t, app, 9400001, 9410001)
@@ -315,6 +320,7 @@ func TestRelativesOf(t *testing.T) {
 // The persons pass keeps each person's Relatives, which it already fetches, so the aid
 // step needs no second call for the campers themselves.
 func TestProcessBatchPersons_KeepsEachPersonsRelatives(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	s := NewPersonsSync(app, nil)
 	result := &personBatchResult{
@@ -337,6 +343,7 @@ func TestProcessBatchPersons_KeepsEachPersonsRelatives(t *testing.T) {
 // The household upsert writes only the keys it builds: an existing household's aid_adults
 // survives a persons run that changes its other fields.
 func TestProcessHouseholdRecord_LeavesAidAdultsAlone(t *testing.T) {
+	t.Parallel()
 	app := aidAdultsTestApp(t)
 	held := []aidAdult{{CMID: 9400101, First: "Maria", Last: "Garcia", Role: 1, IsGuardian: true}}
 	aidAdultsHousehold(t, app, 9410001, held)
@@ -369,16 +376,20 @@ func TestProcessHouseholdRecord_LeavesAidAdultsAlone(t *testing.T) {
 }
 
 func TestAidAdultsSeason_OnlyTheCurrentSeason(t *testing.T) {
-	t.Setenv("CAMPMINDER_SEASON_ID", "2026")
-	if !aidAdultsSeason(2026) {
-		t.Error("aidAdultsSeason(2026) = false with CAMPMINDER_SEASON_ID=2026")
+	t.Parallel()
+	season2026 := func() (int, error) { return 2026, nil }
+	if !aidAdultsSeason(2026, season2026) {
+		t.Error("aidAdultsSeason(2026) = false with the season configured as 2026")
 	}
-	if aidAdultsSeason(2025) {
+	if aidAdultsSeason(2025, season2026) {
 		t.Error("aidAdultsSeason(2025) = true: a historical replay must not rewrite aid_adults")
 	}
-	t.Setenv("CAMPMINDER_SEASON_ID", "")
-	if aidAdultsSeason(2026) {
+	unset := func() (int, error) { return 0, errors.New("CAMPMINDER_SEASON_ID not set") }
+	if aidAdultsSeason(2026, unset) {
 		t.Error("aidAdultsSeason(2026) = true with no season configured")
+	}
+	if aidAdultsSeason(0, unset) {
+		t.Error("aidAdultsSeason(0) = true with no season configured: an unresolved season must fail closed")
 	}
 }
 

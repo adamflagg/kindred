@@ -70,17 +70,18 @@ func relativesOf(person map[string]any) []relativeRef {
 	return out
 }
 
-// aidAdultsSeason reports whether year is the configured season. aid_adults is current state,
-// so a historical replay of the persons sync must not rewrite it.
-func aidAdultsSeason(year int) bool {
-	season, err := ParseSeasonYear()
-	return err == nil && season == year
+// aidAdultsSeason reports whether year is the configured season (season is ParseSeasonYear in
+// production; a parameter so its test needs no t.Setenv). aid_adults is current state, so a
+// historical replay of the persons sync must not rewrite it.
+func aidAdultsSeason(year int, season func() (int, error)) bool {
+	configured, err := season()
+	return err == nil && configured == year
 }
 
 // runAidAdults is the persons sync's aid step: the configured season only, its relatives
 // fetched through the run's CampMinder client. A failure is logged and counted.
 func (s *PersonsSync) runAidAdults(year int, batch *personBatchResult) {
-	if !aidAdultsSeason(year) {
+	if !aidAdultsSeason(year, ParseSeasonYear) {
 		slog.Info("Aid adults skipped: not the configured season", "year", year)
 		return
 	}
