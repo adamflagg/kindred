@@ -164,7 +164,10 @@ function Exceptions({
   return (
     <div className="min-w-0">
       {shown.length === 0 ? (
-        <p className={`${HH_NOTE} py-1`}>No corrections and no flags.</p>
+        // Another flag shows as a pill below, so the note never claims there are none.
+        <p className={`${HH_NOTE} py-1`}>
+          {others.length > 0 ? 'No corrections.' : 'No corrections and no flags.'}
+        </p>
       ) : (
         <table className={HH_TABLE}>
           <thead>

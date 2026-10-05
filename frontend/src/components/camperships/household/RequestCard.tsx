@@ -47,7 +47,7 @@ export function CampMinderLink({ href, label }: { href: string; label: 'Person' 
         <CampMinderIcon className="h-4 w-4" />
       </span>
       <span>{label}</span>
-      <ExternalLink aria-hidden="true" className="h-3 w-3 opacity-60" />
+      <ExternalLink className="h-3 w-3 opacity-60" />
     </a>
   )
 }

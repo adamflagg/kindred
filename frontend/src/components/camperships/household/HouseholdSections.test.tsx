@@ -92,6 +92,17 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
     expect(screen.getByText('Billing disagrees')).toBeInTheDocument()
   })
 
+  it('never says "no flags" beside a flag: with no exceptions it says only "No corrections."', () => {
+    render(
+      <IncomePanel
+        page={householdPage({ incomes: [income({ flags: [{ code: 'ask_conflict' }] })] })}
+      />
+    )
+    expect(screen.getByText('Ask conflict')).toBeInTheDocument()
+    expect(screen.queryByText('No corrections and no flags.')).not.toBeInTheDocument()
+    expect(screen.getByText('No corrections.')).toBeInTheDocument()
+  })
+
   it('is the target of an "Enter the Income" link only through the card, so it carries no id', () => {
     const { container } = render(<IncomePanel page={PLAIN_PAGE} />)
     expect(container.querySelector('#income')).toBeNull()
