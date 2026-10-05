@@ -160,7 +160,7 @@ export function WorkingRequestCard({
   } else if (form === 'duplicate') {
     editor = <DuplicateForm request={request} page={page} onDone={close} />
   } else if (form === 'headcount') {
-    editor = <HeadcountForm request={request} page={page} onDone={close} />
+    editor = <HeadcountForm request={request} onDone={close} />
   } else if (open?.kind === 'cancel') {
     editor = (
       <CancelForm

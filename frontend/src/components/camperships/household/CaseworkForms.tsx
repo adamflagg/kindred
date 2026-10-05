@@ -634,18 +634,15 @@ export function DuplicateForm({
 }
 
 /**
- * "Headcount…" on a Family Camp request (main spec §8): a reason code from the season's list (the
- * page's `override_reasons`, shown as the server sends them; the server has no label map) and a
- * typed reason. The code is optional on the server; it is required here whenever the season offers
- * any, since Decision 6 has the log keep it.
+ * "Headcount…" on a Family Camp request (main spec §8): the two counts and a typed reason. No reason
+ * code (item 12, owner ruling 10-05): the server's is optional and staff don't need it, so none is
+ * offered or sent.
  */
 export function HeadcountForm({
   request,
-  page,
   onDone,
 }: {
   request: ApiAidHouseholdRequest
-  page: ApiAidHouseholdPage
   onDone: () => void
 }) {
   const application = useAidApplication(request.row.household_cm_id)
@@ -653,7 +650,6 @@ export function HeadcountForm({
   const current = headcountOf(application.data, request.row.request_id)
   const [nonInfant, setNonInfant] = useState<string | null>(null)
   const [infant, setInfant] = useState<string | null>(null)
-  const [reasonCode, setReasonCode] = useState('')
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
@@ -671,7 +667,6 @@ export function HeadcountForm({
       </Note>
     )
   }
-  const codes = page.override_reasons ?? []
   // Until the person types, the fields show what the application holds.
   const shownNonInfant = nonInfant ?? String(current.nonInfant)
   const shownInfant = infant ?? String(current.infant)
@@ -683,7 +678,6 @@ export function HeadcountForm({
       if (adults.kind === 'invalid') return `Not infants: ${adults.reason}`
       if (babies.kind === 'invalid') return `Infants: ${babies.reason}`
       if (adults.value + babies.value === 0) return 'A family needs at least one person'
-      if (codes.length > 0 && reasonCode === '') return 'Pick a reason code'
       if (reason.trim() === '') return REASON_REQUIRED
       return () =>
         set
@@ -694,7 +688,6 @@ export function HeadcountForm({
               infant: babies.value,
               source: 'override',
               reason: reason.trim(),
-              ...(reasonCode === '' ? {} : { reason_code: reasonCode }),
             },
           })
           .then(onDone)
@@ -731,24 +724,6 @@ export function HeadcountForm({
             className={HH_EDITOR_NUMBER}
           />
         </label>
-        {codes.length > 0 && (
-          <label className={HH_EDITOR_LABEL}>
-            Reason code
-            <select
-              aria-label="Reason code"
-              value={reasonCode}
-              onChange={(event) => setReasonCode(event.target.value)}
-              className={HH_EDITOR_FIELD}
-            >
-              <option value="">Pick a code</option>
-              {codes.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
       </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>

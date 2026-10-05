@@ -549,7 +549,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family} onDone={done} />)
     expect(screen.getByText('Loading the headcount…')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(done).toHaveBeenCalledTimes(2)
@@ -581,7 +581,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family} onDone={done} />)
     expect(screen.getByLabelText('Not infants')).toHaveValue('2')
     await userEvent.clear(screen.getByLabelText('Not infants'))
     await userEvent.type(screen.getByLabelText('Not infants'), '3')
@@ -597,18 +597,18 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
     application = undefined
-    const { unmount } = render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    const { unmount } = render(<HeadcountForm request={family} onDone={done} />)
     expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
     expect(screen.queryByLabelText('Not infants')).toBeNull()
     unmount()
     // Read, but the request is not in it.
     application = applicationOut({ requests: [requestOut({ id: 'reqother0000099' })] })
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family} onDone={done} />)
     expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
   })
 
-  describe("the season's reason codes (Decision 6: what the page's override_reasons offers)", () => {
-    const CODES = householdPage({ override_reasons: ['headcount', 'discount'] })
+  // Item 12 (owner ruling 10-05): staff don't need a reason code; the server's is optional.
+  describe('no reason code (item 12)', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
@@ -625,33 +625,23 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       })
     })
 
-    it('offers the codes as the server sends them, and sends the one picked as reason_code', async () => {
-      render(<HeadcountForm request={family} page={CODES} onDone={done} />)
-      expect(screen.getByRole('option', { name: 'discount' })).toBeInTheDocument()
-      await userEvent.selectOptions(screen.getByLabelText('Reason code'), 'headcount')
+    it('offers no Reason code: Not infants, Infants and Reason', () => {
+      render(<HeadcountForm request={family} onDone={done} />)
+      expect(screen.queryByLabelText('Reason code')).toBeNull()
+      expect(screen.queryByRole('combobox')).toBeNull()
+      expect(screen.getByLabelText('Not infants')).toBeInTheDocument()
+      expect(screen.getByLabelText('Infants')).toBeInTheDocument()
+      expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+    })
+
+    it('sends no reason_code, and needs none to send', async () => {
+      render(<HeadcountForm request={family} onDone={done} />)
       await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
+      expect(screen.queryByText('Pick a reason code')).toBeNull()
       expect(spies.headcount).toHaveBeenCalledWith({
         requestId: 'reqfamily000010',
-        body: {
-          non_infant: 2,
-          infant: 1,
-          source: 'override',
-          reason: 'Billing shows three',
-          reason_code: 'headcount',
-        },
+        body: { non_infant: 2, infant: 1, source: 'override', reason: 'Billing shows three' },
       })
-    })
-
-    it('asks for a code before sending when the season offers any', async () => {
-      render(<HeadcountForm request={family} page={CODES} onDone={done} />)
-      await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
-      expect(screen.getByText('Pick a reason code')).toBeInTheDocument()
-      expect(spies.headcount).not.toHaveBeenCalled()
-    })
-
-    it('offers no picker, and sends no code, when the page carries none', () => {
-      render(<HeadcountForm request={family} page={householdPage()} onDone={done} />)
-      expect(screen.queryByLabelText('Reason code')).toBeNull()
     })
   })
 
@@ -662,7 +652,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     application = applicationOut({
       requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
     })
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family} onDone={done} />)
     await userEvent.type(screen.getByLabelText('Reason'), 'none{Enter}')
     expect(screen.getByText('A family needs at least one person')).toBeInTheDocument()
     expect(spies.headcount).not.toHaveBeenCalled()
@@ -716,7 +706,7 @@ describe('every casework form closes on Esc as soon as it opens', () => {
     application = applicationOut({
       requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
     })
-    await esc(() => render(<HeadcountForm request={family} page={PAGE} onDone={done} />))
+    await esc(() => render(<HeadcountForm request={family} onDone={done} />))
   })
 })
 
@@ -774,13 +764,13 @@ describe("every casework form's message-only state closes on Esc as soon as it o
   it('Headcount…: loading', async () => {
     application = undefined
     applicationLoading = true
-    render(<HeadcountForm request={family()} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family()} onDone={done} />)
     await escCloses('Loading the headcount…')
   })
 
   it("Headcount…: couldn't load", async () => {
     application = undefined
-    render(<HeadcountForm request={family()} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family()} onDone={done} />)
     await escCloses("Couldn't load this request's headcount.")
   })
 })

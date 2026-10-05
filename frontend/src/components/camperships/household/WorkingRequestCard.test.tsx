@@ -186,7 +186,7 @@ describe('WorkingRequestCard (§6.3, casework)', () => {
     const offered = screen
       .getAllByRole('button')
       .map((button) => button.textContent)
-      .filter((text) => text?.endsWith('…'))
+      .filter((text) => text.endsWith('…'))
     expect(offered).toEqual(['Give a Reason…'])
   })
 
