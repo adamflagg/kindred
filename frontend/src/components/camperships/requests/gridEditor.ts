@@ -7,6 +7,10 @@ import { roundOf } from './stage'
  */
 export const LIVE_REQUEST_STATUSES: readonly string[] = ['active', 'unmatched_session']
 
+/** The server's `_live`: a withdrawn or duplicate request takes no ask, amount, cancellation or hold. */
+export const isLiveRequest = (row: ApiAidGridRow): boolean =>
+  row.request_status === null || LIVE_REQUEST_STATUSES.includes(row.request_status)
+
 export type AppealTarget =
   | { readonly kind: 'appeal'; readonly initialAmount: number | null }
   | { readonly kind: 'none'; readonly why: string }
