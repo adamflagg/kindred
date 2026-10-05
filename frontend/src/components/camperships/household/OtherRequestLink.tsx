@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router'
 
 import { useAidGrid } from '../../../hooks/camperships/useAidGrid'
 import { aidHref, type AidView } from '../kit/asOf'
-import type { DuplicatePair } from './duplicatePair'
+import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
+import { useWithdrawnPair, type DuplicatePair } from './duplicatePair'
 import { HH_LINK } from './householdStyles'
 
 /**
@@ -15,30 +16,57 @@ export function OtherRequestLink({
   pair,
   view,
   beforeLeave,
+  which = 'Other',
 }: {
   pair: DuplicatePair
   view: AidView
   /** A page-owned exit (owner F2 4): a plain click waits for it, as the queue walk's links do. */
   beforeLeave?: ((go: () => void) => void) | undefined
+  /** The request it names: "the Other Request", or a revived duplicate's "Withdrawn Request" (item 4c). */
+  which?: 'Other' | 'Withdrawn'
 }) {
   if (pair.other !== null) {
     return (
       <a href={`#request-${pair.otherId}`} className={HH_LINK}>
-        Go to the Other Request ↓
+        Go to the {which} Request ↓
       </a>
     )
   }
-  return <ElsewhereLink otherId={pair.otherId} view={view} beforeLeave={beforeLeave} />
+  return (
+    <ElsewhereLink otherId={pair.otherId} view={view} beforeLeave={beforeLeave} which={which} />
+  )
+}
+
+/**
+ * Item 4c (owner ruling 10-05): a revived duplicate's hold banner links the withdrawn request it was
+ * the duplicate of, the same way a duplicate pair links its other request. Nothing without the hold.
+ */
+export function WithdrawnRequestLink({
+  page,
+  request,
+  view,
+  beforeLeave,
+}: {
+  page: ApiAidHouseholdPage
+  request: ApiAidHouseholdRequest
+  view: AidView
+  beforeLeave?: ((go: () => void) => void) | undefined
+}) {
+  const pair = useWithdrawnPair(page, request)
+  if (pair === null) return null
+  return <OtherRequestLink pair={pair} view={view} beforeLeave={beforeLeave} which="Withdrawn" />
 }
 
 function ElsewhereLink({
   otherId,
   view,
   beforeLeave,
+  which,
 }: {
   otherId: string
   view: AidView
   beforeLeave?: ((go: () => void) => void) | undefined
+  which: 'Other' | 'Withdrawn'
 }) {
   const navigate = useNavigate()
   const grid = useAidGrid({ live: true })
@@ -56,7 +84,7 @@ function ElsewhereLink({
   }
   return (
     <Link to={href} onClick={onClick} className={HH_LINK}>
-      Go to the Other Request ›
+      Go to the {which} Request ›
     </Link>
   )
 }

@@ -9,6 +9,7 @@ import { formatLongDate } from '../../components/camperships/kit/dates'
 import { IncomeCorrection } from '../../components/camperships/household/CaseworkForms'
 import { HoldActions } from '../../components/camperships/household/HoldActions'
 import { HoldBanners } from '../../components/camperships/household/HoldBanners'
+import { WithdrawnRequestLink } from '../../components/camperships/household/OtherRequestLink'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
 import { bandSubtitle, bandTitle } from '../../components/camperships/household/householdModel'
 import { HouseholdTotals } from '../../components/camperships/household/HouseholdTotals'
@@ -74,6 +75,16 @@ function HouseholdBody({
                   before={
                     code === 'household_income_conflict' ? (
                       <UseFormButtons page={page} request={request} control={forms} />
+                    ) : undefined
+                  }
+                  after={
+                    code === 'duplicate_survivor_withdrawn' ? (
+                      <WithdrawnRequestLink
+                        page={page}
+                        request={request}
+                        view={view}
+                        beforeLeave={exits.beforeLeave}
+                      />
                     ) : undefined
                   }
                 />

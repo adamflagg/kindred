@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { gridRow } from '../requests/gridFixtures'
-import { duplicatePair } from './duplicatePair'
+import { duplicatePair, withdrawnPair } from './duplicatePair'
 import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
 
 const PENDING = householdRequest(
@@ -62,5 +62,51 @@ describe('duplicatePair', () => {
     expect(duplicatePair(page, unnamed, PENDING)).toBeNull()
     expect(duplicatePair(page, undefined, PENDING)).toBeNull()
     expect(duplicatePair(page, undefined, KEPT)).toBeNull()
+  })
+})
+
+// Item 4c (owner ruling 10-05): a revived duplicate's hold names the withdrawn request it was the
+// duplicate of (intake's `duplicate_survivor_withdrawn` flag, detail.withdrawn_survivor).
+describe('withdrawnPair', () => {
+  const REVIVED = householdRequest(
+    gridRow({
+      request_id: 'reqrevived00001',
+      request_status: 'active',
+      holds: [{ code: 'duplicate_survivor_withdrawn', severity: 'hold', message: 'm' }],
+    })
+  )
+  const WITHDRAWN = householdRequest(
+    gridRow({ request_id: 'reqwithdrawn001', request_status: 'withdrawn' })
+  )
+  const naming = (survivor: unknown) =>
+    applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqrevived00001',
+          status: 'active',
+          flags: [
+            { code: 'duplicate_survivor_withdrawn', detail: { withdrawn_survivor: survivor } },
+          ],
+        }),
+      ],
+    })
+
+  it('names the withdrawn request, and its card when it is on the page', () => {
+    const page = householdPage({ requests: [REVIVED, WITHDRAWN] })
+    expect(withdrawnPair(page, naming('reqwithdrawn001'), REVIVED)).toEqual({
+      otherId: 'reqwithdrawn001',
+      other: WITHDRAWN,
+      keepThis: false,
+    })
+    const alone = householdPage({ requests: [REVIVED] })
+    expect(withdrawnPair(alone, naming('reqwithdrawn001'), REVIVED)?.other).toBeNull()
+  })
+
+  it('names nothing without the flag, without a survivor, or before the read', () => {
+    const page = householdPage({ requests: [REVIVED, WITHDRAWN] })
+    expect(withdrawnPair(page, APPLICATION, REVIVED)).toBeNull()
+    expect(withdrawnPair(page, naming(''), REVIVED)).toBeNull()
+    expect(withdrawnPair(page, naming(7), REVIVED)).toBeNull()
+    expect(withdrawnPair(page, undefined, REVIVED)).toBeNull()
   })
 })

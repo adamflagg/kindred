@@ -16,16 +16,20 @@ const NO_NAMES: ReadonlyMap<string, string> = new Map()
 /**
  * A hold banner's actions (§6.3 item 3; main spec §10.5; Decision 25): the fix for a hold that
  * clears by fixing its cause, "Release…" with a note for the rest, and "Lift…" for the manual hold.
- * `before` goes ahead of the fix link: the income conflict's "Use X's Form" buttons (round 3).
+ * `before` goes ahead of the fix link: the income conflict's "Use X's Form" buttons (round 3). On a
+ * revived duplicate's hold the release reads "Keep This Request…" (item 4c), with `after` beside it.
  */
 export function HoldActions({
   request,
   code,
   before,
+  after,
 }: {
   request: ApiAidHouseholdRequest
   code: string
   before?: ReactNode
+  /** After the release: a revived duplicate's link to the withdrawn request (item 4c). */
+  after?: ReactNode
 }) {
   const release = useAidHoldRelease()
   const manual = useAidManualHold()
@@ -82,9 +86,11 @@ export function HoldActions({
       )}
       {releasable && (
         <button type="button" className={HH_BUTTON} onClick={() => setOpen(true)}>
-          Release…
+          {/* Item 4c (owner ruling 10-05): releasing a revived duplicate's hold keeps it. */}
+          {code === 'duplicate_survivor_withdrawn' ? 'Keep This Request…' : 'Release…'}
         </button>
       )}
+      {after}
     </div>
   )
 }

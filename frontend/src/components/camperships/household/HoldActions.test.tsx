@@ -58,6 +58,38 @@ describe('HoldActions (Decision 25)', () => {
     expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
   })
 
+  // Item 4c (owner ruling 10-05): on a revived duplicate's hold only, Release… reads Keep This
+  // Request…: the same release, the same note. No Keep the Other here.
+  it('offers a revived duplicate Keep This Request…, which releases its hold with the note', async () => {
+    render(
+      <HoldActions
+        request={withHold('duplicate_survivor_withdrawn')}
+        code="duplicate_survivor_withdrawn"
+      />
+    )
+    expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Keep the Other/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep This Request…' }))
+    await userEvent.type(screen.getByLabelText('Release note'), 'The family re-applied{Enter}')
+    expect(release).toHaveBeenCalledWith({
+      requestId: 'reqemma00000001',
+      body: { code: 'duplicate_survivor_withdrawn', released: true, note: 'The family re-applied' },
+    })
+  })
+
+  it('puts what it is handed after (the withdrawn request link) after Keep This Request…', () => {
+    render(
+      <HoldActions
+        request={withHold('duplicate_survivor_withdrawn')}
+        code="duplicate_survivor_withdrawn"
+        after={<a href="#request-reqwithdrawn001">Go to the Withdrawn Request ↓</a>}
+      />
+    )
+    const keep = screen.getByRole('button', { name: 'Keep This Request…' })
+    const link = screen.getByRole('link', { name: 'Go to the Withdrawn Request ↓' })
+    expect(keep.nextElementSibling).toBe(link)
+  })
+
   it("puts what it is handed (Use X's Form) before the fix link (round 3, section 3)", () => {
     render(
       <HoldActions

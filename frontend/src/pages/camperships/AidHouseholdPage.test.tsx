@@ -4,8 +4,10 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  applicationOut,
   householdPage,
   householdRequest,
+  requestOut,
 } from '../../components/camperships/household/householdFixtures'
 import { FLAGGED_PAGE } from '../../components/camperships/household/sectionsFixtures'
 import { gridRow, GRID_ROWS, ROW_OLIVIA } from '../../components/camperships/requests/gridFixtures'
@@ -81,8 +83,10 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidHeadcount: () => idle,
   useAidUseForm: () => idle,
 }))
+// The application read: none by default; item 4c's revived duplicate names its withdrawn request.
+let applicationData: ReturnType<typeof applicationOut> | undefined
 vi.mock('../../hooks/camperships/useAidApplication', () => ({
-  useAidApplication: () => ({ data: undefined, isLoading: false, error: null }),
+  useAidApplication: () => ({ data: applicationData, isLoading: false, error: null }),
 }))
 vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
@@ -122,6 +126,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   granted = ['financial_aid.view']
+  applicationData = undefined
   result = { data: householdPage(), isLoading: false, error: null }
   asked.length = 0
   prefetched.length = 0
@@ -225,6 +230,59 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.getByTestId('forms-strip')).toHaveTextContent(
       "1 answer disagrees between Emma's form and Samuel's form."
     )
+  })
+
+  // Item 4c (owner ruling 10-05): the revived duplicate's hold keeps the request, and links the
+  // withdrawn one; no Keep the Other there, and every other hold still says Release….
+  it("offers a revived duplicate's banner Keep This Request… and the way to the withdrawn request", () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    applicationData = applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqrevived00001',
+          status: 'active',
+          flags: [
+            {
+              code: 'duplicate_survivor_withdrawn',
+              detail: { withdrawn_survivor: 'reqwithdrawn001' },
+            },
+          ],
+        }),
+      ],
+    })
+    result = {
+      data: householdPage({
+        requests: [
+          householdRequest(
+            gridRow({
+              request_id: 'reqrevived00001',
+              holds: [
+                {
+                  code: 'duplicate_survivor_withdrawn',
+                  severity: 'hold',
+                  message: 'The original request was withdrawn',
+                },
+                { code: 'py_confirm_tier_change', severity: 'hold', message: 'Tier moved' },
+              ],
+            })
+          ),
+          householdRequest(gridRow({ request_id: 'reqwithdrawn001', request_status: 'withdrawn' })),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    const banner = screen.getByText('The original request was withdrawn').parentElement!
+    expect(within(banner).getByRole('button', { name: 'Keep This Request…' })).toBeInTheDocument()
+    expect(
+      within(banner).getByRole('link', { name: 'Go to the Withdrawn Request ↓' })
+    ).toHaveAttribute('href', '#request-reqwithdrawn001')
+    expect(within(banner).queryByRole('button', { name: 'Release…' })).toBeNull()
+    expect(within(banner).queryByRole('button', { name: /Keep the Other/ })).toBeNull()
+    const other = screen.getByText('Tier moved').parentElement!
+    expect(within(other).getByRole('button', { name: 'Release…' })).toBeInTheDocument()
+    expect(within(other).queryByRole('link', { name: /Withdrawn Request/ })).toBeNull()
   })
 
   it("shows each request's card", () => {

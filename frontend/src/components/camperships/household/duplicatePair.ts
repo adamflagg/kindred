@@ -65,3 +65,35 @@ export function useDuplicatePair(
   const application = useAidApplication(pending?.row.household_cm_id ?? 0, { enabled: wanted })
   return wanted ? duplicatePair(page, application.data, request) : null
 }
+
+const REVIVED_HOLD = 'duplicate_survivor_withdrawn'
+
+/**
+ * Item 4c (owner ruling 10-05): a revived duplicate's hold and the withdrawn request it was the
+ * duplicate of, by intake's own naming (its `duplicate_survivor_withdrawn` flag's
+ * `withdrawn_survivor`), with that card when it is on this page. Nothing to keep: the card keeps
+ * itself through its hold's Keep This Request…, which is the hold's release.
+ */
+export function withdrawnPair(
+  page: ApiAidHouseholdPage,
+  application: ApiAidApplication | undefined,
+  request: ApiAidHouseholdRequest
+): DuplicatePair | null {
+  const flag = application?.requests
+    .find((r) => r.id === request.row.request_id)
+    ?.flags.find((f) => f.code === REVIVED_HOLD)
+  const survivor = flag?.detail?.['withdrawn_survivor']
+  if (typeof survivor !== 'string' || survivor === '') return null
+  const other = page.requests.find((r) => r.row.request_id === survivor) ?? null
+  return { otherId: survivor, other, keepThis: false }
+}
+
+/** The revived duplicate's pair, reading its household's application only while it holds that hold. */
+export function useWithdrawnPair(
+  page: ApiAidHouseholdPage,
+  request: ApiAidHouseholdRequest
+): DuplicatePair | null {
+  const held = request.row.holds.some((hold) => hold.code === REVIVED_HOLD)
+  const application = useAidApplication(request.row.household_cm_id, { enabled: held })
+  return held ? withdrawnPair(page, application.data, request) : null
+}
