@@ -592,6 +592,83 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(keyAsk).not.toHaveBeenCalled()
   })
 
+  // Lead ruling (scan of #3005): folding the opened row's group is a way out like any other, so it
+  // saves first and folds only when it can leave.
+  const groupHeadingOf = (camper: string) => {
+    let tr = screen.getByText(camper).closest('tr')?.previousElementSibling ?? null
+    while (tr !== null && tr.querySelector('[data-group-heading]') === null)
+      tr = tr.previousElementSibling
+    if (tr === null) throw new Error(`no group heading above ${camper}`)
+    return tr.querySelector('[data-group-heading]') as HTMLElement
+  }
+
+  it("won't fold the opened row's group while what is typed can't be saved yet, and says why", async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '12,50')
+    const heading = groupHeadingOf('Olivia Chen')
+    await userEvent.click(within(heading).getByRole('button'))
+    expect(heading).toHaveTextContent('▾')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('12,50')
+    expect(screen.getAllByText('Not an amount')).toHaveLength(1)
+    expect(keyAsk).not.toHaveBeenCalled()
+  })
+
+  it("saves what is typed before folding the opened row's group, then folds it", async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    const heading = groupHeadingOf('Olivia Chen')
+    await userEvent.click(within(heading).getByRole('button'))
+    expect(keyAsk).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(heading).toHaveTextContent('▸'))
+    expect(screen.queryByText('Olivia Chen')).toBeNull()
+    expect(screen.getByTestId('where')).not.toHaveTextContent('row=')
+  })
+
+  it("holds the fold while the opened row's save is still out, and keeps the group open when it fails", async () => {
+    let fail: ((error: Error) => void) | undefined
+    keyAsk.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject: (error: Error) => void) => {
+          fail = reject
+        })
+    )
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    const heading = groupHeadingOf('Olivia Chen')
+    await userEvent.click(within(heading).getByRole('button'))
+    expect(keyAsk).toHaveBeenCalledTimes(1)
+    expect(heading).toHaveTextContent('▾')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+    await act(async () => fail?.(new Error('The server is down')))
+    expect(heading).toHaveTextContent('▾')
+    expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+  })
+
+  it('opens a stage view with every group open, whatever was folded on All', async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    const onAll = [...document.querySelectorAll('[data-group-heading]')].find((td) =>
+      td.textContent.includes('To reverse')
+    ) as HTMLElement
+    await userEvent.click(within(onAll).getByRole('button'))
+    expect(onAll).toHaveTextContent('▸')
+    await userEvent.click(viewLink('To reverse'))
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('view=to-reverse'))
+    const heading = document.querySelector('[data-group-heading]') as HTMLElement
+    expect(heading).toHaveTextContent('To reverse')
+    expect(heading).toHaveTextContent('▾')
+  })
+
   it('marks the failed row in the grid (Decision 3, as accepted)', async () => {
     let fail: ((error: Error) => void) | undefined
     keyAsk.mockImplementationOnce(

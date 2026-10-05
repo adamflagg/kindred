@@ -61,6 +61,10 @@ interface RequestsGridProps {
    * 10-04 late (grid follow-up): Program · Round · Flat / By reason · Show IDs · filter · CSV).
    */
   readonly filtersAfterGrouping?: ReactNode
+  /** The page's save-first way out (the walk's `leave`): folding the opened row's group goes through it. */
+  readonly onLeave?: ((go: () => void) => void) | undefined
+  /** What a fold belongs to (the page's lens and view); a change opens every group. Default: the view. */
+  readonly foldScope?: string | undefined
   /**
    * The opened row's editor (owner fast-follow 10-03, arrangement 3): drawn inside the detail line,
    * as its right panel on a row that takes an ask, handed the row's next step to end its line with
@@ -240,6 +244,8 @@ export function RequestsGrid({
   links,
   filters,
   filtersAfterGrouping,
+  onLeave,
+  foldScope,
   renderEditor,
   marked,
   selected,
@@ -291,6 +297,9 @@ export function RequestsGrid({
       }
       toolbarLead={filters}
       toolbarAfterGrouping={filtersAfterGrouping}
+      onLeave={onLeave}
+      // Lead ruling (scan of #3005): a fold in one view never shows up folded in another.
+      foldScope={foldScope ?? view.key}
       // Owner rulings 10-04 late (search words, option A): this box filters the list it sits on.
       searchPlaceholder="Filter this list…"
       searchIcon={ListFilter}

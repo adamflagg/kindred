@@ -358,6 +358,8 @@ export default function AidRequestsPage() {
       onProgramPool={onProgramPool}
     />
   )
+  // Folding the opened row's group saves first like every way out (lead ruling, scan of #3005).
+  const leaveForFold = useCallback((go: () => void) => leaveThen(null, go), [leaveThen])
   // After the grid's Flat / By reason switch (owner rulings 10-04 late (grid follow-up)).
   const idsToggle = <ShowIdsToggle showIds={showIds} onChange={changeFilter} />
   // The filters share the grid's own toolbar line with search and Download CSV; with no grid on
@@ -472,6 +474,8 @@ export default function AidRequestsPage() {
               links={links}
               filters={filtersBar}
               filtersAfterGrouping={idsToggle}
+              onLeave={leaveForFold}
+              foldScope={`${lens}/${view.key}`}
               selected={canWork ? selected : undefined}
               onSelectedChange={canWork ? changeSelected : undefined}
               onMatchingChange={canWork ? onMatchingChange : undefined}

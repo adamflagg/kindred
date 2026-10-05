@@ -199,6 +199,15 @@ export interface AidTableProps<Row> {
    * always on screen. Off, the table renders as it always did.
    */
   readonly scrollBox?: boolean | undefined
+  /**
+   * A save-first way out (the Requests page's walk `leave`): folding the group that holds the
+   * highlighted row goes through it, and folds only when it calls `go`, so a draft that can't be
+   * saved yet, a save still out or a failure keeps the group open with the editor and its problem.
+   * Without it the fold just asks `onHighlight` to drop the highlight.
+   */
+  readonly onLeave?: ((go: () => void) => void) | undefined
+  /** Folds belong to this (the Requests grid's lens and view): a change clears them all. */
+  readonly foldScope?: string | undefined
 }
 
 /** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
@@ -251,6 +260,8 @@ export function AidTable<Row>({
   groupCount,
   emptyText = 'No rows match.',
   scrollBox = false,
+  onLeave,
+  foldScope,
 }: AidTableProps<Row>) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const groupingKeys = useMemo(() => groupings.map((g) => g.key), [groupings])
@@ -325,9 +336,30 @@ export function AidTable<Row>({
   // the visit and never reaches the URL. Display only: the footer, the group counts and the CSV
   // still count a folded group's rows; ↑/↓, the editor's next / previous and Select all skip them.
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  // A new scope (another lens or view) starts with every group open (lead ruling, scan of #3005);
+  // Flat / By reason inside one view keeps them. Adjusted while rendering, so nothing draws stale.
+  const [scopeSeen, setScopeSeen] = useState(foldScope)
+  if (scopeSeen !== foldScope) {
+    setScopeSeen(foldScope)
+    setFolded(new Set())
+  }
+  // The highlighted row is always drawn: a highlight that lands in a folded group (a failed save
+  // jumping back, a ?row= link, a save that regrouped the row, a refused leave) opens it for good.
+  const highlightedGroup = useMemo(
+    () =>
+      grouping === undefined || highlighted === null
+        ? undefined
+        : groups.find((g) => g.rows.some((row) => rowKey(row) === highlighted))?.id,
+    [grouping, highlighted, groups, rowKey]
+  )
+  if (highlightedGroup !== undefined && folded.has(highlightedGroup)) {
+    const next = new Set(folded)
+    next.delete(highlightedGroup)
+    setFolded(next)
+  }
   const isFolded = useCallback(
-    (g: RowGroup<Row>) => grouping !== undefined && folded.has(g.id),
-    [grouping, folded]
+    (g: RowGroup<Row>) => grouping !== undefined && folded.has(g.id) && g.id !== highlightedGroup,
+    [grouping, folded, highlightedGroup]
   )
   const ordered = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   // The rows on screen, in screen order: what ↑/↓ walk and Select all takes.
@@ -363,15 +395,33 @@ export function AidTable<Row>({
     selection.onChange(next)
   }
   const toggleFold = (g: RowGroup<Row>) => {
-    const next = new Set(folded)
-    if (next.has(g.id)) next.delete(g.id)
-    else {
-      next.add(g.id)
-      // Folding the row you are on closes it: nothing is left on screen to hold its detail line.
-      if (highlighted !== null && g.rows.some((row) => rowKey(row) === highlighted))
-        setHighlight(null)
+    if (folded.has(g.id)) {
+      setFolded((now) => {
+        const next = new Set(now)
+        next.delete(g.id)
+        return next
+      })
+      return
     }
-    setFolded(next)
+    const fold = () =>
+      setFolded((now) => {
+        const next = new Set(now)
+        next.add(g.id)
+        return next
+      })
+    if (g.id !== highlightedGroup) {
+      fold()
+      return
+    }
+    // Folding the row you are on closes it first: nothing is left on screen to hold its detail
+    // line. A surface that refuses (an unsaveable draft) keeps the highlight, so the group's
+    // highlighted row reopens it (highlightedGroup) before anything is drawn.
+    const closeThenFold = () => {
+      setHighlight(null)
+      fold()
+    }
+    if (onLeave) onLeave(closeThenFold)
+    else closeThenFold()
   }
   const toggleOne = (key: string) => {
     if (selection === null) return

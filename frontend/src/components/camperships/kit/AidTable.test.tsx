@@ -1120,6 +1120,133 @@ describe('folding a group', () => {
     expect(all).not.toBeChecked()
   })
 
+  // Lead ruling (scan of #3005): a fold goes only once the highlight has really gone, so a refused
+  // or held leave keeps the group open with the editor and its problem on screen; a highlight that
+  // lands in a folded group by any other way opens that group, so the highlighted row is always drawn.
+  function Held({
+    initial,
+    agree,
+    extra = {},
+  }: {
+    initial: string | null
+    agree: boolean
+    extra?: Partial<Parameters<typeof AidTable<Row>>[0]>
+  }) {
+    const [highlighted, setHighlighted] = useState<string | null>(initial)
+    return (
+      <MemoryRouter initialEntries={['/aid/requests']}>
+        <button type="button" onClick={() => setHighlighted('r1')}>
+          Jump to Emma
+        </button>
+        <button type="button" onClick={() => setHighlighted('r2')}>
+          Jump to Liam
+        </button>
+        <AidTable<Row>
+          rows={ROWS}
+          columns={COLUMNS}
+          rowKey={rowKeyOf}
+          groupings={GROUPINGS}
+          csvFilename="camperships-requests-all-2027.csv"
+          arrowKeys
+          highlighted={highlighted}
+          onHighlight={(key) => {
+            asked.push(key)
+            if (agree) setHighlighted(key)
+          }}
+          renderBelowHighlighted={(r) => <div>Editing {r.camper}</div>}
+          {...GROUPED}
+          {...extra}
+        />
+      </MemoryRouter>
+    )
+  }
+
+  it('keeps the group open, with the editor, when the surface refuses to drop the highlight', async () => {
+    asked = []
+    render(<Held initial="r3" agree={false} />)
+    await fold('Income conflict')
+    expect(asked).toEqual([null])
+    expect(headingCell('Income conflict')).toHaveTextContent('▾')
+    expect(screen.getByText('Editing Olivia Chen')).toBeInTheDocument()
+    expect(bodyCampers()).toContain('Olivia Chen')
+  })
+
+  it('folds only once a held leave lets go, and drops the highlight then', async () => {
+    asked = []
+    let go: (() => void) | null = null
+    render(
+      <Held
+        initial="r3"
+        agree
+        extra={{
+          onLeave: (next: () => void) => {
+            go = next
+          },
+        }}
+      />
+    )
+    await fold('Income conflict')
+    expect(asked).toEqual([])
+    expect(headingCell('Income conflict')).toHaveTextContent('▾')
+    expect(screen.getByText('Editing Olivia Chen')).toBeInTheDocument()
+    act(() => go?.())
+    expect(asked).toEqual([null])
+    expect(headingCell('Income conflict')).toHaveTextContent('▸')
+    expect(bodyCampers()).not.toContain('Olivia Chen')
+  })
+
+  it('never asks the leave to fold a group the highlight is not in', async () => {
+    const onLeave = vi.fn()
+    render(<Held initial="r3" agree extra={{ onLeave }} />)
+    await fold('Placeholder income')
+    expect(onLeave).not.toHaveBeenCalled()
+    expect(headingCell('Placeholder income')).toHaveTextContent('▸')
+  })
+
+  it('opens a folded group a highlight lands in, for good, and walks on from that row', async () => {
+    asked = []
+    render(<Held initial={null} agree />)
+    await fold('Income conflict')
+    expect(bodyCampers()).not.toContain('Emma Johnson')
+    // A jump back to a failed row, a ?row= link or a save that regrouped the row.
+    await userEvent.click(screen.getByRole('button', { name: 'Jump to Emma' }))
+    expect(headingCell('Income conflict')).toHaveTextContent('▾')
+    expect(highlightedCamper()).toBe('Emma Johnson')
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(asked.at(-1)).toBe('r3')
+    await userEvent.click(screen.getByRole('button', { name: 'Jump to Liam' }))
+    expect(headingCell('Income conflict')).toHaveTextContent('▾')
+    expect(bodyCampers()).toContain('Emma Johnson')
+  })
+
+  it('resets the folds when the fold scope changes, and keeps them across Flat / By reason', async () => {
+    const view = renderTable('/aid/requests', { ...GROUPED, foldScope: 'all' })
+    await fold('Income conflict')
+    await userEvent.click(screen.getByRole('button', { name: 'Flat' }))
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    expect(headingCell('Income conflict')).toHaveTextContent('▸')
+    const again = (foldScope: string) =>
+      view.rerender(
+        <MemoryRouter initialEntries={['/aid/requests']}>
+          <AidTable<Row>
+            rows={ROWS}
+            columns={COLUMNS}
+            rowKey={(r) => r.id}
+            groupings={GROUPINGS}
+            csvFilename="camperships-requests-all-2027.csv"
+            arrowKeys
+            {...GROUPED}
+            foldScope={foldScope}
+          />
+        </MemoryRouter>
+      )
+    again('to_reverse')
+    expect(headingCell('Income conflict')).toHaveTextContent('▾')
+    again('all')
+    expect(headingCell('Income conflict')).toHaveTextContent('▾')
+  })
+
   it('runs the groups in the order the grouping gives', () => {
     renderTable('/aid/requests', {
       defaultGrouping: 'reason',
