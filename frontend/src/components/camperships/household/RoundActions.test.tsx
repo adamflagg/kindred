@@ -313,7 +313,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
     // B22 (owner, sitting B): the form says it is for a tick made by mistake, and nothing about amounts standing.
-    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(screen.getByText('For a box checked by mistake.')).toBeInTheDocument()
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Why undo Posted'), 'Ticked the wrong family{Enter}')
     expect(undo).toHaveBeenCalledWith({
@@ -387,7 +387,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     expect(screen.queryByText('reqsamuel000005: Round 1 is not posted')).not.toBeInTheDocument()
   })
 
-  it('says only "a tick made by mistake" on a reversed round', async () => {
+  it('says only "a box checked by mistake" on a reversed round', async () => {
     const reversed = householdRequest(
       gridRow({
         rounds: [
@@ -397,7 +397,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     )
     render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(screen.getByText('For a box checked by mistake.')).toBeInTheDocument()
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
   })
 
@@ -408,7 +408,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     ['a posted round', false],
     ['a reversed round', true],
   ])(
-    'says only "a tick made by mistake" on %s even when decided and posted differ',
+    'says only "a box checked by mistake" on %s even when decided and posted differ',
     async (_label, clawedBack) => {
       const moved = householdRequest(
         gridRow({
@@ -424,7 +424,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
       )
       render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
       await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-      expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+      expect(screen.getByText('For a box checked by mistake.')).toBeInTheDocument()
       expect(screen.queryByText(/Undoing returns/)).not.toBeInTheDocument()
       expect(screen.queryByText(/today's/)).not.toBeInTheDocument()
     }
@@ -500,7 +500,7 @@ describe('a request cancelled in Kindred takes no tick (the server refuses it: r
     const request = cancelled([roundOut(1, 'needs_offer', { ask: 1500, decided: 900 })])
     render(<RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove />)
     expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
-    expect(screen.getByText('Cancelled in Kindred: reopen it first')).toBeInTheDocument()
+    expect(screen.getByText('Cancelled in the dashboard: reopen it first')).toBeInTheDocument()
   })
 
   it('offers no Approve or Refuse on a pending Round 3', () => {

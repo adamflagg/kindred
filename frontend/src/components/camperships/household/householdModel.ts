@@ -312,10 +312,14 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         askedOn: r.asked_on,
         // B21 (owner, sitting B): a C1 round reads for what it is, waiting on tonight's tick, and
         // keeps the grid's own word for it (a needs-offer status is only the server's pre-tick state).
+        // Owner ruling 10-05: a posted round CampMinder reversed says both, "Posted · reversed"
+        // (household only: the grid's Stage pill keeps ROUND_STATUS_WORDS as the server sends them).
         words:
           cmPending && r.status === 'needs_offer'
             ? PENDING_STATE_WORD
-            : ROUND_STATUS_WORDS[r.status],
+            : clawedBack && posted
+              ? `${ROUND_STATUS_WORDS.posted} · reversed`
+              : ROUND_STATUS_WORDS[r.status],
         stateTone: cmPending && r.status === 'needs_offer' ? 'stone' : ROUND_STATE_TONE[r.status],
         lock,
         posted,
@@ -405,9 +409,9 @@ export function requestStatusWords(status: string | null): string | null {
 
 const CANCEL_WORDS = new Map(CANCEL_REASON_OPTIONS.map((o) => [o.value, o.label] as const))
 
-/** "Cancelled in Kindred May 2 · declined: aid not enough / financial constraints" (D101, D141). */
+/** "Cancelled in the dashboard May 2 · declined: aid not enough / financial constraints" (D101, D141). */
 export function cancellationWords(c: ApiAidCancellation): string {
-  const where = c.by === 'kindred' ? 'Cancelled in Kindred' : 'Cancelled in CampMinder'
+  const where = c.by === 'kindred' ? 'Cancelled in the dashboard' : 'Cancelled in CampMinder'
   const on = c.on ? ` ${formatShortDate(c.on)}` : ''
   const reason =
     // B35 / ruling B: a reason is optional, so none reads as a fact, not a nag.

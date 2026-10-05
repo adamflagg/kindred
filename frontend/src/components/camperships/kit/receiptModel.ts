@@ -51,7 +51,9 @@ export function receiptLabel(label: ReceiptLabelOut): string {
     label.lock_source === 'ledger'
       ? ' · matched in CampMinder'
       : label.lock_source === 'tick'
-        ? ` by ${label.ticked_by_name ? `${label.ticked_by_name}'s` : 'a'} Posted tick`
+        ? label.ticked_by_name
+          ? ` when ${label.ticked_by_name} checked Posted`
+          : ' when Posted was checked'
         : ''
   return `${rules} · locked${on}${by} · as it was when posted${decided}`
 }

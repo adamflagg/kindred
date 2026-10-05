@@ -276,10 +276,10 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
         lock_source: 'tick',
         ticked_by_name: 'Test User',
       })
-    ).toBe("rules 2027 v3 · locked Mar 9 by Test User's Posted tick · as it was when posted")
+    ).toBe('rules 2027 v3 · locked Mar 9 when Test User checked Posted · as it was when posted')
     expect(
       receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-09', lock_source: 'tick' })
-    ).toBe('rules 2027 v3 · locked Mar 9 by a Posted tick · as it was when posted')
+    ).toBe('rules 2027 v3 · locked Mar 9 when Posted was checked · as it was when posted')
     expect(
       receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-10', lock_source: 'ledger' })
       // B21 (ruled 10-04 late): the overnight tick reads as CampMinder's match, as the round line does.

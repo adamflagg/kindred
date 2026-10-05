@@ -137,11 +137,11 @@ function decisionParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): Li
         ? [plain(`marked ${roundWords} posted`)]
         : [plain(`marked ${roundWords} posted at `), amount]
     case 'unpost':
-      return [plain(`undid the Posted tick on ${roundWords}`)]
+      return [plain(`unchecked Posted on ${roundWords}`)]
     case 'accept':
-      return [plain(`ticked Accepted on ${roundWords}`)]
+      return [plain(`checked Accepted on ${roundWords}`)]
     case 'unaccept':
-      return [plain(`unticked Accepted on ${roundWords}`)]
+      return [plain(`unchecked Accepted on ${roundWords}`)]
     case 'ask':
       return amount === null
         ? [plain(`entered ${roundWords} ask`)]
@@ -167,7 +167,7 @@ function ledgerParts(entry: ApiAidHistoryEntry, roundWords: string, amount: Line
         ? [plain(`${roundWords} posted`)]
         : [plain(`${roundWords} posted at `), amount]
     case 'unpost':
-      return [plain(`${roundWords} Posted tick undone`)]
+      return [plain(`${roundWords} Posted unchecked`)]
     case 'accept':
       return [plain(`${roundWords} accepted`)]
     case 'unaccept':

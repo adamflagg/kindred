@@ -247,7 +247,11 @@ describe('AidHouseholdPage (§6.3)', () => {
 
   it('is live only: a past date in the link gets a line saying so (Decision 36)', () => {
     renderAt('/aid/households/1000001?as_of=2027-03-01')
-    expect(screen.getByText(/shows today's figures only/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "This page always shows today's figures. The Requests grid can show Mar 1, 2027."
+      )
+    ).toBeInTheDocument()
     expect(screen.queryByText(/^As of Mar 1, 2027/)).toBeNull()
   })
 

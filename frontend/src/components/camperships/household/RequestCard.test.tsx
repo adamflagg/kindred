@@ -213,7 +213,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
     await userEvent.click(screen.getByRole('button', { name: /^Round 1 as posted/ }))
-    expect(screen.getByText(/locked Mar 9 by Test User's Posted tick/)).toBeInTheDocument()
+    expect(screen.getByText(/locked Mar 9 when Test User checked Posted/)).toBeInTheDocument()
   })
 
   it('says a cancelled request was cancelled, where, and why (D101)', () => {
@@ -252,6 +252,8 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       renderCard(householdRequest(row))
       const panel = screen.getByRole('table', { name: 'Decision panel' })
       expect(within(panel).getByText('reversed')).toBeInTheDocument()
+      // Owner ruling 10-05: the round's pill says both: it was posted, and CampMinder reversed it.
+      expect(within(panel).getByText('Posted · reversed')).toBeInTheDocument()
       expect(within(panel).queryByText('posted')).toBeNull()
       expect(screen.queryByText(/stands/)).toBeNull()
       expect(screen.queryByText(/clawed back/)).toBeNull()

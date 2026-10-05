@@ -193,7 +193,7 @@ export default function AidHouseholdPage() {
       />
       {asOf.kind === 'past' && (
         <p className={AMBER_NOTE}>
-          {`The household page shows today's figures only. Requests can show ${formatLongDate(asOf.date)}.`}
+          {`This page always shows today's figures. The Requests grid can show ${formatLongDate(asOf.date)}.`}
         </p>
       )}
       {missing ? (

@@ -321,7 +321,7 @@ describe('words', () => {
   it('words a cancellation, with its reason from the fixed list (D141)', () => {
     expect(
       cancellationWords({ by: 'kindred', on: '2027-05-02', reason: 'aid_not_enough', note: '' })
-    ).toBe('Cancelled in Kindred May 2 · declined: aid not enough / financial constraints')
+    ).toBe('Cancelled in the dashboard May 2 · declined: aid not enough / financial constraints')
     expect(cancellationWords({ by: 'campminder', on: '2027-06-02', reason: null, note: '' })).toBe(
       // B35 / ruling B: a reason is optional, so "yet" would read as a nag.
       'Cancelled in CampMinder Jun 2 · none recorded'

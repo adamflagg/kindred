@@ -22,7 +22,7 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
       'Test corrected expected gross income, $90,000 → $84,200',
       "Test marked Samuel's Round 1 posted at $1,800",
       "Matched in CampMinder · Emma's Round 1 posted at $1,420",
-      "Test ticked Accepted on Samuel's Round 1",
+      "Test checked Accepted on Samuel's Round 1",
     ])
     const all = texts().join('\n')
     expect(all).not.toMatch(/@|req[a-z]+\d|op\d|cor\d|app\d/)
@@ -78,7 +78,10 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
       })
     ).toBe("Intake entered Samuel's Round 3 amount, $1,000")
     expect(one({ ...at, action: 'unpost', after: { round: 2 } })).toBe(
-      "Intake undid the Posted tick on Samuel's Round 2"
+      "Intake unchecked Posted on Samuel's Round 2"
+    )
+    expect(one({ ...at, action: 'unaccept', after: { round: 2 } })).toBe(
+      "Intake unchecked Accepted on Samuel's Round 2"
     )
     expect(one({ ...at, action: 'approve' })).toBe("Intake approved Samuel's Round 2")
     expect(
@@ -248,7 +251,7 @@ describe("the ledger's overnight tick reads Matched in CampMinder, then what hap
 
   it('words an un-post and an accept the same way', () => {
     expect(ledger({ action: 'unpost', entity_id: 'reqemma00000001:1' })).toBe(
-      "Matched in CampMinder · Emma's Round 1 Posted tick undone"
+      "Matched in CampMinder · Emma's Round 1 Posted unchecked"
     )
     expect(ledger({ action: 'accept', entity_id: 'reqemma00000001:1' })).toBe(
       "Matched in CampMinder · Emma's Round 1 accepted"

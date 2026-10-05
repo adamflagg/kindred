@@ -78,7 +78,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
  * 2026-10-05: no "Undoing returns Round N to today's $X" line either, as a posted round's decided
  * figure is its locked amount).
  */
-const UNDO_HINT = 'For a tick made by mistake.'
+const UNDO_HINT = 'For a box checked by mistake.'
 
 /**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
@@ -223,7 +223,7 @@ export function RoundNextAction({
     if (blocking !== undefined) {
       return <span className={MUTED}>{`after Round ${String(blocking.round)} is posted`}</span>
     }
-    if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
+    if (cancelled) return <span className={MUTED}>Cancelled in the dashboard: reopen it first</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
     const send = (at: number) => {
       setError(null)
@@ -267,7 +267,7 @@ export function RoundNextAction({
     )
   }
   if (line.status === 'pending_approval' && canApprove) {
-    if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
+    if (cancelled) return <span className={MUTED}>Cancelled in the dashboard: reopen it first</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
     if (deciding === null) {
       return (
