@@ -24,7 +24,8 @@ import {
   type RoundLine,
 } from './householdModel'
 import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE } from './householdStyles'
-import { ReceiptVersions } from './ReceiptVersions'
+import { ReceiptDetailsButton, ReceiptVersions } from './ReceiptVersions'
+import { useReceiptDetails } from './useReceiptDetails'
 
 /**
  * A CampMinder link (N7): "Person" in Title Case (CampMinder has no household record; Decision 2), drawn as the summer camper panel
@@ -170,6 +171,7 @@ export function RequestCard({
   const lines = roundLines(request)
   const statusWords = requestStatusWords(row.request_status)
   const cost = cardCost(request)
+  const details = useReceiptDetails(request)
   return (
     <div id={`request-${row.request_id}`} className={`${HH_CARD} space-y-1.5`}>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -188,17 +190,19 @@ export function RequestCard({
             <PayerLabel chip={applied.chip} name={applied.name} />
           </>
         )}
+        {/* household-v4 section 1 (B): the receipt opens from beside the cost. */}
         <span className={`${HH_NOTE} ml-auto`}>
           cost <Money value={cost} />
         </span>
+        <ReceiptDetailsButton request={request} open={details.open} onToggle={details.toggle} />
       </div>
       {row.cancellation && (
         <div>
           <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>
         </div>
       )}
-      {/* Round 3 (B): one receipt, a switcher across its versions, each diffed against the one before. */}
-      <ReceiptVersions request={request} view={view} />
+      {/* Round 3 (B): the chip line on top; opened, a switcher across its versions, each diffed against the one before. */}
+      <ReceiptVersions request={request} view={view} open={details.open} />
       {/* The server's notes (calculator warnings, D81's "not yet marked posted"), as the grid's attention cell words them. */}
       {(row.notes ?? []).map((issue, index) => (
         <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>

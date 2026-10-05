@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { Receipt as ReceiptIcon } from 'lucide-react'
 
 import type { ApiAidHouseholdRequest } from '../../../types/api-types'
 import { NEGATIVE_INK } from '../kit/aidStyles'
 import type { AidView } from '../kit/asOf'
 import { BINDING_TEXT } from '../kit/kitStyles'
-import { Receipt } from '../kit/Receipt'
+import { ReceiptLabelLine } from '../kit/Receipt'
 import {
   bindingPhrase,
   receiptSections,
@@ -14,9 +15,9 @@ import {
   type AidTraceStep,
   type ReceiptSection,
 } from '../kit/receiptModel'
-import { opensByItself } from './householdModel'
 import { ReceiptChipLine } from './ReceiptChipLine'
 import {
+  HH_DETAILS_BUTTON,
   HH_DIFF_ADD,
   HH_DIFF_DEL,
   HH_LINE_CHANGED,
@@ -238,22 +239,45 @@ function VersionHead({
   )
 }
 
+/** The header's toggle beside the cost (the mock's .btn.sm): a receipt icon, Show or Hide Details. */
+export function ReceiptDetailsButton({
+  request,
+  open,
+  onToggle,
+}: {
+  request: ApiAidHouseholdRequest
+  open: boolean
+  onToggle: () => void
+}) {
+  if (request.receipts.length === 0) return null
+  return (
+    <button type="button" className={HH_DETAILS_BUTTON} onClick={onToggle}>
+      <ReceiptIcon className="h-3.5 w-3.5" />
+      {open ? 'Hide Details' : 'Show Details'}
+    </button>
+  )
+}
+
 /**
- * A request card's receipt (round 3; household-v3.html section 1 (B), the owner's pick): one
- * receipt with a switcher across its versions, each round as posted then the live one, the current
- * one picked. Each version diffs inline against the one before it, from the receipts in the
- * payload. Folded under its sentence (D34), it opens by itself on a hold, on the current version.
+ * A request card's receipt (household-v3 section 1 (B), placed per household-v4 section 1 (B)): its
+ * label and its one line of chips always on top; opened from the header, the switcher across its
+ * versions (each round as posted, then the live one, the current one picked) and the picked
+ * version's columns, diffed inline against the one before it, open below the line.
  */
 export function ReceiptVersions({
   request,
   view,
+  open,
 }: {
   request: ApiAidHouseholdRequest
   view: AidView
+  open: boolean
 }) {
   const versions = useMemo(() => receiptVersions(request.receipts), [request.receipts])
   // The picked version's key; null (or a key a refetch dropped) is the current one.
   const [picked, setPicked] = useState<string | null>(null)
+  // Folded, the card shows the current receipt again.
+  if (!open && picked !== null) setPicked(null)
   const at = versions.findIndex((version) => version.key === picked)
   const index = at === -1 ? versions.length - 1 : at
   const selected = versions[index]
@@ -264,18 +288,12 @@ export function ReceiptVersions({
   )
   if (selected === undefined) return null
   return (
-    <Receipt
-      trace={selected.receipt.trace}
-      label={selected.receipt.label}
-      view={view}
-      folded
-      openByItself={opensByItself(request)}
-      versions={{
-        showWords:
-          versions.length > 1
-            ? `Show the receipt · ${String(versions.length)} versions ▾`
-            : 'Show the receipt ▾',
-        head: (
+    <div className="space-y-1.5">
+      <ReceiptLabelLine label={selected.receipt.label} view={view} />
+      {/* household-v4 section 2 (B): one line of chips, the Total pinned right. */}
+      <ReceiptChipLine trace={selected.receipt.trace} />
+      {open && (
+        <>
           <VersionHead
             versions={versions}
             selected={selected}
@@ -283,19 +301,13 @@ export function ReceiptVersions({
             marks={marks}
             pick={setPicked}
           />
-        ),
-        lines: (
           <ReceiptColumns
             trace={selected.receipt.trace}
             prev={prev?.receipt.trace ?? null}
             marks={marks}
           />
-        ),
-        // Folded, the card shows the current receipt's sentence again.
-        onFold: () => setPicked(null),
-        // household-v4 section 2 (B): one line of chips, the Total pinned right.
-        sentence: <ReceiptChipLine trace={selected.receipt.trace} />,
-      }}
-    />
+        </>
+      )}
+    </div>
   )
 }

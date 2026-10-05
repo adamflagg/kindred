@@ -257,3 +257,9 @@ export const HH_CHIP = 'border-muted-foreground/35 border-l px-2.5 first:border-
 export const HH_CHIP_ROUND = 'text-muted-foreground text-[12.5px] font-bold'
 /** The Total (the mock's .tot): never shrinks, ruled off from the chips. */
 export const HH_CHIP_TOTAL = 'border-muted-foreground/35 flex-none border-l pl-2.5'
+
+// round 3 · receipt placement (household-v4.html section 1 (B)) ───────────────────────────────
+
+/** Show / Hide Details beside the card's cost (the mock's .btn.sm): a small card button, receipt icon first. */
+export const HH_DETAILS_BUTTON =
+  'inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-[7px] border border-border bg-card px-2 py-px text-xs leading-[1.5] font-semibold text-forest-700 hover:bg-muted dark:text-forest-300'

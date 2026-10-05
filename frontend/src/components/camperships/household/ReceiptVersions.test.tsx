@@ -7,7 +7,8 @@ import type { ApiAidHouseholdRequest } from '../../../types/api-types'
 import { TRACE_CAPPED_BY_ASK, traceStep } from '../kit/fixtures'
 import { ROW_EMMA } from '../requests/gridFixtures'
 import { householdRequest, receiptOut } from './householdFixtures'
-import { ReceiptVersions } from './ReceiptVersions'
+import { ReceiptDetailsButton, ReceiptVersions } from './ReceiptVersions'
+import { useReceiptDetails } from './useReceiptDetails'
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 
@@ -34,26 +35,61 @@ const LIVE = {
 }
 const HOLD = [{ code: 'manual_hold', severity: 'hold' as const, message: 'Waiting on a call' }]
 
-function renderVersions(over: Partial<ApiAidHouseholdRequest>, holds = false) {
-  const request = householdRequest(holds ? { ...ROW_EMMA, holds: HOLD } : ROW_EMMA, over)
-  return render(
+/** The card's wiring: the header's Show Details button and the receipt under the chip line. */
+function Card({ request }: { request: ApiAidHouseholdRequest }) {
+  const details = useReceiptDetails(request)
+  return (
     <MemoryRouter>
-      <ReceiptVersions request={request} view={VIEW} />
+      <ReceiptDetailsButton request={request} open={details.open} onToggle={details.toggle} />
+      <ReceiptVersions request={request} view={VIEW} open={details.open} />
     </MemoryRouter>
   )
 }
 
+function renderVersions(over: Partial<ApiAidHouseholdRequest>, holds = false) {
+  const request = householdRequest(holds ? { ...ROW_EMMA, holds: HOLD } : ROW_EMMA, over)
+  return render(<Card request={request} />)
+}
+
 const line = (label: string) =>
   screen.getByText(label, { selector: 'span' }).closest('button') as HTMLElement
-const open = () => userEvent.click(screen.getByRole('button', { name: /^Show the receipt/ }))
+const open = () => userEvent.click(screen.getByRole('button', { name: 'Show Details' }))
 
 describe('ReceiptVersions: one receipt, a version switcher (round 3, section 1 (B))', () => {
-  it('folds to one control that counts the versions', () => {
+  it('folds to one Show Details button, and no other control (household-v4 §1 (B))', () => {
     renderVersions({ receipts: [R1, R2, LIVE] })
-    expect(
-      screen.getByRole('button', { name: 'Show the receipt · 3 versions ▾' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /as posted/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Show the receipt/ })).toBeNull()
+    expect(screen.queryByText('Weighted income', { selector: 'span' })).toBeNull()
+  })
+
+  it('reads Hide Details when open, and folds again from it', async () => {
+    renderVersions({ receipts: [R1, R2, LIVE] })
+    await open()
+    expect(screen.getByRole('button', { name: /^Round 1 as posted/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Details' }))
+    expect(screen.queryByRole('button', { name: /^Round 1 as posted/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
+  })
+
+  it('keeps the chip line on top: the switcher and the receipt open below it', async () => {
+    renderVersions({ receipts: [R1, R2, LIVE] })
+    await open()
+    const chips = screen.getByTestId('receipt-chips')
+    const switcher = screen.getByRole('button', { name: /^Current/ })
+    const lines = line('Weighted income')
+    const label = screen.getByRole('link', { name: 'rules 2027 v3' })
+    const below = (a: Node, b: Node) =>
+      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
+    expect(below(label, chips)).toBeTruthy()
+    expect(below(chips, switcher)).toBeTruthy()
+    expect(below(switcher, lines)).toBeTruthy()
+  })
+
+  it('draws a receipt icon in the button', () => {
+    renderVersions({ receipts: [R1, R2, LIVE] })
+    expect(screen.getByRole('button', { name: 'Show Details' }).querySelector('svg')).not.toBeNull()
   })
 
   it('heads the card with one line of chips, not the sentence (household-v4 §2 (B))', () => {
@@ -147,19 +183,33 @@ describe('ReceiptVersions: one receipt, a version switcher (round 3, section 1 (
     renderVersions({ receipts: [R1, R2, LIVE] })
     await open()
     await userEvent.click(screen.getByRole('button', { name: /^Round 1 as posted/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'Hide the receipt ▴' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Details' }))
     expect(screen.getByRole('link', { name: 'rules 2027 v3' })).toBeInTheDocument()
+    await open()
+    expect(screen.getByRole('button', { name: /^Current/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('opens by itself on a hold, on the current version (D34)', () => {
     renderVersions({ receipts: [R1, LIVE] }, true)
-    expect(screen.getByRole('button', { name: 'Hide the receipt ▴' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Details' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Current/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('with one version: no count, no switcher, "One version so far"', async () => {
+  it('opens by itself on a hold that arrives later, and a hold that stays does not re-open it', async () => {
+    const plain = householdRequest(ROW_EMMA, { receipts: [R1, LIVE] })
+    const held = householdRequest({ ...ROW_EMMA, holds: HOLD }, { receipts: [R1, LIVE] })
+    const { rerender } = render(<Card request={plain} />)
+    expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
+    rerender(<Card request={held} />)
+    expect(screen.getByRole('button', { name: 'Hide Details' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Details' }))
+    rerender(<Card request={{ ...held }} />)
+    expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
+  })
+
+  it('with one version: no switcher, "One version so far"', async () => {
     const { container } = renderVersions({ receipts: [receiptOut(1), receiptOut(2)] })
-    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt ▾' }))
+    await open()
     expect(container.querySelector('[aria-pressed]')).toBeNull()
     expect(screen.getByText('One version so far')).toBeInTheDocument()
     expect(line('Weighted income')).toBeInTheDocument()

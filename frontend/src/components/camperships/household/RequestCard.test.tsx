@@ -34,6 +34,23 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(screen.getByText('$6,760')).toBeInTheDocument()
   })
 
+  it("puts Show Details beside the cost at the card's top right, and no receipt link under the line (household-v4 §1 (B))", () => {
+    renderCard()
+    const button = screen.getByRole('button', { name: 'Show Details' })
+    const cost = screen.getByText('$6,760')
+    // The same header row as the camper's name, after the cost.
+    const header = screen.getByText('Emma Johnson').parentElement as HTMLElement
+    expect(button.parentElement).toBe(header)
+    expect(header).toContainElement(cost)
+    expect(cost.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Show the receipt/ })).toBeNull()
+  })
+
+  it('draws no Show Details on a card with no receipt', () => {
+    renderCard(householdRequest(ROW_EMMA, { receipts: [] }))
+    expect(screen.queryByRole('button', { name: 'Show Details' })).toBeNull()
+  })
+
   // #2996: the card's stage is the server's (card.row is the grid's own row). A C1 round still reads
   // needs_offer in rounds[] until tonight's tick, but the server already calls the request posted.
   it("reads the server's stage on a C1 round, not the round's own status", () => {
@@ -51,7 +68,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
 
   it('folds the receipt under its sentence (D34), and opens it by itself on a hold', () => {
     const { unmount } = renderCard()
-    expect(screen.getByRole('button', { name: /^Show the receipt/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
     unmount()
     renderCard(
       householdRequest({
@@ -59,7 +76,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         holds: [{ code: 'manual_hold', severity: 'hold', message: 'Waiting on a call' }],
       })
     )
-    expect(screen.getByRole('button', { name: 'Hide the receipt ▴' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Details' })).toBeInTheDocument()
   })
 
   it("shows each round's amount, state, lock and ticks", () => {
@@ -99,7 +116,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       rounds: [roundOut(1, 'posted', { decided: 1420, posted: 1420, would_change_by: -40 })],
     })
     renderCard(householdRequest(row, { receipts: [receiptOut(1)] }))
-    expect(screen.getByRole('button', { name: /^Show the receipt/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
   })
 
   it("draws a pending Round 3 the grid's way, outside the total, and names each line's basis", () => {
@@ -179,7 +196,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         receipts: [receiptOut(1, { kind: 'reproduced', season: 2026 }), receiptOut(2)],
       })
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show Details' }))
     expect(
       screen.getByRole('button', { name: /^Round 1 as reproduced from the 2026 sheet/ })
     ).toBeInTheDocument()
@@ -191,7 +208,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         receipts: [receiptOut(1, { kind: 'reproduced', season: 2025 }), receiptOut(2)],
       })
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show Details' }))
     expect(
       screen.getByRole('button', { name: /^Round 1 as reproduced from the 2025 sheet/ })
     ).toBeInTheDocument()
@@ -211,7 +228,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         ],
       })
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show Details' }))
     await userEvent.click(screen.getByRole('button', { name: /^Round 1 as posted/ }))
     expect(screen.getByText(/locked Mar 9 when Test User checked Posted/)).toBeInTheDocument()
   })
@@ -345,9 +362,10 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       expect(within(shares).queryByText(/^0 ·/)).toBeNull()
     })
 
-    it('shows the live receipt once when several unposted rounds share it (M8)', () => {
+    it('shows the live receipt once when several unposted rounds share it (M8)', async () => {
       renderCard(householdRequest(ROW_OLIVIA, { receipts: [receiptOut(1), receiptOut(2)] }))
-      expect(screen.getByRole('button', { name: 'Show the receipt ▾' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Show Details' }))
+      expect(screen.getByText('One version so far')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^Round 1 as/ })).toBeNull()
     })
 
@@ -415,7 +433,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         ],
       })
       renderCard(householdRequest(row))
-      expect(screen.getByRole('button', { name: /^Show the receipt/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Show Details' })).toBeInTheDocument()
     })
 
     it.each([

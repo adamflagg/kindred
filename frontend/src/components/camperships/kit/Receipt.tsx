@@ -49,8 +49,14 @@ export function ReceiptSentence({
   )
 }
 
-/** The label, with its rules version linked to Season › Rules (D76). */
-function ReceiptLabelLine({ label, view }: { label: ReceiptLabelOut; view?: AidView | undefined }) {
+/** The label, with its rules version linked to Season › Rules (D76). The household card draws it too. */
+export function ReceiptLabelLine({
+  label,
+  view,
+}: {
+  label: ReceiptLabelOut
+  view?: AidView | undefined
+}) {
   const words = receiptRulesWords(label)
   const full = receiptLabel(label)
   const at = full.indexOf(words)
@@ -77,8 +83,7 @@ interface ReceiptProps {
   /**
    * The household page's receipt versions (round 3; household-v3.html section 1 (B)): when given, the
    * fold toggle reads `showWords`, `head` (the version switcher) heads the opened receipt above its
-   * label, `lines` replaces the line box, `onFold` hears the receipt fold, and `sentence` replaces the
-   * sentence box. Absent, nothing changes.
+   * label, `lines` replaces the line box, and `onFold` hears the receipt fold. Absent, nothing changes.
    */
   versions?: ReceiptVersionsSlot | undefined
 }
@@ -88,8 +93,6 @@ export interface ReceiptVersionsSlot {
   readonly head: ReactNode
   readonly lines: ReactNode
   readonly onFold?: (() => void) | undefined
-  /** The household's own line in place of the sentence box (household-v4 section 2 (B)). */
-  readonly sentence?: ReactNode | undefined
 }
 
 /** K3: 14px at line-height 1.55, padding 8/12, a 30% muted tint, radius 10. */
@@ -136,7 +139,7 @@ export function Receipt({
       {versions !== undefined && open && versions.head}
       <ReceiptLabelLine label={label} view={view} />
       {/* K3: the sentence in a tinted rounded box (receipt.html D; the household mock's .sentence). */}
-      {versions?.sentence ?? <ReceiptSentence trace={trace} className={SENTENCE_BOX} />}
+      <ReceiptSentence trace={trace} className={SENTENCE_BOX} />
       {folded && (
         <button
           type="button"
