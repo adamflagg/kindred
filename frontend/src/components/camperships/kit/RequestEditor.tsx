@@ -51,6 +51,38 @@ export interface EditorDraftReport extends EditorTyped {
   readonly problem: string | null
 }
 
+/**
+ * What the editor hands a surface that lays it out itself (`frame`, the household card): its fields,
+ * the computed result, its problems, the key hint's words, and save and cancel as its keys do them.
+ */
+export interface EditorParts {
+  /** The amount field, its label above it. */
+  readonly amount: ReactNode
+  /** The note or statement field, its label above it; null when the edit takes none. */
+  readonly note: ReactNode
+  /** The award, its pill, receipt sentence, stage change and payer shares; nothing while idle. */
+  readonly result: ReactNode
+  /** Why a save was refused here, and a failed save's words. */
+  readonly problems: ReactNode
+  /** The key hint, in words. */
+  readonly keys: string
+  /** Save as Enter does: once, and only what is valid (else the problem shows). */
+  readonly save: () => void
+  readonly cancel: () => void
+}
+
+/** 'card' only: the surface's own dress for the fields, and how it lays the parts out. */
+export interface EditorFrame {
+  /** A field's label: its caption above the control. */
+  readonly label: string
+  readonly amount: string
+  /** A one-line note. */
+  readonly text: string
+  /** The statement of need's box (three rows to start). */
+  readonly area: string
+  readonly render: (parts: EditorParts) => ReactNode
+}
+
 interface RequestEditorProps {
   readonly familyName: string
   readonly householdCmId: number
@@ -118,6 +150,12 @@ interface RequestEditorProps {
   readonly layout?: 'row' | 'card' | 'panel' | undefined
   /** 'panel' only: the row's next step, at the end of the first line. */
   readonly trailing?: ReactNode
+  /**
+   * 'card' only: the household page lays the editor out itself (round 3, two columns), dressing the
+   * fields in its own classes. No caption and no hint line of the editor's own: the surface places
+   * `keys`. The grid never passes it.
+   */
+  readonly frame?: EditorFrame | undefined
 }
 
 function ShareFigure({ share }: { share: EditorShare }) {
@@ -183,6 +221,20 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
       ))}
     </span>
   )
+}
+
+/**
+ * The surface's layout, drawn as an element rather than called while rendering: the parts carry the
+ * amount field's ref and a save that reads refs, which render must not touch (react-hooks/refs).
+ */
+function Framed({
+  render,
+  parts,
+}: {
+  render: (parts: EditorParts) => ReactNode
+  parts: EditorParts
+}) {
+  return render(parts)
 }
 
 /** A reason limit above this is a statement, not a line: it gets a text area. */
@@ -353,8 +405,9 @@ export function RequestEditor(props: RequestEditorProps) {
     }
   }
 
+  const frame = props.layout === 'card' ? props.frame : undefined
   const amountField = (
-    <label className="flex items-center gap-2 whitespace-nowrap">
+    <label className={frame ? frame.label : 'flex items-center gap-2 whitespace-nowrap'}>
       {props.amountLabel}
       <input
         ref={amountRef}
@@ -368,7 +421,11 @@ export function RequestEditor(props: RequestEditorProps) {
           props.onAmountChange(next.kind === 'ok' ? next.amount : null)
         }}
         onKeyDown={onKeyDown}
-        className={`${props.layout === 'panel' ? FIELD_PANEL : FIELD_INLINE} w-28 text-right tabular-nums`}
+        className={
+          frame
+            ? frame.amount
+            : `${props.layout === 'panel' ? FIELD_PANEL : FIELD_INLINE} w-28 text-right tabular-nums`
+        }
       />
     </label>
   )
@@ -376,11 +433,13 @@ export function RequestEditor(props: RequestEditorProps) {
     props.policy.kind === 'none' ? null : (
       <label
         className={
-          props.layout === 'card'
-            ? 'flex items-center gap-2'
-            : props.layout === 'panel'
-              ? 'flex min-w-0 flex-[1_1_12.5rem] items-center gap-2'
-              : 'flex min-w-[16rem] flex-1 items-center gap-2'
+          frame
+            ? frame.label
+            : props.layout === 'card'
+              ? 'flex items-center gap-2'
+              : props.layout === 'panel'
+                ? 'flex min-w-0 flex-[1_1_12.5rem] items-center gap-2'
+                : 'flex min-w-[16rem] flex-1 items-center gap-2'
         }
       >
         {props.policy.label}
@@ -388,7 +447,7 @@ export function RequestEditor(props: RequestEditorProps) {
           // The statement of need (4000 characters): a small text area that grows with its text.
           // Enter still saves; Shift+Enter is a new line.
           <textarea
-            rows={2}
+            rows={frame ? 3 : 2}
             maxLength={props.policy.maxLength}
             value={reason}
             onChange={(event) => {
@@ -396,7 +455,9 @@ export function RequestEditor(props: RequestEditorProps) {
               setReason(event.target.value)
             }}
             onKeyDown={onKeyDown}
-            className={`${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`}
+            className={
+              frame ? frame.area : `${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`
+            }
           />
         ) : (
           <input
@@ -408,7 +469,13 @@ export function RequestEditor(props: RequestEditorProps) {
               setReason(event.target.value)
             }}
             onKeyDown={onKeyDown}
-            className={props.layout === 'panel' ? `${FIELD_PANEL} w-full min-w-0` : FIELD}
+            className={
+              frame
+                ? frame.text
+                : props.layout === 'panel'
+                  ? `${FIELD_PANEL} w-full min-w-0`
+                  : FIELD
+            }
           />
         )}
       </label>
@@ -425,6 +492,30 @@ export function RequestEditor(props: RequestEditorProps) {
   const saveErrorNote = props.saveError ? (
     <span className={AMBER_NOTE}>{props.saveError}</span>
   ) : null
+
+  if (frame) {
+    const statement = props.policy.kind !== 'none' && props.policy.maxLength > LONG_TEXT
+    const parts: EditorParts = {
+      amount: amountField,
+      note: noteField,
+      result: <EditorResult preview={props.preview} />,
+      problems: (
+        <>
+          {problemNote}
+          {saveErrorNote}
+        </>
+      ),
+      keys: statement
+        ? 'Enter saves · Shift+Enter for a new line · Esc cancels'
+        : 'Enter saves · Esc cancels',
+      save: () => {
+        const save = takeSave()
+        if (save) props.onSave(save)
+      },
+      cancel: props.onCancel,
+    }
+    return <Framed render={frame.render} parts={parts} />
+  }
 
   if (props.layout === 'panel') {
     const ready = props.preview.status === 'ready'
