@@ -264,14 +264,16 @@ def test_a_cost_override_body_is_validated(body: dict[str, object]) -> None:
 
 @pytest.mark.asyncio
 async def test_a_cost_override_on_a_request_with_a_posted_round_succeeds_but_warns() -> None:
-    """It changes what the later rounds and "would change by" read, never the posted money; the response says so."""
+    """It changes what the later rounds read, never the posted money; the response says so, and (owner 2026-10-05:
+    posted rounds are history) names no "would change by" figure."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     _posted(store, EMMA, 1, "1500")
     out = await _service(store).set_cost_override(EMMA, OVERRIDE, ACTOR)
     assert out.written == 1
-    assert out.warning is not None
-    assert "posted" in out.warning
+    assert (
+        out.warning == "A round is already posted: this cost changes the later rounds, never the money already posted"
+    )
     (row,) = (await _service(store).grid(YEAR)).rows
     assert row.rounds[0].posted == 1500.0  # the posted money doesn't move
 

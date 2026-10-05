@@ -13,8 +13,8 @@ locked at (D43). Each round that exists gets one state:
   needs_offer       decided and not posted: money spoken for (D44);
   not_rebuilt       a past date's round whose state isn't rebuilt (as_of.py).
 
-A posted round's "would change by" is what it works out to now, with the rounds before it as
-locked, less the amount it locked (D43: information only once the family has been told).
+A posted round is history (D43): it reads as its lock recorded it, and a later change flows into the next round.
+There is no "would change by" figure on it (owner 2026-10-05).
 
 Outside grants reach the calculator only as the grants register's bridge built them
 (`grant_inputs_by_request`). An incentive is never a GrantInput (D88: One Happy Camper stays an
@@ -91,7 +91,6 @@ class RoundView:
     locked: Decimal | None
     accepted: bool
     pending: Decimal | None
-    would_change_by: Decimal | None
     counts_toward_budget: bool
     pool: str | None
     extra: Decimal = Decimal(0)
@@ -174,10 +173,10 @@ def _locked_extras(state: RoundState, rules_decision_round: int | None = None) -
     return _amount(snapshot.get("top_up")), _amount(snapshot.get("discretionary"))
 
 
-def request_inputs(item: RequestToPrice, rules: AidRules, *, lock_through: int = 3) -> RequestInputs:
-    """The request with its rounds' asks and amounts, and its posted rounds up to `lock_through`
-    held at their locked amounts. The decision times are this request's own locks, so a grant
-    recorded after its Round 1 lock never lowers its Round 1 (no single season date).
+def request_inputs(item: RequestToPrice, rules: AidRules) -> RequestInputs:
+    """The request with its rounds' asks and amounts, and its posted rounds held at their locked amounts. The
+    decision times are this request's own locks, so a grant recorded after its Round 1 lock never lowers its Round 1
+    (no single season date).
 
     A posted round locks its base (the locked amount less the decision money its lock recorded),
     and that decision money freezes beside it (locked_top_up, locked_discretionary). Totals are the
@@ -190,17 +189,13 @@ def request_inputs(item: RequestToPrice, rules: AidRules, *, lock_through: int =
 
     def locked(n: int) -> Decimal | None:
         state = states[n]
-        if not state.posted or n > lock_through or state.locked_amount is None:
+        if not state.posted or state.locked_amount is None:
             return None
         extras = _locked_extras(state, decision_round)
         return state.locked_amount - sum(extras, ZERO) if extras is not None else state.locked_amount
 
     frozen = next(
-        (
-            extras
-            for n in ROUNDS
-            if n <= lock_through and (extras := _locked_extras(states[n], decision_round)) is not None
-        ),
+        (extras for n in ROUNDS if (extras := _locked_extras(states[n], decision_round)) is not None),
         None,
     )
 
@@ -285,7 +280,7 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     notes = tuple(i for i in issues if i.severity == "warn")
     stopped = bool(holds) or result is None
     views = tuple(
-        _view(n, states[n], item, rules, decision, result, stopped=stopped, pool=pool, decision_key=decision_key)
+        _view(n, states[n], item, decision, result, stopped=stopped, pool=pool, decision_key=decision_key)
         for n in ROUNDS
         if round_exists(states[n]) and (states[n].posted or item.live)
     )
@@ -311,7 +306,6 @@ def posted_view(
     ask: Decimal | None,
     pool: str | None,
     *,
-    would_change_by: Decimal | None = None,
     decision_key: str | None = None,
 ) -> RoundView:
     """A posted round as its lock recorded it (D43): amount, pool and budget treatment from the
@@ -333,7 +327,6 @@ def posted_view(
         locked=state.locked_amount,
         accepted=state.accepted,
         pending=None,
-        would_change_by=would_change_by,
         counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
         pool=locked_pool if isinstance(locked_pool, str) else None,
         extra=extra_locked(state, decision),
@@ -345,7 +338,6 @@ def _view(
     n: int,
     state: RoundState,
     item: RequestToPrice,
-    rules: AidRules | None,
     decision: DecisionType | None,
     result: CalcResult | None,
     *,
@@ -356,14 +348,7 @@ def _view(
     ask = item.r1_ask if n == 1 else state.ask
     counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     if state.posted:
-        return posted_view(
-            state,
-            decision,
-            ask,
-            pool,
-            would_change_by=_would_change(n, state, item, rules, decision),
-            decision_key=decision_key,
-        )
+        return posted_view(state, decision, ask, pool, decision_key=decision_key)
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
     if stopped or pending is not None:
@@ -389,26 +374,11 @@ def _view(
         # tonight's tick posts it. Anything else can't (tick_accepted), and an undo of the Posted tick clears it.
         accepted=state.accepted,
         pending=pending,
-        would_change_by=None,
         counts_toward_budget=counts,
         pool=pool,
         extra=_extra_now(result, decision, n) if decided is not None else ZERO,
         decision_type=decision_key if decision is not None and decision.round == n else None,
     )
-
-
-def _would_change(
-    n: int, state: RoundState, item: RequestToPrice, rules: AidRules | None, decision: DecisionType | None
-) -> Decimal | None:
-    """What round n works out to now, the rounds before it as locked, less what it locked at (D43)."""
-    if rules is None or item.request is None or not item.live or state.locked_amount is None:
-        return None
-    now = calculate(item.application, request_inputs(item, rules, lock_through=n - 1), rules)
-    worked = _worked_out(now, decision, n)
-    if worked is None:
-        return None
-    change = worked - state.locked_amount
-    return change if change != 0 else None
 
 
 def lock_snapshot(priced: PricedRequest, n: int, rules_version: int) -> dict[str, Any]:

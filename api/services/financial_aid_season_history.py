@@ -293,15 +293,15 @@ def summary_words(f: Figures) -> str:
 
 
 def effect_out(after: Mapping[str, Any] | None) -> HistoryEffectOut | None:
-    """An approval's recorded effect row; None when it is malformed (History shows no effect rather than fail)."""
-    values = {key: (after or {}).get(key) for key in ("from_version", "to_version", "repriced", "flagged")}
+    """An approval's recorded effect row; None when it is malformed (History shows no effect rather than fail). An older
+    row's "flagged" count is ignored (owner 2026-10-05: no sent offer is flagged)."""
+    values = {key: (after or {}).get(key) for key in ("from_version", "to_version", "repriced")}
     if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in values.values()):
         return None
     return HistoryEffectOut(
         from_version=values["from_version"] or None,
         to_version=values["to_version"] or None,
         repriced=int(values["repriced"] or 0),
-        flagged=int(values["flagged"] or 0),
     )
 
 
@@ -313,8 +313,7 @@ def effect_words(effect: HistoryEffectOut | None) -> str:
     if effect.to_version == effect.from_version:
         return f"v{effect.to_version} still prices the season: nothing re-priced"
     repriced = _count(effect.repriced, "unsent request", "unsent requests")
-    flagged = _count(effect.flagged, "sent offer", "sent offers")
-    return f"v{effect.to_version} now prices the season · {repriced} re-priced · {flagged} flagged"
+    return f"v{effect.to_version} now prices the season · {repriced} re-priced"
 
 
 def _money_or_none(value: Decimal | None) -> float | None:

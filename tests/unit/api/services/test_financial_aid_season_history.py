@@ -24,6 +24,7 @@ from api.services.financial_aid_season_history import (
     Operation,
     SeasonHistoryService,
     Subject,
+    effect_out,
     entry_of,
     figures,
     for_reader,
@@ -802,15 +803,19 @@ def _approval(effect: dict[str, int] | None) -> list[SimpleNamespace]:
     return rows
 
 
-EFFECT = {"from_version": 3, "to_version": 4, "repriced": 41, "flagged": 12}
+EFFECT = {"from_version": 3, "to_version": 4, "repriced": 41}
 
 
 @pytest.mark.asyncio
-async def test_an_approval_line_says_what_it_re_priced_and_flagged() -> None:
-    reads = _Reads(*_approval(EFFECT))
+@pytest.mark.parametrize("effect", [EFFECT, {**EFFECT, "flagged": 12}])
+async def test_an_approval_line_says_what_it_re_priced_only(effect: dict[str, int]) -> None:
+    """Owner 2026-10-05: no sent offer is flagged. An old row that still carries "flagged" reads the same: the key is
+    ignored."""
+    reads = _Reads(*_approval(effect))
     (line,) = (await SeasonHistoryService(reads).page(2027, HistoryFilter(rules=True), page=1, per_page=50)).operations
-    assert line.summary == "v4 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged"
-    assert line.effect == HistoryEffectOut(from_version=3, to_version=4, repriced=41, flagged=12)
+    assert line.summary == "v4 now prices the season · 41 unsent requests re-priced"
+    assert line.effect == HistoryEffectOut(from_version=3, to_version=4, repriced=41)
+    assert line.effect.flagged == 0  # kept on the schema until slice 1 lands, never emitted
     assert (line.rows, [(c.entity, c.action) for c in line.counts]) == (2, [("aid_rules", "approve")])
     detail = await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)
     assert [r.entity for r in detail.rows] == ["aid_rules", "aid_rules"]  # the effect is not a record write
@@ -831,10 +836,24 @@ async def test_an_approval_that_moved_no_pricing_says_so_and_an_old_one_says_not
     assert await summary({"from_version": 0, "to_version": 0, "repriced": 0, "flagged": 0}) == (
         "no approved rules price the season yet: nothing re-priced"
     )
-    assert await summary({"from_version": 0, "to_version": 1, "repriced": 1, "flagged": 0}) == (
-        "v1 now prices the season · 1 unsent request re-priced · 0 sent offers flagged"
+    assert await summary({"from_version": 0, "to_version": 1, "repriced": 1}) == (
+        "v1 now prices the season · 1 unsent request re-priced"
     )
     assert await summary(None) == ""  # approved before the effect was recorded, or its measure failed
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        None,
+        {"from_version": 3, "to_version": 4},
+        {"from_version": 3, "to_version": 4, "repriced": -1},
+        {"from_version": 3, "to_version": 4, "repriced": True},
+        {"from_version": 3, "to_version": "4", "repriced": 1},
+    ],
+)
+def test_a_malformed_effect_row_reads_as_no_effect(after: dict[str, Any] | None) -> None:
+    assert effect_out(after) is None
 
 
 @pytest.mark.asyncio

@@ -914,7 +914,7 @@ class _Effects:
         self.calls.append((year, before, after))
         if self.error is not None:
             raise self.error
-        return ApprovalEffect(before, after, 41 if before != after else 0, 12 if before != after else 0)
+        return ApprovalEffect(before, after, 41 if before != after else 0)
 
 
 def _ticking_clock() -> Any:
@@ -938,7 +938,7 @@ async def test_an_approval_that_makes_a_version_price_the_season_records_its_eff
         FINANCE,
         "",
     )
-    assert row["after"] == {"from_version": 0, "to_version": 1, "repriced": 41, "flagged": 12}
+    assert row["after"] == {"from_version": 0, "to_version": 1, "repriced": 41}
     assert row["operation_id"] == store.operations[-1][0]["operation_id"]  # the approval's own operation
     assert any(r.entity == "aid_rules_effect" for r in store.log_rows)  # it IS in the shared table...
     assert (
@@ -953,7 +953,7 @@ async def test_an_approval_that_moves_no_pricing_records_a_zero_effect() -> None
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_sections(2031, 1, ["programs"], actor=FINANCE, note="Finance")
     assert effects.calls == [(2031, 0, 0)]
-    assert store.recorded[0]["after"] == {"from_version": 0, "to_version": 0, "repriced": 0, "flagged": 0}
+    assert store.recorded[0]["after"] == {"from_version": 0, "to_version": 0, "repriced": 0}
 
 
 @pytest.mark.asyncio
@@ -1023,7 +1023,7 @@ async def test_the_repository_records_a_log_only_row_and_a_read_only_one_refuses
             entity_id="2031:1",
             year=2031,
             action="effect",
-            after={"from_version": 0, "to_version": 1, "repriced": 0, "flagged": 0},
+            after={"from_version": 0, "to_version": 1, "repriced": 0},
             actor=FINANCE,
             operation_id="a" * 15,
         )

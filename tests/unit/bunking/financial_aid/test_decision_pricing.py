@@ -64,20 +64,17 @@ def test_an_appeal_ask_prices_round_2() -> None:
     assert (r2.status, r2.ask, r2.decided) == ("needs_offer", Decimal(99999), Decimal(600))
 
 
-def test_a_posted_round_1_shows_would_change_by_and_round_2_builds_on_the_lock() -> None:
+def test_a_posted_round_1_stands_as_locked_with_no_would_change_figure_and_round_2_builds_on_the_lock() -> None:
+    """Owner 2026-10-05: posted rounds are history; a later rules change flows into the next round, never into a
+    "would change by" figure on the posted one."""
     rules = with_lever(RULES, "award_tables.camp.tiers.2.r1_pct", "80")
     priced = price_request(item(rounds={1: POSTED_R1, 2: APPEAL}), rules)
     r1, r2 = priced.view(1), priced.view(2)
     assert r1 is not None
     assert r2 is not None
-    assert (r1.status, r1.locked, r1.would_change_by) == ("posted", Decimal(3000), Decimal(200))
+    assert (r1.status, r1.locked, r1.decided) == ("posted", Decimal(3000), Decimal(3000))
+    assert not hasattr(r1, "would_change_by")
     assert r2.decided == Decimal(600)  # 3,600 less the locked 3,000, not less the 3,200 it would be now
-
-
-def test_a_posted_round_with_nothing_changed_has_no_would_change_by() -> None:
-    r1 = price_request(item(rounds={1: POSTED_R1}), RULES).view(1)
-    assert r1 is not None
-    assert r1.would_change_by is None
 
 
 def test_round_1_s_decision_time_is_this_requests_own_lock() -> None:
@@ -225,7 +222,7 @@ def test_posting_a_round_that_carries_discretionary_money_does_not_count_it_twic
     assert after.holds == ()
     r2_after = after.view(2)
     assert r2_after is not None
-    assert (r2_after.decided, r2_after.would_change_by) == (Decimal(850), None)
+    assert r2_after.decided == Decimal(850)
 
 
 def test_a_held_or_pending_round_reports_no_decided_amount() -> None:
@@ -280,16 +277,16 @@ def _legacy_round_2(snapshot: dict[str, Any] | None) -> tuple[Any, ...]:
     r2 = priced.view(2)
     assert priced.result is not None
     assert r2 is not None
-    return priced.result.total, tuple(h.code for h in priced.holds), r2.would_change_by
+    return priced.result.total, tuple(h.code for h in priced.holds), r2.locked
 
 
 def test_a_lock_snapshot_from_before_decision_round_still_folds_the_money_into_its_locked_amount() -> None:
     old_shape = {"pool": "camp_pool", "counts_toward_budget": True}
-    assert _legacy_round_2(old_shape) == (Decimal(3850), (), None)
+    assert _legacy_round_2(old_shape) == (Decimal(3850), (), Decimal(850))
 
 
 def test_a_posted_round_with_no_snapshot_folds_the_money_into_its_locked_amount() -> None:
-    assert _legacy_round_2(None) == (Decimal(3850), (), None)
+    assert _legacy_round_2(None) == (Decimal(3850), (), Decimal(850))
 
 
 def _post(priced_before: Any, state: RoundState, n: int) -> RoundState:
@@ -316,7 +313,7 @@ def test_posting_round_1_with_its_discretionary_money_leaves_round_2_s_cap_as_it
     assert r1_after is not None
     assert r2_after is not None
     assert after.result is not None
-    assert (r1_after.locked, r1_after.would_change_by, r1_after.extra) == (Decimal(3250), None, Decimal(250))
+    assert (r1_after.locked, r1_after.extra) == (Decimal(3250), Decimal(250))
     assert (r2_after.decided, after.result.total) == (Decimal(600), Decimal(3850))
     assert after.holds == ()
 

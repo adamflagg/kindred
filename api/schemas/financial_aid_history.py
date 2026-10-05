@@ -36,7 +36,9 @@ class HistoryEffectOut(BaseModel):
     from_version: int | None  # the rules version pricing the season before; None: none did
     to_version: int | None  # the one pricing it after; equal to from_version when the approval moved no pricing
     repriced: int  # live requests with an unsent round whose decided amount moved
-    flagged: int  # sent offers (posted, not clawed-back rounds) whose "would change by" moved to a new non-zero amount
+    # Never emitted since 2026-10-05 (owner: posted rounds are history, so no sent offer is flagged): always 0, and an
+    # older row's "flagged" is ignored. The field is removed after slice 1 lands.
+    flagged: int = 0
 
 
 class HistoryOperationOut(BaseModel):
@@ -50,7 +52,7 @@ class HistoryOperationOut(BaseModel):
     rules_versions: list[int]  # the rules versions it touched ("Open vN in Rules")
     rules_sections: list[str]  # the rules sections it approved or locked
     # "7 requests · 6 families · $9,840 locked", then a rules approval's effect words when it has one
-    # ("v4 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged"); "" when it has neither
+    # ("v4 now prices the season · 41 unsent requests re-priced"); "" when it has neither
     summary: str
     figures: HistoryFiguresOut
     effect: HistoryEffectOut | None  # a rules approval's recorded effect; None on every other line

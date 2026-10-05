@@ -6155,7 +6155,7 @@ export type HistoryEffectOut = {
   /**
    * Flagged
    */
-  flagged: number
+  flagged?: number
 }
 
 /**
@@ -17258,7 +17258,7 @@ export type ToPlaceWriteOut = {
  *
  * One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
  * exactly these rows. `families` is None where a line has no family (rules sections, descriptions).
- * A line that is no Requests view (late_full_coverage, would_change, intake) names its `request_ids`.
+ * A line that is no Requests view (late_full_coverage, intake) names its `request_ids`.
  * Reasons need not sum to `items`: a request Not reconciled on two payer shares counts once in items and
  * under each share's state.
  */

@@ -51,7 +51,7 @@ SAMUEL = "reqsamu00000001"
 CM_CANCELLED = "reqcmcancel0001"
 KINDRED_CANCELLED = "reqkdcancel0001"
 
-Rounds = dict[str, list[tuple[int, str, Decimal | None, Decimal | None]]]
+Rounds = dict[str, list[tuple[int, str, Decimal | None]]]
 
 
 def _store() -> FakeDecisionsStore:
@@ -69,7 +69,7 @@ def _register(rows: Sequence[RegisterRow] = ()) -> RegisterSource:
 
 
 def _rounds(priced: Mapping[str, PricedRequest]) -> Rounds:
-    return {rid: [(v.round, v.status, v.decided, v.would_change_by) for v in p.rounds] for rid, p in priced.items()}
+    return {rid: [(v.round, v.status, v.decided) for v in p.rounds] for rid, p in priced.items()}
 
 
 async def _frozen(store: FakeDecisionsStore, rows: Sequence[RegisterRow] = ()) -> SeasonSnapshot:
@@ -213,7 +213,8 @@ async def test_a_posted_round_replays_at_its_lock_under_any_document() -> None:
         )
     )
     priced = await price_document(await _frozen(store), shift_round1_tables(intake_rules(), Decimal(5)), approved())
-    assert _rounds(priced.season.priced)[EMMA] == [(1, "posted", Decimal(1400), Decimal(200))]
+    # Posted rounds are history (owner 2026-10-05): the lock stands, with no "would change by" under the new document.
+    assert _rounds(priced.season.priced)[EMMA] == [(1, "posted", Decimal(1400))]
 
 
 @pytest.mark.asyncio

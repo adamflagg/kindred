@@ -280,8 +280,7 @@ CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
 _POSTED_OVERRIDE_WARNING: Final = (
-    "A round is already posted: this cost changes the later rounds and the would-change-by figures, "
-    "never the money already posted"
+    "A round is already posted: this cost changes the later rounds, never the money already posted"
 )
 # Intake's flag on an unmatched request (financial_aid_intake_plan): its detail lists the candidate session ids.
 _UNMATCHED_FLAG: Final = "unmatched_session"
@@ -756,7 +755,7 @@ def grid_row(
             posted_on=rounds[v.round].posted_on if v.round in rounds else None,
             accepted=v.accepted,
             pending_approval=_money(v.pending),
-            would_change_by=_money(v.would_change_by),
+            would_change_by=None,  # never emitted since 2026-10-05 (RoundOut)
             counts_toward_budget=v.counts_toward_budget,
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
             lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
@@ -3012,7 +3011,7 @@ class FinancialAidDecisionsService:
             value = encode_cost_override(body.reason_code, body.amount)
         out = await self._override(request, COST_OVERRIDE, value, actor, body.note)
         if out.written and any(state.posted for state in rounds.values()):
-            # The override re-prices later rounds and "would change by"; money already posted is locked and never moves.
+            # The override re-prices later rounds; money already posted is locked and never moves.
             return out.model_copy(update={"warning": _POSTED_OVERRIDE_WARNING})
         return out
 

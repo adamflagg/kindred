@@ -57,10 +57,9 @@ class SeasonApprovalEffects:
         """`before`/`after`: the version pricing the season either side of the approval (0: none). Equal: nothing was
         re-priced, and nothing is priced. Otherwise the season is priced twice, one after the other."""
         if before == after:
-            return ApprovalEffect(before, after, 0, 0)
+            return ApprovalEffect(before, after, 0)
         was_rules = await self._rules.load(year, before) if before else None
         now_rules = await self._rules.load(year, after) if after else None
         was = await self._season_on(PinnedRules(self._rules, was_rules), year)
         now = await self._season_on(PinnedRules(self._rules, now_rules), year)
-        repriced, flagged = approval_counts(was.priced, now.priced)
-        return ApprovalEffect(before, after, repriced, flagged)
+        return ApprovalEffect(before, after, approval_counts(was.priced, now.priced))

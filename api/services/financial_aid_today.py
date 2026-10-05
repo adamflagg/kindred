@@ -54,7 +54,6 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
 FINANCE_LINES: Final[tuple[TodayKey, ...]] = (
     "pending_approval",
     "rules_sections",
-    "would_change",
     "sources",
     "intake",
     "equity_field_never_true",
@@ -297,9 +296,6 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
         (Decimal(str(r.pending_approval)) for row in pending for r in row.rounds if r.pending_approval is not None),
         Decimal(0),
     )
-    would_change = [
-        row for row in rows if any(r.status == "posted" and r.would_change_by not in (None, 0) for r in row.rounds)
-    ]
     intake_codes = (FLAG_AWAITING_RULES, NO_APPROVED_RULES)
     intake = [row for row in rows if any(h.code in intake_codes for h in row.holds)]
     sections = sorted(inputs.draft_sections or [])
@@ -312,7 +308,6 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
             item_kind="sections",
             reasons=_reasons((name, 0) for name in sections),
         ),
-        "would_change": _line("would_change", would_change, listed=True),
         "sources": _sources_line(inputs),
         "intake": _line(
             "intake",

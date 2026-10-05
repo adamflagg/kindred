@@ -73,6 +73,8 @@ TodayKey = Literal[
     # finance (financial_aid.rules)
     "pending_approval",
     "rules_sections",
+    # Never emitted since 2026-10-05 (owner: posted rounds are history). Kept so the Today stack's todayModel still
+    # compiles; removed after slice 1 lands.
     "would_change",
     "sources",
     "intake",
@@ -95,7 +97,7 @@ class TodayReasonOut(BaseModel):
 class TodayLineOut(BaseModel):
     """One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
     exactly these rows. `families` is None where a line has no family (rules sections, descriptions).
-    A line that is no Requests view (late_full_coverage, would_change, intake) names its `request_ids`.
+    A line that is no Requests view (late_full_coverage, intake) names its `request_ids`.
     Reasons need not sum to `items`: a request Not reconciled on two payer shares counts once in items and
     under each share's state."""
 

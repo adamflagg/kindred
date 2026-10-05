@@ -366,7 +366,8 @@ def test_a_grant_with_no_date_never_breaks_today() -> None:
     assert _line(out.casework, "late_full_coverage").items == 0
 
 
-def test_finance_sees_pending_approval_with_its_amount_and_the_would_change_flags() -> None:
+def test_finance_sees_pending_approval_with_its_amount_and_no_would_change_line() -> None:
+    """Owner 2026-10-05: posted rounds are history, so Today has no "would change" line, whatever a row carries."""
     posted = _round(1, "posted", posted=1500.0, accepted=True, posted_on=date(2031, 3, 9))
     rows = [
         _row("reqemma00000001", 1000001, posted, _round(3, "pending_approval", pending_approval=900.0)),
@@ -385,8 +386,8 @@ def test_finance_sees_pending_approval_with_its_amount_and_the_would_change_flag
     assert out.casework is None
     pending = _line(out.finance, "pending_approval")
     assert (pending.items, pending.amount) == (1, 900.0)
-    would_change = _line(out.finance, "would_change")
-    assert (would_change.items, would_change.request_ids) == (1, ["reqliam00000001"])  # a $0 change is no change
+    assert out.finance is not None
+    assert "would_change" not in [line.key for line in out.finance]
 
 
 def test_finance_sees_draft_sections_and_new_descriptions() -> None:
