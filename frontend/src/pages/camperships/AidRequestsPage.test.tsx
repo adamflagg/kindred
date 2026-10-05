@@ -627,7 +627,8 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(keyAsk).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(heading).toHaveTextContent('▸'))
     expect(screen.queryByText('Olivia Chen')).toBeNull()
-    expect(screen.getByTestId('where')).not.toHaveTextContent('row=')
+    // The URL follows through the router, which can land a beat after the fold under load.
+    await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('row='))
   })
 
   it("holds the fold while the opened row's save is still out, and keeps the group open when it fails", async () => {
