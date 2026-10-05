@@ -6472,6 +6472,10 @@ export type HouseholdCardOut = {
    */
   family_name: string
   /**
+   * Short Name
+   */
+  short_name?: string
+  /**
    * Adults
    */
   adults: Array<string>

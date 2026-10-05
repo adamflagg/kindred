@@ -38,6 +38,7 @@ from api.services.financial_aid_household_page import (
     page_scope,
     request_grants,
     share_lines,
+    short_family_name,
     totals,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord
@@ -793,6 +794,72 @@ async def test_the_page_scopes_households_cards_and_band_to_its_requests() -> No
     assert [(s.household_cm_id, s.chip) for s in card.shares] == [(JOHNSON, 1), (GARCIA, 2)]
     assert card.ask is not None
     assert card.ask.effective == "4000.0"
+
+
+# O3 (owner 2026-10-04, late): a household chip's short name. It follows the weekend family-journey rule
+# (frontend/src/components/weekend/householdIdentity.ts: childSurnames + familyNameLabel) without the
+# "The … Family" wrapper, so summer, weekend and Camperships name a household alike.
+@pytest.mark.parametrize(
+    ("surnames", "expected"),
+    [
+        (["Johnson"], "Johnson"),
+        (["Johnson", "Garcia"], "Johnson & Garcia"),
+        (["Johnson", "Garcia", "Nguyen"], "Johnson, Garcia & Nguyen"),  # 3+ is real data: never "and 2 others"
+        (["Garcia-Lopez", "Garcia-Lopez"], "Garcia-Lopez"),  # a hyphenated surname is ONE name
+        (["Martinez Garcia"], "Martinez Garcia"),  # a surname with a space stays whole
+        (["Johnson", "johnson"], "Johnson"),  # case-insensitive, the first spelling kept
+        (["Nguyen", "Patel", "Nguyen"], "Nguyen & Patel"),  # arrival order kept
+        ([" Chen "], "Chen"),
+    ],
+)
+def test_a_households_short_name_is_its_campers_distinct_surnames_joined(surnames: list[str], expected: str) -> None:
+    assert short_family_name(surnames, "The Johnson Family") == expected
+
+
+def test_a_household_with_no_camper_surname_falls_back_to_its_full_name() -> None:
+    assert short_family_name([], "The Garcia Family") == "The Garcia Family"
+    assert short_family_name(["", "  "], "Household 1000002") == "Household 1000002"
+
+
+@pytest.mark.asyncio
+async def test_each_household_card_carries_its_short_name() -> None:
+    """Emma Johnson is the Johnson household's camper: its chip reads "Johnson". The Garcia household has no camper
+    on the page, so its short name is its full name."""
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [(h.household_cm_id, h.short_name) for h in page.households] == [
+        (JOHNSON, "Johnson"),
+        (GARCIA, "The Garcia Family"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_short_name_takes_its_campers_oldest_first_as_the_weekend_roster_does() -> None:
+    """A blended household: Emma Johnson and her older half-sibling Ava Garcia both apply from the Johnson household.
+    The weekend roster lists children oldest first, so the chip reads "Garcia & Johnson"."""
+    ava = SimpleNamespace(
+        cm_id=1000013,
+        first_name="Ava",
+        preferred_name="",
+        last_name="Garcia",
+        household_id=JOHNSON,
+        primary_email="",
+        age=14.2,
+        parent_names=[],
+    )
+
+    class _Blended(_Ledger):
+        async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+            emma = [replace_ns(p, age=11.5) for p in await super().fetch_persons(year, cm_ids)]
+            return [*emma, *([ava] if ava.cm_id in cm_ids else [])]
+
+    store = _family()
+    seed_request(store, "reqava000000001", household=JOHNSON, person=1000013)
+    page = await _page_service(store, ledger=_Blended()).read(YEAR, JOHNSON)
+    assert page.households[0].short_name == "Garcia & Johnson"
+
+
+def replace_ns(ns: SimpleNamespace, **kw: Any) -> SimpleNamespace:
+    return SimpleNamespace(**{**vars(ns), **kw})
 
 
 @pytest.mark.asyncio

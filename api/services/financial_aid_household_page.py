@@ -389,6 +389,30 @@ def _city(household: Any | None) -> str:
     return ", ".join(p for p in parts if p)
 
 
+def short_family_name(surnames: Iterable[str], family_name: str) -> str:
+    """O3 (owner 2026-10-04, late): a household chip's short name. The weekend family-journey rule
+    (frontend/src/components/weekend/householdIdentity.ts, childSurnames + familyNameLabel) without its "The … Family"
+    wrapper, so summer, weekend and Camperships name a household alike: every distinct surname, trimmed, blanks dropped,
+    deduplicated case-insensitively with the first spelling kept, in arrival order, joined "A", "A & B", "A, B & C" and
+    never truncated (a whole string is one surname, hyphen or space and all). None: the full `family_name`."""
+    seen: set[str] = set()
+    distinct: list[str] = []
+    for value in surnames:
+        surname = value.strip()
+        if surname and surname.lower() not in seen:
+            seen.add(surname.lower())
+            distinct.append(surname)
+    if not distinct:
+        return family_name
+    return distinct[0] if len(distinct) == 1 else f"{', '.join(distinct[:-1])} & {distinct[-1]}"
+
+
+def _oldest_first(people: Iterable[Any]) -> list[Any]:
+    """Campers oldest first, as the weekend roster lists a party's children (lodging_roster_service's
+    _children_oldest_first, by age), ties by CampMinder id."""
+    return sorted(people, key=lambda p: (-float(getattr(p, "age", 0) or 0), int(p.cm_id)))
+
+
 def _household_of(person: Any) -> int:
     return int(getattr(person, "household_id", 0) or 0)
 
@@ -605,6 +629,13 @@ class HouseholdPageService:
                     household_cm_id=h,
                     chip=chips[h],
                     family_name=household_display_name(by_household.get(h), h),
+                    short_name=short_family_name(
+                        (
+                            str(getattr(p, "last_name", "") or "")
+                            for p in _oldest_first(p for p in people.values() if _household_of(p) == h)
+                        ),
+                        household_display_name(by_household.get(h), h),
+                    ),
                     adults=_adults(p for p in people.values() if _household_of(p) == h),
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
                     emails=sorted(
