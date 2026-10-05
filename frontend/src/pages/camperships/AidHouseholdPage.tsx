@@ -148,7 +148,13 @@ export default function AidHouseholdPage() {
   return (
     // D33: the mock's 12px between cards at every width.
     <div className="space-y-3">
-      {walk && <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />}
+      {walk && (
+        // Owner, sitting B: the Back line takes no top buffer of its own, so season bar → Back line →
+        // band reads as the direct-link page plus one tight line.
+        <div className="-mt-3">
+          <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />
+        </div>
+      )}
       <AidPageBand
         // D20: the mock's "$" tile (amber on white/10, the band's own tile).
         icon={DollarSign}
