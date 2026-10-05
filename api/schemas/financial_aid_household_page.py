@@ -170,7 +170,7 @@ class IncomeOut(BaseModel):
     flags: list[FlagOut]
     # Every person whose form this application holds (its members and each conflict variant's holders), by
     # person_cm_id, named from persons for the year; one with no persons row is left out and the client falls back.
-    form_people: list[FormPersonOut] = Field(default_factory=list)
+    form_people: list[FormPersonOut]
 
 
 class HistoryEntryOut(BaseModel):

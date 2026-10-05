@@ -42,7 +42,7 @@ from api.schemas.financial_aid_household_page import (
     ShareLineOut,
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
-from api.services.financial_aid_casework_service import CaseworkNotFoundError
+from api.services.financial_aid_casework_service import CaseworkNotFoundError, disagreeing_fields
 from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_decisions_service import (
     DecisionsStore,
@@ -603,7 +603,7 @@ class HouseholdPageService:
         outside = sorted({int(ln.household_cm_id) for ln in family_links} - households)
         camper_less = households - {_household_of(p) for p in persons}
         members_of = sorted(set(outside) | camper_less)
-        form_ids = sorted(set().union(*(_form_person_ids(d) for d in incomes)) if incomes else set())
+        form_ids = sorted(set().union(*(_form_person_ids(d) for d in incomes)))
         log, (linked_rows, members), form_persons = await asyncio.gather(
             self._history.fetch_entity_log(
                 year,
@@ -744,10 +744,9 @@ class HouseholdPageService:
 def _form_person_ids(detail: ApplicationDetailResponse) -> set[int]:
     """Everyone who owns a form on one application: its members and every conflict variant's holders."""
     ids = {int(p) for p in detail.member_person_cm_ids}
-    for flag in detail.flags:
-        for variants in (flag.detail.get("fields") or {}).values():
-            for variant in variants:
-                ids.update(int(p) for p in variant.get("person_cm_ids", ()))
+    for variants in disagreeing_fields([flag.model_dump() for flag in detail.flags]).values():
+        for variant in variants:
+            ids.update(int(p) for p in variant.get("person_cm_ids", ()))
     return ids - {0}
 
 

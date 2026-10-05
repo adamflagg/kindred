@@ -886,7 +886,8 @@ class _ConflictCasework(_Casework):
             {"value": 70000.0, "person_cm_ids": [1000019, 1000099]},
         ]
         flag = FlagOut(code="income_conflict", detail={"fields": {"total_gross_income": variants}})
-        return detail.model_copy(update={"flags": [flag], "member_person_cm_ids": [1000011, 1000012]})
+        other = FlagOut(code="ask_conflict", detail={"fields": ["not", "a", "conflict"], "person_cm_ids": [1000077]})
+        return detail.model_copy(update={"flags": [other, flag], "member_person_cm_ids": [1000011, 1000012]})
 
 
 class _FormPeopleLedger(_Ledger):

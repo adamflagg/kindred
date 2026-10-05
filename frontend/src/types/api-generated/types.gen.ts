@@ -7307,7 +7307,7 @@ export type IncomeOut = {
   /**
    * Form People
    */
-  form_people?: Array<FormPersonOut>
+  form_people: Array<FormPersonOut>
 }
 
 /**
