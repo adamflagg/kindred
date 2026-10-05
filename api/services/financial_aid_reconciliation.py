@@ -1103,7 +1103,7 @@ def stop_text(stop: TickStop) -> str:
         case "short_posting":
             return (
                 f"CampMinder shows {held} posted for Round {n}, but the offer is {decided}. "
-                "Check the posting in CampMinder, then click Mark posted."
+                "Check the posting in CampMinder, then click Mark Posted."
             )
         case "shares_short":
             return (
@@ -1123,14 +1123,14 @@ def stop_text(stop: TickStop) -> str:
         case "undone":
             return (
                 f"Someone unmarked Round {n} as posted, so the overnight sync won't re-mark it. "
-                "Click Mark posted once it's right."
+                "Click Mark Posted once it's right."
             )
         case "withheld":
             raise ValueError("a withheld round's text is D16's (financial_aid_to_place.withheld_why)")
         case "decided_zero":
             return (
                 f"CampMinder has {held} for this request, but Round {n} was decided at $0. "
-                "Check the posting in CampMinder, then click Mark posted if $0 is right."
+                "Check the posting in CampMinder, then click Mark Posted if $0 is right."
             )
 
 

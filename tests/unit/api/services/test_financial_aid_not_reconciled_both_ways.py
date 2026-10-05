@@ -74,14 +74,14 @@ DECIDED_ZERO_PILL: Final = "Decided $0"
 def decided_zero_text(held: str, n: int) -> str:
     return (
         f"CampMinder has {held} for this request, but Round {n} was decided at $0. Check the posting in CampMinder, "
-        "then click Mark posted if $0 is right."
+        "then click Mark Posted if $0 is right."
     )
 
 
 # The owner's approved texts (10-03), verbatim, with the fixture's dollars. Pill · sentence.
 SHORT_TEXT = (
     "CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click "
-    "Mark posted."
+    "Mark Posted."
 )
 SHARES_TEXT = (
     "The paying families have $600 of Round 1's $1,500 posted so far. This clears on its own once the rest is posted."
@@ -94,12 +94,12 @@ HELD_TEXT = (
     "CampMinder already has $1,500 for this request, but Round 1 is on hold. This clears once the round is decided."
 )
 UNDONE_TEXT = (
-    "Someone unmarked Round 1 as posted, so the overnight sync won't re-mark it. Click Mark posted once it's right."
+    "Someone unmarked Round 1 as posted, so the overnight sync won't re-mark it. Click Mark Posted once it's right."
 )
 PENDING_TEXT = "Posted in CampMinder ($1,500). Kindred marks it posted after tonight's sync."
 WITHHELD_TEXT = (
     "Round 1 wasn't marked posted automatically: after it was posted in CampMinder on Mar 8, the application was "
-    "changed (Mar 9). Check it against what the family was offered, then click Mark posted. That saves the higher of "
+    "changed (Mar 9). Check it against what the family was offered, then click Mark Posted. That saves the higher of "
     "its amount on Mar 8 and today's."
 )
 PILLS = {
@@ -280,7 +280,7 @@ def test_each_stop_reads_as_a_whole_sentence() -> None:
     short2 = TickStop("e", 2, "short_posting", "needs_offer", Decimal(100), Decimal(300))
     assert stop_text(short2) == (
         "CampMinder shows $100 posted for Round 2, but the offer is $300. Check the posting in CampMinder, then click "
-        "Mark posted."
+        "Mark Posted."
     )
 
 

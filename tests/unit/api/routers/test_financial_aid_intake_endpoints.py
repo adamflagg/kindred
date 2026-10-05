@@ -283,3 +283,19 @@ def test_an_unknown_queue_status_is_rejected_before_the_service() -> None:
         response = client.get("/api/financial-aid/requests?year=2027&status=everything")
     assert response.status_code == 422
     stub.list_requests.assert_not_awaited()
+
+
+def test_a_correction_may_omit_its_reason_but_not_overrun_it() -> None:
+    """B30 (owner 2026-10-05): CorrectionCreate's reason defaults to "" (max 2000); other forms' reasons stay required."""
+    from pydantic import ValidationError
+
+    from api.schemas.financial_aid_intake import CorrectionCreate, DuplicateMark, SessionResolve
+
+    assert CorrectionCreate(field="total_gross_income", new_value="1").reason == ""
+    assert CorrectionCreate(field="total_gross_income", new_value="1", reason="").reason == ""
+    with pytest.raises(ValidationError):
+        CorrectionCreate(field="total_gross_income", new_value="1", reason="x" * 2001)
+    with pytest.raises(ValidationError):
+        SessionResolve(session_cm_id=1000101, reason="")
+    with pytest.raises(ValidationError):
+        DuplicateMark(duplicate_of="req000000000002", reason="")

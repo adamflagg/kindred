@@ -120,7 +120,8 @@ class RequestQueueResponse(BaseModel):
 class CorrectionCreate(BaseModel):
     field: str = Field(min_length=1, max_length=64)
     new_value: str | None = Field(default=None, max_length=64)
-    reason: str = Field(min_length=1, max_length=2000)
+    # B30 (owner 2026-10-05): a correction's reason is optional; a blank one is stored as "". Other forms' stay required.
+    reason: str = Field(default="", max_length=2000)
     request_id: str = Field(default="", max_length=15)
 
 

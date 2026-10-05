@@ -238,7 +238,7 @@ export type AidApplicationCorrectionsRecord = {
   id: string
   new_value?: string
   original_value?: string
-  reason: string
+  reason?: string
   request?: RecordIdString
   year: number
 }

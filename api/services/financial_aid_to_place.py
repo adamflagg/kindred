@@ -893,7 +893,7 @@ def withheld_why(tick: LedgerTick, reasons: Sequence[ChangedReason]) -> str:
     n, day = tick.round, f"{tick.posted_on:%b} {tick.posted_on.day}"
     return (
         f"Round {n} wasn't marked posted automatically: after it was posted in CampMinder on {day}, "
-        f"{_joined([r.text for r in reasons])}. Check it against what the family was offered, then click Mark posted. "
+        f"{_joined([r.text for r in reasons])}. Check it against what the family was offered, then click Mark Posted. "
         f"That saves the higher of its amount on {day} and today's."
     )
 

@@ -315,8 +315,6 @@ class FinancialAidCaseworkService:
         kind = kinds.get(field)
         if kind is None:
             raise CorrectionError(f"{field} cannot be corrected here")
-        if not reason.strip():
-            raise CorrectionError("a reason is required")
         value = parse_new_value(kind, new_value)
         existing = await self._store.fetch_corrections(year, application.id)
         current = effective_values(synced, {field: kind}, existing, request_id)[field]
@@ -339,7 +337,8 @@ class FinancialAidCaseworkService:
             log_action="correct",
             after={"field": field, "value": value or current.synced, "previous_value": current.effective},
         )
-        result = await self._store.commit([write], actor=actor, reason=reason.strip(), require_reason=True)
+        # B30 (owner 2026-10-05): the reason is optional, so a blank one is logged as "" rather than refused.
+        result = await self._store.commit([write], actor=actor, reason=reason.strip(), require_reason=False)
         stored = result.records[0] or {}
         return correction_out(
             CorrectionRecord(

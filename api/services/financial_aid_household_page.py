@@ -626,11 +626,18 @@ class HouseholdPageService:
         def household_people(h: int) -> list[Any]:
             """The people household `h`'s adults and emails come from, on its card and its link alike: the page's
             campers in it, or, with none (a second payer, or a linked household outside the scope), its own members.
-            The short name never reads members: it stays children-based (coordinator, N11; #3007)."""
+            The short name reads only their adults, and only with no camper (`short_surnames`)."""
             return campers_in(h) or [p for p in members if _household_of(p) == h]
 
         def campers_in(h: int) -> list[Any]:
             return [p for p in people.values() if _household_of(p) == h] if h in households else []
+
+        def short_surnames(h: int) -> list[str]:
+            """The chip's surnames, oldest first: the household's campers on the page (O3), or, with none, its adult
+            members (P3, owner 2026-10-05: aged ADULT_AGE or over, as `_is_adult` reads them). Neither: none, and the
+            short name falls back to the full family name."""
+            source = campers_in(h) or [p for p in household_people(h) if _is_adult(p)]
+            return [str(getattr(p, "last_name", "") or "") for p in _oldest_first(source)]
 
         def household_adults(h: int) -> list[str]:
             """Card and link alike: the campers' parent names, or, with no camper on the page, the members' adults by
@@ -675,13 +682,7 @@ class HouseholdPageService:
                     household_cm_id=h,
                     chip=chips[h],
                     family_name=household_display_name(by_household.get(h), h),
-                    short_name=short_family_name(
-                        (
-                            str(getattr(p, "last_name", "") or "")
-                            for p in _oldest_first(p for p in people.values() if _household_of(p) == h)
-                        ),
-                        household_display_name(by_household.get(h), h),
-                    ),
+                    short_name=short_family_name(short_surnames(h), household_display_name(by_household.get(h), h)),
                     adults=household_adults(h),
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
                     emails=_emails(household_people(h)),

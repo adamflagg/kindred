@@ -491,7 +491,7 @@ def _correction(store: FakeToPlaceStore, at: datetime = T0) -> None:
 
 NOT_TICKED_WHY = (  # owner 10-03 (D162): the "Changed after posting" sentence, To place and Not reconciled alike
     "Round 1 wasn't marked posted automatically: after it was posted in CampMinder on Mar 8, a correction was entered "
-    "(Mar 9). Check it against what the family was offered, then click Mark posted. That saves the higher of its "
+    "(Mar 9). Check it against what the family was offered, then click Mark Posted. That saves the higher of its "
     "amount on Mar 8 and today's."
 )
 NOT_TICKED_9001 = (9001, EMMA, 1, POSTED, ["a correction was entered (Mar 9)"], NOT_TICKED_WHY)
