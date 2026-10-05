@@ -99,6 +99,29 @@ func TestChangesKeepsOnlyWhatMatters(t *testing.T) {
 	}
 }
 
+// households.aid_adults names people the sync fetched for Camperships only; an admin's edit to
+// a household must not copy those names into the audit log, on an update or a delete.
+func TestChangesNeverStoresHouseholdAidAdults(t *testing.T) {
+	t.Parallel()
+	adults := []any{map[string]any{"cm_id": 9400101.0, "first": "Maria", "last": "Garcia", "role": 1.0}}
+	b, a, fields := changes("households",
+		map[string]any{"mailing_title": "Ms. Garcia", "aid_adults": adults},
+		map[string]any{"mailing_title": "Ms. Maria Garcia", "aid_adults": []any{}})
+	if !slices.Equal(fields, []string{"mailing_title"}) {
+		t.Errorf("update fields = %v, want [mailing_title]", fields)
+	}
+	if _, ok := b["aid_adults"]; ok {
+		t.Errorf("update before kept aid_adults: %v", b)
+	}
+	if _, ok := a["aid_adults"]; ok {
+		t.Errorf("update after kept aid_adults: %v", a)
+	}
+	b, _, fields = changes("households", map[string]any{"mailing_title": "Ms. Garcia", "aid_adults": adults}, nil)
+	if _, ok := b["aid_adults"]; ok || slices.Contains(fields, "aid_adults") {
+		t.Errorf("delete kept aid_adults: before=%v fields=%v", b, fields)
+	}
+}
+
 func TestChangesRedactsSecretsAtAnyDepth(t *testing.T) {
 	t.Parallel()
 	before := map[string]any{"password": "$2a$10$oldhash", "tokenKey": "oldkey", "name": "Sam"}

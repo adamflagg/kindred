@@ -114,6 +114,7 @@ _HOUSEHOLDS_SPEC: dict[str, str] = {
     "billing_address2": "null",
     "billing_city": "city",
     "billing_postal_code": "postal",
+    "aid_adults": "aid_adults",
 }
 
 
@@ -161,7 +162,36 @@ def _apply_value(kind: str, *, key: object, original: object, first: str, last: 
             return original
         pfirst, _ = fake_identity(f"{key}:parent")
         return json.dumps([{"first": pfirst, "last": last, "relationship": "parent", "is_primary": True}])
+    if kind == "aid_adults":
+        return _fake_aid_adults(original, last)
     raise ValueError(f"unknown transform kind: {kind}")
+
+
+def _fake_aid_adults(original: object, last: str) -> object:
+    """households.aid_adults (the adults the persons sync names for Camperships): each adult keeps its CampMinder id,
+    role and guardian flag under a fake first name keyed by its own id, the household's fake surname, and no preferred
+    name. Blank stays blank; a value that is not a list of objects is emptied, never passed through."""
+    if original in (None, ""):
+        return original
+    try:
+        adults = json.loads(str(original))
+    except ValueError:
+        return "[]"
+    if not isinstance(adults, list):
+        return "[]"
+    faked = [
+        {
+            "cm_id": adult.get("cm_id"),
+            "first": fake_identity(f"{adult.get('cm_id')}:adult")[0],
+            "last": last,
+            "preferred": "",
+            "role": adult.get("role"),
+            "is_guardian": bool(adult.get("is_guardian")),
+        }
+        for adult in adults
+        if isinstance(adult, dict)
+    ]
+    return json.dumps(faked)
 
 
 def _anonymize_table(conn: sqlite3.Connection, table: str, spec: dict[str, str], key_col: str) -> None:

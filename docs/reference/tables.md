@@ -266,6 +266,7 @@ Household/family records from CampMinder persons response.
 | `billing_state` | text | State/province |
 | `billing_postal_code` | text | ZIP/postal code |
 | `billing_country` | text | Country code (default: US) |
+| `aid_adults` | json, hidden | Camperships only. The adults CampMinder lists as this household's First (1) or Second (2) Principal, for the current season's financial-aid cohort: `[{cm_id, first, last, preferred, role, is_guardian}]`. The persons sync rewrites it each run (`pocketbase/sync/aid_adults.go`); these adults are not `persons` rows. Hidden from non-superuser API reads, dropped from the audit log, faked by the synthetic-DB anonymizer |
 | `year` | number | Camp year |
 
 **Unique**: `(cm_id, year)`
