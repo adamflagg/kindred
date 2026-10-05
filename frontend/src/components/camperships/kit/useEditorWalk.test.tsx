@@ -405,6 +405,41 @@ describe('useEditorWalk: fix round 1 (races found in review)', () => {
     expect(editing('Chen')).toBeInTheDocument()
   })
 
+  it('an Enter-save then an exit before it answers writes the ask once (PR 3 re-scan)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{Enter}')
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    expect(go).not.toHaveBeenCalled()
+    // Resolved outside act, as a browser does: the walk's follow-up runs in the microtasks that
+    // follow, before React has re-rendered the editor's own report.
+    held[0]?.resolve()
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+
+  // Regression guard: a different figure typed after the Enter is still the person's, and saved on the exit.
+  it('a different entry typed after the Enter is still saved on the exit', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{Enter}')
+    await userEvent.keyboard('0')
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    held[0]?.resolve()
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    expect(saveSpy).toHaveBeenCalledTimes(2)
+    expect(saveSpy).toHaveBeenLastCalledWith('r1', { amount: 5000, reason: NOTE })
+    await act(async () => held[1]?.resolve())
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+
   it('a superseded save that fails late leaves no phantom failure on a row that saved (P1b)', async () => {
     const go = vi.fn()
     renderWalk({ go })
