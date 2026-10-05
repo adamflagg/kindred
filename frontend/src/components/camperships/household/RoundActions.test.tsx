@@ -312,12 +312,9 @@ describe('RoundChecklist (§5.2; D47)', () => {
   it('asks why before undoing a Posted tick, then undoes it', async () => {
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    // Owner ruling S1 Q1: undo is for a tick made by mistake, never a way to lower a posted amount.
-    expect(
-      screen.getByText(
-        'For a tick made by mistake. A posted amount stands: a later change to the award never lowers it.'
-      )
-    ).toBeInTheDocument()
+    // B22 (owner, sitting B): the form says it is for a tick made by mistake, and nothing about amounts standing.
+    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Why undo Posted'), 'Ticked the wrong family{Enter}')
     expect(undo).toHaveBeenCalledWith({
       year: 2027,

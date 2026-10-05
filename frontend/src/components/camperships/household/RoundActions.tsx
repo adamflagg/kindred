@@ -74,17 +74,16 @@ const asRound = (n: number): 1 | 2 | 3 | null => (n === 1 || n === 2 || n === 3 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Couldn't save")
 
 /**
- * What the undo form says first. "A posted amount stands" is true only while the tick stands: on a
- * reversed round, or one whose posted amount differs from today's decided figure, undoing re-prices
- * it, so that clause goes and (owner-approved wording) the figure it returns to is named.
+ * What the undo form says first (B22, owner sitting B: no "a posted amount stands" sentence, and no
+ * shortened variant for rules-moved rounds). Where today's decided figure differs from the posted
+ * one, undoing re-prices the round, so the figure it returns to is named (owner-approved wording).
  */
 function undoHint(line: RoundLine): string {
   const mistake = 'For a tick made by mistake.'
   if (line.decided !== null && line.amount !== null && line.decided !== line.amount) {
     return `${mistake} Undoing returns Round ${String(line.round)} to today's ${formatMoney(line.decided)}; marking it posted again locks that.`
   }
-  if (line.clawedBack || line.wouldChangeBy !== null) return mistake
-  return `${mistake} A posted amount stands: a later change to the award never lowers it.`
+  return mistake
 }
 
 /**
@@ -151,9 +150,6 @@ export function RoundChecklist({
         {noAcceptOnReversed && <span className={MUTED}>Reversed: nothing to accept</span>}
       </div>
       {undoing && (
-        // Owner ruling 2026-10-01 S1 Q1: once posted, an amount stands. That sentence is true only
-        // while the tick stands: on a reversed round, or one whose posted amount differs from today's
-        // decided one, undoing re-prices it, so only the first clause is honest (lead ruling, fix round 1).
         <ReasonForm
           head={`Undoing Posted · Round ${String(line.round)}`}
           hint={
