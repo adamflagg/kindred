@@ -38,6 +38,7 @@ from api.services.financial_aid_intake_types import (
     equity_from_json,
 )
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.schema import AidRules
 from bunking.pocketbase_batch import MAX_BATCH_REQUESTS
 from pocketbase import PocketBase
@@ -191,6 +192,7 @@ class FakeAidStore:
         self.requests: dict[str, RequestRecord] = {}
         self.payer_shares: dict[str, PayerShareRecord] = {}
         self.corrections: list[CorrectionRecord] = []
+        self.decision_events: list[DecisionEvent] = []  # aid_decisions rows, for the casework swap's posted check
         self.capacity: dict[tuple[int, int], CapacityRecord] = {}
         self.equity: dict[int, EquityAnswers] = {}
         self.birthdates: dict[int, str] = {}
@@ -279,6 +281,9 @@ class FakeAidStore:
             for c in self.corrections
             if c.year == year and (application_id is None or c.application_id == application_id)
         ]
+
+    async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]:
+        return [e for e in self.decision_events if e.request_id == request_id]
 
     async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None:
         return self.capacity.get((year, session_cm_id))
