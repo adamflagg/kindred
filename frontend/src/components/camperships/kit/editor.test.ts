@@ -49,8 +49,8 @@ describe('the reason policy (D22)', () => {
     expect(initialReason(REASON_POLICY.appeal_ask, '2027-04-09')).toBe('Family emailed (Apr 9)')
   })
 
-  it('requires a statement of need for Round 3, and a reason for corrections and holds', () => {
-    for (const kind of ['round3_ask', 'income_correction', 'hold'] as const) {
+  it('requires a statement of need for Round 3, and a reason for holds', () => {
+    for (const kind of ['round3_ask', 'hold'] as const) {
       expect(REASON_POLICY[kind].kind).toBe('required')
     }
     expect(REASON_POLICY.round3_ask).toEqual({
@@ -58,6 +58,15 @@ describe('the reason policy (D22)', () => {
       label: 'Statement of need',
       maxLength: 4000,
     })
+  })
+
+  // B30, owner ruling 10-05: an income correction's reason is optional (#3019 made the server's
+  // CorrectionCreate.reason optional too). It starts blank: no pre-filled note.
+  it("leaves an income correction's reason optional and blank", () => {
+    expect(REASON_POLICY.income_correction.kind).toBe('optional')
+    expect(REASON_POLICY.income_correction.label).toBe('Reason')
+    expect(initialReason(REASON_POLICY.income_correction, '2027-04-09')).toBe('')
+    expect(reasonMissing(REASON_POLICY.income_correction, '  ')).toBe(false)
   })
 
   it('asks no reason for stage moves and ticks: who and when are logged', () => {
