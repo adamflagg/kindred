@@ -19,6 +19,7 @@ import {
   requestOut,
   SPLIT_PAGE,
 } from './householdFixtures'
+import { income } from './sectionsFixtures'
 
 const spies = {
   correction: vi.fn(),
@@ -92,7 +93,10 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     render(<IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: true }} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
-    await userEvent.click(screen.getByRole('button', { name: "Use the Form's Figure" }))
+    // Round 3: the way back is the "The form's 2" pick, which fills the field; saving sends null.
+    await userEvent.click(screen.getByRole('button', { name: "The form's 2" }))
+    expect(screen.getByLabelText('Children')).toHaveValue('2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
     expect(spies.correction).toHaveBeenCalledWith(
       expect.objectContaining({
         body: { field: 'num_children', new_value: null, reason: 'The family was right' },
@@ -151,7 +155,8 @@ describe('IncomeCorrection (main spec §9.3)', () => {
       <IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: false }} />
     )
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    expect(screen.queryByRole('button', { name: "Use the Form's Figure" })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^The form's/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Another figure' })).toBeNull()
     rerender(
       <IncomeCorrection
         page={PAGE}
@@ -270,6 +275,88 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     expect(left).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  })
+})
+
+describe('Correct… where the forms disagree: quick picks (round 3, section 3)', () => {
+  /** Emma's form (1000002) and Samuel's (1000010) disagree on three income answers. */
+  const INCOME_FLAG = {
+    code: 'income_conflict',
+    detail: {
+      fields: {
+        total_gross_income: [
+          { value: 84000, person_cm_ids: [1000002] },
+          { value: 88000, person_cm_ids: [1000010] },
+        ],
+        expected_gross_income: [
+          { value: 86500, person_cm_ids: [1000002] },
+          { value: 90000, person_cm_ids: [1000010] },
+        ],
+        total_housing_expenses: [
+          { value: 30000, person_cm_ids: [1000002] },
+          { value: 36000, person_cm_ids: [1000010] },
+        ],
+      },
+      resolved_by_correction: false,
+    },
+  }
+  const torn = income({ flags: [INCOME_FLAG] })
+  const page = householdPage({ incomes: [torn] })
+  const housing = torn.answers.find((a) => a.field === 'total_housing_expenses')!
+  const open = async () => {
+    render(<IncomeCorrection page={page} income={torn} answer={housing} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+  }
+
+  it("heads the row with the answer and the forms' figures", async () => {
+    await open()
+    const box = document.querySelector('[data-editor-box]') as HTMLElement
+    expect(box).toHaveTextContent('Correcting · Housing expenses')
+    expect(box).toHaveTextContent('the forms say $30,000 (Emma) and $36,000 (Samuel)')
+  })
+
+  it("offers one pick per form's figure and Another figure, and a pick fills the Used field", async () => {
+    await open()
+    expect(screen.getByRole('button', { name: "Emma's $30,000" })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Another figure' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: "Samuel's $36,000" }))
+    expect(screen.getByLabelText('Housing expenses')).toHaveValue('36000')
+  })
+
+  it("saves the picked form's figure, with the reason optional", async () => {
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: "Samuel's $36,000" }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'total_housing_expenses', new_value: '36000', reason: '' },
+    })
+  })
+
+  it('saves the form’s figure as a figure, not null, so the conflict settles', async () => {
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: "Emma's $30,000" }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'Called the family{Enter}')
+    expect(spies.correction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { field: 'total_housing_expenses', new_value: '30000', reason: 'Called the family' },
+      })
+    )
+  })
+
+  it('Another figure hands the Used field over for typing', async () => {
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: 'Another figure' }))
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
+  })
+
+  it('says what saving settles, and opens on the Used field', async () => {
+    await open()
+    expect(
+      screen.getByText('This settles 1 of the 3. The hold clears when all three agree.')
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
   })
 })
 
@@ -711,12 +798,12 @@ describe('casework forms in two columns (round 3)', () => {
       expect(side()).not.toContainElement(screen.getByLabelText(label))
   })
 
-  it('puts a plain hint on the right of Correct…', async () => {
+  it('draws Correct… as the mock’s one-column row, with no right column (round 3, section 3)', async () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    expect(side()).toHaveTextContent("The corrected figure is used in place of the form's.")
-    expect(side()).not.toContainElement(screen.getByLabelText('Children'))
+    expect(side()).toBeNull()
+    expect(screen.getByLabelText('Children')).toBeInTheDocument()
   })
 
   it('ends each footer with Back and then the save', () => {

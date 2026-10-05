@@ -71,7 +71,9 @@ describe('IncomeCorrection on the wire', () => {
     renderCorrection(true)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
-    await userEvent.click(screen.getByRole('button', { name: "Use the Form's Figure" }))
+    // Round 3: the way back is the "The form's 2" pick, then Save.
+    await userEvent.click(screen.getByRole('button', { name: "The form's 2" }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
     const sent = sentBody()
     expect(sent.method).toBe('POST')
     expect(sent.url).toContain('1000001')

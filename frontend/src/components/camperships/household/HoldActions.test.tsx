@@ -58,6 +58,19 @@ describe('HoldActions (Decision 25)', () => {
     expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
   })
 
+  it("puts what it is handed (Use X's Form) before the fix link (round 3, section 3)", () => {
+    render(
+      <HoldActions
+        request={withHold('household_income_conflict')}
+        code="household_income_conflict"
+        before={<button type="button">Use Emma&apos;s Form</button>}
+      />
+    )
+    const use = screen.getByRole('button', { name: "Use Emma's Form" })
+    const fix = screen.getByRole('link', { name: 'Enter the Income ↓' })
+    expect(use.compareDocumentPosition(fix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   // B26 (ruled 10-04 late): the banner names the three fixes; the amount is the card's own editor.
   it('names the three fixes of an above-cost hold, and links the amount to the card', () => {
     const request = householdRequest(

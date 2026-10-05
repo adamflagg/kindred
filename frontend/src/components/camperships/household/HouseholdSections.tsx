@@ -24,6 +24,7 @@ import {
   noteWords,
 } from './householdModel'
 import {
+  HH_DIFF_DEL,
   HH_EYEBROW,
   HH_NOTE,
   HH_TABLE,
@@ -36,14 +37,15 @@ import {
   HH_TOGGLE,
 } from './householdStyles'
 import {
+  conflictParts,
   conflictsOf,
-  conflictWords,
   exceptionsOf,
   moreWords,
   lastYearWords,
   otherFlags,
   pricedFacts,
   type FieldConflict,
+  type WhyPart,
 } from './incomeModel'
 
 /**
@@ -56,6 +58,9 @@ export interface CorrectOpening {
   open: boolean
   setOpen: (open: boolean) => void
 }
+
+/** The Use X's Form strip above a household's disagreeing answers (round 3, section 3). */
+export type FormStripRender = (income: ApiAidIncome) => ReactNode
 
 /**
  * The casework "Correct…" on one answer: closed, the link in the answer's row; open, the form, which
@@ -117,6 +122,27 @@ function LastYearLine({ page, income }: { page: ApiAidHouseholdPage; income: Api
   )
 }
 
+/**
+ * A conflict's why line: one sentence, with each form's figure the settling correction did not use
+ * struck in red (round 3, section 3), the weekend diff's DEL grammar. Plain text when nothing is.
+ */
+function WhyLine({ parts }: { parts: readonly WhyPart[] }) {
+  if (!parts.some((part) => part.struck === true)) return <>{parts.map((p) => p.text).join('')}</>
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.struck === true ? (
+          <del key={i} className={HH_DIFF_DEL}>
+            {part.text}
+          </del>
+        ) : (
+          <span key={i}>{part.text}</span>
+        )
+      )}
+    </>
+  )
+}
+
 function AnswerRows({
   page,
   income,
@@ -168,7 +194,7 @@ function AnswerRows({
             colSpan={4}
             className={`${HH_TD} ${edge} pt-0 text-[12.5px] whitespace-normal ${open ? WHY_FLAGGED : WHY_SETTLED}`}
           >
-            {conflictWords(page, income, conflict)}
+            <WhyLine parts={conflictParts(page, income, conflict)} />
           </td>
         </tr>
       )}
@@ -193,11 +219,13 @@ function Exceptions({
   page,
   income,
   correct,
+  formStrip,
   fixed,
 }: {
   page: ApiAidHouseholdPage
   income: ApiAidIncome
   correct: CorrectRender | undefined
+  formStrip: FormStripRender | undefined
   /** The mock's sized columns (210 / 104 / 104): always for one household; halves only from xl, fitting below. */
   fixed: boolean
 }) {
@@ -208,6 +236,7 @@ function Exceptions({
   const others = otherFlags(income)
   return (
     <div className="min-w-0">
+      {formStrip?.(income)}
       {shown.length === 0 ? (
         // Another flag shows as a pill below, so the note never claims there are none.
         <p className={`${HH_NOTE} py-1`}>
@@ -266,9 +295,12 @@ const MUTED = 'text-muted-foreground'
 export function IncomePanel({
   page,
   correct,
+  formStrip,
 }: {
   page: ApiAidHouseholdPage
   correct?: CorrectRender | undefined
+  /** The Use X's Form strip, put above each household's answers (round 3, section 3). */
+  formStrip?: FormStripRender | undefined
 }) {
   if (page.incomes.length === 0) {
     return <p className={HH_NOTE}>No income form on file.</p>
@@ -284,7 +316,7 @@ export function IncomePanel({
           />
         )}
         <LastYearLine page={page} income={first} />
-        <Exceptions page={page} income={first} correct={correct} fixed />
+        <Exceptions page={page} income={first} correct={correct} formStrip={formStrip} fixed />
         <div className="pt-1.5">
           <IncomeNotes income={first} stacked={false} />
         </div>
@@ -306,7 +338,13 @@ export function IncomePanel({
             />
           </div>
           <LastYearLine page={page} income={income} />
-          <Exceptions page={page} income={income} correct={correct} fixed={false} />
+          <Exceptions
+            page={page}
+            income={income}
+            correct={correct}
+            formStrip={formStrip}
+            fixed={false}
+          />
           {/* The notes sit at the half's foot, so both halves end level (the mock's .halves.eq). */}
           <div className="mt-auto pt-2.5">
             <IncomeNotes income={income} stacked />

@@ -218,3 +218,25 @@ export const HH_NOTES_ROW =
 /** The same in a household's half (the mock's .notesrow.one): one column. */
 export const HH_NOTES_STACKED =
   'border-border grid grid-cols-1 gap-y-2 border-t pt-2 text-[13.5px] leading-[1.55]'
+
+// round 3 · income corrections (item 3, household-v3.html section 3) ───────────────────────────
+
+/** The Use X's Form strip above the disagreeing answers (the mock's .disagree): an amber box. */
+export const HH_FORMS_STRIP =
+  'mb-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] dark:border-amber-900/50 dark:bg-amber-900/20'
+/** Its reason and buttons, bottom right. */
+export const HH_FORMS_STRIP_ROW = 'mt-1.5 flex flex-wrap items-center justify-end gap-2'
+/** The strip's optional reason: a white field, label beside it. */
+export const HH_FORMS_REASON_LABEL =
+  'inline-flex items-center gap-2 text-[12.5px] font-semibold whitespace-nowrap'
+export const HH_FORMS_REASON =
+  'w-[240px] max-w-full rounded-[7px] border border-forest-700/55 bg-white px-[9px] py-1 text-[13px] font-normal focus:border-forest-700 focus:ring-[3px] focus:ring-forest-700/20 focus:outline-none dark:border-forest-500 dark:bg-card'
+/** What a Use X's Form did, under the strip or beside the banner's buttons. */
+export const HH_FORMS_DONE = 'text-[12.5px] text-forest-800 dark:text-forest-200'
+/** The Correct… row's quick picks (the mock's .pick): a white chip, the picked one ringed in forest. */
+export const HH_PICK =
+  'inline-flex cursor-pointer items-center whitespace-nowrap rounded-[7px] border border-border bg-white px-2.5 py-[3px] text-[12.5px] font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:bg-card'
+export const HH_PICK_ON =
+  'border-forest-700 ring-1 ring-forest-700 text-forest-800 dark:border-forest-300 dark:ring-forest-300 dark:text-forest-200'
+/** The Correct… row's line saying what saving settles: muted, just above the footer's rule. */
+export const HH_CORRECT_SETTLES = 'text-muted-foreground text-[12.5px]'

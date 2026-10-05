@@ -16,6 +16,7 @@ import type { ApiAidHistoryEntry, ApiAidHouseholdPage } from '../../../types/api
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
 import { codeWords } from '../requests/attention'
+import { formOwner } from './formsModel'
 import {
   answerValue,
   answerWords,
@@ -217,9 +218,8 @@ function whatParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): LinePa
       if (name === null) return [plain('corrected an answer')]
       const from = textOf(field(entry.after, 'original_value')) ?? ''
       const to = textOf(field(entry.after, 'new_value')) ?? ''
-      const label = answerWords(name)
       return [
-        plain(`corrected ${label.charAt(0).toLowerCase()}${label.slice(1)}, `),
+        plain(`corrected ${lowerFirst(answerWords(name))}, `),
         strong(answerValue(name, from)),
         plain(' → '),
         strong(answerValue(name, to)),
@@ -297,6 +297,28 @@ function sharesParts(
 
 const isShare = (entry: ApiAidHistoryEntry) => entry.entity === 'aid_payer_shares'
 
+/** The form a Use X's Form row used (#3021 logs it in `after.form_person_cm_id`); null on a hand correction. */
+function formUsed(entry: ApiAidHistoryEntry): number | null {
+  if (entry.entity !== 'aid_application_corrections' || entry.action !== 'correct') return null
+  return numberOf(field(entry.after, 'form_person_cm_id'))
+}
+
+const lowerFirst = (text: string) => `${text.charAt(0).toLowerCase()}${text.slice(1)}`
+
+/** "used Emma's form for 4 answers: gross income, …" for one operation's Use X's Form rows. */
+function formParts(
+  page: ApiAidHouseholdPage,
+  person: number,
+  rows: readonly ApiAidHistoryEntry[]
+): LinePart[] {
+  const labels = rows.map((row) => {
+    const name = textOf(field(row.after, 'field'))
+    return name === null ? 'an answer' : lowerFirst(answerWords(name))
+  })
+  const count = `${String(rows.length)} ${rows.length === 1 ? 'answer' : 'answers'}`
+  return [plain(`used ${formOwner(page, person)}'s form for ${count}: ${labels.join(', ')}`)]
+}
+
 /** The family's log in words, oldest first, as the server orders it. */
 export function historyLines(page: ApiAidHouseholdPage): HistoryLine[] {
   const names = staffNames(page)
@@ -308,11 +330,23 @@ export function historyLines(page: ApiAidHouseholdPage): HistoryLine[] {
     isShare(b) &&
     b.operation_id === a.operation_id &&
     b.request_id === a.request_id
+  // One Use X's Form operation's rows read as one line too (round 3, section 3).
+  const sameFormOp = (a: ApiAidHistoryEntry, b: ApiAidHistoryEntry | undefined) =>
+    b?.operation_id === a.operation_id && formUsed(b) === formUsed(a)
   history.forEach((entry, i) => {
     if (isShare(entry) && sameShareOp(entry, history[i - 1])) return
+    const person = formUsed(entry)
+    if (person !== null && sameFormOp(entry, history[i - 1])) return
     const who = whoWords(entry.actor, names)
     let parts: LinePart[]
-    if (isShare(entry)) {
+    if (person !== null) {
+      const rows = [entry]
+      for (let next = i + 1; sameFormOp(entry, history[next]); next += 1) {
+        const row = history[next]
+        if (row !== undefined) rows.push(row)
+      }
+      parts = formParts(page, person, rows)
+    } else if (isShare(entry)) {
       const rows = [entry]
       for (let next = i + 1; sameShareOp(entry, history[next]); next += 1) {
         const row = history[next]

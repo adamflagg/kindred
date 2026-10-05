@@ -29,6 +29,8 @@ import type {
   ApiAidRound3ApprovalIn,
   ApiAidSessionIn,
   ApiAidUnpostIn,
+  ApiAidUseFormIn,
+  ApiAidUseFormOut,
   ApiAidWriteOut,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
@@ -395,6 +397,25 @@ export function addAidCorrection(
     `${BASE}/applications/${String(year)}/${String(householdCmId)}/corrections`,
     body,
     "Couldn't save the correction"
+  )
+}
+
+/**
+ * Use X's Form (#3021): one camper's form answers every question the household's forms disagree on,
+ * as one operation of ordinary corrections. A 422 says why in words safe to show.
+ */
+export function applyAidForm(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  householdCmId: number,
+  body: ApiAidUseFormIn
+): Promise<ApiAidUseFormOut> {
+  return send<ApiAidUseFormOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/applications/${String(year)}/${String(householdCmId)}/use-form`,
+    body,
+    "Couldn't use the form"
   )
 }
 

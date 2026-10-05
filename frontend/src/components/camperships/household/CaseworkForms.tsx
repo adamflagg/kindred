@@ -25,6 +25,7 @@ import {
   parsePercent,
 } from './caseworkModel'
 import type { EditorExits } from './editorExits'
+import { correctionPicks, formsSayWords, settleWords } from './formsModel'
 import { answerWords, camperOf } from './householdModel'
 import {
   HH_AMBER_NOTE as AMBER_NOTE,
@@ -34,8 +35,11 @@ import {
   HH_EDITOR_MONEY,
   HH_EDITOR_NUMBER,
   HH_EDITOR_PAIR,
+  HH_CORRECT_SETTLES,
   HH_EDITOR_TEXT,
   HH_LINK,
+  HH_PICK,
+  HH_PICK_ON,
 } from './householdStyles'
 import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
 
@@ -85,6 +89,7 @@ function useSubmit() {
 
 function FormShell({
   head,
+  aside,
   submitLabel,
   busy,
   error,
@@ -95,6 +100,8 @@ function FormShell({
 }: {
   /** The editor box's head (D24): what the form does, in sentence case. */
   head: string
+  /** A muted aside beside the head (Correct…: the forms' figures). */
+  aside?: string | undefined
   submitLabel: string
   busy: boolean
   error: string | null
@@ -112,7 +119,7 @@ function FormShell({
     form.current?.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled)')?.focus()
   }, [])
   return (
-    <EditorBox head={head}>
+    <EditorBox head={head} aside={aside}>
       <form
         ref={form}
         onSubmit={(event) => {
@@ -135,10 +142,22 @@ function FormShell({
   )
 }
 
-function ReasonInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function ReasonInput({
+  value,
+  onChange,
+  optional = false,
+}: {
+  value: string
+  onChange: (value: string) => void
+  /** Say "(optional)" beside the label (Correct…: owner ruling 10-05). */
+  optional?: boolean
+}) {
   return (
     <label className={HH_EDITOR_LABEL}>
-      Reason
+      <span>
+        Reason
+        {optional && <span className="text-muted-foreground font-normal"> (optional)</span>}
+      </span>
       <input
         aria-label="Reason"
         type="text"
@@ -202,11 +221,22 @@ function CorrectionForm({
   const [value, setValue] = useState(answer.effective)
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
+  const field = useRef<HTMLInputElement & HTMLSelectElement>(null)
   const kind = fieldKind(answer)
+  const picks = correctionPicks(page, income, answer)
+  // The pick the field holds now, read from the figure itself: typing a form's figure picks it too.
+  const same = (a: string, b: string) => {
+    const x = correctionValue(kind, a)
+    const y = correctionValue(kind, b)
+    return x.kind === 'ok' && y.kind === 'ok' && x.value === y.value
+  }
+  const picked = picks.find((pick) => same(pick.value, value))
 
   /**
-   * `raw` null is the way back to the form's figure. The reason is optional (owner ruling 10-05):
-   * blank goes as '', since `CorrectionCreate.reason` is a required string.
+   * `raw` null is the way back to the form's figure: the one-form "The form's $X" pick. A form's
+   * figure where the forms disagree goes as a figure, since only a correction settles the conflict.
+   * The reason is optional (owner ruling 10-05): blank goes as '', since `CorrectionCreate.reason`
+   * is a required string.
    */
   const send = (raw: string | null) =>
     attempt(() => {
@@ -223,44 +253,78 @@ function CorrectionForm({
     })
 
   const label = answerWords(answer.field)
+  const settles = settleWords(income, answer)
+  const used =
+    kind === 'flag' ? (
+      <select
+        ref={field}
+        aria-label={label}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className={HH_EDITOR_FIELD}
+      >
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    ) : (
+      <input
+        ref={field}
+        aria-label={label}
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className={HH_EDITOR_MONEY}
+      />
+    )
+  // Round 3 (section 3): one column, as the mock's row in the answers; the picks fill Used.
   return (
     <FormShell
       head={`Correcting · ${label}`}
+      aside={formsSayWords(page, income, answer) ?? undefined}
       submitLabel="Save the Correction"
       busy={busy}
       error={error}
-      onSubmit={() => send(value)}
+      onSubmit={() => send(picked?.revert === true ? null : value)}
       onCancel={onClose}
-      side="The corrected figure is used in place of the form's."
     >
       <div className={HH_EDITOR_PAIR}>
-        {kind === 'flag' ? (
-          <select
-            aria-label={label}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            className={HH_EDITOR_FIELD}
-          >
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </select>
-        ) : (
-          <input
-            aria-label={label}
-            type="text"
-            inputMode="decimal"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            className={HH_EDITOR_MONEY}
-          />
+        {picks.length > 0 && (
+          <div className={HH_EDITOR_LABEL}>
+            Use
+            <span className="flex flex-wrap gap-1.5">
+              {picks.map((pick) => (
+                <button
+                  key={pick.label}
+                  type="button"
+                  className={`${HH_PICK} ${pick === picked ? HH_PICK_ON : ''}`}
+                  disabled={busy}
+                  onClick={() => setValue(pick.value)}
+                >
+                  {pick.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`${HH_PICK} ${picked === undefined ? HH_PICK_ON : ''}`}
+                disabled={busy}
+                onClick={() => {
+                  field.current?.focus()
+                  if (field.current instanceof HTMLInputElement) field.current.select()
+                }}
+              >
+                Another figure
+              </button>
+            </span>
+          </div>
         )}
-        {answer.corrected && (
-          <button type="button" className={HH_LINK} disabled={busy} onClick={() => send(null)}>
-            Use the Form&apos;s Figure
-          </button>
-        )}
+        <label className={HH_EDITOR_LABEL}>
+          Used
+          {used}
+        </label>
       </div>
-      <ReasonInput value={reason} onChange={setReason} />
+      <ReasonInput value={reason} onChange={setReason} optional />
+      {settles !== null && <p className={HH_CORRECT_SETTLES}>{settles}</p>}
     </FormShell>
   )
 }

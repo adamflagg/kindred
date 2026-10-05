@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { householdPage, householdRequest, receiptOut } from './householdFixtures'
 import {
+  conflictParts,
   conflictWords,
   conflictsOf,
   exceptionsOf,
@@ -210,6 +211,41 @@ describe('conflictWords: the "why" under a flagged answer', () => {
     expect(conflictWords(FLAGGED_PAGE, overridden, conflictsOf(overridden)[0]!)).toBe(
       "Emma's form says $84,000; Samuel's says $90,000. The income override settles it."
     )
+  })
+})
+
+describe("conflictParts: the why line's pieces, the other forms' figures struck once settled (round 3, section 3)", () => {
+  const settledOn = (effective: string) =>
+    income({
+      answers: plainAnswers().map((a) =>
+        a.field === 'total_gross_income' ? { ...a, effective, corrected: true } : a
+      ),
+      flags: [
+        { ...GROSS_CONFLICT, detail: { ...GROSS_CONFLICT.detail, resolved_by_correction: true } },
+      ],
+    })
+
+  it('strikes the figure of each form the correction did not use, and reads as conflictWords', () => {
+    const settled = settledOn('84000.00')
+    const parts = conflictParts(FLAGGED_PAGE, settled, conflictsOf(settled)[0]!)
+    expect(parts.filter((p) => p.struck === true).map((p) => p.text)).toEqual(['$90,000'])
+    expect(parts.map((p) => p.text).join('')).toBe(
+      conflictWords(FLAGGED_PAGE, settled, conflictsOf(settled)[0]!)
+    )
+  })
+
+  it('strikes both on a figure neither form gave, and none while the conflict is open', () => {
+    const settled = settledOn('87000.00')
+    expect(
+      conflictParts(FLAGGED_PAGE, settled, conflictsOf(settled)[0]!).filter(
+        (p) => p.struck === true
+      )
+    ).toHaveLength(2)
+    expect(
+      conflictParts(FLAGGED_PAGE, flaggedIncome, conflictsOf(flaggedIncome)[0]!).some(
+        (p) => p.struck === true
+      )
+    ).toBe(false)
   })
 })
 

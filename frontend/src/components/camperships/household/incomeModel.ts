@@ -107,39 +107,77 @@ function listWords(items: readonly string[]): string {
   return items.length <= 1 ? last : `${items.slice(0, -1).join(', ')} and ${last}`
 }
 
+/** A piece of the why line; `struck`: a form's figure the settling correction did not use. */
+export interface WhyPart {
+  readonly text: string
+  readonly struck?: boolean
+}
+
 /**
  * The "why" line under a flagged answer, from the server's variants: "Emma's form says $84,000;
  * Samuel's says $90,000." Campers are named only when every variant's people are campers on the
- * page; otherwise it reads as "the campers' forms". A resolved conflict says what settled it.
+ * page; otherwise it reads as "the campers' forms". A resolved conflict says what settled it, and
+ * once a correction settles it, each form's figure the correction did not use is struck (round 3,
+ * section 3: the other form's figure struck in red).
  */
+export function conflictParts(
+  page: ApiAidHouseholdPage,
+  income: ApiAidIncome,
+  conflict: FieldConflict
+): WhyPart[] {
+  const used = income.answers.find((a) => a.field === conflict.field)
+  const settledByCorrection = conflict.resolved && used?.corrected === true
+  const value = (v: Variant): WhyPart => ({
+    text: answerValue(conflict.field, String(v.value)),
+    ...(settledByCorrection && v.value !== Number(used.effective) ? { struck: true } : {}),
+  })
+  const named = conflict.variants.map((v) => ({ v, who: namesOf(page, v.personCmIds) }))
+  let parts: WhyPart[]
+  if (named.every(({ who }) => who !== null)) {
+    parts = named.flatMap(({ v, who }, i) => {
+      const several = v.personCmIds.length > 1
+      const lead =
+        i === 0
+          ? `${who ?? ''} ${several ? 'forms say' : 'form says'} `
+          : `; ${who ?? ''} ${several ? 'say' : 'says'} `
+      return [{ text: lead }, value(v)]
+    })
+  } else if (conflict.variants.length === 2) {
+    const [a, b] = conflict.variants as [Variant, Variant]
+    parts = [
+      { text: "The campers' forms disagree: " },
+      value(a),
+      { text: ' on one, ' },
+      value(b),
+      { text: ' on another' },
+    ]
+  } else {
+    const values = conflict.variants.map(value)
+    parts = [{ text: "The campers' forms disagree: " }]
+    values.forEach((part, i) => {
+      if (i > 0) parts.push({ text: i === values.length - 1 ? ' and ' : ', ' })
+      parts.push(part)
+    })
+  }
+  if (!conflict.resolved) return [...parts, { text: '.' }]
+  const overridden =
+    income.answers.find((a) => a.field === OVERRIDE_FIELD)?.effective.trim() !== '' &&
+    used?.corrected !== true
+  return [
+    ...parts,
+    { text: `. ${overridden ? 'The income override' : 'The correction'} settles it.` },
+  ]
+}
+
+/** The why line as one sentence. */
 export function conflictWords(
   page: ApiAidHouseholdPage,
   income: ApiAidIncome,
   conflict: FieldConflict
 ): string {
-  const value = (v: Variant) => answerValue(conflict.field, String(v.value))
-  const named = conflict.variants.map((v) => ({ v, who: namesOf(page, v.personCmIds) }))
-  let sentence: string
-  if (named.every(({ who }) => who !== null)) {
-    sentence = named
-      .map(({ v, who }, i) => {
-        const several = v.personCmIds.length > 1
-        return i === 0
-          ? `${who ?? ''} ${several ? 'forms say' : 'form says'} ${value(v)}`
-          : `${who ?? ''} ${several ? 'say' : 'says'} ${value(v)}`
-      })
-      .join('; ')
-  } else if (conflict.variants.length === 2) {
-    const [a, b] = conflict.variants as [Variant, Variant]
-    sentence = `The campers' forms disagree: ${value(a)} on one, ${value(b)} on another`
-  } else {
-    sentence = `The campers' forms disagree: ${listWords(conflict.variants.map(value))}`
-  }
-  if (!conflict.resolved) return `${sentence}.`
-  const overridden =
-    income.answers.find((a) => a.field === OVERRIDE_FIELD)?.effective.trim() !== '' &&
-    income.answers.find((a) => a.field === conflict.field)?.corrected !== true
-  return `${sentence}. ${overridden ? 'The income override' : 'The correction'} settles it.`
+  return conflictParts(page, income, conflict)
+    .map((part) => part.text)
+    .join('')
 }
 
 /** One household's open flags: each open conflicting answer, and each other flag. */

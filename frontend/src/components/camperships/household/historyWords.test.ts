@@ -140,6 +140,81 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
     expect(lines[0]!.reason).toBe('Parents in two households split the cost')
   })
 
+  describe("Use X's Form: one operation's corrections read as one line (round 3, section 3)", () => {
+    const used = (
+      field: string,
+      over: Partial<ApiAidHistoryEntry> = {},
+      person: number | null = 1000002
+    ): ApiAidHistoryEntry => ({
+      ...HISTORY[0]!,
+      at: '2027-10-05T17:00:00Z',
+      action: 'correct',
+      entity: 'aid_application_corrections',
+      entity_id: `cor-${field}`,
+      request_id: null,
+      actor: 'test@example.com',
+      reason: "Emma's form is the newer one",
+      operation_id: 'op0000000000020',
+      after: {
+        field,
+        value: '1',
+        previous_value: '2',
+        ...(person === null ? {} : { form_person_cm_id: person }),
+      },
+      ...over,
+    })
+
+    it('collapses the rows sharing an operation and a form into one line, with the reason once', () => {
+      const lines = historyLines({
+        ...HISTORY_PAGE,
+        history: [
+          used('total_gross_income'),
+          used('expected_gross_income'),
+          used('total_housing_expenses'),
+        ],
+      })
+      expect(lines.map(lineText)).toEqual([
+        "Test used Emma's form for 3 answers: gross income, expected gross income, housing expenses",
+      ])
+      expect(lines[0]!.reason).toBe("Emma's form is the newer one")
+      expect(lines[0]!.date).toBe('Oct 5')
+    })
+
+    it('says one answer in the singular, with no reason when none was given', () => {
+      const lines = historyLines({
+        ...HISTORY_PAGE,
+        history: [used('num_children', { reason: '' })],
+      })
+      expect(lines.map(lineText)).toEqual(["Test used Emma's form for 1 answer: children"])
+      expect(lines[0]!.reason).toBeNull()
+    })
+
+    it('names a form whose person is not a camper on the page by the person id', () => {
+      expect(
+        historyLines({ ...HISTORY_PAGE, history: [used('num_children', {}, 1000099)] }).map(
+          lineText
+        )
+      ).toEqual(["Test used person 1000099's form for 1 answer: children"])
+    })
+
+    it('leaves a plain correction, and another operation, on lines of their own', () => {
+      const lines = historyLines({
+        ...HISTORY_PAGE,
+        history: [
+          HISTORY[2]!,
+          used('total_gross_income'),
+          used('num_children'),
+          used('total_rent', { operation_id: 'op0000000000021' }, 1000010),
+        ],
+      })
+      expect(lines.map(lineText)).toEqual([
+        'Test corrected expected gross income, $90,000 → $84,200',
+        "Test used Emma's form for 2 answers: gross income, children",
+        "Test used Samuel's form for 1 answer: rent",
+      ])
+    })
+  })
+
   it('reads an action it has no words for in plain words, still with no ids', () => {
     expect(
       one({

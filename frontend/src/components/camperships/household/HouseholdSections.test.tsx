@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ApiAidHouseholdPageLink } from '../../../types/api-types'
+import type { ApiAidHouseholdPageLink, ApiAidIncome } from '../../../types/api-types'
 import { householdPage, householdRequest } from './householdFixtures'
 import { GrantsPostingsPanel, HistoryPanel, IncomePanel, LinksPanel } from './HouseholdSections'
 import {
@@ -58,6 +58,45 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
     expect(rowOf('Gross income').className).not.toMatch(/amber/)
     const why = screen.getByText(/The correction settles it\.$/)
     expect(why.closest('tr')?.className).not.toMatch(/amber/)
+  })
+
+  it("strikes the other form's figure in red once a correction settles the conflict (round 3, section 3)", () => {
+    const page = householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_gross_income' ? { ...a, effective: '84000.00', corrected: true } : a
+          ),
+          flags: [
+            {
+              ...GROSS_CONFLICT,
+              detail: { ...GROSS_CONFLICT.detail, resolved_by_correction: true },
+            },
+          ],
+        }),
+      ],
+    })
+    render(<IncomePanel page={page} />)
+    const struck = screen.getByText('$90,000')
+    expect(struck.tagName).toBe('DEL')
+    expect(struck.className).toMatch(/red/)
+    expect(struck.closest('tr')).toHaveTextContent(
+      "Emma's form says $84,000; Samuel's says $90,000. The correction settles it."
+    )
+  })
+
+  it("puts the Use X's Form strip above the answers, once per household (round 3, section 3)", () => {
+    const strip = (i: ApiAidIncome) => (
+      <div data-testid="form-strip">{`strip ${String(i.household_cm_id)}`}</div>
+    )
+    const { unmount } = render(<IncomePanel page={FLAGGED_PAGE} formStrip={strip} />)
+    expect(follows(screen.getByRole('table'), screen.getByTestId('form-strip'))).toBe(true)
+    unmount()
+    render(<IncomePanel page={TWO_HOUSEHOLD_PAGE} formStrip={strip} />)
+    expect(screen.getAllByTestId('form-strip').map((el) => el.textContent)).toEqual([
+      'strip 1000001',
+      'strip 1000003',
+    ])
   })
 
   it('folds the matching answers into "N more answers match", and opens and closes them', async () => {

@@ -19,6 +19,7 @@ import {
   IncomePanel,
   LinksPanel,
   type CorrectRender,
+  type FormStripRender,
 } from './HouseholdSections'
 import { HH_BUTTON, HH_CARD } from './householdStyles'
 import { grantsTabMeta, incomeTabMeta, openFlagCount } from './incomeModel'
@@ -63,6 +64,7 @@ function defaultTab(page: ApiAidHouseholdPage, hash: string): TabKey | null {
 export function HouseholdTabs(props: {
   page: ApiAidHouseholdPage
   correct?: CorrectRender | undefined
+  formStrip?: FormStripRender | undefined
   programNames: Readonly<Record<string, string>>
   hash: string
 }) {
@@ -73,11 +75,13 @@ export function HouseholdTabs(props: {
 function Tabs({
   page,
   correct,
+  formStrip,
   programNames,
   hash,
 }: {
   page: ApiAidHouseholdPage
   correct?: CorrectRender | undefined
+  formStrip?: FormStripRender | undefined
   programNames: Readonly<Record<string, string>>
   hash: string
 }) {
@@ -201,7 +205,7 @@ function Tabs({
       </div>
       {open !== null && (
         <div data-testid="tab-panel" className="border-border mt-2.5 border-t pt-2">
-          {open === 'income' && <IncomePanel page={page} correct={correct} />}
+          {open === 'income' && <IncomePanel page={page} correct={correct} formStrip={formStrip} />}
           {open === 'grants' && <GrantsPostingsPanel page={page} programNames={programNames} />}
           {open === 'links' && <LinksPanel page={page} />}
           {open === 'history' && <HistoryPanel page={page} />}

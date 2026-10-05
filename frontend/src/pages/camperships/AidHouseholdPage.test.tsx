@@ -79,6 +79,7 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidSessionResolve: () => idle,
   useAidDuplicate: () => idle,
   useAidHeadcount: () => idle,
+  useAidUseForm: () => idle,
 }))
 vi.mock('../../hooks/camperships/useAidApplication', () => ({
   useAidApplication: () => ({ data: undefined, isLoading: false, error: null }),
@@ -189,6 +190,40 @@ describe('AidHouseholdPage (§6.3)', () => {
     const answers = householdPage().incomes.flatMap((i) => i.answers)
     const correctable = answers.filter((a) => a.field !== 'income_override')
     expect(screen.getAllByRole('button', { name: 'Correct…' })).toHaveLength(correctable.length)
+  })
+
+  it("offers Use X's Form in the income-conflict banner and above the answers, for casework only (round 3)", async () => {
+    const conflicted = householdPage({
+      requests: [
+        householdRequest(
+          gridRow({
+            holds: [
+              { code: 'household_income_conflict', severity: 'hold', message: 'The forms differ' },
+            ],
+          })
+        ),
+        householdRequest(
+          gridRow({
+            request_id: 'reqsamuel000005',
+            person_cm_id: 1000010,
+            camper_name: 'Samuel Johnson',
+          })
+        ),
+      ],
+      incomes: FLAGGED_PAGE.incomes,
+    })
+    result = { data: conflicted, isLoading: false, error: null }
+    renderAt('/aid/households/1000001')
+    expect(screen.queryByRole('button', { name: "Use Emma's Form" })).toBeNull()
+    cleanup()
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderAt('/aid/households/1000001')
+    // The flag opens Income by itself: one button in the banner, one in the strip.
+    expect(screen.getAllByRole('button', { name: "Use Emma's Form" })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: "Use Samuel's Form" })).toHaveLength(2)
+    expect(screen.getByTestId('forms-strip')).toHaveTextContent(
+      "1 answer disagrees between Emma's form and Samuel's form."
+    )
   })
 
   it("shows each request's card", () => {

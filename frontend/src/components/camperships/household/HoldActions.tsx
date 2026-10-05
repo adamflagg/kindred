@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { useAidHoldRelease, useAidManualHold } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdRequest } from '../../../types/api-types'
@@ -16,8 +16,17 @@ const NO_NAMES: ReadonlyMap<string, string> = new Map()
 /**
  * A hold banner's actions (§6.3 item 3; main spec §10.5; Decision 25): the fix for a hold that
  * clears by fixing its cause, "Release…" with a note for the rest, and "Lift…" for the manual hold.
+ * `before` goes ahead of the fix link: the income conflict's "Use X's Form" buttons (round 3).
  */
-export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest; code: string }) {
+export function HoldActions({
+  request,
+  code,
+  before,
+}: {
+  request: ApiAidHouseholdRequest
+  code: string
+  before?: ReactNode
+}) {
   const release = useAidHoldRelease()
   const manual = useAidManualHold()
   const [open, setOpen] = useState(false)
@@ -60,6 +69,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
       {words !== null && <span className={HH_NOTE}>{words}</span>}
+      {before}
       {fix !== null && (
         <a href={fix.href} className={HH_LINK}>
           {fix.label}

@@ -14,6 +14,11 @@ import { bandSubtitle, bandTitle } from '../../components/camperships/household/
 import { HouseholdTotals } from '../../components/camperships/household/HouseholdTotals'
 import { HouseholdTabs } from '../../components/camperships/household/HouseholdTabs'
 import { QueueWalkStrip } from '../../components/camperships/household/QueueWalkStrip'
+import {
+  UseFormButtons,
+  UseFormStrip,
+} from '../../components/camperships/household/UseFormControls'
+import { useFormsControl } from '../../components/camperships/household/useFormsControl'
 import { WorkingRequestCard } from '../../components/camperships/household/WorkingRequestCard'
 import {
   useEditorExits,
@@ -53,13 +58,27 @@ function HouseholdBody({
   programNames: Readonly<Record<string, string>>
   hash: string
 }) {
+  // Use X's Form (round 3, section 3): the banner's buttons and the Income tab's strip share it.
+  const forms = useFormsControl(page)
   return (
     <>
       <HouseholdCards page={page} />
       <HoldBanners
         page={page}
         actions={
-          canWork ? (request, code) => <HoldActions request={request} code={code} /> : undefined
+          canWork
+            ? (request, code) => (
+                <HoldActions
+                  request={request}
+                  code={code}
+                  before={
+                    code === 'household_income_conflict' ? (
+                      <UseFormButtons page={page} request={request} control={forms} />
+                    ) : undefined
+                  }
+                />
+              )
+            : undefined
         }
       />
       {page.requests.map((request) => (
@@ -77,6 +96,11 @@ function HouseholdBody({
         page={page}
         programNames={programNames}
         hash={hash}
+        formStrip={
+          canWork
+            ? (income) => <UseFormStrip page={page} income={income} control={forms} />
+            : undefined
+        }
         correct={
           canWork
             ? (income, answer, opening) => (
