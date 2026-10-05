@@ -55,6 +55,7 @@ export function income(over: Partial<ApiAidIncome> = {}): ApiAidIncome {
     answers: plainAnswers(),
     notes: { special_circumstances: 'One parent changed jobs in January.' },
     flags: [],
+    form_people: [],
     ...over,
   }
 }
