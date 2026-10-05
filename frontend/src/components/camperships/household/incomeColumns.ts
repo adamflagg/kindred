@@ -58,17 +58,15 @@ export interface FormFigure {
 }
 
 /**
- * One form's figure for an answer. Where the forms disagree, its variant's figure (a dash for a form
- * that gave none), struck once a correction used another. Where they do not, the household's answer
- * as sent: the payload carries no per-form figure for an answer nobody disagrees on.
+ * One form's figure for an answer the forms disagree on: its variant's figure (a dash for a form that
+ * gave none), struck once a correction used another. An answer nobody disputes has no per-form figure
+ * in the payload, so it has no form cells: the table shows it once across them (main's ruling 10-05).
  */
 export function formFigure(
   answer: ApiAidAnswer,
-  conflict: FieldConflict | undefined,
+  conflict: FieldConflict,
   personCmId: number
 ): FormFigure {
-  if (conflict === undefined)
-    return { text: answerValue(answer.field, answer.synced), struck: false }
   const variant = conflict.variants.find((v) => v.personCmIds.includes(personCmId))
   if (variant === undefined) return { text: '—', struck: false }
   return {

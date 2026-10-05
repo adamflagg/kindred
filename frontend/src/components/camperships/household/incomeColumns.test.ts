@@ -118,9 +118,9 @@ describe('answerState: open, settled, or plain', () => {
 describe("formFigure: each form's own figure", () => {
   it("reads each form's figure from the conflict, a dash for a form that gave none", () => {
     const { conflict, ans } = setup(income({ flags: [HOUSING_MOST] }), 'total_housing_expenses')
-    expect(formFigure(ans, conflict, 1000002)).toEqual({ text: '$30,000', struck: false })
-    expect(formFigure(ans, conflict, 1000099)).toEqual({ text: '$36,000', struck: false })
-    expect(formFigure(ans, conflict, 1000123)).toEqual({ text: '—', struck: false })
+    expect(formFigure(ans, conflict!, 1000002)).toEqual({ text: '$30,000', struck: false })
+    expect(formFigure(ans, conflict!, 1000099)).toEqual({ text: '$36,000', struck: false })
+    expect(formFigure(ans, conflict!, 1000123)).toEqual({ text: '—', struck: false })
   })
 
   it('strikes the figures the settling correction did not use, never the used one', () => {
@@ -129,13 +129,8 @@ describe("formFigure: each form's own figure", () => {
       flags: [resolved(GROSS_CONFLICT)],
     })
     const { conflict, ans } = setup(inc, 'total_gross_income')
-    expect(formFigure(ans, conflict, 1000002)).toEqual({ text: '$84,000', struck: true })
-    expect(formFigure(ans, conflict, 1000010)).toEqual({ text: '$90,000', struck: false })
-  })
-
-  it('reads the household answer as sent where the forms do not disagree', () => {
-    const { conflict, ans } = setup(income(), 'num_children')
-    expect(formFigure(ans, conflict, 1000002)).toEqual({ text: '2', struck: false })
+    expect(formFigure(ans, conflict!, 1000002)).toEqual({ text: '$84,000', struck: true })
+    expect(formFigure(ans, conflict!, 1000010)).toEqual({ text: '$90,000', struck: false })
   })
 })
 
