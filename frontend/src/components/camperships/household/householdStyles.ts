@@ -240,3 +240,20 @@ export const HH_PICK_ON =
   'border-forest-700 ring-1 ring-forest-700 text-forest-800 dark:border-forest-300 dark:ring-forest-300 dark:text-forest-200'
 /** The Correct… row's line saying what saving settles: muted, just above the footer's rule. */
 export const HH_CORRECT_SETTLES = 'text-muted-foreground text-[12.5px]'
+
+// round 3 · receipt chip line (household-v4.html section 2 (B)) ────────────────────────────────
+
+/**
+ * The receipt's one line (the mock's .sentence.sB): the sentence box's tint and type, never
+ * wrapping. The chips shrink and end in "…"; the Total does not.
+ */
+export const HH_CHIP_LINE =
+  'bg-muted/30 flex items-baseline rounded-[10px] px-3 py-2 text-sm leading-[1.55] whitespace-nowrap'
+/** The chips (the mock's .flow): they give way first, and end in an ellipsis. */
+export const HH_CHIP_FLOW = 'min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis'
+/** One chip (the mock's .sg): a faint rule before every chip but the first. */
+export const HH_CHIP = 'border-muted-foreground/35 border-l px-2.5 first:border-l-0 first:pl-0'
+/** A chip's round label (the mock's .rn): bold, muted, a size down; a space follows it. */
+export const HH_CHIP_ROUND = 'text-muted-foreground text-[12.5px] font-bold'
+/** The Total (the mock's .tot): never shrinks, ruled off from the chips. */
+export const HH_CHIP_TOTAL = 'border-muted-foreground/35 flex-none border-l pl-2.5'

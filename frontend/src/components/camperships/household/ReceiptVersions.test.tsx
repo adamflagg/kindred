@@ -56,6 +56,37 @@ describe('ReceiptVersions: one receipt, a version switcher (round 3, section 1 (
     expect(screen.queryByRole('button', { name: /as posted/ })).toBeNull()
   })
 
+  it('heads the card with one line of chips, not the sentence (household-v4 §2 (B))', () => {
+    renderVersions({ receipts: [R1, R2, LIVE] })
+    const chips = screen.getByTestId('receipt-chips')
+    expect(chips.textContent).toBe(
+      "Adjusted $90,000 · tier 5R1 40%, limited by the family's ask → $1,500R2 limited by the family's appeal → $600Total $2,100"
+    )
+    expect(within(chips).getByText("limited by the family's appeal")).toHaveClass('text-amber-700')
+    // The prose sentence is the hover, not the line.
+    expect(screen.queryByText(/Adjusted income/)).toBeNull()
+    expect(chips.getAttribute('title')).toMatch(/^Adjusted income \$90,000 → tier 5\. Round 1: /)
+  })
+
+  it('keeps the Total out of the chips that truncate, pinned at the right', () => {
+    renderVersions({ receipts: [R1, R2, LIVE] })
+    const chips = screen.getByTestId('receipt-chips')
+    const [flow, total] = [...chips.children] as HTMLElement[]
+    expect(flow).toHaveClass('overflow-hidden', 'text-ellipsis', 'min-w-0')
+    expect(total).toHaveTextContent('Total $2,100')
+    expect(total).toHaveClass('flex-none')
+    expect(chips).toHaveClass('whitespace-nowrap')
+  })
+
+  it('the chips follow the picked version', async () => {
+    renderVersions({ receipts: [R1, R2, LIVE] })
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: /^Round 2 as posted/ }))
+    const chips = screen.getByTestId('receipt-chips')
+    expect(chips).toHaveTextContent('Total $1,500')
+    expect(chips.textContent).not.toMatch(/R2/)
+  })
+
   it('lists the versions oldest first, each with its date and total, the current one picked', async () => {
     const { container } = renderVersions({ receipts: [LIVE, R2, R1] })
     await open()

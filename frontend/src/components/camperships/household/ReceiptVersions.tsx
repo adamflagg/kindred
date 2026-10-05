@@ -15,6 +15,7 @@ import {
   type ReceiptSection,
 } from '../kit/receiptModel'
 import { opensByItself } from './householdModel'
+import { ReceiptChipLine } from './ReceiptChipLine'
 import {
   HH_DIFF_ADD,
   HH_DIFF_DEL,
@@ -292,6 +293,8 @@ export function ReceiptVersions({
         ),
         // Folded, the card shows the current receipt's sentence again.
         onFold: () => setPicked(null),
+        // household-v4 section 2 (B): one line of chips, the Total pinned right.
+        sentence: <ReceiptChipLine trace={selected.receipt.trace} />,
       }}
     />
   )
