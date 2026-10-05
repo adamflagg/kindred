@@ -29,14 +29,15 @@ import { answerWords, camperOf } from './householdModel'
 import {
   HH_AMBER_NOTE as AMBER_NOTE,
   HH_BUTTON,
-  HH_FIELD,
-  HH_FIELD_NUMBER,
-  HH_FIELD_TEXT,
-  HH_FORM_LABEL,
-  HH_FORM_ROW,
+  HH_EDITOR_FIELD,
+  HH_EDITOR_LABEL,
+  HH_EDITOR_MONEY,
+  HH_EDITOR_NUMBER,
+  HH_EDITOR_PAIR,
+  HH_EDITOR_TEXT,
   HH_LINK,
 } from './householdStyles'
-import { EditorBox, FormActions } from './ReasonForm'
+import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
 
 type Write = () => Promise<unknown>
 
@@ -89,6 +90,7 @@ function FormShell({
   error,
   onSubmit,
   onCancel,
+  side,
   children,
 }: {
   /** The editor box's head (D24): what the form does, in sentence case. */
@@ -98,6 +100,9 @@ function FormShell({
   error: string | null
   onSubmit: () => void
   onCancel: () => void
+  /** What saving does, on the right (round 3, two columns); the fields alone without it. */
+  side?: ReactNode
+  /** The fields, top to bottom: short ones grouped in an `HH_EDITOR_PAIR` row, then the reason. */
   children: ReactNode
 }) {
   // Esc is heard on the form, so the form takes focus as it opens, on its first field, as
@@ -121,7 +126,7 @@ function FormShell({
           }
         }}
       >
-        <div className={HH_FORM_ROW}>{children}</div>
+        <EditorColumns side={side}>{children}</EditorColumns>
         <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
           {error !== null && <span className={AMBER_NOTE}>{error}</span>}
         </FormActions>
@@ -132,7 +137,7 @@ function FormShell({
 
 function ReasonInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
-    <label className={HH_FORM_LABEL}>
+    <label className={HH_EDITOR_LABEL}>
       Reason
       <input
         aria-label="Reason"
@@ -140,7 +145,7 @@ function ReasonInput({ value, onChange }: { value: string; onChange: (value: str
         value={value}
         maxLength={2000}
         onChange={(event) => onChange(event.target.value)}
-        className={HH_FIELD_TEXT}
+        className={HH_EDITOR_TEXT}
       />
     </label>
   )
@@ -226,33 +231,36 @@ function CorrectionForm({
       error={error}
       onSubmit={() => send(value)}
       onCancel={onClose}
+      side="The corrected figure is used in place of the form's."
     >
-      {kind === 'flag' ? (
-        <select
-          aria-label={label}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className={HH_FIELD}
-        >
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </select>
-      ) : (
-        <input
-          aria-label={label}
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className={`${HH_FIELD} w-28 text-right tabular-nums`}
-        />
-      )}
+      <div className={HH_EDITOR_PAIR}>
+        {kind === 'flag' ? (
+          <select
+            aria-label={label}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            className={HH_EDITOR_FIELD}
+          >
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        ) : (
+          <input
+            aria-label={label}
+            type="text"
+            inputMode="decimal"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            className={HH_EDITOR_MONEY}
+          />
+        )}
+        {answer.corrected && (
+          <button type="button" className={HH_LINK} disabled={busy} onClick={() => send(null)}>
+            Use the Form&apos;s Figure
+          </button>
+        )}
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
-      {answer.corrected && (
-        <button type="button" className={HH_LINK} disabled={busy} onClick={() => send(null)}>
-          Use the Form&apos;s Figure
-        </button>
-      )}
     </FormShell>
   )
 }
@@ -346,52 +354,58 @@ export function ShareForm({
       error={error}
       onSubmit={submit}
       onCancel={onDone}
+      side={
+        <>
+          With one other household on this request, this tool fills the other household&apos;s
+          share. A lone partial share holds the request until a second share is added.
+        </>
+      }
     >
-      <label className={HH_FORM_LABEL}>
-        Household
-        <select
-          aria-label="Household"
-          value={household}
-          onChange={(event) => setHousehold(event.target.value)}
-          className={HH_FIELD}
-        >
-          {page.households.map((h) => (
-            <option key={h.household_cm_id} value={String(h.household_cm_id)}>
-              {`${String(h.chip)} · ${h.family_name}`}
-            </option>
-          ))}
-          <option value="other">Another household…</option>
-        </select>
-      </label>
-      {household === 'other' && (
-        <label className={HH_FORM_LABEL}>
-          CampMinder id
-          <input
-            aria-label="Household id"
-            type="text"
-            inputMode="numeric"
-            value={otherId}
-            onChange={(event) => setOtherId(event.target.value)}
-            className={`${HH_FIELD} w-28`}
-          />
+      <div className={HH_EDITOR_PAIR}>
+        <label className={HH_EDITOR_LABEL}>
+          Household
+          <select
+            aria-label="Household"
+            value={household}
+            onChange={(event) => setHousehold(event.target.value)}
+            className={HH_EDITOR_FIELD}
+          >
+            {page.households.map((h) => (
+              <option key={h.household_cm_id} value={String(h.household_cm_id)}>
+                {`${String(h.chip)} · ${h.family_name}`}
+              </option>
+            ))}
+            <option value="other">Another household…</option>
+          </select>
         </label>
-      )}
-      <label className={HH_FORM_LABEL}>
-        Share
-        <input
-          aria-label="Share"
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className={HH_FIELD_NUMBER}
-        />
-        <span>%</span>
-      </label>
-      <p className="text-muted-foreground basis-full text-[12.5px]">
-        With one other household on this request, this tool fills the other household&apos;s share.
-        A lone partial share holds the request until a second share is added.
-      </p>
+        {household === 'other' && (
+          <label className={HH_EDITOR_LABEL}>
+            CampMinder id
+            <input
+              aria-label="Household id"
+              type="text"
+              inputMode="numeric"
+              value={otherId}
+              onChange={(event) => setOtherId(event.target.value)}
+              className={`${HH_EDITOR_FIELD} w-28`}
+            />
+          </label>
+        )}
+        <label className={HH_EDITOR_LABEL}>
+          Share
+          <span className="inline-flex items-center gap-1.5 font-normal">
+            <input
+              aria-label="Share"
+              type="text"
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              className={HH_EDITOR_NUMBER}
+            />
+            %
+          </span>
+        </label>
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )
@@ -441,13 +455,13 @@ export function SessionForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className={HH_FORM_LABEL}>
+      <label className={HH_EDITOR_LABEL}>
         Session
         <select
           aria-label="Session"
           value={session}
           onChange={(event) => setSession(event.target.value)}
-          className={HH_FIELD}
+          className={`${HH_EDITOR_FIELD} self-start`}
         >
           <option value="">Pick a session</option>
           {candidates.map((candidate) => (
@@ -534,13 +548,13 @@ export function DuplicateForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className={HH_FORM_LABEL}>
+      <label className={HH_EDITOR_LABEL}>
         Keep
         <select
           aria-label="Keep"
           value={keptNow ?? ''}
           onChange={(event) => setKept(event.target.value)}
-          className={HH_FIELD}
+          className={`${HH_EDITOR_FIELD} self-start`}
         >
           {keptNow === undefined && <option value="">Pick a request</option>}
           {options.map((option) => (
@@ -630,46 +644,48 @@ export function HeadcountForm({
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className={HH_FORM_LABEL}>
-        Not infants
-        <input
-          aria-label="Not infants"
-          type="text"
-          inputMode="numeric"
-          value={shownNonInfant}
-          onChange={(event) => setNonInfant(event.target.value)}
-          className={`${HH_FIELD} w-16 text-right tabular-nums`}
-        />
-      </label>
-      <label className={HH_FORM_LABEL}>
-        Infants
-        <input
-          aria-label="Infants"
-          type="text"
-          inputMode="numeric"
-          value={shownInfant}
-          onChange={(event) => setInfant(event.target.value)}
-          className={`${HH_FIELD} w-16 text-right tabular-nums`}
-        />
-      </label>
-      {codes.length > 0 && (
-        <label className={HH_FORM_LABEL}>
-          Reason code
-          <select
-            aria-label="Reason code"
-            value={reasonCode}
-            onChange={(event) => setReasonCode(event.target.value)}
-            className={HH_FIELD}
-          >
-            <option value="">Pick a code</option>
-            {codes.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
+      <div className={HH_EDITOR_PAIR}>
+        <label className={HH_EDITOR_LABEL}>
+          Not infants
+          <input
+            aria-label="Not infants"
+            type="text"
+            inputMode="numeric"
+            value={shownNonInfant}
+            onChange={(event) => setNonInfant(event.target.value)}
+            className={HH_EDITOR_NUMBER}
+          />
         </label>
-      )}
+        <label className={HH_EDITOR_LABEL}>
+          Infants
+          <input
+            aria-label="Infants"
+            type="text"
+            inputMode="numeric"
+            value={shownInfant}
+            onChange={(event) => setInfant(event.target.value)}
+            className={HH_EDITOR_NUMBER}
+          />
+        </label>
+        {codes.length > 0 && (
+          <label className={HH_EDITOR_LABEL}>
+            Reason code
+            <select
+              aria-label="Reason code"
+              value={reasonCode}
+              onChange={(event) => setReasonCode(event.target.value)}
+              className={HH_EDITOR_FIELD}
+            >
+              <option value="">Pick a code</option>
+              {codes.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )

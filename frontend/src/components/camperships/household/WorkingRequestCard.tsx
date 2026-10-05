@@ -188,6 +188,7 @@ export function WorkingRequestCard({
     editor = (
       <ReasonForm
         head="Putting on hold"
+        hint="The request stays on hold until someone lifts it."
         label="Reason for the hold"
         submitLabel="Put on Hold"
         onSubmit={(note) =>

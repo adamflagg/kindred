@@ -6,10 +6,17 @@ import {
   HH_BUTTON_PRIMARY,
   HH_EDITOR_ASIDE,
   HH_EDITOR_BOX,
+  HH_EDITOR_COLS,
+  HH_EDITOR_CONTAINER,
+  HH_EDITOR_FOOT,
+  HH_EDITOR_FOOT_END,
   HH_EDITOR_HEAD,
-  HH_FIELD_TEXT,
-  HH_FORM_LABEL,
-  HH_FORM_ROW,
+  HH_EDITOR_KEYS,
+  HH_EDITOR_LABEL,
+  HH_EDITOR_LEFT,
+  HH_EDITOR_SIDE,
+  HH_EDITOR_SIDE_HEAD,
+  HH_EDITOR_TEXT,
 } from './householdStyles'
 
 /** The server's limit on a reason (`_Reason`, 2000). */
@@ -39,7 +46,32 @@ export function EditorBox({
   )
 }
 
-/** A form's Back and submit row (the mock's .acts), and the refusal beside them. */
+/** The words under every household editor, as the money editor has always said them. */
+export const EDITOR_KEYS = 'Enter saves · Esc cancels'
+
+/**
+ * Round 3 (mock section 2, option B): the fields on the left, what saving does on the right, under a
+ * small "If you save". With nothing to say on the right, the fields alone.
+ */
+export function EditorColumns({ side, children }: { side?: ReactNode; children: ReactNode }) {
+  if (side === undefined || side === null) return <div className={HH_EDITOR_LEFT}>{children}</div>
+  return (
+    <div className={HH_EDITOR_CONTAINER}>
+      <div className={HH_EDITOR_COLS}>
+        <div className={HH_EDITOR_LEFT}>{children}</div>
+        <div data-editor-side="" className={HH_EDITOR_SIDE}>
+          <div className={HH_EDITOR_SIDE_HEAD}>If you save</div>
+          {side}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A form's footer (the mock's .edfoot): the refusal on the left; the key hint, Back and the submit
+ * bottom right, the submit last.
+ */
 export function FormActions({
   submitLabel,
   busy,
@@ -52,15 +84,18 @@ export function FormActions({
   children?: ReactNode
 }) {
   return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-2">
-      <button type="submit" className={HH_BUTTON_PRIMARY} disabled={busy}>
-        {submitLabel}
-      </button>
-      {/* A write in flight finishes on this form: leaving would drop its refusal unseen. */}
-      <button type="button" className={HH_BUTTON} onClick={onCancel} disabled={busy}>
-        Back
-      </button>
+    <div className={HH_EDITOR_FOOT}>
       {children}
+      <span className={HH_EDITOR_FOOT_END}>
+        <span className={HH_EDITOR_KEYS}>{EDITOR_KEYS}</span>
+        {/* A write in flight finishes on this form: leaving would drop its refusal unseen. */}
+        <button type="button" className={HH_BUTTON} onClick={onCancel} disabled={busy}>
+          Back
+        </button>
+        <button type="submit" className={HH_BUTTON_PRIMARY} disabled={busy}>
+          {submitLabel}
+        </button>
+      </span>
     </div>
   )
 }
@@ -84,7 +119,7 @@ export function ReasonForm({
   submitLabel: string
   /** The box's head; the submit's words when none is given. */
   head?: string | undefined
-  /** What the form says first, under its head (the undo's warnings). */
+  /** What saving does, on the right (the undo's warnings, what a hold does). */
   hint?: ReactNode
   onSubmit: (note: string) => Promise<unknown>
   onCancel: () => void
@@ -136,11 +171,8 @@ export function ReasonForm({
           }
         }}
       >
-        {hint !== undefined && (
-          <div className="text-muted-foreground mb-2 text-[12.5px]">{hint}</div>
-        )}
-        <div className={HH_FORM_ROW}>
-          <label className={HH_FORM_LABEL}>
+        <EditorColumns side={hint}>
+          <label className={HH_EDITOR_LABEL}>
             {label}
             <input
               ref={field}
@@ -148,10 +180,10 @@ export function ReasonForm({
               value={note}
               maxLength={REASON_MAX}
               onChange={(event) => setNote(event.target.value)}
-              className={HH_FIELD_TEXT}
+              className={HH_EDITOR_TEXT}
             />
           </label>
-        </div>
+        </EditorColumns>
         <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
           {error !== null && <span className={HH_AMBER_NOTE}>{error}</span>}
         </FormActions>

@@ -594,3 +594,13 @@ describe('WorkingRequestCard: every form closes on Esc as soon as it opens', () 
     expect(screen.queryByLabelText(field)).toBeNull()
   })
 })
+
+describe('WorkingRequestCard: Put on Hold… in two columns (round 3)', () => {
+  it('says on the right what the hold does', async () => {
+    renderCards([ROW_EMMA])
+    await userEvent.click(screen.getByRole('button', { name: 'Put on Hold…' }))
+    const side = document.querySelector('[data-editor-side]')
+    expect(side).toHaveTextContent('The request stays on hold until someone lifts it.')
+    expect(side).not.toContainElement(screen.getByLabelText('Reason for the hold'))
+  })
+})

@@ -697,3 +697,32 @@ describe("every casework form's message-only state closes on Esc as soon as it o
     await escCloses("Couldn't load this request's headcount.")
   })
 })
+
+// Round 3 (mock section 2, option B): fields on the left, what saving does on the right.
+describe('casework forms in two columns (round 3)', () => {
+  const side = () => document.querySelector('[data-editor-side]') as HTMLElement
+
+  it('moves the payer-shares note to the right, away from the fields', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    expect(side()).toHaveTextContent(
+      "With one other household on this request, this tool fills the other household's share."
+    )
+    for (const label of ['Household', 'Share', 'Reason'])
+      expect(side()).not.toContainElement(screen.getByLabelText(label))
+  })
+
+  it('puts a plain hint on the right of Correct…', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    expect(side()).toHaveTextContent("The corrected figure is used in place of the form's.")
+    expect(side()).not.toContainElement(screen.getByLabelText('Children'))
+  })
+
+  it('ends each footer with Back and then the save', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    const save = screen.getByRole('button', { name: 'Set the Share' })
+    expect(save.parentElement?.lastElementChild).toBe(save)
+    expect(screen.getByRole('button', { name: 'Back' }).nextElementSibling).toBe(save)
+  })
+})

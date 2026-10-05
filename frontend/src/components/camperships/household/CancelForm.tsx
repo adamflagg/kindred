@@ -8,12 +8,11 @@ import {
 } from '../kit/editor'
 import {
   HH_AMBER_NOTE as AMBER_NOTE,
-  HH_FIELD,
-  HH_FIELD_TEXT,
-  HH_FORM_LABEL,
-  HH_FORM_ROW,
+  HH_EDITOR_FIELD,
+  HH_EDITOR_LABEL,
+  HH_EDITOR_TEXT,
 } from './householdStyles'
-import { EditorBox, FormActions } from './ReasonForm'
+import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
 
 /**
  * The cancel form (§6.3; D101, D141; Decision 24): one of the nine reasons, as the server's
@@ -79,15 +78,15 @@ export function CancelForm({
           }
         }}
       >
-        <div className={HH_FORM_ROW}>
-          <label className={HH_FORM_LABEL}>
+        <EditorColumns side={'A note is needed only for "another reason".'}>
+          <label className={HH_EDITOR_LABEL}>
             {policy.label}
             <select
               ref={field}
               aria-label="Cancel reason"
               value={value}
               onChange={(event) => setValue(event.target.value)}
-              className={HH_FIELD}
+              className={`${HH_EDITOR_FIELD} w-[330px] max-w-full`}
             >
               <option value="">Pick a reason</option>
               {policy.options.map((o) => (
@@ -97,7 +96,7 @@ export function CancelForm({
               ))}
             </select>
           </label>
-          <label className={HH_FORM_LABEL}>
+          <label className={HH_EDITOR_LABEL}>
             Note
             <input
               aria-label="Note"
@@ -105,10 +104,10 @@ export function CancelForm({
               value={note}
               maxLength={2000}
               onChange={(event) => setNote(event.target.value)}
-              className={HH_FIELD_TEXT}
+              className={HH_EDITOR_TEXT}
             />
           </label>
-        </div>
+        </EditorColumns>
         <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
           {tried && problem !== null && <span className={AMBER_NOTE}>{problem}</span>}
           {error !== null && <span className={AMBER_NOTE}>{error}</span>}

@@ -88,3 +88,20 @@ describe('CancelForm (D101, D141)', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('CancelForm: two columns (round 3)', () => {
+  it('says on the right which reason needs a note', () => {
+    render(
+      <CancelForm
+        initial={null}
+        submitLabel="Cancel the Request"
+        onSubmit={() => Promise.resolve()}
+        onCancel={() => undefined}
+      />
+    )
+    const side = document.querySelector('[data-editor-side]')
+    expect(side).toHaveTextContent('A note is needed only for "another reason".')
+    expect(side).not.toContainElement(screen.getByLabelText('Cancel reason'))
+    expect(side).not.toContainElement(screen.getByLabelText('Note'))
+  })
+})

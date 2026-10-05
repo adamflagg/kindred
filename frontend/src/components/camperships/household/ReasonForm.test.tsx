@@ -107,3 +107,48 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })
+
+// Round 3 (mock section 2, option B): a form with a hint puts its fields on the left and the hint on
+// the right; the footer puts the submit bottom right with Back beside it, after the key hint.
+describe('ReasonForm: two columns and the footer (round 3)', () => {
+  const side = () => document.querySelector('[data-editor-side]')
+
+  it('puts its hint on the right, away from the field', () => {
+    render(
+      <ReasonForm
+        label="Why"
+        submitLabel="Send"
+        hint="Undo returns the round to today's figure."
+        onSubmit={vi.fn()}
+        onCancel={() => undefined}
+      />
+    )
+    expect(side()).toHaveTextContent("Undo returns the round to today's figure.")
+    expect(side()).not.toContainElement(screen.getByLabelText('Why'))
+  })
+
+  it('keeps one column when it has no hint', () => {
+    render(
+      <ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={() => undefined} />
+    )
+    expect(side()).toBeNull()
+  })
+
+  it('ends its footer with Back and then the submit, after the key hint', () => {
+    render(
+      <ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={() => undefined} />
+    )
+    const submit = screen.getByRole('button', { name: 'Send' })
+    const back = screen.getByRole('button', { name: 'Back' })
+    expect(submit.parentElement?.lastElementChild).toBe(submit)
+    expect(back.nextElementSibling).toBe(submit)
+    expect(back.previousElementSibling).toHaveTextContent('Enter saves · Esc cancels')
+  })
+
+  it('draws a white field', () => {
+    render(
+      <ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={() => undefined} />
+    )
+    expect(screen.getByLabelText('Why')).toHaveClass('bg-white')
+  })
+})
