@@ -882,11 +882,11 @@ class _ConflictCasework(_Casework):
         if household_cm_id != JOHNSON:
             return detail
         variants = [
-            {"value": 50000.0, "person_cm_ids": [1000011, 1000012]},
+            {"value": 50000.0, "person_cm_ids": [1000011]},
             {"value": 70000.0, "person_cm_ids": [1000019, 1000099]},
         ]
         flag = FlagOut(code="income_conflict", detail={"fields": {"total_gross_income": variants}})
-        return detail.model_copy(update={"flags": [flag], "member_person_cm_ids": [1000011, 1000012, 1000019]})
+        return detail.model_copy(update={"flags": [flag], "member_person_cm_ids": [1000011, 1000012]})
 
 
 class _FormPeopleLedger(_Ledger):
