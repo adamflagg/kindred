@@ -103,16 +103,16 @@ function AnswerRows({
   return (
     <>
       <tr className={open ? FLAGGED_ROW : ''}>
-        <td className={`${cell} ${edge} ${fixed ? 'w-[210px]' : ''}`}>
+        <td className={`${cell} ${edge} ${fixed ? 'w-[210px]' : 'xl:w-[210px]'}`}>
           {answerWords(answer.field)}
         </td>
         <td
-          className={`${conflict === undefined ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`} ${fixed ? 'w-[104px]' : ''}`}
+          className={`${conflict === undefined ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`} ${fixed ? 'w-[104px]' : 'xl:w-[104px]'}`}
         >
           {answerValue(answer.field, answer.synced)}
         </td>
         <td
-          className={`${conflict === undefined ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`} ${fixed ? 'w-[104px]' : ''} ${answer.corrected ? 'font-bold' : ''}`}
+          className={`${conflict === undefined ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`} ${fixed ? 'w-[104px]' : 'xl:w-[104px]'} ${answer.corrected ? 'font-bold' : ''}`}
         >
           {answerValue(answer.field, answer.effective)}
         </td>
@@ -151,7 +151,7 @@ function Exceptions({
   page: ApiAidHouseholdPage
   income: ApiAidIncome
   correct: CorrectRender | undefined
-  /** One household: the mock's sized columns (210 / 104 / 104). Halves fit their columns instead. */
+  /** The mock's sized columns (210 / 104 / 104): always for one household; halves only from xl, fitting below. */
   fixed: boolean
   freeTextWhenOpen: boolean
 }) {
