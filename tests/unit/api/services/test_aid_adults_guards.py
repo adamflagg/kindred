@@ -89,6 +89,7 @@ ALLOWED = {
     "pocketbase/sync/persons.go",  # which the persons sync calls
     "pocketbase/audit/diff.go",  # the audit log drops it
     "scripts/setup/synthetic/anonymizer.py",  # the synthetic DB fakes it
+    "scripts/setup/synthetic/scan_leaks.py",  # and the leak scan denylists its real names
     "api/services/financial_aid_repository.py",  # its one Python read (fetch_households(adults=True))
     "api/services/financial_aid_household_page.py",  # its one consumer, the Camperships household page
     "frontend/src/types/pocketbase-types.ts",  # generated from the schema

@@ -452,9 +452,31 @@ def build_denylist_from_db(real_db: str) -> list[str]:  # pragma: no cover - bui
                 for v in row:
                     if v:
                         values.add(str(v))
+        # households.aid_adults names adults who are never persons rows, so the persons columns above
+        # cannot cover them; without this the anonymizer's _fake_aid_adults would be their only guard.
+        if "aid_adults" in {r[1] for r in conn.execute("PRAGMA table_info([households])").fetchall()}:
+            for (raw,) in conn.execute("SELECT [aid_adults] FROM [households]"):
+                values.update(_aid_adult_names(raw))
     finally:
         conn.close()
     return sorted(values)
+
+
+def _aid_adult_names(raw: object) -> list[str]:
+    """The first, last and preferred names in one households.aid_adults value; [] when it is not a list of objects."""
+    try:
+        adults = json.loads(str(raw)) if raw else []
+    except ValueError:
+        return []
+    if not isinstance(adults, list):
+        return []
+    return [
+        str(adult[key])
+        for adult in adults
+        if isinstance(adult, dict)
+        for key in ("first", "last", "preferred")
+        if adult.get(key)
+    ]
 
 
 def build_camp_tokens(branding_path: str) -> list[str]:  # pragma: no cover - build-time only

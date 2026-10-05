@@ -317,3 +317,49 @@ def test_clean_aid_table_passes(tmp_path, scan_module):
     _make_db_with_aid_table(db, table_name="aid_change_log", rows=[])
     violations = scan_module.scan(str(db))
     assert violations == [], f"an empty aid table should pass, got {violations}"
+
+
+def _make_households_db(path: Path, *, aid_adults: str, with_persons: bool = True) -> None:
+    """A DB with a households row carrying aid_adults JSON (and optionally an empty persons table)."""
+    conn = sqlite3.connect(path)
+    if with_persons:
+        conn.execute("CREATE TABLE persons (id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT)")
+    conn.execute("CREATE TABLE households (id TEXT PRIMARY KEY, greeting TEXT, aid_adults TEXT)")
+    conn.execute("INSERT INTO households (id, greeting, aid_adults) VALUES (?, ?, ?)", ("h1", "", aid_adults))
+    conn.commit()
+    conn.close()
+
+
+# A fictional adult who exists ONLY in households.aid_adults: the persons sync never writes these
+# adults as persons rows, so the persons columns cannot put their names on the denylist.
+AID_ADULT_JSON = (
+    '[{"cm_id": 1000051, "first": "Zephyrina", "last": "Quackenbush", "preferred": "Zeph", '
+    '"role": 1, "is_guardian": true}]'
+)
+
+
+def test_denylist_includes_aid_adults_names(tmp_path, scan_module):
+    real = tmp_path / "real.db"
+    _make_households_db(real, aid_adults=AID_ADULT_JSON)
+    denylist = scan_module.build_denylist_from_db(str(real))
+    for name in ("Zephyrina", "Quackenbush", "Zeph"):
+        assert name in denylist, f"{name!r} from households.aid_adults is missing from the denylist {denylist}"
+
+
+def test_unfaked_aid_adult_name_in_artifact_is_flagged(tmp_path, scan_module):
+    """The leak scan backs up the anonymizer: if _fake_aid_adults ever lets a real adult through
+    (here the faker is skipped outright), the scan flags the name."""
+    real = tmp_path / "real.db"
+    _make_households_db(real, aid_adults=AID_ADULT_JSON)
+    artifact = tmp_path / "artifact.db"
+    _make_households_db(artifact, aid_adults=AID_ADULT_JSON, with_persons=False)
+    violations = scan_module.scan(str(artifact), denylist=scan_module.build_denylist_from_db(str(real)))
+    leaks = [v for v in violations if v.category == "real_value_leak"]
+    assert leaks, f"expected the unfaked aid_adults name to be flagged, got {violations}"
+
+
+def test_denylist_tolerates_malformed_aid_adults(tmp_path, scan_module):
+    for i, bad in enumerate(("not json", '{"first": "Zephyrina"}', '["Zephyrina", 3]', "")):
+        real = tmp_path / f"real{i}.db"
+        _make_households_db(real, aid_adults=bad)
+        assert "Zephyrina" not in scan_module.build_denylist_from_db(str(real))

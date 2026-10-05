@@ -431,7 +431,7 @@ ADULT_ROLE_LABELS: Final = {1: "Adult 1", 2: "Adult 2"}
 
 def _aid_adults(household: Any | None) -> list[Mapping[str, Any]]:
     """The adults CampMinder names for an aid household (households.aid_adults, written by the persons sync from its
-    relatives: First Principal, then Second), with no unnamed entry. None when the sync named none."""
+    relatives: First Principal, then Second), with no unnamed entry. An empty list when the sync named none."""
     raw = getattr(household, "aid_adults", None) if household is not None else None
     entries = [a for a in raw if isinstance(a, Mapping)] if isinstance(raw, list) else []
     named = [a for a in entries if any(_aid_adult_pair(a))]
