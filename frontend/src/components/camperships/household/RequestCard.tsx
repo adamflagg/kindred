@@ -38,7 +38,7 @@ function wouldChangeSentence(line: RoundLine): string {
   const posted = formatMoney(line.amount)
   return by < 0
     ? `Today's rules would lower Round ${n} by ${formatMoney(-by)}. The posted ${posted} stands; nothing is clawed back.`
-    : `Today's rules would change Round ${n} by ${formatMoney(by)}. The posted ${posted} stands; this is information only.`
+    : `Today's rules would raise Round ${n} by ${formatMoney(by)}. The posted ${posted} stands; this is information only.`
 }
 
 function EarlierReceipts({
