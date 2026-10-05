@@ -51,9 +51,15 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
 }))
 let previewNow: EditorPreview = { status: 'idle' }
 const previewAsk = vi.fn()
+// What the editor asked the preview hook for: [requestId, round, householdOf, openOn].
+const previewHook = vi.fn()
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
-  useAidEditorPreview: () => ({ preview: previewNow, onAmountChange: previewAsk }),
+  useAidEditorPreview: (...args: unknown[]) => {
+    previewHook(...args)
+    return { preview: previewNow, onAmountChange: previewAsk }
+  },
 }))
+const openedOn = () => (previewHook.mock.calls.at(-1) as unknown[] | undefined)?.[3]
 
 const request = householdRequest(ROW_OLIVIA)
 const page = householdPage({ requests: [request] })
@@ -72,6 +78,7 @@ beforeEach(() => {
   ask.mockReset()
   amount.mockReset()
   previewAsk.mockReset()
+  previewHook.mockReset()
   onClose.mockReset()
   go.mockReset()
   mode = 'auto'
@@ -336,16 +343,17 @@ describe('CardEditor leave (F2 4/5: page-owned exits save first)', () => {
 
 // B24 (owner ruling 10-05): a money editor opening on an amount asks for its preview at once, so
 // "Round 2 now $X (new total $T)" shows before any typing.
-describe('CardEditor: the preview at open (B24)', () => {
-  it('asks once for the appeal it opens on, and shows the line without typing', () => {
+describe('CardEditor: the preview at open (B24; R2 asks it at once)', () => {
+  it('opens the preview on the appeal it opens on, and shows the line without typing', () => {
     previewNow = { status: 'ready', award: 780, totalDecided: 2280, pendingApproval: false }
     render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
-    expect(previewAsk).toHaveBeenCalledTimes(1)
-    expect(previewAsk).toHaveBeenCalledWith(1200)
+    expect(previewHook).toHaveBeenCalledWith('reqolivia000003', 2, expect.any(Function), 1200)
+    // R2: not through the typing path, which waits for a pause.
+    expect(previewAsk).not.toHaveBeenCalled()
     expect(screen.getByText('Round 2 now $780 (new total $2,280)')).toBeInTheDocument()
   })
 
-  it('asks for a Round 3 amount opening on its decided figure', () => {
+  it('opens a Round 3 amount on its decided figure', () => {
     const decidedRow = householdRequest(
       gridRow({
         ...ROW_OLIVIA,
@@ -353,15 +361,16 @@ describe('CardEditor: the preview at open (B24)', () => {
       })
     )
     render(<CardEditor request={decidedRow} page={page} kind="round3_amount" onClose={onClose} />)
-    expect(previewAsk).toHaveBeenCalledTimes(1)
-    expect(previewAsk).toHaveBeenCalledWith(300)
+    expect(previewHook).toHaveBeenCalledWith('reqolivia000003', 3, expect.any(Function), 300)
+    expect(previewAsk).not.toHaveBeenCalled()
   })
 
-  it('asks nothing when there is no amount yet, nor for a Round 3 ask, which prices nothing', () => {
+  it('opens on nothing when there is no amount yet, nor for a Round 3 ask, which prices nothing', () => {
     const { unmount } = render(
       <CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />
     )
     expect(screen.getByLabelText('Round 3 amount')).toHaveValue('')
+    expect(openedOn()).toBeNull()
     unmount()
     const askedRow = householdRequest(
       gridRow({
@@ -371,6 +380,7 @@ describe('CardEditor: the preview at open (B24)', () => {
     )
     render(<CardEditor request={askedRow} page={page} kind="round3_ask" onClose={onClose} />)
     expect(screen.getByLabelText('Round 3 ask')).toHaveValue('900')
+    expect(openedOn()).toBeNull()
     expect(previewAsk).not.toHaveBeenCalled()
   })
 })

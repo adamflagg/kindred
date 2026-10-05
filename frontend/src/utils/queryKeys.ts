@@ -739,6 +739,10 @@ export const queryKeys = {
   aidHouseholdPagePrefix: () => ['financial-aid', 'household-page'] as const,
   aidHouseholdPage: (year: number, householdCmId: number) =>
     ['financial-aid', 'household-page', year, householdCmId] as const,
+  // A money editor's preview of the amount it opens on (R2): under the household page's prefix, so
+  // every write that refreshes the page (invalidateAidMoneyQueries) drops a preview it moved.
+  aidPreview: (requestId: string, round: 2 | 3, amount: number) =>
+    ['financial-aid', 'household-page', 'preview', requestId, round, amount] as const,
   aidApplicationPrefix: () => ['financial-aid', 'application'] as const,
   aidApplication: (year: number, householdCmId: number) =>
     ['financial-aid', 'application', year, householdCmId] as const,

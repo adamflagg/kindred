@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { useCallback, useImperativeHandle, useRef, useState, type Ref } from 'react'
 
 import { useAidEditorPreview } from '../../../hooks/camperships/useAidEditorPreview'
 import { useAidKeyAsk, useAidRound3Amount } from '../../../hooks/camperships/useAidWrites'
@@ -14,8 +14,8 @@ import {
   type EditorPreview,
   type EditorSave,
 } from '../kit/RequestEditor'
-import { roundOf } from '../requests/stage'
 import type { CardEditKind } from './cardEdits'
+import { openingAmount } from './cardPreviews'
 import { householdChip, householdChipName, householdName } from './householdModel'
 import {
   HH_BUTTON,
@@ -100,24 +100,18 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
     }),
     [page]
   )
-  const preview = useAidEditorPreview(row.request_id, kind === 'appeal' ? 2 : 3, householdOf)
-  const r2 = roundOf(row, 2)
-  const r3 = roundOf(row, 3)
-  const initial =
-    kind === 'appeal'
-      ? (r2?.ask ?? null)
-      : kind === 'round3_ask'
-        ? (r3?.ask ?? null)
-        : (r3?.pending_approval ?? r3?.decided ?? null)
+  const initial = openingAmount(row, kind)
   const writing = kind === 'round3_amount' ? amount : ask
   const priced = kind !== 'round3_ask'
-  // B24 (owner ruling 10-05): opening on an amount prices it once, at open; typing re-previews
-  // through the field as before. The body is keyed by request and kind, so this runs once per open.
-  const askPreview = preview.onAmountChange
-  const openedOn = useRef(initial)
-  useEffect(() => {
-    if (priced && openedOn.current !== null) askPreview(openedOn.current)
-  }, [priced, askPreview])
+  // B24, R2 (owner rulings 10-05): opening on an amount prices it at once, with no debounce, and
+  // from the cache when the card prefetched it; typing re-previews through the field as before.
+  // The body is keyed by request and kind, so the hook opens once per open.
+  const preview = useAidEditorPreview(
+    row.request_id,
+    kind === 'appeal' ? 2 : 3,
+    householdOf,
+    priced ? initial : null
+  )
   const lastReport = useRef<EditorDraftReport | null>(null)
   const goAfter = useRef<(() => void) | null>(null)
   const [showProblem, setShowProblem] = useState(false)
