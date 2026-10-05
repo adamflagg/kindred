@@ -11,6 +11,7 @@ import { DuplicateForm, HeadcountForm, SessionForm, ShareForm } from './Casework
 import { isLiveRequest } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
+import { staffNames } from './historyWords'
 import { HH_BUTTON } from './householdStyles'
 import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
@@ -139,7 +140,7 @@ export function WorkingRequestCard({
       {offers.session && button('Settle Session…', { kind: 'session' })}
       {offers.duplicate && button('Keep the Other Request…', { kind: 'duplicate' })}
       {offers.headcount && button('Headcount…', { kind: 'headcount' })}
-      <ReleasedHolds request={request} />
+      <ReleasedHolds request={request} names={staffNames(page)} />
     </>
   )
 

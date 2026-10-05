@@ -131,6 +131,38 @@ describe('HoldActions (Decision 25)', () => {
   })
 })
 
+// Owner, sitting B: a released hold's line names the person as the History tab does, never an email.
+describe('a released hold names who released it', () => {
+  const released = (by: string) =>
+    householdRequest({
+      ...ROW_EMMA,
+      released_holds: [
+        {
+          code: 'py_confirm_tier_change',
+          note: 'Checked the file',
+          released_by: by,
+          released_at: '2027-03-01T10:00:00Z',
+        },
+      ],
+    })
+
+  it("reads a sign-in as its email's first word, capitalised", () => {
+    render(<ReleasedHolds request={released('emma.chen@example.org')} />)
+    expect(screen.getByText(/ by Emma: Checked the file$/)).toBeInTheDocument()
+    expect(screen.queryByText(/example\.org/)).toBeNull()
+  })
+
+  it('reads a sign-in the receipts name as that first name', () => {
+    render(
+      <ReleasedHolds
+        request={released('emma.chen@example.org')}
+        names={new Map([['emma.chen@example.org', 'Emmy']])}
+      />
+    )
+    expect(screen.getByText(/ by Emmy: Checked the file$/)).toBeInTheDocument()
+  })
+})
+
 describe('holds on a request that is no longer live (m2)', () => {
   const withdrawn = (over: Record<string, unknown>) =>
     householdRequest(gridRow({ ...ROW_EMMA, request_status: 'withdrawn', ...over }))

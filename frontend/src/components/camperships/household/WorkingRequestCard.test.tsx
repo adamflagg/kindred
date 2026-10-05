@@ -402,6 +402,24 @@ describe('WorkingRequestCard: a non-live request takes no cancellation write (m2
     expect(screen.queryByRole('button', { name: 'Change the Reason…' })).toBeNull()
   })
 
+  it("names a released hold's releaser by first name, not by sign-in email", () => {
+    renderCards([
+      gridRow({
+        ...ROW_EMMA,
+        released_holds: [
+          {
+            code: 'py_confirm_tier_change',
+            note: 'ok',
+            released_by: 'emma.chen@example.org',
+            released_at: '2027-03-01T10:00:00Z',
+          },
+        ],
+      }),
+    ])
+    expect(screen.getByText(/ by Emma: ok$/)).toBeInTheDocument()
+    expect(screen.queryByText(/example\.org/)).toBeNull()
+  })
+
   it('offers no Put back on a withdrawn request with a released hold', () => {
     renderCards([
       gridRow({

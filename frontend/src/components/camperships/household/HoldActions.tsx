@@ -7,8 +7,11 @@ import { codeWords } from '../requests/attention'
 import { isLiveRequest } from '../requests/gridEditor'
 import { cardEdits } from './cardEdits'
 import { fixLink, fixWords, UNRELEASABLE_CODES } from './holds'
+import { whoWords } from './historyWords'
 import { HH_BUTTON, HH_LINK, HH_NOTE } from './householdStyles'
 import { ReasonForm } from './ReasonForm'
+
+const NO_NAMES: ReadonlyMap<string, string> = new Map()
 
 /**
  * A hold banner's actions (§6.3 item 3; main spec §10.5; Decision 25): the fix for a hold that
@@ -76,8 +79,18 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
   )
 }
 
-/** Holds released on this request, with who and when, each able to go back on with a note. */
-export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) {
+/**
+ * Holds released on this request, with who and when, each able to go back on with a note. `names` is
+ * the History tab's sign-in → first-name map (`staffNames(page)`); a sign-in it lacks reads as its
+ * email's first word, never as the email.
+ */
+export function ReleasedHolds({
+  request,
+  names = NO_NAMES,
+}: {
+  request: ApiAidHouseholdRequest
+  names?: ReadonlyMap<string, string> | undefined
+}) {
   const release = useAidHoldRelease()
   const [putting, setPutting] = useState<string | null>(null)
   const requestId = request.row.request_id
@@ -89,7 +102,7 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
       {request.row.released_holds.map((held) => (
         <div key={held.code} className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">
-            {`${codeWords(held.code)} released ${formatShortDate(held.released_at)} by ${held.released_by}: ${held.note}`}
+            {`${codeWords(held.code)} released ${formatShortDate(held.released_at)} by ${whoWords(held.released_by, names)}: ${held.note}`}
           </span>
           {putting === held.code ? (
             <ReasonForm
