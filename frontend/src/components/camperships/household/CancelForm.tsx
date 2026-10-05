@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   CANCEL_REASON_OPTIONS,
@@ -40,6 +40,11 @@ export function CancelForm({
   const [busy, setBusy] = useState(false)
   // One submit outstanding at a time, so a stale submit's error never lands after a newer one.
   const inFlight = useRef(false)
+  // Esc is heard on the form, so the form takes focus as it opens, as ReasonForm does.
+  const field = useRef<HTMLSelectElement>(null)
+  useEffect(() => {
+    field.current?.focus()
+  }, [])
   const problem = choiceProblem(policy, value === '' ? null : value, note)
   const option = CANCEL_REASON_OPTIONS.find((o) => o.value === value)
 
@@ -78,6 +83,7 @@ export function CancelForm({
           <label className={HH_FORM_LABEL}>
             {policy.label}
             <select
+              ref={field}
               aria-label="Cancel reason"
               value={value}
               onChange={(event) => setValue(event.target.value)}

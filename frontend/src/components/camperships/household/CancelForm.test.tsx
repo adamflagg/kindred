@@ -72,4 +72,19 @@ describe('CancelForm (D101, D141)', () => {
     fireEvent.keyDown(screen.getByLabelText('Note'), { key: 'Escape' })
     expect(onCancel).not.toHaveBeenCalled()
   })
+
+  it('closes on Esc as soon as it opens, with no click or focus first', async () => {
+    const onCancel = vi.fn()
+    render(
+      <CancelForm
+        initial={null}
+        submitLabel="Cancel the Request"
+        onSubmit={() => Promise.resolve()}
+        onCancel={onCancel}
+      />
+    )
+    expect(screen.getByLabelText('Cancel reason')).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
 })

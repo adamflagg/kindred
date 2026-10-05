@@ -99,4 +99,11 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
     expect(onSubmit).toHaveBeenCalledTimes(2)
     expect(screen.queryByText('Late refusal')).not.toBeInTheDocument()
   })
+
+  it('closes on Esc as soon as it opens, with no click or focus first', async () => {
+    const onCancel = vi.fn()
+    render(<ReasonForm label="Why" submitLabel="Send" onSubmit={vi.fn()} onCancel={onCancel} />)
+    await userEvent.keyboard('{Escape}')
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
 })

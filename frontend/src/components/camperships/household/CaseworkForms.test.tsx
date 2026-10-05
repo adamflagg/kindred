@@ -565,3 +565,54 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     expect(spies.headcount).not.toHaveBeenCalled()
   })
 })
+
+describe('every casework form closes on Esc as soon as it opens', () => {
+  // The key goes to whatever has focus, with no click first: a form that never takes focus
+  // leaves Esc on <body>, where nothing hears it.
+  const esc = async (open: () => void) => {
+    open()
+    await userEvent.keyboard('{Escape}')
+    expect(done).toHaveBeenCalledTimes(1)
+  }
+
+  it('Correct… (a count)', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByLabelText('Reason')).toBeNull()
+  })
+
+  it('Payer Shares…', async () => {
+    await esc(() =>
+      render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    )
+  })
+
+  it('Settle Session…', async () => {
+    const unsettled = gridRow({
+      ...ROW_EMMA,
+      request_status: 'unmatched_session',
+      session_candidates: [{ session_cm_id: 1000101, name: 'Session 2' }],
+    })
+    await esc(() => render(<SessionForm request={householdRequest(unsettled)} onDone={done} />))
+  })
+
+  it('Keep the Other Request…', async () => {
+    const duplicate = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    const page = householdPage({ requests: [householdRequest(ROW_EMMA), duplicate] })
+    await esc(() => render(<DuplicateForm request={duplicate} page={page} onDone={done} />))
+  })
+
+  it('Headcount…', async () => {
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    application = applicationOut({
+      requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
+    })
+    await esc(() => render(<HeadcountForm request={family} page={PAGE} onDone={done} />))
+  })
+})

@@ -100,9 +100,16 @@ function FormShell({
   onCancel: () => void
   children: ReactNode
 }) {
+  // Esc is heard on the form, so the form takes focus as it opens, on its first field, as
+  // ReasonForm does.
+  const form = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    form.current?.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled)')?.focus()
+  }, [])
   return (
     <EditorBox head={head}>
       <form
+        ref={form}
         onSubmit={(event) => {
           event.preventDefault()
           onSubmit()

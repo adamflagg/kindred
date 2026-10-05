@@ -559,3 +559,20 @@ describe('WorkingRequestCard: the casework forms', () => {
     expect(screen.queryByLabelText('Household')).toBeNull()
   })
 })
+
+describe('WorkingRequestCard: every form closes on Esc as soon as it opens', () => {
+  // No click into a field first: the key goes to whatever the form's opening focused.
+  it.each([
+    ['Cancel Request…', 'Cancel reason', ROW_EMMA],
+    ['Put on Hold…', 'Reason for the hold', ROW_OLIVIA],
+    ['Payer Shares…', 'Household', ROW_EMMA],
+    ['Round 3 Ask…', 'Round 3 ask', ROW_OLIVIA],
+    ['Edit the Appeal…', 'Round 2 ask', ROW_OLIVIA],
+  ])('%s', async (button, field, row) => {
+    renderCards([row])
+    await userEvent.click(screen.getByRole('button', { name: button }))
+    expect(screen.getByLabelText(field)).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByLabelText(field)).toBeNull()
+  })
+})
