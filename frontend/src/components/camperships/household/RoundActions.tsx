@@ -305,7 +305,7 @@ export function RoundNextAction({
     )
   }
   if (line.status === 'pending_approval') {
-    return <span className={MUTED}>waits for finance&apos;s approval on Today</span>
+    return <span className={MUTED}>Pending finance approval</span>
   }
   return null
 }

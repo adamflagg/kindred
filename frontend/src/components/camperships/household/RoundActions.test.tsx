@@ -165,7 +165,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     const { unmount } = render(
       <RoundNextAction request={pending} line={lineOf(pending, 3)} year={2027} canApprove={false} />
     )
-    expect(screen.getByText("waits for finance's approval on Today")).toBeInTheDocument()
+    expect(screen.getByText('Pending finance approval')).toBeInTheDocument()
     unmount()
     render(<RoundNextAction request={pending} line={lineOf(pending, 3)} year={2027} canApprove />)
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
