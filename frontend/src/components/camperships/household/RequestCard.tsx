@@ -22,7 +22,10 @@ import {
   shareConfirmation,
   unreachedRounds,
   type RoundLine,
+  householdLabel,
+  type HouseholdLabel,
 } from './householdModel'
+import { HouseholdLabelText } from './HouseholdLabel'
 import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE } from './householdStyles'
 import { ReceiptDetailsButton, ReceiptVersions } from './ReceiptVersions'
 import { useReceiptDetails } from './useReceiptDetails'
@@ -45,12 +48,30 @@ export function CampMinderLink({ href, label }: { href: string; label: 'Person' 
   )
 }
 
-/** A chip for a household on the page; a household outside it (chip 0) is its plain name (M6). */
-function PayerLabel({ chip, name }: { chip: number; name: string }) {
-  return chip > 0 ? (
-    <HouseholdChip index={chip} name={name} />
-  ) : (
-    <span className="text-xs">{name}</span>
+/**
+ * A chip for a household on the page; a household outside it (chip 0) is its plain name (M6). Beside
+ * the chip, which is unchanged, the server's label names the household (#3025), its tie-break muted.
+ */
+function PayerLabel({
+  chip,
+  name,
+  label = null,
+}: {
+  chip: number
+  name: string
+  label?: HouseholdLabel | null
+}) {
+  if (chip <= 0) return <span className="text-xs">{name}</span>
+  return (
+    <>
+      <HouseholdChip index={chip} name={name} />
+      {label !== null && (
+        <span className="text-[12.5px]">
+          {' '}
+          <HouseholdLabelText label={label} />
+        </span>
+      )}
+    </>
   )
 }
 
@@ -69,7 +90,11 @@ function MoneyLine({
       {other && (
         <span className="inline-flex items-center gap-1.5">
           <span className={HH_NOTE}>paid by</span>
-          <PayerLabel chip={other.chip} name={householdChipName(page, other.household_cm_id)} />
+          <PayerLabel
+            chip={other.chip}
+            name={householdChipName(page, other.household_cm_id)}
+            label={householdLabel(page, other.household_cm_id)}
+          />
         </span>
       )}
       {/* D13: the mock's "Decided $X · Posted $Y". */}
@@ -115,6 +140,7 @@ function ShareTable({
                 <PayerLabel
                   chip={share.chip}
                   name={householdChipName(page, share.household_cm_id)}
+                  label={householdLabel(page, share.household_cm_id)}
                 />
               </td>
               <td
@@ -187,7 +213,11 @@ export function RequestCard({
         {applied && (
           <>
             <span className={HH_NOTE}>applied by</span>
-            <PayerLabel chip={applied.chip} name={applied.name} />
+            <PayerLabel
+              chip={applied.chip}
+              name={applied.name}
+              label={householdLabel(page, row.household_cm_id)}
+            />
           </>
         )}
         {/* household-v4 section 1 (B): the receipt opens from beside the cost. */}

@@ -26,7 +26,7 @@ import {
 } from './caseworkModel'
 import type { EditorExits } from './editorExits'
 import { correctLabel, correctionPicks, formsSayWords, settleWords } from './formsModel'
-import { answerWords, camperOf } from './householdModel'
+import { answerWords, camperOf, labelOf, labelWords } from './householdModel'
 import {
   HH_AMBER_NOTE as AMBER_NOTE,
   HH_BUTTON,
@@ -436,11 +436,15 @@ export function ShareForm({
             onChange={(event) => setHousehold(event.target.value)}
             className={HH_EDITOR_FIELD}
           >
-            {page.households.map((h) => (
-              <option key={h.household_cm_id} value={String(h.household_cm_id)}>
-                {`${String(h.chip)} · ${h.family_name}`}
-              </option>
-            ))}
+            {page.households.map((h) => {
+              // #3025: the label (and its tie-break) tells two households apart; before it, the family name.
+              const label = labelOf(h)
+              return (
+                <option key={h.household_cm_id} value={String(h.household_cm_id)}>
+                  {`${String(h.chip)} · ${label === null ? h.family_name : labelWords(label)}`}
+                </option>
+              )
+            })}
             <option value="other">Another household…</option>
           </select>
         </label>

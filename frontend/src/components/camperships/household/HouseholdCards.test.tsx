@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { householdPage, SPLIT_PAGE } from './householdFixtures'
+import { householdPage, SPLIT_PAGE, TIED_PAGE } from './householdFixtures'
 import { HouseholdCards } from './HouseholdCards'
 
 describe('HouseholdCards (§6.3 item 2; D32)', () => {
@@ -39,6 +39,44 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     )
     expect(screen.getByText('1 · Garcia & Chen')).toBeInTheDocument()
     expect(screen.getByText('2 · The Garcia Family')).toBeInTheDocument()
+  })
+
+  // #3025 (owner, 2026-10-05): a card names its household by the server's label, the adults' names
+  // alone, with the tie-break muted after it when two households read the same. The chip is unchanged.
+  it('names each card by its label in bold, the tie-break muted after it, the chip unchanged', () => {
+    render(<HouseholdCards page={TIED_PAGE} />)
+    const johnson = screen
+      .getByText('1 · The Johnson Family')
+      .closest('[data-household]') as HTMLElement
+    const garcia = screen
+      .getByText('2 · The Garcia Family')
+      .closest('[data-household]') as HTMLElement
+    expect(within(johnson).getByText('Pat Garcia')).toHaveClass('font-bold')
+    expect(within(johnson).getByText('Riverside, CA')).toHaveClass('text-muted-foreground')
+    expect(within(garcia).getByText('Pat Garcia')).toHaveClass('font-bold')
+    expect(within(garcia).getByText('#1000003')).toHaveClass('text-muted-foreground')
+    // The label replaces the adults line: Samuel Johnson is named once, in the contact line.
+    expect(within(johnson).queryByText('Samuel Johnson')).toBeNull()
+  })
+
+  it('draws no tie-break when the label is unique', () => {
+    const [a, b] = SPLIT_PAGE.households
+    render(
+      <HouseholdCards
+        page={{
+          ...SPLIT_PAGE,
+          households: [
+            { ...a!, label: 'Samuel Johnson', label_tiebreak: '' },
+            { ...b!, label: 'Liam & Olivia Garcia', label_tiebreak: '' },
+          ],
+        }}
+      />
+    )
+    const garcia = screen
+      .getByText('2 · The Garcia Family')
+      .closest('[data-household]') as HTMLElement
+    expect(within(garcia).getByText('Liam & Olivia Garcia')).toHaveClass('font-bold')
+    expect(within(garcia).queryByText(/#1000003/)).toBeNull()
   })
 
   it('draws nothing for one household: its details are in the band', () => {

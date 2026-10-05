@@ -18,6 +18,7 @@ import {
   householdRequest,
   requestOut,
   SPLIT_PAGE,
+  TIED_PAGE,
 } from './householdFixtures'
 import { income } from './sectionsFixtures'
 
@@ -395,6 +396,28 @@ describe('ShareForm (main spec §9.2)', () => {
       householdCmId: 1000003,
       body: { share_pct: '40', reason: 'Parents agreed 60/40' },
     })
+  })
+
+  // #3025 (owner, 2026-10-05): the household list names each by its label, its tie-break after it
+  // (an <option> holds plain text only, so the tie-break follows a separator rather than greyed).
+  it('lists the households by label, each tie-break after it, the chip number first', () => {
+    render(<ShareForm request={TIED_PAGE.requests[0]!} page={TIED_PAGE} onDone={done} />)
+    const options = Array.from(screen.getByLabelText<HTMLSelectElement>('Household').options).map(
+      (o) => o.textContent
+    )
+    expect(options).toEqual([
+      '1 · Pat Garcia · Riverside, CA',
+      '2 · Pat Garcia · #1000003',
+      'Another household…',
+    ])
+  })
+
+  it('keeps the family name in the household list while the server sends no label', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    const options = Array.from(screen.getByLabelText<HTMLSelectElement>('Household').options).map(
+      (o) => o.textContent
+    )
+    expect(options.slice(0, 2)).toEqual(['1 · The Johnson Family', '2 · The Garcia Family'])
   })
 
   it('takes a percentage only: no dollar unit, and a typed amount is refused as not a percentage', async () => {

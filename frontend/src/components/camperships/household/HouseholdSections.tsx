@@ -20,9 +20,12 @@ import {
   expectedWords,
   householdChip,
   householdChipName,
+  householdLabel,
+  labelOf,
   multiHousehold,
   noteWords,
 } from './householdModel'
+import { HouseholdLabelText } from './HouseholdLabel'
 import {
   HH_DIFF_DEL,
   HH_EYEBROW,
@@ -346,6 +349,32 @@ const MUTED = 'text-muted-foreground'
  * chip, its own last-year line and notes, the notes at the foot so the halves end level; they
  * stack only when the window is narrow. `correct` puts the casework "Correct…" on each answer shown.
  */
+/** A household's income heading: its chip, then its label (#3025), the tie-break muted. */
+function IncomeHead({
+  page,
+  householdCmId,
+  className = '',
+}: {
+  page: ApiAidHouseholdPage
+  householdCmId: number
+  className?: string
+}) {
+  const label = householdLabel(page, householdCmId)
+  return (
+    <div className={`flex flex-wrap items-baseline gap-x-1.5 ${className}`}>
+      <HouseholdChip
+        index={householdChip(page, householdCmId) ?? 0}
+        name={householdChipName(page, householdCmId)}
+      />
+      {label !== null && (
+        <span className="text-[13px]">
+          <HouseholdLabelText label={label} />
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function IncomePanel({
   page,
   correct,
@@ -363,12 +392,7 @@ export function IncomePanel({
   if (page.incomes.length === 1 && first !== undefined) {
     return (
       <div className="space-y-1">
-        {multiHousehold(page) && (
-          <HouseholdChip
-            index={householdChip(page, first.household_cm_id) ?? 0}
-            name={householdChipName(page, first.household_cm_id)}
-          />
-        )}
+        {multiHousehold(page) && <IncomeHead page={page} householdCmId={first.household_cm_id} />}
         <LastYearLine page={page} income={first} />
         <Exceptions page={page} income={first} correct={correct} formStrip={formStrip} fixed />
         <div className="pt-1.5">
@@ -385,12 +409,7 @@ export function IncomePanel({
           data-testid="income-household"
           className="flex min-w-0 flex-col"
         >
-          <div className="mb-1">
-            <HouseholdChip
-              index={householdChip(page, income.household_cm_id) ?? 0}
-              name={householdChipName(page, income.household_cm_id)}
-            />
-          </div>
+          <IncomeHead page={page} householdCmId={income.household_cm_id} className="mb-1" />
           <LastYearLine page={page} income={income} />
           <Exceptions
             page={page}
@@ -561,6 +580,18 @@ export function LinksPanel({ page }: { page: ApiAidHouseholdPage }) {
   return (
     <ul className="text-[13px]">
       {page.links.map((link) => {
+        // #3025: the server's label names the household (its adults); the city follows unless it is the tie-break.
+        const label = labelOf(link)
+        if (label !== null) {
+          const city = link.city ?? ''
+          const rest = [city === label.tiebreak ? '' : city, linkDetail(link)].filter(nonEmpty)
+          return (
+            <li key={link.id} className="border-border border-b py-1 last:border-b-0">
+              <HouseholdLabelText label={label} className="font-bold" />
+              <span className={MUTED}> · {rest.join(' · ')}</span>
+            </li>
+          )
+        }
         const family = familyWords(link)
         return (
           <li key={link.id} className="border-border border-b py-1 last:border-b-0">

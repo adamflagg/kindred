@@ -4,7 +4,13 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_SAMUEL } from '../requests/gridFixtures'
-import { householdPage, householdRequest, receiptOut, SPLIT_PAGE } from './householdFixtures'
+import {
+  householdPage,
+  householdRequest,
+  receiptOut,
+  SPLIT_PAGE,
+  TIED_PAGE,
+} from './householdFixtures'
 import { RequestCard } from './RequestCard'
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
@@ -183,6 +189,49 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(within(shares).getByText('40%')).toBeInTheDocument()
     expect(within(shares).getByText('Missing in CM')).toBeInTheDocument()
     expect(within(shares).getByText(/confirmed/)).toBeInTheDocument()
+  })
+
+  // #3025 (owner, 2026-10-05): beside a household's chip, the server's label names it, the
+  // tie-break muted after it. The chip itself is unchanged.
+  it('names the payers and who applied by label beside the chip, the tie-break muted', () => {
+    renderCard(TIED_PAGE.requests[0], TIED_PAGE)
+    const shares = screen.getByRole('table', { name: 'Payer shares' })
+    const [johnson, garcia] = within(shares).getAllByRole('row').slice(1)
+    expect(within(johnson!).getByText('1 · The Johnson Family')).toBeInTheDocument()
+    expect(within(johnson!).getByText('Pat Garcia')).toBeInTheDocument()
+    expect(within(johnson!).getByText('Riverside, CA')).toHaveClass('text-muted-foreground')
+    expect(within(garcia!).getByText('2 · The Garcia Family')).toBeInTheDocument()
+    expect(within(garcia!).getByText('#1000003')).toHaveClass('text-muted-foreground')
+    const applied = screen.getByText('applied by').parentElement as HTMLElement
+    expect(within(applied).getByText('Riverside, CA')).toHaveClass('text-muted-foreground')
+  })
+
+  it('names the paying household by label beside its chip on the paid-by line', () => {
+    const request = householdRequest(ROW_EMMA, {
+      shares: [
+        {
+          household_cm_id: 1000003,
+          chip: 2,
+          share_pct: 100,
+          decided: 1420,
+          posted: null,
+          in_campminder: null,
+          status: null,
+        },
+      ],
+    })
+    renderCard(request, TIED_PAGE)
+    const paid = screen.getByText('paid by').parentElement as HTMLElement
+    expect(within(paid).getByText('2 · The Garcia Family')).toBeInTheDocument()
+    expect(within(paid).getByText('Pat Garcia')).toBeInTheDocument()
+    expect(within(paid).getByText('#1000003')).toHaveClass('text-muted-foreground')
+  })
+
+  it('adds no label beside a chip while the server sends none', () => {
+    renderCard(SPLIT_PAGE.requests[0], SPLIT_PAGE)
+    const shares = screen.getByRole('table', { name: 'Payer shares' })
+    const [johnson] = within(shares).getAllByRole('row').slice(1)
+    expect(within(johnson!).getAllByRole('cell')[0]!.textContent).toBe('1 · The Johnson Family')
   })
 
   it('names who applied when several households are on the page', () => {

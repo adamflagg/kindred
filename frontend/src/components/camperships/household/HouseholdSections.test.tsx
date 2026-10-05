@@ -311,6 +311,25 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
     expect(screen.queryByText(/^Forms disagree$/i)).toBeNull()
   })
 
+  // #3025 (owner, 2026-10-05): each half's heading names its household by label beside the chip.
+  it("heads each household's half with its chip and its label, the tie-break muted", () => {
+    const [a, b] = TWO_HOUSEHOLD_PAGE.households
+    const page = {
+      ...TWO_HOUSEHOLD_PAGE,
+      households: [
+        { ...a!, label: 'Samuel Johnson', label_tiebreak: '' },
+        { ...b!, label: 'Samuel Johnson', label_tiebreak: '#1000003' },
+      ],
+    }
+    render(<IncomePanel page={page} />)
+    const [johnson, garcia] = screen.getAllByTestId('income-household')
+    expect(within(johnson!).getByText('1 · The Johnson Family')).toBeInTheDocument()
+    expect(within(johnson!).getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(within(garcia!).getByText('2 · The Garcia Family')).toBeInTheDocument()
+    expect(within(garcia!).getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(within(garcia!).getByText('#1000003')).toHaveClass('text-muted-foreground')
+  })
+
   it('gives each household of two its own columns', () => {
     const page = {
       ...TWO_HOUSEHOLD_PAGE,
@@ -571,6 +590,57 @@ describe('LinksPanel (§6.3 †; Decision 27; owner 10-04: links read as familie
     const line = screen.getByRole('listitem')
     expect(line).toHaveTextContent(
       'The Lee Family · Ava Lee, Noah Lee · Riverside, CA · household 1000004 · staff · excluded · Grandparent address, not a payer'
+    )
+  })
+})
+
+describe('LinksPanel: #3025 labels (owner, 2026-10-05)', () => {
+  const link: ApiAidHouseholdPageLink = TWO_HOUSEHOLD_PAGE.links[0]!
+
+  it('reads a link by its label in bold, the tie-break muted, then its city and the link', () => {
+    render(
+      <LinksPanel
+        page={{
+          ...TWO_HOUSEHOLD_PAGE,
+          links: [
+            {
+              ...link,
+              family_name: 'The Lee Family',
+              adults: ['Ava Lee', 'Noah Lee'],
+              city: 'Riverside, CA',
+              label: 'Ava & Noah Lee',
+              label_tiebreak: '#1000004',
+            },
+          ],
+        }}
+      />
+    )
+    expect(screen.getByText('Ava & Noah Lee')).toHaveClass('font-bold')
+    expect(screen.getByText('#1000004')).toHaveClass('text-muted-foreground')
+    expect(screen.getByRole('listitem')).toHaveTextContent(
+      'Ava & Noah Lee #1000004 · Riverside, CA · household 1000004 · staff · excluded · Grandparent address, not a payer'
+    )
+  })
+
+  it('says the city once when it is the tie-break', () => {
+    render(
+      <LinksPanel
+        page={{
+          ...TWO_HOUSEHOLD_PAGE,
+          links: [
+            {
+              ...link,
+              family_name: 'The Lee Family',
+              city: 'Riverside, CA',
+              label: 'Ava & Noah Lee',
+              label_tiebreak: 'Riverside, CA',
+            },
+          ],
+        }}
+      />
+    )
+    expect(screen.getByRole('listitem')).toHaveTextContent(
+      'Ava & Noah Lee Riverside, CA · household 1000004 · staff · excluded · Grandparent address, not a payer'
     )
   })
 })

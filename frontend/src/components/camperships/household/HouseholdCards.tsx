@@ -8,7 +8,9 @@ import {
   cardPlaceLine,
   cardShares,
   householdChipName,
+  labelOf,
 } from './householdModel'
+import { HouseholdLabelText } from './HouseholdLabel'
 import { HH_HOUSEHOLD_CARD, HH_NOTE, stripeOf } from './householdStyles'
 
 /**
@@ -20,6 +22,7 @@ import { HH_HOUSEHOLD_CARD, HH_NOTE, stripeOf } from './householdStyles'
 function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAidHouseholdPage }) {
   const contact = cardContactLine(card)
   const confirmation = cardConfirmation(card)
+  const label = labelOf(card)
   return (
     <div
       data-household={card.household_cm_id}
@@ -31,7 +34,14 @@ function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAid
           <span className={HH_NOTE}>opened from</span>
         )}
       </div>
-      {card.adults.length > 0 && <div className="mt-1 font-bold">{card.adults.join(' · ')}</div>}
+      {/* #3025: the server's label names the household (the adults' names); before it, the adults. */}
+      {label !== null ? (
+        <div className="mt-1">
+          <HouseholdLabelText label={label} className="font-bold" />
+        </div>
+      ) : (
+        card.adults.length > 0 && <div className="mt-1 font-bold">{card.adults.join(' · ')}</div>
+      )}
       <div className={HH_NOTE}>{cardPlaceLine(card)}</div>
       {contact !== '' && <div className={HH_NOTE}>{contact}</div>}
       <div className="border-border mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t pt-1.5">

@@ -138,6 +138,38 @@ export function householdName(page: ApiAidHouseholdPage, householdCmId: number):
   return name !== undefined && nonEmpty(name) ? name : `Household ${String(householdCmId)}`
 }
 
+/** How the page names a household beside its chip (#3025): the server's label and its tie-break. */
+export interface HouseholdLabel {
+  /** The adults' names alone ("Liam & Olivia Becker"), else the mailing title. */
+  readonly text: string
+  /** "" unless another household on the page reads the same: then its city, else "#<cm id>". */
+  readonly tiebreak: string
+}
+
+/**
+ * A household's label (owner, 2026-10-05), wherever the page names households to tell them apart.
+ * Null while the server sends none or a blank one (it defaults both fields to ""): each place then
+ * keeps what it showed before #3025.
+ */
+export function labelOf(
+  card: { label?: string | undefined; label_tiebreak?: string | undefined } | undefined
+): HouseholdLabel | null {
+  const text = card?.label?.trim() ?? ''
+  return text === '' ? null : { text, tiebreak: card?.label_tiebreak?.trim() ?? '' }
+}
+
+export function householdLabel(
+  page: ApiAidHouseholdPage,
+  householdCmId: number
+): HouseholdLabel | null {
+  return labelOf(page.households.find((h) => h.household_cm_id === householdCmId))
+}
+
+/** A label as an <option>'s plain text: "Pat Garcia · Riverside, CA" (an option can't grey a part). */
+export function labelWords(label: HouseholdLabel): string {
+  return label.tiebreak === '' ? label.text : `${label.text} · ${label.tiebreak}`
+}
+
 /**
  * What a household CHIP says (O3): the short name, else the family name. `||`, not `??`: the server
  * defaults short_name to "" so `??` would never fall back. The band and sentences keep householdName.
