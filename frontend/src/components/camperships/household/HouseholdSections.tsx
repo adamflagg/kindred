@@ -50,7 +50,21 @@ import {
  * holds the strip and shows one at a time; these draw what is inside.
  */
 
-export type CorrectRender = (income: ApiAidIncome, answer: ApiAidAnswer) => ReactNode
+/** Whether one answer's "Correct…" form is open. The panel holds it, so the form gets its own row. */
+export interface CorrectOpening {
+  open: boolean
+  setOpen: (open: boolean) => void
+}
+
+/**
+ * The casework "Correct…" on one answer: closed, the link in the answer's row; open, the form, which
+ * the panel puts in a row of its own under the answer, across the answers table (owner bug B30).
+ */
+export type CorrectRender = (
+  income: ApiAidIncome,
+  answer: ApiAidAnswer,
+  opening: CorrectOpening
+) => ReactNode
 
 // ── Income: the exceptions only (owner pick 10-04, income (e); N8) ───────────
 
@@ -98,6 +112,7 @@ function AnswerRows({
   correct: CorrectRender | undefined
   fixed: boolean
 }) {
+  const [correcting, setCorrecting] = useState(false)
   const open = conflict !== undefined && !conflict.resolved
   const cell = conflict === undefined ? HH_TD : `${HH_TD} border-b-0`
   const edge = open ? FLAGGED_EDGE : ''
@@ -123,7 +138,7 @@ function AnswerRows({
             {answer.changed_since_correction && (
               <span className={AMBER_NOTE}>the form changed since</span>
             )}
-            {correct?.(income, answer)}
+            {!correcting && correct?.(income, answer, { open: false, setOpen: setCorrecting })}
           </div>
         </td>
       </tr>
@@ -134,6 +149,18 @@ function AnswerRows({
             className={`${HH_TD} ${edge} pt-0 text-[12.5px] whitespace-normal ${open ? WHY_FLAGGED : WHY_SETTLED}`}
           >
             {conflictWords(page, income, conflict)}
+          </td>
+        </tr>
+      )}
+      {correcting && correct !== undefined && (
+        // B30: in the answer's own row the form's width set the answers column's, squashing "What
+        // priced it" off the page. Here it spans the table, and the box adds no width of its own
+        // (0 wide, at least the cell's), so the form wraps to the answers' width.
+        <tr>
+          <td colSpan={4} className={`${HH_TD} whitespace-normal`}>
+            <div className="w-0 min-w-full">
+              {correct(income, answer, { open: true, setOpen: setCorrecting })}
+            </div>
           </td>
         </tr>
       )}

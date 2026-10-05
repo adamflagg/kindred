@@ -259,19 +259,26 @@ function CorrectionForm({
  * "Correct…" on an income answer (main spec §9.3): the corrected figure beside the form's, with a
  * reason. The form mounts only while open, so each opening starts from the answer as it now stands.
  * Opening it first leaves the page's open money editor, when `exits` is given (one open editor).
+ * The income panel holds `open` (`onOpenChange`), so it can draw the form in a row of its own (B30).
  */
 export function IncomeCorrection({
   page,
   income,
   answer,
   exits,
+  open: openProp,
+  onOpenChange,
 }: {
   page: ApiAidHouseholdPage
   income: ApiAidIncome
   answer: ApiAidAnswer
   exits?: EditorExits | undefined
+  open?: boolean | undefined
+  onOpenChange?: ((open: boolean) => void) | undefined
 }) {
-  const [open, setOpen] = useState(false)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const open = openProp ?? ownOpen
+  const setOpen = onOpenChange ?? setOwnOpen
   if (fieldKind(answer) === 'override') return null
   if (!open) {
     return (

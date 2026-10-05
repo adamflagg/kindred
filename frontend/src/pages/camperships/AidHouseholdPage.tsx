@@ -79,8 +79,15 @@ function HouseholdBody({
         hash={hash}
         correct={
           canWork
-            ? (income, answer) => (
-                <IncomeCorrection page={page} income={income} answer={answer} exits={exits} />
+            ? (income, answer, opening) => (
+                <IncomeCorrection
+                  page={page}
+                  income={income}
+                  answer={answer}
+                  exits={exits}
+                  open={opening.open}
+                  onOpenChange={opening.setOpen}
+                />
               )
             : undefined
         }
