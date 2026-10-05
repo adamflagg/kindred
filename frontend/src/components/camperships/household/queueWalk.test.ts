@@ -32,10 +32,10 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
 
   it("reads the grid's filters and Show IDs back from the household link", () => {
     const { filters, keep } = gridFiltersFrom(
-      new URLSearchParams('from=all&program=quest&round=2&tick=posted&ids=1&year=2027')
+      new URLSearchParams('from=all&program=quest&round=2&ids=1&year=2027')
     )
-    expect(filters).toEqual({ program: 'quest', pool: null, round: 2, tick: 'posted', ids: null })
-    expect(keep).toEqual({ program: 'quest', round: '2', tick: 'posted', ids: '1' })
+    expect(filters).toEqual({ program: 'quest', pool: null, round: 2, ids: null })
+    expect(keep).toEqual({ program: 'quest', round: '2', ids: '1' })
   })
 
   it("follows a grouped view's groups: Needs an offer's Round 1 before its Round 2", () => {
