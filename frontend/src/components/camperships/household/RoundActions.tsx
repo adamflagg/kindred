@@ -111,6 +111,7 @@ export function RoundChecklist({
   const round = asRound(line.round)
   const requestId = request.row.request_id
   if (round === null) return null
+  const noAcceptOnReversed = line.clawedBack && !line.accepted
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
@@ -124,12 +125,13 @@ export function RoundChecklist({
         <TickBox
           label="Accepted"
           checked={line.accepted}
-          // The server refuses ticking Accepted on a Kindred cancellation, never unticking it.
+          // The server refuses ticking Accepted on a Kindred cancellation, never unticking it. A
+          // reversed round is the same: the grid never offers it (ticks.ts), unticking stays open.
           disabled={
             !line.posted ||
             accept.isPending ||
             editing ||
-            (cancelledInKindred(request.row) && !line.accepted)
+            ((cancelledInKindred(request.row) || line.clawedBack) && !line.accepted)
           }
           onChange={(checked) => {
             setError(null)
@@ -145,6 +147,7 @@ export function RoundChecklist({
             )
           }}
         />
+        {noAcceptOnReversed && <span className={MUTED}>Reversed: nothing to accept</span>}
       </div>
       {undoing && (
         // Owner ruling 2026-10-01 S1 Q1: once posted, an amount stands. That sentence is true only

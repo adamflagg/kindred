@@ -417,6 +417,49 @@ describe('RoundChecklist (§5.2; D47)', () => {
     ).toBeInTheDocument()
   })
 
+  // Ruled 2026-10-05: the grid never offers Accepted on a reversed round (ticks.ts acceptedTarget),
+  // so neither does the household page; unticking one already accepted stays open.
+  describe('Accepted on a reversed round', () => {
+    const reversedRound = (accepted: boolean) =>
+      householdRequest(
+        gridRow({
+          rounds: [
+            roundOut(1, 'posted', {
+              posted: 1800,
+              posted_on: '2027-03-09',
+              clawed_back: true,
+              accepted,
+            }),
+          ],
+        })
+      )
+
+    it('disables Accepted with a reason when the round is reversed and not accepted', () => {
+      const reversed = reversedRound(false)
+      render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
+      expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+      expect(screen.getByText('Reversed: nothing to accept')).toBeInTheDocument()
+    })
+
+    it('keeps Accepted enabled, with no reason, on a normal posted round', () => {
+      render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+      expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeEnabled()
+      expect(screen.queryByText('Reversed: nothing to accept')).not.toBeInTheDocument()
+    })
+
+    it('still lets an already-accepted reversed round be unticked', async () => {
+      const reversed = reversedRound(true)
+      render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
+      expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeEnabled()
+      expect(screen.queryByText('Reversed: nothing to accept')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Accepted' }))
+      expect(accepted).toHaveBeenCalledWith({
+        year: 2027,
+        body: { rows: [{ request_id: reversed.row.request_id, round: 1 }], accepted: false },
+      })
+    })
+  })
+
   it('disables Accepted while its write is pending', () => {
     pending = true
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
