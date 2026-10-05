@@ -122,5 +122,6 @@ async def test_a_correction_needs_no_reason_and_stores_and_logs_it_blank(reason:
     store, casework = await built()
     out = await casework.add_correction(YEAR, 1000001, "total_gross_income", "$92,000", reason, ACTOR)
     assert (out.new_value, out.reason) == ("92000.00", "")
+    assert store.corrections[-1].reason == ""  # the stored correction record too
     (row,) = staff_rows(store)
     assert row["reason"] == ""
