@@ -213,8 +213,6 @@ QueueOut = Literal[
     "to_reverse",
     "session_not_settled",
     "duplicates",
-    # Retired by owner ruling B (2026-10-04): never emitted. Narrowed once the frontend drops its mapping.
-    "cancel_reason",
 ]
 
 
