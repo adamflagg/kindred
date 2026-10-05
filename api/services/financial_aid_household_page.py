@@ -7,7 +7,8 @@ requests, both ways (the requests it applied for and the requests it pays a shar
 and everything on the page follows it (Decision 4): every request a scope household applied for, and the scope
 households' postings, grants, incomes, links and log. A linked household outside the scope is read only to name
 it on its link row (its row and members: owner ruling 2026-10-04, late), and a scope household with no camper on the
-page (a second payer) has its members read for its card's adults and emails (owner N11, 2026-10-04 late).
+page (a second payer) has its members read for its card's adults and emails (owner N11, 2026-10-04 late) and, from
+its adults, its short name (owner P3, 2026-10-05).
 
 Included requests (D77's band) are live ones: not withdrawn, duplicate or cancelled (the budget's `live`).
 """
@@ -434,8 +435,8 @@ def short_family_name(surnames: Iterable[str], family_name: str) -> str:
 
 
 def _oldest_first(people: Iterable[Any]) -> list[Any]:
-    """Campers oldest first, as the weekend roster lists a party's children (lodging_roster_service's
-    _children_oldest_first, by age), ties by CampMinder id."""
+    """People oldest first, as the weekend roster lists a party's children (lodging_roster_service's
+    _children_oldest_first, by age), ties by CampMinder id: campers, or a camper-less household's adults (P3)."""
     return sorted(people, key=lambda p: (-float(getattr(p, "age", 0) or 0), int(p.cm_id)))
 
 
@@ -596,7 +597,8 @@ class HouseholdPageService:
         ]
         # A linked household outside the scope has no card, so its row and members are read here, for its name (the
         # same reads a household search makes); one in the scope reads as its card does. A card with no camper on the
-        # page (a second payer) has its own members read too, for its adults and emails (owner N11, 2026-10-04 late).
+        # page (a second payer) has its own members read too, for its adults and emails (owner N11, 2026-10-04 late) and
+        # its short name (P3, 2026-10-05).
         outside = sorted({int(ln.household_cm_id) for ln in family_links} - households)
         camper_less = households - {_household_of(p) for p in persons}
         members_of = sorted(set(outside) | camper_less)
@@ -626,11 +628,18 @@ class HouseholdPageService:
         def household_people(h: int) -> list[Any]:
             """The people household `h`'s adults and emails come from, on its card and its link alike: the page's
             campers in it, or, with none (a second payer, or a linked household outside the scope), its own members.
-            The short name never reads members: it stays children-based (coordinator, N11; #3007)."""
+            The short name reads only their adults, and only with no camper (`short_surnames`)."""
             return campers_in(h) or [p for p in members if _household_of(p) == h]
 
         def campers_in(h: int) -> list[Any]:
             return [p for p in people.values() if _household_of(p) == h] if h in households else []
+
+        def short_surnames(h: int) -> list[str]:
+            """The chip's surnames, oldest first: the household's campers on the page (O3), or, with none, its adult
+            members (P3, owner 2026-10-05: aged ADULT_AGE or over, as `_is_adult` reads them). Neither: none, and the
+            short name falls back to the full family name."""
+            source = campers_in(h) or [p for p in household_people(h) if _is_adult(p)]
+            return [str(getattr(p, "last_name", "") or "") for p in _oldest_first(source)]
 
         def household_adults(h: int) -> list[str]:
             """Card and link alike: the campers' parent names, or, with no camper on the page, the members' adults by
@@ -675,13 +684,7 @@ class HouseholdPageService:
                     household_cm_id=h,
                     chip=chips[h],
                     family_name=household_display_name(by_household.get(h), h),
-                    short_name=short_family_name(
-                        (
-                            str(getattr(p, "last_name", "") or "")
-                            for p in _oldest_first(p for p in people.values() if _household_of(p) == h)
-                        ),
-                        household_display_name(by_household.get(h), h),
-                    ),
+                    short_name=short_family_name(short_surnames(h), household_display_name(by_household.get(h), h)),
                     adults=household_adults(h),
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
                     emails=_emails(household_people(h)),

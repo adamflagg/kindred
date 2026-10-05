@@ -1073,9 +1073,9 @@ async def test_a_camper_less_households_card_and_its_link_name_the_same_adults()
 
 
 @pytest.mark.asyncio
-async def test_a_camper_less_households_members_do_not_feed_its_short_name() -> None:
-    """Coordinator ruling inside N11: the short name stays children-based ("a family name based off the kids"), so a
-    household with no camper on the page keeps its full family name; centralizing the rule is issue #3007."""
+async def test_a_camper_less_household_with_no_adult_member_keeps_its_full_name_as_its_short_name() -> None:
+    """P3 (owner 2026-10-05): a household with no campers takes its short name from its ADULT members' surnames; with
+    none (these members carry no age), it keeps its full family name."""
     page = await _page_service(_family(), ledger=_SecondPayer()).read(YEAR, JOHNSON)
     assert page.households[1].short_name == "The Garcia Family"
 
@@ -1138,7 +1138,30 @@ async def test_a_second_payers_adult_members_lead_its_adults_before_further_pare
     # the member with no age, the 12-year-old.
     assert garcia.adults == ["Riley Chen", "Samuel Garcia", "Liam Sam"]
     assert garcia.emails == ["samuel@example.com"]
-    assert garcia.short_name == "The Garcia Family"  # members never feed the short name
+
+
+@pytest.mark.asyncio
+async def test_a_household_with_no_campers_takes_its_short_name_from_its_adult_members_surnames() -> None:
+    """P3 (owner 2026-10-05): the weekend familyNameLabel rule over the adults (aged ADULT_AGE or over), oldest first as
+    the children are: Samuel Garcia (45) then Riley Chen (21) read "Garcia & Chen". The 20-year-old, the member with
+    no age and the 12-year-old sibling don't count."""
+    page = await _page_service(_family(), ledger=_ParentsPay()).read(YEAR, JOHNSON)
+    assert [h.short_name for h in page.households] == ["Johnson", "Garcia & Chen"]
+
+
+@pytest.mark.asyncio
+async def test_a_payer_households_adults_sharing_a_surname_read_it_once() -> None:
+    class _Couple(_Ledger):
+        async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+            members = await super().fetch_household_members(year, household_ids)
+            couple = [
+                _member(1000024, GARCIA, "Samuel", "Garcia", age=45.02),
+                _member(1000025, GARCIA, "Olivia", "garcia ", age=44.1),
+            ]
+            return [*members, *(p for p in couple if p.household_id in household_ids)]
+
+    page = await _page_service(_family(), ledger=_Couple()).read(YEAR, JOHNSON)
+    assert page.households[1].short_name == "Garcia"
 
 
 @pytest.mark.asyncio

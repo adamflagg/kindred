@@ -52,7 +52,7 @@ async def test_a_household_correction_keeps_the_original_and_is_logged_with_it()
     assert row["after"] == {"field": "total_gross_income", "value": "92000.00", "previous_value": "85000.00"}
     assert (row["actor"], row["reason"]) == (ACTOR, "Tax return.")
     (operation,) = store.operations
-    assert operation["require_reason"] is True  # a correction is an override (spec 14.4)
+    assert operation["require_reason"] is False  # B30 (owner 2026-10-05): a correction's reason is optional
     assert [(w.collection, w.action) for w in operation["writes"]] == [("aid_application_corrections", "create")]
 
 
@@ -79,8 +79,7 @@ async def test_an_uncorrectable_field_or_bad_value_is_refused_and_nothing_is_wri
         await casework.add_correction(YEAR, 1000001, "contact_email", "x", "r", ACTOR)
     with pytest.raises(CorrectionError):
         await casework.add_correction(YEAR, 1000001, "total_gross_income", "-1", "r", ACTOR)
-    with pytest.raises(CorrectionError):
-        await casework.add_correction(YEAR, 1000001, "total_gross_income", "1", "   ", ACTOR)
+    # A blank reason is no longer refused (B30): test_a_correction_needs_no_reason_and_stores_and_logs_it_blank.
     assert store.corrections == []
     assert (store.operations, store.change_log) == ([], [])  # refused before anything was sent
 
@@ -113,3 +112,16 @@ async def test_the_generic_correction_refuses_the_request_overrides(field: str) 
     request = next(r for r in await store.fetch_requests(YEAR) if r.household_cm_id == 1000001)
     with pytest.raises(CorrectionError, match=f"{field} cannot be corrected here"):
         await casework.add_correction(YEAR, 1000001, field, "discount:100.00", "Phone call", ACTOR, request.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["", "   "])
+async def test_a_correction_needs_no_reason_and_stores_and_logs_it_blank(reason: str) -> None:
+    """B30 (owner 2026-10-05): the correction reason is optional; a blank one is stored and logged as "", never refused
+    and never as whitespace, so the History and the CSV have nothing to print after a separator."""
+    store, casework = await built()
+    out = await casework.add_correction(YEAR, 1000001, "total_gross_income", "$92,000", reason, ACTOR)
+    assert (out.new_value, out.reason) == ("92000.00", "")
+    assert store.corrections[-1].reason == ""  # the stored correction record too
+    (row,) = staff_rows(store)
+    assert row["reason"] == ""

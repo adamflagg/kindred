@@ -52,7 +52,8 @@ class HouseholdCardOut(BaseModel):
     chip: int
     family_name: str
     # O3 (owner 2026-10-04, late): the chip's short name, "Johnson" / "Johnson & Garcia" (short_family_name); the full
-    # family_name when no camper on the page carries a surname. Defaulted only so older fixtures still type-check.
+    # family_name when no camper on the page carries a surname. P3 (owner 2026-10-05): a household with no campers takes
+    # its adult members' surnames (aged 21+) instead. Defaulted only so older fixtures still type-check.
     short_name: str = ""
     adults: list[str]
     phone: str
