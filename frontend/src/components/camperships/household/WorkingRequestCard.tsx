@@ -8,12 +8,14 @@ import { CardEditor, type CardEditorHandle } from './CardEditor'
 import { CARD_EDIT_LABEL, cardEdits, type CardEditKind } from './cardEdits'
 import { usePrefetchCardPreviews } from './cardPreviews'
 import { caseworkOffers } from './caseworkModel'
-import { DuplicateForm, HeadcountForm, SessionForm, ShareForm } from './CaseworkForms'
+import { DuplicateForm, HeadcountForm, KeepThisForm, SessionForm, ShareForm } from './CaseworkForms'
+import { useDuplicatePair } from './duplicatePair'
 import { isLiveRequest } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
 import { staffNames } from './historyWords'
 import { HH_BUTTON } from './householdStyles'
+import { OtherRequestLink } from './OtherRequestLink'
 import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
 import { RoundChecklist, RoundNextAction } from './RoundActions'
@@ -26,6 +28,7 @@ type Open =
   | { readonly kind: 'shares' }
   | { readonly kind: 'session' }
   | { readonly kind: 'duplicate' }
+  | { readonly kind: 'keep_this' }
   | { readonly kind: 'headcount' }
   | null
 
@@ -102,6 +105,8 @@ export function WorkingRequestCard({
   }, [exits, editing, requestId, leaveOwn])
   // R2: the preview each offered money editor would open on, read while the card rests.
   usePrefetchCardPreviews(request.row, canWork ? cardEdits(request.row) : [])
+  // Item 11: the other request of a duplicate pair, and whether this card can keep itself.
+  const pair = useDuplicatePair(page, request, canWork)
   if (!canWork) return <RequestCard request={request} page={page} view={view} />
 
   const row = request.row
@@ -142,12 +147,16 @@ export function WorkingRequestCard({
       {offers.shares && button('Payer Shares…', { kind: 'shares' })}
       {offers.session && button('Settle Session…', { kind: 'session' })}
       {offers.duplicate && button('Keep the Other Request…', { kind: 'duplicate' })}
+      {pair?.keepThis === true && button('Keep This Request…', { kind: 'keep_this' })}
+      {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
       {offers.headcount && button('Headcount…', { kind: 'headcount' })}
       <ReleasedHolds request={request} names={staffNames(page)} />
     </>
   )
 
   const close = closeIfStill(open)
+  // Like the casework forms: shown only while the pair still lets this card keep itself.
+  const keepThisOther = open?.kind === 'keep_this' && pair?.keepThis === true ? pair.other : null
   let editor: ReactNode = undefined
   if (edit !== null) {
     editor = (
@@ -159,6 +168,8 @@ export function WorkingRequestCard({
     editor = <SessionForm request={request} onDone={close} />
   } else if (form === 'duplicate') {
     editor = <DuplicateForm request={request} page={page} onDone={close} />
+  } else if (keepThisOther !== null) {
+    editor = <KeepThisForm request={request} other={keepThisOther} onDone={close} />
   } else if (form === 'headcount') {
     editor = <HeadcountForm request={request} onDone={close} />
   } else if (open?.kind === 'cancel') {

@@ -556,13 +556,23 @@ export function DuplicateForm({
   // The holder intake named can be on another household's page (the second parent's request): offer
   // it too. The server checks it is active and the same camper, program and session.
   const holder = namedHolder(application.data, request.row.request_id)
+  const labelOf = (other: ApiAidHouseholdRequest) =>
+    `${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`
+  // A holder on this page that the match above missed (the read can send a pending row's program as
+  // null) is still named as the card it is.
+  const holderHere = page.requests.find((other) => other.row.request_id === holder)
   const options = [
-    ...onPage.map((other) => ({
-      id: other.row.request_id,
-      label: `${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`,
-    })),
+    ...onPage.map((other) => ({ id: other.row.request_id, label: labelOf(other) })),
     ...(holder !== '' && !onPage.some((other) => other.row.request_id === holder)
-      ? [{ id: holder, label: `the request intake named · ${holder}` }]
+      ? [
+          {
+            id: holder,
+            label:
+              holderHere === undefined
+                ? `the request intake named · ${holder}`
+                : labelOf(holderHere),
+          },
+        ]
       : []),
   ]
   const [kept, setKept] = useState<string | null>(null)
@@ -628,6 +638,50 @@ export function DuplicateForm({
           ))}
         </select>
       </label>
+      <ReasonInput value={reason} onChange={setReason} />
+    </FormShell>
+  )
+}
+
+/**
+ * "Keep This Request…" on the request a pending duplicate names (item 11, owner ruling 10-05): keeping
+ * this one marks the OTHER as the duplicate, the same write Keep the Other Request… makes from the
+ * other card (POST /requests/{other}/duplicate, kept: this one), so its history and its gate are the
+ * same. A reason, as there.
+ */
+export function KeepThisForm({
+  request,
+  other,
+  onDone,
+}: {
+  request: ApiAidHouseholdRequest
+  other: ApiAidHouseholdRequest
+  onDone: () => void
+}) {
+  const mark = useAidDuplicate()
+  const [reason, setReason] = useState('')
+  const { busy, error, attempt } = useSubmit()
+  const submit = () =>
+    attempt(() => {
+      if (reason.trim() === '') return REASON_REQUIRED
+      return () =>
+        mark
+          .mutateAsync({
+            requestId: other.row.request_id,
+            body: { duplicate_of: request.row.request_id, reason: reason.trim() },
+          })
+          .then(onDone)
+    })
+  return (
+    <FormShell
+      head="Keeping this request"
+      submitLabel="Mark the Other as the Duplicate"
+      busy={busy}
+      error={error}
+      onSubmit={submit}
+      onCancel={onDone}
+      side={`Marks the other request as the duplicate: ${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`}
+    >
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )

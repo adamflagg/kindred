@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -6,12 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_RILEY } from '../requests/gridFixtures'
 import { useEditorExits, type EditorExits } from './editorExits'
-import { applicationOut, householdPage, householdRequest } from './householdFixtures'
+import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
 import { WorkingRequestCard } from './WorkingRequestCard'
 
 const cancel = vi.fn()
 const manual = vi.fn()
 const ask = vi.fn()
+const duplicate = vi.fn()
 interface Call {
   onSuccess?: () => void
   onError?: (e: Error) => void
@@ -69,12 +70,22 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidRound3Amount: () => quiet,
   useAidHouseholdShare: () => ({ ...quiet, mutateAsync: () => shareGate ?? Promise.resolve({}) }),
   useAidSessionResolve: () => ({ ...quiet, mutateAsync: () => resolveGate ?? Promise.resolve({}) }),
-  useAidDuplicate: () => quiet,
+  useAidDuplicate: () => useFakeMutation(duplicate),
   useAidHeadcount: () => quiet,
   useAidCorrection: () => quiet,
 }))
+let application = applicationOut()
+// What each application read asked for: [householdCmId, options].
+const applicationRead = vi.fn()
 vi.mock('../../../hooks/camperships/useAidApplication', () => ({
-  useAidApplication: () => ({ data: applicationOut(), isLoading: false, error: null }),
+  useAidApplication: (...args: unknown[]) => {
+    applicationRead(...args)
+    return { data: application, isLoading: false, error: null }
+  },
+}))
+let gridRows: Array<ReturnType<typeof gridRow>> = []
+vi.mock('../../../hooks/camperships/useAidGrid', () => ({
+  useAidGrid: () => ({ data: { rows: gridRows }, isLoading: false, error: null }),
 }))
 const prefetch = vi.fn()
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
@@ -135,6 +146,10 @@ const renderCards = (rows = [ROW_OLIVIA], canWork = true, canApprove = false) =>
 beforeEach(() => {
   cancel.mockReset()
   prefetch.mockReset()
+  duplicate.mockReset()
+  applicationRead.mockReset()
+  application = applicationOut()
+  gridRows = []
   cancelGate = null
   resolveGate = null
   shareGate = null
@@ -627,5 +642,74 @@ describe('WorkingRequestCard: Put on Hold… in two columns (round 3)', () => {
     const side = document.querySelector('[data-editor-side]')
     expect(side).toHaveTextContent('The request stays on hold until someone lifts it.')
     expect(side).not.toContainElement(screen.getByLabelText('Reason for the hold'))
+  })
+})
+
+// Item 11 (owner ruling 10-05): either request of a duplicate pair reaches the other, and the request
+// kept can keep itself (the server takes an active request to keep: see duplicatePair.ts).
+describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
+  const PENDING = gridRow({
+    ...ROW_EMMA,
+    request_id: 'reqpending00001',
+    request_status: 'duplicate_pending',
+  })
+  const KEPT = gridRow({ ...ROW_EMMA, request_id: 'reqkept00000001', request_status: 'active' })
+  const naming = (holder: string) =>
+    applicationOut({
+      requests: [
+        requestOut({ id: 'reqpending00001', status: 'duplicate_pending', duplicate_of: holder }),
+      ],
+    })
+  const cardOf = (id: string) => document.getElementById(`request-${id}`) as HTMLElement
+
+  it('links the pending duplicate to the request kept, beside Keep the Other Request…', () => {
+    application = naming('reqkept00000001')
+    renderCards([PENDING, KEPT])
+    const card = within(cardOf('reqpending00001'))
+    const keep = card.getByRole('button', { name: 'Keep the Other Request…' })
+    const link = card.getByRole('link', { name: 'Go to the Other Request ↓' })
+    expect(link).toHaveAttribute('href', '#request-reqkept00000001')
+    expect(keep.nextElementSibling).toBe(link)
+    // The server keeps only an active request: the pending one cannot keep itself yet.
+    expect(card.queryByRole('button', { name: 'Keep This Request…' })).toBeNull()
+  })
+
+  it('offers the request kept Keep This Request…, which marks the OTHER one as the duplicate', async () => {
+    application = naming('reqkept00000001')
+    renderCards([PENDING, KEPT])
+    const card = within(cardOf('reqkept00000001'))
+    expect(card.getByRole('link', { name: 'Go to the Other Request ↓' })).toHaveAttribute(
+      'href',
+      '#request-reqpending00001'
+    )
+    await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
+    expect(card.getByText('Keeping this request')).toBeInTheDocument()
+    await userEvent.type(card.getByLabelText('Reason'), 'Same camper, entered twice{Enter}')
+    expect(duplicate).toHaveBeenCalledWith({
+      requestId: 'reqpending00001',
+      body: { duplicate_of: 'reqkept00000001', reason: 'Same camper, entered twice' },
+    })
+  })
+
+  it("opens the household page of a request kept on another household's page", () => {
+    application = naming('reqelsewhere001')
+    gridRows = [gridRow({ ...ROW_EMMA, request_id: 'reqelsewhere001', household_cm_id: 1000042 })]
+    renderCards([PENDING])
+    const link = within(cardOf('reqpending00001')).getByRole('link', {
+      name: 'Go to the Other Request ›',
+    })
+    expect(link).toHaveAttribute('href', '/aid/households/1000042?year=2027')
+  })
+
+  it("reads the application only on a page that holds a pending duplicate, its household's", () => {
+    renderCards([KEPT])
+    expect(applicationRead.mock.calls.every((call) => (call as unknown[])[1] !== undefined)).toBe(
+      true
+    )
+    expect(applicationRead).not.toHaveBeenCalledWith(expect.anything(), { enabled: true })
+    applicationRead.mockReset()
+    application = naming('reqkept00000001')
+    renderCards([PENDING, KEPT])
+    expect(applicationRead).toHaveBeenCalledWith(PENDING.household_cm_id, { enabled: true })
   })
 })

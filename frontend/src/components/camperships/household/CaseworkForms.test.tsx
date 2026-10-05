@@ -517,6 +517,32 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     })
   })
 
+  it('names the holder intake named by camper and session when it is on this page, though the pending row names no program', () => {
+    // The live read sends a pending duplicate's program as null (synthetic seed 9100133), so the
+    // camper-and-session match misses its holder; the holder is still the card beside it.
+    const pending = householdRequest(
+      gridRow({
+        ...ROW_EMMA,
+        request_id: 'reqemmadup00009',
+        request_status: 'duplicate_pending',
+        program_key: null,
+      })
+    )
+    application = applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqemmadup00009',
+          status: 'duplicate_pending',
+          duplicate_of: 'reqemma00000001',
+        }),
+      ],
+    })
+    const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA)] })
+    render(<DuplicateForm request={pending} page={page} onDone={done} />)
+    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    expect(options).toEqual([`Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000001`])
+  })
+
   it('says the read failed, not that nothing is on the page, when the application could not be read (m3)', async () => {
     const lone = householdRequest(
       gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
