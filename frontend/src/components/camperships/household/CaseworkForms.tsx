@@ -199,10 +199,12 @@ function CorrectionForm({
   const { busy, error, attempt } = useSubmit()
   const kind = fieldKind(answer)
 
-  /** `raw` null is the way back to the form's figure. */
+  /**
+   * `raw` null is the way back to the form's figure. The reason is optional (owner ruling 10-05):
+   * blank goes as '', since `CorrectionCreate.reason` is a required string.
+   */
   const send = (raw: string | null) =>
     attempt(() => {
-      if (reason.trim() === '') return REASON_REQUIRED
       const parsed = correctionValue(kind, raw)
       if (parsed.kind === 'invalid') return parsed.reason
       return () =>
@@ -256,9 +258,10 @@ function CorrectionForm({
 }
 
 /**
- * "Correct…" on an income answer (main spec §9.3): the corrected figure beside the form's, with a
- * reason. The form mounts only while open, so each opening starts from the answer as it now stands.
- * Opening it first leaves the page's open money editor, when `exits` is given (one open editor).
+ * "Correct…" on an income answer (main spec §9.3): the corrected figure beside the form's, with an
+ * optional reason. The form mounts only while open, so each opening starts from the answer as it
+ * now stands. Opening it first leaves the page's open money editor, when `exits` is given (one open
+ * editor).
  * The income panel holds `open` (`onOpenChange`), so it can draw the form in a row of its own (B30).
  */
 export function IncomeCorrection({

@@ -167,17 +167,33 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
   })
 
-  it('asks for a reason, and for a figure the server can read, before sending anything', async () => {
+  it('asks for a figure the server can read before sending anything, with or without a reason', async () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
-    expect(screen.getByText('A reason is required')).toBeInTheDocument()
     await userEvent.clear(screen.getByLabelText('Children'))
     await userEvent.type(screen.getByLabelText('Children'), '4.5')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
+    expect(screen.getByText('A whole number')).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Reason'), 'x{Enter}')
     expect(screen.getByText('A whole number')).toBeInTheDocument()
     expect(spies.correction).not.toHaveBeenCalled()
+  })
+
+  it('saves with no reason, sending it empty (Reason is optional: owner ruling 10-05)', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.clear(screen.getByLabelText('Children'))
+    await userEvent.type(screen.getByLabelText('Children'), '4')
+    await userEvent.type(screen.getByLabelText('Reason'), '   ')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
+    expect(screen.queryByText('A reason is required')).toBeNull()
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'num_children', new_value: '4', reason: '' },
+    })
   })
 
   it("shows the server's refusal and keeps the form and what was typed", async () => {
