@@ -147,8 +147,12 @@ async def test_a_decided_or_closed_survivor_is_refused(status: str) -> None:
 @pytest.mark.asyncio
 async def test_other_camper_other_season_or_other_session_is_refused() -> None:
     store, casework, active, pending = await pair()
-    for changes in ({"person_cm_id": 1000021}, {"year": YEAR - 1}, {"session_cm_id": 1000105}):
-        store.requests[pending.id] = replace(pending, **changes)
+    for other in (
+        replace(pending, person_cm_id=1000021),
+        replace(pending, year=YEAR - 1),
+        replace(pending, session_cm_id=1000105),
+    ):
+        store.requests[pending.id] = other
         with pytest.raises(CaseworkValidationError):
             await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
     assert store.operations == []
