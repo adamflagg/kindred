@@ -151,6 +151,14 @@ class HouseholdRequestOut(BaseModel):
     round3_context: Round3ContextOut | None = None  # only on a request with a Round 3
 
 
+class FormPersonOut(BaseModel):
+    """A person who owns an income form on the page, named so a "Use <name>'s Form" button reads as a person."""
+
+    person_cm_id: int
+    first_name: str
+    last_name: str
+
+
 class IncomeOut(BaseModel):
     """One application's household income: every answer with corrections beside the original, the free-text
     answers (special circumstances) and the application's flags (main spec §9.3)."""
@@ -160,6 +168,9 @@ class IncomeOut(BaseModel):
     answers: list[AnswerOut]
     notes: dict[str, str]
     flags: list[FlagOut]
+    # Every person whose form this application holds (its members and each conflict variant's holders), by
+    # person_cm_id, named from persons for the year; one with no persons row is left out and the client falls back.
+    form_people: list[FormPersonOut] = Field(default_factory=list)
 
 
 class HistoryEntryOut(BaseModel):

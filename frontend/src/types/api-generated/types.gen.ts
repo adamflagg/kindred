@@ -4723,6 +4723,26 @@ export type ForecastResponse = {
 }
 
 /**
+ * FormPersonOut
+ *
+ * A person who owns an income form on the page, named so a "Use <name>'s Form" button reads as a person.
+ */
+export type FormPersonOut = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * First Name
+   */
+  first_name: string
+  /**
+   * Last Name
+   */
+  last_name: string
+}
+
+/**
  * ForwardDemandOut
  */
 export type ForwardDemandOut = {
@@ -7284,6 +7304,10 @@ export type IncomeOut = {
    * Flags
    */
   flags: Array<FlagOut>
+  /**
+   * Form People
+   */
+  form_people?: Array<FormPersonOut>
 }
 
 /**

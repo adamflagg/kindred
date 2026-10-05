@@ -26,6 +26,7 @@ from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOu
 from api.schemas.financial_aid_grants import GrantRowOut
 from api.schemas.financial_aid_household_page import (
     ConfirmationStateOut,
+    FormPersonOut,
     HistoryEntryOut,
     HouseholdCardOut,
     HouseholdGrantRowOut,
@@ -602,7 +603,8 @@ class HouseholdPageService:
         outside = sorted({int(ln.household_cm_id) for ln in family_links} - households)
         camper_less = households - {_household_of(p) for p in persons}
         members_of = sorted(set(outside) | camper_less)
-        log, (linked_rows, members) = await asyncio.gather(
+        form_ids = sorted(set().union(*(_form_person_ids(d) for d in incomes)) if incomes else set())
+        log, (linked_rows, members), form_persons = await asyncio.gather(
             self._history.fetch_entity_log(
                 year,
                 exact={
@@ -618,7 +620,9 @@ class HouseholdPageService:
                 self._ledger.fetch_households(year, outside) if outside else _nothing(),
                 self._ledger.fetch_household_members(year, members_of) if members_of else _nothing(),
             ),
+            self._ledger.fetch_persons(year, form_ids) if form_ids else _nothing(),
         )
+        form_named = {int(p.cm_id): p for p in form_persons}
         chips = {h: i + 1 for i, h in enumerate(scope.households)}
         asks = {r.id: r for d in incomes for r in d.requests}
         by_household = {int(h.cm_id): h for h in household_rows}
@@ -709,6 +713,15 @@ class HouseholdPageService:
                     answers=d.answers,
                     notes=d.notes,
                     flags=d.flags,
+                    form_people=[
+                        FormPersonOut(
+                            person_cm_id=i,
+                            first_name=str(getattr(form_named[i], "first_name", "") or ""),
+                            last_name=str(getattr(form_named[i], "last_name", "") or ""),
+                        )
+                        for i in sorted(_form_person_ids(d))
+                        if i in form_named
+                    ],
                 )
                 for d in incomes
             ],
@@ -726,6 +739,16 @@ class HouseholdPageService:
                 else list(DEFAULT_REASON_CODES)
             ),
         )
+
+
+def _form_person_ids(detail: ApplicationDetailResponse) -> set[int]:
+    """Everyone who owns a form on one application: its members and every conflict variant's holders."""
+    ids = {int(p) for p in detail.member_person_cm_ids}
+    for flag in detail.flags:
+        for variants in (flag.detail.get("fields") or {}).values():
+            for variant in variants:
+                ids.update(int(p) for p in variant.get("person_cm_ids", ()))
+    return ids - {0}
 
 
 async def _nothing() -> list[Any]:
