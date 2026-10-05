@@ -258,6 +258,8 @@ export interface RoundLine {
    * it (ticks.ts acceptedTarget), so the page does too.
    */
   readonly cmPending: boolean
+  /** The server's sentence for a pending round (`cm_pending_message`, as the grid's detail line shows it). */
+  readonly cmPendingMessage: string | null
   /**
    * A posted round whose money CampMinder reversed (D54): its `posted` still carries the locked
    * amount, but the budget counts that money nowhere, so it never reads as standing posted money.
@@ -294,6 +296,9 @@ export function unreachedRounds(request: ApiAidHouseholdRequest): number[] {
   return [1, 2, 3].filter((n) => !rounds.some((r) => r.round === n))
 }
 
+/** The round line's state word for a C1 round: the grid's pending word, sentence-cased. */
+const PENDING_STATE_WORD = `${CM_PENDING_WORD.charAt(0).toUpperCase()}${CM_PENDING_WORD.slice(1)}`
+
 export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
   return [...request.row.rounds]
     .sort((a, b) => a.round - b.round)
@@ -312,6 +317,7 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
       const clawedBack = r.clawed_back ?? false
       const would = clawedBack ? null : (r.would_change_by ?? null)
       const pending = r.status === 'pending_approval'
+      const cmPending = r.cm_pending === true
       return {
         round: r.round,
         status: r.status,
@@ -321,13 +327,19 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         decided: r.decided,
         ask: r.ask,
         askedOn: r.asked_on,
-        words: ROUND_STATUS_WORDS[r.status],
-        stateTone: ROUND_STATE_TONE[r.status],
+        // B21 (owner, sitting B): a C1 round reads for what it is, waiting on tonight's tick, and
+        // keeps the grid's own word for it (a needs-offer status is only the server's pre-tick state).
+        words:
+          cmPending && r.status === 'needs_offer'
+            ? PENDING_STATE_WORD
+            : ROUND_STATUS_WORDS[r.status],
+        stateTone: cmPending && r.status === 'needs_offer' ? 'stone' : ROUND_STATE_TONE[r.status],
         lock,
         posted,
         postedOn: r.posted_on,
         accepted: r.accepted,
-        cmPending: r.cm_pending === true,
+        cmPending,
+        cmPendingMessage: cmPending ? (r.cm_pending_message ?? null) : null,
         clawedBack,
         wouldChangeBy: would !== null && would !== 0 ? would : null,
       }

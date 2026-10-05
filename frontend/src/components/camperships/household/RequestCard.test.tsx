@@ -532,3 +532,53 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     })
   })
 })
+
+// B21 (owner, sitting B): a C1 round (in CampMinder in full, tonight's tick posts it) is waiting on
+// the overnight sync, not on an offer: "Pending", not the row to act on, with the server's sentence.
+describe('a C1 round on the decision panel', () => {
+  const C1_SENTENCE = "In CampMinder in full; tonight's sync will mark it posted."
+  const c1 = (message: string | null = C1_SENTENCE) =>
+    householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'needs_offer', {
+            decided: 1500,
+            cm_pending: true,
+            cm_pending_message: message,
+          }),
+        ],
+      })
+    )
+  const roundRow = (panel: HTMLElement) => within(panel).getByText('Round 1').closest('tr')!
+
+  it('reads Pending, not Needs an offer', () => {
+    renderCard(c1())
+    const panel = screen.getByRole('table', { name: 'Decision panel' })
+    expect(within(panel).getByText('Pending')).toBeInTheDocument()
+    expect(within(panel).queryByText('Needs an offer')).toBeNull()
+  })
+
+  it('is not tinted as the row to act on, while a plain needs-offer round is', () => {
+    const { unmount } = renderCard(c1())
+    expect(roundRow(screen.getByRole('table', { name: 'Decision panel' })).className).not.toContain(
+      'bg-amber-100/45'
+    )
+    unmount()
+    renderCard(
+      householdRequest(gridRow({ rounds: [roundOut(1, 'needs_offer', { decided: 1500 })] }))
+    )
+    const panel = screen.getByRole('table', { name: 'Decision panel' })
+    expect(within(panel).getByText('Needs an offer')).toBeInTheDocument()
+    expect(roundRow(panel).className).toContain('bg-amber-100/45')
+  })
+
+  it("shows the server's cm_pending_message under the line, and nothing when there is none", () => {
+    const { unmount } = renderCard(c1())
+    expect(
+      within(screen.getByRole('table', { name: 'Decision panel' })).getByText(C1_SENTENCE)
+    ).toBeInTheDocument()
+    unmount()
+    renderCard(c1(null))
+    expect(screen.queryByText(C1_SENTENCE)).toBeNull()
+  })
+})

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
@@ -93,60 +93,77 @@ export function DecisionPanel({
       </thead>
       <tbody>
         {lines.map((line) => (
-          <tr
-            key={line.round}
-            // D10: the round waiting on its offer is the one to act on.
-            className={line.status === 'needs_offer' ? HH_PANEL_ACTIONABLE : undefined}
-          >
-            <td className={`${HH_PANEL_TD} font-bold`}>Round {line.round}</td>
-            <td className={`${HH_PANEL_TD} text-right tabular-nums`}>
-              {line.basis === 'pending' ? (
-                // The grid's way: amber, and outside the Total (§5.3).
-                <span className={HH_AMBER_NOTE}>{`pending ${formatMoney(line.pending)}`}</span>
-              ) : (
-                <>
-                  <Money value={line.amount} />
-                  {line.amount !== null && (
-                    <span className="text-muted-foreground block text-[11px] leading-[1.2]">
-                      {line.clawedBack ? 'reversed' : BASIS_WORDS[line.basis]}
-                    </span>
-                  )}
-                </>
-              )}
-            </td>
-            <td className={HH_PANEL_TD}>
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                <span className={HH_ROUND_PILL[line.stateTone]}>{line.words}</span>
-                {line.ask !== null && (
-                  <span className={HH_NOTE}>
-                    {[
-                      `ask ${formatMoney(line.ask)}`,
-                      line.askedOn ? formatShortDate(line.askedOn) : null,
-                    ]
-                      .filter((part): part is string => part !== null)
-                      .join(' · ')}
-                  </span>
-                )}
-                {line.lock !== null && <span className={HH_LOCK}>{line.lock}</span>}
-                {line.wouldChangeBy !== null && (
-                  <StatusPill tone="amber">{wouldChangeWords(line.wouldChangeBy)}</StatusPill>
-                )}
-              </div>
-            </td>
-            <td className={HH_PANEL_TD}>
-              <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-                {checklist ? (
-                  checklist(line)
+          <Fragment key={line.round}>
+            <tr
+              // D10: the round waiting on its offer is the one to act on.
+              // A C1 round is waiting on tonight's tick, not on an offer: nothing to act on.
+              className={
+                line.status === 'needs_offer' && !line.cmPending ? HH_PANEL_ACTIONABLE : undefined
+              }
+            >
+              <td className={`${HH_PANEL_TD} font-bold`}>Round {line.round}</td>
+              <td className={`${HH_PANEL_TD} text-right tabular-nums`}>
+                {line.basis === 'pending' ? (
+                  // The grid's way: amber, and outside the Total (§5.3).
+                  <span className={HH_AMBER_NOTE}>{`pending ${formatMoney(line.pending)}`}</span>
                 ) : (
                   <>
-                    <Tick on={line.posted} label="Posted" round={line.round} when={line.postedOn} />
-                    <Tick on={line.accepted} label="Accepted" round={line.round} />
+                    <Money value={line.amount} />
+                    {line.amount !== null && (
+                      <span className="text-muted-foreground block text-[11px] leading-[1.2]">
+                        {line.clawedBack ? 'reversed' : BASIS_WORDS[line.basis]}
+                      </span>
+                    )}
                   </>
                 )}
-              </div>
-            </td>
-            <td className={HH_PANEL_TD}>{nextAction?.(line)}</td>
-          </tr>
+              </td>
+              <td className={HH_PANEL_TD}>
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span className={HH_ROUND_PILL[line.stateTone]}>{line.words}</span>
+                  {line.ask !== null && (
+                    <span className={HH_NOTE}>
+                      {[
+                        `ask ${formatMoney(line.ask)}`,
+                        line.askedOn ? formatShortDate(line.askedOn) : null,
+                      ]
+                        .filter((part): part is string => part !== null)
+                        .join(' · ')}
+                    </span>
+                  )}
+                  {line.lock !== null && <span className={HH_LOCK}>{line.lock}</span>}
+                  {line.wouldChangeBy !== null && (
+                    <StatusPill tone="amber">{wouldChangeWords(line.wouldChangeBy)}</StatusPill>
+                  )}
+                </div>
+              </td>
+              <td className={HH_PANEL_TD}>
+                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+                  {checklist ? (
+                    checklist(line)
+                  ) : (
+                    <>
+                      <Tick
+                        on={line.posted}
+                        label="Posted"
+                        round={line.round}
+                        when={line.postedOn}
+                      />
+                      <Tick on={line.accepted} label="Accepted" round={line.round} />
+                    </>
+                  )}
+                </div>
+              </td>
+              <td className={HH_PANEL_TD}>{nextAction?.(line)}</td>
+            </tr>
+            {line.cmPendingMessage !== null && (
+              // The server's overnight-sync sentence, as the grid's detail line shows it.
+              <tr>
+                <td colSpan={5} className={`${HH_NOTE} px-2 pb-1.5`}>
+                  {line.cmPendingMessage}
+                </td>
+              </tr>
+            )}
+          </Fragment>
         ))}
         {unreached.map((round) => (
           // O2 (ruled 10-04 late): a round not reached yet still has its row, muted.
