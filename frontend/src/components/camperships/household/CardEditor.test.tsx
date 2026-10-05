@@ -50,8 +50,9 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidRound3Amount: () => useFakeMutation(amount),
 }))
 let previewNow: EditorPreview = { status: 'idle' }
+const previewAsk = vi.fn()
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
-  useAidEditorPreview: () => ({ preview: previewNow, onAmountChange: () => undefined }),
+  useAidEditorPreview: () => ({ preview: previewNow, onAmountChange: previewAsk }),
 }))
 
 const request = householdRequest(ROW_OLIVIA)
@@ -70,6 +71,7 @@ const settle = (error?: Error) => {
 beforeEach(() => {
   ask.mockReset()
   amount.mockReset()
+  previewAsk.mockReset()
   onClose.mockReset()
   go.mockReset()
   mode = 'auto'
@@ -329,5 +331,165 @@ describe('CardEditor leave (F2 4/5: page-owned exits save first)', () => {
     expect(go).not.toHaveBeenCalled()
     settle()
     expect(go).toHaveBeenCalledTimes(1)
+  })
+})
+
+// B24 (owner ruling 10-05): a money editor opening on an amount asks for its preview at once, so
+// "Round 2 now $X (new total $T)" shows before any typing.
+describe('CardEditor: the preview at open (B24)', () => {
+  it('asks once for the appeal it opens on, and shows the line without typing', () => {
+    previewNow = { status: 'ready', award: 780, totalDecided: 2280, pendingApproval: false }
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    expect(previewAsk).toHaveBeenCalledTimes(1)
+    expect(previewAsk).toHaveBeenCalledWith(1200)
+    expect(screen.getByText('Round 2 now $780 (new total $2,280)')).toBeInTheDocument()
+  })
+
+  it('asks for a Round 3 amount opening on its decided figure', () => {
+    const decidedRow = householdRequest(
+      gridRow({
+        ...ROW_OLIVIA,
+        rounds: [roundOut(1, 'posted'), roundOut(3, 'needs_offer', { ask: 900, decided: 300 })],
+      })
+    )
+    render(<CardEditor request={decidedRow} page={page} kind="round3_amount" onClose={onClose} />)
+    expect(previewAsk).toHaveBeenCalledTimes(1)
+    expect(previewAsk).toHaveBeenCalledWith(300)
+  })
+
+  it('asks nothing when there is no amount yet, nor for a Round 3 ask, which prices nothing', () => {
+    const { unmount } = render(
+      <CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />
+    )
+    expect(screen.getByLabelText('Round 3 amount')).toHaveValue('')
+    unmount()
+    const askedRow = householdRequest(
+      gridRow({
+        ...ROW_OLIVIA,
+        rounds: [roundOut(1, 'posted'), roundOut(3, 'needs_offer', { ask: 900 })],
+      })
+    )
+    render(<CardEditor request={askedRow} page={page} kind="round3_ask" onClose={onClose} />)
+    expect(screen.getByLabelText('Round 3 ask')).toHaveValue('900')
+    expect(previewAsk).not.toHaveBeenCalled()
+  })
+})
+
+// Round 3 (mock section 2, option B "Two columns"): the fields on the left, what saving does on the
+// right, and a footer with the save bottom right and Back beside it.
+describe('CardEditor: two columns (round 3)', () => {
+  const side = () => document.querySelector('[data-editor-side]') as HTMLElement
+
+  it('puts the fields on the left and the preview line on the right', () => {
+    previewNow = { status: 'ready', award: 780, totalDecided: 2280, pendingApproval: false }
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    expect(side()).toHaveTextContent('Round 2 now $780 (new total $2,280)')
+    expect(side()).not.toContainElement(screen.getByLabelText('Round 2 ask'))
+    expect(side()).not.toContainElement(screen.getByLabelText('Note'))
+  })
+
+  it('names the household in the head, beside what is being edited', () => {
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    const head = screen.getByText('Editing · Round 2 ask').parentElement as HTMLElement
+    expect(head).toHaveTextContent(/household \d+ · person \d+/)
+    expect(head).not.toContainElement(screen.getByLabelText('Round 2 ask'))
+  })
+
+  it('says on the right that the award waits for an amount, while there is none', () => {
+    render(<CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />)
+    expect(side()).toHaveTextContent('Type an amount to see the award.')
+  })
+
+  it('says a Round 3 ask prices nothing, on the right', () => {
+    render(<CardEditor request={request} page={page} kind="round3_ask" onClose={onClose} />)
+    expect(side()).toHaveTextContent(
+      'An ask alone prices nothing: finance sets the Round 3 amount.'
+    )
+  })
+
+  it('saves from the footer button as Enter does, with Back beside it and the save last', async () => {
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    const save = screen.getByRole('button', { name: 'Save the Appeal' })
+    const back = screen.getByRole('button', { name: 'Back' })
+    expect(save.parentElement?.lastElementChild).toBe(save)
+    expect(back.nextElementSibling).toBe(save)
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300')
+    await userEvent.click(save)
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(ask).toHaveBeenCalledWith({
+      requestId: 'reqolivia000003',
+      body: { round: 2, amount: 1300, asked_on: '2027-04-09', note: 'Family emailed (Apr 9)' },
+    })
+  })
+
+  it('goes back from Back without saving', async () => {
+    render(<CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(onClose).toHaveBeenCalled()
+    expect(amount).not.toHaveBeenCalled()
+  })
+
+  it('labels the Round 3 saves', () => {
+    const { unmount } = render(
+      <CardEditor request={request} page={page} kind="round3_ask" onClose={onClose} />
+    )
+    expect(screen.getByRole('button', { name: 'Save the Ask' })).toBeInTheDocument()
+    unmount()
+    render(<CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />)
+    expect(screen.getByRole('button', { name: 'Save the Amount' })).toBeInTheDocument()
+  })
+
+  it('keeps Back off while a save is in flight, so its refusal shows here', async () => {
+    mode = 'manual'
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300{Enter}')
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+    settle(new Error('The server said no'))
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
+    expect(screen.getByText('The server said no')).toBeInTheDocument()
+  })
+
+  it("draws white fields, not the grid editor's grey ones", () => {
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    for (const field of [screen.getByLabelText('Round 2 ask'), screen.getByLabelText('Note')]) {
+      expect(field).toHaveClass('bg-white')
+      expect(field).not.toHaveClass('bg-background')
+    }
+  })
+
+  it('gives the statement of need a box of at least three rows that grows, and says its keys', () => {
+    render(<CardEditor request={request} page={page} kind="round3_ask" onClose={onClose} />)
+    const box = screen.getByLabelText('Statement of need')
+    expect(box.tagName).toBe('TEXTAREA')
+    expect(Number(box.getAttribute('rows'))).toBeGreaterThanOrEqual(3)
+    expect(box).toHaveClass('field-sizing-content')
+    expect(
+      screen.getByText('Enter saves · Shift+Enter for a new line · Esc cancels')
+    ).toBeInTheDocument()
+  })
+
+  it('makes a new line on Shift+Enter in the statement, and closes on Esc from it', async () => {
+    render(<CardEditor request={request} page={page} kind="round3_ask" onClose={onClose} />)
+    const box = screen.getByLabelText('Statement of need')
+    await userEvent.type(box, 'one{Shift>}{Enter}{/Shift}two')
+    expect(box).toHaveValue('one\ntwo')
+    expect(ask).not.toHaveBeenCalled()
+    await userEvent.type(box, '{Escape}')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('closes on Esc with Back focused, once', async () => {
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    screen.getByRole('button', { name: 'Back' }).focus()
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes once on Esc from a field', async () => {
+    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
