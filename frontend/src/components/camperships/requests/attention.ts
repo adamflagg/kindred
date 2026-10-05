@@ -106,6 +106,12 @@ export const OPEN_REQUEST = toRequest('Open the Request')
 
 export interface GridAttention {
   readonly item: AttentionItem
+  /**
+   * Why, in fixed words: the pill without its amount, day count or share count ("Short" for "Short
+   * $50", "Waiting on the family" for "Waiting 12 days"), so a group heading built from it is one
+   * group per reason, never one per figure (owner rulings 10-04 late (grid follow-up)).
+   */
+  readonly reason: string
   /** The Requests view this item belongs to; null for a note that has none. */
   readonly queue: ApiAidQueue | null
   /**
@@ -162,16 +168,22 @@ function toReversePrefix(row: ApiAidGridRow, cancelledOnShown: boolean): string 
   return `Cancelled${on ? ` ${formatShortDate(on)}` : ''}: `
 }
 
+/** A note item; `reason` defaults to the pill, for a pill that carries no figure. */
 const note = (
   pill: string,
   fact: string,
   queue: ApiAidQueue | null,
-  next: NextStep | null
+  next: NextStep | null,
+  reason: string = pill
 ): GridAttention => ({
   item: gridItem('note', pill, fact),
+  reason,
   queue,
   next,
 })
+
+/** The first letter up: the cell's pills are in sentence case (owner rulings 10-04 late). */
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 const CHECK_POSTING = toRequest('Check the Posting')
 /** The mock's "Tick Accepted": the row's own Accepted tick (owner, title case). */
@@ -183,11 +195,13 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
   switch (c.status) {
     case 'short':
     case 'over':
+      // "Short $50" in the pill; formatGap stays lower case for the mid-sentence CM ✓ detail.
       return note(
-        formatGap(c.locked, c.in_campminder) ?? c.status,
+        sentence(formatGap(c.locked, c.in_campminder) ?? c.status),
         `CampMinder shows ${formatMoney(c.in_campminder)}.`,
         'not_reconciled',
-        CHECK_POSTING
+        CHECK_POSTING,
+        sentence(c.status)
       )
     case 'not_in_campminder':
       return note(
@@ -209,10 +223,11 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
       const open = c.shares.filter((share) => share.status !== 'confirmed').length
       if (open === 0) return null
       return note(
-        open === 1 ? 'a share unconfirmed' : `${String(open)} shares unconfirmed`,
+        open === 1 ? 'A share unconfirmed' : `${String(open)} shares unconfirmed`,
         'Check the payer shares on the household page.',
         'not_reconciled',
-        PAYER_SHARES
+        PAYER_SHARES,
+        'Shares unconfirmed'
       )
     }
   }
@@ -226,6 +241,7 @@ export function attentionItems(
 ): GridAttention[] {
   const items: GridAttention[] = row.holds.map((hold) => ({
     item: gridItem('hold', codeWords(hold.code), hold.message),
+    reason: codeWords(hold.code),
     queue: holdQueue(hold.code),
     next: stepFor(hold.code),
   }))
@@ -309,7 +325,8 @@ export function attentionItems(
           : `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
         "The family hasn't replied: follow up, then tick Accepted.",
         'waiting_on_family',
-        TICK_ACCEPTED
+        TICK_ACCEPTED,
+        'Waiting on the family'
       )
     )
   }

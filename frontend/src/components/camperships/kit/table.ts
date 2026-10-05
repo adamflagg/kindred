@@ -91,10 +91,15 @@ export interface RowGroup<Row> {
   readonly rows: Row[]
 }
 
-/** Groups keep the order their first row appears in, so a sorted table still reads top to bottom. */
+/**
+ * Groups keep the order their first row appears in, so a sorted table still reads top to bottom;
+ * with an `order` of group ids, those come first in that order (By reason's strip stages, owner
+ * rulings 10-04 late) and any group it does not name follows in first-row order.
+ */
 export function groupRows<Row>(
   rows: readonly Row[],
-  groupOf: (row: Row) => { id: string; heading: string }
+  groupOf: (row: Row) => { id: string; heading: string },
+  order?: readonly string[]
 ): Array<RowGroup<Row>> {
   const groups = new Map<string, RowGroup<Row>>()
   for (const row of rows) {
@@ -103,7 +108,14 @@ export function groupRows<Row>(
     if (existing) existing.rows.push(row)
     else groups.set(id, { id, heading, rows: [row] })
   }
-  return [...groups.values()]
+  const found = [...groups.values()]
+  if (order === undefined) return found
+  const rank = (group: RowGroup<Row>) => {
+    const at = order.indexOf(group.id)
+    return at === -1 ? order.length : at
+  }
+  // Array sort is stable, so the unnamed groups keep their first-row order among themselves.
+  return found.sort((a, b) => rank(a) - rank(b))
 }
 
 /** ↑/↓ (D13, D31): from nothing, ↓ takes the first row and ↑ the last; the ends hold. */
