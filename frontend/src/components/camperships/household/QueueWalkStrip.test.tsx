@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ApiAidToday } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
 import { GRID_ROWS } from '../requests/gridFixtures'
 import { QueueWalkStrip } from './QueueWalkStrip'
@@ -12,6 +13,21 @@ let rows: typeof GRID_ROWS
 const prefetched: Array<number | null> = []
 vi.mock('../../../hooks/camperships/useAidGrid', () => ({
   useAidGrid: () => ({ data: { year: 2027, rules_version: 1, rows } }),
+}))
+interface TodayResult {
+  data: ApiAidToday | undefined
+  isLoading: boolean
+  error: Error | null
+}
+let todayRead: TodayResult = { data: undefined, isLoading: false, error: null }
+const todayAsked: Array<boolean | undefined> = []
+vi.mock('../../../hooks/camperships/useAidToday', () => ({
+  useAidToday: (options?: { enabled?: boolean }) => {
+    todayAsked.push(options?.enabled)
+    return options?.enabled === false
+      ? { data: undefined, isLoading: false, error: null }
+      : todayRead
+  },
 }))
 vi.mock('../../../hooks/camperships/useAidHouseholdPage', () => ({
   usePrefetchHousehold: (id: number | null) => {
@@ -58,6 +74,8 @@ const without = (id: number) => GRID_ROWS.filter((row) => row.household_cm_id !=
 
 beforeEach(() => {
   rows = GRID_ROWS
+  todayRead = { data: undefined, isLoading: false, error: null }
+  todayAsked.length = 0
   prefetched.length = 0
 })
 
@@ -194,5 +212,66 @@ describe('beforeLeave (owner F2 4)', () => {
     render(tree('/aid/households/1000005?from=all'))
     await userEvent.click(screen.getByRole('link', { name: /The Sam Family.* ›/ }))
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000007')
+  })
+})
+
+describe("a Today line's walk (Decision 10)", () => {
+  // Regression guard for the walk following ?today= like any filter.
+  const WOULD_CHANGE: ApiAidToday = {
+    year: 2027,
+    casework: null,
+    finance: [
+      {
+        key: 'would_change',
+        families: 2,
+        items: 2,
+        item_kind: 'requests',
+        reasons: [],
+        request_ids: ['reqemma00000001', 'reqolivia000003'],
+      },
+    ],
+  }
+
+  it('steps only through the families the line counted, and keeps the line on the links', () => {
+    todayRead = { data: WOULD_CHANGE, isLoading: false, error: null }
+    render(tree('/aid/households/1000001?from=all&today=would_change'))
+    expect(screen.getByText(/1 of 2 families/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /The Chen Family/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('today=would_change')
+    )
+  })
+
+  it('shows no position until Today has been read, rather than a family that left', () => {
+    render(tree('/aid/households/1000001?from=all&today=would_change'))
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+  })
+
+  // I1: the walk mirrors the grid's tri-state.
+  it('does not say the family left when the line is not sent to this role, and does not filter', () => {
+    todayRead = {
+      data: { year: 2027, casework: [], finance: null },
+      isLoading: false,
+      error: null,
+    }
+    render(tree('/aid/households/1000001?from=all&today=would_change'))
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+    expect(screen.getByText(/of 4 families/)).toBeInTheDocument()
+  })
+
+  it('shows no position, and no false claim, when Today failed', () => {
+    todayRead = { data: undefined, isLoading: false, error: new Error('boom') }
+    render(tree('/aid/households/1000001?from=all&today=would_change'))
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+    expect(screen.queryByText(/of \d+ families/)).toBeNull()
+  })
+
+  it('reads Today only under ?today=', () => {
+    render(tree('/aid/households/1000001?from=all'))
+    expect(todayAsked.every((e) => e === false)).toBe(true)
+    todayAsked.length = 0
+    todayRead = { data: WOULD_CHANGE, isLoading: false, error: null }
+    render(tree('/aid/households/1000001?from=all&today=would_change'))
+    expect(todayAsked).toContain(true)
   })
 })

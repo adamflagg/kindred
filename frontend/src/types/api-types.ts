@@ -75,6 +75,8 @@ import type {
   PreviewIn,
   ReceiptOut,
   RemainingResponse,
+  TodayLineOut,
+  TodayResponse,
   RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
@@ -125,6 +127,9 @@ export type ApiAidRemaining = RemainingResponse
 
 /** Season › Rules (spec §7.5; D76). Mirrors Python `ApprovedRulesOut`. */
 export type ApiAidApprovedRules = ApprovedRulesOut
+/** Today (§6.4). Mirrors Python `TodayResponse` and `TodayLineOut`. */
+export type ApiAidToday = TodayResponse
+export type ApiAidTodayLine = TodayLineOut
 
 /** The jump box's index (§3.5, slice 1's read). Mirrors Python `JumpIndexResponse`. */
 export type ApiAidJumpIndex = JumpIndexResponse

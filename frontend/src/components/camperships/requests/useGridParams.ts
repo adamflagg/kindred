@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router'
 import { resolveStrip, shownView, type RequestLens } from './strip'
 import { parseRoundFilter, type RequestView, type RoundFilter } from './views'
 
-export type GridParamName = 'program' | 'pool' | 'round' | 'ids' | 'row'
+export type GridParamName = 'program' | 'pool' | 'round' | 'ids' | 'row' | 'today'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */

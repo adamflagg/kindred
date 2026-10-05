@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useAidGrid } from '../../../hooks/camperships/useAidGrid'
+import { useAidToday } from '../../../hooks/camperships/useAidToday'
 import { usePrefetchHousehold } from '../../../hooks/camperships/useAidHouseholdPage'
 import { aidHref, type AidView } from '../kit/asOf'
 import { campToday } from '../kit/dates'
 import { isPageKey } from '../kit/keyboard'
 import { lensRows, resolveStrip, shownView } from '../requests/strip'
 import type { RequestView } from '../requests/views'
+import { todayFilter } from '../today/todayModel'
 import {
   gridFiltersFrom,
   walkPosition,
@@ -74,16 +76,33 @@ export function useQueueWalk(
   // The household page is live only (Decision 36), so the walk reads the live grid.
   const grid = useAidGrid({ enabled: walkView !== null, live: true })
   const today = campToday()
-  const allRows = grid.data?.rows
+  // The grid's filters ride along on the link (M5): same rows, and Back lands on the same view.
+  const search = params.toString()
+  const {
+    filters: urlFilters,
+    keep,
+    order,
+    todayKey,
+  } = useMemo(() => gridFiltersFrom(new URLSearchParams(search)), [search])
+  // A Today line's rows are filtered like any other filter: the walk steps through exactly them.
+  const todayRead = useAidToday({ enabled: walkView !== null && todayKey !== null })
+  const todayData = todayRead.data
+  const todayError = todayRead.error
+  const todayState = useMemo(
+    () => todayFilter(todayKey, { data: todayData, error: todayError }),
+    [todayKey, todayData, todayError]
+  )
+  // The same tri-state as the grid. Until Today's read lands (or when it failed) the rows are
+  // unknown, not empty: no "left the view" claim. A line this role isn't sent filters nothing.
+  const allRows =
+    todayState.state === 'pending' || todayState.state === 'failed' ? undefined : grid.data?.rows
   const rows = useMemo(
     () => (allRows ? lensRows(allRows, strip.lens) : undefined),
     [allRows, strip.lens]
   )
-  // The grid's filters ride along on the link (M5): same rows, and Back lands on the same view.
-  const search = params.toString()
-  const { filters, keep, order } = useMemo(
-    () => gridFiltersFrom(new URLSearchParams(search)),
-    [search]
+  const filters = useMemo(
+    () => (todayState.state === 'ready' ? { ...urlFilters, ids: todayState.ids } : urlFilters),
+    [urlFilters, todayState]
   )
   const stops = useMemo(
     () => (rows && walkView ? walkStops(rows, walkView, today, filters, order) : []),

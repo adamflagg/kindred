@@ -24,6 +24,7 @@ import type {
   ApiAidPostedIn,
   ApiAidPreviewIn,
   ApiAidRemaining,
+  ApiAidToday,
   ApiAidRequestOut,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
@@ -41,6 +42,16 @@ const BASE = '/api/financial-aid'
 function withQuery(path: string, params: Record<string, string>): string {
   const query = new URLSearchParams(params).toString()
   return query ? `${path}?${query}` : path
+}
+
+/** Today (§6.4; D24): every waiting queue, one line each; the sections follow the reader's permissions. */
+export async function fetchAidToday(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidToday> {
+  const response = await fetchWithAuth(`${BASE}/today/${String(year)}`)
+  if (!response.ok) throw await toApiError(response, 'Failed to load Today', AidApiError)
+  return (await response.json()) as ApiAidToday
 }
 
 /** The Remaining line (spec §7.3): one figure per pool, live or as of a past day. */
