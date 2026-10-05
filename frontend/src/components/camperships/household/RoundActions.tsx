@@ -90,7 +90,8 @@ function undoHint(line: RoundLine): string {
 /**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
  * "Mark Posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
- * ticks a posted round only.
+ * ticks a posted round only, never a reversed one. A C1 round (`cm_pending`) is not offered here,
+ * though the grid's `acceptedTarget` offers it.
  */
 export function RoundChecklist({
   request,
