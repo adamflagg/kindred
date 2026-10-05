@@ -246,9 +246,6 @@ export function attentionItems(
       )
     )
   }
-  for (const todo of row.todos ?? []) {
-    items.push(note('To do', todo.message, null, OPEN_REQUEST))
-  }
   const pending = row.rounds.find((r) => r.status === 'pending_approval')
   if (pending !== undefined) {
     items.push(

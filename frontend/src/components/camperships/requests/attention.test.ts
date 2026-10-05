@@ -69,17 +69,12 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     })
   })
 
-  // Owner ruling B: a missing cancel reason is no to-do, so the server sends todos: [] and the
-  // fixture's Riley row has none. Were one to arrive it reads as the server's own message, with no
-  // queue of its own and the request's card as its step.
-  it("says a to-do's own message under a plain 'To do' pill, in no queue (no cancel-reason special case)", () => {
+  // Owner ruling B (#3001): the server sends no to-dos (a missing cancel reason was the only one), so
+  // the row has no to-do path; a stray to-do changes nothing and draws no pill no mock shows.
+  it('reads a row the same with or without a to-do (the server retired them; no cancel-reason special case)', () => {
     expect(ROW_RILEY.todos).toEqual([])
     const withTodo = gridRow({ todos: [{ code: 'something_new', message: 'Check the new thing' }] })
-    expect(attentionFor(withTodo, 'all', TODAY)).toEqual({
-      item: { level: 'note', pill: 'To do', fact: 'Check the new thing' },
-      queue: null,
-      next: { kind: 'link', label: 'Open the Request', at: 'request' },
-    })
+    expect(attentionFor(withTodo, 'all', TODAY)).toEqual(attentionFor(gridRow({}), 'all', TODAY))
   })
 
   it('shows a queue view its own item first, and All the first that matters', () => {
