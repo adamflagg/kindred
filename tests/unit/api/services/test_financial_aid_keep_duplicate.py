@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -110,6 +111,30 @@ async def test_an_active_request_with_a_posted_round_cannot_be_swapped_away() ->
         await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
     assert (store.operations, store.change_log) == ([], [])
     assert store.requests[active.id].status == "active"
+
+
+@pytest.mark.asyncio
+async def test_an_active_request_with_any_decision_on_record_cannot_be_swapped_away() -> None:
+    # An unposted award or ask would be orphaned on the closed duplicate: no number moves but the swap.
+    store, casework, active, pending = await pair()
+    posted(store, active.id, 1)
+    store.decision_events[0] = replace(store.decision_events[0], kind="award", amount=Decimal(100))
+    with pytest.raises(CaseworkValidationError, match="Round 1 has a decision on record: keep this request"):
+        await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_other_pending_requests_follow_the_kept_one() -> None:
+    store, casework, active, pending = await pair()
+    sibling = replace(pending, id="sib000000000001", household_cm_id=1000033)
+    store.requests[sibling.id] = sibling
+    await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
+    assert (store.requests[sibling.id].status, store.requests[sibling.id].duplicate_of) == (
+        "duplicate_pending",
+        pending.id,
+    )
+    assert len(store.operations) == 1
 
 
 @pytest.mark.asyncio

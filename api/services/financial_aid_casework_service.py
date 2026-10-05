@@ -736,11 +736,16 @@ class FinancialAidCaseworkService:
         a live request (a pending one has none). Posted money never moves to another request."""
         if not reason.strip():
             raise CaseworkValidationError("a reason is required")
-        for n, state in sorted(
-            fold_rounds(await self._store.fetch_request_events(active.id)).get(active.id, {}).items()
-        ):
+        rounds = sorted(fold_rounds(await self._store.fetch_request_events(active.id)).get(active.id, {}).items())
+        for n, state in rounds:
             if state.posted:
                 raise CaseworkValidationError(f"Round {n} is posted: keep this request, or undo Posted first")
+        for n, state in rounds:
+            # An ask or an award not yet posted would be left behind on the request that closes.
+            if state.ask is not None or state.award is not None or state.discretionary is not None:
+                raise CaseworkValidationError(
+                    f"Round {n} has a decision on record: keep this request, so no recorded decision is left behind"
+                )
         writes = [
             self._request_update(
                 active,
@@ -753,6 +758,12 @@ class FinancialAidCaseworkService:
                 "keep_duplicate",
             ),
         ]
+        # Any other possible duplicate of the old active request now waits on the kept one.
+        writes.extend(
+            self._request_update(other, {"duplicate_of": pending.id}, "keep_duplicate")
+            for other in await self._store.fetch_requests(active.year, active.application_id)
+            if other.id != pending.id and _waits_on(other, active)
+        )
         if not await self._store.fetch_payer_shares(pending.year, [pending.id]):
             writes.append(
                 AidWrite(
