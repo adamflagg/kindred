@@ -5977,7 +5977,6 @@ export type GridRowOut = {
     | 'to_reverse'
     | 'session_not_settled'
     | 'duplicates'
-    | 'cancel_reason'
   > | null
   /**
    * Payer Count

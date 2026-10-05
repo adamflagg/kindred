@@ -97,7 +97,6 @@ def row_queues(row: GridRowOut) -> list[QueueOut]:
         "to_reverse": bool(row.to_reverse),
         "session_not_settled": row.request_status == STATUS_UNMATCHED,
         "duplicates": row.request_status == STATUS_DUPLICATE_PENDING or FLAG_DUPLICATE_SURVIVOR_WITHDRAWN in hold_codes,
-        "cancel_reason": False,  # retired by owner ruling B (2026-10-04): QueueOut keeps it until the frontend drops it
     }
     return [queue for queue in QUEUES if member[queue]]
 

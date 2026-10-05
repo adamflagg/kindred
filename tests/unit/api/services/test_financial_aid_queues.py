@@ -13,6 +13,7 @@ from api.schemas.financial_aid_decisions import (
     CancellationOut,
     ConfirmationOut,
     GridRowOut,
+    QueueOut,
     RoundOut,
     RoundStatusOut,
     ShareConfirmationOut,
@@ -171,6 +172,12 @@ def test_cancelled_with_aid_live_and_no_reason_is_to_reverse_only() -> None:
         todos=[TodoOut(code="cancel_reason_missing", message="Cancelled: give a reason")],
     )
     assert row_queues(row) == ["to_reverse"]
+
+
+def test_the_retired_cancel_reason_view_is_gone_from_the_queues() -> None:
+    """Owner ruling B (2026-10-04) retired the view; with the client's mapping gone (#3002), QueueOut drops it."""
+    assert "cancel_reason" not in get_args(QueueOut)
+    assert "cancel_reason" not in QUEUES
 
 
 def test_a_cancelled_row_with_no_reason_and_nothing_to_reverse_is_in_no_view() -> None:
