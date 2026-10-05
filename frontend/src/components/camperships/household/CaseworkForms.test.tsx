@@ -616,3 +616,68 @@ describe('every casework form closes on Esc as soon as it opens', () => {
     await esc(() => render(<HeadcountForm request={family} page={PAGE} onDone={done} />))
   })
 })
+
+describe("every casework form's message-only state closes on Esc as soon as it opens", () => {
+  // As the forms above: the key goes to whatever has focus, with no click first.
+  const lone = () =>
+    householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+  const family = () =>
+    householdRequest(gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' }))
+  const escCloses = async (text: string) => {
+    expect(screen.getByText(text)).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(done).toHaveBeenCalledTimes(1)
+  }
+
+  it('Settle Session…: no candidate sessions', async () => {
+    render(
+      <SessionForm
+        request={householdRequest(
+          gridRow({ ...ROW_EMMA, request_status: 'unmatched_session', session_candidates: [] })
+        )}
+        onDone={done}
+      />
+    )
+    await escCloses('No candidate sessions are recorded for this request.')
+  })
+
+  it('Keep the Other Request…: still looking', async () => {
+    application = undefined
+    applicationLoading = true
+    render(
+      <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
+    )
+    await escCloses('Looking for the request to keep…')
+  })
+
+  it("Keep the Other Request…: couldn't load", async () => {
+    application = undefined
+    applicationError = new Error('x')
+    render(
+      <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
+    )
+    await escCloses("Couldn't load the request intake named for this one.")
+  })
+
+  it('Keep the Other Request…: nothing to keep', async () => {
+    render(
+      <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
+    )
+    await escCloses('No other active request for this camper and session is on this page.')
+  })
+
+  it('Headcount…: loading', async () => {
+    application = undefined
+    applicationLoading = true
+    render(<HeadcountForm request={family()} page={PAGE} onDone={done} />)
+    await escCloses('Loading the headcount…')
+  })
+
+  it("Headcount…: couldn't load", async () => {
+    application = undefined
+    render(<HeadcountForm request={family()} page={PAGE} onDone={done} />)
+    await escCloses("Couldn't load this request's headcount.")
+  })
+})

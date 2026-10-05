@@ -155,11 +155,24 @@ function Note({
   children: ReactNode
   onBack: () => void
 }) {
+  // As FormShell: Esc is heard on the box, so its Back takes focus as it opens.
+  const back = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    back.current?.focus()
+  }, [])
   return (
     <EditorBox head={head}>
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      <div
+        className="flex flex-wrap items-center gap-2 text-[13px]"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            onBack()
+          }
+        }}
+      >
         <span className="text-muted-foreground">{children}</span>
-        <button type="button" className={HH_BUTTON} onClick={onBack}>
+        <button ref={back} type="button" className={HH_BUTTON} onClick={onBack}>
           Back
         </button>
       </div>
