@@ -47,6 +47,10 @@ export function HoldActions({
     !UNRELEASABLE_CODES.has(code) &&
     request.row.holds.some((hold) => hold.code === code && hold.severity === 'hold')
 
+  // Item 4c (owner ruling 10-05): releasing a revived duplicate's hold keeps the request, and its
+  // button and box say so (main's ruling 10-05). The write is the same release either way.
+  const keeps = code === 'duplicate_survivor_withdrawn'
+
   if (open) {
     return code === 'manual_hold' ? (
       <ReasonForm
@@ -60,9 +64,9 @@ export function HoldActions({
       />
     ) : (
       <ReasonForm
-        head="Releasing the hold"
-        label="Release note"
-        submitLabel="Release the Hold"
+        {...(keeps
+          ? { head: 'Keeping this request', label: 'Reason', submitLabel: 'Keep This Request' }
+          : { head: 'Releasing the hold', label: 'Release note', submitLabel: 'Release the Hold' })}
         onSubmit={(note) =>
           release.mutateAsync({ requestId, body: { code, released: true, note } }).then(close)
         }
@@ -86,8 +90,7 @@ export function HoldActions({
       )}
       {releasable && (
         <button type="button" className={HH_BUTTON} onClick={() => setOpen(true)}>
-          {/* Item 4c (owner ruling 10-05): releasing a revived duplicate's hold keeps it. */}
-          {code === 'duplicate_survivor_withdrawn' ? 'Keep This Request…' : 'Release…'}
+          {keeps ? 'Keep This Request…' : 'Release…'}
         </button>
       )}
       {after}

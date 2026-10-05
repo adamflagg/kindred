@@ -70,7 +70,12 @@ describe('HoldActions (Decision 25)', () => {
     expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Keep the Other/ })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Keep This Request…' }))
-    await userEvent.type(screen.getByLabelText('Release note'), 'The family re-applied{Enter}')
+    // Its box says keeping, not releasing (main's ruling 10-05): the same write underneath.
+    expect(screen.getByText('Keeping this request')).toBeInTheDocument()
+    expect(screen.queryByText('Releasing the hold')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Keep This Request' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Release the Hold' })).toBeNull()
+    await userEvent.type(screen.getByLabelText('Reason'), 'The family re-applied{Enter}')
     expect(release).toHaveBeenCalledWith({
       requestId: 'reqemma00000001',
       body: { code: 'duplicate_survivor_withdrawn', released: true, note: 'The family re-applied' },
