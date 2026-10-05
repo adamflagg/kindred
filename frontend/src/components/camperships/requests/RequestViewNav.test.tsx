@@ -340,13 +340,48 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
     expect(screen.queryByTestId('strip-folded')).toBeNull()
   })
 
+  it("takes the nav's padding and gaps and the group's border, padding and gap off the badges' room", () => {
+    // Real CSS (jsdom computes none): nav padding 4 + 4, gap 8 between lenses, pipeline and group;
+    // group border 1, padding 8, gap 4 between badges. Room = width − 8 − 150 − 500 − 16 − 1 − 8 =
+    // width − 683; five badges need 500 + 4 × 4 = 516, so 1199 is the exact edge.
+    const realStyle = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = realStyle(element, pseudo)
+      const html = element as HTMLElement
+      const set: Record<string, string> =
+        html.tagName === 'NAV'
+          ? { paddingLeft: '4px', paddingRight: '4px', columnGap: '8px' }
+          : html.dataset['testid'] === 'strip-exceptions'
+            ? { borderLeftWidth: '1px', paddingLeft: '8px', columnGap: '4px' }
+            : {}
+      return new Proxy(style, {
+        get: (target, key) => {
+          if (typeof key === 'string' && key in set) return set[key]
+          const value: unknown = Reflect.get(target, key, target)
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value
+        },
+      })
+    })
+    navWidth = 1199
+    strip()
+    expect(shownBadges()).toHaveLength(5)
+    expect(chip()).toBeNull()
+    resize(1198) // one pixel short: four badges and the chip (400 + 40 + 4 × 4 = 456 ≤ 515)
+    expect(shownBadges()).toHaveLength(4)
+    expect(chip()).toHaveTextContent('+1')
+  })
+
   it('opens a folded view through onOpen like any badge, and closes the list', () => {
     const onOpen = vi.fn()
     navWidth = 1000
     strip({ onOpen })
     fireEvent.click(chip() as HTMLElement)
     const list = screen.getByTestId('strip-folded')
-    fireEvent.click(within(list).getByRole('link', { name: /^Cancelled: give a reason/ }))
+    const folded = within(list).getByRole('link', { name: /^Cancelled: give a reason/ })
+    // A real press sends mousedown first: a press inside the list must not count as outside.
+    fireEvent.mouseDown(folded)
+    expect(screen.getByTestId('strip-folded')).toBeInTheDocument()
+    fireEvent.click(folded)
     expect(onOpen).toHaveBeenCalledWith('/s/cancel-reason')
     expect(screen.queryByTestId('strip-folded')).toBeNull()
   })
