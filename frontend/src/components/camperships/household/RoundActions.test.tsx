@@ -401,50 +401,34 @@ describe('RoundChecklist (§5.2; D47)', () => {
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
   })
 
-  it("names the figure undoing returns to when the posted amount differs from today's (owner-approved)", async () => {
-    const moved = householdRequest(
-      gridRow({
-        rounds: [
-          roundOut(1, 'posted', {
-            decided: 1600,
-            posted: 1800,
-            posted_on: '2027-03-09',
-            would_change_by: -200,
-          }),
-        ],
-      })
-    )
-    render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
-    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(
-      screen.getByText(
-        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; marking it posted again locks that."
+  // Ruled 2026-10-05: no "Undoing returns Round N to today's $X" line, with no replacement. The
+  // server sends decided = posted = the locked amount on a posted round, so it could never show;
+  // the server-side would-change calculation is being deleted too.
+  it.each([
+    ['a posted round', false],
+    ['a reversed round', true],
+  ])(
+    'says only "a tick made by mistake" on %s even when decided and posted differ',
+    async (_label, clawedBack) => {
+      const moved = householdRequest(
+        gridRow({
+          rounds: [
+            roundOut(1, 'posted', {
+              decided: 1600,
+              posted: 1800,
+              posted_on: '2027-03-09',
+              clawed_back: clawedBack,
+            }),
+          ],
+        })
       )
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
-  })
-
-  it('names it on a reversed round too when the figures differ', async () => {
-    const reversed = householdRequest(
-      gridRow({
-        rounds: [
-          roundOut(1, 'posted', {
-            decided: 1600,
-            posted: 1800,
-            posted_on: '2027-03-09',
-            clawed_back: true,
-          }),
-        ],
-      })
-    )
-    render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
-    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(
-      screen.getByText(
-        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; marking it posted again locks that."
-      )
-    ).toBeInTheDocument()
-  })
+      render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
+      await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+      expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+      expect(screen.queryByText(/Undoing returns/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/today's/)).not.toBeInTheDocument()
+    }
+  )
 
   // Ruled 2026-10-05: the grid never offers Accepted on a reversed round (ticks.ts acceptedTarget),
   // so neither does the household page; unticking one already accepted stays open.

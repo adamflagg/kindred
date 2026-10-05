@@ -74,17 +74,11 @@ const asRound = (n: number): 1 | 2 | 3 | null => (n === 1 || n === 2 || n === 3 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Couldn't save")
 
 /**
- * What the undo form says first (B22, owner sitting B: no "a posted amount stands" sentence, and no
- * shortened variant for rules-moved rounds). Where today's decided figure differs from the posted
- * one, undoing re-prices the round, so the figure it returns to is named (owner-approved wording).
+ * What the undo form says first (B22, owner sitting B: no "a posted amount stands" sentence; ruled
+ * 2026-10-05: no "Undoing returns Round N to today's $X" line either, as a posted round's decided
+ * figure is its locked amount).
  */
-function undoHint(line: RoundLine): string {
-  const mistake = 'For a tick made by mistake.'
-  if (line.decided !== null && line.amount !== null && line.decided !== line.amount) {
-    return `${mistake} Undoing returns Round ${String(line.round)} to today's ${formatMoney(line.decided)}; marking it posted again locks that.`
-  }
-  return mistake
-}
+const UNDO_HINT = 'For a tick made by mistake.'
 
 /**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
@@ -154,7 +148,7 @@ export function RoundChecklist({
           head={`Undoing Posted · Round ${String(line.round)}`}
           hint={
             <>
-              <span className="block">{undoHint(line)}</span>
+              <span className="block">{UNDO_HINT}</span>
               <span className="block">{UNDO_WARNING}</span>
             </>
           }
