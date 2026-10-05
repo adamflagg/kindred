@@ -125,6 +125,29 @@ class CorrectionCreate(BaseModel):
     request_id: str = Field(default="", max_length=15)
 
 
+class UseFormIn(BaseModel):
+    """Use X's Form (owner-approved, household-v3 section 3): apply one sibling's form to every answer the household's
+    forms disagree on. `person_cm_id` names the form; the reason is optional, as a correction's is (B30)."""
+
+    person_cm_id: int = Field(gt=0)
+    reason: str = Field(default="", max_length=2000)
+
+
+class UseFormOut(BaseModel):
+    """What a Use X's Form wrote: one operation of ordinary corrections (`applied`, as POST …/corrections returns
+    them). `skipped_blank`: disagreeing answers this form left blank (no write). `unchanged`: answers already corrected
+    to this form's value (no write). `still_disagreeing`: disagreeing answers still not corrected afterwards; the
+    income hold clears once no income answer is left in it."""
+
+    household_cm_id: int
+    person_cm_id: int
+    operation_id: str  # "" when every answer was already at this form's value and nothing was written
+    applied: list[CorrectionOut]
+    skipped_blank: list[str]
+    unchanged: list[str]
+    still_disagreeing: list[str]
+
+
 class SessionResolve(BaseModel):
     session_cm_id: int = Field(gt=0)
     reason: str = Field(min_length=1, max_length=2000)

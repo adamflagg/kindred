@@ -17754,6 +17754,62 @@ export type UpdateScenarioRequest = {
 }
 
 /**
+ * UseFormIn
+ *
+ * Use X's Form (owner-approved, household-v3 section 3): apply one sibling's form to every answer the household's
+ * forms disagree on. `person_cm_id` names the form; the reason is optional, as a correction's is (B30).
+ */
+export type UseFormIn = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Reason
+   */
+  reason?: string
+}
+
+/**
+ * UseFormOut
+ *
+ * What a Use X's Form wrote: one operation of ordinary corrections (`applied`, as POST …/corrections returns
+ * them). `skipped_blank`: disagreeing answers this form left blank (no write). `unchanged`: answers already corrected
+ * to this form's value (no write). `still_disagreeing`: disagreeing answers still not corrected afterwards; the
+ * income hold clears once no income answer is left in it.
+ */
+export type UseFormOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * Applied
+   */
+  applied: Array<CorrectionOut>
+  /**
+   * Skipped Blank
+   */
+  skipped_blank: Array<string>
+  /**
+   * Unchanged
+   */
+  unchanged: Array<string>
+  /**
+   * Still Disagreeing
+   */
+  still_disagreeing: Array<string>
+}
+
+/**
  * ValidateBunkingRequest
  *
  * Request to validate bunking assignments.
@@ -23091,6 +23147,42 @@ export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrecti
 
 export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponse =
   AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses[keyof AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses]
+
+export type UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostData = {
+  body: UseFormIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/applications/{year}/{household_cm_id}/use-form'
+}
+
+export type UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostError =
+  UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostErrors[keyof UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostErrors]
+
+export type UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: UseFormOut
+}
+
+export type UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostResponse =
+  UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostResponses[keyof UseAidFormApiFinancialAidApplicationsYearHouseholdCmIdUseFormPostResponses]
 
 export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostData = {
   body: SessionResolve

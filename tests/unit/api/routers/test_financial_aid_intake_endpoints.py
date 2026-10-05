@@ -24,6 +24,7 @@ from api.schemas.financial_aid_intake import (
     CorrectionOut,
     RequestOut,
     RequestQueueResponse,
+    UseFormOut,
 )
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
@@ -74,6 +75,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
         {"field": "total_gross_income", "new_value": "1", "reason": "r"},
         "casework",
     ),
+    ("POST", "/api/financial-aid/applications/2027/1000001/use-form", {"person_cm_id": 1000011}, "casework"),
     ("POST", f"/api/financial-aid/requests/{RID}/session", {"session_cm_id": 1000101, "reason": "r"}, "casework"),
     (
         "POST",
@@ -140,6 +142,17 @@ def _stub() -> MagicMock:
             created="2027-01-01",
         )
     )
+    stub.use_form = AsyncMock(
+        return_value=UseFormOut(
+            household_cm_id=1000001,
+            person_cm_id=1000011,
+            operation_id="op0000000000001",
+            applied=[],
+            skipped_blank=[],
+            unchanged=[],
+            still_disagreeing=[],
+        )
+    )
     stub.resolve_session = AsyncMock(return_value=REQUEST)
     stub.mark_duplicate = AsyncMock(return_value=REQUEST)
     stub.set_headcount = AsyncMock(return_value=REQUEST)
@@ -178,6 +191,7 @@ def test_every_handler_declares_its_permission() -> None:
         (r.get_aid_application, Permission.FINANCIAL_AID_VIEW),
         (r.list_aid_requests, Permission.FINANCIAL_AID_VIEW),
         (r.add_aid_correction, Permission.FINANCIAL_AID_CASEWORK),
+        (r.use_aid_form, Permission.FINANCIAL_AID_CASEWORK),
         (r.resolve_aid_request_session, Permission.FINANCIAL_AID_CASEWORK),
         (r.mark_aid_request_duplicate, Permission.FINANCIAL_AID_CASEWORK),
         (r.set_aid_request_headcount, Permission.FINANCIAL_AID_CASEWORK),
@@ -299,3 +313,26 @@ def test_a_correction_may_omit_its_reason_but_not_overrun_it() -> None:
         SessionResolve(session_cm_id=1000101, reason="")
     with pytest.raises(ValidationError):
         DuplicateMark(duplicate_of="req000000000002", reason="")
+
+
+def test_using_a_form_reaches_the_service_with_the_callers_email_and_an_optional_reason() -> None:
+    """Use X's Form (household-v3 section 3): the person whose form to use, an optional reason (as B30), the caller."""
+    stub = _stub()
+    with _client(persona_user(PERSONA_REGISTRAR), stub) as client:
+        ok = client.post("/api/financial-aid/applications/2027/1000001/use-form", json={"person_cm_id": 1000011})
+        bad = client.post("/api/financial-aid/applications/2027/1000001/use-form", json={"person_cm_id": 0})
+        long = client.post(
+            "/api/financial-aid/applications/2027/1000001/use-form",
+            json={"person_cm_id": 1000011, "reason": "x" * 2001},
+        )
+    assert (ok.status_code, bad.status_code, long.status_code) == (201, 422, 422)
+    assert ok.json()["operation_id"] == "op0000000000001"
+    stub.use_form.assert_awaited_once_with(2027, 1000001, 1000011, "", persona_user(PERSONA_REGISTRAR).email)
+
+
+def test_a_use_that_cannot_apply_is_a_422_with_its_message() -> None:
+    stub = _stub()
+    stub.use_form = AsyncMock(side_effect=CorrectionError("nothing on this application disagrees"))
+    with _client(persona_user(PERSONA_FINANCE), stub) as client:
+        refused = client.post("/api/financial-aid/applications/2027/1000001/use-form", json={"person_cm_id": 1000011})
+    assert (refused.status_code, refused.json()["detail"]) == (422, "nothing on this application disagrees")
