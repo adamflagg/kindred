@@ -279,7 +279,7 @@ def _facts(line: CampLine, candidate: Candidate, alone: bool) -> tuple[Evidence,
     if line.person_cm_id > 0 and line.person_cm_id == candidate.person_cm_id:
         facts.append(Evidence("person", "CampMinder posted it to this camper"))
     if line.post_date is not None and camp_date(line.post_date) in candidate.ticked_on:
-        facts.append(Evidence("date", "posted the day this request was ticked Posted"))
+        facts.append(Evidence("date", "posted the day Posted was checked on this request"))
     if alone:
         facts.append(Evidence("only_request", "the only request this family has"))
     return tuple(facts)

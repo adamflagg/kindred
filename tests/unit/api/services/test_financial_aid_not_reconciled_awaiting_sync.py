@@ -22,7 +22,7 @@ from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _service
 from tests.unit.api.services.test_financial_aid_today import _inputs, _line
 
-PENDING = "Ticked today; tonight's sync checks it."
+PENDING = "Checked today; tonight's sync confirms it."
 NIGHT_AFTER = T0 + timedelta(hours=16)  # the ledger sync after the Mar 9 tick
 
 

@@ -1,10 +1,13 @@
-"""Owner ruling 2026-10-05: nobody at camp calls it Kindred, so no Camperships string staff can read names it. It
-says "the dashboard" ("The dashboard" opening a sentence). Identifiers, enum values, log keys, comments and
-docstrings keep the name; only string values that reach a screen change."""
+"""Owner ruling 2026-10-05, plain staff words: nobody at camp calls it Kindred, so no Camperships string staff can
+read names it: it says "the dashboard" ("The dashboard" opening a sentence). Nor does one say "tick": Posted and
+Accepted are checkboxes, so a round is "checked Posted" and "unchecked". Identifiers, enum values, log keys, comments
+and docstrings keep their words; only string values that reach a screen change."""
 
 from __future__ import annotations
 
 import ast
+import re
+from collections.abc import Callable
 from pathlib import Path
 
 from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED
@@ -31,7 +34,19 @@ def _docstrings(tree: ast.AST) -> set[int]:
     }
 
 
-def _strings_naming_kindred() -> list[str]:
+_IDENTIFIER = re.compile(r"[a-z_]+")  # an enum value or a key ("tick", "unticked", "ticks"), never prose
+_TICK = re.compile(r"\b(un-?)?tick", re.IGNORECASE)
+
+
+def _naming_kindred(text: str) -> bool:
+    return "Kindred" in text
+
+
+def _saying_tick(text: str) -> bool:
+    return _TICK.search(text) is not None and _IDENTIFIER.fullmatch(text) is None
+
+
+def _strings(says: Callable[[str], bool]) -> list[str]:
     found: list[str] = []
     for pattern in CAMPERSHIPS:
         for path in sorted(ROOT.glob(pattern)):
@@ -42,7 +57,7 @@ def _strings_naming_kindred() -> list[str]:
                 for node in ast.walk(tree)
                 if isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
-                and "Kindred" in node.value
+                and says(node.value)
                 and id(node) not in skip
             )
     return found
@@ -55,7 +70,19 @@ def test_the_scan_reads_the_camperships_server() -> None:
 
 
 def test_no_camperships_server_string_names_kindred() -> None:
-    assert _strings_naming_kindred() == []
+    assert _strings(_naming_kindred) == []
+
+
+def test_no_camperships_server_string_says_tick() -> None:
+    assert _strings(_saying_tick) == []
+
+
+def test_the_tick_scan_skips_keys_and_catches_prose() -> None:
+    assert not _saying_tick("unticked")
+    assert not _saying_tick("ticks")
+    assert _saying_tick("Untick Accepted on Round ")
+    assert _saying_tick("You un-ticked this round")
+    assert _saying_tick("Ticked today")
 
 
 def test_the_refusals_and_labels_say_the_dashboard() -> None:

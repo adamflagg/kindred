@@ -2699,7 +2699,7 @@ class FinancialAidDecisionsService:
         if not state.posted:
             return self._unchanged(year)
         if state.accepted:
-            raise DecisionRefusedError(f"Untick Accepted on Round {n} first")
+            raise DecisionRefusedError(f"Uncheck Accepted on Round {n} first")
         for m in range(n + 1, 4):
             later = rounds.get(m)
             if later is not None and later.posted:
@@ -2755,7 +2755,8 @@ class FinancialAidDecisionsService:
                 return await self._ledger_ticks_once(year)
             except AidWriteConflictError as exc:
                 raise DecisionRefusedError(
-                    f"the {year} rules changed while the ledger tick ran, twice; the next ledger sync ticks these rounds"
+                    f"the {year} rules changed while the ledger sync checked Posted, twice; the next ledger sync "
+                    "checks these rounds"
                 ) from exc
 
     async def _ledger_ticks_once(self, year: int) -> LedgerTicksOut:
@@ -2774,7 +2775,7 @@ class FinancialAidDecisionsService:
                 year=year,
                 ticked=0,
                 operation_id="",
-                skipped=f"{year} predates Posted ticks (the first ticked season is {FIRST_TICKED_SEASON})",
+                skipped=f"{year} predates the ledger checking Posted, which starts in {FIRST_TICKED_SEASON}",
             )
         season = await self.season(year)
         if season.rules is None:
@@ -2791,7 +2792,7 @@ class FinancialAidDecisionsService:
             LEDGER_ACTOR,
             lock_source="ledger",
             note=lambda tick: (
-                f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request"
+                f"The ledger sync checked Posted: CampMinder shows {dollars(tick.in_campminder)} on this request"
             ),
         )
         # Locks first: March's bulk import can pass one batch, so this may commit in chunks, and the
@@ -2802,7 +2803,9 @@ class FinancialAidDecisionsService:
             # A refused batch committed nothing, but a transport failure's may have: either way the
             # next run re-reads. A failure after an earlier chunk committed is not a BatchError
             # (AidOperationPartiallyCommittedError): it goes to the global 500 (change_log.py).
-            raise DecisionRefusedError(f"the ledger tick for {year} may not have been written: {exc}") from exc
+            raise DecisionRefusedError(
+                f"the ledger's Posted checks for {year} may not have been written: {exc}"
+            ) from exc
         return LedgerTicksOut(
             year=year,
             ticked=len(writes),

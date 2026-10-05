@@ -662,7 +662,7 @@ NOTE_NOT_TICKED: Final = "in_campminder_not_ticked"
 # tonight's sync, which no sync has failed yet.
 _NOT_YET_FAILED: Final[frozenset[ConfirmationStatus]] = frozenset({"confirmed", "awaiting_sync"})
 # V1: the CM ✓ "pending" line on a posted round whose hand tick awaits tonight's sync (the approved wording).
-AWAITING_SYNC_TEXT: Final = "Ticked today; tonight's sync checks it."
+AWAITING_SYNC_TEXT: Final = "Checked today; tonight's sync confirms it."
 
 
 @dataclass(frozen=True)

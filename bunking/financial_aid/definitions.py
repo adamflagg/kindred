@@ -41,9 +41,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="posted",
         term="Posted",
         text=(
-            "Posted: the round's Posted tick and the amount it locked. Posting in CampMinder is the offer. The "
-            "tick is set by the registrar after entering the award in CampMinder, or by the overnight ledger "
-            'sync when the registrar didn\'t. There is one "Posted", never two figures.'
+            "Posted: the round's Posted checkbox and the amount it locked. Posting in CampMinder is the offer. The "
+            "registrar checks it after entering the award in CampMinder, or the overnight ledger sync does when the "
+            'registrar didn\'t. There is one "Posted", never two figures.'
         ),
         spec="§5.1",
         rulings=("D47", "D51", "D52", "D59", "D78"),
@@ -53,7 +53,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Confirmation",
         text=(
             "Confirmation, beside every Posted figure: pending, then confirmed (date); "
-            '"CampMinder shows $X · short $Y" or "· over $Y" when it disagrees; not in CampMinder (ticked, '
+            '"CampMinder shows $X · short $Y" or "· over $Y" when it disagrees; not in CampMinder (checked, '
             "nothing posted after the sync). It is computed by net-total reconciliation of live camp-aid lines "
             "placed on the request against the locked amount, at family level where a line can't be placed on "
             "a request, and per payer share. Exact to the cent."
@@ -106,7 +106,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="accepted",
         term="Accepted",
         text=(
-            "Accepted: the locked amounts of posted rounds whose Accepted tick is set, less any round whose "
+            "Accepted: the locked amounts of posted rounds whose Accepted checkbox is checked, less any round whose "
             "clawback has posted. Shown, never subtracted."
         ),
         spec="§5.3",
@@ -234,8 +234,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="awarded",
         term="Awarded",
         text=(
-            "Awarded = offered = Posted: a round counts as awarded once it is posted (ticked or auto-ticked), net of "
-            "any clawback, on a live request (not cancelled, withdrawn or a pending duplicate). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
+            "Awarded = offered = Posted: a round counts as awarded once it is posted (checked by hand or by the sync), "
+            "net of any clawback, on a live request (not cancelled, withdrawn or a pending duplicate). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
             "from the request's status: a cancelled request leaves it at once, while Rounds & budget's Posted keeps "
             "its money until the reversal posts."
         ),
@@ -518,7 +518,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Not yet in CampMinder",
         text=(
             "Not yet in CampMinder: a candidate request's locked total, plus the decided amounts of its rounds waiting "
-            "to be ticked (oldest first, up to the first round that can't be ticked), less the live camp-aid money "
+            "for Posted to be checked (oldest first, up to the first round that can't be checked), less the live "
+            "camp-aid money "
             "already placed on it. It is what To place weighs a line "
             "against; it redefines nothing."
         ),
@@ -538,12 +539,12 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     ),
     Definition(
         key="placement_tick",
-        term="A placement's tick",
+        term="Placing checks Posted",
         text=(
-            "A placement's tick: placing a line ticks Posted on the rounds the placed money covers in full, oldest "
+            "Placing checks Posted: placing a line checks Posted on the rounds the placed money covers in full, oldest "
             "first, at their decided amounts as of the posting date. If anything that prices the request was "
-            "recorded since that posting, the money is still placed but the automatic tick is refused, and the "
-            "registrar ticks by hand. The tick never reads awaiting tonight's sync: the money is already in CampMinder."
+            "recorded since that posting, the money is still placed but Posted is not checked automatically, and the "
+            "registrar checks it by hand. It never reads awaiting tonight's sync: the money is already in CampMinder."
         ),
         spec="§5.1",
         rulings=("D81", "D146", "D151", "D152"),

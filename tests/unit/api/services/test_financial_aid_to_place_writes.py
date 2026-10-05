@@ -168,7 +168,7 @@ async def test_a_round_a_person_unticked_is_left_for_a_person() -> None:
     out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
     assert out.ticked == []
     assert [x.why for x in out.left_to_tick] == [
-        "You un-ticked this round: mark it posted again by hand if that is right"
+        "You unchecked Posted on this round: mark it posted again by hand if that is right"
     ]
 
 
