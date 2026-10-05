@@ -19,7 +19,6 @@ import {
   cardShares,
   earlierReceipts,
   expectedWords,
-  firstCamperOf,
   householdCsvName,
   householdChipName,
   householdName,
@@ -356,11 +355,6 @@ describe('words', () => {
 
   it('words a note key (review M3)', () => {
     expect(noteWords('special_circumstances')).toBe('Special financial circumstances')
-  })
-
-  it('names the camper a household card opens in CampMinder (M12)', () => {
-    expect(firstCamperOf(PAGE, 1000001)).toEqual({ personCmId: 1000002, name: 'Emma Johnson' })
-    expect(firstCamperOf(PAGE, 9999999)).toBeNull()
   })
 
   it('names an Expected grant without a funder (Decision 21)', () => {

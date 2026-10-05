@@ -3,24 +3,21 @@ import { PILL } from '../kit/kitStyles'
 import { Money } from '../kit/MoneyText'
 import { HouseholdChip } from '../kit/Pills'
 import {
-  campMinderPersonUrl,
   cardConfirmation,
   cardContactLine,
   cardPlaceLine,
   cardShares,
-  firstCamperOf,
   householdChipName,
 } from './householdModel'
 import { HH_HOUSEHOLD_CARD, HH_NOTE, stripeOf } from './householdStyles'
-import { CampMinderLink } from './RequestCard'
 
 /**
- * One household's card (D14, D15; the mock's .hhcard): its chip with the CampMinder Household link
- * at the right, the adults in bold, "household · city", "first adult · phone · email", then its
- * money with the confirmation as pills. A missing field drops out with its separator.
+ * One household's card (D14, D15; the mock's .hhcard): its chip, the adults in bold, "household · city", "first adult · phone · email", then its
+ * money with the confirmation as pills. A missing field drops out with its separator. No CampMinder
+ * link: CampMinder has no household record, only each camper's Person record, which the request cards
+ * link (Decision 2, owner 2026-10-05).
  */
 function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAidHouseholdPage }) {
-  const camper = firstCamperOf(page, card.household_cm_id)
   const contact = cardContactLine(card)
   const confirmation = cardConfirmation(card)
   return (
@@ -32,15 +29,6 @@ function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAid
         <HouseholdChip index={card.chip} name={householdChipName(page, card.household_cm_id)} />
         {card.household_cm_id === page.household_cm_id && (
           <span className={HH_NOTE}>opened from</span>
-        )}
-        {camper !== null && (
-          <span className="ml-auto">
-            {/* The href is the first camper's Person record, so say "Person" until CampMinder's household URL is known (ruled 2026-10-05). */}
-            <CampMinderLink
-              href={campMinderPersonUrl(camper.personCmId, page.year)}
-              label="Person"
-            />
-          </span>
         )}
       </div>
       {card.adults.length > 0 && <div className="mt-1 font-bold">{card.adults.join(' · ')}</div>}

@@ -208,17 +208,6 @@ export function camperOf(request: ApiAidHouseholdRequest): string {
   return request.row.camper_name === '' ? 'Household request' : request.row.camper_name
 }
 
-/** The person to open in CampMinder for a household card: its first camper on the page, by name (Decision 20; M12). */
-export function firstCamperOf(
-  page: ApiAidHouseholdPage,
-  householdCmId: number
-): { readonly personCmId: number; readonly name: string } | null {
-  const row = page.requests.find(
-    (r) => r.row.household_cm_id === householdCmId && r.row.person_cm_id > 0
-  )?.row
-  return row ? { personCmId: row.person_cm_id, name: row.camper_name } : null
-}
-
 /** CampMinder's person record, the one CampMinder link the app already uses. */
 export function campMinderPersonUrl(personCmId: number, year: number): string {
   return `https://system.campminder.com/ui/person/Record#${String(personCmId)}:${String(year)}`

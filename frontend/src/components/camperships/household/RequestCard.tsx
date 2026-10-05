@@ -35,11 +35,11 @@ import {
 import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE, HH_TOGGLE } from './householdStyles'
 
 /**
- * A CampMinder link (N7): "Person" or "Household" in Title Case, drawn as the summer camper panel
+ * A CampMinder link (N7): "Person" in Title Case (CampMinder has no household record; Decision 2), drawn as the summer camper panel
  * draws its CampMinder link (CamperDetailsPanel: the CM icon, the label, the external-link glyph).
  * It opens CampMinder in a new tab.
  */
-export function CampMinderLink({ href, label }: { href: string; label: 'Person' | 'Household' }) {
+export function CampMinderLink({ href, label }: { href: string; label: 'Person' }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className={HH_LINK_CM}>
       {/* Hidden from the link's name, so it reads as its label alone. */}

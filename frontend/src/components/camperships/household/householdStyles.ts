@@ -44,7 +44,7 @@ export const HH_NOTE = 'text-muted-foreground text-[12.5px]'
 /** A forest text link with a visible dotted underline (the mock's .lnk); no hover reveal. */
 export const HH_LINK =
   'text-forest-700 dark:text-forest-300 border-forest-700 dark:border-forest-300 cursor-pointer border-b border-dotted text-[12.5px] font-semibold whitespace-nowrap'
-/** A CampMinder "Person" / "Household" link (N7; the mock's .cml): forest-700 600 12.5px, the CM icon first. */
+/** A CampMinder "Person" link (N7; the mock's .cml): forest-700 600 12.5px, the CM icon first. */
 export const HH_LINK_CM =
   'text-forest-700 dark:text-forest-300 inline-flex items-center gap-[3px] align-middle text-[12.5px] font-semibold whitespace-nowrap'
 /** A forest toggle with no underline (the mock's .fold / .more): "Show the receipt ▾", "N more answers match ▸". */
