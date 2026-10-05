@@ -17,6 +17,7 @@ import type {
   ApiAidReceipt,
 } from '../../../types/api-types'
 import { answerValue } from './householdModel'
+import { formatMoney } from '../kit/money'
 
 type Flag = ApiAidIncome['flags'][number]
 type TraceStep = ApiAidReceipt['trace'][number]
@@ -193,15 +194,12 @@ export function grantsTabMeta(page: ApiAidHouseholdPage): { words: string; expec
   }
 }
 
-// ── What priced it ─────────────────────────────────────────────────────────
+// ── Last year's line (round 3, section 4 (E)) ──────────────────────────────
 
+/** The two figures the Income tab's last-year line compares, as the page already has them. */
 export interface PricedFacts {
   /** The trace's adjusted household income: the figure the card's sentence names. */
   readonly adjusted: number | null
-  readonly tier: number | null
-  readonly finalTier: number | null
-  /** "rules 2027 v4", from the receipt read. */
-  readonly rules: string | null
   /** The form's prior-year confirmed income, as used. */
   readonly confirmed: number | null
 }
@@ -235,30 +233,47 @@ function pricingReceipt(page: ApiAidHouseholdPage, householdCmId: number): ApiAi
 }
 
 /**
- * The "What priced it" figures (owner kept the card, 10-04), from the payload only: the
- * adjusted income and tier from the household's receipt trace, last year's confirmed income from
- * its answer. A figure the payload lacks is null and its row is left out, never faked. Household
- * size and the form's date are not in the payload, so the card has no rows for them.
+ * The last-year line's figures, from the payload only: this year's adjusted income from the
+ * household's receipt trace, last year's confirmed income from its answer. A figure the payload
+ * lacks is null, never faked.
  */
 export function pricedFacts(page: ApiAidHouseholdPage, income: ApiAidIncome): PricedFacts {
   const receipt = pricingReceipt(page, income.household_cm_id)
   const trace = receipt?.trace ?? []
   const confirmed = numberOf(income.answers.find((a) => a.field === 'income_confirmed')?.effective)
-  return {
-    adjusted: stepValue(trace, 'adjusted_income'),
-    tier: stepValue(trace, 'income_tier'),
-    finalTier: stepValue(trace, 'final_tier'),
-    rules:
-      receipt === null
-        ? null
-        : `rules ${String(receipt.label.season)} v${String(receipt.label.rules_version)}`,
-    confirmed,
-  }
+  return { adjusted: stepValue(trace, 'adjusted_income'), confirmed }
 }
 
-/** "+4%", "−38%", "0%": this year's adjusted income against last year's confirmed. */
-export function pctWords(adjusted: number | null, confirmed: number | null): string | null {
-  if (adjusted === null || confirmed === null || confirmed === 0) return null
-  const pct = Math.round(((adjusted - confirmed) / confirmed) * 100)
-  return `${pct > 0 ? '+' : pct < 0 ? '−' : ''}${String(Math.abs(pct))}%`
+export interface LastYearWords {
+  /** "$96,500": last year's confirmed income. */
+  readonly confirmed: string
+  /** "this year's adjusted is 14% lower"; null with nothing to compare. */
+  readonly compare: string | null
+}
+
+const toCents = (n: number) => Math.round(n * 100)
+
+/**
+ * The Income tab's quiet last-year line (round 3 (E)): last year's confirmed income, and how this
+ * year's adjusted income compares, as a whole percentage of last year's. Rounding: the gap's size
+ * is rounded half away from zero (|gap| × 100 / last year, then Math.round on that non-negative
+ * figure), so a gap reads the same up or down. "The same" is only for figures equal to the cent;
+ * a gap that rounds to 0% says "under 1%" rather than claim none. No line without last year;
+ * only its first half without an adjusted income, or with last year at $0 or below.
+ */
+export function lastYearWords(
+  adjusted: number | null,
+  confirmed: number | null
+): LastYearWords | null {
+  if (confirmed === null) return null
+  const words = formatMoney(confirmed)
+  if (adjusted === null || confirmed <= 0) return { confirmed: words, compare: null }
+  const gap = toCents(adjusted) - toCents(confirmed)
+  if (gap === 0) return { confirmed: words, compare: "this year's adjusted is the same" }
+  const pct = Math.round((Math.abs(gap) * 100) / toCents(confirmed))
+  const way = gap > 0 ? 'higher' : 'lower'
+  return {
+    confirmed: words,
+    compare: `this year's adjusted is ${pct === 0 ? 'under 1' : String(pct)}% ${way}`,
+  }
 }

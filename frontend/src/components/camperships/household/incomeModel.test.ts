@@ -10,7 +10,7 @@ import {
   moreWords,
   openFlagCount,
   otherFlags,
-  pctWords,
+  lastYearWords,
   pricedFacts,
 } from './incomeModel'
 import {
@@ -301,40 +301,33 @@ describe('grantsTabMeta', () => {
   })
 })
 
-describe('pricedFacts: "What priced it", from the payload only', () => {
-  it("reads the pricing figures from the household's receipt trace, and last year's from its answer", () => {
+describe("pricedFacts: last year's line, from the payload only", () => {
+  it("reads this year's adjusted income from the household's receipt trace, and last year's from its answer", () => {
     const facts = pricedFacts(PLAIN_PAGE, PLAIN_PAGE.incomes[0]!)
-    expect(facts.adjusted).toBe(120000)
-    expect(facts.tier).toBe(5)
-    expect(facts.finalTier).toBe(5)
-    expect(facts.rules).toBe('rules 2027 v1')
-    expect(facts.confirmed).toBe(81000)
+    expect(facts).toEqual({ adjusted: 120000, confirmed: 81000 })
   })
 
   it('prefers a live receipt over a locked one', () => {
+    const at = (round: number, kind: 'live' | 'locked', adjusted: string) => ({
+      ...receiptOut(round, { kind }),
+      trace: receiptOut(round).trace.map((s) =>
+        s.key === 'adjusted_income' ? { ...s, value: adjusted } : s
+      ),
+    })
     const page = householdPage({
       requests: [
         householdRequest(ROW_EMMA, {
-          receipts: [
-            receiptOut(3, { kind: 'locked', rules_version: 3 }),
-            receiptOut(2, { kind: 'live', rules_version: 4 }),
-          ],
+          receipts: [at(3, 'locked', '70000.00'), at(2, 'live', '90000.00')],
         }),
       ],
     })
-    expect(pricedFacts(page, income()).rules).toBe('rules 2027 v4')
+    expect(pricedFacts(page, income()).adjusted).toBe(90000)
   })
 
   it('has nothing to say for a household with no priced request, and no confirmed income', () => {
     const page = householdPage({ requests: [] })
     const facts = pricedFacts(page, income({ answers: [answer('income_confirmed', '')] }))
-    expect(facts).toEqual({
-      adjusted: null,
-      tier: null,
-      finalTier: null,
-      rules: null,
-      confirmed: null,
-    })
+    expect(facts).toEqual({ adjusted: null, confirmed: null })
   })
 
   it("reads each household's own receipt on a two-household page", () => {
@@ -346,12 +339,33 @@ describe('pricedFacts: "What priced it", from the payload only', () => {
   })
 })
 
-describe('pctWords: this year against last', () => {
-  it('signs the difference, and has none to give without both figures', () => {
-    expect(pctWords(84200, 81000)).toBe('+4%')
-    expect(pctWords(84200, 136000)).toBe('−38%')
-    expect(pctWords(81000, 81000)).toBe('0%')
-    expect(pctWords(null, 81000)).toBeNull()
-    expect(pctWords(84200, 0)).toBeNull()
+describe("lastYearWords: last year's confirmed income against this year's adjusted (round 3 (E))", () => {
+  it('says how much lower or higher, a whole percentage of last year', () => {
+    expect(lastYearWords(82900, 96500)).toEqual({
+      confirmed: '$96,500',
+      compare: "this year's adjusted is 14% lower",
+    })
+    expect(lastYearWords(61200, 58000)?.compare).toBe("this year's adjusted is 6% higher")
+  })
+
+  it('rounds half away from zero either way, so the same gap reads the same up or down', () => {
+    // 14.5% of $100,000 is $14,500.
+    expect(lastYearWords(114500, 100000)?.compare).toBe("this year's adjusted is 15% higher")
+    expect(lastYearWords(85500, 100000)?.compare).toBe("this year's adjusted is 15% lower")
+  })
+
+  it('says the same only when the figures are equal, never for a gap that rounds to 0%', () => {
+    expect(lastYearWords(81000, 81000)?.compare).toBe("this year's adjusted is the same")
+    expect(lastYearWords(81200, 81000)?.compare).toBe("this year's adjusted is under 1% higher")
+    expect(lastYearWords(80800, 81000)?.compare).toBe("this year's adjusted is under 1% lower")
+  })
+
+  it('has only the first half without an adjusted income, or with nothing confirmed to compare to', () => {
+    expect(lastYearWords(null, 96500)).toEqual({ confirmed: '$96,500', compare: null })
+    expect(lastYearWords(84200, 0)).toEqual({ confirmed: '$0', compare: null })
+  })
+
+  it('has no line without last year', () => {
+    expect(lastYearWords(84200, null)).toBeNull()
   })
 })

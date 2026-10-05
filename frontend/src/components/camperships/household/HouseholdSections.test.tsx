@@ -114,30 +114,27 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
   })
 })
 
-describe('IncomePanel, one household: "What priced it" (owner kept the card)', () => {
-  it('reads the adjusted income, last year, the tier and the rules from the payload', () => {
+const follows = (later: Element, earlier: Element) =>
+  (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+describe('IncomePanel, one household: no "What priced it" (round 3, section 4 (E))', () => {
+  it('draws no "What priced it" card', () => {
     render(<IncomePanel page={PLAIN_PAGE} />)
-    const card = screen.getByTestId('priced')
-    expect(within(card).getByText('What priced it')).toBeInTheDocument()
-    expect(
-      within(card).getByText('Adjusted income (as priced)').nextElementSibling
-    ).toHaveTextContent('$120,000')
-    expect(within(card).getByText("Last year's confirmed").nextElementSibling).toHaveTextContent(
-      '$81,000 +48%'
-    )
-    expect(within(card).getByText('Income tier').nextElementSibling).toHaveTextContent(
-      '5 rules 2027 v1'
-    )
+    expect(screen.queryByTestId('priced')).toBeNull()
+    expect(screen.queryByText('What priced it')).toBeNull()
+    expect(screen.queryByText('Adjusted income (as priced)')).toBeNull()
   })
 
-  it("carries the family's free text", () => {
-    render(<IncomePanel page={PLAIN_PAGE} />)
-    const card = screen.getByTestId('priced')
-    expect(within(card).getByText('Special financial circumstances')).toBeInTheDocument()
-    expect(within(card).getByText('One parent changed jobs in January.')).toBeInTheDocument()
+  it("opens with last year's confirmed income as one quiet line, against this year's adjusted", () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    const line = screen.getByTestId('last-year')
+    expect(line).toHaveTextContent(
+      "Last year: $81,000 confirmed · this year's adjusted is 48% higher"
+    )
+    expect(follows(screen.getByRole('table'), line)).toBe(true)
   })
 
-  it('leaves out a row the payload has no figure for, never faking it', () => {
+  it('says only last year when there is no adjusted income to compare', () => {
     render(
       <IncomePanel
         page={householdPage({
@@ -146,35 +143,73 @@ describe('IncomePanel, one household: "What priced it" (owner kept the card)', (
         })}
       />
     )
-    const card = screen.getByTestId('priced')
-    expect(within(card).queryByText('Adjusted income (as priced)')).toBeNull()
-    expect(within(card).queryByText('Income tier')).toBeNull()
-    expect(within(card).getByText("Last year's confirmed").nextElementSibling).toHaveTextContent(
-      '$81,000'
+    expect(screen.getByTestId('last-year')).toHaveTextContent(/^Last year: \$81,000 confirmed$/)
+  })
+
+  it('has no last-year line without last year', () => {
+    render(
+      <IncomePanel
+        page={householdPage({
+          incomes: [
+            income({
+              answers: plainAnswers().map((a) =>
+                a.field === 'income_confirmed' ? { ...a, synced: '', effective: '' } : a
+              ),
+            }),
+          ],
+        })}
+      />
     )
-    expect(within(card).queryByText('Household size')).toBeNull()
-    expect(within(card).queryByText('Form')).toBeNull()
+    expect(screen.queryByTestId('last-year')).toBeNull()
+  })
+
+  it("puts the family's notes under the answers, each under its own name, at rest", () => {
+    render(
+      <IncomePanel
+        page={householdPage({
+          incomes: [
+            income({
+              notes: {
+                special_circumstances: 'One parent changed jobs in January.',
+                other_support_expectations: 'None this year.',
+              },
+            }),
+          ],
+        })}
+      />
+    )
+    const heading = screen.getByText('Special financial circumstances')
+    expect(heading.nextElementSibling).toHaveTextContent('One parent changed jobs in January.')
+    expect(follows(heading, screen.getByRole('button', { name: 'All 14 answers match ▸' }))).toBe(
+      true
+    )
+    expect(screen.getByText('Other support expected').nextElementSibling).toHaveTextContent(
+      'None this year.'
+    )
   })
 })
 
 describe('IncomePanel, two households: side by side (O9)', () => {
-  it('gives each household its chip, its pricing line and its own exceptions', () => {
+  it('gives each household its chip, its own last-year line and its own exceptions', () => {
     render(<IncomePanel page={TWO_HOUSEHOLD_PAGE} />)
     const halves = screen.getAllByTestId('income-household')
     expect(halves).toHaveLength(2)
     expect(within(halves[0]!).getByText('1 · The Johnson Family')).toBeInTheDocument()
-    expect(halves[0]).toHaveTextContent('Adjusted $120,000 · tier 5 · vs last year +48%')
+    expect(within(halves[0]!).getByTestId('last-year')).toHaveTextContent(
+      "Last year: $81,000 confirmed · this year's adjusted is 48% higher"
+    )
+    expect(halves[0]).not.toHaveTextContent('Adjusted $120,000')
     expect(within(halves[1]!).getByText('2 · The Garcia Family')).toBeInTheDocument()
+    expect(within(halves[1]!).getByTestId('last-year')).toBeInTheDocument()
     expect(within(halves[1]!).getByText('No corrections and no flags.')).toBeInTheDocument()
     expect(screen.queryByTestId('priced')).toBeNull()
   })
 
-  it("shows a household's free text once its answers are opened", async () => {
+  it("shows each household's notes under its own answers, at rest", () => {
     render(<IncomePanel page={TWO_HOUSEHOLD_PAGE} />)
-    expect(screen.queryByText('Shared custody, week on, week off.')).toBeNull()
-    const garcia = screen.getAllByTestId('income-household')[1]!
-    await userEvent.click(within(garcia).getByRole('button', { name: 'All 14 answers match ▸' }))
-    expect(within(garcia).getByText('Shared custody, week on, week off.')).toBeInTheDocument()
+    const [johnson, garcia] = screen.getAllByTestId('income-household')
+    expect(within(garcia!).getByText('Shared custody, week on, week off.')).toBeInTheDocument()
+    expect(within(johnson!).getByText('One parent changed jobs in January.')).toBeInTheDocument()
   })
 })
 

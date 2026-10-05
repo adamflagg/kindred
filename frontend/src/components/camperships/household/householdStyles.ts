@@ -168,3 +168,12 @@ export const HH_LINE_TAG =
 /** The total line closing the last column (the mock's .hrc .tot). */
 export const HH_RECEIPT_TOTAL =
   'border-border mt-1 grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2.5 border-t px-3 pt-[7px] pb-1 text-left text-sm font-bold'
+
+// round 3 · income tab without "What priced it" (household-v3.html section 4 (E)) ──────────────
+
+/** The family's notes under the answers (the mock's .notesrow): columns of at least 300px, a top rule. */
+export const HH_NOTES_ROW =
+  'border-border grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-x-7 gap-y-2 border-t pt-2 text-[13.5px] leading-[1.55]'
+/** The same in a household's half (the mock's .notesrow.one): one column. */
+export const HH_NOTES_STACKED =
+  'border-border grid grid-cols-1 gap-y-2 border-t pt-2 text-[13.5px] leading-[1.55]'

@@ -9,7 +9,6 @@ import type {
 } from '../../../types/api-types'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { formatShortDate } from '../kit/dates'
-import { formatMoney } from '../kit/money'
 import { Money, ReversedAmount } from '../kit/MoneyText'
 import { HouseholdChip, StatusPill } from '../kit/Pills'
 import { codeWords } from '../requests/attention'
@@ -32,6 +31,8 @@ import {
   HH_TD_NUM,
   HH_TH,
   HH_TH_NUM,
+  HH_NOTES_ROW,
+  HH_NOTES_STACKED,
   HH_TOGGLE,
 } from './householdStyles'
 import {
@@ -39,8 +40,8 @@ import {
   conflictWords,
   exceptionsOf,
   moreWords,
+  lastYearWords,
   otherFlags,
-  pctWords,
   pricedFacts,
   type FieldConflict,
 } from './incomeModel'
@@ -81,19 +82,38 @@ function notesOf(income: ApiAidIncome): Array<[string, string]> {
   return Object.entries(income.notes).filter(([, text]) => nonEmpty(text))
 }
 
-/** The family's free text, for staff (main spec §9.1). */
-function FreeText({ income }: { income: ApiAidIncome }) {
+/**
+ * The family's free text, for staff (main spec §9.1; round 3 (E)): full width under the answers,
+ * each note under its own name, in columns when there is room; one column in a household's half.
+ */
+function IncomeNotes({ income, stacked }: { income: ApiAidIncome; stacked: boolean }) {
   const notes = notesOf(income)
   if (notes.length === 0) return null
   return (
-    <div className="mt-2 space-y-1.5 text-[13.5px]">
+    <div className={stacked ? HH_NOTES_STACKED : HH_NOTES_ROW}>
       {notes.map(([key, text]) => (
-        <div key={key}>
+        <div key={key} className="min-w-0">
           <div className="text-muted-foreground text-xs font-semibold">{noteWords(key)}</div>
-          <p className="whitespace-pre-line">{text}</p>
+          <p className="max-w-[72ch] whitespace-pre-line">{text}</p>
         </div>
       ))}
     </div>
+  )
+}
+
+/**
+ * Last year's confirmed income as one quiet line atop the tab (round 3 (E), where "What priced it"
+ * was), against this year's adjusted income. Nothing without last year.
+ */
+function LastYearLine({ page, income }: { page: ApiAidHouseholdPage; income: ApiAidIncome }) {
+  const facts = pricedFacts(page, income)
+  const words = lastYearWords(facts.adjusted, facts.confirmed)
+  if (words === null) return null
+  return (
+    <p data-testid="last-year" className={`${HH_NOTE} mb-2`}>
+      Last year: <b className="text-foreground tabular-nums">{words.confirmed}</b> confirmed
+      {words.compare !== null && ` · ${words.compare}`}
+    </p>
   )
 }
 
@@ -153,8 +173,8 @@ function AnswerRows({
         </tr>
       )}
       {correcting && correct !== undefined && (
-        // B30: in the answer's own row the form's width set the answers column's, squashing "What
-        // priced it" off the page. Here it spans the table, and the box adds no width of its own
+        // B30: in the answer's own row the form's width set the answers column's. Here it spans the
+        // table, which runs the tab's full width (round 3 (E)), and the box adds no width of its own
         // (0 wide, at least the cell's), so the form wraps to the answers' width.
         <tr>
           <td colSpan={4} className={`${HH_TD} whitespace-normal`}>
@@ -174,14 +194,12 @@ function Exceptions({
   income,
   correct,
   fixed,
-  freeTextWhenOpen,
 }: {
   page: ApiAidHouseholdPage
   income: ApiAidIncome
   correct: CorrectRender | undefined
   /** The mock's sized columns (210 / 104 / 104): always for one household; halves only from xl, fitting below. */
   fixed: boolean
-  freeTextWhenOpen: boolean
 }) {
   const [all, setAll] = useState(false)
   const exceptions = exceptionsOf(income)
@@ -196,7 +214,7 @@ function Exceptions({
           {others.length > 0 ? 'No corrections.' : 'No corrections and no flags.'}
         </p>
       ) : (
-        <table className={HH_TABLE}>
+        <table className={`${HH_TABLE} w-full`}>
           <thead>
             <tr>
               <th className={HH_TH}>Answer</th>
@@ -232,116 +250,18 @@ function Exceptions({
       <button type="button" className={`${HH_TOGGLE} mt-1`} onClick={() => setAll(!all)}>
         {moreWords(income.answers.length, exceptions.length, all)}
       </button>
-      {all && freeTextWhenOpen && <FreeText income={income} />}
     </div>
   )
 }
 
-const PK = 'text-muted-foreground'
-const PV = 'tabular-nums'
 const MUTED = 'text-muted-foreground'
 
 /**
- * "What priced it" (the mock's .priced; the owner kept it, 10-04): the figures staff check an
- * answer against, from the payload only. Household size and the form's date are not in the
- * payload, so they have no rows; a figure missing for this household leaves its row out.
- */
-function PricedCard({ page, income }: { page: ApiAidHouseholdPage; income: ApiAidIncome }) {
-  const facts = pricedFacts(page, income)
-  const pct = pctWords(facts.adjusted, facts.confirmed)
-  const rows: Array<[string, ReactNode]> = []
-  if (facts.adjusted !== null) {
-    rows.push(['Adjusted income (as priced)', <b key="v">{formatMoney(facts.adjusted)}</b>])
-  }
-  if (facts.confirmed !== null) {
-    rows.push([
-      "Last year's confirmed",
-      <>
-        <b>{formatMoney(facts.confirmed)}</b>
-        {pct !== null && <span className={MUTED}> {pct}</span>}
-      </>,
-    ])
-  }
-  if (facts.tier !== null) {
-    const shifted = facts.finalTier !== null && facts.finalTier !== facts.tier
-    rows.push([
-      'Income tier',
-      <>
-        <b>{facts.tier}</b>
-        {shifted && <span className={MUTED}> → {String(facts.finalTier)} with equity</span>}
-        {facts.rules !== null && <span className={MUTED}> {facts.rules}</span>}
-      </>,
-    ])
-  }
-  const notes = notesOf(income)
-  if (rows.length === 0 && notes.length === 0) return null
-  return (
-    <div
-      data-testid="priced"
-      className="bg-muted/30 border-border max-w-[620px] rounded-[10px] border px-3 py-2 text-[13px]"
-    >
-      <div className={`${HH_EYEBROW} mb-1`}>What priced it</div>
-      {rows.length > 0 && (
-        <div className="grid grid-cols-[max-content_1fr_max-content_1fr] gap-x-3.5 gap-y-[3px]">
-          {rows.map(([label, value]) => (
-            <div key={label} className="contents">
-              <div className={PK}>{label}</div>
-              <div className={PV}>{value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {notes.map(([key, text]) => (
-        <div
-          key={key}
-          className={`text-[12.5px] leading-normal ${rows.length > 0 ? 'border-border mt-1.5 border-t pt-1.5' : ''}`}
-        >
-          <span className="text-muted-foreground mr-1 font-semibold">{noteWords(key)}</span>
-          <span className="whitespace-pre-line">{text}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** "Adjusted $84,200 · tier 4 · vs last year +4%": a household half's pricing line, what the payload has. */
-function HalfMeta({ page, income }: { page: ApiAidHouseholdPage; income: ApiAidIncome }) {
-  const facts = pricedFacts(page, income)
-  const pct = pctWords(facts.adjusted, facts.confirmed)
-  const parts: ReactNode[] = []
-  if (facts.adjusted !== null) {
-    parts.push(
-      <>
-        Adjusted <b className="text-foreground">{formatMoney(facts.adjusted)}</b>
-      </>
-    )
-  }
-  if (facts.tier !== null) {
-    parts.push(
-      <>
-        tier <b className="text-foreground">{facts.tier}</b>
-      </>
-    )
-  }
-  if (pct !== null) parts.push(<>vs last year {pct}</>)
-  if (parts.length === 0) return null
-  return (
-    <span className={HH_NOTE}>
-      {parts.map((part, i) => (
-        <span key={i}>
-          {i > 0 && ' · '}
-          {part}
-        </span>
-      ))}
-    </span>
-  )
-}
-
-/**
- * Household income, the exceptions only (owner pick 10-04: income (e); N8, O9). One household:
- * its exceptions beside "What priced it". Two or more: side-by-side halves, each with its chip and
- * pricing line, stacking only when the window is narrow. `correct` puts the casework "Correct…" on
- * each answer shown.
+ * Household income, the exceptions only (owner pick 10-04: income (e); N8, O9), with no "What
+ * priced it" (round 3, section 4 (E)): last year's line on top, the answers and the Correct… row
+ * full width, the family's notes under them. Two or more households: equal halves, each with its
+ * chip, its own last-year line and notes, the notes at the foot so the halves end level; they
+ * stack only when the window is narrow. `correct` puts the casework "Correct…" on each answer shown.
  */
 export function IncomePanel({
   page,
@@ -363,31 +283,34 @@ export function IncomePanel({
             name={householdChipName(page, first.household_cm_id)}
           />
         )}
-        <div className="grid items-start gap-x-8 gap-y-3 lg:grid-cols-[max-content_minmax(0,1fr)]">
-          <Exceptions page={page} income={first} correct={correct} fixed freeTextWhenOpen={false} />
-          <PricedCard page={page} income={first} />
+        <LastYearLine page={page} income={first} />
+        <Exceptions page={page} income={first} correct={correct} fixed />
+        <div className="pt-1.5">
+          <IncomeNotes income={first} stacked={false} />
         </div>
       </div>
     )
   }
   return (
-    <div className="grid items-start gap-x-7 gap-y-4 lg:grid-cols-2">
+    <div className="grid items-stretch gap-x-7 gap-y-4 lg:grid-cols-2">
       {page.incomes.map((income) => (
-        <div key={income.household_cm_id} data-testid="income-household" className="min-w-0">
-          <div className="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <div
+          key={income.household_cm_id}
+          data-testid="income-household"
+          className="flex min-w-0 flex-col"
+        >
+          <div className="mb-1">
             <HouseholdChip
               index={householdChip(page, income.household_cm_id) ?? 0}
               name={householdChipName(page, income.household_cm_id)}
             />
-            <HalfMeta page={page} income={income} />
           </div>
-          <Exceptions
-            page={page}
-            income={income}
-            correct={correct}
-            fixed={false}
-            freeTextWhenOpen
-          />
+          <LastYearLine page={page} income={income} />
+          <Exceptions page={page} income={income} correct={correct} fixed={false} />
+          {/* The notes sit at the half's foot, so both halves end level (the mock's .halves.eq). */}
+          <div className="mt-auto pt-2.5">
+            <IncomeNotes income={income} stacked />
+          </div>
         </div>
       ))}
     </div>
