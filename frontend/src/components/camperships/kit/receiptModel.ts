@@ -610,7 +610,13 @@ export function receiptSentence(trace: readonly AidTraceStep[]): ReceiptSentence
         } else {
           plain(offset && !reduceCost ? ', = ' : ' = ')
           figure(stepValue(potential))
-          roundTail(r1, 1)
+          // The table set the award: the potential is the award, so it is said once (household-v4 §2).
+          const same =
+            bindingPhrase(r1) === null &&
+            incentiveOf(r1) === 0 &&
+            stepValue(r1) === stepValue(potential)
+          if (same) endRound(1)
+          else roundTail(r1, 1)
         }
       }
     } else {

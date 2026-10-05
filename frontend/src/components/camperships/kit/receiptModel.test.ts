@@ -55,7 +55,7 @@ describe('receiptSentence (D33; the editor row and the household page say the sa
 
   it('reads an appeal limited by the Round 2 cap, and a Round 1 the table set', () => {
     expect(receiptSentenceText(receiptSentence(TRACE_ROUND2_CAPPED))).toBe(
-      'Adjusted income $80,000 → tier 3. Round 1: 70% of $5,000 = $3,500 → $3,500. Round 2: appeal $2,500, limited by the Round 2 cap to $1,000. Total $4,500.'
+      'Adjusted income $80,000 → tier 3. Round 1: 70% of $5,000 = $3,500. Round 2: appeal $2,500, limited by the Round 2 cap to $1,000. Total $4,500.'
     )
   })
 
@@ -325,6 +325,39 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
   })
 })
 
+// household-v4 §2 (owner, 10-05): "= $2,400 → $2,400" printed Round 1's amount twice. When the
+// table set the award, the potential IS the award: one figure, then the round's end.
+describe('Round 1 prints its amount once', () => {
+  it('ends "= $potential." when the table set the award, posted or not', () => {
+    const text = receiptSentenceText(receiptSentence(TRACE_ROUND2_CAPPED))
+    expect(text).toContain('Round 1: 70% of $5,000 = $3,500. Round 2:')
+    expect(text).not.toContain('$3,500 → $3,500')
+    const posted = [
+      ...TRACE_ROUND2_CAPPED.slice(0, -1),
+      traceStep('r1_locked', 'Round 1 as posted', '3500.00', { worked_out: '3500.00' }, 'locked'),
+      TRACE_ROUND2_CAPPED.at(-1) as AidTraceStep,
+    ]
+    expect(receiptSentenceText(receiptSentence(posted))).toContain(
+      'Round 1: 70% of $5,000 = $3,500; posted $3,500. Round 2:'
+    )
+  })
+
+  it('keeps "→ $award" where the award differs from the potential without a limit', () => {
+    const trace = TRACE_ROUND2_CAPPED.map((s) =>
+      s.key === 'r1_potential' ? { ...s, value: '3499.60' } : s
+    )
+    expect(receiptSentenceText(receiptSentence(trace))).toContain(
+      'Round 1: 70% of $5,000 = $3,499.60 → $3,500. Round 2:'
+    )
+  })
+
+  it('keeps the limit and both figures where a limit set the award', () => {
+    expect(receiptSentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).toContain(
+      "= $2,000, limited by the family's ask to $1,500."
+    )
+  })
+})
+
 describe('fix round 1: the sentence agrees with the engine', () => {
   it('I1: a raised minimum is not "= $potential"', () => {
     expect(receiptSentenceText(receiptSentence(TRACE_MINIMUM_RAISED))).toBe(
@@ -337,10 +370,10 @@ describe('fix round 1: the sentence agrees with the engine', () => {
 
   it('I2: the two grant offsets read differently (D137)', () => {
     expect(receiptSentenceText(receiptSentence(TRACE_GRANTS_DOLLAR))).toContain(
-      'Round 1: 40% of $5,000, less $500 in grants, = $1,500 → $1,500.'
+      'Round 1: 40% of $5,000, less $500 in grants, = $1,500. Total'
     )
     expect(receiptSentenceText(receiptSentence(TRACE_GRANTS_REDUCE_COST))).toContain(
-      'Round 1: 40% of ($5,000 less $500 in grants) = $1,800 → $1,800.'
+      'Round 1: 40% of ($5,000 less $500 in grants) = $1,800. Total'
     )
   })
 
