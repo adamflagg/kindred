@@ -66,6 +66,7 @@ from api.services.financial_aid_reconciliation import (
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_requesters import requester_names
 from api.services.financial_aid_share_split import dollars, payers, split
+from api.utils.age import ADULT_AGE
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.errors import FinancialAidError
@@ -374,11 +375,18 @@ def receipts(
     return out
 
 
+def _is_adult(person: Any) -> bool:
+    """Aged ADULT_AGE or over (a missing or 0 age never is). Not is_camper: the sync sets it for anyone with an
+    attendee row in any program, Family Camp parents included, so false only means staff (coordinator, N11 (A)).
+    `persons.age` is a snapshot: good enough to name someone, not to count them."""
+    return float(getattr(person, "age", 0) or 0) >= ADULT_AGE
+
+
 def _adults(people: Iterable[Any], *, members: bool = False) -> list[str]:
     """The parent names `people`'s records give, sorted. With `members` (a household's own people, not the page's
-    campers), a member who isn't a camper is an adult in their own right (owner N11 follow-up, 2026-10-05): their own
-    names lead, sorted, then any further parent names, deduplicated case-insensitively. A record with no is_camper
-    flag counts as a camper, so a child is never named as an adult."""
+    campers), a member who is an adult names themselves (owner N11 follow-up, 2026-10-05): their own names lead,
+    sorted, then any further parent names, deduplicated case-insensitively against both the name shown (preferred
+    first) and the legal "first last"."""
     people = list(people)
     named = {
         f"{str(p.get('first') or '').strip()} {str(p.get('last') or '').strip()}".strip()
@@ -387,13 +395,16 @@ def _adults(people: Iterable[Any], *, members: bool = False) -> list[str]:
         if isinstance(p, Mapping)
     }
     own: dict[str, str] = {}
-    for person in people:
-        name = person_display_name(person) if members and not getattr(person, "is_camper", True) else ""
-        own.setdefault(name.lower(), name)
-    own.pop("", None)
+    known: set[str] = set()
+    for person in (p for p in people if members and _is_adult(p)):
+        name = person_display_name(person)
+        legal = f"{str(person.first_name or '').strip()} {str(person.last_name or '').strip()}".strip()
+        if name and name.lower() not in known:
+            own[name.lower()] = name
+        known |= {name.lower(), legal.lower()} - {""}
     return [
         *sorted(own.values(), key=str.lower),
-        *sorted((n for n in named - {""} if n.lower() not in own), key=str.lower),
+        *sorted((n for n in named - {""} if n.lower() not in known), key=str.lower),
     ]
 
 
@@ -613,16 +624,17 @@ class HouseholdPageService:
         linked_households = {int(h.cm_id): h for h in linked_rows}
 
         def household_people(h: int) -> list[Any]:
-            """Whose parent names and emails give household `h`'s adults and emails, on its card and its link alike:
-            the page's campers in it, or, with none (a second payer, or a linked household outside the scope), its
-            own members. The short name never reads members: it stays children-based (coordinator, N11; #3007)."""
+            """The people household `h`'s adults and emails come from, on its card and its link alike: the page's
+            campers in it, or, with none (a second payer, or a linked household outside the scope), its own members.
+            The short name never reads members: it stays children-based (coordinator, N11; #3007)."""
             return campers_in(h) or [p for p in members if _household_of(p) == h]
 
         def campers_in(h: int) -> list[Any]:
             return [p for p in people.values() if _household_of(p) == h] if h in households else []
 
         def household_adults(h: int) -> list[str]:
-            """Card and link alike: with no camper on the page, a member who isn't a camper names themselves."""
+            """Card and link alike: the campers' parent names, or, with no camper on the page, the members' adults by
+            name and then their parent names."""
             return _adults(household_people(h), members=not campers_in(h))
 
         accepted = accepted_index(dispositions)

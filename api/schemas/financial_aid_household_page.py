@@ -44,7 +44,7 @@ class HouseholdMoneyOut(BaseModel):
 class HouseholdCardOut(BaseModel):
     """One household with a financial stake (D26). `chip` is D32's 1 · 2 · 3, the opened household first.
     `adults` are the parents its campers' records name, or, with no camper on the page (a second payer), its own
-    members: those who aren't campers by name, then the parents their records name (owner N11); `emails` come from
+    members: its adults (aged 21+) by name, then the parents their records name (owner N11); `emails` come from
     the same people; `request_ids` the page's requests it pays a share of
     or applied for."""
 
