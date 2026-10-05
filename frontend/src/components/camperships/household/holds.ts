@@ -13,12 +13,27 @@ export const UNRELEASABLE_CODES: ReadonlySet<string> = new Set([
   'manual_hold',
 ])
 
-/** Where on the page a hold's cause is fixed: "Enter income ↓" to the income, "Set shares ↓" to the card. */
+/**
+ * Where on the page a hold's cause is fixed (B30: Title Case, as the grid's next steps): "Enter the
+ * Income ↓" to the income, "Set the Shares ↓" and "Edit the Award ↓" to the request's card, where
+ * Payer Shares… and the money editors are.
+ */
 export function fixLink(code: string, requestId: string): { label: string; href: string } | null {
   if (code === 'household_income_conflict' || code === 'placeholder_income') {
-    return { label: 'Enter income ↓', href: '#income' }
+    return { label: 'Enter the Income ↓', href: '#income' }
   }
   if (code === 'payer_shares_incomplete')
-    return { label: 'Set shares ↓', href: `#request-${requestId}` }
+    return { label: 'Set the Shares ↓', href: `#request-${requestId}` }
+  if (code === 'award_above_cost')
+    return { label: 'Edit the Award ↓', href: `#request-${requestId}` }
   return null
+}
+
+/**
+ * B26 (ruled 10-04 late): an above-cost hold clears only when aid plus grants fits under the cost,
+ * so the banner names all three ways through. Only the amount has an editor on this page (the card's);
+ * the cost and the grants are fixed where they are entered.
+ */
+export function fixWords(code: string): string | null {
+  return code === 'award_above_cost' ? 'Three fixes: the cost, the grants, or the amount.' : null
 }

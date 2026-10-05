@@ -49,7 +49,7 @@ export function receiptLabel(label: ReceiptLabelOut): string {
   const on = label.locked_on ? ` ${formatShortDate(label.locked_on)}` : ''
   const by =
     label.lock_source === 'ledger'
-      ? ' by the ledger match'
+      ? ' · matched in CampMinder'
       : label.lock_source === 'tick'
         ? ` by ${label.ticked_by_name ? `${label.ticked_by_name}'s` : 'a'} Posted tick`
         : ''

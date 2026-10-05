@@ -22,13 +22,20 @@ function Neighbour({
       </span>
     )
   }
-  const words = `${stop.familyName}${stop.reason === '' ? '' : ` · ${stop.reason}`}`
+  // N1: the family's name bold, its reason not.
+  const reason = stop.reason === '' ? '' : ` · ${stop.reason}`
   return (
     <Link to={hrefOf(stop)} onClick={onLeave(hrefOf(stop))} className="hover:underline">
-      {side === 'previous' ? `‹ ${words}` : `${words} ›`}
+      {side === 'previous' && '‹ '}
+      <b className="text-foreground">{stop.familyName}</b>
+      {reason}
+      {side === 'next' && ' ›'}
     </Link>
   )
 }
+
+/** D21 + N1: the mock's bare muted line, 13px, no box. */
+const STRIP = 'text-muted-foreground flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px]'
 
 /**
  * The queue-walk strip (§3.5; D14; decision-panel.html): "‹ Garcia · placeholder income · ← Back to
@@ -57,7 +64,7 @@ export function QueueWalkStrip({
     <Link
       to={walk.backHref}
       onClick={onLeave(walk.backHref)}
-      className="text-primary font-medium hover:underline"
+      className="text-forest-700 dark:text-forest-300 font-semibold hover:underline"
     >
       {`← Back to ${view.label}`}
     </Link>
@@ -72,7 +79,7 @@ export function QueueWalkStrip({
         ? walk.remembered
         : null
     return (
-      <div className="bg-muted flex flex-wrap items-center gap-3 rounded-lg px-3 py-1.5 text-sm">
+      <div className={STRIP}>
         {kept && (
           <Neighbour stop={kept.previous} side="previous" hrefOf={walk.hrefOf} onLeave={onLeave} />
         )}
@@ -83,7 +90,7 @@ export function QueueWalkStrip({
     )
   }
   return (
-    <div className="bg-muted flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm">
+    <div className={`${STRIP} justify-between`}>
       <Neighbour stop={position.previous} side="previous" hrefOf={walk.hrefOf} onLeave={onLeave} />
       <span className="text-muted-foreground">
         {back}

@@ -16,14 +16,6 @@ import type {
   ApiAidIncome,
 } from '../../../types/api-types'
 import {
-  ACTION_LINK,
-  AMBER_NOTE,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
-  FIELD,
-  FIELD_INLINE,
-} from '../../admin/lodging/lodgingStyles'
-import {
   correctionValue,
   duplicateSurvivors,
   fieldKind,
@@ -34,6 +26,17 @@ import {
 } from './caseworkModel'
 import type { EditorExits } from './editorExits'
 import { answerWords, camperOf } from './householdModel'
+import {
+  HH_AMBER_NOTE as AMBER_NOTE,
+  HH_BUTTON,
+  HH_FIELD,
+  HH_FIELD_NUMBER,
+  HH_FIELD_TEXT,
+  HH_FORM_LABEL,
+  HH_FORM_ROW,
+  HH_LINK,
+} from './householdStyles'
+import { EditorBox, FormActions } from './ReasonForm'
 
 type Write = () => Promise<unknown>
 
@@ -80,6 +83,7 @@ function useSubmit() {
 }
 
 function FormShell({
+  head,
   submitLabel,
   busy,
   error,
@@ -87,6 +91,8 @@ function FormShell({
   onCancel,
   children,
 }: {
+  /** The editor box's head (D24): what the form does, in sentence case. */
+  head: string
   submitLabel: string
   busy: boolean
   error: string | null
@@ -95,34 +101,31 @@ function FormShell({
   children: ReactNode
 }) {
   return (
-    <form
-      className="flex flex-wrap items-center gap-2 text-sm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onSubmit()
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
+    <EditorBox head={head}>
+      <form
+        onSubmit={(event) => {
           event.preventDefault()
-          onCancel()
-        }
-      }}
-    >
-      {children}
-      <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>
-        {submitLabel}
-      </button>
-      <button type="button" className={BUTTON_SECONDARY} onClick={onCancel}>
-        Back
-      </button>
-      {error !== null && <span className={AMBER_NOTE}>{error}</span>}
-    </form>
+          onSubmit()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            onCancel()
+          }
+        }}
+      >
+        <div className={HH_FORM_ROW}>{children}</div>
+        <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
+          {error !== null && <span className={AMBER_NOTE}>{error}</span>}
+        </FormActions>
+      </form>
+    </EditorBox>
   )
 }
 
 function ReasonInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
-    <label className="flex min-w-[14rem] flex-1 items-center gap-2">
+    <label className={HH_FORM_LABEL}>
       Reason
       <input
         aria-label="Reason"
@@ -130,20 +133,30 @@ function ReasonInput({ value, onChange }: { value: string; onChange: (value: str
         value={value}
         maxLength={2000}
         onChange={(event) => onChange(event.target.value)}
-        className={FIELD}
+        className={HH_FIELD_TEXT}
       />
     </label>
   )
 }
 
-function Note({ children, onBack }: { children: ReactNode; onBack: () => void }) {
+function Note({
+  head,
+  children,
+  onBack,
+}: {
+  head: string
+  children: ReactNode
+  onBack: () => void
+}) {
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground">{children}</span>
-      <button type="button" className={BUTTON_SECONDARY} onClick={onBack}>
-        Back
-      </button>
-    </div>
+    <EditorBox head={head}>
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span className="text-muted-foreground">{children}</span>
+        <button type="button" className={HH_BUTTON} onClick={onBack}>
+          Back
+        </button>
+      </div>
+    </EditorBox>
   )
 }
 
@@ -185,6 +198,7 @@ function CorrectionForm({
   const label = answerWords(answer.field)
   return (
     <FormShell
+      head={`Correcting · ${label}`}
       submitLabel="Save the Correction"
       busy={busy}
       error={error}
@@ -196,7 +210,7 @@ function CorrectionForm({
           aria-label={label}
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          className={FIELD_INLINE}
+          className={HH_FIELD}
         >
           <option value="true">Yes</option>
           <option value="false">No</option>
@@ -208,12 +222,12 @@ function CorrectionForm({
           inputMode="decimal"
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          className={`${FIELD_INLINE} w-28 text-right tabular-nums`}
+          className={`${HH_FIELD} w-28 text-right tabular-nums`}
         />
       )}
       <ReasonInput value={reason} onChange={setReason} />
       {answer.corrected && (
-        <button type="button" className={ACTION_LINK} disabled={busy} onClick={() => send(null)}>
+        <button type="button" className={HH_LINK} disabled={busy} onClick={() => send(null)}>
           Use the Form&apos;s Figure
         </button>
       )}
@@ -243,7 +257,8 @@ export function IncomeCorrection({
     return (
       <button
         type="button"
-        className={ACTION_LINK}
+        // D29: the mock's forest link with a visible dotted underline; no hover reveal.
+        className={HH_LINK}
         onClick={() => {
           if (exits === undefined) setOpen(true)
           else exits.beforeLeave(() => setOpen(true))
@@ -295,19 +310,20 @@ export function ShareForm({
 
   return (
     <FormShell
+      head="Payer shares"
       submitLabel="Set the Share"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
+      <label className={HH_FORM_LABEL}>
         Household
         <select
           aria-label="Household"
           value={household}
           onChange={(event) => setHousehold(event.target.value)}
-          className={FIELD_INLINE}
+          className={HH_FIELD}
         >
           {page.households.map((h) => (
             <option key={h.household_cm_id} value={String(h.household_cm_id)}>
@@ -318,7 +334,7 @@ export function ShareForm({
         </select>
       </label>
       {household === 'other' && (
-        <label className="flex items-center gap-2">
+        <label className={HH_FORM_LABEL}>
           CampMinder id
           <input
             aria-label="Household id"
@@ -326,11 +342,11 @@ export function ShareForm({
             inputMode="numeric"
             value={otherId}
             onChange={(event) => setOtherId(event.target.value)}
-            className={`${FIELD_INLINE} w-28`}
+            className={`${HH_FIELD} w-28`}
           />
         </label>
       )}
-      <label className="flex items-center gap-2">
+      <label className={HH_FORM_LABEL}>
         Share
         <input
           aria-label="Share"
@@ -338,11 +354,11 @@ export function ShareForm({
           inputMode="decimal"
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          className={`${FIELD_INLINE} w-24 text-right tabular-nums`}
+          className={HH_FIELD_NUMBER}
         />
         <span>%</span>
       </label>
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground basis-full text-[12.5px]">
         With one other household on this request, this tool fills the other household&apos;s share.
         A lone partial share holds the request until a second share is added.
       </p>
@@ -368,7 +384,11 @@ export function SessionForm({
   const { busy, error, attempt } = useSubmit()
   const candidates = request.row.session_candidates ?? []
   if (candidates.length === 0) {
-    return <Note onBack={onDone}>No candidate sessions are recorded for this request.</Note>
+    return (
+      <Note head="Settling the session" onBack={onDone}>
+        No candidate sessions are recorded for this request.
+      </Note>
+    )
   }
   const submit = () =>
     attempt(() => {
@@ -384,19 +404,20 @@ export function SessionForm({
     })
   return (
     <FormShell
+      head="Settling the session"
       submitLabel="Settle the Session"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
+      <label className={HH_FORM_LABEL}>
         Session
         <select
           aria-label="Session"
           value={session}
           onChange={(event) => setSession(event.target.value)}
-          className={FIELD_INLINE}
+          className={HH_FIELD}
         >
           <option value="">Pick a session</option>
           {candidates.map((candidate) => (
@@ -440,13 +461,22 @@ export function DuplicateForm({
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (options.length === 0) {
-    if (application.isLoading) return <Note onBack={onDone}>Looking for the request to keep…</Note>
+    if (application.isLoading)
+      return (
+        <Note head="Keeping the other request" onBack={onDone}>
+          Looking for the request to keep…
+        </Note>
+      )
     // The intake-named holder is only reachable through this read: a failure is not "nothing here".
     if (application.error) {
-      return <Note onBack={onDone}>Couldn&apos;t load the request intake named for this one.</Note>
+      return (
+        <Note head="Keeping the other request" onBack={onDone}>
+          Couldn&apos;t load the request intake named for this one.
+        </Note>
+      )
     }
     return (
-      <Note onBack={onDone}>
+      <Note head="Keeping the other request" onBack={onDone}>
         No other active request for this camper and session is on this page.
       </Note>
     )
@@ -467,19 +497,20 @@ export function DuplicateForm({
     })
   return (
     <FormShell
+      head="Keeping the other request"
       submitLabel="Mark as the Duplicate"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
+      <label className={HH_FORM_LABEL}>
         Keep
         <select
           aria-label="Keep"
           value={keptNow ?? ''}
           onChange={(event) => setKept(event.target.value)}
-          className={FIELD_INLINE}
+          className={HH_FIELD}
         >
           {keptNow === undefined && <option value="">Pick a request</option>}
           {options.map((option) => (
@@ -518,11 +549,19 @@ export function HeadcountForm({
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
-    return <Note onBack={onDone}>Loading the headcount…</Note>
+    return (
+      <Note head="Headcount" onBack={onDone}>
+        Loading the headcount…
+      </Note>
+    )
   }
   // Fields over figures that never loaded would be typed blind.
   if (current === null) {
-    return <Note onBack={onDone}>Couldn&apos;t load this request&apos;s headcount.</Note>
+    return (
+      <Note head="Headcount" onBack={onDone}>
+        Couldn&apos;t load this request&apos;s headcount.
+      </Note>
+    )
   }
   const codes = page.override_reasons ?? []
   // Until the person types, the fields show what the application holds.
@@ -554,13 +593,14 @@ export function HeadcountForm({
     })
   return (
     <FormShell
+      head="Headcount"
       submitLabel="Set the Headcount"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
+      <label className={HH_FORM_LABEL}>
         Not infants
         <input
           aria-label="Not infants"
@@ -568,10 +608,10 @@ export function HeadcountForm({
           inputMode="numeric"
           value={shownNonInfant}
           onChange={(event) => setNonInfant(event.target.value)}
-          className={`${FIELD_INLINE} w-16 text-right`}
+          className={`${HH_FIELD} w-16 text-right tabular-nums`}
         />
       </label>
-      <label className="flex items-center gap-2">
+      <label className={HH_FORM_LABEL}>
         Infants
         <input
           aria-label="Infants"
@@ -579,17 +619,17 @@ export function HeadcountForm({
           inputMode="numeric"
           value={shownInfant}
           onChange={(event) => setInfant(event.target.value)}
-          className={`${FIELD_INLINE} w-16 text-right`}
+          className={`${HH_FIELD} w-16 text-right tabular-nums`}
         />
       </label>
       {codes.length > 0 && (
-        <label className="flex items-center gap-2">
+        <label className={HH_FORM_LABEL}>
           Reason code
           <select
             aria-label="Reason code"
             value={reasonCode}
             onChange={(event) => setReasonCode(event.target.value)}
-            className={FIELD_INLINE}
+            className={HH_FIELD}
           >
             <option value="">Pick a code</option>
             {codes.map((code) => (

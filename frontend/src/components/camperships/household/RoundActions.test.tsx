@@ -284,6 +284,18 @@ describe('RoundNextAction (D51; Decision 22)', () => {
 })
 
 describe('RoundChecklist (§5.2; D47)', () => {
+  // B22 (ruled 10-04 late): since D162 the overnight tick is the normal path, and it never re-marks a
+  // round unmarked by hand; the undo says so before it is sent.
+  it('warns that the overnight sync will not re-mark the round, and where it will show', async () => {
+    render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    expect(
+      screen.getByText(
+        'The overnight sync won\'t mark it posted again: it will show in Not reconciled as "Unmarked by hand".'
+      )
+    ).toBeInTheDocument()
+  })
+
   it('asks why before undoing a Posted tick, then undoes it', async () => {
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))

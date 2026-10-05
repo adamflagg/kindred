@@ -16,6 +16,7 @@ import {
 import { roundOf } from '../requests/stage'
 import type { CardEditKind } from './cardEdits'
 import { householdChip, householdName } from './householdModel'
+import { HH_EDITOR_BOX, HH_EDITOR_HEAD } from './householdStyles'
 
 const KIND = {
   appeal: { label: 'Round 2 ask', policy: REASON_POLICY.appeal_ask },
@@ -159,7 +160,9 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
       : null
 
   return (
-    <div data-aid-editor="" className="border-border rounded-lg border p-3">
+    // D23: the mock's editor box, headed with what is being edited ("Editing · Round 2 ask").
+    <div data-aid-editor="" className={HH_EDITOR_BOX}>
+      <div className={HH_EDITOR_HEAD}>{`Editing · ${KIND[kind].label}`}</div>
       <RequestEditor
         familyName={householdName(page, row.household_cm_id)}
         householdCmId={row.household_cm_id}
@@ -181,7 +184,9 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
         saveError={writing.error?.message ?? null}
         layout="card"
       />
-      {totalLine !== null && <p className="text-muted-foreground mt-2 text-xs">{totalLine}</p>}
+      {totalLine !== null && (
+        <p className="text-muted-foreground mt-2 text-[12.5px]">{totalLine}</p>
+      )}
     </div>
   )
 }

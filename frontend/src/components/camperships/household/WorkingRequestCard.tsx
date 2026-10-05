@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { useAidCancellation, useAidManualHold } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
-import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import type { AidView } from '../kit/asOf'
 import { CancelForm } from './CancelForm'
 import { CardEditor, type CardEditorHandle } from './CardEditor'
@@ -12,6 +11,7 @@ import { DuplicateForm, HeadcountForm, SessionForm, ShareForm } from './Casework
 import { isLiveRequest } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
+import { HH_BUTTON } from './householdStyles'
 import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
 import { RoundChecklist, RoundNextAction } from './RoundActions'
@@ -120,7 +120,7 @@ export function WorkingRequestCard({
   // A form that saved closes itself only if it is still the one open: an exit in between is not undone.
   const closeIfStill = (mine: Open) => () => setOpen((now) => (now === mine ? null : now))
   const button = (label: string, next: Open) => (
-    <button key={label} type="button" className={BUTTON_SECONDARY} onClick={() => switchTo(next)}>
+    <button key={label} type="button" className={HH_BUTTON} onClick={() => switchTo(next)}>
       {label}
     </button>
   )
@@ -160,6 +160,7 @@ export function WorkingRequestCard({
   } else if (open?.kind === 'cancel') {
     editor = (
       <CancelForm
+        head={c ? 'Changing the reason' : 'Cancelling the request'}
         initial={c ? { reason: c.reason, note: c.note } : null}
         submitLabel={c ? 'Save the Reason' : 'Cancel the Request'}
         onSubmit={(reason, note) =>
@@ -173,6 +174,7 @@ export function WorkingRequestCard({
   } else if (open?.kind === 'reopen') {
     editor = (
       <ReasonForm
+        head="Reopening the request"
         label="Why reopen"
         submitLabel="Reopen"
         onSubmit={(note) =>
@@ -184,6 +186,7 @@ export function WorkingRequestCard({
   } else if (open?.kind === 'hold') {
     editor = (
       <ReasonForm
+        head="Putting on hold"
         label="Reason for the hold"
         submitLabel="Put on Hold"
         onSubmit={(note) =>

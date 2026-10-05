@@ -5,18 +5,23 @@ import type {
   ApiAidHouseholdRequest,
   ApiAidReceipt,
 } from '../../../types/api-types'
-import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
+import { ExternalLink } from 'lucide-react'
+
+import { CampMinderIcon } from '../../icons'
 import type { AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
+import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { ConfirmationState, HouseholdChip, StatusPill } from '../kit/Pills'
 import { Receipt } from '../kit/Receipt'
 import { requestStage } from '../requests/stage'
 import { DecisionPanel } from './DecisionPanel'
 import {
   appliedBy,
+  campMinderPersonUrl,
   camperOf,
   cancellationWords,
+  cardCost,
   earlierReceipts,
   householdName,
   latestReceipt,
@@ -24,8 +29,28 @@ import {
   requestStatusWords,
   roundLines,
   shareConfirmation,
+  unreachedRounds,
   type RoundLine,
 } from './householdModel'
+import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE, HH_TOGGLE } from './householdStyles'
+
+/**
+ * A CampMinder link (N7): "Person" or "Household" in Title Case, drawn as the summer camper panel
+ * draws its CampMinder link (CamperDetailsPanel: the CM icon, the label, the external-link glyph).
+ * It opens CampMinder in a new tab.
+ */
+export function CampMinderLink({ href, label }: { href: string; label: 'Person' | 'Household' }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={HH_LINK_CM}>
+      {/* Hidden from the link's name, so it reads as its label alone. */}
+      <span aria-hidden="true" className="inline-flex">
+        <CampMinderIcon className="h-4 w-4" />
+      </span>
+      <span>{label}</span>
+      <ExternalLink aria-hidden="true" className="h-3 w-3 opacity-60" />
+    </a>
+  )
+}
 
 /**
  * A locked round that today's rules price differently. Once an amount is offered or posted it stands,
@@ -71,11 +96,7 @@ function EarlierReceipts({
               : 'posted'
         return (
           <div key={receipt.round}>
-            <button
-              type="button"
-              className="text-primary text-xs hover:underline"
-              onClick={() => toggle(receipt.round)}
-            >
+            <button type="button" className={HH_TOGGLE} onClick={() => toggle(receipt.round)}>
               {shown ? `Hide Round ${n}'s receipt ▴` : `Round ${n} as ${as} ▾`}
             </button>
             {shown && <Receipt trace={receipt.trace} label={receipt.label} view={view} />}
@@ -106,23 +127,27 @@ function MoneyLine({
   const payer = request.shares[0]
   const other = payer !== undefined && payer.household_cm_id !== row.household_cm_id ? payer : null
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13.5px]">
       {other && (
         <span className="inline-flex items-center gap-1.5">
-          <span className="text-muted-foreground text-xs">paid by</span>
+          <span className={HH_NOTE}>paid by</span>
           <PayerLabel chip={other.chip} name={householdName(page, other.household_cm_id)} />
         </span>
       )}
+      {/* D13: the mock's "Decided $X · Posted $Y". */}
       <span>
-        Decided <Money value={row.total_decided} className="font-semibold" />
-      </span>
-      <span>
-        Posted <Money value={row.total_posted} className="font-semibold" />
+        Decided <Money value={row.total_decided} className="font-bold" /> · Posted{' '}
+        <Money value={row.total_posted} className="font-bold" />
       </span>
       {row.confirmation && <ConfirmationState confirmation={row.confirmation} />}
     </div>
   )
 }
+
+/** The mock's .sharet: 13px, padding 4/6, bottom rules. */
+const SHARE_TH =
+  'text-muted-foreground border-border border-b px-1.5 py-1 text-left text-xs font-semibold'
+const SHARE_TD = 'border-border border-b px-1.5 py-1'
 
 function ShareTable({
   request,
@@ -132,32 +157,35 @@ function ShareTable({
   page: ApiAidHouseholdPage
 }) {
   return (
-    <table aria-label="Payer shares" className="w-full text-sm">
+    <table aria-label="Payer shares" className="mt-1.5 w-full border-collapse text-[13px]">
       <thead>
-        <tr className="text-muted-foreground text-xs">
-          <th className="py-1 text-left font-semibold">Payer</th>
-          <th className="py-1 text-right font-semibold">Share</th>
-          <th className="py-1 text-right font-semibold">Decided</th>
-          <th className="py-1 text-right font-semibold">Posted</th>
-          <th className="py-1 pl-3 text-left font-semibold">Confirmed by the ledger</th>
+        <tr>
+          <th className={SHARE_TH}>Payer</th>
+          <th className={`${SHARE_TH} text-right`}>Share</th>
+          <th className={`${SHARE_TH} text-right`}>Decided</th>
+          <th className={`${SHARE_TH} text-right`}>Posted</th>
+          {/* D12: the mock's header. */}
+          <th className={SHARE_TH}>Confirmation</th>
         </tr>
       </thead>
       <tbody>
         {request.shares.map((share) => {
           const confirmation = shareConfirmation(share)
           return (
-            <tr key={share.household_cm_id} className="border-border border-t">
-              <td className="py-1">
+            <tr key={share.household_cm_id}>
+              <td className={SHARE_TD}>
                 <PayerLabel chip={share.chip} name={householdName(page, share.household_cm_id)} />
               </td>
-              <td className="py-1 text-right tabular-nums">{`${String(share.share_pct)}%`}</td>
-              <td className="py-1 text-right">
+              <td
+                className={`${SHARE_TD} text-right tabular-nums`}
+              >{`${String(share.share_pct)}%`}</td>
+              <td className={`${SHARE_TD} text-right tabular-nums`}>
                 <Money value={share.decided} />
               </td>
-              <td className="py-1 text-right">
+              <td className={`${SHARE_TD} text-right tabular-nums`}>
                 <Money value={share.posted} />
               </td>
-              <td className="py-1 pl-3">
+              <td className={SHARE_TD}>
                 {confirmation ? <ConfirmationState confirmation={confirmation} /> : '—'}
               </td>
             </tr>
@@ -202,27 +230,33 @@ export function RequestCard({
   const latest = latestReceipt(request)
   const lines = roundLines(request)
   const statusWords = requestStatusWords(row.request_status)
+  const cost = cardCost(request)
   return (
-    <div id={`request-${row.request_id}`} className="card-lodge space-y-2 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div id={`request-${row.request_id}`} className={`${HH_CARD} space-y-1.5`}>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <b>{camperOf(request)}</b>
         <span className="text-muted-foreground">
-          {`· ${row.session_name}${row.person_cm_id > 0 ? ` · person ${String(row.person_cm_id)}` : ''}`}
+          {`· ${row.session_name}${row.person_cm_id > 0 ? ' ·' : ''}`}
         </span>
+        {row.person_cm_id > 0 && (
+          <CampMinderLink href={campMinderPersonUrl(row.person_cm_id, page.year)} label="Person" />
+        )}
         {stage && !row.cancellation && <StatusPill tone={stage.tone}>{stage.text}</StatusPill>}
         {statusWords !== null && <StatusPill tone="stone">{statusWords}</StatusPill>}
         {applied && (
           <>
-            <span className="text-muted-foreground text-xs">applied by</span>
+            <span className={HH_NOTE}>applied by</span>
             <PayerLabel chip={applied.chip} name={applied.name} />
           </>
         )}
-        <span className="text-muted-foreground ml-auto text-xs">
-          cost <Money value={row.cost} />
+        <span className={`${HH_NOTE} ml-auto`}>
+          cost <Money value={cost} />
         </span>
       </div>
       {row.cancellation && (
-        <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>
+        <div>
+          <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>
+        </div>
       )}
       {latest && (
         <Receipt
@@ -243,32 +277,49 @@ export function RequestCard({
       {lines
         .filter((line) => line.wouldChangeBy !== null && line.posted)
         .map((line) => (
-          <p key={line.round} className={AMBER_NOTE}>
+          <p key={line.round} className={HH_AMBER_NOTE}>
             {wouldChangeSentence(line)}
           </p>
         ))}
-      {/* The server's notes (calculator warnings, D81's "not yet ticked"), as the grid's attention cell words them. */}
+      {/* The server's notes (calculator warnings, D81's "not yet marked posted"), as the grid's attention cell words them. */}
       {(row.notes ?? []).map((issue, index) => (
-        <p key={`${issue.code}:${String(index)}`} className={AMBER_NOTE}>
+        <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>
           {issue.message}
         </p>
       ))}
+      {/* B21 (ruled 10-04 late): a round the overnight tick passed over carries the grid's Not
+          reconciled reason pill beside the server's own sentence for it. */}
+      {(row.unticked ?? []).map((money) => (
+        <p
+          key={`unticked:${String(money.round)}:${money.code}`}
+          className={`${HH_AMBER_NOTE} flex flex-wrap items-center gap-x-2 gap-y-1`}
+        >
+          <AttentionChip item={{ level: 'note', pill: money.label, fact: money.message }} />
+          <span>{money.message}</span>
+        </p>
+      ))}
       {lines.length > 0 && (
-        <DecisionPanel
-          lines={lines}
-          total={row.total_decided}
-          checklist={checklist}
-          nextAction={nextAction}
-        />
+        <div className="pt-1">
+          <DecisionPanel
+            lines={lines}
+            unreached={unreachedRounds(request)}
+            total={row.total_decided}
+            checklist={checklist}
+            nextAction={nextAction}
+          />
+        </div>
       )}
       {/* #2941 merged: shares.length matches the grid's payer_count (the same payers; one implied 100% line for none). */}
       {request.shares.length > 1 ? (
         <ShareTable request={request} page={page} />
-      ) : (
+      ) : // D26: a withdrawn or duplicate request with nothing decided draws no "Decided — Posted —".
+      statusWords !== null && lines.length === 0 ? null : (
         <MoneyLine request={request} page={page} />
       )}
-      {editor}
-      {actions !== undefined && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {editor && <div className="pt-1">{editor}</div>}
+      {actions !== undefined && (
+        <div className="flex flex-wrap items-center gap-2 pt-1">{actions}</div>
+      )}
     </div>
   )
 }

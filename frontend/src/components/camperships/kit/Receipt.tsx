@@ -55,7 +55,7 @@ function ReceiptLabelLine({ label, view }: { label: ReceiptLabelOut; view?: AidV
   const full = receiptLabel(label)
   const at = full.indexOf(words)
   return (
-    <div className="text-muted-foreground text-xs">
+    <div className="text-muted-foreground text-[11.5px]">
       {full.slice(0, at)}
       <Link to={receiptRulesHref(label, view)} className="hover:underline">
         {words}
@@ -75,6 +75,12 @@ interface ReceiptProps {
   /** …except on a hold, or while a would-change flag shows (D34), including one that arrives later. */
   openByItself?: boolean | undefined
 }
+
+/** K3: 14px at line-height 1.55, padding 8/12, a 30% muted tint, radius 10. */
+const SENTENCE_BOX = 'bg-muted/30 rounded-[10px] px-3 py-2 text-sm leading-[1.55]'
+/** K4: the fold toggle, forest-700 at 12.5/600 (the household mock's .fold). */
+const FOLD_TOGGLE =
+  'text-forest-700 dark:text-forest-300 cursor-pointer text-[12.5px] font-semibold'
 
 /**
  * The receipt (§4.7, §6.5; D33 form D): its label, the sentence on top, and the line receipt
@@ -111,20 +117,18 @@ export function Receipt({
   return (
     <div className="space-y-1.5">
       <ReceiptLabelLine label={label} view={view} />
-      <ReceiptSentence trace={trace} />
+      {/* K3: the sentence in a tinted rounded box (receipt.html D; the household mock's .sentence). */}
+      <ReceiptSentence trace={trace} className={SENTENCE_BOX} />
       {folded && (
-        <button
-          type="button"
-          className="text-primary text-xs hover:underline"
-          onClick={() => setOpen((o) => !o)}
-        >
+        <button type="button" className={FOLD_TOGGLE} onClick={() => setOpen((o) => !o)}>
           {open
             ? 'Hide the receipt ▴'
             : `Show the receipt (${String(receiptLineCount(trace))} lines) ▾`}
         </button>
       )}
       {(!folded || open) && (
-        <div className="border-border divide-border divide-y rounded-lg border text-sm">
+        // K4: the opened lines stay near their labels, capped at ~640px, not the page's full width.
+        <div className="border-border divide-border max-w-[640px] divide-y rounded-lg border text-[13px]">
           {sections.map((section) => (
             <div key={section.name} className="py-1">
               <div className="text-muted-foreground px-3 pt-1 text-xs font-semibold tracking-wide uppercase">

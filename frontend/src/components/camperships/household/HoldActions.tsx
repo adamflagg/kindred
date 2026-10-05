@@ -2,11 +2,12 @@ import { useState } from 'react'
 
 import { useAidHoldRelease, useAidManualHold } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdRequest } from '../../../types/api-types'
-import { ACTION_LINK, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { formatShortDate } from '../kit/dates'
 import { codeWords } from '../requests/attention'
 import { isLiveRequest } from '../requests/gridEditor'
-import { fixLink, UNRELEASABLE_CODES } from './holds'
+import { cardEdits } from './cardEdits'
+import { fixLink, fixWords, UNRELEASABLE_CODES } from './holds'
+import { HH_BUTTON, HH_LINK, HH_NOTE } from './householdStyles'
 import { ReasonForm } from './ReasonForm'
 
 /**
@@ -19,7 +20,10 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
   const [open, setOpen] = useState(false)
   const requestId = request.row.request_id
   const close = () => setOpen(false)
-  const fix = fixLink(code, requestId)
+  const link = fixLink(code, requestId)
+  // B26: the award is edited in the card's own money editors; with none offered, the words alone.
+  const fix = code === 'award_above_cost' && cardEdits(request.row).length === 0 ? null : link
+  const words = fixWords(code)
   // The server's own severity: only a hold stops the award, so only a hold has anything to release.
   const live = isLiveRequest(request.row)
   const releasable =
@@ -30,6 +34,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
   if (open) {
     return code === 'manual_hold' ? (
       <ReasonForm
+        head="Lifting the hold"
         label="Why lift the hold"
         submitLabel="Lift the Hold"
         onSubmit={(note) =>
@@ -39,6 +44,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
       />
     ) : (
       <ReasonForm
+        head="Releasing the hold"
         label="Release note"
         submitLabel="Release the Hold"
         onSubmit={(note) =>
@@ -49,19 +55,20 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
     )
   }
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      {words !== null && <span className={HH_NOTE}>{words}</span>}
       {fix !== null && (
-        <a href={fix.href} className={ACTION_LINK}>
+        <a href={fix.href} className={HH_LINK}>
           {fix.label}
         </a>
       )}
       {live && code === 'manual_hold' && (
-        <button type="button" className={BUTTON_SECONDARY} onClick={() => setOpen(true)}>
+        <button type="button" className={HH_BUTTON} onClick={() => setOpen(true)}>
           Lift…
         </button>
       )}
       {releasable && (
-        <button type="button" className={BUTTON_SECONDARY} onClick={() => setOpen(true)}>
+        <button type="button" className={HH_BUTTON} onClick={() => setOpen(true)}>
           Release…
         </button>
       )}
@@ -78,7 +85,7 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
   const live = isLiveRequest(request.row)
   if (request.row.released_holds.length === 0) return null
   return (
-    <div className="basis-full space-y-1 text-xs">
+    <div className="basis-full space-y-1 text-[12.5px]">
       {request.row.released_holds.map((held) => (
         <div key={held.code} className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">
@@ -86,6 +93,7 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
           </span>
           {putting === held.code ? (
             <ReasonForm
+              head="Putting the hold back"
               label="Why put it back"
               submitLabel="Put the Hold Back"
               onSubmit={(note) =>
@@ -97,7 +105,7 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
             />
           ) : (
             live && (
-              <button type="button" className={ACTION_LINK} onClick={() => setPutting(held.code)}>
+              <button type="button" className={HH_LINK} onClick={() => setPutting(held.code)}>
                 Put Back…
               </button>
             )

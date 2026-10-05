@@ -16,13 +16,19 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
       .getByText('1 · The Johnson Family')
       .closest('[data-household]') as HTMLElement
     expect(within(johnson).getByText('opened from')).toBeInTheDocument()
-    expect(within(johnson).getByText('Samuel Johnson')).toBeInTheDocument()
+    // D15: adults in bold on their own line, then "household · city", then "first adult · phone · email".
+    expect(within(johnson).getByText('Samuel Johnson')).toHaveClass('font-bold')
+    expect(within(johnson).getByText('household 1000001 · Riverside, CA')).toBeInTheDocument()
     expect(
-      within(johnson).getByText(/household 1000001 · 555-0100 · test@example.com · Riverside, CA/)
+      within(johnson).getByText('Samuel Johnson · 555-0100 · test@example.com')
     ).toBeInTheDocument()
-    expect(
-      within(johnson).getByRole('link', { name: 'Open Emma Johnson in CampMinder ↗' })
-    ).toHaveAttribute('href', 'https://system.campminder.com/ui/person/Record#1000002:2027')
+    // N7: "Household", CampMinder's link, opening its first camper's record (Decision 20).
+    const link = within(johnson).getByRole('link', { name: 'Household' })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://system.campminder.com/ui/person/Record#1000002:2027'
+    )
+    expect(link).toHaveAttribute('target', '_blank')
     expect(within(johnson).getByText('50% of Emma')).toBeInTheDocument()
     const garcia = screen
       .getByText('2 · The Garcia Family')
@@ -33,7 +39,7 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     expect(within(garcia).getByText('$710')).toBeInTheDocument()
   })
 
-  it('shows each card its Decided and Posted labels, its states line and its stripe', () => {
+  it('shows each card its Decided and Posted labels, its confirmation pills and its stripe', () => {
     const page = {
       ...SPLIT_PAGE,
       households: [
@@ -53,14 +59,57 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     const johnson = screen
       .getByText('1 · The Johnson Family')
       .closest('[data-household]') as HTMLElement
-    expect(within(johnson).getByText('1 short $210')).toBeInTheDocument()
+    // D14: what CampMinder shows, beside the amber gap pill.
+    expect(within(johnson).getByText('CampMinder shows $290')).toBeInTheDocument()
+    expect(within(johnson).getByText('short $210')).toHaveClass('bg-amber-100')
     expect(within(johnson).getByText('Decided', { exact: false })).toHaveTextContent('Decided $710')
     expect(within(johnson).getByText('Posted', { exact: false })).toHaveTextContent('Posted $500')
-    expect(johnson).toHaveClass('border-l-sky-400')
+    // D3: the inset stripe (a box-shadow), not a curved border.
+    expect(johnson.className).toContain('inset_4px_0_0_var(--color-sky-400)')
     const garcia = screen
       .getByText('2 · The Garcia Family')
       .closest('[data-household]') as HTMLElement
-    expect(garcia).toHaveClass('border-l-purple-400')
+    expect(garcia.className).toContain('inset_4px_0_0_var(--color-purple-400)')
     expect(within(garcia).queryByText(/short/)).toBeNull()
+  })
+  it('confirms a household as a pill, and draws the card still, 1px at radius 12 (D2, D14)', () => {
+    const page = {
+      ...SPLIT_PAGE,
+      households: [
+        {
+          ...SPLIT_PAGE.households[0]!,
+          money: {
+            decided: 900,
+            posted: 900,
+            in_campminder: 900,
+            states: [{ status: 'confirmed' as const, count: 1, gap: 0 }],
+          },
+        },
+        SPLIT_PAGE.households[1]!,
+      ],
+    }
+    render(<HouseholdCards page={page} />)
+    const johnson = screen
+      .getByText('1 · The Johnson Family')
+      .closest('[data-household]') as HTMLElement
+    expect(within(johnson).getByText('✓ confirmed')).toHaveClass('bg-emerald-100')
+    expect(johnson).not.toHaveClass('card-lodge')
+    expect(johnson).toHaveClass('rounded-xl', 'border')
+  })
+
+  it('drops a missing contact field and its separator (D15)', () => {
+    const page = {
+      ...SPLIT_PAGE,
+      households: [
+        { ...SPLIT_PAGE.households[0]!, adults: [], phone: '', emails: [], city: '' },
+        SPLIT_PAGE.households[1]!,
+      ],
+    }
+    render(<HouseholdCards page={page} />)
+    const johnson = screen
+      .getByText('1 · The Johnson Family')
+      .closest('[data-household]') as HTMLElement
+    expect(within(johnson).getByText('household 1000001')).toBeInTheDocument()
+    expect(within(johnson).queryByText(/·\s*$/)).toBeNull()
   })
 })

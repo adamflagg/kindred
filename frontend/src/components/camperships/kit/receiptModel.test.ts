@@ -282,12 +282,13 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
     ).toBe('rules 2027 v3 · locked Mar 9 by a Posted tick · as it was when posted')
     expect(
       receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-10', lock_source: 'ledger' })
-    ).toBe('rules 2027 v3 · locked Mar 10 by the ledger match · as it was when posted')
+      // B21 (ruled 10-04 late): the overnight tick reads as CampMinder's match, as the round line does.
+    ).toBe('rules 2027 v3 · locked Mar 10 · matched in CampMinder · as it was when posted')
   })
 
   it('says "locked" with no date and no stray space when the server sends no posted date', () => {
     expect(receiptLabel({ ...base, kind: 'locked', lock_source: 'ledger' })).toBe(
-      'rules 2027 v3 · locked by the ledger match · as it was when posted'
+      'rules 2027 v3 · locked · matched in CampMinder · as it was when posted'
     )
     expect(receiptLabel({ ...base, kind: 'locked' })).toBe(
       'rules 2027 v3 · locked · as it was when posted'

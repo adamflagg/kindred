@@ -27,10 +27,15 @@ import {
   linkWords,
   noteWords,
   opensByItself,
+  cardConfirmation,
+  cardContactLine,
+  cardCost,
+  cardPlaceLine,
   postedLabel,
   postingsCsv,
   roundLines,
   shareConfirmation,
+  unreachedRounds,
 } from './householdModel'
 
 const PAGE = householdPage()
@@ -75,6 +80,17 @@ describe('the band (§6.3 item 1; D32, D77; Decision 18)', () => {
         { status: 'over', count: 1, gap: 300 },
       ])
     ).toBe('posted · 2 pending · 1 over $300')
+  })
+
+  // D19: the mock's "posted · ✓ confirmed" once every posted request is confirmed.
+  it('says ✓ confirmed when every state is confirmed, and keeps the others in full', () => {
+    expect(postedLabel([{ status: 'confirmed', count: 2, gap: 0 }])).toBe('posted · ✓ confirmed')
+    expect(
+      postedLabel([
+        { status: 'confirmed', count: 1, gap: 0 },
+        { status: 'short', count: 1, gap: -210 },
+      ])
+    ).toBe('posted · 1 confirmed · 1 short $210')
   })
 
   // Owner V1 (10-03): the grid's words, lowercase mid-line.
@@ -174,7 +190,8 @@ describe('the decision panel (§6.3 item 4; D50, D52; Decision 22)', () => {
     const request = householdRequest(ROW_SAMUEL, {
       receipts: [receiptOut(1, { kind: 'locked', locked_on: '2027-03-10', lock_source: 'ledger' })],
     })
-    expect(roundLines(request)[0]?.lock).toBe('locked Mar 10 · by the ledger match')
+    // B21 (ruled 10-04 late): the overnight tick is the normal path now, so it reads as CampMinder's match.
+    expect(roundLines(request)[0]?.lock).toBe('locked Mar 10 · matched in CampMinder')
   })
 
   it("keeps a pending Round 3 apart from the amounts, the grid's way, and names each line's basis", () => {
@@ -287,7 +304,8 @@ describe('words', () => {
       cancellationWords({ by: 'kindred', on: '2027-05-02', reason: 'aid_not_enough', note: '' })
     ).toBe('Cancelled in Kindred May 2 · declined: aid not enough / financial constraints')
     expect(cancellationWords({ by: 'campminder', on: '2027-06-02', reason: null, note: '' })).toBe(
-      'Cancelled in CampMinder Jun 2 · no reason given yet'
+      // B35 / ruling B: a reason is optional, so "yet" would read as a nag.
+      'Cancelled in CampMinder Jun 2 · none recorded'
     )
   })
 
@@ -377,5 +395,129 @@ describe('downloads (§11; D127; Decision 32)', () => {
     expect(householdCsvName(PAGE, 'postings')).toBe(
       'camperships-household-1000001-postings-2027.csv'
     )
+  })
+})
+
+describe('the round line, trued to the mock (O1, O2; D7, D11)', () => {
+  it("gives each round's state its meaning tone, not the grid's per-round tone", () => {
+    const row = gridRow({
+      rounds: [
+        roundOut(1, 'posted', { decided: 1420, posted: 1420, posted_on: '2027-03-09' }),
+        roundOut(2, 'needs_offer', { decided: 780 }),
+        roundOut(3, 'pending_approval', { pending_approval: 450 }),
+      ],
+    })
+    expect(roundLines(householdRequest(row)).map((l) => l.stateTone)).toEqual([
+      'posted',
+      'offer',
+      'finance',
+    ])
+    const held = gridRow({ rounds: [roundOut(1, 'held'), roundOut(2, 'not_decided')] })
+    expect(roundLines(householdRequest(held)).map((l) => l.stateTone)).toEqual(['hold', 'stone'])
+  })
+
+  it('names the rounds not reached on a live request, so every card has three round rows', () => {
+    const one = gridRow({ rounds: [roundOut(1, 'needs_offer', { decided: 780 })] })
+    expect(unreachedRounds(householdRequest(one))).toEqual([2, 3])
+    const three = gridRow({
+      rounds: [
+        roundOut(1, 'posted', { decided: 1, posted: 1 }),
+        roundOut(2, 'posted', { decided: 1, posted: 1 }),
+        roundOut(3, 'needs_offer', { decided: 1 }),
+      ],
+    })
+    expect(unreachedRounds(householdRequest(three))).toEqual([])
+  })
+
+  it('draws no unreached rounds on a withdrawn or duplicate request, or one with no rounds', () => {
+    const withdrawn = gridRow({
+      request_status: 'withdrawn',
+      rounds: [roundOut(1, 'posted', { decided: 1, posted: 1 })],
+    })
+    expect(unreachedRounds(householdRequest(withdrawn))).toEqual([])
+    expect(unreachedRounds(householdRequest(gridRow({ rounds: [] })))).toEqual([])
+  })
+})
+
+describe('a cancelled request keeps its cost on the card (O6, ruled 10-04 late)', () => {
+  it("reads the session's price from the receipt when the server leaves the row's cost out", () => {
+    const row = gridRow({
+      cost: null,
+      cancellation: { by: 'kindred', on: '2027-05-02', reason: 'schedule', note: '' },
+    })
+    expect(cardCost(householdRequest(row, { receipts: [receiptOut(1)] }))).toBe(5000)
+  })
+
+  it("keeps the row's own cost, and invents none where neither is there", () => {
+    expect(cardCost(householdRequest(gridRow({ cost: 3600 })))).toBe(3600)
+    const live = gridRow({ cost: null })
+    expect(cardCost(householdRequest(live, { receipts: [receiptOut(1)] }))).toBeNull()
+    const cancelled = gridRow({
+      cost: null,
+      cancellation: { by: 'campminder', on: null, reason: null, note: '' },
+    })
+    expect(cardCost(householdRequest(cancelled, { receipts: [] }))).toBeNull()
+  })
+})
+
+describe('a household card, trued to the mock (D14, D15)', () => {
+  it('puts the household and its city on one line, and the first adult with phone and email on the next', () => {
+    const card = householdCard({ adults: ['Samuel Johnson (dad)', 'Olivia Johnson (mom)'] })
+    expect(cardPlaceLine(card)).toBe('household 1000001 · Riverside, CA')
+    expect(cardContactLine(card)).toBe('Samuel Johnson · 555-0100 · test@example.com')
+  })
+
+  it('drops a missing field with its separator', () => {
+    const bare = householdCard({ adults: [], phone: '', emails: [], city: '' })
+    expect(cardPlaceLine(bare)).toBe('household 1000001')
+    expect(cardContactLine(bare)).toBe('')
+  })
+
+  it('words its confirmation as pills: ✓ confirmed, or what CampMinder shows and the gap', () => {
+    const confirmed = householdCard({
+      money: {
+        decided: 1800,
+        posted: 1800,
+        in_campminder: 1800,
+        states: [{ status: 'confirmed', count: 1, gap: 0 }],
+      },
+    })
+    expect(cardConfirmation(confirmed)).toEqual({
+      shows: null,
+      pills: [{ tone: 'emerald', text: '✓ confirmed' }],
+    })
+    const short = householdCard({
+      money: {
+        decided: 710,
+        posted: 500,
+        in_campminder: 290,
+        states: [{ status: 'short', count: 1, gap: -210 }],
+      },
+    })
+    expect(cardConfirmation(short)).toEqual({
+      shows: 'CampMinder shows $290',
+      pills: [{ tone: 'amber', text: 'short $210' }],
+    })
+  })
+
+  it('counts the requests once a household has several', () => {
+    const mixed = householdCard({
+      money: {
+        decided: 3220,
+        posted: 3000,
+        in_campminder: 2790,
+        states: [
+          { status: 'confirmed', count: 1, gap: 0 },
+          { status: 'short', count: 1, gap: -210 },
+        ],
+      },
+    })
+    expect(cardConfirmation(mixed)).toEqual({
+      shows: 'CampMinder shows $2,790',
+      pills: [
+        { tone: 'emerald', text: '✓ 1 confirmed' },
+        { tone: 'amber', text: '1 short $210' },
+      ],
+    })
   })
 })

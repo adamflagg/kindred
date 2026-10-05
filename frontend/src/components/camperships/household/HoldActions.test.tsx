@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { gridRow, ROW_EMMA } from '../requests/gridFixtures'
+import { gridRow, roundOut, ROW_EMMA } from '../requests/gridFixtures'
 import { HoldActions, ReleasedHolds } from './HoldActions'
 import { householdRequest } from './householdFixtures'
 
@@ -51,8 +51,46 @@ describe('HoldActions (Decision 25)', () => {
         code="household_income_conflict"
       />
     )
-    expect(screen.getByRole('link', { name: 'Enter income ↓' })).toHaveAttribute('href', '#income')
+    expect(screen.getByRole('link', { name: 'Enter the Income ↓' })).toHaveAttribute(
+      'href',
+      '#income'
+    )
     expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
+  })
+
+  // B26 (ruled 10-04 late): the banner names the three fixes; the amount is the card's own editor.
+  it('names the three fixes of an above-cost hold, and links the amount to the card', () => {
+    const request = householdRequest(
+      gridRow({
+        ...ROW_EMMA,
+        rounds: [roundOut(1, 'posted', { decided: 1800, posted: 1800 }), roundOut(3, 'held')],
+        holds: [{ code: 'award_above_cost', severity: 'hold', message: 'm' }],
+      })
+    )
+    render(<HoldActions request={request} code="award_above_cost" />)
+    expect(
+      screen.getByText('Three fixes: the cost, the grants, or the amount.')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Edit the Award ↓' })).toHaveAttribute(
+      'href',
+      '#request-reqemma00000001'
+    )
+    expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
+  })
+
+  it('keeps the words but draws no amount link when the card offers no money edit', () => {
+    const request = householdRequest(
+      gridRow({
+        ...ROW_EMMA,
+        cancellation: { by: 'kindred', on: '2027-05-02', reason: 'schedule', note: '' },
+        holds: [{ code: 'award_above_cost', severity: 'hold', message: 'm' }],
+      })
+    )
+    render(<HoldActions request={request} code="award_above_cost" />)
+    expect(
+      screen.getByText('Three fixes: the cost, the grants, or the amount.')
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('link')).toBeNull()
   })
 
   it("offers no release for a warning the server doesn't hold the award on", () => {

@@ -19,10 +19,17 @@ function renderCard(request = PAGE.requests[0]!, page = PAGE) {
 }
 
 describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
-  it('heads the card with the camper, session, person id, stage and cost', () => {
+  it('heads the card with the camper, session, CampMinder Person link, stage and cost', () => {
     renderCard()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    expect(screen.getByText('· Session 2 · person 1000002')).toBeInTheDocument()
+    expect(screen.getByText('· Session 2 ·')).toBeInTheDocument()
+    // N7: "Person", Title Case, CampMinder's own link (the CM icon and the external-link glyph).
+    const person = screen.getByRole('link', { name: 'Person' })
+    expect(person).toHaveAttribute(
+      'href',
+      'https://system.campminder.com/ui/person/Record#1000002:2027'
+    )
+    expect(person).toHaveAttribute('target', '_blank')
     expect(screen.getByText('R1 · Needs an offer')).toBeInTheDocument()
     expect(screen.getByText('$6,760')).toBeInTheDocument()
   })
@@ -58,10 +65,12 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
   it("shows each round's amount, state, lock and ticks", () => {
     renderCard(PAGE.requests[1])
     const panel = screen.getByRole('table', { name: 'Decision panel' })
-    expect(within(panel).getByText('Posted')).toBeInTheDocument()
+    // The state pill and the tick's label.
+    expect(within(panel).getAllByText('Posted')).toHaveLength(2)
     expect(within(panel).getByText('locked Mar 9 · Test User')).toBeInTheDocument()
-    expect(within(panel).getByText('☑ Posted Mar 9')).toBeInTheDocument()
-    expect(within(panel).getByText('☐ Accepted')).toBeInTheDocument()
+    // D6: the mock's forest boxes, the date muted beside the label.
+    expect(within(panel).getByTestId('tick-Posted-1')).toHaveTextContent('✓Posted Mar 9')
+    expect(within(panel).getByTestId('tick-Accepted-1')).toHaveTextContent(/^Accepted$/)
   })
 
   it('flags a locked round that rules now would change, and says the posted amount stands (D43; owner S1 Q1)', () => {
@@ -223,9 +232,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
         cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
       })
     )
-    expect(
-      screen.getByText('Cancelled in CampMinder Jun 2 · no reason given yet')
-    ).toBeInTheDocument()
+    expect(screen.getByText('Cancelled in CampMinder Jun 2 · none recorded')).toBeInTheDocument()
   })
 
   describe('fix round 1 (review of Task 20)', () => {
@@ -443,11 +450,85 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       )
       expect(screen.getByText(words)).toBeInTheDocument()
       expect(screen.queryByRole('table', { name: 'Decision panel' })).toBeNull()
+      // D26: nor an empty "Decided — Posted —" line.
+      expect(screen.queryByText(/Decided/)).toBeNull()
     })
 
     it('draws no status word for a live request (M2 regression guard)', () => {
       renderCard()
       expect(screen.queryByText(/^(Withdrawn|Duplicate|Possible duplicate)$/)).toBeNull()
+    })
+  })
+
+  describe("sitting B's true-up (household polish)", () => {
+    const PAYER = {
+      household_cm_id: 1000001,
+      chip: 1,
+      share_pct: 100,
+      decided: 900,
+      posted: 900,
+      in_campminder: 900,
+      status: 'confirmed',
+    } as const
+
+    // O2 (ruled 10-04 late): every live card has the same shape, three round rows.
+    it('draws the rounds not reached as muted "Round N —" rows', () => {
+      renderCard()
+      const panel = screen.getByRole('table', { name: 'Decision panel' })
+      const rows = within(panel).getAllByRole('row')
+      expect(rows.map((row) => row.textContent)).toEqual(
+        expect.arrayContaining(['Round 2—', 'Round 3—'])
+      )
+    })
+
+    // O6 (ruled 10-04 late, a number's meaning): the session's price still shows on a cancelled card.
+    it("shows a cancelled request's cost from its receipt when the row leaves it out", () => {
+      renderCard(
+        householdRequest(
+          {
+            ...ROW_EMMA,
+            cost: null,
+            cancellation: { by: 'kindred', on: '2027-05-02', reason: 'schedule', note: '' },
+          },
+          { receipts: [receiptOut(1)] }
+        )
+      )
+      expect(screen.getByText('cost', { exact: false })).toHaveTextContent('cost $5,000')
+    })
+
+    // B21 (ruled 10-04 late): the grid's Not reconciled reason pill, beside the server's sentence.
+    it("draws a round's Not reconciled reason as the grid's pill beside the server's words", () => {
+      const message = 'Round 1 is posted in CampMinder for less than was decided.'
+      renderCard(
+        householdRequest({
+          ...ROW_EMMA,
+          unticked: [
+            { round: 1, code: 'short_posting', message, mark_posted: true, label: 'Short in CM' },
+          ],
+        })
+      )
+      const pill = screen.getByText('Short in CM')
+      expect(pill.closest('p')).toHaveTextContent(`Short in CM${message}`)
+    })
+
+    // D12, D13: the mock's share-table header and money-line separator.
+    it('heads the share table "Confirmation", and separates Decided and Posted with a "·"', () => {
+      const { unmount } = renderCard(PAGE.requests[1])
+      expect(screen.getByText(/^Decided/).parentElement).toHaveTextContent(
+        /Decided \$[\d,]+ · Posted/
+      )
+      unmount()
+      renderCard(
+        householdRequest(ROW_SAMUEL, {
+          shares: [
+            { ...PAYER, household_cm_id: 1000001, chip: 1, share_pct: 60 },
+            { ...PAYER, household_cm_id: 1000003, chip: 2, share_pct: 40 },
+          ],
+        }),
+        SPLIT_PAGE
+      )
+      const shares = screen.getByRole('table', { name: 'Payer shares' })
+      expect(within(shares).getByRole('columnheader', { name: 'Confirmation' })).toBeInTheDocument()
     })
   })
 })

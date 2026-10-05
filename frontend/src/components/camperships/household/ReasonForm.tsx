@@ -1,14 +1,68 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import {
-  AMBER_NOTE,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
-  FIELD,
-} from '../../admin/lodging/lodgingStyles'
+  HH_AMBER_NOTE,
+  HH_BUTTON,
+  HH_BUTTON_PRIMARY,
+  HH_EDITOR_ASIDE,
+  HH_EDITOR_BOX,
+  HH_EDITOR_HEAD,
+  HH_FIELD_TEXT,
+  HH_FORM_LABEL,
+  HH_FORM_ROW,
+} from './householdStyles'
 
 /** The server's limit on a reason (`_Reason`, 2000). */
 const REASON_MAX = 2000
+
+/**
+ * The editor box (D23, D24; the mock's .editor): every form on a card or banner sits in it, under an
+ * uppercase head ("Editing · Round 2") with an optional muted aside.
+ */
+export function EditorBox({
+  head,
+  aside,
+  children,
+}: {
+  head: string
+  aside?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div data-editor-box="" className={HH_EDITOR_BOX}>
+      <div className={HH_EDITOR_HEAD}>
+        <span>{head}</span>
+        {aside !== undefined && <span className={HH_EDITOR_ASIDE}>{aside}</span>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** A form's Back and submit row (the mock's .acts), and the refusal beside them. */
+export function FormActions({
+  submitLabel,
+  busy,
+  onCancel,
+  children,
+}: {
+  submitLabel: string
+  busy: boolean
+  onCancel: () => void
+  children?: ReactNode
+}) {
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+      <button type="submit" className={HH_BUTTON_PRIMARY} disabled={busy}>
+        {submitLabel}
+      </button>
+      <button type="button" className={HH_BUTTON} onClick={onCancel}>
+        Back
+      </button>
+      {children}
+    </div>
+  )
+}
 
 /**
  * A one-line reason for an edit that needs one (D22; main spec §14.4): undoing a tick, releasing or
@@ -22,9 +76,15 @@ export function ReasonForm({
   onCancel,
   required = true,
   initial = '',
+  head,
+  hint,
 }: {
   label: string
   submitLabel: string
+  /** The box's head; the submit's words when none is given. */
+  head?: string | undefined
+  /** What the form says first, under its head (the undo's warnings). */
+  hint?: ReactNode
   onSubmit: (note: string) => Promise<unknown>
   onCancel: () => void
   required?: boolean
@@ -62,37 +122,39 @@ export function ReasonForm({
   }
 
   return (
-    <form
-      className="flex flex-wrap items-center gap-2 text-sm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        void submit()
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
+    <EditorBox head={head ?? submitLabel}>
+      <form
+        onSubmit={(event) => {
           event.preventDefault()
-          onCancel()
-        }
-      }}
-    >
-      <label className="flex min-w-[16rem] flex-1 items-center gap-2">
-        {label}
-        <input
-          ref={field}
-          type="text"
-          value={note}
-          maxLength={REASON_MAX}
-          onChange={(event) => setNote(event.target.value)}
-          className={FIELD}
-        />
-      </label>
-      <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>
-        {submitLabel}
-      </button>
-      <button type="button" className={BUTTON_SECONDARY} onClick={onCancel}>
-        Back
-      </button>
-      {error !== null && <span className={AMBER_NOTE}>{error}</span>}
-    </form>
+          void submit()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            onCancel()
+          }
+        }}
+      >
+        {hint !== undefined && (
+          <div className="text-muted-foreground mb-2 text-[12.5px]">{hint}</div>
+        )}
+        <div className={HH_FORM_ROW}>
+          <label className={HH_FORM_LABEL}>
+            {label}
+            <input
+              ref={field}
+              type="text"
+              value={note}
+              maxLength={REASON_MAX}
+              onChange={(event) => setNote(event.target.value)}
+              className={HH_FIELD_TEXT}
+            />
+          </label>
+        </div>
+        <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
+          {error !== null && <span className={HH_AMBER_NOTE}>{error}</span>}
+        </FormActions>
+      </form>
+    </EditorBox>
   )
 }
