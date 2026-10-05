@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
@@ -23,6 +23,7 @@ from api.schemas.financial_aid_grants import (
     WaitingCommitmentOut,
 )
 from api.schemas.financial_aid_intake import IssueOut
+from api.schemas.financial_aid_surfaces import TodayKey
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
 from api.services.financial_aid_queues import row_queues
@@ -257,6 +258,12 @@ def test_a_payer_share_that_disagrees_is_counted_under_its_own_state() -> None:
     line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "not_reconciled")
     assert [(r.code, r.items) for r in line.reasons] == [("over", 1), ("short", 1)]
     assert line.largest_gap == 250.0
+
+
+def test_today_has_no_cancel_reason_line() -> None:
+    """Owner ruling B (2026-10-04): the cancel reason is optional, so Today never nags for a missing one."""
+    assert "cancel_reason" not in CASEWORK_LINES
+    assert "cancel_reason" not in get_args(TodayKey)
 
 
 def test_every_casework_line_is_present_even_at_zero() -> None:

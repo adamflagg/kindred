@@ -109,7 +109,7 @@ def _cancelled_row(request: ReportRequest, n: int) -> tuple[str, str | None, Dec
     return request.cancel_reason or NO_REASON, facts.pool, facts.locked
 
 
-NO_REASON: Final = "not_recorded"  # a cancellation with no reason: before 2027, or not given yet (D101)
+NO_REASON: Final = "not_recorded"  # a cancellation with no reason recorded (optional: owner ruling B)
 # A withdrawn request that holds a posted award counts as a cancellation (owner (a), RULED 2026-10-02); it has no
 # cancel reason, so it gets its own line rather than reading as missing data.
 WITHDRAWN_REASON: Final = "withdrawn_in_kindred"

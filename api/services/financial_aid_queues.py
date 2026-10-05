@@ -18,7 +18,6 @@ from api.schemas.financial_aid_decisions import (
     RowStageOut,
     UntickedReasonOut,
 )
-from api.services.financial_aid_cancellations import TODO_CANCEL_REASON
 from api.services.financial_aid_intake_types import (
     FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
     STATUS_DUPLICATE_PENDING,
@@ -98,7 +97,7 @@ def row_queues(row: GridRowOut) -> list[QueueOut]:
         "to_reverse": bool(row.to_reverse),
         "session_not_settled": row.request_status == STATUS_UNMATCHED,
         "duplicates": row.request_status == STATUS_DUPLICATE_PENDING or FLAG_DUPLICATE_SURVIVOR_WITHDRAWN in hold_codes,
-        "cancel_reason": any(todo.code == TODO_CANCEL_REASON for todo in row.todos or []),
+        "cancel_reason": False,  # retired by owner ruling B (2026-10-04): QueueOut keeps it until the frontend drops it
     }
     return [queue for queue in QUEUES if member[queue]]
 

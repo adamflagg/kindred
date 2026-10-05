@@ -22,9 +22,10 @@ an offer"; owner ruling 2026-09-30): its unposted rounds count nowhere, so it le
 and Held, and the ledger never ticks it. Its posted rounds stay in Posted until CampMinder's reversal
 posts (D54).
 
-The reason is one of D141's nine. A cancelled request with none carries "Cancelled: give a reason":
-a to-do, never a hold or a Note (main spec §10.5 as amended), however it was cancelled and whether or
-not aid was posted, from the first season cancel reasons exist (2027, clean spec §5.6). Only live
+The reason is one of D141's nine, and it is OPTIONAL (owner ruling B, 2026-10-04, retiring D101's
+"Cancelled: give a reason" to-do, its queue and its Today line): nothing asks for a missing one. Staff
+can still record it (the Cancel dialog, a To reverse row, the household page's cancelled request card).
+The reports read a cancellation with none as "no reason recorded", on its own line. Only live
 requests (active, unmatched) take a cancellation: a withdrawn or duplicate request already counts
 nowhere.
 """
@@ -72,11 +73,6 @@ CANCEL_REASON_LABELS: Final[Mapping[CancelReason, str]] = {
     "another_reason": "another reason",
     "not_known": "not known",
 }
-TODO_CANCEL_REASON: Final = "cancel_reason_missing"
-TODO_CANCEL_REASON_TEXT: Final = "Cancelled: give a reason"
-# Clean spec §5.6: "Cancel reasons exist from 2027". An earlier season's cancellations still count
-# (not live, To reverse); they carry no to-do, since no reason was ever recorded for them.
-FIRST_REASONED_SEASON: Final = 2027
 
 
 def parse_reason(value: Any) -> CancelReason | None:
@@ -193,14 +189,8 @@ def cancelled_days(
 class Cancellation:
     by: Literal["campminder", "kindred"]
     on: date | None
-    reason: CancelReason | None  # None: "Cancelled: give a reason" (D101), from FIRST_REASONED_SEASON
+    reason: CancelReason | None  # None: none recorded; optional (owner ruling B, 2026-10-04)
     note: str
-
-
-def needs_reason(cancellation: Cancellation | None, year: int) -> bool:
-    """D101: a cancelled request with no reason carries "Cancelled: give a reason", from the first
-    season cancel reasons exist (clean spec §5.6)."""
-    return cancellation is not None and cancellation.reason is None and year >= FIRST_REASONED_SEASON
 
 
 def _by_person_and_household(

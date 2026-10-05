@@ -2079,7 +2079,8 @@ export type CancellationMetricsResponse = {
  * CancellationOut
  *
  * A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
- * Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet.
+ * Kindred (the registrar; `on` is the day it was recorded). reason None = none recorded
+ * (optional, owner ruling B 2026-10-04).
  */
 export type CancellationOut = {
   /**
@@ -17213,7 +17214,6 @@ export type TodayLineOut = {
     | 'to_reverse'
     | 'session_not_settled'
     | 'duplicates'
-    | 'cancel_reason'
     | 'to_place'
     | 'grants'
     | 'late_full_coverage'
@@ -17315,7 +17315,8 @@ export type TodayResponse = {
 /**
  * TodoOut
  *
- * A to-do on the row: neither a hold nor a Note ("Cancelled: give a reason", D101).
+ * A to-do on the row: neither a hold nor a Note. None is emitted now: owner ruling B (2026-10-04) retired the only
+ * one, D101's "Cancelled: give a reason" (the cancel reason is optional).
  */
 export type TodoOut = {
   /**
