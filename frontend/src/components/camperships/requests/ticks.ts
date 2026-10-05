@@ -55,8 +55,6 @@ function lowestWhere(
  * Unchecking stays open.
  */
 export const cancelled = (row: ApiAidGridRow) => row.cancellation != null
-/** The old name, until household/RoundActions.tsx imports `cancelled`. Same meaning now. */
-export const cancelledInKindred = cancelled
 
 /**
  * Accepted ticks the lowest posted round the family hasn't accepted (Decision 15; D47), or a C1

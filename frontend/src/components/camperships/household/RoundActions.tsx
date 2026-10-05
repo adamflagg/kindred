@@ -10,7 +10,7 @@ import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidHouseholdRequest } from '../../../types/api-types'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
-import { cancelledInKindred } from '../requests/ticks'
+import { cancelled } from '../requests/ticks'
 import type { RoundLine } from './householdModel'
 import {
   HH_AMBER_NOTE as AMBER_NOTE,
@@ -119,13 +119,13 @@ export function RoundChecklist({
         <TickBox
           label="Accepted"
           checked={line.accepted}
-          // The server refuses ticking Accepted on a Kindred cancellation, never unticking it. A
+          // The server refuses checking Accepted on any cancellation (#3023), never unchecking it. A
           // reversed round is the same: the grid never offers it (ticks.ts), unticking stays open.
           disabled={
             !(line.posted || line.cmPending) ||
             accept.isPending ||
             editing ||
-            ((cancelledInKindred(request.row) || line.clawedBack) && !line.accepted)
+            ((cancelled(request.row) || line.clawedBack) && !line.accepted)
           }
           onChange={(checked) => {
             setError(null)
