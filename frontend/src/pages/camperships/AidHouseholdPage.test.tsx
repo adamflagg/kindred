@@ -684,17 +684,17 @@ describe('Correct… opens in the answers column (owner bug B30)', () => {
     result = { data: householdPage(), isLoading: false, error: null }
   })
 
-  it('opens under its answer, across the answers table, so What priced it keeps its width', async () => {
+  it('opens under its answer, across the answers table', async () => {
     renderAt('/aid/households/1000001')
     await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
     const answerRow = screen.getByText('Children').closest('tr') as HTMLElement
     await userEvent.click(within(answerRow).getByRole('button', { name: 'Correct…' }))
     const form = screen.getByLabelText('Reason').closest('[data-editor-box]') as HTMLElement
-    // In the answers column, never beside What priced it.
-    expect(screen.getByTestId('priced').contains(form)).toBe(false)
+    // Round 3 (owner, section 4 option E): What priced it is gone; the answers run full width.
+    expect(screen.queryByTestId('priced')).toBeNull()
     expect(answerRow.closest('table')!.contains(form)).toBe(true)
     // Not in the answer's own row, whose cells size the answers column: there its width pushed the
-    // column wide and squashed What priced it off the page. Its own row spans the table instead...
+    // column wide (it once squashed What priced it off the page). Its own row spans the table instead...
     expect(answerRow.contains(form)).toBe(false)
     expect(form.closest('td')!.colSpan).toBe(4)
     // ...inside a box that adds nothing to the column's width (width 0, at least the cell's), so
