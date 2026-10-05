@@ -25,7 +25,7 @@ from api.schemas.financial_aid_decisions import (
     ShareConfirmationOut,
 )
 from api.schemas.financial_aid_grants import GrantRowOut, GrantsResponse, RequestShareOut
-from api.schemas.financial_aid_intake import AnswerOut, ApplicationDetailResponse, RequestOut
+from api.schemas.financial_aid_intake import AnswerOut, ApplicationDetailResponse, FlagOut, RequestOut
 from api.services.financial_aid_casework_service import CaseworkNotFoundError
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare
@@ -871,6 +871,56 @@ async def test_the_page_lists_the_scopes_postings_grants_incomes_and_links_only(
     assert [g.transaction_cm_id for g in page.grants] == [9001]
     assert [i.household_cm_id for i in page.incomes] == [JOHNSON, GARCIA]
     assert [ln.household_cm_id for ln in page.links] == [JOHNSON, LINKED]  # the whole linked family, D26 aside
+
+
+class _ConflictCasework(_Casework):
+    """Johnson's application: a second payer's adult (no request) and a sibling (no request) hold their own income
+    forms, and a third id the persons table does not know."""
+
+    async def application_detail(self, year: int, household_cm_id: int) -> ApplicationDetailResponse:
+        detail = await super().application_detail(year, household_cm_id)
+        if household_cm_id != JOHNSON:
+            return detail
+        variants = [
+            {"value": 50000.0, "person_cm_ids": [1000011]},
+            {"value": 70000.0, "person_cm_ids": [1000019, 1000099]},
+        ]
+        flag = FlagOut(code="income_conflict", detail={"fields": {"total_gross_income": variants}})
+        other = FlagOut(code="ask_conflict", detail={"fields": ["not", "a", "conflict"], "person_cm_ids": [1000077]})
+        return detail.model_copy(update={"flags": [other, flag], "member_person_cm_ids": [1000011, 1000012]})
+
+
+class _FormPeopleLedger(_Ledger):
+    async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+        extra = [
+            SimpleNamespace(cm_id=1000012, first_name="Mia", last_name="Johnson", household_id=JOHNSON),
+            SimpleNamespace(cm_id=1000019, first_name="Jordan", last_name="Garcia", household_id=GARCIA),
+        ]
+        return [*await super().fetch_persons(year, cm_ids), *(p for p in extra if p.cm_id in cm_ids)]
+
+
+@pytest.mark.asyncio
+async def test_an_income_names_every_person_who_owns_a_form_on_it() -> None:
+    """A "Use X's Form" button needs a name for each form's owner, including a sibling or a second payer's adult with
+    no request on the page. One with no persons row is left out (the client falls back)."""
+    store = _family()
+    service = HouseholdPageService(
+        store=store,
+        pricing=FakeRules(approved()),
+        grants=_Grants(),
+        casework=_ConflictCasework(store),
+        ledger=_FormPeopleLedger(),
+        history=_History(),
+        clock=lambda: T0,
+    )
+    page = await service.read(YEAR, JOHNSON)
+    by_household = {i.household_cm_id: i for i in page.incomes}
+    assert [(p.person_cm_id, p.first_name, p.last_name) for p in by_household[JOHNSON].form_people] == [
+        (1000011, "Emma", "Johnson"),
+        (1000012, "Mia", "Johnson"),
+        (1000019, "Jordan", "Garcia"),
+    ]
+    assert by_household[GARCIA].form_people == []  # its one member has no persons row
 
 
 @pytest.mark.asyncio
