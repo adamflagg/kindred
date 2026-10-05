@@ -312,7 +312,8 @@ def effect_words(effect: HistoryEffectOut | None) -> str:
         return "no approved rules price the season yet: nothing re-priced"
     if effect.to_version == effect.from_version:
         return f"v{effect.to_version} still prices the season: nothing re-priced"
-    return f"v{effect.to_version} now prices the season · {_count(effect.repriced, 'unsent request', 'unsent requests')} re-priced"
+    repriced = _count(effect.repriced, "unsent request", "unsent requests")
+    return f"v{effect.to_version} now prices the season · {repriced} re-priced"
 
 
 def _money_or_none(value: Decimal | None) -> float | None:

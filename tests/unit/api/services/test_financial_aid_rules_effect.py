@@ -106,6 +106,12 @@ def test_a_posted_amount_never_re_prices_and_clawed_back_or_closed_requests_coun
     assert approval_counts(was, now) == 0
 
 
+def test_a_posted_round_never_counts_even_if_its_amount_reads_differently() -> None:
+    was = {EMMA: _priced(EMMA, _view(1, "posted", decided="1500"))}
+    now = {EMMA: _priced(EMMA, _view(1, "posted", decided="1380"))}
+    assert approval_counts(was, now) == 0
+
+
 def test_the_logged_effect_is_three_whole_numbers() -> None:
     assert ApprovalEffect(3, 4, 41).log() == {"from_version": 3, "to_version": 4, "repriced": 41}
 

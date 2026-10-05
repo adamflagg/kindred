@@ -133,8 +133,7 @@ class RequestInputs(_Input):
     # The base amount each round locked at when it was posted (sub-project 10a; D43, D52): the
     # round itself, without its decision type's top-up or discretionary money. A locked round keeps
     # it whatever the rules or inputs say now, and every later round builds on it; the amount
-    # worked out now stays in the trace (step "r{n}_locked") for the receipt. "Would change by" is
-    # not read from it: pricing recomputes the round with only the rounds before it locked.
+    # worked out now stays in the trace (step "r{n}_locked") for the receipt.
     r1_locked: Money | None = None
     r2_locked: Money | None = None
     r3_locked: Money | None = None

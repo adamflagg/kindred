@@ -1,8 +1,9 @@
 """A rules approval's effect on the season's pricing (D49; Season › History back-end ask H3).
 
-D49: a rules approval expands to "its effect (re-priced unsent requests)", and amounts are never recomputed afterwards.
-Sent offers are never counted: posted rounds are history and carry no "would change" flag (owner 2026-10-05). So the effect is measured once, when the approval commits, and recorded on
-the approval's own operation as a log-only aid_change_log row (record_change: a change with no aid_* record write):
+D49: a rules approval expands to "its effect (re-priced unsent requests)", and amounts are never recomputed
+afterwards. Sent offers are never counted: posted rounds are history and carry no "would change" flag (owner
+2026-10-05). So the effect is measured once, when the approval commits, and recorded on the approval's own operation
+as a log-only aid_change_log row (record_change: a change with no aid_* record write):
 entity RULES_EFFECT_ENTITY, action EFFECT_ACTION. History classes that entity as rules, so only financial_aid.rules
 readers ever see it. The rules log the replay reads (entity aid_rules exactly) never holds it.
 

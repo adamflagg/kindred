@@ -280,8 +280,7 @@ CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
 _POSTED_OVERRIDE_WARNING: Final = (
-    "A round is already posted: this cost changes the later rounds and the would-change-by figures, "
-    "never the money already posted"
+    "A round is already posted: this cost changes the later rounds, never the money already posted"
 )
 # Intake's flag on an unmatched request (financial_aid_intake_plan): its detail lists the candidate session ids.
 _UNMATCHED_FLAG: Final = "unmatched_session"

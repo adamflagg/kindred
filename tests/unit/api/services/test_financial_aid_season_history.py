@@ -24,6 +24,7 @@ from api.services.financial_aid_season_history import (
     Operation,
     SeasonHistoryService,
     Subject,
+    effect_out,
     entry_of,
     figures,
     for_reader,
@@ -839,6 +840,20 @@ async def test_an_approval_that_moved_no_pricing_says_so_and_an_old_one_says_not
         "v1 now prices the season · 1 unsent request re-priced"
     )
     assert await summary(None) == ""  # approved before the effect was recorded, or its measure failed
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        None,
+        {"from_version": 3, "to_version": 4},
+        {"from_version": 3, "to_version": 4, "repriced": -1},
+        {"from_version": 3, "to_version": 4, "repriced": True},
+        {"from_version": 3, "to_version": "4", "repriced": 1},
+    ],
+)
+def test_a_malformed_effect_row_reads_as_no_effect(after: dict[str, Any] | None) -> None:
+    assert effect_out(after) is None
 
 
 @pytest.mark.asyncio
