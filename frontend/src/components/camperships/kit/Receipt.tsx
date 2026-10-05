@@ -127,8 +127,9 @@ export function Receipt({
         </button>
       )}
       {(!folded || open) && (
-        // K4: the opened lines stay near their labels, capped at ~640px, not the page's full width.
-        <div className="border-border divide-border max-w-[640px] divide-y rounded-lg border text-[13px]">
+        // K4: the opened lines stay near their labels (capped narrower than the mock's ~640px, since
+        // these lines have no note column), never the page's full width.
+        <div className="border-border divide-border max-w-[520px] divide-y rounded-lg border text-[13px]">
           {sections.map((section) => (
             <div key={section.name} className="py-1">
               <div className="text-muted-foreground px-3 pt-1 text-xs font-semibold tracking-wide uppercase">
