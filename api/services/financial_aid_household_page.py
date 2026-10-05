@@ -56,6 +56,7 @@ from api.services.financial_aid_ledger_service import (
     household_display_name,
     money,
     parse_pb_datetime,
+    person_display_name,
     posting_line,
 )
 from api.services.financial_aid_payer_shares import share_status
@@ -373,14 +374,27 @@ def receipts(
     return out
 
 
-def _adults(people: Iterable[Any]) -> list[str]:
-    names = {
+def _adults(people: Iterable[Any], *, members: bool = False) -> list[str]:
+    """The parent names `people`'s records give, sorted. With `members` (a household's own people, not the page's
+    campers), a member who isn't a camper is an adult in their own right (owner N11 follow-up, 2026-10-05): their own
+    names lead, sorted, then any further parent names, deduplicated case-insensitively. A record with no is_camper
+    flag counts as a camper, so a child is never named as an adult."""
+    people = list(people)
+    named = {
         f"{str(p.get('first') or '').strip()} {str(p.get('last') or '').strip()}".strip()
         for person in people
         for p in (getattr(person, "parent_names", None) or [])
         if isinstance(p, Mapping)
     }
-    return sorted(names - {""}, key=str.lower)
+    own: dict[str, str] = {}
+    for person in people:
+        name = person_display_name(person) if members and not getattr(person, "is_camper", True) else ""
+        own.setdefault(name.lower(), name)
+    own.pop("", None)
+    return [
+        *sorted(own.values(), key=str.lower),
+        *sorted((n for n in named - {""} if n.lower() not in own), key=str.lower),
+    ]
 
 
 def _city(household: Any | None) -> str:
@@ -422,13 +436,13 @@ def _emails(people: Iterable[Any]) -> list[str]:
     return sorted({str(getattr(p, "primary_email", "") or "").strip() for p in people} - {""})
 
 
-def _link_row(link: Any, household: Any | None, people: Iterable[Any]) -> HouseholdPageLinkOut:
-    """The link, and its household named as a card names it. `people`: the household's own people, the ones its card
-    reads (`HouseholdPageService`'s `household_people`), whose parent names give the adults."""
+def _link_row(link: Any, household: Any | None, adults: list[str]) -> HouseholdPageLinkOut:
+    """The link, and its household named as a card names it: `adults` are its card's (`HouseholdPageService`'s
+    `household_adults`)."""
     cm_id = int(link.household_cm_id)
     return HouseholdPageLinkOut(
         family_name=household_display_name(household, cm_id),
-        adults=_adults(people),
+        adults=adults,
         city=_city(household),
         id=str(link.id),
         year=int(link.year),
@@ -602,8 +616,14 @@ class HouseholdPageService:
             """Whose parent names and emails give household `h`'s adults and emails, on its card and its link alike:
             the page's campers in it, or, with none (a second payer, or a linked household outside the scope), its
             own members. The short name never reads members: it stays children-based (coordinator, N11; #3007)."""
-            campers_in = [p for p in people.values() if _household_of(p) == h] if h in households else []
-            return campers_in or [p for p in members if _household_of(p) == h]
+            return campers_in(h) or [p for p in members if _household_of(p) == h]
+
+        def campers_in(h: int) -> list[Any]:
+            return [p for p in people.values() if _household_of(p) == h] if h in households else []
+
+        def household_adults(h: int) -> list[str]:
+            """Card and link alike: with no camper on the page, a member who isn't a camper names themselves."""
+            return _adults(household_people(h), members=not campers_in(h))
 
         accepted = accepted_index(dispositions)
         rules_version = season.rules.version if season.rules is not None else None
@@ -632,7 +652,7 @@ class HouseholdPageService:
         def link_out(link: Any) -> HouseholdPageLinkOut:
             h = int(link.household_cm_id)
             row = by_household.get(h) if h in households else linked_households.get(h)
-            return _link_row(link, row, household_people(h))
+            return _link_row(link, row, household_adults(h))
 
         return HouseholdPageResponse(
             year=year,
@@ -650,7 +670,7 @@ class HouseholdPageService:
                         ),
                         household_display_name(by_household.get(h), h),
                     ),
-                    adults=_adults(household_people(h)),
+                    adults=household_adults(h),
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
                     emails=_emails(household_people(h)),
                     city=_city(by_household.get(h)),
