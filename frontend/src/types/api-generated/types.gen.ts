@@ -7014,6 +7014,61 @@ export type HouseholdMoneyOut = {
 }
 
 /**
+ * HouseholdPageLinkOut
+ *
+ * A Linked households row (owner ruling 2026-10-04, late): the link, plus the household named as a card names
+ * it (HouseholdCardOut's family_name, adults and city), so it reads as a family and not a number. A household in
+ * the page's scope reads exactly as its card; one outside it takes its adults from its own members.
+ * Defaulted only so older clients' fixtures still type-check; the page always fills them.
+ */
+export type HouseholdPageLinkOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Key
+   */
+  family_key: string
+  /**
+   * Source
+   */
+  source: string
+  /**
+   * Excluded
+   */
+  excluded: boolean
+  /**
+   * Note
+   */
+  note: string
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * Family Name
+   */
+  family_name?: string
+  /**
+   * Adults
+   */
+  adults?: Array<string>
+  /**
+   * City
+   */
+  city?: string
+}
+
+/**
  * HouseholdPageResponse
  */
 export type HouseholdPageResponse = {
@@ -7057,7 +7112,7 @@ export type HouseholdPageResponse = {
   /**
    * Links
    */
-  links: Array<HouseholdLinkRow>
+  links: Array<HouseholdPageLinkOut>
   /**
    * History
    */
@@ -18918,7 +18973,7 @@ export type HouseholdPageResponseWritable = {
   /**
    * Links
    */
-  links: Array<HouseholdLinkRow>
+  links: Array<HouseholdPageLinkOut>
   /**
    * History
    */

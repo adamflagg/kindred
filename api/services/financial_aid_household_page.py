@@ -5,7 +5,8 @@ own rows and every figure matches the grid and Today.
 Scope (D26): the household it was opened from, plus every household holding a payer share in its
 requests, both ways (the requests it applied for and the requests it pays a share of). The scope is households,
 and everything on the page follows it (Decision 4): every request a scope household applied for, and the scope
-households' postings, grants, incomes, links and log.
+households' postings, grants, incomes, links and log. A linked household outside the scope is read only to name
+it on its link row (its row and members: owner ruling 2026-10-04, late).
 
 Included requests (D77's band) are live ones: not withdrawn, duplicate or cancelled (the budget's `live`).
 """
@@ -19,7 +20,6 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
 
-from api.schemas.financial_aid import HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
 from api.schemas.financial_aid_grants import GrantRowOut
 from api.schemas.financial_aid_household_page import (
@@ -28,6 +28,7 @@ from api.schemas.financial_aid_household_page import (
     HouseholdCardOut,
     HouseholdGrantRowOut,
     HouseholdMoneyOut,
+    HouseholdPageLinkOut,
     HouseholdPageResponse,
     HouseholdRequestOut,
     HouseholdTotalsOut,
@@ -287,6 +288,7 @@ class HouseholdLedgerReads(Protocol):
     async def fetch_dispositions(self, year: int) -> list[Any]: ...
     async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]: ...
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]: ...
+    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]: ...
     async def fetch_links(self, year: int) -> list[Any]: ...
     async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]: ...
     async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]: ...
@@ -387,8 +389,18 @@ def _city(household: Any | None) -> str:
     return ", ".join(p for p in parts if p)
 
 
-def _link_row(link: Any) -> HouseholdLinkRow:
-    return HouseholdLinkRow(
+def _household_of(person: Any) -> int:
+    return int(getattr(person, "household_id", 0) or 0)
+
+
+def _link_row(link: Any, household: Any | None, people: Iterable[Any]) -> HouseholdPageLinkOut:
+    """The link, and its household named as a card names it. `people`: whose parent names give the adults (the
+    page's campers for a household in its scope, as its card reads them; else the household's own members)."""
+    cm_id = int(link.household_cm_id)
+    return HouseholdPageLinkOut(
+        family_name=household_display_name(household, cm_id),
+        adults=_adults(p for p in people if _household_of(p) == cm_id),
+        city=_city(household),
         id=str(link.id),
         year=int(link.year),
         household_cm_id=int(link.household_cm_id),
@@ -442,7 +454,7 @@ async def _income(casework: CaseworkReads, year: int, household_cm_id: int) -> A
 class HouseholdPageService:
     """The household page's one aggregate read (D21): the live season priced once with its grants register
     (OneGrantsLoad), scoped to the family (D26), plus the family's own reads: its names, incomes, postings,
-    the households' details, links and log."""
+    the households' details, links and log, and the details of any linked household outside the scope."""
 
     def __init__(
         self,
@@ -528,21 +540,32 @@ class HouseholdPageService:
             for ln in sorted(links, key=lambda ln: (int(ln.household_cm_id), str(ln.id)))
             if str(ln.family_key) in family_keys or int(ln.household_cm_id) in households
         ]
-        log = await self._history.fetch_entity_log(
-            year,
-            exact={
-                *(r.application_id for r in season.requests.values() if r.household_cm_id in households),
-                *_correction_ids(incomes),
-                *(g.commitment_id for g in grant_rows if g.commitment_id),
-                *(str(ln.id) for ln in family_links),
-            }
-            - {""},
-            containing=request_ids,
+        # A linked household outside the scope has no card, so its row and members are read here, for its name (the
+        # same reads a household search makes); one in the scope reads as its card does.
+        outside = sorted({int(ln.household_cm_id) for ln in family_links} - households)
+        log, (linked_rows, linked_people) = await asyncio.gather(
+            self._history.fetch_entity_log(
+                year,
+                exact={
+                    *(r.application_id for r in season.requests.values() if r.household_cm_id in households),
+                    *_correction_ids(incomes),
+                    *(g.commitment_id for g in grant_rows if g.commitment_id),
+                    *(str(ln.id) for ln in family_links),
+                }
+                - {""},
+                containing=request_ids,
+            ),
+            asyncio.gather(
+                self._ledger.fetch_households(year, outside), self._ledger.fetch_household_members(year, outside)
+            )
+            if outside
+            else _no_reads(),
         )
         chips = {h: i + 1 for i, h in enumerate(scope.households)}
         asks = {r.id: r for d in incomes for r in d.requests}
         by_household = {int(h.cm_id): h for h in household_rows}
         people = {int(p.cm_id): p for p in persons}
+        linked_households = {int(h.cm_id): h for h in linked_rows}
         accepted = accepted_index(dispositions)
         rules_version = season.rules.version if season.rules is not None else None
         band = band_grants_by_request(season.register)
@@ -567,6 +590,12 @@ class HouseholdPageService:
                 round3_context=round3_context(row, counts, capacities),
             )
 
+        def link_out(link: Any) -> HouseholdPageLinkOut:
+            h = int(link.household_cm_id)
+            if h in households:
+                return _link_row(link, by_household.get(h), people.values())
+            return _link_row(link, linked_households.get(h), linked_people)
+
         return HouseholdPageResponse(
             year=year,
             household_cm_id=household_cm_id,
@@ -576,13 +605,13 @@ class HouseholdPageService:
                     household_cm_id=h,
                     chip=chips[h],
                     family_name=household_display_name(by_household.get(h), h),
-                    adults=_adults(p for p in people.values() if int(getattr(p, "household_id", 0) or 0) == h),
+                    adults=_adults(p for p in people.values() if _household_of(p) == h),
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
                     emails=sorted(
                         {
                             str(getattr(p, "primary_email", "") or "").strip()
                             for p in people.values()
-                            if int(getattr(p, "household_id", 0) or 0) == h
+                            if _household_of(p) == h
                         }
                         - {""}
                     ),
@@ -616,7 +645,7 @@ class HouseholdPageService:
                 posting_line(p, accepted)
                 for p in sorted(postings, key=lambda p: (str(p.post_date or ""), int(p.transaction_cm_id)))
             ],
-            links=[_link_row(ln) for ln in family_links],
+            links=[link_out(ln) for ln in family_links],
             history=[entry for record in log if (entry := _history_entry(record, request_ids)) is not None],
             override_reasons=(
                 list(season.rules.document.cost.override_reasons)
@@ -628,6 +657,10 @@ class HouseholdPageService:
 
 async def _nothing() -> list[Any]:
     return []
+
+
+async def _no_reads() -> tuple[list[Any], list[Any]]:
+    return [], []
 
 
 async def _no_names() -> dict[str, str]:

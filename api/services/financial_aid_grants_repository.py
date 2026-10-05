@@ -5,7 +5,6 @@ commit_aid_writes in the service."""
 
 from __future__ import annotations
 
-from collections.abc import Collection
 from typing import Any
 
 from api.constants.collections import (
@@ -13,7 +12,6 @@ from api.constants.collections import (
     AID_POSTINGS,
     AID_REQUESTS,
     FINANCIAL_AID_APPLICATIONS,
-    PERSONS,
 )
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_repository import STABLE_SORT
@@ -38,10 +36,6 @@ class GrantsRepository(FinancialAidRepository):
 
     async def get_commitment(self, commitment_id: str) -> Any | None:
         return await self._one(AID_GRANTS, commitment_id)
-
-    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
-        """The persons whose own household is one of these (chunked by ID_CHUNK households per query)."""
-        return await self._by_ids(PERSONS, f"year = {int(year)}", "household_id", household_ids)
 
     async def fetch_request_refs(self, year: int) -> list[Any]:
         return await self._page(

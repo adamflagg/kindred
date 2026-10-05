@@ -73,10 +73,6 @@ class HouseholdSearchRepository(FinancialAidRepository):
             },
         )
 
-    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
-        """This season's people whose own household is one of these (chunked by id, ID_CHUNK at a time)."""
-        return await self._by_ids(PERSONS, f"year = {int(year)}", "household_id", household_ids)
-
 
 async def _none() -> list[Any]:
     return []

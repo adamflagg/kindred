@@ -767,6 +767,7 @@ export type {
   HouseholdMatchOut,
   HouseholdMedicalResponse,
   HouseholdMoneyOut,
+  HouseholdPageLinkOut,
   HouseholdPageResponse,
   HouseholdPageResponseWritable,
   HouseholdRequestOut,
