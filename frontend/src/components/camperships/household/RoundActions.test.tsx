@@ -284,6 +284,19 @@ describe('RoundNextAction (D51; Decision 22)', () => {
 })
 
 describe('RoundChecklist (§5.2; D47)', () => {
+  // Owner rule: a checkbox that cannot be clicked looks greyed out, muted box and label.
+  it('greys out a disabled box and its label', () => {
+    render(<RoundChecklist request={emma} line={lineOf(emma)} year={2027} />)
+    const off = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(off).toBeDisabled()
+    expect(off.closest('label')).toHaveClass(
+      'has-[:disabled]:cursor-not-allowed',
+      'has-[:disabled]:text-muted-foreground'
+    )
+    expect(off).toHaveClass('disabled:cursor-not-allowed', 'disabled:opacity-50')
+    expect(off).not.toHaveClass('disabled:cursor-default')
+  })
+
   // B22 (ruled 10-04 late): since D162 the overnight tick is the normal path, and it never re-marks a
   // round unmarked by hand; the undo says so before it is sent.
   it('warns that the overnight sync will not re-mark the round, and where it will show', async () => {

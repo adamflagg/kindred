@@ -100,11 +100,16 @@ export const HH_PANEL_ACTIONABLE = 'bg-amber-100/45 dark:bg-amber-900/20'
 /** A round's lock words ("locked Mar 9 · Riley"): 11.5px muted. */
 export const HH_LOCK = 'text-muted-foreground text-[11.5px]'
 
-/** A checklist tick (the mock's .tick): 12.5px, the box and its label, the date muted. */
-export const HH_TICK = 'inline-flex items-center gap-[5px] whitespace-nowrap text-[12.5px]'
+/**
+ * A checklist tick (the mock's .tick): 12.5px, the box and its label, the date muted. A tick whose
+ * real checkbox is disabled greys its label and shows cursor-not-allowed (owner rule: a box that
+ * can't be clicked must look it); the decision panel's read-only Tick has no input, so is unchanged.
+ */
+export const HH_TICK =
+  'inline-flex items-center gap-[5px] whitespace-nowrap text-[12.5px] has-[:disabled]:cursor-not-allowed has-[:disabled]:text-muted-foreground'
 /** The tick's 14px box: forest-700 filled with a white ✓ when on (D6). On a real checkbox, the input itself. */
 export const HH_TICK_BOX =
-  'inline-flex size-3.5 shrink-0 appearance-none items-center justify-center rounded-[3px] border-[1.5px] border-muted-foreground text-[11px] leading-none text-white checked:border-forest-700 checked:bg-forest-700 disabled:cursor-default dark:checked:border-forest-400 dark:checked:bg-forest-500'
+  'inline-flex size-3.5 shrink-0 appearance-none items-center justify-center rounded-[3px] border-[1.5px] border-muted-foreground text-[11px] leading-none text-white checked:border-forest-700 checked:bg-forest-700 disabled:cursor-not-allowed disabled:border-muted-foreground/50 disabled:opacity-50 dark:checked:border-forest-400 dark:checked:bg-forest-500'
 export const HH_TICK_BOX_ON =
   'border-forest-700 bg-forest-700 dark:border-forest-400 dark:bg-forest-500'
 
