@@ -200,6 +200,20 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
       ).toEqual(["Test used person 1000099's form for 1 answer: children"])
     })
 
+    it('names a form owner from form_people when the person is not a camper (item 9)', () => {
+      const page = {
+        ...HISTORY_PAGE,
+        incomes: HISTORY_PAGE.incomes.map((i) => ({
+          ...i,
+          form_people: [{ person_cm_id: 1000099, first_name: 'Noah', last_name: 'Johnson' }],
+        })),
+        history: [used('num_children', {}, 1000099)],
+      }
+      expect(historyLines(page).map(lineText)).toEqual([
+        "Test used Noah's form for 1 answer: children",
+      ])
+    })
+
     it('leaves a plain correction, and another operation, on lines of their own', () => {
       const lines = historyLines({
         ...HISTORY_PAGE,

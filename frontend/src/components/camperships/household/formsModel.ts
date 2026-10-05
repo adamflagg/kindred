@@ -21,8 +21,16 @@ export interface FormChoice {
 
 const firstName = (name: string) => name.split(' ')[0] ?? name
 
-/** A form's owner as staff read it: the camper's first name, or "person N" when not a camper here. */
+/**
+ * A form's owner as staff read it (item 9): the first name the income's `form_people` gives (any
+ * household's: a person id is one person), else the camper's first name, else "person N". The
+ * server leaves out someone with no persons row, so the fallbacks stay.
+ */
 export function formOwner(page: ApiAidHouseholdPage, personCmId: number): string {
+  const named = page.incomes
+    .flatMap((income) => income.form_people)
+    .find((person) => person.person_cm_id === personCmId && person.first_name.trim() !== '')
+  if (named !== undefined) return named.first_name.trim()
   const row = page.requests.find((r) => r.row.person_cm_id === personCmId && personCmId > 0)?.row
   return row === undefined || row.camper_name === ''
     ? `person ${String(personCmId)}`

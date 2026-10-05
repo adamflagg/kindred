@@ -7,6 +7,7 @@ import {
   disagreeWords,
   formChoices,
   formOutcomeWords,
+  formOwner,
   settleWords,
 } from './formsModel'
 import { GROSS_CONFLICT, answer, income, plainAnswers } from './sectionsFixtures'
@@ -277,6 +278,58 @@ describe('formOutcomeWords: what a Use X’s Form did', () => {
     ).toEqual([
       "Nothing to change: every answer already matches Emma's form.",
       "Emma's form left Medical expenses and Rent blank: correct them by hand or use another form.",
+    ])
+  })
+})
+
+// Item 9 (#3022): each income carries form_people, its forms' owners named from persons. They name a
+// form first, then the page's campers, then the person id (someone with no persons row is left out).
+describe('formOwner: form_people first, then the campers, then the id (item 9)', () => {
+  const NOAH = { person_cm_id: 1000099, first_name: 'Noah', last_name: 'Johnson' }
+  const withPeople = (people: (typeof NOAH)[]) =>
+    householdPage({ incomes: [income({ form_people: people })] })
+
+  it('names a form owner who is not a camper on the page from form_people', () => {
+    expect(formOwner(withPeople([NOAH]), 1000099)).toBe('Noah')
+    expect(formOwner(PAGE, 1000099)).toBe('person 1000099')
+  })
+
+  it("prefers form_people's first name over the camper's", () => {
+    const page = withPeople([{ person_cm_id: 1000002, first_name: 'Em', last_name: 'Johnson' }])
+    expect(formOwner(page, 1000002)).toBe('Em')
+  })
+
+  it("reads any household's form_people, and falls back past a blank first name", () => {
+    const page = householdPage({
+      incomes: [
+        income(),
+        income({
+          household_cm_id: 1000003,
+          form_people: [NOAH, { person_cm_id: 1000002, first_name: ' ', last_name: '' }],
+        }),
+      ],
+    })
+    expect(formOwner(page, 1000099)).toBe('Noah')
+    expect(formOwner(page, 1000002)).toBe('Emma')
+  })
+
+  it("names the Use X's Form choices from form_people", () => {
+    const flag = {
+      code: 'household_answer_conflict',
+      detail: {
+        fields: {
+          num_children: [
+            { value: 1, person_cm_ids: [1000002] },
+            { value: 2, person_cm_ids: [1000099] },
+          ],
+        },
+        resolved_by_correction: false,
+      },
+    }
+    const page = withPeople([NOAH])
+    expect(formChoices(page, income({ flags: [flag], form_people: [NOAH] }))).toEqual([
+      { personCmId: 1000002, name: 'Emma' },
+      { personCmId: 1000099, name: 'Noah' },
     ])
   })
 })
