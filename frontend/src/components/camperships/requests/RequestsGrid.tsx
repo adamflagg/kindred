@@ -110,6 +110,11 @@ function renderFor(
             ) : (
               '—'
             )}
+            {ctx.view === 'needs_offer' && (row.payer_count ?? 1) >= 2 && (
+              <div>
+                <StatusPill tone="stone">{`split · ${String(row.payer_count)} households`}</StatusPill>
+              </div>
+            )}
             {matched !== null && (
               <div>
                 <IdChip id={matched} />
