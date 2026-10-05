@@ -22,6 +22,25 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     expect(screen.getByText('2 · The Garcia Family')).toBeInTheDocument()
   })
 
+  // #3019: the server builds the short name from the household's adults, so two surnames come
+  // joined ("Garcia & Chen"). The chip draws it as sent; a blank one still falls back.
+  it('chips draw a short name built from two adults as sent', () => {
+    const [a, b] = SPLIT_PAGE.households
+    render(
+      <HouseholdCards
+        page={{
+          ...SPLIT_PAGE,
+          households: [
+            { ...a!, short_name: 'Garcia & Chen' },
+            { ...b!, short_name: '' },
+          ],
+        }}
+      />
+    )
+    expect(screen.getByText('1 · Garcia & Chen')).toBeInTheDocument()
+    expect(screen.getByText('2 · The Garcia Family')).toBeInTheDocument()
+  })
+
   it('draws nothing for one household: its details are in the band', () => {
     const { container } = render(<HouseholdCards page={householdPage()} />)
     expect(container).toBeEmptyDOMElement()
