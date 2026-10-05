@@ -102,6 +102,7 @@ export function householdPage(over: Partial<ApiAidHouseholdPage> = {}): ApiAidHo
       {
         household_cm_id: 1000001,
         status: 'complete',
+        form_people: [],
         answers: [
           {
             field: 'total_adjusted_income',
