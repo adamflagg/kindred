@@ -1,4 +1,4 @@
-import { Download, Search } from 'lucide-react'
+import { Download, Search, type LucideIcon } from 'lucide-react'
 import {
   Fragment,
   useCallback,
@@ -122,6 +122,8 @@ export interface AidGrouping<Row> {
   readonly key: string
   readonly label: string
   readonly groupOf: (row: Row) => { id: string; heading: string }
+  /** Group ids in the order they run (`groupRows`); without it, groups run in first-row order. */
+  readonly order?: readonly string[] | undefined
 }
 
 /**
@@ -158,6 +160,15 @@ export interface AidTableProps<Row> {
   readonly arrowKeys?: boolean | undefined
   /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
   readonly toolbarLead?: ReactNode
+  /**
+   * Controls drawn right after the Flat / By … switch. Passing them moves the switch up beside the
+   * lead: lead · switch · these · search · Download CSV (the Requests grid, owner rulings 10-04 late
+   * (grid follow-up)). Without them the line is lead · search · switch · Download CSV.
+   */
+  readonly toolbarAfterGrouping?: ReactNode
+  /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
+  readonly searchPlaceholder?: string | undefined
+  readonly searchIcon?: LucideIcon | undefined
   /**
    * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor's
    * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
@@ -227,6 +238,9 @@ export function AidTable<Row>({
   renderDetail,
   arrowKeys = false,
   toolbarLead,
+  toolbarAfterGrouping,
+  searchPlaceholder = 'Search names or CM IDs',
+  searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
   onHighlight,
   footerLabel,
@@ -302,11 +316,26 @@ export function AidTable<Row>({
   const grouping = groupings.find((g) => g.key === group)
   const groups: Array<RowGroup<Row>> = useMemo(
     () =>
-      grouping ? groupRows(shown, grouping.groupOf) : [{ id: '', heading: '', rows: [...shown] }],
+      grouping
+        ? groupRows(shown, grouping.groupOf, grouping.order)
+        : [{ id: '', heading: '', rows: [...shown] }],
     [shown, grouping]
   )
+  // Folded group ids (owner rulings 10-04 late (grid follow-up)): component state, so a fold lasts
+  // the visit and never reaches the URL. Display only: the footer, the group counts and the CSV
+  // still count a folded group's rows; ↑/↓, the editor's next / previous and Select all skip them.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const isFolded = useCallback(
+    (g: RowGroup<Row>) => grouping !== undefined && folded.has(g.id),
+    [grouping, folded]
+  )
   const ordered = useMemo(() => groups.flatMap((g) => g.rows), [groups])
-  const order = useMemo(() => ordered.map(rowKey), [ordered, rowKey])
+  // The rows on screen, in screen order: what ↑/↓ walk and Select all takes.
+  const unfolded = useMemo(
+    () => groups.flatMap((g) => (isFolded(g) ? [] : g.rows)),
+    [groups, isFolded]
+  )
+  const order = useMemo(() => unfolded.map(rowKey), [unfolded, rowKey])
   // Without the kept row: a group's count and the CSV are of matching rows only.
   const counted = (list: readonly Row[]) =>
     kept === null ? list : list.filter((row) => rowKey(row) !== kept)
@@ -317,8 +346,9 @@ export function AidTable<Row>({
       : null
   const selectable = selection !== null
   const span = columns.length + (selectable ? 1 : 0)
-  // The rows the search matches, without the kept row (`counted`): what Select all takes.
-  const selectableKeys = counted(ordered).map(rowKey)
+  // The rows the search matches, without the kept row (`counted`) and outside any folded group (a
+  // row you cannot see is never ticked by Select all): what Select all takes.
+  const selectableKeys = counted(unfolded).map(rowKey)
   const allSelected =
     selection !== null &&
     selectableKeys.length > 0 &&
@@ -331,6 +361,17 @@ export function AidTable<Row>({
       else next.add(key)
     }
     selection.onChange(next)
+  }
+  const toggleFold = (g: RowGroup<Row>) => {
+    const next = new Set(folded)
+    if (next.has(g.id)) next.delete(g.id)
+    else {
+      next.add(g.id)
+      // Folding the row you are on closes it: nothing is left on screen to hold its detail line.
+      if (highlighted !== null && g.rows.some((row) => rowKey(row) === highlighted))
+        setHighlight(null)
+    }
+    setFolded(next)
   }
   const toggleOne = (key: string) => {
     if (selection === null) return
@@ -551,43 +592,48 @@ export function AidTable<Row>({
     return Math.max(span, 1)
   })()
 
+  // Flat is always a choice, so one grouping is enough for a switch (owner ruling G1).
+  const groupingSwitch =
+    groupings.length > 0 ? (
+      <div className={GROUP}>
+        <button
+          type="button"
+          className={grouping ? GROUP_BUTTON_OFF : GROUP_BUTTON_ON}
+          onClick={() => setGroup(null)}
+        >
+          Flat
+        </button>
+        {groupings.map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            className={group === g.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
+            onClick={() => setGroup(g.key)}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+    ) : null
+
   return (
     <div className="space-y-2">
       <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         {toolbarLead}
+        {toolbarAfterGrouping !== undefined && groupingSwitch}
+        {toolbarAfterGrouping}
         <div className="relative w-64">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <input
             type="search"
             aria-label="Search"
-            placeholder="Search names or CM IDs"
+            placeholder={searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className={SEARCH_INPUT}
           />
         </div>
-        {/* Flat is always a choice, so one grouping is enough for a switch (owner ruling G1). */}
-        {groupings.length > 0 && (
-          <div className={GROUP}>
-            <button
-              type="button"
-              className={grouping ? GROUP_BUTTON_OFF : GROUP_BUTTON_ON}
-              onClick={() => setGroup(null)}
-            >
-              Flat
-            </button>
-            {groupings.map((g) => (
-              <button
-                key={g.key}
-                type="button"
-                className={group === g.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-                onClick={() => setGroup(g.key)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {toolbarAfterGrouping === undefined && groupingSwitch}
         {/* The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant). */}
         <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
           <Download className="h-4 w-4" />
@@ -664,14 +710,22 @@ export function AidTable<Row>({
                 {grouping && g.rows.length > 0 && (
                   <tr>
                     <td colSpan={span} className={GROUP_ROW} data-group-heading="">
-                      <span className="sticky left-2">{g.heading}</span>
+                      {/* The heading folds its group (owner rulings 10-04 late); the count stays. */}
+                      <button
+                        type="button"
+                        className="sticky left-2 cursor-pointer"
+                        onClick={() => toggleFold(g)}
+                      >
+                        <span className="mr-1.5 inline-block w-3">{isFolded(g) ? '▸' : '▾'}</span>
+                        <span>{g.heading}</span>
+                      </button>
                       {groupCount ? (
                         <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
                       ) : null}
                     </td>
                   </tr>
                 )}
-                {g.rows.map((row) => {
+                {(isFolded(g) ? [] : g.rows).map((row) => {
                   const key = rowKey(row)
                   const isHighlighted = key === highlighted
                   const isMarked = markedKeys?.has(key) === true

@@ -284,17 +284,26 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   // Owner (10-04, csv-options.html option A): Download CSV ends the line again; the 10-03 "⤓ CSV"
   // chip is gone. Was: "…search and the ⤓ CSV chip on one toolbar line".
-  it('puts Program, the Round chips, Show IDs, search and Download CSV on one toolbar line', () => {
+  // Owner rulings 10-04 late (grid follow-up): the line runs Program · Round · Flat / By reason ·
+  // Show IDs · filter box · Download CSV. Was Program, Round, Show IDs, search, the switch, CSV.
+  it('puts Program, the Round chips, Flat / By reason, Show IDs, search and Download CSV on one toolbar line, in that order', () => {
     renderAt('/aid/requests')
     const line = toolbar()
     expect(line).not.toBeNull()
-    for (const el of [
+    const inOrder = [
       screen.getByLabelText('Program'),
       within(line).getByRole('button', { name: 'R1' }),
+      within(line).getByRole('button', { name: 'Flat' }),
       screen.getByLabelText('Show IDs'),
+      screen.getByLabelText('Search'),
       screen.getByRole('button', { name: 'Download CSV' }),
-    ])
-      expect(line).toContainElement(el)
+    ]
+    for (const el of inOrder) expect(line).toContainElement(el)
+    for (let i = 1; i < inOrder.length; i++) {
+      const before = inOrder[i - 1] as HTMLElement
+      const after = inOrder[i] as HTMLElement
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
     expect(line.lastElementChild).toBe(screen.getByRole('button', { name: 'Download CSV' }))
     expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })

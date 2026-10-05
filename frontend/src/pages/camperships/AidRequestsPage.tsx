@@ -12,7 +12,7 @@ import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
 import { BulkBar, type TickResult } from '../../components/camperships/requests/BulkBar'
 import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
-import { GridFiltersBar } from '../../components/camperships/requests/GridFiltersBar'
+import { GridFiltersBar, ShowIdsToggle } from '../../components/camperships/requests/GridFiltersBar'
 import {
   RequestsGrid,
   type HouseholdLinks,
@@ -354,11 +354,12 @@ export default function AidRequestsPage() {
       program={program}
       pool={pool}
       round={round}
-      showIds={showIds}
       onChange={changeFilter}
       onProgramPool={onProgramPool}
     />
   )
+  // After the grid's Flat / By reason switch (owner rulings 10-04 late (grid follow-up)).
+  const idsToggle = <ShowIdsToggle showIds={showIds} onChange={changeFilter} />
   // The filters share the grid's own toolbar line with search and Download CSV; with no grid on
   // screen (loading, failed, a past date) they stand on a line of their own.
   const gridShown = grid.data !== undefined && (live || view.key === 'all')
@@ -381,7 +382,10 @@ export default function AidRequestsPage() {
         onOpen={openView}
       />
       {!gridShown && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">{filtersBar}</div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          {filtersBar}
+          {idsToggle}
+        </div>
       )}
       {view.key === 'waiting_on_family' && (
         <p className="text-muted-foreground text-xs">
@@ -467,6 +471,7 @@ export default function AidRequestsPage() {
               }
               links={links}
               filters={filtersBar}
+              filtersAfterGrouping={idsToggle}
               selected={canWork ? selected : undefined}
               onSelectedChange={canWork ? changeSelected : undefined}
               onMatchingChange={canWork ? onMatchingChange : undefined}

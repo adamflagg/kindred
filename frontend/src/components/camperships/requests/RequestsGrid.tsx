@@ -1,3 +1,4 @@
+import { ListFilter } from 'lucide-react'
 import { useCallback, useMemo, type ReactNode } from 'react'
 
 import type { ApiAidGridRow } from '../../../types/api-types'
@@ -28,6 +29,7 @@ import {
   GRID_COLUMNS,
   moneyTotal,
   reasonGroup,
+  reasonOrder,
   viewColumns,
   viewCount,
   columnContext,
@@ -54,6 +56,11 @@ interface RequestsGridProps {
   readonly links: HouseholdLinks
   /** The filter controls: they share the table's toolbar line with search and Download CSV. */
   readonly filters?: ReactNode
+  /**
+   * Controls after the Flat / By reason switch, which then sits right after `filters` (owner rulings
+   * 10-04 late (grid follow-up): Program · Round · Flat / By reason · Show IDs · filter · CSV).
+   */
+  readonly filtersAfterGrouping?: ReactNode
   /**
    * The opened row's editor (owner fast-follow 10-03, arrangement 3): drawn inside the detail line,
    * as its right panel on a row that takes an ask, handed the row's next step to end its line with
@@ -232,6 +239,7 @@ export function RequestsGrid({
   onHighlight,
   links,
   filters,
+  filtersAfterGrouping,
   renderEditor,
   marked,
   selected,
@@ -260,7 +268,12 @@ export function RequestsGrid({
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [
-      { key: 'reason', label: 'By reason', groupOf: reasonGroup(view, today) },
+      {
+        key: 'reason',
+        label: 'By reason',
+        groupOf: reasonGroup(view, today),
+        order: reasonOrder(view),
+      },
     ],
     [view, today]
   )
@@ -277,6 +290,10 @@ export function RequestsGrid({
         view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
       }
       toolbarLead={filters}
+      toolbarAfterGrouping={filtersAfterGrouping}
+      // Owner rulings 10-04 late (search words, option A): this box filters the list it sits on.
+      searchPlaceholder="Filter this list…"
+      searchIcon={ListFilter}
       arrowKeys
       scrollBox
       highlighted={highlighted}

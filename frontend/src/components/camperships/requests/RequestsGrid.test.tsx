@@ -200,6 +200,35 @@ describe('RequestsGrid', () => {
     expect(headings()).toBeGreaterThan(0)
   })
 
+  // Owner rulings 10-04 late (search words, option A): the grid's box filters this list.
+  it('says "Filter this list…" with a filter icon in its search box', () => {
+    render(<Grid />)
+    const box = screen.getByRole('searchbox', { name: 'Search' })
+    expect(box).toHaveAttribute('placeholder', 'Filter this list…')
+    expect(box.parentElement?.querySelector('svg')?.getAttribute('class')).toContain(
+      'lucide-list-filter'
+    )
+  })
+
+  // Owner rulings 10-04 late (grid follow-up): By reason on a lens is the strip stages, in the
+  // ruled order, whatever order the rows come in.
+  it('groups All By reason under the strip stages, in the ruled order', async () => {
+    render(<Grid slug="all" />)
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    const headings = [...document.querySelectorAll('[data-group-heading] button')].map((b) =>
+      b.textContent.slice(1)
+    )
+    expect(headings).toEqual(['Needs an offer', 'Not reconciled', 'To reverse', 'Holds'])
+  })
+
+  it('opens the Appeals lens grouped under the strip stages', () => {
+    render(<Grid slug="appeals" />)
+    const headings = [...document.querySelectorAll('[data-group-heading] button')].map((b) =>
+      b.textContent.slice(1)
+    )
+    expect(headings).toEqual(['Needs an offer'])
+  })
+
   it('finds a row by the requester’s name or the family name (T3, Q-L2)', async () => {
     render(<Grid />)
     const shown = () =>

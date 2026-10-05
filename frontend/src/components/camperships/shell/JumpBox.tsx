@@ -31,7 +31,8 @@ export function JumpBox() {
     ? error !== null
       ? 'Search unavailable'
       : 'Loading families…'
-    : 'Family, camper or CM id'
+    : // Owner rulings 10-04 late (search words, option A).
+      'Go to a family…'
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const [open, setOpen] = useState(false)
