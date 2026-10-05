@@ -119,3 +119,10 @@ def test_the_round_1_unmet_note_names_the_three_rules_the_figure_applies() -> No
     assert "Rounds outside the budget don't count" in text
     assert "offers that were clawed back don't count" in text
     assert "each family's gap is floored at $0" in text
+
+
+def test_the_confirmation_note_uses_the_pills_one_vocabulary() -> None:
+    """Owner O5 (2026-10-04, late; V1's one vocabulary): the note says "pending" where the pills do."""
+    text = BY_KEY["confirmation"].text
+    assert text.startswith("Confirmation, beside every Posted figure: pending, then confirmed (date); ")
+    assert "awaiting" not in text

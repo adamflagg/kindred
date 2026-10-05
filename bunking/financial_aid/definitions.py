@@ -52,7 +52,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="confirmation",
         term="Confirmation",
         text=(
-            "Confirmation, beside every Posted figure: awaiting tonight's sync, then confirmed (date); "
+            "Confirmation, beside every Posted figure: pending, then confirmed (date); "
             '"CampMinder shows $X · short $Y" or "· over $Y" when it disagrees; not in CampMinder (ticked, '
             "nothing posted after the sync). It is computed by net-total reconciliation of live camp-aid lines "
             "placed on the request against the locked amount, at family level where a line can't be placed on "
