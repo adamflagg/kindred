@@ -160,9 +160,8 @@ NOT_BUILT: Final[Mapping[str, str]] = {
     ),
     "rebuild_history": (
         "Seasons before the dashboard's decisions show finance's typed figures only. The dashboard's approximate "
-        "rebuild (≈) is "
-        "deferred: demand and application counts from the aid form mirror need an outlier-ask rule, and money by "
-        "pool needs the 2017–2024 ledger backfill"
+        "rebuild (≈) is deferred: demand and application counts from the aid form mirror need an outlier-ask rule, "
+        "and money by pool needs the 2017–2024 ledger backfill"
     ),
     "typed_tiers": "Typed per-tier history (RPT-9's earlier seasons) loads but isn't shown yet",
     "typed_cancellations": "Earlier seasons' recipients who cancelled (RPT-22) have no typed history yet",

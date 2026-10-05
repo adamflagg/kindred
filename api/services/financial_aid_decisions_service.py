@@ -275,8 +275,10 @@ _WHY_NOT: Final[Mapping[str, str]] = {
 }
 
 # Decision 14 (plan review 2026-09-30): a request the registrar cancelled takes no new decisions. Owner 2026-10-05: nor
-# does one CampMinder cancelled. A cancelled request takes only its reason (given or changed) and, for Kindred's own
-# cancellation, a reopen; CampMinder's is undone by re-enrolling there, so its refusal doesn't say "reopen".
+# does one CampMinder cancelled. Refused: asks, Round 3 amounts and finance's answer, the editor preview, cost
+# overrides, and checking Posted or Accepted (_cancelled_refusal). Still open: its reason (given or changed), a reopen
+# of Kindred's own cancellation, undoing a Posted tick, unchecking Accepted, and holds. CampMinder's cancellation is
+# undone by re-enrolling there, so its refusal doesn't say "reopen".
 CANCELLED_IN_KINDRED: Final = "Cancelled in the dashboard: reopen it first"
 CANCELLED_IN_CAMPMINDER: Final = "Cancelled in CampMinder: nothing new can be decided"
 
