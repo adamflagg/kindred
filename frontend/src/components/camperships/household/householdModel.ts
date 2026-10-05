@@ -254,11 +254,6 @@ export interface RoundLine {
    * amount, but the budget counts that money nowhere, so it never reads as standing posted money.
    */
   readonly clawedBack: boolean
-  /**
-   * A locked round's a would-change figure (D43); null when nothing would, and on a clawed-back
-   * round, where "the posted amount stands" is false.
-   */
-  readonly wouldChangeBy: number | null
 }
 
 /**
@@ -304,7 +299,6 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
             .join(' · ')
         : null
       const clawedBack = r.clawed_back ?? false
-      const would = clawedBack ? null : (r.would_change_by ?? null)
       const pending = r.status === 'pending_approval'
       const cmPending = r.cm_pending === true
       return {
@@ -330,7 +324,6 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         cmPending,
         cmPendingMessage: cmPending ? (r.cm_pending_message ?? null) : null,
         clawedBack,
-        wouldChangeBy: would !== null && would !== 0 ? would : null,
       }
     })
 }
@@ -350,12 +343,9 @@ export function earlierReceipts(request: ApiAidHouseholdRequest): ApiAidReceipt[
   return request.receipts.filter((r) => r !== latest).sort((a, b) => a.round - b.round)
 }
 
-/** D34: the receipt opens by itself on a hold, or while a would-change flag shows. */
+/** D34: the receipt opens by itself on a hold (owner Decision 1 dropped the would-change flag as a trigger). */
 export function opensByItself(request: ApiAidHouseholdRequest): boolean {
-  return (
-    request.row.holds.length > 0 ||
-    request.row.rounds.some((r) => !(r.clawed_back ?? false) && (r.would_change_by ?? 0) !== 0)
-  )
+  return request.row.holds.length > 0
 }
 
 /** A payer share's confirmation (D81), shaped for the kit's ConfirmationState; null until posted. */

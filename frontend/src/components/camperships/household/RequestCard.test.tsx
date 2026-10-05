@@ -73,45 +73,33 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(within(panel).getByTestId('tick-Accepted-1')).toHaveTextContent(/^Accepted$/)
   })
 
-  it('flags a locked round that rules now would change, and says the posted amount stands (D43; owner S1 Q1)', () => {
-    const row = gridRow({
-      rounds: [
-        roundOut(1, 'posted', {
-          decided: 1420,
-          posted: 1420,
-          posted_on: '2027-03-09',
-          would_change_by: 67,
-        }),
-      ],
-    })
-    renderCard(householdRequest(row))
-    expect(screen.getByText('rules now $67 higher · posted stands')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Today's rules would raise Round 1 by $67. The posted $1,420 stands; this is information only."
-      )
-    ).toBeInTheDocument()
+  it('draws no would-change flag or sentence on a locked round, whichever way rules would move it (owner Decision 1)', () => {
+    for (const by of [67, -40]) {
+      const row = gridRow({
+        rounds: [
+          roundOut(1, 'posted', {
+            decided: 1420,
+            posted: 1420,
+            posted_on: '2027-03-09',
+            would_change_by: by,
+          }),
+        ],
+      })
+      const { unmount } = renderCard(householdRequest(row))
+      expect(screen.queryByText(/posted stands/)).toBeNull()
+      expect(screen.queryByText(/rules now/)).toBeNull()
+      expect(screen.queryByText(/Today's rules would/)).toBeNull()
+      expect(screen.queryByText(/would change by/)).toBeNull()
+      unmount()
+    }
   })
 
-  it('never implies a posted amount drops when rules would lower it (owner ruling S1 Q1)', () => {
+  it('keeps the receipt folded on a would-change figure alone (owner Decision 1)', () => {
     const row = gridRow({
-      rounds: [
-        roundOut(1, 'posted', {
-          decided: 1420,
-          posted: 1420,
-          posted_on: '2027-03-09',
-          would_change_by: -40,
-        }),
-      ],
+      rounds: [roundOut(1, 'posted', { decided: 1420, posted: 1420, would_change_by: -40 })],
     })
-    renderCard(householdRequest(row))
-    expect(
-      screen.getByText(
-        "Today's rules would lower Round 1 by $40. The posted $1,420 stands; nothing is clawed back."
-      )
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/would change by/)).toBeNull()
-    expect(screen.getByText('rules now $40 lower · posted stands')).toBeInTheDocument()
+    renderCard(householdRequest(row, { receipts: [receiptOut(1)] }))
+    expect(screen.getByRole('button', { name: /^Show the receipt/ })).toBeInTheDocument()
   })
 
   it("draws a pending Round 3 the grid's way, outside the total, and names each line's basis", () => {
@@ -265,22 +253,6 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       expect(screen.queryByText(/stands/)).toBeNull()
       expect(screen.queryByText(/clawed back/)).toBeNull()
       expect(screen.queryByText(/rules now/)).toBeNull()
-    })
-
-    it('keeps the posted-stands wording on a round that was not reversed (I1 regression guard)', () => {
-      const row = gridRow({
-        rounds: [
-          roundOut(1, 'posted', {
-            decided: 1420,
-            posted: 1420,
-            posted_on: '2027-03-09',
-            would_change_by: -40,
-            clawed_back: false,
-          }),
-        ],
-      })
-      renderCard(householdRequest(row))
-      expect(screen.getByText(/The posted \$1,420 stands/)).toBeInTheDocument()
     })
 
     it("shows a dash, not the request's CampMinder figure, on a share with no posted figure of its own (I2)", () => {

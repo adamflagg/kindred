@@ -9,7 +9,6 @@ import { ExternalLink } from 'lucide-react'
 
 import { CampMinderIcon } from '../../icons'
 import type { AidView } from '../kit/asOf'
-import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { ConfirmationState, HouseholdChip, StatusPill } from '../kit/Pills'
@@ -50,20 +49,6 @@ export function CampMinderLink({ href, label }: { href: string; label: 'Person' 
       <ExternalLink className="h-3 w-3 opacity-60" />
     </a>
   )
-}
-
-/**
- * A locked round that today's rules price differently. Once an amount is offered or posted it stands,
- * and a later change never reduces it (owner ruling 2026-10-01 S1 Q1; D43), so a lower figure is
- * never worded as a change to the family's aid.
- */
-function wouldChangeSentence(line: RoundLine): string {
-  const by = line.wouldChangeBy ?? 0
-  const n = String(line.round)
-  const posted = formatMoney(line.amount)
-  return by < 0
-    ? `Today's rules would lower Round ${n} by ${formatMoney(-by)}. The posted ${posted} stands; nothing is clawed back.`
-    : `Today's rules would raise Round ${n} by ${formatMoney(by)}. The posted ${posted} stands; this is information only.`
 }
 
 function EarlierReceipts({
@@ -277,13 +262,6 @@ export function RequestCard({
         )}
         view={view}
       />
-      {lines
-        .filter((line) => line.wouldChangeBy !== null && line.posted)
-        .map((line) => (
-          <p key={line.round} className={HH_AMBER_NOTE}>
-            {wouldChangeSentence(line)}
-          </p>
-        ))}
       {/* The server's notes (calculator warnings, D81's "not yet marked posted"), as the grid's attention cell words them. */}
       {(row.notes ?? []).map((issue, index) => (
         <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>

@@ -3,7 +3,6 @@ import { Fragment, type ReactNode } from 'react'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
-import { StatusPill } from '../kit/Pills'
 import type { RoundLine } from './householdModel'
 import {
   HH_AMBER_NOTE,
@@ -23,17 +22,6 @@ const BASIS_WORDS = {
   decided: 'decided',
   pending: null,
 } as const satisfies Record<RoundLine['basis'], string | null>
-
-/**
- * A locked round's flag. Rules that would lower it never read as a change to what the family has,
- * and a higher figure is information only: either way the posted amount stands (owner ruling
- * 2026-10-01 S1 Q1; Decision 22; D43).
- */
-function wouldChangeWords(by: number): string {
-  return by < 0
-    ? `rules now ${formatMoney(-by)} lower · posted stands`
-    : `rules now ${formatMoney(by)} higher · posted stands`
-}
 
 /** A read-only tick (D6): the mock's 14px forest box with a white ✓, the date muted beside the label. */
 function Tick({
@@ -131,9 +119,6 @@ export function DecisionPanel({
                     </span>
                   )}
                   {line.lock !== null && <span className={HH_LOCK}>{line.lock}</span>}
-                  {line.wouldChangeBy !== null && (
-                    <StatusPill tone="amber">{wouldChangeWords(line.wouldChangeBy)}</StatusPill>
-                  )}
                 </div>
               </td>
               <td className={HH_PANEL_TD}>

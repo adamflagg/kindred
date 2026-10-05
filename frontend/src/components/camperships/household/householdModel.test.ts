@@ -203,7 +203,6 @@ describe('the decision panel (§6.3 item 4; D50, D52; Decision 22)', () => {
       posted: true,
       postedOn: '2027-03-09',
       accepted: false,
-      wouldChangeBy: null,
     })
   })
 
@@ -231,10 +230,10 @@ describe('the decision panel (§6.3 item 4; D50, D52; Decision 22)', () => {
       ],
     })
     const lines = roundLines(householdRequest(row))
-    expect(lines.map((l) => [l.round, l.basis, l.amount, l.pending, l.wouldChangeBy])).toEqual([
-      [1, 'posted', 1420, null, 67],
-      [2, 'decided', 780, null, null],
-      [3, 'pending', null, 450, null],
+    expect(lines.map((l) => [l.round, l.basis, l.amount, l.pending])).toEqual([
+      [1, 'posted', 1420, null],
+      [2, 'decided', 780, null],
+      [3, 'pending', null, 450],
     ])
   })
 
@@ -251,7 +250,7 @@ describe('receipts (§6.5; D34; Decision 35)', () => {
     expect(earlierReceipts(request).map((r) => r.round)).toEqual([1])
   })
 
-  it('opens by itself on a hold or a would-change flag, and stays folded otherwise', () => {
+  it('opens by itself on a hold, and stays folded otherwise, a would-change figure included (owner Decision 1)', () => {
     expect(opensByItself(householdRequest(ROW_EMMA))).toBe(false)
     expect(
       opensByItself(
@@ -262,7 +261,7 @@ describe('receipts (§6.5; D34; Decision 35)', () => {
       )
     ).toBe(true)
     const flagged = gridRow({ rounds: [roundOut(1, 'posted', { would_change_by: -40 })] })
-    expect(opensByItself(householdRequest(flagged))).toBe(true)
+    expect(opensByItself(householdRequest(flagged))).toBe(false)
   })
 })
 
@@ -294,14 +293,13 @@ describe('per-share confirmation (D81)', () => {
 })
 
 describe('fix round 1 model (review of Task 20)', () => {
-  it('carries a clawed-back round and drops its would-change flag (I1; D54)', () => {
+  it('carries a clawed-back round, and no round line carries a would-change figure (I1; D54; owner Decision 1)', () => {
     const row = gridRow({
       rounds: [roundOut(1, 'posted', { posted: 1420, would_change_by: -40, clawed_back: true })],
     })
-    expect(roundLines(householdRequest(row))[0]).toMatchObject({
-      clawedBack: true,
-      wouldChangeBy: null,
-    })
+    const [line] = roundLines(householdRequest(row))
+    expect(line).toMatchObject({ clawedBack: true })
+    expect(line).not.toHaveProperty('wouldChangeBy')
   })
 
   it('gives a share with no posted figure no confirmation, whatever the request-wide state (I2)', () => {
