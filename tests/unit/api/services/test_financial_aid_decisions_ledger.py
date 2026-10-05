@@ -726,7 +726,7 @@ async def test_the_ledger_ticks_what_the_registrar_forgot_at_the_decided_amount_
         "ledger",
         date(2027, 3, 8),
     )
-    assert post.note == "Ticked by the ledger sync: CampMinder shows $1,600 on this request"
+    assert post.note == "The ledger sync checked Posted: CampMinder shows $1,600 on this request"
     assert post.snapshot is not None
     assert post.snapshot["pool"] == "camp_pool"
     assert {row["actor"] for row in store.log} == {"system:ledger"}
@@ -812,7 +812,7 @@ async def test_the_registrars_own_tick_still_locks_as_before() -> None:
 async def test_a_season_before_ticks_began_is_never_ticked() -> None:
     store = FakeDecisionsStore()
     out = await _service(store).ledger_ticks(2026)
-    assert (out.ticked, out.skipped) == (0, "2026 predates Posted ticks (the first ticked season is 2027)")
+    assert (out.ticked, out.skipped) == (0, "2026 predates the ledger checking Posted, which starts in 2027")
     assert store.operations == []
 
 

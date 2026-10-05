@@ -73,7 +73,7 @@ async def test_before_to_place_began_there_is_nothing_to_count_and_the_line_says
     store = one_line()
     season = await _decisions(store).season(YEAR)
     found = await open_to_place(replace(season, year=2026), store)
-    reason = "2026 predates To place (the first ticked season is 2027)"
+    reason = "2026 predates To place, which starts in 2027"
     assert found == OpenToPlace(lines=0, households=0, total=Decimal(0), skipped=reason)
     line = _line(build_today(_inputs([], to_place=found), casework=True, finance=False).casework, "to_place")
     assert (line.items, line.amount, line.item_kind, line.skipped) == (0, 0.0, "lines", reason)

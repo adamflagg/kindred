@@ -662,7 +662,7 @@ NOTE_NOT_TICKED: Final = "in_campminder_not_ticked"
 # tonight's sync, which no sync has failed yet.
 _NOT_YET_FAILED: Final[frozenset[ConfirmationStatus]] = frozenset({"confirmed", "awaiting_sync"})
 # V1: the CM ✓ "pending" line on a posted round whose hand tick awaits tonight's sync (the approved wording).
-AWAITING_SYNC_TEXT: Final = "Ticked today; tonight's sync checks it."
+AWAITING_SYNC_TEXT: Final = "Checked today; tonight's sync confirms it."
 
 
 @dataclass(frozen=True)
@@ -1137,7 +1137,7 @@ def stop_text(stop: TickStop) -> str:
 def pending_text(decided: Decimal) -> str:
     """C1 (owner 10-03): a round CampMinder covers in full with nothing blocking tonight's tick waits on the family at
     once; its CampMinder cell reads "pending", and its detail line says so. `decided` is the round's decided amount."""
-    return f"Posted in CampMinder ({dollars(decided)}). Kindred marks it posted after tonight's sync."
+    return f"Posted in CampMinder ({dollars(decided)}). The dashboard marks it posted after tonight's sync."
 
 
 @dataclass(frozen=True)

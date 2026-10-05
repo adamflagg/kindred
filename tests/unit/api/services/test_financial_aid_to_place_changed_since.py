@@ -425,7 +425,7 @@ async def test_rules_whose_history_cannot_be_replayed_refuse() -> None:
     season = await _season()
     reasons = changed_since(season, TICK, _since(rules_unknown=frozenset({POSTED})))
     assert [(r.code, r.text) for r in reasons] == [
-        ("rules_history", "Kindred can't replay the pricing rules' history to that day")
+        ("rules_history", "the dashboard can't replay the pricing rules' history to that day")
     ]
 
 
@@ -441,7 +441,7 @@ async def test_a_posting_older_than_the_sync_history_refuses() -> None:
     season = await _season()
     reasons = changed_since(season, TICK, _since(history_from=AFTER))
     assert [(r.code, r.text) for r in reasons] == [
-        ("too_long_ago", "the posting is older than Kindred's 90-day sync history")
+        ("too_long_ago", "the posting is older than the dashboard's 90-day sync history")
     ]
 
 

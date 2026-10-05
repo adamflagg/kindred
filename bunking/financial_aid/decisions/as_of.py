@@ -70,15 +70,17 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         "How much of Posted the ledger had confirmed by that date isn't rebuilt: when each ledger sync ran, and "
         "which CampMinder lines it had read then, aren't recorded by date"
     ),
-    "awaiting_sync": "Which ticks were awaiting a ledger sync on that date isn't rebuilt (see unconfirmed)",
+    "awaiting_sync": "Which rounds checked Posted were awaiting a ledger sync on that date isn't rebuilt "
+    "(see unconfirmed)",
     "not_reconciled": "Which posted rounds the ledger hadn't confirmed on that date isn't rebuilt (see unconfirmed)",
     "cancellation": _CANCELLED,
     "to_reverse": _TO_REVERSE,
     "queues": "Which Requests views a row is in reads its confirmation and cancellation",
-    "unticked": "Why CampMinder's money for a round has no Posted tick reads the overnight tick, which a past date "
-    "doesn't rebuild",
-    "cm_pending": "Whether a round's CampMinder check was pending (a hand tick awaiting that night's sync, or money the "
-    "overnight tick would post) reads the ledger's sync time and the overnight tick, which a past date doesn't rebuild",
+    "unticked": "Why a round with money in CampMinder isn't checked Posted reads the overnight sync's checks, which a "
+    "past date doesn't rebuild",
+    "cm_pending": "Whether a round's CampMinder check was pending (Posted checked by hand and awaiting that night's "
+    "sync, or money the overnight sync would post) reads the ledger's sync time and the overnight sync's checks, which "
+    "a past date doesn't rebuild",
     "cm_pending_message": "A pending round's CampMinder line is left empty with whether it was pending",
     "round2_asks": _ROUND2,
     "round2_asked": _ROUND2,
@@ -96,7 +98,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         "demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the strip's Needs an offer, "
         "Pending approval and Held"
     ),
-    "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
+    "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in the dashboard after it",
     "rules_history": (
         "The rules' change history for this season can't be replayed to that date, so nothing is priced: only "
         "posted rounds show"

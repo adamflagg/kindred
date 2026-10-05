@@ -60,7 +60,7 @@ async def test_a_season_before_ticks_began_has_no_to_place() -> None:
     assert (out.open_count, out.groups, out.skipped) == (
         0,
         [],
-        "2026 predates To place (the first ticked season is 2027)",
+        "2026 predates To place, which starts in 2027",
     )
 
 

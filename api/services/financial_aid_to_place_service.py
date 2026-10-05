@@ -130,7 +130,7 @@ class ToPlaceStore(Protocol):
 def _gate(year: int) -> str:
     """Why To place has nothing for this season, or ""."""
     if year < FIRST_TICKED_SEASON:
-        return f"{year} predates To place (the first ticked season is {FIRST_TICKED_SEASON})"
+        return f"{year} predates To place, which starts in {FIRST_TICKED_SEASON}"
     return ""
 
 
@@ -248,7 +248,7 @@ def _left_to_tick(
             if view.status != "needs_offer" or view.decided is None:
                 break
             if key in undone:
-                why = "You un-ticked this round: mark it posted again by hand if that is right"
+                why = "You unchecked Posted on this round: mark it posted again by hand if that is right"
             else:
                 why = (
                     f"CampMinder holds {dollars(held)} on this request; Round {view.round} needs "
@@ -650,7 +650,7 @@ class ToPlaceService:
                 actor,
                 lock_source="placement",
                 note=lambda tick: (
-                    f"Ticked by placing family-level money: CampMinder shows {dollars(tick.in_campminder)} "
+                    f"Placing family-level money checked Posted: CampMinder shows {dollars(tick.in_campminder)} "
                     "on this request"
                 ),
             )

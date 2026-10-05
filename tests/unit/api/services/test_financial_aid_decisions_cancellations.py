@@ -589,13 +589,13 @@ async def test_a_request_cancelled_in_kindred_takes_no_asks_amounts_or_ticks_unt
     writes = len(store.operations)
     tick = PostedIn(rows=[PostedRow(request_id=EMMA, round=1, amount=Decimal(1500))])
     ask = AskIn(round=3, amount=Decimal(900), asked_on=date(2027, 3, 1), statement_of_need="Job loss")
-    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+    with pytest.raises(DecisionRefusedError, match="Cancelled in the dashboard: reopen it first"):
         await service.key_ask(EMMA, ask, ACTOR)
-    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+    with pytest.raises(DecisionRefusedError, match="Cancelled in the dashboard: reopen it first"):
         await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(900)), ACTOR, can_approve=True)
-    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+    with pytest.raises(DecisionRefusedError, match="Cancelled in the dashboard: reopen it first"):
         await service.tick_posted(YEAR, tick, ACTOR)
-    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+    with pytest.raises(DecisionRefusedError, match="Cancelled in the dashboard: reopen it first"):
         await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=LIAM, round=1)], accepted=True), ACTOR)
     assert len(store.operations) == writes
     await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="The family found the money"), ACTOR)
@@ -603,7 +603,7 @@ async def test_a_request_cancelled_in_kindred_takes_no_asks_amounts_or_ticks_unt
 
 
 def _refused_by_kindred_cancel() -> str:
-    return "Cancelled in Kindred: reopen it first"
+    return "Cancelled in the dashboard: reopen it first"
 
 
 @pytest.mark.asyncio
@@ -656,19 +656,91 @@ async def test_undoing_a_tick_and_unaccepting_stay_open_on_a_kindred_cancelled_r
 @pytest.mark.asyncio
 async def test_a_kindred_cancellation_campminder_has_overtaken_no_longer_says_reopen_it_first() -> None:
     """Cancelled in Kindred, then CampMinder cancels too: the grid says campminder, and reopening is
-    refused, so keying must not tell staff to reopen. The ask is keyed; the Accepted tick gets the
-    ordinary refusal for a round never posted."""
+    refused, so keying must not tell staff to reopen. Owner 2026-10-05: nothing new is decided on any
+    cancelled request, so the ask is refused in CampMinder's words, and nothing is written."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     service = _service(store)
     await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
     _enrol(store, 32)
+    writes = len(store.operations)
     ask = AskIn(round=3, amount=Decimal(900), asked_on=date(2027, 3, 1), statement_of_need="Job loss")
-    assert (await service.key_ask(EMMA, ask, ACTOR)).written == 1
-    acc = AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True)
     with pytest.raises(DecisionRefusedError) as refused:
-        await service.tick_accepted(YEAR, acc, ACTOR)
-    assert str(refused.value) == f"{EMMA}: Round 1 is not posted"
+        await service.key_ask(EMMA, ask, ACTOR)
+    assert str(refused.value) == _refused_by_campminder_cancel()
+    assert len(store.operations) == writes
+
+
+def _refused_by_campminder_cancel() -> str:
+    return "Cancelled in CampMinder: nothing new can be decided"
+
+
+def _cancelled_in_campminder() -> tuple[FakeDecisionsStore, FinancialAidDecisionsService]:
+    """Emma's camper cancelled in CampMinder (status 32, no enrolled row), with a Round 3 amount waiting for
+    finance from before the cancellation and her Round 1 posted, so each write's other refusals are passed."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400), effective_on=date(2027, 3, 1))
+    _event(store, EMMA, 3, "ask", amount=Decimal(900), effective_on=date(2027, 3, 1), statement_of_need="x")
+    _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
+    _enrol(store, 32)
+    return store, _service(store)
+
+
+@pytest.mark.asyncio
+async def test_each_decision_write_path_refuses_a_campminder_cancelled_request_on_its_own() -> None:
+    """Owner 2026-10-05: a cancelled request takes no new decision, wherever it was cancelled. Decision 14's
+    refusal now covers CampMinder's cancellation too, on every path that refuses Kindred's, in its own words
+    (CampMinder's is undone by re-enrolling there, not by reopening). Nothing is written on a refusal."""
+    tick = PostedIn(rows=[PostedRow(request_id=EMMA, round=2, amount=Decimal(400))])
+    calls = {
+        "key_ask round 2": lambda s: s.key_ask(
+            EMMA, AskIn(round=2, amount=Decimal(500), asked_on=date(2027, 3, 2)), ACTOR
+        ),
+        "key_ask round 3": lambda s: s.key_ask(
+            EMMA,
+            AskIn(round=3, amount=Decimal(950), asked_on=date(2027, 3, 2), statement_of_need="Job loss"),
+            ACTOR,
+        ),
+        "key_round3_amount": lambda s: s.key_round3_amount(
+            EMMA, Round3AmountIn(amount=Decimal(100)), ACTOR, can_approve=True
+        ),
+        "decide_round3": lambda s: s.decide_round3(EMMA, schemas.Round3ApprovalIn(approve=True, note="ok"), ACTOR),
+        "preview": lambda s: s.preview(EMMA, schemas.PreviewIn(round=3, amount=Decimal(100)), can_approve=True),
+        "set_cost_override": lambda s: s.set_cost_override(
+            EMMA, schemas.CostOverrideIn(amount=None, note="Partial session"), ACTOR
+        ),
+        "tick_posted": lambda s: s.tick_posted(YEAR, tick, ACTOR),
+        "tick_accepted": lambda s: s.tick_accepted(
+            YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True), ACTOR
+        ),
+    }
+    for name, call in calls.items():
+        store, service = _cancelled_in_campminder()
+        with pytest.raises(DecisionRefusedError) as refused:
+            await call(service)
+        expected = _refused_by_campminder_cancel()
+        assert str(refused.value) == (f"{EMMA}: {expected}" if name.startswith("tick_") else expected), name
+        assert store.operations == [], name
+
+
+@pytest.mark.asyncio
+async def test_a_campminder_cancelled_request_still_takes_a_reason_an_unaccept_and_an_undone_tick() -> None:
+    """What stays open on a request CampMinder cancelled: giving or changing its reason, unticking Accepted,
+    and undoing a mistaken Posted tick. Reopening stays CampMinder's (re-enrol there)."""
+    store, service = _cancelled_in_campminder()
+    _event(store, EMMA, 1, "accept")
+    out = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    assert out.written == 1
+    out = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="medical"), ACTOR)
+    assert out.written == 1
+    unaccept = AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=False)
+    assert (await service.tick_accepted(YEAR, unaccept, ACTOR)).written == 1
+    undo = schemas.UnpostIn(request_id=EMMA, round=1, reason="Mistaken tick")
+    assert (await service.undo_posted(YEAR, undo, ACTOR)).written == 1
+    with pytest.raises(DecisionRefusedError, match="re-enroll the camper there"):
+        await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="A mistake"), ACTOR)
 
 
 @pytest.mark.asyncio

@@ -36,11 +36,11 @@ describe('appealTarget (Decision 13; #2997)', () => {
     )
     const cancelled = gridRow({
       rounds: [roundOut(1, 'posted')],
-      appeal_refusal: 'Cancelled in Kindred: reopen it first',
+      appeal_refusal: 'Cancelled in the dashboard: reopen it first',
     })
     expect(appealTarget(cancelled)).toEqual({
       kind: 'none',
-      why: 'Cancelled in Kindred: reopen it first',
+      why: 'Cancelled in the dashboard: reopen it first',
     })
   })
 

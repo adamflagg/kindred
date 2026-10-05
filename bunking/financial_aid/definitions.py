@@ -30,7 +30,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="decided",
         term="Decided",
         text=(
-            "Decided: the award Kindred computed or staff decided for a request's round. It is live until the "
+            "Decided: the award the dashboard computed or staff decided for a request's round. It is live until the "
             "round locks: income corrections, a new rules version or a grant can move it. It is never labelled "
             '"awarded", which means Posted.'
         ),
@@ -41,9 +41,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="posted",
         term="Posted",
         text=(
-            "Posted: the round's Posted tick and the amount it locked. Posting in CampMinder is the offer. The "
-            "tick is set by the registrar after entering the award in CampMinder, or by the overnight ledger "
-            'sync when the registrar didn\'t. There is one "Posted", never two figures.'
+            "Posted: the round's Posted checkbox and the amount it locked. Posting in CampMinder is the offer. The "
+            "registrar checks it after entering the award in CampMinder, or the overnight ledger sync does when the "
+            'registrar didn\'t. There is one "Posted", never two figures.'
         ),
         spec="§5.1",
         rulings=("D47", "D51", "D52", "D59", "D78"),
@@ -53,7 +53,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Confirmation",
         text=(
             "Confirmation, beside every Posted figure: pending, then confirmed (date); "
-            '"CampMinder shows $X · short $Y" or "· over $Y" when it disagrees; not in CampMinder (ticked, '
+            '"CampMinder shows $X · short $Y" or "· over $Y" when it disagrees; not in CampMinder (checked, '
             "nothing posted after the sync). It is computed by net-total reconciliation of live camp-aid lines "
             "placed on the request against the locked amount, at family level where a line can't be placed on "
             "a request, and per payer share. Exact to the cent."
@@ -106,7 +106,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="accepted",
         term="Accepted",
         text=(
-            "Accepted: the locked amounts of posted rounds whose Accepted tick is set, less any round whose "
+            "Accepted: the locked amounts of posted rounds whose Accepted checkbox is checked, less any round whose "
             "clawback has posted. Shown, never subtracted."
         ),
         spec="§5.3",
@@ -175,7 +175,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="round2_asks",
         term="Round 2 asks so far",
         text=(
-            "Round 2 asks so far: the appeals keyed so far on live requests (not cancelled, in Kindred or in "
+            "Round 2 asks so far: the appeals keyed so far on live requests (not cancelled, in the dashboard or in "
             "CampMinder, withdrawn or a duplicate), counted, with their total ask, held appeals' asks included, and "
             "the total computed for those decided or posted. It knows only the appeals keyed so far. Shown below "
             "the line, never counted in Remaining."
@@ -234,8 +234,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="awarded",
         term="Awarded",
         text=(
-            "Awarded = offered = Posted: a round counts as awarded once it is posted (ticked or auto-ticked), net of "
-            "any clawback, on a live request (not cancelled, withdrawn or a pending duplicate). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
+            "Awarded = offered = Posted: a round counts as awarded once it is posted (checked by hand or by the sync), "
+            "net of any clawback, on a live request (not cancelled, withdrawn or a pending duplicate). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
             "from the request's status: a cancelled request leaves it at once, while Rounds & budget's Posted keeps "
             "its money until the reversal posts."
         ),
@@ -302,8 +302,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="as_reported",
         term="As reported (r)",
         text=(
-            "As reported (r): finance's own history from before Kindred had the data, typed once as dollars and "
-            "counts with an as-of date. Kindred computes every percentage."
+            "As reported (r): finance's own history from before the dashboard had the data, typed once as dollars and "
+            "counts with an as-of date. The dashboard computes every percentage."
         ),
         spec="§5.6",
         rulings=("D132", "D133"),
@@ -318,7 +318,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "(D80's awarded = offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
             "outside the budget (an outside funder's full-cost round) is in neither column; for a season finance "
             "typed, the deck's figure and its as-of date. End of season: net of cancellations and clawback; for a "
-            'season Kindred priced it reads "to date" until the season closes, meaning the last session open to aid '
+            'season the dashboard priced it reads "to date" until the season closes, meaning the last session open to '
+            "aid "
             "(summer, family camp and adult weekends alike) has ended; for a typed season, the end-of-season total. "
             "A blank stays blank: nothing is estimated, and one column is never filled from the other. Each column is "
             "shown as a % of the season's total budget and as its share of the three phases; the target bands compare "
@@ -370,8 +371,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Appeal rate",
         text=(
             "Appeal rate: appeals ÷ Round 1 apps, per tier and in total, with a tier's appeals counted at their "
-            "Round 2 tier and its apps at Round 1's. Kindred derives it; no deck gives it per tier. As in Appeals, "
-            "cancelled requests count on both sides. It is not development's appeals figure."
+            "Round 2 tier and its apps at Round 1's. The dashboard derives it; no deck gives it per tier. As in "
+            "Appeals, cancelled requests count on both sides. It is not development's appeals figure."
         ),
         spec="§9.7",
         rulings=("D131", "D132"),
@@ -382,9 +383,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Basis unconfirmed",
         text=(
             "Basis unconfirmed: a 2022–2025 column shows the figures development already sent funders, typed once. "
-            "Kindred counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
+            "The dashboard counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
             "{camp}'s own aid only (O-930-1). Until that is settled, comparing such a column with 2026 or later "
-            "may compare two bases. This note is Kindred's interim default, not a ruling."
+            "may compare two bases. This note is the dashboard's interim default, not a ruling."
         ),
         spec="§5.7",
         rulings=("D96",),
@@ -517,7 +518,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Not yet in CampMinder",
         text=(
             "Not yet in CampMinder: a candidate request's locked total, plus the decided amounts of its rounds waiting "
-            "to be ticked (oldest first, up to the first round that can't be ticked), less the live camp-aid money "
+            "for Posted to be checked (oldest first, up to the first round that can't be checked), less the live "
+            "camp-aid money "
             "already placed on it. It is what To place weighs a line "
             "against; it redefines nothing."
         ),
@@ -528,21 +530,21 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="to_place_suggestion",
         term="Suggestion",
         text=(
-            "Suggestion: Kindred's proposed placement or split of a line, with its evidence (an exact amount match, "
-            "the person on the line, the date, or a split in proportion to the decided amounts). It counts toward "
-            "nothing until a person confirms it, and Kindred never chooses between equal matches."
+            "Suggestion: the dashboard's proposed placement or split of a line, with its evidence (an exact amount "
+            "match, the person on the line, the date, or a split in proportion to the decided amounts). It counts "
+            "toward nothing until a person confirms it, and the dashboard never chooses between equal matches."
         ),
         spec="§8.1",
         rulings=("D12", "D16"),
     ),
     Definition(
         key="placement_tick",
-        term="A placement's tick",
+        term="Placing checks Posted",
         text=(
-            "A placement's tick: placing a line ticks Posted on the rounds the placed money covers in full, oldest "
+            "Placing checks Posted: placing a line checks Posted on the rounds the placed money covers in full, oldest "
             "first, at their decided amounts as of the posting date. If anything that prices the request was "
-            "recorded since that posting, the money is still placed but the automatic tick is refused, and the "
-            "registrar ticks by hand. The tick never reads awaiting tonight's sync: the money is already in CampMinder."
+            "recorded since that posting, the money is still placed but Posted is not checked automatically, and the "
+            "registrar checks it by hand. It never reads awaiting tonight's sync: the money is already in CampMinder."
         ),
         spec="§5.1",
         rulings=("D81", "D146", "D151", "D152"),

@@ -13,7 +13,9 @@ import pytest
 import api.schemas.financial_aid_decisions as schemas
 import api.services.financial_aid_request_overrides as overrides_module
 from api.schemas.financial_aid_decisions import CancellationIn, CostOverrideIn, GridRowOut
+from api.services.financial_aid_cancellations import EnrollmentState
 from api.services.financial_aid_decisions_service import (
+    CANCELLED_IN_CAMPMINDER,
     CANCELLED_IN_KINDRED,
     DecisionNotFoundError,
     DecisionRefusedError,
@@ -240,6 +242,17 @@ async def test_a_cost_override_on_a_request_cancelled_in_kindred_is_refused_in_t
     await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="medical"), ACTOR)
     with pytest.raises(DecisionRefusedError, match=CANCELLED_IN_KINDRED):
         await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_cost_override_on_a_request_cancelled_in_campminder_is_refused_in_the_writes_words() -> None:
+    """Owner 2026-10-05: no new decision on any cancelled request, CampMinder's cancellation included."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, date(2027, 5, 2)))
+    with pytest.raises(DecisionRefusedError, match=CANCELLED_IN_CAMPMINDER):
+        await _service(store).set_cost_override(EMMA, OVERRIDE, ACTOR)
+    assert store.operations == []
 
 
 @pytest.mark.asyncio

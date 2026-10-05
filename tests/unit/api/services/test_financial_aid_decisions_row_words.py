@@ -11,7 +11,12 @@ import pytest
 
 import api.schemas.financial_aid_decisions as schemas
 from api.schemas.financial_aid_decisions import AskIn, CancellationIn
-from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED, DecisionRefusedError
+from api.services.financial_aid_cancellations import EnrollmentState
+from api.services.financial_aid_decisions_service import (
+    CANCELLED_IN_CAMPMINDER,
+    CANCELLED_IN_KINDRED,
+    DecisionRefusedError,
+)
 from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
@@ -95,6 +100,22 @@ async def test_a_kindred_cancellation_outranks_an_unposted_round_1_as_in_key_ask
     with pytest.raises(DecisionRefusedError) as refused:
         await service.key_ask(EMMA, _appeal(), ACTOR)
     assert row.appeal_refusal == str(refused.value) == CANCELLED_IN_KINDRED
+
+
+@pytest.mark.asyncio
+async def test_a_request_cancelled_in_campminder_refuses_the_appeal_on_the_row_in_the_writes_words() -> None:
+    """Owner 2026-10-05: no new decision on any cancelled request. Round 1 is posted, so only CampMinder's
+    cancellation (status 32, no enrolled row) stands in the appeal's way, and the row says what the write says."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, date(2027, 5, 2)))
+    service = _service(store)
+    (row,) = (await service.grid(YEAR)).rows
+    with pytest.raises(DecisionRefusedError) as refused:
+        await service.key_ask(EMMA, _appeal(), ACTOR)
+    assert row.appeal_refusal == str(refused.value) == CANCELLED_IN_CAMPMINDER
+    assert CANCELLED_IN_CAMPMINDER == "Cancelled in CampMinder: nothing new can be decided"
 
 
 @pytest.mark.asyncio

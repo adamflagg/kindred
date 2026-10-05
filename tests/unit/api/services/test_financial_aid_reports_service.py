@@ -225,7 +225,7 @@ async def test_a_withdrawn_request_with_a_posted_award_reads_exactly_like_a_canc
     )
     assert line.posted == 1500.0
     assert (twin_line.reason, twin_line.reason_label) == ("not_recorded", "no reason recorded")
-    assert (line.reason, line.reason_label) == ("withdrawn_in_kindred", "Withdrawn in Kindred")
+    assert (line.reason, line.reason_label) == ("withdrawn_in_kindred", "Withdrawn in the dashboard")
     assert out.total.model_dump() == twin.total.model_dump()
     assert [r.model_dump() for r in out.rows] == [r.model_dump() for r in twin.rows]
 

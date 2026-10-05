@@ -25,8 +25,8 @@ def test_slice_3s_three_surfaces_number_their_notes_in_this_order() -> None:
 
 def test_not_yet_in_campminder_is_d151s_figure() -> None:
     assert (
-        "locked total, plus the decided amounts of its rounds waiting to be ticked (oldest first, up to the first "
-        "round that can't be ticked), less the live camp-aid money already placed on it"
+        "locked total, plus the decided amounts of its rounds waiting for Posted to be checked (oldest first, up to "
+        "the first round that can't be checked), less the live camp-aid money already placed on it"
         in _text("not_yet_in_campminder")
     )
 
@@ -39,7 +39,7 @@ def test_a_placement_ticks_only_rounds_covered_in_full_at_the_posting_days_price
     text = _text("placement_tick")
     assert "covers in full, oldest first" in text  # D146, D151
     assert "as of the posting date" in text  # D152
-    assert "the automatic tick is refused" in text
+    assert "Posted is not checked automatically" in text
 
 
 def test_expected_is_never_a_grant_and_a_season_counts_no_commitment() -> None:

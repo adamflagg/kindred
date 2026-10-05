@@ -646,7 +646,7 @@ async def test_undo_posted_waits_for_accepted_to_be_unticked_then_reopens_the_ro
     service = _service(store)
     await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True), ACTOR)
     undo = UnpostIn(request_id=EMMA, round=1, reason="Ticked the wrong family")
-    with pytest.raises(DecisionRefusedError, match="Untick Accepted"):
+    with pytest.raises(DecisionRefusedError, match="Uncheck Accepted"):
         await service.undo_posted(YEAR, undo, ACTOR)
     await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=False), ACTOR)
     out = await service.undo_posted(YEAR, undo, ACTOR)

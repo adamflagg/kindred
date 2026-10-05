@@ -279,7 +279,7 @@ def _facts(line: CampLine, candidate: Candidate, alone: bool) -> tuple[Evidence,
     if line.person_cm_id > 0 and line.person_cm_id == candidate.person_cm_id:
         facts.append(Evidence("person", "CampMinder posted it to this camper"))
     if line.post_date is not None and camp_date(line.post_date) in candidate.ticked_on:
-        facts.append(Evidence("date", "posted the day this request was ticked Posted"))
+        facts.append(Evidence("date", "posted the day Posted was checked on this request"))
     if alone:
         facts.append(Evidence("only_request", "the only request this family has"))
     return tuple(facts)
@@ -584,20 +584,20 @@ _NOT_PRICING: Final = frozenset({"accept", "unaccept"})  # Accepted is recorded,
 _LEGACY_INCLUDE_OVERRIDE: Final = "include_override"
 _TEXT: Final[Mapping[ChangedCode, str]] = {
     "rules": "the pricing rules changed",
-    "rules_history": "Kindred can't replay the pricing rules' history to that day",
+    "rules_history": "the dashboard can't replay the pricing rules' history to that day",
     "request": "a request in this family was changed",
     "application": "the application was changed",
     "correction": "a correction was entered",
     "payer_shares": "the payer shares were changed",
     "decision": "a round's ask, amount or decision was recorded",
     "hold": "a hold was placed or released",
-    "cancellation": "the request was cancelled or reopened in Kindred",
+    "cancellation": "the request was cancelled or reopened in the dashboard",
     "grant": "an outside grant was posted, reversed or moved",
     "enrollment": "a registration changed in CampMinder",
     "equity": "the camper's equity answers changed in CampMinder",
     "session": "the session changed in CampMinder",
     "removed_by_sync": "CampMinder records were removed by a sync since",
-    "too_long_ago": "the posting is older than Kindred's 90-day sync history",
+    "too_long_ago": "the posting is older than the dashboard's 90-day sync history",
 }
 
 

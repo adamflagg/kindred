@@ -96,7 +96,7 @@ HELD_TEXT = (
 UNDONE_TEXT = (
     "Someone unmarked Round 1 as posted, so the overnight sync won't re-mark it. Click Mark Posted once it's right."
 )
-PENDING_TEXT = "Posted in CampMinder ($1,500). Kindred marks it posted after tonight's sync."
+PENDING_TEXT = "Posted in CampMinder ($1,500). The dashboard marks it posted after tonight's sync."
 WITHHELD_TEXT = (
     "Round 1 wasn't marked posted automatically: after it was posted in CampMinder on Mar 8, the application was "
     "changed (Mar 9). Check it against what the family was offered, then click Mark Posted. That saves the higher of "
@@ -1249,7 +1249,7 @@ async def test_a_non_zero_round_3_on_an_over_posting_still_pends_at_its_decided_
     r3 = row.rounds[2]
     assert (r3.cm_pending, r3.cm_pending_message) == (
         True,
-        "Posted in CampMinder ($100). Kindred marks it posted after tonight's sync.",
+        "Posted in CampMinder ($100). The dashboard marks it posted after tonight's sync.",
     )
     c = row.confirmation
     assert c is not None
