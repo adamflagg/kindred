@@ -715,7 +715,7 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     })
     render(<Grid rows={[row]} />)
     await openRow('Liam Garcia')
-    expect(within(detail()).getByRole('link', { name: 'Release the Hold… ›' })).toHaveAttribute(
+    expect(within(detail()).getByRole('link', { name: 'Lift the Hold… ›' })).toHaveAttribute(
       'href',
       `${BASE}#request-reqliam00000002`
     )
@@ -1133,7 +1133,7 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
     expect(within(detail()).queryByText(/^Person/)).toBeNull()
   })
 
-  it('links an award above cost to the request on the household page: "Edit the Award ›" (b)', async () => {
+  it('links an award above cost to the request on the household page: "Fix Cost or Grants ›"', async () => {
     const row = gridRow({
       request_id: 'reqemma00000001',
       holds: [{ code: 'award_above_cost', severity: 'hold', message: 'The award is above cost.' }],
@@ -1141,7 +1141,7 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
     })
     render(<Grid rows={[row]} />)
     await openRow('Emma Johnson')
-    expect(within(detail()).getByRole('link', { name: 'Edit the Award ›' })).toHaveAttribute(
+    expect(within(detail()).getByRole('link', { name: 'Fix Cost or Grants ›' })).toHaveAttribute(
       'href',
       '/aid/households/1000001?from=all&year=2027#request-reqemma00000001'
     )

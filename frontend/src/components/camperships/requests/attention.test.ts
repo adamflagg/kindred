@@ -418,7 +418,8 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
 
   it("sends the other holds to the request's card", () => {
     expect(nextOf(hold('payer_shares_incomplete'), 'holds')).toEqual(link('Check the Payer Shares'))
-    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Release the Hold…'))
+    // Owner ruling (10-04 late): a manual hold is LIFTED, matching the household page's "Lift…" button.
+    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Lift the Hold…'))
     expect(nextOf(hold('unmatched_session'), 'holds')).toEqual(link('Pick the Session'))
     expect(nextOf(hold('multiple_grants'), 'holds')).toEqual(OPEN_REQUEST)
   })
@@ -436,10 +437,11 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
     expect(nextOf(marked, 'all')).toBeNull()
   })
 
-  // Owner ruling (b), fast-follow 10-03: an award above cost is fixed on the request's card, so its
-  // step is the link "Edit the Award ›" there (title case). Was: null (no award editor on the grid).
-  it("sends an award above cost to the request's card to edit the award", () => {
-    expect(nextOf(hold('award_above_cost'), 'holds')).toEqual(link('Edit the Award'))
+  // Owner ruling (10-04 late): there is no award editor by design; the above-cost hold clears by
+  // correcting the cost, the grants or the amount, so the step on the request's card says so.
+  // Was: "Edit the Award" (ruling (b), 10-03).
+  it("sends an award above cost to the request's card to fix the cost or grants", () => {
+    expect(nextOf(hold('award_above_cost'), 'holds')).toEqual(link('Fix Cost or Grants'))
   })
 
   it('says where nothing can be done in Kindred', () => {

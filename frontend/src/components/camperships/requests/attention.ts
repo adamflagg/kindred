@@ -130,13 +130,15 @@ const STEP_BY_CODE: Readonly<Record<string, NextStep | null>> = {
   household_income_conflict: ENTER_INCOME,
   placeholder_income: ENTER_INCOME,
   payer_shares_incomplete: PAYER_SHARES,
-  manual_hold: toRequest('Release the Hold…'),
+  // Owner ruling (10-04 late): a manual hold is lifted, the household page's "Lift…" button.
+  manual_hold: toRequest('Lift the Hold…'),
   unmatched_session: PICK_SESSION,
   duplicate_survivor_withdrawn: KEEP_ONE,
-  // Owner ruling (b), 10-03: the award is edited on the request's card, so the step links there.
+  // Owner ruling (10-04 late): no award editor exists by design; the hold clears by correcting the
+  // cost, the grants or the amount, on the request's card (holds.py UNRELEASABLE).
   // The hand "Mark Posted" is not here: it rides `unticked[].mark_posted`, so
   // `in_campminder_not_ticked` stays null.
-  award_above_cost: toRequest('Edit the Award'),
+  award_above_cost: toRequest('Fix Cost or Grants'),
   in_campminder_not_ticked: null,
 }
 
