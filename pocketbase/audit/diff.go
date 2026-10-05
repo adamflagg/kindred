@@ -43,8 +43,12 @@ var redactedKeys = []string{
 // derivedFields are dropped from every diff: derived, so they would be noise
 // (spec §5: users.cached_permissions; users.last_seen is stamped on every
 // session refresh, spec 2026-10-01-users-page-uplift-design §3.5).
+// households.aid_adults is sync-derived too, and names people for Camperships
+// only (sync/aid_adults.go): an admin's household edit must not copy those
+// names into the audit log.
 var derivedFields = map[string][]string{
 	usersCollection: {"cached_permissions", "last_seen"},
+	"households":    {"aid_adults"},
 }
 
 // snapshot is a record's field values as plain JSON types, without id and

@@ -12,6 +12,7 @@ Pure mockable unit tests — tiny temp SQLite, no real DB, no server.
 """
 
 import importlib
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -173,3 +174,64 @@ def test_anonymized_db_passes_leak_scan(anon, scan, tmp_path):
     denylist = [REAL_FIRST, REAL_LAST, REAL_EMAIL, REAL_SCHOOL, REAL_CITY]
     violations = scan.scan(str(db), denylist=denylist, drop_list=[])
     assert violations == [], f"anonymized DB should pass leak scan, got {violations}"
+
+
+def _make_households_db(path: Path) -> None:
+    """households with aid_adults: the adults the persons sync names for Camperships, planted with real-looking
+    names (fictional, distinctive) so a leak would show."""
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE households (id TEXT PRIMARY KEY, cm_id NUMERIC, year NUMERIC, mailing_title TEXT, aid_adults JSON)"
+    )
+    adults = [
+        {"cm_id": 2001, "first": REAL_FIRST, "last": REAL_LAST, "preferred": "Zeph", "role": 1, "is_guardian": True},
+        {"cm_id": 2002, "first": "Barnaby", "last": REAL_LAST, "preferred": "", "role": 2, "is_guardian": False},
+    ]
+    conn.execute(
+        "INSERT INTO households VALUES (?,?,?,?,?)",
+        ("h1", 5001, 2026, f"Ms. {REAL_FIRST} {REAL_LAST}", json.dumps(adults)),
+    )
+    conn.execute("INSERT INTO households VALUES (?,?,?,?,?)", ("h2", 5002, 2026, "The Chen Family", None))
+    conn.commit()
+    conn.close()
+
+
+def _aid_adults(path: Path) -> dict[int, object]:
+    conn = sqlite3.connect(path)
+    rows = conn.execute("SELECT cm_id, aid_adults FROM households ORDER BY cm_id").fetchall()
+    conn.close()
+    return {int(cm_id): (json.loads(raw) if raw not in (None, "") else raw) for cm_id, raw in rows}
+
+
+def test_anonymize_db_fakes_household_aid_adults(anon, scan, tmp_path):
+    """build_synthetic_db copies households rows whole, so aid_adults must be faked like every other name column:
+    each adult keeps its CampMinder id, role and guardian flag (what the household page reads them by) under a fake
+    name, and a household without the field stays without it."""
+    db = tmp_path / "subset.db"
+    _make_households_db(db)
+    anon.anonymize_db(str(db))
+
+    adults = _aid_adults(db)
+    assert adults[5002] is None
+    faked = adults[5001]
+    assert isinstance(faked, list)
+    assert [(a["cm_id"], a["role"], a["is_guardian"]) for a in faked] == [(2001, 1, True), (2002, 2, False)]
+    for adult in faked:
+        assert adult["first"], adult
+        assert adult["last"], adult
+        assert adult["preferred"] == ""
+        text = json.dumps(adult)
+        for real in (REAL_FIRST, REAL_LAST, "Barnaby"):
+            assert real not in text
+    # One household's adults share its fake surname, as its fake mailing title does.
+    assert len({a["last"] for a in faked}) == 1
+    violations = scan.scan(str(db), denylist=[REAL_FIRST, REAL_LAST, "Barnaby", "Zeph"], drop_list=[])
+    assert violations == [], f"anonymized aid_adults should pass leak scan, got {violations}"
+
+
+def test_anonymize_db_fakes_aid_adults_deterministically(anon, tmp_path):
+    db1, db2 = tmp_path / "a.db", tmp_path / "b.db"
+    for db in (db1, db2):
+        _make_households_db(db)
+        anon.anonymize_db(str(db))
+    assert _aid_adults(db1) == _aid_adults(db2)

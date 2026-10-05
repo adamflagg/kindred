@@ -31,6 +31,7 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     FINANCIAL_AID_APPLICATIONS,
     FINANCIAL_TRANSACTIONS,
+    HOUSEHOLD_COLUMNS,
     HOUSEHOLDS,
     PERSONS,
     USERS,
@@ -187,8 +188,12 @@ class FinancialAidRepository:
 
     # --- people, sessions, applications ------------------------------------
 
-    async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
-        return await self._by_ids(HOUSEHOLDS, f"year = {int(year)}", "cm_id", cm_ids)
+    async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
+        """These households' columns, named. `adults` adds aid_adults (the adults CampMinder names for an aid
+        household, hidden from every reader but the service's superuser): the household page asks for it, and no other
+        read may (tests/unit/api/services/test_aid_adults_guards.py)."""
+        fields = f"{HOUSEHOLD_COLUMNS},aid_adults" if adults else HOUSEHOLD_COLUMNS
+        return await self._by_ids(HOUSEHOLDS, f"year = {int(year)}", "cm_id", cm_ids, {"fields": fields})
 
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
         return await self._by_ids(PERSONS, f"year = {int(year)}", "cm_id", cm_ids)

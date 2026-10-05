@@ -41,19 +41,38 @@ class HouseholdMoneyOut(BaseModel):
     states: list[ConfirmationStateOut]
 
 
+class HouseholdAdultOut(BaseModel):
+    """One adult CampMinder names for a household: a relative of the aid cohort's campers whom CampMinder lists as
+    the household's First (role 1) or Second (role 2) Principal, synced nightly. `name` is the preferred (else first)
+    name and the last name. `role_label` is what staff read, "Adult 1" / "Adult 2": the role says nothing about how the
+    adult is related to the camper. `is_guardian` is CampMinder's guardian flag for a camper on the aid cohort."""
+
+    cm_id: int
+    name: str
+    role: int
+    role_label: str
+    is_guardian: bool
+
+
 class HouseholdCardOut(BaseModel):
     """One household with a financial stake (D26). `chip` is D32's 1 · 2 · 3, the opened household first.
-    `adults` are the parents its campers' records name, or, with no camper on the page (a second payer), its own
-    members: its adults (aged 21+) by name, then the parents their records name (owner N11); `emails` come from
-    the same people; `request_ids` the page's requests it pays a share of
-    or applied for."""
+    `adults` are the adults CampMinder names for it (`adults_by_role`: its principals, Adult 1 then Adult 2); with
+    none, the parents its campers' records name, or, with no camper on the page (a second payer), its own members: its
+    adults (aged 21+) by name, then the parents their records name (owner N11). `emails` come from its campers or
+    members; `request_ids` the page's requests it pays a share of or applied for.
+
+    `label` is how the page names the household (owner, 2026-10-05): its adults' names alone ("Liam & Olivia Becker",
+    one shared surname said once), else its mailing title. `label_tiebreak` is "" unless another household on the page
+    (a card or a link row) has the same label: then its city, when that tells them apart, else "#" and its CampMinder
+    household id, shown muted after the label."""
 
     household_cm_id: int
     chip: int
     family_name: str
     # O3 (owner 2026-10-04, late): the chip's short name, "Johnson" / "Johnson & Garcia" (short_family_name); the full
     # family_name when no camper on the page carries a surname. P3 (owner 2026-10-05): a household with no campers takes
-    # its adult members' surnames (aged 21+) instead. Defaulted only so older fixtures still type-check.
+    # the surnames of the adults CampMinder names for it (Adult 1 first), else of its adult members (aged 21+).
+    # Defaulted only so older fixtures still type-check.
     short_name: str = ""
     adults: list[str]
     phone: str
@@ -63,6 +82,10 @@ class HouseholdCardOut(BaseModel):
     county: str | None = None
     money: HouseholdMoneyOut
     request_ids: list[str]
+    # Defaulted only so older fixtures still type-check; the page always fills them.
+    adults_by_role: list[HouseholdAdultOut] = Field(default_factory=list)
+    label: str = ""
+    label_tiebreak: str = ""
 
 
 class HouseholdTotalsOut(BaseModel):
@@ -203,13 +226,17 @@ class HouseholdGrantRowOut(GrantRowOut):
 
 class HouseholdPageLinkOut(HouseholdLinkRow):
     """A Linked households row (owner ruling 2026-10-04, late): the link, plus the household named as a card names
-    it (HouseholdCardOut's family_name, adults and city), so it reads as a family and not a number. A household in
+    it (HouseholdCardOut's family_name, adults, adults_by_role, label, label_tiebreak and city), so it reads as a family
+    and not a number. A household in
     the page's scope reads exactly as its card; one outside it takes its adults from its own members.
     Defaulted only so older clients' fixtures still type-check; the page always fills them."""
 
     family_name: str = ""
     adults: list[str] = Field(default_factory=list)
     city: str = ""
+    adults_by_role: list[HouseholdAdultOut] = Field(default_factory=list)
+    label: str = ""
+    label_tiebreak: str = ""
 
 
 class HouseholdPageResponse(BaseModel):

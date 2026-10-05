@@ -16,8 +16,9 @@ Included requests (D77's band) are live ones: not withdrawn, duplicate or cancel
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
@@ -28,6 +29,7 @@ from api.schemas.financial_aid_household_page import (
     ConfirmationStateOut,
     FormPersonOut,
     HistoryEntryOut,
+    HouseholdAdultOut,
     HouseholdCardOut,
     HouseholdGrantRowOut,
     HouseholdMoneyOut,
@@ -58,7 +60,6 @@ from api.services.financial_aid_ledger_service import (
     household_display_name,
     money,
     parse_pb_datetime,
-    person_display_name,
     posting_line,
 )
 from api.services.financial_aid_payer_shares import share_status
@@ -291,7 +292,7 @@ class HouseholdLedgerReads(Protocol):
         self, year: int, household_ids: Collection[int] | None = None, *, include_reversed: bool = False
     ) -> list[Any]: ...
     async def fetch_dispositions(self, year: int) -> list[Any]: ...
-    async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]: ...
+    async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]: ...
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]: ...
     async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]: ...
     async def fetch_links(self, year: int) -> list[Any]: ...
@@ -384,30 +385,108 @@ def _is_adult(person: Any) -> bool:
     return float(getattr(person, "age", 0) or 0) >= ADULT_AGE
 
 
-def _adults(people: Iterable[Any], *, members: bool = False) -> list[str]:
-    """The parent names `people`'s records give, sorted. With `members` (a household's own people, not the page's
-    campers), a member who is an adult names themselves (owner N11 follow-up, 2026-10-05): their own names lead,
-    sorted, then any further parent names, deduplicated case-insensitively against both the name shown (preferred
-    first) and the legal "first last"."""
+def _adult_pairs(people: Iterable[Any], *, members: bool = False) -> list[tuple[str, str]]:
+    """The parent names `people`'s records give, as (first, last), sorted by name. With `members` (a household's own
+    people, not the page's campers), a member who is an adult names themselves (owner N11 follow-up, 2026-10-05): their
+    own names lead, sorted, then any further parent names, deduplicated case-insensitively against both the name shown
+    (preferred first) and the legal "first last"."""
     people = list(people)
-    named = {
-        f"{str(p.get('first') or '').strip()} {str(p.get('last') or '').strip()}".strip()
-        for person in people
-        for p in (getattr(person, "parent_names", None) or [])
-        if isinstance(p, Mapping)
-    }
-    own: dict[str, str] = {}
+    named: dict[str, tuple[str, str]] = {}
+    for person in people:
+        for p in getattr(person, "parent_names", None) or []:
+            if isinstance(p, Mapping):
+                pair = (str(p.get("first") or "").strip(), str(p.get("last") or "").strip())
+                named.setdefault(_joined(pair), pair)
+    own: dict[str, tuple[str, str]] = {}
     known: set[str] = set()
     for person in (p for p in people if members and _is_adult(p)):
-        name = person_display_name(person)
+        first = str(getattr(person, "preferred_name", "") or "").strip() or str(person.first_name or "").strip()
+        pair = (first, str(person.last_name or "").strip())
         legal = f"{str(person.first_name or '').strip()} {str(person.last_name or '').strip()}".strip()
+        name = _joined(pair)
         if name and name.lower() not in known:
-            own[name.lower()] = name
+            own[name.lower()] = pair
         known |= {name.lower(), legal.lower()} - {""}
     return [
-        *sorted(own.values(), key=str.lower),
-        *sorted((n for n in named - {""} if n.lower() not in known), key=str.lower),
+        *sorted(own.values(), key=lambda p: _joined(p).lower()),
+        *sorted(
+            (pair for name, pair in named.items() if name and name.lower() not in known),
+            key=lambda p: _joined(p).lower(),
+        ),
     ]
+
+
+def _joined(pair: tuple[str, str]) -> str:
+    return f"{pair[0]} {pair[1]}".strip()
+
+
+def _adults(people: Iterable[Any], *, members: bool = False) -> list[str]:
+    """`_adult_pairs` as the names a card lists."""
+    return [_joined(p) for p in _adult_pairs(people, members=members)]
+
+
+# What staff read for a CampMinder principal's role (owner): "Adult 1" / "Adult 2", never a relationship.
+ADULT_ROLE_LABELS: Final = {1: "Adult 1", 2: "Adult 2"}
+
+
+def _aid_adults(household: Any | None) -> list[Mapping[str, Any]]:
+    """The adults CampMinder names for an aid household (households.aid_adults, written by the persons sync from its
+    relatives: First Principal, then Second), with no unnamed entry. An empty list when the sync named none."""
+    raw = getattr(household, "aid_adults", None) if household is not None else None
+    entries = [a for a in raw if isinstance(a, Mapping)] if isinstance(raw, list) else []
+    named = [a for a in entries if any(_aid_adult_pair(a))]
+    return sorted(named, key=lambda a: int(a.get("role") or 0))
+
+
+def _aid_adult_pair(adult: Mapping[str, Any]) -> tuple[str, str]:
+    first = str(adult.get("preferred") or "").strip() or str(adult.get("first") or "").strip()
+    return first, str(adult.get("last") or "").strip()
+
+
+def _aid_adult_out(adult: Mapping[str, Any]) -> HouseholdAdultOut:
+    role = int(adult.get("role") or 0)
+    return HouseholdAdultOut(
+        cm_id=int(adult.get("cm_id") or 0),
+        name=_joined(_aid_adult_pair(adult)),
+        role=role,
+        role_label=ADULT_ROLE_LABELS.get(role, ""),
+        is_guardian=bool(adult.get("is_guardian")),
+    )
+
+
+def _and_join(parts: Sequence[str]) -> str:
+    """ "A", "A & B", "A, B & C"."""
+    return parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} & {parts[-1]}"
+
+
+def adults_label(adults: Sequence[tuple[str, str]]) -> str:
+    """A household's label (owner, 2026-10-05): its adults' names alone, in the order given. One surname shared by every
+    adult (case-insensitive) is said once, after their first names: "Liam & Olivia Becker"; otherwise each adult is
+    named in full: "Pat Johnson & Alex Garcia". "" with no named adult."""
+    people = [(first.strip(), last.strip()) for first, last in adults]
+    people = [p for p in people if p[0] or p[1]]
+    if not people:
+        return ""
+    surname = people[0][1]
+    if len(people) > 1 and surname and all(f and last.casefold() == surname.casefold() for f, last in people):
+        return f"{_and_join([f for f, _ in people])} {surname}"
+    return _and_join([_joined(p) for p in people])
+
+
+def label_tiebreaks(labels: Mapping[int, tuple[str, str]]) -> dict[int, str]:
+    """The muted tie-breaker for each household on a page, keyed by CampMinder household id, from its (label, city):
+    "" unless another household on the page reads the same (case-insensitive). Then its billing city, when that tells
+    it apart, else its CampMinder household id, "#1000001" (owner, 2026-10-05)."""
+    groups: defaultdict[str, list[int]] = defaultdict(list)
+    for h, (label, _) in labels.items():
+        groups[label.strip().casefold()].append(h)
+    out = dict.fromkeys(labels, "")
+    for members in (m for m in groups.values() if len(m) > 1):
+        cities = Counter(labels[h][1].strip().casefold() for h in members)
+        for h in members:
+            city = labels[h][1].strip()
+            out[h] = city if city and cities[city.casefold()] == 1 else f"#{h}"
+    return out
 
 
 def _city(household: Any | None) -> str:
@@ -449,13 +528,26 @@ def _emails(people: Iterable[Any]) -> list[str]:
     return sorted({str(getattr(p, "primary_email", "") or "").strip() for p in people} - {""})
 
 
-def _link_row(link: Any, household: Any | None, adults: list[str]) -> HouseholdPageLinkOut:
-    """The link, and its household named as a card names it: `adults` are its card's (`HouseholdPageService`'s
-    `household_adults`)."""
+@dataclass(frozen=True)
+class _Naming:
+    """How a household is named on the page, its card and its link row alike."""
+
+    adults: list[str]
+    adults_by_role: list[HouseholdAdultOut]
+    label: str
+    tiebreak: str
+
+
+def _link_row(link: Any, household: Any | None, naming: _Naming) -> HouseholdPageLinkOut:
+    """The link, and its household named as a card names it: `naming` is its card's (`HouseholdPageService.read`'s
+    `naming`)."""
     cm_id = int(link.household_cm_id)
     return HouseholdPageLinkOut(
         family_name=household_display_name(household, cm_id),
-        adults=adults,
+        adults=naming.adults,
+        adults_by_role=naming.adults_by_role,
+        label=naming.label,
+        label_tiebreak=naming.tiebreak,
         city=_city(household),
         id=str(link.id),
         year=int(link.year),
@@ -558,7 +650,7 @@ class HouseholdPageService:
                 self._ledger.fetch_user_names(actors) if actors else _no_names(),
                 self._ledger.fetch_postings(year, scope.households, include_reversed=True),
                 self._ledger.fetch_dispositions(year),
-                self._ledger.fetch_households(year, scope.households),
+                self._ledger.fetch_households(year, scope.households, adults=True),
                 self._ledger.fetch_persons(year, campers) if campers else _nothing(),
             ),
             self._ledger.fetch_links(year),
@@ -617,7 +709,7 @@ class HouseholdPageService:
                 containing=request_ids,
             ),
             asyncio.gather(
-                self._ledger.fetch_households(year, outside) if outside else _nothing(),
+                self._ledger.fetch_households(year, outside, adults=True) if outside else _nothing(),
                 self._ledger.fetch_household_members(year, members_of) if members_of else _nothing(),
             ),
             self._ledger.fetch_persons(year, form_ids) if form_ids else _nothing(),
@@ -638,17 +730,42 @@ class HouseholdPageService:
         def campers_in(h: int) -> list[Any]:
             return [p for p in people.values() if _household_of(p) == h] if h in households else []
 
+        def row_of(h: int) -> Any | None:
+            return by_household.get(h) if h in households else linked_households.get(h)
+
         def short_surnames(h: int) -> list[str]:
-            """The chip's surnames, oldest first: the household's campers on the page (O3), or, with none, its adult
-            members (P3, owner 2026-10-05: aged ADULT_AGE or over, as `_is_adult` reads them). Neither: none, and the
-            short name falls back to the full family name."""
+            """The chip's surnames: the household's campers on the page, oldest first (O3); or, with none, the adults
+            CampMinder names for it, First Principal first; or its adult members, oldest first (P3, owner 2026-10-05:
+            aged ADULT_AGE or over, as `_is_adult` reads them). None of them: none, and the short name falls back to
+            the full family name."""
+            if not campers_in(h) and (aid := _aid_adults(row_of(h))):
+                return [_aid_adult_pair(a)[1] for a in aid]
             source = campers_in(h) or [p for p in household_people(h) if _is_adult(p)]
             return [str(getattr(p, "last_name", "") or "") for p in _oldest_first(source)]
 
-        def household_adults(h: int) -> list[str]:
-            """Card and link alike: the campers' parent names, or, with no camper on the page, the members' adults by
-            name and then their parent names."""
-            return _adults(household_people(h), members=not campers_in(h))
+        def adult_pairs(h: int) -> list[tuple[str, str]]:
+            """Card and link alike: the adults CampMinder names for the household (its relatives, by principal role);
+            without them, the campers' parent names, or, with no camper on the page, the members' adults by name and
+            then their parent names."""
+            if aid := _aid_adults(row_of(h)):
+                return [_aid_adult_pair(a) for a in aid]
+            return _adult_pairs(household_people(h), members=not campers_in(h))
+
+        # Every household the page names, on a card or a link row, and how: its adults' names, else its mailing title
+        # (household_display_name), with a tie-breaker only where two would read the same (owner, 2026-10-05).
+        named = sorted(set(scope.households) | {int(ln.household_cm_id) for ln in family_links})
+        pairs = {h: adult_pairs(h) for h in named}
+        labels = {h: adults_label(pairs[h]) or household_display_name(row_of(h), h) for h in named}
+        ties = label_tiebreaks({h: (labels[h], _city(row_of(h))) for h in named})
+        naming = {
+            h: _Naming(
+                adults=[_joined(p) for p in pairs[h]],
+                adults_by_role=[_aid_adult_out(a) for a in _aid_adults(row_of(h))],
+                label=labels[h],
+                tiebreak=ties[h],
+            )
+            for h in named
+        }
 
         accepted = accepted_index(dispositions)
         rules_version = season.rules.version if season.rules is not None else None
@@ -676,8 +793,7 @@ class HouseholdPageService:
 
         def link_out(link: Any) -> HouseholdPageLinkOut:
             h = int(link.household_cm_id)
-            row = by_household.get(h) if h in households else linked_households.get(h)
-            return _link_row(link, row, household_adults(h))
+            return _link_row(link, row_of(h), naming[h])
 
         return HouseholdPageResponse(
             year=year,
@@ -689,7 +805,10 @@ class HouseholdPageService:
                     chip=chips[h],
                     family_name=household_display_name(by_household.get(h), h),
                     short_name=short_family_name(short_surnames(h), household_display_name(by_household.get(h), h)),
-                    adults=household_adults(h),
+                    adults=naming[h].adults,
+                    adults_by_role=naming[h].adults_by_role,
+                    label=naming[h].label,
+                    label_tiebreak=naming[h].tiebreak,
                     phone=str(getattr(by_household.get(h), "household_phone", "") or ""),
                     emails=_emails(household_people(h)),
                     city=_city(by_household.get(h)),

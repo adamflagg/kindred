@@ -170,6 +170,11 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	s.updateRelationsAndCleanup(year, householdsByID, processResult.personHouseholdMap,
 		processResult.processedHouseholdIDs)
 
+	// Camperships: name the aid cohort's households' adults (aid_adults.go). After the orphan
+	// sweep, so no household it writes is about to go. Counted, not propagated, like the sweep:
+	// the persons and households above are already saved and stay correct.
+	s.runAidAdults(year, processResult)
+
 	// Final reporting
 	s.householdStats = &householdStats
 	s.printDataQualitySummary()
@@ -293,6 +298,8 @@ type personBatchResult struct {
 	extractedHouseholds   map[int]map[string]any
 	processedHouseholdIDs map[int]bool
 	personHouseholdMap    map[int]personHouseholdIDs
+	// relatives is each person's CampMinder Relatives, kept for the aid step (aid_adults.go).
+	relatives map[int][]relativeRef
 }
 
 // processPersonBatches processes persons in batches and collects household data.
@@ -377,6 +384,10 @@ func (s *PersonsSync) processBatchPersons(
 
 		if hasID {
 			result.personHouseholdMap[int(personID)] = s.extractHouseholdIDsFromPerson(personData)
+			if result.relatives == nil {
+				result.relatives = make(map[int][]relativeRef)
+			}
+			result.relatives[int(personID)] = relativesOf(personData)
 		}
 	}
 }

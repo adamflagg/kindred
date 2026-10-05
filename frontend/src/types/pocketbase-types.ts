@@ -1647,7 +1647,8 @@ export type HouseholdDemographicsRecord = {
   year: number
 }
 
-export type HouseholdsRecord = {
+export type HouseholdsRecord<Taid_adults = unknown> = {
+  aid_adults?: null | Taid_adults
   alternate_mailing_title?: string
   billing_address1?: string
   billing_address2?: string
@@ -2800,7 +2801,9 @@ export type HouseholdCustomValuesResponse<Texpand = unknown> =
   Required<HouseholdCustomValuesRecord> & BaseSystemFields<Texpand>
 export type HouseholdDemographicsResponse<Texpand = unknown> =
   Required<HouseholdDemographicsRecord> & BaseSystemFields<Texpand>
-export type HouseholdsResponse<Texpand = unknown> = Required<HouseholdsRecord> &
+export type HouseholdsResponse<Taid_adults = unknown, Texpand = unknown> = Required<
+  HouseholdsRecord<Taid_adults>
+> &
   BaseSystemFields<Texpand>
 export type JotformAnswersResponse<Tanswer_json = unknown, Texpand = unknown> = Required<
   JotformAnswersRecord<Tanswer_json>
