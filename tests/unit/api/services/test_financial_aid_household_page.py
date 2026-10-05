@@ -1080,6 +1080,113 @@ async def test_a_camper_less_households_members_do_not_feed_its_short_name() -> 
     assert page.households[1].short_name == "The Garcia Family"
 
 
+# N11 follow-up (coordinator, 2026-10-05): a second payer's members are often the parents themselves, whose records
+# name no parents. A member aged ADULT_AGE (21, owner ruling 2026-09-22) or over is an adult in their own right: their
+# own display name comes first, then any further parent names, deduplicated case-insensitively against both the name
+# shown and the legal "first last". Not is_camper: the sync sets it for anyone with an attendee row in ANY program
+# (Family Camp parents included), so false means staff-only (coordinator ruling (A)).
+def _member(cm_id: int, household: int, first: str, last: str, **kw: Any) -> SimpleNamespace:
+    base: dict[str, Any] = {
+        "cm_id": cm_id,
+        "first_name": first,
+        "preferred_name": "",
+        "last_name": last,
+        "household_id": household,
+        "primary_email": "",
+        "is_camper": False,
+        "age": 0.0,
+        "parent_names": [],
+    }
+    return SimpleNamespace(**{**base, **kw})
+
+
+class _ParentsPay(_Ledger):
+    """The Garcia household pays half of Emma's request. Its members: a Family Camp parent (a camper in the sync's
+    sense), a parent exactly 21 who goes by her preferred name, a 20-year-old on staff, a member with no age, and a
+    camper sibling who isn't on the page."""
+
+    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+        garcia = [
+            _member(1000024, GARCIA, "Samuel", "Garcia", age=45.02, is_camper=True, primary_email="samuel@example.com"),
+            _member(1000025, GARCIA, "Olivia", "Chen", preferred_name="Riley", age=21.0),
+            _member(1000027, GARCIA, "Liam", "Johnson", age=20.11),
+            _member(1000028, GARCIA, "Riley", "Sam"),
+            _member(
+                1000026,
+                GARCIA,
+                "Emma",
+                "Garcia",
+                age=12.03,
+                is_camper=True,
+                parent_names=[
+                    {"first": "samuel", "last": "garcia"},
+                    {"first": "Olivia", "last": "Chen"},
+                    {"first": "Liam", "last": "Sam"},
+                ],
+            ),
+        ]
+        members = await super().fetch_household_members(year, household_ids)
+        return [*members, *(p for p in garcia if p.household_id in household_ids)]
+
+
+@pytest.mark.asyncio
+async def test_a_second_payers_adult_members_lead_its_adults_before_further_parent_names() -> None:
+    page = await _page_service(_family(), ledger=_ParentsPay()).read(YEAR, JOHNSON)
+    garcia = page.households[1]
+    # The adults' own names lead (preferred name shown). "samuel garcia" and "Olivia Chen" (Riley's legal name) from
+    # the sibling's record are the same two people; Liam Sam is a further parent name. Not adults: the 20-year-old,
+    # the member with no age, the 12-year-old.
+    assert garcia.adults == ["Riley Chen", "Samuel Garcia", "Liam Sam"]
+    assert garcia.emails == ["samuel@example.com"]
+    assert garcia.short_name == "The Garcia Family"  # members never feed the short name
+
+
+@pytest.mark.asyncio
+async def test_a_second_payers_card_and_its_link_name_the_same_member_adults() -> None:
+    class _LinkedParentsPay(_ParentsPay):
+        async def fetch_links(self, year: int) -> list[Any]:
+            garcia = SimpleNamespace(
+                id="lnk000000000004",
+                year=YEAR,
+                household_cm_id=GARCIA,
+                family_key="fam-1",
+                source="manual",
+                excluded=False,
+                note="",
+                actor=ACTOR,
+            )
+            return [*await super().fetch_links(year), garcia]
+
+    page = await _page_service(_family(), ledger=_LinkedParentsPay()).read(YEAR, JOHNSON)
+    link = next(ln for ln in page.links if ln.household_cm_id == GARCIA)
+    assert link.adults == page.households[1].adults == ["Riley Chen", "Samuel Garcia", "Liam Sam"]
+
+
+@pytest.mark.asyncio
+async def test_a_linked_household_outside_the_scope_names_its_adult_members_too() -> None:
+    class _LinkedParent(_Ledger):
+        async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
+            members = await super().fetch_household_members(year, household_ids)
+            sam = _member(1000043, LINKED, "Sam", "Chen", age=44.06)  # also named by the children's records
+            return [*members, *([sam] if LINKED in household_ids else [])]
+
+    page = await _page_service(_family(), ledger=_LinkedParent()).read(YEAR, JOHNSON)
+    assert page.links[1].adults == ["Sam Chen", "Riley Sam"]
+
+
+@pytest.mark.asyncio
+async def test_a_camper_on_the_page_never_names_themselves_as_an_adult() -> None:
+    """A household with campers on the page keeps reading only their parent names, whatever their age."""
+
+    class _Grown(_Ledger):
+        async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+            return [replace_ns(p, age=25.0, is_camper=False) for p in await super().fetch_persons(year, cm_ids)]
+
+    page = await _page_service(_family(), ledger=_Grown()).read(YEAR, JOHNSON)
+    assert page.households[0].adults == ["Alex Garcia", "Pat Johnson"]
+    assert page.links[0].adults == ["Alex Garcia", "Pat Johnson"]
+
+
 @pytest.mark.asyncio
 async def test_a_household_excluded_from_a_family_shows_its_own_row_but_not_that_familys_members() -> None:
     """The canonical family set takes its members from non-excluded rows only: excluding a household from

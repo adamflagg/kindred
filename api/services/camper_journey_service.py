@@ -52,6 +52,7 @@ from api.schemas.lodging import (
 )
 from api.services.lodging_roster_service import LodgingRosterService
 from api.services.person_housing_service import PersonHousingService
+from api.utils.age import ADULT_AGE as ADULT_AGE  # the age a viewer sees the family weekends at (api/utils/age.py)
 from api.utils.session_metrics import SUMMER_TEEN_TYPES
 from bunking.logging_config import get_logger
 
@@ -60,12 +61,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# CampMinder's age at or over which a viewer sees the family weekends their
-# household's children attended (owner ruling 2026-09-22: raised from 18 to
-# 21 -- teens 18-20 are still campers in summer and teen programs). The
-# client's `ADULT_AGE` (`frontend/src/utils/age.ts`) is the same cutoff for
-# how an age is DISPLAYED; a test holds the two equal.
-ADULT_AGE = 21
 
 FAMILY = "family"
 ADULT = "adult"
