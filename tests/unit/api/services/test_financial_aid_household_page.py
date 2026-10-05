@@ -834,22 +834,27 @@ async def test_each_household_card_carries_its_short_name() -> None:
 
 @pytest.mark.asyncio
 async def test_a_short_name_takes_its_campers_oldest_first_as_the_weekend_roster_does() -> None:
+    """A blended household: Emma Johnson and her older half-sibling Ava Garcia both apply from the Johnson household.
+    The weekend roster lists children oldest first, so the chip reads "Garcia & Johnson"."""
+    ava = SimpleNamespace(
+        cm_id=1000013,
+        first_name="Ava",
+        preferred_name="",
+        last_name="Garcia",
+        household_id=JOHNSON,
+        primary_email="",
+        age=14.2,
+        parent_names=[],
+    )
+
     class _Blended(_Ledger):
         async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
-            liam = SimpleNamespace(
-                cm_id=1000021,
-                first_name="Liam",
-                preferred_name="",
-                last_name="Garcia",
-                household_id=JOHNSON,  # a camper of the Johnson household with another surname, and older than Emma
-                primary_email="",
-                age=14.2,
-                parent_names=[],
-            )
             emma = [replace_ns(p, age=11.5) for p in await super().fetch_persons(year, cm_ids)]
-            return [*emma, *([liam] if liam.cm_id in cm_ids else [])]
+            return [*emma, *([ava] if ava.cm_id in cm_ids else [])]
 
-    page = await _page_service(_family(), ledger=_Blended()).read(YEAR, JOHNSON)
+    store = _family()
+    seed_request(store, "reqava000000001", household=JOHNSON, person=1000013)
+    page = await _page_service(store, ledger=_Blended()).read(YEAR, JOHNSON)
     assert page.households[0].short_name == "Garcia & Johnson"
 
 
