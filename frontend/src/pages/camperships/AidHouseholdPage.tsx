@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react'
+import { DollarSign } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { useLocation, useParams } from 'react-router'
 
@@ -12,12 +12,7 @@ import { HoldBanners } from '../../components/camperships/household/HoldBanners'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
 import { bandSubtitle, bandTitle } from '../../components/camperships/household/householdModel'
 import { HouseholdTotals } from '../../components/camperships/household/HouseholdTotals'
-import {
-  GrantsPostingsSection,
-  HistorySection,
-  IncomeSection,
-  LinksSection,
-} from '../../components/camperships/household/HouseholdSections'
+import { HouseholdTabs } from '../../components/camperships/household/HouseholdTabs'
 import { QueueWalkStrip } from '../../components/camperships/household/QueueWalkStrip'
 import { WorkingRequestCard } from '../../components/camperships/household/WorkingRequestCard'
 import {
@@ -25,11 +20,13 @@ import {
   type EditorExits,
 } from '../../components/camperships/household/editorExits'
 import { useQueueWalk } from '../../components/camperships/household/useQueueWalk'
+import { programLabels } from '../../components/camperships/requests/programLabel'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidDefinitions } from '../../hooks/camperships/useAidDefinitions'
 import { useAidHouseholdPage } from '../../hooks/camperships/useAidHouseholdPage'
+import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
 import { Permission } from '../../constants/permissions'
@@ -45,12 +42,16 @@ function HouseholdBody({
   canWork,
   canApprove,
   exits,
+  programNames,
+  hash,
 }: {
   page: ApiAidHouseholdPage
   view: AidView
   canWork: boolean
   canApprove: boolean
   exits: EditorExits
+  programNames: Readonly<Record<string, string>>
+  hash: string
 }) {
   return (
     <>
@@ -72,8 +73,10 @@ function HouseholdBody({
           exits={exits}
         />
       ))}
-      <IncomeSection
+      <HouseholdTabs
         page={page}
+        programNames={programNames}
+        hash={hash}
         correct={
           canWork
             ? (income, answer) => (
@@ -82,9 +85,6 @@ function HouseholdBody({
             : undefined
         }
       />
-      <GrantsPostingsSection page={page} />
-      <LinksSection page={page} />
-      <HistorySection page={page} />
     </>
   )
 }
@@ -132,13 +132,19 @@ export default function AidHouseholdPage() {
   const canApprove = hasPermission(Permission.FINANCIAL_AID_RULES)
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
+  const { hash } = useLocation()
+  // Program words come from the approved rules, as the grid's (D31); keys spelled out until they load.
+  const approvedRules = useAidApprovedRules(null)
+  const programNames = useMemo(() => programLabels(approvedRules.data), [approvedRules.data])
   useScrollToHash()
 
   return (
-    <div className="space-y-3 sm:space-y-4">
+    // D33: the mock's 12px between cards at every width.
+    <div className="space-y-3">
       {walk && <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />}
       <AidPageBand
-        icon={Users}
+        // D20: the mock's "$" tile (amber on white/10, the band's own tile).
+        icon={DollarSign}
         title={data ? bandTitle(data) : `Household ${householdCmId ?? ''}`}
         subtitle={data ? bandSubtitle(data) : undefined}
         asOf={LIVE}
@@ -172,6 +178,8 @@ export default function AidHouseholdPage() {
               canWork={canWork}
               canApprove={canApprove}
               exits={exits}
+              programNames={programNames}
+              hash={hash}
             />
           )}
         </QueryGuard>

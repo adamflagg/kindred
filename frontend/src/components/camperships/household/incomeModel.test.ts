@@ -262,6 +262,13 @@ describe("incomeTabMeta: the Income tab's words", () => {
     expect(incomeTabMeta(corrected)).toEqual({ flags: 0, words: '1 corrected · forms agree ✓' })
   })
 
+  it('says when the household has no income form at all', () => {
+    expect(incomeTabMeta(householdPage({ incomes: [] }))).toEqual({
+      flags: 0,
+      words: 'no form on file',
+    })
+  })
+
   it('drops "forms agree" when there is only one form to read', () => {
     const one = householdPage({ requests: [householdRequest(ROW_EMMA)], incomes: [income()] })
     expect(incomeTabMeta(one)).toEqual({ flags: 0, words: 'no corrections' })

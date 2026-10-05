@@ -171,6 +171,7 @@ export function incomeTabMeta(page: ApiAidHouseholdPage): {
 } {
   const flags = openFlagCount(page)
   if (flags > 0) return { flags, words: null }
+  if (page.incomes.length === 0) return { flags: 0, words: 'no form on file' }
   const corrected = page.incomes.reduce(
     (n, income) => n + income.answers.filter((a) => a.corrected).length,
     0

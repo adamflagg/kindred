@@ -1,65 +1,206 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { householdPage } from './householdFixtures'
+import type { ApiAidHouseholdLink } from '../../../types/api-types'
+import { householdPage, householdRequest } from './householdFixtures'
+import { GrantsPostingsPanel, HistoryPanel, IncomePanel, LinksPanel } from './HouseholdSections'
 import {
-  GrantsPostingsSection,
-  HistorySection,
-  IncomeSection,
-  LinksSection,
-} from './HouseholdSections'
-
-const downloadSpy = vi.fn()
-vi.mock('../../../utils/csvExport', async (importActual) => ({
-  ...(await importActual<typeof import('../../../utils/csvExport')>()),
-  downloadCsv: (...args: unknown[]) => downloadSpy(...args),
-}))
+  FLAGGED_PAGE,
+  GROSS_CONFLICT,
+  HISTORY_PAGE,
+  PLAIN_PAGE,
+  TWO_HOUSEHOLD_PAGE,
+  income,
+  plainAnswers,
+} from './sectionsFixtures'
+import { ROW_EMMA } from '../requests/gridFixtures'
 
 const PAGE = householdPage()
 
-beforeEach(() => downloadSpy.mockClear())
+const rowOf = (text: string) => screen.getByText(text).closest('tr') as HTMLElement
 
-describe('IncomeSection (§6.3 item 5; main spec §9.3)', () => {
-  it('shows each answer as sent and as used, a correction beside the original', () => {
-    render(<IncomeSection page={PAGE} />)
-    const children = screen.getByText('Children').closest('tr') as HTMLElement
+describe('IncomePanel: the exceptions only (income (e); N8)', () => {
+  it('lists only the corrected and flagged answers, each as sent and as used', () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    const children = rowOf('Children')
     expect(within(children).getByText('2')).toBeInTheDocument()
     expect(within(children).getByText('3')).toBeInTheDocument()
     expect(within(children).getByText('corrected')).toBeInTheDocument()
-    // Uncorrected: the form's figure and the one used are the same.
-    expect(screen.getAllByText('$84,200', { selector: 'td' })).toHaveLength(2)
+    expect(screen.getByText('Gross income')).toBeInTheDocument()
+    expect(screen.queryByText('Housing expenses')).toBeNull()
   })
 
-  it("shows the family's free-text answers to staff", () => {
-    render(<IncomeSection page={PAGE} />)
-    expect(screen.getByText('Special financial circumstances')).toBeInTheDocument()
-    expect(screen.getByText('Second parent lost work in March.')).toBeInTheDocument()
+  it("puts a flagged answer's why under it, in the server's figures, tinted amber", () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    const why = screen.getByText("Emma's form says $84,000; Samuel's says $90,000.")
+    expect(why.closest('tr')?.className).toMatch(/amber/)
+    expect(rowOf('Gross income').className).toMatch(/amber/)
   })
 
-  it('is the target of an "Enter income" link', () => {
-    const { container } = render(<IncomeSection page={PAGE} />)
-    expect(container.querySelector('#income')).not.toBeNull()
+  it('leaves a resolved conflict untinted, its why muted and saying what settled it', () => {
+    const page = householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_gross_income' ? { ...a, effective: '87000.00', corrected: true } : a
+          ),
+          flags: [
+            {
+              ...GROSS_CONFLICT,
+              detail: { ...GROSS_CONFLICT.detail, resolved_by_correction: true },
+            },
+          ],
+        }),
+      ],
+    })
+    render(<IncomePanel page={page} />)
+    expect(rowOf('Gross income').className).not.toMatch(/amber/)
+    const why = screen.getByText(/The correction settles it\.$/)
+    expect(why.closest('tr')?.className).not.toMatch(/amber/)
+  })
+
+  it('folds the matching answers into "N more answers match", and opens and closes them', async () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    expect(screen.queryByText('Housing expenses')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '12 more answers match ▸' }))
+    expect(screen.getByText('Housing expenses')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show Only the Exceptions ▴' }))
+    expect(screen.queryByText('Housing expenses')).toBeNull()
+  })
+
+  it('says when nothing is corrected or flagged, and that all the answers match', () => {
+    render(<IncomePanel page={PLAIN_PAGE} />)
+    expect(screen.getByText('No corrections and no flags.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All 14 answers match ▸' })).toBeInTheDocument()
+  })
+
+  it('puts the correct render prop on every answer shown', async () => {
+    const correct = vi.fn(() => <span>Correct…</span>)
+    render(<IncomePanel page={FLAGGED_PAGE} correct={correct} />)
+    expect(screen.getAllByText('Correct…')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: '12 more answers match ▸' }))
+    expect(screen.getAllByText('Correct…')).toHaveLength(14)
+  })
+
+  it('shows any other application flag as an amber pill, in the grid words', () => {
+    render(
+      <IncomePanel
+        page={householdPage({ incomes: [income({ flags: [{ code: 'billing_disagrees' }] })] })}
+      />
+    )
+    expect(screen.getByText('Billing disagrees')).toBeInTheDocument()
+  })
+
+  it('is the target of an "Enter the Income" link only through the card, so it carries no id', () => {
+    const { container } = render(<IncomePanel page={PLAIN_PAGE} />)
+    expect(container.querySelector('#income')).toBeNull()
+  })
+
+  it('says so when the household has no income form', () => {
+    render(<IncomePanel page={householdPage({ incomes: [] })} />)
+    expect(screen.getByText('No income form on file.')).toBeInTheDocument()
   })
 })
 
-describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
-  it('lists the grants, the Expected chip, and every posting with reversals struck through', () => {
-    render(<GrantsPostingsSection page={PAGE} />)
+describe('IncomePanel, one household: "What priced it" (owner kept the card)', () => {
+  it('reads the adjusted income, last year, the tier and the rules from the payload', () => {
+    render(<IncomePanel page={PLAIN_PAGE} />)
+    const card = screen.getByTestId('priced')
+    expect(within(card).getByText('What priced it')).toBeInTheDocument()
+    expect(within(card).getByText('Adjusted income').nextElementSibling).toHaveTextContent(
+      '$120,000'
+    )
+    expect(within(card).getByText("Last year's confirmed").nextElementSibling).toHaveTextContent(
+      '$81,000 +48%'
+    )
+    expect(within(card).getByText('Income tier').nextElementSibling).toHaveTextContent(
+      '5 rules 2027 v1'
+    )
+  })
+
+  it("carries the family's free text", () => {
+    render(<IncomePanel page={PLAIN_PAGE} />)
+    const card = screen.getByTestId('priced')
+    expect(within(card).getByText('Special financial circumstances')).toBeInTheDocument()
+    expect(within(card).getByText('One parent changed jobs in January.')).toBeInTheDocument()
+  })
+
+  it('leaves out a row the payload has no figure for, never faking it', () => {
+    render(
+      <IncomePanel
+        page={householdPage({
+          requests: [householdRequest(ROW_EMMA, { receipts: [] })],
+          incomes: [income()],
+        })}
+      />
+    )
+    const card = screen.getByTestId('priced')
+    expect(within(card).queryByText('Adjusted income')).toBeNull()
+    expect(within(card).queryByText('Income tier')).toBeNull()
+    expect(within(card).getByText("Last year's confirmed").nextElementSibling).toHaveTextContent(
+      '$81,000'
+    )
+    expect(within(card).queryByText('Household size')).toBeNull()
+    expect(within(card).queryByText('Form')).toBeNull()
+  })
+})
+
+describe('IncomePanel, two households: side by side (O9)', () => {
+  it('gives each household its chip, its pricing line and its own exceptions', () => {
+    render(<IncomePanel page={TWO_HOUSEHOLD_PAGE} />)
+    const halves = screen.getAllByTestId('income-household')
+    expect(halves).toHaveLength(2)
+    expect(within(halves[0]!).getByText('1 · The Johnson Family')).toBeInTheDocument()
+    expect(halves[0]).toHaveTextContent('Adjusted $120,000 · tier 5 · vs last year +48%')
+    expect(within(halves[1]!).getByText('2 · The Garcia Family')).toBeInTheDocument()
+    expect(within(halves[1]!).getByText('No corrections and no flags.')).toBeInTheDocument()
+    expect(screen.queryByTestId('priced')).toBeNull()
+  })
+
+  it("shows a household's free text once its answers are opened", async () => {
+    render(<IncomePanel page={TWO_HOUSEHOLD_PAGE} />)
+    expect(screen.queryByText('Shared custody, week on, week off.')).toBeNull()
+    const garcia = screen.getAllByTestId('income-household')[1]!
+    await userEvent.click(within(garcia).getByRole('button', { name: 'All 14 answers match ▸' }))
+    expect(within(garcia).getByText('Shared custody, week on, week off.')).toBeInTheDocument()
+  })
+})
+
+describe('GrantsPostingsPanel (§6.3 item 6; D30, D31, D56, D74, D127)', () => {
+  it('lists the Expected chip first, then the grants and the postings under their eyebrows', () => {
+    render(<GrantsPostingsPanel page={PAGE} programNames={{}} />)
+    expect(screen.getByText('Expected: synagogue grant · Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Grants')).toBeInTheDocument()
+    expect(screen.getByText('Postings')).toBeInTheDocument()
     expect(
       within(screen.getByRole('table', { name: 'Grants' })).getByText('Grantor A')
     ).toBeInTheDocument()
-    expect(screen.getByText('Expected: synagogue grant · Emma Johnson')).toBeInTheDocument()
     const postings = within(screen.getByRole('table', { name: 'Postings' }))
     expect(postings.getByText('reversed Mar 20')).toBeInTheDocument()
     expect(postings.getByText('$1,800').tagName).toBe('S')
     expect(postings.getByText('$1,590')).toBeInTheDocument()
   })
 
+  it('names the program as the rules do, and words the source in sentence case (D31)', () => {
+    render(<GrantsPostingsPanel page={PAGE} programNames={{ summer: 'Summer Camp' }} />)
+    const postings = within(screen.getByRole('table', { name: 'Postings' }))
+    expect(postings.getAllByText('Summer Camp')).toHaveLength(2)
+    expect(postings.getAllByText('Camp aid')).toHaveLength(2)
+  })
+
+  it('title-cases a program the rules do not name', () => {
+    render(<GrantsPostingsPanel page={PAGE} programNames={{}} />)
+    expect(
+      within(screen.getByRole('table', { name: 'Postings' })).getAllByText('Summer')
+    ).toHaveLength(2)
+  })
+
   it('marks a grant that is cancelled, and one the band does not count', () => {
     const grant = PAGE.grants[0]!
     render(
-      <GrantsPostingsSection
+      <GrantsPostingsPanel
+        programNames={{}}
         page={householdPage({
           grants: [
             { ...grant, transaction_cm_id: 1000311, in_band: false },
@@ -74,52 +215,21 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
 
   // The mark follows the server's per-grant in_band flag alone; the page does not re-derive the band's rule.
   it('puts no mark on a grant the server says is in the band', () => {
-    render(<GrantsPostingsSection page={PAGE} />)
+    render(<GrantsPostingsPanel page={PAGE} programNames={{}} />)
     const grants = screen.getByRole('table', { name: 'Grants' })
     expect(within(grants).queryByText('not counted')).toBeNull()
     expect(within(grants).queryByText('cancelled')).toBeNull()
   })
 
-  it('puts no mark on a grant split across a live and a withdrawn request (in_band is true)', () => {
-    const grant = PAGE.grants[0]!
-    render(
-      <GrantsPostingsSection
-        page={householdPage({
-          grants: [
-            {
-              ...grant,
-              in_band: true,
-              requests: [
-                { request_id: 'reqemma00000001', amount: 600 },
-                { request_id: 'reqwithdrawn001', amount: 400 },
-              ],
-            },
-          ],
-        })}
-      />
-    )
-    expect(screen.queryByText('not counted')).toBeNull()
-  })
-
   it('trusts in_band true even where the old derived rule (outside funder only) would have marked it', () => {
     const grant = PAGE.grants[0]!
     render(
-      <GrantsPostingsSection
+      <GrantsPostingsPanel
+        programNames={{}}
         page={householdPage({ grants: [{ ...grant, funder_type: 'other', in_band: true }] })}
       />
     )
     expect(screen.queryByText('not counted')).toBeNull()
-  })
-
-  it('marks "not counted" a grant the server says is out of the band, whatever its counts, funder and shares', () => {
-    const grant = PAGE.grants[0]!
-    expect(grant.counts).toBe(true)
-    expect(grant.funder_type).toBe('outside')
-    expect(grant.requests.length).toBeGreaterThan(0)
-    render(
-      <GrantsPostingsSection page={householdPage({ grants: [{ ...grant, in_band: false }] })} />
-    )
-    expect(screen.getByText('not counted')).toBeInTheDocument()
   })
 
   it.each([
@@ -128,7 +238,8 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
   ] as const)('names an unplaced grant line (basis %s, person %s) "%s"', (basis, person, words) => {
     const grant = PAGE.grants[0]!
     render(
-      <GrantsPostingsSection
+      <GrantsPostingsPanel
+        programNames={{}}
         page={householdPage({
           grants: [{ ...grant, camper_basis: basis, person_cm_id: person, camper_name: '' }],
         })}
@@ -139,75 +250,77 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
     ).toBeInTheDocument()
   })
 
-  it('downloads the posting history, numbers plain, with the page link last (§11)', async () => {
-    render(<GrantsPostingsSection page={PAGE} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Download Postings' }))
-    const [content, filename] = downloadSpy.mock.calls[0] as [string, string]
-    expect(filename).toBe('camperships-household-1000001-postings-2027.csv')
-    expect(content.split('\n')[1]).toBe(
-      '2027-03-09,1000001,1800,2027-03-20,camp_aid,1000010,1000102,summer,'
+  it('says when there are no grants and no postings', () => {
+    render(
+      <GrantsPostingsPanel page={householdPage({ grants: [], postings: [] })} programNames={{}} />
     )
-    expect(content.split('\n').at(-1)).toMatch(/^Link,/)
+    expect(screen.getByText('No outside grants.')).toBeInTheDocument()
+    expect(screen.getByText('No CampMinder aid postings this season.')).toBeInTheDocument()
   })
 })
 
-describe('HistorySection (§6.3 item 7)', () => {
-  it("lists the family's own log, oldest first, and downloads it", async () => {
-    render(<HistorySection page={PAGE} />)
-    const items = screen.getAllByRole('listitem')
-    expect(items[0]).toHaveTextContent('Jan 5')
-    expect(items[1]).toHaveTextContent(
-      'test@example.com · Tick posted · decision events reqsamuel000005:1 · Entered in CampMinder'
+describe('LinksPanel (§6.3 †; Decision 27; owner 10-04: links read as families)', () => {
+  const link: ApiAidHouseholdLink = TWO_HOUSEHOLD_PAGE.links[0]!
+
+  it("reads a link as today's words while the page carries no family details", () => {
+    render(<LinksPanel page={TWO_HOUSEHOLD_PAGE} />)
+    expect(
+      screen.getByText('household 1000004 · staff · excluded · Grandparent address, not a payer')
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('reads a link as a family once the page carries its name, adults and city (#3004)', () => {
+    render(
+      <LinksPanel
+        page={{
+          ...TWO_HOUSEHOLD_PAGE,
+          links: [
+            {
+              ...link,
+              family_name: 'The Lee Family',
+              adults: ['Ava Lee', 'Noah Lee'],
+              city: 'Riverside, CA',
+            } as ApiAidHouseholdLink,
+          ],
+        }}
+      />
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Download History' }))
-    expect(downloadSpy.mock.calls[0]?.[1]).toBe('camperships-household-1000001-history-2027.csv')
+    const line = screen.getByRole('listitem')
+    expect(line).toHaveTextContent(
+      'The Lee Family · Ava Lee, Noah Lee · Riverside, CA · household 1000004 · staff · excluded · Grandparent address, not a payer'
+    )
   })
 })
 
-describe('HistorySection, empty', () => {
-  it('offers no download when nothing is recorded', () => {
-    render(<HistorySection page={householdPage({ history: [] })} />)
+describe('HistoryPanel (§6.3 item 7; O4; N10)', () => {
+  it("words the family's own log, oldest first, with no record ids or emails on screen", () => {
+    const { container } = render(<HistoryPanel page={HISTORY_PAGE} />)
+    expect(screen.getByText('oldest first')).toBeInTheDocument()
+    const lines = screen.getAllByTestId('history-line')
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toHaveTextContent("Intake added the family's form · Feb 2")
+    expect(lines[2]).toHaveTextContent(
+      'Test corrected expected gross income, $90,000 → $84,200 · Feb 9“Pay stub shows the new salary”'
+    )
+    expect(lines[4]).toHaveTextContent("The ledger match marked Emma's Round 1 posted at $1,420")
+    expect(container.textContent).not.toMatch(/@|reqsamuel|op000|aid_/)
+  })
+
+  it('says so when nothing is recorded', () => {
+    render(<HistoryPanel page={householdPage({ history: [] })} />)
     expect(screen.getByText('Nothing recorded yet.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Download History' })).toBeNull()
   })
 
   it('does not repeat a key for two entries of one operation and record', () => {
     const entry = PAGE.history[0]!
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     render(
-      <HistorySection
+      <HistoryPanel
         page={householdPage({ history: [entry, { ...entry, entity: 'aid_other' }, { ...entry }] })}
       />
     )
     expect(spy.mock.calls.filter((c) => String(c[0]).includes('same key'))).toHaveLength(0)
     spy.mockRestore()
-  })
-})
-
-describe('LinksSection (§6.3 †; Decision 27)', () => {
-  it('lists linked households, read only, and draws nothing without any', () => {
-    const { container, unmount } = render(<LinksSection page={PAGE} />)
-    expect(container).toBeEmptyDOMElement()
-    unmount()
-    render(
-      <LinksSection
-        page={householdPage({
-          links: [
-            {
-              id: 'link00000000001',
-              year: 2027,
-              household_cm_id: 1000003,
-              family_key: 'fam1',
-              source: 'auto',
-              excluded: false,
-              note: '',
-              actor: 'system:intake',
-            },
-          ],
-        })}
-      />
-    )
-    expect(screen.getByText('household 1000003 · auto')).toBeInTheDocument()
-    expect(screen.queryByRole('button')).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,7 @@ import {
   householdPage,
   householdRequest,
 } from '../../components/camperships/household/householdFixtures'
+import { FLAGGED_PAGE } from '../../components/camperships/household/sectionsFixtures'
 import { gridRow, GRID_ROWS, ROW_OLIVIA } from '../../components/camperships/requests/gridFixtures'
 import { AidApiError } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
@@ -86,6 +87,12 @@ vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+// The approved rules name the programs (D31): the postings read them, as the grid does.
+vi.mock('../../hooks/camperships/useAidRules', () => ({
+  useAidApprovedRules: () => ({
+    data: { sections: [{ section: 'programs', content: { summer: { label: 'Summer Camp' } } }] },
+  }),
+}))
 
 function Where() {
   const { pathname, search } = useLocation()
@@ -167,12 +174,18 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
   })
 
-  it('puts Correct… on the income answers for casework only, never on the income override (§9.3)', () => {
+  it('puts Correct… on the income answers for casework only, never on the income override (§9.3)', async () => {
     renderAt('/aid/households/1000001')
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
     expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
     cleanup()
     granted = ['financial_aid.view', 'financial_aid.casework']
     renderAt('/aid/households/1000001')
+    // The exceptions first (income (e)): the corrected answer alone, then every answer.
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    expect(screen.getAllByRole('button', { name: 'Correct…' })).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
     const answers = householdPage().incomes.flatMap((i) => i.answers)
     const correctable = answers.filter((a) => a.field !== 'income_override')
     expect(screen.getAllByRole('button', { name: 'Correct…' })).toHaveLength(correctable.length)
@@ -210,11 +223,47 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.queryByText(/Network down/)).toBeNull()
   })
 
-  it('shows the income, the grants and postings, and the history below the cards', () => {
+  it('shows the income, the grants and postings, and the history below the cards, as tabs', () => {
     renderAt('/aid/households/1000001')
-    expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Income/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Grants and postings/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^History/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('tab-panel')).toBeNull()
+  })
+
+  it("names a posting's program as the approved rules do (D31)", async () => {
+    renderAt('/aid/households/1000001')
+    await userEvent.click(screen.getByRole('button', { name: /^Grants and postings/ }))
+    expect(
+      within(screen.getByRole('table', { name: 'Postings' })).getAllByText('Summer Camp')
+    ).toHaveLength(2)
+  })
+
+  it('opens the income on its own for a flagged family', () => {
+    result = { data: FLAGGED_PAGE, isLoading: false, error: null }
+    renderAt('/aid/households/1000001')
+    expect(within(screen.getByTestId('tab-panel')).getByText('Gross income')).toBeInTheDocument()
+  })
+
+  it('resets the tabs when the walk opens the next family', async () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/aid/households/1000001']}>
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^History/ }))
+    expect(screen.getByTestId('tab-panel')).toBeInTheDocument()
+    result = { data: householdPage({ household_cm_id: 1000005 }), isLoading: false, error: null }
+    rerender(
+      <MemoryRouter initialEntries={['/aid/households/1000005']}>
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.queryByTestId('tab-panel')).toBeNull()
   })
 })
 
@@ -509,9 +558,10 @@ describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
     expect(scrolled).toHaveLength(1)
   })
 
-  it('scrolls to the income section for "#income" (the grid\'s Enter the Income step)', () => {
+  it('opens the income and scrolls to it for "#income" (the grid\'s Enter the Income step)', () => {
     renderWithHash('#income')
     expect(scrolled.map((el) => el.id)).toEqual(['income'])
+    expect(screen.getByTestId('tab-panel')).toBeInTheDocument()
   })
 
   it('does nothing with no hash, or a hash naming nothing on the page', () => {
@@ -616,6 +666,8 @@ describe('Correct… and the open editor (one open editor per page)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
     await userEvent.click(screen.getAllByRole('button', { name: 'Correct…' })[0]!)
     expect(keyAskMutate).toHaveBeenCalledWith(
       { requestId: 'reqolivia000003', body: expect.objectContaining({ round: 2, amount: 1300 }) },
