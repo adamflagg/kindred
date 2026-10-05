@@ -10,6 +10,7 @@ import {
   formOutcomeWords,
   formOwner,
   settleWords,
+  formHint,
 } from './formsModel'
 import { GROSS_CONFLICT, answer, income, plainAnswers } from './sectionsFixtures'
 
@@ -94,6 +95,22 @@ describe('formChoices: one Use X’s Form per form the open conflicts name', () 
       { personCmId: 1000002, name: 'Emma' },
       { personCmId: 1000099, name: 'person 1000099' },
     ])
+  })
+})
+
+// Owner ruling 10-05: Use X's Form touches only the answers that disagree (#3021's contract), and
+// its words say so beside the buttons.
+describe("formHint: what Use X's Form touches", () => {
+  it('counts the answers that disagree', () => {
+    expect(formHint(income({ flags: [INCOME_FLAG, CHILDREN_FLAG] }))).toBe(
+      'for the 4 answers that disagree'
+    )
+  })
+
+  it('says one in the singular, leaves out a corrected answer, and is null with none open', () => {
+    const two = income({ answers: corrected('num_children', '3'), flags: [GROSS_CONFLICT] })
+    expect(formHint(two)).toBe('for the 1 answer that disagrees')
+    expect(formHint(income())).toBeNull()
   })
 })
 

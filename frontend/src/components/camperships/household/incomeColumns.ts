@@ -59,8 +59,9 @@ export interface FormFigure {
 
 /**
  * One form's figure for an answer the forms disagree on: its variant's figure (a dash for a form that
- * gave none), struck once a correction used another. An answer nobody disputes has no per-form figure
- * in the payload, so it has no form cells: the table shows it once across them (main's ruling 10-05).
+ * gave none), struck once a correction used another. Per-form figures are only for disputed answers:
+ * one nobody disputes has no form cells, and the table shows it once across them (owner ruling 10-05,
+ * the final design).
  */
 export function formFigure(
   answer: ApiAidAnswer,

@@ -195,9 +195,10 @@ function AnswerRows({
         {columns === null ? (
           <td className={`${num} ${width}`}>{answerValue(answer.field, answer.synced)}</td>
         ) : conflict === undefined ? (
-          // Main's ruling 10-05: the payload has no per-form figure for an answer no flag disputes,
-          // and the household's answer is not each form's (Yes if any form says Yes; blanks
-          // skipped). Shown once across the form columns, never repeated under each form.
+          // Owner ruling 10-05 (the final design): per-form figures are only for the answers the
+          // forms disagree on. An answer no flag disputes shows once across the form columns, never
+          // repeated under each form: the household's answer is not each form's (Yes if any form
+          // says Yes; blanks skipped).
           <td colSpan={columns.length} className={num.replace('text-right', 'text-center')}>
             {answerValue(answer.field, answer.synced)}
           </td>

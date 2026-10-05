@@ -24,7 +24,7 @@ describe('IncomePanel: the exceptions only (income (e); N8)', () => {
   it("lists only the corrected and flagged answers, each form's figure and the one used", () => {
     render(<IncomePanel page={FLAGGED_PAGE} />)
     const children = rowOf('Children')
-    // No flag disputes it: the form's 2 shows once, across the form columns (main's ruling 10-05).
+    // No flag disputes it: the form's 2 shows once, across the form columns (owner ruling 10-05).
     expect(within(children).getAllByText('2')).toHaveLength(1)
     expect(within(children).getByText('3')).toBeInTheDocument()
     expect(within(children).getByText('corrected')).toBeInTheDocument()
@@ -236,9 +236,9 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
     expect(cells.map((c) => c.textContent)).toEqual(expect.arrayContaining(['3', '2', '—']))
   })
 
-  // Main's ruling 10-05: the payload has no per-form figure for an answer no flag disputes, so
-  // repeating the household's answer under every form would show a figure a form may not have
-  // given. It shows once, in a single cell across the form columns.
+  // Owner ruling 10-05 (the final design): per-form figures are only for the disagreeing answers.
+  // Repeating the household's answer under every form would show a figure a form may not have
+  // given, so an undisputed answer shows once, in a single cell across the form columns.
   it('shows an answer the forms do not dispute once, across the form columns, never per form', async () => {
     render(<IncomePanel page={threeForms()} />)
     await userEvent.click(screen.getByRole('button', { name: /more answers match/ }))

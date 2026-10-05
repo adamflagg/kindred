@@ -144,6 +144,13 @@ describe("Use X's Form: shown only for an open conflict, one button per form", (
     expect(screen.getByLabelText('Reason (optional)')).toBeInTheDocument()
   })
 
+  // Owner ruling 10-05: the buttons touch only the disagreeing answers, and say so beside them.
+  it('says beside the buttons, in the banner and the strip, that they touch only the answers that disagree', () => {
+    render(<Harness page={pageWith(flags())} />)
+    expect(screen.getByTestId('banner')).toHaveTextContent('for the 4 answers that disagree')
+    expect(screen.getByTestId('strip')).toHaveTextContent('for the 4 answers that disagree')
+  })
+
   it('puts no buttons on a banner whose household has no open conflict', () => {
     const page = householdPage({
       incomes: [income({ household_cm_id: 1000003, flags: flags() })],

@@ -3,7 +3,7 @@ import type {
   ApiAidHouseholdRequest,
   ApiAidIncome,
 } from '../../../types/api-types'
-import { disagreeWords, formChoices, type FormChoice } from './formsModel'
+import { disagreeWords, formChoices, formHint, type FormChoice } from './formsModel'
 import {
   HH_AMBER_NOTE,
   HH_BUTTON,
@@ -12,6 +12,7 @@ import {
   HH_FORMS_REASON_LABEL,
   HH_FORMS_STRIP,
   HH_FORMS_STRIP_ROW,
+  HH_NOTE,
 } from './householdStyles'
 import type { FormsControl, Outcome, Where } from './useFormsControl'
 
@@ -36,6 +37,8 @@ function FormButtons({
   control: FormsControl
   from: Where
 }) {
+  // Owner ruling 10-05: a form is used only for the answers that disagree, and the words say so.
+  const hint = formHint(income)
   return (
     <>
       {choices.map((choice) => (
@@ -49,6 +52,7 @@ function FormButtons({
           {`Use ${choice.name}'s Form`}
         </button>
       ))}
+      {hint !== null && choices.length > 0 && <span className={HH_NOTE}>{hint}</span>}
     </>
   )
 }

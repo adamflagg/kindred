@@ -90,6 +90,17 @@ export function disagreeWords(
 }
 
 /**
+ * The words beside the "Use X's Form" buttons (owner ruling 10-05): a form is used only for the
+ * answers that disagree (#3021's use-form contract), never for every answer, so the count is the
+ * strip's. Null with none open.
+ */
+export function formHint(income: ApiAidIncome): string | null {
+  const n = openConflicts(income).length
+  if (n === 0) return null
+  return n === 1 ? 'for the 1 answer that disagrees' : `for the ${String(n)} answers that disagree`
+}
+
+/**
  * The answer's casework button (household-v4 section 3, owner ruling 10-05): "Choose Which Form…" on
  * an answer the forms still disagree on, nothing settled; "Correct…" on a corrected or matching one.
  * Both open the same Correct… row, with its quick picks.
