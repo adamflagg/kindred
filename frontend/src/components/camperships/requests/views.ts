@@ -679,7 +679,8 @@ export function reasonGroup(view: RequestView, today: string) {
       const text = n === undefined ? '?' : String(n)
       return { id: `r${text}`, heading: `Round ${text}` }
     }
-    // A reconciled confirmation is here for its money with no Posted tick (#2996): its pill heads it.
+    // A reconciled confirmation is here for its money with no Posted tick (#2996): its top item's
+    // fixed `reason` heads it, never the pill's figure.
     if (view.key === 'not_reconciled' && row.confirmation && !row.confirmation.reconciled) {
       const c = row.confirmation
       // A confirmed request is here for a share: head the group by that share's own state, as
