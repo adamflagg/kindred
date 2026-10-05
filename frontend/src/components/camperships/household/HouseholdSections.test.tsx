@@ -328,7 +328,9 @@ describe('HistoryPanel (§6.3 item 7; O4; N10)', () => {
     expect(lines[2]).toHaveTextContent(
       'Test corrected expected gross income, $90,000 → $84,200 · Feb 9“Pay stub shows the new salary”'
     )
-    expect(lines[4]).toHaveTextContent("The ledger match marked Emma's Round 1 posted at $1,420")
+    expect(lines[4]).toHaveTextContent(
+      "Matched in CampMinder · Emma's Round 1 posted at $1,420 · Mar 10"
+    )
     expect(container.textContent).not.toMatch(/@|reqsamuel|op000|aid_/)
   })
 

@@ -3,11 +3,14 @@
  * rows): "<who> <did what>", dated, with the reason apart. No record ids and no emails on screen;
  * they stay in the Download History CSV (householdModel `historyCsv`, unchanged). Pure.
  *
- * Who: the system's runs by their job ("Intake", "The ledger match"); staff by first name. The log
+ * Who: the system's runs by their job ("Intake", "Matched in CampMinder"); staff by first name. The log
  * records a sign-in (an email), and the page carries no user list, so the name is learnt from the
  * page's own receipts: a round's Posted tick names who ticked it (`ticked_by_name`) and a Round 3
  * amount who decided it (`decided_by_name`), so the sign-in that logged that tick or amount is that
  * person. A sign-in the receipts never name reads as its email's first word, capitalised.
+ *
+ * The ledger's overnight tick has no person to name, so its lines read "Matched in CampMinder ·
+ * <what happened>" (ruled 2026-10-05), the event said of the round rather than done by someone.
  */
 import type { ApiAidHistoryEntry, ApiAidHouseholdPage } from '../../../types/api-types'
 import { formatShortDate } from '../kit/dates'
@@ -37,7 +40,7 @@ export const lineText = (line: HistoryLine): string => line.parts.map((p) => p.t
 
 const SYSTEM_ACTORS: Readonly<Record<string, string>> = {
   'system:intake': 'Intake',
-  'system:ledger': 'The ledger match',
+  'system:ledger': 'Matched in CampMinder',
   'system:grant-placement': 'Grant placement',
 }
 
@@ -123,6 +126,10 @@ function decisionParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): Li
   const round = roundOf(entry)
   const roundWords = `${camper} ${round === null ? 'round' : `Round ${String(round)}`}`
   const amount = money(field(entry.after, 'amount'))
+  if (entry.actor === 'system:ledger') {
+    const said = ledgerParts(entry, roundWords, amount)
+    if (said !== null) return said
+  }
   switch (entry.action) {
     case 'post':
       return amount === null
@@ -146,6 +153,24 @@ function decisionParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): Li
       return [plain(`approved ${roundWords}`)]
     case 'refuse':
       return [plain(`refused ${roundWords}`)]
+    default:
+      return null
+  }
+}
+
+/** What the ledger's run did, said of the round (the line leads "Matched in CampMinder · "). */
+function ledgerParts(entry: ApiAidHistoryEntry, roundWords: string, amount: LinePart | null) {
+  switch (entry.action) {
+    case 'post':
+      return amount === null
+        ? [plain(`${roundWords} posted`)]
+        : [plain(`${roundWords} posted at `), amount]
+    case 'unpost':
+      return [plain(`${roundWords} Posted tick undone`)]
+    case 'accept':
+      return [plain(`${roundWords} accepted`)]
+    case 'unaccept':
+      return [plain(`${roundWords} acceptance undone`)]
     default:
       return null
   }
@@ -299,7 +324,16 @@ export function historyLines(page: ApiAidHouseholdPage): HistoryLine[] {
         // No words here: the action and the kind of record, plainly, still with no id.
         [plain(`: ${codeWords(entry.action)} · ${recordWords(entry.entity)}`)]
     }
-    const lead = parts[0]?.text.startsWith(':') === true ? who : `${who} `
+    // The ledger's lines read "Matched in CampMinder · <what happened>", never "who did what".
+    const lead =
+      entry.actor === 'system:ledger'
+        ? `${who} · `
+        : parts[0]?.text.startsWith(':') === true
+          ? who
+          : `${who} `
+    if (entry.actor === 'system:ledger' && parts[0]?.text.startsWith(': ') === true) {
+      parts = [plain(parts[0].text.slice(2)), ...parts.slice(1)]
+    }
     lines.push({
       key: `${entry.operation_id}:${entry.entity}:${entry.entity_id}:${String(i)}`,
       date: formatShortDate(entry.at),

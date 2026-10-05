@@ -21,7 +21,7 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
       "Intake added Emma's request",
       'Test corrected expected gross income, $90,000 → $84,200',
       "Test marked Samuel's Round 1 posted at $1,800",
-      "The ledger match marked Emma's Round 1 posted at $1,420",
+      "Matched in CampMinder · Emma's Round 1 posted at $1,420",
       "Test ticked Accepted on Samuel's Round 1",
     ])
     const all = texts().join('\n')
@@ -152,11 +152,46 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
   })
 })
 
+describe("the ledger's overnight tick reads Matched in CampMinder, then what happened (ruled 2026-10-05)", () => {
+  const ledger = (over: Partial<ApiAidHistoryEntry>) =>
+    one({
+      actor: 'system:ledger',
+      entity: 'aid_decisions',
+      request_id: 'reqemma00000001',
+      ...over,
+    })
+
+  it('words a post, without a verb the ledger is not doing', () => {
+    expect(
+      ledger({
+        action: 'post',
+        entity_id: 'reqemma00000001:1',
+        after: { amount: '1420', round: 1 },
+      })
+    ).toBe("Matched in CampMinder · Emma's Round 1 posted at $1,420")
+  })
+
+  it('words an un-post and an accept the same way', () => {
+    expect(ledger({ action: 'unpost', entity_id: 'reqemma00000001:1' })).toBe(
+      "Matched in CampMinder · Emma's Round 1 Posted tick undone"
+    )
+    expect(ledger({ action: 'accept', entity_id: 'reqemma00000001:1' })).toBe(
+      "Matched in CampMinder · Emma's Round 1 accepted"
+    )
+  })
+
+  it('keeps the same shape for an entry with no words of its own', () => {
+    expect(ledger({ action: 'lock', entity: 'aid_requests' })).toBe(
+      'Matched in CampMinder · Lock · request'
+    )
+  })
+})
+
 describe('who: staff by a readable name, the system by its job', () => {
   it('names the system runs', () => {
     const names = new Map<string, string>()
     expect(whoWords('system:intake', names)).toBe('Intake')
-    expect(whoWords('system:ledger', names)).toBe('The ledger match')
+    expect(whoWords('system:ledger', names)).toBe('Matched in CampMinder')
     expect(whoWords('system:grant-placement', names)).toBe('Grant placement')
   })
 
