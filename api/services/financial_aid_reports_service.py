@@ -138,7 +138,7 @@ POSTED_GAP: Final = "posted money a past date can't replay: left out of awarded;
 CANCELLATION_CAVEAT: Final = (
     "counted as of the day; a registration CampMinder changed since then reads as it stands now"
 )
-WITHDRAWN_LABEL: Final = "Withdrawn in Kindred"
+WITHDRAWN_LABEL: Final = "Withdrawn in the dashboard"
 DUPLICATE_LABEL: Final = "Duplicate"
 # RPT-1's two figure columns (owner N2 = C): what each says, server-sent so the screen never words it.
 OFFERED_LABEL: Final = "As offered"
@@ -159,7 +159,8 @@ NOT_BUILT: Final[Mapping[str, str]] = {
         "snapshot"
     ),
     "rebuild_history": (
-        "Seasons before Kindred's decisions show finance's typed figures only. Kindred's approximate rebuild (≈) is "
+        "Seasons before the dashboard's decisions show finance's typed figures only. The dashboard's approximate "
+        "rebuild (≈) is "
         "deferred: demand and application counts from the aid form mirror need an outlier-ask rule, and money by "
         "pool needs the 2017–2024 ledger backfill"
     ),

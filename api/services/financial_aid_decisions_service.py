@@ -274,8 +274,11 @@ _WHY_NOT: Final[Mapping[str, str]] = {
     "not_decided": "has no amount keyed yet",
 }
 
-# Decision 14 (plan review 2026-09-30): a request the registrar cancelled takes no new decisions.
-CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
+# Decision 14 (plan review 2026-09-30): a request the registrar cancelled takes no new decisions. Owner 2026-10-05: nor
+# does one CampMinder cancelled. A cancelled request takes only its reason (given or changed) and, for Kindred's own
+# cancellation, a reopen; CampMinder's is undone by re-enrolling there, so its refusal doesn't say "reopen".
+CANCELLED_IN_KINDRED: Final = "Cancelled in the dashboard: reopen it first"
+CANCELLED_IN_CAMPMINDER: Final = "Cancelled in CampMinder: nothing new can be decided"
 
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
@@ -1339,6 +1342,14 @@ def _not_live(status: str) -> str:
     return f"a {status} request takes no new asks or amounts"
 
 
+def _cancelled_refusal(cancellation: Cancellation | None) -> str | None:
+    """Decision 14 as the owner widened it (2026-10-05): why a cancelled request takes no new decision, in the words
+    of whoever cancelled it, or None when it isn't cancelled."""
+    if cancellation is None:
+        return None
+    return CANCELLED_IN_KINDRED if cancellation.by == "kindred" else CANCELLED_IN_CAMPMINDER
+
+
 def appeal_refusal(
     request: RequestRecord, rounds: Mapping[int, RoundState], cancellation: Cancellation | None
 ) -> str | None:
@@ -1347,9 +1358,7 @@ def appeal_refusal(
     _ask_refusal), so the row and the write never disagree."""
     if request.status not in _LIVE:
         return _not_live(request.status)
-    if cancellation is not None and cancellation.by == "kindred":
-        return CANCELLED_IN_KINDRED
-    return _ask_refusal(rounds, 2)
+    return _cancelled_refusal(cancellation) or _ask_refusal(rounds, 2)
 
 
 def _round3_refusal(rounds: Mapping[int, RoundState]) -> str | None:
@@ -2446,11 +2455,9 @@ class FinancialAidDecisionsService:
             self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
             self._store.fetch_sessions(request.year),
         )
-        # "Reopen it first" only while Kindred's cancellation stands: once CampMinder cancels the
-        # enrollment too it wins (as on the grid), and reopening is refused, so refusing here would strand staff.
-        cancelled = cancellations_by_request([request], cancels, enrollments, sessions).get(request.id)
-        if cancelled is not None and cancelled.by == "kindred":
-            raise DecisionRefusedError(CANCELLED_IN_KINDRED)
+        # "Reopen it first" only while Kindred's cancellation stands: once CampMinder cancels the enrollment too it
+        # wins (as on the grid) and reopening is refused, so the refusal says CampMinder's words instead.
+        _refuse(_cancelled_refusal(cancellations_by_request([request], cancels, enrollments, sessions).get(request.id)))
         rounds = fold_rounds(events).get(request.id, {})
         return request, dict(rounds)
 
@@ -2623,9 +2630,8 @@ class FinancialAidDecisionsService:
             if view is not None and view.status == "posted":
                 unchanged += 1
                 continue
-            cancelled = season.cancellations.get(request_id)
-            if cancelled is not None and cancelled.by == "kindred":
-                problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
+            if (why_cancelled := _cancelled_refusal(season.cancellations.get(request_id))) is not None:
+                problems.append(f"{request_id}: {why_cancelled}")
                 continue
             if view is None or view.status != "needs_offer" or view.decided is None:
                 why = _WHY_NOT.get(view.status, "cannot be posted") if view is not None else "has nothing decided"
@@ -2869,7 +2875,6 @@ class FinancialAidDecisionsService:
         )
         rounds = fold_rounds(events)
         cancelled = cancellations_by_request(ticked, cancel_events, enrollments, sessions)
-        in_kindred = {rid for rid, c in cancelled.items() if c.by == "kindred"}
         keys = dict.fromkeys((row.request_id, row.round) for row in body.rows)
         unposted = [
             (rid, n)
@@ -2888,8 +2893,8 @@ class FinancialAidDecisionsService:
             state = rounds.get(request_id, {}).get(n, RoundState(round=n))
             if state.accepted == body.accepted:
                 unchanged += 1
-            elif body.accepted and request_id in in_kindred:
-                problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
+            elif body.accepted and (why_cancelled := _cancelled_refusal(cancelled.get(request_id))) is not None:
+                problems.append(f"{request_id}: {why_cancelled}")
             # An un-accept is always allowed: a same-day Accepted (C1) whose round then stops being pending would
             # otherwise be stuck until it posts.
             elif body.accepted and not state.posted and (request_id, n) not in pending:

@@ -38,7 +38,7 @@ def test_the_appeal_rate_is_kindred_derived_and_counts_cancelled_requests() -> N
     text = _text("appeal_rate")
     assert "appeals ÷ Round 1 apps" in text
     assert "counted at their Round 2 tier" in text
-    assert "Kindred derives it" in text
+    assert "The dashboard derives it" in text
     assert "cancelled requests count on both sides" in text
     assert "not development's appeals" in text
 
@@ -50,7 +50,7 @@ def test_basis_unconfirmed_is_the_interim_default_until_d96_is_re_ruled() -> Non
     assert (definition.spec, definition.rulings) == ("§5.7", ("D96",))
     assert "{camp}'s own aid only" in definition.text
     assert "may compare two bases" in definition.text
-    assert "Kindred's interim default, not a ruling" in definition.text
+    assert "the dashboard's interim default, not a ruling" in definition.text
 
 
 def test_percent_of_ask_including_grants_counts_an_outside_funded_rounds_money_as_grants() -> None:

@@ -223,7 +223,7 @@ def decode_snapshot(raw: Mapping[str, Any]) -> SeasonSnapshot:
     try:
         if raw.get("format") != SNAPSHOT_FORMAT:
             raise SnapshotError(
-                "This snapshot was frozen by an older version of Kindred: freeze the applications again"
+                "This snapshot was frozen by an older version of the dashboard: freeze the applications again"
             )
         return _decoded(raw)
     except SnapshotError:

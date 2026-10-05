@@ -1137,7 +1137,7 @@ def stop_text(stop: TickStop) -> str:
 def pending_text(decided: Decimal) -> str:
     """C1 (owner 10-03): a round CampMinder covers in full with nothing blocking tonight's tick waits on the family at
     once; its CampMinder cell reads "pending", and its detail line says so. `decided` is the round's decided amount."""
-    return f"Posted in CampMinder ({dollars(decided)}). Kindred marks it posted after tonight's sync."
+    return f"Posted in CampMinder ({dollars(decided)}). The dashboard marks it posted after tonight's sync."
 
 
 @dataclass(frozen=True)

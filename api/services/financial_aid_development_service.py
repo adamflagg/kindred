@@ -136,8 +136,8 @@ DATED_NOT_REBUILT: Final = ("declined_insufficient", *(key for key, _ in _CANCEL
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
     "rebuild": (
-        "Kindred's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons show "
-        "as reported, except their age lines, which are Kindred's by age (D158)"
+        "The dashboard's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons "
+        "show as reported, except their age lines, which are the dashboard's by age (D158)"
     ),
     "need_met_history": "% of need met before 2026 is as reported only: no per-round asks exist to rebuild it",
 }
@@ -829,9 +829,9 @@ class FinancialAidDevelopmentService:
                 NotBuiltOut(
                     figure="ages_before_backfill",
                     reason=(
-                        f"Teens, youth and the other age lines for {', '.join(map(str, waiting))} are blank: Kindred "
-                        "has no classified camp-aid lines for those seasons (the 2017–2024 ledger backfill is one "
-                        "cause; postings whose funder isn't classified yet are another)"
+                        f"Teens, youth and the other age lines for {', '.join(map(str, waiting))} are blank: "
+                        "the dashboard has no classified camp-aid lines for those seasons (the 2017–2024 ledger "
+                        "backfill is one cause; postings whose funder isn't classified yet are another)"
                     ),
                 )
             )

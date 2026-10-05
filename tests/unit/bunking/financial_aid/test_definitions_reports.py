@@ -57,7 +57,7 @@ def test_the_average_award_names_its_population() -> None:
 
 
 def test_typed_history_is_dollars_and_counts_with_kindred_computing_every_percent() -> None:
-    assert "Kindred computes every percentage" in BY_KEY["as_reported"].text
+    assert "The dashboard computes every percentage" in BY_KEY["as_reported"].text
 
 
 def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_decided_numerator() -> None:

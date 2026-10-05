@@ -39,7 +39,7 @@ from bunking.financial_aid.change_replay import LogRow
 
 # 4a's actor for the placement log, as intake writes as "system:intake".
 PLACEMENT_ACTOR: Final = "system:grant-placement"
-PLACEMENT_REASON: Final = "Where the grants register placed each grant when Kindred priced the season"
+PLACEMENT_REASON: Final = "Where the grants register placed each grant when the dashboard priced the season"
 
 PlacementEvent = Literal["place", "remove"]
 

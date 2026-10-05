@@ -96,7 +96,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         "demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the strip's Needs an offer, "
         "Pending approval and Held"
     ),
-    "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
+    "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in the dashboard after it",
     "rules_history": (
         "The rules' change history for this season can't be replayed to that date, so nothing is priced: only "
         "posted rounds show"

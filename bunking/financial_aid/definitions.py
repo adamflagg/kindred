@@ -30,7 +30,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="decided",
         term="Decided",
         text=(
-            "Decided: the award Kindred computed or staff decided for a request's round. It is live until the "
+            "Decided: the award the dashboard computed or staff decided for a request's round. It is live until the "
             "round locks: income corrections, a new rules version or a grant can move it. It is never labelled "
             '"awarded", which means Posted.'
         ),
@@ -175,7 +175,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="round2_asks",
         term="Round 2 asks so far",
         text=(
-            "Round 2 asks so far: the appeals keyed so far on live requests (not cancelled, in Kindred or in "
+            "Round 2 asks so far: the appeals keyed so far on live requests (not cancelled, in the dashboard or in "
             "CampMinder, withdrawn or a duplicate), counted, with their total ask, held appeals' asks included, and "
             "the total computed for those decided or posted. It knows only the appeals keyed so far. Shown below "
             "the line, never counted in Remaining."
@@ -302,8 +302,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="as_reported",
         term="As reported (r)",
         text=(
-            "As reported (r): finance's own history from before Kindred had the data, typed once as dollars and "
-            "counts with an as-of date. Kindred computes every percentage."
+            "As reported (r): finance's own history from before the dashboard had the data, typed once as dollars and "
+            "counts with an as-of date. The dashboard computes every percentage."
         ),
         spec="§5.6",
         rulings=("D132", "D133"),
@@ -318,7 +318,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "(D80's awarded = offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
             "outside the budget (an outside funder's full-cost round) is in neither column; for a season finance "
             "typed, the deck's figure and its as-of date. End of season: net of cancellations and clawback; for a "
-            'season Kindred priced it reads "to date" until the season closes, meaning the last session open to aid '
+            'season the dashboard priced it reads "to date" until the season closes, meaning the last session open to '
+            "aid "
             "(summer, family camp and adult weekends alike) has ended; for a typed season, the end-of-season total. "
             "A blank stays blank: nothing is estimated, and one column is never filled from the other. Each column is "
             "shown as a % of the season's total budget and as its share of the three phases; the target bands compare "
@@ -370,8 +371,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Appeal rate",
         text=(
             "Appeal rate: appeals ÷ Round 1 apps, per tier and in total, with a tier's appeals counted at their "
-            "Round 2 tier and its apps at Round 1's. Kindred derives it; no deck gives it per tier. As in Appeals, "
-            "cancelled requests count on both sides. It is not development's appeals figure."
+            "Round 2 tier and its apps at Round 1's. The dashboard derives it; no deck gives it per tier. As in "
+            "Appeals, cancelled requests count on both sides. It is not development's appeals figure."
         ),
         spec="§9.7",
         rulings=("D131", "D132"),
@@ -382,9 +383,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Basis unconfirmed",
         text=(
             "Basis unconfirmed: a 2022–2025 column shows the figures development already sent funders, typed once. "
-            "Kindred counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
+            "The dashboard counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
             "{camp}'s own aid only (O-930-1). Until that is settled, comparing such a column with 2026 or later "
-            "may compare two bases. This note is Kindred's interim default, not a ruling."
+            "may compare two bases. This note is the dashboard's interim default, not a ruling."
         ),
         spec="§5.7",
         rulings=("D96",),
@@ -528,9 +529,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="to_place_suggestion",
         term="Suggestion",
         text=(
-            "Suggestion: Kindred's proposed placement or split of a line, with its evidence (an exact amount match, "
-            "the person on the line, the date, or a split in proportion to the decided amounts). It counts toward "
-            "nothing until a person confirms it, and Kindred never chooses between equal matches."
+            "Suggestion: the dashboard's proposed placement or split of a line, with its evidence (an exact amount "
+            "match, the person on the line, the date, or a split in proportion to the decided amounts). It counts "
+            "toward nothing until a person confirms it, and the dashboard never chooses between equal matches."
         ),
         spec="§8.1",
         rulings=("D12", "D16"),
