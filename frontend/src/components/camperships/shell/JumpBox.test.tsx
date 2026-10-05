@@ -78,7 +78,8 @@ describe('JumpBox (§3.5; D13)', () => {
     index = { data: LOADED.data, isPending: false, error: new Error('refetch failed') }
     renderBox()
     expect(box()).toBeEnabled()
-    expect(box()).toHaveAttribute('placeholder', 'Family, camper or CM id')
+    // Owner rulings 10-04 late (search words, option A). Was "Family, camper or CM id".
+    expect(box()).toHaveAttribute('placeholder', 'Go to a family…')
     await userEvent.type(box(), 'chen')
     expect(screen.getByRole('button', { name: /Chen/ })).toBeInTheDocument()
   })

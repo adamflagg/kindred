@@ -1,4 +1,4 @@
-import { Download, Search } from 'lucide-react'
+import { Download, Search, type LucideIcon } from 'lucide-react'
 import {
   Fragment,
   useCallback,
@@ -122,6 +122,8 @@ export interface AidGrouping<Row> {
   readonly key: string
   readonly label: string
   readonly groupOf: (row: Row) => { id: string; heading: string }
+  /** Group ids in the order they run (`groupRows`); without it, groups run in first-row order. */
+  readonly order?: readonly string[] | undefined
 }
 
 /**
@@ -159,6 +161,15 @@ export interface AidTableProps<Row> {
   /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
   readonly toolbarLead?: ReactNode
   /**
+   * Controls drawn right after the Flat / By … switch. Passing them moves the switch up beside the
+   * lead: lead · switch · these · search · Download CSV (the Requests grid, owner rulings 10-04 late
+   * (grid follow-up)). Without them the line is lead · search · switch · Download CSV.
+   */
+  readonly toolbarAfterGrouping?: ReactNode
+  /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
+  readonly searchPlaceholder?: string | undefined
+  readonly searchIcon?: LucideIcon | undefined
+  /**
    * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor's
    * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
    * and keep the row in its URL. Without them the table keeps the highlight itself.
@@ -188,6 +199,15 @@ export interface AidTableProps<Row> {
    * always on screen. Off, the table renders as it always did.
    */
   readonly scrollBox?: boolean | undefined
+  /**
+   * A save-first way out (the Requests page's walk `leave`): folding the group that holds the
+   * highlighted row goes through it, and folds only when it calls `go`, so a draft that can't be
+   * saved yet, a save still out or a failure keeps the group open with the editor and its problem.
+   * Without it the fold just asks `onHighlight` to drop the highlight.
+   */
+  readonly onLeave?: ((go: () => void) => void) | undefined
+  /** Folds belong to this (the Requests grid's lens and view): a change clears them all. */
+  readonly foldScope?: string | undefined
 }
 
 /** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
@@ -227,6 +247,9 @@ export function AidTable<Row>({
   renderDetail,
   arrowKeys = false,
   toolbarLead,
+  toolbarAfterGrouping,
+  searchPlaceholder = 'Search names or CM IDs',
+  searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
   onHighlight,
   footerLabel,
@@ -237,6 +260,8 @@ export function AidTable<Row>({
   groupCount,
   emptyText = 'No rows match.',
   scrollBox = false,
+  onLeave,
+  foldScope,
 }: AidTableProps<Row>) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const groupingKeys = useMemo(() => groupings.map((g) => g.key), [groupings])
@@ -302,11 +327,47 @@ export function AidTable<Row>({
   const grouping = groupings.find((g) => g.key === group)
   const groups: Array<RowGroup<Row>> = useMemo(
     () =>
-      grouping ? groupRows(shown, grouping.groupOf) : [{ id: '', heading: '', rows: [...shown] }],
+      grouping
+        ? groupRows(shown, grouping.groupOf, grouping.order)
+        : [{ id: '', heading: '', rows: [...shown] }],
     [shown, grouping]
   )
+  // Folded group ids (owner rulings 10-04 late (grid follow-up)): component state, so a fold lasts
+  // the visit and never reaches the URL. Display only: the footer, the group counts and the CSV
+  // still count a folded group's rows; ↑/↓, the editor's next / previous and Select all skip them.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  // A new scope (another lens or view) starts with every group open (lead ruling, scan of #3005);
+  // Flat / By reason inside one view keeps them. Adjusted while rendering, so nothing draws stale.
+  const [scopeSeen, setScopeSeen] = useState(foldScope)
+  if (scopeSeen !== foldScope) {
+    setScopeSeen(foldScope)
+    setFolded(new Set())
+  }
+  // The highlighted row is always drawn: a highlight that lands in a folded group (a failed save
+  // jumping back, a ?row= link, a save that regrouped the row, a refused leave) opens it for good.
+  const highlightedGroup = useMemo(
+    () =>
+      grouping === undefined || highlighted === null
+        ? undefined
+        : groups.find((g) => g.rows.some((row) => rowKey(row) === highlighted))?.id,
+    [grouping, highlighted, groups, rowKey]
+  )
+  if (highlightedGroup !== undefined && folded.has(highlightedGroup)) {
+    const next = new Set(folded)
+    next.delete(highlightedGroup)
+    setFolded(next)
+  }
+  const isFolded = useCallback(
+    (g: RowGroup<Row>) => grouping !== undefined && folded.has(g.id) && g.id !== highlightedGroup,
+    [grouping, folded, highlightedGroup]
+  )
   const ordered = useMemo(() => groups.flatMap((g) => g.rows), [groups])
-  const order = useMemo(() => ordered.map(rowKey), [ordered, rowKey])
+  // The rows on screen, in screen order: what ↑/↓ walk and Select all takes.
+  const unfolded = useMemo(
+    () => groups.flatMap((g) => (isFolded(g) ? [] : g.rows)),
+    [groups, isFolded]
+  )
+  const order = useMemo(() => unfolded.map(rowKey), [unfolded, rowKey])
   // Without the kept row: a group's count and the CSV are of matching rows only.
   const counted = (list: readonly Row[]) =>
     kept === null ? list : list.filter((row) => rowKey(row) !== kept)
@@ -317,8 +378,9 @@ export function AidTable<Row>({
       : null
   const selectable = selection !== null
   const span = columns.length + (selectable ? 1 : 0)
-  // The rows the search matches, without the kept row (`counted`): what Select all takes.
-  const selectableKeys = counted(ordered).map(rowKey)
+  // The rows the search matches, without the kept row (`counted`) and outside any folded group (a
+  // row you cannot see is never ticked by Select all): what Select all takes.
+  const selectableKeys = counted(unfolded).map(rowKey)
   const allSelected =
     selection !== null &&
     selectableKeys.length > 0 &&
@@ -331,6 +393,35 @@ export function AidTable<Row>({
       else next.add(key)
     }
     selection.onChange(next)
+  }
+  const toggleFold = (g: RowGroup<Row>) => {
+    if (folded.has(g.id)) {
+      setFolded((now) => {
+        const next = new Set(now)
+        next.delete(g.id)
+        return next
+      })
+      return
+    }
+    const fold = () =>
+      setFolded((now) => {
+        const next = new Set(now)
+        next.add(g.id)
+        return next
+      })
+    if (g.id !== highlightedGroup) {
+      fold()
+      return
+    }
+    // Folding the row you are on closes it first: nothing is left on screen to hold its detail
+    // line. A surface that refuses (an unsaveable draft) keeps the highlight, so the group's
+    // highlighted row reopens it (highlightedGroup) before anything is drawn.
+    const closeThenFold = () => {
+      setHighlight(null)
+      fold()
+    }
+    if (onLeave) onLeave(closeThenFold)
+    else closeThenFold()
   }
   const toggleOne = (key: string) => {
     if (selection === null) return
@@ -551,43 +642,48 @@ export function AidTable<Row>({
     return Math.max(span, 1)
   })()
 
+  // Flat is always a choice, so one grouping is enough for a switch (owner ruling G1).
+  const groupingSwitch =
+    groupings.length > 0 ? (
+      <div className={GROUP}>
+        <button
+          type="button"
+          className={grouping ? GROUP_BUTTON_OFF : GROUP_BUTTON_ON}
+          onClick={() => setGroup(null)}
+        >
+          Flat
+        </button>
+        {groupings.map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            className={group === g.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
+            onClick={() => setGroup(g.key)}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+    ) : null
+
   return (
     <div className="space-y-2">
       <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         {toolbarLead}
+        {toolbarAfterGrouping !== undefined && groupingSwitch}
+        {toolbarAfterGrouping}
         <div className="relative w-64">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <input
             type="search"
             aria-label="Search"
-            placeholder="Search names or CM IDs"
+            placeholder={searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className={SEARCH_INPUT}
           />
         </div>
-        {/* Flat is always a choice, so one grouping is enough for a switch (owner ruling G1). */}
-        {groupings.length > 0 && (
-          <div className={GROUP}>
-            <button
-              type="button"
-              className={grouping ? GROUP_BUTTON_OFF : GROUP_BUTTON_ON}
-              onClick={() => setGroup(null)}
-            >
-              Flat
-            </button>
-            {groupings.map((g) => (
-              <button
-                key={g.key}
-                type="button"
-                className={group === g.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-                onClick={() => setGroup(g.key)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {toolbarAfterGrouping === undefined && groupingSwitch}
         {/* The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant). */}
         <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
           <Download className="h-4 w-4" />
@@ -664,14 +760,22 @@ export function AidTable<Row>({
                 {grouping && g.rows.length > 0 && (
                   <tr>
                     <td colSpan={span} className={GROUP_ROW} data-group-heading="">
-                      <span className="sticky left-2">{g.heading}</span>
+                      {/* The heading folds its group (owner rulings 10-04 late); the count stays. */}
+                      <button
+                        type="button"
+                        className="sticky left-2 cursor-pointer"
+                        onClick={() => toggleFold(g)}
+                      >
+                        <span className="mr-1.5 inline-block w-3">{isFolded(g) ? '▸' : '▾'}</span>
+                        <span>{g.heading}</span>
+                      </button>
                       {groupCount ? (
                         <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
                       ) : null}
                     </td>
                   </tr>
                 )}
-                {g.rows.map((row) => {
+                {(isFolded(g) ? [] : g.rows).map((row) => {
                   const key = rowKey(row)
                   const isHighlighted = key === highlighted
                   const isMarked = markedKeys?.has(key) === true

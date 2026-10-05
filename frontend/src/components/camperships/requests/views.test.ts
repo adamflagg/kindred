@@ -11,6 +11,7 @@ import {
   ROW_RILEY,
   ROW_SAMUEL,
 } from './gridFixtures'
+import { groupRows } from '../kit/table'
 import { shownView } from './strip'
 import {
   CM_PENDING_WORD,
@@ -28,6 +29,7 @@ import {
   NO_FILTERS,
   parseRoundFilter,
   reasonGroup,
+  reasonOrder,
   REQUEST_VIEWS,
   requestsCsvName,
   requestView,
@@ -161,13 +163,41 @@ describe('filterRows', () => {
 
   // Owner ruling (fast-follow, 10-03): the Posted / Accepted checklist filter is gone under D162.
   // Was: "narrows to a round, and to rounds posted or accepted", with the tick filter's cases.
-  it('narrows to a round (owner ruling Group 2c Q3)', () => {
+  // Owner rulings 10-04 late (grid follow-up): Round means the round a request is CURRENTLY in, the
+  // server's Stage round. Was "has a round N at all", which kept Olivia Chen (R1 accepted, now in R2)
+  // under R1 as well.
+  it('narrows to a round: the round the request is in now (owner ruling Group 2c Q3; 10-04 late)', () => {
     const names = (filters: Partial<typeof NO_FILTERS>) =>
       filterRows(GRID_ROWS, 'all', { ...NO_FILTERS, ...filters }).map((r) => r.camper_name)
     expect(names({ round: 2 })).toEqual(['Olivia Chen'])
+    expect(names({ round: 1 })).toEqual([
+      'Emma Johnson',
+      'Samuel Johnson',
+      'Liam Garcia',
+      'Riley Sam',
+    ])
     expect(Object.keys(NO_FILTERS)).not.toContain('tick')
     expect(parseRoundFilter('2')).toBe(2)
     expect(parseRoundFilter('4')).toBeNull()
+  })
+
+  it('puts a cancelled request under the last round it reached, and a row with no stage under none', () => {
+    const cancelled = gridRow({
+      request_id: 'reqcancelled002',
+      stage: { round: null, code: 'cancelled', label: 'Cancelled' },
+      rounds: [
+        roundOut(1, 'posted', { decided: 1500, posted: 1500, accepted: true }),
+        roundOut(2, 'posted', { decided: 300, posted: 300 }),
+      ],
+      cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+    })
+    const noStage = gridRow({ request_id: 'reqnostage00001', stage: null, rounds: [] })
+    const ids = (round: 1 | 2 | 3) =>
+      filterRows([cancelled, noStage], 'all', { ...NO_FILTERS, round }).map((r) => r.request_id)
+    expect(ids(2)).toEqual(['reqcancelled002'])
+    expect(ids(1)).toEqual([])
+    expect(ids(3)).toEqual([])
+    expect(filterRows([noStage], 'all', NO_FILTERS)).toEqual([noStage])
   })
 
   it('finds no queue rows on a past-date read, whose queues are null', () => {
@@ -206,9 +236,11 @@ describe('grouping', () => {
       id: 'r2',
       heading: 'Round 2',
     })
+    // Owner rulings 10-04 late: the Appeals lens groups by strip stage, as All does. Was one group
+    // named Appeals.
     expect(reasonGroup(requestView('appeals'), TODAY)(ROW_OLIVIA)).toEqual({
-      id: 'appeals',
-      heading: 'Appeals',
+      id: 'needs_offer',
+      heading: 'Needs an offer',
     })
     expect(reasonGroup(requestView('not-reconciled'), TODAY)(ROW_SAMUEL)).toEqual({
       id: 'Short',
@@ -271,6 +303,246 @@ describe('grouping', () => {
       id: 'Short',
       heading: 'Short',
     })
+  })
+})
+
+// Owner rulings 10-04 late (grid follow-up): By reason on a lens (All, Appeals) is the ten strip
+// stages, in the ruled order; a row sits under its top attention item, the one its pill shows.
+describe('By reason on a lens: the ten strip stages', () => {
+  const posted = (over: Parameters<typeof roundOut>[2] = {}) =>
+    roundOut(1, 'posted', {
+      ask: 2000,
+      decided: 1500,
+      posted: 1500,
+      posted_on: '2027-03-09',
+      ...over,
+    })
+  const ROWS = {
+    needsOffer: ROW_EMMA,
+    notDecided: gridRow({
+      request_id: 'reqnotdecided01',
+      rounds: [roundOut(1, 'not_decided', { ask: 2000 })],
+      stage: { round: 1, code: 'not_decided', label: 'R1 · Not decided' },
+      total_decided: null,
+      queues: [],
+    }),
+    waiting: gridRow({
+      request_id: 'reqwaiting00001',
+      rounds: [posted()],
+      stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+      confirmation: confirmationOut({ locked: 1500, in_campminder: 1500 }),
+      queues: ['waiting_on_family'],
+    }),
+    pending: gridRow({
+      request_id: 'reqpending00001',
+      rounds: [
+        posted({ accepted: true }),
+        roundOut(2, 'pending_approval', { ask: 900, pending_approval: 900 }),
+      ],
+      stage: { round: 2, code: 'pending_approval', label: 'R2 · Pending approval' },
+      queues: ['pending_approval'],
+    }),
+    shortGap: ROW_SAMUEL,
+    unticked: gridRow({
+      request_id: 'requnticked0001',
+      rounds: [roundOut(1, 'held', { ask: 2000 })],
+      stage: { round: 1, code: 'held', label: 'R1 · On hold' },
+      unticked: [
+        { round: 1, code: 'on_hold', label: 'On hold', message: 'A sentence.', mark_posted: false },
+      ],
+      queues: ['not_reconciled'],
+    }),
+    toReverse: ROW_RILEY,
+    holds: ROW_LIAM,
+    duplicate: gridRow({
+      request_id: 'reqduplicate001',
+      request_status: 'duplicate_pending',
+      queues: ['duplicates'],
+    }),
+    session: gridRow({
+      request_id: 'reqsession00001',
+      request_status: 'unmatched_session',
+      session_name: '',
+      queues: ['session_not_settled'],
+    }),
+    note: gridRow({
+      request_id: 'reqnote00000001',
+      rounds: [roundOut(1, 'not_decided', { ask: 2000 })],
+      stage: { round: 1, code: 'not_decided', label: 'R1 · Not decided' },
+      notes: [{ code: 'py_confirm_tier_change', severity: 'warn', message: 'The tier changed.' }],
+      queues: [],
+    }),
+    accepted: gridRow({
+      request_id: 'reqaccepted0001',
+      rounds: [posted({ accepted: true })],
+      stage: { round: 1, code: 'accepted', label: 'R1 · Accepted' },
+      confirmation: confirmationOut({ locked: 1500, in_campminder: 1500 }),
+      queues: [],
+    }),
+    reversed: gridRow({
+      request_id: 'reqreversed0002',
+      rounds: [posted({ accepted: true, clawed_back: true })],
+      stage: { round: null, code: 'cancelled', label: 'Cancelled' },
+      confirmation: confirmationOut({ status: 'reversed', locked: 0, in_campminder: 0 }),
+      cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+      queues: [],
+    }),
+    refused: gridRow({
+      request_id: 'reqrefused00001',
+      rounds: [
+        posted({ accepted: true }),
+        roundOut(2, 'posted', { decided: 300, posted: 300, accepted: true }),
+        roundOut(3, 'refused', { ask: 500, decided: 0 }),
+      ],
+      stage: { round: 3, code: 'refused', label: 'R3 · Refused by finance' },
+      queues: [],
+    }),
+  } as const
+  const headingOf = (row: (typeof ROWS)[keyof typeof ROWS], slug = 'all') =>
+    reasonGroup(requestView(slug), TODAY)(row).heading
+
+  it('heads each row by the strip stage of its top item, or Needs an offer / Nothing waiting when it has none', () => {
+    expect(headingOf(ROWS.needsOffer)).toBe('Needs an offer')
+    expect(headingOf(ROWS.notDecided)).toBe('Needs an offer')
+    expect(headingOf(ROWS.waiting)).toBe('Waiting on the family')
+    expect(headingOf(ROWS.pending)).toBe('Pending approval')
+    expect(headingOf(ROWS.shortGap)).toBe('Not reconciled')
+    expect(headingOf(ROWS.unticked)).toBe('Not reconciled')
+    expect(headingOf(ROWS.toReverse)).toBe('To reverse')
+    expect(headingOf(ROWS.holds)).toBe('Holds')
+    expect(headingOf(ROWS.duplicate)).toBe('Duplicates')
+    expect(headingOf(ROWS.session)).toBe('Session unclear')
+    expect(headingOf(ROWS.note)).toBe('Worth a look')
+    expect(headingOf(ROWS.accepted)).toBe('Nothing waiting')
+    expect(headingOf(ROWS.reversed)).toBe('Nothing waiting')
+    expect(headingOf(ROWS.refused)).toBe('Nothing waiting')
+  })
+
+  it('groups the Appeals lens the same way, but not a stage picked under it', () => {
+    expect(headingOf(ROWS.holds, 'appeals')).toBe('Holds')
+    expect(headingOf(ROWS.accepted, 'appeals')).toBe('Nothing waiting')
+    const holdsUnderAppeals = shownView('appeals', requestView('holds'))
+    expect(reasonGroup(holdsUnderAppeals, TODAY)(ROW_LIAM).heading).toBe('Placeholder income')
+  })
+
+  it('puts a warn note first only when the row has no real item', () => {
+    const both = gridRow({
+      ...ROWS.note,
+      holds: ROW_LIAM.holds,
+      queues: ['holds'],
+    })
+    expect(headingOf(both)).toBe('Holds')
+    expect(headingOf(ROWS.note)).toBe('Worth a look')
+  })
+
+  it('takes the queue headings from the views, so renaming a strip stage renames its group', () => {
+    const label = (slug: string) => requestView(slug).label
+    expect(headingOf(ROWS.session)).toBe(label('session-not-settled'))
+    expect(headingOf(ROWS.waiting)).toBe(label('waiting'))
+    expect(headingOf(ROWS.toReverse)).toBe(label('to-reverse'))
+  })
+
+  it('orders the groups as ruled on a lens, and leaves a stage view in first-row order', () => {
+    expect(reasonOrder(requestView('all'))).toEqual([
+      'needs_offer',
+      'waiting_on_family',
+      'pending_approval',
+      'not_reconciled',
+      'to_reverse',
+      'holds',
+      'duplicates',
+      'session_not_settled',
+      'worth_a_look',
+      'nothing_waiting',
+    ])
+    expect(reasonOrder(requestView('appeals'))).toEqual(reasonOrder(requestView('all')))
+    expect(reasonOrder(requestView('holds'))).toBeUndefined()
+    const headings = groupRows(
+      Object.values(ROWS),
+      reasonGroup(requestView('all'), TODAY),
+      reasonOrder(requestView('all'))
+    ).map((g) => g.heading)
+    expect(headings).toEqual([
+      'Needs an offer',
+      'Waiting on the family',
+      'Pending approval',
+      'Not reconciled',
+      'To reverse',
+      'Holds',
+      'Duplicates',
+      'Session unclear',
+      'Worth a look',
+      'Nothing waiting',
+    ])
+  })
+
+  // No group key anywhere carries a value (an amount, a day count, a share count): one reason is one
+  // group. The only digits allowed are the fixed label "Decided $0" and Needs an offer's "Round N".
+  it('heads no group, in any view, with an amount, a day count or a share count', () => {
+    const shares = gridRow({
+      request_id: 'reqshares000001',
+      confirmation: confirmationOut({
+        status: 'confirmed',
+        reconciled: false,
+        shares: [
+          {
+            household_cm_id: 1000001,
+            expected: 900,
+            in_campminder: 0,
+            status: 'not_in_campminder',
+          },
+          { household_cm_id: 1000003, expected: 900, in_campminder: 0, status: 'awaiting_sync' },
+          { household_cm_id: 1000005, expected: 900, in_campminder: 0, status: 'awaiting_sync' },
+        ],
+      }),
+      queues: ['not_reconciled'],
+    })
+    const over = gridRow({
+      request_id: 'reqover00000001',
+      rounds: [posted()],
+      confirmation: confirmationOut({
+        status: 'over',
+        locked: 1500,
+        in_campminder: 1575,
+        reconciled: false,
+      }),
+      queues: ['not_reconciled'],
+    })
+    // In a queue the row's own items don't explain (the server's membership is its own): the
+    // grouping falls back to the top item, which must still carry no figure.
+    const strayWaiting = gridRow({
+      request_id: 'reqstray0000001',
+      rounds: [posted()],
+      queues: ['holds', 'duplicates', 'session_not_settled', 'waiting_on_family'],
+    })
+    const decidedZero = gridRow({
+      request_id: 'reqzero00000001',
+      unticked: [
+        {
+          round: 1,
+          code: 'decided_zero',
+          label: 'Decided $0',
+          message: 'A sentence.',
+          mark_posted: false,
+        },
+      ],
+      queues: ['not_reconciled'],
+    })
+    const rows = [...Object.values(ROWS), ...GRID_ROWS, shares, over, strayWaiting, decidedZero]
+    const allowed = /^(Round \d|Decided \$0)$/
+    for (const view of [...REQUEST_VIEWS, shownView('appeals', requestView('holds'))]) {
+      for (const row of rows) {
+        const { id, heading } = reasonGroup(view, TODAY)(row)
+        if (allowed.test(heading)) continue
+        expect(`${view.key}: ${heading}`).not.toMatch(/\d/)
+        expect(id).not.toMatch(/\d/)
+      }
+    }
+    expect(reasonGroup(requestView('not-reconciled'), TODAY)(over).heading).toBe('Over')
+    expect(reasonGroup(requestView('holds'), TODAY)(strayWaiting).heading).toBe(
+      'Waiting on the family'
+    )
+    expect(reasonGroup(requestView('holds'), TODAY)(ROW_SAMUEL).heading).toBe('Short')
   })
 })
 

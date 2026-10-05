@@ -284,17 +284,26 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   // Owner (10-04, csv-options.html option A): Download CSV ends the line again; the 10-03 "⤓ CSV"
   // chip is gone. Was: "…search and the ⤓ CSV chip on one toolbar line".
-  it('puts Program, the Round chips, Show IDs, search and Download CSV on one toolbar line', () => {
+  // Owner rulings 10-04 late (grid follow-up): the line runs Program · Round · Flat / By reason ·
+  // Show IDs · filter box · Download CSV. Was Program, Round, Show IDs, search, the switch, CSV.
+  it('puts Program, the Round chips, Flat / By reason, Show IDs, search and Download CSV on one toolbar line, in that order', () => {
     renderAt('/aid/requests')
     const line = toolbar()
     expect(line).not.toBeNull()
-    for (const el of [
+    const inOrder = [
       screen.getByLabelText('Program'),
       within(line).getByRole('button', { name: 'R1' }),
+      within(line).getByRole('button', { name: 'Flat' }),
       screen.getByLabelText('Show IDs'),
+      screen.getByLabelText('Search'),
       screen.getByRole('button', { name: 'Download CSV' }),
-    ])
-      expect(line).toContainElement(el)
+    ]
+    for (const el of inOrder) expect(line).toContainElement(el)
+    for (let i = 1; i < inOrder.length; i++) {
+      const before = inOrder[i - 1] as HTMLElement
+      const after = inOrder[i] as HTMLElement
+      expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
     expect(line.lastElementChild).toBe(screen.getByRole('button', { name: 'Download CSV' }))
     expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })
@@ -581,6 +590,84 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('program=quest')
     expect(screen.getAllByText('Not an amount')).toHaveLength(1)
     expect(keyAsk).not.toHaveBeenCalled()
+  })
+
+  // Lead ruling (scan of #3005): folding the opened row's group is a way out like any other, so it
+  // saves first and folds only when it can leave.
+  const groupHeadingOf = (camper: string) => {
+    let tr = screen.getByText(camper).closest('tr')?.previousElementSibling ?? null
+    while (tr !== null && tr.querySelector('[data-group-heading]') === null)
+      tr = tr.previousElementSibling
+    if (tr === null) throw new Error(`no group heading above ${camper}`)
+    return tr.querySelector('[data-group-heading]') as HTMLElement
+  }
+
+  it("won't fold the opened row's group while what is typed can't be saved yet, and says why", async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '12,50')
+    const heading = groupHeadingOf('Olivia Chen')
+    await userEvent.click(within(heading).getByRole('button'))
+    expect(heading).toHaveTextContent('▾')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('12,50')
+    expect(screen.getAllByText('Not an amount')).toHaveLength(1)
+    expect(keyAsk).not.toHaveBeenCalled()
+  })
+
+  it("saves what is typed before folding the opened row's group, then folds it", async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    const heading = groupHeadingOf('Olivia Chen')
+    await userEvent.click(within(heading).getByRole('button'))
+    expect(keyAsk).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(heading).toHaveTextContent('▸'))
+    expect(screen.queryByText('Olivia Chen')).toBeNull()
+    // The URL follows through the router, which can land a beat after the fold under load.
+    await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('row='))
+  })
+
+  it("holds the fold while the opened row's save is still out, and keeps the group open when it fails", async () => {
+    let fail: ((error: Error) => void) | undefined
+    keyAsk.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject: (error: Error) => void) => {
+          fail = reject
+        })
+    )
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    const heading = groupHeadingOf('Olivia Chen')
+    await userEvent.click(within(heading).getByRole('button'))
+    expect(keyAsk).toHaveBeenCalledTimes(1)
+    expect(heading).toHaveTextContent('▾')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+    await act(async () => fail?.(new Error('The server is down')))
+    expect(heading).toHaveTextContent('▾')
+    expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+  })
+
+  it('opens a stage view with every group open, whatever was folded on All', async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(screen.getByRole('button', { name: 'By reason' }))
+    const onAll = [...document.querySelectorAll('[data-group-heading]')].find((td) =>
+      td.textContent.includes('To reverse')
+    ) as HTMLElement
+    await userEvent.click(within(onAll).getByRole('button'))
+    expect(onAll).toHaveTextContent('▸')
+    await userEvent.click(viewLink('To reverse'))
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('view=to-reverse'))
+    const heading = document.querySelector('[data-group-heading]') as HTMLElement
+    expect(heading).toHaveTextContent('To reverse')
+    expect(heading).toHaveTextContent('▾')
   })
 
   it('marks the failed row in the grid (Decision 3, as accepted)', async () => {

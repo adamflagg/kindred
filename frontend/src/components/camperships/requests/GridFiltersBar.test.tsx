@@ -29,7 +29,6 @@ function bar(props: { program?: string | null; pool?: string | null; round?: 1 |
       program={props.program ?? null}
       pool={props.pool ?? null}
       round={props.round ?? null}
-      showIds={false}
       onChange={onChange}
       onProgramPool={onProgramPool}
     />

@@ -152,17 +152,17 @@ const ROUNDS: readonly FilterOption[] = [
   { value: '3', label: 'R3' },
 ]
 /**
- * Program (pools as its headings, T6), Round chips (Decision 9; owner ruling Group 2c Q3) and Show
- * IDs (D27), all held in the URL. No Checklist chips: under D162 there are no Posted ticks (owner,
- * fast-follow 10-03). Controls only, as one fragment: the grid's toolbar (`AidTable`'s
- * `toolbarLead`) lays them out on its own line, beside search and Download CSV.
+ * Program (pools as its headings, T6) and Round chips (Decision 9; owner ruling Group 2c Q3), held
+ * in the URL. No Checklist chips: under D162 there are no Posted ticks (owner, fast-follow 10-03).
+ * Controls only, as one fragment: the grid's toolbar (`AidTable`'s `toolbarLead`) lays them out on
+ * its own line, then Flat / By reason, then Show IDs (`ShowIdsToggle`), search and Download CSV
+ * (owner rulings 10-04 late (grid follow-up)).
  */
 export function GridFiltersBar({
   groups,
   program,
   pool,
   round,
-  showIds,
   onChange,
   onProgramPool,
 }: {
@@ -170,7 +170,6 @@ export function GridFiltersBar({
   program: string | null
   pool: string | null
   round: RoundFilter | null
-  showIds: boolean
   onChange: (name: GridParamName, value: string | null) => void
   /** The Program dropdown writes both at once: one is always cleared. */
   onProgramPool: (pool: string | null, program: string | null) => void
@@ -184,14 +183,26 @@ export function GridFiltersBar({
         options={ROUNDS}
         onChange={(v) => onChange('round', v)}
       />
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={showIds}
-          onChange={(event) => onChange('ids', event.target.checked ? '1' : null)}
-        />
-        Show IDs
-      </label>
     </>
+  )
+}
+
+/** Show IDs (D27), held in the URL: on the grid's toolbar it sits after Flat / By reason. */
+export function ShowIdsToggle({
+  showIds,
+  onChange,
+}: {
+  showIds: boolean
+  onChange: (name: GridParamName, value: string | null) => void
+}) {
+  return (
+    <label className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={showIds}
+        onChange={(event) => onChange('ids', event.target.checked ? '1' : null)}
+      />
+      Show IDs
+    </label>
   )
 }

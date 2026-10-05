@@ -118,6 +118,24 @@ describe('groupRows (by family, by reason; D23, D24)', () => {
     expect(groups.map((g) => g.heading)).toEqual(['Chen', 'Garcia', 'Johnson'])
     expect(ids(groups[2]?.rows ?? [])).toEqual(['c', 'd'])
   })
+
+  // Owner rulings 10-04 late: By reason's strip stages run in a ruled order, not first-row order.
+  it('puts the groups in a given order, any group it does not name after them in first-row order', () => {
+    const family = (r: Row) => {
+      const name = r.camper.split(' ')[1] ?? ''
+      return { id: name, heading: name }
+    }
+    expect(groupRows(ROWS, family, ['Johnson', 'Chen']).map((g) => g.heading)).toEqual([
+      'Johnson',
+      'Chen',
+      'Garcia',
+    ])
+    expect(groupRows(ROWS, family, ['Johnson', 'Nobody', 'Garcia']).map((g) => g.heading)).toEqual([
+      'Johnson',
+      'Garcia',
+      'Chen',
+    ])
+  })
 })
 
 describe('stepHighlight (up/down; D13, D31)', () => {

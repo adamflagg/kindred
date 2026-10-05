@@ -515,8 +515,11 @@ export interface GridFilters {
   readonly program: string | null
   readonly pool: string | null
   /**
-   * Rows with this round (Decision 9; owner ruling Group 2c Q3). The checklist filter (posted /
-   * accepted, `tick=`) is gone: under D162 there are no Posted ticks (owner, fast-follow 10-03).
+   * Rows whose CURRENT round is this one (Decision 9; owner ruling Group 2c Q3; owner rulings 10-04
+   * late (grid follow-up)): the server's Stage round, or for a cancelled request, whose Stage names
+   * no round, the last round it reached. Not "has a round N at all": a request accepted in Round 1
+   * and now in Round 2 is under R2 only. A row with no Stage is under no round. The checklist filter
+   * (posted / accepted, `tick=`) is gone: under D162 there are no Posted ticks (owner, fast-follow 10-03).
    */
   readonly round: RoundFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
@@ -530,8 +533,16 @@ export const NO_FILTERS: GridFilters = {
   ids: null,
 }
 
+/** The round a request is in now (GridFilters.round): the Stage's, or a cancelled one's last round. */
+function currentRound(row: ApiAidGridRow): number | null {
+  const stage = row.stage
+  if (!stage) return null
+  if (stage.round !== null) return stage.round
+  return stage.code === 'cancelled' ? (latestRound(row)?.round ?? null) : null
+}
+
 function matchesRound(row: ApiAidGridRow, round: RoundFilter | null): boolean {
-  return round === null || row.rounds.some((r) => r.round === round)
+  return round === null || currentRound(row) === round
 }
 
 export function filterRows(
@@ -602,16 +613,74 @@ const STATE_HEADINGS: Readonly<Partial<Record<ApiAidConfirmation['status'], stri
   reversed: 'Reversed',
 }
 
-/** A view's "by reason" grouping (D24): the hold, the round, the confirmation state, or the view itself. */
+/** The two lenses (T4): All, and Appeals with no stage picked. A stage picked under Appeals is its stage's view. */
+function isLens(view: RequestView): boolean {
+  return view.key === 'all' || view.key === 'appeals'
+}
+
+const WORTH_A_LOOK = 'worth_a_look'
+const NOTHING_WAITING = 'nothing_waiting'
+
+/**
+ * By reason on a lens (owner rulings 10-04 late (grid follow-up)): the strip's stages, in this order,
+ * then a warn note's Worth a look and Nothing waiting. Ids are the views' keys, so the headings are
+ * the views' own labels and a strip rename moves its group heading too.
+ */
+const LENS_GROUP_ORDER: readonly string[] = [
+  'needs_offer',
+  'waiting_on_family',
+  'pending_approval',
+  'not_reconciled',
+  'to_reverse',
+  'holds',
+  'duplicates',
+  'session_not_settled',
+  WORTH_A_LOOK,
+  NOTHING_WAITING,
+] satisfies ReadonlyArray<RequestViewKey | typeof WORTH_A_LOOK | typeof NOTHING_WAITING>
+
+const queueHeading = (key: RequestViewKey) =>
+  REQUEST_VIEWS.find((view) => view.key === key)?.label ?? key
+
+/** The order a view's groups run in: the ruled strip order on a lens; first-row order (undefined) elsewhere. */
+export function reasonOrder(view: RequestView): readonly string[] | undefined {
+  return isLens(view) ? LENS_GROUP_ORDER : undefined
+}
+
+/**
+ * A lens row's strip stage: its top attention item's (the one its pill shows, so one group per row),
+ * a warn note's Worth a look, or, with no item, Needs an offer for a request still to be offered and
+ * Nothing waiting for the rest (accepted, posted with nothing due, cancelled and reversed, refused).
+ */
+function lensGroup(row: ApiAidGridRow, view: RequestView, today: string) {
+  const top = attentionFor(row, view.key, today)
+  if (top !== null) {
+    return top.queue === null
+      ? { id: WORTH_A_LOOK, heading: 'Worth a look' }
+      : { id: top.queue, heading: queueHeading(top.queue) }
+  }
+  const code = row.stage?.code
+  return code === 'needs_offer' || code === 'not_decided'
+    ? { id: 'needs_offer', heading: queueHeading('needs_offer') }
+    : { id: NOTHING_WAITING, heading: 'Nothing waiting' }
+}
+
+/**
+ * A view's "by reason" grouping (D24): on a lens the strip stage (lensGroup); in a stage view the
+ * hold, the round, the confirmation state, or the view itself. A heading never carries a figure: the
+ * fallback is the top item's fixed `reason`, not its pill (owner rulings 10-04 late).
+ */
 export function reasonGroup(view: RequestView, today: string) {
   return (row: ApiAidGridRow): { id: string; heading: string } => {
+    if (isLens(view)) return lensGroup(row, view, today)
     if (view.groupBy === 'one') return { id: view.key, heading: view.label }
     if (view.groupBy === 'round') {
       const n = viewRound(row, view.key)?.round
       const text = n === undefined ? '?' : String(n)
       return { id: `r${text}`, heading: `Round ${text}` }
     }
-    // A reconciled confirmation is here for its money with no Posted tick (#2996): its pill heads it.
+    // A reconciled confirmation is here for its money with no Posted tick (#2996): its top item's
+    // fixed `reason` heads it, never the pill's figure.
     if (view.key === 'not_reconciled' && row.confirmation && !row.confirmation.reconciled) {
       const c = row.confirmation
       // A confirmed request is here for a share: head the group by that share's own state, as
@@ -621,7 +690,7 @@ export function reasonGroup(view: RequestView, today: string) {
       const state = STATE_HEADINGS[open?.status ?? c.status]
       if (state !== undefined) return { id: state, heading: state }
     }
-    const heading = attentionFor(row, view.key, today)?.item.pill ?? 'Nothing waiting'
+    const heading = attentionFor(row, view.key, today)?.reason ?? 'Nothing waiting'
     return { id: heading, heading }
   }
 }

@@ -64,6 +64,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
         pill: 'Placeholder income',
         fact: 'Income was entered as $1, so no tier can be set. Call for the real figure and enter it as a correction.',
       },
+      reason: 'Placeholder income',
       queue: 'holds',
       next: { kind: 'link', label: 'Enter the Income', at: 'income' },
     })
@@ -79,7 +80,8 @@ describe('attentionFor (§4.4; D24, D31)', () => {
 
   it('shows a queue view its own item first, and All the first that matters', () => {
     expect(attentionFor(ROW_RILEY, 'all', TODAY)?.item.pill).toBe('Reverse posting')
-    expect(attentionFor(ROW_SAMUEL, 'not_reconciled', TODAY)?.item.pill).toBe('short $210')
+    // Owner rulings 10-04 late: the cell's pills are in sentence case. Was "short $210".
+    expect(attentionFor(ROW_SAMUEL, 'not_reconciled', TODAY)?.item.pill).toBe('Short $210')
     expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', TODAY)?.item).toEqual({
       level: 'note',
       pill: 'Waiting 23 days',
@@ -100,6 +102,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
         pill: 'Waiting on the family',
         fact: "The family hasn't replied: follow up, then tick Accepted.",
       },
+      reason: 'Waiting on the family',
       queue: 'waiting_on_family',
       // The Accepted tick, as for any waiting row (Full GO, #2951).
       next: { kind: 'tick', label: 'Tick Accepted' },
@@ -191,6 +194,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
           pill: 'High income',
           fact: 'Income is above the season’s note figure.',
         },
+        reason: 'High income',
         queue: null,
         next: OPEN_REQUEST,
       },
@@ -220,7 +224,20 @@ describe('attentionFor (§4.4; D24, D31)', () => {
       },
       queues: ['not_reconciled'],
     })
-    expect(attentionFor(row, 'not_reconciled', TODAY)?.item.pill).toBe('a share unconfirmed')
+    // Owner rulings 10-04 late: sentence case. Was "a share unconfirmed".
+    expect(attentionFor(row, 'not_reconciled', TODAY)?.item.pill).toBe('A share unconfirmed')
+    const two = gridRow({
+      confirmation: confirmationOut({
+        status: 'confirmed',
+        reconciled: false,
+        shares: [
+          { household_cm_id: 1000001, expected: 900, in_campminder: 0, status: 'short' },
+          { household_cm_id: 1000003, expected: 900, in_campminder: 0, status: 'short' },
+        ],
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(attentionFor(two, 'not_reconciled', TODAY)?.item.pill).toBe('2 shares unconfirmed')
   })
 
   it('draws no text for a reversed lock: it is always reconciled, and would print $0 (F6e)', () => {
@@ -322,6 +339,59 @@ describe('attentionFor (§4.4; D24, D31)', () => {
 // writers, so every step is a link to where it is done today (the household page: its income
 // section, or the request's card) or plain words; a step that is a tick or the editor (the mock's
 // buttons) is null here, and #2951 / #2948 add it.
+// Owner rulings 10-04 late (grid follow-up): a group key never carries a value, so each item has a
+// fixed reason word beside its pill, which may carry an amount, a day count or a share count.
+describe("an item's reason: its pill without the figure", () => {
+  it('says Short or Over, Shares unconfirmed and Waiting on the family where the pill has a figure', () => {
+    expect(attentionFor(ROW_SAMUEL, 'not_reconciled', TODAY)?.reason).toBe('Short')
+    expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', TODAY)?.reason).toBe(
+      'Waiting on the family'
+    )
+    const over = gridRow({
+      confirmation: confirmationOut({
+        status: 'over',
+        locked: 1500,
+        in_campminder: 1575,
+        reconciled: false,
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(attentionFor(over, 'all', TODAY)?.item.pill).toBe('Over $75')
+    expect(attentionFor(over, 'all', TODAY)?.reason).toBe('Over')
+    const shares = gridRow({
+      confirmation: confirmationOut({
+        status: 'confirmed',
+        reconciled: false,
+        shares: [
+          { household_cm_id: 1000001, expected: 900, in_campminder: 0, status: 'short' },
+          { household_cm_id: 1000003, expected: 900, in_campminder: 0, status: 'short' },
+        ],
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(attentionFor(shares, 'all', TODAY)?.reason).toBe('Shares unconfirmed')
+  })
+
+  it('is the pill itself where the pill has no figure', () => {
+    expect(attentionFor(ROW_LIAM, 'all', TODAY)?.reason).toBe('Placeholder income')
+    expect(attentionFor(ROW_RILEY, 'all', TODAY)?.reason).toBe('Reverse posting')
+    const missing = gridRow({
+      confirmation: confirmationOut({
+        status: 'not_in_campminder',
+        locked: 1000,
+        in_campminder: 0,
+        reconciled: false,
+      }),
+      queues: ['not_reconciled'],
+    })
+    expect(attentionFor(missing, 'all', TODAY)?.reason).toBe('Missing in CM')
+    const note = gridRow({
+      notes: [{ code: 'py_confirm_tier_change', severity: 'warn', message: 'The tier changed.' }],
+    })
+    expect(attentionFor(note, 'all', TODAY)?.reason).toBe('Tier change')
+  })
+})
+
 describe('the next step (batch 4; labels owner-approved in title case, 10-03)', () => {
   it('names the open-the-request step in title case', () => {
     expect(OPEN_REQUEST).toEqual({ kind: 'link', label: 'Open the Request', at: 'request' })
@@ -348,7 +418,8 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
 
   it("sends the other holds to the request's card", () => {
     expect(nextOf(hold('payer_shares_incomplete'), 'holds')).toEqual(link('Check the Payer Shares'))
-    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Release the Hold…'))
+    // Owner ruling (10-04 late): a manual hold is LIFTED, matching the household page's "Lift…" button.
+    expect(nextOf(hold('manual_hold'), 'holds')).toEqual(link('Lift the Hold…'))
     expect(nextOf(hold('unmatched_session'), 'holds')).toEqual(link('Pick the Session'))
     expect(nextOf(hold('multiple_grants'), 'holds')).toEqual(OPEN_REQUEST)
   })
@@ -366,10 +437,11 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
     expect(nextOf(marked, 'all')).toBeNull()
   })
 
-  // Owner ruling (b), fast-follow 10-03: an award above cost is fixed on the request's card, so its
-  // step is the link "Edit the Award ›" there (title case). Was: null (no award editor on the grid).
-  it("sends an award above cost to the request's card to edit the award", () => {
-    expect(nextOf(hold('award_above_cost'), 'holds')).toEqual(link('Edit the Award'))
+  // Owner ruling (10-04 late): there is no award editor by design; the above-cost hold clears by
+  // correcting the cost, the grants or the amount, so the step on the request's card says so.
+  // Was: "Edit the Award" (ruling (b), 10-03).
+  it("sends an award above cost to the request's card to fix the cost or grants", () => {
+    expect(nextOf(hold('award_above_cost'), 'holds')).toEqual(link('Fix Cost or Grants'))
   })
 
   it('says where nothing can be done in Kindred', () => {
@@ -445,6 +517,7 @@ describe('Not reconciled: money with no Posted tick (#2996)', () => {
   it("puts the server's pill and sentence on the row, and Mark Posted where the server allows it", () => {
     expect(attentionFor(short, 'not_reconciled', TODAY)).toEqual({
       item: { level: 'note', pill: 'Short in CM', fact: SENTENCE },
+      reason: 'Short in CM',
       queue: 'not_reconciled',
       next: { kind: 'markPosted', label: 'Mark Posted', round: 1 },
     })
