@@ -1971,20 +1971,27 @@ async def test_only_a_duplicate_pending_request_pointing_at_this_one_is_listed()
     _waiting_on(store, LIAM, OLIVIA)  # waiting on another request
     page = await _page_service(store, ledger=_WithOther()).read(YEAR, JOHNSON)
     assert [_waiting(page, rid) for rid in (EMMA, LIAM)] == [[], []]
+    # A duplicate waiting on a request off this page is none of its business: its household is not even read.
+    store = _family()
+    seed_request(store, "reqaaaa00000001", household=OTHER, person=1000032)
+    _waiting_on(store, OLIVIA, "reqaaaa00000001")
+    ledger = _WithOther()
+    page = await _page_service(store, ledger=ledger).read(YEAR, JOHNSON)
+    assert all(OTHER not in read for read in ledger.household_reads)
 
 
 @pytest.mark.asyncio
 async def test_every_duplicate_waiting_is_listed_by_household_then_request() -> None:
     store = _family()
-    seed_request(store, "reqoliv00000002", household=OTHER, person=1000032, session=1000102)
-    _waiting_on(store, "reqoliv00000002", EMMA)
+    seed_request(store, "reqaaaa00000001", household=OTHER, person=1000032, session=1000102)
+    _waiting_on(store, "reqaaaa00000001", EMMA)
     _waiting_on(store, OLIVIA, EMMA)
     _waiting_on(store, LIAM, EMMA)  # on this page: named as its card names it
     page = await _page_service(store, ledger=_WithOther()).read(YEAR, JOHNSON)
     assert _waiting(page, EMMA) == [
         (LIAM, GARCIA, "Camper 1000021", "Session 2", "Samuel Garcia & Olivia Chen", ""),
+        ("reqaaaa00000001", OTHER, "Camper 1000032", "Session 2a", "Samuel Chen", ""),
         (OLIVIA, OTHER, "Camper 1000031", "Session 2", "Samuel Chen", ""),
-        ("reqoliv00000002", OTHER, "Camper 1000032", "Session 2a", "Samuel Chen", ""),
     ]
 
 
