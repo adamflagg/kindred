@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import { Permission } from '../../../../constants/permissions'
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
+import { useAidSessionNames } from '../../../../hooks/camperships/useAidSessionNames'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
@@ -24,8 +25,11 @@ import {
   changeWords,
   isRulesSection,
   issueWords,
+  rulesVocabulary,
   sectionIssues,
   statusWords,
+  versionWords,
+  type RulesNames,
   type StatusWords,
 } from './rulesModel'
 import { sectionContent } from './rulesDraft'
@@ -68,6 +72,11 @@ function fromVersion(
   return { ...words, meta: words.meta === '' ? from : `${words.meta} · ${from}` }
 }
 
+/** The season's session names, for the rules' session ids (#15); undefined until they load. */
+function useSessionNames() {
+  return useAidSessionNames(useYear())
+}
+
 function ApprovedBody({
   rules,
   selected,
@@ -78,6 +87,16 @@ function ApprovedBody({
   version: number | null
 }) {
   const href = useRulesHref()
+  const sessions = useSessionNames()
+  const names: RulesNames = {
+    section: selected,
+    ...rulesVocabulary(
+      (section) => rules.sections.find((s) => s.section === section)?.content,
+      sessions
+    ),
+  }
+  // A section never approved has no copy in this version: it says so in the list, not here.
+  const copies = rules.sections.filter((s) => s.content !== null)
   const items: SectionItem[] = rules.sections.map((s) => ({
     section: s.section,
     status:
@@ -105,7 +124,7 @@ function ApprovedBody({
     <div className="space-y-2">
       <p className="text-muted-foreground text-sm">
         {version !== null
-          ? `Rules v${String(version)}, the version a receipt names. `
+          ? `${versionWords(version, copies)}. `
           : rules.version === null
             ? 'No version prices the season yet: each section shows its newest approved copy. '
             : `The approved rules: v${String(rules.version)} prices the season. `}
@@ -130,7 +149,7 @@ function ApprovedBody({
             )}
           </h2>
           {chosen?.content ? (
-            <SectionView content={chosen.content} />
+            <SectionView content={chosen.content} names={names} />
           ) : (
             <p className="text-muted-foreground text-sm">
               Not approved yet: this section shows here once finance approves it.
@@ -142,8 +161,16 @@ function ApprovedBody({
   )
 }
 
+/** A draft every section of which is approved, and so the version pricing the season. */
+const pricesTheSeason = (draft: ApiAidRulesDraft) => draft.approved_version === draft.version
+
 function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: ApiAidRulesSection }) {
   const href = useRulesHref()
+  const sessions = useSessionNames()
+  const names: RulesNames = {
+    section: selected,
+    ...rulesVocabulary((section) => draft.document[section], sessions),
+  }
   const items: SectionItem[] = draft.sections.map((s) => ({
     section: s.section,
     status: statusWords(s.status, s.changes.length),
@@ -157,8 +184,11 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
       <p className="text-muted-foreground text-sm">
         {draft.approved_version === null
           ? `Rules draft v${String(draft.version)}: no version prices the season yet.`
-          : draft.approved_version === draft.version
-            ? `Rules v${String(draft.version)}: this draft is the version pricing the season.`
+          : pricesTheSeason(draft)
+            ? `${versionWords(
+                draft.version,
+                draft.sections.map((s) => s.status)
+              )}: it prices the season.`
             : `Rules draft v${String(draft.version)}, against the approved v${String(draft.approved_version)}.`}
       </p>
       <div className="grid gap-3 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
@@ -178,7 +208,7 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
           {chosen && chosen.changes.length > 0 && (
             <ul className="text-sm" data-testid="section-changes">
               {chosen.changes.map((change) => (
-                <li key={change.path.join('.')}>{changeWords(change)}</li>
+                <li key={change.path.join('.')}>{changeWords(change, names)}</li>
               ))}
             </ul>
           )}
@@ -197,6 +227,7 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
           <SectionView
             content={sectionContent(draft.document, selected)}
             changes={chosen?.changes ?? []}
+            names={names}
           />
         </section>
       </div>
@@ -233,7 +264,6 @@ export function RulesTab() {
     finance && version === null && params.get('show') !== 'approved' ? 'draft' : 'approved'
   const approved = useAidApprovedRules(version, { enabled: show === 'approved' })
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
-  const draftVersion = draft.data?.version ?? null
 
   return (
     <div className="space-y-3">
@@ -244,7 +274,11 @@ export function RulesTab() {
             replace
             className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
           >
-            {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
+            {draft.data === undefined
+              ? 'Rules draft'
+              : pricesTheSeason(draft.data)
+                ? `Rules v${String(draft.data.version)}`
+                : `Rules draft v${String(draft.data.version)}`}
           </Link>
           <Link
             to={href({ show: 'approved' })}

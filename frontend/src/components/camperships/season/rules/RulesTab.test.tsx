@@ -32,6 +32,10 @@ vi.mock('../../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let sessionNames: ReadonlyMap<number, string> | undefined
+vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: () => sessionNames,
+}))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules']
@@ -57,6 +61,7 @@ beforeEach(() => {
   approved = { data: APPROVED_RULES, isLoading: false, error: null }
   draft = { data: rulesDraft(), isLoading: false, error: null }
   askedVersion.length = 0
+  sessionNames = undefined
 })
 
 describe('RulesTab for the registrar (D76: the approved version, read only)', () => {
@@ -87,7 +92,8 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
   it("opens a receipt's version, and offers the rules as they price the season", () => {
     renderAt('/aid/season/rules?version=2&year=2027')
     expect(askedVersion).toContain(2)
-    expect(screen.getByText(/Rules v2, the version a receipt names/)).toBeInTheDocument()
+    expect(screen.getByText(/Rules v2 · approved Jan 20, 2027\./)).toBeInTheDocument()
+    expect(screen.queryByText(/receipt/)).toBeNull()
     expect(
       screen.getByRole('link', { name: 'The Rules as They Price the Season ›' })
     ).toHaveAttribute('href', '/aid/season/rules?year=2027')
@@ -197,7 +203,7 @@ describe('RulesTab for finance (D39)', () => {
   it("opens a receipt's version as the approved read, never the draft (Decision 31)", () => {
     renderAt('/aid/season/rules?version=2&year=2027')
     expect(askedVersion).toContain(2)
-    expect(screen.getByText(/Rules v2, the version a receipt names/)).toBeInTheDocument()
+    expect(screen.getByText(/Rules v2 · approved Jan 20, 2027\./)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Rules draft/ })).toBeNull()
   })
 
@@ -223,5 +229,58 @@ describe('RulesTab for finance (D39)', () => {
     draft = { data: undefined, isLoading: false, error: new AidApiError('No rules for 2027', 404) }
     renderAt('/aid/season/rules')
     expect(screen.getByText('No rules for 2027 yet.')).toBeInTheDocument()
+  })
+})
+
+describe('RulesTab reads the rules in their own names, never their codes (#15)', () => {
+  it("names a pool by its label, once: a label column that repeats the row's name is left out", () => {
+    renderAt('/aid/season/rules?section=budget')
+    // Once in Pools and once in Reserves; not a third time in a Label column.
+    expect(within(panel()).getAllByText('Pool A')).toHaveLength(2)
+    expect(within(panel()).queryByText('pool_a')).toBeNull()
+    expect(within(panel()).queryByText('Label')).toBeNull()
+  })
+
+  it("names a program by its label and its sessions by the season's names", () => {
+    sessionNames = new Map([[1000101, 'First Session']])
+    renderAt('/aid/season/rules?section=programs')
+    expect(within(panel()).getAllByText('Summer')).toHaveLength(1)
+    expect(within(panel()).getByText('First Session, Session 1000102')).toBeInTheDocument()
+    expect(within(panel()).getByText('Pool A')).toBeInTheDocument()
+    renderAt('/aid/season/rules?section=cost')
+    expect(screen.getAllByText('First Session').length).toBeGreaterThan(0)
+  })
+
+  it("lets a settings table's headers wrap, so a wide table fits its panel (#28)", () => {
+    renderAt('/aid/season/rules?section=budget')
+    expect(within(panel()).getByText('Share %')).not.toHaveClass('whitespace-nowrap')
+  })
+})
+
+describe("RulesTab's lead line (#23)", () => {
+  it('reads a fully approved draft as the version that prices the season, with its day', () => {
+    granted = FINANCE
+    const d = rulesDraft()
+    d.approved_version = 4
+    d.sections = d.sections.map((s) =>
+      s.section === 'award_tables'
+        ? {
+            ...s,
+            changes: [],
+            status: {
+              state: 'approved',
+              approved_by: 'Test User',
+              approved_at: '2027-01-22T18:00:00Z',
+            },
+          }
+        : s
+    )
+    draft = { data: d, isLoading: false, error: null }
+    renderAt('/aid/season/rules')
+    expect(screen.getByRole('link', { name: 'Rules v4' })).toBeInTheDocument()
+    expect(screen.queryByText(/Rules draft/)).toBeNull()
+    expect(
+      screen.getByText('Rules v4 · approved Jan 22, 2027: it prices the season.')
+    ).toBeInTheDocument()
   })
 })

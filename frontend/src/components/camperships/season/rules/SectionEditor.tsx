@@ -6,7 +6,7 @@ import {
   BUTTON_SECONDARY,
   FIELD_INLINE,
 } from '../../../admin/lodging/lodgingStyles'
-import { formatSetting } from './rulesModel'
+import { formatSetting, type RulesNames } from './rulesModel'
 import {
   applyEdits,
   editKey,
@@ -42,6 +42,8 @@ export interface SectionEditorProps {
   /** The whole section with what was typed; called only when every box reads and something changed. */
   readonly onSave: (content: Record<string, unknown>) => void
   readonly onCancel: () => void
+  /** The rules' own names for their keys (#15): only the words change, a box keeps and sends the key. */
+  readonly names?: RulesNames | undefined
 }
 
 const words = (value: string) => value.replaceAll('_', ' ')
@@ -54,7 +56,9 @@ function Field({
   problem,
   changed,
   onChange,
+  names,
 }: {
+  names: RulesNames | undefined
   path: readonly string[]
   value: unknown
   spec: FieldSpec
@@ -101,7 +105,7 @@ function Field({
           {spec.unit === 'percent' && <span className="text-muted-foreground">%</span>}
         </>
       )}
-      {changed && <span className={AMBER_NOTE}>was {formatSetting(value, path)}</span>}
+      {changed && <span className={AMBER_NOTE}>was {formatSetting(value, path, names)}</span>}
       {problem !== null && <span className={AMBER_NOTE}>{problem}</span>}
     </span>
   )
@@ -122,6 +126,7 @@ export function SectionEditor({
   error,
   onSave,
   onCancel,
+  names,
 }: SectionEditorProps) {
   const [edits, setEdits] = useState<ReadonlyMap<string, string>>(() => new Map())
   const specOf = useCallback(
@@ -133,7 +138,7 @@ export function SectionEditor({
 
   const renderValue: RenderSetting = (path, value) => {
     const spec = specOf(path)
-    if (spec === null) return <span>{formatSetting(value, path)}</span>
+    if (spec === null) return <span>{formatSetting(value, path, names)}</span>
     const key = editKey(path)
     return (
       <Field
@@ -143,6 +148,7 @@ export function SectionEditor({
         raw={edits.get(key) ?? (spec.kind === 'yesno' ? String(value === true) : rawOf(value))}
         problem={applied.problems.get(key) ?? null}
         changed={changedKeys.has(key)}
+        names={names}
         onChange={(raw) =>
           setEdits((previous) => {
             const next = new Map(previous)
@@ -162,7 +168,7 @@ export function SectionEditor({
     <div className="space-y-2" data-testid="section-editor">
       <div className="text-sm font-medium">{heading}</div>
       {banner?.(applied.changed)}
-      <SectionView content={opened} renderValue={renderValue} />
+      <SectionView content={opened} renderValue={renderValue} names={names} />
       {error !== null && <p className={AMBER_NOTE}>{error}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <button

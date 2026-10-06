@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { contentOf } from './rulesFixtures'
+import { rulesVocabulary } from './rulesModel'
+import { RULES_DOCUMENT, contentOf } from './rulesFixtures'
 import { SectionEditor } from './SectionEditor'
 
 function setup(props: Partial<Parameters<typeof SectionEditor>[0]> = {}) {
@@ -127,5 +128,23 @@ describe('SectionEditor', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Drop What Has Gone' }))
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+})
+
+describe("SectionEditor reads the rules' own names, and still sends their keys (#15)", () => {
+  it('names a pool by its label, keeps its label box, and saves under its key', async () => {
+    const vocabulary = rulesVocabulary((section) => RULES_DOCUMENT[section])
+    const { onSave, user } = setup({
+      opened: contentOf('budget'),
+      names: { section: 'budget', ...vocabulary },
+    })
+    expect(screen.getAllByText('Pool A').length).toBeGreaterThan(0)
+    expect(screen.queryByText('pool_a')).toBeNull()
+    expect(screen.getByText('Label')).toBeInTheDocument()
+    const total = screen.getByLabelText('Total budget')
+    await user.clear(total)
+    await user.type(total, '900000')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).toHaveBeenCalledWith({ ...contentOf('budget'), total: '900000' })
   })
 })

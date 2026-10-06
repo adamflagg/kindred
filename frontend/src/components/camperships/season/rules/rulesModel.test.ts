@@ -10,12 +10,15 @@ import {
   isRulesSection,
   issueWords,
   labelOf,
+  rulesVocabulary,
   sectionIssues,
   settingNodes,
   statusWords,
   unitOf,
+  versionWords,
+  type RulesNames,
 } from './rulesModel'
-import { contentOf, rulesDraft } from './rulesFixtures'
+import { RULES_DOCUMENT, contentOf, rulesDraft } from './rulesFixtures'
 
 describe("a section's status (D39)", () => {
   it('says approved, with when, who and the approving body', () => {
@@ -230,6 +233,176 @@ describe('what a draft changed', () => {
     ).toBe('Income bands: changed')
     expect(changeWords({ path: ['minimum'], kind: 'changed', before: '100', after: '150' })).toBe(
       'Minimum award: $100 → $150'
+    )
+  })
+})
+
+describe("the rules' own keys read in the document's words, never as codes (#15)", () => {
+  // The fixture's pools and programs carry labels; a decision type, an equity criterion and an
+  // incentive are added here so each kind of key has its own label to read.
+  const document: Record<string, unknown> = {
+    ...RULES_DOCUMENT,
+    awards: {
+      ...RULES_DOCUMENT.awards,
+      decision_types: {
+        appeal_top_up: {
+          label: 'Appeal top-up',
+          kind: 'top_up',
+          round: 2,
+          amount: '300',
+          extra_amount: '0',
+          allows_appeal: true,
+          budget_line: 'appeal_top_up',
+          counts_toward_budget: true,
+          ceiling_exempt: false,
+        },
+      },
+    },
+    equity: {
+      criteria: [
+        {
+          key: 'trans_nb',
+          label: 'Transgender / non-binary',
+          source: 'camper',
+          field: 'gender_identity',
+          also_fields: [],
+          match: 'contains_any',
+          values: ['trans'],
+          min_value: null,
+        },
+      ],
+      weights: { summer: { trans_nb: '0.5', bipoc: '0.5' } },
+      aggregation: 'ceil',
+      max_shift: null,
+    },
+  }
+  const vocabulary = rulesVocabulary(
+    (section) => document[section],
+    new Map([
+      [1000101, 'First Session'],
+      [1000201, 'Family Weekend'],
+    ])
+  )
+  const names = (section: RulesNames['section']): RulesNames => ({ section, ...vocabulary })
+
+  it('names a budget pool by its label, in pools and reserves alike; an unlabelled one in words', () => {
+    expect(labelOf(['pools', 'pool_a'], names('budget'))).toBe('Pool A')
+    expect(labelOf(['reserves', 'pool_b'], names('budget'))).toBe('Pool B')
+    expect(labelOf(['reserves', 'camp_quest'], names('budget'))).toBe('Camp quest')
+    // A pool's own fields keep their names.
+    expect(labelOf(['pools', 'pool_a', 'share_pct'], names('budget'))).toBe('Share %')
+    expect(labelOf(['reserves', 'pool_a', 'r2'], names('budget'))).toBe('Round 2')
+  })
+
+  it('names a decision type by its label, and its budget line too', () => {
+    expect(labelOf(['decision_types', 'appeal_top_up'], names('awards'))).toBe('Appeal top-up')
+    expect(
+      formatSetting(
+        'appeal_top_up',
+        ['decision_types', 'appeal_top_up', 'budget_line'],
+        names('awards')
+      )
+    ).toBe('Appeal top-up')
+    expect(labelOf(['decision_types', 'discretionary'], names('awards'))).toBe('Discretionary')
+    expect(formatSetting('appeal_top_up', ['stages', '3', 'decision_type'], names('stages'))).toBe(
+      'Appeal top-up'
+    )
+  })
+
+  it('names a quality check as the Requests grid does, and its severity in words', () => {
+    expect(labelOf(['checks', 'ask_above_cost'], names('quality_checks'))).toBe('Ask above cost')
+    expect(labelOf(['checks', 'expense_above'], names('quality_checks'))).toBe('High expenses')
+    expect(labelOf(['checks', 'income_above'], names('quality_checks'))).toBe('High income')
+    expect(labelOf(['checks', 'multiple_grants'], names('quality_checks'))).toBe('Several grants')
+    expect(labelOf(['checks', 'py_confirm_tier_change'], names('quality_checks'))).toBe(
+      'Tier change'
+    )
+    expect(labelOf(['checks', 'some_new_check'], names('quality_checks'))).toBe('Some new check')
+    expect(
+      formatSetting('warn', ['checks', 'income_above', 'severity'], names('quality_checks'))
+    ).toBe('Warning')
+    expect(
+      formatSetting('hold', ['checks', 'income_above', 'severity'], names('quality_checks'))
+    ).toBe('Hold')
+  })
+
+  it("names a session by the season's name for it, else as Session and its number", () => {
+    expect(labelOf(['tuition', '1000101'], names('cost'))).toBe('First Session')
+    expect(labelOf(['tuition', '1000199'], names('cost'))).toBe('Session 1000199')
+    expect(formatSetting(1000201, ['family_rates', '0', 'session_cm_id'], names('cost'))).toBe(
+      'Family Weekend'
+    )
+    expect(formatSetting([1000101, 1000199], ['summer', 'session_cm_ids'], names('programs'))).toBe(
+      'First Session, Session 1000199'
+    )
+  })
+
+  it('names a program by its label wherever the rules key one, and a table or class in words', () => {
+    expect(labelOf(['weekend'], names('programs'))).toBe('Weekend')
+    expect(labelOf(['mens_weekend'], names('programs'))).toBe('Mens weekend')
+    expect(formatSetting('pool_a', ['summer', 'budget_pool'], names('programs'))).toBe('Pool A')
+    expect(formatSetting('general', ['summer', 'r1_table'], names('programs'))).toBe('General')
+    expect(formatSetting('tbm', ['summer', 'equity_class'], names('programs'))).toBe('TBM')
+    expect(labelOf(['program_tables', 'weekend'], names('round2'))).toBe('Weekend')
+    expect(formatSetting('general', ['program_tables', 'summer'], names('round2'))).toBe('General')
+    expect(labelOf(['tables', 'tbm'], names('round2'))).toBe('TBM')
+    expect(labelOf(['tbm'], names('award_tables'))).toBe('TBM')
+    expect(formatSetting('general', ['tbm', 'inherits'], names('award_tables'))).toBe('General')
+    expect(formatSetting('tbm', ['tables', 'family', 'inherits'], names('round2'))).toBe('TBM')
+    expect(formatSetting(['summer'], ['offset_programs'], names('grants'))).toBe('Summer')
+    expect(formatSetting('weekend', ['offset_programs', '0'], names('grants'))).toBe('Weekend')
+    expect(labelOf(['incentives', 'jfam'], names('grants'))).toBe('JFAM')
+  })
+
+  it("names equity's classes and criteria, and income's AGI", () => {
+    expect(labelOf(['weights', 'tbm'], names('equity'))).toBe('TBM')
+    expect(labelOf(['weights', 'family'], names('equity'))).toBe('Family')
+    expect(labelOf(['weights', '*', 'trans_nb'], names('equity'))).toBe('Transgender / non-binary')
+    expect(labelOf(['weights', '*', 'bipoc'], names('equity'))).toBe('BIPOC')
+    expect(formatSetting('agi', ['basis'], names('income'))).toBe('AGI')
+    expect(formatSetting('gross', ['basis'], names('income'))).toBe('gross')
+  })
+
+  it("lays keyed rows out by name, keeping each row's key for the editor", () => {
+    const pools = settingNodes(contentOf('budget'), names('budget')).find(
+      (n) => n.label === 'Pools'
+    )
+    if (pools?.kind !== 'table') throw new Error('pools are not a table')
+    expect(pools.rows.map((r) => [r.key, r.label])).toEqual([
+      ['pool_a', 'Pool A'],
+      ['pool_b', 'Pool B'],
+    ])
+    const [summer] = settingNodes(contentOf('programs'), names('programs'))
+    expect(summer).toMatchObject({ kind: 'group', label: 'Summer', path: ['summer'] })
+  })
+
+  it('says a change in the same words', () => {
+    expect(
+      changeWords(
+        { path: ['pools', 'pool_a', 'share_pct'], kind: 'changed', before: '90', after: '85' },
+        names('budget')
+      )
+    ).toBe('Pools › Pool A › Share %: 90% → 85%')
+  })
+})
+
+describe("a version's lead line (#23)", () => {
+  const approved = (at: string) => ({ state: 'approved' as const, approved_at: at })
+  it('names an approved version and the day its last section was approved', () => {
+    expect(
+      versionWords(4, [approved('2026-10-04T18:00:00Z'), approved('2026-10-05T18:00:00Z')])
+    ).toBe('Rules v4 · approved Oct 5, 2026')
+    expect(versionWords(4, [{ state: 'locked', approved_at: '2026-10-03T18:00:00Z' }])).toBe(
+      'Rules v4 · approved Oct 3, 2026'
+    )
+  })
+
+  it('says how many sections of a draft are not approved yet', () => {
+    expect(versionWords(5, [approved('2026-10-05T18:00:00Z'), { state: 'draft' }])).toBe(
+      'Rules v5 · draft: 1 section not approved yet'
+    )
+    expect(versionWords(5, [{ state: 'draft' }, {}])).toBe(
+      'Rules v5 · draft: 2 sections not approved yet'
     )
   })
 })

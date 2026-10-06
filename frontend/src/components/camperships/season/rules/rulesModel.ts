@@ -14,6 +14,7 @@ import type {
 import type { PillTone } from '../../kit/kitStyles'
 import { campToday, formatLongDate } from '../../kit/dates'
 import { formatMoney } from '../../kit/money'
+import { codeWords } from '../../requests/attention'
 
 // ── Sections ──────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,28 @@ export function statusWords(status: ApiAidSectionStatus, changes: number | null)
       status.edited_via ? `from ${status.edited_via}` : null,
     ]),
   }
+}
+
+/**
+ * A version's lead line (#23): "Rules v4 · approved Oct 5, 2026", the day its last section was
+ * approved; a version with sections still in draft says how many. A locked section was approved
+ * first, so it counts as approved.
+ */
+export function versionWords(
+  version: number,
+  statuses: ReadonlyArray<Pick<ApiAidSectionStatus, 'state' | 'approved_at'>>
+): string {
+  const name = `Rules v${String(version)}`
+  const drafts = statuses.filter((status) => (status.state ?? 'draft') === 'draft').length
+  if (drafts > 0) {
+    return `${name} · draft: ${String(drafts)} ${drafts === 1 ? 'section' : 'sections'} not approved yet`
+  }
+  const last = statuses
+    .map((status) => status.approved_at ?? '')
+    .filter((at) => at !== '')
+    .sort()
+    .at(-1)
+  return last === undefined ? `${name} · approved` : `${name} · approved ${when(last) ?? last}`
 }
 
 /** "2 errors · 1 warning", or null when the section validates clean. */
@@ -321,6 +344,175 @@ export function unitOf(path: readonly string[]): SettingUnit {
   return 'plain'
 }
 
+// ── Names: the rules' own keys in the document's words (#15) ─────────────────
+
+/**
+ * What the screen knows to name the rules' keys by: each pool's, program's, decision type's and
+ * equity criterion's label as the rules document carries it, and the season's session names when
+ * the screen has them. Staff never read a key or a CampMinder id where a name exists; a key with no
+ * label reads in words (`keyWords`), a session with no name as "Session 9300101".
+ */
+export interface RulesVocabulary {
+  readonly pools: Readonly<Record<string, string>>
+  readonly programs: Readonly<Record<string, string>>
+  readonly decisionTypes: Readonly<Record<string, string>>
+  readonly criteria: Readonly<Record<string, string>>
+  readonly sessions?: ReadonlyMap<number, string> | undefined
+}
+
+/** The vocabulary, with the section the paths sit in: a key's meaning depends on its section. */
+export interface RulesNames extends RulesVocabulary {
+  readonly section: ApiAidRulesSection
+}
+
+const recordOf = (value: unknown): Record<string, unknown> => (isPlainObject(value) ? value : {})
+
+/** Each entry's `label`, by its key ({pool_a: {label: 'Pool A'}} → {pool_a: 'Pool A'}). */
+function labelsOf(value: unknown): Record<string, string> {
+  const labels: Record<string, string> = {}
+  for (const [key, entry] of Object.entries(recordOf(value))) {
+    const label = recordOf(entry)['label']
+    if (typeof label === 'string' && label !== '') labels[key] = label
+  }
+  return labels
+}
+
+/**
+ * The vocabulary from a rules document, read section by section (the approved read sends each
+ * section on its own, and an unapproved one as null): pools from the budget, programs, decision
+ * types from the awards, criteria from equity.
+ */
+export function rulesVocabulary(
+  sectionOf: (section: ApiAidRulesSection) => unknown,
+  sessions?: ReadonlyMap<number, string>
+): RulesVocabulary {
+  const criteria: Record<string, string> = {}
+  const listed = recordOf(sectionOf('equity'))['criteria']
+  for (const criterion of Array.isArray(listed) ? listed : []) {
+    const { key, label } = recordOf(criterion)
+    if (typeof key === 'string' && typeof label === 'string' && label !== '') criteria[key] = label
+  }
+  return {
+    pools: labelsOf(recordOf(sectionOf('budget'))['pools']),
+    programs: labelsOf(sectionOf('programs')),
+    decisionTypes: labelsOf(recordOf(sectionOf('awards'))['decision_types']),
+    criteria,
+    sessions,
+  }
+}
+
+/**
+ * Words for a key the rules carry no label for. ⚠ Owner may veto: acronyms staff write in capitals,
+ * and the equity criterion the 2026 sheet called "trans_nb".
+ */
+const KEY_WORDS: Readonly<Record<string, string>> = {
+  tbm: 'TBM',
+  agi: 'AGI',
+  bipoc: 'BIPOC',
+  jfam: 'JFAM',
+  trans_nb: 'Trans / nonbinary',
+}
+
+/** A key with no label: its word, else its own words in sentence case ("camp_quest" → "Camp quest"). */
+function keyWords(key: string): string {
+  const known = KEY_WORDS[key]
+  if (known !== undefined) return known
+  const plain = words(key)
+  return plain.charAt(0).toUpperCase() + plain.slice(1)
+}
+
+type KeyKind =
+  | 'pool'
+  | 'program'
+  | 'decision_type'
+  | 'check'
+  | 'table'
+  | 'equity_class'
+  | 'criterion'
+  | 'incentive'
+  | 'session'
+  | 'severity'
+  | 'basis'
+
+/** What a key names, by where it sits in its section; null for a field's own name. */
+function keyKind(section: ApiAidRulesSection, path: readonly string[]): KeyKind | null {
+  const [first, second] = path
+  if (path.length === 1) {
+    if (section === 'programs') return 'program'
+    if (section === 'award_tables') return 'table'
+    return null
+  }
+  if (path.length === 2) {
+    if (section === 'budget' && (first === 'pools' || first === 'reserves')) return 'pool'
+    if (section === 'awards' && first === 'decision_types') return 'decision_type'
+    if (section === 'quality_checks' && first === 'checks') return 'check'
+    if (section === 'round2' && first === 'tables') return 'table'
+    if (section === 'round2' && first === 'program_tables') return 'program'
+    if (section === 'equity' && first === 'weights') return 'equity_class'
+    if (section === 'grants' && first === 'incentives') return 'incentive'
+    if (section === 'cost' && first === 'tuition') return 'session'
+    return null
+  }
+  // An equity class's weight per criterion (the table's columns sit at ['weights', '*', key]).
+  if (path.length === 3 && section === 'equity' && first === 'weights' && second !== undefined) {
+    return 'criterion'
+  }
+  return null
+}
+
+/** What a value names, by its field and section: a program's pool, a family rate's session, … */
+function valueKind(section: ApiAidRulesSection, path: readonly string[]): KeyKind | null {
+  // A list's element (a diff line carries one) reads as its list does.
+  const at = /^\d+$/.test(path.at(-1) ?? '') && path.length > 1 ? path.slice(0, -1) : path
+  const field = at.at(-1)
+  if (section === 'programs' && at.length === 2) {
+    if (field === 'session_cm_ids') return 'session'
+    if (field === 'budget_pool') return 'pool'
+    if (field === 'r1_table') return 'table'
+    if (field === 'equity_class') return 'equity_class'
+  }
+  if (section === 'round2' && at.length === 2 && at[0] === 'program_tables') return 'table'
+  // A table that inherits names the table it inherits.
+  if ((section === 'award_tables' || section === 'round2') && field === 'inherits') return 'table'
+  if (section === 'cost' && field === 'session_cm_id') return 'session'
+  if (section === 'awards' && field === 'budget_line') return 'decision_type'
+  if (section === 'stages' && field === 'decision_type') return 'decision_type'
+  if (section === 'quality_checks' && field === 'severity') return 'severity'
+  if (section === 'grants' && at.length === 1 && field === 'offset_programs') return 'program'
+  if (section === 'income' && at.length === 1 && field === 'basis') return 'basis'
+  return null
+}
+
+const SEVERITY_WORDS: Readonly<Record<string, string>> = { warn: 'Warning', hold: 'Hold' }
+
+/** A key (or a value that is one) in its name: a label from the rules, else words. */
+function nameOf(kind: KeyKind, key: string, names: RulesVocabulary): string {
+  switch (kind) {
+    case 'pool':
+      return names.pools[key] ?? keyWords(key)
+    case 'program':
+      return names.programs[key] ?? keyWords(key)
+    case 'decision_type':
+      return names.decisionTypes[key] ?? keyWords(key)
+    case 'criterion':
+      return names.criteria[key] ?? keyWords(key)
+    case 'check':
+      // The same words the Requests grid gives a check's pill.
+      return codeWords(key)
+    case 'session':
+      return names.sessions?.get(Number(key)) ?? `Session ${key}`
+    case 'severity':
+      return SEVERITY_WORDS[key] ?? keyWords(key)
+    case 'basis':
+      // An income measure is a choice, read in lower case like the others ("gross"); AGI is an acronym.
+      return KEY_WORDS[key] ?? words(key)
+    case 'table':
+    case 'equity_class':
+    case 'incentive':
+      return keyWords(key)
+  }
+}
+
 const LIST_PARENTS: ReadonlySet<string> = new Set([
   'bands',
   'extra_terms',
@@ -342,10 +534,15 @@ const isOverrideReason = (path: readonly string[]) =>
   path.at(-1) === 'override_reasons' ||
   (/^\d+$/.test(path.at(-1) ?? '') && path.at(-2) === 'override_reasons')
 
-/** A field's name; a numbered key reads as a tier, or a session under tuition. */
-export function labelOf(path: readonly string[]): string {
+/**
+ * A field's name; a numbered key reads as a tier, or a session under tuition. With `names`, a key
+ * the rules define (a pool, a program, a decision type, a check, a session, …) reads as its name.
+ */
+export function labelOf(path: readonly string[], names?: RulesNames): string {
   const key = path.at(-1) ?? ''
   const parent = path.at(-2)
+  const kind = names === undefined ? null : keyKind(names.section, path)
+  if (kind !== null && names !== undefined) return nameOf(kind, key, names)
   if (/^\d+$/.test(key)) {
     if (parent === 'tiers' || parent === 'overrides') return `Tier ${key}`
     if (parent === 'tuition') return `Session ${key}`
@@ -367,12 +564,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** One figure as staff read it: "$26,000", "74.5%", "Mar 1, 2027", "yes", "income reduction", "—". */
-export function formatSetting(value: unknown, path: readonly string[]): string {
+/**
+ * One figure as staff read it: "$26,000", "74.5%", "Mar 1, 2027", "yes", "income reduction", "—".
+ * With `names`, a value that is one of the rules' keys (a program's pool, a family rate's session)
+ * reads as its name. Only the words change: an editor's box keeps and sends the key.
+ */
+export function formatSetting(value: unknown, path: readonly string[], names?: RulesNames): string {
   if (value === null || value === undefined) return '—'
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   if (Array.isArray(value)) {
-    return value.length === 0 ? 'none' : value.map((item) => formatSetting(item, path)).join(', ')
+    return value.length === 0
+      ? 'none'
+      : value.map((item) => formatSetting(item, path, names)).join(', ')
+  }
+  const kind = names === undefined ? null : valueKind(names.section, path)
+  if (
+    kind !== null &&
+    names !== undefined &&
+    (typeof value === 'string' || typeof value === 'number')
+  ) {
+    return nameOf(kind, String(value), names)
   }
   if (typeof value === 'number' || typeof value === 'string') {
     const unit = unitOf(path)
@@ -435,7 +646,8 @@ function isFlatObject(value: unknown): value is Record<string, unknown> {
 
 function tableOf(
   path: readonly string[],
-  entries: ReadonlyArray<{ key: string; label: string; cells: Record<string, unknown> }>
+  entries: ReadonlyArray<{ key: string; label: string; cells: Record<string, unknown> }>,
+  names: RulesNames | undefined
 ): SettingNode {
   const keys: string[] = []
   for (const entry of entries)
@@ -443,43 +655,51 @@ function tableOf(
   return {
     kind: 'table',
     path,
-    label: labelOf(path),
-    columns: keys.map((key) => ({ key, label: labelOf([...path, '*', key]) })),
+    label: labelOf(path, names),
+    columns: keys.map((key) => ({ key, label: labelOf([...path, '*', key], names) })),
     rows: entries,
   }
 }
 
-function nodeOf(path: readonly string[], value: unknown): SettingNode {
-  if (isCellValue(value)) return { kind: 'leaf', path, label: labelOf(path), value }
+function nodeOf(
+  path: readonly string[],
+  value: unknown,
+  names: RulesNames | undefined
+): SettingNode {
+  const label = labelOf(path, names)
+  if (isCellValue(value)) return { kind: 'leaf', path, label, value }
   if (Array.isArray(value) && value.every(isFlatObject)) {
     // A list's row key is its index (the editor writes back to it); staff count from 1.
     return tableOf(
       path,
-      value.map((cells, index) => ({ key: String(index), label: String(index + 1), cells }))
+      value.map((cells, index) => ({ key: String(index), label: String(index + 1), cells })),
+      names
     )
   }
   if (isPlainObject(value)) {
     const entries = Object.entries(value)
     // An empty set of settings (no weights, no incentives yet) reads as "none".
-    if (entries.length === 0) return { kind: 'leaf', path, label: labelOf(path), value: [] }
+    if (entries.length === 0) return { kind: 'leaf', path, label, value: [] }
     if (entries.every(([, v]) => isFlatObject(v))) {
+      // A row keeps its key (the editor writes back to it); it reads as the key's name.
       return tableOf(
         path,
         (entries as Array<[string, Record<string, unknown>]>).map(([key, cells]) => ({
           key,
-          label: /^\d+$/.test(key) ? labelOf([...path, key]) : key,
+          label: /^\d+$/.test(key) || names !== undefined ? labelOf([...path, key], names) : key,
           cells,
-        }))
+        })),
+        names
       )
     }
     return {
       kind: 'group',
       path,
-      label: labelOf(path),
-      children: entries.map(([key, child]) => nodeOf([...path, key], child)),
+      label,
+      children: entries.map(([key, child]) => nodeOf([...path, key], child, names)),
     }
   }
-  return { kind: 'leaf', path, label: labelOf(path), value: JSON.stringify(value) }
+  return { kind: 'leaf', path, label, value: JSON.stringify(value) }
 }
 
 /**
@@ -488,8 +708,11 @@ function nodeOf(path: readonly string[], value: unknown): SettingNode {
  * programs, a table's tiers, quality checks) a small table. Paths are inside the section, as the
  * server's changes are (`DraftSectionOut.changes`).
  */
-export function settingNodes(content: Readonly<Record<string, unknown>>): SettingNode[] {
-  return Object.entries(content).map(([key, value]) => nodeOf([key], value))
+export function settingNodes(
+  content: Readonly<Record<string, unknown>>,
+  names?: RulesNames
+): SettingNode[] {
+  return Object.entries(content).map(([key, value]) => nodeOf([key], value, names))
 }
 
 // ── What a draft changed (D39: "Draft · n changes") ───────────────────────────
@@ -503,10 +726,11 @@ export function isChanged(path: readonly string[], changes: readonly ApiAidField
 }
 
 /** "General › Tiers › Tier 2 › Round 1 %: 60% → 55%"; a whole list or set of settings "changed". */
-export function changeWords(change: ApiAidFieldChange): string {
-  const names = change.path.map((_, index) => labelOf(change.path.slice(0, index + 1)))
-  const where = names.join(' › ')
-  const show = (value: unknown) => formatSetting(value, change.path)
+export function changeWords(change: ApiAidFieldChange, names?: RulesNames): string {
+  const where = change.path
+    .map((_, index) => labelOf(change.path.slice(0, index + 1), names))
+    .join(' › ')
+  const show = (value: unknown) => formatSetting(value, change.path, names)
   if (change.kind === 'added') {
     return isCellValue(change.after) ? `${where}: added, ${show(change.after)}` : `${where}: added`
   }
