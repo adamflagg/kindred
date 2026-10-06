@@ -4167,6 +4167,41 @@ export type DuplicateMark = {
 }
 
 /**
+ * DuplicateWaitingOut
+ *
+ * A possible duplicate waiting on a request: a `duplicate_pending` request in the season, on any household's page,
+ * whose `duplicate_of` is that request. Named so the active request's card can offer "Keep the Other Request…" and
+ * link to it: its camper and session, and its household as the page names households (`label`, and `label_tiebreak`
+ * when another household on the page reads the same).
+ */
+export type DuplicateWaitingOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name: string
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Label Tiebreak
+   */
+  label_tiebreak: string
+}
+
+/**
  * EditorPreviewOut
  *
  * The editor's line while typing (§4.6): the round's computed award (None: held, or nothing computable),
@@ -7241,6 +7276,10 @@ export type HouseholdRequestOut = {
    */
   grants_beyond_owed?: number | null
   round3_context?: Round3ContextOut | null
+  /**
+   * Duplicates Waiting
+   */
+  duplicates_waiting?: Array<DuplicateWaitingOut>
 }
 
 /**
@@ -19162,6 +19201,10 @@ export type HouseholdRequestOutWritable = {
    */
   grants_beyond_owed?: number | null
   round3_context?: Round3ContextOut | null
+  /**
+   * Duplicates Waiting
+   */
+  duplicates_waiting?: Array<DuplicateWaitingOut>
 }
 
 /**
