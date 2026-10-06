@@ -562,25 +562,30 @@ export function DuplicateForm({
   // The holder intake named can be on another household's page (the second parent's request): offer
   // it too. The server checks it is active and the same camper, program and session.
   const holder = namedHolder(application.data, request.row.request_id)
-  const labelOf = (other: ApiAidHouseholdRequest) =>
-    `${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`
+  // Owner call 10-05 late: an option reads camper · session, never its raw id, which shows only to
+  // tell apart two options that would otherwise read the same (as a household label's tie-break).
+  const nameOf = (other: ApiAidHouseholdRequest) => `${camperOf(other)} · ${other.row.session_name}`
   // A holder on this page that the match above missed (the read can send a pending row's program as
-  // null) is still named as the card it is.
+  // null) is still named as the card it is; one on another page, in plain words until
+  // duplicates_waiting names it.
   const holderHere = page.requests.find((other) => other.row.request_id === holder)
-  const options = [
-    ...onPage.map((other) => ({ id: other.row.request_id, label: labelOf(other) })),
+  const named = [
+    ...onPage.map((other) => ({ id: other.row.request_id, label: nameOf(other) })),
     ...(holder !== '' && !onPage.some((other) => other.row.request_id === holder)
       ? [
           {
             id: holder,
             label:
-              holderHere === undefined
-                ? `the request intake named · ${holder}`
-                : labelOf(holderHere),
+              holderHere === undefined ? 'the request this one duplicates' : nameOf(holderHere),
           },
         ]
       : []),
   ]
+  const options = named.map((option) =>
+    named.filter((other) => other.label === option.label).length > 1
+      ? { ...option, label: `${option.label} · ${option.id}` }
+      : option
+  )
   const [kept, setKept] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
@@ -595,7 +600,7 @@ export function DuplicateForm({
     if (application.error) {
       return (
         <Note head="Keeping the other request" onBack={onDone}>
-          Couldn&apos;t load the request intake named for this one.
+          Couldn&apos;t load the request this one duplicates.
         </Note>
       )
     }

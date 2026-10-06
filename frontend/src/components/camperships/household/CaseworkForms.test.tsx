@@ -555,7 +555,8 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       />
     )
     expect(
-      screen.getByRole('option', { name: 'the request intake named · reqemmaother01' })
+      // Owner call 10-05 late: plain words, no raw id, until duplicates_waiting names it.
+      screen.getByRole('option', { name: 'the request this one duplicates' })
     ).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Reason'), 'Second parent filed it{Enter}')
     expect(spies.duplicate).toHaveBeenCalledWith({
@@ -587,7 +588,25 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA)] })
     render(<DuplicateForm request={pending} page={page} onDone={done} />)
     const options = screen.getAllByRole('option').map((option) => option.textContent)
-    expect(options).toEqual([`Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000001`])
+    // Owner call 10-05 late: camper · session, no raw id.
+    expect(options).toEqual([`Emma Johnson · ${ROW_EMMA.session_name}`])
+  })
+
+  it('shows the id only to tell apart two options that would read the same (owner 10-05, as the label tie-break)', () => {
+    const pending = householdRequest(
+      gridRow({ ...ROW_EMMA, request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    application = applicationOut({
+      requests: [requestOut({ id: 'reqemmadup00009', duplicate_of: 'reqemma00000001' })],
+    })
+    const twin = householdRequest(gridRow({ ...ROW_EMMA, request_id: 'reqemma00000002' }))
+    const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA), twin] })
+    render(<DuplicateForm request={pending} page={page} onDone={done} />)
+    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    expect(options).toEqual([
+      `Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000001`,
+      `Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000002`,
+    ])
   })
 
   it('says the read failed, not that nothing is on the page, when the application could not be read (m3)', async () => {
@@ -598,9 +617,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     application = undefined
     applicationError = new Error('x')
     render(<DuplicateForm request={lone} page={page} onDone={done} />)
-    expect(
-      screen.getByText("Couldn't load the request intake named for this one.")
-    ).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load the request this one duplicates.")).toBeInTheDocument()
     expect(screen.queryByText(/on this page/)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(done).toHaveBeenCalled()
@@ -828,7 +845,7 @@ describe("every casework form's message-only state closes on Esc as soon as it o
     render(
       <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
     )
-    await escCloses("Couldn't load the request intake named for this one.")
+    await escCloses("Couldn't load the request this one duplicates.")
   })
 
   it('Keep the Other Request…: nothing to keep', async () => {
