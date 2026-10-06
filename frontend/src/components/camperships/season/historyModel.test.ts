@@ -344,7 +344,7 @@ describe("an operation's line (D49: one readable line per operation)", () => {
 
   it("follows an approval with its recorded effect, the server's words (H3, #2980)", () => {
     expect(operationWords(OP_RULES_APPROVE).what).toBe(
-      `Rules v3 · ${SECTION_TITLES.awards}, ${SECTION_TITLES.budget} · Approved · v3 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged`
+      `Rules v3 · ${SECTION_TITLES.awards}, ${SECTION_TITLES.budget} · Approved · v3 now prices the season · 41 unsent requests re-priced`
     )
   })
 

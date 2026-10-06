@@ -117,9 +117,11 @@ export const OP_RULES_APPROVE: ApiAidHistoryOperation = {
   counts: [{ entity: 'aid_rules', action: 'approve', rows: 2 }],
   rules_versions: [3],
   rules_sections: ['awards', 'budget'],
-  summary: 'v3 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged',
+  // The server stopped counting flagged sent offers on 2026-10-05 (owner: posted rounds are
+  // history): `flagged` is always 0 and the summary never names it.
+  summary: 'v3 now prices the season · 41 unsent requests re-priced',
   figures: figures(),
-  effect: { from_version: 2, to_version: 3, repriced: 41, flagged: 12 },
+  effect: { from_version: 2, to_version: 3, repriced: 41, flagged: 0 },
 }
 
 const OP_RULES_CREATE: ApiAidHistoryOperation = {
