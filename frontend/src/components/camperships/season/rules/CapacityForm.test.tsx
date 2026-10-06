@@ -87,6 +87,18 @@ describe('CapacityForm', () => {
     )
   })
 
+  it('writes a four-figure capacity with its thousands separator, saved and stored', async () => {
+    stored = [{ year: 2027, session_cm_id: 1000101, capacity: 1200, note: '', actor: 'A' }]
+    render(<CapacityForm />)
+    expect(screen.getByTestId('capacity-stored')).toHaveTextContent('Session 1 · 1,200 places')
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 2')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Capacity (places)' }), '1200')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(screen.getByTestId('capacity-saved')).toHaveTextContent(
+      'Saved: Session 2 holds 1,200 places in 2027'
+    )
+  })
+
   it("won't send a figure it can't read, and says saving replaces what was stored", async () => {
     render(<CapacityForm />)
     expect(screen.getByText(/saving replaces it/)).toBeInTheDocument()

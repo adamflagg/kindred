@@ -65,7 +65,7 @@ export function CapacityForm() {
         <ul className="text-sm" data-testid="capacity-stored">
           {storedRows.map((row) => (
             <li key={row.session_cm_id}>
-              {`${nameOf(row.session_cm_id)} · ${String(row.capacity)} places`}
+              {`${nameOf(row.session_cm_id)} · ${row.capacity.toLocaleString('en-US')} places`}
               {row.note !== '' ? ` · ${row.note}` : ''}
             </li>
           ))}
@@ -153,7 +153,7 @@ export function CapacityForm() {
           {save.error !== null && <p className={AMBER_NOTE}>{save.error.message}</p>}
           {saved !== null && (
             <p className="text-sm" data-testid="capacity-saved">
-              {`Saved: ${nameOf(saved.session_cm_id)} holds ${String(saved.capacity)} places in ${String(saved.year)}`}
+              {`Saved: ${nameOf(saved.session_cm_id)} holds ${saved.capacity.toLocaleString('en-US')} places in ${String(saved.year)}`}
               {saved.note !== '' ? ` · ${saved.note}` : ''}
             </p>
           )}
