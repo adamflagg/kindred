@@ -148,6 +148,24 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     expect(screen.getByTestId('rules-notice')).toHaveTextContent('Saved to the rules draft v4.')
   })
 
+  it('answers a 422 from the server in a sentence naming the field, not its raw text', async () => {
+    outcome = {
+      kind: 'refused',
+      status: 422,
+      message: 'awards is not a valid section: awards.minimum: Value error, must not be negative',
+    }
+    renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(
+      await screen.findByText(
+        'The rules draft refused this change: Minimum award: must not be negative.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/is not a valid section/)).toBeNull()
+  })
+
   it('says a save landed in a new version when it would have changed approved rules in use', async () => {
     outcome = { kind: 'ok', value: { ...rulesDraft(), version: 5, branched_from: 4 } }
     renderAt('/aid/season/rules?section=awards')

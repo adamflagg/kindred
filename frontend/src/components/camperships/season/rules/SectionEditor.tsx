@@ -131,7 +131,7 @@ export function SectionEditor({
 }: SectionEditorProps) {
   const [edits, setEdits] = useState<ReadonlyMap<string, string>>(() => new Map())
   const specOf = useCallback(
-    (path: readonly string[]) => fieldSpec(path, valueAt(opened, path)),
+    (path: readonly string[]) => fieldSpec(path, valueAt(opened, path), opened),
     [opened]
   )
   const applied = useMemo(() => applyEdits(opened, edits, specOf), [opened, edits, specOf])

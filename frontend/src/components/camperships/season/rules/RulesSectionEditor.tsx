@@ -14,7 +14,7 @@ import { AMBER_NOTE, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyl
 import { savePrecondition } from './precondition'
 import { sectionContent } from './rulesDraft'
 import { SECTION_TITLES, changeWords } from './rulesModel'
-import { editKey, fieldName, sectionChanges, touches } from './sectionEdit'
+import { editKey, fieldName, refusalWords, sectionChanges, touches } from './sectionEdit'
 import { SectionEditor } from './SectionEditor'
 
 interface Opened {
@@ -148,7 +148,12 @@ export function RulesSectionEditor({
         onSuccess: (saved) => onDone(saved),
         onError: (caught) => {
           if (hasStatus(caught, 409)) reload(caught.message)
-          else setError(caught.message)
+          else
+            setError(
+              hasStatus(caught, 422)
+                ? (refusalWords(caught.message) ?? caught.message)
+                : caught.message
+            )
         },
       }
     )

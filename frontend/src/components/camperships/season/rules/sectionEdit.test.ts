@@ -7,11 +7,41 @@ import {
   fieldName,
   fieldSpec,
   parseSetting,
+  refusalWords,
   sectionChanges,
   setAt,
   touches,
   valueAt,
 } from './sectionEdit'
+
+describe('Extra amount takes a box on a full_cost decision type only', () => {
+  const content = {
+    decision_types: {
+      full: { kind: 'full_cost', extra_amount: '0' },
+      appeal: { kind: 'discretionary', extra_amount: '0' },
+    },
+  }
+  const specAt = (type: string) => fieldSpec(['decision_types', type, 'extra_amount'], '0', content)
+  it('boxes it where the server accepts it and reads it as words elsewhere', () => {
+    expect(specAt('full')).toMatchObject({ kind: 'number', unit: 'money' })
+    expect(specAt('appeal')).toBeNull()
+  })
+})
+
+describe('refusalWords: a 422 from a section save, in plain words', () => {
+  it('names each field the way its box is named, and keeps the server reason', () => {
+    expect(
+      refusalWords(
+        'awards is not a valid section: awards.decision_types.appeal_top_up: Value error, only a full_cost decision type has extra_amount'
+      )
+    ).toBe(
+      'The rules draft refused this change: Decision types › Appeal top up: only a full_cost decision type has extra_amount.'
+    )
+  })
+  it('leaves any other message alone', () => {
+    expect(refusalWords('A section has errors')).toBeNull()
+  })
+})
 
 describe('what takes a box (Decision 14)', () => {
   it('types figures, yes/no and choices; leaves names, references, dates and lists as they are', () => {
