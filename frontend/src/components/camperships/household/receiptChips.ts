@@ -2,7 +2,8 @@
  * The household card's receipt line (household-v4.html section 2 (B), the owner's pick): one line of
  * chips, "Adjusted $X · tier N │ R1 40% → $2,400 │ R2 limited by … → $1,200 │ R3 $500", with the
  * Total apart so the card can pin it right. Every figure and limit is the trace's, worded by the
- * kit (stepValue, bindingPhrase), so the chips and the receipt under them cannot disagree. The
+ * kit (stepValue; bindingPhrase decides whether a limit shows, chipLimit words it short), so the chips
+ * and the receipt under them cannot disagree. The
  * prose sentence (receiptSentence) stays the hover, and is still the Requests grid's line.
  */
 import { formatMoney, MINUS } from '../kit/money'
@@ -33,6 +34,38 @@ export interface ReceiptChipLine {
 export function chipText(chip: ReceiptChip): string {
   const words = chip.parts.map((part) => part.text).join('')
   return chip.round === null ? words : `${chip.round} ${words}`
+}
+
+/**
+ * The chip line's limit words (owner pass 3, V1, 10-05): short enough that the line fits one row at
+ * 1100px, and never naming the round, which the chip's "R1"/"R2"/"R3" already says. Whether a limit
+ * shows at all is still the kit's (bindingPhrase); the receipt and the hover keep its full words.
+ */
+const CHIP_LIMITS: Readonly<Record<string, string>> = {
+  ask: 'cap at requested',
+  appeal: 'cap at requested',
+  request: 'cap at requested',
+  original_ask: 'cap at original ask',
+  cap: 'capped by tier',
+  max_amount: 'capped at maximum',
+  total_cap: 'cut to total-aid cap',
+  minimum: 'raised to minimum',
+  grants_cover: 'grants cover the cost',
+  income_ceiling: 'above income ceiling',
+  no_table: 'no award table',
+  not_allowed: 'not open this season',
+  not_eligible: 'not eligible',
+  cost_unknown: 'cost unknown',
+  ask_missing: 'no ask entered',
+  r1_unknown: 'Round 1 not worked out',
+}
+
+export function chipLimit(step: AidTraceStep): string | null {
+  const full = bindingPhrase(step)
+  if (full === null) return null
+  // Round 3's `cap` is its share-of-cost limit (engine.py `_round3`), not Round 2's tier cap.
+  if (step.key === 'r3' && step.bound === 'cap') return 'capped by share of cost'
+  return CHIP_LIMITS[step.bound ?? ''] ?? full
 }
 
 const isBlank = (value: unknown) => value === null || value === undefined || value === ''
@@ -80,7 +113,7 @@ export function receiptChips(trace: readonly AidTraceStep[]): ReceiptChipLine {
     const c = chipBuilder()
     if (award) {
       const share = n === 1 ? find('r1_pct') : undefined
-      const limit = bindingPhrase(award)
+      const limit = chipLimit(award)
       if (share && !isBlank(find('cost')?.value)) {
         c.figure(stepValue(share))
         if (limit !== null) c.plain(', ')
@@ -118,7 +151,7 @@ export function receiptChips(trace: readonly AidTraceStep[]): ReceiptChipLine {
         : step
           ? stepValue(step)
           : '$0'
-    const limit = step && !locked ? bindingPhrase(step) : null
+    const limit = step && !locked ? chipLimit(step) : null
     if (figure === '$0' && limit === null) continue
     const c = chipBuilder()
     c.plain(`${label} `)

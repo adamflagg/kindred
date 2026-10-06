@@ -96,9 +96,10 @@ describe('ReceiptVersions: one receipt, a version switcher (round 3, section 1 (
     renderVersions({ receipts: [R1, R2, LIVE] })
     const chips = screen.getByTestId('receipt-chips')
     expect(chips.textContent).toBe(
-      "Adjusted $90,000 · tier 5R1 40%, limited by the family's ask → $1,500R2 limited by the family's appeal → $600Total $2,100"
+      'Adjusted $90,000 · tier 5R1 40%, cap at requested → $1,500R2 cap at requested → $600Total $2,100'
     )
-    expect(within(chips).getByText("limited by the family's appeal")).toHaveClass('text-amber-700')
+    for (const bound of within(chips).getAllByText('cap at requested'))
+      expect(bound).toHaveClass('text-amber-700')
     // The prose sentence is the hover, not the line.
     expect(screen.queryByText(/Adjusted income/)).toBeNull()
     expect(chips.getAttribute('title')).toMatch(/^Adjusted income \$90,000 → tier 5\. Round 1: /)
