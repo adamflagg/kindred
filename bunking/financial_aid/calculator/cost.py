@@ -66,7 +66,7 @@ def resolve_cost(request: RequestInputs, rules: AidRules) -> CostResolution:
 def _per_person(request: RequestInputs, rules: AidRules) -> CostResolution:
     headcount = request.headcount
     if headcount is None or headcount.standard + headcount.infants + headcount.children == 0:
-        return _unknown("no family-camp headcount")
+        return _unknown("the family-camp number of people is missing")
     rate = next((r for r in rules.cost.family_rates if r.session_cm_id == request.session_cm_id), None)
     if rate is None:
         return _unknown(f"no family-camp rate for session {request.session_cm_id}")

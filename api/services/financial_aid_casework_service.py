@@ -741,7 +741,7 @@ class FinancialAidCaseworkService:
         reason_code: str | None = None,
     ) -> RequestOut:
         if request.person_cm_id != 0 or request.program_key != PROGRAM_FAMILY_CAMP:
-            raise CaseworkValidationError("a headcount belongs to a family-camp request")
+            raise CaseworkValidationError("only a family-camp request has a number of people")
         if request.status in _CLOSED:
             raise CaseworkValidationError(f"a {request.status} request cannot be priced")
         if source not in STAFF_HEADCOUNT_SOURCES:

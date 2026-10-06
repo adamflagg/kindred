@@ -87,7 +87,7 @@ def test_an_all_zero_headcount_is_missing_not_free() -> None:
     # (Review Focus) A household of nobody is a data problem, never a $0 cost.
     cost = resolve_cost(_family(headcount={"standard": 0, "infants": 0}), fictional_rules())
     assert cost.amount is None
-    assert "headcount" in (cost.missing or "")
+    assert cost.missing == "the family-camp number of people is missing"  # staff read "number of people" (owner)
 
 
 def test_family_camp_with_no_rate_for_the_session_is_unknown() -> None:

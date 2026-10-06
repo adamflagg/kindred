@@ -106,7 +106,7 @@ def run_quality_checks(
     ):
         fire("implausible_dependents", check, f"More than {check.threshold} dependents")
     if (check := active("family_cost_missing")) and program.cost_source == "per_person" and cost is None:
-        fire("family_cost_missing", check, "Enter the family-camp headcount")
+        fire("family_cost_missing", check, "Enter the family-camp number of people")
     if (
         (check := active("py_confirm_tier_change"))
         and income_tier is not None

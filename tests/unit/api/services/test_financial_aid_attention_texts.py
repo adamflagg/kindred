@@ -181,9 +181,9 @@ def test_q5_placeholder_income_keeps_its_reason_and_prints_money() -> None:
     assert _messages(result)["placeholder_income"] == ("Reported income is at or below $1,000; it may be a placeholder")
 
 
-def test_q9_family_camp_cost_names_the_headcount() -> None:
+def test_q9_family_camp_cost_asks_for_the_number_of_people() -> None:
     result = _calc(person_cm_id=None, program_key="family_camp", session_cm_id=1000201)
-    assert _messages(result)["family_cost_missing"] == "Enter the family-camp headcount"
+    assert _messages(result)["family_cost_missing"] == "Enter the family-camp number of people"
 
 
 # --- note ---------------------------------------------------------------------------------------
