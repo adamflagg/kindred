@@ -202,7 +202,7 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
 
   it("heads one right-aligned column per form, then Using, with no 'On the form' or 'Used'", () => {
     render(<IncomePanel page={FLAGGED_PAGE} />)
-    expect(heads()).toEqual(['Answer', "Emma's form", "Samuel's form", 'Using', ''])
+    expect(heads()).toEqual(['Answer', "Emma's form", "Samuel's form", 'Using', '', ''])
     const [, emma, samuel, using] = screen.getAllByRole('columnheader')
     for (const th of [emma, samuel, using]) expect(th!.className).toMatch(/text-right/)
     expect(screen.queryByText('On the form')).toBeNull()
@@ -223,7 +223,7 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
       ],
     })
     render(<IncomePanel page={page} />)
-    expect(heads()).toEqual(['Answer', "Family's answer", 'Using', ''])
+    expect(heads()).toEqual(['Answer', "Family's answer", 'Using', '', ''])
     const cells = within(rowOf('Rent')).getAllByRole('cell')
     expect(cells[1]).toHaveTextContent('$900')
     expect(cells[2]).toHaveTextContent('$1,200')
@@ -231,7 +231,15 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
 
   it('draws three forms as three columns, a form with no figure as a dash', () => {
     render(<IncomePanel page={threeForms()} />)
-    expect(heads()).toEqual(['Answer', "Emma's form", "Samuel's form", "Noah's form", 'Using', ''])
+    expect(heads()).toEqual([
+      'Answer',
+      "Emma's form",
+      "Samuel's form",
+      "Noah's form",
+      'Using',
+      '',
+      '',
+    ])
     const cells = within(rowOf('Children')).getAllByRole('cell')
     expect(cells.map((c) => c.textContent)).toEqual(expect.arrayContaining(['3', '2', '—']))
   })
@@ -243,27 +251,27 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
     render(<IncomePanel page={threeForms()} />)
     await userEvent.click(screen.getByRole('button', { name: /more answers match/ }))
     const cells = within(rowOf('Gross income')).getAllByRole('cell')
-    // Answer | one cell across the three forms | Using | actions
-    expect(cells).toHaveLength(4)
+    // Answer | one cell across the three forms | Using | note | actions
+    expect(cells).toHaveLength(5)
     expect(cells[1]).toHaveAttribute('colspan', '3')
     expect(cells[1]).toHaveTextContent('$84,000')
     expect(cells[2]).toHaveTextContent('$84,000')
     expect(cells.filter((c) => c.textContent === '$84,000')).toHaveLength(2)
     // The disputed rows still draw one cell per form.
-    expect(within(rowOf('Children')).getAllByRole('cell')).toHaveLength(6)
+    expect(within(rowOf('Children')).getAllByRole('cell')).toHaveLength(7)
   })
 
   it('shows the figure most forms give under Using, saying so', () => {
     render(<IncomePanel page={threeForms()} />)
     const cells = within(rowOf('Housing expenses')).getAllByRole('cell')
-    expect(cells[4]).toHaveTextContent('$36,000')
-    expect(within(cells[4]!).getByText('2 of 3 forms')).toBeInTheDocument()
+    expect(cells[4]).toHaveTextContent(/^\$36,000$/)
+    expect(cells[5]).toHaveTextContent('· 2 of 3 forms')
   })
 
   it('names the form a tie went to under Using', () => {
     render(<IncomePanel page={threeForms()} />)
     const cells = within(rowOf('Children')).getAllByRole('cell')
-    expect(within(cells[4]!).getByText("tie: Emma's form")).toBeInTheDocument()
+    expect(cells[5]).toHaveTextContent("· tie: Emma's form")
   })
 
   it('shows no income under Using while the income forms disagree: a dash, on hold', () => {
@@ -286,8 +294,8 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
     })
     render(<IncomePanel page={page} />)
     const cells = within(rowOf('Gross income')).getAllByRole('cell')
-    expect(cells[3]).toHaveTextContent('—')
-    expect(within(cells[3]!).getByText('on hold')).toBeInTheDocument()
+    expect(cells[3]).toHaveTextContent(/^—$/)
+    expect(cells[4]).toHaveTextContent('· on hold')
     expect(
       screen.getByText(
         'The forms disagree. No income is used until one is picked, so Round 2 waits on hold.'
@@ -303,7 +311,7 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
     for (const cell of within(gross).getAllByRole('cell'))
       expect(cell.className).toMatch(/border-b-0/)
     expect(why!.querySelector('td')!.className).toMatch(/pt-0/)
-    expect(why!.querySelector('td')).toHaveAttribute('colspan', '5')
+    expect(why!.querySelector('td')).toHaveAttribute('colspan', '6')
   })
 
   it('draws no "Forms disagree" chip', () => {
@@ -351,7 +359,195 @@ describe('IncomePanel: a column per form, then Using (household-v4 section 3)', 
       "person 1000099's form",
       'Using',
       '',
+      '',
     ])
+  })
+})
+
+// household-v5 option D, "bands" (owner pick 10-05; C rejected as too many rules): one fixed column
+// grid, each disagreeing answer and its why on one rounded amber band, the note in its own slot.
+describe('IncomePanel: option D, bands (household-v5)', () => {
+  const correct = () => <button type="button">Correct…</button>
+  const bandGaps = () => document.querySelectorAll('tr[data-band-gap]')
+  // Gross income and housing both open, side by side in field order; the children corrected.
+  const twoBands = () =>
+    householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'num_children' ? { ...a, effective: '3', corrected: true } : a
+          ),
+          flags: [
+            GROSS_CONFLICT,
+            {
+              code: 'household_answer_conflict',
+              detail: {
+                fields: {
+                  total_housing_expenses: [
+                    { value: 30000, person_cm_ids: [1000002] },
+                    { value: 36000, person_cm_ids: [1000010] },
+                  ],
+                },
+                resolved_by_correction: false,
+              },
+            },
+          ],
+        }),
+      ],
+    })
+
+  it("sizes one household's columns as the mock's fixed grid: Answer 190, each form 112, Using 104, note 124, actions the rest", () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    const table = screen.getByRole('table')
+    expect(table.className).toMatch(/table-fixed/)
+    expect(table.className).toMatch(/w-full/)
+    const widths = [...table.querySelectorAll('col')].map((col) => col.className)
+    expect(widths).toEqual(['w-[190px]', 'w-[112px]', 'w-[112px]', 'w-[104px]', 'w-[124px]', ''])
+  })
+
+  it("sizes the one-form table the same way, one 112 column for the family's answer", () => {
+    const page = householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_rent'
+              ? { ...a, synced: '900.00', effective: '1200', corrected: true }
+              : a
+          ),
+        }),
+      ],
+    })
+    render(<IncomePanel page={page} />)
+    const widths = [...screen.getByRole('table').querySelectorAll('col')].map((c) => c.className)
+    expect(widths).toEqual(['w-[190px]', 'w-[112px]', 'w-[104px]', 'w-[124px]', ''])
+  })
+
+  it('keeps every row one line: the note sits in its own muted slot right of the figure, never under it', () => {
+    render(<IncomePanel page={twoBands()} />)
+    const cells = within(rowOf('Housing expenses')).getAllByRole('cell')
+    // Answer | Emma's form | Samuel's form | Using | note | actions
+    expect(cells).toHaveLength(6)
+    expect(cells[3]).toHaveTextContent(/^\$30,000$/)
+    expect(cells[4]).toHaveTextContent("· tie: Emma's form")
+    expect(cells[4]!.className).toMatch(/text-muted-foreground/)
+    for (const cell of cells) expect(cell.className).toMatch(/whitespace-nowrap/)
+    for (const cell of cells) expect(cell.className).not.toMatch(/align-top/)
+  })
+
+  it('puts each disagreeing answer and its why on one rounded amber band, with no rule and no edge inside it', () => {
+    render(<IncomePanel page={twoBands()} />)
+    const gross = rowOf('Gross income')
+    const why = gross.nextElementSibling as HTMLElement
+    expect(why).toHaveTextContent(/^The forms disagree/)
+    for (const row of [gross, why]) expect(row.className).toMatch(/amber/)
+    const cells = within(gross).getAllByRole('cell')
+    expect(cells[0]!.className).toMatch(/rounded-tl-lg/)
+    expect(cells.at(-1)!.className).toMatch(/rounded-tr-lg/)
+    expect(why.querySelector('td')!.className).toMatch(/rounded-b-lg/)
+    for (const cell of [...cells, why.querySelector('td')!]) {
+      expect(cell.className).toMatch(/border-b-0/)
+      expect(cell.className).not.toMatch(/inset_3px/)
+    }
+  })
+
+  it('leaves a small gap before, between and after the bands: one gap between two bands, none inside one', () => {
+    render(<IncomePanel page={twoBands()} />)
+    const rows = [...document.querySelectorAll('tbody tr')]
+    const kinds = rows.map((tr) =>
+      tr.hasAttribute('data-band-gap') ? 'gap' : tr.textContent.slice(0, 8)
+    )
+    // In today's row order: gross (band), housing (band), children (plain).
+    expect(kinds).toEqual([
+      'gap',
+      'Gross in',
+      'The form',
+      'gap',
+      'Housing ',
+      'The form',
+      'gap',
+      'Children',
+    ])
+    expect(bandGaps()).toHaveLength(3)
+    for (const gap of bandGaps()) {
+      const td = gap.querySelector('td')!
+      expect(td).toHaveAttribute('colspan', '6')
+      expect(td.className).toMatch(/h-1/)
+      expect(td.className).toMatch(/p-0/)
+      expect(td.className).not.toMatch(/border-b(?!-0)/)
+    }
+  })
+
+  it('drops the rule above a band: the row before the gap has no bottom rule, the last plain row keeps one', () => {
+    const page = householdPage({
+      incomes: [
+        income({
+          answers: plainAnswers().map((a) =>
+            a.field === 'total_edu_expenses'
+              ? { ...a, synced: '1000.00', effective: '1500', corrected: true }
+              : a.field === 'num_children'
+                ? { ...a, effective: '3', corrected: true }
+                : a
+          ),
+          flags: [
+            {
+              code: 'household_answer_conflict',
+              detail: {
+                fields: {
+                  total_housing_expenses: [
+                    { value: 30000, person_cm_ids: [1000002] },
+                    { value: 36000, person_cm_ids: [1000010] },
+                  ],
+                },
+                resolved_by_correction: false,
+              },
+            },
+          ],
+        }),
+      ],
+    })
+    render(<IncomePanel page={page} />)
+    for (const cell of within(rowOf('Education expenses')).getAllByRole('cell'))
+      expect(cell.className).toMatch(/border-b-0/)
+    for (const cell of within(rowOf('Children')).getAllByRole('cell'))
+      expect(cell.className).not.toMatch(/border-b-0/)
+  })
+
+  it('puts the link first in the action cell, in a fixed slot, its pills after it', () => {
+    render(<IncomePanel page={FLAGGED_PAGE} correct={correct} />)
+    const actions = within(rowOf('Children')).getAllByRole('cell').at(-1)!
+    const link = within(actions).getByRole('button', { name: 'Correct…' })
+    const pill = within(actions).getByText('corrected')
+    expect(follows(pill, link)).toBe(true)
+    expect(link.parentElement!.className).toMatch(/min-w-\[136px\]/)
+  })
+
+  it('right-aligns an undisputed figure to the last form column, a faint dotted leader before it', async () => {
+    render(<IncomePanel page={FLAGGED_PAGE} />)
+    await userEvent.click(screen.getByRole('button', { name: /more answers match/ }))
+    const span = within(rowOf('Housing expenses')).getAllByRole('cell')[1]!
+    expect(span).toHaveAttribute('colspan', '2')
+    expect(span.className).toMatch(/text-right/)
+    expect(span.className).not.toMatch(/text-center/)
+    const leader = span.querySelector('[data-leader]')
+    expect(leader).not.toBeNull()
+    expect(leader!.className).toMatch(/border-dotted/)
+    expect(follows(within(span).getByText('$30,000'), leader!)).toBe(true)
+  })
+
+  it("gives a household's half the same bands and note slot, its columns left to fit the half", () => {
+    const page = {
+      ...TWO_HOUSEHOLD_PAGE,
+      incomes: [
+        TWO_HOUSEHOLD_PAGE.incomes[0]!,
+        { ...TWO_HOUSEHOLD_PAGE.incomes[1]!, flags: [GROSS_CONFLICT] },
+      ],
+    }
+    render(<IncomePanel page={page} />)
+    const [, garcia] = screen.getAllByTestId('income-household')
+    const table = within(garcia!).getByRole('table')
+    expect(table.className).not.toMatch(/table-fixed/)
+    expect(within(garcia!).getByText('· on hold')).toBeInTheDocument()
+    expect(garcia!.querySelectorAll('tr[data-band-gap]')).toHaveLength(2)
   })
 })
 

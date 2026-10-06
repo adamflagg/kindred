@@ -793,7 +793,7 @@ describe('Correct… opens in the answers column (owner bug B30)', () => {
     // Not in the answer's own row, whose cells size the answers column: there its width pushed the
     // column wide (it once squashed What priced it off the page). Its own row spans the table instead...
     expect(answerRow.contains(form)).toBe(false)
-    expect(form.closest('td')!.colSpan).toBe(4)
+    expect(form.closest('td')!.colSpan).toBe(5)
     // ...inside a box that adds nothing to the column's width (width 0, at least the cell's), so
     // the form wraps to the answers' width. jsdom has no layout: this class pair is the handle.
     expect(form.closest('.w-0.min-w-full')).not.toBeNull()

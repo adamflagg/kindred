@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 
 import type {
   ApiAidAnswer,
@@ -84,10 +84,12 @@ export type CorrectRender = (
 
 // ── Income: the exceptions only (owner pick 10-04, income (e); N8) ───────────
 
-/** A flagged answer (the mock's tr.fl): amber tint, a 3px amber edge on its first cell. */
-const FLAGGED_ROW = 'bg-amber-50 dark:bg-amber-900/20'
-const FLAGGED_EDGE =
-  'shadow-[inset_3px_0_0_var(--color-amber-500)] dark:shadow-[inset_3px_0_0_var(--color-amber-400)]'
+/**
+ * An open disagreement's band (household-v5 option D): its answer row and its why line share one
+ * amber tint with rounded corners, no rule and no edge inside. Chrome clips a row's background to its
+ * cells' radii, so the tint stays on the row.
+ */
+const BAND_ROW = 'bg-amber-50 dark:bg-amber-900/20'
 const WHY_FLAGGED = 'text-amber-800 dark:text-amber-300'
 const WHY_SETTLED = 'text-muted-foreground'
 
@@ -132,9 +134,8 @@ function LastYearLine({ page, income }: { page: ApiAidHouseholdPage; income: Api
   )
 }
 
-/** The muted note under a disagreeing answer's "Using" figure (the mock's .un). */
-const USING_NOTE =
-  'text-muted-foreground block text-[11px] leading-tight font-normal whitespace-normal'
+/** The muted note in its own slot right of "Using" (the mock's td.un): "· on hold", "· 2 of 3 forms". */
+const NOTE_TD = 'pr-2 pl-0 text-muted-foreground text-[11.5px]'
 /**
  * A cell that wraps. Appending `whitespace-normal` to HH_TD does nothing: Tailwind emits
  * `whitespace-nowrap` after it, so HH_TD's nowrap wins and a long why line widened the table past a
@@ -143,6 +144,12 @@ const USING_NOTE =
 const WRAP_TD = HH_TD.replace('whitespace-nowrap', 'whitespace-normal')
 /** A form's header (the mock's th.fc): it may wrap ("Olivia's / form"), so a household's half fits. */
 const FORM_TH = `${HH_TH_NUM.replace('whitespace-nowrap', 'whitespace-normal')} leading-tight align-bottom`
+/**
+ * The income table: separate borders, because a band's rounded corners only draw on separated cells.
+ * One household (`fixed`) gets the mock's fixed grid, so no cell's content can move a column.
+ */
+const answersTable = (fixed: boolean) =>
+  `${HH_TABLE.replace('border-collapse', 'border-separate')} border-spacing-0 w-full ${fixed ? 'table-fixed' : ''}`
 
 /** One form's figure in its column, struck in red once a correction used another (the weekend diff's DEL). */
 function FormFigureCell({ figure, className }: { figure: FormFigure; className: string }) {
@@ -154,10 +161,11 @@ function FormFigureCell({ figure, className }: { figure: FormFigure; className: 
 }
 
 /**
- * One answer's row (household-v4 section 3): its name, each form's figure (one "Family's answer"
- * with one form), the figure used, and its pills and casework button. An answer the forms still
- * disagree on is tinted amber with its why tight under it, in the next row; a settled one strikes
- * the unused figures in their columns. Correct… opens in a row of its own (B30).
+ * One answer's row (household-v5 option D): its name, each form's figure (one "Family's answer" with
+ * one form), the figure used, its muted note, then its casework link and pills. An answer the forms
+ * still disagree on sits on a rounded amber band with its why tight under it; a settled one strikes
+ * the unused figures in their columns. Correct… opens in a row of its own (B30). `ruleBelow`: the
+ * grey rule under the answer, dropped inside a band and above one, where the band's gap gives the air.
  */
 function AnswerRows({
   page,
@@ -166,7 +174,7 @@ function AnswerRows({
   conflict,
   columns,
   correct,
-  fixed,
+  ruleBelow,
 }: {
   page: ApiAidHouseholdPage
   income: ApiAidIncome
@@ -175,70 +183,73 @@ function AnswerRows({
   /** The household's forms, two or more; null for the one-form table. */
   columns: readonly FormColumn[] | null
   correct: CorrectRender | undefined
-  fixed: boolean
+  ruleBelow: boolean
 }) {
   const [correcting, setCorrecting] = useState(false)
-  const open = answerState(answer, conflict) === 'open'
+  const band = answerState(answer, conflict) === 'open'
   const why = whyWords(page, income, answer, conflict)
   const note = usingNote(page, answer, conflict)
-  const span = (columns?.length ?? 1) + 3
-  // A note under Using makes the row two lines: every cell then sits at the top, so the figures line up.
-  const top = (classes: string) =>
-    note === null ? classes : classes.replace('align-middle', 'align-top')
-  const cell = top(why === null ? HH_TD : `${HH_TD} border-b-0`)
-  const num = top(why === null ? HH_TD_NUM : `${HH_TD_NUM} border-b-0`)
-  const width = fixed ? 'w-[104px]' : 'xl:w-[104px]'
-  const edge = open ? FLAGGED_EDGE : ''
+  const span = (columns?.length ?? 1) + 4
+  const unruled = (classes: string) => `${classes} border-b-0`
+  const lastRule = (classes: string) => (ruleBelow ? classes : unruled(classes))
+  const cell = why === null ? lastRule(HH_TD) : unruled(HH_TD)
+  const num = why === null ? lastRule(HH_TD_NUM) : unruled(HH_TD_NUM)
   return (
     <>
-      <tr className={open ? FLAGGED_ROW : ''}>
-        <td className={`${cell} ${edge} ${fixed ? 'w-[210px]' : 'xl:w-[210px]'}`}>
-          {answerWords(answer.field)}
-        </td>
+      <tr className={band ? BAND_ROW : ''}>
+        <td className={`${cell} ${band ? 'rounded-tl-lg' : ''}`}>{answerWords(answer.field)}</td>
         {columns === null ? (
-          <td className={`${num} ${width}`}>{answerValue(answer.field, answer.synced)}</td>
+          <td className={num}>{answerValue(answer.field, answer.synced)}</td>
         ) : conflict === undefined ? (
           // Owner ruling 10-05 (the final design): per-form figures are only for the answers the
           // forms disagree on. An answer no flag disputes shows once across the form columns, never
           // repeated under each form: the household's answer is not each form's (Yes if any form
-          // says Yes; blanks skipped).
-          <td colSpan={columns.length} className={num.replace('text-right', 'text-center')}>
-            {answerValue(answer.field, answer.synced)}
+          // says Yes; blanks skipped). It right-aligns to the last form's edge with a faint dotted
+          // leader from the first, so it reads as every form's figure, not the last form's.
+          <td colSpan={columns.length} className={num}>
+            <span className="flex items-baseline">
+              <span
+                data-leader
+                className="border-muted-foreground/45 mr-2 ml-1 flex-1 -translate-y-[3px] border-b border-dotted"
+              />
+              <span>{answerValue(answer.field, answer.synced)}</span>
+            </span>
           </td>
         ) : (
           columns.map((column) => (
             <FormFigureCell
               key={column.personCmId}
               figure={formFigure(answer, conflict, column.personCmId)}
-              className={`${num} ${width}`}
+              className={num}
             />
           ))
         )}
-        <td className={`${num} ${width} ${answer.corrected ? 'font-bold' : ''}`}>
-          {note === null ? (
-            answerValue(answer.field, answer.effective)
-          ) : (
-            <>
-              <span className="block">{answerValue(answer.field, answer.effective)}</span>
-              <span className={USING_NOTE}>{note}</span>
-            </>
-          )}
+        <td className={`${num} ${answer.corrected ? 'font-bold' : ''}`}>
+          {answerValue(answer.field, answer.effective)}
         </td>
-        <td className={cell.replace('whitespace-nowrap', 'whitespace-normal')}>
-          <div className="flex flex-wrap items-center gap-2">
+        <td className={`${cell.replace('px-2', '')} ${NOTE_TD}`}>
+          {note === null ? '' : `· ${note}`}
+        </td>
+        <td className={`${cell} ${band ? 'rounded-tr-lg' : ''}`}>
+          {/* The link first, in a fixed slot, so every link starts at the same x; pills after it. */}
+          <div className="flex items-center gap-2">
+            {!correcting && correct !== undefined && (
+              <span className="inline-block min-w-[136px]">
+                {correct(income, answer, { open: false, setOpen: setCorrecting })}
+              </span>
+            )}
             {answer.corrected && <StatusPill tone="amber">corrected</StatusPill>}
             {answer.changed_since_correction && (
               <span className={AMBER_NOTE}>the form changed since</span>
             )}
-            {!correcting && correct?.(income, answer, { open: false, setOpen: setCorrecting })}
           </div>
         </td>
       </tr>
       {why !== null && (
-        <tr className={open ? FLAGGED_ROW : ''}>
+        <tr className={band ? BAND_ROW : ''}>
           <td
             colSpan={span}
-            className={`${WRAP_TD} ${edge} pt-0 text-[12.5px] ${open ? WHY_FLAGGED : WHY_SETTLED}`}
+            className={`${band ? `${unruled(WRAP_TD)} rounded-b-lg ${WHY_FLAGGED}` : `${lastRule(WRAP_TD)} ${WHY_SETTLED}`} pt-0 text-[12.5px]`}
           >
             {why}
           </td>
@@ -249,7 +260,7 @@ function AnswerRows({
         // table, which runs the tab's full width (round 3 (E)), and the box adds no width of its own
         // (0 wide, at least the cell's), so the form wraps to the answers' width.
         <tr>
-          <td colSpan={span} className={WRAP_TD}>
+          <td colSpan={span} className={lastRule(WRAP_TD)}>
             <div className="w-0 min-w-full">
               {correct(income, answer, { open: true, setOpen: setCorrecting })}
             </div>
@@ -257,6 +268,33 @@ function AnswerRows({
         </tr>
       )}
     </>
+  )
+}
+
+/** The small gap before, between and after the bands (the mock's tr.sp): one between two bands. */
+function BandGap({ span }: { span: number }) {
+  return (
+    <tr data-band-gap>
+      <td colSpan={span} className="h-1 p-0" />
+    </tr>
+  )
+}
+
+/**
+ * The mock's fixed grid (household-v5): Answer 190 · each form 112 · Using 104 · note 124 · actions
+ * the rest. A household's half leaves its columns to fit the half.
+ */
+function AnswerColumns({ forms }: { forms: number }) {
+  return (
+    <colgroup>
+      <col className="w-[190px]" />
+      {Array.from({ length: forms }, (_, i) => (
+        <col key={i} className="w-[112px]" />
+      ))}
+      <col className="w-[104px]" />
+      <col className="w-[124px]" />
+      <col />
+    </colgroup>
   )
 }
 
@@ -272,7 +310,7 @@ function Exceptions({
   income: ApiAidIncome
   correct: CorrectRender | undefined
   formStrip: FormStripRender | undefined
-  /** The mock's sized columns (210 / 104 / 104): always for one household; halves only from xl, fitting below. */
+  /** The mock's fixed column grid: one household; a household's half leaves its columns to fit. */
   fixed: boolean
 }) {
   const [all, setAll] = useState(false)
@@ -282,6 +320,11 @@ function Exceptions({
   const others = otherFlags(income)
   const forms = formColumns(page, income)
   const columns = forms.length > 1 ? forms : null
+  const span = (columns?.length ?? 1) + 4
+  const rows = shown.map((answer) => {
+    const conflict = conflicts.find((c) => c.field === answer.field)
+    return { answer, conflict, band: answerState(answer, conflict) === 'open' }
+  })
   return (
     <div className="min-w-0">
       {formStrip?.(income)}
@@ -291,7 +334,8 @@ function Exceptions({
           {others.length > 0 ? 'No corrections.' : 'No corrections and no flags.'}
         </p>
       ) : (
-        <table className={`${HH_TABLE} w-full`}>
+        <table className={answersTable(fixed)}>
+          {fixed && <AnswerColumns forms={columns?.length ?? 1} />}
           <thead>
             <tr>
               <th className={HH_TH}>Answer</th>
@@ -306,21 +350,28 @@ function Exceptions({
               )}
               <th className={HH_TH_NUM}>Using</th>
               <th className={HH_TH} />
+              <th className={HH_TH} />
             </tr>
           </thead>
           <tbody>
-            {shown.map((answer) => (
-              <AnswerRows
-                key={answer.field}
-                page={page}
-                income={income}
-                answer={answer}
-                conflict={conflicts.find((c) => c.field === answer.field)}
-                columns={columns}
-                correct={correct}
-                fixed={fixed}
-              />
-            ))}
+            {rows.map(({ answer, conflict, band }, i) => {
+              const gapBefore = band && rows[i - 1]?.band !== true
+              return (
+                <Fragment key={answer.field}>
+                  {gapBefore && <BandGap span={span} />}
+                  <AnswerRows
+                    page={page}
+                    income={income}
+                    answer={answer}
+                    conflict={conflict}
+                    columns={columns}
+                    correct={correct}
+                    ruleBelow={!band && rows[i + 1]?.band !== true}
+                  />
+                  {band && <BandGap span={span} />}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       )}
