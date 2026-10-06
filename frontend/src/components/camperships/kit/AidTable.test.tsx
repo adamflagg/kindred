@@ -186,6 +186,15 @@ describe('AidTable search', () => {
     renderTable()
     expect(screen.getByLabelText('Search')).toHaveAttribute('placeholder', 'Search names or CM IDs')
   })
+
+  it("is the Grants mock's compact search: card background, 3px/12.5px (26.75px tall)", () => {
+    renderTable()
+    const input = screen.getByLabelText('Search')
+    for (const cls of ['bg-card', 'py-[3px]', 'text-[12.5px]', 'leading-[18.75px]']) {
+      expect(input).toHaveClass(cls)
+    }
+    for (const cls of ['bg-muted/40', 'py-2', 'text-sm']) expect(input).not.toHaveClass(cls)
+  })
 })
 
 describe('AidTable', () => {

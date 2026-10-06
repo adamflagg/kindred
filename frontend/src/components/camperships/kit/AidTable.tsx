@@ -12,12 +12,7 @@ import {
 } from 'react'
 
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
-import {
-  GROUP,
-  GROUP_BUTTON_OFF,
-  GROUP_BUTTON_ON,
-  SEARCH_INPUT,
-} from '../../admin/audit/auditStyles'
+import { GROUP, GROUP_BUTTON_OFF, GROUP_BUTTON_ON } from '../../admin/audit/auditStyles'
 import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
 import { Tooltip } from '../../ui/Tooltip'
@@ -57,6 +52,13 @@ import {
   type RowGroup,
 } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
+
+/**
+ * The grid's search box, trued up to the Grants mock's `.search` (owner, 10-06): card background
+ * and a compact 3px / 12.5px box (26.75px tall) instead of the audit pages' muted, 38px field.
+ */
+const AID_SEARCH_INPUT =
+  'bg-card border-border focus:ring-primary/20 w-full rounded-lg border py-[3px] pr-3 pl-9 text-[12.5px] leading-[18.75px] focus:ring-2 focus:outline-none'
 
 export interface CellContext {
   readonly highlighted: boolean
@@ -680,7 +682,7 @@ export function AidTable<Row>({
             placeholder={searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className={SEARCH_INPUT}
+            className={AID_SEARCH_INPUT}
           />
         </div>
         {toolbarAfterGrouping === undefined && groupingSwitch}
