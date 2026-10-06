@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { ConfirmationOut } from '../../../types/api-generated'
 import { householdChipClass, ID_CHIP, PILL, PILL_WRAP, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
+import { CM_PENDING_WORD } from '../requests/views'
 import { formatGap, formatMoney } from './money'
 
 export function StatusPill({
@@ -25,9 +26,10 @@ export function StatusPill({
 }
 
 /**
- * The confirmation state beside every Posted figure (D59; posted-words.html E): awaiting tonight's
- * sync · ✓ confirmed (date) · CampMinder shows $X · short/over $Y · not in CampMinder · reversed
- * (date). CampMinder's own figure appears only when it disagrees. The gap is exact to the cent (D74).
+ * The confirmation state beside every Posted figure (D59; posted-words.html E): pending · ✓ confirmed
+ * (date) · CampMinder shows $X · short/over $Y · Missing in CM · reversed (date). CampMinder's own
+ * figure appears only when it disagrees. The gap is exact to the cent (D74). "pending" and "Missing in
+ * CM" are the grid's own words (owner V1: one vocabulary); pending is the CM ✓ chip's constant.
  */
 export function ConfirmationState({ confirmation }: { confirmation: ConfirmationOut }) {
   const on = confirmation.on ? ` ${formatShortDate(confirmation.on)}` : ''
@@ -35,7 +37,7 @@ export function ConfirmationState({ confirmation }: { confirmation: Confirmation
     case 'awaiting_sync':
       return (
         <StatusPill wrap tone="muted">
-          awaiting tonight&apos;s sync
+          {CM_PENDING_WORD}
         </StatusPill>
       )
     case 'confirmed':
@@ -59,7 +61,7 @@ export function ConfirmationState({ confirmation }: { confirmation: Confirmation
     case 'not_in_campminder':
       return (
         <StatusPill wrap tone="amber">
-          not in CampMinder
+          Missing in CM
         </StatusPill>
       )
     case 'reversed':

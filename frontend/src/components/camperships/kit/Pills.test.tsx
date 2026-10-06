@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
+import { CM_PENDING_WORD } from '../requests/views'
 import { STATUS_TONE } from './kitStyles'
 import { ConfirmationState, HouseholdChip, IdChip, OverPill, StatusPill } from './Pills'
 
@@ -46,9 +47,12 @@ describe('StatusPill (§4.5; D19, D59)', () => {
 })
 
 describe('ConfirmationState (D59; mockups/posted-words.html E)', () => {
-  it("reads awaiting tonight's sync, quietly", () => {
+  // Owner V1 (10-03): one vocabulary with the grid's CM ✓ chip, so a tick awaiting the sync reads "pending".
+  it("reads pending, quietly, in the CM ✓ chip's own word", () => {
     render(<ConfirmationState confirmation={confirmation({ status: 'awaiting_sync', on: null })} />)
-    expect(screen.getByText("awaiting tonight's sync")).toHaveClass('bg-muted')
+    expect(CM_PENDING_WORD).toBe('pending')
+    expect(screen.getByText(CM_PENDING_WORD)).toHaveClass('bg-muted')
+    expect(screen.queryByText(/tonight/)).toBeNull()
   })
 
   it('reads ✓ confirmed with its date, in emerald', () => {
@@ -71,7 +75,7 @@ describe('ConfirmationState (D59; mockups/posted-words.html E)', () => {
     expect(screen.getByText('short $0.28')).toHaveClass('bg-amber-100')
   })
 
-  it('reads over, and not in CampMinder, in amber', () => {
+  it('reads over, and Missing in CM (owner V1), in amber', () => {
     const { unmount } = render(
       <ConfirmationState
         confirmation={confirmation({ status: 'over', locked: 1200, in_campminder: 1500, gap: 300 })}
@@ -84,7 +88,8 @@ describe('ConfirmationState (D59; mockups/posted-words.html E)', () => {
         confirmation={confirmation({ status: 'not_in_campminder', in_campminder: 0 })}
       />
     )
-    expect(screen.getByText('not in CampMinder')).toHaveClass('bg-amber-100')
+    expect(screen.getByText('Missing in CM')).toHaveClass('bg-amber-100')
+    expect(screen.queryByText(/not in CampMinder/)).toBeNull()
   })
 
   it('reads reversed with its date, in stone', () => {
