@@ -121,7 +121,7 @@ export function ApproveForm({
                   open()
                 }}
               >
-                Try again
+                Try Again
               </button>
               <button type="button" className={BUTTON_SECONDARY} onClick={() => onDone(null)}>
                 Cancel
@@ -287,14 +287,14 @@ export function ApproveForm({
           <p className="text-xs">
             {`The rules draft is v${String(recheck.version)} now. `}
             {recheck.moved.length === 0 && recheck.errored.length === 0
-              ? 'The sections you ticked read as they did.'
+              ? 'The sections you checked read as they did.'
               : ''}
             {recheck.moved.length > 0 &&
-              `Changed since you looked, so unticked: ${recheck.moved.map((s) => SECTION_TITLES[s]).join(', ')}. Look at them again before approving.`}
+              `Changed since you looked, so unchecked: ${recheck.moved.map((s) => SECTION_TITLES[s]).join(', ')}. Look at them again before approving.`}
           </p>
           {recheck.errored.map((section) => (
             <p key={section} className="text-xs">
-              {`${SECTION_TITLES[section]} now has errors and was unticked.`}
+              {`${SECTION_TITLES[section]} now has errors and was unchecked.`}
             </p>
           ))}
         </div>
@@ -309,7 +309,7 @@ export function ApproveForm({
         >
           {working
             ? 'Approving…'
-            : `Approve ${String(ticked.size)} ${ticked.size === 1 ? 'section' : 'sections'}`}
+            : `Approve ${String(ticked.size)} ${ticked.size === 1 ? 'Section' : 'Sections'}`}
         </button>
         <button
           type="button"

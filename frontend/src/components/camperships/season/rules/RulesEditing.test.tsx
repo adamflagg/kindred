@@ -229,7 +229,7 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     expect(calls).toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Put my edit on v5' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put My Edit on v5' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0]).toMatchObject({
@@ -266,9 +266,9 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
     ).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Minimum award' })).toHaveValue('150')
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
-    await userEvent.click(within(conflict).getByRole('button', { name: 'Try again' }))
+    await userEvent.click(within(conflict).getByRole('button', { name: 'Try Again' }))
     expect(await within(conflict).findByText('Minimum award: $100 → $120')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Put my edit on v5' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Put My Edit on v5' })).toBeInTheDocument()
   })
 
   it('says you both changed a list when your edit is inside a list someone else changed', async () => {
@@ -310,7 +310,7 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
       await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
     ).toBeChecked()
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
   }
 
   it('approves the ticked draft sections with the note naming the body', async () => {
@@ -320,9 +320,9 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     expect(
       await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
     ).toBeChecked()
-    expect(within(form).getByRole('button', { name: 'Approve 1 section' })).toBeDisabled()
+    expect(within(form).getByRole('button', { name: 'Approve 1 Section' })).toBeDisabled()
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0]).toEqual({
       hook: 'approve',
@@ -355,7 +355,7 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     const box = await screen.findByRole('checkbox', { name: /Award tables \(Round 1 %\)/ })
     expect(box).not.toBeChecked()
     expect(box).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Approve 0 sections' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve 0 Sections' })).toBeDisabled()
   })
 
   it('says what follows when the approval now prices the season', async () => {
@@ -416,11 +416,11 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     server = [rulesDraft(), movedTableDraft()]
     await fillApproval()
     expect(await screen.findByTestId('approve-conflict')).toHaveTextContent(
-      'Changed since you looked, so unticked: Award tables (Round 1 %).'
+      'Changed since you looked, so unchecked: Award tables (Round 1 %).'
     )
     expect(calls).toHaveLength(0)
     expect(screen.getByRole('checkbox', { name: 'Award tables (Round 1 %)' })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Approve 0 sections' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve 0 Sections' })).toBeDisabled()
   })
 
   it("on the server's 409 reads the draft again, and unticks what moved, so nothing is approved unseen", async () => {
@@ -431,10 +431,19 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     expect(conflict).toHaveTextContent(CONFLICT)
     expect(conflict).toHaveTextContent('The rules draft is v5 now.')
     expect(conflict).toHaveTextContent(
-      'Changed since you looked, so unticked: Award tables (Round 1 %).'
+      'Changed since you looked, so unchecked: Award tables (Round 1 %).'
     )
     expect(calls).toHaveLength(1)
     expect(screen.getByRole('checkbox', { name: 'Award tables (Round 1 %)' })).not.toBeChecked()
+  })
+
+  it("on the server's 409 with nothing it checked moved, says so in staff words", async () => {
+    outcome = { kind: 'refused', status: 409, message: CONFLICT }
+    server = [rulesDraft(), rulesDraft(), { ...rulesDraft(), version: 5 }]
+    await fillApproval()
+    const conflict = await screen.findByTestId('approve-conflict')
+    expect(conflict).toHaveTextContent('The sections you checked read as they did.')
+    expect(conflict).not.toHaveTextContent(/tick/i)
   })
 
   it("keeps the form when the check before sending can't read the draft", async () => {
@@ -446,7 +455,7 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
       )
     ).toBeInTheDocument()
     expect(calls).toHaveLength(0)
-    await userEvent.click(screen.getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Approve 1 Section' }))
     await waitFor(() => expect(calls).toHaveLength(1))
   })
 })
@@ -478,7 +487,7 @@ describe('starting a season (§7.5)', () => {
     }
     renderAt('/aid/season/rules')
     expect(screen.getByText('No rules for 2027 yet.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's Rules" }))
     expect(calls[0]?.hook).toBe('start')
     expect(screen.getByTestId('rules-notice')).toHaveTextContent(
       /every section is a draft until approved/
@@ -490,7 +499,7 @@ describe('starting a season (§7.5)', () => {
     draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
     outcome = { kind: 'refused', status: 409, message: 'The season already has rules' }
     renderAt('/aid/season/rules')
-    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's Rules" }))
     expect(await screen.findByText('The season already has rules')).toBeInTheDocument()
   })
 })
@@ -522,7 +531,7 @@ describe('the approval form is busy until it is done (review I1)', () => {
     const form = screen.getByTestId('approve-form')
     await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
     return rendered
   }
 
@@ -597,11 +606,11 @@ describe('the approval form keeps its own ticks (review I2, m3)', () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and reserves' }))
-    expect(screen.getByRole('button', { name: 'Approve 2 sections' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
     const other = document.querySelector('[data-rules-section="income"]')
     if (other === null) throw new Error('no income row')
     await userEvent.click(other)
-    expect(screen.getByRole('button', { name: 'Approve 2 sections' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
   })
 
   it('unticks a ticked section that gained errors since it was seen, and says so', async () => {
@@ -623,13 +632,13 @@ describe('the approval form keeps its own ticks (review I2, m3)', () => {
       await within(form).findByRole('checkbox', { name: /Budget and reserves/ })
     )
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 2 sections' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 2 Sections' }))
     expect(await screen.findByTestId('approve-conflict')).toHaveTextContent(
-      'Budget and reserves now has errors and was unticked.'
+      'Budget and reserves now has errors and was unchecked.'
     )
     expect(calls).toHaveLength(0)
     expect(screen.getByRole('checkbox', { name: /Budget and reserves/ })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Approve 1 section' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve 1 Section' })).toBeInTheDocument()
   })
 
   it('limits the note to what the server takes', async () => {
@@ -658,7 +667,7 @@ describe('the approval notice follows what moved (S8-⚠1 interim, review ⚠1)'
     const form = screen.getByTestId('approve-form')
     await within(form).findByRole('checkbox', { name: 'Stages' })
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
     const notice = await screen.findByTestId('rules-notice')
     expect(notice).toHaveTextContent(
       'Approved. The sections that price the season were already approved: nothing is re-priced.'
@@ -693,7 +702,7 @@ describe('the other ways out of busy (round 2, m2)', () => {
     const form = screen.getByTestId('approve-form')
     await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
   }
 
   it("shows a refusal that isn't a 409 in the server's words, and the form is live again", async () => {
@@ -701,7 +710,7 @@ describe('the other ways out of busy (round 2, m2)', () => {
     await approveOnce()
     expect(await screen.findByText('A section has errors')).toBeInTheDocument()
     expect(calls).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Approve 1 section' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Approve 1 Section' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
   })
 
@@ -711,7 +720,7 @@ describe('the other ways out of busy (round 2, m2)', () => {
     await approveOnce()
     expect(await screen.findByText(/couldn't be read again: offline/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Approve 1 section' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Approve 1 Section' })).toBeEnabled()
   })
 
   it('lets go when the approval body cannot be built (a section without a fingerprint)', async () => {
@@ -745,7 +754,7 @@ describe('the notice reads the pre-send draft, not the opening one (round 2, m3)
     const form = screen.getByTestId('approve-form')
     await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
-    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
     expect(await screen.findByTestId('rules-notice')).toHaveTextContent(
       'Approved. The sections that price the season were already approved: nothing is re-priced.'
     )
@@ -781,7 +790,7 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
     expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
     expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
     // Starting the season brings the draft back: the editor must not open unasked.
-    await userEvent.click(screen.getByRole('button', { name: "Start 2028 from 2027's rules" }))
+    await userEvent.click(screen.getByRole('button', { name: "Start 2028 from 2027's Rules" }))
     draft = { data: rulesDraft(), isLoading: false, error: null }
     view.rerender(tree())
     expect(await screen.findByRole('button', { name: 'Edit…' })).toBeInTheDocument()
@@ -823,7 +832,7 @@ describe('round 3: what belongs to a season stays with it', () => {
     draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
     outcome = { kind: 'refused', status: 409, message: 'The season already has rules' }
     const view = renderAt('/aid/season/rules')
-    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's Rules" }))
     expect(await screen.findByText('The season already has rules')).toBeInTheDocument()
     year = 2028
     view.rerender(treeAt('/aid/season/rules'))

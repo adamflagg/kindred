@@ -377,7 +377,7 @@ function NoRulesYet({
             })
           }}
         >
-          {start.isPending ? 'Starting…' : `Start ${String(year)} from ${String(year - 1)}'s rules`}
+          {start.isPending ? 'Starting…' : `Start ${String(year)} from ${String(year - 1)}'s Rules`}
         </button>
       )}
       {error !== null && <p className={AMBER_NOTE}>{error}</p>}

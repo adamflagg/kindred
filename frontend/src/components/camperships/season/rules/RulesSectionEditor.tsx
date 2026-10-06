@@ -39,7 +39,7 @@ const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message 
  *   sent: the typing stays, the editor says what changed, and offers to put the typing on the new draft.
  * - The save carries the section's fingerprint, so a save made in the instant between that read and
  *   the write is refused (409) too. A 409 reads the draft again the same way.
- * - If that read fails, it says so with "Try again"; the typing is kept and Cancel still leaves.
+ * - If that read fails, it says so with "Try Again"; the typing is kept and Cancel still leaves.
  * It never re-sends on its own.
  */
 export function RulesSectionEditor({
@@ -70,7 +70,7 @@ export function RulesSectionEditor({
   }, [fetchFresh, section])
   useEffect(open, [open])
 
-  /** Read the draft again after a refusal; a failed read keeps the refusal open with "Try again". */
+  /** Read the draft again after a refusal; a failed read keeps the refusal open with "Try Again". */
   const reload = useCallback(
     (server: string | null) => {
       setRefusal({ kind: 'loading', server })
@@ -97,7 +97,7 @@ export function RulesSectionEditor({
               open()
             }}
           >
-            Try again
+            Try Again
           </button>
           <button type="button" className={BUTTON_SECONDARY} onClick={() => onDone(null)}>
             Cancel
@@ -187,7 +187,7 @@ export function RulesSectionEditor({
                 className={BUTTON_SECONDARY}
                 onClick={() => reload(refusal.server)}
               >
-                Try again
+                Try Again
               </button>
             </div>
           )}
@@ -227,7 +227,7 @@ export function RulesSectionEditor({
   )
 }
 
-/** What someone else changed in this section, what both changed, and "Put my edit on vN". */
+/** What someone else changed in this section, what both changed, and "Put My Edit on vN". */
 function Moved({
   fresh,
   section,
@@ -266,7 +266,7 @@ function Moved({
         </p>
       )}
       <button type="button" className={BUTTON_SECONDARY} onClick={onRebase}>
-        {`Put my edit on v${String(fresh.version)}`}
+        {`Put My Edit on v${String(fresh.version)}`}
       </button>
     </>
   )
