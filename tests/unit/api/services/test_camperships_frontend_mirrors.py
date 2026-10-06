@@ -15,6 +15,7 @@ from api.services.financial_aid_decisions_service import (
     _LIVE,  # the write's own live set; #2950 dropped its public alias
 )
 from api.services.financial_aid_queues import ROUND_STATUS_LABELS
+from bunking.financial_aid.decisions.holds import UNRELEASABLE
 
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "camperships_frontend_mirrors.json"
 MIRRORS: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -28,3 +29,8 @@ def test_the_live_request_statuses_are_the_writes_own() -> None:
     """A request not in a live status takes no ask; the household page reads the same live set. The appeal's
     refusal itself is no longer mirrored: the grid row carries the write's own sentence (`appeal_refusal`, #2997)."""
     assert sorted(MIRRORS["live_request_statuses"]) == sorted(_LIVE)
+
+
+def test_the_unreleasable_holds_are_the_servers() -> None:
+    """The household page offers no Release for a hold the server won't release."""
+    assert sorted(MIRRORS["unreleasable"]) == sorted(UNRELEASABLE)

@@ -17,14 +17,19 @@ export function HoldBanners({
   actions?: ((request: ApiAidHouseholdRequest, code: string) => ReactNode) | undefined
 }) {
   const holds = page.requests.flatMap((request) =>
-    request.row.holds.map((hold) => ({ request, hold }))
+    request.row.holds.map((hold, at) => ({
+      request,
+      hold,
+      // Stable across a refetch that reorders holds: the code, and which of that code's holds it is.
+      nth: request.row.holds.slice(0, at).filter((earlier) => earlier.code === hold.code).length,
+    }))
   )
   if (holds.length === 0) return null
   return (
     <div className="space-y-2">
-      {holds.map(({ request, hold }, index) => (
+      {holds.map(({ request, hold, nth }) => (
         <div
-          key={`${request.row.request_id}:${hold.code}:${String(index)}`}
+          key={`${request.row.request_id}:${hold.code}:${String(nth)}`}
           className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900/50 dark:bg-red-900/20"
         >
           <div className="flex flex-wrap items-center gap-2">

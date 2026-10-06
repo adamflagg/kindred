@@ -3,8 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { householdPage } from '../../components/camperships/household/householdFixtures'
-import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
+import {
+  householdPage,
+  householdRequest,
+} from '../../components/camperships/household/householdFixtures'
+import { gridRow, GRID_ROWS, ROW_OLIVIA } from '../../components/camperships/requests/gridFixtures'
 import { AidApiError } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
 import AidHouseholdPage from './AidHouseholdPage'
@@ -53,8 +56,26 @@ vi.mock('../../hooks/camperships/useAidDefinitions', () => ({
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
 }))
+// The permissions held: view only by default, so the cards stay plain.
+let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.view' }),
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
+}))
+const keyAskMutate = vi.fn()
+const idle = { isPending: false, error: null, mutate: vi.fn(), mutateAsync: vi.fn() }
+vi.mock('../../hooks/camperships/useAidWrites', () => ({
+  useAidCancellation: () => idle,
+  useAidManualHold: () => idle,
+  useAidHoldRelease: () => idle,
+  useAidTickPosted: () => idle,
+  useAidTickAccepted: () => idle,
+  useAidUndoPosted: () => idle,
+  useAidRound3Decision: () => idle,
+  useAidKeyAsk: () => ({ ...idle, mutate: keyAskMutate }),
+  useAidRound3Amount: () => idle,
+}))
+vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
+  useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
@@ -83,6 +104,7 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  granted = ['financial_aid.view']
   result = { data: householdPage(), isLoading: false, error: null }
   asked.length = 0
   prefetched.length = 0
@@ -100,6 +122,41 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.getByText('$9,300')).toBeInTheDocument()
     expect(screen.getByText('posted · 1 short $210')).toBeInTheDocument()
     expect(asked).toContain(1000001)
+  })
+
+  it('keeps the cards plain, and the holds without actions, for view only', () => {
+    result = {
+      data: householdPage({
+        requests: [
+          householdRequest(
+            gridRow({ holds: [{ code: 'manual_hold', severity: 'hold', message: 'm' }] })
+          ),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    expect(screen.queryByRole('button', { name: 'Cancel Request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Lift…' })).toBeNull()
+  })
+
+  it('gives casework the working cards and the hold actions (§6.3)', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    result = {
+      data: householdPage({
+        requests: [
+          householdRequest(
+            gridRow({ holds: [{ code: 'manual_hold', severity: 'hold', message: 'm' }] })
+          ),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    expect(screen.getByRole('button', { name: 'Cancel Request…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
   })
 
   it("shows each request's card", () => {
@@ -442,5 +499,81 @@ describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
     renderWithHash('')
     renderWithHash('#request-nosuchrequest')
     expect(scrolled).toEqual([])
+  })
+})
+
+describe('the walk stands aside for an open editor (F2 4)', () => {
+  const OLIVIA = '/aid/households/1000005?from=all'
+  beforeEach(() => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    result = {
+      data: householdPage({
+        household_cm_id: 1000005,
+        requests: [householdRequest(ROW_OLIVIA)],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    keyAskMutate.mockReset()
+    keyAskMutate.mockImplementation((_vars: unknown, options?: { onSuccess?: () => void }) => {
+      options?.onSuccess?.()
+    })
+  })
+  const typeAppeal = async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300')
+  }
+
+  const saved = () =>
+    expect(keyAskMutate).toHaveBeenCalledWith(
+      { requestId: 'reqolivia000003', body: expect.objectContaining({ round: 2, amount: 1300 }) },
+      expect.anything()
+    )
+
+  it('saves first and then steps on ]', async () => {
+    renderAt(OLIVIA)
+    await typeAppeal()
+    await userEvent.click(screen.getByRole('heading', { level: 1 }))
+    await userEvent.keyboard(']')
+    saved()
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000007')
+  })
+
+  it('saves first and then goes on a click of ›, ‹ or Back', async () => {
+    for (const [name, where] of [
+      [/The Sam Family.* ›/, '/aid/households/1000007'],
+      [/‹ The Garcia Family/, '/aid/households/1000003'],
+      ['← Back to All', '/aid/requests?row='],
+    ] as const) {
+      keyAskMutate.mockClear()
+      const { unmount } = renderAt(OLIVIA)
+      await typeAppeal()
+      await userEvent.click(screen.getByRole('link', { name }))
+      saved()
+      expect(screen.getByTestId('where')).toHaveTextContent(where)
+      unmount()
+    }
+  })
+
+  it('steps at once with nothing typed', async () => {
+    renderAt(OLIVIA)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
+    await userEvent.click(screen.getByRole('heading', { level: 1 }))
+    await userEvent.keyboard(']')
+    expect(keyAskMutate).not.toHaveBeenCalled()
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000007')
+  })
+
+  it('stays, and shows what is missing, when the edit cannot be saved', async () => {
+    renderAt(OLIVIA)
+    await userEvent.click(screen.getByRole('button', { name: 'Round 3 Ask…' }))
+    await userEvent.keyboard('450')
+    await userEvent.click(screen.getByRole('heading', { level: 1 }))
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+    expect(screen.getByText('Statement of need is required')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: '← Back to All' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
   })
 })

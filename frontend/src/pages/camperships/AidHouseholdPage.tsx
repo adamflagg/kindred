@@ -6,6 +6,7 @@ import { QueryGuard } from '../../components/QueryGuard'
 import { AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
 import { type AidAsOf, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
+import { HoldActions } from '../../components/camperships/household/HoldActions'
 import { HoldBanners } from '../../components/camperships/household/HoldBanners'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
 import { bandSubtitle, bandTitle } from '../../components/camperships/household/householdModel'
@@ -17,27 +18,58 @@ import {
   LinksSection,
 } from '../../components/camperships/household/HouseholdSections'
 import { QueueWalkStrip } from '../../components/camperships/household/QueueWalkStrip'
-import { RequestCard } from '../../components/camperships/household/RequestCard'
+import { WorkingRequestCard } from '../../components/camperships/household/WorkingRequestCard'
+import {
+  useEditorExits,
+  type EditorExits,
+} from '../../components/camperships/household/editorExits'
 import { useQueueWalk } from '../../components/camperships/household/useQueueWalk'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidDefinitions } from '../../hooks/camperships/useAidDefinitions'
 import { useAidHouseholdPage } from '../../hooks/camperships/useAidHouseholdPage'
+import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
+import { Permission } from '../../constants/permissions'
 import { hasStatus } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
 
 /** The household page reads live only (#2924 Known limits; Decision 36). */
 const LIVE: AidAsOf = { kind: 'live' }
 
-function HouseholdBody({ page, view }: { page: ApiAidHouseholdPage; view: AidView }) {
+function HouseholdBody({
+  page,
+  view,
+  canWork,
+  canApprove,
+  exits,
+}: {
+  page: ApiAidHouseholdPage
+  view: AidView
+  canWork: boolean
+  canApprove: boolean
+  exits: EditorExits
+}) {
   return (
     <>
       <HouseholdCards page={page} />
-      <HoldBanners page={page} />
+      <HoldBanners
+        page={page}
+        actions={
+          canWork ? (request, code) => <HoldActions request={request} code={code} /> : undefined
+        }
+      />
       {page.requests.map((request) => (
-        <RequestCard key={request.row.request_id} request={request} page={page} view={view} />
+        <WorkingRequestCard
+          key={request.row.request_id}
+          request={request}
+          page={page}
+          view={view}
+          canWork={canWork}
+          canApprove={canApprove}
+          exits={exits}
+        />
       ))}
       <IncomeSection page={page} />
       <GrantsPostingsSection page={page} />
@@ -81,14 +113,20 @@ export default function AidHouseholdPage() {
   const view = useMemo((): AidView => ({ year, asOf: LIVE }), [year])
   // The links carry the as-of the grid's link did, so Back returns to the same view.
   const linkView = useMemo((): AidView => ({ year, asOf }), [year, asOf])
-  const walk = useQueueWalk(valid ? id : 0, linkView)
+  // The page's one open editor. `exits.beforeLeave(go)` leaves it (saving what is typed) before an
+  // exit the page owns: the queue walk's keys and links go through it. Stable for the page's life.
+  const exits = useEditorExits()
+  const walk = useQueueWalk(valid ? id : 0, linkView, exits.beforeLeave)
+  const { hasPermission } = usePermissions()
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
+  const canApprove = hasPermission(Permission.FINANCIAL_AID_RULES)
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
   useScrollToHash()
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      {walk && <QueueWalkStrip walk={walk} />}
+      {walk && <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />}
       <AidPageBand
         icon={Users}
         title={data ? bandTitle(data) : `Household ${householdCmId ?? ''}`}
@@ -117,7 +155,15 @@ export default function AidHouseholdPage() {
           data={data}
           label="household"
         >
-          {(loaded) => <HouseholdBody page={loaded} view={view} />}
+          {(loaded) => (
+            <HouseholdBody
+              page={loaded}
+              view={view}
+              canWork={canWork}
+              canApprove={canApprove}
+              exits={exits}
+            />
+          )}
         </QueryGuard>
       )}
       <AidDefinitionNotes surface="household" />
