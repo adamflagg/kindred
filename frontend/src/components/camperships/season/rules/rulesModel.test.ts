@@ -126,6 +126,25 @@ describe('how each setting reads (rules/schema.py)', () => {
     expect(formatSetting([], ['offset_programs'])).toBe('none')
   })
 
+  it('reads an override reason as words, never the server code', () => {
+    const path = ['cost', 'override_reasons']
+    expect(formatSetting(['headcount', 'partial_session'], path)).toBe(
+      'number of people, partial session'
+    )
+    expect(
+      formatSetting(
+        ['headcount', 'partial_session', 'discount', 'missing_catalog', 'typed_household_total'],
+        path
+      )
+    ).toBe('number of people, partial session, discount, missing catalog, typed household total')
+    // One list element, as a rules diff line carries it.
+    expect(formatSetting('headcount', [...path, '0'])).toBe('number of people')
+    // An unknown code keeps the plain words fallback.
+    expect(formatSetting('some_new_reason', path)).toBe('some new reason')
+    // Only the override-reasons list is mapped.
+    expect(formatSetting('headcount', ['dependents_mode'])).toBe('headcount')
+  })
+
   it('labels the 0-to-1 fractions and the names that fell back to ugly words', () => {
     for (const key of ['medical_rate', 'education_rate', 'savings_inclusion_rate', 'rate'])
       expect(labelOf([key])).toMatch(/\(0 to 1\)$/)

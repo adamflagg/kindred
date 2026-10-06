@@ -331,6 +331,17 @@ const LIST_PARENTS: ReadonlySet<string> = new Set([
 
 const words = (value: string) => value.replaceAll('_', ' ')
 
+/**
+ * Staff never read the server's `headcount` code (owner ruling V6, "Number of People"); the other
+ * override reasons already read as their own words (rules/schema.py `_default_override_reasons`).
+ */
+const OVERRIDE_REASON_WORDS: Readonly<Record<string, string>> = { headcount: 'number of people' }
+
+/** The list itself, or one of its elements. */
+const isOverrideReason = (path: readonly string[]) =>
+  path.at(-1) === 'override_reasons' ||
+  (/^\d+$/.test(path.at(-1) ?? '') && path.at(-2) === 'override_reasons')
+
 /** A field's name; a numbered key reads as a tier, or a session under tuition. */
 export function labelOf(path: readonly string[]): string {
   const key = path.at(-1) ?? ''
@@ -369,6 +380,9 @@ export function formatSetting(value: unknown, path: readonly string[]): string {
     if (unit === 'money' && value !== '' && Number.isFinite(n)) return formatMoney(n)
     if (unit === 'percent' && value !== '' && Number.isFinite(n)) return `${String(value)}%`
     if (unit === 'date' && typeof value === 'string') return formatLongDate(value)
+    if (typeof value === 'string' && isOverrideReason(path)) {
+      return OVERRIDE_REASON_WORDS[value] ?? words(value)
+    }
     return typeof value === 'string' ? words(value) : String(value)
   }
   return JSON.stringify(value)
