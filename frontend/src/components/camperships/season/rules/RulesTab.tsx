@@ -186,8 +186,9 @@ function approvedNotice({ pricing, warnings }: Approved): string {
       : pricing === 'already'
         ? 'Approved. The sections that price the season were already approved: nothing is re-priced.'
         : 'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.',
-    ...warnings,
-  ].join(' ')
+  ]
+    .concat(warnings.length === 0 ? [] : ['', ...warnings])
+    .join('\n')
 }
 
 type Mode = 'read' | 'edit' | 'approve'
@@ -464,7 +465,7 @@ export function RulesTab() {
         </div>
       )}
       {notice !== null && (
-        <p className="text-sm" data-testid="rules-notice">
+        <p className="text-sm whitespace-pre-line" data-testid="rules-notice">
           {notice}{' '}
           <button
             type="button"

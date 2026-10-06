@@ -441,6 +441,24 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     expect(notice).not.toHaveTextContent(/An aside nobody needs/)
   })
 
+  it('puts each approval warning on its own line in the notice', async () => {
+    const issue = (message: string) => ({
+      section: 'budget',
+      code: 'x',
+      severity: 'warning',
+      path: 'budget.total',
+      message,
+    })
+    outcome = {
+      kind: 'ok',
+      value: { report: { issues: [issue('First warning.'), issue('Second warning.')] } },
+    }
+    await fillApproval()
+    const notice = await screen.findByTestId('rules-notice')
+    expect(notice.textContent).toContain('First warning.\nSecond warning.')
+    expect(notice.className).toContain('whitespace-pre-line')
+  })
+
   it('sends nothing when a ticked section moved since the form opened, and unticks and names it', async () => {
     server = [rulesDraft(), movedTableDraft()]
     await fillApproval()
