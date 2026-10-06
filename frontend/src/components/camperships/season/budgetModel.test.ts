@@ -53,11 +53,11 @@ describe('the strip (§7.2; D153, owner ruling Group 2c Q3)', () => {
     expect(measures).not.toContain('not_reconciled')
   })
 
-  it('opens posted and accepted as All filtered to that round and tick', () => {
+  it("opens posted and accepted as All on that round's figure, not on round= (owner 10-06)", () => {
     const [r1] = stripRounds(BUDGET.strip, LIVE)
     const href = (measure: string) => r1?.counts.find((c) => c.measure === measure)?.href
-    expect(href('posted')).toBe('/aid/requests?round=1&tick=posted&counted=1&year=2027')
-    expect(href('accepted')).toBe('/aid/requests?round=1&tick=accepted&counted=1&year=2027')
+    expect(href('posted')).toBe('/aid/requests?posted=1&counted=1&year=2027')
+    expect(href('accepted')).toBe('/aid/requests?accepted=1&counted=1&year=2027')
   })
 
   it('opens needs an offer, held and pending approval on their own Requests views', () => {
@@ -82,7 +82,7 @@ describe('the strip (§7.2; D153, owner ruling Group 2c Q3)', () => {
     expect(needs?.count).toBeNull()
     expect(needs?.href).toBeNull()
     expect(past[0]?.counts.find((c) => c.measure === 'posted')?.href).toBe(
-      '/aid/requests?round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?posted=1&counted=1&year=2027&as_of=2027-03-15'
     )
   })
 })
@@ -209,15 +209,15 @@ describe('per-cell counts (read 2; owner: cells read "n · $X")', () => {
 describe('where each figure opens (D20, D153)', () => {
   const rows = budgetRows(BUDGET, EVERY)
 
-  it('opens Posted and Accepted as All on the pool, the round and the tick', () => {
+  it("opens Posted and Accepted as All on the pool and the round's figure (owner 10-06)", () => {
     expect(cellHref(row(rows, 'pool_a:2'), 'posted', LIVE, 3)).toBe(
-      '/aid/requests?pool=pool_a&round=2&tick=posted&counted=1&year=2027'
+      '/aid/requests?pool=pool_a&posted=2&counted=1&year=2027'
     )
     expect(cellHref(row(rows, 'pool_a:all'), 'accepted', LIVE, 3)).toBe(
-      '/aid/requests?pool=pool_a&tick=accepted&counted=1&year=2027'
+      '/aid/requests?pool=pool_a&accepted=all&counted=1&year=2027'
     )
     expect(cellHref(row(rows, 'total'), 'posted', LIVE, 3)).toBe(
-      '/aid/requests?tick=posted&counted=1&year=2027'
+      '/aid/requests?posted=all&counted=1&year=2027'
     )
   })
 
@@ -255,7 +255,7 @@ describe('where each figure opens (D20, D153)', () => {
 
   it('carries a past date on what it opens', () => {
     expect(cellHref(row(budgetRows(pastBudget(), EVERY), 'pool_a:1'), 'posted', PAST, 3)).toBe(
-      '/aid/requests?pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027&as_of=2027-03-15'
     )
   })
 })
@@ -276,10 +276,10 @@ describe('a past date opens no live-only Requests view (final review I1)', () =>
     expect(count(3, 'pending_approval')?.count).toEqual({ families: 1, requests: 1 })
     expect(count(3, 'pending_approval')?.href).toBeNull()
     expect(count(1, 'posted')?.href).toBe(
-      '/aid/requests?round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?posted=1&counted=1&year=2027&as_of=2027-03-15'
     )
     expect(count(1, 'accepted')?.href).toBe(
-      '/aid/requests?round=1&tick=accepted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?accepted=1&counted=1&year=2027&as_of=2027-03-15'
     )
   })
 
@@ -291,10 +291,10 @@ describe('a past date opens no live-only Requests view (final review I1)', () =>
     }
     expect(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', PAST, 3)).toBeNull()
     expect(cellHref(row(rows, 'pool_a:1'), 'posted', PAST, 3)).toBe(
-      '/aid/requests?pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027&as_of=2027-03-15'
     )
     expect(cellHref(row(rows, 'pool_a:all'), 'accepted', PAST, 3)).toBe(
-      '/aid/requests?pool=pool_a&tick=accepted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&accepted=all&counted=1&year=2027&as_of=2027-03-15'
     )
   })
 
@@ -422,6 +422,57 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
       (c) => c.measure === 'pending_approval'
     )
     expect(opened(strip?.href ?? null, pendingRows)).toEqual(['reqpend3a00001'])
+  })
+
+  it("a round's Posted and Accepted open the rows posted in that round, though they have moved on (owner 10-06)", () => {
+    const postedRows = [
+      // Posted and accepted in Round 1, now needing an offer in Round 2: still Round 1's figure.
+      gridRow({
+        request_id: 'reqmovedon00001',
+        rounds: [
+          roundOut(1, 'posted', { posted: 900, accepted: true }),
+          roundOut(2, 'needs_offer'),
+        ],
+        stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+        queues: ['needs_offer'],
+      }),
+      // Posted in Round 1, not accepted.
+      gridRow({
+        request_id: 'requnaccept0001',
+        rounds: [roundOut(1, 'posted', { posted: 700 })],
+        stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+        queues: [],
+      }),
+      // Posted in Round 1, then reversed in CampMinder (D54).
+      gridRow({
+        request_id: 'reqclawed000001',
+        rounds: [roundOut(1, 'posted', { posted: 900, accepted: true, clawed_back: true })],
+        stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+        queues: [],
+      }),
+      // Posted in Round 1 and accepted, outside the budget.
+      gridRow({
+        request_id: 'reqoutside00001',
+        rounds: [
+          roundOut(1, 'posted', { posted: 500, accepted: true, counts_toward_budget: false }),
+        ],
+        stage: { round: 1, code: 'accepted', label: 'R1 · Accepted' },
+        queues: [],
+      }),
+    ]
+    const strip = stripRounds(BUDGET.strip, LIVE)[0]?.counts
+    const href = (measure: 'posted' | 'accepted') =>
+      strip?.find((c) => c.measure === measure)?.href ?? null
+    expect(opened(href('posted'), postedRows)).toEqual(['reqmovedon00001', 'requnaccept0001'])
+    expect(opened(href('accepted'), postedRows)).toEqual(['reqmovedon00001'])
+    const rows = budgetRows(BUDGET, EVERY)
+    expect(opened(cellHref(row(rows, 'pool_a:1'), 'posted', LIVE, 3), postedRows)).toEqual([
+      'reqmovedon00001',
+      'requnaccept0001',
+    ])
+    expect(opened(cellHref(row(rows, 'pool_a:all'), 'accepted', LIVE, 3), postedRows)).toEqual([
+      'reqmovedon00001',
+    ])
   })
 })
 

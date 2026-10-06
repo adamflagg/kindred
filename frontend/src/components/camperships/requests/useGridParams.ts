@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 
+import { parseSeasonFigure, type FigureMeasure, type SeasonFigure } from './seasonFigure'
 import { resolveStrip, shownView, type RequestLens } from './strip'
 import { parseRoundFilter, type RequestView, type RoundFilter } from './views'
 
-export type GridParamName = 'program' | 'pool' | 'round' | 'counted' | 'live' | 'ids' | 'row'
+export type GridParamName =
+  'program' | 'pool' | 'round' | 'counted' | 'live' | FigureMeasure | 'ids' | 'row'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
@@ -18,6 +20,8 @@ export interface GridParams {
   readonly round: RoundFilter | null
   readonly counted: boolean
   readonly live: boolean
+  /** `?posted=` / `?accepted=`: a Season figure's rows (interim, owner 10-06; seasonFigure.ts). */
+  readonly figure: SeasonFigure | null
   readonly showIds: boolean
   /** The table's `?sort=` and `?group=` as written (AidTable owns them); the household link carries them (I1). */
   readonly sort: string | null
@@ -78,6 +82,7 @@ export function useGridParams(): GridParams {
     round: parseRoundFilter(params.get('round')),
     counted: params.get('counted') === '1',
     live: params.get('live') === '1',
+    figure: parseSeasonFigure(params),
     showIds: params.get('ids') === '1',
     sort: params.get('sort'),
     group: params.get('group'),

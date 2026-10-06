@@ -360,6 +360,42 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText(/Live requests only/)).toBeNull()
   })
 
+  // Owner 10-06, option (a): Season's Posted / Accepted figures open on a hidden posted= / accepted=
+  // param. No chip or control: a line says what the list is, like the live line, with Show All.
+  it('narrows to a Season figure, says so on a line, and Show All clears it (owner 10-06)', async () => {
+    renderAt('/aid/requests?accepted=1&counted=1')
+    expect(
+      screen.getByText('Accepted in Round 1 · counting toward the budget ·', { exact: false })
+    ).toBeInTheDocument()
+    // Olivia Chen was accepted in Round 1 and is in Round 2 now: the figure still counts her.
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Samuel Johnson')).toBeNull()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+    expect(screen.queryByText(/tick/i)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+    expect(screen.getByTestId('where')).not.toHaveTextContent('accepted=')
+    expect(screen.getByTestId('where')).not.toHaveTextContent('counted=')
+    expect(screen.queryByText(/Accepted in Round 1/)).toBeNull()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  })
+
+  it('words the figure line for any round, and drops the budget part when counted is off', async () => {
+    renderAt('/aid/requests?posted=all')
+    const line = screen.getByText(/Posted in any round/)
+    expect(line).toHaveTextContent(/^Posted in any round ·\s*Show All$/)
+    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+  })
+
+  it('carries the Season figure to the household page, so the walk keeps it', async () => {
+    renderAt('/aid/requests?posted=1&counted=1')
+    await userEvent.click(screen.getByRole('link', { name: 'David Chen' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      /^\/aid\/households\/1000005\?from=all&posted=1&counted=1&year=2027$/
+    )
+  })
+
   it('carries counted and live to the household page (M5)', async () => {
     renderAt('/aid/requests?counted=1&live=1')
     await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))

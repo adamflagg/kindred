@@ -84,7 +84,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     const strip = screen.getByTestId('budget-strip')
     expect(within(strip).getByRole('link', { name: '340 fam · 367 req' })).toHaveAttribute(
       'href',
-      '/aid/requests?round=1&tick=posted&counted=1&year=2027'
+      '/aid/requests?posted=1&counted=1&year=2027'
     )
     expect(within(strip).getByText('pending approval')).toBeInTheDocument()
     // Owner Q1 = A: no awaiting-sync or not-reconciled counts on the strip.
@@ -96,7 +96,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(screen.getByRole('columnheader', { name: 'Allocated1' })).toBeInTheDocument()
     expect(within(line('pool_a:1')).getByRole('link', { name: '$764,540' })).toHaveAttribute(
       'href',
-      '/aid/requests?pool=pool_a&round=1&tick=posted&counted=1&year=2027'
+      '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027'
     )
     expect(within(line('total')).getByText('$194,890')).toBeInTheDocument()
   })
@@ -178,7 +178,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(within(below('held')).queryByRole('link')).toBeNull()
     expect(within(line('pool_a:1')).getByRole('link', { name: '$764,540' })).toHaveAttribute(
       'href',
-      '/aid/requests?pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027&as_of=2027-03-15'
     )
   })
 

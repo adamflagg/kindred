@@ -14,6 +14,7 @@ import type {
 import { aidHref, type AidView } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
 import { formatMoney, moneyCsv, toCents } from '../kit/money'
+import { figureLink } from '../requests/seasonFigure'
 import { REQUEST_VIEWS, type RequestViewKey } from '../requests/views'
 
 /** The server's pool key for money on a program the rules give no pool (budget.py NO_POOL). */
@@ -70,9 +71,10 @@ const STRIP_LABELS: Readonly<Record<StripMeasure, string>> = {
 /**
  * Where a strip count opens (§7.2; D153, owner ruling Group 2c Q3): needs an offer, held and pending
  * approval open their Requests views; posted and accepted open All (no `view`: All is its absence)
- * filtered to that round and tick, slice 1's `round=` and `tick=`, so the list holds the rows the
- * count counts. Every count but held also carries `counted=1` (Decision 6): only rounds that count
- * toward the budget make these figures.
+ * on the round's figure, `posted=n` / `accepted=n` (interim per owner 10-06, seasonFigure.ts), so
+ * the list holds the rows the count counts, by the round the money was posted in; never `round=`,
+ * which is the round a request is in now. Every count but held also carries `counted=1`
+ * (Decision 6): only rounds that count toward the budget make these figures.
  * Needs an offer and pending approval carry the count's round too: the grid binds `counted` and
  * `round=` to the round in that status (views.ts), so the list is that round's. Held carries no
  * round (its view isn't bound to one). Null where it opens nothing: a queue view on a past date
@@ -88,9 +90,9 @@ function stripTarget(
     case 'needs_offer':
       return queues ? { view: viewSlug('needs_offer'), round: String(round), counted: '1' } : null
     case 'posted':
-      return { round: String(round), tick: 'posted', counted: '1' }
+      return { ...figureLink('posted', round), counted: '1' }
     case 'accepted':
-      return { round: String(round), tick: 'accepted', counted: '1' }
+      return { ...figureLink('accepted', round), counted: '1' }
     case 'held':
       return queues ? { view: viewSlug('holds') } : null
     case 'pending_approval':
@@ -244,7 +246,9 @@ export function overWords(row: BudgetRow, column: BudgetColumn): string | null {
 
 /**
  * Where a figure opens (D20: every figure opens its rows, from the same server query).
- * - Posted and Accepted: All, filtered to the pool, the round and the tick (D153).
+ * - Posted and Accepted: All, on the pool and the line's figure: `posted=` / `accepted=` with its
+ *   round, or `all` on a pool or total line (D153; interim per owner 10-06, seasonFigure.ts). Never
+ *   `round=`: that is the round a request is in now, not the one its money was posted in.
  * - Needs an offer and Pending approval: their Requests views, on the pool and, on a round line
  *   (and the Pending approval line under it), that round; the grid binds `counted` and `round=`
  *   to the round in that status (views.ts), so the list is exactly the figure's. A pool or total
@@ -277,19 +281,8 @@ export function cellHref(
   }
   switch (column) {
     case 'posted':
-      return requests(view, {
-        ...pool,
-        ...round,
-        tick: 'posted',
-        counted: '1',
-      })
     case 'accepted':
-      return requests(view, {
-        ...pool,
-        ...round,
-        tick: 'accepted',
-        counted: '1',
-      })
+      return requests(view, { ...pool, ...figureLink(column, row.round), counted: '1' })
     case 'needs_offer':
       if (!opensQueueViews(view)) return null
       return requests(view, { view: viewSlug('needs_offer'), ...pool, ...round, counted: '1' })

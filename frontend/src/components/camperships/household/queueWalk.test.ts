@@ -38,11 +38,28 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
       program: 'quest',
       pool: null,
       round: 2,
+      figure: null,
       counted: false,
       live: false,
       ids: null,
     })
     expect(keep).toEqual({ program: 'quest', round: '2', ids: '1' })
+  })
+
+  it('carries a Season figure, so ] and [ walk the rows the figure opened (owner 10-06)', () => {
+    const { filters, keep } = gridFiltersFrom(
+      new URLSearchParams('from=all&posted=1&counted=1&year=2027')
+    )
+    expect(filters).toMatchObject({ figure: { measure: 'posted', round: 1 }, counted: true })
+    expect(keep).toEqual({ posted: '1', counted: '1' })
+    // Olivia Chen was accepted in Round 1 and is in Round 2 now: the walk still stops at her.
+    const stops = walkStops(GRID_ROWS, requestView('all'), TODAY, {
+      ...NO_FILTERS,
+      figure: { measure: 'accepted', round: 1 },
+    })
+    expect(stops.map((s) => s.householdCmId)).toEqual([1000005])
+    expect(gridFiltersFrom(new URLSearchParams('accepted=all')).keep).toEqual({ accepted: 'all' })
+    expect(gridFiltersFrom(new URLSearchParams('posted=9')).filters.figure).toBeNull()
   })
 
   it("carries the grid's counted and live filters, so the walk and Back stay on its rows", () => {

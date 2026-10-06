@@ -182,6 +182,54 @@ describe('filterRows', () => {
     expect(parseRoundFilter('4')).toBeNull()
   })
 
+  // Owner 10-06, option (a): Season's Posted / Accepted figures open on a hidden `posted=` /
+  // `accepted=` (seasonFigure.ts), the round the money was posted in, not the round it is in now.
+  it('opens a Season figure: rounds posted in that round, not the current round (owner 10-06)', () => {
+    const names = (filters: Partial<typeof NO_FILTERS>) =>
+      filterRows(GRID_ROWS, 'all', { ...NO_FILTERS, ...filters }).map((r) => r.camper_name)
+    expect(names({ figure: { measure: 'accepted', round: 1 }, counted: true })).toEqual([
+      'Olivia Chen',
+    ])
+    expect(names({ figure: { measure: 'posted', round: 1 }, counted: true }).sort()).toEqual([
+      'Olivia Chen',
+      'Riley Sam',
+      'Samuel Johnson',
+    ])
+    expect(names({ figure: { measure: 'posted', round: 2 } })).toEqual([])
+    // With round= as well, both hold: Olivia is in Round 2 now, accepted in Round 1.
+    expect(names({ round: 2, figure: { measure: 'accepted', round: 1 } })).toEqual(['Olivia Chen'])
+    expect(names({ round: 1, figure: { measure: 'accepted', round: 1 } })).toEqual([])
+    expect(NO_FILTERS.figure).toBeNull()
+  })
+
+  it('reads counted alone as any round counting, and with round= as that round counting', () => {
+    // Round 1 posted outside the budget; Round 2, counted, needs an offer.
+    const laterCounts = gridRow({
+      request_id: 'reqlatercount01',
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+      rounds: [
+        roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
+        roundOut(2, 'needs_offer'),
+      ],
+    })
+    // Round 1 posted and counted; Round 2, outside the budget, needs an offer.
+    const earlierCounts = gridRow({
+      request_id: 'reqearlycount01',
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+      rounds: [
+        roundOut(1, 'posted', { posted: 900 }),
+        roundOut(2, 'needs_offer', { counts_toward_budget: false }),
+      ],
+    })
+    const ids = (filters: Partial<typeof NO_FILTERS>) =>
+      filterRows([laterCounts, earlierCounts], 'all', { ...NO_FILTERS, ...filters }).map(
+        (r) => r.request_id
+      )
+    expect(ids({ counted: true })).toEqual(['reqlatercount01', 'reqearlycount01'])
+    expect(ids({ counted: true, round: 2 })).toEqual(['reqlatercount01'])
+    expect(ids({ counted: true, round: 1 })).toEqual([])
+  })
+
   it('puts a cancelled request under the last round it reached, and a row with no stage under none', () => {
     const cancelled = gridRow({
       request_id: 'reqcancelled002',
@@ -781,6 +829,26 @@ describe('requestsCsvName (§11, D70; Decision 32)', () => {
     expect(
       requestsCsvName(requestView('all'), { program: null, pool: null, round: 2 }, 2027, null)
     ).toBe('camperships-requests-all-round-2-2027.csv')
+  })
+
+  it('names a Season figure (owner 10-06)', () => {
+    const none = { program: null, pool: null, round: null }
+    expect(
+      requestsCsvName(
+        requestView('all'),
+        { ...none, figure: { measure: 'posted', round: 1 } },
+        2027,
+        null
+      )
+    ).toBe('camperships-requests-all-posted-round-1-2027.csv')
+    expect(
+      requestsCsvName(
+        requestView('all'),
+        { ...none, figure: { measure: 'accepted', round: 'all' } },
+        2027,
+        null
+      )
+    ).toBe('camperships-requests-all-accepted-any-round-2027.csv')
   })
 })
 

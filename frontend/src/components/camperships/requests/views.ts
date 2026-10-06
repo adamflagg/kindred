@@ -16,6 +16,7 @@ import type { PillTone } from '../kit/kitStyles'
 import type { CellValue, FitContent } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
 import { LIVE_REQUEST_STATUSES } from './gridEditor'
+import { figureCsvWords, matchesFigure, type SeasonFigure } from './seasonFigure'
 import { latestRound, requestStage, roundOf } from './stage'
 
 export type RequestViewKey = 'all' | ApiAidQueue
@@ -530,6 +531,11 @@ export interface GridFilters {
   readonly counted: boolean
   /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
   readonly live: boolean
+  /**
+   * A Season Posted / Accepted figure's rows (`posted=` / `accepted=`; interim per owner 10-06, "a
+   * but c eventually": seasonFigure.ts, which slice 4 J replaces with server-sent ids).
+   */
+  readonly figure: SeasonFigure | null
 }
 
 /** A live request, as the budget's demand counts one: a live status and not cancelled (`request.live`). */
@@ -550,6 +556,7 @@ export const NO_FILTERS: GridFilters = {
   ids: null,
   counted: false,
   live: false,
+  figure: null,
 }
 
 /** The round a request is in now (GridFilters.round): the Stage's, or a cancelled one's last round. */
@@ -602,6 +609,7 @@ export function filterRows(
       (!filters.live || isLiveRow(row)) &&
       matchesRound(row, filters.round) &&
       matchesCounted(row, filters.round, filters.counted) &&
+      matchesFigure(row, filters.figure, filters.counted) &&
       countedInView(row, view, filters) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
@@ -752,7 +760,9 @@ export function moneyTotal(values: readonly CellValue[]): number | null {
 /** D70's file name (Decision 32): camperships-requests-<view>[-<program>][-<pool>][-round-<n>]-<season>[-as-of-<date>].csv. */
 export function requestsCsvName(
   view: RequestView,
-  filters: Pick<GridFilters, 'program' | 'pool' | 'round'>,
+  filters: Pick<GridFilters, 'program' | 'pool' | 'round'> & {
+    readonly figure?: SeasonFigure | null
+  },
   season: number,
   asOf: string | null
 ): string {
@@ -760,6 +770,7 @@ export function requestsCsvName(
     filters.program,
     filters.pool,
     filters.round === null ? null : `round ${String(filters.round)}`,
+    filters.figure == null ? null : figureCsvWords(filters.figure),
   ]
   return aidCsvFilename({
     surface: 'requests',
