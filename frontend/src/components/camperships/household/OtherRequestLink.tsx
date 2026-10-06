@@ -9,7 +9,8 @@ import { HH_LINK } from './householdStyles'
 
 /**
  * Item 11 (owner ruling 10-05): the quick way to the other request of a duplicate pair when it is on
- * another household's page, found by the request's id in the season's live grid (read only for this).
+ * another household's page: the household the server named (#3031), else found by the request's id
+ * in the season's live grid (read only for this).
  * Nothing when the twin is on this same page (owner V4): both cards are in view.
  */
 export function OtherRequestLink({
@@ -27,7 +28,13 @@ export function OtherRequestLink({
 }) {
   if (pair.other !== null) return null
   return (
-    <ElsewhereLink otherId={pair.otherId} view={view} beforeLeave={beforeLeave} which={which} />
+    <ElsewhereLink
+      otherId={pair.otherId}
+      known={pair.waiting?.household_cm_id}
+      view={view}
+      beforeLeave={beforeLeave}
+      which={which}
+    />
   )
 }
 
@@ -53,18 +60,22 @@ export function WithdrawnRequestLink({
 
 function ElsewhereLink({
   otherId,
+  known,
   view,
   beforeLeave,
   which,
 }: {
   otherId: string
+  /** The twin's household when the server already named it (#3031 duplicates_waiting): no grid read. */
+  known?: number | undefined
   view: AidView
   beforeLeave?: ((go: () => void) => void) | undefined
   which: 'Other' | 'Withdrawn'
 }) {
   const navigate = useNavigate()
-  const grid = useAidGrid({ live: true })
-  const household = grid.data?.rows.find((row) => row.request_id === otherId)?.household_cm_id
+  const grid = useAidGrid({ live: true, enabled: known === undefined })
+  const household =
+    known ?? grid.data?.rows.find((row) => row.request_id === otherId)?.household_cm_id
   // Until the grid names its household, there is nowhere to go.
   if (household === undefined) return null
   const href = aidHref(`/aid/households/${String(household)}`, view)

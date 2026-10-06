@@ -26,6 +26,7 @@ describe('duplicatePair', () => {
     expect(duplicatePair(page, APPLICATION, PENDING)).toEqual({
       otherId: 'reqkept00000001',
       other: KEPT,
+      waiting: null,
       keepThis: true,
       keepOther: false,
     })
@@ -36,18 +37,21 @@ describe('duplicatePair', () => {
     expect(duplicatePair(page, APPLICATION, PENDING)).toEqual({
       otherId: 'reqkept00000001',
       other: null,
+      waiting: null,
       keepThis: true,
       keepOther: false,
     })
   })
 
-  it('pairs the request kept with the pending duplicate that names it, and lets it keep itself or the other', () => {
+  // Owner ruling 10-05 late: a pair on one page keeps only itself from each card.
+  it('pairs the request kept with the pending duplicate on its page that names it, and lets it keep only itself', () => {
     const page = householdPage({ requests: [PENDING, KEPT] })
     expect(duplicatePair(page, APPLICATION, KEPT)).toEqual({
       otherId: 'reqpending00001',
       other: PENDING,
+      waiting: null,
       keepThis: true,
-      keepOther: true,
+      keepOther: false,
     })
   })
 
@@ -99,6 +103,7 @@ describe('withdrawnPair', () => {
     expect(withdrawnPair(page, naming('reqwithdrawn001'), REVIVED)).toEqual({
       otherId: 'reqwithdrawn001',
       other: WITHDRAWN,
+      waiting: null,
       keepThis: false,
       keepOther: false,
     })

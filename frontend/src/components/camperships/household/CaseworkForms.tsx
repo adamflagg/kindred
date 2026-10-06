@@ -662,11 +662,15 @@ export function DuplicateForm({
  */
 export function KeepThisForm({
   request,
-  other,
+  otherId,
+  otherName,
   onDone,
 }: {
   request: ApiAidHouseholdRequest
-  other: ApiAidHouseholdRequest
+  /** The pending twin, on this page or (named by #3031's duplicates_waiting) another. */
+  otherId: string
+  /** How staff read it: camper · session (+ its household's label when on another page). */
+  otherName: string
   onDone: () => void
 }) {
   const mark = useAidDuplicate()
@@ -678,7 +682,7 @@ export function KeepThisForm({
       return () =>
         mark
           .mutateAsync({
-            requestId: other.row.request_id,
+            requestId: otherId,
             body: { duplicate_of: request.row.request_id, reason: reason.trim() },
           })
           .then(onDone)
@@ -691,7 +695,7 @@ export function KeepThisForm({
       error={error}
       onSubmit={submit}
       onCancel={onDone}
-      side={`Marks the other request as the duplicate: ${camperOf(other)} · ${other.row.session_name}`}
+      side={`Marks the other request as the duplicate: ${otherName}`}
     >
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>

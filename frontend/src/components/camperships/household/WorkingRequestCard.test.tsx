@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_RILEY } from '../requests/gridFixtures'
 import { useEditorExits, type EditorExits } from './editorExits'
 import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
+import type { DuplicateWaitingOut } from '../../../types/api-generated'
 import { WorkingRequestCard } from './WorkingRequestCard'
 
 const cancel = vi.fn()
@@ -15,6 +16,8 @@ const ask = vi.fn()
 const duplicate = vi.fn()
 // When set, the duplicate write is refused with these words.
 let duplicateRefusal: string | null = null
+// #3031: the season's pending duplicates waiting on a request, by request id (the page's duplicates_waiting).
+let waitingFor: Record<string, DuplicateWaitingOut[]> = {}
 interface Call {
   onSuccess?: () => void
   onError?: (e: Error) => void
@@ -126,7 +129,9 @@ function Cards({
 }) {
   const exits = useEditorExits()
   exitsSeen = exits
-  const requests = rows.map((row) => householdRequest(row))
+  const requests = rows.map((row) =>
+    householdRequest(row, { duplicates_waiting: waitingFor[row.request_id] ?? [] })
+  )
   const page = householdPage({ requests })
   return (
     <MemoryRouter>
@@ -153,6 +158,7 @@ beforeEach(() => {
   prefetch.mockReset()
   duplicate.mockReset()
   duplicateRefusal = null
+  waitingFor = {}
   applicationRead.mockReset()
   application = applicationOut()
   gridRows = []
@@ -667,6 +673,7 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
       ],
     })
   const cardOf = (id: string) => document.getElementById(`request-${id}`) as HTMLElement
+  const sideOf = (id: string) => cardOf(id).querySelector('[data-editor-side]') as HTMLElement
 
   it('draws no link between two requests on the same page (owner V4)', () => {
     application = naming('reqkept00000001')
@@ -688,17 +695,78 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
     })
   })
 
-  it('offers the request kept Keep the Other Request…, which swaps the two (the server keeps the pending one)', async () => {
+  // Owner ruling 10-05 late: a pair on ONE page shows only Keep This Request… on each card; a pair
+  // across two households keeps both buttons on both cards.
+  it('offers only Keep This Request… on each card of a pair on the same page (owner ruling)', () => {
     application = naming('reqkept00000001')
     renderCards([PENDING, KEPT])
+    for (const id of ['reqpending00001', 'reqkept00000001']) {
+      const card = within(cardOf(id))
+      expect(card.getByRole('button', { name: 'Keep This Request…' })).toBeInTheDocument()
+      expect(card.queryByRole('button', { name: 'Keep the Other Request…' })).toBeNull()
+    }
+  })
+
+  // #3031: the active card names its pending twin from duplicates_waiting, even on another page.
+  const WAITING: DuplicateWaitingOut = {
+    request_id: 'reqtwinelse0001',
+    household_cm_id: 1000077,
+    camper_name: 'Emma Johnson',
+    session_name: 'Session 2',
+    label: 'Riley & Emma Whitfield',
+    label_tiebreak: 'Lakeside, CA',
+  }
+
+  it("offers the request kept Keep the Other Request… for a twin on another household's page, which swaps the two", async () => {
+    waitingFor = { reqkept00000001: [WAITING] }
+    renderCards([KEPT])
     const card = within(cardOf('reqkept00000001'))
     await userEvent.click(card.getByRole('button', { name: 'Keep the Other Request…' }))
     expect(card.getByText('Keeping the other request')).toBeInTheDocument()
     await userEvent.type(card.getByLabelText('Reason'), 'The later entry is right{Enter}')
     expect(duplicate).toHaveBeenCalledWith({
       requestId: 'reqkept00000001',
-      body: { duplicate_of: 'reqpending00001', reason: 'The later entry is right' },
+      body: { duplicate_of: 'reqtwinelse0001', reason: 'The later entry is right' },
     })
+  })
+
+  it('offers the request kept Keep This Request… for a twin on another page, which marks that twin the duplicate', async () => {
+    waitingFor = { reqkept00000001: [WAITING] }
+    renderCards([KEPT])
+    const card = within(cardOf('reqkept00000001'))
+    await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
+    expect(sideOf('reqkept00000001')).toHaveTextContent(
+      'Marks the other request as the duplicate: Emma Johnson · Session 2 · Riley & Emma Whitfield · Lakeside, CA'
+    )
+    await userEvent.type(card.getByLabelText('Reason'), 'First form is right{Enter}')
+    expect(duplicate).toHaveBeenCalledWith({
+      requestId: 'reqtwinelse0001',
+      body: { duplicate_of: 'reqkept00000001', reason: 'First form is right' },
+    })
+  })
+
+  it("names a twin on another page by camper, session and its household's label, and links its page without the grid", async () => {
+    waitingFor = { reqkept00000001: [WAITING] }
+    renderCards([KEPT])
+    const card = within(cardOf('reqkept00000001'))
+    expect(card.getByRole('link', { name: 'Go to the Other Request ›' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000077?year=2027'
+    )
+    await userEvent.click(card.getByRole('button', { name: 'Keep the Other Request…' }))
+    expect(sideOf('reqkept00000001')).toHaveTextContent(
+      'Marks this request as the duplicate and keeps the other: Emma Johnson · Session 2 · Riley & Emma Whitfield · Lakeside, CA'
+    )
+    expect(sideOf('reqkept00000001')).not.toHaveTextContent('reqtwinelse0001')
+    expect(applicationRead).not.toHaveBeenCalledWith(expect.anything(), { enabled: true })
+  })
+
+  it("offers the pending duplicate both keeps when its holder is on another household's page", () => {
+    application = naming('reqelsewhere001')
+    renderCards([PENDING])
+    const card = within(cardOf('reqpending00001'))
+    expect(card.getByRole('button', { name: 'Keep This Request…' })).toBeInTheDocument()
+    expect(card.getByRole('button', { name: 'Keep the Other Request…' })).toBeInTheDocument()
   })
 
   it('offers the pending duplicate Keep This Request…, which closes the request it waits on', async () => {
@@ -727,18 +795,11 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
   })
 
   // Owner call 10-05 late: the keep boxes name the other request as camper · session, never its raw id.
-  const sideOf = (id: string) => cardOf(id).querySelector('[data-editor-side]') as HTMLElement
 
   it('names the other request by camper and session, without its id, in every keep box (owner 10-05)', async () => {
     application = naming('reqkept00000001')
     renderCards([PENDING, KEPT])
     const kept = within(cardOf('reqkept00000001'))
-    await userEvent.click(kept.getByRole('button', { name: 'Keep the Other Request…' }))
-    expect(sideOf('reqkept00000001')).toHaveTextContent(
-      'Marks this request as the duplicate and keeps the other: Emma Johnson · Session 2'
-    )
-    expect(sideOf('reqkept00000001')).not.toHaveTextContent('reqpending00001')
-    await userEvent.keyboard('{Escape}')
     await userEvent.click(kept.getByRole('button', { name: 'Keep This Request…' }))
     expect(sideOf('reqkept00000001')).toHaveTextContent(
       'Marks the other request as the duplicate: Emma Johnson · Session 2'

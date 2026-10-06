@@ -9,7 +9,7 @@ import { CARD_EDIT_LABEL, cardEdits, type CardEditKind } from './cardEdits'
 import { usePrefetchCardPreviews } from './cardPreviews'
 import { caseworkOffers } from './caseworkModel'
 import { DuplicateForm, HeadcountForm, KeepThisForm, SessionForm, ShareForm } from './CaseworkForms'
-import { useDuplicatePair } from './duplicatePair'
+import { twinName, useDuplicatePair } from './duplicatePair'
 import { isLiveRequest } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
@@ -109,6 +109,9 @@ export function WorkingRequestCard({
   usePrefetchCardPreviews(request.row, canWork ? cardEdits(request.row) : [])
   // Item 11: the other request of a duplicate pair, and whether this card can keep itself.
   const pair = useDuplicatePair(page, request, canWork)
+  // Owner ruling 10-05 late: a pair on one page offers only Keep This Request… on each card, so the
+  // pending card's Keep the Other Request… shows only while its holder is on another page.
+  const samePagePair = pair !== null && pair.other !== null
   if (!canWork) return <RequestCard request={request} page={page} view={view} />
 
   const row = request.row
@@ -148,7 +151,9 @@ export function WorkingRequestCard({
       {live && c?.by === 'kindred' && button('Reopen…', { kind: 'reopen' })}
       {offers.shares && button('Payer Shares…', { kind: 'shares' })}
       {offers.session && button('Settle Session…', { kind: 'session' })}
-      {offers.duplicate && button('Keep the Other Request…', { kind: 'duplicate' })}
+      {offers.duplicate &&
+        !samePagePair &&
+        button('Keep the Other Request…', { kind: 'duplicate' })}
       {pair?.keepThis === true && button('Keep This Request…', { kind: 'keep_this' })}
       {pair?.keepOther === true && button('Keep the Other Request…', { kind: 'keep_other' })}
       {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
@@ -163,7 +168,7 @@ export function WorkingRequestCard({
   // (the pending card's Keep This, the active card's Keep the Other) go through PairKeepForm.
   const pending = row.request_status === 'duplicate_pending'
   const keepThisOther =
-    open?.kind === 'keep_this' && pair?.keepThis === true && !pending ? pair.other : null
+    open?.kind === 'keep_this' && pair?.keepThis === true && !pending ? pair : null
   const swap =
     pair !== null && pair.keepThis && open?.kind === 'keep_this' && pending
       ? { pair, keepsThis: true }
@@ -182,7 +187,14 @@ export function WorkingRequestCard({
   } else if (form === 'duplicate') {
     editor = <DuplicateForm request={request} page={page} onDone={close} />
   } else if (keepThisOther !== null) {
-    editor = <KeepThisForm request={request} other={keepThisOther} onDone={close} />
+    editor = (
+      <KeepThisForm
+        request={request}
+        otherId={keepThisOther.otherId}
+        otherName={twinName(keepThisOther, request)}
+        onDone={close}
+      />
+    )
   } else if (swap !== null) {
     editor = (
       <PairKeepForm request={request} pair={swap.pair} keepsThis={swap.keepsThis} onDone={close} />
