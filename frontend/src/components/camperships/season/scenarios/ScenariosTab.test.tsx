@@ -115,6 +115,16 @@ beforeEach(() => {
 })
 
 describe('ScenariosTab (§7.4; D38)', () => {
+  it('prints only the compare: the snapshot line, kept list, levers and Keep buttons are print:hidden', () => {
+    renderTab()
+    const hidden = (el: HTMLElement) => el.closest('.print\\:hidden') !== null
+    expect(hidden(screen.getByText(/Applications frozen/))).toBe(true)
+    expect(hidden(screen.getByTestId('kept-list'))).toBe(true)
+    expect(hidden(screen.getByTestId('scenario-levers'))).toBe(true)
+    expect(hidden(screen.getByRole('button', { name: /^Keep as a Variant/ }))).toBe(true)
+    expect(hidden(screen.getByRole('button', { name: /^Keep as a New Starting Point/ }))).toBe(true)
+  })
+
   it('names the frozen snapshot and the rules versions', () => {
     renderTab()
     expect(

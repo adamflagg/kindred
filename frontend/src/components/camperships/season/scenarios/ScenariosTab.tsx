@@ -117,7 +117,7 @@ function useScenarioView() {
 function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace; work: Draft }) {
   const snapshot = workspace.snapshot
   return (
-    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm print:hidden">
       {snapshot === null ? (
         <span>The season&apos;s applications aren&apos;t frozen for scenarios yet.</span>
       ) : (
@@ -233,10 +233,10 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     <div className="space-y-3">
       <SnapshotLine workspace={workspace} work={work} />
       {/* Its line is always there, so nothing jumps under the pointer on every release. */}
-      <p className="text-muted-foreground h-5 text-sm">{work.busy}</p>
-      {work.error !== null && <p className={AMBER_NOTE}>{work.error}</p>}
+      <p className="text-muted-foreground h-5 text-sm print:hidden">{work.busy}</p>
+      {work.error !== null && <p className={`${AMBER_NOTE} print:hidden`}>{work.error}</p>}
       {workspace.snapshot !== null && draft === null && (
-        <div className={`${SEASON_CARD} space-y-2`}>
+        <div className={`${SEASON_CARD} space-y-2 print:hidden`}>
           <p>Start your draft from:</p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -260,8 +260,8 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         </div>
       )}
       {workspace.snapshot !== null && (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-          <div className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] print:block">
+          <div className="space-y-3 print:hidden">
             {/* One card, as the mock has it: your draft, then what's kept. */}
             <div className="card-lodge">
               {draft !== null && (

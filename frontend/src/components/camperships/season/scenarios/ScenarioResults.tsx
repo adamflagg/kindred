@@ -53,7 +53,9 @@ export function ScenarioResults({
             </b>
           </span>
         ))}
-        {actions !== undefined && <span className="ml-auto flex flex-wrap gap-2">{actions}</span>}
+        {actions !== undefined && (
+          <span className="ml-auto flex flex-wrap gap-2 print:hidden">{actions}</span>
+        )}
       </div>
       <div className={TABLE_CARD}>
         <table className="w-full border-separate border-spacing-0 text-sm">
