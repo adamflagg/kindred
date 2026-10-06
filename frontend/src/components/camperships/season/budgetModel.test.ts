@@ -360,6 +360,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     queued('reqround1a0001', 'needs_offer', { rounds: [roundOut(1, 'needs_offer')] }),
     // Round 2 needs the offer; Round 1 is posted and counted.
     queued('reqround2a0001', 'needs_offer', {
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
       rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
     }),
     // Round 1 needs the offer, outside the budget.
@@ -391,6 +392,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
   it("a round's Pending approval opens that round's counted rows (fix-wave addition)", () => {
     const pendingRows = [
       queued('reqpend3a00001', 'pending_approval', {
+        stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
         rounds: [
           roundOut(1, 'posted', { posted: 900 }),
           roundOut(3, 'pending_approval', { pending_approval: 450 }),
@@ -398,6 +400,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
       }),
       // Pending on Round 2, with a counted Round 3 needing an offer: not Round 3's pending.
       queued('reqpend2a00001', 'pending_approval', {
+        stage: { round: 2, code: 'pending_approval', label: 'R2 · Pending approval' },
         rounds: [
           roundOut(2, 'pending_approval', { pending_approval: 300 }),
           roundOut(3, 'needs_offer'),
@@ -405,6 +408,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
       }),
       // Round 3 pending, outside the budget.
       queued('reqpend3out001', 'pending_approval', {
+        stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
         rounds: [
           roundOut(3, 'pending_approval', { pending_approval: 200, counts_toward_budget: false }),
         ],

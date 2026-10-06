@@ -251,6 +251,7 @@ describe('filterRows', () => {
     // Both rounds count, Round 1 posted, Round 2 needing the offer: Round 1 holds no offer to make.
     const bothCounted = gridRow({
       request_id: 'reqbothcnt00001',
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
       rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
       queues: ['needs_offer'],
     })
@@ -265,6 +266,7 @@ describe('filterRows', () => {
   it('binds counted to the round that puts a row in Pending approval (final review I2)', () => {
     const outsidePending = gridRow({
       request_id: 'reqoutpend00001',
+      stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
       rounds: [
         roundOut(1, 'posted', { posted: 900 }),
         roundOut(3, 'pending_approval', { pending_approval: 450, counts_toward_budget: false }),
@@ -273,6 +275,7 @@ describe('filterRows', () => {
     })
     const countedPending = gridRow({
       request_id: 'reqcntpend00001',
+      stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
       rounds: [
         roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
         roundOut(3, 'pending_approval', { pending_approval: 450 }),
@@ -289,6 +292,7 @@ describe('filterRows', () => {
     expect(ids({ counted: true, round: 1 })).toEqual([])
     const bothCounted = gridRow({
       request_id: 'reqbothpend0001',
+      stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
       rounds: [
         roundOut(1, 'posted', { posted: 900 }),
         roundOut(3, 'pending_approval', { pending_approval: 450 }),
