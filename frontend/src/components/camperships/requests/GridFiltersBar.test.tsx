@@ -176,7 +176,7 @@ describe('GridFiltersBar counted filter', () => {
     expect(onChange).toHaveBeenCalledWith('counted', '1')
   })
 
-  it('clears it when unticked', async () => {
+  it('clears it when unchecked', async () => {
     const { onChange } = bar({ counted: true })
     const box = screen.getByRole('checkbox', { name: 'Counting toward the budget' })
     expect(box).toBeChecked()

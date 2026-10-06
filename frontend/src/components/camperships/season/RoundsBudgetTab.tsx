@@ -97,7 +97,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
       )}
       {(budget.not_rebuilt ?? []).length > 0 && (
         <p className={AMBER_NOTE}>
-          A past date shows what Kindred can rebuild exactly: a figure it can&apos;t reads
+          A past date shows what the dashboard can rebuild exactly: a figure it can&apos;t reads
           &ldquo;—&rdquo;, never an estimate.
         </p>
       )}

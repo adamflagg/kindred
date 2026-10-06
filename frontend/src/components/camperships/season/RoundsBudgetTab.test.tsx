@@ -202,6 +202,15 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     )
   })
 
+  it('says a past date shows what the dashboard can rebuild, in staff words', () => {
+    read = { data: pastBudget(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?as_of=2027-03-15')
+    expect(
+      screen.getByText(/A past date shows what the dashboard can rebuild exactly/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Kindred/)).toBeNull()
+  })
+
   it('shows below the line: outside grants, decision types outside the budget, held requests', () => {
     renderAt('/aid/season/rounds-budget')
     expect(keys('data-below-line')).toEqual([
