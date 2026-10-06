@@ -342,9 +342,10 @@ export function confirmedWords(row: BudgetRow): string | null {
 
 /**
  * Where the amber line opens: Requests › Not reconciled, filtered as the Posted figure beside it is
- * (`cellHref`): the row's pool (none for the total), a round line's round, `tick=posted` and
- * `counted=1`, so it keeps only rounds that are posted and count toward the budget, which are the
- * ones the figure counts. Residue the grid can't close: confirmation is per request, not per round,
+ * (`cellHref`): the row's pool (none for the total), and the Posted figure, `posted=` with a round
+ * line's round or `all` (interim per owner 10-06, seasonFigure.ts), and `counted=1`, so it keeps
+ * only rounds posted in that round that count toward the budget, which are the ones the figure
+ * counts; never `round=`, the round a request is in now. Residue the grid can't close: confirmation is per request, not per round,
  * so an over-confirmed request (nothing unconfirmed) or one whose round N is filled while a later
  * round is short can still list. Oldest-first filling makes the second uncommon.
  * Null for the No pool line (no request filters to having no pool), where there is nothing to say,
@@ -353,12 +354,10 @@ export function confirmedWords(row: BudgetRow): string | null {
 export function confirmedHref(row: BudgetRow, view: AidView): string | null {
   if (confirmedWords(row) === null || row.pool === NO_POOL || !opensQueueViews(view)) return null
   const pool: Record<string, string> = row.pool === TOTAL_POOL ? {} : { pool: row.pool }
-  const round: Record<string, string> = row.round === null ? {} : { round: String(row.round) }
   return requests(view, {
     view: viewSlug('not_reconciled'),
     ...pool,
-    ...round,
-    tick: 'posted',
+    ...figureLink('posted', row.round),
     counted: '1',
   })
 }

@@ -742,14 +742,39 @@ describe('the confirmed share under Posted (D153; owner ruling 2026-10-02)', () 
 
   it("opens Not reconciled on the row's pool, and on none for the total", () => {
     expect(confirmedHref(row(rows, 'pool_a:1'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&pool=pool_a&round=1&tick=posted&counted=1&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&posted=1&counted=1&year=2027'
     )
     expect(confirmedHref(row(rows, 'pool_a:all'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&pool=pool_a&tick=posted&counted=1&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&posted=all&counted=1&year=2027'
     )
     expect(confirmedHref(row(rows, 'total'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&tick=posted&counted=1&year=2027'
+      '/aid/requests?view=not-reconciled&posted=all&counted=1&year=2027'
     )
+  })
+
+  it('opens the rows posted in that round, though they have moved on to the next (owner 10-06)', () => {
+    // Posted in Round 1 and short in CampMinder, now needing an offer in Round 2.
+    const movedOn = gridRow({
+      request_id: 'reqmovedon00001',
+      rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+      queues: ['not_reconciled', 'needs_offer'],
+    })
+    // Not reconciled, but posted only in Round 2.
+    const round2 = gridRow({
+      request_id: 'reqroundtwo0001',
+      rounds: [roundOut(2, 'posted', { posted: 300 })],
+      stage: { round: 2, code: 'posted', label: 'R2 · Posted' },
+      queues: ['not_reconciled'],
+    })
+    const params = new URL(confirmedHref(row(rows, 'pool_a:1'), LIVE) ?? '', 'http://x.test')
+      .searchParams
+    expect(params.get('round')).toBeNull()
+    const { filters } = gridFiltersFrom(params)
+    const view = requestView(params.get('view')).key
+    expect(filterRows([movedOn, round2], view, filters).map((r) => r.request_id)).toEqual([
+      'reqmovedon00001',
+    ])
   })
 
   it('opens nothing for the No pool line, for nothing to say, or on a past date', () => {
