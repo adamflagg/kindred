@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { Link } from 'react-router'
 
 import { useAidHistoryOperation } from '../../../hooks/camperships/useAidHistory'
+import { useAidSessionNames } from '../../../hooks/camperships/useAidSessionNames'
 import { hasStatus } from '../../../services/camperships/aidApi'
 import type { ApiAidHistoryOperation } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
@@ -35,6 +36,8 @@ function OperationDetail({
   view: AidView
 }) {
   const detail = useAidHistoryOperation(operation.operation_id)
+  // A row's session reads by its name ("Session 2"), as the Rules tab's do.
+  const sessions = useAidSessionNames(view.year)
   const [all, setAll] = useState(false)
   if (detail.isLoading) return <p className="text-muted-foreground text-xs">Loading its rows…</p>
   if (detail.data === undefined) {
@@ -63,7 +66,7 @@ function OperationDetail({
       {operation.reason !== '' && <p>{`Reason: “${operation.reason}”`}</p>}
       <ul className="space-y-1">
         {shown.map((row, index) => {
-          const v = rowView(row)
+          const v = rowView(row, sessions)
           return (
             <li key={`${row.entity}:${row.entity_id}:${String(index)}`} data-history-row>
               <span className="font-medium">{v.head}</span>

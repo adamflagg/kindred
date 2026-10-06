@@ -41,6 +41,15 @@ vi.mock('../../../hooks/camperships/useAidHistory', () => ({
     reads[id] ?? { data: undefined, isLoading: true, error: null, refetch },
 }))
 
+// The season's session names (useAidSessionNames), asked for the page's own season.
+const sessionNames = new Map([
+  [9300101, 'Session 1'],
+  [9300102, 'Session 2'],
+])
+vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: (year: number) => (year === 2027 ? sessionNames : undefined),
+}))
+
 const VIEW: AidView = { year: 2027, asOf: { kind: 'live' } }
 const onToggle = vi.fn<(id: string) => void>()
 
@@ -130,6 +139,28 @@ describe('HistoryTable', () => {
     expect(screen.queryByRole('button', { name: /Show all/ })).toBeNull()
     // A tick's log leaves the receipt out, so nothing nested is left unlisted.
     expect(screen.queryByText(/recorded detail/)).toBeNull()
+  })
+
+  it("names a row's session by the season's session name, never its number", () => {
+    const [shared] = DETAIL_SHARE.rows
+    if (shared === undefined) throw new Error('no share row')
+    const moved = {
+      ...shared,
+      entity: 'aid_requests',
+      entity_id: 'req000000000009',
+      action: 'update',
+      before: { session_cm_id: 9300101 },
+      after: { session_cm_id: 9300102 },
+      changes: [
+        { path: ['session_cm_id'], kind: 'changed' as const, before: 9300101, after: 9300102 },
+      ],
+    }
+    reads[OP_SHARE.operation_id] = loaded({ ...DETAIL_SHARE, rows: [moved] })
+    renderTable([OP_SHARE.operation_id])
+    const row = document.querySelector('[data-history-row]')
+    expect(row).toHaveTextContent(/· Session 2/)
+    expect(row).toHaveTextContent('Session: Session 1 → Session 2')
+    expect(row).not.toHaveTextContent(/93001/)
   })
 
   it('opens a rules line to its diff and "Open vN in Rules" (D49)', () => {

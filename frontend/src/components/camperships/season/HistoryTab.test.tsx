@@ -44,6 +44,9 @@ vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: () => undefined,
+}))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules']

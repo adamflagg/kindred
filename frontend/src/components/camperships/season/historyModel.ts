@@ -17,7 +17,7 @@ import { CANCEL_REASON_OPTIONS } from '../kit/editor'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { codeWords } from '../requests/attention'
-import { changeWords, isRulesSection, SECTION_TITLES } from './rules/rulesModel'
+import { changeWords, isRulesSection, type RulesNames, SECTION_TITLES } from './rules/rulesModel'
 
 // ── Filters and paging (D15: the view lives in the URL) ───────────────────────
 
@@ -429,6 +429,16 @@ function inNumberOrder(changes: readonly ApiAidFieldChange[]): ApiAidFieldChange
   return changes.map((change) => (isSetting(change) ? (settings[next++] ?? change) : change))
 }
 
+/**
+ * The Rules read view's names with no document to take labels from: a log row holds a diff, not the
+ * version's sections. A check, a severity or a session fallback still reads in words ("High
+ * expenses", "Warning"); a pool, program or decision type reads as its key in words.
+ */
+function staticNames(section: string): RulesNames | undefined {
+  if (!isRulesSection(section)) return undefined
+  return { section, pools: {}, programs: {}, decisionTypes: {}, criteria: {} }
+}
+
 /** A rules diff's lines: a setting change in the section's words, and a section's status move. */
 function changeLines(changes: readonly ApiAidFieldChange[]): string[] {
   const lines: string[] = []
@@ -439,7 +449,7 @@ function changeLines(changes: readonly ApiAidFieldChange[]): string[] {
       lines.push(
         rest.length === 0
           ? `${sectionTitle(section)}: ${change.kind}`
-          : `${sectionTitle(section)} › ${changeWords({ ...change, path: rest })}`
+          : `${sectionTitle(section)} › ${changeWords({ ...change, path: rest }, staticNames(section))}`
       )
     } else if (root === 'section_status' && rest.length === 1 && rest[0] === 'state') {
       const from = typeof change.before === 'string' ? change.before : 'draft'

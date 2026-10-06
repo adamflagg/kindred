@@ -743,6 +743,25 @@ describe("an opened row's words: no raw ids or codes where words exist (#18)", (
   })
 })
 
+describe("a rules diff's lines in the Rules read view's static words", () => {
+  it('names a check and its severity as the Rules tab does, not their codes', () => {
+    const lines = rulesLines({
+      ...first(DETAIL_RULES_SAVE.rows),
+      changes: [
+        {
+          path: ['document', 'quality_checks', 'checks', 'expense_above', 'severity'],
+          kind: 'changed',
+          before: 'warn',
+          after: 'hold',
+        },
+      ],
+    })
+    expect(lines).toEqual([
+      `${SECTION_TITLES.quality_checks} › Checks › High expenses › Severity: Warning → Hold`,
+    ])
+  })
+})
+
 describe("a rules diff's tiers in number order (#18)", () => {
   it('lists Tier 2 before Tier 10, leaving every other line where it was', () => {
     const tier = (n: string, after: string) => ({
