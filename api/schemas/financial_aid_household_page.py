@@ -160,6 +160,20 @@ class Round3ContextOut(BaseModel):
     capacity_note: str
 
 
+class DuplicateWaitingOut(BaseModel):
+    """A possible duplicate waiting on a request: a `duplicate_pending` request in the season, on any household's page,
+    whose `duplicate_of` is that request. Named so the active request's card can offer "Keep the Other Request…" and
+    link to it: its camper and session, and its household as the page names households (`label`, and `label_tiebreak`
+    when another household on the page reads the same)."""
+
+    request_id: str
+    household_cm_id: int
+    camper_name: str
+    session_name: str
+    label: str
+    label_tiebreak: str
+
+
 class HouseholdRequestOut(BaseModel):
     row: GridRowOut
     ask: AnswerOut | None  # the Round 1 ask with its corrections beside the original (main spec §9.3)
@@ -172,6 +186,9 @@ class HouseholdRequestOut(BaseModel):
     grants_applied: float | None = None
     grants_beyond_owed: float | None = None  # grants − grants_applied
     round3_context: Round3ContextOut | None = None  # only on a request with a Round 3
+    # Every duplicate_pending request in the season, on any household, whose duplicate_of is this request, by household
+    # then request id. Defaulted only so older fixtures still type-check; the page always fills it.
+    duplicates_waiting: list[DuplicateWaitingOut] = Field(default_factory=list)
 
 
 class FormPersonOut(BaseModel):

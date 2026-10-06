@@ -27,6 +27,7 @@ from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOu
 from api.schemas.financial_aid_grants import GrantRowOut
 from api.schemas.financial_aid_household_page import (
     ConfirmationStateOut,
+    DuplicateWaitingOut,
     FormPersonOut,
     HistoryEntryOut,
     HouseholdAdultOut,
@@ -54,7 +55,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_grants_register import RegisterRow, counts_as_outside, outside_grants_by_request
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
-from api.services.financial_aid_intake_types import PayerShareRecord
+from api.services.financial_aid_intake_types import STATUS_DUPLICATE_PENDING, PayerShareRecord, RequestRecord
 from api.services.financial_aid_ledger_service import (
     accepted_index,
     household_display_name,
@@ -528,6 +529,18 @@ def _emails(people: Iterable[Any]) -> list[str]:
     return sorted({str(getattr(p, "primary_email", "") or "").strip() for p in people} - {""})
 
 
+def duplicates_waiting(
+    requests: Iterable[RequestRecord], request_ids: Collection[str]
+) -> dict[str, list[RequestRecord]]:
+    """For each of `request_ids`, every duplicate_pending request in the season (any household) whose duplicate_of is
+    it, by household then request id: what the active request's card offers to keep instead (owner, 2026-10-05)."""
+    waiting: defaultdict[str, list[RequestRecord]] = defaultdict(list)
+    for request in sorted(requests, key=lambda r: (r.household_cm_id, r.id)):
+        if request.status == STATUS_DUPLICATE_PENDING and request.duplicate_of in request_ids:
+            waiting[request.duplicate_of].append(request)
+    return dict(waiting)
+
+
 @dataclass(frozen=True)
 class _Naming:
     """How a household is named on the page, its card and its link row alike."""
@@ -639,6 +652,10 @@ class HouseholdPageService:
             for actor in (state.posted_by, state.decided_by)
         } - {""}
         actors = {a.strip() for a in actors} - {""}
+        # Season-wide, as keeping one re-points the others: a twin may sit on another household's page.
+        waiting = duplicates_waiting(season.requests.values(), request_ids)
+        twins = [r for found in waiting.values() for r in found]
+        twin_households = {r.household_cm_id for r in twins} - households
         (
             (names, user_names, postings, dispositions, household_rows, persons),
             links,
@@ -646,7 +663,11 @@ class HouseholdPageService:
             contacts,
         ) = await asyncio.gather(
             asyncio.gather(
-                self._store.fetch_names(year, scope.households, campers),
+                self._store.fetch_names(
+                    year,
+                    [*scope.households, *sorted(twin_households)],
+                    sorted({*campers, *(r.person_cm_id for r in twins)}),
+                ),
                 self._ledger.fetch_user_names(actors) if actors else _no_names(),
                 self._ledger.fetch_postings(year, scope.households, include_reversed=True),
                 self._ledger.fetch_dispositions(year),
@@ -692,7 +713,8 @@ class HouseholdPageService:
         # same reads a household search makes); one in the scope reads as its card does. A card with no camper on the
         # page (a second payer) has its own members read too, for its adults and emails (owner N11, 2026-10-04 late) and
         # its short name (P3, 2026-10-05).
-        outside = sorted({int(ln.household_cm_id) for ln in family_links} - households)
+        # A household whose duplicate waits on one of the page's requests is named too, read like a linked one.
+        outside = sorted(({int(ln.household_cm_id) for ln in family_links} | twin_households) - households)
         camper_less = households - {_household_of(p) for p in persons}
         members_of = sorted(set(outside) | camper_less)
         form_ids = sorted(set().union(*(_form_person_ids(d) for d in incomes)))
@@ -751,9 +773,10 @@ class HouseholdPageService:
                 return [_aid_adult_pair(a) for a in aid]
             return _adult_pairs(household_people(h), members=not campers_in(h))
 
-        # Every household the page names, on a card or a link row, and how: its adults' names, else its mailing title
-        # (household_display_name), with a tie-breaker only where two would read the same (owner, 2026-10-05).
-        named = sorted(set(scope.households) | {int(ln.household_cm_id) for ln in family_links})
+        # Every household the page names, on a card, a link row or a duplicate waiting, and how: its adults' names, else
+        # its mailing title (household_display_name), with a tie-breaker only where two would read the same (owner,
+        # 2026-10-05).
+        named = sorted(set(scope.households) | {int(ln.household_cm_id) for ln in family_links} | twin_households)
         pairs = {h: adult_pairs(h) for h in named}
         labels = {h: adults_label(pairs[h]) or household_display_name(row_of(h), h) for h in named}
         ties = label_tiebreaks({h: (labels[h], _city(row_of(h))) for h in named})
@@ -789,6 +812,18 @@ class HouseholdPageService:
                 grants_applied=money(applied) if applied is not None else None,
                 grants_beyond_owed=money(beyond) if beyond is not None else None,
                 round3_context=round3_context(row, counts, capacities),
+                duplicates_waiting=[waiting_out(r) for r in waiting.get(row.request_id, ())],
+            )
+
+        def waiting_out(twin: RequestRecord) -> DuplicateWaitingOut:
+            session = season.sessions.get(twin.session_cm_id)
+            return DuplicateWaitingOut(
+                request_id=twin.id,
+                household_cm_id=twin.household_cm_id,
+                camper_name=names[1].get(twin.person_cm_id, ""),
+                session_name=session.name if session is not None else "",
+                label=naming[twin.household_cm_id].label,
+                label_tiebreak=naming[twin.household_cm_id].tiebreak,
             )
 
         def link_out(link: Any) -> HouseholdPageLinkOut:

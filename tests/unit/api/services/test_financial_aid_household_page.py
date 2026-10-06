@@ -1912,3 +1912,108 @@ async def test_staff_read_adult_1_and_adult_2_never_a_parent_role() -> None:
     page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
     labels = {a.role_label for h in page.households for a in h.adults_by_role}
     assert labels == {"Adult 1", "Adult 2"}
+
+
+# --- duplicates waiting on a request (owner 2026-10-05: keep either request of a pair, from either card) ---------
+
+
+class _WithOther(_AidAdults):
+    """The Johnsons' page, plus the OTHER household's row (outside the page's scope) with the adults CampMinder names."""
+
+    adults_by_household: ClassVar[dict[int, list[dict[str, Any]]]] = {
+        **_AidAdults.adults_by_household,
+        OTHER: [_adult(1000071, "Samuel", "Chen", 1)],
+    }
+
+    async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
+        rows = await super().fetch_households(year, cm_ids, adults=adults)
+        if OTHER in cm_ids:
+            other = SimpleNamespace(
+                cm_id=OTHER,
+                mailing_title="The Chen Family",
+                greeting="",
+                household_phone="",
+                billing_city="Hillcrest",
+                billing_state="CA",
+                billing_postal_code="",
+                aid_adults=self.adults_by_household[OTHER] if adults else None,
+            )
+            rows = [*rows, other]
+        return rows
+
+
+def _waiting_on(store: FakeDecisionsStore, request_id: str, holder: str, status: str = "duplicate_pending") -> None:
+    store.requests[request_id] = replace(store.requests[request_id], status=status, duplicate_of=holder)
+
+
+def _waiting(page: Any, request_id: str) -> list[tuple[str, int, str, str, str, str]]:
+    (request,) = (r for r in page.requests if r.row.request_id == request_id)
+    return [
+        (d.request_id, d.household_cm_id, d.camper_name, d.session_name, d.label, d.label_tiebreak)
+        for d in request.duplicates_waiting
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_active_request_lists_a_duplicate_waiting_on_it_from_another_households_page() -> None:
+    store = _family()
+    _waiting_on(store, OLIVIA, EMMA)  # Olivia's request sits on the OTHER household's page, outside this one
+    page = await _page_service(store, ledger=_WithOther()).read(YEAR, JOHNSON)
+    assert _waiting(page, EMMA) == [(OLIVIA, OTHER, "Camper 1000031", "Session 2", "Samuel Chen", "")]
+    assert _waiting(page, LIAM) == []
+    assert OLIVIA not in {r.row.request_id for r in page.requests}  # named, never added to the page
+
+
+@pytest.mark.asyncio
+async def test_only_a_duplicate_pending_request_pointing_at_this_one_is_listed() -> None:
+    store = _family()
+    _waiting_on(store, OLIVIA, EMMA, status="duplicate")  # already decided: nothing to keep
+    _waiting_on(store, LIAM, OLIVIA)  # waiting on another request
+    page = await _page_service(store, ledger=_WithOther()).read(YEAR, JOHNSON)
+    assert [_waiting(page, rid) for rid in (EMMA, LIAM)] == [[], []]
+
+
+@pytest.mark.asyncio
+async def test_every_duplicate_waiting_is_listed_by_household_then_request() -> None:
+    store = _family()
+    seed_request(store, "reqoliv00000002", household=OTHER, person=1000032, session=1000102)
+    _waiting_on(store, "reqoliv00000002", EMMA)
+    _waiting_on(store, OLIVIA, EMMA)
+    _waiting_on(store, LIAM, EMMA)  # on this page: named as its card names it
+    page = await _page_service(store, ledger=_WithOther()).read(YEAR, JOHNSON)
+    assert _waiting(page, EMMA) == [
+        (LIAM, GARCIA, "Camper 1000021", "Session 2", "Samuel Garcia & Olivia Chen", ""),
+        (OLIVIA, OTHER, "Camper 1000031", "Session 2", "Samuel Chen", ""),
+        ("reqoliv00000002", OTHER, "Camper 1000032", "Session 2a", "Samuel Chen", ""),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_waiting_households_label_takes_a_tiebreak_when_it_reads_as_a_household_on_the_page() -> None:
+    class _SameNames(_WithOther):
+        adults_by_household: ClassVar[dict[int, list[dict[str, Any]]]] = {
+            **_WithOther.adults_by_household,
+            OTHER: [_adult(1000071, "Patricia", "Johnson", 1, preferred="Pat"), _adult(1000072, "Alex", "Garcia", 2)],
+        }
+
+    store = _family()
+    _waiting_on(store, OLIVIA, EMMA)
+    page = await _page_service(store, ledger=_SameNames()).read(YEAR, JOHNSON)
+    assert _waiting(page, EMMA) == [
+        (OLIVIA, OTHER, "Camper 1000031", "Session 2", "Pat Johnson & Alex Garcia", "Hillcrest, CA")
+    ]
+    assert (page.households[0].label, page.households[0].label_tiebreak) == (
+        "Pat Johnson & Alex Garcia",
+        "Riverside, CA",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_duplicate_waiting_moves_no_number() -> None:
+    store = _family()
+    _waiting_on(store, OLIVIA, EMMA)
+    page = await _page_service(store, ledger=_WithOther()).read(YEAR, JOHNSON)
+    plain = await _page_service(_family(), ledger=_WithOther()).read(YEAR, JOHNSON)
+    assert [h.money for h in page.households] == [h.money for h in plain.households]
+    assert page.totals == plain.totals
+    assert [r.model_copy(update={"duplicates_waiting": []}) for r in page.requests] == plain.requests
