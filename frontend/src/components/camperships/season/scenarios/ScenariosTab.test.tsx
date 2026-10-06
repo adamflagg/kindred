@@ -360,7 +360,10 @@ describe('ScenariosTab (§7.4; D38)', () => {
 
   it("says held requests wait for a freeze after approval, in the server's words (F-⚠1)", () => {
     read = {
-      data: workspace({ snapshot: { ...workspace().snapshot!, awaiting_rules: 9 } }),
+      data: workspace({
+        pricing_version: null,
+        snapshot: { ...workspace().snapshot!, awaiting_rules: 9 },
+      }),
       isLoading: false,
       error: null,
     }
@@ -370,6 +373,19 @@ describe('ScenariosTab (§7.4; D38)', () => {
         /· 9 held in every scenario: freeze again once programs and cost are approved/
       )
     ).toBeInTheDocument()
+  })
+
+  it('does not say to wait for an approval that has happened: the hold clears at the next intake run', () => {
+    read = {
+      data: workspace({ snapshot: { ...workspace().snapshot!, awaiting_rules: 1 } }),
+      isLoading: false,
+      error: null,
+    }
+    renderTab()
+    expect(
+      screen.getByText(/· 1 held in every scenario until the next intake run clears it/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/freeze again once/)).toBeNull()
   })
 
   it('says so when a freeze found nothing new since the last one (F-m7)', () => {

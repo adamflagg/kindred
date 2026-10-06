@@ -60,7 +60,11 @@ function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace;
         <span>
           {`Applications frozen ${formatLongDate(campDay(snapshot.taken_at))} by ${snapshot.taken_by} · ${String(snapshot.requests)} requests`}
           {snapshot.awaiting_rules > 0 &&
-            ` · ${String(snapshot.awaiting_rules)} held in every scenario: freeze again once programs and cost are approved`}
+            // An approved version pricing the season means programs and cost are approved: the flag
+            // stays until the next intake run, so freezing again changes nothing.
+            (workspace.pricing_version === null
+              ? ` · ${String(snapshot.awaiting_rules)} held in every scenario: freeze again once programs and cost are approved`
+              : ` · ${String(snapshot.awaiting_rules)} held in every scenario until the next intake run clears ${snapshot.awaiting_rules === 1 ? 'it' : 'them'}`)}
         </span>
       )}
       <span>
