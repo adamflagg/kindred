@@ -105,9 +105,11 @@ describe('HistoryTable', () => {
     renderTable([OP_SHARE.operation_id])
     expect(line(OP_SHARE.operation_id)).toHaveTextContent('▾')
     expect(screen.getByText('Reason: “Family emailed”')).toBeInTheDocument()
-    expect(
-      screen.getByText(/Household share set · payer share req000000000009:1000002/)
-    ).toBeInTheDocument()
+    // Each household's row, its record id left out: the row links its household (#18).
+    expect(screen.getAllByText('Household share set · payer share · Family emailed')).toHaveLength(
+      2
+    )
+    expect(screen.queryByText(/req000000000009/)).toBeNull()
     expect(screen.getByText('Share pct: 40%')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'The Chen Family ›' })).toHaveAttribute(
       'href',

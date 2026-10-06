@@ -299,13 +299,13 @@ describe("an operation's line (D49: one readable line per operation)", () => {
     expect(
       operationWords({ ...OP_POSTED, summary: '7 requests · 6 families · $9,840 locked' }).what
     ).toBe('Posted · 7 requests · 6 families · $9,840 locked')
-    expect(operationWords(OP_INTAKE).what).toBe('Create, Update · 5 requests · 3 families')
+    expect(operationWords(OP_INTAKE).what).toBe('Created, Updated · 5 requests · 3 families')
     expect(operationWords(OP_INTAKE).who).toBe('Intake')
   })
 
   it('falls back to the counts where the server has no summary (no request or family in it)', () => {
     expect(operationWords({ ...OP_INTAKE, summary: '' }).what).toBe(
-      'Create · 3 applications; Update · 5 requests'
+      'Created · 3 applications; Updated · 5 requests'
     )
   })
 
@@ -409,11 +409,11 @@ describe("a rules row's lines (the Rules tab's words; D49)", () => {
 describe("a row's view in an opened line", () => {
   it("lists a record's own recorded fields, money and percent formatted, bookkeeping left out", () => {
     expect(rowView(first(DETAIL_SHARE.rows))).toEqual({
-      head: 'Household share set · payer share req000000000009:1000001 · Family emailed',
+      head: 'Household share set · payer share · Family emailed',
       lines: [
         'Note: — → Family emailed',
         'Share pct: 100% → 60%',
-        'Source: intake_default → staff',
+        'Source: Intake default → Staff',
       ],
       hidden: 0,
       // An update logs only what changed; the server names who the row is about (H2).
@@ -422,14 +422,9 @@ describe("a row's view in an opened line", () => {
       camperName: 'Emma Johnson',
     })
     expect(rowView(rowAt(DETAIL_SHARE.rows, 1))).toEqual({
-      head: 'Household share set · payer share req000000000009:1000002 · Family emailed',
-      lines: [
-        'Household cm id: 1000002',
-        'Note: Family emailed',
-        'Request: req000000000009',
-        'Share pct: 40%',
-        'Source: staff',
-      ],
+      head: 'Household share set · payer share · Family emailed',
+      // The household and the request are the row's own link: their ids aren't listed again.
+      lines: ['Note: Family emailed', 'Share pct: 40%', 'Source: Staff'],
       // The nested `entered` copy (two values) is counted, not listed.
       hidden: 2,
       householdCmId: 1000002,
@@ -440,10 +435,10 @@ describe("a row's view in an opened line", () => {
 
   it('reads an amount as the row recorded it, under the action word (⚠ Decision 4)', () => {
     expect(rowView(first(DETAIL_POSTED.rows))).toEqual({
-      head: 'Posted · decision req000000000001:1',
+      head: 'Posted · Round 1 decision',
       lines: [
         'Amount: $1,420',
-        'Effective on: 2027-04-09',
+        'Effective on: Apr 9, 2027',
         'Locked by: Posted check',
         'Request: req000000000001',
         'Round: 1',
@@ -470,7 +465,7 @@ describe("a row's view in an opened line", () => {
 
   it('never shows "award" on a Round 3 amount, which is Decided, not posted (D80)', () => {
     const view = rowView(ROW_ROUND3_AWARD)
-    expect(view.head).toBe('Round 3 amount entered · decision req000000000011:3')
+    expect(view.head).toBe('Round 3 amount entered · Round 3 decision')
     expect(view.lines).toContain('Amount: $500')
     expect(view.lines).toContain('Needs approval: yes')
     expect(JSON.stringify(view)).not.toMatch(/award/i)
@@ -478,7 +473,7 @@ describe("a row's view in an opened line", () => {
 
   it('words a hold code as the grid does, and keeps the note', () => {
     expect(rowView(first(DETAIL_RELEASE.rows))).toEqual({
-      head: 'Released · hold req000000000004:placeholder_income · Income confirmed by phone',
+      head: 'Released · hold: Placeholder income · Income confirmed by phone',
       lines: [
         'Code: Placeholder income',
         'Note: Income confirmed by phone',
@@ -576,7 +571,7 @@ describe("a row's view in an opened line", () => {
         { path: ['round'], kind: 'added', after: 1 },
       ],
     })
-    expect(view.head).toBe('Ask entered · decision req000000000011:1')
+    expect(view.head).toBe('Ask entered · Round 1 decision')
     expect(view.lines).toEqual(['Amount: $1,800', 'Request: req000000000011', 'Round: 1'])
   })
 
@@ -616,5 +611,167 @@ describe("who a row is about (H2: the server's names)", () => {
     const view = rowView({ ...named, household_cm_id: null, household_name: null })
     expect(view.householdCmId).toBe(1000002)
     expect(view.householdName).toBe('Household 1000002')
+  })
+})
+
+describe("an opened row's words: no raw ids or codes where words exist (#18)", () => {
+  const base = first(DETAIL_SHARE.rows)
+  const unlinked = { ...base, household_cm_id: null, household_name: null, camper_name: null }
+  const view = (
+    entity: string,
+    after: Record<string, unknown>,
+    extra: Partial<ApiAidHistoryRow> = {},
+    sessions?: ReadonlyMap<number, string>
+  ) =>
+    rowView(
+      {
+        ...unlinked,
+        entity,
+        entity_id: 'abcdefghij12345',
+        action: 'create',
+        reason: '',
+        before: null,
+        after,
+        changes: Object.entries(after).map(([key, value]) => ({
+          path: [key],
+          kind: 'added' as const,
+          after: value,
+        })),
+        ...extra,
+      },
+      sessions
+    )
+
+  it('reads create and update as past-tense verbs, as Placed and Corrected do', () => {
+    expect(actionWords('aid_grants', 'create')).toBe('Created')
+    expect(actionWords('aid_grants', 'update')).toBe('Updated')
+    expect(actionWords('aid_grants', 'delete')).toBe('Deleted')
+    expect(actionWords('aid_rules', 'create')).toBe('New version')
+  })
+
+  it("reads an income correction's field in words and its figures as money", () => {
+    expect(
+      view('aid_application_corrections', {
+        field: 'total_gross_income',
+        previous_value: '95000.00',
+        value: '60000.00',
+      }).lines
+    ).toEqual(['Field: Total gross income', 'Previous value: $95,000', 'Value: $60,000'])
+    expect(view('aid_applications', { total_gross_income: '60000' }).lines).toEqual([
+      'Total gross income: $60,000',
+    ])
+  })
+
+  it("names a session by the season's name, else by its number", () => {
+    const sessions = new Map([[9300102, 'Session 2']])
+    expect(view('aid_requests', { session_cm_id: 9300102 }, {}, sessions).lines).toEqual([
+      'Session: Session 2',
+    ])
+    expect(view('aid_requests', { session_cm_id: 9300199 }).lines).toEqual(['Session: 9300199'])
+    // A capacity names its session in the head, never its record id.
+    const capacity = view(
+      'aid_session_capacity',
+      { session_cm_id: 9300102, capacity: 150 },
+      { action: 'set_capacity' },
+      sessions
+    )
+    expect(capacity.head).toBe('Capacity set · session capacity · Session 2')
+  })
+
+  it('reads a grantor, a household, a source and a status in words, and a date as staff write it', () => {
+    expect(view('aid_grants', { grantor_key: 'partner_fund_b' }).lines).toEqual([
+      'Grantor: Partner fund b',
+    ])
+    // A household the row recorded is its link: not listed again as an id.
+    const recorded = view('aid_grants', { household_cm_id: 9100111 })
+    expect(recorded.lines).toEqual([])
+    expect(recorded.householdName).toBe('Household 9100111')
+    // Another household than the one the row is about is listed, by its number.
+    expect(
+      view(
+        'aid_grants',
+        { household_cm_id: 9100111 },
+        { household_cm_id: 9100108, household_name: 'The Rivera Family' }
+      ).lines
+    ).toEqual(['Household: Household 9100111'])
+    expect(view('aid_requests', { status: 'duplicate_pending' }).lines).toEqual([
+      'Status: Duplicate pending',
+    ])
+    expect(view('aid_payer_shares', { source: 'intake_default' }).lines).toEqual([
+      'Source: Intake default',
+    ])
+    expect(view('aid_grants', { received_on: '2026-08-22' }).lines).toEqual([
+      'Received on: Aug 22, 2026',
+    ])
+  })
+
+  it('drops a record id from the head when the row links its household or camper, and keeps it when nothing else names it', () => {
+    const linked = { household_cm_id: 9100111, household_name: 'The Rivera Family' }
+    const grant = view(
+      'aid_grant_placements',
+      { grant: 'commitment:abcdefghij12345' },
+      {
+        ...linked,
+        action: 'place',
+        entity_id: 'commitment:abcdefghij12345',
+      }
+    )
+    expect(grant.head).toBe('Placed · grant placement')
+    expect(grant.lines).toEqual([])
+    const alone = view(
+      'aid_grant_placements',
+      { grant: 'commitment:abcdefghij12345' },
+      {
+        action: 'place',
+        entity_id: 'commitment:abcdefghij12345',
+      }
+    )
+    expect(alone.head).toBe('Placed · grant placement commitment:abcdefghij12345')
+    expect(alone.lines).toEqual(['Grant: commitment:abcdefghij12345'])
+  })
+
+  it("words a hold's code in its head, never the record id and the raw code", () => {
+    const lifted = view(
+      'aid_hold_events',
+      {},
+      {
+        action: 'lift',
+        entity_id: 'abcdefghij12345:manual_hold',
+      }
+    )
+    expect(lifted.head).toBe('Lifted · hold: On hold')
+  })
+})
+
+describe("a rules diff's tiers in number order (#18)", () => {
+  it('lists Tier 2 before Tier 10, leaving every other line where it was', () => {
+    const tier = (n: string, after: string) => ({
+      path: ['document', 'round2', 'tables', 'summer', 'tiers', n, 'total_pct'],
+      kind: 'changed' as const,
+      before: '50',
+      after,
+    })
+    const lines = rulesLines({
+      ...first(DETAIL_RULES_SAVE.rows),
+      changes: [
+        tier('1', '91'),
+        tier('10', '21'),
+        tier('11', '17'),
+        tier('2', '97'),
+        {
+          path: ['section_status', 'round2', 'state'],
+          kind: 'changed',
+          before: 'approved',
+          after: 'draft',
+        },
+      ],
+    })
+    expect(lines.map((line) => line.match(/Tier (\d+)/)?.[1] ?? line)).toEqual([
+      '1',
+      '2',
+      '10',
+      '11',
+      `${SECTION_TITLES.round2}: Approved → Draft`,
+    ])
   })
 })

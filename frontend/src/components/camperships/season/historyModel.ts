@@ -12,7 +12,7 @@ import type {
   ApiAidHistoryRow,
 } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
-import { formatCampDateTime, parseIsoDay } from '../kit/dates'
+import { formatCampDateTime, formatLongDate, parseIsoDay } from '../kit/dates'
 import { CANCEL_REASON_OPTIONS } from '../kit/editor'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
@@ -248,8 +248,15 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
   aid_session_capacity: { set_capacity: 'Capacity set' },
 }
 
+/** The generic record writes, past tense like "Placed" and "Corrected" (#18), never "Create". */
+const GENERIC_ACTION_WORDS: Readonly<Record<string, string>> = {
+  create: 'Created',
+  update: 'Updated',
+  delete: 'Deleted',
+}
+
 export function actionWords(entity: string, action: string): string {
-  return ACTION_WORDS[entity]?.[action] ?? codeText(action)
+  return ACTION_WORDS[entity]?.[action] ?? GENERIC_ACTION_WORDS[action] ?? codeText(action)
 }
 
 const SYSTEM_ACTORS: Readonly<Record<string, string>> = {
@@ -402,10 +409,30 @@ export function rulesLines(row: ApiAidHistoryRow): string[] {
   return changeLines(row.changes)
 }
 
+/** Paths compared part by part, a number as a number: Tier 2 before Tier 10. */
+function naturalOrder(a: readonly string[], b: readonly string[]): number {
+  for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+    const order = (a[i] ?? '').localeCompare(b[i] ?? '', 'en', { numeric: true })
+    if (order !== 0) return order
+  }
+  return a.length - b.length
+}
+
+/**
+ * The server lists a diff's settings sorted as text (Tier 1, Tier 10, Tier 11, Tier 2). The setting
+ * changes go back in number order, each into a setting's slot, so the status lines stay put (#18).
+ */
+function inNumberOrder(changes: readonly ApiAidFieldChange[]): ApiAidFieldChange[] {
+  const isSetting = (change: ApiAidFieldChange) => change.path[0] === 'document'
+  const settings = changes.filter(isSetting).sort((a, b) => naturalOrder(a.path, b.path))
+  let next = 0
+  return changes.map((change) => (isSetting(change) ? (settings[next++] ?? change) : change))
+}
+
 /** A rules diff's lines: a setting change in the section's words, and a section's status move. */
 function changeLines(changes: readonly ApiAidFieldChange[]): string[] {
   const lines: string[] = []
-  for (const change of changes) {
+  for (const change of inNumberOrder(changes)) {
     const [root, section, ...rest] = change.path
     if (section === undefined) continue
     if (root === 'document') {
@@ -426,8 +453,27 @@ function changeLines(changes: readonly ApiAidFieldChange[]): string[] {
 /** ⚠ Decision 4: the only fields formatted as money or percent; every other figure reads as recorded. A decision's ask is logged as `amount` under the action `ask` (no `ask` field on decision rows); an intake request logs its own `ask`, a float. */
 const MONEY_FIELDS: ReadonlySet<string> = new Set(['amount', 'ask'])
 const PERCENT_FIELDS: ReadonlySet<string> = new Set(['share_pct'])
-/** Codes worded as the Requests grid words them (a hold's `code`: "Placeholder income"). */
-const CODE_FIELDS: ReadonlySet<string> = new Set(['code'])
+/**
+ * Codes worded as the Requests grid words them (a hold's `code`: "Placeholder income"; a payer
+ * share's `source`, a request's `status`: "Intake default", "Duplicate pending").
+ */
+const CODE_FIELDS: ReadonlySet<string> = new Set(['code', 'source', 'status'])
+/**
+ * ⚠ Decision 4: an application's income figures read as money (`total_gross_income`, a housing
+ * expense, savings), and so do an income correction's previous value and value (#18).
+ */
+const MONEY_FIGURE = /income|expense|savings|rent|housing/
+/** Fields whose name staff read as a word, not as the field's code. */
+const FIELD_LABELS: Readonly<Record<string, string>> = {
+  lock_source: 'Locked by',
+  session_cm_id: 'Session',
+  household_cm_id: 'Household',
+  grantor_key: 'Grantor',
+}
+/** A record id the row's own household or camper link already stands for (#18). */
+const LINKED_IDS: ReadonlySet<string> = new Set(['request', 'grant'])
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/
 /**
  * Never listed: the record's bookkeeping (the line already says who and when), and `event`, which
  * repeats the row's action code (the head words it; listed raw it would print "award", I2).
@@ -476,10 +522,22 @@ const LOCK_SOURCE_WORDS: ReadonlyMap<string, string> = new Map([
   ['placement', 'Grant placement'],
 ])
 
-function fieldValue(entity: string, field: string, value: unknown): string {
+/** What a row's values are read with: the season's session names, and whether it corrects money. */
+interface RowContext {
+  readonly sessions: ReadonlyMap<number, string> | undefined
+  /** An income correction: its previous value and value are money. */
+  readonly correctsMoney: boolean
+}
+
+function fieldValue(entity: string, field: string, value: unknown, context: RowContext): string {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   if (CODE_FIELDS.has(field) && typeof value === 'string') return codeWords(value)
+  if (field === 'session_cm_id') return context.sessions?.get(Number(value)) ?? String(value)
+  if (field === 'household_cm_id') return `Household ${String(value)}`
+  if ((field === 'grantor_key' || field === 'field') && typeof value === 'string') {
+    return codeText(value)
+  }
   if (field === 'lock_source' && typeof value === 'string') {
     return LOCK_SOURCE_WORDS.get(value) ?? codeText(value)
   }
@@ -487,18 +545,55 @@ function fieldValue(entity: string, field: string, value: unknown): string {
     return CANCEL_REASON_WORDS.get(value) ?? value
   }
   const n = decimalOf(value)
-  if (MONEY_FIELDS.has(field) && n !== null) return formatMoney(n)
+  const money =
+    MONEY_FIELDS.has(field) ||
+    MONEY_FIGURE.test(field) ||
+    (context.correctsMoney && (field === 'previous_value' || field === 'value'))
+  if (money && n !== null) return formatMoney(n)
   if (PERCENT_FIELDS.has(field) && n !== null) return `${String(value)}%`
+  if (typeof value === 'string' && ISO_DAY.test(value)) return formatLongDate(value)
+  if (typeof value === 'string' && ISO_TIME.test(value)) return formatCampDateTime(value)
   return String(value)
 }
 
-function fieldLine(entity: string, change: ApiAidFieldChange): string {
+function fieldLine(entity: string, change: ApiAidFieldChange, context: RowContext): string {
   const field = change.path[0] ?? ''
-  const label = field === 'lock_source' ? 'Locked by' : codeText(field)
-  if (change.kind === 'added') return `${label}: ${fieldValue(entity, field, change.after)}`
-  if (change.kind === 'removed')
-    return `${label}: removed (was ${fieldValue(entity, field, change.before)})`
-  return `${label}: ${fieldValue(entity, field, change.before)} → ${fieldValue(entity, field, change.after)}`
+  const label = FIELD_LABELS[field] ?? codeText(field)
+  const show = (value: unknown) => fieldValue(entity, field, value, context)
+  if (change.kind === 'added') return `${label}: ${show(change.after)}`
+  if (change.kind === 'removed') return `${label}: removed (was ${show(change.before)})`
+  return `${label}: ${show(change.before)} → ${show(change.after)}`
+}
+
+/**
+ * What the head names the row's record by (#18): a decision by its round, a hold by its code, a
+ * capacity by its session. Otherwise the record's word alone when the row links its household or
+ * camper; the record id only when nothing else names it.
+ */
+function subjectOf(
+  row: ApiAidHistoryRow,
+  linked: boolean,
+  sessions: ReadonlyMap<number, string> | undefined
+): string {
+  const record = recordWords(row.entity, 1)
+  const [, qualifier] = row.entity_id.split(':')
+  if (row.entity === 'aid_decisions' && qualifier !== undefined && /^\d+$/.test(qualifier)) {
+    return `Round ${qualifier} decision`
+  }
+  if (row.entity === 'aid_hold_events' && qualifier !== undefined && qualifier !== '') {
+    return `hold: ${codeWords(qualifier)}`
+  }
+  const session =
+    positiveInt(row.after, 'session_cm_id') ?? positiveInt(row.before, 'session_cm_id')
+  if (session !== null)
+    return `${record} · ${sessions?.get(session) ?? `Session ${String(session)}`}`
+  return linked ? record : `${record} ${row.entity_id}`
+}
+
+/** The field an income correction corrected, if it is an income figure. */
+function correctsMoney(row: ApiAidHistoryRow): boolean {
+  const field = row.after?.['field'] ?? row.before?.['field']
+  return typeof field === 'string' && MONEY_FIGURE.test(field)
 }
 
 /** The household the row itself recorded, if it did (a create, or an update of that field). */
@@ -528,8 +623,11 @@ function rulesHead(row: ApiAidHistoryRow): string {
   ])
 }
 
-/** One row of an opened line: its action, record and reason, then the fields it recorded. */
-export function rowView(row: ApiAidHistoryRow): RowView {
+/**
+ * One row of an opened line: its action, record and reason, then the fields it recorded. `sessions`
+ * (the season's session names, when the screen has them) names a session; else its number shows.
+ */
+export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, string>): RowView {
   if (row.entity === RULES) {
     return {
       head: rulesHead(row),
@@ -542,19 +640,39 @@ export function rowView(row: ApiAidHistoryRow): RowView {
   }
   // Who the row is about: the server's subject (H2), else the household the row itself recorded.
   const householdCmId = row.household_cm_id ?? householdOf(row)
+  const linked = householdCmId !== null || row.camper_name !== null
+  // A field the row's link already shows: the linked household's id, the request or grant it is about.
+  const shownByLink = (change: ApiAidFieldChange) => {
+    const field = change.path[0] ?? ''
+    if (!linked) return false
+    if (LINKED_IDS.has(field)) return true
+    return (
+      field === 'household_cm_id' &&
+      householdCmId !== null &&
+      [change.before, change.after].every(
+        (v) => v === null || v === undefined || v === householdCmId
+      )
+    )
+  }
   const topLevel = row.changes.filter((change) => change.path.length === 1)
-  const unlisted = topLevel.filter((change) => UNLISTED.has(change.path[0] ?? ''))
+  const unlisted = topLevel.filter(
+    (change) => UNLISTED.has(change.path[0] ?? '') || shownByLink(change)
+  )
   const listed = topLevel.filter(
     (change) =>
-      !UNLISTED.has(change.path[0] ?? '') && isScalar(change.before) && isScalar(change.after)
+      !UNLISTED.has(change.path[0] ?? '') &&
+      !shownByLink(change) &&
+      isScalar(change.before) &&
+      isScalar(change.after)
   )
+  const context: RowContext = { sessions, correctsMoney: correctsMoney(row) }
   return {
     head: joined([
       actionWords(row.entity, row.action),
-      `${recordWords(row.entity, 1)} ${row.entity_id}`,
+      subjectOf(row, linked, sessions),
       row.reason,
     ]),
-    lines: listed.map((change) => fieldLine(row.entity, change)),
+    lines: listed.map((change) => fieldLine(row.entity, change, context)),
     hidden: row.changes.length - listed.length - unlisted.length,
     householdCmId,
     householdName:
