@@ -52,11 +52,29 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
       .getByText('2 · The Garcia Family')
       .closest('[data-household]') as HTMLElement
     expect(within(johnson).getByText('Pat Garcia')).toHaveClass('font-bold')
-    expect(within(johnson).getByText('Riverside, CA')).toHaveClass('text-muted-foreground')
+    // Owner pass 3 (V3): a city tie-break the card's own address line already says is dropped.
+    expect(within(johnson).queryByText('Riverside, CA')).toBeNull()
+    expect(within(johnson).getByText('household 1000001 · Riverside, CA')).toBeInTheDocument()
     expect(within(garcia).getByText('Pat Garcia')).toHaveClass('font-bold')
     expect(within(garcia).getByText('#1000003')).toHaveClass('text-muted-foreground')
     // The label replaces the adults line: Samuel Johnson is named once, in the contact line.
     expect(within(johnson).queryByText('Samuel Johnson')).toBeNull()
+  })
+
+  it("keeps a city tie-break the card's address line does not say", () => {
+    const [a, b] = TIED_PAGE.households
+    render(
+      <HouseholdCards
+        page={{
+          ...TIED_PAGE,
+          households: [{ ...a!, city: '' }, b!],
+        }}
+      />
+    )
+    const johnson = screen
+      .getByText('1 · The Johnson Family')
+      .closest('[data-household]') as HTMLElement
+    expect(within(johnson).getByText('Riverside, CA')).toHaveClass('text-muted-foreground')
   })
 
   it('draws no tie-break when the label is unique', () => {

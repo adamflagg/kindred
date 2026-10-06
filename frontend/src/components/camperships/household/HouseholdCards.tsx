@@ -22,7 +22,13 @@ import { HH_HOUSEHOLD_CARD, HH_NOTE, stripeOf } from './householdStyles'
 function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAidHouseholdPage }) {
   const contact = cardContactLine(card)
   const confirmation = cardConfirmation(card)
-  const label = labelOf(card)
+  const named = labelOf(card)
+  // Owner pass 3 (V3, 10-05): a city tie-break the address line below already says is not repeated;
+  // the "#<cm id>" fallback stays.
+  const label =
+    named !== null && named.tiebreak !== '' && named.tiebreak === card.city.trim()
+      ? { ...named, tiebreak: '' }
+      : named
   return (
     <div
       data-household={card.household_cm_id}
