@@ -18,6 +18,13 @@ ACTOR = "registrar@example.com"
 OTHER_PARENT = 1000009
 
 
+def application(store: FakeAidStore, record_id: str, household_cm_id: int) -> str:
+    """Another household's application, cloned from an existing one (the twin refuses a dangling relation)."""
+    template = next(iter(store.applications.values()))
+    store.applications[record_id] = replace(template, id=record_id, household_cm_id=household_cm_id)
+    return record_id
+
+
 async def pair() -> tuple[FakeAidStore, FinancialAidCaseworkService, RequestRecord, RequestRecord]:
     """An active request and a duplicate_pending one for the same camper and session."""
     store = seeded_store()
@@ -25,6 +32,7 @@ async def pair() -> tuple[FakeAidStore, FinancialAidCaseworkService, RequestReco
     await FinancialAidIntakeService(store).build(YEAR)
     active = store.request_for(person=1000011, program="summer")
     extra = store.request_for(person=1000015, program="summer")
+    own = application(store, "app0000pending01", OTHER_PARENT)
     pending = replace(
         extra,
         person_cm_id=1000011,
@@ -32,6 +40,7 @@ async def pair() -> tuple[FakeAidStore, FinancialAidCaseworkService, RequestReco
         session_cm_id=active.session_cm_id,
         status="duplicate_pending",
         duplicate_of=active.id,
+        application_id=own,  # the other parent's own application (spec 9.2)
     )
     store.requests[pending.id] = pending
     # Intake gives a share only to a live request: a duplicate_pending one has none.
@@ -127,7 +136,8 @@ async def test_an_active_request_with_any_decision_on_record_cannot_be_swapped_a
 @pytest.mark.asyncio
 async def test_other_pending_requests_follow_the_kept_one() -> None:
     store, casework, active, pending = await pair()
-    sibling = replace(pending, id="sib000000000001", household_cm_id=1000033)
+    third = application(store, "app0000third0001", 1000033)
+    sibling = replace(pending, id="sib000000000001", household_cm_id=1000033, application_id=third)
     store.requests[sibling.id] = sibling
     await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
     assert (store.requests[sibling.id].status, store.requests[sibling.id].duplicate_of) == (
@@ -138,7 +148,7 @@ async def test_other_pending_requests_follow_the_kept_one() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_round_posted_then_undone_does_not_block_the_swap() -> None:
+async def test_a_bare_post_then_undo_with_no_ask_or_award_does_not_block_the_swap() -> None:
     store, casework, active, pending = await pair()
     posted(store, active.id)
     store.decision_events.append(
@@ -148,6 +158,23 @@ async def test_a_round_posted_then_undone_does_not_block_the_swap() -> None:
     )
     out = await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
     assert out.status == "duplicate"
+
+
+@pytest.mark.asyncio
+async def test_an_asked_then_posted_then_undone_round_still_refuses_for_its_ask() -> None:
+    # Unpost clears only the posted and lock fields: the ask stays on the round.
+    store, casework, active, pending = await pair()
+    day = datetime(2027, 3, 9, tzinfo=UTC)
+    store.decision_events.extend(
+        replace(
+            DecisionEvent(id=f"evt{i:012d}", request_id=active.id, round=1, kind=kind, created=day),
+            amount=Decimal(500) if kind == "ask" else None,
+        )
+        for i, kind in enumerate(("ask", "post", "unpost"))
+    )
+    with pytest.raises(CaseworkValidationError, match="Round 1 has a decision on record"):
+        await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
+    assert store.operations == []
 
 
 @pytest.mark.asyncio

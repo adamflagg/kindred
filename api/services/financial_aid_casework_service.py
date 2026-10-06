@@ -761,7 +761,7 @@ class FinancialAidCaseworkService:
         # Any other possible duplicate of the old active request now waits on the kept one.
         writes.extend(
             self._request_update(other, {"duplicate_of": pending.id}, "keep_duplicate")
-            for other in await self._store.fetch_requests(active.year, active.application_id)
+            for other in await self._store.fetch_requests(active.year)
             if other.id != pending.id and _waits_on(other, active)
         )
         if not await self._store.fetch_payer_shares(pending.year, [pending.id]):
