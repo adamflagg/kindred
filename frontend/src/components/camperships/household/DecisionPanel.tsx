@@ -15,13 +15,14 @@ const BASIS_WORDS = {
 } as const satisfies Record<RoundLine['basis'], string | null>
 
 /**
- * A locked round's flag. Rules that would lower it never read as a change to what the family has:
- * the posted amount stands (owner ruling 2026-10-01 S1 Q1; D43).
+ * A locked round's flag. Rules that would lower it never read as a change to what the family has,
+ * and a higher figure is information only: either way the posted amount stands (owner ruling
+ * 2026-10-01 S1 Q1; Decision 22; D43).
  */
 function wouldChangeWords(by: number): string {
   return by < 0
     ? `rules now ${formatMoney(-by)} lower · posted stands`
-    : `would change by ${formatMoney(by)}`
+    : `rules now ${formatMoney(by)} higher · posted stands`
 }
 
 function Tick({

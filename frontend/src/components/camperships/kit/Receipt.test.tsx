@@ -105,7 +105,7 @@ describe('Receipt (D33 form D; D34 folding; D76)', () => {
     expect(container.querySelector('button span.tabular-nums')).toHaveClass('text-red-700')
   })
 
-  it('opens by itself on a hold or a "would change by" flag, including one that arrives later (D34)', () => {
+  it('opens by itself on a hold or a would-change flag, including one that arrives later (D34)', () => {
     const { rerender } = renderReceipt(<Receipt trace={TRACE_CAPPED_BY_ASK} label={LIVE} folded />)
     expect(screen.queryByRole('button', { name: /Weighted income/ })).toBeNull()
     rerender(
