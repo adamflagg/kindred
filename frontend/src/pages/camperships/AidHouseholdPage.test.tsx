@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { householdPage } from '../../components/camperships/household/householdFixtures'
+import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
 import { AidApiError } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
 import AidHouseholdPage from './AidHouseholdPage'
@@ -15,10 +16,29 @@ interface PageResult {
 }
 let result: PageResult
 const asked: number[] = []
+const prefetched: Array<number | null> = []
 vi.mock('../../hooks/camperships/useAidHouseholdPage', () => ({
   useAidHouseholdPage: (id: number) => {
     asked.push(id)
     return result
+  },
+  usePrefetchHousehold: (id: number | null) => {
+    prefetched.push(id)
+  },
+}))
+const gridAsked: Array<{ enabled?: boolean; live?: boolean }> = []
+// What the grid read is doing: loaded (the default), still loading, or failed.
+let gridState: { rows: typeof GRID_ROWS | null; isError: boolean }
+vi.mock('../../hooks/camperships/useAidGrid', () => ({
+  useAidGrid: (options: { enabled?: boolean; live?: boolean }) => {
+    gridAsked.push(options)
+    return {
+      data:
+        options.enabled === false || gridState.rows === null
+          ? undefined
+          : { year: 2027, rules_version: 1, rows: gridState.rows },
+      isError: gridState.isError,
+    }
   },
 }))
 const NOTES: Record<string, number> = { cost: 1, decided: 2, grants: 3, family_share: 4, posted: 5 }
@@ -43,21 +63,19 @@ function Where() {
   return <div data-testid="where">{pathname + search}</div>
 }
 
-function renderAt(path: string, history: string[] = [], state: unknown = null) {
+function renderAt(path: string) {
   return render(
-    <MemoryRouter
-      initialEntries={[
-        ...history,
-        {
-          pathname: path.split('?')[0] ?? path,
-          search: path.includes('?') ? `?${path.split('?')[1] ?? ''}` : '',
-          state,
-        },
-      ]}
-      initialIndex={history.length}
-    >
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        <Route
+          path="/aid/households/:householdCmId"
+          element={
+            <>
+              <AidHouseholdPage />
+              <Where />
+            </>
+          }
+        />
         <Route path="/aid/requests" element={<Where />} />
       </Routes>
     </MemoryRouter>
@@ -67,6 +85,9 @@ function renderAt(path: string, history: string[] = [], state: unknown = null) {
 beforeEach(() => {
   result = { data: householdPage(), isLoading: false, error: null }
   asked.length = 0
+  prefetched.length = 0
+  gridAsked.length = 0
+  gridState = { rows: GRID_ROWS, isError: false }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
 })
@@ -113,63 +134,230 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.queryByText(/Network down/)).toBeNull()
   })
 
-  // Regression guard: passed against the first build too (no `from` means no link).
-  it('has no way back when it was not opened from the grid', () => {
-    renderAt('/aid/households/1000001?year=2027')
-    expect(screen.queryByRole('link', { name: '← Back to Requests' })).toBeNull()
+  it('shows the income, the grants and postings, and the history below the cards', () => {
+    renderAt('/aid/households/1000001')
+    expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
+  })
+})
+
+describe('the queue walk (§3.5; D14)', () => {
+  it('shows where the family sits in the view it came from, and its neighbours by name and reason', () => {
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?row=reqolivia000003&year=2027'
+    )
+    expect(screen.getByText(/3 of 4 families/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: '‹ The Garcia Family · Placeholder income' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'The Sam Family · Reverse posting ›' })
+    ).toBeInTheDocument()
+    expect(gridAsked.at(-1)).toEqual({ enabled: true, live: true })
   })
 
-  it('links back to the grid view and filters it came from (fresh tab, no history)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=approved&pool=pool_a&ids=1')
-    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
+  it('steps with ] and [, carrying the view', async () => {
+    renderAt('/aid/households/1000005?from=all')
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000007?from=all&year=2027'
+    )
+    // '[[' is user-event's escape for a literal '[' (a lone '[' opens a key descriptor).
+    await userEvent.keyboard('[[')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000005?from=all&year=2027'
+    )
+  })
+
+  it("keeps the grid's filters on every step and on the way back (M5)", () => {
+    renderAt('/aid/households/1000005?from=all&program=quest')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?program=quest&row=reqolivia000003&year=2027'
+    )
+    // Only the Chen family is in Quest: no neighbours to step to.
+    expect(screen.queryByRole('link', { name: /The Sam Family/ })).toBeNull()
+  })
+
+  // Added after a mutation check showed no test pinned the filters on a step.
+  it("carries the grid's filters on a step, and walks only the filtered rows (M5)", async () => {
+    renderAt('/aid/households/1000003?from=all&pool=pool_a')
+    expect(screen.getByText(/2 of 3 families/)).toBeInTheDocument()
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000007?from=all&pool=pool_a&year=2027'
+    )
+  })
+
+  it("keeps the grid's as-of on the way back and on a step (it came on the link)", async () => {
+    renderAt('/aid/households/1000005?from=all&as_of=2027-03-01')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?row=reqolivia000003&year=2027&as_of=2027-03-01'
+    )
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000007?from=all&year=2027&as_of=2027-03-01'
+    )
+  })
+
+  it('goes Back to the view with a plain link, highlighting the family it left', async () => {
+    renderAt('/aid/households/1000005?from=all')
+    await userEvent.click(screen.getByRole('link', { name: '← Back to All' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/requests?row=reqolivia000003&year=2027'
+    )
+  })
+
+  // One URL scheme (owner ruling 10-03, T4): the grid's link carries `from=<stage slug>` (or `all`)
+  // and `lens=appeals`; the walk steps through what that lens and stage showed, and Back returns there.
+  it('walks the Appeals lens: appeals only, and Back keeps the lens with no view', async () => {
+    renderAt('/aid/households/1000005?from=all&lens=appeals')
+    expect(screen.getByRole('link', { name: '← Back to Appeals' })).toHaveAttribute(
+      'href',
+      '/aid/requests?lens=appeals&row=reqolivia000003&year=2027'
+    )
+    expect(screen.getByText(/1 of 1 families/)).toBeInTheDocument()
+  })
+
+  it('walks a stage under the Appeals lens, and every link keeps both', () => {
+    renderAt('/aid/households/1000001?from=needs-offer&lens=appeals')
+    // Johnson's request is no appeal: not in the walk under the Appeals lens.
+    expect(screen.getByText(/not in Needs an offer now/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '← Back to Needs an offer' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=needs-offer&lens=appeals&year=2027'
+    )
+  })
+
+  it('steps through a stage with its slug and the lens on the link', async () => {
+    renderAt('/aid/households/1000001?from=needs-offer')
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000005?from=needs-offer&year=2027'
+    )
+  })
+
+  it('leaves a bracket typed in a field alone', async () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/households/1000005?from=all']}>
+        <Routes>
+          <Route
+            path="/aid/households/:householdCmId"
+            element={
+              <>
+                <AidHouseholdPage />
+                <input aria-label="typing" />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('textbox', { name: 'typing' }))
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+  })
+
+  it('leaves a bracket inside a form or the editor alone', async () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/households/1000005?from=all']}>
+        <Routes>
+          <Route
+            path="/aid/households/:householdCmId"
+            element={
+              <>
+                <AidHouseholdPage />
+                <form>
+                  <button type="button">in form</button>
+                </form>
+                <div data-aid-editor>
+                  <button type="button">in editor</button>
+                </div>
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'in form' }))
+    await userEvent.keyboard(']')
+    await userEvent.click(screen.getByRole('button', { name: 'in editor' }))
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+  })
+
+  it('loads the next family in the background', () => {
+    renderAt('/aid/households/1000005?from=all')
+    expect(prefetched).toContain(1000007)
+  })
+
+  it('stands alone when reached from search, Grants or Money: no strip, no Back, no grid read', () => {
+    renderAt('/aid/households/1000005')
+    expect(screen.queryByText(/families$/)).toBeNull()
+    expect(screen.queryByRole('link', { name: /Back to/ })).toBeNull()
+    expect(gridAsked.every((options) => options.enabled === false)).toBe(true)
+  })
+
+  it("keeps the grid's sort and grouping on Back, and steps in that order (I1)", async () => {
+    // Total decided, largest first: Chen, Johnson, Sam, Garcia.
+    renderAt('/aid/households/1000005?from=all&sort=total:desc&group=reason')
+    const back = screen.getByRole('link', { name: '← Back to All' }).getAttribute('href') ?? ''
+    const params = new URL(back, 'http://x').searchParams
+    expect(params.get('sort')).toBe('total:desc')
+    expect(params.get('group')).toBe('reason')
+    await userEvent.keyboard(']')
     const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
-    expect(where.pathname).toBe('/aid/requests')
-    expect(Object.fromEntries(where.searchParams)).toEqual({
-      view: 'approved',
-      pool: 'pool_a',
-      ids: '1',
-      year: '2027',
-    })
+    expect(where.pathname).toBe('/aid/households/1000001')
+    expect(where.searchParams.get('sort')).toBe('total:desc')
+    expect(where.searchParams.get('group')).toBe('reason')
+  })
+})
+
+describe('Back when the walk has no place for the family (I2)', () => {
+  const noWalk = () => {
+    expect(screen.queryByText(/ of \d+ families/)).toBeNull()
+    expect(screen.queryByRole('link', { name: /[‹›]/ })).toBeNull()
+  }
+
+  it('shows Back alone while the grid read is loading, claiming nothing', () => {
+    gridState = { rows: null, isError: false }
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?year=2027'
+    )
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+    noWalk()
   })
 
-  it('keeps the as-of of the view it came from in the fallback href', () => {
-    renderAt('/aid/households/1000001?year=2027&from=all&as_of=2027-03-01')
-    const href = screen.getByRole('link', { name: '← Back to Requests' }).getAttribute('href') ?? ''
-    expect(new URL(href, 'http://x').searchParams.get('as_of')).toBe('2027-03-01')
+  it('shows Back alone when the grid read failed', () => {
+    gridState = { rows: null, isError: true }
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toBeInTheDocument()
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+    noWalk()
   })
 
-  it('goes back through history when the grid opened it, so the grid lands on its row (§3.5)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=all', ['/aid/requests?row=req-7&year=2027'], {
-      aidFromGrid: true,
-    })
-    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?row=req-7&year=2027')
+  it('says the family is not in the view now, once the read has landed without it', async () => {
+    gridState = { rows: GRID_ROWS.filter((row) => row.household_cm_id !== 1000005), isError: false }
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toBeInTheDocument()
+    expect(screen.getByText(/not in All now/)).toBeInTheDocument()
+    noWalk()
+    await userEvent.keyboard(']')
+    await userEvent.keyboard('[[')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
   })
 
-  // One URL scheme (owner ruling 10-03, T4): All has no `view`, and the lens rides along.
-  it('follows the href, not history, when something else opened it (a queue step, a jump)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=all', ['/aid/households/1000002?from=all'])
-    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
-    expect(screen.getByTestId('where')).toHaveTextContent(/^\/aid\/requests\?year=2027$/)
-  })
-
-  it('goes back to the stage and the lens it came from (T4: view=<stage>, lens=appeals)', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=needs-offer&lens=appeals&program=quest')
-    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
-    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
-    expect(Object.fromEntries(where.searchParams)).toEqual({
-      view: 'needs-offer',
-      lens: 'appeals',
-      program: 'quest',
-      year: '2027',
-    })
-  })
-
-  it('goes back to All under the Appeals lens with no view at all', async () => {
-    renderAt('/aid/households/1000001?year=2027&from=all&lens=appeals')
-    await userEvent.click(screen.getByRole('link', { name: '← Back to Requests' }))
-    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
-    expect(Object.fromEntries(where.searchParams)).toEqual({ lens: 'appeals', year: '2027' })
+  it('has no "not in" words when the family is in the view', () => {
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.queryByText(/not in All now/)).toBeNull()
   })
 })
 
@@ -254,12 +442,5 @@ describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
     renderWithHash('')
     renderWithHash('#request-nosuchrequest')
     expect(scrolled).toEqual([])
-  })
-
-  it('shows the income, the grants and postings, and the history below the cards', () => {
-    renderAt('/aid/households/1000001')
-    expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
   })
 })
