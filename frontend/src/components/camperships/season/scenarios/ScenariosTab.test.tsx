@@ -164,15 +164,15 @@ describe('ScenariosTab (§7.4; D38)', () => {
     renderTab()
     expect(screen.getByText('Moving: recorded when you let go')).toBeInTheDocument()
     expect(screen.getByText('$700,000')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Keep as a variant of B' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Keep as a new starting point' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Keep as a Variant of B' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Keep as a New Starting Point' })).toBeDisabled()
   })
 
   it('keeps as a variant of the starting point, or as a new starting point (D38)', async () => {
     renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'Keep as a variant of B' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep as a Variant of B' }))
     expect(work.keep).toHaveBeenCalledWith(false)
-    await userEvent.click(screen.getByRole('button', { name: 'Keep as a new starting point' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep as a New Starting Point' }))
     expect(work.keep).toHaveBeenCalledWith(true)
   })
 
@@ -186,7 +186,7 @@ describe('ScenariosTab (§7.4; D38)', () => {
   it('asks to freeze the applications first, then offers the two starts', async () => {
     read = { data: workspace({ snapshot: null, draft: null }), isLoading: false, error: null }
     const view = renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze the applications' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Freeze the Applications' }))
     expect(work.freeze).toHaveBeenCalled()
     read = { data: workspace({ draft: null }), isLoading: false, error: null }
     view.rerender(
@@ -194,7 +194,7 @@ describe('ScenariosTab (§7.4; D38)', () => {
         <ScenariosTab />
       </MemoryRouter>
     )
-    await userEvent.click(screen.getByRole('button', { name: "Last season's approved rules" }))
+    await userEvent.click(screen.getByRole('button', { name: "Last Season's Approved Rules" }))
     expect(work.start).toHaveBeenCalledWith('last_season')
   })
 
@@ -276,7 +276,7 @@ describe('ScenariosTab (§7.4; D38)', () => {
   it('leaves Load and Freeze open while a write runs: the hook queues them (T17-I1)', async () => {
     work.busy = 'Recording…'
     renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze again' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Freeze Again' }))
     expect(work.freeze).toHaveBeenCalledTimes(1)
     await userEvent.click(within(screen.getByTestId('kept-list')).getByText('Round 1 % −2 pts'))
     expect(work.load).toHaveBeenCalledWith({ option: 'A1' })
@@ -320,7 +320,7 @@ describe('ScenariosTab (§7.4; D38)', () => {
   it('starts from the rules draft (T17-m3)', async () => {
     read = { data: workspace({ draft: null }), isLoading: false, error: null }
     renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'The rules draft (v4)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'The Rules Draft (v4)' }))
     expect(work.start).toHaveBeenCalledWith('rules')
   })
 
@@ -329,7 +329,7 @@ describe('ScenariosTab (§7.4; D38)', () => {
     renderTab()
     expect(screen.getByText('Rules v4 prices the season')).toBeInTheDocument()
     expect(screen.queryByText(/Rules draft v4/)).toBeNull()
-    expect(screen.getByRole('button', { name: 'The rules (v4)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'The Rules (v4)' })).toBeInTheDocument()
   })
 
   it('offers no Keep while the draft is the same as where it came from (T17-m4)', () => {
@@ -339,8 +339,8 @@ describe('ScenariosTab (§7.4; D38)', () => {
       error: null,
     }
     renderTab()
-    expect(screen.getByRole('button', { name: 'Keep as a variant of B' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Keep as a new starting point' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Keep as a Variant of B' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Keep as a New Starting Point' })).toBeDisabled()
   })
 
   it('dates the freeze and each keep by the camp day, not the UTC one (T17-m5)', () => {
@@ -393,7 +393,7 @@ describe('ScenariosTab (§7.4; D38)', () => {
         "Couldn't work out each setting's step: Freeze 2027 again: the snapshot lacks a read"
       )
     ).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
     expect(refetchSteps).toHaveBeenCalledTimes(1)
   })
 

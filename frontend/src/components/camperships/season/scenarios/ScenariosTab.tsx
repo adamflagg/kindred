@@ -46,8 +46,8 @@ const campDay = (iso: string) => campToday(new Date(iso))
 function rulesName(workspace: ApiAidScenarioWorkspace): string {
   const version = String(workspace.rules_version)
   return workspace.pricing_version === workspace.rules_version
-    ? `rules (v${version})`
-    : `rules draft (v${version})`
+    ? `Rules (v${version})`
+    : `Rules Draft (v${version})`
 }
 
 function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace; work: Draft }) {
@@ -74,7 +74,7 @@ function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace;
       </span>
       {/* Never held while a write runs: the hook queues a freeze after it (Decision 19). */}
       <button type="button" className={BUTTON_SECONDARY} onClick={() => void work.freeze()}>
-        {snapshot === null ? `Freeze the applications` : 'Freeze again'}
+        {snapshot === null ? `Freeze the Applications` : 'Freeze Again'}
       </button>
       {work.nothingToFreeze && snapshot !== null && (
         <span>{`The applications haven't moved since ${formatShortDate(campDay(snapshot.taken_at))}: nothing new to freeze`}</span>
@@ -114,7 +114,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         disabled={unkeepable}
         onClick={() => void work.keep(false)}
       >
-        {`Keep as a variant of ${head ?? ''}`}
+        {`Keep as a Variant of ${head ?? ''}`}
       </button>
       <button
         type="button"
@@ -122,7 +122,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         disabled={unkeepable}
         onClick={() => void work.keep(true)}
       >
-        Keep as a new starting point
+        Keep as a New Starting Point
       </button>
     </>
   )
@@ -151,7 +151,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
               disabled={work.busy !== null}
               onClick={() => void work.start('last_season')}
             >
-              Last season&apos;s approved rules
+              Last Season&apos;s Approved Rules
             </button>
           </div>
           {workspace.options.length > 0 && <p className="text-sm">or load a kept option:</p>}
@@ -212,7 +212,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   className="underline"
                   onClick={() => void sensitivity.refetch()}
                 >
-                  Try again
+                  Try Again
                 </button>
               </p>
             )}
