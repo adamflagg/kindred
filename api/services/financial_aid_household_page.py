@@ -6,7 +6,9 @@ Scope (D26): the household it was opened from, plus every household holding a pa
 requests, both ways (the requests it applied for and the requests it pays a share of). The scope is households,
 and everything on the page follows it (Decision 4): every request a scope household applied for, and the scope
 households' postings, grants, incomes, links and log. A linked household outside the scope is read only to name
-it on its link row (its row and members: owner ruling 2026-10-04, late), and a scope household with no camper on the
+it on its link row (its row and members: owner ruling 2026-10-04, late), a household outside it holding a duplicate
+waiting on one of the page's requests is read the same way, only to name that duplicate (owner, 2026-10-05: keep
+either request of a pair, from either card), and a scope household with no camper on the
 page (a second payer) has its members read for its card's adults and emails (owner N11, 2026-10-04 late) and, from
 its adults, its short name (owner P3, 2026-10-05).
 
@@ -543,7 +545,7 @@ def duplicates_waiting(
 
 @dataclass(frozen=True)
 class _Naming:
-    """How a household is named on the page, its card and its link row alike."""
+    """How a household is named on the page, its card, its link row and a duplicate waiting alike."""
 
     adults: list[str]
     adults_by_role: list[HouseholdAdultOut]
@@ -615,7 +617,8 @@ async def _income(casework: CaseworkReads, year: int, household_cm_id: int) -> A
 class HouseholdPageService:
     """The household page's one aggregate read (D21): the live season priced once with its grants register
     (OneGrantsLoad), scoped to the family (D26), plus the family's own reads: its names, incomes, postings,
-    the households' details, links and log, and the details of any linked household outside the scope."""
+    the households' details, links and log, and the details of any household outside the scope that a link row or a
+    duplicate waiting names."""
 
     def __init__(
         self,
@@ -745,7 +748,8 @@ class HouseholdPageService:
 
         def household_people(h: int) -> list[Any]:
             """The people household `h`'s adults and emails come from, on its card and its link alike: the page's
-            campers in it, or, with none (a second payer, or a linked household outside the scope), its own members.
+            campers in it, or, with none (a second payer, or a household outside the scope that a link or a duplicate
+            waiting names), its own members.
             The short name reads only their adults, and only with no camper (`short_surnames`)."""
             return campers_in(h) or [p for p in members if _household_of(p) == h]
 

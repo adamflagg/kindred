@@ -63,8 +63,8 @@ class HouseholdCardOut(BaseModel):
 
     `label` is how the page names the household (owner, 2026-10-05): its adults' names alone ("Liam & Olivia Becker",
     one shared surname said once), else its mailing title. `label_tiebreak` is "" unless another household on the page
-    (a card or a link row) has the same label: then its city, when that tells them apart, else "#" and its CampMinder
-    household id, shown muted after the label."""
+    (a card, a link row or a duplicate waiting) has the same label: then its city, when that tells them apart, else "#"
+    and its CampMinder household id, shown muted after the label."""
 
     household_cm_id: int
     chip: int
