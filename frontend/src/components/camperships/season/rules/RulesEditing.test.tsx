@@ -198,7 +198,17 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     const editor = await screen.findByTestId('section-editor')
     expect(within(editor).queryByRole('textbox')).toBeNull()
     expect(within(editor).getAllByRole('combobox').length).toBeGreaterThan(0)
-    expect(within(editor).getByText('1000101, 1000102')).toBeInTheDocument()
+    // A list reads as words, sessions named as the read view names them (#15; no name here).
+    expect(within(editor).getByText('Session 1000101, Session 1000102')).toBeInTheDocument()
+  })
+
+  it("reads the rules' own names in the editor, as the read view does (#15)", async () => {
+    renderAt('/aid/season/rules?section=budget')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    const editor = await screen.findByTestId('section-editor')
+    // A pool's row reads its label in Pools and in Reserves; the key stays in what is saved.
+    expect(within(editor).queryAllByText('pool_a')).toHaveLength(0)
+    expect(within(editor).getAllByText('Pool A').length).toBeGreaterThan(1)
   })
 
   it('says a locked section saves into a new version and posted amounts stand', async () => {

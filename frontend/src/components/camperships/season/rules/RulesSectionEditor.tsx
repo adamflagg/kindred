@@ -13,7 +13,7 @@ import type {
 import { AMBER_NOTE, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
 import { savePrecondition } from './precondition'
 import { sectionContent } from './rulesDraft'
-import { SECTION_TITLES, changeWords } from './rulesModel'
+import { SECTION_TITLES, changeWords, type RulesNames } from './rulesModel'
 import { editKey, fieldName, refusalWords, sectionChanges, touches } from './sectionEdit'
 import { SectionEditor } from './SectionEditor'
 
@@ -45,11 +45,14 @@ const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message 
 export function RulesSectionEditor({
   section,
   draft,
+  names,
   onDone,
 }: {
   section: ApiAidRulesSection
   /** The Rules tab's read of the rules draft: the section's status for the banner. */
   draft: ApiAidRulesDraft
+  /** The rules' own names, as the read view has them (#15): a box still keeps and sends the key. */
+  names?: RulesNames | undefined
   /** The saved draft, or null when cancelled. */
   onDone: (saved: ApiAidRulesDraft | null) => void
 }) {
@@ -220,6 +223,7 @@ export function RulesSectionEditor({
   return (
     <SectionEditor
       opened={opened.content}
+      names={names}
       heading={`Editing ${SECTION_TITLES[section]} in the rules draft (v${String(opened.draft.version)})`}
       banner={banner}
       saving={save.isPending || checking}

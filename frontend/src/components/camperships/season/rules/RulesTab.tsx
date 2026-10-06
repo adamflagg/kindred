@@ -295,6 +295,7 @@ function DraftBody({
               key={`${String(year)}:${selected}`}
               section={selected}
               draft={draft}
+              names={names}
               onDone={(saved) => {
                 setMode('read')
                 if (saved !== null) {
