@@ -11,7 +11,7 @@ import pytest
 from api.services.financial_aid_casework_service import CaseworkValidationError, FinancialAidCaseworkService
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from api.services.financial_aid_intake_types import RequestRecord
-from bunking.financial_aid.decisions.rounds import DecisionEvent
+from bunking.financial_aid.decisions.rounds import DecisionEvent, EventKind
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, seeded_store
 
 ACTOR = "registrar@example.com"
@@ -165,13 +165,10 @@ async def test_an_asked_then_posted_then_undone_round_still_refuses_for_its_ask(
     # Unpost clears only the posted and lock fields: the ask stays on the round.
     store, casework, active, pending = await pair()
     day = datetime(2027, 3, 9, tzinfo=UTC)
-    store.decision_events.extend(
-        replace(
-            DecisionEvent(id=f"evt{i:012d}", request_id=active.id, round=1, kind=kind, created=day),
-            amount=Decimal(500) if kind == "ask" else None,
-        )
-        for i, kind in enumerate(("ask", "post", "unpost"))
-    )
+    kinds: tuple[EventKind, ...] = ("ask", "post", "unpost")
+    for i, kind in enumerate(kinds):
+        event = DecisionEvent(id=f"evt{i:012d}", request_id=active.id, round=1, kind=kind, created=day)
+        store.decision_events.append(replace(event, amount=Decimal(500) if kind == "ask" else None))
     with pytest.raises(CaseworkValidationError, match="Round 1 has a decision on record"):
         await casework.mark_duplicate(active.id, pending.id, "r", ACTOR)
     assert store.operations == []
