@@ -13,6 +13,7 @@ import { useDuplicatePair } from './duplicatePair'
 import { isLiveRequest } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
+import { PairKeepForm } from './PairKeepForm'
 import { staffNames } from './historyWords'
 import { HH_BUTTON } from './householdStyles'
 import { OtherRequestLink } from './OtherRequestLink'
@@ -29,6 +30,7 @@ type Open =
   | { readonly kind: 'session' }
   | { readonly kind: 'duplicate' }
   | { readonly kind: 'keep_this' }
+  | { readonly kind: 'keep_other' }
   | { readonly kind: 'headcount' }
   | null
 
@@ -148,6 +150,7 @@ export function WorkingRequestCard({
       {offers.session && button('Settle Session…', { kind: 'session' })}
       {offers.duplicate && button('Keep the Other Request…', { kind: 'duplicate' })}
       {pair?.keepThis === true && button('Keep This Request…', { kind: 'keep_this' })}
+      {pair?.keepOther === true && button('Keep the Other Request…', { kind: 'keep_other' })}
       {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
       {offers.headcount && button('Number of People…', { kind: 'headcount' })}
       <ReleasedHolds request={request} names={staffNames(page)} />
@@ -155,8 +158,18 @@ export function WorkingRequestCard({
   )
 
   const close = closeIfStill(open)
-  // Like the casework forms: shown only while the pair still lets this card keep itself.
-  const keepThisOther = open?.kind === 'keep_this' && pair?.keepThis === true ? pair.other : null
+  // Like the casework forms: shown only while the pair still lets this card keep itself (or the other).
+  // The active card's Keep This marks the pending twin a duplicate (it is on this page); the swaps
+  // (the pending card's Keep This, the active card's Keep the Other) go through PairKeepForm.
+  const pending = row.request_status === 'duplicate_pending'
+  const keepThisOther =
+    open?.kind === 'keep_this' && pair?.keepThis === true && !pending ? pair.other : null
+  const swap =
+    pair !== null && pair.keepThis && open?.kind === 'keep_this' && pending
+      ? { pair, keepsThis: true }
+      : pair?.keepOther === true && open?.kind === 'keep_other'
+        ? { pair, keepsThis: false }
+        : null
   let editor: ReactNode = undefined
   if (edit !== null) {
     editor = (
@@ -170,6 +183,10 @@ export function WorkingRequestCard({
     editor = <DuplicateForm request={request} page={page} onDone={close} />
   } else if (keepThisOther !== null) {
     editor = <KeepThisForm request={request} other={keepThisOther} onDone={close} />
+  } else if (swap !== null) {
+    editor = (
+      <PairKeepForm request={request} pair={swap.pair} keepsThis={swap.keepsThis} onDone={close} />
+    )
   } else if (form === 'headcount') {
     editor = <HeadcountForm request={request} onDone={close} />
   } else if (open?.kind === 'cancel') {

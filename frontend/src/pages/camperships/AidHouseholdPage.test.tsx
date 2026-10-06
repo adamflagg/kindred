@@ -234,7 +234,7 @@ describe('AidHouseholdPage (§6.3)', () => {
 
   // Item 4c (owner ruling 10-05): the revived duplicate's hold keeps the request, and links the
   // withdrawn one; no Keep the Other there, and every other hold still says Release….
-  it("offers a revived duplicate's banner Keep This Request… and the way to the withdrawn request", () => {
+  it("offers a revived duplicate's banner Keep This Request…, with no link to a withdrawn request on the same page", () => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     applicationData = applicationOut({
       requests: [
@@ -275,9 +275,8 @@ describe('AidHouseholdPage (§6.3)', () => {
     renderAt('/aid/households/1000001')
     const banner = screen.getByText('The original request was withdrawn').parentElement!
     expect(within(banner).getByRole('button', { name: 'Keep This Request…' })).toBeInTheDocument()
-    expect(
-      within(banner).getByRole('link', { name: 'Go to the Withdrawn Request ↓' })
-    ).toHaveAttribute('href', '#request-reqwithdrawn001')
+    // Owner V4: the withdrawn request is on this same page, so no link to it.
+    expect(within(banner).queryByRole('link', { name: /Go to the Withdrawn Request/ })).toBeNull()
     expect(within(banner).queryByRole('button', { name: 'Release…' })).toBeNull()
     expect(within(banner).queryByRole('button', { name: /Keep the Other/ })).toBeNull()
     const other = screen.getByText('Tier moved').parentElement!

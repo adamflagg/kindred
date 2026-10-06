@@ -21,12 +21,13 @@ const APPLICATION = applicationOut({
 })
 
 describe('duplicatePair', () => {
-  it('pairs a pending duplicate with the request intake named, when that one is on the page', () => {
+  it('pairs a pending duplicate with the request intake named, when that one is on the page, and lets it keep itself', () => {
     const page = householdPage({ requests: [PENDING, KEPT] })
     expect(duplicatePair(page, APPLICATION, PENDING)).toEqual({
       otherId: 'reqkept00000001',
       other: KEPT,
-      keepThis: false,
+      keepThis: true,
+      keepOther: false,
     })
   })
 
@@ -35,16 +36,18 @@ describe('duplicatePair', () => {
     expect(duplicatePair(page, APPLICATION, PENDING)).toEqual({
       otherId: 'reqkept00000001',
       other: null,
-      keepThis: false,
+      keepThis: true,
+      keepOther: false,
     })
   })
 
-  it('pairs the request kept with the pending duplicate that names it, and lets it keep itself', () => {
+  it('pairs the request kept with the pending duplicate that names it, and lets it keep itself or the other', () => {
     const page = householdPage({ requests: [PENDING, KEPT] })
     expect(duplicatePair(page, APPLICATION, KEPT)).toEqual({
       otherId: 'reqpending00001',
       other: PENDING,
       keepThis: true,
+      keepOther: true,
     })
   })
 
@@ -97,6 +100,7 @@ describe('withdrawnPair', () => {
       otherId: 'reqwithdrawn001',
       other: WITHDRAWN,
       keepThis: false,
+      keepOther: false,
     })
     const alone = householdPage({ requests: [REVIVED] })
     expect(withdrawnPair(alone, naming('reqwithdrawn001'), REVIVED)?.other).toBeNull()

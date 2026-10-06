@@ -57,13 +57,10 @@ beforeEach(() => {
 })
 
 describe('WithdrawnRequestLink (item 4c)', () => {
-  it('scrolls to the withdrawn request when it is on the page', () => {
+  it('draws no link when the withdrawn request is on the same page (owner V4)', () => {
     application = naming('reqwithdrawn001')
     renderLink()
-    expect(screen.getByRole('link', { name: 'Go to the Withdrawn Request ↓' })).toHaveAttribute(
-      'href',
-      '#request-reqwithdrawn001'
-    )
+    expect(screen.queryByRole('link')).toBeNull()
     expect(applicationRead).toHaveBeenCalledWith(1000001, { enabled: true })
   })
 

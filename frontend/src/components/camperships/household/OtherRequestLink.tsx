@@ -8,9 +8,9 @@ import { useWithdrawnPair, type DuplicatePair } from './duplicatePair'
 import { HH_LINK } from './householdStyles'
 
 /**
- * Item 11 (owner ruling 10-05): the quick way to the other request of a duplicate pair. On this page
- * it scrolls to that card, as the hold banners' fix links do (`#request-…`); on another household's
- * page it opens that page, found by the request's id in the season's live grid (read only for this).
+ * Item 11 (owner ruling 10-05): the quick way to the other request of a duplicate pair when it is on
+ * another household's page, found by the request's id in the season's live grid (read only for this).
+ * Nothing when the twin is on this same page (owner V4): both cards are in view.
  */
 export function OtherRequestLink({
   pair,
@@ -25,13 +25,7 @@ export function OtherRequestLink({
   /** The request it names: "the Other Request", or a revived duplicate's "Withdrawn Request" (item 4c). */
   which?: 'Other' | 'Withdrawn'
 }) {
-  if (pair.other !== null) {
-    return (
-      <a href={`#request-${pair.otherId}`} className={HH_LINK}>
-        Go to the {which} Request ↓
-      </a>
-    )
-  }
+  if (pair.other !== null) return null
   return (
     <ElsewhereLink otherId={pair.otherId} view={view} beforeLeave={beforeLeave} which={which} />
   )

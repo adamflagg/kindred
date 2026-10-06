@@ -8,16 +8,18 @@ import { namedHolder } from './caseworkModel'
 
 /**
  * A request's place in a duplicate pair (item 11, owner ruling 10-05): the other request, by id, and
- * the card itself when it is on this page (null on another household's page). `keepThis`: this card
- * can keep itself with today's server, which marks the OTHER request as the duplicate. Only the
- * request kept can: the server's `_mark_duplicate` takes an ACTIVE request to keep, so a pending
- * duplicate cannot keep itself over its holder (nor can the active one pick the pending one) until
- * the server accepts a pending survivor.
+ * the card itself when it is on this page (null on another household's page). With #3024 the server
+ * keeps either request of the pair: `keepThis` is on both cards (the active one marks the pending
+ * request the duplicate, as `_mark_duplicate` always has; the pending one closes the active request
+ * it waits on and takes its place, as `_keep_pending` does), and `keepOther` is the ACTIVE card's
+ * (the same swap, asked from the request that closes). The pending card's Keep the Other Request… is
+ * the older `DuplicateForm`. A revived duplicate's pair keeps neither: its hold's release keeps it.
  */
 export interface DuplicatePair {
   readonly otherId: string
   readonly other: ApiAidHouseholdRequest | null
   readonly keepThis: boolean
+  readonly keepOther: boolean
 }
 
 const isPending = (request: ApiAidHouseholdRequest) =>
@@ -39,7 +41,9 @@ export function duplicatePair(
     page.requests.find((other) => other.row.request_id === otherId) ?? null
   if (isPending(request)) {
     const holder = namedHolder(application, id)
-    return holder === '' ? null : { otherId: holder, other: onPage(holder), keepThis: false }
+    return holder === ''
+      ? null
+      : { otherId: holder, other: onPage(holder), keepThis: true, keepOther: false }
   }
   if (request.row.request_status !== 'active') return null
   const naming = page.requests.find(
@@ -47,7 +51,7 @@ export function duplicatePair(
   )
   return naming === undefined
     ? null
-    : { otherId: naming.row.request_id, other: naming, keepThis: true }
+    : { otherId: naming.row.request_id, other: naming, keepThis: true, keepOther: true }
 }
 
 /**
@@ -85,7 +89,7 @@ export function withdrawnPair(
   const survivor = flag?.detail?.['withdrawn_survivor']
   if (typeof survivor !== 'string' || survivor === '') return null
   const other = page.requests.find((r) => r.row.request_id === survivor) ?? null
-  return { otherId: survivor, other, keepThis: false }
+  return { otherId: survivor, other, keepThis: false, keepOther: false }
 }
 
 /** The revived duplicate's pair, reading its household's application only while it holds that hold. */

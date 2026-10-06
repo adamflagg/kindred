@@ -13,6 +13,8 @@ const cancel = vi.fn()
 const manual = vi.fn()
 const ask = vi.fn()
 const duplicate = vi.fn()
+// When set, the duplicate write is refused with these words.
+let duplicateRefusal: string | null = null
 interface Call {
   onSuccess?: () => void
   onError?: (e: Error) => void
@@ -48,6 +50,9 @@ function useFakeMutation(spy: (vars: unknown) => unknown) {
     },
     mutateAsync: (vars: unknown) => {
       spy(vars)
+      if (spy === duplicate && duplicateRefusal !== null) {
+        return Promise.reject(new Error(duplicateRefusal))
+      }
       return spy === cancel && cancelGate !== null ? cancelGate : Promise.resolve({})
     },
   }
@@ -147,6 +152,7 @@ beforeEach(() => {
   cancel.mockReset()
   prefetch.mockReset()
   duplicate.mockReset()
+  duplicateRefusal = null
   applicationRead.mockReset()
   application = applicationOut()
   gridRows = []
@@ -662,26 +668,17 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
     })
   const cardOf = (id: string) => document.getElementById(`request-${id}`) as HTMLElement
 
-  it('links the pending duplicate to the request kept, beside Keep the Other Request…', () => {
+  it('draws no link between two requests on the same page (owner V4)', () => {
     application = naming('reqkept00000001')
     renderCards([PENDING, KEPT])
-    const card = within(cardOf('reqpending00001'))
-    const keep = card.getByRole('button', { name: 'Keep the Other Request…' })
-    const link = card.getByRole('link', { name: 'Go to the Other Request ↓' })
-    expect(link).toHaveAttribute('href', '#request-reqkept00000001')
-    expect(keep.nextElementSibling).toBe(link)
-    // The server keeps only an active request: the pending one cannot keep itself yet.
-    expect(card.queryByRole('button', { name: 'Keep This Request…' })).toBeNull()
+    expect(within(cardOf('reqpending00001')).queryByRole('link', { name: /Go to the/ })).toBeNull()
+    expect(within(cardOf('reqkept00000001')).queryByRole('link', { name: /Go to the/ })).toBeNull()
   })
 
   it('offers the request kept Keep This Request…, which marks the OTHER one as the duplicate', async () => {
     application = naming('reqkept00000001')
     renderCards([PENDING, KEPT])
     const card = within(cardOf('reqkept00000001'))
-    expect(card.getByRole('link', { name: 'Go to the Other Request ↓' })).toHaveAttribute(
-      'href',
-      '#request-reqpending00001'
-    )
     await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
     expect(card.getByText('Keeping this request')).toBeInTheDocument()
     await userEvent.type(card.getByLabelText('Reason'), 'Same camper, entered twice{Enter}')
@@ -689,6 +686,57 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
       requestId: 'reqpending00001',
       body: { duplicate_of: 'reqkept00000001', reason: 'Same camper, entered twice' },
     })
+  })
+
+  it('offers the request kept Keep the Other Request…, which swaps the two (the server keeps the pending one)', async () => {
+    application = naming('reqkept00000001')
+    renderCards([PENDING, KEPT])
+    const card = within(cardOf('reqkept00000001'))
+    await userEvent.click(card.getByRole('button', { name: 'Keep the Other Request…' }))
+    expect(card.getByText('Keeping the other request')).toBeInTheDocument()
+    await userEvent.type(card.getByLabelText('Reason'), 'The later entry is right{Enter}')
+    expect(duplicate).toHaveBeenCalledWith({
+      requestId: 'reqkept00000001',
+      body: { duplicate_of: 'reqpending00001', reason: 'The later entry is right' },
+    })
+  })
+
+  it('offers the pending duplicate Keep This Request…, which closes the request it waits on', async () => {
+    application = naming('reqkept00000001')
+    renderCards([PENDING, KEPT])
+    const card = within(cardOf('reqpending00001'))
+    await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
+    expect(card.getByText('Keeping this request')).toBeInTheDocument()
+    await userEvent.type(card.getByLabelText('Reason'), 'The later entry is right{Enter}')
+    expect(duplicate).toHaveBeenCalledWith({
+      requestId: 'reqkept00000001',
+      body: { duplicate_of: 'reqpending00001', reason: 'The later entry is right' },
+    })
+  })
+
+  it("keeps the pending duplicate over a holder on another household's page, by the holder's id", async () => {
+    application = naming('reqelsewhere001')
+    renderCards([PENDING])
+    const card = within(cardOf('reqpending00001'))
+    await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
+    await userEvent.type(card.getByLabelText('Reason'), 'Later entry is right{Enter}')
+    expect(duplicate).toHaveBeenCalledWith({
+      requestId: 'reqelsewhere001',
+      body: { duplicate_of: 'reqpending00001', reason: 'Later entry is right' },
+    })
+  })
+
+  it("shows the server's refusal in the box, and keeps what was typed", async () => {
+    application = naming('reqkept00000001')
+    duplicateRefusal = 'Round 2 is posted: keep this request, or undo Posted first'
+    renderCards([PENDING, KEPT])
+    const card = within(cardOf('reqpending00001'))
+    await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
+    await userEvent.type(card.getByLabelText('Reason'), 'Later entry{Enter}')
+    expect(
+      await card.findByText('Round 2 is posted: keep this request, or undo Posted first')
+    ).toBeInTheDocument()
+    expect(card.getByLabelText('Reason')).toHaveValue('Later entry')
   })
 
   it("opens the household page of a request kept on another household's page", () => {
