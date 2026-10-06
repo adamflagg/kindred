@@ -173,7 +173,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     expect(attentionFor(row, 'pending_approval', TODAY)?.item).toEqual({
       level: 'note',
       pill: 'Pending approval',
-      fact: "R3 $450 is above the registrar's limit: finance approves it from Today.",
+      fact: "R3 $450 is above the registrar's limit: finance approves it from Requests › Pending approval.",
     })
   })
 
