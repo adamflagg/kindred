@@ -313,6 +313,17 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
   }
 
+  it('Esc closes the Approve form without approving', async () => {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await within(screen.getByTestId('approve-form')).findByRole('checkbox', {
+      name: 'Award tables (Round 1 %)',
+    })
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByTestId('approve-form')).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
   it('approves the ticked draft sections with the note naming the body', async () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))

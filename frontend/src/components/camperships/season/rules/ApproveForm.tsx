@@ -18,6 +18,7 @@ import {
   FIELD,
   LABEL,
 } from '../../../admin/lodging/lodgingStyles'
+import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import { approvePrecondition } from './precondition'
 import { draftSections, sameSection, SECTION_ORDER } from './rulesDraft'
 import { SECTION_TITLES } from './rulesModel'
@@ -88,6 +89,10 @@ export function ApproveForm({
     }
   }, [])
   const [error, setError] = useState<string | null>(null)
+  // Esc is Cancel (not while approving): the form is open from the first render, loaded or not.
+  useOverlayEscape(true, () => {
+    if (!busy && !approve.isPending) onDone(null)
+  })
 
   const open = useCallback(() => {
     void fetchFresh().then(

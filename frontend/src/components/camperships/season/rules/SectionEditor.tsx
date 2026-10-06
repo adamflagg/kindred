@@ -6,6 +6,7 @@ import {
   BUTTON_SECONDARY,
   FIELD_INLINE,
 } from '../../../admin/lodging/lodgingStyles'
+import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import { formatSetting, type RulesNames } from './rulesModel'
 import {
   applyEdits,
@@ -160,6 +161,10 @@ export function SectionEditor({
     )
   }
 
+  // Esc is Cancel, as in the household editors: nothing is left behind, and a running save finishes.
+  useOverlayEscape(true, () => {
+    if (!saving) onCancel()
+  })
   const blocked = applied.problems.size > 0
   const dropGone = () =>
     setEdits((previous) => new Map([...previous].filter(([key]) => !applied.gone.has(key))))
