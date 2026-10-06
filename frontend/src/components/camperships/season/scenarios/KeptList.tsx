@@ -101,7 +101,7 @@ export function KeptList({
       <p className="text-muted-foreground px-3 pt-1 pb-1 text-xs">
         Click one to load it into your draft. Kept options never change; to vary one, load it,
         slide, keep again.
-        {compare !== undefined && ' Tick up to four to compare beside your draft.'}
+        {compare !== undefined && ' Check up to four to compare beside your draft.'}
       </p>
     </div>
   )

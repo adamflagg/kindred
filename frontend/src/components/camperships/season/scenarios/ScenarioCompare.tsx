@@ -290,7 +290,7 @@ export function ScenarioCompare({
         </div>
       )}
       <p className="text-muted-foreground text-xs print:hidden">
-        Your draft is always the first column. Tick kept options on the left to compare them.
+        Your draft is always the first column. Check kept options on the left to compare them.
       </p>
     </div>
   )

@@ -317,7 +317,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
               )}
               {refused !== null && (
                 <p className={`${AMBER_NOTE} mx-3 mb-2`}>
-                  {`Four are already ticked: untick one to compare ${refused}.`}
+                  {`Four are already checked: uncheck one to compare ${refused}.`}
                 </p>
               )}
             </div>

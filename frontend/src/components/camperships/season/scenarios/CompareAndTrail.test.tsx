@@ -181,15 +181,25 @@ describe('the compare (D38)', () => {
     renderAt('/aid/season/scenarios?compare=A,A1,B,B1')
     await userEvent.click(screen.getByRole('checkbox', { name: 'Compare C' }))
     expect(params().get('compare')).toBe('A,A1,B,B1')
-    expect(screen.getByText(/Four are already ticked/)).toBeInTheDocument()
+    expect(
+      screen.getByText('Four are already checked: uncheck one to compare C.')
+    ).toBeInTheDocument()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Compare B1' }))
     expect(params().get('compare')).toBe('A,A1,B')
-    expect(screen.queryByText(/Four are already ticked/)).toBeNull()
+    expect(screen.queryByText(/Four are already checked/)).toBeNull()
   })
 
-  it('says how to compare, in the kept card', () => {
+  it('says how to compare, in the kept card and under the compare, in staff words', () => {
     renderAt('/aid/season/scenarios')
-    expect(screen.getByText(/Tick up to four to compare beside your draft/)).toBeInTheDocument()
+    expect(screen.getByText(/Check up to four to compare beside your draft/)).toBeInTheDocument()
+    expect(screen.queryByText(/\btick/i)).toBeNull()
+    cleanup()
+    renderAt('/aid/season/scenarios?compare=A1')
+    expect(
+      screen.getByText(
+        'Your draft is always the first column. Check kept options on the left to compare them.'
+      )
+    ).toBeInTheDocument()
   })
 
   it('counts only requests by the Round 1 deadline when asked, and says so on every figure (D138)', async () => {
