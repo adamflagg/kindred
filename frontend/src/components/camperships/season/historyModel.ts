@@ -234,7 +234,7 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
     status: 'Status changed',
     resolve_session: 'Session resolved',
     mark_duplicate: 'Marked duplicate',
-    set_headcount: 'Headcount set',
+    set_headcount: 'Number of People set',
   },
   aid_grant_placements: { place: 'Placed', remove: 'Removed' },
   aid_rules: {

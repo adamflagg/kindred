@@ -252,7 +252,7 @@ describe('who, what kind, and the action words', () => {
     )
     expect(actionWords('aid_grantors', 'retire')).toBe('Retired')
     expect(actionWords('aid_sources', 'map_grantor')).toBe('Grantor mapped')
-    expect(actionWords('aid_requests', 'set_headcount')).toBe('Headcount set')
+    expect(actionWords('aid_requests', 'set_headcount')).toBe('Number of People set')
     // An unknown code reads as its own words.
     expect(actionWords('aid_attribution_overrides', 'leave_at_family_level')).toBe(
       'Leave at family level'
