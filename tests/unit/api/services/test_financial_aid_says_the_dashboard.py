@@ -1,7 +1,8 @@
 """Owner ruling 2026-10-05, plain staff words: nobody at camp calls it Kindred, so no Camperships string staff can
 read names it: it says "the dashboard" ("The dashboard" opening a sentence). Nor does one say "tick": Posted and
-Accepted are checkboxes, so a round is "checked Posted" and "unchecked". Identifiers, enum values, log keys, comments
-and docstrings keep their words; only string values that reach a screen change."""
+Accepted are checkboxes, so a round is "checked Posted" and "unchecked". Owner ruling 2026-10-05 (late): nor does one
+say "headcount"; staff read "number of people". Identifiers, enum values, log keys, URL paths, comments and docstrings
+keep their words; only string values that reach a screen change."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from api.services.financial_aid_grant_placements import PLACEMENT_REASON
 from api.services.financial_aid_reports_service import WITHDRAWN_LABEL
 from api.services.financial_aid_to_place import _TEXT as CHANGED_SINCE_TEXT
 from bunking.financial_aid.decisions.as_of import PAST_DATE_GAPS
+from bunking.financial_aid.definitions import DEFINITIONS
 
 ROOT = Path(__file__).resolve().parents[4]
 CAMPERSHIPS = (
@@ -26,12 +28,17 @@ CAMPERSHIPS = (
 
 
 def _docstrings(tree: ast.AST) -> set[int]:
-    """Every bare string statement: module, class and function docstrings, and attribute docstrings."""
-    return {
+    """Every bare string statement (module, class and function docstrings, and attribute docstrings), and every name in
+    an `__all__` list, which is an identifier however it is cased."""
+    skipped = {
         id(node.value)
         for node in ast.walk(tree)
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
     }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+            skipped.update(id(name) for name in ast.walk(node.value) if isinstance(name, ast.Constant))
+    return skipped
 
 
 _IDENTIFIER = re.compile(r"[a-z_]+")  # an enum value or a key ("tick", "unticked", "ticks"), never prose
@@ -44,6 +51,11 @@ def _naming_kindred(text: str) -> bool:
 
 def _saying_tick(text: str) -> bool:
     return _TICK.search(text) is not None and _IDENTIFIER.fullmatch(text) is None
+
+
+def _saying_headcount(text: str) -> bool:
+    """Prose naming a headcount; a key ("headcount_source") or a URL path ("/requests/{id}/headcount") is not prose."""
+    return "headcount" in text.casefold() and _IDENTIFIER.fullmatch(text) is None and not text.startswith("/")
 
 
 def _strings(says: Callable[[str], bool]) -> list[str]:
@@ -75,6 +87,23 @@ def test_no_camperships_server_string_names_kindred() -> None:
 
 def test_no_camperships_server_string_says_tick() -> None:
     assert _strings(_saying_tick) == []
+
+
+def test_no_camperships_server_string_says_headcount() -> None:
+    assert _strings(_saying_headcount) == []
+
+
+def test_the_cost_definition_says_number_of_people() -> None:
+    (cost,) = (d for d in DEFINITIONS if d.key == "cost")
+    assert "Family Camp by number of people." in cost.text
+
+
+def test_the_headcount_scan_skips_keys_and_paths_and_catches_prose() -> None:
+    assert not _saying_headcount("headcount_non_infant")
+    assert not _saying_headcount("/requests/{request_id}/headcount")
+    assert _saying_headcount("Headcount")
+    assert _saying_headcount("Enter the family-camp headcount")
+    assert _saying_headcount("Family Camp by HeadCount")
 
 
 def test_the_tick_scan_skips_keys_and_catches_prose() -> None:

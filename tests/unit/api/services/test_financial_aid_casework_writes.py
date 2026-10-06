@@ -157,7 +157,7 @@ async def test_a_staff_headcount_is_stored_with_its_source_and_only_on_family_re
     again = await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR)
     assert (again.headcount_non_infant, len(store.operations)) == (4, 1)  # nothing changed, nothing written
     summer = store.request_for(person=1000011, program="summer")
-    with pytest.raises(CaseworkValidationError):
+    with pytest.raises(CaseworkValidationError, match=r"^only a family-camp request has a number of people$"):
         await casework.set_headcount(summer.id, 1, 0, "declared", "r", ACTOR)
     with pytest.raises(CaseworkValidationError):
         await casework.set_headcount(family.id, 0, 0, "declared", "r", ACTOR)
