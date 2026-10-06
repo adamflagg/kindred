@@ -740,6 +740,8 @@ export const queryKeys = {
   aidHouseholdPage: (year: number, householdCmId: number) =>
     ['financial-aid', 'household-page', year, householdCmId] as const,
   aidApplicationPrefix: () => ['financial-aid', 'application'] as const,
+  aidApplication: (year: number, householdCmId: number) =>
+    ['financial-aid', 'application', year, householdCmId] as const,
   aidJumpIndexPrefix: () => ['financial-aid', 'jump-index'] as const,
 }
 
