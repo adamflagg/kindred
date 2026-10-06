@@ -43,7 +43,7 @@ type Open =
  * card's money editor is open they are disabled instead (`editing`), since Mark Posted would lock the
  * figure being edited. The hold banners' Lift/Release/Put back are wired straight to their writes
  * and cross an open editor (a known limit). The cancel, hold, reopen and casework forms (Payer
- * Shares…, Settle Session…, Keep the Other Request…, Headcount…) don't register: saving them on
+ * Shares…, Settle Session…, Keep the Other Request…, Number of People…) don't register: saving them on
  * leave would act without confirmation, so leaving one of them drops what was typed. Each casework
  * button is offered as the server gates its write (`caseworkOffers`), and its form closes if a
  * refetch takes that offer away.
@@ -149,7 +149,7 @@ export function WorkingRequestCard({
       {offers.duplicate && button('Keep the Other Request…', { kind: 'duplicate' })}
       {pair?.keepThis === true && button('Keep This Request…', { kind: 'keep_this' })}
       {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
-      {offers.headcount && button('Headcount…', { kind: 'headcount' })}
+      {offers.headcount && button('Number of People…', { kind: 'headcount' })}
       <ReleasedHolds request={request} names={staffNames(page)} />
     </>
   )

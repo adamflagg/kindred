@@ -623,7 +623,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
     render(<HeadcountForm request={family} onDone={done} />)
-    expect(screen.getByText('Loading the headcount…')).toBeInTheDocument()
+    expect(screen.getByText('Loading the number of people…')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(done).toHaveBeenCalledTimes(2)
   })
@@ -656,6 +656,10 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     )
     render(<HeadcountForm request={family} onDone={done} />)
     expect(screen.getByLabelText('Not infants')).toHaveValue('2')
+    // Owner pass 3 (V6): the form says "number of people", never "headcount".
+    expect(screen.getByText('Number of people')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set the Number of People' })).toBeInTheDocument()
+    expect(screen.queryByText(/headcount/i)).toBeNull()
     await userEvent.clear(screen.getByLabelText('Not infants'))
     await userEvent.type(screen.getByLabelText('Not infants'), '3')
     await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
@@ -671,13 +675,13 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     )
     application = undefined
     const { unmount } = render(<HeadcountForm request={family} onDone={done} />)
-    expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load this request's number of people.")).toBeInTheDocument()
     expect(screen.queryByLabelText('Not infants')).toBeNull()
     unmount()
     // Read, but the request is not in it.
     application = applicationOut({ requests: [requestOut({ id: 'reqother0000099' })] })
     render(<HeadcountForm request={family} onDone={done} />)
-    expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load this request's number of people.")).toBeInTheDocument()
   })
 
   // Item 12 (owner ruling 10-05): staff don't need a reason code; the server's is optional.
@@ -772,7 +776,7 @@ describe('every casework form closes on Esc as soon as it opens', () => {
     await esc(() => render(<DuplicateForm request={duplicate} page={page} onDone={done} />))
   })
 
-  it('Headcount…', async () => {
+  it('Number of People…', async () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
@@ -834,17 +838,17 @@ describe("every casework form's message-only state closes on Esc as soon as it o
     await escCloses('No other active request for this camper and session is on this page.')
   })
 
-  it('Headcount…: loading', async () => {
+  it('Number of People…: loading', async () => {
     application = undefined
     applicationLoading = true
     render(<HeadcountForm request={family()} onDone={done} />)
-    await escCloses('Loading the headcount…')
+    await escCloses('Loading the number of people…')
   })
 
-  it("Headcount…: couldn't load", async () => {
+  it("Number of People…: couldn't load", async () => {
     application = undefined
     render(<HeadcountForm request={family()} onDone={done} />)
-    await escCloses("Couldn't load this request's headcount.")
+    await escCloses("Couldn't load this request's number of people.")
   })
 })
 

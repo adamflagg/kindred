@@ -180,7 +180,7 @@ function ledgerParts(entry: ApiAidHistoryEntry, roundWords: string, amount: Line
 const REQUEST_WORDS: Readonly<Record<string, (camper: string) => string>> = {
   resolve_session: (camper) => `resolved ${camper} session`,
   mark_duplicate: (camper) => `marked ${camper} request a duplicate`,
-  set_headcount: (camper) => `set ${camper} headcount`,
+  set_headcount: (camper) => `set ${camper} number of people`,
 }
 
 /** An entry's "did what", after the who; null when it has no words here (it reads plainly). */

@@ -639,13 +639,20 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
     ).toBe('the original ask $2,000 less Round 1 $1,500')
   })
 
+  // Owner pass 3 (V6): staff read "number of people", never "headcount".
+  it('words a staff cost override without "headcount"', () => {
+    expect(stepHow(traceStep('cost', 'C', '5000.00', { source: 'override' }), [])).toBe(
+      'a staff override (cost or number of people), with its reason on record'
+    )
+  })
+
   it('M5: per-person cost', () => {
     expect(
       stepHow(
         traceStep('cost', 'C', '5000.00', { source: 'per_person', incentive_reduction: '0.00' }),
         []
       )
-    ).toBe('family-camp headcount price')
+    ).toBe('family-camp price by number of people')
   })
 
   it('M6: subtracted adjustments carry a minus, and dependents are left to the adjusted-income line', () => {

@@ -504,7 +504,7 @@ describe('WorkingRequestCard: the casework forms', () => {
     expect(screen.getByRole('button', { name: 'Payer Shares…' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Settle Session…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Keep the Other Request…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Number of People…' })).toBeNull()
   })
 
   it('offers Settle Session… on a request whose session is not settled', () => {
@@ -517,20 +517,20 @@ describe('WorkingRequestCard: the casework forms', () => {
     expect(screen.getByRole('button', { name: 'Keep the Other Request…' })).toBeInTheDocument()
   })
 
-  it('offers Headcount… on a Family Camp household request only', () => {
+  it('offers Number of People… on a Family Camp household request only', () => {
     renderCards([FAMILY])
-    expect(screen.getByRole('button', { name: 'Headcount…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Number of People…' })).toBeInTheDocument()
   })
 
   it('offers no headcount on a summer request that merely has no camper', () => {
     renderCards([{ ...FAMILY, program_key: 'summer' }])
-    expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Number of People…' })).toBeNull()
   })
 
   it('offers none of them where the server refuses the write (a duplicate or withdrawn request)', () => {
     renderCards([{ ...ROW_EMMA, request_status: 'withdrawn' }])
     expect(screen.queryByRole('button', { name: 'Payer Shares…' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Number of People…' })).toBeNull()
   })
 
   it('is the plain card, with none of them, without casework permission', () => {

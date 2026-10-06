@@ -281,9 +281,9 @@ function howBase(
           : ''
       switch (i['source']) {
         case 'override':
-          return { base: 'a staff override (cost or headcount), with its reason on record' }
+          return { base: 'a staff override (cost or number of people), with its reason on record' }
         case 'per_person':
-          return { base: `family-camp headcount price${incentive}` }
+          return { base: `family-camp price by number of people${incentive}` }
         case 'unknown':
           return { base: 'cost not known' }
         default:

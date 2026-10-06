@@ -694,7 +694,7 @@ export function KeepThisForm({
 }
 
 /**
- * "Headcount…" on a Family Camp request (main spec §8): the two counts and a typed reason. No reason
+ * "Number of People…" (owner pass 3, V6: staff never read "headcount") on a Family Camp request (main spec §8): the two counts and a typed reason. No reason
  * code (item 12, owner ruling 10-05): the server's is optional and staff don't need it, so none is
  * offered or sent.
  */
@@ -714,16 +714,16 @@ export function HeadcountForm({
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
     return (
-      <Note head="Headcount" onBack={onDone}>
-        Loading the headcount…
+      <Note head="Number of people" onBack={onDone}>
+        Loading the number of people…
       </Note>
     )
   }
   // Fields over figures that never loaded would be typed blind.
   if (current === null) {
     return (
-      <Note head="Headcount" onBack={onDone}>
-        Couldn&apos;t load this request&apos;s headcount.
+      <Note head="Number of people" onBack={onDone}>
+        Couldn&apos;t load this request&apos;s number of people.
       </Note>
     )
   }
@@ -754,8 +754,8 @@ export function HeadcountForm({
     })
   return (
     <FormShell
-      head="Headcount"
-      submitLabel="Set the Headcount"
+      head="Number of people"
+      submitLabel="Set the Number of People"
       busy={busy}
       error={error}
       onSubmit={submit}

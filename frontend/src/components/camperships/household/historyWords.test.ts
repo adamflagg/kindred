@@ -119,6 +119,15 @@ describe('historyLines: the family log in words (O4; history.html B)', () => {
         after: { amount: 500 },
       })
     ).toBe('Intake recorded a $500 grant')
+    // Owner pass 3 (V6): "number of people", never "headcount".
+    expect(
+      one({
+        entity: 'aid_requests',
+        entity_id: 'reqsamuel000005',
+        request_id: 'reqsamuel000005',
+        action: 'set_headcount',
+      })
+    ).toBe("Intake set Samuel's number of people")
   })
 
   it("merges one operation's payer-share rows into one line", () => {
