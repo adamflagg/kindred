@@ -466,10 +466,23 @@ const CANCEL_REASON_WORDS: ReadonlyMap<string, string> = new Map(
   CANCEL_REASON_OPTIONS.map((option) => [option.value, option.label])
 )
 
+/**
+ * Staff never read the server's `lock_source` codes (owner ruling D162, "Mark Posted"); the words
+ * agree with kit/receiptModel.ts. A code missing here reads as its own words (`codeText`).
+ */
+const LOCK_SOURCE_WORDS: ReadonlyMap<string, string> = new Map([
+  ['tick', 'Posted check'],
+  ['ledger', 'CampMinder match'],
+  ['placement', 'Grant placement'],
+])
+
 function fieldValue(entity: string, field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   if (CODE_FIELDS.has(field) && typeof value === 'string') return codeWords(value)
+  if (field === 'lock_source' && typeof value === 'string') {
+    return LOCK_SOURCE_WORDS.get(value) ?? codeText(value)
+  }
   if (entity === 'aid_cancellations' && field === 'reason' && typeof value === 'string') {
     return CANCEL_REASON_WORDS.get(value) ?? value
   }
@@ -481,7 +494,7 @@ function fieldValue(entity: string, field: string, value: unknown): string {
 
 function fieldLine(entity: string, change: ApiAidFieldChange): string {
   const field = change.path[0] ?? ''
-  const label = codeText(field)
+  const label = field === 'lock_source' ? 'Locked by' : codeText(field)
   if (change.kind === 'added') return `${label}: ${fieldValue(entity, field, change.after)}`
   if (change.kind === 'removed')
     return `${label}: removed (was ${fieldValue(entity, field, change.before)})`

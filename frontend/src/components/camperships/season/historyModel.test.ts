@@ -444,7 +444,7 @@ describe("a row's view in an opened line", () => {
       lines: [
         'Amount: $1,420',
         'Effective on: 2027-04-09',
-        'Lock source: tick',
+        'Locked by: Posted check',
         'Request: req000000000001',
         'Round: 1',
         'Rules version: 3',
@@ -454,6 +454,18 @@ describe("a row's view in an opened line", () => {
       householdName: null,
       camperName: null,
     })
+  })
+
+  it('reads a lock source as the words staff use, never the raw code', () => {
+    const lines = (after: string) =>
+      rowView({
+        ...first(DETAIL_POSTED.rows),
+        changes: [{ path: ['lock_source'], kind: 'added', after }],
+      }).lines
+    expect(lines('tick')).toEqual(['Locked by: Posted check'])
+    expect(lines('ledger')).toEqual(['Locked by: CampMinder match'])
+    expect(lines('placement')).toEqual(['Locked by: Grant placement'])
+    expect(lines('some_new_code')).toEqual(['Locked by: Some new code'])
   })
 
   it('never shows "award" on a Round 3 amount, which is Decided, not posted (D80)', () => {
