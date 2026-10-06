@@ -267,6 +267,7 @@ export type {
   DrilldownSession,
   DualSourceParseResult,
   DuplicateMark,
+  DuplicateWaitingOut,
   EditorPreviewOut,
   EditorPreviewOutWritable,
   EquityCriterionInput,
