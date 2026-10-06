@@ -64,12 +64,15 @@ from api.services.financial_aid_household import HOUSEHOLD_ANSWER_FIELDS, TEXT_F
 from api.services.financial_aid_intake_plan import request_fields, share_entity_id
 from api.services.financial_aid_intake_service import season_lock
 from api.services.financial_aid_intake_types import (
+    INTAKE_ACTOR,
     PROGRAM_FAMILY_CAMP,
     RESOLUTION_STAFF,
+    SHARE_SOURCE_INTAKE,
     SHARE_SOURCE_STAFF,
     STAFF_HEADCOUNT_SOURCES,
     STATUS_ACTIVE,
     STATUS_DUPLICATE,
+    STATUS_DUPLICATE_PENDING,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
     ApplicationRecord,
@@ -92,6 +95,7 @@ from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.decisions.rounds import DecisionEvent, fold_rounds
 from bunking.financial_aid.rules.schema import AidRules
 
 
@@ -121,6 +125,7 @@ class CaseworkStore(Protocol):
     ) -> RequestRecord | None: ...
     async def fetch_sessions(self, year: int) -> list[SessionRow]: ...
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
+    async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
     async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None: ...
     async def fetch_capacities(self, year: int) -> list[CapacityRecord]: ...
     async def fetch_payer_shares(
@@ -153,6 +158,11 @@ def correction_out(record: CorrectionRecord) -> CorrectionOut:
 
 
 _CLOSED = frozenset({STATUS_DUPLICATE, STATUS_WITHDRAWN})
+
+
+def _waits_on(pending: RequestRecord, holder: RequestRecord) -> bool:
+    """`pending` is a possible duplicate (duplicate_pending) that names `holder` as the request it waits on."""
+    return pending.status == STATUS_DUPLICATE_PENDING and pending.duplicate_of == holder.id
 
 
 def _changed(current: Mapping[str, Any], wanted: Mapping[str, Any]) -> dict[str, Any]:
@@ -702,6 +712,8 @@ class FinancialAidCaseworkService:
         # unmatched request is really that one" resolvable once it names a real session.
         if request.program_key != survivor.program_key or request.session_cm_id not in (0, survivor.session_cm_id):
             raise CaseworkValidationError("the two requests are not for the same program and session")
+        if request.status == STATUS_ACTIVE and _waits_on(survivor, request):
+            return await self._keep_pending(request, survivor, reason, actor)
         if survivor.status != STATUS_ACTIVE:
             raise CaseworkValidationError("the request kept must be active")
         if request.status in _CLOSED:
@@ -716,6 +728,63 @@ class FinancialAidCaseworkService:
             reason=reason,
         )
         return await self._request_out(updated)
+
+    async def _keep_pending(self, active: RequestRecord, pending: RequestRecord, reason: str, actor: str) -> RequestOut:
+        """Keep the pending request of a possible-duplicate pair instead of the active one (owner 2026-10-05):
+        the two trade places as ONE operation. The active one is written first, because PocketBase allows
+        one active request per camper and session. The newly active one gets the default share intake gives
+        a live request (a pending one has none). Posted money never moves to another request."""
+        if not reason.strip():
+            raise CaseworkValidationError("a reason is required")
+        rounds = sorted(fold_rounds(await self._store.fetch_request_events(active.id)).get(active.id, {}).items())
+        for n, state in rounds:
+            if state.posted:
+                raise CaseworkValidationError(f"Round {n} is posted: keep this request, or undo Posted first")
+        for n, state in rounds:
+            # An ask or an award not yet posted would be left behind on the request that closes.
+            if state.ask is not None or state.award is not None or state.discretionary is not None:
+                raise CaseworkValidationError(
+                    f"Round {n} has a decision on record: keep this request, so no recorded decision is left behind"
+                )
+        writes = [
+            self._request_update(
+                active,
+                _changed(request_fields(active), {"status": STATUS_DUPLICATE, "duplicate_of": pending.id}),
+                "keep_duplicate",
+            ),
+            self._request_update(
+                pending,
+                _changed(request_fields(pending), {"status": STATUS_ACTIVE, "duplicate_of": ""}),
+                "keep_duplicate",
+            ),
+        ]
+        # Any other possible duplicate of the old active request now waits on the kept one.
+        writes.extend(
+            self._request_update(other, {"duplicate_of": pending.id}, "keep_duplicate")
+            for other in await self._store.fetch_requests(active.year)
+            if other.id != pending.id and _waits_on(other, active)
+        )
+        if not await self._store.fetch_payer_shares(pending.year, [pending.id]):
+            writes.append(
+                AidWrite(
+                    collection=AID_PAYER_SHARES,
+                    action="create",
+                    year=pending.year,
+                    data={
+                        "year": pending.year,
+                        "request": pending.id,
+                        "household_cm_id": pending.household_cm_id,
+                        "share_pct": 100,
+                        "source": SHARE_SOURCE_INTAKE,
+                        "actor": INTAKE_ACTOR,
+                        "note": "",
+                    },
+                    log_action="keep_duplicate",
+                    entity_id=share_entity_id(pending.id, pending.household_cm_id),
+                )
+            )
+        await self._store.commit(writes, actor=actor, reason=reason.strip(), require_reason=True)
+        return await self._request_out(replace(active, status=STATUS_DUPLICATE, duplicate_of=pending.id))
 
     async def set_headcount(
         self,

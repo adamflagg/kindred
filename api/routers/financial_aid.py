@@ -336,7 +336,7 @@ async def _override_reasons(year: int) -> tuple[str, ...]:
 def _casework() -> FinancialAidCaseworkService:
     # Every write commits through the repository's one write path, sub-project 4a's
     # commit_aid_writes: the record and its aid_change_log row in one batch.
-    repository = FinancialAidIntakeRepository(pb)
+    repository = FinancialAidDecisionsRepository(pb)
     return FinancialAidCaseworkService(repository, reason_codes=_override_reasons)
 
 
