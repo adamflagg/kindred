@@ -764,9 +764,11 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
   it("offers the pending duplicate both keeps when its holder is on another household's page", () => {
     application = naming('reqelsewhere001')
     renderCards([PENDING])
-    const card = within(cardOf('reqpending00001'))
-    expect(card.getByRole('button', { name: 'Keep This Request…' })).toBeInTheDocument()
-    expect(card.getByRole('button', { name: 'Keep the Other Request…' })).toBeInTheDocument()
+    // In the same order as the active card's: Keep This, then Keep the Other.
+    const keeps = within(cardOf('reqpending00001'))
+      .getAllByRole('button', { name: /^Keep (This|the Other) Request…$/ })
+      .map((button) => button.textContent)
+    expect(keeps).toEqual(['Keep This Request…', 'Keep the Other Request…'])
   })
 
   it('offers the pending duplicate Keep This Request…, which closes the request it waits on', async () => {

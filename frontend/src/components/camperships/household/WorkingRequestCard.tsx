@@ -151,10 +151,10 @@ export function WorkingRequestCard({
       {live && c?.by === 'kindred' && button('Reopen…', { kind: 'reopen' })}
       {offers.shares && button('Payer Shares…', { kind: 'shares' })}
       {offers.session && button('Settle Session…', { kind: 'session' })}
+      {pair?.keepThis === true && button('Keep This Request…', { kind: 'keep_this' })}
       {offers.duplicate &&
         !samePagePair &&
         button('Keep the Other Request…', { kind: 'duplicate' })}
-      {pair?.keepThis === true && button('Keep This Request…', { kind: 'keep_this' })}
       {pair?.keepOther === true && button('Keep the Other Request…', { kind: 'keep_other' })}
       {pair && <OtherRequestLink pair={pair} view={view} beforeLeave={exits?.beforeLeave} />}
       {offers.headcount && button('Number of People…', { kind: 'headcount' })}
