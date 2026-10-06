@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 
 import type { ApiAidHouseholdTotals } from '../../../types/api-types'
-import { DefRef } from '../kit/DefinitionNotes'
 import { formatMoney, toCents } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { postedLabel } from './householdModel'
@@ -12,13 +11,14 @@ function Figure({ value, label, ink }: { value: number | null; label: ReactNode;
     <div className="text-right">
       {/* Every band figure is zero or more (the share is floored per request), so the red minus never meets this ink. */}
       <Money value={value} className={`font-display block text-lg font-bold sm:text-xl ${ink}`} />
-      <span className="text-forest-200 text-xs whitespace-nowrap">{label}</span>
+      {/* D17: the mock's band label, forest-300 at 11px (N2: between the mock's and the old size). */}
+      <span className="text-forest-300 text-[11px] whitespace-nowrap">{label}</span>
     </div>
   )
 }
 
 function Op({ sign }: { sign: string }) {
-  return <span className="text-forest-300 pb-4 text-lg">{sign}</span>
+  return <span className="text-forest-200 pb-[25px] text-lg">{sign}</span>
 }
 
 /**
@@ -50,7 +50,13 @@ export function HouseholdTotals({
     return (
       <>
         <span>{text}</span>
-        {n !== null && <DefRef n={n} />}
+        {/* D18 + N2: the kit's DefRef is muted for a light page; on the forest band its number is
+            the mock's ~9px bold forest-200, the same note number DefRef would draw. */}
+        {n !== null && (
+          <sup className="text-forest-200 ml-px align-[4px] text-[9px] leading-none font-bold">
+            {n}
+          </sup>
+        )}
       </>
     )
   }
@@ -59,8 +65,9 @@ export function HouseholdTotals({
   const beyond = totals.grants_beyond_owed ?? 0
   const equation = addsUp(totals, grants)
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex flex-wrap items-end justify-end gap-3">
+    <div className="flex shrink-0 flex-col items-end gap-0.5">
+      {/* D16: one row, never wrapping (two households included). */}
+      <div className="flex flex-nowrap items-end justify-end gap-x-[22px]">
         <Figure value={totals.cost} label={label('cost', 'cost')} ink="text-white" />
         <Op sign={equation ? '−' : '·'} />
         <Figure
@@ -83,7 +90,7 @@ export function HouseholdTotals({
           label={label("family's share", 'family_share')}
           ink={FAMILY_SHARE_INK}
         />
-        <div className="ml-2 border-l border-white/20 pl-4">
+        <div className="ml-3.5 border-l border-white/20 pl-[18px]">
           <Figure
             value={totals.posted}
             label={label(postedLabel(totals.states), 'posted')}
@@ -92,7 +99,7 @@ export function HouseholdTotals({
         </div>
       </div>
       {beyond > 0 && (
-        <p className="text-forest-200 text-xs">
+        <p className="text-forest-200 text-[11px]">
           +{formatMoney(beyond)} in grants beyond what was owed
         </p>
       )}

@@ -19,6 +19,7 @@ import {
   useAidTickAccepted,
   useAidTickPosted,
   useAidUndoPosted,
+  useAidUseForm,
 } from './useAidWrites'
 
 vi.mock('../../lib/pocketbase', () => ({
@@ -260,6 +261,41 @@ describe('the casework forms’ writes (§6.3)', () => {
       method: 'POST',
       body: { field: 'num_children', new_value: null, reason: 'The family was right' },
       auth: 'Bearer test-jwt',
+    })
+  })
+
+  it("uses one camper's form for every disagreeing answer, and refreshes what it moved", async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidUseForm(), { wrapper })
+    const body = { person_cm_id: 1000002, reason: '' }
+    await act(() => result.current.mutateAsync({ year: 2027, householdCmId: 1000001, body }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/applications/2027/1000001/use-form',
+      method: 'POST',
+      body: { person_cm_id: 1000002, reason: '' },
+      auth: 'Bearer test-jwt',
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'household-page'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'grid'] })
+  })
+
+  it("throws the server's refusal word for word (a 422 is safe to show)", async () => {
+    fetchSpy.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: 'nothing on this application disagrees' }), {
+          status: 422,
+        })
+      )
+    )
+    const { result } = renderHook(() => useAidUseForm(), { wrapper })
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          year: 2027,
+          householdCmId: 1000001,
+          body: { person_cm_id: 1000002, reason: '' },
+        })
+      ).rejects.toThrow(/^nothing on this application disagrees$/)
     })
   })
 

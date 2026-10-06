@@ -55,7 +55,7 @@ describe('receiptSentence (D33; the editor row and the household page say the sa
 
   it('reads an appeal limited by the Round 2 cap, and a Round 1 the table set', () => {
     expect(receiptSentenceText(receiptSentence(TRACE_ROUND2_CAPPED))).toBe(
-      'Adjusted income $80,000 → tier 3. Round 1: 70% of $5,000 = $3,500 → $3,500. Round 2: appeal $2,500, limited by the Round 2 cap to $1,000. Total $4,500.'
+      'Adjusted income $80,000 → tier 3. Round 1: 70% of $5,000 = $3,500. Round 2: appeal $2,500, limited by the Round 2 cap to $1,000. Total $4,500.'
     )
   })
 
@@ -276,18 +276,19 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
         lock_source: 'tick',
         ticked_by_name: 'Test User',
       })
-    ).toBe("rules 2027 v3 · locked Mar 9 by Test User's Posted tick · as it was when posted")
+    ).toBe('rules 2027 v3 · locked Mar 9 when Test User checked Posted · as it was when posted')
     expect(
       receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-09', lock_source: 'tick' })
-    ).toBe('rules 2027 v3 · locked Mar 9 by a Posted tick · as it was when posted')
+    ).toBe('rules 2027 v3 · locked Mar 9 when Posted was checked · as it was when posted')
     expect(
       receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-10', lock_source: 'ledger' })
-    ).toBe('rules 2027 v3 · locked Mar 10 by the ledger match · as it was when posted')
+      // B21 (ruled 10-04 late): the overnight tick reads as CampMinder's match, as the round line does.
+    ).toBe('rules 2027 v3 · locked Mar 10 · matched in CampMinder · as it was when posted')
   })
 
   it('says "locked" with no date and no stray space when the server sends no posted date', () => {
     expect(receiptLabel({ ...base, kind: 'locked', lock_source: 'ledger' })).toBe(
-      'rules 2027 v3 · locked by the ledger match · as it was when posted'
+      'rules 2027 v3 · locked · matched in CampMinder · as it was when posted'
     )
     expect(receiptLabel({ ...base, kind: 'locked' })).toBe(
       'rules 2027 v3 · locked · as it was when posted'
@@ -324,6 +325,39 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
   })
 })
 
+// household-v4 §2 (owner, 10-05): "= $2,400 → $2,400" printed Round 1's amount twice. When the
+// table set the award, the potential IS the award: one figure, then the round's end.
+describe('Round 1 prints its amount once', () => {
+  it('ends "= $potential." when the table set the award, posted or not', () => {
+    const text = receiptSentenceText(receiptSentence(TRACE_ROUND2_CAPPED))
+    expect(text).toContain('Round 1: 70% of $5,000 = $3,500. Round 2:')
+    expect(text).not.toContain('$3,500 → $3,500')
+    const posted = [
+      ...TRACE_ROUND2_CAPPED.slice(0, -1),
+      traceStep('r1_locked', 'Round 1 as posted', '3500.00', { worked_out: '3500.00' }, 'locked'),
+      TRACE_ROUND2_CAPPED.at(-1) as AidTraceStep,
+    ]
+    expect(receiptSentenceText(receiptSentence(posted))).toContain(
+      'Round 1: 70% of $5,000 = $3,500; posted $3,500. Round 2:'
+    )
+  })
+
+  it('keeps "→ $award" where the award differs from the potential without a limit', () => {
+    const trace = TRACE_ROUND2_CAPPED.map((s) =>
+      s.key === 'r1_potential' ? { ...s, value: '3499.60' } : s
+    )
+    expect(receiptSentenceText(receiptSentence(trace))).toContain(
+      'Round 1: 70% of $5,000 = $3,499.60 → $3,500. Round 2:'
+    )
+  })
+
+  it('keeps the limit and both figures where a limit set the award', () => {
+    expect(receiptSentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).toContain(
+      "= $2,000, limited by the family's ask to $1,500."
+    )
+  })
+})
+
 describe('fix round 1: the sentence agrees with the engine', () => {
   it('I1: a raised minimum is not "= $potential"', () => {
     expect(receiptSentenceText(receiptSentence(TRACE_MINIMUM_RAISED))).toBe(
@@ -336,10 +370,10 @@ describe('fix round 1: the sentence agrees with the engine', () => {
 
   it('I2: the two grant offsets read differently (D137)', () => {
     expect(receiptSentenceText(receiptSentence(TRACE_GRANTS_DOLLAR))).toContain(
-      'Round 1: 40% of $5,000, less $500 in grants, = $1,500 → $1,500.'
+      'Round 1: 40% of $5,000, less $500 in grants, = $1,500. Total'
     )
     expect(receiptSentenceText(receiptSentence(TRACE_GRANTS_REDUCE_COST))).toContain(
-      'Round 1: 40% of ($5,000 less $500 in grants) = $1,800 → $1,800.'
+      'Round 1: 40% of ($5,000 less $500 in grants) = $1,800. Total'
     )
   })
 
@@ -605,13 +639,20 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
     ).toBe('the original ask $2,000 less Round 1 $1,500')
   })
 
+  // Owner pass 3 (V6): staff read "number of people", never "headcount".
+  it('words a staff cost override without "headcount"', () => {
+    expect(stepHow(traceStep('cost', 'C', '5000.00', { source: 'override' }), [])).toBe(
+      'a staff override (cost or number of people), with its reason on record'
+    )
+  })
+
   it('M5: per-person cost', () => {
     expect(
       stepHow(
         traceStep('cost', 'C', '5000.00', { source: 'per_person', incentive_reduction: '0.00' }),
         []
       )
-    ).toBe('family-camp headcount price')
+    ).toBe('family-camp price by number of people')
   })
 
   it('M6: subtracted adjustments carry a minus, and dependents are left to the adjusted-income line', () => {

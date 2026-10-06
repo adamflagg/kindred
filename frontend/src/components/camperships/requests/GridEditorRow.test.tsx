@@ -112,7 +112,7 @@ describe('GridEditorRow', () => {
         <GridEditorRow
           row={ROW_OLIVIA}
           walk={WALK}
-          step={<button type="button">Tick Accepted</button>}
+          step={<button type="button">Check Accepted</button>}
         />
       </MemoryRouter>
     )
@@ -120,7 +120,7 @@ describe('GridEditorRow', () => {
     expect(screen.queryByText(/· household /)).toBeNull()
     const top = screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
     expect(top.lastElementChild).toContainElement(
-      screen.getByRole('button', { name: 'Tick Accepted' })
+      screen.getByRole('button', { name: 'Check Accepted' })
     )
   })
 })

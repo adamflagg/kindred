@@ -71,7 +71,9 @@ describe('IncomeCorrection on the wire', () => {
     renderCorrection(true)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
-    await userEvent.click(screen.getByRole('button', { name: "Use the Form's Figure" }))
+    // Round 3: the way back is the "The form's 2" pick, then Save.
+    await userEvent.click(screen.getByRole('button', { name: "The form's 2" }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
     const sent = sentBody()
     expect(sent.method).toBe('POST')
     expect(sent.url).toContain('1000001')
@@ -97,20 +99,15 @@ describe('IncomeCorrection on the wire', () => {
 })
 
 describe('HeadcountForm on the wire', () => {
-  it('PUTs the headcount with its reason_code', async () => {
+  it('PUTs the headcount with no reason_code (item 12)', async () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <HeadcountForm
-          request={family}
-          page={householdPage({ override_reasons: ['headcount', 'discount'] })}
-          onDone={() => undefined}
-        />
+        <HeadcountForm request={family} onDone={() => undefined} />
       </QueryClientProvider>
     )
-    await userEvent.selectOptions(screen.getByLabelText('Reason code'), 'discount')
     await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows it{Enter}')
     const sent = sentBody()
     expect(sent.method).toBe('PUT')
@@ -120,7 +117,6 @@ describe('HeadcountForm on the wire', () => {
       infant: 1,
       source: 'override',
       reason: 'Billing shows it',
-      reason_code: 'discount',
     })
   })
 })

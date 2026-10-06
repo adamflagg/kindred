@@ -49,9 +49,11 @@ export function receiptLabel(label: ReceiptLabelOut): string {
   const on = label.locked_on ? ` ${formatShortDate(label.locked_on)}` : ''
   const by =
     label.lock_source === 'ledger'
-      ? ' by the ledger match'
+      ? ' · matched in CampMinder'
       : label.lock_source === 'tick'
-        ? ` by ${label.ticked_by_name ? `${label.ticked_by_name}'s` : 'a'} Posted tick`
+        ? label.ticked_by_name
+          ? ` when ${label.ticked_by_name} checked Posted`
+          : ' when Posted was checked'
         : ''
   return `${rules} · locked${on}${by} · as it was when posted${decided}`
 }
@@ -279,9 +281,9 @@ function howBase(
           : ''
       switch (i['source']) {
         case 'override':
-          return { base: 'a staff override (cost or headcount), with its reason on record' }
+          return { base: 'a staff override (cost or number of people), with its reason on record' }
         case 'per_person':
-          return { base: `family-camp headcount price${incentive}` }
+          return { base: `family-camp price by number of people${incentive}` }
         case 'unknown':
           return { base: 'cost not known' }
         default:
@@ -608,7 +610,13 @@ export function receiptSentence(trace: readonly AidTraceStep[]): ReceiptSentence
         } else {
           plain(offset && !reduceCost ? ', = ' : ' = ')
           figure(stepValue(potential))
-          roundTail(r1, 1)
+          // The table set the award: the potential is the award, so it is said once (household-v4 §2).
+          const same =
+            bindingPhrase(r1) === null &&
+            incentiveOf(r1) === 0 &&
+            stepValue(r1) === stepValue(potential)
+          if (same) endRound(1)
+          else roundTail(r1, 1)
         }
       }
     } else {

@@ -13,12 +13,13 @@ export const CARD_EDIT_LABEL: Readonly<Record<CardEditKind, string>> = {
 /**
  * The money edits a request card offers (§4.6; Decisions 13, 23): the appeal where the grid's editor
  * row would offer it; Round 3's ask, then its amount, once Round 1 is posted and until Round 3 is.
- * A Kindred cancellation takes no new decision (the server's rule).
+ * A cancelled request takes no new ask or amount, whoever cancelled it (B35, owner ruling 10-05:
+ * CampMinder's as well as the dashboard's); only its reason, and Reopen… where that applies.
  */
 export function cardEdits(row: ApiAidGridRow): CardEditKind[] {
   // The server's `_live`: a withdrawn or duplicate request takes no new asks or amounts.
   if (!isLiveRequest(row)) return []
-  if (row.cancellation?.by === 'kindred') return []
+  if (row.cancellation) return []
   const edits: CardEditKind[] = []
   if (appealTarget(row).kind === 'appeal') edits.push('appeal')
   const r3 = roundOf(row, 3)

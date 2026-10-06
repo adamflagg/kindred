@@ -165,7 +165,7 @@ describe('RoundNextAction (D51; Decision 22)', () => {
     const { unmount } = render(
       <RoundNextAction request={pending} line={lineOf(pending, 3)} year={2027} canApprove={false} />
     )
-    expect(screen.getByText("waits for finance's approval on Today")).toBeInTheDocument()
+    expect(screen.getByText('Pending finance approval')).toBeInTheDocument()
     unmount()
     render(<RoundNextAction request={pending} line={lineOf(pending, 3)} year={2027} canApprove />)
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
@@ -284,15 +284,37 @@ describe('RoundNextAction (D51; Decision 22)', () => {
 })
 
 describe('RoundChecklist (§5.2; D47)', () => {
+  // Owner rule: a checkbox that cannot be clicked looks greyed out, muted box and label.
+  it('greys out a disabled box and its label', () => {
+    render(<RoundChecklist request={emma} line={lineOf(emma)} year={2027} />)
+    const off = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(off).toBeDisabled()
+    expect(off.closest('label')).toHaveClass(
+      'has-[:disabled]:cursor-not-allowed',
+      'has-[:disabled]:text-muted-foreground'
+    )
+    expect(off).toHaveClass('disabled:cursor-not-allowed', 'disabled:opacity-50')
+    expect(off).not.toHaveClass('disabled:cursor-default')
+  })
+
+  // B22 (ruled 10-04 late): since D162 the overnight tick is the normal path, and it never re-marks a
+  // round unmarked by hand; the undo says so before it is sent.
+  it('warns that the overnight sync will not re-mark the round, and where it will show', async () => {
+    render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    expect(
+      screen.getByText(
+        'The overnight sync won\'t mark it posted again: it will show in Not reconciled as "Unmarked by hand".'
+      )
+    ).toBeInTheDocument()
+  })
+
   it('asks why before undoing a Posted tick, then undoes it', async () => {
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    // Owner ruling S1 Q1: undo is for a tick made by mistake, never a way to lower a posted amount.
-    expect(
-      screen.getByText(
-        'For a tick made by mistake. A posted amount stands: a later change to the award never lowers it.'
-      )
-    ).toBeInTheDocument()
+    // B22 (owner, sitting B): the form says it is for a tick made by mistake, and nothing about amounts standing.
+    expect(screen.getByText('For a box checked by mistake.')).toBeInTheDocument()
+    expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Why undo Posted'), 'Ticked the wrong family{Enter}')
     expect(undo).toHaveBeenCalledWith({
       year: 2027,
@@ -313,6 +335,25 @@ describe('RoundChecklist (§5.2; D47)', () => {
     render(<RoundChecklist request={emma} line={lineOf(emma)} year={2027} />)
     expect(screen.getByRole('checkbox', { name: /^Posted/ })).toBeDisabled()
     expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+  })
+
+  // P1 (owner, sitting B): the grid's acceptedTarget offers Accepted on a C1 round (in CampMinder in
+  // full, tonight's tick posts it); the household page offers it too.
+  it('offers Accepted on a C1 (cm_pending) round and sends the write', async () => {
+    const c1 = householdRequest(
+      gridRow({
+        rounds: [roundOut(1, 'needs_offer', { decided: 900, cm_pending: true })],
+      })
+    )
+    render(<RoundChecklist request={c1} line={lineOf(c1)} year={2027} />)
+    expect(screen.getByRole('checkbox', { name: /^Posted/ })).toBeDisabled()
+    const box = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(box).toBeEnabled()
+    await userEvent.click(box)
+    expect(accepted).toHaveBeenCalledWith({
+      year: 2027,
+      body: { rows: [{ request_id: c1.row.request_id, round: 1 }], accepted: true },
+    })
   })
 
   it('keeps the Posted box ticked on a CampMinder-reversed round', () => {
@@ -346,7 +387,7 @@ describe('RoundChecklist (§5.2; D47)', () => {
     expect(screen.queryByText('reqsamuel000005: Round 1 is not posted')).not.toBeInTheDocument()
   })
 
-  it('says only "a tick made by mistake" on a reversed round', async () => {
+  it('says only "a box checked by mistake" on a reversed round', async () => {
     const reversed = householdRequest(
       gridRow({
         rounds: [
@@ -356,53 +397,80 @@ describe('RoundChecklist (§5.2; D47)', () => {
     )
     render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(screen.getByText('For a box checked by mistake.')).toBeInTheDocument()
     expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
   })
 
-  it("names the figure undoing returns to when the posted amount differs from today's (owner-approved)", async () => {
-    const moved = householdRequest(
-      gridRow({
-        rounds: [
-          roundOut(1, 'posted', {
-            decided: 1600,
-            posted: 1800,
-            posted_on: '2027-03-09',
-            would_change_by: -200,
-          }),
-        ],
-      })
-    )
-    render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
-    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(
-      screen.getByText(
-        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; marking it posted again locks that."
+  // Ruled 2026-10-05: no "Undoing returns Round N to today's $X" line, with no replacement. The
+  // server sends decided = posted = the locked amount on a posted round, so it could never show;
+  // the server-side would-change calculation is being deleted too.
+  it.each([
+    ['a posted round', false],
+    ['a reversed round', true],
+  ])(
+    'says only "a box checked by mistake" on %s even when decided and posted differ',
+    async (_label, clawedBack) => {
+      const moved = householdRequest(
+        gridRow({
+          rounds: [
+            roundOut(1, 'posted', {
+              decided: 1600,
+              posted: 1800,
+              posted_on: '2027-03-09',
+              clawed_back: clawedBack,
+            }),
+          ],
+        })
       )
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
-  })
+      render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
+      await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+      expect(screen.getByText('For a box checked by mistake.')).toBeInTheDocument()
+      expect(screen.queryByText(/Undoing returns/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/today's/)).not.toBeInTheDocument()
+    }
+  )
 
-  it('names it on a reversed round too when the figures differ', async () => {
-    const reversed = householdRequest(
-      gridRow({
-        rounds: [
-          roundOut(1, 'posted', {
-            decided: 1600,
-            posted: 1800,
-            posted_on: '2027-03-09',
-            clawed_back: true,
-          }),
-        ],
-      })
-    )
-    render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
-    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
-    expect(
-      screen.getByText(
-        "For a tick made by mistake. Undoing returns Round 1 to today's $1,600; marking it posted again locks that."
+  // Ruled 2026-10-05: the grid never offers Accepted on a reversed round (ticks.ts acceptedTarget),
+  // so neither does the household page; unticking one already accepted stays open.
+  describe('Accepted on a reversed round', () => {
+    const reversedRound = (accepted: boolean) =>
+      householdRequest(
+        gridRow({
+          rounds: [
+            roundOut(1, 'posted', {
+              posted: 1800,
+              posted_on: '2027-03-09',
+              clawed_back: true,
+              accepted,
+            }),
+          ],
+        })
       )
-    ).toBeInTheDocument()
+
+    it('disables Accepted with a reason when the round is reversed and not accepted', () => {
+      const reversed = reversedRound(false)
+      render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
+      expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+      expect(screen.getByText('Reversed: nothing to accept')).toBeInTheDocument()
+    })
+
+    it('keeps Accepted enabled, with no reason, on a normal posted round', () => {
+      render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+      expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeEnabled()
+      expect(screen.queryByText('Reversed: nothing to accept')).not.toBeInTheDocument()
+    })
+
+    it('still lets an already-accepted reversed round be unticked', async () => {
+      const reversed = reversedRound(true)
+      render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
+      expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeEnabled()
+      expect(screen.queryByText('Reversed: nothing to accept')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Accepted' }))
+      expect(accepted).toHaveBeenCalledWith({
+        year: 2027,
+        body: { rows: [{ request_id: reversed.row.request_id, round: 1 }], accepted: false },
+      })
+    })
   })
 
   it('disables Accepted while its write is pending', () => {
@@ -432,7 +500,7 @@ describe('a request cancelled in Kindred takes no tick (the server refuses it: r
     const request = cancelled([roundOut(1, 'needs_offer', { ask: 1500, decided: 900 })])
     render(<RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove />)
     expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
-    expect(screen.getByText('Cancelled in Kindred: reopen it first')).toBeInTheDocument()
+    expect(screen.getByText('Cancelled in the dashboard: reopen it first')).toBeInTheDocument()
   })
 
   it('offers no Approve or Refuse on a pending Round 3', () => {
@@ -452,6 +520,55 @@ describe('a request cancelled in Kindred takes no tick (the server refuses it: r
   })
 
   it('still lets an accepted round be unticked, sending accepted: false', async () => {
+    const request = cancelled([
+      roundOut(1, 'posted', { posted: 900, decided: 900, accepted: true }),
+    ])
+    render(<RoundChecklist request={request} line={lineOf(request)} year={2027} />)
+    const box = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(box).toBeEnabled()
+    await userEvent.click(box)
+    expect(accepted).toHaveBeenCalledWith({
+      year: 2027,
+      body: { rows: [{ request_id: request.row.request_id, round: 1 }], accepted: false },
+    })
+  })
+})
+
+// B35 (owner ruling 10-05): ANY cancelled request takes no money write, CampMinder's as well.
+describe('a request cancelled in CampMinder takes no money write either (B35)', () => {
+  const cancelled = (rounds: Array<ReturnType<typeof roundOut>>) =>
+    householdRequest(
+      gridRow({
+        rounds,
+        cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+      })
+    )
+
+  it('offers no Mark Posted, and says it was cancelled in CampMinder', () => {
+    const request = cancelled([roundOut(1, 'needs_offer', { ask: 1500, decided: 900 })])
+    render(<RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove />)
+    expect(screen.queryByRole('button', { name: /Mark Posted/ })).toBeNull()
+    expect(screen.getByText('Cancelled in CampMinder')).toBeInTheDocument()
+  })
+
+  it('offers no Approve or Refuse on a pending Round 3', () => {
+    const request = cancelled([
+      roundOut(1, 'posted', { posted: 1420 }),
+      roundOut(3, 'pending_approval', { pending_approval: 450 }),
+    ])
+    render(<RoundNextAction request={request} line={lineOf(request, 3)} year={2027} canApprove />)
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Refuse…' })).toBeNull()
+    expect(screen.getByText('Cancelled in CampMinder')).toBeInTheDocument()
+  })
+
+  it('disables Accepted on a posted round not yet accepted (#3023)', () => {
+    const request = cancelled([roundOut(1, 'posted', { posted: 900, decided: 900 })])
+    render(<RoundChecklist request={request} line={lineOf(request)} year={2027} />)
+    expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+  })
+
+  it('still lets an accepted round be unchecked, sending accepted: false', async () => {
     const request = cancelled([
       roundOut(1, 'posted', { posted: 900, decided: 900, accepted: true }),
     ])

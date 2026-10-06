@@ -8,9 +8,7 @@ import type {
   ApiAidConfirmation,
   ApiAidConfirmationState,
   ApiAidExpected,
-  ApiAidHistoryEntry,
   ApiAidHouseholdCard,
-  ApiAidHouseholdLink,
   ApiAidHouseholdPage,
   ApiAidHouseholdRequest,
   ApiAidReceipt,
@@ -24,7 +22,7 @@ import type { PillTone } from '../kit/kitStyles'
 import { formatMoney, moneyCsv, toCents } from '../kit/money'
 import { codeWords } from '../requests/attention'
 import { LIVE_REQUEST_STATUSES } from '../requests/gridEditor'
-import { ROUND_STATUS_WORDS, roundTone } from '../requests/stage'
+import { ROUND_STATUS_WORDS } from '../requests/stage'
 import { CM_PENDING_WORD } from '../requests/views'
 
 const nonEmpty = (text: string) => text.trim() !== ''
@@ -74,15 +72,111 @@ export function stateWords(state: ApiAidConfirmationState): string {
   }
 }
 
-/** Posted's label in the band and on the cards: "posted · 1 short $210" (B2, D77). */
+/**
+ * Posted's label in the band: "posted · 1 short $210" (B2, D77), and the mock's "posted · ✓ confirmed"
+ * once every state is confirmed (D19).
+ */
 export function postedLabel(states: readonly ApiAidConfirmationState[]): string {
-  return states.length === 0 ? 'posted' : `posted · ${states.map(stateWords).join(' · ')}`
+  if (states.length === 0) return 'posted'
+  if (states.every((state) => state.status === 'confirmed')) return 'posted · ✓ confirmed'
+  return `posted · ${states.map(stateWords).join(' · ')}`
+}
+
+export interface CardPill {
+  readonly tone: PillTone
+  readonly text: string
+}
+
+const CARD_PILL_TONE = {
+  confirmed: 'emerald',
+  short: 'amber',
+  over: 'amber',
+  not_in_campminder: 'amber',
+  awaiting_sync: 'muted',
+  reversed: 'stone',
+} as const satisfies Record<ApiAidConfirmationState['status'], PillTone>
+
+/**
+ * A household card's confirmation as the mock's pills (D14): "✓ confirmed", or "CampMinder shows $Z"
+ * beside an amber "short $W" (D59's amber). A household with several posted requests counts them,
+ * since one card can then carry two states. Nothing posted, nothing drawn.
+ */
+export function cardConfirmation(card: ApiAidHouseholdCard): {
+  shows: string | null
+  pills: CardPill[]
+} {
+  const states = card.money.states
+  const several = states.reduce((sum, state) => sum + state.count, 0) > 1
+  const gapped = states.some((state) => state.status === 'short' || state.status === 'over')
+  const inCampMinder = card.money.in_campminder
+  return {
+    shows: gapped && inCampMinder !== null ? `CampMinder shows ${formatMoney(inCampMinder)}` : null,
+    pills: states.map((state) => {
+      const words = stateWords(state)
+      const counted = state.status === 'confirmed' ? `✓ ${words}` : words
+      // stateWords leads with the count; one request on the card drops it ("short $210").
+      const text = several ? counted : counted.replace(`${String(state.count)} `, '')
+      return { tone: CARD_PILL_TONE[state.status], text }
+    }),
+  }
+}
+
+/** The card's second line (D15): "household 1000001 · Riverside, CA". */
+export function cardPlaceLine(card: ApiAidHouseholdCard): string {
+  return [`household ${String(card.household_cm_id)}`, card.city].filter(nonEmpty).join(' · ')
+}
+
+/** The card's third line (D15): the first adult, phone and email; a missing field drops out. */
+export function cardContactLine(card: ApiAidHouseholdCard): string {
+  const first = card.adults[0]?.replace(/\s*\(.*\)\s*$/, '') ?? ''
+  return [first, card.phone, ...card.emails].filter(nonEmpty).join(' · ')
 }
 
 /** A blank family name reads as missing here, the one place names come from (the server never sends one today). */
 export function householdName(page: ApiAidHouseholdPage, householdCmId: number): string {
   const name = page.households.find((h) => h.household_cm_id === householdCmId)?.family_name
   return name !== undefined && nonEmpty(name) ? name : `Household ${String(householdCmId)}`
+}
+
+/** How the page names a household beside its chip (#3025): the server's label and its tie-break. */
+export interface HouseholdLabel {
+  /** The adults' names alone ("Liam & Olivia Becker"), else the mailing title. */
+  readonly text: string
+  /** "" unless another household on the page reads the same: then its city, else "#<cm id>". */
+  readonly tiebreak: string
+}
+
+/**
+ * A household's label (owner, 2026-10-05), wherever the page names households to tell them apart.
+ * Null while the server sends none or a blank one (it defaults both fields to ""): each place then
+ * keeps what it showed before #3025.
+ */
+export function labelOf(
+  card: { label?: string | undefined; label_tiebreak?: string | undefined } | undefined
+): HouseholdLabel | null {
+  const text = card?.label?.trim() ?? ''
+  return text === '' ? null : { text, tiebreak: card?.label_tiebreak?.trim() ?? '' }
+}
+
+export function householdLabel(
+  page: ApiAidHouseholdPage,
+  householdCmId: number
+): HouseholdLabel | null {
+  return labelOf(page.households.find((h) => h.household_cm_id === householdCmId))
+}
+
+/** A label as an <option>'s plain text: "Pat Garcia · Riverside, CA" (an option can't grey a part). */
+export function labelWords(label: HouseholdLabel): string {
+  return label.tiebreak === '' ? label.text : `${label.text} · ${label.tiebreak}`
+}
+
+/**
+ * What a household CHIP says (O3): the short name, else the family name. `||`, not `??`: the server
+ * defaults short_name to "" so `??` would never fall back. The band and sentences keep householdName.
+ */
+export function householdChipName(page: ApiAidHouseholdPage, householdCmId: number): string {
+  const short = page.households.find((h) => h.household_cm_id === householdCmId)?.short_name
+  return (short !== undefined && nonEmpty(short) ? short : '') || householdName(page, householdCmId)
 }
 
 export function householdChip(page: ApiAidHouseholdPage, householdCmId: number): number | null {
@@ -125,22 +219,25 @@ export function appliedBy(
 ): { chip: number; name: string } | null {
   if (!multiHousehold(page)) return null
   const id = request.row.household_cm_id
-  return { chip: householdChip(page, id) ?? 0, name: householdName(page, id) }
+  return { chip: householdChip(page, id) ?? 0, name: householdChipName(page, id) }
+}
+
+/**
+ * The cost in a card's header. O6 (ruled 10-04 late, a number's meaning): a cancelled request still
+ * shows the session's price, though the server leaves the row's cost out (it is excluded from the
+ * band's totals, which keep "—"). The price is the one its receipt priced it at, the figure the
+ * sentence already says ("of $3,600"). Nothing else borrows a cost.
+ */
+export function cardCost(request: ApiAidHouseholdRequest): number | null {
+  if (request.row.cost !== null) return request.row.cost
+  if (request.row.cancellation === null) return null
+  const step = latestReceipt(request)?.trace.find((s) => s.key === 'cost')
+  const value = step === undefined || step.value === null ? NaN : Number(step.value)
+  return Number.isFinite(value) ? value : null
 }
 
 export function camperOf(request: ApiAidHouseholdRequest): string {
   return request.row.camper_name === '' ? 'Household request' : request.row.camper_name
-}
-
-/** The person to open in CampMinder for a household card: its first camper on the page, by name (Decision 20; M12). */
-export function firstCamperOf(
-  page: ApiAidHouseholdPage,
-  householdCmId: number
-): { readonly personCmId: number; readonly name: string } | null {
-  const row = page.requests.find(
-    (r) => r.row.household_cm_id === householdCmId && r.row.person_cm_id > 0
-  )?.row
-  return row ? { personCmId: row.person_cm_id, name: row.camper_name } : null
 }
 
 /** CampMinder's person record, the one CampMinder link the app already uses. */
@@ -169,23 +266,54 @@ export interface RoundLine {
   readonly ask: number | null
   readonly askedOn: string | null
   readonly words: string
-  readonly tone: PillTone
-  /** "locked Mar 9 · Test User", "locked Mar 10 · by the ledger match"; null until posted. */
+  /** The round line's own meaning tone (O1); the header's Stage pill keeps the grid's tone. */
+  readonly stateTone: RoundStateTone
+  /** "locked Mar 9 · Test User", "locked Mar 10 · matched in CampMinder"; null until posted. */
   readonly lock: string | null
   readonly posted: boolean
   readonly postedOn: string | null
   readonly accepted: boolean
   /**
+   * The round's CampMinder check is pending (`cm_pending`): C1, money already in CampMinder in full
+   * that tonight's tick posts, or V1, a hand tick tonight's sync checks. The grid offers Accepted on
+   * it (ticks.ts acceptedTarget), so the page does too.
+   */
+  readonly cmPending: boolean
+  /** The server's sentence for a pending round (`cm_pending_message`, as the grid's detail line shows it). */
+  readonly cmPendingMessage: string | null
+  /**
    * A posted round whose money CampMinder reversed (D54): its `posted` still carries the locked
    * amount, but the budget counts that money nowhere, so it never reads as standing posted money.
    */
   readonly clawedBack: boolean
-  /**
-   * A locked round's a would-change figure (D43); null when nothing would, and on a clawed-back
-   * round, where "the posted amount stands" is false.
-   */
-  readonly wouldChangeBy: number | null
 }
+
+/**
+ * O1 (ruled 10-04 late): the round line's pill carries what the state means, as the mock draws it
+ * (Posted forest, Needs an offer sky, waiting on finance amber, On hold red; the rest stone). The
+ * grid's per-round tones (`roundTone`) stay on the header's Stage pill, so it matches the grid row.
+ */
+export type RoundStateTone = 'posted' | 'offer' | 'finance' | 'hold' | 'stone'
+
+const ROUND_STATE_TONE = {
+  posted: 'posted',
+  needs_offer: 'offer',
+  pending_approval: 'finance',
+  held: 'hold',
+  not_decided: 'stone',
+  refused: 'stone',
+  not_rebuilt: 'stone',
+} as const satisfies Record<ApiAidRound['status'], RoundStateTone>
+
+/** The panel draws every live request as three round rows (O2): these are the ones not reached yet. */
+export function unreachedRounds(request: ApiAidHouseholdRequest): number[] {
+  const rounds = request.row.rounds
+  if (rounds.length === 0 || requestStatusWords(request.row.request_status) !== null) return []
+  return [1, 2, 3].filter((n) => !rounds.some((r) => r.round === n))
+}
+
+/** The round line's state word for a C1 round: the grid's pending word, sentence-cased. */
+const PENDING_STATE_WORD = `${CM_PENDING_WORD.charAt(0).toUpperCase()}${CM_PENDING_WORD.slice(1)}`
 
 export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
   return [...request.row.rounds]
@@ -195,15 +323,16 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
       const posted = r.status === 'posted'
       const lockedOn = label?.locked_on ?? r.posted_on
       const byLedger = label?.lock_source === 'ledger' || r.lock_source === 'ledger'
-      const who = byLedger ? 'by the ledger match' : (label?.ticked_by_name ?? null)
+      // B21 (ruled 10-04 late): the overnight tick is the normal path, worded as CampMinder's match.
+      const who = byLedger ? 'matched in CampMinder' : (label?.ticked_by_name ?? null)
       const lock = posted
         ? [lockedOn ? `locked ${formatShortDate(lockedOn)}` : 'locked', who]
             .filter((part): part is string => part !== null)
             .join(' · ')
         : null
       const clawedBack = r.clawed_back ?? false
-      const would = clawedBack ? null : (r.would_change_by ?? null)
       const pending = r.status === 'pending_approval'
+      const cmPending = r.cm_pending === true
       return {
         round: r.round,
         status: r.status,
@@ -213,14 +342,24 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         decided: r.decided,
         ask: r.ask,
         askedOn: r.asked_on,
-        words: ROUND_STATUS_WORDS[r.status],
-        tone: roundTone(r),
+        // B21 (owner, sitting B): a C1 round reads for what it is, waiting on tonight's tick, and
+        // keeps the grid's own word for it (a needs-offer status is only the server's pre-tick state).
+        // Owner ruling 10-05: a posted round CampMinder reversed says both, "Posted · reversed"
+        // (household only: the grid's Stage pill keeps ROUND_STATUS_WORDS as the server sends them).
+        words:
+          cmPending && r.status === 'needs_offer'
+            ? PENDING_STATE_WORD
+            : clawedBack && posted
+              ? `${ROUND_STATUS_WORDS.posted} · reversed`
+              : ROUND_STATUS_WORDS[r.status],
+        stateTone: cmPending && r.status === 'needs_offer' ? 'stone' : ROUND_STATE_TONE[r.status],
         lock,
         posted,
         postedOn: r.posted_on,
         accepted: r.accepted,
+        cmPending,
+        cmPendingMessage: cmPending ? (r.cm_pending_message ?? null) : null,
         clawedBack,
-        wouldChangeBy: would !== null && would !== 0 ? would : null,
       }
     })
 }
@@ -240,12 +379,9 @@ export function earlierReceipts(request: ApiAidHouseholdRequest): ApiAidReceipt[
   return request.receipts.filter((r) => r !== latest).sort((a, b) => a.round - b.round)
 }
 
-/** D34: the receipt opens by itself on a hold, or while a would-change flag shows. */
+/** D34: the receipt opens by itself on a hold (owner Decision 1 dropped the would-change flag as a trigger). */
 export function opensByItself(request: ApiAidHouseholdRequest): boolean {
-  return (
-    request.row.holds.length > 0 ||
-    request.row.rounds.some((r) => !(r.clawed_back ?? false) && (r.would_change_by ?? 0) !== 0)
-  )
+  return request.row.holds.length > 0
 }
 
 /** A payer share's confirmation (D81), shaped for the kit's ConfirmationState; null until posted. */
@@ -305,12 +441,13 @@ export function requestStatusWords(status: string | null): string | null {
 
 const CANCEL_WORDS = new Map(CANCEL_REASON_OPTIONS.map((o) => [o.value, o.label] as const))
 
-/** "Cancelled in Kindred May 2 · declined: aid not enough / financial constraints" (D101, D141). */
+/** "Cancelled in the dashboard May 2 · declined: aid not enough / financial constraints" (D101, D141). */
 export function cancellationWords(c: ApiAidCancellation): string {
-  const where = c.by === 'kindred' ? 'Cancelled in Kindred' : 'Cancelled in CampMinder'
+  const where = c.by === 'kindred' ? 'Cancelled in the dashboard' : 'Cancelled in CampMinder'
   const on = c.on ? ` ${formatShortDate(c.on)}` : ''
   const reason =
-    c.reason === null ? 'no reason given yet' : (CANCEL_WORDS.get(c.reason) ?? c.reason)
+    // B35 / ruling B: a reason is optional, so none reads as a fact, not a nag.
+    c.reason === null ? 'none recorded' : (CANCEL_WORDS.get(c.reason) ?? c.reason)
   return [`${where}${on}`, reason, c.note].filter(nonEmpty).join(' · ')
 }
 
@@ -379,24 +516,6 @@ const EXPECTED_WORDS = {
 /** D56's Expected chip, naming no funder (Decision 21). */
 export function expectedWords(expected: ApiAidExpected): string {
   return [EXPECTED_WORDS[expected.kind], ...expected.camper_names].join(' · ')
-}
-
-/** "test@example.com · Tick posted · decision events reqsamuel000005:1 · Entered in CampMinder". */
-export function historyLine(entry: ApiAidHistoryEntry): string {
-  const record = `${entry.entity.replace(/^aid_/, '').replaceAll('_', ' ')} ${entry.entity_id}`
-  return [entry.actor, codeWords(entry.action), record, entry.reason].filter(nonEmpty).join(' · ')
-}
-
-/** A linked household (§6.3 †; Decision 27: read only). */
-export function linkWords(link: ApiAidHouseholdLink): string {
-  return [
-    `household ${String(link.household_cm_id)}`,
-    link.source,
-    link.excluded ? 'excluded' : '',
-    link.note,
-  ]
-    .filter(nonEmpty)
-    .join(' · ')
 }
 
 export interface CsvTable {

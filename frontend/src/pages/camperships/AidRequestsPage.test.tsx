@@ -65,6 +65,13 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
 const R2_POSTED = "Round 2 is posted; its ask can't change"
 
 const LIVE: ApiAidGrid = { year: 2027, rules_version: 1, rows: [...GRID_ROWS], ticked_season: true }
+/** LIVE with Riley's request not cancelled, so a bulk check takes it (#3023 refuses any cancellation). */
+const OPEN_RILEY: ApiAidGrid = {
+  ...LIVE,
+  rows: LIVE.rows.map((r) =>
+    r.request_id === 'reqriley0000004' ? { ...r, cancellation: null } : r
+  ),
+}
 
 function Where() {
   const { pathname, search } = useLocation()
@@ -976,6 +983,9 @@ describe('ticks (§4.10, §5.2)', () => {
   beforeEach(() => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     tickAccepted.mockReset()
+    // Riley stands in for a second checkable family here: its fixture's CampMinder cancellation
+    // would refuse the check since #3023 (any cancellation), so these bulk tests drop it.
+    grid = { data: OPEN_RILEY, isLoading: false, error: null }
   })
 
   async function selectCampers(...campers: string[]) {
@@ -986,11 +996,11 @@ describe('ticks (§4.10, §5.2)', () => {
   }
   const selectBoth = () => selectCampers('Samuel Johnson', 'Riley Sam')
 
-  it('offers Tick Accepted on the bar and no Tick Posted: Posted is exception-only', async () => {
+  it('offers Check Accepted on the bar and no Check Posted: Posted is exception-only', async () => {
     renderAt('/aid/requests')
     await selectBoth()
-    expect(screen.getByRole('button', { name: 'Tick Accepted…' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Tick Posted…' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Check Accepted…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Posted…/ })).toBeNull()
   })
 
   it('renders no Posted button on Needs an offer rows', () => {
@@ -1003,23 +1013,23 @@ describe('ticks (§4.10, §5.2)', () => {
     renderAt('/aid/requests')
     await selectBoth()
     expect(screen.getByText('2 selected')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
-    expect(screen.getByText('Tick Accepted on 2 requests · 2 families')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
+    expect(screen.getByText('Check Accepted on 2 requests · 2 families')).toBeInTheDocument()
   })
 
-  it("ticks one row from the opened row's Tick Accepted step through the same confirmation (Full GO)", async () => {
+  it("ticks one row from the opened row's Check Accepted step through the same confirmation (Full GO)", async () => {
     renderAt('/aid/requests?view=waiting')
     const row = screen.getByText('Samuel Johnson').closest('tr') as HTMLElement
     await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
     const detail = document.querySelector('[data-aid-detail]') as HTMLElement
-    await userEvent.click(within(detail).getByRole('button', { name: 'Tick Accepted' }))
-    expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+    await userEvent.click(within(detail).getByRole('button', { name: 'Check Accepted' }))
+    expect(screen.getByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
   })
 
   it("ticks one row from Waiting on the family's Tick column through the same confirmation", async () => {
     renderAt('/aid/requests?view=waiting')
     await userEvent.click(inRows().getByRole('button', { name: 'Accepted' }))
-    expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+    expect(screen.getByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
   })
 
   it('offers no selection and no Tick column without casework', () => {
@@ -1045,14 +1055,14 @@ describe('ticks (§4.10, §5.2)', () => {
       error: null,
     }
     await refetch()
-    expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+    expect(screen.getByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
   })
 
   it('writes the Accepted tick end to end, lists exactly what was ticked, and keeps the selection of rows it did not tick', async () => {
     tickAccepted.mockResolvedValue({ year: 2027, written: 2, unchanged: 0, operation_id: 'op1' })
     renderAt('/aid/requests')
     await selectCampers('Samuel Johnson', 'Riley Sam', 'Liam Garcia')
-    await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(tickAccepted).toHaveBeenCalledWith({
       year: 2027,
@@ -1064,10 +1074,10 @@ describe('ticks (§4.10, §5.2)', () => {
         accepted: true,
       },
     })
-    expect(await screen.findByText(/Ticked Accepted on 2 requests/)).toBeInTheDocument()
+    expect(await screen.findByText(/Checked Accepted on 2 requests/)).toBeInTheDocument()
     expect(screen.getByText(/Samuel Johnson R1/)).toBeInTheDocument()
     expect(screen.getByText(/Riley Sam R1/)).toBeInTheDocument()
-    expect(screen.queryByText('Tick Accepted on 2 requests · 2 families')).toBeNull()
+    expect(screen.queryByText('Check Accepted on 2 requests · 2 families')).toBeNull()
     // Liam had nothing to tick, so he stays selected for the next action.
     expect(screen.getByText('1 selected')).toBeInTheDocument()
   })
@@ -1076,9 +1086,9 @@ describe('ticks (§4.10, §5.2)', () => {
     tickAccepted.mockResolvedValue({ year: 2027, written: 1, unchanged: 1, operation_id: 'op1' })
     renderAt('/aid/requests')
     await selectBoth()
-    await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(await screen.findByText(/\(1 was already ticked\)\. Sent: /)).toBeInTheDocument()
+    expect(await screen.findByText(/\(1 was already checked\)\. Sent: /)).toBeInTheDocument()
   })
 
   describe('a tick on the row being edited (review I2; F2-4)', () => {
@@ -1109,9 +1119,9 @@ describe('ticks (§4.10, §5.2)', () => {
     // Owner sitting A, A18: the bar's own Tick button is an exit like the row's, so it saves first too.
     it('saves the typed ask first when the tick comes from the selection bar, and the dialog shows it', async () => {
       await typeAppealWithSamuelSelected()
-      await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
       expect(keyAsk).toHaveBeenCalledTimes(1)
-      expect(await screen.findByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+      expect(await screen.findByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
     })
 
     it('saves the typed ask first when the tick comes from a row, and only then opens it', async () => {
@@ -1121,7 +1131,7 @@ describe('ticks (§4.10, §5.2)', () => {
       await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
       await userEvent.click(inRows().getByRole('button', { name: 'Accepted' }))
       expect(keyAsk).toHaveBeenCalledTimes(1)
-      expect(await screen.findByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+      expect(await screen.findByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
     })
 
     // Owner sitting A, A18: toggling a row's checkbox is an exit like ↓, so what is typed is saved
@@ -1157,7 +1167,7 @@ describe('ticks (§4.10, §5.2)', () => {
       const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
       await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
       expect(keyAsk).toHaveBeenCalledTimes(1)
-      expect(screen.queryByText(/^Tick Accepted on/)).toBeNull()
+      expect(screen.queryByText(/^Check Accepted on/)).toBeNull()
       expect(await screen.findByText('1 selected')).toBeInTheDocument()
       expect(
         within(screen.getByText('Olivia Chen').closest('tr') as HTMLElement).getAllByText('$1,040')
@@ -1177,9 +1187,9 @@ describe('ticks (§4.10, §5.2)', () => {
     it('opens nothing when that save fails, and the failure stays listed', async () => {
       keyAsk.mockImplementationOnce(() => Promise.reject(new Error('The server is down')))
       await typeAppealWithSamuelSelected()
-      await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
       expect(await screen.findByText(/Couldn't save Olivia Chen's Round 2 ask/)).toBeInTheDocument()
-      expect(screen.queryByText(/^Tick Accepted on/)).toBeNull()
+      expect(screen.queryByText(/^Check Accepted on/)).toBeNull()
       expect(tickAccepted).not.toHaveBeenCalled()
     })
   })
@@ -1190,8 +1200,8 @@ describe('ticks (§4.10, §5.2)', () => {
       await selectBoth()
       await userEvent.type(screen.getByLabelText('Search'), 'Riley')
       expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
-      expect(screen.getByText('Tick Accepted on 2 requests · 2 families')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
+      expect(screen.getByText('Check Accepted on 2 requests · 2 families')).toBeInTheDocument()
       expect(
         screen.getByText(/Samuel Johnson · Round 1 \(hidden by the search or filters\)/)
       ).toBeInTheDocument()
@@ -1219,8 +1229,8 @@ describe('ticks (§4.10, §5.2)', () => {
       await userEvent.click(within(samuel).getByRole('checkbox', { name: 'Select' }))
       await userEvent.click(viewLink('Needs an offer'))
       expect(screen.getByText('1 selected · 1 hidden by the search or filters')).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
-      expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
+      expect(screen.getByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
     })
   })
 })

@@ -288,6 +288,20 @@ export const SPLIT_PAGE: ApiAidHouseholdPage = householdPage({
   ],
 })
 
+/**
+ * SPLIT_PAGE as #3025's server names its households (owner, 2026-10-05): each card's `label` is its
+ * adults' names alone, and two that read the same each carry a muted `label_tiebreak` (the city when
+ * that tells them apart, else "#" and the CampMinder household id).
+ */
+export const TIED_PAGE: ApiAidHouseholdPage = {
+  ...SPLIT_PAGE,
+  households: SPLIT_PAGE.households.map((card) =>
+    card.household_cm_id === 1000001
+      ? { ...card, label: 'Pat Garcia', label_tiebreak: 'Riverside, CA' }
+      : { ...card, label: 'Pat Garcia', label_tiebreak: '#1000003' }
+  ),
+}
+
 /** An intake request as the application read carries it: flags, headcounts and duplicates. */
 export function requestOut(over: Partial<ApiAidRequestOut> = {}): ApiAidRequestOut {
   return {

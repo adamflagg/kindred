@@ -8,35 +8,83 @@ import {
 } from '../../../hooks/camperships/useAidWrites'
 import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidHouseholdRequest } from '../../../types/api-types'
-import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
-import { cancelledInKindred } from '../requests/ticks'
+import { cancelled } from '../requests/ticks'
 import type { RoundLine } from './householdModel'
+import {
+  HH_AMBER_NOTE as AMBER_NOTE,
+  HH_BUTTON,
+  HH_BUTTON_PRIMARY,
+  HH_NOTE as MUTED,
+  HH_TICK,
+  HH_TICK_BOX,
+} from './householdStyles'
 import { ReasonForm } from './ReasonForm'
 
-const MUTED = 'text-muted-foreground text-xs'
+/**
+ * B22 (ruled 10-04 late): since D162 the overnight tick never re-marks a round unmarked by hand, so
+ * the undo says where the round goes instead (the server's UNTICKED_LABELS "undone").
+ */
+const UNDO_WARNING =
+  'The overnight sync won\'t mark it posted again: it will show in Not reconciled as "Unmarked by hand".'
+
+/**
+ * A checklist box (D6): the real checkbox stays the control, drawn as the mock's 14px forest box with
+ * a white ✓; the date beside its label is muted.
+ */
+function TickBox({
+  label,
+  date,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string
+  date?: string | null | undefined
+  checked: boolean
+  disabled: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className={HH_TICK}>
+      <span className="relative inline-flex">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked)}
+          className={HH_TICK_BOX}
+        />
+        {checked && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] leading-none text-white"
+          >
+            ✓
+          </span>
+        )}
+      </span>
+      {label}
+      {date ? <span className="text-muted-foreground">{` ${date}`}</span> : null}
+    </label>
+  )
+}
 const asRound = (n: number): 1 | 2 | 3 | null => (n === 1 || n === 2 || n === 3 ? n : null)
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Couldn't save")
 
 /**
- * What the undo form says first. "A posted amount stands" is true only while the tick stands: on a
- * reversed round, or one whose posted amount differs from today's decided figure, undoing re-prices
- * it, so that clause goes and (owner-approved wording) the figure it returns to is named.
+ * What the undo form says first (B22, owner sitting B: no "a posted amount stands" sentence; ruled
+ * 2026-10-05: no "Undoing returns Round N to today's $X" line either, as a posted round's decided
+ * figure is its locked amount).
  */
-function undoHint(line: RoundLine): string {
-  const mistake = 'For a tick made by mistake.'
-  if (line.decided !== null && line.amount !== null && line.decided !== line.amount) {
-    return `${mistake} Undoing returns Round ${String(line.round)} to today's ${formatMoney(line.decided)}; marking it posted again locks that.`
-  }
-  if (line.clawedBack || line.wouldChangeBy !== null) return mistake
-  return `${mistake} A posted amount stands: a later change to the award never lowers it.`
-}
+const UNDO_HINT = 'For a box checked by mistake.'
 
 /**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
  * "Mark Posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
- * ticks a posted round only.
+ * ticks a posted round or a C1 round (`cm_pending`, as the grid's `acceptedTarget` offers it), never
+ * a reversed one.
  */
 export function RoundChecklist({
   request,
@@ -57,55 +105,53 @@ export function RoundChecklist({
   const round = asRound(line.round)
   const requestId = request.row.request_id
   if (round === null) return null
-  const postedText = `Posted${line.posted && line.postedOn ? ` ${formatShortDate(line.postedOn)}` : ''}`
+  const noAcceptOnReversed = line.clawedBack && !line.accepted
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <label className="flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={line.posted}
-            disabled={!line.posted || editing}
-            onChange={() => setUndoing(true)}
-          />
-          {postedText}
-        </label>
-        <label className="flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={line.accepted}
-            // The server refuses ticking Accepted on a Kindred cancellation, never unticking it.
-            disabled={
-              !line.posted ||
-              accept.isPending ||
-              editing ||
-              (cancelledInKindred(request.row) && !line.accepted)
-            }
-            onChange={(event) => {
-              setError(null)
-              accept.mutate(
-                {
-                  year,
-                  body: {
-                    rows: [{ request_id: requestId, round }],
-                    accepted: event.target.checked,
-                  },
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+        <TickBox
+          label="Posted"
+          date={line.posted && line.postedOn ? formatShortDate(line.postedOn) : null}
+          checked={line.posted}
+          disabled={!line.posted || editing}
+          onChange={() => setUndoing(true)}
+        />
+        <TickBox
+          label="Accepted"
+          checked={line.accepted}
+          // The server refuses checking Accepted on any cancellation (#3023), never unchecking it. A
+          // reversed round is the same: the grid never offers it (ticks.ts), unticking stays open.
+          disabled={
+            !(line.posted || line.cmPending) ||
+            accept.isPending ||
+            editing ||
+            ((cancelled(request.row) || line.clawedBack) && !line.accepted)
+          }
+          onChange={(checked) => {
+            setError(null)
+            accept.mutate(
+              {
+                year,
+                body: {
+                  rows: [{ request_id: requestId, round }],
+                  accepted: checked,
                 },
-                { onError: (caught) => setError(messageOf(caught)) }
-              )
-            }}
-          />
-          Accepted
-        </label>
+              },
+              { onError: (caught) => setError(messageOf(caught)) }
+            )
+          }}
+        />
+        {noAcceptOnReversed && <span className={MUTED}>Reversed: nothing to accept</span>}
       </div>
       {undoing && (
-        // Owner ruling 2026-10-01 S1 Q1: once posted, an amount stands. That sentence is true only
-        // while the tick stands: on a reversed round, or one whose posted amount differs from today's
-        // decided one, undoing re-prices it, so only the first clause is honest (lead ruling, fix round 1).
-        <span className="text-muted-foreground text-xs">{undoHint(line)}</span>
-      )}
-      {undoing && (
         <ReasonForm
+          head={`Undoing Posted · Round ${String(line.round)}`}
+          hint={
+            <>
+              <span className="block">{UNDO_HINT}</span>
+              <span className="block">{UNDO_WARNING}</span>
+            </>
+          }
           label="Why undo Posted"
           submitLabel="Undo Posted"
           onSubmit={(reason) =>
@@ -159,7 +205,15 @@ export function RoundNextAction({
     setOffer(null)
   }
 
-  const cancelled = cancelledInKindred(request.row)
+  // B35 (owner ruling 10-05): any cancellation stops the round's money writes. A Kindred one says to
+  // reopen first; CampMinder's has no Reopen here, so it says only where it was cancelled.
+  const by = request.row.cancellation?.by ?? null
+  const cancelledWords =
+    by === null
+      ? null
+      : by === 'kindred'
+        ? 'Cancelled in the dashboard: reopen it first'
+        : 'Cancelled in CampMinder'
   if (line.status === 'needs_offer' && line.decided !== null && round !== null) {
     const amount = line.decided
     // D162 keeps the hand tick here, so an ordinary needs-offer round shows it. It hides where a
@@ -175,11 +229,9 @@ export function RoundNextAction({
       .filter((r) => r.round < line.round && r.status !== 'posted')
       .sort((a, b) => a.round - b.round)[0]
     if (blocking !== undefined) {
-      return (
-        <span className="text-muted-foreground text-xs">{`after Round ${String(blocking.round)} is posted`}</span>
-      )
+      return <span className={MUTED}>{`after Round ${String(blocking.round)} is posted`}</span>
     }
-    if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
+    if (cancelledWords !== null) return <span className={MUTED}>{cancelledWords}</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
     const send = (at: number) => {
       setError(null)
@@ -202,7 +254,7 @@ export function RoundNextAction({
       <div className="flex flex-col items-start gap-1">
         <button
           type="button"
-          className={BUTTON_PRIMARY}
+          className={HH_BUTTON_PRIMARY}
           disabled={posted.isPending}
           onClick={() => send(amount)}
         >
@@ -212,7 +264,7 @@ export function RoundNextAction({
         {offer !== null && (
           <button
             type="button"
-            className={BUTTON_SECONDARY}
+            className={HH_BUTTON}
             disabled={posted.isPending}
             onClick={() => send(offer)}
           >
@@ -223,15 +275,19 @@ export function RoundNextAction({
     )
   }
   if (line.status === 'pending_approval' && canApprove) {
-    if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
+    if (cancelledWords !== null) return <span className={MUTED}>{cancelledWords}</span>
     if (editing) return <span className={MUTED}>save or close the edit first</span>
     if (deciding === null) {
       return (
         <div className="flex gap-2">
-          <button type="button" className={BUTTON_PRIMARY} onClick={() => setDeciding('approve')}>
+          <button
+            type="button"
+            className={HH_BUTTON_PRIMARY}
+            onClick={() => setDeciding('approve')}
+          >
             Approve…
           </button>
-          <button type="button" className={BUTTON_SECONDARY} onClick={() => setDeciding('refuse')}>
+          <button type="button" className={HH_BUTTON} onClick={() => setDeciding('refuse')}>
             Refuse…
           </button>
         </div>
@@ -240,6 +296,7 @@ export function RoundNextAction({
     const approve = deciding === 'approve'
     return (
       <ReasonForm
+        head={`${approve ? 'Approving' : 'Refusing'} Round ${String(line.round)}`}
         label={approve ? 'Approval note' : 'Why refuse'}
         submitLabel={approve ? 'Approve' : 'Refuse'}
         onSubmit={(note) =>
@@ -250,11 +307,7 @@ export function RoundNextAction({
     )
   }
   if (line.status === 'pending_approval') {
-    return (
-      <span className="text-muted-foreground text-xs">
-        waits for finance&apos;s approval on Today
-      </span>
-    )
+    return <span className={MUTED}>Pending finance approval</span>
   }
   return null
 }

@@ -26,18 +26,17 @@ export function HoldBanners({
   )
   if (holds.length === 0) return null
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {holds.map(({ request, hold, nth }) => (
+        // D25: the mock's .holdb grammar, one line with its fix at the right.
         <div
           key={`${request.row.request_id}:${hold.code}:${String(nth)}`}
-          className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900/50 dark:bg-red-900/20"
+          className="flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-[13px] dark:border-red-900/50 dark:bg-red-900/20"
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone="red">{holdWords(hold.code)}</StatusPill>
-            <b>{camperOf(request)}</b>
-            <span>{hold.message}</span>
-          </div>
-          {actions?.(request, hold.code)}
+          <StatusPill tone="red">{holdWords(hold.code)}</StatusPill>
+          <b>{camperOf(request)}</b>
+          <span>{hold.message}</span>
+          {actions && <div className="ml-auto">{actions(request, hold.code)}</div>}
         </div>
       ))}
     </div>

@@ -49,8 +49,12 @@ function lowestWhere(
     )
 }
 
-// A request cancelled in Kindred takes no tick (the server's CANCELLED_IN_KINDRED refusal).
-export const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by === 'kindred'
+/**
+ * A cancelled request takes no new decision, whoever cancelled it (#3023, B35: the server refuses
+ * "Cancelled in CampMinder: nothing new can be decided" as it refuses a Kindred cancellation).
+ * Unchecking stays open.
+ */
+export const cancelled = (row: ApiAidGridRow) => row.cancellation != null
 
 /**
  * Accepted ticks the lowest posted round the family hasn't accepted (Decision 15; D47), or a C1
@@ -58,7 +62,7 @@ export const cancelledInKindred = (row: ApiAidGridRow) => row.cancellation?.by =
  * server lets be ticked Accepted the same day (owner 10-03).
  */
 export function acceptedTarget(row: ApiAidGridRow): { readonly round: 1 | 2 | 3 } | null {
-  if (cancelledInKindred(row)) return null
+  if (cancelled(row)) return null
   const round = lowestWhere(
     row,
     (r) => (r.status === 'posted' || r.cm_pending === true) && !r.accepted && r.clawed_back !== true
@@ -110,19 +114,19 @@ export function tickPlan(
 
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`
 
-/** "Tick Accepted on 379 requests · 212 families" (§4.10; Decision 17). */
+/** "Check Accepted on 379 requests · 212 families" (§4.10; Decision 17). */
 export function tickWords(plan: TickPlan): string {
-  return `Tick Accepted on ${plural(plan.rows.length, 'request', 'requests')} · ${plural(plan.families, 'family', 'families')}`
+  return `Check Accepted on ${plural(plan.rows.length, 'request', 'requests')} · ${plural(plan.families, 'family', 'families')}`
 }
 
-/** What the write did, for the line by the bar: "Ticked Accepted on 379 requests". */
+/** What the write did, for the line by the bar: "Checked Accepted on 379 requests". */
 export function doneWords(out: ApiAidWriteOut): string {
   // The server wrote nothing: everything sent was already ticked.
   if (out.written === 0 && out.unchanged > 0) {
-    return `Nothing changed: ${plural(out.unchanged, 'was', 'were')} already ticked`
+    return `Nothing changed: ${plural(out.unchanged, 'was', 'were')} already checked`
   }
-  const same = out.unchanged > 0 ? ` (${plural(out.unchanged, 'was', 'were')} already ticked)` : ''
-  return `Ticked Accepted on ${plural(out.written, 'request', 'requests')}${same}`
+  const same = out.unchanged > 0 ? ` (${plural(out.unchanged, 'was', 'were')} already checked)` : ''
+  return `Checked Accepted on ${plural(out.written, 'request', 'requests')}${same}`
 }
 
 /** "Emma Johnson R1": one ticked line, for the result that lists exactly what was ticked. */

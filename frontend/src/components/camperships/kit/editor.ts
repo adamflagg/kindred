@@ -99,7 +99,8 @@ export type ReasonPolicy = TextReasonPolicy | ChoiceReasonPolicy
  * D22's reason policy (main spec §14.4):
  * - an appeal's note is optional, pre-filled "Family emailed (date)";
  * - Round 3 needs its statement of need;
- * - Include overrides, income corrections and holds need a reason;
+ * - Include overrides and holds need a reason; an income correction's is optional (B30, owner
+ *   ruling 10-05), starting blank;
  * - a cancellation needs one of D141's reasons, with a note only for "another reason";
  * - stage moves and ticks need none.
  */
@@ -112,7 +113,7 @@ export const REASON_POLICY = {
   },
   round3_ask: { kind: 'required', label: 'Statement of need', maxLength: STATEMENT_MAX },
   round3_amount: { kind: 'optional', label: 'Note', prefill: () => '', maxLength: NOTE_MAX },
-  income_correction: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
+  income_correction: { kind: 'optional', label: 'Reason', prefill: () => '', maxLength: NOTE_MAX },
   hold: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
   cancel: {
     kind: 'choice',

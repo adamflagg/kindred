@@ -1,12 +1,15 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  applicationOut,
   householdPage,
   householdRequest,
+  requestOut,
 } from '../../components/camperships/household/householdFixtures'
+import { FLAGGED_PAGE } from '../../components/camperships/household/sectionsFixtures'
 import { gridRow, GRID_ROWS, ROW_OLIVIA } from '../../components/camperships/requests/gridFixtures'
 import { AidApiError } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
@@ -78,14 +81,24 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidSessionResolve: () => idle,
   useAidDuplicate: () => idle,
   useAidHeadcount: () => idle,
+  useAidUseForm: () => idle,
 }))
+// The application read: none by default; item 4c's revived duplicate names its withdrawn request.
+let applicationData: ReturnType<typeof applicationOut> | undefined
 vi.mock('../../hooks/camperships/useAidApplication', () => ({
-  useAidApplication: () => ({ data: undefined, isLoading: false, error: null }),
+  useAidApplication: () => ({ data: applicationData, isLoading: false, error: null }),
 }))
 vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
+  usePrefetchAidPreview: () => undefined,
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+// The approved rules name the programs (D31): the postings read them, as the grid does.
+vi.mock('../../hooks/camperships/useAidRules', () => ({
+  useAidApprovedRules: () => ({
+    data: { sections: [{ section: 'programs', content: { summer: { label: 'Summer Camp' } } }] },
+  }),
+}))
 
 function Where() {
   const { pathname, search } = useLocation()
@@ -113,6 +126,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   granted = ['financial_aid.view']
+  applicationData = undefined
   result = { data: householdPage(), isLoading: false, error: null }
   asked.length = 0
   prefetched.length = 0
@@ -167,15 +181,107 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
   })
 
-  it('puts Correct… on the income answers for casework only, never on the income override (§9.3)', () => {
+  it('puts Correct… on the income answers for casework only, never on the income override (§9.3)', async () => {
     renderAt('/aid/households/1000001')
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
     expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
     cleanup()
     granted = ['financial_aid.view', 'financial_aid.casework']
     renderAt('/aid/households/1000001')
+    // The exceptions first (income (e)): the corrected answer alone, then every answer.
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    expect(screen.getAllByRole('button', { name: 'Correct…' })).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
     const answers = householdPage().incomes.flatMap((i) => i.answers)
     const correctable = answers.filter((a) => a.field !== 'income_override')
     expect(screen.getAllByRole('button', { name: 'Correct…' })).toHaveLength(correctable.length)
+  })
+
+  it("offers Use X's Form in the income-conflict banner and above the answers, for casework only (round 3)", async () => {
+    const conflicted = householdPage({
+      requests: [
+        householdRequest(
+          gridRow({
+            holds: [
+              { code: 'household_income_conflict', severity: 'hold', message: 'The forms differ' },
+            ],
+          })
+        ),
+        householdRequest(
+          gridRow({
+            request_id: 'reqsamuel000005',
+            person_cm_id: 1000010,
+            camper_name: 'Samuel Johnson',
+          })
+        ),
+      ],
+      incomes: FLAGGED_PAGE.incomes,
+    })
+    result = { data: conflicted, isLoading: false, error: null }
+    renderAt('/aid/households/1000001')
+    expect(screen.queryByRole('button', { name: "Use Emma's Form" })).toBeNull()
+    cleanup()
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderAt('/aid/households/1000001')
+    // The flag opens Income by itself: one button in the banner, one in the strip.
+    expect(screen.getAllByRole('button', { name: "Use Emma's Form" })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: "Use Samuel's Form" })).toHaveLength(2)
+    expect(screen.getByTestId('forms-strip')).toHaveTextContent(
+      "1 answer disagrees between Emma's form and Samuel's form."
+    )
+  })
+
+  // Item 4c (owner ruling 10-05): the revived duplicate's hold keeps the request, and links the
+  // withdrawn one; no Keep the Other there, and every other hold still says Release….
+  it("offers a revived duplicate's banner Keep This Request…, with no link to a withdrawn request on the same page", () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    applicationData = applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqrevived00001',
+          status: 'active',
+          flags: [
+            {
+              code: 'duplicate_survivor_withdrawn',
+              detail: { withdrawn_survivor: 'reqwithdrawn001' },
+            },
+          ],
+        }),
+      ],
+    })
+    result = {
+      data: householdPage({
+        requests: [
+          householdRequest(
+            gridRow({
+              request_id: 'reqrevived00001',
+              holds: [
+                {
+                  code: 'duplicate_survivor_withdrawn',
+                  severity: 'hold',
+                  message: 'The original request was withdrawn',
+                },
+                { code: 'py_confirm_tier_change', severity: 'hold', message: 'Tier moved' },
+              ],
+            })
+          ),
+          householdRequest(gridRow({ request_id: 'reqwithdrawn001', request_status: 'withdrawn' })),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    const banner = screen.getByText('The original request was withdrawn').parentElement!
+    expect(within(banner).getByRole('button', { name: 'Keep This Request…' })).toBeInTheDocument()
+    // Owner V4: the withdrawn request is on this same page, so no link to it.
+    expect(within(banner).queryByRole('link', { name: /Go to the Withdrawn Request/ })).toBeNull()
+    expect(within(banner).queryByRole('button', { name: 'Release…' })).toBeNull()
+    expect(within(banner).queryByRole('button', { name: /Keep the Other/ })).toBeNull()
+    const other = screen.getByText('Tier moved').parentElement!
+    expect(within(other).getByRole('button', { name: 'Release…' })).toBeInTheDocument()
+    expect(within(other).queryByRole('link', { name: /Withdrawn Request/ })).toBeNull()
   })
 
   it("shows each request's card", () => {
@@ -199,7 +305,11 @@ describe('AidHouseholdPage (§6.3)', () => {
 
   it('is live only: a past date in the link gets a line saying so (Decision 36)', () => {
     renderAt('/aid/households/1000001?as_of=2027-03-01')
-    expect(screen.getByText(/shows today's figures only/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "This page always shows today's figures. The Requests grid can show Mar 1, 2027."
+      )
+    ).toBeInTheDocument()
     expect(screen.queryByText(/^As of Mar 1, 2027/)).toBeNull()
   })
 
@@ -210,11 +320,47 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.queryByText(/Network down/)).toBeNull()
   })
 
-  it('shows the income, the grants and postings, and the history below the cards', () => {
+  it('shows the income, the grants and postings, and the history below the cards, as tabs', () => {
     renderAt('/aid/households/1000001')
-    expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Income/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Grants and postings/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^History/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('tab-panel')).toBeNull()
+  })
+
+  it("names a posting's program as the approved rules do (D31)", async () => {
+    renderAt('/aid/households/1000001')
+    await userEvent.click(screen.getByRole('button', { name: /^Grants and postings/ }))
+    expect(
+      within(screen.getByRole('table', { name: 'Postings' })).getAllByText('Summer Camp')
+    ).toHaveLength(2)
+  })
+
+  it('opens the income on its own for a flagged family', () => {
+    result = { data: FLAGGED_PAGE, isLoading: false, error: null }
+    renderAt('/aid/households/1000001')
+    expect(within(screen.getByTestId('tab-panel')).getByText('Gross income')).toBeInTheDocument()
+  })
+
+  it('resets the tabs when the walk opens the next family', async () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/aid/households/1000001']}>
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^History/ }))
+    expect(screen.getByTestId('tab-panel')).toBeInTheDocument()
+    result = { data: householdPage({ household_cm_id: 1000005 }), isLoading: false, error: null }
+    rerender(
+      <MemoryRouter initialEntries={['/aid/households/1000005']}>
+        <Routes>
+          <Route path="/aid/households/:householdCmId" element={<AidHouseholdPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.queryByTestId('tab-panel')).toBeNull()
   })
 })
 
@@ -509,9 +655,10 @@ describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
     expect(scrolled).toHaveLength(1)
   })
 
-  it('scrolls to the income section for "#income" (the grid\'s Enter the Income step)', () => {
+  it('opens the income and scrolls to it for "#income" (the grid\'s Enter the Income step)', () => {
     renderWithHash('#income')
     expect(scrolled.map((el) => el.id)).toEqual(['income'])
+    expect(screen.getByTestId('tab-panel')).toBeInTheDocument()
   })
 
   it('does nothing with no hash, or a hash naming nothing on the page', () => {
@@ -616,6 +763,8 @@ describe('Correct… and the open editor (one open editor per page)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit the Appeal…' }))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.keyboard('1300')
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    await userEvent.click(screen.getByRole('button', { name: /more answers? match/ }))
     await userEvent.click(screen.getAllByRole('button', { name: 'Correct…' })[0]!)
     expect(keyAskMutate).toHaveBeenCalledWith(
       { requestId: 'reqolivia000003', body: expect.objectContaining({ round: 2, amount: 1300 }) },
@@ -623,5 +772,30 @@ describe('Correct… and the open editor (one open editor per page)', () => {
     )
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
     expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  })
+})
+
+describe('Correct… opens in the answers column (owner bug B30)', () => {
+  beforeEach(() => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    result = { data: householdPage(), isLoading: false, error: null }
+  })
+
+  it('opens under its answer, across the answers table', async () => {
+    renderAt('/aid/households/1000001')
+    await userEvent.click(screen.getByRole('button', { name: /^Income/ }))
+    const answerRow = screen.getByText('Children').closest('tr') as HTMLElement
+    await userEvent.click(within(answerRow).getByRole('button', { name: 'Correct…' }))
+    const form = screen.getByLabelText('Reason').closest('[data-editor-box]') as HTMLElement
+    // Round 3 (owner, section 4 option E): What priced it is gone; the answers run full width.
+    expect(screen.queryByTestId('priced')).toBeNull()
+    expect(answerRow.closest('table')!.contains(form)).toBe(true)
+    // Not in the answer's own row, whose cells size the answers column: there its width pushed the
+    // column wide (it once squashed What priced it off the page). Its own row spans the table instead...
+    expect(answerRow.contains(form)).toBe(false)
+    expect(form.closest('td')!.colSpan).toBe(5)
+    // ...inside a box that adds nothing to the column's width (width 0, at least the cell's), so
+    // the form wraps to the answers' width. jsdom has no layout: this class pair is the handle.
+    expect(form.closest('.w-0.min-w-full')).not.toBeNull()
   })
 })

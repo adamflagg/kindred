@@ -27,7 +27,7 @@ describe('codeWords (Decision 7)', () => {
   })
 
   it('has real words, not code words, for every pill that read as one', () => {
-    expect(codeWords('in_campminder_not_ticked')).toBe('Mark posted')
+    expect(codeWords('in_campminder_not_ticked')).toBe('Mark Posted')
     expect(codeWords('no_round1_table')).toBe('No Round 1 table')
     expect(codeWords('round3_not_allowed')).toBe('No Round 3')
     expect(codeWords('round3_not_eligible')).toBe('Round 3 not eligible')
@@ -85,7 +85,7 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', TODAY)?.item).toEqual({
       level: 'note',
       pill: 'Waiting 23 days',
-      fact: "The family hasn't replied: follow up, then tick Accepted.",
+      fact: "The family hasn't replied: follow up, then check Accepted.",
     })
   })
 
@@ -100,12 +100,12 @@ describe('attentionFor (§4.4; D24, D31)', () => {
       item: {
         level: 'note',
         pill: 'Waiting on the family',
-        fact: "The family hasn't replied: follow up, then tick Accepted.",
+        fact: "The family hasn't replied: follow up, then check Accepted.",
       },
       reason: 'Waiting on the family',
       queue: 'waiting_on_family',
       // The Accepted tick, as for any waiting row (Full GO, #2951).
-      next: { kind: 'tick', label: 'Tick Accepted' },
+      next: { kind: 'tick', label: 'Check Accepted' },
     })
   })
 
@@ -429,7 +429,7 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
   it("makes Waiting's next step the Accepted tick, and leaves Mark Posted to unticked[]", () => {
     expect(nextOf(ROW_SAMUEL, 'waiting_on_family')).toEqual({
       kind: 'tick',
-      label: 'Tick Accepted',
+      label: 'Check Accepted',
     })
     const marked = gridRow({
       notes: [{ code: 'in_campminder_not_ticked', severity: 'warn', message: 'In CampMinder.' }],
@@ -497,7 +497,7 @@ describe('the next step (batch 4; labels owner-approved in title case, 10-03)', 
 // why (`unticked`): the pill (`label`) and a whole sentence (`message`), both drawn as sent.
 describe('Not reconciled: money with no Posted tick (#2996)', () => {
   const SENTENCE =
-    'CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click Mark posted.'
+    'CampMinder shows $1,300 posted for Round 1, but the offer is $1,500. Check the posting in CampMinder, then click Mark Posted.'
   const short = gridRow({
     rounds: [roundOut(1, 'needs_offer', { decided: 1500 })],
     unticked: [

@@ -63,4 +63,10 @@ describe('useAidApplication', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  it('reads nothing while its caller says it is not needed', async () => {
+    renderHook(() => useAidApplication(1000001, { enabled: false }), { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
 })

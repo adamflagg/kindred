@@ -59,6 +59,7 @@ import type {
   HoldReleaseIn,
   HouseholdCardOut,
   HouseholdLinkRow,
+  HouseholdPageLinkOut,
   HouseholdPageResponse,
   HouseholdRequestOut,
   HouseholdShareSet,
@@ -88,6 +89,8 @@ import type {
   SocialGraphResponse,
   UnpostIn,
   UntickedMoneyOut,
+  UseFormIn,
+  UseFormOut,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -191,10 +194,15 @@ export type ApiAidRequestOut = RequestOut
 /** The casework forms' writes (§6.3). Each mirrors its Python model. */
 export type ApiAidCorrectionIn = CorrectionCreate
 export type ApiAidCorrectionOut = CorrectionOut
+/** Use X's Form: one camper's form answers every question the household's forms disagree on (#3021). */
+export type ApiAidUseFormIn = UseFormIn
+export type ApiAidUseFormOut = UseFormOut
 export type ApiAidHouseholdShareIn = HouseholdShareSet
 export type ApiAidSessionIn = SessionResolve
 export type ApiAidDuplicateIn = DuplicateMark
 export type ApiAidHeadcountIn = HeadcountSet
 export type ApiAidHouseholdLink = HouseholdLinkRow
+/** A link as the household page carries it: the row plus its family's name, adults and city (#3004). */
+export type ApiAidHouseholdPageLink = HouseholdPageLinkOut
 /** A hold, note or check on a request. Mirrors Python `IssueOut`. */
 export type ApiAidIssue = IssueOut

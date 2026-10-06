@@ -18,7 +18,9 @@ import {
   householdRequest,
   requestOut,
   SPLIT_PAGE,
+  TIED_PAGE,
 } from './householdFixtures'
+import { income } from './sectionsFixtures'
 
 const spies = {
   correction: vi.fn(),
@@ -92,7 +94,10 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     render(<IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: true }} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
     await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
-    await userEvent.click(screen.getByRole('button', { name: "Use the Form's Figure" }))
+    // Round 3: the way back is the "The form's 2" pick, which fills the field; saving sends null.
+    await userEvent.click(screen.getByRole('button', { name: "The form's 2" }))
+    expect(screen.getByLabelText('Children')).toHaveValue('2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
     expect(spies.correction).toHaveBeenCalledWith(
       expect.objectContaining({
         body: { field: 'num_children', new_value: null, reason: 'The family was right' },
@@ -151,7 +156,8 @@ describe('IncomeCorrection (main spec §9.3)', () => {
       <IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: false }} />
     )
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    expect(screen.queryByRole('button', { name: "Use the Form's Figure" })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^The form's/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Another figure' })).toBeNull()
     rerender(
       <IncomeCorrection
         page={PAGE}
@@ -167,17 +173,33 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
   })
 
-  it('asks for a reason, and for a figure the server can read, before sending anything', async () => {
+  it('asks for a figure the server can read before sending anything, with or without a reason', async () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
     await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
-    expect(screen.getByText('A reason is required')).toBeInTheDocument()
     await userEvent.clear(screen.getByLabelText('Children'))
     await userEvent.type(screen.getByLabelText('Children'), '4.5')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
+    expect(screen.getByText('A whole number')).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Reason'), 'x{Enter}')
     expect(screen.getByText('A whole number')).toBeInTheDocument()
     expect(spies.correction).not.toHaveBeenCalled()
+  })
+
+  it('saves with no reason, sending it empty (Reason is optional: owner ruling 10-05)', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.clear(screen.getByLabelText('Children'))
+    await userEvent.type(screen.getByLabelText('Children'), '4')
+    await userEvent.type(screen.getByLabelText('Reason'), '   ')
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
+    expect(screen.queryByText('A reason is required')).toBeNull()
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'num_children', new_value: '4', reason: '' },
+    })
   })
 
   it("shows the server's refusal and keeps the form and what was typed", async () => {
@@ -215,6 +237,20 @@ describe('IncomeCorrection (main spec §9.3)', () => {
     expect(screen.queryByLabelText('Reason')).toBeNull()
   })
 
+  it('keeps the form open while a save is outstanding: Back is disabled and Esc does nothing', async () => {
+    outcome = new Promise<void>(() => undefined)
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone')
+    act(() => {
+      fireEvent.submit(screen.getByLabelText('Reason').closest('form')!)
+    })
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+    fireEvent.keyDown(screen.getByLabelText('Reason'), { key: 'Escape' })
+    expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  })
+
   it('reopens from the answer as it stands, with a blank reason, after Back', async () => {
     const { income, answer } = countAnswer()
     render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
@@ -243,6 +279,112 @@ describe('IncomeCorrection (main spec §9.3)', () => {
   })
 })
 
+describe('Correct… where the forms disagree: quick picks (round 3, section 3)', () => {
+  /** Emma's form (1000002) and Samuel's (1000010) disagree on three income answers. */
+  const INCOME_FLAG = {
+    code: 'income_conflict',
+    detail: {
+      fields: {
+        total_gross_income: [
+          { value: 84000, person_cm_ids: [1000002] },
+          { value: 88000, person_cm_ids: [1000010] },
+        ],
+        expected_gross_income: [
+          { value: 86500, person_cm_ids: [1000002] },
+          { value: 90000, person_cm_ids: [1000010] },
+        ],
+        total_housing_expenses: [
+          { value: 30000, person_cm_ids: [1000002] },
+          { value: 36000, person_cm_ids: [1000010] },
+        ],
+      },
+      resolved_by_correction: false,
+    },
+  }
+  const torn = income({ flags: [INCOME_FLAG] })
+  const page = householdPage({ incomes: [torn] })
+  const housing = torn.answers.find((a) => a.field === 'total_housing_expenses')!
+  const open = async () => {
+    render(<IncomeCorrection page={page} income={torn} answer={housing} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Which Form…' }))
+  }
+
+  // household-v4 section 3 (owner ruling 10-05): only an unsettled disagreeing answer says so.
+  it('reads Choose Which Form… on an answer the forms still disagree on, and opens the same row', async () => {
+    await open()
+    expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
+    expect(document.querySelector('[data-editor-box]')).toHaveTextContent(
+      'Correcting · Housing expenses'
+    )
+  })
+
+  it('keeps Correct… on a corrected answer and on one the forms agree on', () => {
+    const { unmount } = render(
+      <IncomeCorrection
+        page={page}
+        income={torn}
+        answer={{ ...housing, effective: '33000', corrected: true }}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Correct…' })).toBeInTheDocument()
+    unmount()
+    const rent = torn.answers.find((a) => a.field === 'total_rent')!
+    render(<IncomeCorrection page={page} income={torn} answer={rent} />)
+    expect(screen.getByRole('button', { name: 'Correct…' })).toBeInTheDocument()
+  })
+
+  it("heads the row with the answer and the forms' figures", async () => {
+    await open()
+    const box = document.querySelector('[data-editor-box]') as HTMLElement
+    expect(box).toHaveTextContent('Correcting · Housing expenses')
+    expect(box).toHaveTextContent('the forms say $30,000 (Emma) and $36,000 (Samuel)')
+  })
+
+  it("offers one pick per form's figure and Another figure, and a pick fills the Used field", async () => {
+    await open()
+    expect(screen.getByRole('button', { name: "Emma's $30,000" })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Another figure' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: "Samuel's $36,000" }))
+    expect(screen.getByLabelText('Housing expenses')).toHaveValue('36000')
+  })
+
+  it("saves the picked form's figure, with the reason optional", async () => {
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: "Samuel's $36,000" }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the Correction' }))
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'total_housing_expenses', new_value: '36000', reason: '' },
+    })
+  })
+
+  it('saves the form’s figure as a figure, not null, so the conflict settles', async () => {
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: "Emma's $30,000" }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'Called the family{Enter}')
+    expect(spies.correction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { field: 'total_housing_expenses', new_value: '30000', reason: 'Called the family' },
+      })
+    )
+  })
+
+  it('Another figure hands the Used field over for typing', async () => {
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: 'Another figure' }))
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
+  })
+
+  it('says what saving settles, and opens on the Used field', async () => {
+    await open()
+    expect(
+      screen.getByText('This settles 1 of the 3. The hold clears when all three agree.')
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Housing expenses')).toHaveFocus()
+  })
+})
+
 describe('ShareForm (main spec §9.2)', () => {
   it("sets another household's share as a percentage", async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
@@ -254,6 +396,28 @@ describe('ShareForm (main spec §9.2)', () => {
       householdCmId: 1000003,
       body: { share_pct: '40', reason: 'Parents agreed 60/40' },
     })
+  })
+
+  // #3025 (owner, 2026-10-05): the household list names each by its label, its tie-break after it
+  // (an <option> holds plain text only, so the tie-break follows a separator rather than greyed).
+  it('lists the households by label, each tie-break after it, the chip number first', () => {
+    render(<ShareForm request={TIED_PAGE.requests[0]!} page={TIED_PAGE} onDone={done} />)
+    const options = Array.from(screen.getByLabelText<HTMLSelectElement>('Household').options).map(
+      (o) => o.textContent
+    )
+    expect(options).toEqual([
+      '1 · Pat Garcia · Riverside, CA',
+      '2 · Pat Garcia · #1000003',
+      'Another household…',
+    ])
+  })
+
+  it('keeps the family name in the household list while the server sends no label', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    const options = Array.from(screen.getByLabelText<HTMLSelectElement>('Household').options).map(
+      (o) => o.textContent
+    )
+    expect(options.slice(0, 2)).toEqual(['1 · The Johnson Family', '2 · The Garcia Family'])
   })
 
   it('takes a percentage only: no dollar unit, and a typed amount is refused as not a percentage', async () => {
@@ -391,13 +555,58 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       />
     )
     expect(
-      screen.getByRole('option', { name: 'the request intake named · reqemmaother01' })
+      // Owner call 10-05 late: plain words, no raw id, until duplicates_waiting names it.
+      screen.getByRole('option', { name: 'the request this one duplicates' })
     ).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Reason'), 'Second parent filed it{Enter}')
     expect(spies.duplicate).toHaveBeenCalledWith({
       requestId: 'reqemmadup00009',
       body: { duplicate_of: 'reqemmaother01', reason: 'Second parent filed it' },
     })
+  })
+
+  it('names the holder intake named by camper and session when it is on this page, though the pending row names no program', () => {
+    // The live read sends a pending duplicate's program as null (synthetic seed 9100133), so the
+    // camper-and-session match misses its holder; the holder is still the card beside it.
+    const pending = householdRequest(
+      gridRow({
+        ...ROW_EMMA,
+        request_id: 'reqemmadup00009',
+        request_status: 'duplicate_pending',
+        program_key: null,
+      })
+    )
+    application = applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqemmadup00009',
+          status: 'duplicate_pending',
+          duplicate_of: 'reqemma00000001',
+        }),
+      ],
+    })
+    const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA)] })
+    render(<DuplicateForm request={pending} page={page} onDone={done} />)
+    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    // Owner call 10-05 late: camper · session, no raw id.
+    expect(options).toEqual([`Emma Johnson · ${ROW_EMMA.session_name}`])
+  })
+
+  it('shows the id only to tell apart two options that would read the same (owner 10-05, as the label tie-break)', () => {
+    const pending = householdRequest(
+      gridRow({ ...ROW_EMMA, request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    application = applicationOut({
+      requests: [requestOut({ id: 'reqemmadup00009', duplicate_of: 'reqemma00000001' })],
+    })
+    const twin = householdRequest(gridRow({ ...ROW_EMMA, request_id: 'reqemma00000002' }))
+    const page = householdPage({ requests: [pending, householdRequest(ROW_EMMA), twin] })
+    render(<DuplicateForm request={pending} page={page} onDone={done} />)
+    const options = screen.getAllByRole('option').map((option) => option.textContent)
+    expect(options).toEqual([
+      `Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000001`,
+      `Emma Johnson · ${ROW_EMMA.session_name} · reqemma00000002`,
+    ])
   })
 
   it('says the read failed, not that nothing is on the page, when the application could not be read (m3)', async () => {
@@ -408,9 +617,7 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     application = undefined
     applicationError = new Error('x')
     render(<DuplicateForm request={lone} page={page} onDone={done} />)
-    expect(
-      screen.getByText("Couldn't load the request intake named for this one.")
-    ).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load the request this one duplicates.")).toBeInTheDocument()
     expect(screen.queryByText(/on this page/)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(done).toHaveBeenCalled()
@@ -432,8 +639,8 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
-    expect(screen.getByText('Loading the headcount…')).toBeInTheDocument()
+    render(<HeadcountForm request={family} onDone={done} />)
+    expect(screen.getByText('Loading the number of people…')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(done).toHaveBeenCalledTimes(2)
   })
@@ -464,8 +671,12 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family} onDone={done} />)
     expect(screen.getByLabelText('Not infants')).toHaveValue('2')
+    // Owner pass 3 (V6): the form says "number of people", never "headcount".
+    expect(screen.getByText('Number of people')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set the Number of People' })).toBeInTheDocument()
+    expect(screen.queryByText(/headcount/i)).toBeNull()
     await userEvent.clear(screen.getByLabelText('Not infants'))
     await userEvent.type(screen.getByLabelText('Not infants'), '3')
     await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
@@ -480,18 +691,18 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
     application = undefined
-    const { unmount } = render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
-    expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
+    const { unmount } = render(<HeadcountForm request={family} onDone={done} />)
+    expect(screen.getByText("Couldn't load this request's number of people.")).toBeInTheDocument()
     expect(screen.queryByLabelText('Not infants')).toBeNull()
     unmount()
     // Read, but the request is not in it.
     application = applicationOut({ requests: [requestOut({ id: 'reqother0000099' })] })
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
-    expect(screen.getByText("Couldn't load this request's headcount.")).toBeInTheDocument()
+    render(<HeadcountForm request={family} onDone={done} />)
+    expect(screen.getByText("Couldn't load this request's number of people.")).toBeInTheDocument()
   })
 
-  describe("the season's reason codes (Decision 6: what the page's override_reasons offers)", () => {
-    const CODES = householdPage({ override_reasons: ['headcount', 'discount'] })
+  // Item 12 (owner ruling 10-05): staff don't need a reason code; the server's is optional.
+  describe('no reason code (item 12)', () => {
     const family = householdRequest(
       gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
     )
@@ -508,33 +719,23 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       })
     })
 
-    it('offers the codes as the server sends them, and sends the one picked as reason_code', async () => {
-      render(<HeadcountForm request={family} page={CODES} onDone={done} />)
-      expect(screen.getByRole('option', { name: 'discount' })).toBeInTheDocument()
-      await userEvent.selectOptions(screen.getByLabelText('Reason code'), 'headcount')
+    it('offers no Reason code: Not infants, Infants and Reason', () => {
+      render(<HeadcountForm request={family} onDone={done} />)
+      expect(screen.queryByLabelText('Reason code')).toBeNull()
+      expect(screen.queryByRole('combobox')).toBeNull()
+      expect(screen.getByLabelText('Not infants')).toBeInTheDocument()
+      expect(screen.getByLabelText('Infants')).toBeInTheDocument()
+      expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+    })
+
+    it('sends no reason_code, and needs none to send', async () => {
+      render(<HeadcountForm request={family} onDone={done} />)
       await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
+      expect(screen.queryByText('Pick a reason code')).toBeNull()
       expect(spies.headcount).toHaveBeenCalledWith({
         requestId: 'reqfamily000010',
-        body: {
-          non_infant: 2,
-          infant: 1,
-          source: 'override',
-          reason: 'Billing shows three',
-          reason_code: 'headcount',
-        },
+        body: { non_infant: 2, infant: 1, source: 'override', reason: 'Billing shows three' },
       })
-    })
-
-    it('asks for a code before sending when the season offers any', async () => {
-      render(<HeadcountForm request={family} page={CODES} onDone={done} />)
-      await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
-      expect(screen.getByText('Pick a reason code')).toBeInTheDocument()
-      expect(spies.headcount).not.toHaveBeenCalled()
-    })
-
-    it('offers no picker, and sends no code, when the page carries none', () => {
-      render(<HeadcountForm request={family} page={householdPage()} onDone={done} />)
-      expect(screen.queryByLabelText('Reason code')).toBeNull()
     })
   })
 
@@ -545,9 +746,154 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
     application = applicationOut({
       requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
     })
-    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    render(<HeadcountForm request={family} onDone={done} />)
     await userEvent.type(screen.getByLabelText('Reason'), 'none{Enter}')
     expect(screen.getByText('A family needs at least one person')).toBeInTheDocument()
     expect(spies.headcount).not.toHaveBeenCalled()
+  })
+})
+
+describe('every casework form closes on Esc as soon as it opens', () => {
+  // The key goes to whatever has focus, with no click first: a form that never takes focus
+  // leaves Esc on <body>, where nothing hears it.
+  const esc = async (open: () => void) => {
+    open()
+    await userEvent.keyboard('{Escape}')
+    expect(done).toHaveBeenCalledTimes(1)
+  }
+
+  it('Correct… (a count)', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByLabelText('Reason')).toBeNull()
+  })
+
+  it('Payer Shares…', async () => {
+    await esc(() =>
+      render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    )
+  })
+
+  it('Settle Session…', async () => {
+    const unsettled = gridRow({
+      ...ROW_EMMA,
+      request_status: 'unmatched_session',
+      session_candidates: [{ session_cm_id: 1000101, name: 'Session 2' }],
+    })
+    await esc(() => render(<SessionForm request={householdRequest(unsettled)} onDone={done} />))
+  })
+
+  it('Keep the Other Request…', async () => {
+    const duplicate = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    const page = householdPage({ requests: [householdRequest(ROW_EMMA), duplicate] })
+    await esc(() => render(<DuplicateForm request={duplicate} page={page} onDone={done} />))
+  })
+
+  it('Number of People…', async () => {
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    application = applicationOut({
+      requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
+    })
+    await esc(() => render(<HeadcountForm request={family} onDone={done} />))
+  })
+})
+
+describe("every casework form's message-only state closes on Esc as soon as it opens", () => {
+  // As the forms above: the key goes to whatever has focus, with no click first.
+  const lone = () =>
+    householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+  const family = () =>
+    householdRequest(gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' }))
+  const escCloses = async (text: string) => {
+    expect(screen.getByText(text)).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(done).toHaveBeenCalledTimes(1)
+  }
+
+  it('Settle Session…: no candidate sessions', async () => {
+    render(
+      <SessionForm
+        request={householdRequest(
+          gridRow({ ...ROW_EMMA, request_status: 'unmatched_session', session_candidates: [] })
+        )}
+        onDone={done}
+      />
+    )
+    await escCloses('No candidate sessions are recorded for this request.')
+  })
+
+  it('Keep the Other Request…: still looking', async () => {
+    application = undefined
+    applicationLoading = true
+    render(
+      <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
+    )
+    await escCloses('Looking for the request to keep…')
+  })
+
+  it("Keep the Other Request…: couldn't load", async () => {
+    application = undefined
+    applicationError = new Error('x')
+    render(
+      <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
+    )
+    await escCloses("Couldn't load the request this one duplicates.")
+  })
+
+  it('Keep the Other Request…: nothing to keep', async () => {
+    render(
+      <DuplicateForm request={lone()} page={householdPage({ requests: [lone()] })} onDone={done} />
+    )
+    await escCloses('No other active request for this camper and session is on this page.')
+  })
+
+  it('Number of People…: loading', async () => {
+    application = undefined
+    applicationLoading = true
+    render(<HeadcountForm request={family()} onDone={done} />)
+    await escCloses('Loading the number of people…')
+  })
+
+  it("Number of People…: couldn't load", async () => {
+    application = undefined
+    render(<HeadcountForm request={family()} onDone={done} />)
+    await escCloses("Couldn't load this request's number of people.")
+  })
+})
+
+// Round 3 (mock section 2, option B): fields on the left, what saving does on the right.
+describe('casework forms in two columns (round 3)', () => {
+  const side = () => document.querySelector('[data-editor-side]') as HTMLElement
+
+  it('moves the payer-shares note to the right, away from the fields', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    expect(side()).toHaveTextContent(
+      "With one other household on this request, this tool fills the other household's share."
+    )
+    for (const label of ['Household', 'Share', 'Reason'])
+      expect(side()).not.toContainElement(screen.getByLabelText(label))
+  })
+
+  it('draws Correct… as the mock’s one-column row, with no right column (round 3, section 3)', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    expect(side()).toBeNull()
+    expect(screen.getByLabelText('Children')).toBeInTheDocument()
+  })
+
+  it('ends each footer with Back and then the save', () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    const save = screen.getByRole('button', { name: 'Set the Share' })
+    expect(save.parentElement?.lastElementChild).toBe(save)
+    expect(screen.getByRole('button', { name: 'Back' }).nextElementSibling).toBe(save)
   })
 })

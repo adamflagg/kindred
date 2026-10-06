@@ -15,6 +15,7 @@ import {
   tickAidAccepted,
   tickAidPosted,
   undoAidPosted,
+  applyAidForm,
 } from '../../services/camperships/aidApi'
 import type { FetchWithAuth } from '../../services/lodgingApi'
 import type {
@@ -32,6 +33,7 @@ import type {
   ApiAidRound3ApprovalIn,
   ApiAidSessionIn,
   ApiAidUnpostIn,
+  ApiAidUseFormIn,
 } from '../../types/api-types'
 import { invalidateAidMoneyQueries } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
@@ -154,6 +156,19 @@ export interface CorrectionVars {
 export function useAidCorrection() {
   return useAidWrite((fetchWithAuth, vars: CorrectionVars) =>
     addAidCorrection(fetchWithAuth, vars.year, vars.householdCmId, vars.body)
+  )
+}
+
+export interface UseFormVars {
+  readonly year: number
+  readonly householdCmId: number
+  readonly body: ApiAidUseFormIn
+}
+
+/** Use X's Form (#3021): one camper's form for every answer the household's forms disagree on. */
+export function useAidUseForm() {
+  return useAidWrite((fetchWithAuth, vars: UseFormVars) =>
+    applyAidForm(fetchWithAuth, vars.year, vars.householdCmId, vars.body)
   )
 }
 

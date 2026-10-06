@@ -10,17 +10,40 @@ import type { PreviewHousehold } from '../kit/editorPreview'
 import {
   RequestEditor,
   type EditorDraftReport,
+  type EditorFrame,
   type EditorPreview,
   type EditorSave,
 } from '../kit/RequestEditor'
-import { roundOf } from '../requests/stage'
 import type { CardEditKind } from './cardEdits'
-import { householdChip, householdName } from './householdModel'
+import { openingAmount } from './cardPreviews'
+import { householdChip, householdChipName, householdName } from './householdModel'
+import {
+  HH_BUTTON,
+  HH_BUTTON_PRIMARY,
+  HH_EDITOR_AREA,
+  HH_EDITOR_ASIDE,
+  HH_EDITOR_BOX,
+  HH_EDITOR_FOOT,
+  HH_EDITOR_FOOT_END,
+  HH_EDITOR_HEAD,
+  HH_EDITOR_KEYS,
+  HH_EDITOR_LABEL,
+  HH_EDITOR_MONEY,
+  HH_EDITOR_SIDE_LEAD,
+  HH_EDITOR_SIDE_NOTE,
+  HH_EDITOR_TEXT,
+  HH_NOTE,
+} from './householdStyles'
+import { EditorColumns } from './ReasonForm'
 
 const KIND = {
-  appeal: { label: 'Round 2 ask', policy: REASON_POLICY.appeal_ask },
-  round3_ask: { label: 'Round 3 ask', policy: REASON_POLICY.round3_ask },
-  round3_amount: { label: 'Round 3 amount', policy: REASON_POLICY.round3_amount },
+  appeal: { label: 'Round 2 ask', policy: REASON_POLICY.appeal_ask, submit: 'Save the Appeal' },
+  round3_ask: { label: 'Round 3 ask', policy: REASON_POLICY.round3_ask, submit: 'Save the Ask' },
+  round3_amount: {
+    label: 'Round 3 amount',
+    policy: REASON_POLICY.round3_amount,
+    submit: 'Save the Amount',
+  },
 } as const
 
 const IDLE: EditorPreview = { status: 'idle' }
@@ -31,8 +54,11 @@ const ignore = () => undefined
  * Round 3's ask with its statement of need, or Round 3's amount. While typing, the appeal and the
  * Round 3 amount show the preview (an ask alone prices nothing). Enter saves; Esc closes. A failed
  * save keeps the editor open with what was typed (the kit's editor holds it) and shows the error.
- * Under the editor, the card says what the edit makes the round and the request's new total
- * (Decision 40): the card's own line, the grid has its New total cell.
+ * Beside the fields, the card says what the edit makes the round and the request's new total
+ * (Decision 40): the card's own line, the grid has its New total cell. Round 3 (mock section 2,
+ * option B): the fields on the left, that line and the award's working on the right, and a footer
+ * with the save bottom right and Back beside it. Opening on an amount asks for its preview at once
+ * (B24), so the line is there before any typing.
  */
 export interface CardEditorHandle {
   /**
@@ -70,20 +96,22 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
   const householdOf = useCallback(
     (id: number): PreviewHousehold => ({
       chip: householdChip(page, id),
-      name: householdName(page, id),
+      name: householdChipName(page, id),
     }),
     [page]
   )
-  const preview = useAidEditorPreview(row.request_id, kind === 'appeal' ? 2 : 3, householdOf)
-  const r2 = roundOf(row, 2)
-  const r3 = roundOf(row, 3)
-  const initial =
-    kind === 'appeal'
-      ? (r2?.ask ?? null)
-      : kind === 'round3_ask'
-        ? (r3?.ask ?? null)
-        : (r3?.pending_approval ?? r3?.decided ?? null)
+  const initial = openingAmount(row, kind)
   const writing = kind === 'round3_amount' ? amount : ask
+  const priced = kind !== 'round3_ask'
+  // B24, R2 (owner rulings 10-05): opening on an amount prices it at once, with no debounce, and
+  // from the cache when the card prefetched it; typing re-previews through the field as before.
+  // The body is keyed by request and kind, so the hook opens once per open.
+  const preview = useAidEditorPreview(
+    row.request_id,
+    kind === 'appeal' ? 2 : 3,
+    householdOf,
+    priced ? initial : null
+  )
   const lastReport = useRef<EditorDraftReport | null>(null)
   const goAfter = useRef<(() => void) | null>(null)
   const [showProblem, setShowProblem] = useState(false)
@@ -158,8 +186,75 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
         : `Round ${kind === 'appeal' ? '2' : '3'} now ${formatMoney(shown.award)} (new total ${formatMoney(shown.totalDecided)})`
       : null
 
+  const busy = writing.isPending
+  const frame: EditorFrame = {
+    label: HH_EDITOR_LABEL,
+    amount: HH_EDITOR_MONEY,
+    text: HH_EDITOR_TEXT,
+    area: HH_EDITOR_AREA,
+    render: (parts) => (
+      <>
+        <EditorColumns
+          side={
+            !priced ? (
+              'An ask alone prices nothing: finance sets the Round 3 amount.'
+            ) : shown.status === 'idle' ? (
+              'Type an amount to see the award.'
+            ) : (
+              <>
+                {totalLine !== null && <div className={HH_EDITOR_SIDE_LEAD}>{totalLine}</div>}
+                <div className={totalLine !== null ? HH_EDITOR_SIDE_NOTE : HH_NOTE}>
+                  {parts.result}
+                </div>
+              </>
+            )
+          }
+        >
+          {parts.amount}
+          {parts.note}
+        </EditorColumns>
+        <div className={HH_EDITOR_FOOT}>
+          {parts.problems}
+          <span className={HH_EDITOR_FOOT_END}>
+            <span className={HH_EDITOR_KEYS}>{parts.keys}</span>
+            {/* As the forms: a write in flight finishes here, so its refusal is seen. */}
+            <button type="button" className={HH_BUTTON} onClick={parts.cancel} disabled={busy}>
+              Back
+            </button>
+            <button
+              type="button"
+              className={HH_BUTTON_PRIMARY}
+              onClick={parts.save}
+              disabled={busy}
+            >
+              {KIND[kind].submit}
+            </button>
+          </span>
+        </div>
+      </>
+    ),
+  }
+
   return (
-    <div data-aid-editor="" className="border-border rounded-lg border p-3">
+    // D23: the mock's editor box, headed with what is being edited ("Editing · Round 2 ask") and,
+    // beside it, whose request it is. Esc from the footer's buttons closes too (the fields hear
+    // their own, and mark it handled).
+    <div
+      data-aid-editor=""
+      className={HH_EDITOR_BOX}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !event.defaultPrevented) {
+          event.preventDefault()
+          onClose()
+        }
+      }}
+    >
+      <div className={HH_EDITOR_HEAD}>
+        <span>{`Editing · ${KIND[kind].label}`}</span>
+        <span className={HH_EDITOR_ASIDE}>
+          {`${householdName(page, row.household_cm_id)} · household ${row.household_cm_id} · person ${row.person_cm_id}`}
+        </span>
+      </div>
       <RequestEditor
         familyName={householdName(page, row.household_cm_id)}
         householdCmId={row.household_cm_id}
@@ -168,8 +263,8 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
         initialAmount={initial}
         policy={KIND[kind].policy}
         today={campToday()}
-        preview={kind === 'round3_ask' ? IDLE : preview.preview}
-        onAmountChange={kind === 'round3_ask' ? ignore : preview.onAmountChange}
+        preview={priced ? preview.preview : IDLE}
+        onAmountChange={priced ? preview.onAmountChange : ignore}
         onSave={doSave}
         onCancel={onClose}
         showProblem={showProblem}
@@ -177,11 +272,11 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
           lastReport.current = report
           onDraftChange?.(report)
         }}
-        saving={writing.isPending}
+        saving={busy}
         saveError={writing.error?.message ?? null}
         layout="card"
+        frame={frame}
       />
-      {totalLine !== null && <p className="text-muted-foreground mt-2 text-xs">{totalLine}</p>}
     </div>
   )
 }

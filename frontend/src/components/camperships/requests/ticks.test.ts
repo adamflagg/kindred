@@ -4,12 +4,24 @@ import { gridRow, roundOut, ROW_LIAM, ROW_OLIVIA, ROW_RILEY, ROW_SAMUEL } from '
 import * as ticks from './ticks'
 import { acceptedTarget, doneWords, hiddenTicks, tickPlan, tickWords } from './ticks'
 
+/** Riley, not cancelled: a second checkable family (its fixture's CampMinder cancellation refuses a check since #3023). */
+const RILEY = { ...ROW_RILEY, cancellation: null }
+
 describe('which round a tick sets (§13; Decision 15)', () => {
   it('ticks Accepted on the lowest posted round the family has not accepted', () => {
     expect(acceptedTarget(ROW_SAMUEL)).toEqual({ round: 1 })
     expect(acceptedTarget(ROW_OLIVIA)).toBeNull()
-    // CampMinder's cancellation still takes the tick; Kindred's own refuses it (the server's rule).
-    expect(acceptedTarget(ROW_RILEY)).toEqual({ round: 1 })
+    // #3023 (B35): any cancellation refuses a new decision, CampMinder's as well as Kindred's.
+    expect(acceptedTarget(ROW_RILEY)).toBeNull()
+  })
+
+  it('checks nothing on a request cancelled in CampMinder (#3023: nothing new can be decided)', () => {
+    expect(
+      acceptedTarget({
+        ...ROW_SAMUEL,
+        cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+      })
+    ).toBeNull()
   })
 
   it('ticks nothing on a request cancelled in Kindred', () => {
@@ -49,7 +61,7 @@ describe('which round a tick sets (§13; Decision 15)', () => {
 
 describe('tickPlan (§4.10; Decision 17)', () => {
   it('counts requests and families, and names what it leaves out', () => {
-    const plan = tickPlan([ROW_SAMUEL, ROW_RILEY, ROW_LIAM], 'accepted')
+    const plan = tickPlan([ROW_SAMUEL, RILEY, ROW_LIAM], 'accepted')
     expect(plan.rows.map((r) => [r.requestId, r.round])).toEqual([
       ['reqsamuel000005', 1],
       ['reqriley0000004', 1],
@@ -60,22 +72,22 @@ describe('tickPlan (§4.10; Decision 17)', () => {
 
   it('words the confirmation and the result', () => {
     expect(tickWords(tickPlan([ROW_SAMUEL], 'accepted'))).toBe(
-      'Tick Accepted on 1 request · 1 family'
+      'Check Accepted on 1 request · 1 family'
     )
     expect(doneWords({ year: 2027, written: 1, unchanged: 0, operation_id: 'op2' })).toBe(
-      'Ticked Accepted on 1 request'
+      'Checked Accepted on 1 request'
     )
     expect(doneWords({ year: 2027, written: 2, unchanged: 1, operation_id: 'op3' })).toBe(
-      'Ticked Accepted on 2 requests (1 was already ticked)'
+      'Checked Accepted on 2 requests (1 was already checked)'
     )
     expect(doneWords({ year: 2027, written: 0, unchanged: 2, operation_id: '' })).toBe(
-      'Nothing changed: 2 were already ticked'
+      'Nothing changed: 2 were already checked'
     )
   })
 
   it('tells two requests of one camper apart by session, and leaves a unique name plain', () => {
     const second = { ...ROW_SAMUEL, request_id: 'reqsamuel000006', session_name: 'Session 4' }
-    const plan = tickPlan([ROW_SAMUEL, second, ROW_RILEY], 'accepted')
+    const plan = tickPlan([ROW_SAMUEL, second, RILEY], 'accepted')
     expect(plan.rows.map((r) => r.label)).toEqual([
       'Samuel Johnson (Session 3)',
       'Samuel Johnson (Session 4)',
@@ -84,7 +96,7 @@ describe('tickPlan (§4.10; Decision 17)', () => {
   })
 
   it('marks the rows a search, view or filter hides', () => {
-    const plan = tickPlan([ROW_SAMUEL, ROW_RILEY], 'accepted', new Set(['reqsamuel000005']))
+    const plan = tickPlan([ROW_SAMUEL, RILEY], 'accepted', new Set(['reqsamuel000005']))
     expect(plan.rows.map((r) => [r.label, r.hidden])).toEqual([
       ['Samuel Johnson', true],
       ['Riley Sam', false],

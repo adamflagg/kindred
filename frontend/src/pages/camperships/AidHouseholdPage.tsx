@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react'
+import { DollarSign } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { useLocation, useParams } from 'react-router'
 
@@ -9,27 +9,30 @@ import { formatLongDate } from '../../components/camperships/kit/dates'
 import { IncomeCorrection } from '../../components/camperships/household/CaseworkForms'
 import { HoldActions } from '../../components/camperships/household/HoldActions'
 import { HoldBanners } from '../../components/camperships/household/HoldBanners'
+import { WithdrawnRequestLink } from '../../components/camperships/household/OtherRequestLink'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
 import { bandSubtitle, bandTitle } from '../../components/camperships/household/householdModel'
 import { HouseholdTotals } from '../../components/camperships/household/HouseholdTotals'
-import {
-  GrantsPostingsSection,
-  HistorySection,
-  IncomeSection,
-  LinksSection,
-} from '../../components/camperships/household/HouseholdSections'
+import { HouseholdTabs } from '../../components/camperships/household/HouseholdTabs'
 import { QueueWalkStrip } from '../../components/camperships/household/QueueWalkStrip'
+import {
+  UseFormButtons,
+  UseFormStrip,
+} from '../../components/camperships/household/UseFormControls'
+import { useFormsControl } from '../../components/camperships/household/useFormsControl'
 import { WorkingRequestCard } from '../../components/camperships/household/WorkingRequestCard'
 import {
   useEditorExits,
   type EditorExits,
 } from '../../components/camperships/household/editorExits'
 import { useQueueWalk } from '../../components/camperships/household/useQueueWalk'
+import { programLabels } from '../../components/camperships/requests/programLabel'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidDefinitions } from '../../hooks/camperships/useAidDefinitions'
 import { useAidHouseholdPage } from '../../hooks/camperships/useAidHouseholdPage'
+import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
 import { Permission } from '../../constants/permissions'
@@ -45,20 +48,48 @@ function HouseholdBody({
   canWork,
   canApprove,
   exits,
+  programNames,
+  hash,
 }: {
   page: ApiAidHouseholdPage
   view: AidView
   canWork: boolean
   canApprove: boolean
   exits: EditorExits
+  programNames: Readonly<Record<string, string>>
+  hash: string
 }) {
+  // Use X's Form (round 3, section 3): the banner's buttons and the Income tab's strip share it.
+  const forms = useFormsControl(page)
   return (
     <>
       <HouseholdCards page={page} />
       <HoldBanners
         page={page}
         actions={
-          canWork ? (request, code) => <HoldActions request={request} code={code} /> : undefined
+          canWork
+            ? (request, code) => (
+                <HoldActions
+                  request={request}
+                  code={code}
+                  before={
+                    code === 'household_income_conflict' ? (
+                      <UseFormButtons page={page} request={request} control={forms} />
+                    ) : undefined
+                  }
+                  after={
+                    code === 'duplicate_survivor_withdrawn' ? (
+                      <WithdrawnRequestLink
+                        page={page}
+                        request={request}
+                        view={view}
+                        beforeLeave={exits.beforeLeave}
+                      />
+                    ) : undefined
+                  }
+                />
+              )
+            : undefined
         }
       />
       {page.requests.map((request) => (
@@ -72,19 +103,30 @@ function HouseholdBody({
           exits={exits}
         />
       ))}
-      <IncomeSection
+      <HouseholdTabs
         page={page}
+        programNames={programNames}
+        hash={hash}
+        formStrip={
+          canWork
+            ? (income) => <UseFormStrip page={page} income={income} control={forms} />
+            : undefined
+        }
         correct={
           canWork
-            ? (income, answer) => (
-                <IncomeCorrection page={page} income={income} answer={answer} exits={exits} />
+            ? (income, answer, opening) => (
+                <IncomeCorrection
+                  page={page}
+                  income={income}
+                  answer={answer}
+                  exits={exits}
+                  open={opening.open}
+                  onOpenChange={opening.setOpen}
+                />
               )
             : undefined
         }
       />
-      <GrantsPostingsSection page={page} />
-      <LinksSection page={page} />
-      <HistorySection page={page} />
     </>
   )
 }
@@ -132,13 +174,25 @@ export default function AidHouseholdPage() {
   const canApprove = hasPermission(Permission.FINANCIAL_AID_RULES)
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
+  const { hash } = useLocation()
+  // Program words come from the approved rules, as the grid's (D31); keys spelled out until they load.
+  const approvedRules = useAidApprovedRules(null)
+  const programNames = useMemo(() => programLabels(approvedRules.data), [approvedRules.data])
   useScrollToHash()
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      {walk && <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />}
+    // D33: the mock's 12px between cards at every width.
+    <div className="space-y-3">
+      {walk && (
+        // Owner, sitting B: the Back line takes no top buffer of its own, so season bar → Back line →
+        // band reads as the direct-link page plus one tight line.
+        <div className="-mt-3">
+          <QueueWalkStrip walk={walk} beforeLeave={exits.beforeLeave} />
+        </div>
+      )}
       <AidPageBand
-        icon={Users}
+        // D20: the mock's "$" tile (amber on white/10, the band's own tile).
+        icon={DollarSign}
         title={data ? bandTitle(data) : `Household ${householdCmId ?? ''}`}
         subtitle={data ? bandSubtitle(data) : undefined}
         asOf={LIVE}
@@ -150,7 +204,7 @@ export default function AidHouseholdPage() {
       />
       {asOf.kind === 'past' && (
         <p className={AMBER_NOTE}>
-          {`The household page shows today's figures only. Requests can show ${formatLongDate(asOf.date)}.`}
+          {`This page always shows today's figures. The Requests grid can show ${formatLongDate(asOf.date)}.`}
         </p>
       )}
       {missing ? (
@@ -172,6 +226,8 @@ export default function AidHouseholdPage() {
               canWork={canWork}
               canApprove={canApprove}
               exits={exits}
+              programNames={programNames}
+              hash={hash}
             />
           )}
         </QueryGuard>

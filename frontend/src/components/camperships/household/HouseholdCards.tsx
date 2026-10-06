@@ -1,63 +1,69 @@
 import type { ApiAidHouseholdCard, ApiAidHouseholdPage } from '../../../types/api-types'
+import { PILL } from '../kit/kitStyles'
 import { Money } from '../kit/MoneyText'
 import { HouseholdChip } from '../kit/Pills'
 import {
-  campMinderPersonUrl,
+  cardConfirmation,
+  cardContactLine,
+  cardPlaceLine,
   cardShares,
-  firstCamperOf,
-  householdName,
-  stateWords,
+  householdChipName,
+  labelOf,
 } from './householdModel'
-import { stripeOf } from './householdStyles'
+import { HouseholdLabelText } from './HouseholdLabel'
+import { HH_HOUSEHOLD_CARD, HH_NOTE, stripeOf } from './householdStyles'
 
+/**
+ * One household's card (D14, D15; the mock's .hhcard): its chip, the adults in bold, "household · city", "first adult · phone · email", then its
+ * money with the confirmation as pills. A missing field drops out with its separator. No CampMinder
+ * link: CampMinder has no household record, only each camper's Person record, which the request cards
+ * link (Decision 2, owner 2026-10-05).
+ */
 function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAidHouseholdPage }) {
-  const camper = firstCamperOf(page, card.household_cm_id)
-  const contact = [
-    `household ${String(card.household_cm_id)}`,
-    card.phone,
-    ...card.emails,
-    card.city,
-  ]
-    .filter((part) => part !== '')
-    .join(' · ')
+  const contact = cardContactLine(card)
+  const confirmation = cardConfirmation(card)
+  const named = labelOf(card)
+  // Owner pass 3 (V3, 10-05): a city tie-break the address line below already says is not repeated;
+  // the "#<cm id>" fallback stays.
+  const label =
+    named !== null && named.tiebreak !== '' && named.tiebreak === card.city.trim()
+      ? { ...named, tiebreak: '' }
+      : named
   return (
     <div
       data-household={card.household_cm_id}
-      className={`card-lodge space-y-1 p-3 text-sm ${stripeOf(card.chip)}`}
+      className={`${HH_HOUSEHOLD_CARD} ${stripeOf(card.chip)}`}
     >
-      <div className="flex items-center gap-2">
-        <HouseholdChip index={card.chip} name={householdName(page, card.household_cm_id)} />
+      <div className="flex items-start gap-2">
+        <HouseholdChip index={card.chip} name={householdChipName(page, card.household_cm_id)} />
         {card.household_cm_id === page.household_cm_id && (
-          <span className="text-muted-foreground text-xs">opened from</span>
+          <span className={HH_NOTE}>opened from</span>
         )}
       </div>
-      {card.adults.length > 0 && <div className="font-medium">{card.adults.join(' · ')}</div>}
-      <div className="text-muted-foreground flex flex-wrap gap-x-2 text-xs">
-        <span>{contact}</span>
-        {camper !== null && (
-          <a
-            href={campMinderPersonUrl(camper.personCmId, page.year)}
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary hover:underline"
-          >
-            {`Open ${camper.name} in CampMinder ↗`}
-          </a>
-        )}
-      </div>
-      <div className="border-border flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2">
+      {/* #3025: the server's label names the household (the adults' names); before it, the adults. */}
+      {label !== null ? (
+        <div className="mt-1">
+          <HouseholdLabelText label={label} className="font-bold" />
+        </div>
+      ) : (
+        card.adults.length > 0 && <div className="mt-1 font-bold">{card.adults.join(' · ')}</div>
+      )}
+      <div className={HH_NOTE}>{cardPlaceLine(card)}</div>
+      {contact !== '' && <div className={HH_NOTE}>{contact}</div>}
+      <div className="border-border mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t pt-1.5">
         <span>
-          Decided <Money value={card.money.decided} className="font-semibold" />
+          Decided <Money value={card.money.decided} className="font-bold" />
         </span>
         <span>
-          Posted <Money value={card.money.posted} className="font-semibold" />
+          Posted <Money value={card.money.posted} className="font-bold" />
         </span>
-        {card.money.states.map((state) => (
-          <span key={state.status} className="text-xs">
-            {stateWords(state)}
+        {confirmation.shows !== null && <span className={HH_NOTE}>{confirmation.shows}</span>}
+        {confirmation.pills.map((pill) => (
+          <span key={pill.text} className={PILL[pill.tone]}>
+            {pill.text}
           </span>
         ))}
-        <span className="text-muted-foreground basis-full text-xs">{cardShares(card, page)}</span>
+        <span className={`${HH_NOTE} basis-full`}>{cardShares(card, page)}</span>
       </div>
     </div>
   )
@@ -73,7 +79,7 @@ export function HouseholdCards({ page }: { page: ApiAidHouseholdPage }) {
   if (page.households.length < 2) return null
   return (
     <div
-      className="grid gap-3"
+      className="grid gap-2.5"
       style={{ gridTemplateColumns: `repeat(${String(page.households.length)}, minmax(0, 1fr))` }}
     >
       {page.households.map((card) => (

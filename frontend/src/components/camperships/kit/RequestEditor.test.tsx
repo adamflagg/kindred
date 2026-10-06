@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { REASON_POLICY } from './editor'
 import { EDITOR_PREVIEW_ROUND2 } from './fixtures'
-import { RequestEditor, type EditorPreview } from './RequestEditor'
+import { RequestEditor, type EditorParts, type EditorPreview } from './RequestEditor'
 
 const READY: EditorPreview = EDITOR_PREVIEW_ROUND2
 
@@ -432,7 +433,7 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
 // the row's next step; the receipt, the payer shares and the key hint sit on the line under it. The
 // household is named once, by the detail line beside it, so the panel has no caption.
 describe('RequestEditor: the panel layout (the grid, side by side)', () => {
-  const STEP = <button type="button">Tick Accepted</button>
+  const STEP = <button type="button">Check Accepted</button>
   const top = () => screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
   const foot = () => document.querySelector('[data-editor-foot]') as HTMLElement
 
@@ -448,7 +449,7 @@ describe('RequestEditor: the panel layout (the grid, side by side)', () => {
     expect(line).toContainElement(screen.getByLabelText('Note'))
     expect(line).toContainElement(screen.getByText('Stage → Needs an offer'))
     expect(within(line).getByText(/^Award/)).toBeInTheDocument()
-    const step = screen.getByRole('button', { name: 'Tick Accepted' })
+    const step = screen.getByRole('button', { name: 'Check Accepted' })
     expect(line.lastElementChild).toContainElement(step)
     expect(line.lastElementChild).toHaveClass('ml-auto')
   })
@@ -545,5 +546,93 @@ describe('draft and onDraftChange (owner rulings A and B, 2026-10-01)', () => {
     rerender(<RequestEditor {...props} onDraftChange={second} />)
     expect(first).toHaveBeenCalledTimes(1)
     expect(second).not.toHaveBeenCalled()
+  })
+})
+
+// Round 3 (household mock section 2, option B): the household card lays the editor out itself in two
+// columns. `frame` hands it the parts; the grid never passes it, so its layouts are untouched.
+describe('RequestEditor: a framed card (the household page lays it out)', () => {
+  const frame = (render: (parts: EditorParts) => ReactNode = defaultFrame) => ({
+    label: 'framed-label',
+    amount: 'framed-amount',
+    text: 'framed-text',
+    area: 'framed-area',
+    render,
+  })
+  const defaultFrame = (parts: EditorParts) => (
+    <div>
+      <div data-left="">
+        {parts.amount}
+        {parts.note}
+      </div>
+      <div data-right="">{parts.result}</div>
+      <div data-foot="">
+        {parts.problems}
+        <span>{parts.keys}</span>
+        <button type="button" onClick={parts.cancel}>
+          Back
+        </button>
+        <button type="button" onClick={parts.save}>
+          Save
+        </button>
+      </div>
+    </div>
+  )
+  const right = () => document.querySelector('[data-right]') as HTMLElement
+  const foot = () => document.querySelector('[data-foot]') as HTMLElement
+
+  it('hands the surface its parts, and draws no caption or hint of its own', () => {
+    setup({ layout: 'card', frame: frame(), onMove: undefined })
+    expect(screen.queryByText(/household 1000001/)).toBeNull()
+    expect(right()).toHaveTextContent('Award')
+    expect(within(foot()).getByText('Enter saves · Esc cancels')).toBeInTheDocument()
+    expect(screen.getAllByText(/Enter saves/)).toHaveLength(1)
+  })
+
+  it("dresses the fields in the surface's classes, labels above", () => {
+    setup({ layout: 'card', frame: frame(), onMove: undefined })
+    expect(screen.getByLabelText('Round 2 ask')).toHaveClass('framed-amount')
+    expect(screen.getByLabelText('Round 2 ask')).not.toHaveClass('bg-background')
+    expect(screen.getByLabelText('Note')).toHaveClass('framed-text')
+    expect(screen.getByLabelText('Note').closest('label')).toHaveClass('framed-label')
+  })
+
+  it('gives the statement of need three rows and its Shift+Enter in the key hint', () => {
+    setup({
+      layout: 'card',
+      frame: frame(),
+      onMove: undefined,
+      policy: REASON_POLICY.round3_ask,
+      amountLabel: 'Round 3 ask',
+    })
+    const box = screen.getByLabelText('Statement of need')
+    expect(box).toHaveAttribute('rows', '3')
+    expect(box).toHaveClass('framed-area')
+    expect(
+      within(foot()).getByText('Enter saves · Shift+Enter for a new line · Esc cancels')
+    ).toBeInTheDocument()
+  })
+
+  it('saves from its save once, as Enter does, and refuses what Enter would', async () => {
+    const { onSave } = setup({ layout: 'card', frame: frame(), onMove: undefined })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(within(foot()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '500')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith({ amount: 500, reason: 'Family emailed (Apr 9)' })
+  })
+
+  it('cancels from its cancel', async () => {
+    const { onCancel } = setup({ layout: 'card', frame: frame(), onMove: undefined })
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows a failed save's words among the problems", () => {
+    setup({ layout: 'card', frame: frame(), onMove: undefined, saveError: 'The server said no' })
+    expect(within(foot()).getByText('The server said no')).toBeInTheDocument()
   })
 })

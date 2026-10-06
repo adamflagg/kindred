@@ -16,14 +16,6 @@ import type {
   ApiAidIncome,
 } from '../../../types/api-types'
 import {
-  ACTION_LINK,
-  AMBER_NOTE,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
-  FIELD,
-  FIELD_INLINE,
-} from '../../admin/lodging/lodgingStyles'
-import {
   correctionValue,
   duplicateSurvivors,
   fieldKind,
@@ -33,7 +25,23 @@ import {
   parsePercent,
 } from './caseworkModel'
 import type { EditorExits } from './editorExits'
-import { answerWords, camperOf } from './householdModel'
+import { correctLabel, correctionPicks, formsSayWords, settleWords } from './formsModel'
+import { answerWords, camperOf, labelOf, labelWords } from './householdModel'
+import {
+  HH_AMBER_NOTE as AMBER_NOTE,
+  HH_BUTTON,
+  HH_EDITOR_FIELD,
+  HH_EDITOR_LABEL,
+  HH_EDITOR_MONEY,
+  HH_EDITOR_NUMBER,
+  HH_EDITOR_PAIR,
+  HH_CORRECT_SETTLES,
+  HH_EDITOR_TEXT,
+  HH_LINK,
+  HH_PICK,
+  HH_PICK_ON,
+} from './householdStyles'
+import { EditorBox, EditorColumns, FormActions } from './ReasonForm'
 
 type Write = () => Promise<unknown>
 
@@ -80,70 +88,119 @@ function useSubmit() {
 }
 
 function FormShell({
+  head,
+  aside,
   submitLabel,
   busy,
   error,
   onSubmit,
   onCancel,
+  side,
   children,
 }: {
+  /** The editor box's head (D24): what the form does, in sentence case. */
+  head: string
+  /** A muted aside beside the head (Correct…: the forms' figures). */
+  aside?: string | undefined
   submitLabel: string
   busy: boolean
   error: string | null
   onSubmit: () => void
   onCancel: () => void
+  /** What saving does, on the right (round 3, two columns); the fields alone without it. */
+  side?: ReactNode
+  /** The fields, top to bottom: short ones grouped in an `HH_EDITOR_PAIR` row, then the reason. */
   children: ReactNode
 }) {
+  // Esc is heard on the form, so the form takes focus as it opens, on its first field, as
+  // ReasonForm does.
+  const form = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    form.current?.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled)')?.focus()
+  }, [])
   return (
-    <form
-      className="flex flex-wrap items-center gap-2 text-sm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onSubmit()
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
+    <EditorBox head={head} aside={aside}>
+      <form
+        ref={form}
+        onSubmit={(event) => {
           event.preventDefault()
-          onCancel()
-        }
-      }}
-    >
-      {children}
-      <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>
-        {submitLabel}
-      </button>
-      <button type="button" className={BUTTON_SECONDARY} onClick={onCancel}>
-        Back
-      </button>
-      {error !== null && <span className={AMBER_NOTE}>{error}</span>}
-    </form>
+          onSubmit()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            if (!busy) onCancel()
+          }
+        }}
+      >
+        <EditorColumns side={side}>{children}</EditorColumns>
+        <FormActions submitLabel={submitLabel} busy={busy} onCancel={onCancel}>
+          {error !== null && <span className={AMBER_NOTE}>{error}</span>}
+        </FormActions>
+      </form>
+    </EditorBox>
   )
 }
 
-function ReasonInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function ReasonInput({
+  value,
+  onChange,
+  optional = false,
+}: {
+  value: string
+  onChange: (value: string) => void
+  /** Say "(optional)" beside the label (Correct…: owner ruling 10-05). */
+  optional?: boolean
+}) {
   return (
-    <label className="flex min-w-[14rem] flex-1 items-center gap-2">
-      Reason
+    <label className={HH_EDITOR_LABEL}>
+      <span>
+        Reason
+        {optional && <span className="text-muted-foreground font-normal"> (optional)</span>}
+      </span>
       <input
         aria-label="Reason"
         type="text"
         value={value}
         maxLength={2000}
         onChange={(event) => onChange(event.target.value)}
-        className={FIELD}
+        className={HH_EDITOR_TEXT}
       />
     </label>
   )
 }
 
-function Note({ children, onBack }: { children: ReactNode; onBack: () => void }) {
+function Note({
+  head,
+  children,
+  onBack,
+}: {
+  head: string
+  children: ReactNode
+  onBack: () => void
+}) {
+  // As FormShell: Esc is heard on the box, so its Back takes focus as it opens.
+  const back = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    back.current?.focus()
+  }, [])
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground">{children}</span>
-      <button type="button" className={BUTTON_SECONDARY} onClick={onBack}>
-        Back
-      </button>
-    </div>
+    <EditorBox head={head}>
+      <div
+        className="flex flex-wrap items-center gap-2 text-[13px]"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            onBack()
+          }
+        }}
+      >
+        <span className="text-muted-foreground">{children}</span>
+        <button ref={back} type="button" className={HH_BUTTON} onClick={onBack}>
+          Back
+        </button>
+      </div>
+    </EditorBox>
   )
 }
 
@@ -164,12 +221,25 @@ function CorrectionForm({
   const [value, setValue] = useState(answer.effective)
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
+  const field = useRef<HTMLInputElement & HTMLSelectElement>(null)
   const kind = fieldKind(answer)
+  const picks = correctionPicks(page, income, answer)
+  // The pick the field holds now, read from the figure itself: typing a form's figure picks it too.
+  const same = (a: string, b: string) => {
+    const x = correctionValue(kind, a)
+    const y = correctionValue(kind, b)
+    return x.kind === 'ok' && y.kind === 'ok' && x.value === y.value
+  }
+  const picked = picks.find((pick) => same(pick.value, value))
 
-  /** `raw` null is the way back to the form's figure. */
+  /**
+   * `raw` null is the way back to the form's figure: the one-form "The form's $X" pick. A form's
+   * figure where the forms disagree goes as a figure, since only a correction settles the conflict.
+   * The reason is optional (owner ruling 10-05): blank goes as '', since `CorrectionCreate.reason`
+   * is a required string.
+   */
   const send = (raw: string | null) =>
     attempt(() => {
-      if (reason.trim() === '') return REASON_REQUIRED
       const parsed = correctionValue(kind, raw)
       if (parsed.kind === 'invalid') return parsed.reason
       return () =>
@@ -183,73 +253,122 @@ function CorrectionForm({
     })
 
   const label = answerWords(answer.field)
+  const settles = settleWords(income, answer)
+  const used =
+    kind === 'flag' ? (
+      <select
+        ref={field}
+        aria-label={label}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className={HH_EDITOR_FIELD}
+      >
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    ) : (
+      <input
+        ref={field}
+        aria-label={label}
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className={HH_EDITOR_MONEY}
+      />
+    )
+  // Round 3 (section 3): one column, as the mock's row in the answers; the picks fill Used.
   return (
     <FormShell
+      head={`Correcting · ${label}`}
+      aside={formsSayWords(page, income, answer) ?? undefined}
       submitLabel="Save the Correction"
       busy={busy}
       error={error}
-      onSubmit={() => send(value)}
+      onSubmit={() => send(picked?.revert === true ? null : value)}
       onCancel={onClose}
     >
-      {kind === 'flag' ? (
-        <select
-          aria-label={label}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className={FIELD_INLINE}
-        >
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </select>
-      ) : (
-        <input
-          aria-label={label}
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className={`${FIELD_INLINE} w-28 text-right tabular-nums`}
-        />
-      )}
-      <ReasonInput value={reason} onChange={setReason} />
-      {answer.corrected && (
-        <button type="button" className={ACTION_LINK} disabled={busy} onClick={() => send(null)}>
-          Use the Form&apos;s Figure
-        </button>
-      )}
+      <div className={HH_EDITOR_PAIR}>
+        {picks.length > 0 && (
+          <div className={HH_EDITOR_LABEL}>
+            Use
+            <span className="flex flex-wrap gap-1.5">
+              {picks.map((pick) => (
+                <button
+                  key={pick.label}
+                  type="button"
+                  className={`${HH_PICK} ${pick === picked ? HH_PICK_ON : ''}`}
+                  disabled={busy}
+                  onClick={() => setValue(pick.value)}
+                >
+                  {pick.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`${HH_PICK} ${picked === undefined ? HH_PICK_ON : ''}`}
+                disabled={busy}
+                onClick={() => {
+                  field.current?.focus()
+                  if (field.current instanceof HTMLInputElement) field.current.select()
+                }}
+              >
+                Another figure
+              </button>
+            </span>
+          </div>
+        )}
+        <label className={HH_EDITOR_LABEL}>
+          Used
+          {used}
+        </label>
+      </div>
+      <ReasonInput value={reason} onChange={setReason} optional />
+      {settles !== null && <p className={HH_CORRECT_SETTLES}>{settles}</p>}
     </FormShell>
   )
 }
 
 /**
- * "Correct…" on an income answer (main spec §9.3): the corrected figure beside the form's, with a
- * reason. The form mounts only while open, so each opening starts from the answer as it now stands.
- * Opening it first leaves the page's open money editor, when `exits` is given (one open editor).
+ * "Correct…" on an income answer (main spec §9.3): the corrected figure beside the form's, with an
+ * optional reason. The form mounts only while open, so each opening starts from the answer as it
+ * now stands. Opening it first leaves the page's open money editor, when `exits` is given (one open
+ * editor).
+ * The income panel holds `open` (`onOpenChange`), so it can draw the form in a row of its own (B30).
+ * On an answer the forms still disagree on, the button reads "Choose Which Form…" (household-v4
+ * section 3) and opens the same row.
  */
 export function IncomeCorrection({
   page,
   income,
   answer,
   exits,
+  open: openProp,
+  onOpenChange,
 }: {
   page: ApiAidHouseholdPage
   income: ApiAidIncome
   answer: ApiAidAnswer
   exits?: EditorExits | undefined
+  open?: boolean | undefined
+  onOpenChange?: ((open: boolean) => void) | undefined
 }) {
-  const [open, setOpen] = useState(false)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const open = openProp ?? ownOpen
+  const setOpen = onOpenChange ?? setOwnOpen
   if (fieldKind(answer) === 'override') return null
   if (!open) {
     return (
       <button
         type="button"
-        className={ACTION_LINK}
+        // D29: the mock's forest link with a visible dotted underline; no hover reveal.
+        className={HH_LINK}
         onClick={() => {
           if (exits === undefined) setOpen(true)
           else exits.beforeLeave(() => setOpen(true))
         }}
       >
-        Correct…
+        {correctLabel(income, answer)}
       </button>
     )
   }
@@ -295,57 +414,68 @@ export function ShareForm({
 
   return (
     <FormShell
+      head="Payer shares"
       submitLabel="Set the Share"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
+      side={
+        <>
+          With one other household on this request, this tool fills the other household&apos;s
+          share. A lone partial share holds the request until a second share is added.
+        </>
+      }
     >
-      <label className="flex items-center gap-2">
-        Household
-        <select
-          aria-label="Household"
-          value={household}
-          onChange={(event) => setHousehold(event.target.value)}
-          className={FIELD_INLINE}
-        >
-          {page.households.map((h) => (
-            <option key={h.household_cm_id} value={String(h.household_cm_id)}>
-              {`${String(h.chip)} · ${h.family_name}`}
-            </option>
-          ))}
-          <option value="other">Another household…</option>
-        </select>
-      </label>
-      {household === 'other' && (
-        <label className="flex items-center gap-2">
-          CampMinder id
-          <input
-            aria-label="Household id"
-            type="text"
-            inputMode="numeric"
-            value={otherId}
-            onChange={(event) => setOtherId(event.target.value)}
-            className={`${FIELD_INLINE} w-28`}
-          />
+      <div className={HH_EDITOR_PAIR}>
+        <label className={HH_EDITOR_LABEL}>
+          Household
+          <select
+            aria-label="Household"
+            value={household}
+            onChange={(event) => setHousehold(event.target.value)}
+            className={HH_EDITOR_FIELD}
+          >
+            {page.households.map((h) => {
+              // #3025: the label (and its tie-break) tells two households apart; before it, the family name.
+              const label = labelOf(h)
+              return (
+                <option key={h.household_cm_id} value={String(h.household_cm_id)}>
+                  {`${String(h.chip)} · ${label === null ? h.family_name : labelWords(label)}`}
+                </option>
+              )
+            })}
+            <option value="other">Another household…</option>
+          </select>
         </label>
-      )}
-      <label className="flex items-center gap-2">
-        Share
-        <input
-          aria-label="Share"
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className={`${FIELD_INLINE} w-24 text-right tabular-nums`}
-        />
-        <span>%</span>
-      </label>
-      <p className="text-muted-foreground text-xs">
-        With one other household on this request, this tool fills the other household&apos;s share.
-        A lone partial share holds the request until a second share is added.
-      </p>
+        {household === 'other' && (
+          <label className={HH_EDITOR_LABEL}>
+            CampMinder id
+            <input
+              aria-label="Household id"
+              type="text"
+              inputMode="numeric"
+              value={otherId}
+              onChange={(event) => setOtherId(event.target.value)}
+              className={`${HH_EDITOR_FIELD} w-28`}
+            />
+          </label>
+        )}
+        <label className={HH_EDITOR_LABEL}>
+          Share
+          <span className="inline-flex items-center gap-1.5 font-normal">
+            <input
+              aria-label="Share"
+              type="text"
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              className={HH_EDITOR_NUMBER}
+            />
+            %
+          </span>
+        </label>
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )
@@ -368,7 +498,11 @@ export function SessionForm({
   const { busy, error, attempt } = useSubmit()
   const candidates = request.row.session_candidates ?? []
   if (candidates.length === 0) {
-    return <Note onBack={onDone}>No candidate sessions are recorded for this request.</Note>
+    return (
+      <Note head="Settling the session" onBack={onDone}>
+        No candidate sessions are recorded for this request.
+      </Note>
+    )
   }
   const submit = () =>
     attempt(() => {
@@ -384,19 +518,20 @@ export function SessionForm({
     })
   return (
     <FormShell
+      head="Settling the session"
       submitLabel="Settle the Session"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
+      <label className={HH_EDITOR_LABEL}>
         Session
         <select
           aria-label="Session"
           value={session}
           onChange={(event) => setSession(event.target.value)}
-          className={FIELD_INLINE}
+          className={`${HH_EDITOR_FIELD} self-start`}
         >
           <option value="">Pick a session</option>
           {candidates.map((candidate) => (
@@ -427,26 +562,50 @@ export function DuplicateForm({
   // The holder intake named can be on another household's page (the second parent's request): offer
   // it too. The server checks it is active and the same camper, program and session.
   const holder = namedHolder(application.data, request.row.request_id)
-  const options = [
-    ...onPage.map((other) => ({
-      id: other.row.request_id,
-      label: `${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`,
-    })),
+  // Owner call 10-05 late: an option reads camper · session, never its raw id, which shows only to
+  // tell apart two options that would otherwise read the same (as a household label's tie-break).
+  const nameOf = (other: ApiAidHouseholdRequest) => `${camperOf(other)} · ${other.row.session_name}`
+  // A holder on this page that the match above missed (the read can send a pending row's program as
+  // null) is still named as the card it is; one on another page, in plain words until
+  // duplicates_waiting names it.
+  const holderHere = page.requests.find((other) => other.row.request_id === holder)
+  const named = [
+    ...onPage.map((other) => ({ id: other.row.request_id, label: nameOf(other) })),
     ...(holder !== '' && !onPage.some((other) => other.row.request_id === holder)
-      ? [{ id: holder, label: `the request intake named · ${holder}` }]
+      ? [
+          {
+            id: holder,
+            label:
+              holderHere === undefined ? 'the request this one duplicates' : nameOf(holderHere),
+          },
+        ]
       : []),
   ]
+  const options = named.map((option) =>
+    named.filter((other) => other.label === option.label).length > 1
+      ? { ...option, label: `${option.label} · ${option.id}` }
+      : option
+  )
   const [kept, setKept] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (options.length === 0) {
-    if (application.isLoading) return <Note onBack={onDone}>Looking for the request to keep…</Note>
+    if (application.isLoading)
+      return (
+        <Note head="Keeping the other request" onBack={onDone}>
+          Looking for the request to keep…
+        </Note>
+      )
     // The intake-named holder is only reachable through this read: a failure is not "nothing here".
     if (application.error) {
-      return <Note onBack={onDone}>Couldn&apos;t load the request intake named for this one.</Note>
+      return (
+        <Note head="Keeping the other request" onBack={onDone}>
+          Couldn&apos;t load the request this one duplicates.
+        </Note>
+      )
     }
     return (
-      <Note onBack={onDone}>
+      <Note head="Keeping the other request" onBack={onDone}>
         No other active request for this camper and session is on this page.
       </Note>
     )
@@ -467,19 +626,20 @@ export function DuplicateForm({
     })
   return (
     <FormShell
+      head="Keeping the other request"
       submitLabel="Mark as the Duplicate"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
+      <label className={HH_EDITOR_LABEL}>
         Keep
         <select
           aria-label="Keep"
           value={keptNow ?? ''}
           onChange={(event) => setKept(event.target.value)}
-          className={FIELD_INLINE}
+          className={`${HH_EDITOR_FIELD} self-start`}
         >
           {keptNow === undefined && <option value="">Pick a request</option>}
           {options.map((option) => (
@@ -495,18 +655,63 @@ export function DuplicateForm({
 }
 
 /**
- * "Headcount…" on a Family Camp request (main spec §8): a reason code from the season's list (the
- * page's `override_reasons`, shown as the server sends them; the server has no label map) and a
- * typed reason. The code is optional on the server; it is required here whenever the season offers
- * any, since Decision 6 has the log keep it.
+ * "Keep This Request…" on the request a pending duplicate names (item 11, owner ruling 10-05): keeping
+ * this one marks the OTHER as the duplicate, the same write Keep the Other Request… makes from the
+ * other card (POST /requests/{other}/duplicate, kept: this one), so its history and its gate are the
+ * same. A reason, as there.
  */
-export function HeadcountForm({
+export function KeepThisForm({
   request,
-  page,
+  otherId,
+  otherName,
   onDone,
 }: {
   request: ApiAidHouseholdRequest
-  page: ApiAidHouseholdPage
+  /** The pending twin, on this page or (named by #3031's duplicates_waiting) another. */
+  otherId: string
+  /** How staff read it: camper · session (+ its household's label when on another page). */
+  otherName: string
+  onDone: () => void
+}) {
+  const mark = useAidDuplicate()
+  const [reason, setReason] = useState('')
+  const { busy, error, attempt } = useSubmit()
+  const submit = () =>
+    attempt(() => {
+      if (reason.trim() === '') return REASON_REQUIRED
+      return () =>
+        mark
+          .mutateAsync({
+            requestId: otherId,
+            body: { duplicate_of: request.row.request_id, reason: reason.trim() },
+          })
+          .then(onDone)
+    })
+  return (
+    <FormShell
+      head="Keeping this request"
+      submitLabel="Mark the Other as the Duplicate"
+      busy={busy}
+      error={error}
+      onSubmit={submit}
+      onCancel={onDone}
+      side={`Marks the other request as the duplicate: ${otherName}`}
+    >
+      <ReasonInput value={reason} onChange={setReason} />
+    </FormShell>
+  )
+}
+
+/**
+ * "Number of People…" (owner pass 3, V6: staff never read "headcount") on a Family Camp request (main spec §8): the two counts and a typed reason. No reason
+ * code (item 12, owner ruling 10-05): the server's is optional and staff don't need it, so none is
+ * offered or sent.
+ */
+export function HeadcountForm({
+  request,
+  onDone,
+}: {
+  request: ApiAidHouseholdRequest
   onDone: () => void
 }) {
   const application = useAidApplication(request.row.household_cm_id)
@@ -514,17 +719,23 @@ export function HeadcountForm({
   const current = headcountOf(application.data, request.row.request_id)
   const [nonInfant, setNonInfant] = useState<string | null>(null)
   const [infant, setInfant] = useState<string | null>(null)
-  const [reasonCode, setReasonCode] = useState('')
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
-    return <Note onBack={onDone}>Loading the headcount…</Note>
+    return (
+      <Note head="Number of people" onBack={onDone}>
+        Loading the number of people…
+      </Note>
+    )
   }
   // Fields over figures that never loaded would be typed blind.
   if (current === null) {
-    return <Note onBack={onDone}>Couldn&apos;t load this request&apos;s headcount.</Note>
+    return (
+      <Note head="Number of people" onBack={onDone}>
+        Couldn&apos;t load this request&apos;s number of people.
+      </Note>
+    )
   }
-  const codes = page.override_reasons ?? []
   // Until the person types, the fields show what the application holds.
   const shownNonInfant = nonInfant ?? String(current.nonInfant)
   const shownInfant = infant ?? String(current.infant)
@@ -536,7 +747,6 @@ export function HeadcountForm({
       if (adults.kind === 'invalid') return `Not infants: ${adults.reason}`
       if (babies.kind === 'invalid') return `Infants: ${babies.reason}`
       if (adults.value + babies.value === 0) return 'A family needs at least one person'
-      if (codes.length > 0 && reasonCode === '') return 'Pick a reason code'
       if (reason.trim() === '') return REASON_REQUIRED
       return () =>
         set
@@ -547,59 +757,43 @@ export function HeadcountForm({
               infant: babies.value,
               source: 'override',
               reason: reason.trim(),
-              ...(reasonCode === '' ? {} : { reason_code: reasonCode }),
             },
           })
           .then(onDone)
     })
   return (
     <FormShell
-      submitLabel="Set the Headcount"
+      head="Number of people"
+      submitLabel="Set the Number of People"
       busy={busy}
       error={error}
       onSubmit={submit}
       onCancel={onDone}
     >
-      <label className="flex items-center gap-2">
-        Not infants
-        <input
-          aria-label="Not infants"
-          type="text"
-          inputMode="numeric"
-          value={shownNonInfant}
-          onChange={(event) => setNonInfant(event.target.value)}
-          className={`${FIELD_INLINE} w-16 text-right`}
-        />
-      </label>
-      <label className="flex items-center gap-2">
-        Infants
-        <input
-          aria-label="Infants"
-          type="text"
-          inputMode="numeric"
-          value={shownInfant}
-          onChange={(event) => setInfant(event.target.value)}
-          className={`${FIELD_INLINE} w-16 text-right`}
-        />
-      </label>
-      {codes.length > 0 && (
-        <label className="flex items-center gap-2">
-          Reason code
-          <select
-            aria-label="Reason code"
-            value={reasonCode}
-            onChange={(event) => setReasonCode(event.target.value)}
-            className={FIELD_INLINE}
-          >
-            <option value="">Pick a code</option>
-            {codes.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
+      <div className={HH_EDITOR_PAIR}>
+        <label className={HH_EDITOR_LABEL}>
+          Not infants
+          <input
+            aria-label="Not infants"
+            type="text"
+            inputMode="numeric"
+            value={shownNonInfant}
+            onChange={(event) => setNonInfant(event.target.value)}
+            className={HH_EDITOR_NUMBER}
+          />
         </label>
-      )}
+        <label className={HH_EDITOR_LABEL}>
+          Infants
+          <input
+            aria-label="Infants"
+            type="text"
+            inputMode="numeric"
+            value={shownInfant}
+            onChange={(event) => setInfant(event.target.value)}
+            className={HH_EDITOR_NUMBER}
+          />
+        </label>
+      </div>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )

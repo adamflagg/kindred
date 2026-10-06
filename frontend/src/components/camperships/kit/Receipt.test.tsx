@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { TRACE_CAPPED_BY_ASK, traceStep } from './fixtures'
 import { MINUS } from './money'
@@ -105,7 +105,37 @@ describe('Receipt (D33 form D; D34 folding; D76)', () => {
     expect(container.querySelector('button span.tabular-nums')).toHaveClass('text-red-700')
   })
 
-  it('opens by itself on a hold or a would-change flag, including one that arrives later (D34)', () => {
+  it("round 3: takes the household's versions in place of its line box, behind an optional prop", async () => {
+    const onFold = vi.fn()
+    renderReceipt(
+      <Receipt
+        trace={TRACE_CAPPED_BY_ASK}
+        label={LIVE}
+        folded
+        versions={{
+          showWords: 'Show the receipt · 2 versions ▾',
+          head: <div>the switcher</div>,
+          lines: <div>the columns</div>,
+          onFold,
+        }}
+      />
+    )
+    expect(screen.queryByText('the switcher')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Show the receipt · 2 versions ▾' }))
+    const head = screen.getByText('the switcher')
+    // The switcher heads the opened receipt, above its label.
+    expect(
+      head.compareDocumentPosition(screen.getByRole('link', { name: 'rules 2027 v3' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(screen.getByText('the columns')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Weighted income/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the receipt ▴' }))
+    expect(onFold).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('the switcher')).toBeNull()
+  })
+
+  it('opens by itself on a hold, including one that arrives later (D34)', () => {
     const { rerender } = renderReceipt(<Receipt trace={TRACE_CAPPED_BY_ASK} label={LIVE} folded />)
     expect(screen.queryByRole('button', { name: /Weighted income/ })).toBeNull()
     rerender(
