@@ -726,6 +726,37 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
     })
   })
 
+  // Owner call 10-05 late: the keep boxes name the other request as camper · session, never its raw id.
+  const sideOf = (id: string) => cardOf(id).querySelector('[data-editor-side]') as HTMLElement
+
+  it('names the other request by camper and session, without its id, in every keep box (owner 10-05)', async () => {
+    application = naming('reqkept00000001')
+    renderCards([PENDING, KEPT])
+    const kept = within(cardOf('reqkept00000001'))
+    await userEvent.click(kept.getByRole('button', { name: 'Keep the Other Request…' }))
+    expect(sideOf('reqkept00000001')).toHaveTextContent(
+      'Marks this request as the duplicate and keeps the other: Emma Johnson · Session 2'
+    )
+    expect(sideOf('reqkept00000001')).not.toHaveTextContent('reqpending00001')
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(kept.getByRole('button', { name: 'Keep This Request…' }))
+    expect(sideOf('reqkept00000001')).toHaveTextContent(
+      'Marks the other request as the duplicate: Emma Johnson · Session 2'
+    )
+    expect(sideOf('reqkept00000001')).not.toHaveTextContent('reqpending00001')
+  })
+
+  it("names a twin on another household's page by what the pending card knows: the same camper and session", async () => {
+    application = naming('reqelsewhere001')
+    renderCards([PENDING])
+    const card = within(cardOf('reqpending00001'))
+    await userEvent.click(card.getByRole('button', { name: 'Keep This Request…' }))
+    expect(sideOf('reqpending00001')).toHaveTextContent(
+      'Marks the other request as the duplicate and keeps this one: Emma Johnson · Session 2'
+    )
+    expect(sideOf('reqpending00001')).not.toHaveTextContent('reqelsewhere001')
+  })
+
   it("shows the server's refusal in the box, and keeps what was typed", async () => {
     application = naming('reqkept00000001')
     duplicateRefusal = 'Round 2 is posted: keep this request, or undo Posted first'

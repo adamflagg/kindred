@@ -686,7 +686,7 @@ export function KeepThisForm({
       error={error}
       onSubmit={submit}
       onCancel={onDone}
-      side={`Marks the other request as the duplicate: ${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`}
+      side={`Marks the other request as the duplicate: ${camperOf(other)} · ${other.row.session_name}`}
     >
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
