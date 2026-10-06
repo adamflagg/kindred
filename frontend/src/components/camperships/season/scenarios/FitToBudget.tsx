@@ -7,7 +7,7 @@ import { fitWords } from './scenarioModel'
 
 /**
  * Fit to budget (spec §7.4; D119; fit.py): finds the shift every tier by that uses Round 1's
- * allocation, naming the tightest pool as information. It records nothing until "Use it", which
+ * allocation, naming the tightest pool as information. It records nothing until "Use It", which
  * records the fitted document as the draft (a trail row, like any release), on the trail row the
  * fit was asked on: if the draft has moved since, the record is refused rather than overwriting it.
  */
@@ -47,7 +47,7 @@ export function FitToBudget({
       >
         {fit.isPending
           ? 'Fitting…'
-          : "Fit to budget: find the shift that uses Round 1's allocation"}
+          : "Fit to Budget: Find the Shift That Uses Round 1's Allocation"}
       </button>
       {fit.error !== null && <p className={AMBER_NOTE}>{fit.error.message}</p>}
       {stale && (
@@ -69,11 +69,11 @@ export function FitToBudget({
                   })
                 }}
               >
-                Use it
+                Use It
               </button>
             )}
             <button type="button" className={BUTTON_SECONDARY} onClick={() => fit.reset()}>
-              Not now
+              Not Now
             </button>
             {editing && answer.outcome === 'fits' && (
               <span className="text-muted-foreground self-center text-xs">

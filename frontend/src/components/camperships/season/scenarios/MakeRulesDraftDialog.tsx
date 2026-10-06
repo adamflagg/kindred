@@ -25,7 +25,7 @@ function LockedNote({ section }: { section: ApiAidRulesSection }) {
 }
 
 /**
- * "Make A1 the rules draft…" (spec §7.5; D39; rules.html A): lists each section the option changes,
+ * "Make A1 the Rules Draft…" (spec §7.5; D39; rules.html A): lists each section the option changes,
  * old → new, and warns where it replaces someone's unapproved edit or undoes a later approval; each
  * such section is confirmed by a tick. The changed sections then go to approval on the Rules tab. If
  * the rules draft moved under the preview (G6's 409, or a re-edit), nothing is written: the preview
@@ -111,7 +111,7 @@ export function MakeRulesDraftDialog({
               }
               onClick={confirm}
             >
-              {promote.isPending ? 'Making it the rules draft…' : 'Make it the rules draft'}
+              {promote.isPending ? 'Making It the Rules Draft…' : 'Make It the Rules Draft'}
             </button>
           </div>
         ) : (

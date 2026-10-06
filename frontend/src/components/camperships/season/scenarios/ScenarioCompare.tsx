@@ -38,7 +38,7 @@ interface CompareProps {
   readonly onLastSeason: (on: boolean) => void
   readonly byTier: boolean
   readonly onByTier: (on: boolean) => void
-  /** "Make A1 the rules draft…" on a kept option's column (D39); the draft's column has none. */
+  /** "Make A1 the Rules Draft…" on a kept option's column (D39); the draft's column has none. */
   readonly onPromote?: ((code: string) => void) | undefined
 }
 
@@ -271,7 +271,7 @@ export function ScenarioCompare({
                           className="text-primary block w-full text-right text-xs font-normal hover:underline print:hidden"
                           onClick={() => onPromote(column.code)}
                         >
-                          {`Make ${column.code} the rules draft…`}
+                          {`Make ${column.code} the Rules Draft…`}
                         </button>
                       )}
                     </th>
