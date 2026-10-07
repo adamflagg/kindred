@@ -42,7 +42,7 @@ def _rules(**levers: Any) -> AidRules:
 
 
 RULES = _rules()
-# The full-cost type outside the budget, as 2026's Operation Summer Camp is (D121).
+# The full-cost type outside the budget, as 2026's outside-funded program is (D121).
 OUTSIDE = with_lever(RULES, "awards.decision_types.full_cost_program.counts_toward_budget", False)
 
 

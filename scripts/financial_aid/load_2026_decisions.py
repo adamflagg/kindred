@@ -7,7 +7,7 @@ have written had 2026 been run in it, read-only and labelled:
   * The ROUNDS come from the sheet, reproduced by the engine. Each included row (Aid Calculator "Include?" = Yes) is
     priced by the calculator from the sheet's own inputs, as parity_check does (494/494), one round at a time, each
     round locked before the next is priced (D43). The stage gives the round split and Accepted; the sheet's typed
-    extra money becomes the rules' named types: a stage the parity config maps (Operation Summer Camp) keys that type,
+    extra money becomes the rules' named types: a stage the parity config maps (a full-cost program outside the budget) keys that type,
     a "+ $300" stage keys the rules' top-up on Round 2, and any other extra money keys the rules' discretionary type.
     A hold the engine raises is released (2026's staff decided the row anyway); the receipt names it.
   * The POSTED dollars are CampMinder's (owner, 10-07: "needs to show campminder actuals"): each request's net
