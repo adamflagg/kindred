@@ -491,8 +491,8 @@ async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices
 
     monkeypatch.setattr(service_module, "price_document", counting)
     comparison = await world.service.compare(YEAR, FINANCE, ["B"])
-    # the draft, and v1 as B's reference (Task 58's one yardstick reuses A's stored Round 1 again)
-    assert len(priced) == 2
+    # the draft only: B's figures are stored, and the yardstick is A's stored Round 1 (A is the rules in effect)
+    assert len(priced) == 1
     kept = comparison.columns[1]
     assert (kept.code, kept.up, kept.down) == ("B", 1, 0)  # Emma's tier 2 went from 75% to 80%
 
@@ -612,3 +612,58 @@ async def test_a_draft_from_last_seasons_rules_reads_as_its_own_document_when_la
     draft = (await world.service.workspace(YEAR, FINANCE)).draft
     assert draft is not None
     assert (draft.from_code, draft.label) == ("last_rules", "no changes")
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_column_prices_the_merge_on_these_applications() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    [column] = (await world.service.compare(YEAR, FINANCE, [], last_rules=True, draft=False)).columns
+    # Emma at 2026's 80% (1,600, up from 1,500 under the rules in effect); Liam unchanged at 1,100.
+    assert (column.code, column.version, column.results.round1, column.up, column.down) == (
+        "last_rules",
+        1,
+        Decimal(2700),
+        1,
+        0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_season_posted_reads_by_pool_from_its_posted_cells() -> None:
+    """§S11.2: each pool's Posted cell per round; Allocated is last season's pool allocation (500,000 × 80%);
+    Remaining is Allocated − Posted. Never an estimate."""
+    world = await _started()
+    last = (await world.service.compare(YEAR, FINANCE, ["A"], last_season=True)).last_season
+    assert last is not None
+    camp = next(p for p in last.pools if p.pool == "camp_pool")
+    assert (camp.round1, camp.round2, camp.round3) == (Decimal(2600), Decimal(300), Decimal(0))
+    assert (camp.round1_allocated, camp.remaining) == (Decimal("400000.00"), Decimal("397100.00"))
+    assert last.round3 == Decimal(0)
+
+
+@pytest.mark.asyncio
+async def test_a_last_seasons_rules_column_that_does_not_fit_is_left_out_with_the_reason() -> None:
+    """Disagreement 16 (plan review, minor 5): the merge's refusal leaves that one column out and says why; the
+    other columns still price. 2026 had no teen table, and 2027 v1 sends teen to its own."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    comparison = await world.service.compare(YEAR, FINANCE, [], rules=True, last_rules=True, draft=False)
+    assert [c.code for c in comparison.columns] == ["rules"]
+    assert comparison.last_rules_refused is not None
+    assert comparison.last_rules_refused.startswith(
+        "2026's criteria don't fit 2027's rules in effect (programs.teen.r1_table"
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_season_not_loaded_has_no_pools() -> None:
+    world = await _started(last_posted=False)
+    last = (await world.service.compare(YEAR, FINANCE, [], last_season=True)).last_season
+    assert last is not None
+    assert (last.loaded, last.pools, last.round3) == (False, (), Decimal(0))

@@ -248,17 +248,20 @@ class CommitteeOut(BaseModel):
 
 class LastSeasonOut(BaseModel):
     """Last season's posted money, at each lock, beside the compare (RPT-17's and RPT-32's last-season columns).
-    `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate."""
+    `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate. The pools are
+    each pool's Posted cells, empty until last season is loaded."""
 
     year: int
     loaded: bool
     label: str
     rules_version: int | None
     view: CommitteeOut | None
+    round3: float = 0
+    pools: list[PoolResultOut] = Field(default_factory=list)  # each pool's Posted cells; empty until loaded
 
 
 class CompareColumnOut(BaseModel):
-    code: str  # "draft" for the draft
+    code: str  # "rules", "last_rules", "draft", or a kept code
     label: str
     document: AidRules
     changes: list[FieldChangeOut]
@@ -266,6 +269,9 @@ class CompareColumnOut(BaseModel):
     up: int | None
     down: int | None
     committee: CommitteeOut | None = None
+    version: int | None = None
+    approved_at: datetime | None = None
+    via: str | None = None
 
 
 class CompareOut(BaseModel):
@@ -273,6 +279,8 @@ class CompareOut(BaseModel):
     snapshot: SnapshotOut
     columns: list[CompareColumnOut]
     last_season: LastSeasonOut | None = None  # only with ?last_season=true
+    # The server's words when "last season's rules" was asked for and can't be built (disagreement 16)
+    last_rules_refused: str | None = None
 
 
 class FitOut(BaseModel):

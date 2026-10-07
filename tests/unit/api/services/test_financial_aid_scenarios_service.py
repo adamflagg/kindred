@@ -378,23 +378,51 @@ async def _kept_b(world: World) -> AidRules:
     return a
 
 
+# --- compare (Scenarios addendum §S11.2; N3, N4, N11) ---------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_compare_puts_the_draft_first_beside_the_ticked_options() -> None:
-    world = await _started()
-    a = await _kept_b(world)
-    await world.service.save_draft(YEAR, _shifted(a, "10"), FINANCE)
-    comparison = await world.service.compare(YEAR, FINANCE, ["A", "B", "A"])
-    assert [c.code for c in comparison.columns] == ["draft", "A", "B"]
-    draft, first, variant = comparison.columns
+async def test_compare_counts_every_column_against_the_rules_in_effect_in_the_fixed_order() -> None:
+    """N3, N4, N11 (ruled): one yardstick, the rules in effect, for every column; §S5 H's fixed order, never the
+    order asked."""
+    world = await _started()  # A: the rules draft v1, which is also the rules in effect (none approved)
+    a = await _kept_b(world)  # B: A +5
+    await world.service.save_draft(YEAR, _shifted(a, "10"), FINANCE)  # the draft: A +10, from B
+    comparison = await world.service.compare(YEAR, FINANCE, ["B", "A", "B"], rules=True)
+    assert [c.code for c in comparison.columns] == ["rules", "draft", "A", "B"]
+    rules, draft, first, variant = comparison.columns
+    assert (rules.label, rules.version, rules.up, rules.down, rules.changes) == ("Rules draft v1", 1, None, None, ())
     assert (draft.label, draft.up, draft.down) == ("Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 80%", 2, 0)
-    assert (first.label, first.up, first.down) == ("rules draft v1 as they were", None, None)  # v1 prices nothing
-    assert (variant.label, variant.up, variant.down, variant.results.round1) == (
-        "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%",
+    assert {c.path[0] for c in draft.changes} == {"award_tables"}  # against the rules in effect, not B
+    assert (first.up, first.down, first.changes) == (0, 0, ())
+    assert (variant.up, variant.down, variant.results.round1) == (2, 0, Decimal(2800))
+
+
+@pytest.mark.asyncio
+async def test_the_draft_column_is_left_out_when_not_asked_for() -> None:
+    world = await _started()
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    comparison = await world.service.compare(YEAR, FINANCE, ["A"], draft=False)
+    assert [c.code for c in comparison.columns] == ["A"]
+
+
+@pytest.mark.asyncio
+async def test_the_rules_column_carries_its_version_approval_and_the_option_it_came_from() -> None:
+    """Disagreement 2: approval clears a section's edited_via, so `via` is read from the rules log."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE, name="Every tier up")  # A
+    await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)  # v2, via A
+    await world.rules.approve_sections(YEAR, 2, ["award_tables"], actor=TREASURER, note="Finance committee")
+    [rules] = (await world.service.compare(YEAR, FINANCE, [], rules=True, draft=False)).columns
+    assert (rules.code, rules.label, rules.version, rules.via, rules.approved_at) == (
+        "rules",
+        "Rules v2 in effect",
         2,
-        0,
-        Decimal(2800),
+        "A",
+        T0,
     )
-    assert {c.path[0] for c in variant.changes} == {"award_tables"}
 
 
 @pytest.mark.asyncio
@@ -876,7 +904,8 @@ async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_
 
 @pytest.mark.asyncio
 async def test_compare_prices_no_reference_for_a_starting_point_from_the_rules(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A starting point from the rules shows no up / down, so its rules are loaded for the changes, never priced."""
+    """A starting point that is the rules in effect moves nothing (0 up, 0 down), and the yardstick is its stored
+    Round 1, so those rules are never priced."""
     world = await _started()
     priced: list[AidRules] = []
 
@@ -890,7 +919,7 @@ async def test_compare_prices_no_reference_for_a_starting_point_from_the_rules(m
     await world.service.load(YEAR, TREASURER, option="A")  # TREASURER's draft is A, unchanged
     priced.clear()
     draft, a = (await world.service.compare(YEAR, TREASURER, ["A"])).columns
-    assert (a.code, a.changes, a.up, a.down) == ("A", (), None, None)
+    assert (a.code, a.changes, a.up, a.down) == ("A", (), 0, 0)  # A is the rules in effect: nothing moved
     assert len(priced) == 1  # the draft only: A's figures are stored, and v1 is never priced as its reference
 
 

@@ -30,6 +30,7 @@ from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.lifecycle import LockedSectionInvalidatedError
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.rules.validation import ValidationIssue, ValidationReport, validate_rules
+from tests.unit.api.services.decisions_fakes import T0
 from tests.unit.api.services.rules_fakes import FakeStore
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever, with_levers
 
@@ -1143,3 +1144,37 @@ async def test_the_rules_save_never_adds_a_named_award() -> None:
     with pytest.raises(FixedSettingError, match=r"^Named award › Kind is fixed and can't be changed here$"):
         await service.save_section(2031, 1, "awards", awards, actor=FINANCE)
     assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_promoted_via_reads_the_option_from_the_versions_log_after_approval_cleared_it() -> None:
+    """Scenarios addendum §S11.2, disagreement 2: approval replaces the status (edited_via goes), the log keeps it."""
+    service = FinancialAidRulesService(FakeStore(), clock=lambda: T0)
+    await service.create_version(fictional_rules(), actor="finance@example.com")
+    await service.approve_sections(2031, 1, list(SECTION_NAMES), actor="treasurer@example.com", note="Committee")
+    moved = with_lever(fictional_rules(), "awards.minimum", "150")
+    await service.promote(
+        2031, origin_version=1, document=moved, base_version=1, acknowledged={}, actor="finance@example.com", via="B"
+    )
+    await service.approve_sections(2031, 2, ["awards"], actor="treasurer@example.com", note="Committee")
+    assert (await service.load(2031, 2)).section_status["awards"].edited_via is None
+    assert await service.promoted_via(2031, 2) == "B"
+    assert await service.promoted_via(2031, 1) is None
+
+
+@pytest.mark.asyncio
+async def test_promoted_via_stops_at_a_later_save_that_unstamped_the_section() -> None:
+    """Plan review, minor 4: a Rules save after the promotion is the version's newest whole-version row. A section
+    save stamps its section with no via, so the version no longer reads as promoted from B. (Approval rows are per
+    section, so they never count.)"""
+    service = FinancialAidRulesService(FakeStore(), clock=lambda: T0)
+    await service.create_version(fictional_rules(), actor="finance@example.com")
+    await service.approve_sections(2031, 1, list(SECTION_NAMES), actor="treasurer@example.com", note="Committee")
+    moved = with_lever(fictional_rules(), "awards.minimum", "150")
+    await service.promote(
+        2031, origin_version=1, document=moved, base_version=1, acknowledged={}, actor="finance@example.com", via="B"
+    )
+    assert await service.promoted_via(2031, 2) == "B"
+    awards = with_lever(moved, "awards.minimum", "175").model_dump(mode="json")["awards"]
+    await service.save_section(2031, 2, "awards", awards, actor="treasurer@example.com")  # v2's awards is a draft
+    assert await service.promoted_via(2031, 2) is None

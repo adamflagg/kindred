@@ -52,6 +52,7 @@ from api.services.financial_aid_scenario_pricing import SeasonSnapshot, Snapshot
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.decisions import PoolBudget, season_budget
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import split_by_received
@@ -64,6 +65,7 @@ from bunking.financial_aid.scenarios import (
     SIZING_LEVERS,
     CommitteeView,
     FitResult,
+    PoolResult,
     RequestSet,
     RequestSetNote,
     ScenarioResults,
@@ -236,14 +238,17 @@ class Workspace:
 
 @dataclass(frozen=True)
 class CompareColumn:
-    code: str  # "draft" for the draft
+    code: str  # "rules", "last_rules", "draft", or a kept code
     label: str
     document: AidRules
-    changes: tuple[FieldChange, ...]  # against its reference: the screen's amber
+    changes: tuple[FieldChange, ...]  # against the rules in effect (N4): a row lines up across columns
     results: ScenarioResults
-    up: int | None  # requests whose Round 1 is higher than in its reference; None for rules as they were
+    up: int | None  # requests whose Round 1 is higher than under the rules in effect (N3); None for the rules column
     down: int | None
     committee: CommitteeView | None = None  # RPT-17 / RPT-32's tables by tier and the budget share (SP9c)
+    version: int | None = None  # the rules version: "rules", or last season's for "last_rules"
+    approved_at: datetime | None = None  # the newest approval among the pricing sections, for "rules"
+    via: str | None = None  # the kept code "rules" was promoted from (promoted_via)
 
 
 @dataclass(frozen=True)
@@ -256,6 +261,8 @@ class LastSeason:
     label: str
     rules_version: int | None  # the version that priced it; None when it has no approved rules
     view: CommitteeView | None
+    round3: Decimal = ZERO
+    pools: tuple[PoolResult, ...] = ()  # each pool's Posted cells (§S11.2)
 
 
 @dataclass(frozen=True)
@@ -263,6 +270,7 @@ class Comparison:
     snapshot: SnapshotMeta
     columns: tuple[CompareColumn, ...]
     last_season: LastSeason | None = None  # only when asked for
+    last_rules_refused: str | None = None  # why the last season's rules column asked for is left out
 
 
 @dataclass(frozen=True)
@@ -321,6 +329,28 @@ def _posted_label(year: int, as_of: datetime | None) -> str:
         return f"{year}, {basis}"
     local = as_of.astimezone(CAMP_TZ)
     return f"{year}, {basis} (as of {local:%b} {local.day}, {local.year})"
+
+
+def _posted_pool(pool: PoolBudget) -> PoolResult:
+    """Last season by pool (§S11.2): each round's Posted cell, never an estimate; Remaining = Allocated − Posted."""
+    round1, round2, round3 = (pool.rounds[n].posted for n in (1, 2, 3))
+    allocated = pool.total.allocated
+    return PoolResult(
+        pool=pool.pool,
+        label=pool.label,
+        round1=round1,
+        round2=round2,
+        round3=round3,
+        round1_allocated=allocated,
+        round1_remaining=None if allocated is None else allocated - round1,
+        remaining=None if allocated is None else allocated - round1 - round2 - round3,
+        round1_unmet=ZERO,
+    )
+
+
+def _approved_at(version: RulesVersion) -> datetime | None:
+    stamps = [version.section_status[name].approved_at for name in PRICING_SECTIONS]
+    return max((stamp for stamp in stamps if stamp is not None), default=None)
 
 
 def _last_season_name(last: RulesVersion, year: int, origin: RulesVersion, *, placeholder: bool = False) -> str:
@@ -1067,11 +1097,15 @@ class FinancialAidScenariosService:
         *,
         request_set: RequestSetChoice | None = None,
         last_season: bool = False,
+        rules: bool = False,
+        last_rules: bool = False,
+        draft: bool = True,
     ) -> Comparison:
-        """`actor`'s draft first, then up to 4 kept options, every one on the current snapshot. Each shows what
-        differs from its reference (a variant's starting point; a starting point's origin rules; the draft's
-        option), how many requests' Round 1 went up or down against it, and the committee's tables (RPT-17, RPT-32).
-        `last_season` adds last season's posted money beside them (one live read of last season)."""
+        """Columns in §S5 H's fixed order: the rules in effect, last season's rules on these applications, `actor`'s
+        draft, then the kept options asked for, in the order they were kept. Every one is on the current snapshot
+        and counts its changes and its requests up / down against the rules in effect (N3, N4); the rules column's
+        own up / down is None. `draft` defaults on so today's screen is unchanged; PR 12 sends it. `last_season`
+        adds last season's posted money beside them (one live read)."""
         wanted = list(dict.fromkeys(codes))
         if len(wanted) > MAX_COMPARED:
             raise ScenarioRefusedError(f"Compare up to {MAX_COMPARED} kept options beside your draft")
@@ -1082,8 +1116,14 @@ class FinancialAidScenariosService:
         meta = await self._meta(year)
         chosen = await self._request_set(year, request_set)
         price = await self._pricer(meta, chosen)
+        effect = await self._in_effect(year)
         last = await self._last_rules(year)
         seen: dict[str, Priced] = {}
+
+        async def of_document(key: str, document: AidRules) -> Priced:
+            if key not in seen:
+                seen[key] = await price(document)
+            return seen[key]
 
         async def of_option(option: OptionRecord) -> Priced:
             # A kept option's stored figures are on every request of its own snapshot: reused only when both hold,
@@ -1096,69 +1136,78 @@ class FinancialAidScenariosService:
                 )
             return seen[option.code]
 
-        async def round1_of(option: OptionRecord) -> dict[str, Decimal]:
-            # A reference needed only for up/down: its stored Round 1 by request is enough when it is on this
-            # snapshot and every request, committee rows or not (SP9b's kept options are never priced for them).
-            if option.code in seen:
-                return seen[option.code].round1
-            if option.snapshot == meta.id and chosen is None:
-                return await self._store.option_round1(option.id)
-            return (await of_option(option)).round1
+        async def round1_of_effect() -> dict[str, Decimal]:
+            # The yardstick's Round 1 by request: a kept option that IS the rules in effect, on this snapshot and
+            # every request, already stores it, so the rules are priced only when no such option exists.
+            same = next(
+                (
+                    option
+                    for option in options.values()
+                    if option.document == effect.document and option.snapshot == meta.id and chosen is None
+                ),
+                None,
+            )
+            if same is not None:
+                return await self._store.option_round1(same.id)
+            return (await of_document("rules", effect.document)).round1
 
-        async def of_rules(version: int) -> Priced:
-            key = f"rules v{version}"
-            if key not in seen:
-                seen[key] = await price((await self._rules.load(year, version)).document)
-            return seen[key]
+        yardstick = await round1_of_effect()
+
+        def column(code: str, label: str, document: AidRules, priced: Priced, **extra: Any) -> CompareColumn:
+            up, down = (None, None) if code == "rules" else up_down(yardstick, priced.round1)
+            return CompareColumn(
+                code,
+                label,
+                document,
+                _changes(effect.document, document),
+                priced.results,
+                up,
+                down,
+                committee=committee_view(priced.results, document),
+                **extra,
+            )
 
         columns: list[CompareColumn] = []
-        row = await self._store.latest_trail(year, actor)
-        if row is not None and row.document is not None:
-            source = options.get(_from(row))
-            if source is None:
-                raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")  # as the draft read does
-            mine = await price(row.document)
-            up, down = up_down(await round1_of(source), mine.round1)
+        if rules:
             columns.append(
-                CompareColumn(
-                    "draft",
-                    describe(source.document, row.document),
-                    row.document,
-                    _changes(source.document, row.document),
-                    mine.results,
-                    up,
-                    down,
-                    committee=committee_view(mine.results, row.document),
+                column(
+                    "rules",
+                    f"{self._effect_name(effect)} in effect" if _prices(effect) else self._effect_name(effect),
+                    effect.document,
+                    await of_document("rules", effect.document),
+                    version=effect.version,
+                    approved_at=_approved_at(effect) if _prices(effect) else None,
+                    via=await self._rules.promoted_via(year, effect.version),
                 )
             )
-        for code in wanted:
+        refused: str | None = None
+        if last_rules:
+            # The load's two refusals (no approved rules last season; a merge that adds an error) leave this one
+            # column out, in the server's words: they never fail the whole compare (disagreement 16).
+            try:
+                merged, _ = await self._last_rules_document(year, effect, words="rules in effect")
+            except ScenarioRefusedError as exc:
+                refused = str(exc)
+            else:
+                if last is not None:  # with no `last`, _last_rules_document has refused
+                    label = f"{last.year} rules v{last.version}, on these applications"
+                    priced_last = await of_document("last_rules", merged)
+                    columns.append(column("last_rules", label, merged, priced_last, version=last.version))
+        if draft:
+            row = await self._store.latest_trail(year, actor)
+            if row is not None and row.document is not None:
+                source = await self._source(year, _from(row), options, recorded=row.document, effect=effect)
+                priced = await of_document("draft", row.document)
+                columns.append(column("draft", describe(source.document, row.document), row.document, priced))
+        for code in (code for code in options if code in wanted):
             option = options[code]
-            priced = await of_option(option)
-            reference = await self._reference(option, options)
-            up_or_down: tuple[int | None, int | None] = (None, None)  # a start from the rules: nothing to be up from
-            if option.from_code:
-                against = (
-                    await round1_of(options[option.starting_point])
-                    if option.starting_point
-                    else (await of_rules(option.origin_version)).round1
-                )
-                up_or_down = up_down(against, priced.round1)
-            columns.append(
-                CompareColumn(
-                    code,
-                    await self._label(option, options, last),
-                    option.document,
-                    _changes(reference, option.document),
-                    priced.results,
-                    *up_or_down,
-                    committee=committee_view(priced.results, option.document),
-                )
-            )
+            label = await self._label(option, options, last)
+            columns.append(column(code, label, option.document, await of_option(option)))
         previous = await self.last_season(year) if last_season else None
         if previous is not None and previous.loaded and chosen is not None:
             # Last season is always its whole season: say so beside columns priced on part of this one (D138).
             previous = replace(previous, label=f"{previous.label}, every request")
-        return Comparison(meta, tuple(columns), previous)
+        return Comparison(meta, tuple(columns), previous, last_rules_refused=refused)
 
     async def last_season(self, year: int) -> LastSeason:
         """Last season's posted money by tier, read live (RPT-17's and RPT-32's last-season columns): every round
@@ -1175,7 +1224,16 @@ class FinancialAidScenariosService:
             return LastSeason(year - 1, False, label, None, None)
         version = season.rules.version if season.rules is not None else None
         label = _posted_label(year - 1, posted.as_of)
-        return LastSeason(year - 1, True, label, version, committee_view(posted, document))
+        budget = season_budget(season.priced.values(), document, outside_grants={})
+        return LastSeason(
+            year - 1,
+            True,
+            label,
+            version,
+            committee_view(posted, document),
+            round3=budget.total.rounds[3].posted,
+            pools=tuple(_posted_pool(pool) for pool in budget.pools),
+        )
 
     async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
         """Fit to budget: the largest shift of every Round 1 table cell that keeps the total row's Round 1 Remaining

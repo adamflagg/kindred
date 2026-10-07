@@ -2693,6 +2693,18 @@ export type CompareColumnOut = {
    */
   down: number | null
   committee?: CommitteeOut | null
+  /**
+   * Version
+   */
+  version?: number | null
+  /**
+   * Approved At
+   */
+  approved_at?: string | null
+  /**
+   * Via
+   */
+  via?: string | null
 }
 
 /**
@@ -2709,6 +2721,10 @@ export type CompareOut = {
    */
   columns: Array<CompareColumnOut>
   last_season?: LastSeasonOut | null
+  /**
+   * Last Rules Refused
+   */
+  last_rules_refused?: string | null
 }
 
 /**
@@ -8221,7 +8237,8 @@ export type KeepIn = {
  * LastSeasonOut
  *
  * Last season's posted money, at each lock, beside the compare (RPT-17's and RPT-32's last-season columns).
- * `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate.
+ * `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate. The pools are
+ * each pool's Posted cells, empty until last season is loaded.
  */
 export type LastSeasonOut = {
   /**
@@ -8241,6 +8258,14 @@ export type LastSeasonOut = {
    */
   rules_version: number | null
   view: CommitteeOut | null
+  /**
+   * Round3
+   */
+  round3?: number
+  /**
+   * Pools
+   */
+  pools?: Array<PoolResultOut>
 }
 
 /**
@@ -25364,6 +25389,18 @@ export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
      * Last Season
      */
     last_season?: boolean
+    /**
+     * Rules
+     */
+    rules?: boolean
+    /**
+     * Last Rules
+     */
+    last_rules?: boolean
+    /**
+     * Draft
+     */
+    draft?: boolean
   }
   url: '/api/financial-aid/scenarios/{year}/compare'
 }

@@ -304,7 +304,7 @@ from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.programs import ProgramsCount, ProgramsPart
 from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
-from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
+from bunking.financial_aid.scenarios import CommitteeView, PoolResult, ScenarioResults
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
@@ -1200,6 +1200,20 @@ def _cents(value: Decimal | None) -> float | None:
     return money(value) if value is not None else None
 
 
+def _pool_out(p: PoolResult) -> PoolResultOut:
+    return PoolResultOut(
+        pool=p.pool,
+        label=p.label,
+        round1=money(p.round1),
+        round2=money(p.round2),
+        round3=money(p.round3),
+        round1_allocated=_cents(p.round1_allocated),
+        round1_remaining=_cents(p.round1_remaining),
+        remaining=_cents(p.remaining),
+        round1_unmet=money(p.round1_unmet),
+    )
+
+
 def _results_out(r: ScenarioResults) -> ResultsOut:
     return ResultsOut(
         requests=r.requests,
@@ -1214,20 +1228,7 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         held=r.held,
         held_asked=money(r.held_asked),
         round1_unmet=money(r.round1_unmet),
-        pools=[
-            PoolResultOut(
-                pool=p.pool,
-                label=p.label,
-                round1=money(p.round1),
-                round2=money(p.round2),
-                round3=money(p.round3),
-                round1_allocated=_cents(p.round1_allocated),
-                round1_remaining=_cents(p.round1_remaining),
-                remaining=_cents(p.remaining),
-                round1_unmet=money(p.round1_unmet),
-            )
-            for p in r.pools
-        ],
+        pools=[_pool_out(p) for p in r.pools],
         by_tier=[
             TierRowOut(
                 tier=t.tier, requests=t.requests, families=t.families, round1=money(t.round1), asked=_cents(t.asked)
@@ -1297,6 +1298,8 @@ def _last_season_out(last: LastSeason) -> LastSeasonOut:
         label=last.label,
         rules_version=last.rules_version,
         view=_committee_out(last.view) if last.view is not None else None,
+        round3=money(last.round3),
+        pools=[_pool_out(p) for p in last.pools],
     )
 
 
@@ -1371,6 +1374,9 @@ def _column_out(column: CompareColumn) -> CompareColumnOut:
         up=column.up,
         down=column.down,
         committee=_committee_out(column.committee) if column.committee is not None else None,
+        version=column.version,
+        approved_at=column.approved_at,
+        via=column.via,
     )
 
 
@@ -1519,6 +1525,9 @@ async def compare_scenarios(
     through_round1_deadline: bool = Query(default=False),
     received_through: date | None = Query(default=None),
     last_season: bool = Query(default=False),
+    rules: bool = Query(default=False),
+    last_rules: bool = Query(default=False),
+    draft: bool = Query(default=True),
     user: AuthUser = _RULES,
 ) -> CompareOut:
     """Your draft first, beside up to 4 kept options, all on the current snapshot, on a request set when asked
@@ -1529,7 +1538,14 @@ async def compare_scenarios(
     request_set: RequestSetChoice | None = "round1_deadline" if through_round1_deadline else received_through
     try:
         comparison = await _scenarios().compare(
-            year, user.email, codes, request_set=request_set, last_season=last_season
+            year,
+            user.email,
+            codes,
+            request_set=request_set,
+            last_season=last_season,
+            rules=rules,
+            last_rules=last_rules,
+            draft=draft,
         )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
@@ -1538,6 +1554,7 @@ async def compare_scenarios(
         snapshot=_snapshot_out(comparison.snapshot),
         columns=[_column_out(c) for c in comparison.columns],
         last_season=_last_season_out(comparison.last_season) if comparison.last_season is not None else None,
+        last_rules_refused=comparison.last_rules_refused,
     )
 
 

@@ -303,7 +303,13 @@ def test_compare_passes_the_ticked_codes_in_order() -> None:
     service = _stub()
     _client().get("/api/financial-aid/scenarios/2027/compare", params=[("codes", "A1"), ("codes", "B")])
     assert service.compare.await_args.args[2] == ["A1", "B"]
-    assert service.compare.await_args.kwargs == {"request_set": None, "last_season": False}
+    assert service.compare.await_args.kwargs == {
+        "request_set": None,
+        "last_season": False,
+        "rules": False,
+        "last_rules": False,
+        "draft": True,
+    }
 
 
 def test_the_request_set_controls_reach_every_read() -> None:
@@ -316,7 +322,13 @@ def test_the_request_set_controls_reach_every_read() -> None:
     assert service.evaluate.await_args.kwargs["request_set"] == "round1_deadline"
     assert service.fit.await_args.kwargs == {"request_set": date(2027, 2, 1)}
     assert service.sensitivity.await_args.kwargs == {"request_set": date(2027, 2, 1)}
-    assert service.compare.await_args.kwargs == {"request_set": "round1_deadline", "last_season": False}
+    assert service.compare.await_args.kwargs == {
+        "request_set": "round1_deadline",
+        "last_season": False,
+        "rules": False,
+        "last_rules": False,
+        "draft": True,
+    }
 
 
 def test_both_request_set_controls_at_once_is_422_before_the_service() -> None:
@@ -673,7 +685,13 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "held_asked": 500.0,
     }
     assert (body["last_season"]["year"], body["last_season"]["label"]) == (2026, LAST_LABEL)
-    assert service.compare.await_args.kwargs == {"request_set": None, "last_season": True}
+    assert service.compare.await_args.kwargs == {
+        "request_set": None,
+        "last_season": True,
+        "rules": False,
+        "last_rules": False,
+        "draft": True,
+    }
 
 
 def test_last_season_not_loaded_reads_as_its_label_with_no_figures() -> None:
@@ -681,7 +699,47 @@ def test_last_season_not_loaded_reads_as_its_label_with_no_figures() -> None:
     label = "2026's decisions are not loaded yet, so there is no last-season column"
     service.compare = AsyncMock(return_value=Comparison(META, (), LastSeason(2026, False, label, None, None)))
     body = _client().get("/api/financial-aid/scenarios/2027/compare", params={"last_season": "true"}).json()
-    assert body["last_season"] == {"year": 2026, "loaded": False, "label": label, "rules_version": None, "view": None}
+    assert body["last_season"] == {
+        "year": 2026,
+        "loaded": False,
+        "label": label,
+        "rules_version": None,
+        "view": None,
+        "round3": 0.0,
+        "pools": [],
+    }
+
+
+def test_compare_passes_the_built_in_columns_and_reads_their_version() -> None:
+    service = _stub()
+    rules = CompareColumn(
+        "rules", "Rules v4 in effect", DOC, (), RESULTS, None, None, version=4, approved_at=T, via="B"
+    )
+    service.compare = AsyncMock(
+        return_value=Comparison(
+            META,
+            (rules,),
+            last_rules_refused="2026 has no approved rules to start from: load and approve them first",
+        )
+    )
+    body = (
+        _client()
+        .get(
+            "/api/financial-aid/scenarios/2027/compare",
+            params={"rules": "true", "last_rules": "true", "draft": "false"},
+        )
+        .json()
+    )
+    assert service.compare.await_args.kwargs == {
+        "request_set": None,
+        "last_season": False,
+        "rules": True,
+        "last_rules": True,
+        "draft": False,
+    }
+    [column] = body["columns"]
+    assert (column["code"], column["version"], column["via"], column["up"]) == ("rules", 4, "B", None)
+    assert body["last_rules_refused"] == "2026 has no approved rules to start from: load and approve them first"
 
 
 def test_results_carry_round2s_allocation_and_what_is_left() -> None:

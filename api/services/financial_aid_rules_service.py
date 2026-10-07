@@ -725,6 +725,25 @@ class FinancialAidRulesService:
             if status.state == "locked"
         )
 
+    async def promoted_via(self, year: int, version: int) -> str | None:
+        """The kept option a version's content was promoted from (Scenarios addendum §S11.2): the `edited_via` in the
+        section_status of `version`'s newest whole-version log row, or None when that row carries none. Approval
+        clears the stamp on the record (it replaces the whole status), but approval rows are per section, so the
+        newest whole-version row is still the promotion's. A later save is newer and carries no via, and then the
+        version is no longer the promotion's alone (plan review, minor 4). The log comes in recorded order."""
+        rows = [row for row in await self._store.fetch_log(year) if row.entity_id == _entity_id(year, version)]
+        for row in reversed(rows):
+            status = (row.after or {}).get("section_status")
+            if not isinstance(status, Mapping):
+                continue
+            vias = [
+                str(entry["edited_via"])
+                for name in SECTION_NAMES
+                if isinstance(entry := status.get(name), Mapping) and entry.get("edited_via")
+            ]
+            return vias[0] if vias else None
+        return None
+
     async def draft_view(self, year: int) -> RulesDraft:
         """The Rules tab (spec §7.5, D39): the rules draft (the latest version) section by section, each with its
         status and its changes against the version pricing the season."""
