@@ -5,6 +5,7 @@ import {
   approveAidRules,
   fetchAidRulesDraft,
   saveAidRulesSection,
+  saveAidRulesSections,
   startAidRulesFromLastYear,
 } from '../../services/camperships/aidApi'
 import type { FetchWithAuth } from '../../services/lodgingApi'
@@ -13,6 +14,7 @@ import type {
   ApiAidRulesDraft,
   ApiAidRulesSection,
   ApiAidSectionSaveIn,
+  ApiAidSectionsSaveIn,
 } from '../../types/api-types'
 import { invalidateAidRulesQueries, queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
@@ -53,6 +55,15 @@ export function useAidSaveRulesSection() {
   return useRulesWrite(
     (fetchWithAuth, year, vars: SectionSaveVars) =>
       saveAidRulesSection(fetchWithAuth, year, vars.section, vars.body),
+    false
+  )
+}
+
+/** The Programs and costs card's save: programs and cost in one operation (D39): prices nothing until approved. */
+export function useAidSaveRulesSections() {
+  return useRulesWrite(
+    (fetchWithAuth, year, body: ApiAidSectionsSaveIn) =>
+      saveAidRulesSections(fetchWithAuth, year, body),
     false
   )
 }

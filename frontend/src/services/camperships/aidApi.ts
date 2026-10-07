@@ -51,6 +51,7 @@ import type {
   ApiAidScenarioSnapshot,
   ApiAidScenarioWorkspace,
   ApiAidSectionSaveIn,
+  ApiAidSectionsSaveIn,
   ApiAidSessionIn,
   ApiAidUnpostIn,
   ApiAidUseFormIn,
@@ -810,6 +811,21 @@ export function saveAidRulesSection(
     `${BASE}/rules/${String(year)}/sections/${section}`,
     body,
     "Couldn't save the section"
+  )
+}
+
+/** Programs and costs' one Save (spec §15.6): several sections as one logged operation. 409 when a named section moved. */
+export function saveAidRulesSections(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidSectionsSaveIn
+): Promise<ApiAidRulesDraft> {
+  return send<ApiAidRulesDraft>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/rules/${String(year)}/sections`,
+    body,
+    "Couldn't save the card"
   )
 }
 
