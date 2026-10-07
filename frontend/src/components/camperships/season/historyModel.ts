@@ -566,13 +566,30 @@ function fieldValue(entity: string, field: string, value: unknown, context: RowC
   return String(value)
 }
 
-function fieldLine(entity: string, change: ApiAidFieldChange, context: RowContext): string {
+/** A row's old and new parts (the panel strikes the old through); `lines` keeps the one-string form. */
+export interface FieldView {
+  readonly label: string
+  readonly kind: 'added' | 'removed' | 'changed'
+  readonly before: string | null
+  readonly after: string | null
+}
+
+function fieldView(entity: string, change: ApiAidFieldChange, context: RowContext): FieldView {
   const field = change.path[0] ?? ''
-  const label = FIELD_LABELS[field] ?? codeText(field)
   const show = (value: unknown) => fieldValue(entity, field, value, context)
-  if (change.kind === 'added') return `${label}: ${show(change.after)}`
-  if (change.kind === 'removed') return `${label}: removed (was ${show(change.before)})`
-  return `${label}: ${show(change.before)} → ${show(change.after)}`
+  return {
+    label: FIELD_LABELS[field] ?? codeText(field),
+    kind: change.kind,
+    before: change.kind === 'added' ? null : show(change.before),
+    after: change.kind === 'removed' ? null : show(change.after),
+  }
+}
+
+function fieldLine(entity: string, change: ApiAidFieldChange, context: RowContext): string {
+  const v = fieldView(entity, change, context)
+  if (v.kind === 'added') return `${v.label}: ${v.after ?? '—'}`
+  if (v.kind === 'removed') return `${v.label}: removed (was ${v.before ?? '—'})`
+  return `${v.label}: ${v.before ?? '—'} → ${v.after ?? '—'}`
 }
 
 /**
@@ -615,6 +632,8 @@ export interface RowView {
   /** "Posted · decision req…:1 · <reason>" */
   readonly head: string
   readonly lines: readonly string[]
+  /** The same fields as old and new parts, for the panel's strike-through. */
+  readonly fields: readonly FieldView[]
   /** Nested values the row recorded that are not listed. */
   readonly hidden: number
   readonly householdCmId: number | null
@@ -642,6 +661,7 @@ export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, st
     return {
       head: rulesHead(row),
       lines: rulesLines(row),
+      fields: [],
       hidden: 0,
       householdCmId: null,
       householdName: null,
@@ -683,6 +703,7 @@ export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, st
       row.reason,
     ]),
     lines: listed.map((change) => fieldLine(row.entity, change, context)),
+    fields: listed.map((change) => fieldView(row.entity, change, context)),
     hidden: row.changes.length - listed.length - unlisted.length,
     householdCmId,
     householdName:
@@ -715,4 +736,244 @@ export function rulesLink(
 /** A household's page, on the season, keeping the page's as-of (as the jump box and the grid do). */
 export function householdHref(householdCmId: number, view: AidView): string {
   return aidHref(`/aid/households/${String(householdCmId)}`, view)
+}
+
+// ── The box: endless scroll over numbered pages (spec §7.2 C) ────────────────
+
+const range = (page: number, perPage: number, total: number) =>
+  `${String((page - 1) * perPage + 1)}–${String(Math.min(page * perPage, total))}`
+
+/** Every loaded page's operations, newest first, each once: pages are numbers, not a cursor, so a row logged
+ * between two reads can push the previous page's last row onto the next one (Review Focus 4). */
+export function flattenPages(pages: readonly ApiAidHistoryPage[]): ApiAidHistoryOperation[] {
+  const seen = new Set<string>()
+  const out: ApiAidHistoryOperation[] = []
+  for (const page of pages) {
+    for (const op of page.operations) {
+      if (seen.has(op.operation_id)) continue
+      seen.add(op.operation_id)
+      out.push(op)
+    }
+  }
+  return out
+}
+
+/** Where each page after the first starts in `flattenPages`'s list: its page-break row goes there. */
+export function pageStarts(
+  pages: readonly ApiAidHistoryPage[]
+): Array<{ page: number; index: number }> {
+  const seen = new Set<string>()
+  const out: Array<{ page: number; index: number }> = []
+  let index = 0
+  pages.forEach((page, i) => {
+    if (i > 0) out.push({ page: page.page, index })
+    for (const op of page.operations) {
+      if (seen.has(op.operation_id)) continue
+      seen.add(op.operation_id)
+      index += 1
+    }
+  })
+  return out
+}
+
+export const pageBreakWords = (page: number, perPage: number, total: number): string =>
+  `Page ${String(page)} · ${range(page, perPage, total)}`
+
+/** The last row while more is to come: "Scroll for 51–100", or "◌ Loading 51–100…" while it loads. */
+export function scrollRowWords(
+  loaded: number,
+  total: number,
+  perPage: number,
+  loading: boolean
+): string | null {
+  if (loaded >= total) return null
+  const next = Math.floor(loaded / perPage) + 1
+  return loading
+    ? `◌ Loading ${range(next, perPage, total)}…`
+    : `Scroll for ${range(next, perPage, total)}`
+}
+
+export function footerWords(
+  total: number,
+  shown: number,
+  page: number,
+  last: number
+): { count: string; pageOf: string; onScreen: string } {
+  return {
+    count: `${String(total)} ${operations(total)}`,
+    pageOf: `Page ${String(page)} of ${String(last)}`,
+    onScreen:
+      shown >= total ? '· all on screen' : `· 1–${String(shown)} on screen; scroll for more`,
+  }
+}
+
+/** The page whose first row is at or above the box's scroll position (`tops` = each page's first row's offset). */
+export function pageAtScroll(tops: readonly number[], scrollTop: number): number {
+  let page = 1
+  tops.forEach((top, i) => {
+    if (scrollTop >= top) page = i + 1
+  })
+  return page
+}
+
+/** "All ‹n›": the total with no kind picked; with one picked, the kinds' counts summed (H5). */
+export function allCount(
+  page: ApiAidHistoryPage | undefined,
+  kind: ApiAidHistoryKind | null
+): number | null {
+  if (page === undefined) return null
+  return kind === null ? page.total : page.kind_counts.reduce((sum, c) => sum + c.operations, 0)
+}
+
+// ── The opened row's middle panel: compact tables and row blocks (spec §7.2 D, V#19) ──
+
+export interface CompactRow {
+  readonly key: string
+  readonly camper: string
+  readonly camperHref: string | null
+  readonly household: string
+  readonly householdHref: string | null
+  readonly session: string
+  readonly round: string | null
+  readonly amount: number | null
+}
+
+export interface CompactGroup {
+  readonly head: string
+  readonly amountLabel: 'Amount' | 'Ask'
+  readonly rows: CompactRow[]
+  readonly total: number | null
+}
+
+const COMPACT_ENTITIES: ReadonlySet<string> = new Set(['aid_decisions', 'aid_requests'])
+const COMPACT_AT = 3
+
+function compactRow(
+  r: ApiAidHistoryRow,
+  view: AidView,
+  sessions?: ReadonlyMap<number, string>
+): CompactRow {
+  const household = r.household_cm_id
+  const home = household === null ? null : householdHref(household, view)
+  const roundText = r.after?.['round'] ?? r.before?.['round']
+  const ask = r.entity === 'aid_requests' && r.action === 'create'
+  return {
+    key: `${r.entity}:${r.entity_id}`,
+    camper: r.camper_name ?? '—',
+    camperHref: requestHref(r, household, view),
+    household: household === null ? '—' : (r.household_name ?? `Household ${String(household)}`),
+    householdHref: home,
+    session: r.session_cm_id
+      ? (sessions?.get(r.session_cm_id) ?? `Session ${String(r.session_cm_id)}`)
+      : '—',
+    round: typeof roundText === 'number' ? `R${String(roundText)}` : null,
+    amount: decimalOf(ask ? r.after?.['ask'] : (r.after?.['amount'] ?? r.before?.['amount'])),
+  }
+}
+
+/**
+ * The camper link (spec §7.2 D, §7.5): the household page at the request's anchor, keeping the as-of.
+ * Null without a household, a camper or a request id (a family-level row, or a row PR 3 could not place).
+ */
+export function requestHref(
+  row: ApiAidHistoryRow,
+  householdCmId: number | null,
+  view: AidView
+): string | null {
+  if (householdCmId === null || !row.camper_name || !row.request_id) return null
+  return `${householdHref(householdCmId, view)}#request-${row.request_id}`
+}
+
+/** Each group of 3+ request rows with one action becomes a compact table; everything else stays a row block. */
+export function compactGroups(
+  rows: readonly ApiAidHistoryRow[],
+  view: AidView,
+  sessions?: ReadonlyMap<number, string>
+): { groups: CompactGroup[]; rest: ApiAidHistoryRow[] } {
+  const buckets = new Map<string, ApiAidHistoryRow[]>()
+  for (const r of rows) {
+    if (!COMPACT_ENTITIES.has(r.entity)) continue
+    const key = `${r.entity}|${r.action}`
+    buckets.set(key, [...(buckets.get(key) ?? []), r])
+  }
+  const grouped = new Set<ApiAidHistoryRow>()
+  const groups: CompactGroup[] = []
+  for (const [key, members] of buckets) {
+    if (members.length < COMPACT_AT) continue
+    const [entity = '', action = ''] = key.split('|')
+    members.forEach((m) => grouped.add(m))
+    const compact = members.map((m) => compactRow(m, view, sessions))
+    const amounts = compact.map((c) => c.amount).filter((a): a is number => a !== null)
+    groups.push({
+      head: `${actionWords(entity, action)} · ${String(members.length)} requests`,
+      amountLabel: entity === 'aid_requests' && action === 'create' ? 'Ask' : 'Amount',
+      rows: compact,
+      total: amounts.length === 0 ? null : amounts.reduce((sum, a) => sum + a, 0),
+    })
+  }
+  return { groups, rest: rows.filter((r) => !grouped.has(r)) }
+}
+
+/** An intake run's other rows, counted: "55 × created · payer share · 57 × created · application". */
+export function runSummary(rows: readonly ApiAidHistoryRow[]): string {
+  const counts = new Map<string, { entity: string; action: string; n: number }>()
+  for (const r of rows) {
+    const key = `${r.entity}|${r.action}`
+    const found = counts.get(key)
+    if (found) found.n += 1
+    else counts.set(key, { entity: r.entity, action: r.action, n: 1 })
+  }
+  return [...counts.values()]
+    .map(
+      ({ entity, action, n }) =>
+        `${String(n)} × ${actionWords(entity, action).toLowerCase()} · ${recordWords(entity, 1)}`
+    )
+    .join(' · ')
+}
+
+// ── The opened row's right panel: Open (spec §7.2 D) ──────────────────────────
+
+export interface OpenLinks {
+  readonly households: Array<{ label: string; href: string }>
+  readonly fullList: { label: string; href: string } | null
+  readonly manyFamilies: string | null
+  readonly rules: { label: string; href: string } | null
+  readonly nothing: string | null
+}
+
+export function openLinks(
+  op: ApiAidHistoryOperation,
+  rows: readonly ApiAidHistoryRow[],
+  view: AidView
+): OpenLinks {
+  const families = new Map<number, string>()
+  for (const r of rows) {
+    if (r.household_cm_id !== null && !families.has(r.household_cm_id)) {
+      families.set(r.household_cm_id, r.household_name ?? `Household ${String(r.household_cm_id)}`)
+    }
+  }
+  const requests = new Set(
+    rows.filter((r) => r.camper_name !== null && r.request_id).map((r) => r.request_id)
+  )
+  const households =
+    families.size >= 1 && families.size <= 3
+      ? [...families].map(([id, name]) => ({ label: `${name} ›`, href: householdHref(id, view) }))
+      : []
+  const fullList =
+    requests.size >= 3
+      ? {
+          label: `Full list in Requests (${String(requests.size)}) ›`,
+          href: aidHref('/aid/requests', view, { op: op.operation_id }),
+        }
+      : null
+  const manyFamilies =
+    families.size > 3
+      ? `${String(families.size)} families: each name in the list opens its household`
+      : null
+  const rules = rulesLink(op, view)
+  const nothing =
+    households.length === 0 && fullList === null && manyFamilies === null && rules === null
+      ? 'Nothing to open: no household or rules version'
+      : null
+  return { households, fullList, manyFamilies, rules, nothing }
 }
