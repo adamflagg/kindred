@@ -124,14 +124,14 @@ describe('HistoryTab', () => {
     expect(screen.getByText(/The scenario trail stays in Scenarios/)).toBeInTheDocument()
   })
 
-  it('counts each chip as the server counts it, and shows the bare chips while it loads (H5)', () => {
+  it('counts each chip as the server counts it, and shows "—" for every count while it loads (H5; spec §7.2 A)', () => {
     renderAt()
     expect(screen.getByRole('button', { name: 'Holds 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Grants 0' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All 3' })).toBeInTheDocument()
     read = { data: undefined, isLoading: true, error: null }
     renderAt()
-    expect(screen.getAllByRole('button', { name: 'Holds' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Holds —' })).toHaveLength(1)
   })
 
   it('filters by kind through the URL, back on page 1 (D15)', async () => {
@@ -142,7 +142,7 @@ describe('HistoryTab', () => {
     expect(where().has('page')).toBe(false)
     expect(where().get('year')).toBe('2027')
     expect(lastQuery()).toEqual({ kind: 'holds', per_page: '50' })
-    await userEvent.click(screen.getByRole('button', { name: 'All' }))
+    await userEvent.click(screen.getByRole('button', { name: 'All 3' }))
     expect(where().has('kind')).toBe(false)
   })
 

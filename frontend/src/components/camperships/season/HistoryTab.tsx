@@ -158,6 +158,8 @@ export function HistoryTab() {
         filters={filters}
         actors={history.data?.actors ?? NO_ACTORS}
         kindCounts={history.data?.kind_counts}
+        total={history.data?.total ?? null}
+        counting={history.isPlaceholderData}
         canSeeRules={canSeeRules}
         onChange={setFilter}
       />
