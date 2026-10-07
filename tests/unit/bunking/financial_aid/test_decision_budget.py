@@ -14,6 +14,7 @@ from bunking.financial_aid.decisions.budget import (
     RoundCell,
     SeasonBudget,
     allocations,
+    outside_part,
     season_budget,
 )
 from bunking.financial_aid.decisions.pricing import posted_view
@@ -735,3 +736,12 @@ def test_a_posted_fund_round_with_a_camp_part_ledger_shows_no_unconfirmed_beyond
     camp = pool_of(season_budget([priced("req-i", 24, fund)], RULES, outside_grants={}, ledger=ledger), "camp_pool")
     assert camp.rounds[1].posted == Decimal(2000)
     assert camp.rounds[1].unconfirmed == Decimal(500)
+
+
+def test_outside_part_is_the_rounds_money_below_the_line() -> None:
+    assert outside_part(view(1, "posted", locked="3600", counts=False)) == Decimal(3600)
+    split = replace(view(1, "needs_offer", decided="3600", counts=False, extra="1600"), extra_outside=True)
+    assert outside_part(split) == Decimal(1600)
+    assert outside_part(view(1, "posted", locked="1800")) == ZERO
+    assert outside_part(replace(view(2, "posted", locked="850", counts=False), clawed_back=True)) == ZERO
+    assert outside_part(view(1, "held", ask="2000", counts=False)) == ZERO

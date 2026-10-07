@@ -77,6 +77,10 @@ class RoundOut(BaseModel):
     # lands, once the frontend stack no longer reads it.
     would_change_by: float | None
     counts_toward_budget: bool
+    # A9 (spec §12.2): the round's money below the line (a named fund's, outside the budget) and the fund's label.
+    # None when the whole round counts. `counts_toward_budget` stays as it was (a split round reads True there).
+    outside_budget: float | None = None
+    outside_label: str | None = None
     rules_version: int | None
     # "tick" (registrar), "ledger" (automatic tick, D78) or "placement" (To place, D81); None while unposted
     lock_source: str | None = None
