@@ -72,6 +72,12 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
   useFreshAidRulesDraft: () => freshRead,
 }))
 
+/** Opens a card's editor from its own Edit… (the page is chapters of cards, so there are many). */
+const editCard = (section: string) =>
+  userEvent.click(
+    within(screen.getByTestId(`card-head-${section}`)).getByRole('button', { name: 'Edit…' })
+  )
+
 const CONFLICT = 'Someone else changed this; reload and try again'
 
 /** The page's chrome around the tab, as AidSeasonPage mounts it: Approve… lives there, not in the tab (spec §4). */
@@ -138,7 +144,7 @@ beforeEach(() => {
 describe('editing a section (D39; Decisions 14–16)', () => {
   it('says which draft it edits, and saves the section with the version it opened', async () => {
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     expect(
       await screen.findByText('Editing Minimum award and named awards in the rules draft (v4)')
     ).toBeInTheDocument()
@@ -169,7 +175,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
       message: 'awards is not a valid section: awards.minimum: Value error, must not be negative',
     }
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(
@@ -183,7 +189,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
   it('says a save landed in a new version when it would have changed approved rules in use', async () => {
     outcome = { kind: 'ok', value: { ...rulesDraft(), version: 5, branched_from: 4 } }
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByTestId('rules-notice')).toHaveTextContent(
@@ -193,7 +199,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
 
   it("won't send a box it can't read, and says why in the box's own words", async () => {
     renderAt('/aid/season/rules?section=award_tables')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('award_tables')
     const tier = await screen.findByRole('textbox', {
       name: 'General › Tiers › Tier 2 › Round 1 %',
     })
@@ -208,7 +214,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
 
   it('keeps names and lists as they are: only figures, yes/no and choices take a box', async () => {
     renderAt('/aid/season/rules?section=programs')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('programs')
     const editor = await screen.findByTestId('section-editor')
     expect(within(editor).queryByRole('textbox')).toBeNull()
     expect(within(editor).getAllByRole('combobox').length).toBeGreaterThan(0)
@@ -217,17 +223,17 @@ describe('editing a section (D39; Decisions 14–16)', () => {
   })
 
   it("reads the rules' own names in the editor, as the read view does (#15)", async () => {
-    renderAt('/aid/season/rules?section=budget')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    renderAt('/aid/season/rules?section=programs')
+    await editCard('programs')
     const editor = await screen.findByTestId('section-editor')
-    // A pool's row reads its label in Pools and in Reserves; the key stays in what is saved.
+    // A pool reads its label, never its key; the key stays in what is saved. (The budget section left this tab.)
     expect(within(editor).queryAllByText('pool_a')).toHaveLength(0)
-    expect(within(editor).getAllByText('Pool A').length).toBeGreaterThan(1)
+    expect(within(editor).getAllByText('Pool A').length).toBeGreaterThan(0)
   })
 
   it('says a locked section saves into a new version and posted amounts stand', async () => {
     renderAt('/aid/season/rules?section=income')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('income')
     expect(
       await screen.findByText(
         'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
@@ -235,20 +241,19 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     ).toBeInTheDocument()
   })
 
-  it('holds the section list still while editing', async () => {
+  it('holds the other cards still while editing', async () => {
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    // The list's cue, and the tab's own pills' (review m2).
-    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(2)
-    const other = document.querySelector('[data-rules-section="budget"]')
-    expect(other?.tagName).toBe('DIV')
+    await editCard('awards')
+    // The lead line's cue (review m2); no other card offers Edit….
+    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(1)
+    expect(screen.queryAllByRole('button', { name: 'Edit…' })).toHaveLength(0)
   })
 })
 
 describe('someone else changed the section (Decision 16; owner ruling 2026-10-02)', () => {
   async function typeMinimum(value: string) {
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     const box = await screen.findByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, value)
@@ -330,7 +335,7 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
       },
     ]
     renderAt('/aid/season/rules?section=tiers')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('tiers')
     const box = await screen.findByLabelText('Income bands › 2 › To')
     await userEvent.clear(box)
     await userEvent.type(box, '45000')
@@ -659,7 +664,7 @@ describe('the approval form is busy until it is done (review I1)', () => {
   it('shows Saving… and holds Cancel while the save is in flight', async () => {
     pending = true
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await screen.findByRole('textbox', { name: 'Minimum award' })
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
@@ -667,16 +672,16 @@ describe('the approval form is busy until it is done (review I1)', () => {
 })
 
 describe('the approval form keeps its own ticks (review I2, m3)', () => {
-  it('keeps the ticks when another section is clicked in the list', async () => {
+  it('keeps the ticks when another chapter is jumped to', async () => {
     server = [twoDraftsDraft()]
     draft = { data: twoDraftsDraft(), isLoading: false, error: null }
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and pools' }))
     expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
-    const other = document.querySelector('[data-rules-section="income"]')
-    if (other === null) throw new Error('no income row')
-    await userEvent.click(other)
+    await userEvent.click(
+      within(screen.getByTestId('chapter-bar')).getByRole('button', { name: /^Programs/ })
+    )
     expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
   })
 
@@ -742,21 +747,21 @@ describe('the approval notice follows what moved (S8-⚠1 interim, review ⚠1)'
 })
 
 describe('the tab holds still while editing or approving (review m1, m2)', () => {
-  it('makes the Approved pill inert while editing, with the same cue', async () => {
+  it('makes the version in effect inert while editing, with the same cue', async () => {
     renderAt('/aid/season/rules?section=awards')
-    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
-    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'v3 in effect' })).toBeInTheDocument()
+    await editCard('awards')
+    expect(screen.queryByRole('link', { name: 'v3 in effect' })).toBeNull()
+    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(1)
   })
 
   it('makes it inert while approving too, and live again after Cancel', async () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await screen.findByRole('checkbox', { name: 'Round 1 award table' })
-    expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'v3 in effect' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'v3 in effect' })).toBeInTheDocument()
   })
 })
 
@@ -835,7 +840,7 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
 
   it('drops what was typed when the season changes', async () => {
     const view = renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     const box = await screen.findByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -846,19 +851,20 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
 
   it('leaves no dead pills and no editor behind when the new season has no rules', async () => {
     const view = renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await screen.findByRole('textbox', { name: 'Minimum award' })
     year = 2028
     draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
     view.rerender(tree())
     expect(await screen.findByText('No rules for 2028 yet.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+    // The lead line has nothing to switch to, and no cue is left behind.
+    expect(within(screen.getByTestId('lead-switch')).queryByRole('link')).toBeNull()
     expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
     // Starting the season brings the draft back: the editor must not open unasked.
     await userEvent.click(screen.getByRole('button', { name: "Start 2028 from 2027's Rules" }))
     draft = { data: rulesDraft(), isLoading: false, error: null }
     view.rerender(tree())
-    expect(await screen.findByRole('button', { name: 'Edit…' })).toBeInTheDocument()
+    expect((await screen.findAllByRole('button', { name: 'Edit…' })).length).toBeGreaterThan(0)
     expect(screen.queryByText(/^Editing /)).toBeNull()
   })
 })
@@ -881,7 +887,7 @@ describe('round 3: what belongs to a season stays with it', () => {
       },
     ]
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     const box = await screen.findByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -907,7 +913,7 @@ describe('round 3: what belongs to a season stays with it', () => {
 
   it('drops the notice when the season changes', async () => {
     const view = renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByTestId('rules-notice')).toBeInTheDocument()
