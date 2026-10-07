@@ -780,3 +780,60 @@ def test_an_ag_session_with_a_parent_is_never_listed_as_missing_a_family_rate() 
     assert "family_rate_missing" not in validate_rules(rules, with_parent).codes()
     orphan = _context(SessionRef(cm_id=1000199, session_type="ag"))
     assert "family_rate_missing" in validate_rules(rules, orphan).codes()
+
+
+def test_a_not_running_session_needs_no_tuition_and_no_program() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "cost.tuition": {
+                "1000101": "2000",
+                "1000103": "6000",
+                "1000104": "5000",
+                "1000301": "3000",
+                "1000401": "900",
+            },
+            "cost.not_running_session_cm_ids": [1000102, 1000999],
+        },
+    )
+    report = validate_rules(rules, _context(SessionRef(cm_id=1000999, session_type="hebrew")))
+    assert "tuition_missing" not in report.codes()
+    assert "unmapped_session" not in report.codes()
+
+
+def test_an_ag_child_of_a_not_running_session_needs_no_tuition() -> None:
+    """Pin. Passes before A2: A1's _ag_children already skips an AG session with a parent."""
+    rules = with_levers(
+        fictional_rules(),
+        {"programs.summer.session_cm_ids": [1000101, 1000102, 1000199], "cost.not_running_session_cm_ids": [1000101]},
+    )
+    context = _context(SessionRef(cm_id=1000199, session_type="ag"))  # no parent: would need its own tuition
+    assert "tuition_missing" in validate_rules(rules, context).codes()
+    context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
+    assert "tuition_missing" not in validate_rules(rules, context).codes()
+
+
+def test_an_id_that_isnt_a_session_this_season_warns() -> None:
+    rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000102, 1000888])
+    issue = next(i for i in validate_rules(rules, _context()).warnings if i.code == "not_running_unknown_session")
+    assert (issue.section, issue.path, issue.session_cm_ids) == ("cost", "cost.not_running_session_cm_ids", [1000888])
+    assert issue.message == "1000888 is marked not running but isn't a session in 2031"
+
+
+def test_without_a_context_no_id_is_judged_unknown() -> None:
+    """Pin. Passes before A2: with no context there is nothing to judge an id against."""
+    rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000888])
+    assert "not_running_unknown_session" not in validate_rules(rules).codes()
+
+
+def test_an_ag_child_of_a_not_running_session_that_maps_to_no_program_is_not_unmapped() -> None:
+    """Regression guard. The child of a not-running parent is skipped by derivation, even when the parent's own type
+    maps nowhere. Written after the code to kill a mutant (the derived children dropped) that survived the plan's tests."""
+    rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000999])
+    context = _context(
+        SessionRef(cm_id=1000999, session_type="hebrew"),
+        SessionRef(cm_id=1000998, session_type="ag", parent_id=1000999),
+    )
+    assert "unmapped_session" not in validate_rules(rules, context).codes()
+    running = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [])
+    assert "unmapped_session" in validate_rules(running, context).codes()

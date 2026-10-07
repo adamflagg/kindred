@@ -28,6 +28,7 @@ describe('codeWords (Decision 7)', () => {
 
   it('has real words, not code words, for every pill that read as one', () => {
     expect(codeWords('in_campminder_not_ticked')).toBe('Mark Posted')
+    expect(codeWords('session_not_running')).toBe('Not running')
     expect(codeWords('no_round1_table')).toBe('No Round 1 table')
     expect(codeWords('round3_not_allowed')).toBe('No Round 3')
     expect(codeWords('round3_not_eligible')).toBe('Round 3 not eligible')

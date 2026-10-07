@@ -36,6 +36,7 @@ from bunking.financial_aid.calculator import (
     RequestInputs,
     calculate,
 )
+from bunking.financial_aid.calculator.engine import NOT_RUNNING_MESSAGE, session_not_running
 from bunking.financial_aid.decisions.rounds import ROUNDS, RoundState
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, DecisionType
@@ -70,6 +71,7 @@ class RequestToPrice:
     r1_ask: Decimal | None
     grants: tuple[GrantInput, ...] = ()
     released_holds: frozenset[str] = frozenset()
+    session_cm_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -272,6 +274,9 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
         if rules is None:
             issues.append(_stop(NO_APPROVED_RULES, "This season's pricing rules are not approved yet"))
         elif item.request is None:
+            if session_not_running(rules, item.session_cm_id):
+                # The reason staff read, though nothing claims the session (CodeRabbit on #3059); spec §7 hold.
+                issues.append(_stop("session_not_running", NOT_RUNNING_MESSAGE))
             issues.append(_stop("not_priceable", item.blocked or "This request cannot be priced yet"))
         else:
             inputs = request_inputs(item, rules)

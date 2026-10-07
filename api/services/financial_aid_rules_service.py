@@ -1348,15 +1348,17 @@ class FinancialAidRulesService:
         """Copy the previous season's latest version into an empty season, every section draft.
 
         Milestone dates are cleared: they belong to a season. Tuition and family-camp
-        rates are cleared too, with a warning on the report: they are keyed by
-        CampMinder session id, and CampMinder reuses session ids across years, so a
-        carried price would silently price this year's session of the same id at last
+        rates and the not-running list are cleared too, with a warning on the report: they
+        are keyed by CampMinder session id, and CampMinder reuses session ids across years,
+        so a carried price would silently price this year's session of the same id at last
         year's rate. Approvals are not carried: a new season's rules go to the board again.
         """
         if await self._store.list_versions(year):
             raise VersionExistsError(f"{year} already has aid rules; make a new version instead")
         prior = await self.load(year - 1)
-        cost = prior.document.cost.model_copy(update={"tuition": {}, "family_rates": []})
+        cost = prior.document.cost.model_copy(
+            update={"tuition": {}, "family_rates": [], "not_running_session_cm_ids": []}
+        )
         document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection(), "cost": cost})
         body = _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
         created = await self._create(body, log_action="start_from_last_year", actor=actor, supersedes=None)
@@ -1367,8 +1369,8 @@ class FinancialAidRulesService:
             severity="warning",
             path="cost.tuition",
             message=(
-                f"Tuition and family-camp rates were not carried from {prior.year}: session ids are reused "
-                f"across years, so enter {year}'s prices"
+                f"Tuition, family-camp rates and the not-running list were not carried from {prior.year}: "
+                f"session ids are reused across years, so enter {year}'s prices"
             ),
         )
         return created, ValidationReport(issues=[cleared, *report.issues])

@@ -227,6 +227,7 @@ const LABELS: Readonly<Record<string, string>> = {
   infant: 'Infant',
   infant_age_cutoff_months: 'Infant under (months)',
   override_reasons: 'Cost override reasons',
+  not_running_session_cm_ids: 'Not running sessions',
   offset_programs: 'Programs grants offset',
   offset_mode: 'Offset mode',
   minimum_after_grants: 'Minimum paid on top of a partial grant',

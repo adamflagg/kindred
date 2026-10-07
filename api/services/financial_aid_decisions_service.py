@@ -511,6 +511,7 @@ def _to_price(
             rounds=rounds,
             r1_ask=Decimal(ask.effective) if ask.effective != "" else None,
             grants=grants,
+            session_cm_id=request.session_cm_id,
         )
 
     if not live or application is None:

@@ -18,6 +18,7 @@
     "no_approved_rules",
     "not_priceable",
     "payer_shares_incomplete",
+    "session_not_running",
     "unmatched_session"
   ]
 }

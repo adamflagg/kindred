@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Final
 
 from bunking.financial_aid.calculator.cost import CostResolution, resolve_cost
 from bunking.financial_aid.calculator.grants import grants_offset, grants_since_round1, incentive_adjustments
@@ -131,12 +132,26 @@ class _Work:
         )
 
 
+NOT_RUNNING_MESSAGE: Final = (
+    "This session is not running this season: cancel the request or move it to a session that runs"
+)
+
+
+def session_not_running(rules: AidRules, session_cm_id: int | None, ag_parent_cm_id: int | None = None) -> bool:
+    """Spec §7: the session, or an AG session's parent, is on this season's not-running list."""
+    not_running = set(rules.cost.not_running_session_cm_ids)
+    return session_cm_id in not_running or (ag_parent_cm_id is not None and ag_parent_cm_id in not_running)
+
+
 def calculate(application: ApplicationInputs, request: RequestInputs, rules: AidRules) -> CalcResult:
     work = _Work(discretionary=request.discretionary_amount)
     income = household_income(application, rules)
     work.trace.extend(income.trace)
     work.adjusted_income = income.adjusted_income
 
+    if session_not_running(rules, request.session_cm_id, request.ag_parent_cm_id):
+        # First, so it is the reason staff read even when the program is unknown or closed (CodeRabbit on #3059).
+        work.issue("session_not_running", "hold", NOT_RUNNING_MESSAGE, "cost")
     program = rules.programs.get(request.program_key)
     if program is None:
         work.issue(

@@ -121,6 +121,10 @@ describe('how each setting reads (rules/schema.py)', () => {
     expect(labelOf(['some_new_field'])).toBe('Some new field')
   })
 
+  it('words the not-running list as staff read it', () => {
+    expect(labelOf(['cost', 'not_running_session_cm_ids'])).toBe('Not running sessions')
+  })
+
   it('reads money, percentage points, dates, yes/no and choices as staff do', () => {
     expect(formatSetting('100', ['minimum'])).toBe('$100')
     expect(formatSetting('74.5', ['general', 'tiers', '3', 'r1_pct'])).toBe('74.5%')
