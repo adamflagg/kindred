@@ -753,7 +753,12 @@ class FinancialAidRulesService:
         (`carry_forward`), and the total a posted round read must stay put there."""
         rows = await self._store.list_versions(year)
         round_one = ROUND_SECTIONS[1]
-        return any(_to_version(row).section_status[name].state == "locked" for row in rows for name in round_one)
+        for row in rows:
+            # The stored statuses alone: a document the current schema rejects must not fail the draft read.
+            status = status_from_json(_json_object(row, "section_status"))
+            if any(status[name].state == "locked" for name in round_one):
+                return True
+        return False
 
     async def approved_view(self, year: int, version: int | None = None) -> ApprovedRules:
         """D76: the approved rules, read only. Drafts are withheld.
@@ -1127,6 +1132,8 @@ class FinancialAidRulesService:
             if set(fingerprints) != set(named):
                 raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
             _assert_unchanged(current, fingerprints)
+        if "budget" in named:
+            await self._assert_total_unmoved_once_locked(year, current)
         before = await self._pricing_version_safely(year) if self._effects is not None else None
         report = await self.validate_document(current.document)
         at = self._clock()
@@ -1142,6 +1149,15 @@ class FinancialAidRulesService:
                 self._effects, year, current.version, before, actor=actor, operation_id=result.operation_id
             )
         return await self.load(year, current.version), report
+
+    async def _assert_total_unmoved_once_locked(self, year: int, current: RulesVersion) -> None:
+        """Owner 10-06 (b), the approving half: a total saved as a draft before Round 1 posted must not become the
+        season's total after it. With no approved budget yet there is nothing to protect."""
+        if not await self._budget_total_locked(year):
+            return
+        priced = await self.latest_approved(year, ["budget"])
+        if priced is not None and current.document.budget.total != priced.document.budget.total:
+            raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
 
     async def _pricing_version(self, year: int) -> int:
         found = await self.latest_approved(year, PRICING_SECTIONS)

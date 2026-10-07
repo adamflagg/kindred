@@ -6,6 +6,7 @@ service and the real rules service (no stand-in `lock_section`), then saves the 
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -20,10 +21,9 @@ from api.services.financial_aid_rules_service import (
     FinancialAidRulesService,
 )
 from bunking.financial_aid.rules.schema import SECTION_NAMES
-from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore, seed_request
+from tests.unit.api.services.decisions_fakes import ACTOR, EMMA, FakeDecisionsStore, seed_request, tick
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.api.services.rules_fakes import FakeStore
-from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _tick
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
 T0 = datetime(2027, 3, 9, 18, 0, tzinfo=UTC)
@@ -68,7 +68,7 @@ async def _season_with_round_one_posted() -> FinancialAidRulesService:
         return []
 
     service = FinancialAidDecisionsService(store, capture, no_register, clock=lambda: T0)
-    out = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+    out = await service.tick_posted(YEAR, tick((EMMA, 1, "1500")), ACTOR)
     assert out.sections_not_locked == []
     await rules_store.commit(capture.locks, actor=ACTOR)
     return rules
@@ -89,7 +89,7 @@ async def test_a_round_one_post_leaves_the_budget_section_unlocked_but_locks_its
     rules = await _season_with_round_one_posted()
     assert (await rules.load(YEAR)).section_status["budget"].state == "approved"  # D119: a tick never locks it
     assert (await rules.draft_view(YEAR)).budget_total_locked is True
-    with pytest.raises(BudgetTotalLockedError, match=BUDGET_TOTAL_LOCKED[:20]):
+    with pytest.raises(BudgetTotalLockedError, match=rf"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
         await rules.save_section(YEAR, 1, "budget", _budget(total="520000"), actor=FINANCE)
 
 

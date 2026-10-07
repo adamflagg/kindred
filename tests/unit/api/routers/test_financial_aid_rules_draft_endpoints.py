@@ -222,3 +222,11 @@ def test_a_locked_budget_total_is_422_in_the_lock_words() -> None:
     body = SAVE_BODY | {"content": fictional_rules().budget.model_dump(mode="json") | {"total": "520000"}}
     response = _client().put("/api/financial-aid/rules/2031/sections/budget", json=body)
     assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)
+
+
+def test_approving_a_locked_budget_total_is_422_in_the_lock_words() -> None:
+    service = _stub()
+    service.approve_sections = AsyncMock(side_effect=BudgetTotalLockedError(BUDGET_TOTAL_LOCKED))
+    body = {"sections": ["budget"], "note": "Board, Mar 1", "fingerprints": {"budget": "abc"}}
+    response = _client().post("/api/financial-aid/rules/2031/versions/2/approve", json=body)
+    assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)
