@@ -14,12 +14,13 @@ export const KEPT_CHIP = `${CHIP} bg-forest-700 text-white dark:bg-forest-600`
 export const DRAFT_CHIP = `${CHIP} bg-forest-200 text-forest-900 dark:bg-forest-800 dark:text-forest-100`
 /** The Rules and last season chips: muted, bordered. */
 export const PLAIN_CHIP = `${CHIP} border-border text-muted-foreground border`
-/** A money change that leaves more money (footnote 11, N9): green. */
+/** A money change that leaves more money (footnote 11, N9): green. The underline is an inset shadow, as the mock's
+ * `.mvd`, not a border: a mark sits in the strip's flex lines, where a border would make each line 2px taller. */
 export const CHANGE_MORE =
-  'rounded-sm border-b-2 border-forest-500 bg-forest-100 px-0.5 text-forest-700 dark:border-forest-400 dark:bg-forest-900/70 dark:text-forest-300'
+  'rounded-sm bg-forest-100 px-0.5 text-forest-700 shadow-[inset_0_-2px_0_var(--color-forest-500)] dark:bg-forest-900/70 dark:text-forest-300 dark:shadow-[inset_0_-2px_0_var(--color-forest-400)]'
 /** A money change that leaves less: amber. */
 export const CHANGE_LESS =
-  'rounded-sm border-b-2 border-amber-500 bg-amber-100/75 px-0.5 text-amber-900 dark:border-amber-500 dark:bg-amber-900/55 dark:text-amber-100'
+  'rounded-sm bg-amber-100/75 px-0.5 text-amber-900 shadow-[inset_0_-2px_0_var(--color-amber-500)] dark:bg-amber-900/55 dark:text-amber-100 dark:shadow-[inset_0_-2px_0_var(--color-amber-500)]'
 /** A changed box (the Rules editor's `chg`). */
 export const BOX_CHANGED = 'border-amber-500 bg-amber-50 dark:border-amber-500 dark:bg-amber-900/30'
 /** A box holding a bad figure. */
