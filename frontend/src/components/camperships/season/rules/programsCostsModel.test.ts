@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
+import type { ApiAidValidationIssue } from '../../../../types/api-types'
 import { CATALOG, GROUPS, pcDoc } from './programsCostsFixtures'
 import {
+  agWords,
   buildContents,
   cardView,
+  changesSince,
   editKey,
   fixWords,
+  groupPill,
   kindFor,
+  noGroupCount,
+  noGroupPins,
   NOT_OPEN,
   pickTarget,
+  pricePins,
   resolveProgram,
   type EditField,
 } from './programsCostsModel'
@@ -280,5 +287,68 @@ describe('buildContents (spec §4.5, §5.2 J, §6)', () => {
 
   it('a prices-only Save sends cost alone', () => {
     expect(Object.keys(ok(save([[1000101, 't', '6895']])).contents)).toEqual(['cost'])
+  })
+})
+describe('changesSince (spec §5.2 D)', () => {
+  it('says each change in session words', () => {
+    const approved = pcDoc()
+    const draft = pcDoc()
+    draft.cost.tuition = { ...draft.cost.tuition, '1000101': '6895' }
+    draft.cost.family_rates = [
+      ...(draft.cost.family_rates ?? []),
+      { session_cm_id: 1000202, standard: '425', infant: '600' },
+    ]
+    draft.programs['teen']!.session_cm_ids = []
+    draft.programs['not_aided']!.session_cm_ids = [1000901, 1000110]
+    draft.cost.not_running_session_cm_ids = [1000101]
+    expect(changesSince(approved, draft, GROUPS, CATALOG)).toEqual([
+      { lead: 'Session 2', was: '$6,695', now: '$6,895' },
+      { lead: 'Family Camp B standard', was: 'No price yet', now: '$425' },
+      { lead: 'Family Camp B infant', was: 'No price yet', now: '$600' },
+      { lead: 'Winter Retreat', was: 'Camp', now: 'Not open to aid' },
+      { lead: 'Session 2', was: null, now: 'not running' },
+      { lead: 'Quest: Rivers', was: null, now: 'running again' },
+    ])
+  })
+})
+
+describe('the warnings on the rows (spec §5.2 C, G, I)', () => {
+  const issue = (code: string, ids: number[], severity = 'warning') =>
+    ({
+      section: 'cost',
+      code,
+      severity,
+      path: 'cost',
+      message: '',
+      session_cm_ids: ids,
+    }) as ApiAidValidationIssue
+  it('pins a price warning to its sessions and words the group pill', () => {
+    const pins = pricePins([
+      issue('tuition_missing', [1000110]),
+      issue('group_mismatch', [1000101]),
+    ])
+    expect([...pins]).toEqual([1000110])
+    expect(groupPill(view().groups[0]!, pins)).toBe('1 with no price')
+    const all = pricePins([issue('price_missing', [1000501])])
+    expect(groupPill(view().groups[2]!, all)).toBe('No prices yet')
+    expect(groupPill(view().groups[1]!, all)).toBeNull()
+  })
+  it('pins the server’s "in no group" error', () => {
+    expect([
+      ...noGroupPins([{ ...issue('unmapped_session', [1000902], 'error'), section: 'programs' }]),
+    ]).toEqual([1000902])
+  })
+  it('counts "in no group" on drawn rows only: an AG session follows its parent’s row (Review Focus 6)', () => {
+    const pins = noGroupPins([
+      { ...issue('unmapped_session', [1000902, 1000103], 'error'), section: 'programs' },
+    ])
+    expect(noGroupCount(view(), pins)).toBe(1) // 1000103 is an AG session the card never draws
+  })
+})
+
+describe('the AG line (one session, or several)', () => {
+  it('agrees in number', () => {
+    expect(agWords(1)).toBe("1 AG session uses its parent session's price")
+    expect(agWords(3)).toBe("3 AG sessions use their parent session's price")
   })
 })

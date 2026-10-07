@@ -4,7 +4,7 @@
  * stay in the data (ground rule 1); a group is drawn from its sessions.
  */
 import type { CatalogSession } from '../../../../hooks/camperships/useAidSessionCatalog'
-import type { ApiAidGroup } from '../../../../types/api-types'
+import type { ApiAidGroup, ApiAidValidationIssue } from '../../../../types/api-types'
 import { boxText, parseSetting, type FieldSpec } from './sectionEdit'
 
 export const NOT_OPEN = 'none'
@@ -358,3 +358,121 @@ export function buildContents(
   if (!same(cost, doc.cost)) contents.cost = cost as Record<string, unknown>
   return { kind: 'ok', contents }
 }
+
+export interface ChangeLine {
+  readonly lead: string
+  readonly was: string | null
+  readonly now: string
+}
+
+/** A price as the changes line words it: "$6,695", or "No price yet" when none is stored. */
+export const priceWords = (value: string | null) =>
+  value === null ? 'No price yet' : `$${moneyText(value)}`
+
+/** The group header's AG line: AG sessions are never drawn, only counted. */
+export const agWords = (n: number) =>
+  n === 1
+    ? "1 AG session uses its parent session's price"
+    : `${String(n)} AG sessions use their parent session's price`
+
+const NOT_OPEN_WORDS = 'Not open to aid'
+
+/** What changed since the approved rules, in session words (spec §5.2 D): prices, then groups, then Not running. */
+export function changesSince(
+  approved: ProgramsCostsDoc,
+  draft: ProgramsCostsDoc,
+  groups: readonly ApiAidGroup[],
+  sessions: readonly CatalogSession[]
+): ChangeLine[] {
+  const none: ReadonlySet<number> = new Set()
+  const before = cardView(approved, groups, sessions, none)
+  const after = cardView(draft, groups, sessions, none)
+  const order = [...after.groups.flatMap((g) => [...g.running, ...g.notRunning]), ...after.notOpen]
+  const was = new Map(
+    [...before.groups.flatMap((g) => [...g.running, ...g.notRunning]), ...before.notOpen].map(
+      (r) => [r.session.cmId, r] as const
+    )
+  )
+  const groupWords = (row: CardRow) =>
+    row.group === NOT_OPEN
+      ? NOT_OPEN_WORDS
+      : (groups.find((g) => g.pool === row.group)?.label ?? row.group)
+  const lines: ChangeLine[] = []
+  for (const row of order) {
+    const old = was.get(row.session.cmId)
+    const name = row.session.name
+    if (old === undefined) continue
+    if (old.tuition !== row.tuition)
+      lines.push({ lead: name, was: priceWords(old.tuition), now: priceWords(row.tuition) })
+    if (old.standard !== row.standard)
+      lines.push({
+        lead: `${name} standard`,
+        was: priceWords(old.standard),
+        now: priceWords(row.standard),
+      })
+    if (old.infant !== row.infant)
+      lines.push({
+        lead: `${name} infant`,
+        was: priceWords(old.infant),
+        now: priceWords(row.infant),
+      })
+  }
+  for (const row of order) {
+    const old = was.get(row.session.cmId)
+    if (old !== undefined && old.group !== row.group) {
+      lines.push({ lead: row.session.name, was: groupWords(old), now: groupWords(row) })
+    }
+  }
+  // Newly not running first, then running again: the order the plan's test pins (a walk of the draft's card order
+  // alone would put "running again" first, since a running row precedes the not-running fold).
+  for (const nowNotRunning of [true, false]) {
+    for (const row of order) {
+      const old = was.get(row.session.cmId)
+      if (
+        old === undefined ||
+        old.notRunning === row.notRunning ||
+        row.notRunning !== nowNotRunning
+      )
+        continue
+      lines.push({
+        lead: row.session.name,
+        was: null,
+        now: nowNotRunning ? 'not running' : 'running again',
+      })
+    }
+  }
+  return lines
+}
+
+const PRICE_CODES: ReadonlySet<string> = new Set([
+  'price_missing',
+  'tuition_missing',
+  'family_rate_missing',
+])
+const idsOf = (
+  issues: readonly ApiAidValidationIssue[],
+  match: (code: string) => boolean
+): ReadonlySet<number> =>
+  new Set(issues.filter((i) => match(i.code)).flatMap((i) => i.session_cm_ids ?? []))
+
+/** The sessions a cost warning is about (§5.2 C): their rows carry the grey mark. */
+export const pricePins = (issues: readonly ApiAidValidationIssue[]): ReadonlySet<number> =>
+  idsOf(issues, (code) => PRICE_CODES.has(code))
+
+/** The sessions the server's "in no group" error names (§5.2 G). */
+export const noGroupPins = (issues: readonly ApiAidValidationIssue[]): ReadonlySet<number> =>
+  idsOf(issues, (code) => code === 'unmapped_session')
+
+/** The group header's pill: "No prices yet" when every priced row lacks one, else "n with no price" (§5.2 I). */
+export function groupPill(group: CardGroup, pins: ReadonlySet<number>): string | null {
+  const priceable = group.running.filter((r) => r.kind !== 'typed')
+  const missing = priceable.filter((r) => pins.has(r.session.cmId))
+  if (missing.length === 0) return null
+  return missing.length === priceable.length
+    ? 'No prices yet'
+    : `${String(missing.length)} with no price`
+}
+
+/** Drawn Not open to aid rows the server pinned: an AG session is never drawn, so it never counts (review M7). */
+export const noGroupCount = (view: CardView, pins: ReadonlySet<number>): number =>
+  view.notOpen.filter((r) => pins.has(r.session.cmId)).length
