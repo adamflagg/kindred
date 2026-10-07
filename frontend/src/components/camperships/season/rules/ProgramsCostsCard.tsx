@@ -60,8 +60,9 @@ export interface ProgramsCostsCardProps {
 const NO_SESSIONS: ReadonlySet<number> = new Set()
 
 /**
- * Draft beats In effect beats Locked (spec §5.2 B). On a tie the pill is the same either way, and the meta is the newer
- * stamp's (`stamps`: each section's own approved / edited / locked time); with no stamps, or equal ones, the first's.
+ * Draft beats In effect beats Locked (spec §5.2 B). On a tie the newer stamp's section is returned whole, pill and meta
+ * (`stamps`: each section's own approved / edited / locked time); with no stamps, or equal ones, programs'. Two drafts'
+ * pills can differ in their change count; the card re-words a Draft pill from its own changes when a version is in effect.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the plan's test imports it from the card
 export function combinedStatus(
@@ -215,8 +216,10 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
       ...(wasView?.notOpen ?? []),
     ].map((r) => [r.session.cmId, r] as const)
   )
+  // "newly" is the flag's own change (programs-costs-v3: `changed(id, 'nr')`), wherever the row was drawn: a session
+  // already not running while Not open to aid isn't newly so after a move into a group.
   const wasNotRunning = new Set(
-    wasView?.groups.flatMap((g) => g.notRunning.map((r) => r.session.cmId))
+    [...was.values()].filter((r) => r.notRunning).map((r) => r.session.cmId)
   )
   const status =
     approvedDoc !== null && p.status.pill.startsWith('Draft')

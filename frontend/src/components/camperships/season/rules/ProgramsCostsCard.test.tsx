@@ -104,6 +104,20 @@ describe('ProgramsCostsCard', () => {
     expect(screen.getByText('Staff Week')).toBeInTheDocument()
   })
 
+  it('says "newly" only on a session whose Not running flag changed, wherever it was drawn', async () => {
+    const approved = pcDoc()
+    approved.cost.not_running_session_cm_ids = [1000106, 1000901] // Staff Week: not open, and not running
+    const draft = pcDoc()
+    draft.cost.not_running_session_cm_ids = [1000106, 1000901, 1000104] // Starter Session newly
+    draft.programs['summer']?.session_cm_ids?.push(1000901) // Staff Week moved into Camp, still not running
+    if (draft.programs['not_aided']) draft.programs['not_aided'].session_cm_ids = []
+    render(<ProgramsCostsCard {...props({ draftDoc: draft, approved: wrap(approved) })} />)
+    await userEvent.click(screen.getByRole('button', { name: /Not running \(3\)/ }))
+    expect(within(screen.getByTestId('pc-off-1000104')).getByText('newly')).toBeInTheDocument()
+    expect(within(screen.getByTestId('pc-off-1000901')).queryByText('newly')).toBeNull()
+    expect(within(screen.getByTestId('pc-off-1000106')).queryByText('newly')).toBeNull()
+  })
+
   it('marks a session in no group red, with the line’s chip counting drawn rows only', async () => {
     const issues: ApiAidValidationIssue[] = [
       {
