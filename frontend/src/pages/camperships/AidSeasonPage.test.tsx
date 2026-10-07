@@ -3,7 +3,7 @@
  * tab while the date is past (only Rounds & budget shows that date; I6). The tabs' own bodies are
  * mocked: each has its own tests.
  */
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,6 +38,8 @@ vi.mock('../../hooks/camperships/useAidRulesWrites', () => ({
 }))
 vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
   RoundsBudgetTab: () => <div>Rounds and budget body</div>,
+  RoundsBudgetScope: () => <span>Scope stub</span>,
+  RoundsBudgetCsv: () => <button type="button">Download CSV</button>,
 }))
 vi.mock('../../components/camperships/season/HistoryTab', () => ({
   HistoryTab: () => <div>History body</div>,
@@ -174,6 +176,21 @@ describe('the tab bar right side (spec §4; Review Focus 5)', () => {
       expect(within(nav).getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
     }
   )
+
+  it('puts the scope first and Download CSV last on Rounds & budget only (Task 38)', () => {
+    granted = FINANCE
+    renderAt('/aid/season/rounds-budget')
+    const nav = screen.getByRole('navigation')
+    const right = [...nav.querySelectorAll('button, span')]
+    const names = right.map((el) => el.textContent)
+    expect(names.indexOf('Scope stub')).toBeGreaterThan(-1)
+    expect(names.indexOf('Scope stub')).toBeLessThan(names.indexOf('Approve…'))
+    expect(names.indexOf('Approve…')).toBeLessThan(names.indexOf('Download CSV'))
+    cleanup()
+    renderAt('/aid/season/history')
+    expect(screen.queryByText('Scope stub')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
+  })
 
   it('never shows Approve… to the registrar', () => {
     granted = REGISTRAR

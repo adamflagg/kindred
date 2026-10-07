@@ -24,9 +24,6 @@ export function ForwardDemand({
   if (groups.length === 0) return null
   return (
     <section className="space-y-1.5" data-testid="forward-demand">
-      <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-        Demand still to come: asks, shown, never counted in Remaining
-      </h2>
       <div className={TABLE_CARD}>
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>

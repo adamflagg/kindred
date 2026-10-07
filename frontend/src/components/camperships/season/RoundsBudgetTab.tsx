@@ -1,143 +1,209 @@
 import { Download } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
-import { useAidBudget } from '../../../hooks/camperships/useAidBudget'
+import { Permission } from '../../../constants/permissions'
 import { useAidAsOf } from '../../../hooks/camperships/useAidAsOf'
+import { useAidBudget } from '../../../hooks/camperships/useAidBudget'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
+import { useAidRulesDraft } from '../../../hooks/camperships/useAidRules'
 import { useYear } from '../../../hooks/useCurrentYear'
+import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidBudget } from '../../../types/api-types'
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
-import { AMBER_NOTE, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import { aidHref, type AidView } from '../kit/asOf'
 import { withLinkLine } from '../kit/csv'
-import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
-import {
-  BUDGET_CSV_HEADERS,
-  belowTheLine,
-  budgetCsvName,
-  budgetCsvRows,
-  budgetTypeLines,
-  budgetRows,
-  parseFolded,
-  scopePool,
-  stripRounds,
-  toggleFolded,
-} from './budgetModel'
-import { BudgetStrip } from './BudgetStrip'
-import { BudgetTable } from './BudgetTable'
-import { BudgetTypeLines } from './BudgetTypeLines'
-import { demandGroups } from './demandModel'
-import { ForwardDemand } from './ForwardDemand'
+import { CS_BTN_TOOL, CS_LINK, CS_PANEL, CS_PILL } from '../kit/csType'
+import { scopePool, budgetCsvName } from './budgetModel'
+import { BUDGET_CSV_HEADERS, budgetCsvRows, noPoolCommitted, poolCards } from './budgetCards'
+import { BudgetCard } from './BudgetCard'
+import { BudgetFoldLines } from './BudgetFoldLines'
+import { parseOpenKeys, toggleOpenKey } from './foldLinesModel'
+import { draftPillWords, planOf, previewFigures, type TypedPlan } from './planModel'
+import { NoPoolCard, PoolCard } from './PoolCard'
 
 const SURFACE = 'season-rounds-budget'
+
+/** "‹Pool› only · All Pools ›" on the tab bar's right (spec §4), only on a one-pool page. */
+export function RoundsBudgetScope() {
+  const year = useYear()
+  const asOf = useAidAsOf()
+  const [params] = useSearchParams()
+  const pool = params.get('pool')
+  const budget = useAidBudget().data
+  const scope = budget && pool !== null ? budget.pools.find((p) => p.pool === pool) : undefined
+  if (scope === undefined) return null
+  return (
+    <span className={CS_PANEL}>
+      <b>{scope.label}</b> only ·{' '}
+      <Link to={aidHref('/aid/season/rounds-budget', { year, asOf })} className={CS_LINK}>
+        All Pools ›
+      </Link>
+    </span>
+  )
+}
+
+/** Download CSV on the tab bar's right (spec §5.2 H): every pool, round and the total, whatever is folded. */
+export function RoundsBudgetCsv() {
+  const year = useYear()
+  const asOf = useAidAsOf()
+  const [params] = useSearchParams()
+  const pool = params.get('pool')
+  const budget = useAidBudget().data
+  if (budget === undefined) return null
+  const scope = pool === null ? null : (budget.pools.find((p) => p.pool === pool)?.label ?? null)
+  const download = () =>
+    downloadCsv(
+      buildCsvContent(
+        BUDGET_CSV_HEADERS,
+        withLinkLine(budgetCsvRows(budget, pool), window.location.href)
+      ),
+      budgetCsvName(year, scope, asOf.kind === 'past' ? asOf.date : null)
+    )
+  return (
+    <button type="button" className={CS_BTN_TOOL} onClick={download}>
+      <Download className="h-4 w-4" />
+      Download CSV
+    </button>
+  )
+}
 
 function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidView }) {
   const [params, setParams] = useSearchParams()
   const pool = params.get('pool')
-  const foldRaw = params.get('fold')
-  const folded = useMemo(() => parseFolded(foldRaw), [foldRaw])
+  const openRaw = params.get('open')
+  const open = useMemo(() => parseOpenKeys(openRaw), [openRaw])
   const { numberOf } = useAidDefinitions(SURFACE)
-  const scope = scopePool(budget, pool)
-  const rows = useMemo(() => budgetRows(budget, { pool, folded }), [budget, pool, folded])
-  const below = useMemo(() => belowTheLine(budget, pool, view), [budget, pool, view])
-  const typeLines = useMemo(() => budgetTypeLines(budget, pool), [budget, pool])
-  const strip = useMemo(() => stripRounds(budget.strip, view), [budget.strip, view])
-  const demand = useMemo(() => demandGroups(budget, pool, view), [budget, pool, view])
-
-  // A fold is a view state, so it lives in the URL (D15), replaced rather than pushed: Back
-  // returns to the page before, not through every fold.
+  const { hasPermission } = usePermissions()
+  const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
+  const draft = useAidRulesDraft({ enabled: finance })
+  const live = view.asOf.kind !== 'past'
+  const canPlan = finance && live && budget.rules_version !== null && draft.data !== undefined
+  const [editing, setEditing] = useState(false)
+  const [typed, setTyped] = useState<TypedPlan | null>(null)
   // setParams changes identity on every URL change; a ref keeps `toggle` stable.
   const setParamsRef = useRef(setParams)
   useEffect(() => {
     setParamsRef.current = setParams
   }, [setParams])
+  // A card or fold line is a view state, so it lives in the URL (D15), replaced rather than pushed.
   const toggle = useCallback(
     (key: string) =>
       setParamsRef.current(
         (previous) => {
           const next = new URLSearchParams(previous)
-          const value = toggleFolded(parseFolded(previous.get('fold')), key)
-          if (value === null) next.delete('fold')
-          else next.set('fold', value)
+          next.delete('fold') // today's ?fold= is retired
+          const value = toggleOpenKey(parseOpenKeys(previous.get('open')), key)
+          if (value === null) next.delete('open')
+          else next.set('open', value)
           return next
         },
         { replace: true }
       ),
     []
   )
-
-  const allPools = aidHref('/aid/season/rounds-budget', view)
+  const scope = scopePool(budget, pool)
   if (scope === undefined) {
     return (
-      <p className="text-muted-foreground text-sm">
+      <p className={`${CS_PANEL} text-muted-foreground`}>
         {`No pool "${pool ?? ''}" in ${String(view.year)}'s budget. `}
-        <Link to={allPools} className="text-primary hover:underline">
+        <Link to={aidHref('/aid/season/rounds-budget', view)} className={CS_LINK}>
           All Pools ›
         </Link>
       </p>
     )
   }
-
-  const download = () =>
-    downloadCsv(
-      buildCsvContent(BUDGET_CSV_HEADERS, withLinkLine(budgetCsvRows(rows), window.location.href)),
-      budgetCsvName(
-        view.year,
-        pool === null ? null : scope.label,
-        view.asOf.kind === 'past' ? view.asOf.date : null
+  const plan =
+    draft.data === undefined
+      ? null
+      : planOf(draft.data.document.budget as Parameters<typeof planOf>[0])
+  const keys = plan?.pools.map((p) => p.key) ?? []
+  const preview = editing && typed !== null ? previewFigures(typed, budget, keys) : null
+  const budgetRow = draft.data?.sections.find((s) => s.section === 'budget')
+  const draftPill =
+    finance &&
+    draft.data !== undefined &&
+    budgetRow?.status.state === 'draft' &&
+    budgetRow.changes.length > 0
+      ? draftPillWords(draft.data.version, budgetRow.changes.length)
+      : null
+  const openEditor = () => {
+    if (plan === null) return
+    if (pool !== null) {
+      setParamsRef.current(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          next.delete('pool')
+          return next
+        },
+        { replace: true }
       )
+    }
+    setTyped(plan.plan)
+    setEditing(true)
+  }
+  const cards = poolCards(budget, pool)
+  const none = pool === null ? noPoolCommitted(budget) : null
+  const scopedPills =
+    pool === null ? null : (
+      <>
+        {budget.rules_version === null && (
+          <span className={CS_PILL.amber}>no approved rules: nothing allocated yet</span>
+        )}
+        {!live && <span className={CS_PILL.muted}>past date: exact figures only</span>}
+      </>
     )
-
   return (
     <div className="space-y-3">
-      {budget.rules_version === null && (
-        <p className={AMBER_NOTE}>
-          No approved rules price {view.year} yet, so nothing is allocated: Allocated and Remaining
-          fill in once finance approves the budget.
-        </p>
+      {pool === null && (
+        <BudgetCard
+          budget={budget}
+          view={view}
+          open={open}
+          onToggle={toggle}
+          numberOf={numberOf}
+          preview={preview}
+          editing={editing}
+          draftPill={draftPill}
+          canPlan={canPlan}
+          onEditPlan={openEditor}
+        >
+          {/* Task 39 mounts EditPlan here, while `editing` and a typed plan are held. */}
+        </BudgetCard>
       )}
-      {(budget.not_rebuilt ?? []).length > 0 && (
-        <p className={AMBER_NOTE}>
-          A past date shows what the dashboard can rebuild exactly: a figure it can&apos;t reads
-          &ldquo;—&rdquo;, never an estimate.
-        </p>
-      )}
-      <BudgetStrip rounds={strip} scoped={pool !== null} />
-      <div className="flex flex-wrap items-center gap-2.5">
-        {pool !== null && (
-          <span className="text-sm">
-            <b>{scope.label}</b> only ·{' '}
-            <Link to={allPools} className="text-primary hover:underline">
-              All Pools ›
-            </Link>
-          </span>
-        )}
-        <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
-          <Download className="h-4 w-4" />
-          Download CSV
-        </button>
-      </div>
-      <BudgetTable
-        rows={rows}
-        below={below}
+      {cards.map((card) => (
+        <PoolCard
+          key={card.key}
+          card={card}
+          budget={budget}
+          view={view}
+          open={open}
+          onToggle={toggle}
+          numberOf={numberOf}
+          preview={preview}
+          editing={editing}
+          canPlan={canPlan}
+          onEditPlan={openEditor}
+          scopedPills={scopedPills}
+        />
+      ))}
+      {none !== null && <NoPoolCard committed={none} />}
+      <BudgetFoldLines
+        budget={budget}
+        pool={pool}
         view={view}
-        rulesVersion={budget.rules_version}
-        folded={folded}
+        open={open}
         onToggle={toggle}
         numberOf={numberOf}
       />
-      <ForwardDemand groups={demand} numberOf={numberOf} />
-      <BudgetTypeLines lines={typeLines} />
     </div>
   )
 }
 
 /**
- * Season › Rounds & budget (spec §7.2; D44, D46, D53, D79, D153; budget-v5.html C): the strip,
- * the pools × rounds and below the line, this year only, live or as of the page's past day. A
- * background refetch that fails keeps what loaded (owner ruling Group 5).
+ * Season › Rounds & budget (spec §5; budget-v9.html): lead with the budget and work down: total → pool shares → what
+ * each round committed → Remaining. The definitions sit in the "Notes" fold line. A failed refetch keeps the figures.
  */
 export function RoundsBudgetTab() {
   const year = useYear()
@@ -145,16 +211,13 @@ export function RoundsBudgetTab() {
   const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
   const budget = useAidBudget()
   return (
-    <div className="space-y-3">
-      <QueryGuard
-        isLoading={budget.isLoading}
-        error={budget.data ? null : budget.error}
-        data={budget.data}
-        label="Rounds & budget"
-      >
-        {(data) => <RoundsBudgetBody budget={data} view={view} />}
-      </QueryGuard>
-      <AidDefinitionNotes surface={SURFACE} />
-    </div>
+    <QueryGuard
+      isLoading={budget.isLoading}
+      error={budget.data ? null : budget.error}
+      data={budget.data}
+      label="Rounds & budget"
+    >
+      {(data) => <RoundsBudgetBody budget={data} view={view} />}
+    </QueryGuard>
   )
 }
