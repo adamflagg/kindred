@@ -9,7 +9,6 @@
  * for a criterion the season chose ("child", "upper"), and must not read as the field it spells.
  */
 import type {
-  ApiAidDecisionType,
   ApiAidFieldChange,
   ApiAidProgramProfile,
   ApiAidRulesDocument,
@@ -55,7 +54,6 @@ const options = <T extends string>(set: Readonly<Record<T, true>>): readonly T[]
  * Each choice's options, read from the generated types (rules/schema.py's `Literal`s), never copied
  * by hand: a regenerated `types.gen.ts` that adds or drops an option fails `tsc` here, on the PR that
  * changed the schema (the slice 1 plan review's I5 lesson, without a Python-reading test).
- * A decision type's `kind` is offered without `top_up` (see `choicesFor`).
  */
 const CHOICES: Readonly<Record<string, readonly string[]>> = {
   basis: options({ gross: true, agi: true, confirmed: true } satisfies Options<
@@ -95,26 +93,7 @@ const CHOICES: Readonly<Record<string, readonly string[]>> = {
   late_grant_policy: options({ ignore: true, flag: true, recalculate: true } satisfies Options<
     Doc['grants']['late_grant_policy']
   >),
-  kind: options({
-    full_cost: true,
-    full_cost_after_aid: true,
-    top_up: true,
-    discretionary: true,
-  } satisfies Options<ApiAidDecisionType['kind']>),
   severity: options({ hold: true, warn: true } satisfies Options<Check['severity']>),
-}
-
-/**
- * A choice's options where it sits. A decision type's `kind` never switches to or from `top_up`:
- * a top-up needs a fixed amount and no other kind may have one, and `amount` has no box, so that
- * switch could only come back as a refusal.
- */
-function choicesFor(path: readonly string[]): readonly string[] | undefined {
-  const key = path.at(-1) ?? ''
-  if (key === 'kind') {
-    return path[0] === 'decision_types' ? CHOICES['kind']?.filter((o) => o !== 'top_up') : undefined
-  }
-  return CHOICES[key]
 }
 
 export type FieldSpec =
@@ -224,6 +203,8 @@ const FIXED_KEYS: ReadonlySet<string> = new Set(['label', 'field', 'campminder_d
  */
 function isFixed(path: readonly string[]): boolean {
   const key = path.at(-1) ?? ''
+  // A named award's kind: the server refuses a change (rules/fixed.py `decision_types.*.kind`).
+  if (key === 'kind' && path[0] === 'decision_types') return true
   return FIXED_KEYS.has(key) || key.endsWith('_cm_id') || path[0] === 'program_tables'
 }
 
@@ -267,7 +248,7 @@ export function fieldSpec(
   if (typeof value === 'boolean') return { kind: 'yesno' }
   if (isFixed(path)) return null
   const weight = isEquityWeight(path)
-  const choices = weight ? undefined : choicesFor(path)
+  const choices = weight ? undefined : CHOICES[key]
   if (typeof value === 'string' && choices?.includes(value) === true) {
     return { kind: 'choice', options: choices }
   }

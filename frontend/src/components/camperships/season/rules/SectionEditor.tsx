@@ -8,6 +8,7 @@ import {
 } from '../../../admin/lodging/lodgingStyles'
 import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import { formatSetting, type RulesNames } from './rulesModel'
+import { fixedSettingText } from './rulesCards'
 import { RuleControl } from './RuleControl'
 import { editKey, fieldName, fieldSpec, pathOf, valueAt, type FieldSpec } from './sectionEdit'
 import { useSectionDraft } from './useSectionDraft'
@@ -143,7 +144,7 @@ export function SectionEditor({
 
   const renderValue: RenderSetting = (path, value) => {
     const spec = specOf(path)
-    if (spec === null) return <span>{formatSetting(value, path, names)}</span>
+    if (spec === null) return <span>{fixedSettingText(value, path, names)}</span>
     const key = editKey(path)
     return (
       <Field

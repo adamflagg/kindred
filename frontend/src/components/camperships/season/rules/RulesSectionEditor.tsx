@@ -16,7 +16,7 @@ import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_LABEL, CS_SMALL } from '../../kit/cs
 import type { CellControl } from './CardTables'
 import { savePrecondition } from './precondition'
 import { RuleControl } from './RuleControl'
-import type { CardRow } from './rulesCards'
+import { fixedSettingText, type CardRow } from './rulesCards'
 import { sectionContent } from './rulesDraft'
 import { SECTION_TITLES, changeWords, formatSetting, type RulesNames } from './rulesModel'
 import {
@@ -274,7 +274,7 @@ export function RulesSectionEditor({
   const controlAt = (path: readonly string[]): ReactNode => {
     const value = valueAt(opened.content, path)
     const spec = specOf(path)
-    if (spec === null) return <span>{formatSetting(value, path, names)}</span>
+    if (spec === null) return <span>{fixedSettingText(value, path, names)}</span>
     const key = editKey(path)
     return (
       <span className="inline-flex flex-wrap items-center gap-1.5">

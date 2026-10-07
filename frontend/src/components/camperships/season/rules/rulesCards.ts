@@ -7,7 +7,7 @@ import type { ApiAidRulesSection, ApiAidValidationIssue } from '../../../../type
 import { formatLongDate } from '../../kit/dates'
 import { formatMoney } from '../../kit/money'
 import { codeWords } from '../../requests/attention'
-import { keyWords, labelOf, type RulesNames } from './rulesModel'
+import { formatSetting, keyWords, labelOf, type RulesNames } from './rulesModel'
 import { valueAt } from './sectionEdit'
 
 export type RowType =
@@ -262,6 +262,18 @@ export const CHOICE_WORDS: Readonly<Record<string, Readonly<Record<string, strin
   match: { equals_any: 'is', contains_any: 'contains', at_least: 'at least' },
   cost_source: { catalog: 'Session price', per_person: 'Per person', typed: 'Typed by staff' },
   severity: { hold: 'Hold', warn: 'Warning' },
+}
+
+/** A setting the editor shows but never boxes: a named award's kind in the card's staff words, the rest as formatted. */
+export function fixedSettingText(
+  value: unknown,
+  path: readonly string[],
+  names?: RulesNames
+): string {
+  if (path.at(-1) === 'kind' && path[0] === 'decision_types' && typeof value === 'string') {
+    return CHOICE_WORDS['kind']?.[value] ?? formatSetting(value, path, names)
+  }
+  return formatSetting(value, path, names)
 }
 
 const number = (value: unknown) =>

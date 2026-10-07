@@ -259,12 +259,10 @@ describe('what is never a box, however it looks', () => {
     expect(fieldSpec(['weights', 'prior_year'], '0.5')).toMatchObject({ fraction: true })
   })
 
-  it('offers only the kind switches that can save (m5)', () => {
-    expect(fieldSpec(['decision_types', 'd', 'kind'], 'discretionary')).toEqual({
-      kind: 'choice',
-      options: ['full_cost', 'full_cost_after_aid', 'discretionary'],
-    })
-    expect(fieldSpec(['decision_types', 'd', 'kind'], 'top_up')).toBeNull()
+  it("never offers a named award's kind: the server refuses a kind change", () => {
+    for (const kind of ['full_cost', 'full_cost_after_aid', 'top_up', 'discretionary']) {
+      expect(fieldSpec(['decision_types', 'd', 'kind'], kind)).toBeNull()
+    }
   })
 })
 
