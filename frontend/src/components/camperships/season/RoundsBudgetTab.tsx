@@ -87,6 +87,18 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
     finance && live && budget.rules_version !== null && draft.data !== undefined && !approving
   const [editing, setEditing] = useState(false)
   const [typed, setTyped] = useState<TypedPlan | null>(null)
+  // The editor lives in the Budget card, which a one-pool page and a past date do not show: arriving at either closes
+  // the plan, or the pool cards would keep previewing typing nobody can see, save or cancel. Keyed on the arrival, not
+  // on the state, so the nudge's own step from a one-pool page to All pools keeps the editor it opens.
+  const where = `${pool ?? ''}|${String(live)}`
+  const [seenWhere, setSeenWhere] = useState(where)
+  if (seenWhere !== where) {
+    setSeenWhere(where)
+    if (editing && (pool !== null || !live)) {
+      setEditing(false)
+      setTyped(null)
+    }
+  }
   // setParams changes identity on every URL change; a ref keeps `toggle` stable.
   const setParamsRef = useRef(setParams)
   useEffect(() => {

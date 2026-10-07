@@ -147,16 +147,16 @@ export interface BudgetRow {
 export interface BudgetScope {
   /** `?pool=`: the Remaining line opens Rounds & budget on one pool (D48). Null: every pool. */
   readonly pool: string | null
-  /** `?fold=`: pools shown as their total line only. */
+  /** Pools shown as their total line only. Rounds & budget's pool cards pass none (`?fold=` is retired). */
   readonly folded: ReadonlySet<string>
 }
 
 const hasMoney = (value: number | null) => value !== null && toCents(value) !== 0
 
 /**
- * The table's rows, in the server's pool order: each pool's total line, then (unless folded) its
+ * The budget's rows, in the server's pool order: each pool's total line, then (unless folded) its
  * rounds, with Pending approval as its own line under the round that holds it (D79); then the
- * total, unless the page is on one pool.
+ * total, unless the page is on one pool. The pool cards' rounds tables read them (`roundLines`).
  */
 export function budgetRows(budget: ApiAidBudget, scope: BudgetScope): BudgetRow[] {
   const rows: BudgetRow[] = []

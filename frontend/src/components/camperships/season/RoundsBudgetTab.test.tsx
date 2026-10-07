@@ -5,11 +5,11 @@
  */
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation, useNavigationType } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiAidBudget, ApiAidRulesDraft } from '../../../types/api-types'
-import { BUDGET, pastBudget, pastBudgetUnmasked } from './budgetFixtures'
+import { BUDGET, pastBudget, pastBudgetUnmasked, poolOverShare } from './budgetFixtures'
 import { rulesDraft } from './rules/rulesFixtures'
 import { SeasonChromeContext } from './seasonChrome'
 import { RoundsBudgetCsv, RoundsBudgetScope, RoundsBudgetTab } from './RoundsBudgetTab'
@@ -44,6 +44,7 @@ vi.mock('../../../hooks/camperships/useAidRules', () => ({
 vi.mock('../../../hooks/camperships/useAidRulesWrites', () => ({
   useAidApproveRules: () => ({ mutate: vi.fn(), isPending: false }),
   useFreshAidRulesDraft: () => () => Promise.resolve(draft),
+  useAidSaveRulesSection: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 const download = vi.fn<(content: string, name: string) => void>()
 vi.mock('../../../utils/csvExport', async (importOriginal) => ({
@@ -193,6 +194,59 @@ describe('Rounds & budget (spec §5)', () => {
       </MemoryRouter>
     )
     expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
+  })
+
+  // Scan of #3042: the editor lives in the Budget card, which a one-pool page or a past date does not show; leaving
+  // for either closes the plan, so no card keeps a preview of typing nobody can see, Save, or Cancel.
+  it.each([
+    ['a one-pool page', '/aid/season/rounds-budget?pool=pool_a'],
+    ['a past date', '/aid/season/rounds-budget?as_of=2027-03-15'],
+  ])(
+    'closes Edit Plan… when Back leads to %s, and does not reopen it on Forward',
+    async (_, away) => {
+      granted = FINANCE
+      function Step() {
+        const navigate = useNavigate()
+        return (
+          <>
+            <button type="button" onClick={() => void navigate(-1)}>
+              Back
+            </button>
+            <button type="button" onClick={() => void navigate(1)}>
+              Forward
+            </button>
+          </>
+        )
+      }
+      render(
+        <MemoryRouter initialEntries={[away, '/aid/season/rounds-budget']} initialIndex={1}>
+          <RoundsBudgetTab />
+          <Step />
+        </MemoryRouter>
+      )
+      await userEvent.click(
+        within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
+      )
+      expect(screen.getByLabelText('Total')).toBeInTheDocument()
+      expect(screen.getAllByText('preview').length).toBeGreaterThan(0)
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+      expect(screen.queryByText('preview')).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Forward' }))
+      expect(screen.getByTestId('budget-card')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Total')).toBeNull()
+      expect(screen.queryByText('preview')).toBeNull()
+    }
+  )
+
+  it("opens Edit Plan… from a one-pool page's nudge on All pools, and keeps it open there", async () => {
+    granted = FINANCE
+    read = { data: poolOverShare(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?pool=pool_b')
+    await userEvent.click(
+      within(screen.getByTestId('pool-card-pool_b')).getByRole('button', { name: 'Edit Plan…' })
+    )
+    expect(screen.getByTestId('where').textContent).toBe('')
+    expect(screen.getByLabelText('Total')).toBeInTheDocument()
   })
 
   it('keeps Edit Plan… enabled after a posted round locks the budget total (owner 10-06 (b))', () => {
