@@ -705,6 +705,14 @@ class FinancialAidScenariosService:
         return describe(await self._reference(option, options), option.document)
 
     @staticmethod
+    def _built_on_older(option: OptionRecord, effect: RulesVersion) -> str | None:
+        """Why an option built on an older rules version than the one in effect can't be promoted (A11): its fixed
+        settings were read against that older version, and copying them could bring its tables back."""
+        if option.origin_version < effect.version:
+            return f"built on v{option.origin_version}, v{effect.version} is in effect now: start it again from the rules in effect"
+        return None
+
+    @staticmethod
     def _check_year(year: int, document: AidRules) -> None:
         if document.year != year:
             raise ScenarioRefusedError(f"The document is for {document.year}, not {year}")
@@ -1011,6 +1019,9 @@ class FinancialAidScenariosService:
         if option.document.year != year:
             raise YearMismatchError(f"The document is for {option.document.year}, not {year}")
         rules_draft = await self._rules.load(year)
+        older = self._built_on_older(option, await self._in_effect(year))
+        if older is not None:
+            raise ScenarioRefusedError(older)
         origin = (
             rules_draft
             if option.origin_version == rules_draft.version
@@ -1042,6 +1053,10 @@ class FinancialAidScenariosService:
         origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
         out: dict[str, tuple[bool, str | None]] = {}
         for code, option in options.items():
+            older = self._built_on_older(option, effect)
+            if older is not None:
+                out[code] = (False, older)
+                continue
             if option.origin_version not in origins:
                 origins[option.origin_version] = await self._rules.load(year, option.origin_version)
             try:

@@ -1860,3 +1860,41 @@ async def test_a_draft_with_no_recorded_version_reports_none_and_keeps_the_old_b
     assert draft.built_on_version is None
     kept = await world.service.keep(YEAR, FINANCE)
     assert kept.record.origin_version == 2
+
+
+# --- Make … the Rules Draft is off for an option built on an older version (A11) ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_option_built_on_an_older_version_cannot_be_promoted_until_restarted() -> None:
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules")
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await _v2_approved(world)
+    kept = await world.service.keep(YEAR, FINANCE)
+    options = (await world.service.workspace(YEAR, FINANCE)).options
+    option = next(o for o in options if o.record.code == kept.record.code)
+    assert (option.promotable, option.blocked) == (
+        False,
+        "built on v1, v2 is in effect now: start it again from the rules in effect",
+    )
+    with pytest.raises(ScenarioRefusedError, match="built on v1, v2 is in effect now"):
+        await world.service.make_rules_draft(YEAR, kept.record.code, base_version=2, acknowledged={}, actor=FINANCE)
+    columns = await world.service.compare(YEAR, FINANCE, codes=[kept.record.code])  # Compare is unaffected
+    assert [c.code for c in columns.columns][-1] == kept.record.code
+
+
+@pytest.mark.asyncio
+async def test_an_option_built_on_the_version_in_effect_can_still_be_promoted() -> None:
+    """Pin. The check is strictly older: an option on the version in effect now stays promotable."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.start_from_rules(YEAR, FINANCE)
+    await _kept_b(world)
+    option = next(o for o in (await world.service.workspace(YEAR, FINANCE)).options if o.record.code == "B")
+    assert (option.record.origin_version, option.promotable, option.blocked) == (1, True, None)
+    _, branched_from = await world.service.make_rules_draft(YEAR, "B", base_version=1, acknowledged={}, actor=FINANCE)
+    assert branched_from == 1
