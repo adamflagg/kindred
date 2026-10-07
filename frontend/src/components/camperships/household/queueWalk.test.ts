@@ -34,8 +34,43 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
     const { filters, keep } = gridFiltersFrom(
       new URLSearchParams('from=all&program=quest&round=2&ids=1&year=2027')
     )
-    expect(filters).toEqual({ program: 'quest', pool: null, round: 2, ids: null })
+    expect(filters).toEqual({
+      program: 'quest',
+      pool: null,
+      round: 2,
+      figure: null,
+      counted: false,
+      live: false,
+      ids: null,
+    })
     expect(keep).toEqual({ program: 'quest', round: '2', ids: '1' })
+  })
+
+  it('carries a Season figure, so ] and [ walk the rows the figure opened (owner 10-06)', () => {
+    const { filters, keep } = gridFiltersFrom(
+      new URLSearchParams('from=all&posted=1&counted=1&year=2027')
+    )
+    expect(filters).toMatchObject({ figure: { measure: 'posted', round: 1 }, counted: true })
+    expect(keep).toEqual({ posted: '1', counted: '1' })
+    // Olivia Chen was accepted in Round 1 and is in Round 2 now: the walk still stops at her.
+    const stops = walkStops(GRID_ROWS, requestView('all'), TODAY, {
+      ...NO_FILTERS,
+      figure: { measure: 'accepted', round: 1 },
+    })
+    expect(stops.map((s) => s.householdCmId)).toEqual([1000005])
+    expect(gridFiltersFrom(new URLSearchParams('accepted=all')).keep).toEqual({ accepted: 'all' })
+    expect(gridFiltersFrom(new URLSearchParams('posted=9')).filters.figure).toBeNull()
+  })
+
+  it("carries the grid's counted and live filters, so the walk and Back stay on its rows", () => {
+    const { filters, keep } = gridFiltersFrom(
+      new URLSearchParams('from=all&counted=1&live=1&year=2027')
+    )
+    expect(filters).toMatchObject({ counted: true, live: true })
+    expect(keep).toEqual({ counted: '1', live: '1' })
+    const none = gridFiltersFrom(new URLSearchParams('from=all&counted=0'))
+    expect(none.filters).toMatchObject({ counted: false, live: false })
+    expect(none.keep).toEqual({})
   })
 
   it("follows a grouped view's groups: Needs an offer's Round 1 before its Round 2", () => {

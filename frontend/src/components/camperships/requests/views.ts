@@ -15,6 +15,8 @@ import { formatGap, formatMoney, toCents } from '../kit/money'
 import type { PillTone } from '../kit/kitStyles'
 import type { CellValue, FitContent } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
+import { LIVE_REQUEST_STATUSES } from './gridEditor'
+import { figureCsvWords, matchesFigure, type SeasonFigure } from './seasonFigure'
 import { latestRound, requestStage, roundOf } from './stage'
 
 export type RequestViewKey = 'all' | ApiAidQueue
@@ -525,6 +527,26 @@ export interface GridFilters {
   readonly round: RoundFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
   readonly ids: ReadonlySet<string> | null
+  /** Only rounds whose money counts toward the budget (Rounds & budget's figures; plan review I5). */
+  readonly counted: boolean
+  /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
+  readonly live: boolean
+  /**
+   * A Season Posted / Accepted figure's rows (`posted=` / `accepted=`; interim per owner 10-06, "a
+   * but c eventually": seasonFigure.ts, which slice 4 J replaces with server-sent ids).
+   */
+  readonly figure: SeasonFigure | null
+}
+
+/** A live request, as the budget's demand counts one: a live status and not cancelled (`request.live`). */
+export function isLiveRow(row: ApiAidGridRow): boolean {
+  // A null status is not live, as the server's `_LIVE` reads it; gridEditor's isLiveRequest treats
+  // null as editable on purpose (placeholder rows), so don't unify the two (Task 2 m1).
+  return (
+    row.request_status !== null &&
+    LIVE_REQUEST_STATUSES.includes(row.request_status) &&
+    (row.cancellation ?? null) === null
+  )
 }
 
 export const NO_FILTERS: GridFilters = {
@@ -532,6 +554,9 @@ export const NO_FILTERS: GridFilters = {
   pool: null,
   round: null,
   ids: null,
+  counted: false,
+  live: false,
+  figure: null,
 }
 
 /** The round a request is in now (GridFilters.round): the Stage's, or a cancelled one's last round. */
@@ -546,6 +571,31 @@ function matchesRound(row: ApiAidGridRow, round: RoundFilter | null): boolean {
   return round === null || currentRound(row) === round
 }
 
+/**
+ * `counted` (slice 2): the row has a round whose money counts toward the budget; with `round=`, that
+ * round (the one it is in now, as matchesRound reads it) is the one that must count.
+ */
+function matchesCounted(row: ApiAidGridRow, round: RoundFilter | null, counted: boolean): boolean {
+  if (!counted) return true
+  return row.rounds.some((r) => r.counts_toward_budget && (round === null || r.round === round))
+}
+
+/**
+ * Needs an offer and Pending approval hold a row for a round in that status, and the budget counts
+ * that round's money only when the round counts toward it (budget.py). So `counted` binds to that
+ * round, on `round=` too: a counted posted Round 1 doesn't let in a Round 2 needing an offer outside
+ * the budget (final review I2). Other views are unchanged.
+ */
+function countedInView(row: ApiAidGridRow, view: RequestViewKey, filters: GridFilters): boolean {
+  if (!filters.counted || (view !== 'needs_offer' && view !== 'pending_approval')) return true
+  return row.rounds.some(
+    (r) =>
+      r.status === view &&
+      r.counts_toward_budget &&
+      (filters.round === null || r.round === filters.round)
+  )
+}
+
 export function filterRows(
   rows: readonly ApiAidGridRow[],
   view: RequestViewKey,
@@ -556,7 +606,11 @@ export function filterRows(
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
+      (!filters.live || isLiveRow(row)) &&
       matchesRound(row, filters.round) &&
+      matchesCounted(row, filters.round, filters.counted) &&
+      matchesFigure(row, filters.figure, filters.counted) &&
+      countedInView(row, view, filters) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }
@@ -706,7 +760,9 @@ export function moneyTotal(values: readonly CellValue[]): number | null {
 /** D70's file name (Decision 32): camperships-requests-<view>[-<program>][-<pool>][-round-<n>]-<season>[-as-of-<date>].csv. */
 export function requestsCsvName(
   view: RequestView,
-  filters: Pick<GridFilters, 'program' | 'pool' | 'round'>,
+  filters: Pick<GridFilters, 'program' | 'pool' | 'round'> & {
+    readonly figure?: SeasonFigure | null
+  },
   season: number,
   asOf: string | null
 ): string {
@@ -714,6 +770,7 @@ export function requestsCsvName(
     filters.program,
     filters.pool,
     filters.round === null ? null : `round ${String(filters.round)}`,
+    filters.figure == null ? null : figureCsvWords(filters.figure),
   ]
   return aidCsvFilename({
     surface: 'requests',

@@ -269,7 +269,8 @@ export function attentionItems(
     items.push(
       note(
         ROUND_STATUS_WORDS.pending_approval,
-        `R${String(pending.round)} ${formatMoney(pending.pending_approval)} is above the registrar's limit: finance approves it from Today.`,
+        // Today is parked (owner): the Today redesign may point this back to Today.
+        `R${String(pending.round)} ${formatMoney(pending.pending_approval)} is above the registrar's limit: finance approves it from Requests › Pending approval.`,
         'pending_approval',
         // Finance approves on the request's card (the household page's round actions).
         toRequest(`Approve Round ${String(pending.round)} (Finance)`)
