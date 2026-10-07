@@ -37,24 +37,15 @@ describe('a section card (spec §6.2 D)', () => {
   it('heads with its title, the Locked pill and its footnote, the meta and Approved by on one line, and Edit…', () => {
     card()
     const head = screen.getByTestId('card-head-round3')
-    expect(within(head).getByRole('heading')).toBeInTheDocument()
+    expect(
+      within(head).getByRole('heading', { name: 'Who can ask, and how much' })
+    ).toBeInTheDocument()
     expect(within(head).getByText('Locked')).toHaveClass('bg-stone-200')
     expect(within(head).getByText('1')).toBeInTheDocument() // the Locked footnote
     expect(within(head).getByText(/· Approved by/)).toHaveTextContent(
       '· Approved by Finance, Jan 20 meeting'
     )
     expect(within(head).getByRole('button', { name: 'Edit…' })).toBeInTheDocument()
-  })
-
-  // STOPPED: round3's title "Who can ask, and how much" is Task 19's SECTION_TITLES (back-end PR 5's frontend references),
-  // which this tree does not have yet; un-skip when that lands. The title is the plan's, kept verbatim.
-  it.skip('heads round3 with its Task 19 title', () => {
-    card()
-    expect(
-      within(screen.getByTestId('card-head-round3')).getByRole('heading', {
-        name: 'Who can ask, and how much',
-      })
-    ).toBeInTheDocument()
   })
 
   it('opens a truncated meta in full on a click, never on hover', async () => {

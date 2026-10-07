@@ -946,8 +946,9 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     await userEvent.click(
       within(screen.getByTestId('card-head-programs')).getByRole('button', { name: 'Edit…' })
     )
-    // The title's words are Task 19's (see the skipped test below); the heading's shape is this task's.
-    expect(await screen.findByText(/^Editing .+ in the rules draft \(v\d+\)$/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/^Editing Programs and their sessions in the rules draft \(v\d+\)$/)
+    ).toBeInTheDocument()
     await userEvent.selectOptions(
       screen.getAllByRole('combobox', { name: /Budget pool/ })[0]!,
       'pool_b'
@@ -960,17 +961,6 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
         (p) => p['table_from_equity_class'] === true && !('r1_table' in p)
       )
     ).toBe(true)
-  })
-
-  // UNSKIP after Task 19 (PR 5): SECTION_TITLES.programs reads "Programs and their sessions".
-  it.skip('heads the programs editor with the card title Task 19 gives it', async () => {
-    renderAt('/aid/season/rules?open=5')
-    await userEvent.click(
-      within(screen.getByTestId('card-head-programs')).getByRole('button', { name: 'Edit…' })
-    )
-    expect(
-      await screen.findByText(/^Editing Programs and their sessions in the rules draft \(v\d+\)$/)
-    ).toBeInTheDocument()
   })
 
   it('greys a criterion row live when Enabled is unchecked, and keeps its weights', async () => {
