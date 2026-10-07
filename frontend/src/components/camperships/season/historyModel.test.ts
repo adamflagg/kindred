@@ -225,6 +225,20 @@ describe('who, what kind, and the action words', () => {
     expect(codeText('set_capacity')).toBe('Set capacity')
   })
 
+  it('heads a cost row "Cost set" or "Cost cleared"', () => {
+    expect(actionWords('aid_application_corrections', 'cost_override')).toBe('Cost set')
+    const costRow = (new_value: string) => ({
+      ...ROW_ROUND3_AWARD,
+      entity: 'aid_application_corrections',
+      entity_id: 'cor000000000001',
+      action: 'cost_override',
+      after: { field: 'cost_override', new_value },
+      changes: [{ path: ['new_value'], kind: 'added' as const, after: new_value }],
+    })
+    expect(rowView(costRow('discount:1275.00')).head).toMatch(/^Cost set/)
+    expect(rowView(costRow('')).head).toMatch(/^Cost cleared/)
+  })
+
   it("words the server's own action codes, per collection (⚠ Decision 4)", () => {
     expect(actionWords('aid_decisions', 'post')).toBe('Posted')
     expect(actionWords('aid_decisions', 'unpost')).toBe('Posted undone')
@@ -239,7 +253,6 @@ describe('who, what kind, and the action words', () => {
     expect(actionWords('aid_grants', 'withdraw')).toBe('Withdrawn')
     // ⚠1 interim: money-bearing casework codes read as past-tense facts, never "Correct".
     expect(actionWords('aid_application_corrections', 'correct')).toBe('Corrected')
-    expect(actionWords('aid_application_corrections', 'cost_override')).toBe('Cost override set')
     expect(actionWords('aid_attribution_overrides', 'place_line')).toBe('Line placed')
     expect(actionWords('aid_attribution_overrides', 'reclassify')).toBe('Reclassified')
     expect(actionWords('aid_flag_dispositions', 'leave_at_family_level')).toBe(
