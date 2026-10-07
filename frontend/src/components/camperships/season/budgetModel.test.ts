@@ -398,9 +398,11 @@ describe('a budget link opens every request in its round (end to end; final revi
           roundOut(3, 'pending_approval', { pending_approval: 450 }),
         ],
       }),
-      // Pending on Round 2, with a Round 3 needing an offer: not Round 3's pending.
+      // Pending on Round 2, with a Round 3 needing an offer: Round 2's pending, not Round 3's, though
+      // the request is in Round 3 now (the server's stage is the latest round's).
       queued('reqpend2a00001', 'pending_approval', {
-        stage: { round: 2, code: 'pending_approval', label: 'R2 · Pending approval' },
+        queues: ['pending_approval', 'needs_offer'],
+        stage: { round: 3, code: 'needs_offer', label: 'R3 · Needs an offer' },
         rounds: [
           roundOut(2, 'pending_approval', { pending_approval: 300 }),
           roundOut(3, 'needs_offer'),
@@ -418,6 +420,16 @@ describe('a budget link opens every request in its round (end to end; final revi
     expect(
       opened(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', LIVE, 3), pendingRows)
     ).toEqual(['reqpend3a00001', 'reqpend3out001'])
+    // Round 2's Pending approval lists the request pending in Round 2; Round 3's Needs an offer lists
+    // the same request, which needs its Round 3 offer.
+    // Round 2 carries a pending count of its own here, so its Pending approval link exists.
+    const strip2 = BUDGET.strip.map((r) =>
+      r.round === 2 ? { ...r, pending_approval: { families: 1, requests: 1 } } : r
+    )
+    const href = (roundIndex: number, measure: string) =>
+      stripRounds(strip2, LIVE)[roundIndex]?.counts.find((c) => c.measure === measure)?.href ?? null
+    expect(opened(href(1, 'pending_approval'), pendingRows)).toEqual(['reqpend2a00001'])
+    expect(opened(href(2, 'needs_offer'), pendingRows)).toContain('reqpend2a00001')
     const strip = stripRounds(BUDGET.strip, LIVE)[2]?.counts.find(
       (c) => c.measure === 'pending_approval'
     )

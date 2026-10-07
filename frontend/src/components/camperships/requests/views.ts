@@ -564,8 +564,21 @@ function currentRound(row: ApiAidGridRow): number | null {
   return stage.code === 'cancelled' ? (latestRound(row)?.round ?? null) : null
 }
 
-function matchesRound(row: ApiAidGridRow, round: RoundFilter | null): boolean {
-  return round === null || currentRound(row) === round
+/**
+ * Round= in the Needs an offer and Pending approval views reads the round in that status (what the
+ * Season figure counts, whatever pays for it: R10), so a request pending in Round 2 and needing an
+ * offer in Round 3 is Round 2's pending and Round 3's needs-an-offer. Every other view matches the
+ * round a request is in now.
+ */
+function matchesRound(
+  row: ApiAidGridRow,
+  view: RequestViewKey,
+  round: RoundFilter | null
+): boolean {
+  if (round === null) return true
+  if (view === 'needs_offer' || view === 'pending_approval')
+    return row.rounds.some((r) => r.status === view && r.round === round)
+  return currentRound(row) === round
 }
 
 export function filterRows(
@@ -579,7 +592,7 @@ export function filterRows(
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
       (!filters.live || isLiveRow(row)) &&
-      matchesRound(row, filters.round) &&
+      matchesRound(row, view, filters.round) &&
       matchesFigure(row, filters.figure) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )

@@ -34,6 +34,8 @@ import {
   REQUEST_VIEWS,
   requestsCsvName,
   requestView,
+  type RequestViewKey,
+  type RoundFilter,
   viewColumns,
   viewCount,
   viewCounts,
@@ -206,6 +208,27 @@ describe('filterRows', () => {
       rounds: [roundOut(1, 'needs_offer', { decided: 3600, counts_toward_budget: false })],
     })
     expect(filterRows([outside], 'needs_offer', { ...NO_FILTERS, round: 1 })).toHaveLength(1)
+  })
+
+  it('Needs an offer and Pending approval read round= as the round in that status, not the latest round', () => {
+    // Round 2 pending, Round 3 needing an offer: the request is in Round 3 now.
+    const both = gridRow({
+      queues: ['pending_approval', 'needs_offer'],
+      stage: { round: 3, code: 'needs_offer', label: 'R3 · Needs an offer' },
+      rounds: [
+        roundOut(2, 'pending_approval', { pending_approval: 300 }),
+        roundOut(3, 'needs_offer'),
+      ],
+    })
+    const ids = (view: RequestViewKey, round: RoundFilter) =>
+      filterRows([both], view, { ...NO_FILTERS, round }).length
+    expect(ids('pending_approval', 2)).toBe(1)
+    expect(ids('pending_approval', 3)).toBe(0)
+    expect(ids('needs_offer', 3)).toBe(1)
+    expect(ids('needs_offer', 2)).toBe(0)
+    // Every other view keeps the latest-round match.
+    expect(ids('all', 3)).toBe(1)
+    expect(ids('all', 2)).toBe(0)
   })
 
   it('puts a cancelled request under the last round it reached, and a row with no stage under none', () => {
