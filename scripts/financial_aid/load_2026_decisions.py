@@ -651,6 +651,7 @@ def plan_load(
             else:
                 household = rule.to_household if rule.to_household is not None else award.household_cm_id
                 award = replace(award, person_cm_id=rule.to_person, household_cm_id=household)
+            report(award, "override_applied", note=rule.note)
         request, why = _match(award, requests)
         if request is None:
             report(award, why)
@@ -727,7 +728,7 @@ def plan_load(
                         "campminder": str(cm_only), "override": {"decision": "campminder"},
                     },
                 },
-                note="Reproduced from CampMinder's posted money; the 2026 sheet has no row for it",
+                note="CampMinder only: the 2026 sheet has no row for it; posted at CampMinder's money",
             )
         )  # fmt: skip
         plan.loaded.append(LoadedRequest(rid, household, ZERO, ZERO, cm_only, False, cm_only))

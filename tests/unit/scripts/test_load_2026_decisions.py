@@ -415,6 +415,9 @@ def test_a_session_override_loads_the_sheet_row_onto_the_persons_request_in_that
     post = next(e for e in plan.creates if e.kind == "post")
     assert _snap(post)["reproduced"]["override"] == {"decision": "session", "sheet_session": 1000101}
     assert "session_mismatch" not in _kinds(plan)
+    # Each row loaded under an override is listed, in the override's own words (owner, 10-07).
+    (row,) = [r for r in plan.report if r.kind == "override_applied"]
+    assert (row.sheet_row, row.session_cm_id, row.note) == (2, 1000102, "follows CampMinder")
 
 
 def test_a_session_override_onto_a_request_with_no_session_reads_campminder_by_the_sheets_session() -> None:
@@ -459,6 +462,7 @@ def test_a_campminder_override_records_campminders_money_as_round_1_on_a_request
     rule = _override("campminder", person=1000002, household=1000001, session=1000102)
     plan = _plan([], lines=[_line("2500")], overrides=[rule], trackers={1000001: "C"})
     (post,) = plan.creates  # posted only: with no sheet row there is no stage, so nothing is accepted
+    assert post.note.startswith("CampMinder only")  # labelled as the owner asked (10-07)
     assert (post.request_id, post.round, post.kind, post.amount) == (EMMA, 1, "post", Decimal(2500))
     assert (post.lock_source, post.rules_version) == ("reproduced", 3)
     assert _snap(post)["reproduced"] == {
