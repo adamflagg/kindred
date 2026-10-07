@@ -14,6 +14,7 @@ Per pool (and per round where a figure has one), and in total:
 
 A round whose decision type does not count toward the budget is left out of Posted, Accepted and
 Needs an offer whole, base and extra alike: its money goes below the line (owner ruling 2026-09-30).
+Its request still counts in those figures' request counts, and in Pending approval's, at $0 (A8, owner 10-07).
 
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
