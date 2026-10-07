@@ -57,7 +57,7 @@ import { useAidTableUrl } from './useAidTableUrl'
  * The grid's search box, trued up to the Grants mock's `.search` (owner, 10-06): card background
  * and a compact 3px / 12.5px box (26.75px tall) instead of the audit pages' muted, 38px field.
  */
-const AID_SEARCH_INPUT =
+export const AID_SEARCH_INPUT =
   'bg-card border-border focus:ring-primary/20 w-full rounded-lg border py-[3px] pr-3 pl-9 text-[12.5px] leading-[18.75px] focus:ring-2 focus:outline-none'
 
 export interface CellContext {
