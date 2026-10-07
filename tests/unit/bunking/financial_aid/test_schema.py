@@ -20,7 +20,6 @@ from bunking.financial_aid.rules.schema import (
     QualityCheck,
     R1Percent,
     Round2Table,
-    StageDef,
     TotalPercent,
 )
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever
@@ -35,7 +34,8 @@ _INCOME = {
 }
 
 
-def test_the_fourteen_sections_in_spec_order() -> None:
+def test_the_thirteen_sections_in_spec_order() -> None:
+    """Ruled change (§6.4, §9.9): stages left the schema, so the sections are thirteen."""
     assert SECTION_NAMES == (
         "income",
         "tiers",
@@ -48,7 +48,6 @@ def test_the_fourteen_sections_in_spec_order() -> None:
         "round2",
         "round3",
         "budget",
-        "stages",
         "quality_checks",
         "milestones",
     )
@@ -116,19 +115,6 @@ def test_also_fields_defaults_to_empty_and_accepts_a_list() -> None:
     assert default.also_fields == []
     with_also = EquityCriterion.model_validate({**base, "also_fields": ["pronouns"]})
     assert with_also.also_fields == ["pronouns"]
-
-
-def test_stage_round_is_bounded_1_to_3() -> None:
-    # Exercises "stages.stages.round": the calculator does not read it (sub-project 10
-    # will), but it shares awards.decision_types.*.round's bounds and is proven the
-    # same way -- a bad value is refused, a good one is kept.
-    base = {"code": "r1_offered", "label": "Round 1 offered"}
-    with pytest.raises(ValidationError):
-        StageDef.model_validate({**base, "round": 4})
-    with pytest.raises(ValidationError):
-        StageDef.model_validate({**base, "round": 0})
-    assert StageDef.model_validate({**base, "round": 1}).round == 1
-    assert StageDef.model_validate(base).round is None
 
 
 def test_a_table_either_lists_tiers_or_inherits_and_overrides() -> None:
@@ -220,7 +206,6 @@ _SCHEMA_TYPE_CHECKS: list[tuple[str, Any, Any]] = [
     ("awards.rounding", "half_even", "half_up"),
     ("budget.total", "-1", "750000"),
     ("awards.decision_types.appeal_top_up.round", 4, 3),
-    ("awards.decision_types.appeal_top_up.budget_line", "", "appeal_top_ups"),
     ("awards.decision_types.appeal_top_up.kind", "gift", "top_up"),
     ("awards.decision_types.appeal_top_up.amount", None, "125"),
     ("awards.decision_types.full_cost_program.extra_amount", "-1", "20"),
@@ -315,3 +300,37 @@ def test_the_programs_editor_writes_the_flag_and_no_r1_table() -> None:
     rules = AidRules.model_validate(doc)
     assert (rules.programs["summer"].table_from_equity_class, rules.programs["summer"].r1_table) == (True, None)
     assert rules.awards.minimum_without_table is True
+
+
+CULLED = {
+    "stages": {"stages": [{"code": "r1_offered", "label": "Round 1 offered", "round": 1, "is_offer": True}]},
+}
+
+
+def test_a_stored_v4_shaped_document_with_every_culled_key_loads_and_never_writes_them() -> None:
+    """Review Focus 1, §9.9: stages, incentives, a child rate and a budget line are popped on load."""
+    doc = fictional_rules_json() | CULLED
+    doc["grants"]["incentives"] = {"new_family": {"mode": "ignore"}}
+    doc["cost"]["family_rates"][0]["child"] = "450"
+    doc["awards"]["decision_types"]["appeal_top_up"]["budget_line"] = "top_ups"
+    rules = AidRules.model_validate(doc)
+    dumped = rules.model_dump(mode="json")
+    assert "stages" not in dumped
+    assert "incentives" not in dumped["grants"]
+    assert "child" not in dumped["cost"]["family_rates"][0]
+    assert "budget_line" not in dumped["awards"]["decision_types"]["appeal_top_up"]
+
+
+def test_every_class_has_a_weight_for_every_criterion_zeros_included() -> None:
+    """§9.9: a missing weight already counted as 0; the loader now stores the 0, so the equity editor shows a box."""
+    weights = fictional_rules().equity.weights
+    keys = {c.key for c in fictional_rules().equity.criteria}
+    assert all(set(row) == keys for row in weights.values())
+    assert weights["family"]["bipoc"] == Decimal(0)
+    assert weights["camp"]["bipoc"] == Decimal("0.5")
+
+
+def test_stages_is_no_longer_a_section() -> None:
+    """The cull leaves thirteen sections."""
+    assert "stages" not in SECTION_NAMES
+    assert len(SECTION_NAMES) == 13

@@ -75,24 +75,13 @@ def test_nothing_is_late_before_round_1_is_decided_or_without_a_date() -> None:
     assert grants_offset(req(r1_decided_at=DECIDED, grants_applicable=[_grant("600")]), rules)[0] == Decimal(600)
 
 
-@pytest.mark.parametrize(
-    ("mode", "expected"), [("ignore", (0, 0)), ("reduce_cost", (500, 0)), ("reduce_award", (0, 500))]
-)
-def test_incentive_modes(mode: str, expected: tuple[int, int]) -> None:
-    rules = with_lever(fictional_rules(), "grants.incentives.new_family.mode", mode)
-    reduce_cost, reduce_award, issues = incentive_adjustments(
-        req(incentives=[{"key": "new_family", "amount": "500"}]), rules
+def test_an_incentive_on_a_request_changes_nothing() -> None:
+    """Regression guard. §9.9: incentives are met as "ignore", the only mode any season set; no request carries one."""
+    assert incentive_adjustments(req(incentives=[{"key": "new_family", "amount": "200"}]), fictional_rules()) == (
+        Decimal(0),
+        Decimal(0),
+        [],
     )
-    assert (reduce_cost, reduce_award) == (Decimal(expected[0]), Decimal(expected[1]))
-    assert issues == []
-
-
-def test_an_unknown_incentive_warns_and_changes_nothing() -> None:
-    reduce_cost, reduce_award, issues = incentive_adjustments(
-        req(incentives=[{"key": "mystery", "amount": "500"}]), fictional_rules()
-    )
-    assert (reduce_cost, reduce_award) == (Decimal(0), Decimal(0))
-    assert [(i.code, i.severity) for i in issues] == [("unknown_incentive", "warn")]
 
 
 # --- when a grant became known (slice 3 ask 10: the Register's classifier; D116, D139, D43) ------------------------

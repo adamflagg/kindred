@@ -52,17 +52,16 @@ def test_family_camp_is_headcount_times_the_season_rate() -> None:
     assert (cost.amount, cost.source) == (Decimal(2100), "per_person")
 
 
-def test_children_use_the_standard_rate_unless_a_child_rate_is_set() -> None:
-    # Exercises "cost.family_rates.child": None falls back to the standard rate;
-    # setting it prices children separately.
-    headcount = {"standard": 3, "infants": 1, "children": 2}
-    assert resolve_cost(_family(headcount=headcount), fictional_rules()).amount == Decimal(3300)
+def test_a_stored_child_rate_is_ignored_and_every_non_infant_pays_the_standard_rate() -> None:
+    """Owner 10-06: the child rate is removed. A stored document that still carries one ($450) loads, and its children
+    price at the standard rate ($600)."""
     rules = with_lever(
         fictional_rules(),
         "cost.family_rates",
         [{"session_cm_id": 1000201, "standard": "600", "infant": "300", "child": "450"}],
     )
-    assert resolve_cost(_family(headcount=headcount), rules).amount == Decimal(3000)
+    headcount = {"standard": 3, "infants": 1, "children": 2}
+    assert resolve_cost(_family(headcount=headcount), rules).amount == Decimal(600) * 5 + Decimal(300)
 
 
 def test_a_family_rate_only_applies_to_its_own_session() -> None:

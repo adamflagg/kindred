@@ -268,7 +268,6 @@ export type AidRulesInput = {
   round2: Round2SectionInput
   round3?: Round3SectionInput
   budget: BudgetSectionInput
-  stages?: StagesSection
   quality_checks?: QualityChecksSectionInput
   milestones?: MilestonesSection
 }
@@ -309,7 +308,6 @@ export type AidRulesOutput = {
   round2: Round2SectionOutput
   round3?: Round3SectionOutput
   budget: BudgetSectionOutput
-  stages?: StagesSection
   quality_checks?: QualityChecksSectionOutput
   milestones?: MilestonesSection
 }
@@ -740,7 +738,6 @@ export type ApprovedSectionOut = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   /**
@@ -3509,10 +3506,6 @@ export type DecisionTypeInput = {
    */
   allows_appeal?: boolean
   /**
-   * Budget Line
-   */
-  budget_line: string
-  /**
    * Counts Toward Budget
    */
   counts_toward_budget?: boolean
@@ -3564,10 +3557,6 @@ export type DecisionTypeOutput = {
    * Allows Appeal
    */
   allows_appeal?: boolean
-  /**
-   * Budget Line
-   */
-  budget_line: string
   /**
    * Counts Toward Budget
    */
@@ -3897,7 +3886,6 @@ export type DraftSectionOut = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   status: SectionStatus
@@ -4481,10 +4469,8 @@ export type FaRequested = {
 /**
  * FamilyRate
  *
- * Per-person family-camp rates for one session this season.
- *
- * `standard` prices every non-infant person (CampMinder bills adults and children
- * at the same rate). `child`, when set, prices children separately.
+ * Per-person family-camp rates for one session this season: everyone but infants pays the standard rate
+ * (CampMinder bills adults and children alike; owner 10-06: the child rate removed).
  */
 export type FamilyRateInput = {
   /**
@@ -4499,19 +4485,13 @@ export type FamilyRateInput = {
    * Infant
    */
   infant: number | string
-  /**
-   * Child
-   */
-  child?: number | string | null
 }
 
 /**
  * FamilyRate
  *
- * Per-person family-camp rates for one session this season.
- *
- * `standard` prices every non-infant person (CampMinder bills adults and children
- * at the same rate). `child`, when set, prices children separately.
+ * Per-person family-camp rates for one session this season: everyone but infants pays the standard rate
+ * (CampMinder bills adults and children alike; owner 10-06: the child rate removed).
  */
 export type FamilyRateOutput = {
   /**
@@ -4526,10 +4506,6 @@ export type FamilyRateOutput = {
    * Infant
    */
   infant: string
-  /**
-   * Child
-   */
-  child?: string | null
 }
 
 /**
@@ -5899,12 +5875,6 @@ export type GrantsSection = {
    * Late Grant Policy
    */
   late_grant_policy?: 'ignore' | 'flag' | 'recalculate'
-  /**
-   * Incentives
-   */
-  incentives?: {
-    [key: string]: unknown | IncentiveRule
-  }
 }
 
 /**
@@ -7347,18 +7317,6 @@ export type HouseholdTotalsOut = {
    * Decided Partial
    */
   decided_partial?: boolean
-}
-
-/**
- * IncentiveRule
- *
- * How a family incentive (for example a new-family discount) meets aid.
- */
-export type IncentiveRule = {
-  /**
-   * Mode
-   */
-  mode: 'ignore' | 'reduce_cost' | 'reduce_award'
 }
 
 /**
@@ -9122,7 +9080,6 @@ export type NewVersionIn = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   >
@@ -11974,7 +11931,6 @@ export type PromotionPreviewOut = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   >
@@ -11999,7 +11955,6 @@ export type PromotionSectionOut = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   /**
@@ -14676,7 +14631,6 @@ export type RulesApproveIn = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   >
@@ -16305,62 +16259,6 @@ export type SplitSourceConfig = {
 }
 
 /**
- * StageDef
- */
-export type StageDef = {
-  /**
-   * Code
-   */
-  code: string
-  /**
-   * Label
-   */
-  label: string
-  /**
-   * Round
-   */
-  round?: number | null
-  /**
-   * Is Offer
-   */
-  is_offer?: boolean
-  /**
-   * Is Accepted
-   */
-  is_accepted?: boolean
-  /**
-   * Is Cancel
-   */
-  is_cancel?: boolean
-  /**
-   * Counts Toward Budget
-   */
-  counts_toward_budget?: boolean
-  /**
-   * Include Default
-   */
-  include_default?: boolean
-  /**
-   * Decision Type
-   */
-  decision_type?: string | null
-  /**
-   * Allows Appeal
-   */
-  allows_appeal?: boolean
-}
-
-/**
- * StagesSection
- */
-export type StagesSection = {
-  /**
-   * Stages
-   */
-  stages?: Array<StageDef>
-}
-
-/**
  * StaleStaffLink
  */
 export type StaleStaffLink = {
@@ -17624,7 +17522,6 @@ export type TraceStep = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
     | null
@@ -18002,7 +17899,6 @@ export type ValidationIssue = {
     | 'round2'
     | 'round3'
     | 'budget'
-    | 'stages'
     | 'quality_checks'
     | 'milestones'
   /**
@@ -24201,7 +24097,6 @@ export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutData = 
       | 'round2'
       | 'round3'
       | 'budget'
-      | 'stages'
       | 'quality_checks'
       | 'milestones'
   }
