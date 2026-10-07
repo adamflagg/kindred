@@ -36,6 +36,7 @@ def test_request_inputs_are_per_request() -> None:
     assert {
         "person_cm_id",
         "session_cm_id",
+        "ag_parent_cm_id",
         "program_key",
         "ask",
         "equity_answers",
