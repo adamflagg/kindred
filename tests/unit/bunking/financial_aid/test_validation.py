@@ -13,7 +13,13 @@ from bunking.financial_aid.rules import (
     validate_rules,
 )
 from bunking.financial_aid.rules.schema import AidRules
-from tests.unit.bunking.financial_aid.fixtures import FICTIONAL_SESSION_IDS, fictional_rules, with_lever, with_levers
+from tests.unit.bunking.financial_aid.fixtures import (
+    FICTIONAL_SESSION_IDS,
+    fictional_rules,
+    fictional_rules_json,
+    with_lever,
+    with_levers,
+)
 
 
 def _context(*extra: SessionRef) -> ValidationContext:
@@ -77,13 +83,88 @@ def test_an_override_changes_only_the_tiers_it_names() -> None:
     assert resolved_table(rules.round2.tables, "teen")[3] == resolved_table(rules.round2.tables, "camp")[3]
 
 
-def test_a_value_that_cannot_bind_is_a_warning() -> None:
+def test_a_value_that_cannot_bind_is_a_note_not_a_warning() -> None:
     # 1% of the dearest price routed to the camp table (6,000) is 60, below the 100
     # minimum, so the minimum decides every tier-6 award and the setting does nothing.
+    # RULED (owner, via the coordinator, 2026-10-07): a note ("min" mark), never counted as a warning.
     rules = with_lever(fictional_rules(), "award_tables.camp.tiers.6.r1_pct", "1")
     report = validate_rules(rules)
     assert report.ok
-    assert ("value_cannot_bind", "award_tables.camp.tiers.6") in {(w.code, w.path) for w in report.warnings}
+    assert ("value_cannot_bind", "award_tables.camp.tiers.6") in {(n.code, n.path) for n in report.notes}
+    assert "value_cannot_bind" not in {w.code for w in report.warnings}
+    assert all(n.severity == "note" for n in report.notes)
+
+
+def _bind_notes(rules: AidRules) -> dict[str, str]:
+    return {n.path: n.message for n in validate_rules(rules).notes if n.code == "value_cannot_bind"}
+
+
+def test_the_minimum_deciding_at_the_dearest_program_covers_every_cheaper_program() -> None:
+    """Summer's dearest session is 4,000 and quest is 6,000: 1% of 6,000 is 60, below the 100 minimum."""
+    rules = with_lever(fictional_rules(), "award_tables.camp.tiers.6.r1_pct", "1")
+    assert _bind_notes(rules)["award_tables.camp.tiers.6"] == (
+        "Camp table, tier 6: Quest at $6,000 gets $60, so the $100 minimum applies, "
+        "and to every cheaper program on this table"
+    )
+
+
+def test_a_minimum_that_decides_only_the_cheaper_programs_names_the_dearest_of_them() -> None:
+    """The fixture's 2% at tier 6: Quest (6,000) gets 120, but Summer (4,000) gets 80 and B'mitzvah 60."""
+    note = _bind_notes(fictional_rules())["award_tables.camp.tiers.6"]
+    assert note == "Camp table, tier 6: Summer at $4,000 gets $80, so the $100 minimum applies"
+
+
+def test_a_figure_with_cents_is_shown_to_the_cent_and_the_minimum_is_whole_when_whole() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "cost.tuition": {"1000101": "810", "1000102": "810", "1000103": "810", "1000104": "5000", "1000301": "810"},
+            "award_tables.camp.tiers.6.r1_pct": "8.5",
+            "awards.minimum": "108",
+        },
+    )
+    assert _bind_notes(rules)["award_tables.camp.tiers.6"] == (
+        "Camp table, tier 6: Summer at $810 gets $68.85, so the $108 minimum applies, "
+        "and to every cheaper program on this table"
+    )
+
+
+def test_only_catalog_priced_programs_are_judged() -> None:
+    """A per-person or typed program's real price is not the catalog, so it never makes a note."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.family_camp.r1_table": "camp",
+            "programs.family_camp.session_cm_ids": [1000201],
+            "programs.family_school.r1_table": "camp",
+            "programs.family_school.session_cm_ids": [1000501],
+            "cost.tuition": {
+                "1000101": "2000",
+                "1000102": "4000",
+                "1000103": "6000",
+                "1000104": "5000",
+                "1000301": "3000",
+                "1000401": "900",
+                "1000201": "50",
+                "1000501": "50",
+            },
+        },
+    )
+    assert "Family" not in _bind_notes(rules)["award_tables.camp.tiers.6"]
+    assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("Camp table, tier 6: Summer at $4,000")
+
+
+def test_notes_come_in_numeric_tier_order() -> None:
+    reversed_tiers = {str(t): {"r1_pct": "1"} for t in (6, 5, 4, 3, 2, 1)}
+    reversed_tiers["4"] = {"r1_pct": "1"}
+    rules = with_lever(fictional_rules(), "award_tables.camp.tiers", reversed_tiers)
+    paths = [n.path for n in validate_rules(rules).notes if n.path.startswith("award_tables.camp.")]
+    assert paths == [f"award_tables.camp.tiers.{t}" for t in range(1, 7)]
+
+
+def test_notes_never_mention_r1_percent() -> None:
+    rules = with_lever(fictional_rules(), "award_tables.camp.tiers.6.r1_pct", "1")
+    assert all("R1 %" not in n.message for n in validate_rules(rules).notes)
 
 
 # --- tiers ----------------------------------------------------------------------------
@@ -340,6 +421,79 @@ def test_an_open_program_with_no_pool_is_unclassified() -> None:
     assert "unclassified_program" in {w.code for w in validate_rules(rules).warnings}
 
 
+def _messages(rules: AidRules, code: str, context: ValidationContext | None = None) -> list[str]:
+    return [i.message for i in validate_rules(rules, context).issues if i.code == code]
+
+
+def test_a_program_that_claims_no_sessions_skips_the_table_and_pool_warnings() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.other": {**fictional_rules_json()["programs"]["other"], "open_to_aid": True},
+        },
+    )
+    paths = {i.path for i in validate_rules(rules).issues}
+    assert "programs.other.r1_table" not in paths
+    assert "programs.other.budget_pool" not in paths
+
+
+def test_a_program_with_a_session_type_but_no_session_ids_still_warns() -> None:
+    """Regression guard."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.other": {
+                **fictional_rules_json()["programs"]["other"],
+                "open_to_aid": True,
+                "session_types": ["extra_kind"],
+            },
+        },
+    )
+    paths = {i.path for i in validate_rules(rules).issues}
+    assert {"programs.other.r1_table", "programs.other.budget_pool"} <= paths
+
+
+def test_a_programs_warning_names_the_program() -> None:
+    rules = with_lever(fictional_rules(), "programs.summer.budget_pool", None)
+    assert _messages(rules, "unclassified_program") == ["Summer: open to aid but in no budget pool"]
+    assert _messages(fictional_rules(), "no_round1_table") == [
+        "Adult weekend: no Round 1 table: only the minimum award can apply in Round 1",
+        "Family school: no Round 1 table: only the minimum award can apply in Round 1",
+    ]
+    held = with_lever(fictional_rules(), "awards.minimum_without_table", False)
+    assert _messages(held, "no_round1_table")[0] == (
+        "Adult weekend: no Round 1 table: every request in this program holds until finance names one"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "code", "expected"),
+    [
+        ("programs.summer.r1_table", "gold", "unknown_table", "Summer: no award table 'gold'"),
+        ("programs.summer.equity_class", "nobody", "unknown_equity_class", "Summer: no equity class 'nobody'"),
+        ("programs.summer.budget_pool", "piggy_bank", "unknown_budget_pool", "Summer: no pool 'piggy_bank'"),
+    ],
+)
+def test_a_reference_error_names_the_program(path: str, value: str, code: str, expected: str) -> None:
+    assert _messages(with_lever(fictional_rules(), path, value), code) == [expected]
+
+
+def test_a_session_claimed_twice_names_both_programs_by_label() -> None:
+    rules = with_lever(fictional_rules(), "programs.quest.session_cm_ids", [1000103, 1000101])
+    assert _messages(rules, "session_in_two_programs") == ["Quest: session 1000101 is also in Summer"]
+
+
+def test_a_session_type_claimed_twice_names_both_programs_by_label() -> None:
+    rules = with_lever(fictional_rules(), "programs.quest.session_types", ["main"])
+    assert _messages(rules, "session_type_in_two_programs") == ["Quest: session type 'main' is also in Summer"]
+
+
+def test_a_class_without_a_table_names_the_program() -> None:
+    rules = with_levers(fictional_rules(), BY_CLASS | {"equity.weights.extra": {}})
+    rules = with_lever(rules, "programs.summer.equity_class", "extra")
+    assert _messages(rules, "class_without_table") == ["Summer: equity class 'extra' has no Round 1 award table"]
+
+
 def test_grants_may_offset_only_known_programs() -> None:
     rules = with_lever(fictional_rules(), "grants.offset_programs", ["summer", "space_camp"])
     assert "unknown_program" in validate_rules(rules).codes()
@@ -367,6 +521,54 @@ def test_a_per_person_session_without_a_rate_warns() -> None:
 def test_a_catalog_session_without_tuition_warns() -> None:
     rules = with_lever(fictional_rules(), "cost.tuition", {"1000101": "2000"})
     assert "tuition_missing" in {w.code for w in validate_rules(rules).warnings}
+
+
+def _named(*pairs: tuple[int, str | None]) -> ValidationContext:
+    return ValidationContext(sessions=[SessionRef(cm_id=cm_id, name=name) for cm_id, name in pairs])
+
+
+def test_a_missing_tuition_names_the_program_and_the_sessions_and_carries_their_ids() -> None:
+    rules = with_lever(fictional_rules(), "cost.tuition", {"1000103": "6000", "1000104": "5000", "1000301": "3000"})
+    context = _named((1000101, "Session One"), (1000102, "Session Two"))
+    issue = next(i for i in validate_rules(rules, context).warnings if i.code == "tuition_missing")
+    assert issue.message == "Summer: no tuition for Session One and Session Two"
+    assert issue.session_cm_ids == [1000101, 1000102]
+    assert issue.path == "programs.summer.session_cm_ids"
+
+
+def test_three_names_join_with_commas_and_and_an_unnamed_session_falls_back_to_its_id() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.summer.session_cm_ids": [1000101, 1000102, 1000123],
+            "cost.tuition": {"1000103": "6000", "1000104": "5000", "1000301": "3000"},
+        },
+    )
+    context = _named((1000101, "Session One"), (1000102, "Session Two"), (1000123, None))
+    message = next(i.message for i in validate_rules(rules, context).warnings if i.code == "tuition_missing")
+    assert message == "Summer: no tuition for Session One, Session Two and session 1000123"
+
+
+def test_without_a_context_every_missing_session_is_named_by_its_id() -> None:
+    rules = with_lever(fictional_rules(), "cost.tuition", {"1000101": "2000"})
+    message = next(i.message for i in validate_rules(rules).warnings if i.code == "tuition_missing")
+    assert message.startswith("Summer: no tuition for session 1000102")
+    assert "[" not in message
+
+
+def test_a_missing_family_rate_names_the_program_and_the_session() -> None:
+    rules = with_lever(fictional_rules(), "cost.family_rates", [])
+    issue = next(
+        i for i in validate_rules(rules, _named((1000201, "Session Three"))).warnings if i.code == "family_rate_missing"
+    )
+    assert issue.message == "Family camp: no family-camp rate for Session Three"
+    assert issue.session_cm_ids == [1000201]
+
+
+def test_an_issue_without_sessions_has_an_empty_session_list() -> None:
+    """Regression guard."""
+    rules = with_lever(fictional_rules(), "programs.summer.budget_pool", None)
+    assert next(i for i in validate_rules(rules).warnings if i.code == "unclassified_program").session_cm_ids == []
 
 
 # --- budget ---------------------------------------------------------------------------

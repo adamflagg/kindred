@@ -18075,7 +18075,7 @@ export type ValidationIssue = {
   /**
    * Severity
    */
-  severity: 'error' | 'warning'
+  severity: 'error' | 'warning' | 'note'
   /**
    * Path
    */
@@ -18084,6 +18084,10 @@ export type ValidationIssue = {
    * Message
    */
   message: string
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
 }
 
 /**

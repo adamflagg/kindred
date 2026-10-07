@@ -13,13 +13,13 @@ listing NO sessions (a season nothing has synced yet) warns instead of passing.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping
-from decimal import Decimal
+from collections.abc import Mapping, Sequence
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bunking.financial_aid.money import pct_of
+from bunking.financial_aid.money import dollars, pct_of
 from bunking.financial_aid.rules.lookup import (
     Round2TableNotListedError,
     is_dependents_criterion,
@@ -33,6 +33,7 @@ from bunking.financial_aid.rules.schema import (
     YES_NO_ANSWER_FIELDS,
     AidRules,
     EquityCriterion,
+    ProgramProfile,
     QualityCheckKey,
     R1Percent,
     SectionName,
@@ -40,7 +41,7 @@ from bunking.financial_aid.rules.schema import (
     TotalPercent,
 )
 
-Severity = Literal["error", "warning"]
+Severity = Literal["error", "warning", "note"]
 
 
 class ValidationIssue(BaseModel):
@@ -51,6 +52,8 @@ class ValidationIssue(BaseModel):
     severity: Severity
     path: str
     message: str
+    # The sessions the issue is about (a missing price or rate), so the UI can mark them. Optional: most issues name none.
+    session_cm_ids: list[int] = Field(default_factory=list)
 
 
 class ValidationReport(BaseModel):
@@ -65,6 +68,11 @@ class ValidationReport(BaseModel):
     @property
     def warnings(self) -> list[ValidationIssue]:
         return [i for i in self.issues if i.severity == "warning"]
+
+    @property
+    def notes(self) -> list[ValidationIssue]:
+        """Information, not a problem: never counted as a warning and never blocks anything."""
+        return [i for i in self.issues if i.severity == "note"]
 
     @property
     def ok(self) -> bool:
@@ -95,11 +103,38 @@ class _Issues:
     def __init__(self) -> None:
         self.items: list[ValidationIssue] = []
 
-    def error(self, section: SectionName, code: str, path: str, message: str) -> None:
-        self.items.append(ValidationIssue(section=section, code=code, severity="error", path=path, message=message))
+    def error(
+        self, section: SectionName, code: str, path: str, message: str, session_cm_ids: Sequence[int] = ()
+    ) -> None:
+        self._add("error", section, code, path, message, session_cm_ids)
 
-    def warn(self, section: SectionName, code: str, path: str, message: str) -> None:
-        self.items.append(ValidationIssue(section=section, code=code, severity="warning", path=path, message=message))
+    def warn(
+        self, section: SectionName, code: str, path: str, message: str, session_cm_ids: Sequence[int] = ()
+    ) -> None:
+        self._add("warning", section, code, path, message, session_cm_ids)
+
+    def note(self, section: SectionName, code: str, path: str, message: str) -> None:
+        self._add("note", section, code, path, message, ())
+
+    def _add(
+        self,
+        severity: Severity,
+        section: SectionName,
+        code: str,
+        path: str,
+        message: str,
+        session_cm_ids: Sequence[int],
+    ) -> None:
+        self.items.append(
+            ValidationIssue(
+                section=section,
+                code=code,
+                severity=severity,
+                path=path,
+                message=message,
+                session_cm_ids=list(session_cm_ids),
+            )
+        )
 
 
 def validate_rules(rules: AidRules, context: ValidationContext | None = None) -> ValidationReport:
@@ -110,7 +145,7 @@ def validate_rules(rules: AidRules, context: ValidationContext | None = None) ->
     _check_award_tables(rules, issues)
     _check_round2(rules, issues)
     _check_programs(rules, context, issues)
-    _check_cost(rules, issues)
+    _check_cost(rules, context, issues)
     _check_grants(rules, issues)
     _check_budget(rules, issues)
     _check_milestones(rules, issues)
@@ -363,27 +398,47 @@ def _valid_tables[V: (R1Percent, TotalPercent)](
     return valid
 
 
+def _table_label(name: str) -> str:
+    """The award table's staff-facing name: the schema gives a table no label, so its key, title-cased."""
+    return f"{name.replace('_', ' ').title()} table"
+
+
+def _catalog_price(rules: AidRules, program: ProgramProfile) -> Decimal | None:
+    """The dearest catalog tuition among the program's sessions, or None when none has one."""
+    prices = [rules.cost.tuition[s] for s in program.session_cm_ids if s in rules.cost.tuition]
+    return max(prices) if prices else None
+
+
 def _warn_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -> None:
-    prices = [
-        rules.cost.tuition[s]
+    """A note for each tier where the minimum award, not the table, decides a routed program's award.
+
+    Judged per program, and only for programs priced from the catalog: a per-person or typed program's real
+    price is not the catalog's. If the minimum decides at the dearest routed program it decides for every
+    cheaper one, so the note says so; otherwise it names the dearest program it does decide for."""
+    routed = [
+        (program, price)
         for program in rules.programs.values()
-        if program.open_to_aid and round1_table(rules, program) == name
-        for s in program.session_cm_ids
-        if s in rules.cost.tuition
+        if program.open_to_aid
+        and program.cost_source == "catalog"
+        and round1_table(rules, program) == name
+        and (price := _catalog_price(rules, program)) is not None
     ]
-    if not prices:
+    if not routed:
         return
-    top = max(prices)
     minimum = rules.awards.minimum
-    for tier, row in resolved_table(rules.award_tables, name).items():
-        if pct_of(row.r1_pct, top) < minimum:
-            issues.warn(
-                "award_tables",
-                "value_cannot_bind",
-                f"award_tables.{name}.tiers.{tier}",
-                f"At the dearest price routed to this table ({top}), tier {tier}'s R1 % gives "
-                f"{pct_of(row.r1_pct, top)}, below the {minimum} minimum, so the minimum decides every award here",
-            )
+    for tier, row in sorted(resolved_table(rules.award_tables, name).items()):
+        decided = [(program, price) for program, price in routed if pct_of(row.r1_pct, price) < minimum]
+        if not decided:
+            continue
+        program, price = max(decided, key=lambda pair: pair[1])
+        award = pct_of(row.r1_pct, price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        message = (
+            f"{_table_label(name)}, tier {tier}: {program.label} at {dollars(price)} gets {dollars(award)}, "
+            f"so the {dollars(minimum)} minimum applies"
+        )
+        if len(routed) > 1 and len(decided) == len(routed):
+            message += ", and to every cheaper program on this table"
+        issues.note("award_tables", "value_cannot_bind", f"award_tables.{name}.tiers.{tier}", message)
 
 
 def _check_programs(rules: AidRules, context: ValidationContext | None, issues: _Issues) -> None:
@@ -391,25 +446,37 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
     types: dict[str, str] = {}
     for key, program in rules.programs.items():
         path = f"programs.{key}"
+        label = program.label
+        # A program that claims no sessions prices nothing yet: no table or pool is missing from anything real.
+        claims_sessions = bool(program.session_cm_ids or program.session_types)
         if program.equity_class is not None and program.equity_class not in rules.equity.weights:
             issues.error(
-                "programs", "unknown_equity_class", f"{path}.equity_class", f"No equity class '{program.equity_class}'"
+                "programs",
+                "unknown_equity_class",
+                f"{path}.equity_class",
+                f"{label}: no equity class '{program.equity_class}'",
             )
         if program.budget_pool is not None and program.budget_pool not in rules.budget.pools:
-            issues.error("programs", "unknown_budget_pool", f"{path}.budget_pool", f"No pool '{program.budget_pool}'")
-        if program.open_to_aid and program.budget_pool is None:
-            issues.warn("programs", "unclassified_program", f"{path}.budget_pool", "Open to aid but in no budget pool")
+            issues.error(
+                "programs", "unknown_budget_pool", f"{path}.budget_pool", f"{label}: no pool '{program.budget_pool}'"
+            )
+        if program.open_to_aid and program.budget_pool is None and claims_sessions:
+            issues.warn(
+                "programs", "unclassified_program", f"{path}.budget_pool", f"{label}: open to aid but in no budget pool"
+            )
         if not program.table_from_equity_class:
             if program.r1_table is not None and program.r1_table not in rules.award_tables:
-                issues.error("programs", "unknown_table", f"{path}.r1_table", f"No award table '{program.r1_table}'")
-            if program.open_to_aid and program.r1_table is None:
+                issues.error(
+                    "programs", "unknown_table", f"{path}.r1_table", f"{label}: no award table '{program.r1_table}'"
+                )
+            if program.open_to_aid and program.r1_table is None and claims_sessions:
                 issues.warn(
                     "programs",
                     "no_round1_table",
                     f"{path}.r1_table",
-                    "No Round 1 table: only the minimum award can apply in Round 1"
+                    f"{label}: no Round 1 table: only the minimum award can apply in Round 1"
                     if rules.awards.minimum_without_table
-                    else "No Round 1 table: every request in this program holds until finance names one",
+                    else f"{label}: no Round 1 table: every request in this program holds until finance names one",
                 )
         elif program.open_to_aid and program.equity_class is None:
             issues.warn(
@@ -429,7 +496,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                 "programs",
                 "class_without_table",
                 f"{path}.equity_class",
-                f"Equity class '{program.equity_class}' has no {missing}",
+                f"{label}: equity class '{program.equity_class}' has no {missing}",
             )
         for session in program.session_cm_ids:
             if session in ids and ids[session] != key:
@@ -437,7 +504,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                     "programs",
                     "session_in_two_programs",
                     f"{path}.session_cm_ids",
-                    f"Session {session} is in both '{ids[session]}' and '{key}'",
+                    f"{label}: session {session} is also in {rules.programs[ids[session]].label}",
                 )
             ids[session] = key
         for session_type in program.session_types:
@@ -446,7 +513,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                     "programs",
                     "session_type_in_two_programs",
                     f"{path}.session_types",
-                    f"Session type '{session_type}' is in both '{types[session_type]}' and '{key}'",
+                    f"{label}: session type '{session_type}' is also in {rules.programs[types[session_type]].label}",
                 )
             types[session_type] = key
     if context is None:
@@ -471,7 +538,14 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             )
 
 
-def _check_cost(rules: AidRules, issues: _Issues) -> None:
+def _session_names(ids: Sequence[int], context: ValidationContext | None) -> str:
+    """ "Session One, Session Two and session 1000123": the season's names where it has them."""
+    names = {ref.cm_id: ref.name for ref in context.sessions if ref.name} if context is not None else {}
+    parts = [names.get(i) or f"session {i}" for i in ids]
+    return parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
+def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Issues) -> None:
     counts = Counter(r.session_cm_id for r in rules.cost.family_rates)
     for session, n in counts.items():
         if n > 1:
@@ -483,11 +557,23 @@ def _check_cost(rules: AidRules, issues: _Issues) -> None:
         if program.cost_source == "per_person":
             missing = [s for s in program.session_cm_ids if s not in counts]
             if missing:
-                issues.warn("cost", "family_rate_missing", path, f"No family-camp rate for sessions {missing}")
+                issues.warn(
+                    "cost",
+                    "family_rate_missing",
+                    path,
+                    f"{program.label}: no family-camp rate for {_session_names(missing, context)}",
+                    missing,
+                )
         elif program.cost_source == "catalog":
             missing = [s for s in program.session_cm_ids if s not in rules.cost.tuition]
             if missing:
-                issues.warn("cost", "tuition_missing", path, f"No tuition for sessions {missing}")
+                issues.warn(
+                    "cost",
+                    "tuition_missing",
+                    path,
+                    f"{program.label}: no tuition for {_session_names(missing, context)}",
+                    missing,
+                )
 
 
 def _check_grants(rules: AidRules, issues: _Issues) -> None:
