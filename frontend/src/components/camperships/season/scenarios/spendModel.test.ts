@@ -144,6 +144,18 @@ describe('the projection line (§S5 E; N8: never amber or red)', () => {
     ).toBe("Too early to project: about 3% of last year's applications had arrived by this point")
   })
 
+  it('never reads 5% on a too-early line: the share rounds down', () => {
+    expect(
+      projectionWords(null, false, { share: 0.0499, through: '2027-01-05', basis_year: 2026 })?.text
+    ).toBe("Too early to project: about 4% of last year's applications had arrived by this point")
+  })
+
+  it('says under 1% rather than about 0%', () => {
+    expect(
+      projectionWords(null, false, { share: 0.004, through: '2027-01-05', basis_year: 2026 })?.text
+    ).toBe("Too early to project: under 1% of last year's applications had arrived by this point")
+  })
+
   it('shows a projection, never the too-early line, when there is one', () => {
     expect(
       projectionWords(PROJECTION, false, { share: 0.03, through: '2027-01-05', basis_year: 2026 })

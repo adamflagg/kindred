@@ -156,8 +156,11 @@ export function projectionWords(
 ): { text: string; dimmed: boolean } | null {
   if (projection === null || projection === undefined) {
     if (tooEarly === null || tooEarly === undefined) return null
+    // Rounded DOWN, so a share just under the 5% floor never reads "about 5%" on a too-early line.
+    const early = Math.floor(tooEarly.share * 100)
+    const share = early < 1 ? 'under 1%' : `about ${String(early)}%`
     return {
-      text: `Too early to project: about ${String(Math.round(tooEarly.share * 100))}% of last year's applications had arrived by this point`,
+      text: `Too early to project: ${share} of last year's applications had arrived by this point`,
       dimmed: locked,
     }
   }
