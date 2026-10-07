@@ -150,6 +150,25 @@ describe('useAidScenarioDraft', () => {
     ])
   })
 
+  it('does not start a load until a slow release has landed', async () => {
+    let finish: (value: unknown) => void = () => undefined
+    save.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    const { result } = setup()
+    act(() => result.current.type('awards.minimum', '125'))
+    let loading: Promise<boolean> = Promise.resolve(false)
+    await act(async () => {
+      void result.current.release()
+      loading = result.current.load({ option: 'A' })
+      await Promise.resolve()
+    })
+    expect(calls.map(([name]) => name)).toEqual(['save']) // the load is still waiting its turn
+    await act(async () => {
+      finish(scenarioDraft())
+      await loading
+    })
+    expect(calls.map(([name]) => name)).toEqual(['save', 'load'])
+  })
+
   it('discards by loading the source again: a kept option, or a built-in start', async () => {
     const { result } = setup()
     await act(async () => {
