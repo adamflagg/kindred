@@ -18,7 +18,7 @@ from bunking.financial_aid.decisions import (
 from bunking.financial_aid.decisions.budget import Count, season_budget
 from bunking.financial_aid.decisions.holds import HoldEvent
 from bunking.financial_aid.rules import AidRules
-from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever
+from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
 NOT_RUNNING = "cost.not_running_session_cm_ids"
 MESSAGE = "This session is not running this season: cancel the request or move it to a session that runs"
@@ -121,3 +121,35 @@ def test_a_release_event_never_lifts_it() -> None:
     )
     priced = price_request(with_holds(_item(), fold_holds([released])["req-emma"]), rules)
     assert [h.code for h in priced.holds] == ["session_not_running"]
+
+
+# --- the reason staff see is "not running" whatever else stops it (CodeRabbit on #3059) -------------------------
+
+
+def test_a_not_running_session_in_a_closed_program_reads_not_running() -> None:
+    rules = with_levers(fictional_rules(), {NOT_RUNNING: [1000102], "programs.summer.open_to_aid": False})
+    codes = _codes(calculate(app(), req(), rules))  # req() is a summer request on 1000102
+    assert codes[0] == ("session_not_running", "hold")
+    assert ("program_closed", "error") in codes  # still never priced
+
+
+def test_a_not_running_session_on_a_program_the_rules_lack_reads_not_running() -> None:
+    rules = with_lever(fictional_rules(), NOT_RUNNING, [1000102])
+    codes = _codes(calculate(app(), req(program_key="spring_rates"), rules))
+    assert codes[0] == ("session_not_running", "hold")
+    assert ("unknown_program", "error") in codes
+
+
+def test_a_not_running_session_no_program_claims_reads_not_running() -> None:
+    """The conversion path: no RequestInputs (nothing claims the session), so the calculator never runs."""
+    rules = with_lever(fictional_rules(), NOT_RUNNING, [1000102])
+    item = _item(request=None, blocked="No program offers this session", session_cm_id=1000102)
+    priced = price_request(with_holds(item, NO_HOLDS), rules)
+    assert [h.code for h in priced.holds] == ["session_not_running", "not_priceable"]
+    assert priced.holds[0].message == MESSAGE
+
+
+def test_an_unclaimed_running_session_is_only_not_priceable() -> None:
+    rules = with_lever(fictional_rules(), NOT_RUNNING, [1000101])
+    item = _item(request=None, blocked="No program offers this session", session_cm_id=1000102)
+    assert [h.code for h in price_request(with_holds(item, NO_HOLDS), rules).holds] == ["not_priceable"]

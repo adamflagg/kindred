@@ -309,6 +309,16 @@ async def test_with_no_approved_rules_every_live_request_is_held_and_nothing_is_
 
 
 @pytest.mark.asyncio
+async def test_a_request_on_a_not_running_session_no_program_claims_reads_not_running() -> None:
+    """CodeRabbit on #3059: the grid builds the unpriceable request with its session, so the reason is "not running"."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=1000999)  # no program claims it
+    rules = FakeRules(approved(with_lever(intake_rules(), "cost.not_running_session_cm_ids", [1000999])))
+    (row,) = (await _service(store, rules).grid(YEAR)).rows
+    assert [h.code for h in row.holds][:1] == ["session_not_running"]
+
+
+@pytest.mark.asyncio
 async def test_a_request_with_an_unmatched_session_is_held_with_intakes_reasons() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA, session=0, status="unmatched_session")
