@@ -1043,6 +1043,44 @@ def test_an_ag_price_equal_to_its_parents_or_with_no_parent_does_not_warn() -> N
     assert "ag_price_differs" not in validate_rules(differs).codes()
 
 
+def test_a_closed_or_empty_program_is_never_a_mismatch_and_has_no_say() -> None:
+    """Pin: spec §9.3 judges open, session-claiming programs only, on both sides of the comparison."""
+    closed = _mismatch(with_lever(fictional_rules(), "programs.teen.open_to_aid", False))
+    assert "programs.teen.equity_class" not in closed
+    assert "another equity class" not in closed.get("programs.summer.equity_class", "")  # teen has no say in the pool
+    empty = _mismatch(with_lever(fictional_rules(), "programs.teen.session_cm_ids", []))
+    assert "programs.teen.equity_class" not in empty
+    assert "another equity class" not in empty.get("programs.summer.equity_class", "")
+
+
+def test_a_table_taken_from_the_equity_class_is_not_judged_by_its_legacy_table() -> None:
+    """Pin: the legacy Round 1 table only counts for a program routed by its own table, never by its class."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "programs.adult_weekend.table_from_equity_class": True,
+            "programs.adult_weekend.r1_table": "camp",
+        },
+    )
+    assert "programs.adult_weekend.equity_class" not in _mismatch(rules)
+
+
+def test_an_ag_price_warning_needs_an_ag_session() -> None:
+    """Pin: a main session with a parent id is not an AG session, so a differing price says nothing."""
+    tuition = {**fictional_rules_json()["cost"]["tuition"], "1000199": "1900"}
+    rules = with_levers(fictional_rules(), {"cost.tuition": tuition})
+    context = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="main", parent_id=1000101)])
+    assert "ag_price_differs" not in validate_rules(rules, context).codes()
+
+
+def test_a_named_unmapped_session_is_called_by_its_name() -> None:
+    context = _context(SessionRef(cm_id=1000999, session_type="hebrew", name="Session Nine"))
+    report = validate_rules(fictional_rules(), context)
+    assert report.errors[0].message.startswith("Session Nine is in no group")
+
+
 def test_an_id_that_isnt_a_session_this_season_warns() -> None:
     rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000102, 1000888])
     issue = next(i for i in validate_rules(rules, _context()).warnings if i.code == "not_running_unknown_session")
