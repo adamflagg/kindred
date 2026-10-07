@@ -224,4 +224,22 @@ describe('useAidScenarioDraft', () => {
     expect(result.current.error).toBe('Your draft changed since: fit again.')
     expect(calls).toEqual([])
   })
+
+  it('sends the rules version the screen opened with on a release and on Use It (A11b; F6)', async () => {
+    const ws = workspace({
+      pricing_version: 3,
+      draft: scenarioDraft({ trail_id: 'trail0000000001' }),
+    })
+    const { result } = setup(ws)
+    act(() => result.current.type('awards.minimum', '125'))
+    await act(async () => {
+      await result.current.release()
+    })
+    await act(async () => {
+      await result.current.adopt(ws.draft!.document, 'trail0000000001')
+    })
+    expect(calls.map(([, body]) => (body as { opened_version?: number }).opened_version)).toEqual([
+      3, 3,
+    ])
+  })
 })

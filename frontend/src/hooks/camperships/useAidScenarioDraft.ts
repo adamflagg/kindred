@@ -52,12 +52,16 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
   const editsRef = useRef<ReadonlyMap<string, string>>(NO_EDITS)
   const draftRef = useRef<ApiAidScenarioDraft | null>(workspace?.draft ?? null)
   const heldRef = useRef(workspace?.snapshot !== null && workspace?.snapshot !== undefined)
+  // The rules version the screen shows (A11b): a draft's first save records it as the version it is built on, so a
+  // version approved while staff work doesn't claim a draft they opened on the one before. Later saves ignore it.
+  const openedRef = useRef(workspace?.pricing_version ?? null)
   const chain = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     draftRef.current = workspace?.draft ?? null
     heldRef.current = workspace?.snapshot !== null && workspace?.snapshot !== undefined
-  }, [workspace?.draft, workspace?.snapshot])
+    openedRef.current = workspace?.pricing_version ?? null
+  }, [workspace?.draft, workspace?.snapshot, workspace?.pricing_version])
 
   const recorded = workspace?.draft?.document ?? null
   const applied = useMemo(
@@ -150,7 +154,12 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
           const out = applyEdits(draft.document, sent)
           const good = new Map([...sent].filter(([key]) => !out.problems.has(key)))
           if (documentKey(out.document) !== documentKey(draft.document)) {
-            settleDraft(await saveAidScenarioDraft(fetchWithAuth, year, { document: out.document }))
+            settleDraft(
+              await saveAidScenarioDraft(fetchWithAuth, year, {
+                document: out.document,
+                opened_version: openedRef.current,
+              })
+            )
           }
           settleEdits(good)
         },
@@ -219,7 +228,12 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
         const current = draftRef.current
         if (current === null || (current.trail_id ?? null) !== basedOn)
           throw new Error('Your draft changed since: fit again.')
-        settleDraft(await saveAidScenarioDraft(fetchWithAuth, year, { document }))
+        settleDraft(
+          await saveAidScenarioDraft(fetchWithAuth, year, {
+            document,
+            opened_version: openedRef.current,
+          })
+        )
         setAll(NO_EDITS)
       }),
     [run, fetchWithAuth, year, settleDraft, setAll]
