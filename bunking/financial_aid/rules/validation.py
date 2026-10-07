@@ -478,7 +478,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
         path = f"programs.{key}"
         label = program.label
         # A program that claims no sessions prices nothing yet: no table or pool is missing from anything real.
-        claims_sessions = bool(program.session_cm_ids or program.session_types)
+        claims = claims_sessions(program)
         if program.equity_class is not None and program.equity_class not in rules.equity.weights:
             issues.error(
                 "programs",
@@ -490,7 +490,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             issues.error(
                 "programs", "unknown_budget_pool", f"{path}.budget_pool", f"{label}: no pool '{program.budget_pool}'"
             )
-        if program.open_to_aid and program.budget_pool is None and claims_sessions:
+        if program.open_to_aid and program.budget_pool is None and claims:
             issues.warn(
                 "programs", "unclassified_program", f"{path}.budget_pool", f"{label}: open to aid but in no budget pool"
             )
@@ -499,7 +499,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                 issues.error(
                     "programs", "unknown_table", f"{path}.r1_table", f"{label}: no award table '{program.r1_table}'"
                 )
-            if program.open_to_aid and program.r1_table is None and claims_sessions:
+            if program.open_to_aid and program.r1_table is None and claims:
                 issues.warn(
                     "programs",
                     "no_round1_table",
@@ -688,8 +688,9 @@ def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Iss
         issues.warn("cost", code, path, message, missing)
     if context is not None:
         session_names = {r.cm_id: r.name for r in context.sessions if r.name}
+        not_running = _not_running(rules, context)  # spec §7: an AG session under a not-running parent isn't running
         for ref in context.sessions:
-            if ref.session_type != "ag" or not ref.parent_id:
+            if ref.session_type != "ag" or not ref.parent_id or ref.cm_id in not_running:
                 continue
             own, parent = rules.cost.tuition.get(ref.cm_id), rules.cost.tuition.get(ref.parent_id)
             if own is not None and parent is not None and own != parent:

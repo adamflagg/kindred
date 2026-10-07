@@ -171,6 +171,7 @@ def test_a_tables_note_uses_its_groups_name_never_the_key_title_cased() -> None:
 
 
 def test_a_table_no_group_pairs_with_keeps_its_key_words() -> None:
+    """Pin: the teen class is no group's class (Camp's is camp), so its table keeps its key's words."""
     rules = with_levers(
         fictional_rules(),
         {"award_tables.teen.overrides": {"6": {"r1_pct": "1"}}, "programs.teen.r1_table": "teen"},
@@ -680,6 +681,7 @@ def test_a_program_closed_to_aid_never_needs_a_price() -> None:
 
 
 def test_a_typed_program_never_needs_a_price() -> None:
+    """Pin: a typed program's price is typed per request, so no price warning names its session."""
     assert not any(1000501 in i.session_cm_ids for i in validate_rules(fictional_rules(), _context()).issues)
 
 
@@ -998,6 +1000,7 @@ def test_a_legacy_appeal_table_that_isnt_its_class_warns() -> None:
 
 
 def test_a_minimum_only_legacy_program_is_not_a_mismatch() -> None:
+    """Pin: a legacy program routed to no table is "minimum only", never a group drift."""
     rules = with_levers(
         fictional_rules(),
         {
@@ -1075,7 +1078,17 @@ def test_an_ag_price_warning_needs_an_ag_session() -> None:
     assert "ag_price_differs" not in validate_rules(rules, context).codes()
 
 
+def test_an_ag_price_under_a_not_running_parent_does_not_warn() -> None:
+    """Spec §7: an AG session is not running when its parent isn't, and validation skips not-running sessions, so a
+    price nobody charges asks finance for nothing."""
+    tuition = {**fictional_rules_json()["cost"]["tuition"], "1000199": "1900"}
+    rules = with_levers(fictional_rules(), {"cost.tuition": tuition, "cost.not_running_session_cm_ids": [1000101]})
+    context = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101)])
+    assert "ag_price_differs" not in validate_rules(rules, context).codes()
+
+
 def test_a_named_unmapped_session_is_called_by_its_name() -> None:
+    """Pin: the season's name for the session leads the words; its id is the fallback."""
     context = _context(SessionRef(cm_id=1000999, session_type="hebrew", name="Session Nine"))
     report = validate_rules(fictional_rules(), context)
     assert report.errors[0].message.startswith("Session Nine is in no group")

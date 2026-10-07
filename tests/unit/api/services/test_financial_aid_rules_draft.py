@@ -82,8 +82,13 @@ async def test_the_draft_and_approved_reads_name_the_groups() -> None:
 
 @pytest.mark.asyncio
 async def test_a_receipts_version_read_names_that_versions_groups() -> None:
-    """Pin: the groups come from the version asked for, not the one pricing the season."""
+    """Pin: the groups come from the version asked for, not the one pricing the season. Version 2 renames the Camp
+    pool and prices the season, so only a read of version 1's own document still says "Camp"."""
     service = await _approved_v1(FakeStore())
+    renamed = with_lever(fictional_rules(), "budget.pools.camp_pool.label", "Pool A")
+    await service.save_sections(2031, 1, renamed, actor=TREASURER)
+    await service.approve_sections(2031, 2, list(SECTION_NAMES), actor=FINANCE, note="Board, Feb 1")
+    assert [g.label for g in (await service.approved_view(2031)).groups] == ["Pool A", "Weekends", "B'mitzvah"]
     approved = await service.approved_view(2031, 1)
     assert [g.label for g in approved.groups] == ["Camp", "Weekends", "B'mitzvah"]
 

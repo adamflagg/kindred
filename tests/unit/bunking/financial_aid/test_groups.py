@@ -8,14 +8,14 @@ from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_leve
 def test_groups_follow_the_pools_order_and_labels_with_the_class_most_programs_use() -> None:
     assert season_groups(fictional_rules()) == [
         Group("camp_pool", "Camp", "camp"),  # summer + quest are camp, teen is teen: camp wins 2-1
-        Group("weekend_pool", "Weekends", "family"),  # family_camp and family_school have no class
+        Group("weekend_pool", "Weekends", "family"),  # adult_weekend is family; family_camp, family_school have none
         Group("bmitzvah_pool", "B'mitzvah", "camp"),
     ]
 
 
 def test_a_tie_goes_to_the_program_listed_first() -> None:
-    rules = with_lever(fictional_rules(), "programs.quest.equity_class", "teen")  # camp 1, teen 2 ... make it 1-1:
-    rules = with_lever(rules, "programs.teen.open_to_aid", False)  # summer camp, quest teen
+    rules = with_lever(fictional_rules(), "programs.quest.equity_class", "teen")  # camp 1 (summer), teen 2
+    rules = with_lever(rules, "programs.teen.open_to_aid", False)  # closing teen leaves 1-1: summer camp, quest teen
     assert season_groups(rules)[0].equity_class == "camp"
 
 
