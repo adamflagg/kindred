@@ -93,6 +93,11 @@ export const CS_PANEL = 'text-sm'
 export const CS_CARD = HH_CARD
 /** cs-card-title 13.5/700: inside CS_CARD, which sets 13.5. */
 export const CS_CARD_TITLE = 'font-bold'
+/**
+ * cs-card-title on a real h3/h2: fonts.css and index.css style bare headings OUTSIDE any cascade layer, so they
+ * beat Tailwind's layered utilities (Fraunces, 30px). The important modifiers win until the app-wide fix (#2954).
+ */
+export const CS_CARD_HEADING = `${CS_CARD_TITLE} !font-sans !text-[13.5px] !leading-normal !tracking-[inherit]`
 /** cs-body 13.5/20.25, for a block outside a card. */
 export const CS_BODY = 'text-[13.5px] leading-normal'
 /** cs-label 13.5/600: a fold line's or a row's label. */

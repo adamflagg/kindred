@@ -45,7 +45,12 @@ export function ChapterBar({
                     className="inline-block size-1.5 rounded-full bg-amber-500 dark:bg-amber-400"
                   />
                 )}
-                {marks.issues > 0 && <span className={CS_BADGE_AMBER}>{marks.issues}</span>}
+                {marks.issues > 0 && (
+                  // .chapbar .cs-chip .cs-badge: 0 6px, 11.5/16, so a badged chip is 28px like the rest, not 36px
+                  <span className={`${CS_BADGE_AMBER} !px-1.5 !py-0 !text-[11.5px] !leading-4`}>
+                    {marks.issues}
+                  </span>
+                )}
               </button>
             )
           })}

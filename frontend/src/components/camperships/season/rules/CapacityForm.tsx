@@ -16,7 +16,7 @@ import {
   FIELD_INLINE,
   LABEL,
 } from '../../../admin/lodging/lodgingStyles'
-import { CS_CARD, CS_CARD_TITLE, CS_PILL, CS_SMALL } from '../../kit/csType'
+import { CS_CARD, CS_CARD_HEADING, CS_PILL, CS_SMALL } from '../../kit/csType'
 import { readCapacity } from './capacityModel'
 
 /**
@@ -56,7 +56,7 @@ export function CapacityForm() {
   return (
     <section id="card-capacity" className={`${CS_CARD} space-y-2`} data-testid="capacity-form">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <h3 className={CS_CARD_TITLE}>Session capacity, for Round 3</h3>
+        <h3 className={CS_CARD_HEADING}>Session capacity, for Round 3</h3>
         <span className={CS_PILL.stone}>Not part of the rules</span>
       </div>
       <p className={CS_SMALL}>

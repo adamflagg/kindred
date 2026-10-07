@@ -48,6 +48,17 @@ describe('a section card (spec §6.2 D)', () => {
     expect(within(head).getByRole('button', { name: 'Edit…' })).toBeInTheDocument()
   })
 
+  it('keeps its title in the card face: 13.5px sans, whatever the bare h3 rule says', () => {
+    card()
+    // fonts.css and index.css style h3 outside any layer, so only an important class beats them (app-wide fix: #2954)
+    expect(screen.getByRole('heading', { name: 'Who can ask, and how much' })).toHaveClass(
+      '!font-sans',
+      '!text-[13.5px]',
+      '!leading-normal',
+      '!tracking-[inherit]'
+    )
+  })
+
   it('opens a truncated meta in full on a click, never on hover', async () => {
     card()
     const meta = screen.getByTestId('card-meta-round3')

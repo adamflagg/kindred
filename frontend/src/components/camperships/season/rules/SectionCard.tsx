@@ -10,7 +10,7 @@ import {
   CS_AMBER_NOTE,
   CS_BTN_SM,
   CS_CARD,
-  CS_CARD_TITLE,
+  CS_CARD_HEADING,
   CS_PILL,
   CS_SMALL,
 } from '../../kit/csType'
@@ -52,7 +52,7 @@ export function SectionCardHead({
         data-testid={`card-head-${section}`}
         className="flex flex-wrap items-baseline gap-x-2 gap-y-1"
       >
-        <h3 className={CS_CARD_TITLE}>{title}</h3>
+        <h3 className={CS_CARD_HEADING}>{title}</h3>
         <span className={CS_PILL[status.tone]}>{status.pill}</span>
         {status.pill === 'Locked' && <DefRef n={1} />}
         {(status.meta !== '' || status.note !== null) && (
