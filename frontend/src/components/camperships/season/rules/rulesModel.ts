@@ -68,6 +68,8 @@ export interface StatusWords {
   readonly tone: PillTone
   /** Who and when, and the note naming the approving body (D39). */
   readonly meta: string
+  /** The approving body's note (Finance, Jan 20 meeting): the card says "Approved by ‹note›" beside the meta. */
+  readonly note: string | null
 }
 
 /** A stored timestamp as its camp-time day: 8pm Pacific on Jan 20 is stored as Jan 21 in UTC. */
@@ -93,15 +95,16 @@ export function statusWords(status: ApiAidSectionStatus, changes: number | null)
       meta: joined([
         `in use since ${when(status.locked_at) ?? 'its first lock'}`,
         status.approved_by,
-        status.note,
       ]),
+      note: status.note ?? null,
     }
   }
   if (state === 'approved') {
     return {
-      pill: 'Approved',
+      pill: 'In effect',
       tone: 'emerald',
-      meta: joined([when(status.approved_at), status.approved_by, status.note]),
+      meta: joined([when(status.approved_at), status.approved_by]),
+      note: status.note ?? null,
     }
   }
   const counted =
@@ -116,6 +119,7 @@ export function statusWords(status: ApiAidSectionStatus, changes: number | null)
       status.edited_by,
       status.edited_via ? `from ${status.edited_via}` : null,
     ]),
+    note: null,
   }
 }
 
@@ -394,7 +398,7 @@ const KEY_WORDS: Readonly<Record<string, string>> = {
 }
 
 /** A key with no label: its word, else its own words in sentence case ("camp_quest" → "Camp quest"). */
-function keyWords(key: string): string {
+export function keyWords(key: string): string {
   const known = KEY_WORDS[key]
   if (known !== undefined) return known
   const plain = words(key)

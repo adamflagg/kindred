@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import { contentOf, RULES_DOCUMENT } from './rulesFixtures'
-import { CARD_SPECS, CHOICE_WORDS, HIDDEN_PATHS, rowWords, settingText } from './rulesCards'
+import {
+  CARD_SPECS,
+  CHOICE_WORDS,
+  HIDDEN_PATHS,
+  namedAwardNote,
+  namedAwardRows,
+  rowWords,
+  settingText,
+} from './rulesCards'
 import { rulesVocabulary } from './rulesModel'
 
 const names = { section: 'income' as const, ...rulesVocabulary((s) => RULES_DOCUMENT[s]) }
@@ -84,4 +92,26 @@ describe('card content (spec §6.2 E)', () => {
     expect(settingText('2027-02-01', 'date?', ['application_deadline'], names)).toBe('Feb 1, 2027')
     expect(settingText(null, 'date?', ['r1_run'], names)).toBe('Not set')
   })
+})
+
+it("derives a named award's row note from its kind, in generic words (spec §6.2 E.4)", () => {
+  expect(namedAwardNote('full_cost_after_aid')).toBe(
+    'Pays the rest after the camp award and outside grants, outside the budget; no extra amount.'
+  )
+  for (const kind of ['full_cost', 'top_up', 'discretionary'])
+    expect(namedAwardNote(kind)).toBeNull()
+  // Owner 10-06 (c): named funds are managed in Grants › Grantors; the row only reads.
+  const rows = namedAwardRows(
+    {
+      decision_types: {
+        fund: { label: 'Named full-cost fund', kind: 'full_cost_after_aid', round: 1 },
+        top: { label: 'Top', kind: 'top_up', round: 2, amount: '300' },
+      },
+    },
+    { ...names, section: 'awards' }
+  )
+  expect(rows.map((r) => [r.key, r.managedInGrants])).toEqual([
+    ['fund', true],
+    ['top', false],
+  ])
 })

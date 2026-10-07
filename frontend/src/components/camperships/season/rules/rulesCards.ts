@@ -3,10 +3,11 @@
  * description, sub-heads, and a read-only strip. Hidden settings (§6.4) are in no row and never render; read-only
  * ones never get a control. Pure.
  */
-import type { ApiAidRulesSection } from '../../../../types/api-types'
+import type { ApiAidRulesSection, ApiAidValidationIssue } from '../../../../types/api-types'
 import { formatLongDate } from '../../kit/dates'
 import { formatMoney } from '../../kit/money'
-import { labelOf, type RulesNames } from './rulesModel'
+import { codeWords } from '../../requests/attention'
+import { keyWords, labelOf, type RulesNames } from './rulesModel'
 import { valueAt } from './sectionEdit'
 
 export type RowType =
@@ -323,4 +324,223 @@ export function dependentsNote(content: Record<string, unknown>): string {
   return content['dependents_mode'] === 'income_reduction'
     ? '.'
     : ', only while Dependents is "Lower the income": not used now.'
+}
+
+// ── The cards' tables (spec §6.2 E): each row as its table shows it ──
+
+const recordOf = (v: unknown): Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+const textOf = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+const sessionWords = (id: unknown, names: RulesNames) =>
+  names.sessions?.get(Number(id)) ?? `Session ${String(id)}`
+
+export interface EquityRow {
+  readonly index: number
+  readonly key: string
+  readonly label: string
+  readonly enabled: boolean
+  /** "was checked" / "was unchecked" where the draft flipped the box; else null. */
+  readonly was: string | null
+  readonly weights: Readonly<Record<string, unknown>>
+  readonly countsWhen: { readonly words: string; readonly chips: readonly string[] }
+  readonly reads: string
+  readonly dependents: boolean
+}
+
+/** The equity classes, as the weights carry them: one weight column each. */
+export const equityClasses = (content: Record<string, unknown>): string[] =>
+  Object.keys(recordOf(content['weights']))
+
+export function equityRows(
+  content: Record<string, unknown>,
+  approved: Record<string, unknown> | null
+): EquityRow[] {
+  const weights = recordOf(content['weights'])
+  const before = approved === null ? null : listOf(approved['criteria']).map(recordOf)
+  return listOf(content['criteria'])
+    .map(recordOf)
+    .map((c, index) => {
+      const key = textOf(c['key']) ?? String(index)
+      const enabled = c['enabled'] !== false
+      const prior = before?.find((b) => b['key'] === key)
+      const wasEnabled = prior === undefined ? null : prior['enabled'] !== false
+      const match = textOf(c['match']) ?? ''
+      return {
+        index,
+        key,
+        label: textOf(c['label']) ?? key,
+        enabled,
+        was:
+          wasEnabled === null || wasEnabled === enabled
+            ? null
+            : wasEnabled
+              ? 'was checked'
+              : 'was unchecked',
+        weights: Object.fromEntries(
+          Object.entries(weights).map(([cls, row]) => [cls, recordOf(row)[key]])
+        ),
+        countsWhen:
+          match === 'at_least'
+            ? { words: `at least ${String(Number(c['min_value']))}`, chips: [] }
+            : {
+                words: CHOICE_WORDS['match']?.[match] ?? match,
+                chips: listOf(c['values']).map(String),
+              },
+        reads: [c['field'], ...listOf(c['also_fields'])]
+          .flatMap((f) => (typeof f === 'string' && f !== '' ? [f.replaceAll('_', ' ')] : []))
+          .join(' + '),
+        // calculator/tiers.py is_dependents_criterion: a household criterion reading the dependents count.
+        dependents: c['field'] === 'dependents',
+      }
+    })
+}
+
+/**
+ * The words under a named award's name (spec §6.2 E.4). DecisionType carries no note, and a real award's or funder's
+ * name may not live in code (Global Constraints), so the note comes from the kind, in generic words. Outside grants
+ * come off too (owner 10-06); the fund itself is managed in Grants › Grantors, so this row only reads.
+ */
+export function namedAwardNote(kind: string): string | null {
+  return kind === 'full_cost_after_aid'
+    ? 'Pays the rest after the camp award and outside grants, outside the budget; no extra amount.'
+    : null
+}
+
+export interface NamedAwardRow {
+  readonly key: string
+  readonly label: string
+  readonly note: string | null
+  readonly kind: string
+  readonly round: string
+  /** Shown (and editable) on a fixed top-up only; null reads "—". */
+  readonly amount: string | null
+  /** Shown (and editable) on full cost only; null reads "—". */
+  readonly extra: string | null
+  readonly allowsAppeal: boolean
+  readonly counts: boolean
+  /** Owner 10-06 (c): a named fund is managed in Grants › Grantors (slice 3); its row only reads and links there. */
+  readonly managedInGrants: boolean
+}
+
+export function namedAwardRows(
+  content: Record<string, unknown>,
+  names: RulesNames
+): NamedAwardRow[] {
+  return Object.entries(recordOf(content['decision_types'])).map(([key, raw]) => {
+    const t = recordOf(raw)
+    const kind = textOf(t['kind']) ?? ''
+    return {
+      key,
+      label: textOf(t['label']) ?? key,
+      note: namedAwardNote(kind),
+      kind: CHOICE_WORDS['kind']?.[kind] ?? kind,
+      round: String(t['round'] ?? ''),
+      amount: kind === 'top_up' ? settingText(t['amount'], 'money', ['amount'], names) : null,
+      extra:
+        kind === 'full_cost'
+          ? settingText(t['extra_amount'], 'money', ['extra_amount'], names)
+          : null,
+      allowsAppeal: t['allows_appeal'] !== false,
+      counts: t['counts_toward_budget'] !== false,
+      managedInGrants: kind === 'full_cost_after_aid',
+    }
+  })
+}
+
+/** The report's program issues that get an inline pill (spec §6.2 E.8), by validation code. */
+const PROGRAM_PILLS: Readonly<Record<string, string>> = {
+  unclassified_program: 'no pool',
+  no_equity_class: 'no equity class',
+}
+
+export interface ProgramRow {
+  readonly key: string
+  readonly label: string
+  readonly pills: readonly string[]
+  readonly sessions: readonly string[]
+  readonly equityClass: string
+  readonly pool: string
+  readonly costFrom: string
+  readonly openToAid: boolean
+}
+
+export function programRows(
+  content: Record<string, unknown>,
+  issues: readonly ApiAidValidationIssue[],
+  names: RulesNames
+): ProgramRow[] {
+  return Object.entries(content).map(([key, raw]) => {
+    const p = recordOf(raw)
+    const cls = textOf(p['equity_class'])
+    const pool = textOf(p['budget_pool'])
+    const pills = issues.flatMap((issue) => {
+      const words = PROGRAM_PILLS[issue.code]
+      return words !== undefined && issue.path.startsWith(`programs.${key}.`) ? [words] : []
+    })
+    return {
+      key,
+      label: textOf(p['label']) ?? key,
+      pills: [...new Set(pills)],
+      sessions: listOf(p['session_cm_ids']).map((id) => sessionWords(id, names)),
+      equityClass: cls === null ? 'None' : keyWords(cls),
+      pool: pool === null ? 'None' : (names.pools[pool] ?? keyWords(pool)),
+      costFrom: CHOICE_WORDS['cost_source']?.[textOf(p['cost_source']) ?? ''] ?? '',
+      openToAid: p['open_to_aid'] !== false,
+    }
+  })
+}
+
+export interface CheckRow {
+  readonly key: string
+  readonly label: string
+  readonly on: boolean
+  readonly severity: string
+  readonly above: string
+}
+
+export function checkRows(content: Record<string, unknown>, names: RulesNames): CheckRow[] {
+  return Object.entries(recordOf(content['checks'])).map(([key, raw]) => {
+    const c = recordOf(raw)
+    return {
+      key,
+      // The same words the Requests grid gives a check's pill.
+      label: codeWords(key),
+      on: c['enabled'] !== false,
+      severity: CHOICE_WORDS['severity']?.[textOf(c['severity']) ?? 'hold'] ?? '',
+      above: settingText(c['threshold'], 'money?', ['threshold'], names),
+    }
+  })
+}
+
+export interface CostRows {
+  readonly tuition: ReadonlyArray<{
+    readonly id: string
+    readonly session: string
+    readonly tuition: string
+  }>
+  readonly rates: ReadonlyArray<{
+    readonly index: number
+    readonly session: string
+    readonly standard: string
+    readonly infant: string
+  }>
+}
+
+export function costRows(content: Record<string, unknown>, names: RulesNames): CostRows {
+  return {
+    tuition: Object.entries(recordOf(content['tuition'])).map(([id, value]) => ({
+      id,
+      session: sessionWords(id, names),
+      tuition: settingText(value, 'money', ['tuition', id], names),
+    })),
+    rates: listOf(content['family_rates'])
+      .map(recordOf)
+      .map((r, index) => ({
+        index,
+        session: sessionWords(r['session_cm_id'], names),
+        standard: settingText(r['standard'], 'money', ['standard'], names),
+        infant: settingText(r['infant'], 'money', ['infant'], names),
+      })),
+  }
 }

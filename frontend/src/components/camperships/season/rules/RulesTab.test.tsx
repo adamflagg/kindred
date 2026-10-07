@@ -84,7 +84,7 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
     renderAt('/aid/season/rules')
     expect(screen.getByText('Settings that move the money')).toBeInTheDocument()
     const award = document.querySelector('[data-rules-section="award_tables"]') as HTMLElement
-    expect(within(award).getByText('Approved')).toBeInTheDocument()
+    expect(within(award).getByText('In effect')).toBeInTheDocument()
     expect(within(award).getByText(/Finance, Jan 20 meeting/)).toBeInTheDocument()
     const income = document.querySelector('[data-rules-section="income"]') as HTMLElement
     expect(within(income).getByText('Locked')).toBeInTheDocument()

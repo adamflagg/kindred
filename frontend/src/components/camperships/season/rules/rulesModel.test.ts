@@ -33,9 +33,10 @@ describe("a section's status (D39)", () => {
         0
       )
     ).toEqual({
-      pill: 'Approved',
+      pill: 'In effect',
       tone: 'emerald',
-      meta: 'Jan 20, 2027 · Test User · Finance, Jan 20 meeting',
+      meta: 'Jan 20, 2027 · Test User',
+      note: 'Finance, Jan 20 meeting',
     })
   })
 
@@ -61,6 +62,7 @@ describe("a section's status (D39)", () => {
       pill: 'Draft · 1 change',
       tone: 'amber',
       meta: 'Jan 21, 2027 · Test User · from B2',
+      note: null,
     })
     expect(statusWords({}, null).pill).toBe('Draft')
   })

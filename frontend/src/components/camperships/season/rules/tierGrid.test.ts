@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  bandsIn,
   bandsOf,
   countNote,
   evenOf,
   gridCell,
+  gridClasses,
   gridColumns,
   rangeWords,
   tierLineWords,
+  warnedCells,
 } from './tierGrid'
 
 describe('income tiers (spec §6.2 E.2; owner Q6)', () => {
@@ -85,4 +88,30 @@ describe('the combined grid (spec §6.2 E.2)', () => {
     expect(gridCell(tables, 'teen', 2, 'r1_pct')).toEqual({ value: '70', inherited: false })
     expect(gridCell(tables, 'camp', 3, 'r1_pct')).toEqual({ value: null, inherited: false })
   })
+})
+
+it("orders the grid's classes by the programs' classes, then any other table", () => {
+  const programs = {
+    a: { equity_class: 'summer' },
+    b: { equity_class: 'family' },
+    c: { equity_class: null },
+    d: { equity_class: 'summer' },
+  }
+  expect(gridClasses(programs, { teen: {}, family: {}, summer: {} })).toEqual([
+    'summer',
+    'family',
+    'teen',
+  ])
+})
+
+it("reads the warned cells from value_cannot_bind paths, and a document band's open top", () => {
+  const warned = warnedCells([
+    { code: 'value_cannot_bind', path: 'award_tables.summer.tiers.3' },
+    { code: 'other', path: 'award_tables.teen.tiers.1' },
+  ])
+  expect([...warned]).toEqual(['summer:3'])
+  expect(bandsIn({ bands: [{ lower: '0', upper: '100' }, { lower: '101' }] })).toEqual([
+    { lower: '0', upper: '100' },
+    { lower: '101', upper: null },
+  ])
 })

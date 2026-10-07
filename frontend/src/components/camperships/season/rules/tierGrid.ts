@@ -109,3 +109,42 @@ export function gridCell(
     ? { value: null, inherited: false }
     : { value: String(parent), inherited: true }
 }
+
+/** A document's bands as the grid reads them: decimals as strings, a missing upper the open top band. */
+export function bandsIn(tiers: {
+  readonly bands: ReadonlyArray<{
+    readonly lower: string | number
+    readonly upper?: string | number | null
+  }>
+}): Band[] {
+  return tiers.bands.map((b) => ({
+    lower: String(b.lower),
+    upper: b.upper === null || b.upper === undefined ? null : String(b.upper),
+  }))
+}
+
+/** The grid's classes (§6.2 E.2): the award tables' keys in the programs' equity-class order, then any other table. */
+export function gridClasses(
+  programs: Readonly<Record<string, { readonly equity_class?: string | null }>>,
+  tables: Readonly<Record<string, unknown>>
+): string[] {
+  const ordered: string[] = []
+  for (const program of Object.values(programs)) {
+    const cls = program.equity_class
+    if (typeof cls === 'string' && cls in tables && !ordered.includes(cls)) ordered.push(cls)
+  }
+  return [...ordered, ...Object.keys(tables).filter((key) => !ordered.includes(key))]
+}
+
+/** The Round 1 cells a `value_cannot_bind` warning names (validation.py: `award_tables.<table>.tiers.<tier>`), as "table:tier". */
+export function warnedCells(
+  issues: ReadonlyArray<{ readonly code: string; readonly path: string }>
+): Set<string> {
+  const out = new Set<string>()
+  for (const issue of issues) {
+    const match = /^award_tables\.([^.]+)\.tiers\.(\d+)$/.exec(issue.path)
+    if (issue.code === 'value_cannot_bind' && match !== null)
+      out.add(`${match[1] ?? ''}:${match[2] ?? ''}`)
+  }
+  return out
+}

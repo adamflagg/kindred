@@ -70,6 +70,11 @@ function useRulesHref() {
   }
 }
 
+/** The pre-card layout shows the approving body's note inside the meta line; Task 46's cards say "Approved by" instead. */
+function noteInMeta(words: StatusWords): StatusWords {
+  return { ...words, meta: [words.meta, words.note].filter(Boolean).join(' · '), note: null }
+}
+
 /** A section served from another version than the header's says so (the server fills a never-priced section from its newest copy). */
 function fromVersion(
   words: StatusWords,
@@ -112,17 +117,19 @@ function ApprovedBody({
     section: s.section,
     status:
       s.content === null
-        ? { pill: 'Not approved yet', tone: 'muted', meta: '' }
+        ? { pill: 'Not approved yet', tone: 'muted', meta: '', note: null }
         : fromVersion(
-            statusWords(
-              {
-                state: s.state,
-                approved_by: s.approved_by,
-                approved_at: s.approved_at,
-                note: s.note,
-                locked_at: s.locked_at,
-              },
-              null
+            noteInMeta(
+              statusWords(
+                {
+                  state: s.state,
+                  approved_by: s.approved_by,
+                  approved_at: s.approved_at,
+                  note: s.note,
+                  locked_at: s.locked_at,
+                },
+                null
+              )
             ),
             s.version,
             rules.version
@@ -204,7 +211,7 @@ function DraftBody({
   useEffect(() => () => setMode('read'), [setMode])
   const items: SectionItem[] = draft.sections.map((s) => ({
     section: s.section,
-    status: statusWords(s.status, s.changes.length),
+    status: noteInMeta(statusWords(s.status, s.changes.length)),
     issues: issueWords(s.errors, s.warnings),
   }))
   const chosen = draft.sections.find((s) => s.section === selected)
