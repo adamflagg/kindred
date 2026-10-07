@@ -145,6 +145,12 @@ export function versionWords(
   return last === undefined ? `${name} · approved` : `${name} · approved ${when(last) ?? last}`
 }
 
+/**
+ * A note (#3049: "the minimum decides" on a Round 1 cell) is information: neither a warning nor an error. No count,
+ * chip or list of warnings holds one; it shows on its cell (B3).
+ */
+export const isNote = (issue: { readonly severity?: string }): boolean => issue.severity === 'note'
+
 /** "2 errors · 1 warning", or null when the section validates clean. */
 export function issueWords(errors: number, warnings: number): string | null {
   const parts: string[] = []

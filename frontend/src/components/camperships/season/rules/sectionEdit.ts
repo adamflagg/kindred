@@ -349,6 +349,20 @@ export function rawOf(value: unknown): string {
   return String(value)
 }
 
+/**
+ * What a box shows before anything is typed: a money figure in whole dollars with commas ("6695.0" is "6,695"),
+ * and its cents as stored ("6695.5" is "6,695.50"), never rounded (coordinator B7; lead ruling). `parseSetting`
+ * reads the commas back, and `sameAt` reads "6,695" as the stored "6695.0", so a box left as shown is no change.
+ */
+export function boxText(value: unknown, spec: FieldSpec): string {
+  const raw = rawOf(value)
+  if (spec.kind !== 'number' || spec.unit !== 'money' || !DECIMAL.test(raw)) return raw
+  const [whole = '0', fraction = ''] = raw.split('.')
+  const grouped = whole.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+$)/g, ',')
+  if (/^0*$/.test(fraction)) return grouped
+  return `${grouped}.${fraction.padEnd(2, '0')}`
+}
+
 /** An edit's key: its path inside the section. */
 export function editKey(path: readonly string[]): string {
   return JSON.stringify(path)

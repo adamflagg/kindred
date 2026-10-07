@@ -43,6 +43,7 @@ import {
   toggleChapter,
 } from './rulesLayout'
 import {
+  isNote,
   isRulesSection,
   rulesVocabulary,
   sectionIssues,
@@ -52,7 +53,7 @@ import {
   type StatusWords,
 } from './rulesModel'
 import type { CellControl } from './CardTables'
-import { bandsIn, gridClasses } from './tierGrid'
+import { bandsIn, gridClasses, notedCells, warnedCells } from './tierGrid'
 import type { EditContext } from './sectionEdit'
 import { RulesSectionEditor } from './RulesSectionEditor'
 import { CardBody, SectionCard } from './SectionCard'
@@ -382,7 +383,21 @@ function ChaptersBody({
   const gridBody = (part: GridPart, content: Record<string, unknown>, cell: CellControl) => {
     const tables = (value: unknown) => (value ?? {}) as TablesProp
     const programs = document_.programs as ProgramsProp
-    const noWarnings: ReadonlySet<string> = new Set()
+    // The saved draft's Round 1 marks stay while editing; they follow a save, not the typing (coordinator B1).
+    // The grey ⚠ marks too (B3): both follow the saved draft's report.
+    const roundOne = shownOf('award_tables')?.issues ?? []
+    const warned = warnedCells(roundOne)
+    const noted = notedCells(roundOne)
+    const marks = [
+      ...(warned.size > 0 ? ['⚠ marks the warnings'] : []),
+      ...(noted.size > 0 ? ['grey ⚠ marks where the minimum decides,'] : []),
+    ]
+    const asSaved =
+      marks.length === 0 ? null : (
+        <p className={CS_SMALL}>
+          {`${marks.join(' and ')} as last saved, not what you have typed.`}
+        </p>
+      )
     if (part === 'tiers') {
       const live = bandsIn((tiersContent ?? document_.tiers) as Parameters<typeof bandsIn>[0])
       return (
@@ -397,9 +412,10 @@ function ChaptersBody({
             awardTables={tables(document_.award_tables)}
             appealTables={tables(document_.round2.tables)}
             classes={gridClasses(programs, document_.award_tables)}
-            warned={noWarnings}
-            onWarn={() => undefined}
+            warned={warned}
+            noted={noted}
           />
+          {asSaved}
         </div>
       )
     }
@@ -407,15 +423,18 @@ function ChaptersBody({
     const awardTables = tables(round1 ? content : document_.award_tables)
     const appealTables = tables(round1 ? document_.round2.tables : content['tables'])
     return (
-      <TierGridTable
-        bands={bandsIn(document_.tiers)}
-        awardTables={awardTables}
-        appealTables={appealTables}
-        classes={gridClasses(programs, awardTables)}
-        warned={noWarnings}
-        onWarn={() => undefined}
-        control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
-      />
+      <div className="space-y-2">
+        <TierGridTable
+          bands={bandsIn(document_.tiers)}
+          awardTables={awardTables}
+          appealTables={appealTables}
+          classes={gridClasses(programs, awardTables)}
+          warned={warned}
+          noted={noted}
+          control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
+        />
+        {asSaved}
+      </div>
     )
   }
 
@@ -568,7 +587,9 @@ function ChaptersBody({
             <div className={`${CS_META} font-bold`}>{group}</div>
             {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
               const sections = sectionsOf(chapter)
-              const listed = sections.flatMap((s) => shownOf(s)?.issues ?? [])
+              const listed = sections
+                .flatMap((s) => shownOf(s)?.issues ?? [])
+                .filter((i) => !isNote(i))
               const errors = listed.filter((i) => i.severity === 'error').length
               return (
                 <Chapter

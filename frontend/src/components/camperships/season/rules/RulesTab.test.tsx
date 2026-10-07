@@ -248,6 +248,28 @@ describe('RulesTab for finance (D39)', () => {
     expect(within(chapter).queryByText(/warning/)).toBeNull()
   })
 
+  it('a folded chapter never counts a note as a warning (B3)', () => {
+    const d = rulesDraft()
+    const issue = d.report.issues?.[0]
+    if (!issue) throw new Error('fixture has no issue')
+    const cell = (severity: 'warning' | 'note', tier: number) => ({
+      ...issue,
+      section: 'award_tables' as const,
+      code: 'value_cannot_bind',
+      severity,
+      path: `award_tables.general.tiers.${String(tier)}`,
+      message: `general tier ${String(tier)}`,
+    })
+    d.report = { ...d.report, issues: [cell('warning', 1), cell('note', 2), cell('note', 3)] }
+    draft = { data: d, isLoading: false, error: null }
+    granted = FINANCE
+    renderAt('/aid/season/rules?open=2')
+    const chapter = document.getElementById('chap-1')
+    if (chapter === null) throw new Error('no tier chapter')
+    expect(within(chapter).getByText('1 warning')).toBeInTheDocument()
+    expect(within(chapter).queryByText(/3 warnings|note/)).toBeNull()
+  })
+
   it('says so when the season has no rules at all yet', () => {
     draft = { data: undefined, isLoading: false, error: new AidApiError('No rules for 2027', 404) }
     renderAt('/aid/season/rules')

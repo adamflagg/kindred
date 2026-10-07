@@ -19,6 +19,7 @@ import { CardRows, ReadOnlyStrip } from './CardRows'
 import { CardTables, type CellControl } from './CardTables'
 import {
   changeWords,
+  isNote,
   issueWords,
   SECTION_TITLES,
   type RulesNames,
@@ -33,6 +34,7 @@ export function SectionCardHead({
   canEdit,
   onEdit,
   extra,
+  list,
 }: {
   section: ApiAidRulesSection
   title: string
@@ -41,11 +43,22 @@ export function SectionCardHead({
   canEdit: boolean
   onEdit: () => void
   extra?: ReactNode
+  /**
+   * A card that opens this head's list from elsewhere too (the tier grid's cell ⚠) holds it: what it shows (null:
+   * closed) and the chip's click. Without it the chip alone opens and closes the list of every issue.
+   */
+  list?: {
+    readonly shown: readonly ApiAidValidationIssue[] | null
+    readonly onChip: () => void
+  }
 }) {
   const [full, setFull] = useState(false)
   const [listed, setListed] = useState(false)
-  const errors = issues.filter((i) => i.severity === 'error').length
-  const words = issueWords(errors, issues.length - errors)
+  // Notes live on their cells (B3): the chip counts and lists the errors and warnings only.
+  const counted = issues.filter((i) => !isNote(i))
+  const shown = list !== undefined ? list.shown : listed ? counted : null
+  const errors = counted.filter((i) => i.severity === 'error').length
+  const words = issueWords(errors, counted.length - errors)
   return (
     <>
       <div
@@ -74,8 +87,8 @@ export function SectionCardHead({
         {words !== null && (
           <button
             type="button"
-            className={errors > 0 ? CS_PILL.red : CS_PILL.amber}
-            onClick={() => setListed(!listed)}
+            className={`${errors > 0 ? CS_PILL.red : CS_PILL.amber} cursor-pointer`}
+            onClick={() => (list !== undefined ? list.onChip() : setListed(!listed))}
           >
             {words}
           </button>
@@ -89,9 +102,9 @@ export function SectionCardHead({
           )}
         </span>
       </div>
-      {listed && issues.length > 0 && (
+      {shown !== null && shown.length > 0 && (
         <ol className="mt-1">
-          {issues.map((issue, i) => (
+          {shown.map((issue, i) => (
             <li
               key={`${issue.code}:${issue.path}:${String(i)}`}
               data-testid="card-issue"

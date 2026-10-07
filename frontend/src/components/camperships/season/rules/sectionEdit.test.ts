@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { RULES_DOCUMENT, contentOf } from './rulesFixtures'
 import {
   applyEdits,
+  boxText,
   editKey,
   fieldName,
   fieldSpec,
@@ -108,6 +109,49 @@ describe('reading a box (Decision 14)', () => {
       kind: 'invalid',
       reason: 'A whole number',
     })
+  })
+})
+
+describe('a money box shows whole dollars, as stored (coordinator B7; lead ruling)', () => {
+  const money = { kind: 'number', unit: 'money', whole: false, nullable: false } as const
+
+  it('shows a stored whole figure with commas and no ".0"', () => {
+    expect(boxText('6695.0', money)).toBe('6,695')
+    expect(boxText('6695', money)).toBe('6,695')
+    expect(boxText(6695, { ...money, whole: true })).toBe('6,695')
+    expect(boxText('150', money)).toBe('150')
+  })
+
+  it('never rounds a stored fraction: cents show as stored', () => {
+    expect(boxText('6695.50', money)).toBe('6,695.50')
+    expect(boxText('6695.5', money)).toBe('6,695.50')
+    expect(boxText('10.505', money)).toBe('10.505')
+  })
+
+  it('leaves an empty box empty, and a box that is not money as stored', () => {
+    expect(boxText(null, { ...money, nullable: true })).toBe('')
+    expect(boxText('72.0', { ...money, unit: 'percent' })).toBe('72.0')
+  })
+
+  it('reads the commas back, and a box left as shown is no change', () => {
+    expect(parseSetting('6,695', money)).toEqual({ kind: 'ok', value: '6695' })
+    const cost = { tuition: { '1000101': '6695.0', '1000102': '6695.50' } }
+    const specOf = (path: readonly string[]) => fieldSpec(path, valueAt(cost, path))
+    const shown = (id: string) => {
+      const spec = specOf(['tuition', id])
+      return spec === null ? '' : boxText(valueAt(cost, ['tuition', id]), spec)
+    }
+    const applied = applyEdits(
+      cost,
+      new Map([
+        [editKey(['tuition', '1000101']), shown('1000101')],
+        [editKey(['tuition', '1000102']), shown('1000102')],
+      ]),
+      specOf
+    )
+    expect(applied.problems.size).toBe(0)
+    expect(applied.changed).toEqual([])
+    expect(applied.content).toEqual(cost)
   })
 })
 

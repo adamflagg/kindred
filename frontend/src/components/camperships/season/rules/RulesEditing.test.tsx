@@ -961,6 +961,28 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     ).toBe(true)
   })
 
+  it('shows the Costs boxes in whole dollars, as stored, and an untouched editor has nothing to save (B7)', async () => {
+    const base = rulesDraft()
+    const cost = {
+      ...RULES_DOCUMENT.cost,
+      tuition: { '1000101': '6695.0', '1000102': '6695.50' },
+    }
+    const withCost = { ...base, document: { ...base.document, cost } }
+    draft = { data: withCost, isLoading: false, error: null }
+    server = [withCost]
+    renderAt('/aid/season/rules?open=5')
+    await editCard('cost')
+    const boxes = (await screen.findAllByRole('textbox')).filter((box) =>
+      (box.getAttribute('aria-label') ?? '').includes('Tuition')
+    )
+    expect(boxes.map((box) => (box as HTMLInputElement).value)).toEqual(['6,695', '6,695.50'])
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.clear(boxes[0]!)
+    await userEvent.type(boxes[0]!, '7,100')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(savedContent()['tuition']).toEqual({ '1000101': '7100', '1000102': '6695.50' })
+  })
+
   it('greys a criterion row live when Enabled is unchecked, and keeps its weights', async () => {
     const base = rulesDraft()
     const equity = {
@@ -1089,6 +1111,96 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
     await userEvent.type(width, 'abc')
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
+
+  // Coordinator B1: the editor grids keep the saved draft's ⚠ marks, captioned as last saved (not the typing).
+  it.each(['award_tables', 'round2', 'tiers'])(
+    'the %s editor keeps the Round 1 cell ⚠ marks, captioned "as last saved"',
+    async (section) => {
+      const base = draft.data!
+      const warned = {
+        ...base,
+        report: {
+          issues: [
+            ...(base.report.issues ?? []),
+            {
+              section: 'award_tables' as const,
+              code: 'value_cannot_bind',
+              severity: 'warning' as const,
+              path: 'award_tables.general.tiers.2',
+              message: 'Tier 2 of the general table: the minimum decides every award here',
+            },
+          ],
+        },
+      }
+      draft = { data: warned, isLoading: false, error: null }
+      server = [warned]
+      renderAt(`/aid/season/rules?section=${section}`)
+      await editCard(section)
+      await screen.findByTestId('tier-grid')
+      expect(
+        within(tierRow(2)).getByRole('button', { name: "Show this table's warnings" })
+      ).toBeInTheDocument()
+      expect(
+        within(tierRow(1)).queryByRole('button', { name: "Show this table's warnings" })
+      ).toBeNull()
+      expect(
+        within(screen.getByTestId(`grid-editor-${section}`)).getByText(
+          '⚠ marks the warnings as last saved, not what you have typed.'
+        )
+      ).toBeInTheDocument()
+      // Coordinator B2: the ⚠ opens the chip's one list, filtered to its table, while editing too.
+      await userEvent.click(
+        within(tierRow(2)).getByRole('button', { name: "Show this table's warnings" })
+      )
+      expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual([
+        'Tier 2 of the general table: the minimum decides every award here',
+      ])
+    }
+  )
+
+  // B3: the editor grids keep the grey ⚠ marks too (owner ruling 10-07: triangle, not "min"), captioned as last saved.
+  it.each(['award_tables', 'round2', 'tiers'])(
+    'the %s editor keeps the grey ⚠ marks, captioned "as last saved", and footnotes a click',
+    async (section) => {
+      const base = draft.data!
+      const message =
+        'general table, tier 3: Program A at $600 gets $52.50, so the $75 minimum applies'
+      const noted = {
+        ...base,
+        report: {
+          issues: [
+            ...(base.report.issues ?? []),
+            {
+              section: 'award_tables' as const,
+              code: 'value_cannot_bind',
+              severity: 'note' as const,
+              path: 'award_tables.general.tiers.3',
+              message,
+            },
+          ],
+        },
+      }
+      draft = { data: noted, isLoading: false, error: null }
+      server = [noted]
+      renderAt(`/aid/season/rules?section=${section}`)
+      await editCard(section)
+      await screen.findByTestId('tier-grid')
+      const mark = within(tierRow(3)).getByRole('button', {
+        name: 'Show where the minimum decides',
+      })
+      expect(mark).toHaveTextContent('⚠')
+      expect(mark.className).not.toMatch(/amber/)
+      expect(mark).toHaveAttribute('title', message)
+      expect(screen.queryByRole('button', { name: "Show this table's warnings" })).toBeNull()
+      expect(
+        within(screen.getByTestId(`grid-editor-${section}`)).getByText(
+          'grey ⚠ marks where the minimum decides, as last saved, not what you have typed.'
+        )
+      ).toBeInTheDocument()
+      await userEvent.click(mark)
+      expect(screen.getAllByText(message)).toHaveLength(1)
+    }
+  )
 
   it('Round 1 award table editor puts a box in each own cell of the grid, and leaves an inherited cell as text', async () => {
     const base = rulesDraft()

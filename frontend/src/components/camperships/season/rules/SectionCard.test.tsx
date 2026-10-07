@@ -93,6 +93,24 @@ describe('a section card (spec §6.2 D)', () => {
     ])
   })
 
+  it('never counts a note as a warning, and lists only the warnings (B3: notes live on the cells)', async () => {
+    const issue = (severity: 'warning' | 'note', message: string) => ({
+      section: 'round3' as const,
+      code: 'x',
+      severity,
+      path: 'round3',
+      message,
+    })
+    const { unmount } = card({
+      issues: [issue('note', 'A note'), issue('warning', 'The warning'), issue('note', 'Another')],
+    })
+    await userEvent.click(screen.getByRole('button', { name: '1 warning' }))
+    expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual(['The warning'])
+    unmount()
+    card({ issues: [issue('note', 'A note')] })
+    expect(screen.queryByRole('button', { name: /warning|note/ })).toBeNull()
+  })
+
   it('reads rows as label · value · description, and its read-only settings as a strip with check marks', () => {
     card()
     const rowEl = screen.getByText("The registrar's limit").closest('[data-card-row]')

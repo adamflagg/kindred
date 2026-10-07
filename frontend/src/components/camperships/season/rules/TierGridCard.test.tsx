@@ -147,14 +147,153 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
 
   it("marks a warned Round 1 cell with ⚠, whose click lists that table's warnings", async () => {
     grid({ issuesBySection: { award_tables: [WARNING] } })
-    expect(screen.queryByTestId('grid-warnings')).toBeNull()
+    expect(screen.queryByTestId('card-issue')).toBeNull()
     await userEvent.click(
       within(cell(3, 2)).getByRole('button', { name: "Show this table's warnings" })
     )
-    expect(
-      within(screen.getByTestId('grid-warnings')).getByText(WARNING.message)
-    ).toBeInTheDocument()
+    expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual([
+      WARNING.message,
+    ])
     expect(within(cell(2, 2)).queryByRole('button')).toBeNull()
+  })
+
+  describe("one warnings list: the chip's, which a cell ⚠ opens filtered to its table (coordinator B2)", () => {
+    const issue = (table: string, tier: number): ApiAidValidationIssue => ({
+      ...WARNING,
+      path: `award_tables.${table}.tiers.${String(tier)}`,
+      message: `${table} tier ${String(tier)}: the minimum decides every award here`,
+    })
+    // The server's order: by path as text, so tier 10 and 11 come before 8 and 9.
+    const ISSUES = [
+      issue('summer', 11),
+      issue('teen', 10),
+      issue('teen', 11),
+      issue('teen', 8),
+      issue('teen', 9),
+    ]
+    const eleven = { ...DOC, tiers: { ...DOC.tiers, bands: bandsOf(0, 35000, 11) } }
+    const listed = () => screen.queryAllByTestId('card-issue').map((li) => li.textContent)
+    const chip = () =>
+      within(screen.getByTestId('card-head-award_tables')).getByRole('button', {
+        name: '5 warnings',
+      })
+    const warn = (tier: number, column: number) =>
+      within(cell(tier, column)).getByRole('button', { name: "Show this table's warnings" })
+
+    it("a cell ⚠ lists only its table's warnings, in tier order", async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(warn(10, 4)) // Teen, tier 10
+      expect(listed()).toEqual([
+        'teen tier 8: the minimum decides every award here',
+        'teen tier 9: the minimum decides every award here',
+        'teen tier 10: the minimum decides every award here',
+        'teen tier 11: the minimum decides every award here',
+      ])
+    })
+
+    it("the chip's own click still lists them all, table by table in the grid's order, each in tier order", async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(chip())
+      expect(listed()).toEqual([
+        'summer tier 11: the minimum decides every award here',
+        'teen tier 8: the minimum decides every award here',
+        'teen tier 9: the minimum decides every award here',
+        'teen tier 10: the minimum decides every award here',
+        'teen tier 11: the minimum decides every award here',
+      ])
+    })
+
+    it('nothing renders twice, whichever opened the list', async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(warn(11, 2)) // Summer, tier 11
+      expect(screen.getAllByText(ISSUES[0]!.message)).toHaveLength(1)
+      await userEvent.click(chip())
+      for (const i of ISSUES) expect(screen.getAllByText(i.message)).toHaveLength(1)
+      expect(screen.queryByTestId('grid-warnings')).toBeNull()
+    })
+
+    it('a second click on the same ⚠ closes the list', async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(warn(10, 4))
+      await userEvent.click(warn(10, 4))
+      expect(listed()).toEqual([])
+    })
+
+    it('the chip and the ⚠ show a pointer', () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      expect(chip()).toHaveClass('cursor-pointer')
+      expect(warn(10, 4)).toHaveClass('cursor-pointer')
+    })
+  })
+
+  describe('the grey ⚠ mark: where the minimum decides, a note, not a warning (B3, #3049)', () => {
+    const note = (table: string, tier: number): ApiAidValidationIssue => ({
+      ...WARNING,
+      severity: 'note',
+      path: `award_tables.${table}.tiers.${String(tier)}`,
+      message: `${table} table, tier ${String(tier)}: Program A at $600 gets $52.50, so the $75 minimum applies`,
+    })
+    // One warning (Summer tier 3) and two notes (Teen tier 2, and Summer tier 3 again).
+    const ISSUES = [WARNING, note('teen', 2), note('summer', 3)]
+    const MIN_MARK = 'Show where the minimum decides'
+    const min = (tier: number, column: number) =>
+      within(cell(tier, column)).queryByRole('button', { name: MIN_MARK })
+
+    it('reads "1 warning", wears ⚠ on the warned cell only, and a grey ⚠ on both noted cells (owner ruling 10-07: triangle, not "min")', () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      expect(
+        within(screen.getByTestId('card-head-award_tables')).getByRole('button', {
+          name: '1 warning',
+        })
+      ).toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: "Show this table's warnings" })).toHaveLength(1)
+      expect(
+        within(cell(3, 2)).getByRole('button', { name: "Show this table's warnings" })
+      ).toBeInTheDocument()
+      expect(min(2, 4)).toHaveAttribute('title', note('teen', 2).message)
+      expect(min(3, 2)).toHaveAttribute('title', note('summer', 3).message) // both marks on one cell
+      expect(min(1, 2)).toBeNull()
+      expect(screen.getAllByRole('button', { name: MIN_MARK })).toHaveLength(2)
+      expect(min(2, 4)).toHaveTextContent('⚠')
+      expect(screen.queryByText('min')).toBeNull()
+    })
+
+    it("a click footnotes the note's words once, under the grid; a second click folds it", async () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      const message = note('teen', 2).message
+      expect(screen.queryByText(message)).toBeNull()
+      await userEvent.click(min(2, 4)!)
+      expect(screen.getAllByText(message)).toHaveLength(1)
+      expect(screen.getByTestId('grid-note')).toHaveTextContent(message)
+      await userEvent.click(min(2, 4)!)
+      expect(screen.queryByText(message)).toBeNull()
+    })
+
+    it('is small, muted (not amber) and shows a pointer', () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      expect(min(2, 4)).toHaveClass('text-xs', 'text-muted-foreground', 'cursor-pointer')
+      expect(min(2, 4)!.className).not.toMatch(/amber/)
+    })
+
+    it('wears a different tone from the warning ⚠ on the one cell that has both', () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      const amber = within(cell(3, 2)).getByRole('button', { name: "Show this table's warnings" })
+      const grey = min(3, 2)!
+      expect(amber).toHaveTextContent('⚠')
+      expect(grey).toHaveTextContent('⚠')
+      expect(amber.className).toMatch(/text-amber-/)
+      expect(grey.className).not.toMatch(/text-amber-/)
+      expect(grey.className).toMatch(/text-muted-foreground/)
+      expect(amber.className).not.toMatch(/text-muted-foreground/)
+    })
+
+    it("stays out of the chip's list: the list holds the warning only", async () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(screen.getByRole('button', { name: '1 warning' }))
+      expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual([
+        WARNING.message,
+      ])
+    })
   })
 
   it('shows "—" in every table cell of a tier the tables do not have yet (more tiers)', () => {
