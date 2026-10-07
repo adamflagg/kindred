@@ -7,6 +7,7 @@
  */
 import type {
   ApiAidFieldChange,
+  ApiAidGroup,
   ApiAidRulesSection,
   ApiAidSectionStatus,
   ApiAidValidationIssue,
@@ -420,6 +421,14 @@ export function keyLabel(key: string, names: Pick<RulesVocabulary, 'programs' | 
 function own(map: Readonly<Record<string, string>>, key: string): string | undefined {
   return Object.hasOwn(map, key) ? map[key] : undefined
 }
+
+/**
+ * An equity class's column head by the group it pairs with ("Camp & Quest", spec §9.2), else the label it borrows
+ * from a same-key program or pool (`keyLabel`), else its own words.
+ */
+export const groupWords =
+  (groups: readonly ApiAidGroup[], names: Pick<RulesVocabulary, 'programs' | 'pools'>) => (key: string) =>
+    groups.find((g) => g.equity_class === key)?.label ?? keyLabel(key, names)
 
 type KeyKind =
   | 'pool'

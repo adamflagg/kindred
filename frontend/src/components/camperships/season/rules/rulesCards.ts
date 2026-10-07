@@ -3,11 +3,11 @@
  * description, sub-heads, and a read-only strip. Hidden settings (§6.4) are in no row and never render; read-only
  * ones never get a control. Pure.
  */
-import type { ApiAidRulesSection, ApiAidValidationIssue } from '../../../../types/api-types'
+import type { ApiAidRulesSection } from '../../../../types/api-types'
 import { formatLongDate } from '../../kit/dates'
 import { formatMoney } from '../../kit/money'
 import { codeWords } from '../../requests/attention'
-import { formatSetting, keyLabel, keyWords, labelOf, type RulesNames } from './rulesModel'
+import { formatSetting, labelOf, type RulesNames } from './rulesModel'
 import { valueAt } from './sectionEdit'
 
 export type RowType =
@@ -152,8 +152,6 @@ export const CARD_SPECS: Readonly<Partial<Record<ApiAidRulesSection, CardSpec>>>
     groups: [],
     readOnly: [],
   },
-  programs: { lead: null, groups: [], readOnly: [] },
-  cost: { lead: null, groups: [], readOnly: [] },
   milestones: {
     lead: 'The application deadline is also the default "received through" date for reports and what-ifs.',
     groups: [
@@ -344,8 +342,6 @@ const recordOf = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
 const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 const textOf = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
-const sessionWords = (id: unknown, names: RulesNames) =>
-  names.sessions?.get(Number(id)) ?? `Session ${String(id)}`
 
 export interface EquityRow {
   readonly index: number
@@ -460,49 +456,6 @@ export function namedAwardRows(
   })
 }
 
-/** The report's program issues that get an inline pill (spec §6.2 E.8), by validation code. */
-const PROGRAM_PILLS: Readonly<Record<string, string>> = {
-  unclassified_program: 'no pool',
-  no_equity_class: 'no equity class',
-}
-
-export interface ProgramRow {
-  readonly key: string
-  readonly label: string
-  readonly pills: readonly string[]
-  readonly sessions: readonly string[]
-  readonly equityClass: string
-  readonly pool: string
-  readonly costFrom: string
-  readonly openToAid: boolean
-}
-
-export function programRows(
-  content: Record<string, unknown>,
-  issues: readonly ApiAidValidationIssue[],
-  names: RulesNames
-): ProgramRow[] {
-  return Object.entries(content).map(([key, raw]) => {
-    const p = recordOf(raw)
-    const cls = textOf(p['equity_class'])
-    const pool = textOf(p['budget_pool'])
-    const pills = issues.flatMap((issue) => {
-      const words = PROGRAM_PILLS[issue.code]
-      return words !== undefined && issue.path.startsWith(`programs.${key}.`) ? [words] : []
-    })
-    return {
-      key,
-      label: textOf(p['label']) ?? key,
-      pills: [...new Set(pills)],
-      sessions: listOf(p['session_cm_ids']).map((id) => sessionWords(id, names)),
-      equityClass: cls === null ? 'None' : keyLabel(cls, names),
-      pool: pool === null ? 'None' : (names.pools[pool] ?? keyWords(pool)),
-      costFrom: CHOICE_WORDS['cost_source']?.[textOf(p['cost_source']) ?? ''] ?? '',
-      openToAid: p['open_to_aid'] !== false,
-    }
-  })
-}
-
 export interface CheckRow {
   readonly key: string
   readonly label: string
@@ -523,36 +476,4 @@ export function checkRows(content: Record<string, unknown>, names: RulesNames): 
       above: settingText(c['threshold'], 'money?', ['threshold'], names),
     }
   })
-}
-
-export interface CostRows {
-  readonly tuition: ReadonlyArray<{
-    readonly id: string
-    readonly session: string
-    readonly tuition: string
-  }>
-  readonly rates: ReadonlyArray<{
-    readonly index: number
-    readonly session: string
-    readonly standard: string
-    readonly infant: string
-  }>
-}
-
-export function costRows(content: Record<string, unknown>, names: RulesNames): CostRows {
-  return {
-    tuition: Object.entries(recordOf(content['tuition'])).map(([id, value]) => ({
-      id,
-      session: sessionWords(id, names),
-      tuition: settingText(value, 'money', ['tuition', id], names),
-    })),
-    rates: listOf(content['family_rates'])
-      .map(recordOf)
-      .map((r, index) => ({
-        index,
-        session: sessionWords(r['session_cm_id'], names),
-        standard: settingText(r['standard'], 'money', ['standard'], names),
-        infant: settingText(r['infant'], 'money', ['infant'], names),
-      })),
-  }
 }

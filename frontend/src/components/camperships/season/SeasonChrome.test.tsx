@@ -21,6 +21,12 @@ vi.mock('../../../hooks/camperships/useAidRules', () => ({
 vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => new Map([[1000101, 'First Session']]),
 }))
+vi.mock('../../../hooks/camperships/useAidSessionCatalog', () => ({
+  useAidSessionCatalog: () => [],
+}))
+vi.mock('../../../hooks/camperships/useLodgingCancelledSessions', () => ({
+  useLodgingCancelledSessions: () => new Set<number>(),
+}))
 vi.mock('../../../hooks/camperships/useAidRulesWrites', () => ({
   useAidApproveRules: () => ({ mutate: vi.fn(), isPending: false }),
   useFreshAidRulesDraft: () => () => Promise.resolve(draft as ApiAidRulesDraft),

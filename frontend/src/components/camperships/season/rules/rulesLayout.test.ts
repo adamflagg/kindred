@@ -45,6 +45,12 @@ describe('chapters (spec §6.2 C)', () => {
     })
   })
 
+  it('chapter 5 is one card over two sections, and its marks sum both', () => {
+    const chapter = CHAPTERS.find((c) => c.n === 5)!
+    expect(chapter.cards).toEqual(['programs_costs'])
+    expect(sectionsOf(chapter)).toEqual(['programs', 'cost'])
+  })
+
   it('opens the chapters holding a draft section or an issue, and folds the rest', () => {
     expect(defaultOpen(rulesDraft())).toEqual([1]) // award_tables is the fixture's draft section
     const d = rulesDraft()

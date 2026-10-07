@@ -124,6 +124,7 @@ export function TierGridTable({
   onWarn,
   control,
   names = NO_NAMES,
+  label,
 }: {
   bands: readonly Band[]
   awardTables: Tables
@@ -137,14 +138,17 @@ export function TierGridTable({
   control?: GridCellControl | undefined
   /** What labels a class: a program or pool sharing its key, else its words. */
   names?: Pick<RulesVocabulary, 'programs' | 'pools'>
+  /** A column's head for its class: the group's name where one pairs with it (spec §9.2); `keyLabel` by default. */
+  label?: (key: string) => string
 }) {
   const fromCard = useContext(GridWarnContext)
   const warn = onWarn ?? fromCard ?? (() => undefined)
   // The one place a clicked note's words show: a line under the grid (its hover title is the other way in).
   const [footnote, setFootnote] = useState<string | null>(null)
   const footnoteWords = footnote === null ? undefined : noted.get(footnote)
-  const r1 = gridColumns(awardTables, classes, (key) => keyLabel(key, names))
-  const r2 = gridColumns(appealTables, classes, (key) => keyLabel(key, names))
+  const head = label ?? ((key: string) => keyLabel(key, names))
+  const r1 = gridColumns(awardTables, classes, head)
+  const r2 = gridColumns(appealTables, classes, head)
   const boxFor = (
     part: 'award_tables' | 'round2',
     tables: Tables,
@@ -245,6 +249,7 @@ export function TierGridCard({
   canEdit,
   onEdit,
   editing,
+  label,
 }: {
   /** The shown document: the draft's, or the version in effect's. */
   document: ApiAidRulesDocument
@@ -259,6 +264,8 @@ export function TierGridCard({
   onEdit: (part: GridPart) => void
   /** The open editor and the part it edits (Task 48's table editors, Task 49's tiers editor); null when none. */
   editing: { part: GridPart; node: ReactNode } | null
+  /** The tables' column heads (`groupWords`); `keyLabel` when absent. */
+  label?: (key: string) => string
 }) {
   // The award table head's one list: every issue (table null, the chip) or one table's cell warnings (its ⚠).
   const [listing, setListing] = useState<{ table: string | null } | null>(null)
@@ -329,6 +336,7 @@ export function TierGridCard({
             noted={noted}
             onWarn={onWarn}
             names={names}
+            {...(label !== undefined ? { label } : {})}
           />
         </>
       )}

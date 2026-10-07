@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ApiAidRulesDocument, ApiAidValidationIssue } from '../../../../types/api-types'
 import { RULES_DOCUMENT } from './rulesFixtures'
-import type { RulesNames, StatusWords } from './rulesModel'
-import { TierGridCard } from './TierGridCard'
+import { groupWords, type RulesNames, type StatusWords } from './rulesModel'
+import { TierGridCard, TierGridTable } from './TierGridCard'
 import { bandsOf } from './tierGrid'
 
 const DOC: ApiAidRulesDocument = {
@@ -331,5 +331,37 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     ).toBeInTheDocument()
     expect(screen.queryByTestId('tier-grid')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+  })
+})
+
+describe('the tier grid names its columns by group (spec §9.2, open item 5)', () => {
+  const awardTables = {
+    summer: {
+      inherits: null,
+      tiers: { '1': { r1_pct: '90' }, '2': { r1_pct: '75' }, '3': { r1_pct: '55' } },
+      overrides: {},
+    },
+  }
+  const tableProps = {
+    bands: bandsOf(0, 35000, 3),
+    awardTables,
+    appealTables: {},
+    classes: ['summer'],
+    warned: new Set<string>(),
+  }
+
+  it('heads a column by the group its class pairs with', () => {
+    render(
+      <TierGridTable
+        {...tableProps}
+        label={groupWords([{ pool: 'pool_a', label: 'Pool A', equity_class: 'summer' }], NAMES)}
+      />
+    )
+    expect(screen.getByRole('columnheader', { name: /Pool A/ })).toBeInTheDocument()
+  })
+
+  it('keeps the class words for a table no group pairs with', () => {
+    render(<TierGridTable {...tableProps} label={groupWords([], NAMES)} />)
+    expect(screen.getByRole('columnheader', { name: /Summer/ })).toBeInTheDocument()
   })
 })
