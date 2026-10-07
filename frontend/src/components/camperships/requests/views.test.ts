@@ -479,7 +479,7 @@ describe('By reason on a lens: the ten strip stages', () => {
     expect(headingOf(ROWS.shortGap)).toBe('Not reconciled')
     expect(headingOf(ROWS.unticked)).toBe('Not reconciled')
     expect(headingOf(ROWS.toReverse)).toBe('To reverse')
-    expect(headingOf(ROWS.holds)).toBe('Holds')
+    expect(headingOf(ROWS.holds)).toBe('On hold')
     expect(headingOf(ROWS.duplicate)).toBe('Duplicates')
     expect(headingOf(ROWS.session)).toBe('Session unclear')
     expect(headingOf(ROWS.note)).toBe('Worth a look')
@@ -489,7 +489,7 @@ describe('By reason on a lens: the ten strip stages', () => {
   })
 
   it('groups the Appeals lens the same way, but not a stage picked under it', () => {
-    expect(headingOf(ROWS.holds, 'appeals')).toBe('Holds')
+    expect(headingOf(ROWS.holds, 'appeals')).toBe('On hold')
     expect(headingOf(ROWS.accepted, 'appeals')).toBe('Nothing waiting')
     const holdsUnderAppeals = shownView('appeals', requestView('holds'))
     expect(reasonGroup(holdsUnderAppeals, TODAY)(ROW_LIAM).heading).toBe('Placeholder income')
@@ -501,7 +501,7 @@ describe('By reason on a lens: the ten strip stages', () => {
       holds: ROW_LIAM.holds,
       queues: ['holds'],
     })
-    expect(headingOf(both)).toBe('Holds')
+    expect(headingOf(both)).toBe('On hold')
     expect(headingOf(ROWS.note)).toBe('Worth a look')
   })
 
@@ -538,7 +538,7 @@ describe('By reason on a lens: the ten strip stages', () => {
       'Pending approval',
       'Not reconciled',
       'To reverse',
-      'Holds',
+      'On hold',
       'Duplicates',
       'Session unclear',
       'Worth a look',

@@ -164,8 +164,8 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Requests')
     expect(viewLink('All')).toHaveTextContent('All 5')
     expect(viewLink('All')).toHaveAttribute('href', '/aid/requests?year=2027')
-    expect(viewLink('Holds')).toHaveTextContent('Holds 1')
-    expect(viewLink('Holds')).toHaveAttribute('href', '/aid/requests?view=holds&year=2027')
+    expect(viewLink('On hold')).toHaveTextContent('On hold 1')
+    expect(viewLink('On hold')).toHaveAttribute('href', '/aid/requests?view=holds&year=2027')
   })
 
   // Spec §12.2: footnote 5 only when the rows shown hold outside money.
@@ -215,7 +215,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     const { unmount } = renderAt('/aid/requests?view=holds&as_of=2027-03-01')
     expect(screen.getByText(/isn't rebuilt for a past date/)).toBeInTheDocument()
     expect(screen.queryByText('No requests in this view.')).toBeNull()
-    expect(viewLink('Holds')).toHaveTextContent('Holds —')
+    expect(viewLink('On hold')).toHaveTextContent('On hold —')
     unmount()
     renderAt('/aid/requests?as_of=2027-03-01')
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
@@ -584,7 +584,7 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
     expect(viewLink('All')).toHaveTextContent('All 5')
     expect(viewLink('Needs an offer')).toHaveTextContent('Needs an offer 1')
     // Owner 2026-10-04: a badge with nothing in it under the lens is not drawn.
-    expect(screen.queryByRole('link', { name: /^Holds / })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^On hold / })).toBeNull()
     expect(headers()).toContain('Appeal ask')
     expect(screen.getByText('Showing appeals only.')).toBeInTheDocument()
   })

@@ -226,7 +226,7 @@ describe('RequestsGrid', () => {
     const headings = [...document.querySelectorAll('[data-group-heading] button')].map((b) =>
       b.textContent.slice(1)
     )
-    expect(headings).toEqual(['Needs an offer', 'Not reconciled', 'To reverse', 'Holds'])
+    expect(headings).toEqual(['Needs an offer', 'Not reconciled', 'To reverse', 'On hold'])
   })
 
   it('opens the Appeals lens grouped under the strip stages', () => {

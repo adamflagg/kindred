@@ -94,7 +94,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
   {
     key: 'holds',
     slug: 'holds',
-    label: 'Holds',
+    label: 'On hold',
     groupBy: 'reason',
     columns: ['session', 'ask', 'cost', 'tier', 'attention'],
   },
