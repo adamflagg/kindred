@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from bunking.financial_aid.rules.schema import AidRules, EquityCriterion, R1Percent, TierTable, TotalPercent
+from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.rules.schema import (
+    AidRules,
+    EquityCriterion,
+    ProgramProfile,
+    R1Percent,
+    TierTable,
+    TotalPercent,
+)
 
 
 def is_dependents_criterion(criterion: EquityCriterion) -> bool:
@@ -51,3 +59,28 @@ def resolve_program(rules: AidRules, session_cm_id: int | None, session_type: st
             if session_type in program.session_types:
                 return key
     return None
+
+
+class Round2TableNotListedError(FinancialAidError, KeyError):
+    """A legacy program round2.program_tables doesn't name: the engine's "does not say which Round 2 table" error."""
+
+    def __init__(self, program_key: str) -> None:
+        super().__init__(program_key)
+        self.program_key = program_key
+
+
+def round1_table(rules: AidRules, program: ProgramProfile) -> str | None:
+    """The award table a program's Round 1 reads (spec §9.9): its equity class when it routes by class, else its
+    legacy `r1_table`. None: no table (by class: no class, so its requests hold; legacy: the minimum only)."""
+    return program.equity_class if program.table_from_equity_class else program.r1_table
+
+
+def round2_table(rules: AidRules, program_key: str) -> str | None:
+    """The appeal-cap table a program's Round 2 reads: its equity class by class, else `round2.program_tables`
+    (None there means no Round 2 table). A legacy program the map doesn't list raises Round2TableNotListedError."""
+    program = rules.programs.get(program_key)
+    if program is not None and program.table_from_equity_class:
+        return program.equity_class
+    if program_key not in rules.round2.program_tables:
+        raise Round2TableNotListedError(program_key)
+    return rules.round2.program_tables[program_key]

@@ -1150,7 +1150,7 @@ export type AwardsSectionInput = {
   /**
    * Minimum Without Table
    */
-  minimum_without_table: boolean
+  minimum_without_table?: boolean
   /**
    * Rounding
    */
@@ -1182,7 +1182,7 @@ export type AwardsSectionOutput = {
   /**
    * Minimum Without Table
    */
-  minimum_without_table: boolean
+  minimum_without_table?: boolean
   /**
    * Rounding
    */
@@ -11831,12 +11831,13 @@ export type ProductionRequestsResponse = {
 /**
  * ProgramProfile
  *
- * One program's settings. Replaces the sheet's single "award class".
+ * One program's settings. Its equity class picks both its row of equity weights and its award tables (owner
+ * 10-06: "the equity class determines the table - its a 1:1 relationship"): Round 1 is `award_tables[class]` and
+ * the appeal cap `round2.tables[class]` (`table_from_equity_class`, the default).
  *
- * `r1_table` of None means "no table": the R1 percentage is 0, so only the minimum
- * award can apply, or the request holds when the minimum does not apply without a
- * table. That is how 2026 routed four of its adult and family programs. Which Round 2
- * table a program's appeals use is a Round 2 lever: `round2.program_tables`.
+ * LEGACY: a program stored with `r1_table` and no flag (every program in 2026's file) loads with the flag False and
+ * prices exactly as stored, from `r1_table` (None: no table, the minimum only), `round2.program_tables` and
+ * `awards.minimum_without_table`. The new programs editor never writes them.
  */
 export type ProgramProfile = {
   /**
@@ -11854,7 +11855,7 @@ export type ProgramProfile = {
   /**
    * R1 Table
    */
-  r1_table: string | null
+  r1_table?: string | null
   /**
    * Equity Class
    */
@@ -11875,6 +11876,10 @@ export type ProgramProfile = {
    * Campminder Description
    */
   campminder_description?: string
+  /**
+   * Table From Equity Class
+   */
+  table_from_equity_class?: boolean
 }
 
 /**

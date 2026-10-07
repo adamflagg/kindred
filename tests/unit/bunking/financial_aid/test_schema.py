@@ -158,11 +158,13 @@ def test_program_tables_may_be_null_meaning_no_table() -> None:
     assert profile.session_cm_ids == []
 
 
-def test_a_program_must_say_which_tables_it_uses() -> None:
-    with pytest.raises(ValidationError, match="r1_table"):
-        ProgramProfile.model_validate(
-            {"label": "Summer", "equity_class": None, "budget_pool": None, "cost_source": "catalog"}
-        )
+def test_a_program_without_r1_table_loads_by_its_equity_class() -> None:
+    """Ruled change (§8.5): a program no longer names its tables; its equity class does."""
+    profile = ProgramProfile.model_validate(
+        {"label": "Summer", "equity_class": None, "budget_pool": None, "cost_source": "catalog"}
+    )
+    assert profile.table_from_equity_class is True
+    assert profile.r1_table is None
 
 
 def test_the_fictional_season_is_a_valid_document() -> None:
@@ -300,3 +302,16 @@ def test_an_equity_criterion_is_enabled_unless_stored_otherwise() -> None:
     """§8.6: no stored criterion carries `enabled`, so every stored document prices the same."""
     rules = fictional_rules()
     assert all(c.enabled for c in rules.equity.criteria)
+
+
+def test_the_programs_editor_writes_the_flag_and_no_r1_table() -> None:
+    """§9.9: a program sent with the flag true and no r1_table loads by class; the minimum-without-table switch and
+    program_tables keep defaults (legacy)."""
+    doc = fictional_rules_json()
+    doc["programs"]["summer"] = {k: v for k, v in doc["programs"]["summer"].items() if k != "r1_table"} | {
+        "table_from_equity_class": True
+    }
+    del doc["awards"]["minimum_without_table"]
+    rules = AidRules.model_validate(doc)
+    assert (rules.programs["summer"].table_from_equity_class, rules.programs["summer"].r1_table) == (True, None)
+    assert rules.awards.minimum_without_table is True
