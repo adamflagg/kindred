@@ -45,11 +45,13 @@ import {
 import {
   isNote,
   isRulesSection,
+  keyLabel,
   rulesVocabulary,
   sectionIssues,
   statusWords,
   versionWords,
   type RulesNames,
+  type RulesVocabulary,
   type StatusWords,
 } from './rulesModel'
 import type { CellControl } from './CardTables'
@@ -112,7 +114,8 @@ function useSessionNames() {
 /** What the editor's lifted boxes offer (spec §6.2 F), read from the draft and the season's session names. */
 function editContext(
   document: ApiAidRulesDraft['document'],
-  sessionNames: ReadonlyMap<number, string> | undefined
+  sessionNames: ReadonlyMap<number, string> | undefined,
+  vocabulary: Pick<RulesVocabulary, 'programs' | 'pools'>
 ): EditContext {
   const programs = Object.entries(document.programs as Record<string, ApiAidProgramProfile>)
   const claims = (program: ApiAidProgramProfile): number[] =>
@@ -121,8 +124,10 @@ function editContext(
     ...(sessionNames?.keys() ?? []),
     ...programs.flatMap(([, program]) => claims(program)),
   ])
+  const classes = Object.keys(document.equity.weights ?? {})
   return {
-    classes: Object.keys(document.equity.weights ?? {}),
+    classes,
+    classLabels: new Map(classes.map((c) => [c, keyLabel(c, vocabulary)])),
     pools: Object.entries((document.budget.pools ?? {}) as Record<string, { label: string }>).map(
       ([key, pool]) => ({
         key,
@@ -414,6 +419,7 @@ function ChaptersBody({
             classes={gridClasses(programs, document_.award_tables)}
             warned={warned}
             noted={noted}
+            names={names}
           />
           {asSaved}
         </div>
@@ -431,6 +437,7 @@ function ChaptersBody({
           classes={gridClasses(programs, awardTables)}
           warned={warned}
           noted={noted}
+          names={names}
           control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
         />
         {asSaved}
@@ -445,7 +452,7 @@ function ChaptersBody({
         section={section}
         draft={draft}
         names={{ ...names, section }}
-        context={editContext(draft.document, sessions)}
+        context={editContext(draft.document, sessions, names)}
         renderBody={({ content, control, cell }) =>
           isGridPart(section) ? (
             gridBody(section, content, cell)

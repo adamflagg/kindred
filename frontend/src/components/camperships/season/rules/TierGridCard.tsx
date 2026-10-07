@@ -16,7 +16,13 @@ import {
   CS_TH_CARD,
 } from '../../kit/csType'
 import { GRID_PARTS, GRID_TITLES } from './rulesLayout'
-import { changeWords, keyWords, type RulesNames, type StatusWords } from './rulesModel'
+import {
+  changeWords,
+  keyLabel,
+  type RulesNames,
+  type RulesVocabulary,
+  type StatusWords,
+} from './rulesModel'
 import { SectionCardHead } from './SectionCard'
 import {
   bandsIn,
@@ -47,6 +53,7 @@ const TD_NUM = `${CS_TD_CARD} text-right tabular-nums`
 /** The card's cell ⚠ click, for the grid an editor draws inside it: it opens the card's one list (coordinator B2). */
 const GridWarnContext = createContext<((table: string) => void) | null>(null)
 const NO_NOTES: ReadonlyMap<string, string> = new Map()
+const NO_NAMES = { programs: {}, pools: {} }
 
 function GridCellView({
   cell,
@@ -116,6 +123,7 @@ export function TierGridTable({
   noted = NO_NOTES,
   onWarn,
   control,
+  names = NO_NAMES,
 }: {
   bands: readonly Band[]
   awardTables: Tables
@@ -127,14 +135,16 @@ export function TierGridTable({
   /** A warned cell's click; inside the tier grid card's editor it defaults to the card's list. */
   onWarn?: (table: string) => void
   control?: GridCellControl | undefined
+  /** What labels a class: a program or pool sharing its key, else its words. */
+  names?: Pick<RulesVocabulary, 'programs' | 'pools'>
 }) {
   const fromCard = useContext(GridWarnContext)
   const warn = onWarn ?? fromCard ?? (() => undefined)
   // The one place a clicked note's words show: a line under the grid (its hover title is the other way in).
   const [footnote, setFootnote] = useState<string | null>(null)
   const footnoteWords = footnote === null ? undefined : noted.get(footnote)
-  const r1 = gridColumns(awardTables, classes, keyWords)
-  const r2 = gridColumns(appealTables, classes, keyWords)
+  const r1 = gridColumns(awardTables, classes, (key) => keyLabel(key, names))
+  const r2 = gridColumns(appealTables, classes, (key) => keyLabel(key, names))
   const boxFor = (
     part: 'award_tables' | 'round2',
     tables: Tables,
@@ -318,6 +328,7 @@ export function TierGridCard({
             warned={warned}
             noted={noted}
             onWarn={onWarn}
+            names={names}
           />
         </>
       )}

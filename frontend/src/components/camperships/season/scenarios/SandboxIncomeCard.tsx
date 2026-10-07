@@ -19,7 +19,7 @@ import {
   cardProblems,
   currentYearWords,
   fixFirstWords,
-  keyLabel,
+  boxLabel,
   keyLocked,
   lockNote,
   type SandboxBinding,
@@ -42,10 +42,10 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
       key={key}
       className={`${CS_FLABEL} flex items-baseline gap-1.5 ${muted ? 'text-muted-foreground' : ''}`}
     >
-      {keyLabel(key, doc)}{' '}
+      {boxLabel(key, doc)}{' '}
       <SandboxBox
         boxKey={key}
-        label={keyLabel(key, doc)}
+        label={boxLabel(key, doc)}
         width={width}
         unit="$"
         binding={binding}
@@ -65,10 +65,10 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}
       <div className={CS_PANEL_HEAD}>Which years count</div>
       <label className={`${CS_FLABEL} flex items-baseline gap-1.5`}>
-        {keyLabel(PRIOR_WEIGHT, doc)}{' '}
+        {boxLabel(PRIOR_WEIGHT, doc)}{' '}
         <SandboxBox
           boxKey={PRIOR_WEIGHT}
-          label={keyLabel(PRIOR_WEIGHT, doc)}
+          label={boxLabel(PRIOR_WEIGHT, doc)}
           width={64}
           unit="%"
           binding={binding}

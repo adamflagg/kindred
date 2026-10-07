@@ -7,7 +7,7 @@
 import type { ApiAidRulesDocument } from '../../../../types/api-types'
 import { formatWholeMoney } from '../../kit/money'
 import { CARD_SPECS, CHOICE_WORDS } from '../rules/rulesCards'
-import { keyWords } from '../rules/rulesModel'
+import { keyLabel, keyWords, rulesVocabulary } from '../rules/rulesModel'
 import { bandsIn, bandsOf, evenOf, type TableShape } from '../rules/tierGrid'
 
 type Doc = ApiAidRulesDocument
@@ -324,8 +324,16 @@ const incomeLabel = (field: string) =>
     .flatMap((group) => group.rows)
     .find((row) => row.path.join('.') === field)?.label ?? keyWords(field)
 
+/** A table's or equity class's name in the document's words: the program or pool with that key, else its words. */
+export function classLabel(key: string, document: Doc): string {
+  return keyLabel(
+    key,
+    rulesVocabulary((section) => document[section])
+  )
+}
+
 /** A box's label, for "Fix first": the card's own words (rulesCards.ts). */
-export function keyLabel(key: string, document: Doc): string {
+export function boxLabel(key: string, document: Doc): string {
   const fixed: Record<string, string> = {
     [TIER_START]: 'Start',
     [TIER_WIDTH]: 'Band width',
@@ -338,13 +346,13 @@ export function keyLabel(key: string, document: Doc): string {
   const path = key.split('.')
   if (path[0] === 'income') return incomeLabel(path.slice(1).join('.'))
   if (path[0] === 'award_tables')
-    return `Round 1 % › ${keyWords(path[1] ?? '')} › Tier ${path[3] ?? ''}`
+    return `Round 1 % › ${classLabel(path[1] ?? '', document)} › Tier ${path[3] ?? ''}`
   if (path[0] === 'round2')
-    return `Round 1 + 2 cap › ${keyWords(path[2] ?? '')} › Tier ${path[4] ?? ''}`
+    return `Round 1 + 2 cap › ${classLabel(path[2] ?? '', document)} › Tier ${path[4] ?? ''}`
   const criteria = document.equity.criteria ?? []
   if (path[1] === 'weights') {
     const label = criteria.find((c) => c.key === path[3])?.label ?? keyWords(path[3] ?? '')
-    return `Weight › ${keyWords(path[2] ?? '')} › ${label}`
+    return `Weight › ${classLabel(path[2] ?? '', document)} › ${label}`
   }
   return `${criteria[Number(path[2])]?.label ?? ''} › Enabled`
 }
@@ -355,7 +363,7 @@ export function fixFirstWords(
   document: Doc
 ): string | null {
   if (problems.size === 0) return null
-  return `Fix first: ${[...problems].map(([key, problem]) => `${keyLabel(key, document)} (${problem})`).join('; ')}`
+  return `Fix first: ${[...problems].map(([key, problem]) => `${boxLabel(key, document)} (${problem})`).join('; ')}`
 }
 
 /** Only a table's own cells are boxes; an inheriting table's cells (and its overrides) read only (§S5 F1). */

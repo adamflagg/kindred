@@ -15,6 +15,7 @@ import {
   cardProblems,
   cellKey,
   changeCount,
+  classLabel,
   currentYearWords,
   enabledKey,
   fixFirstWords,
@@ -248,5 +249,24 @@ describe('the cards’ binding (§S5 F)', () => {
     expect([...cardProblems(problems, 'tiers').keys()]).toEqual([MINIMUM])
     expect([...cardProblems(problems, 'income').keys()]).toEqual([PRIOR_WEIGHT])
     expect(cardProblems(problems, 'equity').size).toBe(0)
+  })
+})
+
+describe('a class or table key borrows its program label', () => {
+  const named = {
+    ...SANDBOX_DOC,
+    programs: { ...SANDBOX_DOC.programs, teen: { label: 'Teen Program' } },
+  } as typeof SANDBOX_DOC
+
+  it('reads a table or class as the program with that key, else in words', () => {
+    expect(classLabel('teen', named)).toBe('Teen Program')
+    expect(classLabel('general', named)).toBe('General')
+  })
+
+  it("names a table's cell in Fix first by that label", () => {
+    const applied = applyEdits(named, edits({ [cellKey('r1', 'teen', 3)]: '' }))
+    expect(fixFirstWords(applied.problems, named)).toBe(
+      'Fix first: Round 1 % › Teen Program › Tier 3 (needs a figure)'
+    )
   })
 })

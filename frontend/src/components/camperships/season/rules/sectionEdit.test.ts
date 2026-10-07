@@ -360,6 +360,7 @@ describe('the null side of a change (m4)', () => {
 
 const CONTEXT: EditContext = {
   classes: ['camp', 'teen', 'family'],
+  classLabels: new Map(),
   pools: [
     { key: 'pool_a', label: 'Pool A' },
     { key: 'pool_b', label: 'Pool B' },
@@ -389,6 +390,26 @@ describe('the lifted settings (spec §6.2 F)', () => {
     })
     expect(fieldSpec(['summer', 'equity_class'], 'camp', {})).toBeNull() // Scenarios' All settings: unchanged
     expect(fieldSpec(['summer', 'budget_pool'], null, {}, CONTEXT)).toMatchObject({ kind: 'pick' })
+  })
+
+  it('offers a class by the program label that shares its key, else its words', () => {
+    const spec = fieldSpec(
+      ['summer', 'equity_class'],
+      'camp',
+      {},
+      {
+        ...CONTEXT,
+        classLabels: new Map([['teen', 'Teen Program']]),
+      }
+    )
+    expect(spec).toMatchObject({
+      options: [
+        { value: 'camp', label: 'Camp' },
+        { value: 'teen', label: 'Teen Program' },
+        { value: 'family', label: 'Family' },
+        { value: '', label: 'None' },
+      ],
+    })
   })
 
   it("boxes sessions as chips, the grants offset as checkboxes, a criterion's Enabled and every date", () => {

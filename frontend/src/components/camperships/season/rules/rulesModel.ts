@@ -339,8 +339,9 @@ export function unitOf(path: readonly string[]): SettingUnit {
 /**
  * What the screen knows to name the rules' keys by: each pool's, program's, decision type's and
  * equity criterion's label as the rules document carries it, and the season's session names when
- * the screen has them. Staff never read a key or a CampMinder id where a name exists; a key with no
- * label reads in words (`keyWords`), a session with no name as "Session 9300101".
+ * the screen has them. Staff never read a key or a CampMinder id where a name exists; a table or
+ * equity class with no label borrows its same-key program's or pool's (`keyLabel`), any other key
+ * with no label reads in words (`keyWords`), and a session with no name as "Session 9300101".
  */
 export interface RulesVocabulary {
   readonly pools: Readonly<Record<string, string>>
@@ -392,23 +393,31 @@ export function rulesVocabulary(
 }
 
 /**
- * Words for a key the rules carry no label for. ⚠ Owner may veto: acronyms staff write in capitals,
- * and the equity criterion the 2026 sheet called "trans_nb".
+ * Words for a key the rules carry no label for: acronyms staff write in capitals, and one equity
+ * criterion's sheet-era key.
  */
 const KEY_WORDS: Readonly<Record<string, string>> = {
-  tbm: 'TBM',
   agi: 'AGI',
   bipoc: 'BIPOC',
-  jfam: 'JFAM',
   trans_nb: 'Trans / nonbinary',
 }
 
 /** A key with no label: its word, else its own words in sentence case ("camp_quest" → "Camp quest"). */
 export function keyWords(key: string): string {
-  const known = KEY_WORDS[key]
+  const known = own(KEY_WORDS, key)
   if (known !== undefined) return known
   const plain = words(key)
   return plain.charAt(0).toUpperCase() + plain.slice(1)
+}
+
+/** A key the rules give no label: the program's label with that key, else the pool's, else its words (owner 10-07). */
+export function keyLabel(key: string, names: Pick<RulesVocabulary, 'programs' | 'pools'>): string {
+  return own(names.programs, key) ?? own(names.pools, key) ?? keyWords(key)
+}
+
+/** A map's own entry only: a key like "constructor" must not read an inherited Object property. */
+function own(map: Readonly<Record<string, string>>, key: string): string | undefined {
+  return Object.hasOwn(map, key) ? map[key] : undefined
 }
 
 type KeyKind =
@@ -494,7 +503,7 @@ function nameOf(kind: KeyKind, key: string, names: RulesVocabulary): string {
       return KEY_WORDS[key] ?? words(key)
     case 'table':
     case 'equity_class':
-      return keyWords(key)
+      return keyLabel(key, names)
   }
 }
 

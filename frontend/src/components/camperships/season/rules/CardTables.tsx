@@ -21,7 +21,7 @@ import {
   programRows,
   settingText,
 } from './rulesCards'
-import { keyWords, type RulesNames } from './rulesModel'
+import { keyLabel, type RulesNames } from './rulesModel'
 
 /** In the editor: the box for one editable cell, by its path within the section. */
 export type CellControl = (path: readonly string[]) => ReactNode
@@ -109,7 +109,7 @@ function EquityTable({ content, approved, names, details, dependentsMode, contro
         <tr>
           {classes.map((cls) => (
             <th key={cls} className={TH_NUM}>
-              {keyWords(cls)}
+              {keyLabel(cls, names)}
             </th>
           ))}
         </tr>

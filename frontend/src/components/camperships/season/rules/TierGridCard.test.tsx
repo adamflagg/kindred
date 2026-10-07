@@ -109,6 +109,15 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     expect(onEdit).toHaveBeenCalledWith('tiers')
   })
 
+  it('heads a class with the program label that shares its key, else its words', () => {
+    grid({ names: { ...NAMES, programs: { teen: 'Teen Program' } } })
+    const heads = within(screen.getByTestId('tier-grid'))
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+    expect(heads.some((h) => h.startsWith('Teen Program'))).toBe(true)
+    expect(heads.some((h) => h.startsWith('Family'))).toBe(true)
+  })
+
   it('reads the one line from the bands, with the ceiling footnote', () => {
     grid()
     expect(screen.getByTestId('tier-line')).toHaveTextContent(

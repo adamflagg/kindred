@@ -7,6 +7,7 @@ import type { EditContext } from './sectionEdit'
 
 const CONTEXT: EditContext = {
   classes: ['camp', 'teen', 'family'],
+  classLabels: new Map(),
   pools: [{ key: 'pool_a', label: 'Pool A' }],
   sessions: [
     { id: 1000101, name: 'Session 1' },

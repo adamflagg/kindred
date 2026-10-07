@@ -8,11 +8,11 @@ import {
 } from '../../kit/csType'
 import { DefRef } from '../../kit/DefinitionNotes'
 import { equityClasses, equityRows } from '../rules/rulesCards'
-import { keyWords } from '../rules/rulesModel'
 import { SandboxBox } from './SandboxBox'
 import { LockNoteView } from './SandboxTierCard'
 import {
   cardProblems,
+  classLabel,
   enabledKey,
   fixFirstWords,
   keyLocked,
@@ -61,7 +61,7 @@ export function SandboxEquityCard({ binding }: { binding: SandboxBinding }) {
           <tr>
             {classes.map((cls) => (
               <th key={cls} className={TH_MID}>
-                {keyWords(cls)}
+                {classLabel(cls, binding.typed)}
               </th>
             ))}
           </tr>
@@ -93,7 +93,7 @@ export function SandboxEquityCard({ binding }: { binding: SandboxBinding }) {
                   <td key={cls} className={`${CS_TD_CARD} text-center`}>
                     <SandboxBox
                       boxKey={weightKey(cls, row.key)}
-                      label={`Weight · ${keyWords(cls)} · ${row.label}`}
+                      label={`Weight · ${classLabel(cls, binding.typed)} · ${row.label}`}
                       width={46}
                       unit={null}
                       binding={binding}
