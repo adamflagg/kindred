@@ -568,52 +568,89 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             else None
         )
         if resolve_program(rules, ref.cm_id, ref.session_type, ag_parent=ag_parent) is None:
-            label = f" ({ref.name})" if ref.name else ""
+            name = ref.name or f"Session {ref.cm_id}"
             issues.error(
                 "programs",
                 "unmapped_session",
                 "programs",
-                f"Session {ref.cm_id}{label} belongs to no program; map it (or put it in a closed program)",
+                f"{name} is in no group, so it can't get aid. Move it to a group, or save it under Not open to aid.",
+                [ref.cm_id],
             )
 
 
 def _session_names(ids: Sequence[int], context: ValidationContext | None) -> str:
-    """ "Session One, Session Two and session 1000123": the season's names where it has them."""
+    """ "Session One, Session Two and session 1000123": the season's names where it has them; more than five read as
+    the first three and "n more" (spec §9.1)."""
     names = {ref.cm_id: ref.name for ref in context.sessions if ref.name} if context is not None else {}
     parts = [names.get(i) or f"session {i}" for i in ids]
+    if len(parts) > 5:
+        return f"{', '.join(parts[:3])} and {len(parts) - 3} more"
     return parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
+def _group_sessions(rules: AidRules, context: ValidationContext | None) -> dict[str, dict[int, str]]:
+    """pool -> {session: cost_source} for every running session an open, pooled, priced program claims: its explicit
+    ids, then the context's sessions it claims by type. AG children with a parent and not-running sessions are left out
+    (spec §7.2, §8). A `typed` program has no price to miss."""
+    skip = _ag_children(context) | _not_running(rules, context)
+    out: dict[str, dict[int, str]] = {}
+
+    def add(session: int, key: str) -> None:
+        program = rules.programs[key]
+        if not program.open_to_aid or program.budget_pool is None or program.cost_source == "typed" or session in skip:
+            return
+        out.setdefault(program.budget_pool, {}).setdefault(session, program.cost_source)
+
+    for key, program in rules.programs.items():
+        for session in program.session_cm_ids:
+            add(session, key)
+    for ref in context.sessions if context is not None else []:
+        claimed_by = resolve_program(rules, ref.cm_id, ref.session_type)
+        if claimed_by is not None:
+            add(ref.cm_id, claimed_by)
+    return out
 
 
 def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Issues) -> None:
     counts = Counter(r.session_cm_id for r in rules.cost.family_rates)
-    skip = _ag_children(context) | _not_running(rules, context)
     for session, n in counts.items():
         if n > 1:
             issues.error("cost", "duplicate_family_rate", "cost.family_rates", f"Session {session} has {n} rates")
-    for key, program in rules.programs.items():
-        if not program.open_to_aid:
+    sessions_by_pool = _group_sessions(rules, context)
+    for pool, spec in rules.budget.pools.items():
+        sessions = sessions_by_pool.get(pool, {})
+        missing = [
+            s for s, source in sessions.items() if s not in (rules.cost.tuition if source == "catalog" else counts)
+        ]
+        if not missing:
             continue
-        path = f"programs.{key}.session_cm_ids"
-        if program.cost_source == "per_person":
-            missing = [s for s in program.session_cm_ids if s not in counts and s not in skip]
-            if missing:
-                issues.warn(
-                    "cost",
-                    "family_rate_missing",
-                    path,
-                    f"{program.label}: no family-camp rate for {_session_names(missing, context)}",
-                    missing,
-                )
-        elif program.cost_source == "catalog":
-            missing = [s for s in program.session_cm_ids if s not in rules.cost.tuition and s not in skip]
-            if missing:
-                issues.warn(
-                    "cost",
-                    "tuition_missing",
-                    path,
-                    f"{program.label}: no tuition for {_session_names(missing, context)}",
-                    missing,
-                )
+        label = spec.label
+        per_person = [s for s, source in sessions.items() if source == "per_person"]
+        missing_pp = [s for s in missing if sessions[s] == "per_person"]
+        names = _session_names(missing, context)
+        # The first row of spec §9.1 that matches wins.
+        if len(missing) == len(sessions):
+            its = "its one running session" if len(sessions) == 1 else f"any of its {len(sessions)} running sessions"
+            code, path, message = "price_missing", "cost", f"{label}: no price yet for {its}"
+        elif missing_pp == missing and len(missing_pp) == len(per_person):
+            its = (
+                "its one per-person session"
+                if len(per_person) == 1
+                else f"any of its {len(per_person)} per-person sessions"
+            )
+            code, path = "family_rate_missing", "cost.family_rates"
+            message = f"{label}: no per-person rates for {its} ({names})"
+        elif missing_pp == missing:
+            code, path, message = (
+                "family_rate_missing",
+                "cost.family_rates",
+                f"{label}: no per-person rates for {names}",
+            )
+        elif not missing_pp:
+            code, path, message = "tuition_missing", "cost.tuition", f"{label}: no tuition for {names}"
+        else:
+            code, path, message = "price_missing", "cost", f"{label}: no price for {names}"
+        issues.warn("cost", code, path, message, missing)
     if context is not None and context.sessions:
         known = {r.cm_id for r in context.sessions}
         unknown = [s for s in dict.fromkeys(rules.cost.not_running_session_cm_ids) if s not in known]
