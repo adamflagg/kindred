@@ -62,7 +62,8 @@ def resolve_program(rules: AidRules, session_cm_id: int | None, session_type: st
 
 
 class Round2TableNotListedError(FinancialAidError, KeyError):
-    """A legacy program round2.program_tables doesn't name: the engine's "does not say which Round 2 table" error."""
+    """A legacy program that round2.program_tables does not list: the engine's "does not say which Round 2 table"
+    error."""
 
     def __init__(self, program_key: str) -> None:
         super().__init__(program_key)

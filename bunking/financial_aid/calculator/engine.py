@@ -445,6 +445,10 @@ def _round2(
         )
         return
     if r2_table is None:
+        if work.r1 is None:
+            # A held Round 1 (by class with no equity class) never shows a $0 Round 2.
+            work.r2_bound = "r1_unknown"
+            return
         work.r2, work.r2_bound = ZERO, "no_table"
         work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="no_table", note="No Round 2 table")
         return

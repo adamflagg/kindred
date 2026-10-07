@@ -323,3 +323,12 @@ def test_an_appeal_by_class_is_capped_by_its_classs_round2_table() -> None:
     assert calculate(app(), req(**request), legacy).r2 == Decimal(0)  # legacy: no Round 2 table
     # by class: family inherits camp, tier 2 total 90% of 900 = 810, less Round 1's 675 = 135
     assert calculate(app(), req(**request), by_class).r2 == Decimal(135)
+
+
+def test_a_held_program_by_class_never_shows_a_zero_round_2() -> None:
+    """§8.5: by class with no equity class, Round 1 holds, so Round 2 is not computed, never a $0 "No Round 2 table"."""
+    rules = with_lever(fictional_rules(), "programs.quest.table_from_equity_class", True)
+    rules = with_lever(rules, "programs.quest.equity_class", None)
+    result = _calc(rules, session_cm_id=1000103, program_key="quest", ask="6000", appeal_amount="500")
+    assert (result.r1, result.r2, result.r2_bound, result.total) == (None, None, "r1_unknown", None)
+    assert "r2" not in [s.key for s in result.trace]
