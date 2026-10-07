@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
@@ -52,12 +52,22 @@ import {
   type RulesNames,
   type StatusWords,
 } from './rulesModel'
+import type { CellControl } from './CardTables'
+import { bandsIn, gridClasses } from './tierGrid'
 import type { EditContext } from './sectionEdit'
 import { RulesSectionEditor } from './RulesSectionEditor'
 import { CardBody, SectionCard } from './SectionCard'
-import { TierGridCard, type GridPart } from './TierGridCard'
+import { TierGridCard, TierGridTable, type GridPart } from './TierGridCard'
+import { TiersEditor } from './TiersEditor'
 
 const PATH = '/aid/season/rules'
+
+type TablesProp = ComponentProps<typeof TierGridTable>['awardTables']
+type ProgramsProp = Readonly<Record<string, { readonly equity_class?: string | null }>>
+
+/** The opened tiers section as the tiers editor reads it. */
+const bandsAndCeiling = (content: Record<string, unknown>) =>
+  content as unknown as ComponentProps<typeof TiersEditor>['tiers']
 
 function parseVersion(raw: string | null): number | null {
   return raw !== null && /^[1-9]\d*$/.test(raw) ? Number(raw) : null
@@ -272,6 +282,8 @@ function ChaptersBody({
   const sessions = useSessionNames()
   const [params, setSearchParams] = useSearchParams()
   const [inView, setInView] = useState<number | null>(null)
+  // What the tiers editor would save (null while a box can't be read): Save sends it, and the grid follows it live.
+  const [tiersContent, setTiersContent] = useState<Record<string, unknown> | null>(null)
   const sectionParam = params.get('section')
   const budgetHref = aidHref('/aid/season/rounds-budget', { year, asOf })
   const grantsHref = aidHref('/aid/grants/grantors', { year, asOf })
@@ -360,7 +372,52 @@ function ChaptersBody({
         { replace: true }
       )
     }
+    setTiersContent(null)
     setEditing(section)
+  }
+
+  /**
+   * The tier grid card's editors (spec §6.2 E.2): the tiers editor with the grid following what it would save, or a
+   * table's grid with a box in each cell that holds its own figure.
+   */
+  const gridBody = (part: GridPart, content: Record<string, unknown>, cell: CellControl) => {
+    const tables = (value: unknown) => (value ?? {}) as TablesProp
+    const programs = document_.programs as ProgramsProp
+    const noWarnings: ReadonlySet<string> = new Set()
+    if (part === 'tiers') {
+      const live = bandsIn((tiersContent ?? document_.tiers) as Parameters<typeof bandsIn>[0])
+      return (
+        <div className="space-y-2">
+          <TiersEditor
+            tiers={bandsAndCeiling(content)}
+            onContent={setTiersContent}
+            problem={null}
+          />
+          <TierGridTable
+            bands={live}
+            awardTables={tables(document_.award_tables)}
+            appealTables={tables(document_.round2.tables)}
+            classes={gridClasses(programs, document_.award_tables)}
+            warned={noWarnings}
+            onWarn={() => undefined}
+          />
+        </div>
+      )
+    }
+    const round1 = part === 'award_tables'
+    const awardTables = tables(round1 ? content : document_.award_tables)
+    const appealTables = tables(round1 ? document_.round2.tables : content['tables'])
+    return (
+      <TierGridTable
+        bands={bandsIn(document_.tiers)}
+        awardTables={awardTables}
+        appealTables={appealTables}
+        classes={gridClasses(programs, awardTables)}
+        warned={noWarnings}
+        onWarn={() => undefined}
+        control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
+      />
+    )
   }
 
   const editor = (section: ApiAidRulesSection) =>
@@ -371,27 +428,29 @@ function ChaptersBody({
         draft={draft}
         names={{ ...names, section }}
         context={editContext(draft.document, sessions)}
-        renderBody={
-          isGridPart(section)
-            ? undefined
-            : ({ content, control, cell }) => (
-                <CardBody
-                  section={section}
-                  content={content}
-                  approved={approvedContent(section)}
-                  names={{ ...names, section }}
-                  changes={[]}
-                  issues={shownOf(section)?.issues ?? []}
-                  details={false}
-                  dependentsMode={dependentsMode()}
-                  grantsHref={grantsHref}
-                  rowControl={control}
-                  cellControl={cell}
-                />
-              )
+        renderBody={({ content, control, cell }) =>
+          isGridPart(section) ? (
+            gridBody(section, content, cell)
+          ) : (
+            <CardBody
+              section={section}
+              content={content}
+              approved={approvedContent(section)}
+              names={{ ...names, section }}
+              changes={[]}
+              issues={shownOf(section)?.issues ?? []}
+              details={false}
+              dependentsMode={dependentsMode()}
+              grantsHref={grantsHref}
+              rowControl={control}
+              cellControl={cell}
+            />
+          )
         }
+        saveAs={section === 'tiers' ? { content: tiersContent } : undefined}
         onDone={(saved) => {
           setEditing(null)
+          setTiersContent(null)
           if (saved !== null) {
             onNotice(
               saved.branched_from === null || saved.branched_from === undefined

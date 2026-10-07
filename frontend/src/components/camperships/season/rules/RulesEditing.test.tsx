@@ -337,7 +337,9 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
     ]
     renderAt('/aid/season/rules?section=tiers')
     await editCard('tiers')
-    const box = await screen.findByLabelText('Income bands › 2 › To')
+    // Task 49 (spec §6.2 E.2): the tiers editor replaces the per-band boxes; the fixture's uneven bands open it by hand,
+    // where band 2's "To" is "Tier 2 top". The "both changed" words still come from where the two edits overlap.
+    const box = await screen.findByLabelText('Tier 2 top')
     await userEvent.clear(box)
     await userEvent.type(box, '45000')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -1010,5 +1012,126 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
     expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
+  })
+})
+
+describe('the tiers editor and the grid editors in the tier grid card (spec §6.2 E.2; Task 49)', () => {
+  const saved = () => calls.at(-1)?.vars as { section: string; body: { content: unknown } }
+  const tierRow = (tier: number) =>
+    screen.getByTestId('tier-grid').querySelector<HTMLElement>(`tr[data-tier="${String(tier)}"]`)!
+
+  // The fixture's three bands are uneven (a by-hand set); the tiers editor opens on even ones, so these use $40,000 bands.
+  beforeEach(() => {
+    const base = rulesDraft()
+    const even = {
+      ...base,
+      document: {
+        ...base.document,
+        tiers: {
+          bands: [
+            { lower: '0', upper: '40000' },
+            { lower: '40001', upper: '80000' },
+            { lower: '80001', upper: null },
+          ],
+          income_ceiling: null,
+          floor_tier: 1,
+        },
+      },
+    }
+    draft = { data: even, isLoading: false, error: null }
+    server = [even]
+  })
+
+  it('opens the tiers editor in the grid card and rebuilds the grid live: new tiers read "—"', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    const tiers = await screen.findByLabelText('Tiers')
+    expect(screen.getByTestId('grid-editor-tiers')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.clear(tiers)
+    await userEvent.type(tiers, '4')
+    expect(screen.getByText('was 3')).toBeInTheDocument()
+    // The grid below follows the typed bands: tier 4 starts at 120001 and has no figures yet.
+    const row = tierRow(4)
+    expect(row).toHaveTextContent('$120,001 and up')
+    expect(row).toHaveTextContent('—')
+  })
+
+  it('saves what the tiers editor reports: the bands and the income ceiling', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    const tiers = await screen.findByLabelText('Tiers')
+    await userEvent.clear(tiers)
+    await userEvent.type(tiers, '4')
+    await userEvent.type(screen.getByLabelText('Income ceiling'), '250000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(saved().section).toBe('tiers')
+    expect(saved().body.content).toEqual({
+      bands: [
+        { lower: '0', upper: '40000' },
+        { lower: '40001', upper: '80000' },
+        { lower: '80001', upper: '120000' },
+        { lower: '120001', upper: null },
+      ],
+      income_ceiling: '250000',
+      floor_tier: 1,
+    })
+  })
+
+  it('holds Save while a tiers box is not a figure', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    const width = await screen.findByLabelText('Band width')
+    await userEvent.clear(width)
+    await userEvent.type(width, 'abc')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('Round 1 award table editor puts a box in each own cell of the grid, and leaves an inherited cell as text', async () => {
+    const base = rulesDraft()
+    const withInheriting = {
+      ...base,
+      document: {
+        ...base.document,
+        award_tables: {
+          ...base.document.award_tables,
+          special: { inherits: 'general', tiers: {}, overrides: { '2': { r1_pct: '70' } } },
+        },
+      },
+    }
+    draft = { data: withInheriting, isLoading: false, error: null }
+    server = [withInheriting]
+    renderAt('/aid/season/rules?section=award_tables')
+    await editCard('award_tables')
+    await screen.findByTestId('tier-grid')
+    const tier2 = tierRow(2)
+    expect(within(tier2).getAllByRole('textbox')).toHaveLength(2)
+    const tier1 = tierRow(1)
+    // Tier 1: general's own box, and special's inherited 90% as plain words.
+    expect(within(tier1).getAllByRole('textbox')).toHaveLength(1)
+    expect(tier1).toHaveTextContent('90%')
+    const box = within(tier2).getAllByRole('textbox')[0]!
+    await userEvent.clear(box)
+    await userEvent.type(box, '50')
+    expect(screen.getByText('was 55%')).toBeInTheDocument()
+  })
+
+  it('Appeal caps editor boxes the appeal cells of the grid and saves the round 2 section', async () => {
+    renderAt('/aid/season/rules?section=round2')
+    await editCard('round2')
+    await screen.findByTestId('tier-grid')
+    const tier1 = tierRow(1)
+    // Round 1 cell stays text here; the one appeal cell with a figure is the box.
+    expect(within(tier1).getAllByRole('textbox')).toHaveLength(1)
+    const box = within(tier1).getByRole('textbox')
+    await userEvent.clear(box)
+    await userEvent.type(box, '97')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(saved().section).toBe('round2')
+    expect(saved().body.content).toMatchObject({
+      tables: { general: { tiers: { '1': { total_pct: '97' } } } },
+    })
   })
 })

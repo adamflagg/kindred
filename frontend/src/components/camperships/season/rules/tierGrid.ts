@@ -110,6 +110,23 @@ export function gridCell(
     : { value: String(parent), inherited: true }
 }
 
+/**
+ * Where a cell's own figure lives inside its table (`tiers.<n>.<key>`, else `overrides.<n>.<key>`), or null for an
+ * inherited or empty cell: only a cell that holds a figure of its own can be typed into.
+ */
+export function cellPath(
+  tables: Readonly<Record<string, TableShape>>,
+  table: string,
+  tier: number,
+  key: 'r1_pct' | 'total_pct'
+): string[] | null {
+  const t = tables[table]
+  const at = String(tier)
+  if (t?.tiers?.[at]?.[key] != null) return [table, 'tiers', at, key]
+  if (t?.overrides?.[at]?.[key] != null) return [table, 'overrides', at, key]
+  return null
+}
+
 /** A document's bands as the grid reads them: decimals as strings, a missing upper the open top band. */
 export function bandsIn(tiers: {
   readonly bands: ReadonlyArray<{

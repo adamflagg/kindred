@@ -74,6 +74,7 @@ export function RulesSectionEditor({
   names,
   context,
   renderBody,
+  saveAs,
   onDone,
 }: {
   section: ApiAidRulesSection
@@ -85,6 +86,11 @@ export function RulesSectionEditor({
   context?: EditContext | undefined
   /** The card's own body with its boxes (spec §6.2 F). Without it the section's settings list, each with its box. */
   renderBody?: ((body: EditorBody) => ReactNode) | undefined
+  /**
+   * For a body that builds the section itself (the tiers editor): what Save sends, null while one of its boxes can't be
+   * read. Without it Save sends the typed boxes.
+   */
+  saveAs?: { readonly content: Record<string, unknown> | null } | undefined
   /** The saved draft, or null when cancelled. */
   onDone: (saved: ApiAidRulesDraft | null) => void
 }) {
@@ -297,14 +303,23 @@ export function RulesSectionEditor({
     control: (row) => controlAt(row.path),
     cell: controlAt,
   }
-  const blocked = draftState.applied.problems.size > 0
-  const nothing = draftState.applied.changed.length === 0
+  // What this editor changes, for "you both changed": the typed boxes' paths, or the paths a built section differs at.
+  const mine =
+    saveAs?.content != null
+      ? sectionChanges(opened.content, saveAs.content).map((change) => [...change.path])
+      : draftState.applied.changed
+  const unreadable = saveAs?.content === null
+  const blocked = draftState.applied.problems.size > 0 || unreadable
+  const nothing =
+    saveAs === undefined
+      ? draftState.applied.changed.length === 0
+      : saveAs.content !== null && sectionChanges(opened.content, saveAs.content).length === 0
   return (
     <div className="mt-1.5 space-y-2" data-testid="section-editor">
       <div className={CS_LABEL}>
         {`Editing ${SECTION_TITLES[section]} in the rules draft (v${String(opened.draft.version)})`}
       </div>
-      {banner(draftState.applied.changed)}
+      {banner(mine)}
       {renderBody !== undefined ? (
         renderBody(body)
       ) : (
@@ -318,7 +333,10 @@ export function RulesSectionEditor({
           // Saving stays off while a refusal is open: the person looks at what moved first.
           disabled={saving || refusal !== null || blocked || nothing}
           onClick={() =>
-            void onSave(prepareContent(section, draftState.applied.content, opened.draft.document))
+            void onSave(
+              saveAs?.content ??
+                prepareContent(section, draftState.applied.content, opened.draft.document)
+            )
           }
         >
           {saving ? 'Saving…' : 'Save'}
@@ -328,7 +346,11 @@ export function RulesSectionEditor({
         </button>
         <span className={CS_SMALL}>Esc cancels</span>
         {blocked && (
-          <span className={CS_AMBER_NOTE}>{`Fix first: ${fixFirstWords(draftState.applied)}`}</span>
+          <span className={CS_AMBER_NOTE}>
+            {unreadable
+              ? "Fix first: a box isn't a figure"
+              : `Fix first: ${fixFirstWords(draftState.applied)}`}
+          </span>
         )}
         {draftState.applied.gone.size > 0 && (
           <button type="button" className={CS_BTN2} onClick={draftState.dropGone}>
