@@ -27,7 +27,11 @@ Re-runnable: a run that would write exactly what a previous load wrote writes no
 the loader wrote before (found by its actor) and writes the new set, in one operation.
 
     uv run python -m scripts.financial_aid.load_2026_decisions \\
-        --workbook <export.xlsx> --config <parity config json> --report <report.csv> [--year 2026] [--write]
+        (--workbook <export.xlsx> | --sheet-id <id> [--credentials <service account key>]) \\
+        --config <parity config json> --report <report.csv> [--trackers <json>] [--year 2026] [--write]
+
+--sheet-id exports the live Google Sheet as xlsx in memory through the service account's drive.readonly scope
+(--credentials, default $GOOGLE_SERVICE_ACCOUNT_KEY_FILE else config/google_sheets.json); nothing is stored.
 
 The console prints totals only, never a name, id or a family's amount; the --report CSV names CampMinder ids and
 amounts for the person resolving it, so keep it out of every repository. --trackers optionally maps household
@@ -92,7 +96,7 @@ _STAGE: Final = re.compile(r"^\s*([123])\b")
 _TOP_UP_STAGE: Final = re.compile(r"\+\s*\$")
 _UNMATCHED: Final = "unmatched"
 _UNPLACED: Final = "Q-L12"
-_OUTSIDE: Final = "OSC"
+_OUTSIDE: Final = "outside"  # money outside the budget (D121); never a program's name
 _UNCLASSIFIED: Final = "unclassified"
 _ID_ALPHABET: Final = string.ascii_lowercase + string.digits
 
@@ -620,7 +624,8 @@ def plan_load(
         report(None, "campminder_without_load", _UNMATCHED, household_cm_id=household, session_cm_id=session,
                campminder_amount=amount, note=f"requests here: {', '.join(statuses) or 'none'}")  # fmt: skip
 
-    previous = [e for e in existing if e.actor == LOADER]
+    # A request staff have since written on is left as it is, the loader's own rows on it too (its staff_rows row).
+    previous = [e for e in existing if e.actor == LOADER and e.request_id not in staff]
     plan.unchanged = sorted(map(_event_key, previous)) == sorted(e.key() for e in plan.creates)
     if not plan.unchanged:
         plan.stale = previous

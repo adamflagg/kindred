@@ -291,7 +291,14 @@ def test_a_full_cost_stage_keys_its_decision_type_and_its_round_sits_outside_the
     (post,) = [e for e in plan.creates if e.kind == "post"]
     assert post.amount == Decimal(4050)
     assert _snap(post)["counts_toward_budget"] is False
-    assert {r.tracker for r in plan.report} <= {"OSC"}
+    assert {r.tracker for r in plan.report} <= {"outside"}
+
+
+def test_a_difference_on_a_request_outside_the_budget_is_tracked_as_outside_by_no_program_name() -> None:
+    award = _award(stage="Full-cost program", extra=Decimal(1050), decision_type="full_cost_program")
+    plan = _plan([award], lines=[_line("4000")], rules=OUTSIDE)
+    (row,) = [r for r in plan.report if r.kind == "campminder_differs"]
+    assert row.tracker == "outside"
 
 
 def test_a_300_stage_keys_the_rules_top_up_on_round_2() -> None:
@@ -411,6 +418,23 @@ def test_a_request_staff_have_decided_on_is_left_alone_and_reported() -> None:
     plan = _plan([_award()], lines=[_line("3000")], existing=[staff])
     assert plan.creates == []
     assert _kinds(plan) == {"staff_rows": 1, "campminder_without_load": 1}
+
+
+def test_a_loaded_request_staff_later_wrote_on_keeps_its_loaded_rows_on_a_re_run() -> None:
+    requests = [_request(), _request(LIAM, person=1000003)]
+    awards = [_award(), _award(row=3, person_cm_id=1000003)]
+    first = _plan(awards, requests, [_line("3000"), _line("3000", txn=1000901, person=1000003)])
+    staff = DecisionEvent(
+        id="evstaff00000001", request_id=EMMA, round=1, kind="accept", created=T0, actor="registrar@example.com"
+    )
+    existing = [*_loaded(first), staff]
+    second = _plan(awards, requests, [_line("3100"), _line("3000", txn=1000901, person=1000003)], existing=existing)
+    deleted = {w.record_id for w in plan_writes(second, 2031) if w.action == "delete"}
+    emmas = {e.id for e in existing if e.request_id == EMMA and e.actor == LOADER}
+    assert emmas
+    assert not deleted & emmas  # left as it is, as the staff_rows report says
+    assert deleted == {e.id for e in existing if e.request_id == LIAM}
+    assert "staff_rows" in _kinds(second)
 
 
 # --- the season reads the loaded rows ----------------------------------------------------------------------------------
