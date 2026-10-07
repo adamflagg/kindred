@@ -1003,6 +1003,20 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
     expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
   })
+
+  // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
+  // card's typing. The tab tells the chrome while any card editor (the tiers editor included) is open.
+  it.each(['programs', 'tiers'])(
+    'hides Approve… while the %s editor is open and brings it back on Cancel',
+    async (section) => {
+      renderAt(`/aid/season/rules?open=1,5&section=${section}`)
+      expect(await screen.findByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+      await editCard(section)
+      expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    }
+  )
 })
 
 describe('the tiers editor and the grid editors in the tier grid card (spec §6.2 E.2; Task 49)', () => {
