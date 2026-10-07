@@ -609,7 +609,7 @@ def test_each_pool_carries_its_share_and_no_pool_and_the_total_carry_none() -> N
 
 
 def test_the_totals_allocation_is_the_sum_of_the_pools_and_its_remaining_the_sum_of_theirs() -> None:
-    """§5.3 note 6: the total's Remaining is the sum of the pools' (No pool money spends the total only)."""
+    """§5.3 note 6: the total's Remaining is the sum of the pools', less any money in No pool (it spends the total only)."""
     budget = season_budget(
         [
             priced("req-a", 1, view(1, "posted", locked="1800")),

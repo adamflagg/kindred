@@ -176,6 +176,13 @@ def test_remaining_is_per_pool_and_in_total_and_reads_amber_for_a_pool() -> None
     assert 'Only the total\'s Remaining below $0 reads red, "over budget".' in text
 
 
+def test_the_totals_remaining_is_said_to_take_off_no_pool_money() -> None:
+    """§5.3 note 6 matches budget.py: the total counts No pool money the pools never see (test_decision_budget)."""
+    text = BY_KEY["remaining"].text
+    assert "The total's Remaining is the sum of the pools', less any money in No pool." in text
+    assert "The total's Remaining is the sum of the pools'. " not in text
+
+
 def test_share_committed_and_a_past_date_say_the_specs_words() -> None:
     assert BY_KEY["share"].text.endswith("Only the total is a cap. There are no reserves and no round plan.")
     assert "the shares add up to 100%" in BY_KEY["share"].text

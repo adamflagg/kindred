@@ -148,7 +148,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Remaining",
         text=(
             "Remaining = Allocated − Posted − Needs an offer − Pending approval, per pool and in total, never per "
-            "round. Accepted is shown, never subtracted. The total's Remaining is the sum of the pools'. A pool's "
+            "round. Accepted is shown, never subtracted. The total's Remaining is the sum of the pools', less any "
+            "money in No pool. A pool's "
             'Remaining below $0 reads amber, "over its share": the pool has committed more than its share while the '
             'season may still have money. Only the total\'s Remaining below $0 reads red, "over budget".'
         ),
