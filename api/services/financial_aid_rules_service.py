@@ -179,11 +179,11 @@ class SectionChangedError(FinancialAidError, ValueError):
 
 
 class FingerprintsMismatchError(FinancialAidError, ValueError):
-    """An approval's fingerprints do not name exactly the sections being approved."""
+    """An approval's or a several-sections save's fingerprints do not name exactly the sections it names."""
 
 
 class NoSectionsNamedError(FinancialAidError, ValueError):
-    """An approval must name at least one section."""
+    """An approval, or a several-sections save, must name at least one section."""
 
 
 class PricingVersionInUseError(FinancialAidError, ValueError):
