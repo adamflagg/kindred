@@ -5,7 +5,10 @@ import { Permission } from '../../../../constants/permissions'
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
 import { useAidStartRulesFromLastYear } from '../../../../hooks/camperships/useAidRulesWrites'
-import { useAidSessionCatalog } from '../../../../hooks/camperships/useAidSessionCatalog'
+import {
+  useAidSessionCatalog,
+  useAidSessionCatalogError,
+} from '../../../../hooks/camperships/useAidSessionCatalog'
 import { useAidSessionNames } from '../../../../hooks/camperships/useAidSessionNames'
 import { useLodgingCancelledSessions } from '../../../../hooks/camperships/useLodgingCancelledSessions'
 import { useYear } from '../../../../hooks/useCurrentYear'
@@ -51,6 +54,7 @@ import {
   keyLabel,
   rulesVocabulary,
   sectionIssues,
+  stampOf,
   statusWords,
   versionWords,
   type RulesNames,
@@ -212,6 +216,8 @@ interface Shown {
   readonly section: ApiAidRulesSection
   readonly content: Record<string, unknown> | null
   readonly status: StatusWords
+  /** When the status was stamped (locked, approved or last edited): `combinedStatus` picks the newer on a tie. */
+  readonly stamp: string | null
   readonly changes: readonly ApiAidFieldChange[]
   readonly issues: readonly ApiAidValidationIssue[]
 }
@@ -225,6 +231,7 @@ const shownFromDraft = (draft: ApiAidRulesDraft): Shown[] =>
     section: s.section,
     content: sectionContent(draft.document, s.section),
     status: statusWords(s.status, s.changes.length),
+    stamp: stampOf(s.status),
     changes: s.changes,
     issues: sectionIssues(draft.report.issues, s.section),
   }))
@@ -250,6 +257,7 @@ const shownFromApproved = (rules: ApiAidApprovedRules): Shown[] =>
             s.version,
             rules.version
           ),
+    stamp: stampOf({ state: s.state, approved_at: s.approved_at, locked_at: s.locked_at }),
     changes: [],
     issues: [],
   }))
@@ -293,6 +301,7 @@ function ChaptersBody({
   const sessions = useSessionNames()
   // Programs and costs' two reads live here, beside the names, so the card and its editor take them as props.
   const catalog = useAidSessionCatalog(year)
+  const catalogError = useAidSessionCatalogError(year)
   const cancelled = useLodgingCancelledSessions(year)
   const [params, setSearchParams] = useSearchParams()
   const [inView, setInView] = useState<number | null>(null)
@@ -476,7 +485,6 @@ function ChaptersBody({
               approved={approvedContent(section)}
               names={{ ...names, section }}
               changes={[]}
-              issues={shownOf(section)?.issues ?? []}
               details={false}
               dependentsMode={dependentsMode()}
               grantsHref={grantsHref}
@@ -573,8 +581,12 @@ function ChaptersBody({
         approvedVersion={approvedVersion}
         groups={groups}
         sessions={catalog}
+        sessionsError={catalogError?.message ?? null}
         cancelled={cancelled}
-        status={combinedStatus(programs?.status ?? NOT_APPROVED, cost?.status ?? NOT_APPROVED)}
+        status={combinedStatus(programs?.status ?? NOT_APPROVED, cost?.status ?? NOT_APPROVED, {
+          programs: programs?.stamp ?? null,
+          cost: cost?.stamp ?? null,
+        })}
         issues={[...(programs?.issues ?? []), ...(cost?.issues ?? [])]}
         canEdit={canEdit && catalog !== undefined && !waiting}
         onEdit={() => startEdit('programs')}

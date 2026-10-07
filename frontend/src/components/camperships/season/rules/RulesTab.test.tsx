@@ -52,8 +52,11 @@ vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
 }))
 
 // The Programs and costs card's two reads (RulesTab calls them beside useAidSessionNames).
+let catalog: typeof CATALOG | undefined
+let catalogError: Error | null
 vi.mock('../../../../hooks/camperships/useAidSessionCatalog', () => ({
-  useAidSessionCatalog: () => CATALOG,
+  useAidSessionCatalog: () => catalog,
+  useAidSessionCatalogError: () => catalogError,
 }))
 vi.mock('../../../../hooks/camperships/useLodgingCancelledSessions', () => ({
   useLodgingCancelledSessions: () => new Set<number>(),
@@ -99,6 +102,8 @@ beforeEach(() => {
   askedVersion.length = 0
   observed.length = 0
   sessionNames = undefined
+  catalog = CATALOG
+  catalogError = null
 })
 
 describe('RulesTab for the registrar (D76: the approved version, read only)', () => {
@@ -130,6 +135,17 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
 })
 
 describe('RulesTab chapter 5: one Programs and costs card (spec §5.2 A)', () => {
+  it('says so when the season’s sessions fail to load, instead of loading for ever', async () => {
+    granted = FINANCE
+    catalog = undefined
+    catalogError = new Error('Network down')
+    renderAt('/aid/season/rules?open=5')
+    expect(
+      await screen.findByText("Couldn't load the season's sessions: Network down")
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Loading the season/)).toBeNull()
+  })
+
   it('holds one Programs and costs card and no programs or tuition table', async () => {
     granted = FINANCE
     renderAt('/aid/season/rules?open=5')

@@ -23,6 +23,7 @@ vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
 }))
 vi.mock('../../../hooks/camperships/useAidSessionCatalog', () => ({
   useAidSessionCatalog: () => [],
+  useAidSessionCatalogError: () => null,
 }))
 vi.mock('../../../hooks/camperships/useLodgingCancelledSessions', () => ({
   useLodgingCancelledSessions: () => new Set<number>(),

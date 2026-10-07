@@ -1,5 +1,5 @@
 /** Programs and costs' layout helpers (spec §5.2 F-G): the flow's items, the width hook, the row style. */
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 
 import { SUBSECTION_LABELS, type CardRow } from './programsCostsModel'
 
@@ -11,19 +11,22 @@ export interface FlowItem {
   readonly repeat?: ReactNode
 }
 
-/** The width of the box a ref sits on, kept current (0 in jsdom). */
-export function useBoxWidth(): [RefObject<HTMLDivElement | null>, number] {
-  const ref = useRef<HTMLDivElement | null>(null)
+/**
+ * The width of the box its callback ref sits on, kept current (0 in jsdom). A callback ref, not an effect over a ref
+ * object: the box can unmount while the editor is open and mount again after Cancel, and each mount is observed afresh.
+ */
+export function useBoxWidth(): [(box: HTMLDivElement | null) => void, number] {
   const [width, setWidth] = useState(0)
-  useLayoutEffect(() => {
-    const box = ref.current
-    if (box === null) return undefined
+  const observer = useRef<ResizeObserver | null>(null)
+  const ref = useCallback((box: HTMLDivElement | null) => {
+    observer.current?.disconnect()
+    observer.current = null
+    if (box === null) return
     const read = () => setWidth(box.clientWidth)
     read()
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(read)
-    observer.observe(box)
-    return () => observer.disconnect()
+    if (typeof ResizeObserver === 'undefined') return
+    observer.current = new ResizeObserver(read)
+    observer.current.observe(box)
   }, [])
   return [ref, width]
 }

@@ -45,6 +45,8 @@ export interface ProgramsCostsCardProps {
   readonly groups: readonly ApiAidGroup[]
   /** The season's sessions (undefined while they load) and the lodging board's cancellations. */
   readonly sessions: readonly CatalogSession[] | undefined
+  /** Why the sessions could not be read, so the card says so instead of loading for ever. */
+  readonly sessionsError?: string | null | undefined
   readonly cancelled?: ReadonlySet<number> | undefined
   /** The less settled of the two sections (`combinedStatus`). */
   readonly status: StatusWords
@@ -57,12 +59,21 @@ export interface ProgramsCostsCardProps {
 
 const NO_SESSIONS: ReadonlySet<number> = new Set()
 
-/** Draft beats In effect beats Locked (spec §5.2 B). A tie keeps the first section's words: they carry one stamp, since the card saves both together. */
+/**
+ * Draft beats In effect beats Locked (spec §5.2 B). On a tie the pill is the same either way, and the meta is the newer
+ * stamp's (`stamps`: each section's own approved / edited / locked time); with no stamps, or equal ones, the first's.
+ */
 // eslint-disable-next-line react-refresh/only-export-components -- the plan's test imports it from the card
-export function combinedStatus(programs: StatusWords, cost: StatusWords): StatusWords {
+export function combinedStatus(
+  programs: StatusWords,
+  cost: StatusWords,
+  stamps?: { readonly programs: string | null; readonly cost: string | null }
+): StatusWords {
   const rank = (w: StatusWords) =>
     w.pill === 'Locked' ? 0 : w.pill === 'In effect' ? 1 : w.pill.startsWith('Draft') ? 2 : 3
-  return rank(cost) > rank(programs) ? cost : programs
+  if (rank(cost) !== rank(programs)) return rank(cost) > rank(programs) ? cost : programs
+  const at = (stamp: string | null | undefined) => (stamp ? Date.parse(stamp) : Number.NaN)
+  return at(stamps?.cost) > at(stamps?.programs) ? cost : programs
 }
 
 // ── Read-only rows ─────────────────────────────────────────────────────────────
@@ -127,9 +138,7 @@ function ReadRow({ row, was, amber }: { row: CardRow; was: CardRow | undefined; 
             wide
           />
         </>
-      ) : row.kind === 'typed' ? (
-        <span className={`${CS_META} whitespace-nowrap`}>typed on the request</span>
-      ) : (
+      ) : row.kind === 'typed' ? null : (
         <Fig
           value={row.tuition}
           was={was?.tuition ?? null}
@@ -370,7 +379,11 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
             </p>
           )}
           {view === null ? (
-            <p className={`${CS_SMALL} mt-1`}>Loading the season&apos;s sessions…</p>
+            <p className={`${CS_SMALL} mt-1`}>
+              {p.sessionsError
+                ? `Couldn't load the season's sessions: ${p.sessionsError}`
+                : "Loading the season's sessions…"}
+            </p>
           ) : (
             <>
               {view.groups.map(group)}

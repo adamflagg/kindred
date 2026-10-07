@@ -18,7 +18,7 @@ export function useFlowColumns(count: number): {
 } {
   const ref = useRef<HTMLDivElement | null>(null)
   const [measured, setMeasured] = useState<readonly number[] | null>(null)
-  const [resized, setResized] = useState(0)
+  const [, setResized] = useState(0)
 
   useLayoutEffect(() => {
     const box = ref.current
@@ -28,7 +28,8 @@ export function useFlowColumns(count: number): {
     return () => observer.disconnect()
   }, [])
 
-  // Every render re-measures; state changes only when a height did, so this settles.
+  // Every render re-measures (no deps on purpose); state changes only when a height did, so this settles.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the sameHeights guard is what stops the chain
   useLayoutEffect(() => {
     const box = ref.current
     if (box === null) return
@@ -39,7 +40,7 @@ export function useFlowColumns(count: number): {
     }
     const next = Array.from({ length: heights.length }, (_, i) => heights[i] ?? 0)
     setMeasured((prev) => (sameHeights(prev, next) ? prev : next))
-  }, [count, resized])
+  })
 
   const cut = (heights: number[], heads: Set<number>) => {
     const use = measured !== null && measured.length === heights.length ? [...measured] : heights

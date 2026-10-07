@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import type { ApiAidRulesSection, ApiAidValidationIssue } from '../../../../types/api-types'
+import type { ApiAidRulesSection } from '../../../../types/api-types'
 import { DefRef } from '../../kit/DefinitionNotes'
 import {
   CS_LINK,
@@ -233,8 +233,6 @@ interface TablesProps {
   names: RulesNames
   /** Equity's Show details: the read-only Reads column. */
   details: boolean
-  /** The section's report rows (no table reads them since Programs and costs became its own card). */
-  issues: readonly ApiAidValidationIssue[]
   /** income.dependents_mode, for the equity table's Dependents note; null when unknown. */
   dependentsMode: string | null
   /** In the editor: a box per editable cell (read-only columns never get one). */

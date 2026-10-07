@@ -22,13 +22,7 @@ interface Row {
   parent_id: number | null
 }
 
-/**
- * The season's sessions as the Programs and costs card lays them out (spec §5.3): type for the sub-sections and the
- * per-person default, parent for AG sessions, date then CampMinder's order. Read like `useAidSessionNames` (any
- * signed-in user may list camp_sessions); inherits the app's cache defaults for the same reason (sessions change only
- * on a sync, and `camp-sessions` is a sync-dependent prefix).
- */
-export function useAidSessionCatalog(year: number): readonly CatalogSession[] | undefined {
+function useCatalogQuery(year: number) {
   const { isLoading } = useAuth()
   return useQuery({
     queryKey: queryKeys.campSessionCatalog(year),
@@ -48,5 +42,20 @@ export function useAidSessionCatalog(year: number): readonly CatalogSession[] | 
       }))
     },
     enabled: year > 0 && !isLoading,
-  }).data
+  })
+}
+
+/**
+ * The season's sessions as the Programs and costs card lays them out (spec §5.3): type for the sub-sections and the
+ * per-person default, parent for AG sessions, date then CampMinder's order. Read like `useAidSessionNames` (any
+ * signed-in user may list camp_sessions); inherits the app's cache defaults for the same reason (sessions change only
+ * on a sync, and `camp-sessions` is a sync-dependent prefix).
+ */
+export function useAidSessionCatalog(year: number): readonly CatalogSession[] | undefined {
+  return useCatalogQuery(year).data
+}
+
+/** Why the catalog read failed (null while it loads or after it succeeds): the card says so instead of loading for ever. Same query, same cache. */
+export function useAidSessionCatalogError(year: number): Error | null {
+  return useCatalogQuery(year).error
 }

@@ -99,7 +99,7 @@ function MoneyBox({
 }
 
 export function ProgramsCostsEditor({
-  draft,
+  draft: current,
   groups,
   sessions,
   cancelled,
@@ -111,6 +111,10 @@ export function ProgramsCostsEditor({
   cancelled: ReadonlySet<number>
   onDone: (saved: ApiAidRulesDraft | null) => void
 }) {
+  // The draft as it was when the editor opened. `current` is the live query cache, and `fetchFresh()` writes into that
+  // same key: after the "Someone else changed…" refusal it would silently become their draft, and the next Save
+  // would compare against it and overwrite their change. Everything below reads the copy.
+  const [draft] = useState(current)
   const save = useAidSaveRulesSections()
   const fetchFresh = useFreshAidRulesDraft()
   const [boxRef, width] = useBoxWidth()

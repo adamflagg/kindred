@@ -39,6 +39,7 @@ vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
 // The Programs and costs card's reads: the season's sessions (none here) and no lodging-board cancellations.
 vi.mock('../../../../hooks/camperships/useAidSessionCatalog', () => ({
   useAidSessionCatalog: () => [],
+  useAidSessionCatalogError: () => null,
 }))
 vi.mock('../../../../hooks/camperships/useLodgingCancelledSessions', () => ({
   useLodgingCancelledSessions: () => new Set<number>(),

@@ -265,12 +265,14 @@ export function buildContents(
   }
   // 1. Group picks (§4.5): the target program of the picked group and the row's kind.
   let moved = 0
+  const endsIn = new Map(rows.map((r) => [r.session.cmId, r.group] as const))
   for (const row of rows) {
     const picked = edits.get(editKey(row.session.cmId, 'g'))
     if (picked === undefined || picked === row.group) continue
     const target = pickTarget(doc, picked, kindFor(row, doc))
     if (target !== null) {
       place(row.session.cmId, target)
+      endsIn.set(row.session.cmId, picked)
       moved += 1
     }
   }
@@ -305,6 +307,12 @@ export function buildContents(
   const notRunning = new Set((cost.not_running_session_cm_ids ?? []).map(Number))
   for (const row of rows) {
     const id = row.session.cmId
+    const nr = edits.get(editKey(id, 'nr'))
+    if (nr === 'true') notRunning.add(id)
+    if (nr === 'false') notRunning.delete(id)
+    // Spec §5.2 J: a session that ends not running or not open keeps its stored price untouched. Its boxes are
+    // disabled or hidden, so a bad value typed before that must not block Save with a box nobody can see.
+    if (notRunning.has(id) || endsIn.get(id) === NOT_OPEN) continue
     const t = read(editKey(id, 't'))
     if (t !== undefined) {
       if (t === null) tuition.delete(String(id))
@@ -323,9 +331,6 @@ export function buildContents(
         bad.push(s === null ? sKey : iKey)
       } else rates.set(id, { session_cm_id: id, standard: s, infant: i })
     }
-    const nr = edits.get(editKey(id, 'nr'))
-    if (nr === 'true') notRunning.add(id)
-    if (nr === 'false') notRunning.delete(id)
   }
   if (bad.length > 0) {
     return pairBad > 0

@@ -297,6 +297,43 @@ describe('buildContents (spec §4.5, §5.2 J, §6)', () => {
     }
     expect(Object.keys(ok(save([[1000101, 't', '6895']], doc)).contents)).toEqual(['cost'])
   })
+
+  it('leaves a price untouched on a session that ends in Not open to aid, even a bad one (spec §5.2 J)', () => {
+    const doc = pcDoc()
+    const done = save(
+      [
+        [1000101, 't', '7000'],
+        [1000101, 'g', NOT_OPEN],
+        [1000104, 't', 'abc'], // a bad box on a row that is moving out of the groups: its box is hidden
+        [1000104, 'g', NOT_OPEN],
+      ],
+      doc
+    )
+    expect(ok(done).contents.cost).toBeUndefined() // no price written, no red box
+    expect(ids(programsOf(done), 'not_aided')).toEqual(expect.arrayContaining([1000101, 1000104])) // 1000103: the AG follows
+  })
+
+  it('leaves a price untouched on a session checked Not running, and a bad value there does not block Save (spec §5.2 J)', () => {
+    const done = save([
+      [1000102, 't', 'abc'],
+      [1000102, 'nr', 'true'],
+      [1000202, 's', '450'], // half a pair, then the row is checked off
+      [1000202, 'nr', 'true'],
+    ])
+    expect(done.kind).toBe('ok')
+    const cost = costOf(done)
+    expect((cost['tuition'] as Record<string, string>)['1000102']).toBe('4995')
+    expect(cost['not_running_session_cm_ids']).toEqual(expect.arrayContaining([1000102, 1000202]))
+    expect(JSON.stringify(cost['family_rates'])).not.toContain('1000202') // the half pair was never read
+  })
+
+  it('still reads a price on a session an edit moves out of Not open to aid', () => {
+    const done = save([
+      [1000901, 'g', 'camp_pool'],
+      [1000901, 't', '1200'],
+    ])
+    expect((costOf(done)['tuition'] as Record<string, string>)['1000901']).toBe('1200')
+  })
 })
 describe('changesSince (spec §5.2 D)', () => {
   it('says each change in session words', () => {

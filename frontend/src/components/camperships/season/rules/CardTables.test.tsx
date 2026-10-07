@@ -111,7 +111,6 @@ function tables(over: Partial<Props> & Pick<Props, 'section' | 'content'>) {
         approved={null}
         names={NAMES}
         details={false}
-        issues={[]}
         dependentsMode="income_reduction"
         {...over}
       />

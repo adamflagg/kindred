@@ -124,6 +124,20 @@ export function statusWords(status: ApiAidSectionStatus, changes: number | null)
   }
 }
 
+/** The stamp a section's words carry: when it was locked, approved or last edited (null when none is stored). */
+export function stampOf(
+  status: Pick<ApiAidSectionStatus, 'state' | 'approved_at' | 'edited_at' | 'locked_at'>
+): string | null {
+  const state = status.state ?? 'draft'
+  return (
+    (state === 'locked'
+      ? status.locked_at
+      : state === 'approved'
+        ? status.approved_at
+        : status.edited_at) ?? null
+  )
+}
+
 /**
  * A version's lead line (#23): "Rules v4 · approved Oct 5, 2026", the day its last section was
  * approved; a version with sections still in draft says how many. A locked section was approved
@@ -423,7 +437,7 @@ function own(map: Readonly<Record<string, string>>, key: string): string | undef
 }
 
 /**
- * An equity class's column head by the group it pairs with ("Camp & Quest", spec §9.2), else the label it borrows
+ * An equity class's column head by the group it pairs with ("Pool A", spec §9.2), else the label it borrows
  * from a same-key program or pool (`keyLabel`), else its own words.
  */
 export const groupWords =

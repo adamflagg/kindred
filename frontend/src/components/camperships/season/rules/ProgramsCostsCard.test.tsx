@@ -154,6 +154,31 @@ describe('ProgramsCostsCard', () => {
     )
     expect(combinedStatus(words('Locked'), words('In effect')).pill).toBe('In effect')
   })
+
+  it('on a tie, keeps the words of the section with the newer stamp (spec §5.2 B)', () => {
+    const words = (meta: string): StatusWords => ({
+      pill: 'In effect',
+      tone: 'emerald',
+      meta,
+      note: null,
+    })
+    const older = '2027-01-20T18:00:00Z'
+    const newer = '2027-01-22T18:00:00Z'
+    expect(
+      combinedStatus(words('programs'), words('cost'), { programs: older, cost: newer }).meta
+    ).toBe('cost')
+    expect(
+      combinedStatus(words('programs'), words('cost'), { programs: newer, cost: older }).meta
+    ).toBe('programs')
+    expect(combinedStatus(words('programs'), words('cost')).meta).toBe('programs') // no stamps: the first's
+  })
+
+  it('does not say "typed on the request": no program prices that way', () => {
+    const doc = pcDoc()
+    doc.programs['summer']!.cost_source = 'typed'
+    render(<ProgramsCostsCard {...props({ draftDoc: doc })} />)
+    expect(screen.queryAllByText(/typed on the request/)).toHaveLength(0)
+  })
 })
 
 /** The rules draft as the editor opens on it: the fixture's programs and cost, each with a fingerprint. */
@@ -278,6 +303,94 @@ describe('ProgramsCostsEditor', () => {
     renderEditor()
     await userEvent.click(within(screen.getByTestId('pc-row-1000101')).getByRole('checkbox'))
     expect(within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')).toBeDisabled()
+  })
+
+  it('refuses, and keeps the typing, when the cost section changed since the editor opened', async () => {
+    const send = mockSave()
+    const theirs = editDraft()
+    theirs.sections = theirs.sections.map((sec) =>
+      sec.section === 'cost' ? { ...sec, fingerprint: 'fp-cost-theirs' } : sec
+    )
+    writes.fresh.mockImplementation(() => Promise.resolve(theirs))
+    renderEditor()
+    const box = within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')
+    await userEvent.clear(box)
+    await userEvent.type(box, '6895')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/Someone else changed Programs and costs/)).toBeInTheDocument()
+    expect(send).not.toHaveBeenCalled()
+    expect(box).toHaveValue('6895')
+  })
+
+  it('still refuses on a second Save after the refusal, though the cache now holds their draft', async () => {
+    const send = mockSave()
+    const theirs = editDraft()
+    theirs.sections = theirs.sections.map((sec) =>
+      sec.section === 'cost' ? { ...sec, fingerprint: 'fp-cost-theirs' } : sec
+    )
+    writes.fresh.mockImplementation(() => Promise.resolve(theirs))
+    const editor = (draft: ApiAidRulesDraft) => (
+      <ProgramsCostsEditor
+        draft={draft}
+        groups={GROUPS}
+        sessions={CATALOG}
+        cancelled={new Set<number>()}
+        onDone={vi.fn()}
+      />
+    )
+    const { rerender } = render(<ProgramsCostsCard {...props({ editor: editor(editDraft()) })} />)
+    const box = within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')
+    await userEvent.clear(box)
+    await userEvent.type(box, '6895')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await screen.findByText(/Someone else changed Programs and costs/)
+    // fetchFresh() wrote their draft into the cache the card reads: the prop is now theirs.
+    rerender(<ProgramsCostsCard {...props({ editor: editor(theirs) })} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/Someone else changed Programs and costs/)).toBeInTheDocument()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing, and just closes, when the typing leaves every stored value as it was', async () => {
+    const send = mockSave()
+    const onDone = vi.fn()
+    renderEditor({ onDone })
+    const box = within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')
+    await userEvent.clear(box)
+    await userEvent.type(box, '6,695.0') // the stored value, typed a different way
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(null))
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('shows a stored 6695.0 as 6,695 and 6695.50 as 6,695.50 in the box', () => {
+    mockSave()
+    const draft = editDraft()
+    draft.document.cost = {
+      ...draft.document.cost,
+      tuition: { ...draft.document.cost.tuition, '1000102': '6695.50' },
+    }
+    render(
+      <ProgramsCostsCard
+        {...props({
+          editor: (
+            <ProgramsCostsEditor
+              draft={draft}
+              groups={GROUPS}
+              sessions={CATALOG}
+              cancelled={new Set<number>()}
+              onDone={vi.fn()}
+            />
+          ),
+        })}
+      />
+    )
+    expect(within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')).toHaveValue(
+      '6,695'
+    )
+    expect(within(screen.getByTestId('pc-row-1000102')).getByLabelText('Tuition')).toHaveValue(
+      '6,695.50'
+    )
   })
 
   it('Esc cancels', async () => {
