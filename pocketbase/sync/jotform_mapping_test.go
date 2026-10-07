@@ -114,7 +114,9 @@ func TestJotformPullReadsTheFormDefinitionBeforeAnySubmission(t *testing.T) {
 	if meta["coming_with"].Flag != jotform.FlagNeedsPick {
 		t.Errorf("meta[coming_with] = %+v", meta["coming_with"])
 	}
-	want := "ok · 0 submissions · 0 matched · 0 unmatched · mapping: 6 guessed, 6 needs a pick"
+	// 13 roles: this form asks no "anything else ... share" question, so
+	// director_notes is the seventh role left needing a pick.
+	want := "ok · 0 submissions · 0 matched · 0 unmatched · mapping: 6 guessed, 7 needs a pick"
 	if got := form.GetString("last_pull_status"); got != want {
 		t.Errorf("last_pull_status = %q\nwant              %q", got, want)
 	}
