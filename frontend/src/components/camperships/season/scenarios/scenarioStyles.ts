@@ -26,8 +26,9 @@ export const BOX_CHANGED = 'border-amber-500 bg-amber-50 dark:border-amber-500 d
 export const BOX_BAD = 'border-red-600 dark:border-red-400'
 /** "was ‹old›" beside a changed box. */
 export const WAS_INK = 'text-amber-700 dark:text-amber-300'
-/** A value that differs from the rules in effect, in Compare (`.cv`). */
-export const SETTING_CHANGED = 'font-semibold text-amber-700 dark:text-amber-400'
+/** A value that differs from the rules in effect, in Compare (`.cv`): amber 700, a tint and an amber underline. */
+export const SETTING_CHANGED =
+  'rounded-[3px] border-b-2 border-amber-500 bg-amber-100/70 px-[3px] font-bold text-amber-700 dark:border-amber-500 dark:bg-amber-900/45 dark:text-amber-300'
 /** A changed checkbox: a 2px amber outline. */
 export const CHECK_CHANGED = 'outline-2 outline-offset-1 outline-amber-500 dark:outline-amber-400'
 /** ▲ in Compare (owner line 685: the family counts keep forest/red); ▼ is NEGATIVE_INK. */

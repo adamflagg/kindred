@@ -31,6 +31,9 @@ import { PAGE_NOTE } from './scenarioNotes'
 import { DRAFT_CHIP, KEPT_CHIP, PLAIN_CHIP, SETTING_CHANGED, UP_INK } from './scenarioStyles'
 
 const CHIPS = { kept: KEPT_CHIP, draft: DRAFT_CHIP, plain: PLAIN_CHIP } as const
+/** The sticky first column (the mock's `td.pin`): 220–280px, so a setting's name wraps less. */
+const LABEL_COLUMN =
+  'bg-card sticky left-0 min-w-[220px] max-w-[280px] pr-2 text-left whitespace-normal'
 
 /** Columns ▾, By tier and Print, on the control line's right in Compare (§S5 A6, §S5 H). */
 export function CompareTools({
@@ -182,7 +185,7 @@ export function CompareTable({
     compare.last_season !== undefined &&
     !compare.last_season.loaded
   return (
-    <div className="space-y-1">
+    <div data-print-alone className="space-y-1">
       <div data-testid="compare-print-head" className={`${CS_BODY} hidden print:block`}>
         <div className="font-bold">{`Season ${String(workspace.year)} · Scenarios compare`}</div>
         <div>{`Printed ${printedOn} · ${corner.replace(/^Priced on /, '')} · ${effectName} in effect`}</div>
@@ -201,7 +204,9 @@ export function CompareTable({
         <table className={`${CS_BODY} w-full border-collapse tabular-nums`}>
           <thead>
             <tr>
-              <th className="bg-card sticky left-0 z-10 px-2 py-1 text-left align-bottom shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]">
+              <th
+                className={`${LABEL_COLUMN} z-10 py-1 pl-2 align-bottom font-normal shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]`}
+              >
                 <span className={CS_SMALL}>
                   <span>{corner}</span>
                   <DefRef n={PAGE_NOTE.compare} />
@@ -281,7 +286,7 @@ export function CompareTable({
                   className={row.muted ? 'text-muted-foreground' : ''}
                 >
                   <td
-                    className={`bg-card sticky left-0 px-2 py-0.5 text-left ${row.indent ? 'pl-5' : ''} ${row.bold ? 'font-bold' : ''}`}
+                    className={`${LABEL_COLUMN} py-0.5 ${row.indent ? 'pl-5' : 'pl-2'} ${row.bold ? 'font-bold' : ''}`}
                   >
                     {row.label}
                   </td>

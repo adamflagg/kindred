@@ -31,6 +31,12 @@ describe('SpendStrip (§S5 E)', () => {
     expect(screen.getByTestId('strip-pool-pool_b')).toBeInTheDocument()
   })
 
+  it('puts "Remaining" on one line with its amount, as the mock does (V F2, F10)', () => {
+    render(<SpendStrip {...base} />)
+    const line = within(screen.getByTestId('spend-strip')).getByText('$243,550').parentElement
+    expect(line).toHaveTextContent(/^Remaining\d?\s*\$243,550/)
+  })
+
   it('marks a pool over its share in amber and the total over budget in red', () => {
     const over = {
       ...DRAFT,

@@ -1,7 +1,7 @@
 import {
   CS_AMBER_NOTE,
   CS_CARD,
-  CS_CARD_TITLE,
+  CS_CARD_HEADING,
   CS_TABLE_CARD,
   CS_TD_CARD,
   CS_TH_CARD,
@@ -40,7 +40,7 @@ export function SandboxEquityCard({ binding }: { binding: SandboxBinding }) {
       className={`${CS_CARD} ${note !== null ? LOCKED_CARD : ''}`}
     >
       <div className="flex flex-wrap items-baseline gap-2">
-        <h3 className={CS_CARD_TITLE}>Equity</h3>
+        <h3 className={CS_CARD_HEADING}>Equity</h3>
         {note !== null && <LockNoteView text={note} />}
       </div>
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}

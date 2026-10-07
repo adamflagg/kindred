@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import {
   CS_AMBER_NOTE,
   CS_CARD,
-  CS_CARD_TITLE,
+  CS_CARD_HEADING,
   CS_FLABEL,
   CS_SMALL,
   CS_TABLE_CARD,
@@ -120,7 +120,7 @@ export function SandboxTierCard({
   return (
     <section data-card="sandbox-tiers" className={`${CS_CARD} ${r1Locked ? LOCKED_CARD : ''}`}>
       <div className="flex flex-wrap items-baseline gap-2">
-        <h3 className={CS_CARD_TITLE}>Tiers &amp; Round 1</h3>
+        <h3 className={CS_CARD_HEADING}>Tiers &amp; Round 1</h3>
         {note !== null && <LockNoteView text={note} />}
         {fitButton}
       </div>

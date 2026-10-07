@@ -109,6 +109,23 @@ describe('CompareTable (§S5 H)', () => {
     expect(body).not.toHaveTextContent('735,000.50')
   })
 
+  it('reads the corner in the small role’s 400, never the header cell’s bold (V F10)', () => {
+    table()
+    expect(screen.getByText('Priced on 420 applications held').closest('th')).toHaveClass(
+      'font-normal'
+    )
+  })
+
+  it('gives the setting names the mock’s label column, so they wrap less (V F9)', () => {
+    table()
+    const corner = screen.getByText('Priced on 420 applications held').closest('th')
+    expect(corner).toHaveClass('min-w-[220px]', 'max-w-[280px]')
+    expect(screen.getByText('Requests priced').closest('td')).toHaveClass(
+      'min-w-[220px]',
+      'max-w-[280px]'
+    )
+  })
+
   it('sizes the code chips by the head’s small role, never a size of their own (plan review, minor 11)', () => {
     table()
     const chip = within(screen.getByTestId('compare-head-B')).getByText('B')

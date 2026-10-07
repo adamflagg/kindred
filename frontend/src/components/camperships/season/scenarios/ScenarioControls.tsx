@@ -8,7 +8,6 @@ import {
   CS_BTN_SM,
   CS_CHIP,
   CS_CHIP_ON,
-  CS_FLABEL,
   CS_INPUT,
   CS_META,
   CS_PILL,
@@ -16,7 +15,7 @@ import {
   CS_SEG_BUTTON,
   CS_SEG_OFF,
   CS_SEG_ON,
-  CS_SELECT,
+  CS_SELECT_CTL,
   CS_SMALL,
   CS_STRIP,
 } from '../../kit/csType'
@@ -156,11 +155,11 @@ export function ScenarioControls(props: {
         Update Applications
       </button>
       {props.nothingNew !== null && <span className={CS_SMALL}>{props.nothingNew}</span>}
-      <label className={`${CS_FLABEL} inline-flex items-center gap-1.5`}>
+      <label className={`${CS_SMALL} inline-flex items-center gap-1.5`}>
         Price
         <select
           aria-label="Price"
-          className={CS_SELECT}
+          className={CS_SELECT_CTL}
           value={priceValue}
           onChange={(event) => {
             const kind = event.target.value
@@ -183,7 +182,7 @@ export function ScenarioControls(props: {
           <input
             type="date"
             aria-label="Price through"
-            className={CS_SELECT}
+            className={CS_SELECT_CTL}
             value={props.price.date}
             onChange={(event) => {
               if (event.target.value !== '')
@@ -196,7 +195,7 @@ export function ScenarioControls(props: {
         <span className={`${CS_META} font-bold`}>Start from</span>
         <select
           aria-label="Start from"
-          className={CS_SELECT}
+          className={CS_SELECT_CTL}
           value={selected}
           disabled={!props.canEdit}
           onChange={(event) => {

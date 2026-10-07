@@ -34,6 +34,8 @@ import {
 } from './spendModel'
 
 const TD_NUM = `${CS_TD_CARD} text-right tabular-nums`
+/** The strip's card: the mock's `.sp` density (6px 8px), so it sits near its ~100px (§S4) at any width. */
+const STRIP_CARD = CS_CARD.replace('px-3.5 py-3', 'px-2 py-1.5')
 /** No change from the starting point: a muted dash, as the mock's `.none`. */
 const NO_CHANGE = <span className="text-muted-foreground">—</span>
 
@@ -141,7 +143,7 @@ export function SpendStrip({
       <div
         data-testid="spend-strip-card"
         data-stale={stale ? '' : undefined}
-        className={`${CS_CARD} grid gap-2 data-[stale]:opacity-60`}
+        className={`${STRIP_CARD} grid gap-x-1.5 gap-y-1 data-[stale]:opacity-60`}
         style={{
           gridTemplateColumns: `minmax(190px, 230px) repeat(${String(Math.max(pools.length, 1))}, minmax(0, 1fr))`,
         }}
@@ -164,11 +166,11 @@ export function SpendStrip({
               By tier ▸
             </button>
           </div>
-          <div className={CS_SMALL}>
-            Remaining
-            <DefRef n={REGISTRY_NOTE.remaining} />
-          </div>
           <div className="flex flex-wrap items-baseline gap-1">
+            <span className={CS_SMALL}>
+              Remaining
+              <DefRef n={REGISTRY_NOTE.remaining} />
+            </span>
             <b className={`tabular-nums ${lead.overBudget ? NEGATIVE_INK : ''}`}>
               {formatWholeMoney(lead.remaining)}
             </b>

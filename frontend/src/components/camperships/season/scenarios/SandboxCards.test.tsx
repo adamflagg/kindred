@@ -28,6 +28,28 @@ function setup(
 
 const ROUND1 = ['income', 'tiers', 'equity', 'award_tables', 'awards']
 
+describe('the three cards’ titles (V F7)', () => {
+  it('keeps each title in the card face: 13.5px sans, whatever the bare h3 rule says (as the Rules tab’s cards)', () => {
+    const { binding } = setup()
+    render(
+      <>
+        <SandboxTierCard binding={binding} fitButton={null} fitAnswer={null} />
+        <SandboxEquityCard binding={binding} />
+        <SandboxIncomeCard binding={binding} />
+      </>
+    )
+    // fonts.css styles h3 outside any layer (Fraunces, 30px), so only an important class beats it (#2954).
+    for (const name of ['Tiers & Round 1', 'Equity', 'Income counting']) {
+      expect(screen.getByRole('heading', { name })).toHaveClass(
+        '!font-sans',
+        '!text-[13.5px]',
+        '!leading-normal',
+        '!tracking-[inherit]'
+      )
+    }
+  })
+})
+
 describe('Tiers & Round 1 (§S5 F1)', () => {
   it('puts start, band width, tiers, the ceiling and the minimum on one line', () => {
     const { binding } = setup()
