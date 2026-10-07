@@ -1158,9 +1158,9 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
     }
   )
 
-  // B3: the editor grids keep the "min" marks too, captioned as last saved.
+  // B3: the editor grids keep the grey ⚠ marks too (owner ruling 10-07: triangle, not "min"), captioned as last saved.
   it.each(['award_tables', 'round2', 'tiers'])(
-    'the %s editor keeps the "min" marks, captioned "as last saved", and footnotes a click',
+    'the %s editor keeps the grey ⚠ marks, captioned "as last saved", and footnotes a click',
     async (section) => {
       const base = draft.data!
       const message =
@@ -1185,12 +1185,16 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
       renderAt(`/aid/season/rules?section=${section}`)
       await editCard(section)
       await screen.findByTestId('tier-grid')
-      const mark = within(tierRow(3)).getByRole('button', { name: 'min' })
+      const mark = within(tierRow(3)).getByRole('button', {
+        name: 'Show where the minimum decides',
+      })
+      expect(mark).toHaveTextContent('⚠')
+      expect(mark.className).not.toMatch(/amber/)
       expect(mark).toHaveAttribute('title', message)
       expect(screen.queryByRole('button', { name: "Show this table's warnings" })).toBeNull()
       expect(
         within(screen.getByTestId(`grid-editor-${section}`)).getByText(
-          'min marks where the minimum decides, as last saved, not what you have typed.'
+          'grey ⚠ marks where the minimum decides, as last saved, not what you have typed.'
         )
       ).toBeInTheDocument()
       await userEvent.click(mark)

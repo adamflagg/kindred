@@ -85,10 +85,11 @@ function GridCellView({
         <button
           type="button"
           title={note}
+          aria-label="Show where the minimum decides"
           className={`${CS_SMALL} ml-1 cursor-pointer`}
           onClick={onNote}
         >
-          min
+          ⚠
         </button>
       )}
     </td>

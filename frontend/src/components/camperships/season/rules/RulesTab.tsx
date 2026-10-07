@@ -384,13 +384,13 @@ function ChaptersBody({
     const tables = (value: unknown) => (value ?? {}) as TablesProp
     const programs = document_.programs as ProgramsProp
     // The saved draft's Round 1 marks stay while editing; they follow a save, not the typing (coordinator B1).
-    // The "min" marks too (B3): both follow the saved draft's report.
+    // The grey ⚠ marks too (B3): both follow the saved draft's report.
     const roundOne = shownOf('award_tables')?.issues ?? []
     const warned = warnedCells(roundOne)
     const noted = notedCells(roundOne)
     const marks = [
       ...(warned.size > 0 ? ['⚠ marks the warnings'] : []),
-      ...(noted.size > 0 ? ['min marks where the minimum decides,'] : []),
+      ...(noted.size > 0 ? ['grey ⚠ marks where the minimum decides,'] : []),
     ]
     const asSaved =
       marks.length === 0 ? null : (

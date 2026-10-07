@@ -179,7 +179,7 @@ function cellOf(issue: Issue): { table: string; tier: number } | null {
   return { table: match[1] ?? '', tier: Number(match[2]) }
 }
 
-/** The Round 1 cell a `value_cannot_bind` WARNING names; a note's cell wears "min", never ⚠. */
+/** The Round 1 cell a `value_cannot_bind` WARNING names; a note's cell wears a grey ⚠, never the amber one. */
 function warnedCell(issue: Issue): { table: string; tier: number } | null {
   return isNote(issue) ? null : cellOf(issue)
 }

@@ -226,7 +226,7 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     })
   })
 
-  describe('the "min" mark: where the minimum decides, a note, not a warning (B3, #3049)', () => {
+  describe('the grey ⚠ mark: where the minimum decides, a note, not a warning (B3, #3049)', () => {
     const note = (table: string, tier: number): ApiAidValidationIssue => ({
       ...WARNING,
       severity: 'note',
@@ -235,10 +235,11 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     })
     // One warning (Summer tier 3) and two notes (Teen tier 2, and Summer tier 3 again).
     const ISSUES = [WARNING, note('teen', 2), note('summer', 3)]
+    const MIN_MARK = 'Show where the minimum decides'
     const min = (tier: number, column: number) =>
-      within(cell(tier, column)).queryByRole('button', { name: 'min' })
+      within(cell(tier, column)).queryByRole('button', { name: MIN_MARK })
 
-    it('reads "1 warning", wears ⚠ on the warned cell only, and "min" on both noted cells', () => {
+    it('reads "1 warning", wears ⚠ on the warned cell only, and a grey ⚠ on both noted cells (owner ruling 10-07: triangle, not "min")', () => {
       grid({ issuesBySection: { award_tables: ISSUES } })
       expect(
         within(screen.getByTestId('card-head-award_tables')).getByRole('button', {
@@ -252,7 +253,9 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
       expect(min(2, 4)).toHaveAttribute('title', note('teen', 2).message)
       expect(min(3, 2)).toHaveAttribute('title', note('summer', 3).message) // both marks on one cell
       expect(min(1, 2)).toBeNull()
-      expect(screen.getAllByRole('button', { name: 'min' })).toHaveLength(2)
+      expect(screen.getAllByRole('button', { name: MIN_MARK })).toHaveLength(2)
+      expect(min(2, 4)).toHaveTextContent('⚠')
+      expect(screen.queryByText('min')).toBeNull()
     })
 
     it("a click footnotes the note's words once, under the grid; a second click folds it", async () => {
@@ -266,9 +269,22 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
       expect(screen.queryByText(message)).toBeNull()
     })
 
-    it('is small, muted and shows a pointer', () => {
+    it('is small, muted (not amber) and shows a pointer', () => {
       grid({ issuesBySection: { award_tables: ISSUES } })
       expect(min(2, 4)).toHaveClass('text-xs', 'text-muted-foreground', 'cursor-pointer')
+      expect(min(2, 4)!.className).not.toMatch(/amber/)
+    })
+
+    it('wears a different tone from the warning ⚠ on the one cell that has both', () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      const amber = within(cell(3, 2)).getByRole('button', { name: "Show this table's warnings" })
+      const grey = min(3, 2)!
+      expect(amber).toHaveTextContent('⚠')
+      expect(grey).toHaveTextContent('⚠')
+      expect(amber.className).toMatch(/text-amber-/)
+      expect(grey.className).not.toMatch(/text-amber-/)
+      expect(grey.className).toMatch(/text-muted-foreground/)
+      expect(amber.className).not.toMatch(/text-muted-foreground/)
     })
 
     it("stays out of the chip's list: the list holds the warning only", async () => {
