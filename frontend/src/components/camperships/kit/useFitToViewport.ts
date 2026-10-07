@@ -5,7 +5,8 @@ const FLOOR = 320
 
 /**
  * A screen box's size (spec §7.2 C): its max height fills the window below its top, less 24px, never under 320px,
- * so the page never scrolls past it; its width sizes the opened row's sticky line. Recomputed on resize.
+ * so the page never scrolls past it; its width sizes the opened row's sticky line. Recomputed on resize, and when the page's own height changes (late
+ * content above the box moves its top without the window resizing).
  */
 export function useFitToViewport(ref: RefObject<HTMLElement | null>): {
   maxHeight: number
@@ -28,7 +29,14 @@ export function useFitToViewport(ref: RefObject<HTMLElement | null>): {
     }
     measure()
     window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
+    // The body's size changes when content above the box arrives or wraps; the unchanged-size guard in
+    // `measure` is what keeps the box's own resize from looping through this observer.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(document.body)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
   }, [ref])
   return size
 }
