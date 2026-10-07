@@ -56,12 +56,11 @@ export function gridFiltersFrom(params: URLSearchParams): {
   const sort = params.get('sort')
   const group = params.get('group')
   const showIds = params.get('ids') === '1'
-  const counted = params.get('counted') === '1'
   const live = params.get('live') === '1'
   // A Season figure (interim, owner 10-06; seasonFigure.ts) walks the rows it opened.
   const figure = parseSeasonFigure(params)
   return {
-    filters: { program, pool, round, counted, live, figure, ids: null },
+    filters: { program, pool, round, live, figure, ids: null },
     keep: {
       // The lens (T4) rides along with the filters: a step and Back stay under it.
       ...(lens === 'appeals' ? { lens } : {}),
@@ -69,7 +68,6 @@ export function gridFiltersFrom(params: URLSearchParams): {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(figure !== null ? figureParam(figure) : {}),
-      ...(counted ? { counted: '1' } : {}),
       ...(live ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(sort !== null ? { sort } : {}),

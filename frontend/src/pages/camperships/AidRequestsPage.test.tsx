@@ -341,20 +341,11 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })
 
-  it('filters to rounds counting toward the budget, held in the URL as counted=1', async () => {
-    const outside = {
-      ...ROW_SAMUEL,
-      request_id: 'reqoutside00001',
-      camper_name: 'Outside Camper',
-      rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
-    }
-    grid = { data: { ...LIVE, rows: [...GRID_ROWS, outside] }, isLoading: false, error: null }
-    renderAt('/aid/requests')
-    expect(screen.getByText('Outside Camper')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Counting toward the budget' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('counted=1')
-    expect(screen.queryByText('Outside Camper')).toBeNull()
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  it('has no Counting toward the budget checkbox, and an old link’s counted=1 changes nothing', async () => {
+    renderAt('/aid/requests?posted=1&counted=1')
+    expect(screen.queryByLabelText('Counting toward the budget')).toBeNull()
+    expect(await screen.findByText('Posted in Round 1', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText(/counting toward the budget/)).toBeNull()
   })
 
   it('says live=1 is on, hides withdrawn and cancelled requests, and Show All clears it', async () => {
@@ -379,10 +370,8 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   // Owner 10-06, option (a): Season's Posted / Accepted figures open on a hidden posted= / accepted=
   // param. No chip or control: a line says what the list is, like the live line, with Show All.
   it('narrows to a Season figure, says so on a line, and Show All clears it (owner 10-06)', async () => {
-    renderAt('/aid/requests?accepted=1&counted=1')
-    expect(
-      screen.getByText('Accepted in Round 1 · counting toward the budget ·', { exact: false })
-    ).toBeInTheDocument()
+    renderAt('/aid/requests?accepted=1')
+    expect(screen.getByText('Accepted in Round 1 ·', { exact: false })).toBeInTheDocument()
     // Olivia Chen was accepted in Round 1 and is in Round 2 now: the figure still counts her.
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
@@ -390,12 +379,11 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText(/tick/i)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
     expect(screen.getByTestId('where')).not.toHaveTextContent('accepted=')
-    expect(screen.getByTestId('where')).not.toHaveTextContent('counted=')
     expect(screen.queryByText(/Accepted in Round 1/)).toBeNull()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
   })
 
-  it('words the figure line for any round, and drops the budget part when counted is off', async () => {
+  it('words the figure line for any round', async () => {
     renderAt('/aid/requests?posted=all')
     const line = screen.getByText(/Posted in any round/)
     expect(line).toHaveTextContent(/^Posted in any round ·\s*Show All$/)
@@ -468,28 +456,28 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       error: null,
       isLoading: false,
     }
-    renderAt(`/aid/requests?op=${'o'.repeat(15)}&counted=1`)
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}&live=1`)
     // The walk's filters do not read op, so a household link that carried it would walk every request.
     await userEvent.click(screen.getByRole('link', { name: 'Emma Johnson' }))
     const where = screen.getByTestId('where')
     expect(where).toHaveTextContent('/aid/households/')
-    expect(where).toHaveTextContent('counted=1')
+    expect(where).toHaveTextContent('live=1')
     expect(where).not.toHaveTextContent('op=')
   })
 
   it('carries the Season figure to the household page, so the walk keeps it', async () => {
-    renderAt('/aid/requests?posted=1&counted=1')
+    renderAt('/aid/requests?posted=1')
     await userEvent.click(screen.getByRole('link', { name: 'David Chen' }))
     expect(screen.getByTestId('where')).toHaveTextContent(
-      /^\/aid\/households\/1000005\?from=all&posted=1&counted=1&year=2027$/
+      /^\/aid\/households\/1000005\?from=all&posted=1&year=2027$/
     )
   })
 
-  it('carries counted and live to the household page (M5)', async () => {
-    renderAt('/aid/requests?counted=1&live=1')
+  it('carries live to the household page (M5)', async () => {
+    renderAt('/aid/requests?live=1')
     await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
     expect(screen.getByTestId('where')).toHaveTextContent(
-      /^\/aid\/households\/1000003\?from=all&counted=1&live=1&year=2027$/
+      /^\/aid\/households\/1000003\?from=all&live=1&year=2027$/
     )
   })
 

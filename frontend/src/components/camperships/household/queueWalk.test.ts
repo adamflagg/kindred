@@ -39,7 +39,6 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
       pool: null,
       round: 2,
       figure: null,
-      counted: false,
       live: false,
       ids: null,
     })
@@ -47,11 +46,9 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
   })
 
   it('carries a Season figure, so ] and [ walk the rows the figure opened (owner 10-06)', () => {
-    const { filters, keep } = gridFiltersFrom(
-      new URLSearchParams('from=all&posted=1&counted=1&year=2027')
-    )
-    expect(filters).toMatchObject({ figure: { measure: 'posted', round: 1 }, counted: true })
-    expect(keep).toEqual({ posted: '1', counted: '1' })
+    const { filters, keep } = gridFiltersFrom(new URLSearchParams('from=all&posted=1&year=2027'))
+    expect(filters).toMatchObject({ figure: { measure: 'posted', round: 1 } })
+    expect(keep).toEqual({ posted: '1' })
     // Olivia Chen was accepted in Round 1 and is in Round 2 now: the walk still stops at her.
     const stops = walkStops(GRID_ROWS, requestView('all'), TODAY, {
       ...NO_FILTERS,
@@ -62,14 +59,18 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
     expect(gridFiltersFrom(new URLSearchParams('posted=9')).filters.figure).toBeNull()
   })
 
-  it("carries the grid's counted and live filters, so the walk and Back stay on its rows", () => {
-    const { filters, keep } = gridFiltersFrom(
-      new URLSearchParams('from=all&counted=1&live=1&year=2027')
+  it('carries no counted through a walk', () => {
+    expect(gridFiltersFrom(new URLSearchParams('posted=1&counted=1')).keep).not.toHaveProperty(
+      'counted'
     )
-    expect(filters).toMatchObject({ counted: true, live: true })
-    expect(keep).toEqual({ counted: '1', live: '1' })
-    const none = gridFiltersFrom(new URLSearchParams('from=all&counted=0'))
-    expect(none.filters).toMatchObject({ counted: false, live: false })
+  })
+
+  it("carries the grid's live filter, so the walk and Back stay on its rows", () => {
+    const { filters, keep } = gridFiltersFrom(new URLSearchParams('from=all&live=1&year=2027'))
+    expect(filters).toMatchObject({ live: true })
+    expect(keep).toEqual({ live: '1' })
+    const none = gridFiltersFrom(new URLSearchParams('from=all&live=0'))
+    expect(none.filters).toMatchObject({ live: false })
     expect(none.keep).toEqual({})
   })
 
