@@ -1279,8 +1279,18 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
 
 def _posted_unknown(row: GridRowOut) -> GridRowOut:
     """A past row whose payer shares or staff placements can't be replayed: whether CampMinder had
-    reversed its posted money is unknown, so the money is left empty (never guessed)."""
-    rounds = [r.model_copy(update={"posted": None, "clawed_back": False}) for r in row.rounds]
+    reversed its posted money is unknown, so the money is left empty (never guessed). A posted round's outside part
+    is posted money too (A9), so it goes with it, as Rounds & budget empties outside_budget_posted."""
+    rounds = [
+        r.model_copy(
+            update={
+                "posted": None,
+                "clawed_back": False,
+                **({"outside_budget": None, "outside_label": None} if r.status == "posted" else {}),
+            }
+        )
+        for r in row.rounds
+    ]
     # A payer's Needs an offer part is measured from the posted total, so it goes with its posted part.
     shares = [s.model_copy(update={"posted": None, "needs_offer": None}) for s in row.payer_shares]
     return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None, "payer_shares": shares})
@@ -2235,6 +2245,7 @@ class FinancialAidDecisionsService:
         """One request's grid row, with the Requests views it is in (slice 1, D21). The grid and the
         household page build their rows here, so the two always show the same figures."""
         families, campers = names
+        rules = season.rules.document if season.rules is not None else None
         row = grid_row(
             season.requests[request_id],
             season.priced[request_id],
@@ -2249,14 +2260,9 @@ class FinancialAidDecisionsService:
             appeal=appeal_refusal(
                 season.requests[request_id], season.rounds.get(request_id, {}), season.cancellations.get(request_id)
             ),
-            type_labels=(
-                {k: t.label for k, t in season.rules.document.awards.decision_types.items()}
-                if season.rules is not None
-                else None
-            ),
+            type_labels={k: t.label for k, t in rules.awards.decision_types.items()} if rules is not None else None,
         )
         request = season.requests[request_id]
-        rules = season.rules.document if season.rules is not None else None
         program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None
         description = (program.campminder_description or None) if program is not None else None
         priced = season.priced[request_id]

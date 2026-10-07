@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 from api.schemas.financial_aid_decisions import RoundOut
-from api.services.financial_aid_decisions_service import grid_row
+from api.services.financial_aid_decisions_service import _posted_unknown, grid_row
 from api.services.financial_aid_intake_types import RequestRecord
 from bunking.financial_aid.calculator.inputs import RequestInputs
 from bunking.financial_aid.decisions import RoundState
@@ -117,7 +117,8 @@ def test_the_key_stands_in_when_the_rules_lost_the_type() -> None:
 
 @pytest.mark.asyncio
 async def test_the_services_row_names_the_fund_from_the_seasons_rules() -> None:
-    """row_of hands the season's rules labels to the row, so the tag reads the rules' words, not the key."""
+    """row_of hands the season's rules labels to the row, so the tag reads the rules' words, not the key. Regression
+    guard: written after the implementation, when a mutation (row_of dropping the labels) survived the other tests."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     service = _service(store)
@@ -133,3 +134,31 @@ async def test_the_services_row_names_the_fund_from_the_seasons_rules() -> None:
     season = replace(base, priced={**base.priced, EMMA: replace(base.priced[EMMA], rounds=(outside_round,))})
     row = service.row_of(season, ({}, {}), EMMA)
     assert (row.rounds[0].outside_budget, row.rounds[0].outside_label) == (2000.0, "Full-cost program")
+
+
+def test_a_past_row_whose_posted_money_is_unknown_leaves_its_posted_outside_part_empty() -> None:
+    """A past read can't tell whether CampMinder reversed a posted round (`_posted_unknown`), so the posted round's
+    outside part goes empty with its posted figure, as Rounds & budget empties outside_budget_posted. An unposted
+    round's outside part reads its decision, not posted money, so it stays."""
+    rules = with_lever(fictional_rules(), "awards.decision_types.full_cost_program.counts_toward_budget", False)
+    posted = RoundState(
+        round=1,
+        posted=True,
+        locked_amount=Decimal(4050),
+        discretionary_type="full_cost_program",
+        snapshot={"counts_toward_budget": False, "decision_type": "full_cost_program", "decision_round": 1},
+    )
+    priced = price_request(
+        item(request=req(ask="2000", decision_type="full_cost_program"), rounds={1: posted}, r1_ask=Decimal(2000)),
+        rules,
+    )
+    row = grid_row(RECORD, priced, {}, {}, {}, {}, HoldState(), type_labels={"full_cost_program": "Full-cost program"})
+    unposted = _row_round(rules, {1: RoundState(round=1, discretionary_type="full_cost_program")}, req(ask="2000"))
+    unposted = unposted.model_copy(update={"round": 2})
+    assert row.rounds[0].outside_budget is not None
+    assert unposted.outside_budget is not None
+    masked = _posted_unknown(row.model_copy(update={"rounds": [row.rounds[0], unposted]}))
+    assert [(r.outside_budget, r.outside_label) for r in masked.rounds] == [
+        (None, None),
+        (unposted.outside_budget, "Full-cost program"),
+    ]
