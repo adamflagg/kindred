@@ -168,10 +168,9 @@ describe('Rounds & budget (spec §5)', () => {
     expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
   })
 
-  // UNSKIP after back-end Task 18 (ApiAidRulesDraft.budget_total_locked, regenerated types)
-  it.skip('keeps Edit Plan… enabled after a posted round locks the budget total (owner 10-06 (b))', () => {
+  it('keeps Edit Plan… enabled after a posted round locks the budget total (owner 10-06 (b))', () => {
     granted = FINANCE
-    draft = { ...rulesDraft(), budget_total_locked: true } as ApiAidRulesDraft
+    draft = { ...rulesDraft(), budget_total_locked: true }
     renderAt('/aid/season/rounds-budget')
     expect(
       within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
