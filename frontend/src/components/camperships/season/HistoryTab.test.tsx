@@ -302,17 +302,18 @@ describe('HistoryTab', () => {
     replaced()
     expect(where().get('open')).toBe('op0000000000002')
     expect(screen.getByText('Loading its rows…')).toBeInTheDocument()
-    await userEvent.click(screen.getByText('Released · 1 request · 1 family'))
+    // The opened row's left panel says it again (spec §7.2 D); the line itself comes first.
+    await userEvent.click(screen.getAllByText('Released · 1 request · 1 family')[0] as HTMLElement)
     expect(where().has('open')).toBe(false)
   })
 
   it("builds its links with the page's as-of, as the Rules tab does (D15; I3)", () => {
     detail = { id: OP_SHARE.operation_id, data: DETAIL_SHARE }
     renderAt(`/aid/season/history?year=2027&as_of=2027-03-15&open=${OP_SHARE.operation_id}`)
-    expect(screen.getByRole('link', { name: 'The Chen Family ›' })).toHaveAttribute(
-      'href',
-      '/aid/households/1000002?year=2027&as_of=2027-03-15'
-    )
+    // The row block's link and Open's, both with the as-of.
+    for (const link of screen.getAllByRole('link', { name: 'The Chen Family ›' })) {
+      expect(link).toHaveAttribute('href', '/aid/households/1000002?year=2027&as_of=2027-03-15')
+    }
     // The read itself stays live: the router takes no as-of.
     expect(lastQuery()).toEqual({ per_page: '50' })
   })
