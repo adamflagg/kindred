@@ -238,8 +238,8 @@ describe('what a draft changed', () => {
 })
 
 describe("the rules' own keys read in the document's words, never as codes (#15)", () => {
-  // The fixture's pools and programs carry labels; a decision type, an equity criterion and an
-  // incentive are added here so each kind of key has its own label to read.
+  // The fixture's pools and programs carry labels; a decision type and an equity criterion are
+  // added here so each kind of key has its own label to read.
   const document: Record<string, unknown> = {
     ...RULES_DOCUMENT,
     awards: {
@@ -252,7 +252,6 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
           amount: '300',
           extra_amount: '0',
           allows_appeal: true,
-          budget_line: 'appeal_top_up',
           counts_toward_budget: true,
           ceiling_exempt: false,
         },

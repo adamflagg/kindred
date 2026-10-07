@@ -73,6 +73,8 @@ class GrantInput(_Input):
 
 
 class IncentiveInput(_Input):
+    """Kept as the engine's seam: the rules no longer price incentives (culled, §9.9), so pricing passes none."""
+
     key: str
     amount: Money
 
@@ -86,11 +88,9 @@ class Headcount(_Input):
     """Family-camp headcount.
 
     `standard` counts every non-infant person priced at the standard rate, parents
-    included. `children` counts the children priced at the season's child rate, and
-    a child counted there must NOT also be counted in `standard` -- the three counts
-    are disjoint and the cost is standard x rate + infants x rate + children x rate.
-    When the season sets no child rate, children are priced at the standard rate, so
-    counting them in either field gives the same cost; count each person once.
+    included. `children` are priced at the standard rate too (the child rate was culled,
+    §9.9), so counting a child in either field gives the same cost. The three counts
+    are disjoint: count each person once.
     """
 
     standard: int = Field(ge=0)

@@ -276,7 +276,7 @@ export type ApiAidDraftSection = DraftSectionOut
 export type ApiAidSectionStatus = SectionStatus
 export type ApiAidFieldChange = FieldChangeOut
 export type ApiAidValidationIssue = ValidationIssue
-/** One of the rules document's fourteen sections (Python `SectionName`). */
+/** One of the rules document's thirteen sections (Python `SectionName`). */
 export type ApiAidRulesSection = DraftSectionOut['section']
 /** The rules document as the server sends it (decimals as strings), and as a write sends it back. */
 export type ApiAidRulesDocument = AidRulesOutput

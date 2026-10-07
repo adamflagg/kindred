@@ -1,4 +1,4 @@
-"""Outside grants and family incentives (catalogue section 2.6).
+"""Outside grants (catalogue section 2.6); the family-incentive step is a no-op seam since the cull.
 
 Only programs in grants.offset_programs are offset (2026: Summer, a staff
 ruling). Grants arrive already matched to the camper by person id (sub-project

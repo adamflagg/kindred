@@ -330,6 +330,15 @@ def test_every_class_has_a_weight_for_every_criterion_zeros_included() -> None:
     assert weights["camp"]["bipoc"] == Decimal("0.5")
 
 
+def test_the_full_matrix_also_fills_criteria_built_as_models() -> None:
+    """Code that builds the section from EquityCriterion instances, not dicts, gets the same zeros."""
+    criterion = EquityCriterion(
+        key="first_time", label="First time", source="camper", field="is_first_year", match="equals_any", values=["yes"]
+    )
+    section = EquitySection.model_validate({"criteria": [criterion], "weights": {"camp": {}}})
+    assert section.weights == {"camp": {"first_time": Decimal(0)}}
+
+
 def test_stages_is_no_longer_a_section() -> None:
     """The cull leaves thirteen sections."""
     assert "stages" not in SECTION_NAMES

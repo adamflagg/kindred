@@ -46,9 +46,9 @@ SectionName = Literal[
     "quality_checks",
     "milestones",
 ]
-# Removing one needs nothing: status_from_json reads only SECTION_NAMES. Adding a section here needs a data backfill of `section_status` on existing
-# `aid_rules` rows: status_from_json refuses to load a partial status map, so a
-# row with no stored entry for the new section would stop loading entirely.
+# Removing one needs nothing: status_from_json reads only SECTION_NAMES. Adding a section here needs a
+# data backfill of `section_status` on existing `aid_rules` rows: status_from_json refuses to load a
+# partial status map, so a row with no stored entry for the new section would stop loading entirely.
 SECTION_NAMES: tuple[SectionName, ...] = get_args(SectionName)
 
 QualityCheckKey = Literal[
@@ -247,7 +247,9 @@ class EquitySection(RulesModel):
         as 0), so the editor shows every box and saves the full matrix (§9.9)."""
         if not isinstance(data, dict):
             return data
-        keys = [c["key"] for c in data.get("criteria") or [] if isinstance(c, dict) and isinstance(c.get("key"), str)]
+        # A criterion arrives as stored JSON (a dict) or, from code, as an EquityCriterion.
+        found = (c.get("key") if isinstance(c, dict) else getattr(c, "key", None) for c in data.get("criteria") or [])
+        keys = [key for key in found if isinstance(key, str)]
         weights = data.get("weights")
         if not isinstance(weights, dict):
             return data
@@ -402,7 +404,7 @@ class GrantsSection(RulesModel):
 
 
 class DecisionType(RulesModel):
-    """A named kind of decision with its own budget line.
+    """A named kind of decision.
 
     full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
       total to cost - grants + extra_amount (a categorical full-funding program).
@@ -414,8 +416,7 @@ class DecisionType(RulesModel):
 
     `counts_toward_budget` says whether this type's money is the camp's own budget money. When
     false, the type's WHOLE round (base and extra; posted, offered or pending approval) sits below the
-    line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30); a decision counts
-    only when its stage's `counts_toward_budget` says so too.
+    line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30).
     `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
     `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
     """

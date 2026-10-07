@@ -652,7 +652,7 @@ function nodeOf(
   }
   if (isPlainObject(value)) {
     const entries = Object.entries(value)
-    // An empty set of settings (no weights, no incentives yet) reads as "none".
+    // An empty set of settings (no weights yet) reads as "none".
     if (entries.length === 0) return { kind: 'leaf', path, label, value: [] }
     if (entries.every(([, v]) => isFlatObject(v))) {
       // A row keeps its key (the editor writes back to it); it reads as the key's name.

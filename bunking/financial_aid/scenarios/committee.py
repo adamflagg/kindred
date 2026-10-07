@@ -66,10 +66,9 @@ _TENTH: Final = Decimal("0.1")
 # RPT-18's "criteria" (Ruling 2026-09-30, plan review): who gets what. Copied whole from last season:
 CRITERIA_SECTIONS: Final[tuple[SectionName, ...]] = ("income", "tiers", "equity", "award_tables", "round3")
 # Copied from last season but for one key, which stays this season's: Round 2's policy settings without its routing
-# (program -> Round 2 table), and the award settings without the decision types (finance's budget lines, which this
-# season's stages point to).
+# (program -> Round 2 table), and the award settings without the decision types (this season's named awards).
 CRITERIA_BUT: Final[Mapping[SectionName, str]] = {"round2": "program_tables", "awards": "decision_types"}
-# Everything else stays this season's: programs (and so each program's award table), cost, budget, stages, quality
+# Everything else stays this season's: programs (and so each program's award table), cost, budget, quality
 # checks, milestones, and grants whole (D140's minimum cap applies from 2027 on; the offset programs are routing).
 
 

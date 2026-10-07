@@ -101,8 +101,8 @@ def test_the_lever_list_reaches_every_section() -> None:
 
 
 def test_lever_paths_walks_into_list_of_models() -> None:
-    """A `list[BaseModel]` field (tiers.bands, equity.criteria, cost.family_rates) must be walked field by field, like a nested model or a dict's
-    values -- not collapsed into a single leaf that hides its own levers.
+    """A `list[BaseModel]` field (tiers.bands, equity.criteria, cost.family_rates) must be walked field by field,
+    like a nested model or a dict's values -- not collapsed into a single leaf that hides its own levers.
     """
     levers = lever_paths(AidRules)
     for expected in (

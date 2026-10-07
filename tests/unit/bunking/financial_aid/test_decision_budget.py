@@ -672,6 +672,17 @@ def test_a_fund_round_reduced_by_an_outside_grant_puts_only_its_smaller_remainde
     assert lines[("named_full_cost_fund", False)].amount == Decimal(1100)
 
 
+def test_a_fund_round_pending_approval_binds_only_its_camp_award() -> None:
+    """Regression guard (T17 review Minor 3): pending approval splits like needs an offer (D79 binds counting money)."""
+    fund = replace(
+        view(1, "pending_approval", pending="3600", counts=False, extra="1600"),
+        extra_outside=True,
+        decision_type="named_full_cost_fund",
+    )
+    camp = pool_of(season_budget([priced("req-j", 25, fund)], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[1].pending_approval, camp.below.outside_budget) == (Decimal(2000), Decimal(1600))
+
+
 def test_a_posted_fund_round_with_a_camp_part_ledger_shows_no_unconfirmed_beyond_the_camp_part() -> None:
     """Regression guard. A posted $3,600 fund round is a $2,000 camp award plus a $1,600 remainder. round_ledger
     reconciles the camp part only, so with $1,500 of camp lines it reads $500 unconfirmed ($2,000 − $1,500). The

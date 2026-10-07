@@ -17,8 +17,8 @@ A posted round is history (D43): it reads as its lock recorded it, and a later c
 There is no "would change by" figure on it (owner 2026-10-05).
 
 Outside grants reach the calculator only as the grants register's bridge built them
-(`grant_inputs_by_request`). An incentive is never a GrantInput (D88: One Happy Camper stays an
-outside funder, and the rules meet incentives through grants.incentives).
+(`grant_inputs_by_request`). An incentive is never a GrantInput (D88: it stays an outside
+funder), and the rules no longer price incentives at all (culled, §9.9): it posts in CampMinder.
 """
 
 from __future__ import annotations

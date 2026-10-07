@@ -767,7 +767,7 @@ class FinancialAidRulesService:
         plan Decision 5): each PRICING_SECTIONS section from the version pricing the season when there is one
         (the rules that price the registrar's work), and every other section -- or a pricing section while no
         version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
-        [section])`). So editing stages or milestones in a draft never blanks the read.
+        [section])`). So editing quality checks or milestones in a draft never blanks the read.
         """
         if version is not None:
             chosen = await self.load(year, version)

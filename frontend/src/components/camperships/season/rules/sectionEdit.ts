@@ -20,7 +20,6 @@ import { labelOf, unitOf, type SettingUnit } from './rulesModel'
 const NULLABLE: ReadonlySet<string> = new Set([
   'income_ceiling',
   'upper',
-  'child',
   'min_value',
   'max_amount',
   'max_total_pct_of_cost',
@@ -142,14 +141,7 @@ const WHOLE_BOUNDS: Readonly<Record<string, { min?: number; max?: number }>> = {
 }
 
 /** Names, keys and references: they may look like a figure ("2024" as a label) but are never one. */
-const FIXED_KEYS: ReadonlySet<string> = new Set([
-  'label',
-  'field',
-  'budget_line',
-  'campminder_description',
-  'code',
-  'key',
-])
+const FIXED_KEYS: ReadonlySet<string> = new Set(['label', 'field', 'campminder_description', 'key'])
 
 /**
  * Never boxed: a name, a key, or a reference to a CampMinder session or to another table (retyping

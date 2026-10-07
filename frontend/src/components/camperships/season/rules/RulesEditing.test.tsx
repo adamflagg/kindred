@@ -557,7 +557,7 @@ describe('starting a season (§7.5)', () => {
   })
 })
 
-/** The draft with The Round 1 award table and Budget both waiting for approval. */
+/** The draft with the Round 1 award table and Budget both waiting for approval. */
 function twoDraftsDraft(): ApiAidRulesDraft {
   const base = rulesDraft()
   const award = base.sections.find((x) => x.section === 'award_tables')

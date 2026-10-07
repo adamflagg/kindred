@@ -223,7 +223,6 @@ describe("reading a box as the server's schema validates it", () => {
 
   it('leaves a numeric-looking name alone', () => {
     expect(fieldSpec(['criteria', '0', 'label'], '2024')).toBeNull()
-    expect(fieldSpec(['decision_types', 'discount', 'budget_line'], '100')).toBeNull()
   })
 
   it('compares as the server does, lists whole and decimals by value', () => {

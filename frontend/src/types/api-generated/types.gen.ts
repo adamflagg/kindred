@@ -3466,7 +3466,7 @@ export type Day1YearData = {
 /**
  * DecisionType
  *
- * A named kind of decision with its own budget line.
+ * A named kind of decision.
  *
  * full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
  * total to cost - grants + extra_amount (a categorical full-funding program).
@@ -3478,8 +3478,7 @@ export type Day1YearData = {
  *
  * `counts_toward_budget` says whether this type's money is the camp's own budget money. When
  * false, the type's WHOLE round (base and extra; posted, offered or pending approval) sits below the
- * line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30); a decision counts
- * only when its stage's `counts_toward_budget` says so too.
+ * line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30).
  * `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
  * `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
  */
@@ -3521,7 +3520,7 @@ export type DecisionTypeInput = {
 /**
  * DecisionType
  *
- * A named kind of decision with its own budget line.
+ * A named kind of decision.
  *
  * full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
  * total to cost - grants + extra_amount (a categorical full-funding program).
@@ -3533,8 +3532,7 @@ export type DecisionTypeInput = {
  *
  * `counts_toward_budget` says whether this type's money is the camp's own budget money. When
  * false, the type's WHOLE round (base and extra; posted, offered or pending approval) sits below the
- * line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30); a decision counts
- * only when its stage's `counts_toward_budget` says so too.
+ * line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30).
  * `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
  * `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
  */
