@@ -1,17 +1,184 @@
-/**
- * Season › History (spec §7.6; D49; history.html B) needs a server read of the season's log,
- * `aid_change_log` grouped by operation and paged, that main doesn't have yet (slice 2 plan, "Back-end
- * reads missing on main"). Until it lands the tab says so, and points at the logs that exist.
- */
-export function HistoryTab({ canSeeScenarios }: { canSeeScenarios: boolean }) {
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router'
+
+import { Permission } from '../../../constants/permissions'
+import { useAidAsOf } from '../../../hooks/camperships/useAidAsOf'
+import { useAidHistory } from '../../../hooks/camperships/useAidHistory'
+import { useYear } from '../../../hooks/useCurrentYear'
+import { usePermissions } from '../../../hooks/usePermissions'
+import type { ApiAidHistoryPage } from '../../../types/api-types'
+import { QueryGuard } from '../../QueryGuard'
+import type { AidView } from '../kit/asOf'
+import { DefinitionNotes, type DefinitionNote } from '../kit/DefinitionNotes'
+import { HistoryFilters } from './HistoryFilters'
+import {
+  historyQuery,
+  lastPage,
+  pageWords,
+  parseHistoryFilters,
+  parseOpen,
+  toggleOpen,
+  withFilter,
+  type HistoryFilterKey,
+} from './historyModel'
+import { HistoryTable } from './HistoryTable'
+
+/** history.html B's notes. History defines no money figure, so they are the page's own words. */
+const NOTES: readonly DefinitionNote[] = [
+  {
+    n: 1,
+    text: 'Amounts in the log are the amounts locked or entered at that moment; they are not recomputed.',
+  },
+  {
+    n: 2,
+    text: "Each request's own timeline stays on its household page; this tab is the season-wide view.",
+  },
+  {
+    n: 3,
+    text: 'The scenario trail stays in Scenarios; making a kept option the rules draft appears here as a rules operation.',
+  },
+]
+const NOTES_WITHOUT_SCENARIOS = NOTES.slice(0, 2)
+/** Paging buttons in the row's compact size (history.html B); lodgingStyles' BUTTON_SECONDARY is form-sized. */
+const PAGE_BUTTON =
+  'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md border px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50'
+const NO_ACTORS: readonly string[] = []
+
+function HistoryBody({
+  page,
+  open,
+  onToggle,
+  onPage,
+  view,
+  stale,
+}: {
+  page: ApiAidHistoryPage
+  open: readonly string[]
+  onToggle: (operationId: string) => void
+  onPage: (page: number) => void
+  view: AidView
+  /** The page on screen is the previous one, while the next page or filter loads. */
+  stale: boolean
+}) {
+  const last = lastPage(page)
   return (
-    <div className="card-lodge text-muted-foreground space-y-1 p-6 text-sm">
-      <p className="text-foreground font-medium">The season&apos;s log isn&apos;t built yet.</p>
-      <p>
-        It needs a server read of every operation this season, which comes with a later back-end
-        change. Meanwhile each family&apos;s own history is on its household page
-        {canSeeScenarios ? ', and every scenario change is in Scenarios › Trail' : ''}.
+    <div className="space-y-2">
+      <p className="text-muted-foreground text-xs">
+        {stale ? `${pageWords(page)} · Updating…` : pageWords(page)}
       </p>
+      {page.operations.length > 0 && (
+        <div className={stale ? 'opacity-60' : undefined} data-stale={stale ? '' : undefined}>
+          <HistoryTable operations={page.operations} open={open} onToggle={onToggle} view={view} />
+        </div>
+      )}
+      {(page.total > page.per_page || page.page > 1) && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={PAGE_BUTTON}
+            disabled={page.page <= 1}
+            onClick={() => onPage(Math.min(page.page - 1, last))}
+          >
+            Newer
+          </button>
+          <span className="text-muted-foreground text-xs">{`Page ${String(page.page)} of ${String(last)}`}</span>
+          <button
+            type="button"
+            className={PAGE_BUTTON}
+            disabled={page.page >= last}
+            onClick={() => onPage(page.page + 1)}
+          >
+            Older
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Season › History (spec §7.6; D49, D76; history.html B): the season's log, one line per operation,
+ * rules and casework on one timeline, newest first, server-paged (D21). Every filter, the page and
+ * the opened lines live in the URL (D15), replaced, never per keystroke. Without `rules` the server
+ * leaves the rules operations out and the Rules chip is absent. The log is the whole log whatever the
+ * link's as-of (PR 1's line above the tab says so); its links keep the as-of. A failed refetch keeps
+ * the rows (owner Group 5).
+ */
+export function HistoryTab() {
+  const year = useYear()
+  const { hasPermission } = usePermissions()
+  const canSeeRules = hasPermission(Permission.FINANCIAL_AID_RULES)
+  const [params, setParams] = useSearchParams()
+  const search = params.toString()
+  const filters = useMemo(
+    () => parseHistoryFilters(new URLSearchParams(search), canSeeRules),
+    [search, canSeeRules]
+  )
+  const query = useMemo(() => historyQuery(filters), [filters])
+  const openRaw = params.get('open')
+  const open = useMemo(() => parseOpen(openRaw), [openRaw])
+  const history = useAidHistory(query)
+  // Links keep the page's as-of (D15; PR 3's I6 fix); the read stays live (the router takes none).
+  const asOf = useAidAsOf()
+  const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
+
+  // setParams changes identity on every URL change; a ref keeps the callbacks stable.
+  const setParamsRef = useRef(setParams)
+  useEffect(() => {
+    setParamsRef.current = setParams
+  }, [setParams])
+  const setFilter = useCallback(
+    (key: HistoryFilterKey, value: string | null) =>
+      setParamsRef.current((previous) => withFilter(previous, key, value), { replace: true }),
+    []
+  )
+  const setPage = useCallback(
+    (page: number) => setFilter('page', page <= 1 ? null : String(page)),
+    [setFilter]
+  )
+  const toggle = useCallback(
+    (operationId: string) =>
+      setParamsRef.current(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          const value = toggleOpen(parseOpen(previous.get('open')), operationId)
+          if (value === null) next.delete('open')
+          else next.set('open', value)
+          return next
+        },
+        { replace: true }
+      ),
+    []
+  )
+
+  return (
+    <div className="space-y-3">
+      <p className="text-muted-foreground text-sm">Who changed what, and when. Append-only.</p>
+      <HistoryFilters
+        filters={filters}
+        actors={history.data?.actors ?? NO_ACTORS}
+        kindCounts={history.data?.kind_counts}
+        canSeeRules={canSeeRules}
+        onChange={setFilter}
+      />
+      <QueryGuard
+        isLoading={history.isLoading}
+        error={history.data ? null : history.error}
+        data={history.data}
+        label="History"
+      >
+        {(data) => (
+          <HistoryBody
+            page={data}
+            open={open}
+            onToggle={toggle}
+            onPage={setPage}
+            view={view}
+            stale={history.isPlaceholderData}
+          />
+        )}
+      </QueryGuard>
+      <DefinitionNotes notes={canSeeRules ? NOTES : NOTES_WITHOUT_SCENARIOS} />
     </div>
   )
 }

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { campToday, formatLongDate, formatShortDate, parseIsoDay } from './dates'
+import {
+  campToday,
+  formatCampDateTime,
+  formatLongDate,
+  formatShortDate,
+  parseIsoDay,
+} from './dates'
 
 describe('campToday (api/services/camp_calendar.py CAMP_TZ)', () => {
   it('is the date on camp time, not UTC', () => {
@@ -52,5 +58,25 @@ describe('formatShortDate / formatLongDate', () => {
 
   it('returns anything it cannot read unchanged', () => {
     expect(formatShortDate('not a date')).toBe('not a date')
+  })
+})
+
+describe('formatCampDateTime', () => {
+  it('reads a stored time on camp time, day and 24-hour clock', () => {
+    // 23:05 UTC on Apr 9 is 16:05 Pacific daylight time.
+    expect(formatCampDateTime('2027-04-09T23:05:00Z')).toBe('Apr 9 16:05')
+    // 03:30 UTC on Jan 21 is still Jan 20 on camp time (standard time, UTC-8).
+    expect(formatCampDateTime('2027-01-21T03:30:00.123000Z')).toBe('Jan 20 19:30')
+    expect(formatCampDateTime('2027-04-10T07:00:00Z')).toBe('Apr 10 00:00')
+  })
+
+  it('reads the instants either side of the spring-forward changeover by camp time', () => {
+    // 2027-03-14: 02:00 PST jumps to 03:00 PDT, at 10:00 UTC.
+    expect(formatCampDateTime('2027-03-14T09:59:00Z')).toBe('Mar 14 01:59')
+    expect(formatCampDateTime('2027-03-14T10:00:00Z')).toBe('Mar 14 03:00')
+  })
+
+  it('gives back anything unreadable unchanged', () => {
+    expect(formatCampDateTime('not a time')).toBe('not a time')
   })
 })
