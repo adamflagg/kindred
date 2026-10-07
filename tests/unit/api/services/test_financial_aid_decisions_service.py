@@ -46,11 +46,15 @@ from tests.unit.api.services.decisions_fakes import (
     approved,
     grant_row,
     seed_request,
+    tick,
+)
+from tests.unit.api.services.decisions_fakes import (
+    EMMA as EMMA,  # re-exported: sibling test modules import it from here
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.bunking.financial_aid.fixtures import with_lever
 
-EMMA = "reqemma00000001"
+_tick = tick  # re-exported: sibling test modules import it from here
 LIAM = "reqliam00000001"
 
 
@@ -353,13 +357,6 @@ async def test_an_incentive_line_never_reaches_the_calculator() -> None:
 
 def _ask(n: int, amount: str, **fields: Any) -> AskIn:
     return AskIn(round=n, amount=Decimal(amount), asked_on=date(2027, 3, 20), **fields)
-
-
-def _tick(*rows: tuple[str, int, str]) -> PostedIn:
-    return PostedIn(
-        rows=[PostedRow(request_id=r, round=n, amount=Decimal(a)) for r, n, a in rows],
-        posted_on=date(2027, 3, 9),
-    )
 
 
 def _round3_ready(store: FakeDecisionsStore) -> None:

@@ -571,7 +571,7 @@ class FinancialAidScenariosService:
         """RPT-18: a new starting point from the rules draft with last season's approved criteria copied in
         (bunking.financial_aid.scenarios.last_seasons_criteria), loaded into `actor`'s draft. This season's routing,
         grants, decision types, programs, cost, budget (unless it sets none: then last season's stands in as a
-        placeholder), stages, quality checks and milestones stay. Refused when last
+        placeholder), quality checks and milestones stay. Refused when last
         season has no approved rules, or when the merge adds a validation error the rules draft did not already have
         (say which; the draft's own errors never block it). When a kept option already is that document, it is
         loaded instead of copied."""

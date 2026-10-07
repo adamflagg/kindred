@@ -1040,3 +1040,15 @@ async def test_the_repository_records_a_log_only_row_and_a_read_only_one_refuses
             actor=FINANCE,
             operation_id="a" * 15,
         )
+
+
+@pytest.mark.asyncio
+async def test_a_stored_status_with_a_stages_entry_loads_and_the_next_write_drops_it() -> None:
+    """§9.9: status_from_json reads only SECTION_NAMES, so no backfill is needed."""
+    store = FakeStore()
+    service = FinancialAidRulesService(store, clock=lambda: AT)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    store.rows[0].section_status = {**store.rows[0].section_status, "stages": {"state": "approved"}}
+    assert "stages" not in (await service.load(2031)).section_status
+    await service.save_section(2031, 1, "awards", fictional_rules_json()["awards"] | {"minimum": "150"}, actor=FINANCE)
+    assert "stages" not in store.rows[0].section_status

@@ -73,7 +73,7 @@ export const RULES_DOCUMENT: ApiAidRulesDocument = {
   },
   cost: {
     tuition: { '1000101': '4000', '1000102': '6000' },
-    family_rates: [{ session_cm_id: 1000201, standard: '500', infant: '0', child: null }],
+    family_rates: [{ session_cm_id: 1000201, standard: '500', infant: '0' }],
     infant_age_cutoff_months: 24,
     override_reasons: ['headcount'],
   },
@@ -85,7 +85,6 @@ export const RULES_DOCUMENT: ApiAidRulesDocument = {
     minimum_capped_at_share: true,
     count_when: 'committed',
     late_grant_policy: 'flag',
-    incentives: {},
   },
   awards: {
     minimum: '100',
@@ -116,7 +115,6 @@ export const RULES_DOCUMENT: ApiAidRulesDocument = {
       pool_b: { label: 'Pool B', share_pct: '10' },
     },
   },
-  stages: { stages: [] },
   quality_checks: {
     checks: { placeholder_income: { enabled: true, severity: 'hold', threshold: null } },
   },

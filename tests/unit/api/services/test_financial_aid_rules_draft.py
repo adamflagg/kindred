@@ -4,14 +4,18 @@ FinancialAidRulesService over the in-memory FakeStore; fictional season 2031 onl
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
 from api.services.financial_aid_rules_service import (
+    BUDGET_TOTAL_LOCKED,
     PRICING_SECTIONS,
+    BudgetTotalLockedError,
     FinancialAidRulesService,
+    FixedSettingError,
     NotLatestVersionError,
     PricingVersionInUseError,
     ReplacementNotAcknowledgedError,
@@ -911,3 +915,231 @@ async def test_a_section_the_option_did_not_change_keeps_the_drafts_newer_copy()
     assert saved.version.document.awards.minimum == Decimal(150)  # the option's change lands
     assert saved.version.document.income.floor == Decimal(500)  # the draft's newer copy of an untouched section stays
     assert saved.version.section_status["income"].edited_by == TREASURER
+
+
+@pytest.mark.asyncio
+async def test_a_save_that_changes_a_fixed_setting_is_refused_with_its_label() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    income = fictional_rules_json()["income"] | {"medical_rate": "0.5"}
+    with pytest.raises(
+        FixedSettingError, match=r"^Share of medical costs taken off is fixed and can't be changed here$"
+    ):
+        await service.save_section(2031, 1, "income", income, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_the_current_year_weight_is_the_servers_one_minus_the_prior_year() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    income = fictional_rules_json()["income"] | {"weights": {"prior_year": "0.6"}}
+    await service.save_section(2031, 1, "income", income, actor=FINANCE)
+    weights = (await service.load(2031)).document.income.weights
+    assert (weights.prior_year, weights.current_year) == (Decimal("0.6"), Decimal("0.4"))
+
+
+def _bands(n: int) -> list[dict[str, str | None]]:
+    out: list[dict[str, str | None]] = [{"lower": "0", "upper": "40000"}]
+    out += [{"lower": str(40000 * i + 1), "upper": str(40000 * (i + 1))} for i in range(1, n - 1)]
+    out.append({"lower": str(40000 * (n - 1) + 1), "upper": None})
+    return out
+
+
+@pytest.mark.asyncio
+async def test_fewer_tiers_trims_every_table_and_override_in_one_operation() -> None:
+    """Review Focus 2: 6 -> 5 tiers drops tier 6 from both tables, a child's override of tier 6 included."""
+    store = FakeStore()
+    service = _service(store)
+    seeded = with_lever(fictional_rules(), "award_tables.teen.overrides", {"2": {"r1_pct": "70"}, "6": {"r1_pct": "1"}})
+    await service.create_version(seeded, actor=FINANCE)
+    before = len(store.operations)
+    tiers = fictional_rules_json()["tiers"] | {"bands": _bands(5)}
+    await service.save_section(2031, 1, "tiers", tiers, actor=FINANCE)
+    doc = (await service.load(2031)).document
+    assert set(doc.award_tables["camp"].tiers) == {1, 2, 3, 4, 5}
+    assert set(doc.award_tables["teen"].overrides) == {2}
+    assert set(doc.round2.tables["camp"].tiers) == {1, 2, 3, 4, 5}
+    assert len(store.operations) == before + 1
+    assert "tiers_do_not_match_bands" not in validate_rules(doc).codes()
+
+
+@pytest.mark.asyncio
+async def test_fewer_tiers_on_approved_rules_sends_both_tables_to_draft() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    tiers = fictional_rules_json()["tiers"] | {"bands": _bands(5)}
+    saved = await service.save_section(2031, 1, "tiers", tiers, actor=FINANCE)
+    status = (await service.load(2031, saved.version.version)).section_status
+    assert {status[s].state for s in ("tiers", "award_tables", "round2")} == {"draft"}
+
+
+@pytest.mark.asyncio
+async def test_more_tiers_writes_nothing_else_and_validation_blocks_approval() -> None:
+    """Review Focus 2: the new tiers' cells are empty; validation's tier-count error holds approval."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    tiers = fictional_rules_json()["tiers"] | {"bands": _bands(7)}
+    await service.save_section(2031, 1, "tiers", tiers, actor=FINANCE)
+    doc = (await service.load(2031)).document
+    assert set(doc.award_tables["camp"].tiers) == {1, 2, 3, 4, 5, 6}
+    errors = {(i.code, i.section) for i in validate_rules(doc).errors}
+    assert ("tiers_do_not_match_bands", "award_tables") in errors
+
+
+def _budget(**changes: object) -> dict[str, object]:
+    """The fixture's budget section as Edit Plan... sends it (`{total, pools}`), with `changes` applied."""
+    return fictional_rules().budget.model_dump(mode="json") | changes
+
+
+def _new_split() -> dict[str, dict[str, str]]:
+    """The fixture's pools with new shares only: each label is read from the fixture, never typed here."""
+    shares = {"camp_pool": "75", "weekend_pool": "20", "bmitzvah_pool": "5"}
+    pools = fictional_rules().budget.pools
+    return {key: {"label": pools[key].label, "share_pct": share} for key, share in shares.items()}
+
+
+@pytest.mark.asyncio
+async def test_before_any_round_posts_the_budget_total_saves() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    assert saved.version.document.budget.total == Decimal(520000)
+    assert (await service.draft_view(2031)).budget_total_locked is False
+
+
+@pytest.mark.asyncio
+async def test_after_round_one_posts_a_shares_only_change_still_saves() -> None:
+    """Owner 10-06 (b): "budget does lock but only the total dollar number." The split saves and goes through the draft
+    -> Approve as usual; the total stands. Round 1's first post locks a Round 1 section, never the budget (D119)."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    saved = await service.save_section(2031, 1, "budget", _budget(pools=_new_split()), actor=FINANCE)
+    budget = saved.version.document.budget
+    assert (budget.total, budget.pools["camp_pool"].share_pct) == (Decimal(500000), Decimal(75))
+    assert saved.version.section_status["budget"].state == "draft"
+
+
+@pytest.mark.asyncio
+async def test_after_round_one_posts_a_total_change_is_refused_in_the_lock_words() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.save_section(2031, 1, "budget", _budget(total="520000", pools=_new_split()), actor=FINANCE)
+    assert len(store.operations) == before
+    assert (await service.draft_view(2031)).budget_total_locked is True
+
+
+@pytest.mark.asyncio
+async def test_the_total_stays_locked_when_a_later_save_lifts_round_ones_lock_in_a_new_version() -> None:
+    """Editing the locked income section branches v2 with income back in draft (the lock lifted there only). The total a
+    posted round read must still not move on v2, so the lock is found on any version of the season."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    income = fictional_rules_json()["income"] | {"weights": {"prior_year": "0.6"}}
+    saved = await service.save_section(2031, 1, "income", income, actor=FINANCE)
+    assert (saved.version.version, saved.version.section_status["income"].state) == (2, "draft")
+    with pytest.raises(BudgetTotalLockedError):
+        await service.save_section(2031, 2, "budget", _budget(total="520000"), actor=FINANCE)
+    assert (await service.draft_view(2031)).budget_total_locked is True
+
+
+@pytest.mark.asyncio
+async def test_a_total_saved_before_round_one_posts_cannot_be_approved_after_it() -> None:
+    """The draft saved while the total was still open must not become the pricing total once Round 1 has posted."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    assert saved.version.version == 2
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Mar 1")
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_a_shares_only_budget_saved_before_round_one_posts_still_approves_after_it() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_section(2031, 1, "budget", _budget(pools=_new_split()), actor=FINANCE)
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    approved, _ = await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Mar 1")
+    assert approved.section_status["budget"].state == "approved"
+    assert approved.document.budget.total == Decimal(500000)
+
+
+@pytest.mark.asyncio
+async def test_a_total_approved_before_round_one_cannot_become_the_pricing_total_after_it() -> None:
+    """Scan #3039: v2's new total is approved while v1 still prices the season (v2's `awards` is still draft). Round 1
+    posts from v1's total. Approving v2's last draft section would make v2 the pricing version at the new total, though
+    `budget` is not among the sections named: the guard runs on every approval, against the pricing version."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    awards = _minimum(fictional_rules(), "75").awards.model_dump(mode="json")
+    await service.save_section(2031, 2, "awards", awards, actor=FINANCE)
+    await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Feb 1")
+    pricing = await service.latest_approved(2031, PRICING_SECTIONS)
+    assert pricing is not None
+    assert pricing.version == 1
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Mar 1")
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_a_new_version_cannot_branch_from_a_version_carrying_another_total_once_locked() -> None:
+    """Scan #3039: v2 prices the season at 520000 (approved before Round 1 posted); v1 carries 500000. Branching v3 from
+    v1 would make it, all approvals carried, the pricing version at the old total."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Feb 1")
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.new_version(2031, 1, actor=FINANCE)
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_after_round_one_posts_an_unmoved_total_still_approves_and_branches() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    awards = _minimum(fictional_rules(), "75").awards.model_dump(mode="json")
+    saved = await service.save_section(2031, 1, "awards", awards, actor=FINANCE)
+    approved, _ = await service.approve_sections(2031, saved.version.version, ["awards"], actor=FINANCE, note="Mar 1")
+    assert approved.section_status["awards"].state == "approved"
+    branched = await service.new_version(2031, approved.version, actor=FINANCE)
+    assert branched.document.budget.total == Decimal(500000)
+
+
+@pytest.mark.asyncio
+async def test_the_rules_save_never_adds_a_named_award() -> None:
+    """Owner 10-06 (c): a named fund comes from Grants > Grantors (slice 3) or, until then, 2027's starting file. A
+    section save that adds a decision type is refused: the new key's kind reads as a change to a fixed setting."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    awards = fictional_rules().awards.model_dump(mode="json")
+    awards["decision_types"]["named_full_cost_fund"] = {
+        "label": "Named full-cost fund",
+        "kind": "full_cost_after_aid",
+        "round": 1,
+        "allows_appeal": False,
+        "counts_toward_budget": False,
+    }
+    before = len(store.operations)
+    with pytest.raises(FixedSettingError, match=r"^Named award › Kind is fixed and can't be changed here$"):
+        await service.save_section(2031, 1, "awards", awards, actor=FINANCE)
+    assert len(store.operations) == before

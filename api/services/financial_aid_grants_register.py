@@ -566,7 +566,7 @@ def bridge_input(row: RegisterRow, share: RequestShare) -> GrantInput:
 
 def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[GrantInput]]:
     """SP10's calculator input: the OUTSIDE grants that count, per request, each at its share
-    (Decision 5). Incentives are left out (the rules meet them through grants.incentives), and so
+    (Decision 5). Incentives are left out (they post in CampMinder; the rules don't price them), and so
     is Expected (D56). So is a grant from a grantor that pays after the camp's award (D143, a last-dollar funder):
     it pays whatever the award leaves, and its first line is posted at the full price, so feeding
     it here would cut the award to $0. state is always "committed": receipts are parked (D55)."""

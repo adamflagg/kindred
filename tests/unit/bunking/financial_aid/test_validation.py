@@ -402,19 +402,6 @@ def test_no_reserve_or_amount_code_survives() -> None:
 # --- stages and milestones ------------------------------------------------------------
 
 
-def test_stage_codes_are_unique_and_decision_types_exist() -> None:
-    # Exercises "stages.stages.code" (duplicate_stage) and "stages.stages.decision_type"
-    # (unknown_decision_type).
-    stages = [
-        {"code": "r1_offered", "label": "Offered"},
-        {"code": "r1_offered", "label": "Offered again"},
-        {"code": "full_cost", "label": "Full cost", "decision_type": "mystery_type"},
-    ]
-    codes = validate_rules(with_lever(fictional_rules(), "stages.stages", stages)).codes()
-    assert "duplicate_stage" in codes
-    assert "unknown_decision_type" in codes
-
-
 @pytest.mark.parametrize(
     ("earlier", "later"),
     [

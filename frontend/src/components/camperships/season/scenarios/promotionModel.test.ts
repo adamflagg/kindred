@@ -67,7 +67,7 @@ describe('the warning names the edit on camp time, and a locked section says wha
 
   it('says a posted round locks the section, that a new version may start, and that posted amounts stand', () => {
     expect(lockedWords('award_tables')).toBe(
-      'Award tables (Round 1 %) is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
+      'Round 1 award table is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
     )
   })
 })

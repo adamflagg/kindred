@@ -52,6 +52,7 @@ import json
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -65,6 +66,7 @@ from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes, record_change
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.money import ONE
 from bunking.financial_aid.rules import (
     AidRules,
     SectionName,
@@ -74,6 +76,7 @@ from bunking.financial_aid.rules import (
     ValidationReport,
     validate_rules,
 )
+from bunking.financial_aid.rules.fixed import changed_fixed
 from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
     SectionNotApprovedError,
@@ -90,11 +93,23 @@ from bunking.financial_aid.rules.lifecycle import (
     status_from_json,
     status_to_json,
 )
-from bunking.financial_aid.rules.schema import SECTION_NAMES, MilestonesSection
+from bunking.financial_aid.rules.schema import SECTION_NAMES, AwardTable, MilestonesSection, Round2Table
 from bunking.logging_config import get_logger
 from bunking.pocketbase_batch import BatchRequestFailedError
 
 logger = get_logger(__name__)
+
+# Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11). Two pricing sections are
+# absent on purpose. `quality_checks`: a hold gates posting but never changes a posted amount, and locking it would
+# freeze the thresholds for the season after the first tick; a change to it still needs approval. `budget`: a
+# mid-season re-split is a finance edit plus re-approval (D119), not something a tick freezes. It lives here, not
+# beside the decisions service that locks by it, because the budget total's lock reads it too (the decisions service
+# imports this module, so the other direction would be a cycle).
+ROUND_SECTIONS: Final[Mapping[int, tuple[SectionName, ...]]] = {
+    1: ("income", "tiers", "equity", "award_tables", "programs", "cost", "grants", "awards"),
+    2: ("round2",),
+    3: ("round3",),
+}
 
 # Rows per request for every paged read; PocketBase clamps anything above 1000.
 PAGE_SIZE = 1000
@@ -225,6 +240,20 @@ class SectionInvalidError(FinancialAidError, ValueError):
     """A section editor's content is not a valid section; the message names each bad field."""
 
 
+BUDGET_TOTAL_LOCKED: Final = (
+    "The total is locked: a posted round read it. Posted amounts stand; the program split can still change."
+)
+
+
+class FixedSettingError(SectionInvalidError):
+    """A section save that changes a hidden or read-only setting (spec §6.4, §9.9): refused (422)."""
+
+
+class BudgetTotalLockedError(SectionInvalidError):
+    """A save that changes the season budget's total once Round 1 has posted (a Round 1 section is locked), owner
+    10-06: "budget does lock but only the total dollar number": refused (422). The program shares stay editable."""
+
+
 @dataclass(frozen=True)
 class SectionSaveResult:
     """A section save: the version it landed on, that version's validation report, and the version it branched
@@ -252,6 +281,10 @@ class RulesDraft:
     approved_version: int | None
     report: ValidationReport
     sections: tuple[DraftSection, ...]
+    # Owner 10-06 (b): true once Round 1 has posted (a Round 1 section is locked on any version of the season). A
+    # tick never locks the budget section itself (D119), so the total follows Round 1. Edit Plan... then shows Total
+    # read-only; the shares stay editable.
+    budget_total_locked: bool = False
 
 
 @dataclass(frozen=True)
@@ -299,6 +332,48 @@ def _replacement(
     if status.state == "draft":
         return ReplacementWarning("unapproved_edit", status.edited_by, status.edited_at, status.edited_via, token)
     return ReplacementWarning("changed_since", status.approved_by, status.approved_at, None, token)
+
+
+def _with_derived(section: SectionName, content: Mapping[str, Any]) -> dict[str, Any]:
+    """The settings the server owns (§9.9): the current-year weight is 1 − the prior-year weight, whatever was sent."""
+    out = dict(content)
+    if section != "income" or not isinstance(out.get("weights"), Mapping):
+        return out
+    weights = dict(out["weights"])
+    try:
+        prior = Decimal(str(weights.get("prior_year")))
+    except InvalidOperation:
+        return out  # parse_section names the bad figure
+    weights["current_year"] = str(ONE - prior)
+    out["weights"] = weights
+    return out
+
+
+def _trim_tables(before: AidRules, candidate: AidRules) -> AidRules:
+    """Fewer tiers (§6.2 E.2): the tiers above the new count leave every Round 1 and appeal table, overrides included,
+    in the same save, so one operation logs it. More tiers write nothing else: validation holds approval until finance
+    fills the new rows through the tables' Edit…."""
+    count = len(candidate.tiers.bands)
+    if count >= len(before.tiers.bands):
+        return candidate
+
+    def cut[T: (AwardTable, Round2Table)](tables: Mapping[str, T]) -> dict[str, T]:
+        return {
+            name: table.model_copy(
+                update={
+                    "tiers": {t: v for t, v in table.tiers.items() if t <= count},
+                    "overrides": {t: v for t, v in table.overrides.items() if t <= count},
+                }
+            )
+            for name, table in tables.items()
+        }
+
+    return candidate.model_copy(
+        update={
+            "award_tables": cut(candidate.award_tables),
+            "round2": candidate.round2.model_copy(update={"tables": cut(candidate.round2.tables)}),
+        }
+    )
 
 
 def parse_section(document: AidRules, section: SectionName, content: Mapping[str, Any]) -> AidRules:
@@ -663,7 +738,27 @@ class FinancialAidRulesService:
             )
             for name in SECTION_NAMES
         )
-        return RulesDraft(current, approved.version if approved is not None else None, report, sections)
+        return RulesDraft(
+            current,
+            approved.version if approved is not None else None,
+            report,
+            sections,
+            budget_total_locked=await self._budget_total_locked(year),
+        )
+
+    async def _budget_total_locked(self, year: int) -> bool:
+        """Owner 10-06 (b): the budget TOTAL locks once Round 1 has posted, i.e. any Round 1 section is locked; the
+        program shares never do. The budget section itself is not locked by a tick (D119), so this never reads it. Any
+        version counts, not just the latest: a save on a locked section lifts that lock in the version it writes
+        (`carry_forward`), and the total a posted round read must stay put there."""
+        rows = await self._store.list_versions(year)
+        round_one = ROUND_SECTIONS[1]
+        for row in rows:
+            # The stored statuses alone: a document the current schema rejects must not fail the draft read.
+            status = status_from_json(_json_object(row, "section_status"))
+            if any(status[name].state == "locked" for name in round_one):
+                return True
+        return False
 
     async def approved_view(self, year: int, version: int | None = None) -> ApprovedRules:
         """D76: the approved rules, read only. Drafts are withheld.
@@ -672,7 +767,7 @@ class FinancialAidRulesService:
         plan Decision 5): each PRICING_SECTIONS section from the version pricing the season when there is one
         (the rules that price the registrar's work), and every other section -- or a pricing section while no
         version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
-        [section])`). So editing stages or milestones in a draft never blanks the read.
+        [section])`). So editing quality checks or milestones in a draft never blanks the read.
         """
         if version is not None:
             chosen = await self.load(year, version)
@@ -854,7 +949,13 @@ class FinancialAidRulesService:
         current = await self._rules_draft(year, base_version)
         if expected_fingerprint is not None:
             _assert_unchanged(current, {section: expected_fingerprint})
-        return await self._save_over(current, parse_section(current.document, section, content), actor=actor, via=None)
+        candidate = parse_section(current.document, section, _with_derived(section, content))
+        if section == "tiers":
+            candidate = _trim_tables(current.document, candidate)
+        refused = changed_fixed(section, current.document.model_dump()[section], candidate.model_dump()[section])
+        if refused:
+            raise FixedSettingError(f"{refused[0]} is fixed and can't be changed here")
+        return await self._save_over(current, candidate, actor=actor, via=None)
 
     async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
         current = await self.load(year)
@@ -874,6 +975,12 @@ class FinancialAidRulesService:
         changed = changed_sections(current.document, candidate)
         if not changed:
             return SectionSaveResult(current, before, None)
+        if (
+            "budget" in changed
+            and candidate.budget.total != current.document.budget.total
+            and await self._budget_total_locked(year)
+        ):
+            raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
         after = validate_rules(candidate, context)
         in_use = await self._sections_in_use(current)
         parent = await self._same_year_parent(current)
@@ -1025,6 +1132,7 @@ class FinancialAidRulesService:
             if set(fingerprints) != set(named):
                 raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
             _assert_unchanged(current, fingerprints)
+        await self._assert_total_unmoved_once_locked(year, current.document)
         before = await self._pricing_version_safely(year) if self._effects is not None else None
         report = await self.validate_document(current.document)
         at = self._clock()
@@ -1040,6 +1148,17 @@ class FinancialAidRulesService:
                 self._effects, year, current.version, before, actor=actor, operation_id=result.operation_id
             )
         return await self.load(year, current.version), report
+
+    async def _assert_total_unmoved_once_locked(self, year: int, document: AidRules) -> None:
+        """Owner 10-06 (b), the one guard for every route a total could take after Round 1 posts: approving any
+        section of a draft (it may complete the sections that make the draft the pricing version) and branching a new
+        version. A document whose budget total differs from the version pricing the season is refused. With no
+        pricing version there is nothing to protect."""
+        if not await self._budget_total_locked(year):
+            return
+        pricing = await self.latest_approved(year, PRICING_SECTIONS)
+        if pricing is not None and Decimal(document.budget.total) != Decimal(pricing.document.budget.total):
+            raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
 
     async def _pricing_version(self, year: int) -> int:
         found = await self.latest_approved(year, PRICING_SECTIONS)
@@ -1147,6 +1266,7 @@ class FinancialAidRulesService:
         # the later read's revision, let the stale copy through.
         latest = await self.load(year)
         source = latest if from_version == latest.version else await self.load(year, from_version)
+        await self._assert_total_unmoved_once_locked(year, source.document)
         version = latest.version + 1
         body = _body(
             year,

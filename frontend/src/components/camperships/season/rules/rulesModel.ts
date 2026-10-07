@@ -37,26 +37,24 @@ export const MONEY_SECTIONS: readonly ApiAidRulesSection[] = [
 export const SEASON_SECTIONS: readonly ApiAidRulesSection[] = [
   'programs',
   'cost',
-  'stages',
   'quality_checks',
   'milestones',
 ]
 
 export const SECTION_TITLES = {
-  income: 'Income',
-  tiers: 'Income bands',
-  equity: 'Equity',
-  award_tables: 'Award tables (Round 1 %)',
-  awards: 'Minimum award and limits',
+  income: "Counting a family's income",
+  tiers: 'Income tiers',
+  equity: 'Moving a family up a tier',
+  award_tables: 'Round 1 award table',
+  awards: 'Minimum award and named awards',
   grants: 'Outside grants',
-  round2: 'Round 2 caps',
-  round3: 'Round 3',
+  round2: 'Appeal caps',
+  round3: 'Who can ask, and how much',
   budget: 'Budget and pools',
-  programs: 'Programs and session mapping',
+  programs: 'Programs and their sessions',
   cost: 'Costs and Family Camp rates',
-  stages: 'Stages',
   quality_checks: 'Quality checks',
-  milestones: 'Milestones and dates',
+  milestones: 'Dates',
 } as const satisfies Record<ApiAidRulesSection, string>
 
 export function isRulesSection(value: string | null): value is ApiAidRulesSection {
@@ -217,7 +215,6 @@ const LABELS: Readonly<Record<string, string>> = {
   session_cm_id: 'Session',
   standard: 'Standard',
   infant: 'Infant',
-  child: 'Child',
   infant_age_cutoff_months: 'Infant under (months)',
   override_reasons: 'Cost override reasons',
   offset_programs: 'Programs grants offset',
@@ -227,8 +224,6 @@ const LABELS: Readonly<Record<string, string>> = {
   minimum_capped_at_share: 'Minimum capped at what grants leave of the cost',
   count_when: 'Grants count when',
   late_grant_policy: 'A grant recorded after Round 1',
-  incentives: 'Incentives',
-  mode: 'Mode',
   minimum: 'Minimum award',
   minimum_when_cost_unknown: 'Minimum when the cost is unknown',
   minimum_without_table: 'Minimum with no award table',
@@ -240,7 +235,6 @@ const LABELS: Readonly<Record<string, string>> = {
   amount: 'Amount',
   extra_amount: 'Extra amount',
   allows_appeal: 'Allows an appeal',
-  budget_line: 'Budget line',
   counts_toward_budget: 'Counts toward the budget',
   ceiling_exempt: 'Pays above the income ceiling',
   cap_subtracts_grants: 'The appeal cap subtracts grants',
@@ -260,13 +254,6 @@ const LABELS: Readonly<Record<string, string>> = {
   total: 'Total budget',
   pools: 'Pools',
   share_pct: 'Share %',
-  stages: 'Stages',
-  code: 'Code',
-  is_offer: 'Offer',
-  is_accepted: 'Accepted',
-  is_cancel: 'Cancel',
-  include_default: 'Included by default',
-  decision_type: 'Decision type',
   checks: 'Checks',
   enabled: 'On',
   severity: 'Severity',
@@ -290,7 +277,6 @@ const MONEY_KEYS: ReadonlySet<string> = new Set([
   'income_ceiling',
   'standard',
   'infant',
-  'child',
   'minimum',
   'amount',
   'extra_amount',
@@ -423,7 +409,6 @@ type KeyKind =
   | 'table'
   | 'equity_class'
   | 'criterion'
-  | 'incentive'
   | 'session'
   | 'severity'
   | 'basis'
@@ -443,7 +428,6 @@ function keyKind(section: ApiAidRulesSection, path: readonly string[]): KeyKind 
     if (section === 'round2' && first === 'tables') return 'table'
     if (section === 'round2' && first === 'program_tables') return 'program'
     if (section === 'equity' && first === 'weights') return 'equity_class'
-    if (section === 'grants' && first === 'incentives') return 'incentive'
     if (section === 'cost' && first === 'tuition') return 'session'
     return null
   }
@@ -469,8 +453,6 @@ function valueKind(section: ApiAidRulesSection, path: readonly string[]): KeyKin
   // A table that inherits names the table it inherits.
   if ((section === 'award_tables' || section === 'round2') && field === 'inherits') return 'table'
   if (section === 'cost' && field === 'session_cm_id') return 'session'
-  if (section === 'awards' && field === 'budget_line') return 'decision_type'
-  if (section === 'stages' && field === 'decision_type') return 'decision_type'
   if (section === 'quality_checks' && field === 'severity') return 'severity'
   if (section === 'grants' && at.length === 1 && field === 'offset_programs') return 'program'
   if (section === 'income' && at.length === 1 && field === 'basis') return 'basis'
@@ -502,7 +484,6 @@ function nameOf(kind: KeyKind, key: string, names: RulesVocabulary): string {
       return KEY_WORDS[key] ?? words(key)
     case 'table':
     case 'equity_class':
-    case 'incentive':
       return keyWords(key)
   }
 }
@@ -512,7 +493,6 @@ const LIST_PARENTS: ReadonlySet<string> = new Set([
   'extra_terms',
   'criteria',
   'family_rates',
-  'stages',
 ])
 
 const words = (value: string) => value.replaceAll('_', ' ')
@@ -672,7 +652,7 @@ function nodeOf(
   }
   if (isPlainObject(value)) {
     const entries = Object.entries(value)
-    // An empty set of settings (no weights, no incentives yet) reads as "none".
+    // An empty set of settings (no weights yet) reads as "none".
     if (entries.length === 0) return { kind: 'leaf', path, label, value: [] }
     if (entries.every(([, v]) => isFlatObject(v))) {
       // A row keeps its key (the editor writes back to it); it reads as the key's name.
@@ -698,7 +678,7 @@ function nodeOf(
 
 /**
  * A section's content laid out: each setting a line; a nested set of settings a group; a list of
- * like records (income bands, criteria, stages) or a set of them keyed by name or tier (pools,
+ * like records (income bands, criteria) or a set of them keyed by name or tier (pools,
  * programs, a table's tiers, quality checks) a small table. Paths are inside the section, as the
  * server's changes are (`DraftSectionOut.changes`).
  */

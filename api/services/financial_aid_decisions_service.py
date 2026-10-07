@@ -185,6 +185,9 @@ from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
 from api.services.financial_aid_rules_service import (
+    ROUND_SECTIONS as ROUND_SECTIONS,  # defined in the rules service (the budget total's lock reads it); re-exported
+)
+from api.services.financial_aid_rules_service import (
     RulesHistoryIncompleteError,
     RulesVersion,
 )
@@ -259,15 +262,8 @@ def is_included(status: str | None, *, cancelled: bool) -> bool:
 # sheet (D67). Before this season the ledger never ticks, and no confirmation or Note is shown.
 FIRST_TICKED_SEASON: Final = 2027
 
-# Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11). Two pricing sections are
-# absent on purpose. `quality_checks`: a hold gates posting but never changes a posted amount, and locking it would
-# freeze the thresholds for the season after the first tick; a change to it still needs approval. `budget`: a
-# mid-season re-split is a finance edit plus re-approval (D119), not something a tick freezes.
-ROUND_SECTIONS: Final[Mapping[int, tuple[SectionName, ...]]] = {
-    1: ("income", "tiers", "equity", "award_tables", "programs", "cost", "grants", "awards"),
-    2: ("round2",),
-    3: ("round3",),
-}
+# ROUND_SECTIONS (which rules sections a round's first lock locks) lives in financial_aid_rules_service, which the
+# budget total's lock also reads; it is imported above under the same name.
 _WHY_NOT: Final[Mapping[str, str]] = {
     "held": "is on hold: release the hold first",
     "pending_approval": "waits for finance's approval",
@@ -762,7 +758,9 @@ def grid_row(
             accepted=v.accepted,
             pending_approval=_money(v.pending),
             would_change_by=None,  # never emitted since 2026-10-05 (RoundOut)
-            counts_toward_budget=v.counts_toward_budget,
+            # A named full-cost fund round's camp award counts toward the budget (owner 10-06) though the type's own
+            # flag is False: the Requests filters are row membership, so the family must match the budget strip.
+            counts_toward_budget=v.counts_toward_budget or v.extra_outside,
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
             lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
             clawed_back=v.clawed_back,

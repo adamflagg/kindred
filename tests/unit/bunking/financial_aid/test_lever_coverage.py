@@ -27,18 +27,8 @@ _NOT_LEVERS = {"schema_version", "year"}
 # changeable, like a schema version number), each WILL become a normal lever once
 # something reads it: the sub-project that wires one must delete its entry here and add
 # a behavioural test, the same as any other lever.
-_SP9 = "sub-project 9 (scenarios, budget and targeting) reads it; the calculator does not"
 _SP10 = "sub-project 10 (decisions, stages and rounds) reads it; the calculator does not"
 _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
-    "stages.stages.code": _SP10,
-    "stages.stages.round": _SP10,
-    "stages.stages.decision_type": _SP10,
-    "stages.stages.is_offer": _SP10,
-    "stages.stages.is_accepted": _SP10,
-    "stages.stages.is_cancel": _SP10,
-    "stages.stages.counts_toward_budget": _SP10,
-    "stages.stages.include_default": _SP10,
-    "stages.stages.allows_appeal": _SP10,
     "milestones.application_deadline": _SP10,
     "milestones.r1_run": _SP10,
     "milestones.response_deadline": _SP10,
@@ -46,7 +36,6 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     "milestones.r2_window_end": _SP10,
     "milestones.r3_window_start": _SP10,
     "milestones.r3_window_end": _SP10,
-    "awards.decision_types.*.budget_line": _SP9,
     "awards.rounding": (
         "no sub-project yet: it allows one value, and the calculator always rounds half up "
         "(money.round_dollars); whoever adds a second value must read it"
@@ -112,9 +101,8 @@ def test_the_lever_list_reaches_every_section() -> None:
 
 
 def test_lever_paths_walks_into_list_of_models() -> None:
-    """A `list[BaseModel]` field (tiers.bands, equity.criteria, cost.family_rates,
-    stages.stages) must be walked field by field, like a nested model or a dict's
-    values -- not collapsed into a single leaf that hides its own levers.
+    """A `list[BaseModel]` field (tiers.bands, equity.criteria, cost.family_rates) must be walked field by field,
+    like a nested model or a dict's values -- not collapsed into a single leaf that hides its own levers.
     """
     levers = lever_paths(AidRules)
     for expected in (
@@ -122,7 +110,6 @@ def test_lever_paths_walks_into_list_of_models() -> None:
         "tiers.bands.upper",
         "equity.criteria.also_fields",
         "cost.family_rates.standard",
-        "stages.stages.code",
     ):
         assert expected in levers
     # The collapsed container path is not itself a lever, once its items are walked --
@@ -131,7 +118,6 @@ def test_lever_paths_walks_into_list_of_models() -> None:
     assert "tiers.bands" not in levers
     assert "equity.criteria" not in levers
     assert "cost.family_rates" not in levers
-    assert "stages.stages" not in levers
 
 
 def test_wired_by_later_subproject_entries_are_real_levers() -> None:

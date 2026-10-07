@@ -70,6 +70,5 @@ def _per_person(request: RequestInputs, rules: AidRules) -> CostResolution:
     rate = next((r for r in rules.cost.family_rates if r.session_cm_id == request.session_cm_id), None)
     if rate is None:
         return _unknown(f"no family-camp rate for session {request.session_cm_id}")
-    child_rate = rate.child if rate.child is not None else rate.standard
-    amount = rate.standard * headcount.standard + rate.infant * headcount.infants + child_rate * headcount.children
+    amount = rate.standard * (headcount.standard + headcount.children) + rate.infant * headcount.infants
     return CostResolution(amount=amount, source="per_person")

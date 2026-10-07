@@ -92,7 +92,6 @@ import type {
   HouseholdRequestOut,
   HouseholdShareSet,
   HouseholdTotalsOut,
-  IncentiveRule,
   IncomeOut,
   IssueOut,
   JumpIndexHousehold,
@@ -277,7 +276,7 @@ export type ApiAidDraftSection = DraftSectionOut
 export type ApiAidSectionStatus = SectionStatus
 export type ApiAidFieldChange = FieldChangeOut
 export type ApiAidValidationIssue = ValidationIssue
-/** One of the rules document's fourteen sections (Python `SectionName`). */
+/** One of the rules document's thirteen sections (Python `SectionName`). */
 export type ApiAidRulesSection = DraftSectionOut['section']
 /** The rules document as the server sends it (decimals as strings), and as a write sends it back. */
 export type ApiAidRulesDocument = AidRulesOutput
@@ -285,8 +284,6 @@ export type ApiAidRulesDocumentIn = AidRulesInput
 
 /** Rules records the document holds by key (`{[key]: unknown | T}`), named so the editor can read their choices. Mirrors Python `ProgramProfile`. */
 export type ApiAidProgramProfile = ProgramProfile
-/** Mirrors Python `IncentiveRule`. */
-export type ApiAidIncentiveRule = IncentiveRule
 /** Mirrors Python `DecisionType`. */
 export type ApiAidDecisionType = DecisionTypeOutput
 

@@ -36,6 +36,7 @@ from api.services.financial_aid_season_history import (
     visible,
 )
 from bunking.financial_aid.rules.lifecycle import initial_status, status_to_json
+from bunking.financial_aid.rules.schema import SECTION_NAMES
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
 REG, FIN = "registrar@example.com", "finance@example.com"
@@ -928,3 +929,41 @@ async def test_a_rules_row_names_no_request_and_no_session() -> None:
     detail = await SeasonHistoryService(_Reads(_rules_save())).operation(2027, OP_R, rules=True)
     (row,) = detail.rows
     assert (row.request_id, row.session_cm_id) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_parent_stored_with_stages_diffs_cleanly_against_a_version_saved_after_the_cull() -> None:
+    """Review Focus 1, §9.9: a version stored with `stages` (in its document and its status) still parses in History's
+    diff, and a version saved after the cull, which carries neither, lists only what really changed."""
+    status = {name: {"state": "approved"} for name in SECTION_NAMES}
+    stored = fictional_rules().model_dump(mode="json") | {
+        "stages": {"stages": [{"code": "r1_offered", "label": "Round 1 offered", "round": 1, "is_offer": True}]}
+    }
+    v3 = SimpleNamespace(
+        id="rules0000000003",
+        year=2027,
+        version=3,
+        document=stored,
+        section_status=status | {"stages": {"state": "approved"}},
+    )
+    saved = fictional_rules().model_dump(mode="json")
+    saved.pop("stages", None)  # what a save writes after the cull
+    saved["awards"]["minimum"] = "150"
+    v4 = _created(
+        "v4",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 4,
+            "document": saved,
+            "section_status": status | {"awards": {"state": "draft"}},
+            "parent_year": 2027,
+            "parent_version": 3,
+        },
+    )
+    (row,) = (await SeasonHistoryService(_Reads(v4, versions={(2027, 3): v3})).operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert [c.path for c in row.against_parent.changes] == [
+        ["document", "awards", "minimum"],
+        ["section_status", "awards", "state"],
+    ]

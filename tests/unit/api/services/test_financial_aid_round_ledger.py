@@ -146,3 +146,21 @@ def test_a_round_outside_the_budget_still_takes_its_part_of_the_net() -> None:
         1: RoundLedger(ZERO, False),
         2: RoundLedger(Decimal(500), False),
     }
+
+
+def _fund(locked: str = "3600", extra: str = "1600") -> PricedRequest:
+    fund = replace(view(1, "posted", locked=locked, counts=False, extra=extra), extra_outside=True)
+    return priced("emma", 1000001, fund)
+
+
+def test_a_posted_fund_round_is_confirmed_by_camp_lines_netting_its_camp_award() -> None:
+    """Owner 10-06: a $3,600 fund round is a $2,000 camp award plus $1,600 from the fund. CampMinder's camp-aid lines
+    confirm the camp award only (the fund's own line is not camp aid), so $2,000 of camp lines leave nothing unconfirmed."""
+    states = {1: _state(1, "3600", MAR8)}
+    assert _ledger([line(1, "2000")], states=states, request=_fund()) == {1: RoundLedger(ZERO, False)}
+
+
+def test_a_posted_fund_round_with_short_camp_lines_is_unconfirmed_by_the_camp_shortfall_only() -> None:
+    """$2,000 camp award, camp lines net $1,500: $500 unconfirmed, not $2,100 (the remainder is never camp aid)."""
+    states = {1: _state(1, "3600", MAR8)}
+    assert _ledger([line(1, "1500")], states=states, request=_fund()) == {1: RoundLedger(Decimal(500), False)}

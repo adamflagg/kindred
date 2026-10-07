@@ -3,6 +3,9 @@
 from decimal import Decimal
 from typing import Any
 
+import pytest
+from pydantic import ValidationError
+
 from bunking.financial_aid.calculator.engine import calculate
 from bunking.financial_aid.calculator.result import CalcResult
 from bunking.financial_aid.rules.schema import AidRules
@@ -166,3 +169,57 @@ def test_below_the_ceiling_discretionary_money_is_paid_as_before() -> None:
     rules = with_lever(fictional_rules(), "tiers.income_ceiling", "220000")
     result = calculate(app(), req(decision_type="discretionary", discretionary_amount="175"), rules)
     assert (result.discretionary, result.total) == (Decimal(175), Decimal(3175))
+
+
+FUND = {
+    "label": "Named full-cost fund",
+    "kind": "full_cost_after_aid",
+    "round": 1,
+    "allows_appeal": False,
+    "counts_toward_budget": False,
+}
+
+
+def _fund_rules(**levers: object) -> AidRules:
+    rules = with_lever(fictional_rules(), "awards.decision_types.named_full_cost_fund", FUND)
+    return with_levers(rules, {"cost.tuition.1000102": "3600", **levers})
+
+
+def test_the_fund_pays_what_the_camp_award_leaves_of_the_cost() -> None:
+    """§9.9: a $2,000 camp award on a $3,600 session, with no grant, leaves $1,600 for the fund."""
+    result = calculate(app(), req(ask="2000", decision_type="named_full_cost_fund"), _fund_rules())
+    assert (result.r1, result.top_up, result.total) == (Decimal(2000), Decimal(1600), Decimal(3600))
+
+
+def test_an_outside_grant_on_the_request_reduces_the_fund() -> None:
+    """Owner 10-06 (a): the fund pays cost − camp award − outside grants. Tier 2 is 75% of $3,600 = $2,700, less the
+    $500 grant (dollar offset) = $2,200, so the $2,000 ask binds Round 1; the fund pays $3,600 − $2,000 − $500 = $1,100.
+    The camp award plus the grant plus the fund is exactly the cost."""
+    grant = [{"amount": "500", "state": "committed"}]
+    result = calculate(
+        app(), req(ask="2000", decision_type="named_full_cost_fund", grants_applicable=grant), _fund_rules()
+    )
+    assert (result.r1, result.top_up, result.total) == (Decimal(2000), Decimal(1100), Decimal(3100))
+    assert result.step("top_up").note == "Pays what the camp award and outside grants leave of the cost"
+
+
+def test_grants_that_already_cover_the_cost_leave_the_fund_nothing() -> None:
+    """Owner 10-06 (a), never below $0: a $3,600 grant covers the $3,600 session; Round 1 still pays the $100 minimum
+    (minimum_when_fully_covered), and $3,600 − $100 − $3,600 = −$100 floors at $0."""
+    grant = [{"amount": "3600", "state": "committed"}]
+    result = calculate(
+        app(), req(ask="2000", decision_type="named_full_cost_fund", grants_applicable=grant), _fund_rules()
+    )
+    assert (result.r1, result.top_up, result.total) == (Decimal(100), Decimal(0), Decimal(100))
+
+
+def test_the_fund_never_pays_below_zero() -> None:
+    rules = _fund_rules(**{"award_tables.camp.tiers.2.r1_pct": "100"})
+    result = calculate(app(), req(ask="4000", decision_type="named_full_cost_fund"), rules)
+    assert (result.r1, result.top_up) == (Decimal(3600), Decimal(0))
+
+
+def test_the_fund_adds_no_extra_amount() -> None:
+    """No $75-style extra: the schema refuses one on any kind but full_cost."""
+    with pytest.raises(ValidationError, match="only a full_cost decision type has extra_amount"):
+        with_lever(fictional_rules(), "awards.decision_types.named_full_cost_fund", FUND | {"extra_amount": "75"})

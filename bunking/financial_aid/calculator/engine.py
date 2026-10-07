@@ -643,9 +643,17 @@ def _top_up(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) 
             return
         if work.r1 is None:
             return  # Round 1 already said why; the top-up is measured against it
-        target = work.cost - (work.grants_offset or ZERO) + decision.extra_amount
-        amount = max(round_dollars(target - work.r1 - (work.r2 or ZERO) - (work.r3 or ZERO)), ZERO)
-        note = "Brings the total to the cost, less grants, plus the named extra"
+        camp_award = work.r1 + (work.r2 or ZERO) + (work.r3 or ZERO)
+        grants = work.grants_offset or ZERO  # the request's counted outside grants; full_cost nets out the same figure
+        if decision.kind == "full_cost_after_aid":
+            # Owner 10-06 (a): what the camp award and the request's outside grants leave of the cost; never below $0;
+            # no extra amount (the schema refuses one). Disagreement 4.
+            amount = max(round_dollars(work.cost - camp_award - grants), ZERO)
+            note = "Pays what the camp award and outside grants leave of the cost"
+        else:
+            target = work.cost - grants + decision.extra_amount
+            amount = max(round_dollars(target - camp_award), ZERO)
+            note = "Brings the total to the cost, less grants, plus the named extra"
     work.top_up = amount
     work.step("top_up", f"Top-up: {decision.label}", amount, inputs={"kind": decision.kind}, note=note)
 

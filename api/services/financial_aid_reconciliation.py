@@ -76,6 +76,7 @@ from bunking.financial_aid.decisions import (
     RoundStatus,
     RoundView,
 )
+from bunking.financial_aid.decisions.budget import counted_part
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.logging_config import get_logger
 
@@ -865,7 +866,13 @@ def round_ledger(
     posted = [view for view in priced.rounds if view.status == "posted" and not view.clawed_back]
     if not posted:
         return {}
-    locks = {view.round: view.locked or ZERO for view in posted}
+    # Camp-aid lines confirm the camp part of a named full-cost fund round only; the fund's own remainder posts as its own
+    # line, which is not camp aid, so locking the whole round would read that remainder as permanently unconfirmed.
+    # Every other round, a wholly outside one included, locks its whole amount as before.
+    locks = {
+        view.round: counted_part(view, view.locked or ZERO)[0] if view.extra_outside else view.locked or ZERO
+        for view in posted
+    }
     live = [line for line in lines if line.live()]
     dues = _dues_by_payer(locks, shares, application_household_cm_id)
     if dues is None:

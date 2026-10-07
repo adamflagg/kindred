@@ -17,8 +17,8 @@ A posted round is history (D43): it reads as its lock recorded it, and a later c
 There is no "would change by" figure on it (owner 2026-10-05).
 
 Outside grants reach the calculator only as the grants register's bridge built them
-(`grant_inputs_by_request`). An incentive is never a GrantInput (D88: One Happy Camper stays an
-outside funder, and the rules meet incentives through grants.incentives).
+(`grant_inputs_by_request`). An incentive is never a GrantInput (D88: it stays an outside
+funder), and the rules no longer price incentives at all (culled, §9.9): it posts in CampMinder.
 """
 
 from __future__ import annotations
@@ -97,6 +97,9 @@ class RoundView:
     clawed_back: bool = False
     # The named decision type whose money this round carries (spec §7.2's decision-type lines; Decision 12).
     decision_type: str | None = None
+    # A full-cost-after-aid round (owner 10-06): its camp award counts toward the budget as usual and only `extra`,
+    # the type's remainder, sits below the line, even though the type doesn't count toward the budget.
+    extra_outside: bool = False
 
 
 @dataclass(frozen=True)
@@ -300,6 +303,10 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     )
 
 
+def _extra_outside(decision: DecisionType | None, n: int) -> bool:
+    return decision is not None and decision.round == n and decision.kind == "full_cost_after_aid"
+
+
 def posted_view(
     state: RoundState,
     decision: DecisionType | None,
@@ -331,6 +338,7 @@ def posted_view(
         pool=locked_pool if isinstance(locked_pool, str) else None,
         extra=extra_locked(state, decision),
         decision_type=decision_type,
+        extra_outside=bool(snapshot.get("extra_outside", _extra_outside(decision, n))),
     )
 
 
@@ -378,6 +386,7 @@ def _view(
         pool=pool,
         extra=_extra_now(result, decision, n) if decided is not None else ZERO,
         decision_type=decision_key if decision is not None and decision.round == n else None,
+        extra_outside=_extra_outside(decision, n),
     )
 
 
@@ -404,6 +413,7 @@ def lock_snapshot(priced: PricedRequest, n: int, rules_version: int) -> dict[str
         "program_key": priced.program_key,
         "pool": view.pool,
         "counts_toward_budget": view.counts_toward_budget,
+        "extra_outside": view.extra_outside,
         "application": priced.application.model_dump(mode="json"),
         "inputs": priced.inputs.model_dump(mode="json") if priced.inputs is not None else None,
         "result": priced.result.model_dump(mode="json") if priced.result is not None else None,

@@ -1,4 +1,4 @@
-"""Outside grants and family incentives (catalogue section 2.6).
+"""Outside grants (catalogue section 2.6); the family-incentive step is a no-op seam since the cull.
 
 Only programs in grants.offset_programs are offset (2026: Summer, a staff
 ruling). Grants arrive already matched to the camper by person id (sub-project
@@ -128,22 +128,6 @@ def _recorded_after(grant: GrantInput, decided_at: datetime | None) -> bool:
 
 
 def incentive_adjustments(request: RequestInputs, rules: AidRules) -> tuple[Decimal, Decimal, list[CalcIssue]]:
-    reduce_cost = ZERO
-    reduce_award = ZERO
-    issues: list[CalcIssue] = []
-    for incentive in request.incentives:
-        rule = rules.grants.incentives.get(incentive.key)
-        if rule is None:
-            issues.append(
-                CalcIssue(
-                    code="unknown_incentive",
-                    severity="warn",
-                    message=f"Incentive '{incentive.key}' has no rule this season; it was ignored",
-                    step="cost",
-                )
-            )
-        elif rule.mode == "reduce_cost":
-            reduce_cost += incentive.amount
-        elif rule.mode == "reduce_award":
-            reduce_award += incentive.amount
-    return reduce_cost, reduce_award, issues
+    """Family incentives are met as "ignore", the only mode any season set (owner 10-06 cull, explainer fn 2): no
+    request carries one, and none reduces the cost or the award. Kept as the engine's seam."""
+    return ZERO, ZERO, []

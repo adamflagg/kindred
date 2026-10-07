@@ -43,13 +43,12 @@ SectionName = Literal[
     "round2",
     "round3",
     "budget",
-    "stages",
     "quality_checks",
     "milestones",
 ]
-# Adding a section here needs a data backfill of `section_status` on existing
-# `aid_rules` rows: status_from_json refuses to load a partial status map, so a
-# row with no stored entry for the new section would stop loading entirely.
+# Removing one needs nothing: status_from_json reads only SECTION_NAMES. Adding a section here needs a
+# data backfill of `section_status` on existing `aid_rules` rows: status_from_json refuses to load a
+# partial status map, so a row with no stored entry for the new section would stop loading entirely.
 SECTION_NAMES: tuple[SectionName, ...] = get_args(SectionName)
 
 QualityCheckKey = Literal[
@@ -225,6 +224,14 @@ class EquityCriterion(RulesModel):
         return self
 
 
+def _without(data: Any, *keys: str) -> Any:
+    """A stored mapping with retired keys popped (owner 10-06 cull): stored documents keep loading; nothing stored is
+    rewritten, and the next save simply doesn't carry them."""
+    if isinstance(data, dict) and any(key in data for key in keys):
+        return {k: v for k, v in data.items() if k not in keys}
+    return data
+
+
 class EquitySection(RulesModel):
     criteria: list[EquityCriterion] = Field(default_factory=list)
     # equity class -> criterion key -> weight. A class with {} never shifts.
@@ -232,6 +239,25 @@ class EquitySection(RulesModel):
     # How the summed weights become whole tiers. The 2026 sheet used ROUNDUP ("ceil").
     aggregation: Literal["ceil", "round", "floor"] = "ceil"
     max_shift: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _full_matrix(cls, data: Any) -> Any:
+        """Every class carries a weight for every criterion, 0 where none was stored (a missing weight already counted
+        as 0), so the editor shows every box and saves the full matrix (§9.9)."""
+        if not isinstance(data, dict):
+            return data
+        # A criterion arrives as stored JSON (a dict) or, from code, as an EquityCriterion.
+        found = (c.get("key") if isinstance(c, dict) else getattr(c, "key", None) for c in data.get("criteria") or [])
+        keys = [key for key in found if isinstance(key, str)]
+        weights = data.get("weights")
+        if not isinstance(weights, dict):
+            return data
+        filled = {
+            name: (dict.fromkeys(keys, "0") | dict(row)) if isinstance(row, dict) else row
+            for name, row in weights.items()
+        }
+        return {**data, "weights": filled}
 
 
 # --- award tables ---------------------------------------------------------------------
@@ -316,16 +342,17 @@ class ProgramProfile(RulesModel):
 
 
 class FamilyRate(RulesModel):
-    """Per-person family-camp rates for one session this season.
-
-    `standard` prices every non-infant person (CampMinder bills adults and children
-    at the same rate). `child`, when set, prices children separately.
-    """
+    """Per-person family-camp rates for one session this season: everyone but infants pays the standard rate
+    (CampMinder bills adults and children alike; owner 10-06: the child rate removed)."""
 
     session_cm_id: int
     standard: Money
     infant: Money
-    child: Money | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _culled(cls, data: Any) -> Any:
+        return _without(data, "child")
 
 
 def _default_override_reasons() -> list[str]:
@@ -344,12 +371,6 @@ class CostSection(RulesModel):
 
 
 # --- grants ---------------------------------------------------------------------------
-
-
-class IncentiveRule(RulesModel):
-    """How a family incentive (for example a new-family discount) meets aid."""
-
-    mode: Literal["ignore", "reduce_cost", "reduce_award"]
 
 
 class GrantsSection(RulesModel):
@@ -372,37 +393,47 @@ class GrantsSection(RulesModel):
     # A grant recorded after the Round 1 decision: leave it out, leave it out and flag it,
     # or count it.
     late_grant_policy: Literal["ignore", "flag", "recalculate"] = "flag"
-    incentives: dict[Key, IncentiveRule] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _culled(cls, data: Any) -> Any:
+        return _without(data, "incentives")
 
 
 # --- awards ---------------------------------------------------------------------------
 
 
 class DecisionType(RulesModel):
-    """A named kind of decision with its own budget line.
+    """A named kind of decision.
 
     full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
       total to cost - grants + extra_amount (a categorical full-funding program).
+    full_cost_after_aid: the family's normal award first (it counts toward the budget as usual); the type then pays
+      what that award and the request's outside grants leave of the cost, never below $0 and with no extra amount
+      (owner 10-06).
     top_up: a fixed amount added to the award (the appeal top-up).
     discretionary: staff type the amount on the request (`discretionary_amount`).
 
     `counts_toward_budget` says whether this type's money is the camp's own budget money. When
     false, the type's WHOLE round (base and extra; posted, offered or pending approval) sits below the
-    line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30); a decision counts
-    only when its stage's `counts_toward_budget` says so too.
+    line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30).
     `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
     `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
     """
 
     label: str = Field(min_length=1)
-    kind: Literal["full_cost", "top_up", "discretionary"]
+    kind: Literal["full_cost", "full_cost_after_aid", "top_up", "discretionary"]
     round: int = Field(ge=1, le=3)
     amount: Money | None = None
     extra_amount: Money = Decimal(0)
     allows_appeal: bool = True
-    budget_line: str = Field(min_length=1)
     counts_toward_budget: bool = True
     ceiling_exempt: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _culled(cls, data: Any) -> Any:
+        return _without(data, "budget_line")
 
     @model_validator(mode="after")
     def _amounts_fit_the_kind(self) -> Self:
@@ -412,6 +443,10 @@ class DecisionType(RulesModel):
             raise ValueError("only a top_up decision type has a fixed amount")
         if self.kind != "full_cost" and self.extra_amount != 0:
             raise ValueError("only a full_cost decision type has extra_amount")
+        if self.kind == "full_cost_after_aid" and self.counts_toward_budget:
+            # Owner 10-06: its camp award counts as usual and only its remainder sits below the line; a type that
+            # counts would take the whole round into the budget (budget.counted_part), the remainder included.
+            raise ValueError("a full_cost_after_aid decision type doesn't count toward the budget")
         return self
 
 
@@ -507,26 +542,6 @@ class BudgetSection(RulesModel):
         return out
 
 
-# --- stages ---------------------------------------------------------------------------
-
-
-class StageDef(RulesModel):
-    code: Key
-    label: str = Field(min_length=1)
-    round: int | None = Field(default=None, ge=1, le=3)
-    is_offer: bool = False
-    is_accepted: bool = False
-    is_cancel: bool = False
-    counts_toward_budget: bool = True
-    include_default: bool = True
-    decision_type: Key | None = None
-    allows_appeal: bool = True
-
-
-class StagesSection(RulesModel):
-    stages: list[StageDef] = Field(default_factory=list)
-
-
 # --- quality checks -------------------------------------------------------------------
 
 
@@ -581,6 +596,10 @@ class AidRules(RulesModel):
     round2: Round2Section
     round3: Round3Section = Field(default_factory=Round3Section)
     budget: BudgetSection
-    stages: StagesSection = Field(default_factory=StagesSection)
     quality_checks: QualityChecksSection = Field(default_factory=QualityChecksSection)
     milestones: MilestonesSection = Field(default_factory=MilestonesSection)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _culled(cls, data: Any) -> Any:
+        return _without(data, "stages")

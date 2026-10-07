@@ -11,7 +11,15 @@ from typing import Any
 
 import bunking.financial_aid.scenarios.results as results_module
 from bunking.financial_aid.calculator import CalcIssue
-from bunking.financial_aid.decisions import PricedRequest, RequestToPrice, RoundState, price_request, season_budget
+from bunking.financial_aid.decisions import (
+    PricedRequest,
+    RequestToPrice,
+    RoundState,
+    RoundStatus,
+    RoundView,
+    price_request,
+    season_budget,
+)
 from bunking.financial_aid.scenarios import (
     Round2TierRow,
     ScenarioResults,
@@ -426,3 +434,31 @@ def test_by_table_rows_follow_the_resolver_for_a_program_by_class() -> None:
     assert results_module.round1_table(rules, "adult_weekend") == "family"
     assert results_module.round1_table(RULES, "adult_weekend") == ""  # legacy: no Round 1 table
     assert results_module.round2_table(rules, "nonexistent") == ""
+
+
+def _fund_round(status: RoundStatus, amount: str) -> RoundView:
+    """A $3,600 full-cost-after-aid round: a $2,000 camp award plus the type's $1,600 remainder."""
+    return RoundView(
+        round=1,
+        status=status,
+        ask=None,
+        decided=Decimal(amount) if status == "needs_offer" else None,
+        locked=None,
+        accepted=False,
+        pending=Decimal(amount) if status == "pending_approval" else None,
+        counts_toward_budget=False,
+        pool="camp_pool",
+        extra=Decimal(1600),
+        decision_type="named_full_cost_fund",
+        extra_outside=True,
+    )
+
+
+def test_a_fund_round_needing_an_offer_counts_only_its_camp_award() -> None:
+    """Regression guard (T17 review Minor 3): Scenarios split an unposted fund round as the budget does."""
+    assert results_module.counted(_fund_round("needs_offer", "3600")) == Decimal(2000)
+
+
+def test_a_fund_round_pending_approval_counts_only_its_camp_award() -> None:
+    """Regression guard (T17 review Minor 3): the pending-approval branch splits through counted_part too."""
+    assert results_module.counted(_fund_round("pending_approval", "3600")) == Decimal(2000)

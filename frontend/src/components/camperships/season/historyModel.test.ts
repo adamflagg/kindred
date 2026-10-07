@@ -794,3 +794,12 @@ describe("a rules diff's tiers in number order (#18)", () => {
     ])
   })
 })
+
+describe('an old log row naming a culled rules section', () => {
+  // Regression guard: passes before and after the cull, because a section the map no longer
+  // holds falls back to its own key's words.
+  it('names a rules section the map no longer holds by its own words (an old log row)', () => {
+    const op = { ...OP_RULES_APPROVE, rules_sections: ['stages'] }
+    expect(operationWords(op).what).toContain('Stages')
+  })
+})

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
@@ -28,6 +28,7 @@ from api.constants.collections import (
     AID_REQUESTS,
     AID_RULES,
 )
+from api.schemas.financial_aid_decisions import PostedIn, PostedRow
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import cancel_event, decision_event, hold_event
 from api.services.financial_aid_grant_placements import PlacementRecord, placement_record
@@ -63,6 +64,7 @@ from tests.unit.api.services.financial_aid_fakes import (
 
 T0 = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
 ACTOR = "registrar@example.com"
+EMMA = "reqemma00000001"
 RULES_ID = "rul000000000001"  # the one aid_rules record approved() and FakeRules write to
 
 
@@ -616,3 +618,11 @@ def seed_split(store: FakeDecisionsStore, txn: int, parts: tuple[SplitPart, ...]
         "split": [part.fields() for part in parts],
     }
     _log(store, AID_ATTRIBUTION_OVERRIDES, f"ovr{txn:012d}", None, body, at)
+
+
+def tick(*rows: tuple[str, int, str]) -> PostedIn:
+    """A Posted tick of `(request_id, round, amount)` rows, dated in the fictional 2027 season."""
+    return PostedIn(
+        rows=[PostedRow(request_id=r, round=n, amount=Decimal(a)) for r, n, a in rows],
+        posted_on=date(2027, 3, 9),
+    )

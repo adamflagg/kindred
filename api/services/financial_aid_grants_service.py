@@ -882,8 +882,8 @@ class GrantsService:
             if getattr(s, "grantor_key", "") == body.grantor_key
         }
         if funders == {"incentive"}:
-            # Decision 4: a family incentive posts in CampMinder directly and the rules meet it
-            # through grants.incentives; counted as a commitment it would offset like a grant.
+            # Decision 4: a family incentive posts in CampMinder directly and the rules don't price it
+            # (incentives were culled, §9.9); counted as a commitment it would offset like a grant.
             raise FinancialAidValidationError(
                 "a family incentive isn't entered as a commitment; it posts in CampMinder"
             )

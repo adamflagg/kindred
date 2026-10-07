@@ -113,7 +113,6 @@ def validate_rules(rules: AidRules, context: ValidationContext | None = None) ->
     _check_cost(rules, issues)
     _check_grants(rules, issues)
     _check_budget(rules, issues)
-    _check_stages(rules, issues)
     _check_milestones(rules, issues)
     _check_quality_checks(rules, issues)
     return ValidationReport(issues=issues.items)
@@ -513,21 +512,6 @@ def _check_budget(rules: AidRules, issues: _Issues) -> None:
         issues.error(
             "budget", "pool_shares_not_100", "budget.pools", f"Pool shares sum to {total.normalize():f}%, not 100%"
         )
-
-
-def _check_stages(rules: AidRules, issues: _Issues) -> None:
-    counts = Counter(s.code for s in rules.stages.stages)
-    for code, n in counts.items():
-        if n > 1:
-            issues.error("stages", "duplicate_stage", "stages.stages", f"Stage '{code}' appears {n} times")
-    for stage in rules.stages.stages:
-        if stage.decision_type is not None and stage.decision_type not in rules.awards.decision_types:
-            issues.error(
-                "stages",
-                "unknown_decision_type",
-                "stages.stages",
-                f"Stage '{stage.code}' names unknown decision type '{stage.decision_type}'",
-            )
 
 
 _MILESTONE_ORDER: tuple[tuple[str, str], ...] = (

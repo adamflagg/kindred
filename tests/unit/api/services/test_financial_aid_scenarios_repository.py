@@ -373,3 +373,20 @@ async def test_a_code_collision_says_so_neutrally_whether_it_came_from_a_keep_or
     ):
         await ScenarioRepository(_pb()).commit([], actor=FINANCE)
     assert str(raised.value) == "Someone added an option at the same moment: try again."
+
+
+@pytest.mark.asyncio
+async def test_a_kept_scenario_stored_with_the_culled_keys_still_loads() -> None:
+    """Review Focus 1, §9.9: a kept scenario written before the cull carries stages, an incentive, a child rate and a
+    budget line; the repository's reader loads it and the document comes back without them."""
+    stored = intake_rules().model_dump(mode="json")
+    stored["stages"] = {"stages": [{"code": "r1_offered", "label": "Round 1 offered", "round": 1, "is_offer": True}]}
+    stored["grants"]["incentives"] = {"new_family": {"mode": "ignore"}}
+    stored["cost"]["family_rates"][0]["child"] = "450"
+    stored["awards"]["decision_types"]["appeal_top_up"]["budget_line"] = "top_ups"
+    pb = _pb([_option(document=stored)])
+    [option] = await ScenarioRepository(pb).options(YEAR)
+    assert option.document == intake_rules()
+    dumped = option.document.model_dump(mode="json")
+    assert "stages" not in dumped
+    assert "incentives" not in dumped["grants"]

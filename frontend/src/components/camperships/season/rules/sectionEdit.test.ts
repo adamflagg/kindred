@@ -223,7 +223,6 @@ describe("reading a box as the server's schema validates it", () => {
 
   it('leaves a numeric-looking name alone', () => {
     expect(fieldSpec(['criteria', '0', 'label'], '2024')).toBeNull()
-    expect(fieldSpec(['decision_types', 'discount', 'budget_line'], '100')).toBeNull()
   })
 
   it('compares as the server does, lists whole and decimals by value', () => {
@@ -261,7 +260,7 @@ describe('what is never a box, however it looks', () => {
   it('offers only the kind switches that can save (m5)', () => {
     expect(fieldSpec(['decision_types', 'd', 'kind'], 'discretionary')).toEqual({
       kind: 'choice',
-      options: ['full_cost', 'discretionary'],
+      options: ['full_cost', 'full_cost_after_aid', 'discretionary'],
     })
     expect(fieldSpec(['decision_types', 'd', 'kind'], 'top_up')).toBeNull()
   })

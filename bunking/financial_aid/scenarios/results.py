@@ -39,6 +39,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.decisions import PoolBudget, PricedRequest, RoundCell, RoundView, SeasonBudget
+from bunking.financial_aid.decisions.budget import counted_part
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules import lookup as rules_lookup
@@ -321,17 +322,19 @@ def _pool(pool: PoolBudget) -> PoolResult:
 
 
 def counted(view: RoundView) -> Decimal | None:
-    """A round's money exactly as the budget counts it (budget._tally_round): Posted, Needs an offer and Pending
-    approval of a type that counts toward the budget; a clawed-back round counts nowhere (D54)."""
-    if not view.counts_toward_budget:
-        return None
+    """A round's money exactly as the budget counts it (budget._tally_round): its camp part (`counted_part`)."""
     if view.status == "posted":
-        return None if view.clawed_back else (view.locked or ZERO)
-    if view.status == "needs_offer":
-        return view.decided or ZERO
-    if view.status == "pending_approval":
-        return view.pending or ZERO
-    return None
+        amount = None if view.clawed_back else (view.locked or ZERO)
+    elif view.status == "needs_offer":
+        amount = view.decided or ZERO
+    elif view.status == "pending_approval":
+        amount = view.pending or ZERO
+    else:
+        amount = None
+    if amount is None:
+        return None
+    inside, _ = counted_part(view, amount)
+    return inside if (view.counts_toward_budget or inside > 0) else None
 
 
 def scenario_results(

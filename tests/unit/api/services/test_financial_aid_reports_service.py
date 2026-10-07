@@ -855,3 +855,49 @@ async def test_a_table_chip_counts_a_program_that_prices_from_it_by_class() -> N
     )
     chips = {chip.key: chip.label for chip in table_chips(rules)}
     assert chips["family"] == "Family camp · Adult weekend"
+
+
+async def test_a_full_cost_after_aid_round_reports_its_camp_award_and_keeps_only_its_remainder_apart() -> None:
+    """Owner 10-06 (spec §9.9): the camp award counts toward the budget as usual, so Reports awards it (decided, then
+    locked) and keeps its ask in % of ask's denominator; only the fund's remainder is outside money."""
+    view = RoundView(
+        round=1,
+        status="needs_offer",
+        ask=Decimal(3600),
+        decided=Decimal(3600),
+        locked=None,
+        accepted=False,
+        pending=None,
+        counts_toward_budget=False,
+        pool="camp_pool",
+        extra=Decimal(1600),
+        decision_type="named_full_cost_fund",
+        extra_outside=True,
+    )
+    waiting = _round(1, view, None, r1_ask=None, tier_now=2, home_pool="camp_pool")
+    assert (waiting.decided, waiting.outside_decided, waiting.outside_budget) == (Decimal(2000), Decimal(1600), False)
+    posted = _round(
+        1, replace(view, status="posted", locked=Decimal(3600)), None, r1_ask=None, tier_now=2, home_pool="camp_pool"
+    )
+    assert (posted.locked, posted.outside_posted, posted.outside_budget) == (Decimal(2000), Decimal(1600), False)
+
+
+async def test_a_grant_reduced_fund_round_reports_the_same_camp_award_and_a_smaller_remainder() -> None:
+    """Owner 10-06 (a): the $500 grant came off the fund in the engine ($1,100 left), so the round decided $3,100.
+    Reports still awards the $2,000 camp award; only the $1,100 is outside money (the grant has its own facts)."""
+    view = RoundView(
+        round=1,
+        status="needs_offer",
+        ask=Decimal(3600),
+        decided=Decimal(3100),
+        locked=None,
+        accepted=False,
+        pending=None,
+        counts_toward_budget=False,
+        pool="camp_pool",
+        extra=Decimal(1100),
+        decision_type="named_full_cost_fund",
+        extra_outside=True,
+    )
+    waiting = _round(1, view, None, r1_ask=None, tier_now=2, home_pool="camp_pool")
+    assert (waiting.decided, waiting.outside_decided, waiting.outside_budget) == (Decimal(2000), Decimal(1100), False)

@@ -52,6 +52,7 @@ from bunking.financial_aid.scenarios.results import (
     TierRow,
     TierTally,
     appeal_ask,
+    counted,
     round1_table,
     round2_rows,
     round2_table,
@@ -65,10 +66,9 @@ _TENTH: Final = Decimal("0.1")
 # RPT-18's "criteria" (Ruling 2026-09-30, plan review): who gets what. Copied whole from last season:
 CRITERIA_SECTIONS: Final[tuple[SectionName, ...]] = ("income", "tiers", "equity", "award_tables", "round3")
 # Copied from last season but for one key, which stays this season's: Round 2's policy settings without its routing
-# (program -> Round 2 table), and the award settings without the decision types (finance's budget lines, which this
-# season's stages point to).
+# (program -> Round 2 table), and the award settings without the decision types (this season's named awards).
 CRITERIA_BUT: Final[Mapping[SectionName, str]] = {"round2": "program_tables", "awards": "decision_types"}
-# Everything else stays this season's: programs (and so each program's award table), cost, budget, stages, quality
+# Everything else stays this season's: programs (and so each program's award table), cost, budget, quality
 # checks, milestones, and grants whole (D140's minimum cap applies from 2027 on; the offset programs are routing).
 
 
@@ -276,9 +276,11 @@ class PostedSeason:
 
 
 def _posted(view: RoundView | None) -> Decimal | None:
-    if view is None or view.status != "posted" or not view.counts_toward_budget or view.clawed_back:
+    """A posted round's money as the budget counts it (`results.counted`, `budget.counted_part`): a full-cost-after-aid
+    round's camp award is last season's money; a clawed-back or wholly outside round is not."""
+    if view is None or view.status != "posted":
         return None
-    return view.locked or ZERO
+    return counted(view)
 
 
 def _at_lock(state: RoundState | None, key: str) -> Any:

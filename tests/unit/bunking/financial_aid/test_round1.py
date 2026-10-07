@@ -221,12 +221,6 @@ def test_a_full_cost_decision_prices_round_1_at_the_whole_cost_less_grants() -> 
     assert with_grant.r1 == Decimal(3000)
 
 
-@pytest.mark.parametrize(("mode", "r1"), [("ignore", 3000), ("reduce_cost", 2625), ("reduce_award", 2500)])
-def test_an_incentive_meets_aid_as_the_season_says(mode: str, r1: int) -> None:
-    rules = with_lever(fictional_rules(), "grants.incentives.new_family.mode", mode)
-    assert _calc(rules, incentives=[{"key": "new_family", "amount": "500"}]).r1 == Decimal(r1)
-
-
 def test_discretionary_money_adds_to_the_total() -> None:
     result = _calc(discretionary_amount="175")
     assert (result.r1, result.discretionary, result.total) == (Decimal(3000), Decimal(175), Decimal(3175))

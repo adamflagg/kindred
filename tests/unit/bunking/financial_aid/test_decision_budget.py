@@ -624,3 +624,71 @@ def test_the_totals_allocation_is_the_sum_of_the_pools_and_its_remaining_the_sum
     assert total.remaining == sum(
         (p.total.remaining for p in budget.pools if p.total.remaining is not None), Decimal(0)
     ) - Decimal(400)
+
+
+def test_a_fund_round_keeps_its_camp_award_in_the_budget_and_puts_only_the_remainder_below_the_line() -> None:
+    """§9.9 (owner 10-06): the camp award counts toward the budget as usual; only the fund's remainder doesn't."""
+    fund = replace(
+        view(1, "needs_offer", decided="3600", counts=False, extra="1600"),
+        extra_outside=True,
+        decision_type="named_full_cost_fund",
+    )
+    camp = pool_of(season_budget([priced("req-f", 21, fund)], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[1].needs_offer, camp.below.outside_budget) == (Decimal(2000), Decimal(1600))
+    assert camp.total.remaining == Decimal("398000.00")
+    lines = {(t.key, t.counts_toward_budget): t for t in camp.decision_types}
+    assert lines[(None, True)].amount == Decimal(2000)
+    assert lines[("named_full_cost_fund", False)].amount == Decimal(1600)
+
+
+def test_a_posted_fund_round_splits_the_same_way() -> None:
+    fund = replace(view(1, "posted", locked="3600", counts=False, extra="1600"), extra_outside=True)
+    camp = pool_of(season_budget([priced("req-g", 22, fund)], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[1].posted, camp.below.outside_budget, camp.below.outside_budget_posted) == (
+        Decimal(2000),
+        Decimal(1600),
+        Decimal(1600),
+    )
+
+
+def test_a_fund_round_reduced_by_an_outside_grant_puts_only_its_smaller_remainder_below_the_line() -> None:
+    """Owner 10-06 (a): the engine already took the $500 grant off the fund ($3,600 − $2,000 − $500 = $1,100), so the
+    round's amount is $3,100 and its `extra` $1,100. The budget counts the $2,000 camp award, puts the $1,100 below the
+    line, and keeps the $500 grant on its own line: no dollar counted twice."""
+    fund = replace(
+        view(1, "needs_offer", decided="3100", counts=False, extra="1100"),
+        extra_outside=True,
+        decision_type="named_full_cost_fund",
+    )
+    budget = season_budget([priced("req-h", 23, fund)], RULES, outside_grants={"req-h": Decimal(500)})
+    camp = pool_of(budget, "camp_pool")
+    assert (camp.rounds[1].needs_offer, camp.below.outside_budget, camp.below.outside_grants) == (
+        Decimal(2000),
+        Decimal(1100),
+        Decimal(500),
+    )
+    assert camp.total.remaining == Decimal("398000.00")
+    lines = {(t.key, t.counts_toward_budget): t for t in camp.decision_types}
+    assert lines[("named_full_cost_fund", False)].amount == Decimal(1100)
+
+
+def test_a_fund_round_pending_approval_binds_only_its_camp_award() -> None:
+    """Regression guard (T17 review Minor 3): pending approval splits like needs an offer (D79 binds counting money)."""
+    fund = replace(
+        view(1, "pending_approval", pending="3600", counts=False, extra="1600"),
+        extra_outside=True,
+        decision_type="named_full_cost_fund",
+    )
+    camp = pool_of(season_budget([priced("req-j", 25, fund)], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[1].pending_approval, camp.below.outside_budget) == (Decimal(2000), Decimal(1600))
+
+
+def test_a_posted_fund_round_with_a_camp_part_ledger_shows_no_unconfirmed_beyond_the_camp_part() -> None:
+    """Regression guard. A posted $3,600 fund round is a $2,000 camp award plus a $1,600 remainder. round_ledger
+    reconciles the camp part only, so with $1,500 of camp lines it reads $500 unconfirmed ($2,000 − $1,500). The
+    budget books that $500 in the camp pool, never the remainder's $1,600: unconfirmed is $500, not $2,100."""
+    fund = replace(view(1, "posted", locked="3600", counts=False, extra="1600"), extra_outside=True)
+    ledger = {"req-i": {1: RoundLedger(Decimal(500), False)}}
+    camp = pool_of(season_budget([priced("req-i", 24, fund)], RULES, outside_grants={}, ledger=ledger), "camp_pool")
+    assert camp.rounds[1].posted == Decimal(2000)
+    assert camp.rounds[1].unconfirmed == Decimal(500)

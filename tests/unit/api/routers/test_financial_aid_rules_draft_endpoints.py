@@ -4,6 +4,7 @@ FastAPI app (persona_client), never api.main (it poisons auth for xdist)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -12,8 +13,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.services.financial_aid_rules_service import (
+    BUDGET_TOTAL_LOCKED,
     ApprovedRules,
     ApprovedSection,
+    BudgetTotalLockedError,
     DraftSection,
     NotLatestVersionError,
     RulesDraft,
@@ -204,3 +207,26 @@ def test_the_draft_read_gives_each_section_its_fingerprint() -> None:
     _stub()
     body = _client().get("/api/financial-aid/rules/2031/draft").json()
     assert all(len(s["fingerprint"]) == 64 for s in body["sections"])
+
+
+def test_the_draft_read_says_whether_the_budget_total_is_locked() -> None:
+    service = _stub()
+    assert _client().get("/api/financial-aid/rules/2031/draft").json()["budget_total_locked"] is False
+    service.draft_view = AsyncMock(return_value=replace(DRAFT, budget_total_locked=True))
+    assert _client().get("/api/financial-aid/rules/2031/draft").json()["budget_total_locked"] is True
+
+
+def test_a_locked_budget_total_is_422_in_the_lock_words() -> None:
+    service = _stub()
+    service.save_section = AsyncMock(side_effect=BudgetTotalLockedError(BUDGET_TOTAL_LOCKED))
+    body = SAVE_BODY | {"content": fictional_rules().budget.model_dump(mode="json") | {"total": "520000"}}
+    response = _client().put("/api/financial-aid/rules/2031/sections/budget", json=body)
+    assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)
+
+
+def test_approving_a_locked_budget_total_is_422_in_the_lock_words() -> None:
+    service = _stub()
+    service.approve_sections = AsyncMock(side_effect=BudgetTotalLockedError(BUDGET_TOTAL_LOCKED))
+    body = {"sections": ["budget"], "note": "Board, Mar 1", "fingerprints": {"budget": "abc"}}
+    response = _client().post("/api/financial-aid/rules/2031/versions/2/approve", json=body)
+    assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)

@@ -165,9 +165,9 @@ describe('RulesTab review fixes', () => {
     expect(within(panel()).getByText(/from v4/)).toBeInTheDocument()
   })
 
-  it('opens on Income when ?section= names nothing', () => {
+  it('opens on the income section when ?section= names nothing', () => {
     renderAt('/aid/season/rules?section=nope')
-    expect(within(panel()).getByText('Income')).toBeInTheDocument()
+    expect(within(panel()).getByText("Counting a family's income")).toBeInTheDocument()
   })
 
   it('shows the loading state, not the no-rules note', () => {
