@@ -1,12 +1,16 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router'
 
+import { DefRef } from '../kit/DefinitionNotes'
 import { TABLE_CARD } from '../kit/kitStyles'
 import { Money } from '../kit/MoneyText'
 import { countWords } from '../requests/views'
-import { Note } from './BudgetTable'
 import { heldWords, type DemandGroup } from './demandModel'
 import { BELOW_HEADING, FIGURE_LINK, TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from './seasonStyles'
+
+function Note({ n }: { n: number | null }) {
+  return n === null ? null : <DefRef n={n} />
+}
 
 /**
  * Demand still to come (spec §5.9, §7.2; D82; budget-demand.html E): asks, shown and never counted

@@ -17,9 +17,6 @@ export const TD_LABEL = 'border-border border-b px-2 py-1.5 text-left whitespace
 export const TD_TEXT = 'border-border border-b px-2 py-1.5 text-left'
 export const TD_MONEY =
   'border-border border-b px-2 py-1.5 text-right whitespace-nowrap tabular-nums'
-/** A pool's total line, and the season's total. */
-export const POOL_LINE = 'bg-muted/40 font-semibold'
-export const TOTAL_LINE = 'bg-muted font-semibold'
 /** The heading over the lines shown below the line (§5.3). */
 export const BELOW_HEADING =
   'bg-muted/40 text-muted-foreground border-border border-b px-2 py-1.5 text-left text-xs font-semibold tracking-wide uppercase'

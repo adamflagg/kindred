@@ -352,13 +352,11 @@ class UnconfirmedOut(BaseModel):
     amount: float
 
 
-class CellOut(BaseModel):
-    allocated: float | None
+class _CellBase(BaseModel):
     posted: float | None  # None: a past read whose posted money can't be replayed exactly
     accepted: float | None
     needs_offer: float | None
     pending_approval: float | None
-    remaining: float | None
     needs_offer_count: CountOut | None = None  # None with its figure: a past read masks both together
     pending_approval_count: CountOut | None = None
     unconfirmed: UnconfirmedOut | None = None  # None: no ledger read (a past date), or before 2027
@@ -366,9 +364,15 @@ class CellOut(BaseModel):
     committed: float | None = None
 
 
-class RoundCellOut(CellOut):
-    """A round: `allocated` and `remaining` are always null (§8.1: Remaining per pool, never per round). They leave
-    the schema with the Rounds & budget screen PR, which stops reading them."""
+class CellOut(_CellBase):
+    """A pool's or the season's figures: its Allocated and Remaining from the approved rules."""
+
+    allocated: float | None
+    remaining: float | None
+
+
+class RoundCellOut(_CellBase):
+    """A round: what it committed. No Allocated or Remaining (§8.1: Remaining per pool, never per round)."""
 
     round: int
 

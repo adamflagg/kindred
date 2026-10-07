@@ -379,9 +379,19 @@ export function pastBudget(): ApiAidBudget {
     pending_approval_count: null,
     unconfirmed: null,
   })
+  const pastRound = (
+    r: ApiAidBudgetPool['rounds'][number]
+  ): ApiAidBudgetPool['rounds'][number] => ({
+    ...r,
+    needs_offer: null,
+    pending_approval: null,
+    needs_offer_count: null,
+    pending_approval_count: null,
+    unconfirmed: null,
+  })
   const pastPool = (p: ApiAidBudgetPool): ApiAidBudgetPool => ({
     ...p,
-    rounds: p.rounds.map((r) => ({ ...r, ...pastCell(r) })),
+    rounds: p.rounds.map(pastRound),
     total: pastCell(p.total),
     below: {
       ...p.below,

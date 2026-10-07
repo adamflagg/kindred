@@ -2345,12 +2345,10 @@ export type CapacitySet = {
 
 /**
  * CellOut
+ *
+ * A pool's or the season's figures: its Allocated and Remaining from the approved rules.
  */
 export type CellOut = {
-  /**
-   * Allocated
-   */
-  allocated: number | null
   /**
    * Posted
    */
@@ -2367,10 +2365,6 @@ export type CellOut = {
    * Pending Approval
    */
   pending_approval: number | null
-  /**
-   * Remaining
-   */
-  remaining: number | null
   needs_offer_count?: CountOut | null
   pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null
@@ -2378,6 +2372,14 @@ export type CellOut = {
    * Committed
    */
   committed?: number | null
+  /**
+   * Allocated
+   */
+  allocated: number | null
+  /**
+   * Remaining
+   */
+  remaining: number | null
 }
 
 /**
@@ -14429,14 +14431,9 @@ export type RoundBlockOut = {
 /**
  * RoundCellOut
  *
- * A round: `allocated` and `remaining` are always null (§8.1: Remaining per pool, never per round). They leave
- * the schema with the Rounds & budget screen PR, which stops reading them.
+ * A round: what it committed. No Allocated or Remaining (§8.1: Remaining per pool, never per round).
  */
 export type RoundCellOut = {
-  /**
-   * Allocated
-   */
-  allocated: number | null
   /**
    * Posted
    */
@@ -14453,10 +14450,6 @@ export type RoundCellOut = {
    * Pending Approval
    */
   pending_approval: number | null
-  /**
-   * Remaining
-   */
-  remaining: number | null
   needs_offer_count?: CountOut | null
   pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null

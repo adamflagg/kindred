@@ -88,7 +88,7 @@ export function ScenarioResults({
                   <Money value={pool.round1_remaining} />
                 </td>
                 <td className={TD_MONEY}>
-                  <Money value={pool.remaining} />
+                  <Money value={pool.remaining} tone="pool" />
                 </td>
               </tr>
             ))}

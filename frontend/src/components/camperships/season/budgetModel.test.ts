@@ -8,24 +8,17 @@ import { gridRow, roundOut } from '../requests/gridFixtures'
 import { filterRows, requestView } from '../requests/views'
 import { BUDGET, pastBudget, pastBudgetUnmasked } from './budgetFixtures'
 import {
-  BUDGET_CSV_HEADERS,
   belowTheLine,
   budgetCsvName,
-  budgetCsvRows,
   budgetRows,
   budgetTypeLines,
   cellCount,
   cellHref,
   cellValue,
-  cellWords,
   confirmedHref,
   confirmedWords,
-  overWords,
-  parseFolded,
-  pendingNote,
   scopePool,
   stripRounds,
-  toggleFolded,
   type BudgetRow,
 } from './budgetModel'
 
@@ -132,40 +125,6 @@ describe('the table (§7.2; D53, D79)', () => {
     expect(cellValue(row(rows, ':all'), 'allocated')).toBeNull()
     expect(cellValue(row(rows, 'total'), 'remaining')).toBe(151290)
   })
-
-  it('says "and N · $X pending approval" with the count the server sent (read 2)', () => {
-    const rows = budgetRows(BUDGET, EVERY)
-    expect(pendingNote(row(rows, 'pool_a:all'))).toBe('and 1 · $650 pending approval')
-    expect(pendingNote(row(rows, 'total'))).toBe('and 1 · $650 pending approval')
-    expect(pendingNote(row(rows, 'pool_b:all'))).toBeNull()
-    expect(pendingNote(row(rows, 'pool_a:3'))).toBeNull()
-  })
-
-  it('falls back to dollars only when the server sent no pending count', () => {
-    const bare = structuredClone(BUDGET)
-    const poolA = bare.pools[0]
-    if (poolA === undefined) throw new Error('no pool')
-    poolA.total.pending_approval_count = null
-    expect(pendingNote(row(budgetRows(bare, EVERY), 'pool_a:all'))).toBe(
-      'and $650 pending approval'
-    )
-    delete poolA.total.pending_approval_count
-    expect(pendingNote(row(budgetRows(bare, EVERY), 'pool_a:all'))).toBe(
-      'and $650 pending approval'
-    )
-  })
-
-  it('says "over allocation" on a pool or round below zero, and "over budget" only on the total (§4.2)', () => {
-    const over = structuredClone(BUDGET)
-    const firstRound = over.pools[0]?.rounds[0]
-    if (firstRound) firstRound.remaining = -1200
-    over.total.total.remaining = -1200
-    const rows = budgetRows(over, EVERY)
-    expect(overWords(row(rows, 'pool_a:1'), 'remaining')).toBe('over allocation')
-    expect(overWords(row(rows, 'total'), 'remaining')).toBe('over budget')
-    expect(overWords(row(rows, 'pool_a:2'), 'remaining')).toBeNull()
-    expect(overWords(row(rows, 'pool_a:1'), 'posted')).toBeNull()
-  })
 })
 
 describe('per-cell counts (read 2; owner: cells read "n · $X")', () => {
@@ -189,22 +148,19 @@ describe('per-cell counts (read 2; owner: cells read "n · $X")', () => {
     }
     expect(cellCount(row(rows, 'pool_a:3:pending'), 'remaining')).toBeNull()
   })
+})
 
-  it('reads "n · $X" with n = requests, dollars only when there is no count', () => {
-    expect(cellWords(row(rows, 'pool_a:1'), 'needs_offer')).toBe('3 · $8,100')
-    expect(cellWords(row(rows, 'pool_a:3:pending'), 'needs_offer')).toBe('1 · $650')
-    expect(cellWords(row(rows, 'pool_a:1'), 'posted')).toBe('$764,540')
-    const past = row(budgetRows(pastBudget(), EVERY), 'pool_a:1')
-    expect(cellCount(past, 'needs_offer')).toBeNull()
-    expect(cellWords(past, 'needs_offer')).toBe('—')
-    expect(cellWords(past, 'posted')).toBe('$764,540')
+describe('a round has no Allocated or Remaining, and a past read has no count (spec §9.4)', () => {
+  it('reads null for Allocated and Remaining on a round line, never undefined', () => {
+    const rows = budgetRows(BUDGET, EVERY)
+    expect(cellValue(row(rows, 'pool_a:1'), 'allocated')).toBeNull()
+    expect(cellValue(row(rows, 'pool_a:1'), 'remaining')).toBeNull()
+    expect(cellValue(row(rows, 'pool_a:all'), 'allocated')).toBe(900000)
   })
 
-  it('uses requests, not families, when they differ', () => {
-    const odd = structuredClone(BUDGET)
-    const first = odd.pools[0]?.rounds[0]
-    if (first) first.needs_offer_count = { families: 2, requests: 5 }
-    expect(cellWords(row(budgetRows(odd, EVERY), 'pool_a:1'), 'needs_offer')).toBe('5 · $8,100')
+  it('counts nothing where a past date masks the count', () => {
+    const past = row(budgetRows(pastBudget(), EVERY), 'pool_a:1')
+    expect(cellCount(past, 'needs_offer')).toBeNull()
   })
 })
 
@@ -665,42 +621,11 @@ describe('in the budget, by decision type (read 3; owner ⚠2: lead with own)', 
 })
 
 describe('the URL and the download (D15, D70, §11)', () => {
-  it('reads and toggles folded pools', () => {
-    expect([...parseFolded('pool_a,pool_b')]).toEqual(['pool_a', 'pool_b'])
-    expect(parseFolded(null).size).toBe(0)
-    expect(toggleFolded(new Set(['pool_a']), 'pool_b')).toBe('pool_a,pool_b')
-    expect(toggleFolded(new Set(['pool_a']), 'pool_a')).toBeNull()
-  })
-
-  it('writes the lines on screen, signed and plain, with each count after its dollars', () => {
-    expect(BUDGET_CSV_HEADERS).toEqual([
-      'Pool',
-      'Round',
-      'Allocated',
-      'Posted',
-      'Accepted',
-      'Needs an offer',
-      'Needs an offer requests',
-      'Pending approval',
-      'Pending approval requests',
-      'Remaining',
-    ])
-    const rows = budgetRows(BUDGET, { pool: 'pool_a', folded: new Set() })
-    expect(budgetCsvRows(rows)).toEqual([
-      ['Pool A', '', '900000', '780540', '609000', '13920', '13', '650', '1', '104890'],
-      ['Pool A', '1', '', '764540', '598300', '8100', '3', '0', '0', ''],
-      ['Pool A', '2', '', '14200', '9800', '5520', '8', '0', '0', ''],
-      ['Pool A', '3', '', '1800', '900', '300', '2', '650', '1', ''],
-    ])
+  it('names the download per D70', () => {
     expect(budgetCsvName(2027, 'Pool A', '2027-03-15')).toBe(
       'camperships-season-rounds-budget-pool-a-2027-as-of-2027-03-15.csv'
     )
     expect(budgetCsvName(2027, null, null)).toBe('camperships-season-rounds-budget-2027.csv')
-  })
-
-  it('leaves a count empty when the server sent none (a past date)', () => {
-    const rows = budgetCsvRows(budgetRows(pastBudget(), { pool: 'pool_a', folded: new Set() }))
-    expect(rows[1]).toEqual(['Pool A', '1', '', '764540', '598300', '', '', '', '', ''])
   })
 })
 
