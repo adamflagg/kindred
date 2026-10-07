@@ -126,6 +126,29 @@ describe('the projection line (§S5 E; N8: never amber or red)', () => {
   it('is absent with no projection', () => {
     expect(projectionWords(null, false)).toBeNull()
     expect(projectionWords(undefined, true)).toBeNull()
+    expect(projectionWords(null, false, null)).toBeNull()
+  })
+
+  it('says it is too early to project below a 5% share', () => {
+    expect(
+      projectionWords(null, false, { share: 0.03, through: '2027-01-05', basis_year: 2026 })
+    ).toEqual({
+      text: "Too early to project: about 3% of last year's applications had arrived by this point",
+      dimmed: false,
+    })
+  })
+
+  it('rounds the too-early share to a whole percent', () => {
+    expect(
+      projectionWords(null, false, { share: 0.034, through: '2027-01-05', basis_year: 2026 })?.text
+    ).toBe("Too early to project: about 3% of last year's applications had arrived by this point")
+  })
+
+  it('shows a projection, never the too-early line, when there is one', () => {
+    expect(
+      projectionWords(PROJECTION, false, { share: 0.03, through: '2027-01-05', basis_year: 2026 })
+        ?.text
+    ).toMatch(/^Projected:/)
   })
 })
 

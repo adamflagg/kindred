@@ -81,6 +81,14 @@ describe('SpendStrip (§S5 E)', () => {
     expect(screen.queryByTestId('strip-projection')).toBeNull()
   })
 
+  it('says it is too early to project, in the projection line, when the server sends too_early', () => {
+    const too_early = { share: 0.03, through: '2027-01-05', basis_year: 2026 }
+    render(<SpendStrip {...base} draft={{ ...DRAFT, too_early }} />)
+    expect(screen.getByTestId('strip-projection')).toHaveTextContent(
+      "Too early to project: about 3% of last year's applications had arrived by this point"
+    )
+  })
+
   it('puts the server’s words where the projection was on a refused read, keeping the figures', () => {
     render(
       <SpendStrip

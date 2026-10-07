@@ -3,7 +3,11 @@
  * words them, decides each change's colour (footnote 11: green leaves more money, amber leaves less) and rounds a
  * projection to $1,000, which is all the client does with it. Pure.
  */
-import type { ApiAidScenarioProjection, ApiAidScenarioResults } from '../../../../types/api-types'
+import type {
+  ApiAidScenarioProjection,
+  ApiAidScenarioResults,
+  ApiAidScenarioTooEarly,
+} from '../../../../types/api-types'
 import { MINUS, formatWholeMoney, toCents } from '../../kit/money'
 import type { PoolCardModel } from '../budgetCards'
 
@@ -143,12 +147,20 @@ export function stripLead(draft: Results, from: Results | null, postedStands: bo
   }
 }
 
-/** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with no projection. */
+/** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with no projection. Under 5%
+ * of last year's applications in (owner 10-07) the server sends `tooEarly` instead, and the line says so. */
 export function projectionWords(
   projection: ApiAidScenarioProjection | null | undefined,
-  locked: boolean
+  locked: boolean,
+  tooEarly?: ApiAidScenarioTooEarly | null
 ): { text: string; dimmed: boolean } | null {
-  if (projection === null || projection === undefined) return null
+  if (projection === null || projection === undefined) {
+    if (tooEarly === null || tooEarly === undefined) return null
+    return {
+      text: `Too early to project: about ${String(Math.round(tooEarly.share * 100))}% of last year's applications had arrived by this point`,
+      dimmed: locked,
+    }
+  }
   const pct = String(Math.round(projection.share * 100))
   const expected = `about ${String(projection.requests)} expected`
   return locked
