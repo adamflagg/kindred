@@ -17,6 +17,7 @@ import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
+import { OP_MISSING, opRequestIds, opWords } from '../../components/camperships/requests/opFilter'
 import { programGroups } from '../../components/camperships/requests/programLabel'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
 import {
@@ -52,10 +53,12 @@ import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
+import { useAidHistoryOperation } from '../../hooks/camperships/useAidHistory'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
+import { hasStatus } from '../../services/camperships/aidApi'
 import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
 
 /**
@@ -77,6 +80,7 @@ export default function AidRequestsPage() {
     counted,
     live: liveOnly,
     figure,
+    op,
     showIds,
     sort,
     group,
@@ -85,6 +89,12 @@ export default function AidRequestsPage() {
     setParams,
   } = useGridParams()
   const grid = useAidGrid()
+  const opRead = useAidHistoryOperation(op ?? '', { enabled: op !== null })
+  // While the operation loads (or failed), an empty set: the grid shows none of its rows rather than all of them.
+  const opIds = useMemo(
+    () => (op === null ? null : (opRequestIds(opRead.data) ?? new Set<string>())),
+    [op, opRead.data]
+  )
   // The rules name their programs and pools. A failed or missing read never blocks the grid: keys spelled out.
   const approvedRules = useAidApprovedRules(null)
   const today = campToday()
@@ -110,8 +120,8 @@ export default function AidRequestsPage() {
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, counted, live: liveOnly, figure, ids: null }),
-    [program, pool, round, counted, liveOnly, figure]
+    (): GridFilters => ({ program, pool, round, counted, live: liveOnly, figure, ids: opIds }),
+    [program, pool, round, counted, liveOnly, figure, opIds]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -322,8 +332,9 @@ export default function AidRequestsPage() {
       ...(counted ? { counted: '1' } : {}),
       ...(liveOnly ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
+      ...(op !== null ? { op } : {}),
     }),
-    [program, pool, round, figure, counted, liveOnly, showIds]
+    [program, pool, round, figure, counted, liveOnly, showIds, op]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -416,6 +427,14 @@ export default function AidRequestsPage() {
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
           Live requests only ·
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('live', null)}>
+            Show All
+          </button>
+        </p>
+      )}
+      {op !== null && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          {hasStatus(opRead.error, 404) ? OP_MISSING : opWords(opIds?.size ?? 0)} ·
+          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('op', null)}>
             Show All
           </button>
         </p>

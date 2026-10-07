@@ -25,6 +25,10 @@ vi.mock('../../hooks/camperships/useAidGrid', () => ({
     error: null,
   }),
 }))
+// The page now reads a History operation for `?op=` (Task 32): idle here, no auth provider needed.
+vi.mock('../../hooks/camperships/useAidHistory', () => ({
+  useAidHistoryOperation: () => ({ data: undefined, error: null, isLoading: false }),
+}))
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => ({ data: undefined }),
 }))
