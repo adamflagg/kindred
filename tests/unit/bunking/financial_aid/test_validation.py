@@ -30,8 +30,15 @@ def test_the_fictional_season_has_no_errors_and_only_the_expected_warnings() -> 
     report = validate_rules(fictional_rules(), _context())
     assert report.ok
     assert report.errors == []
-    # adult_weekend and family_school deliberately have no Round 1 table.
+    # adult_weekend and family_school deliberately have no Round 1 table; the fixture's Camp pool mixes classes camp
+    # and teen, its B'mitzvah program uses class camp from another pool, and Family camp routes to the family table
+    # with no class (spec §9.3's drifts).
     assert sorted((w.code, w.path) for w in report.warnings) == [
+        ("group_mismatch", "programs.bmitzvah.equity_class"),
+        ("group_mismatch", "programs.family_camp.equity_class"),
+        ("group_mismatch", "programs.quest.equity_class"),
+        ("group_mismatch", "programs.summer.equity_class"),
+        ("group_mismatch", "programs.teen.equity_class"),
         ("no_round1_table", "programs.adult_weekend.r1_table"),
         ("no_round1_table", "programs.family_school.r1_table"),
     ]
@@ -916,6 +923,112 @@ def test_an_ag_child_of_a_not_running_session_needs_no_tuition() -> None:
     assert "tuition_missing" in validate_rules(rules, context).codes()
     context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
     assert "tuition_missing" not in validate_rules(rules, context).codes()
+
+
+POOL_WORDS = "a program's pool, equity class and award table are one group."
+
+
+def _mismatch(rules: AidRules) -> dict[str, str]:
+    return {i.path: i.message for i in validate_rules(rules).warnings if i.code == "group_mismatch"}
+
+
+def test_a_pool_shared_by_two_classes_warns_on_each_program() -> None:
+    found = _mismatch(fictional_rules())
+    assert found["programs.teen.equity_class"] == (
+        f"Teen: its pool (Camp) also has programs of another equity class; {POOL_WORDS}"
+    )
+    assert found["programs.summer.equity_class"].startswith("Summer: its pool (Camp) also has programs of another")
+
+
+def test_a_class_shared_by_two_pools_warns() -> None:
+    rules = with_lever(fictional_rules(), "programs.teen.equity_class", "camp")  # Camp pool is all camp now
+    assert _mismatch(rules)["programs.bmitzvah.equity_class"] == (
+        f"B'mitzvah: its equity class (Camp) is also used by programs of another pool; {POOL_WORDS}"
+    )
+
+
+def test_a_class_is_named_by_its_groups_label_never_title_cased() -> None:
+    """Review M4: the class's words are its group's label, capitals kept ("FFP"), never the key title-cased."""
+    rules = with_levers(
+        fictional_rules(), {"programs.teen.equity_class": "camp", "budget.pools.camp_pool.label": "FFP"}
+    )
+    assert _mismatch(rules)["programs.bmitzvah.equity_class"] == (
+        f"B'mitzvah: its equity class (FFP) is also used by programs of another pool; {POOL_WORDS}"
+    )
+
+
+def test_a_legacy_round_1_table_that_isnt_its_class_warns() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "programs.adult_weekend.r1_table": "camp",
+        },
+    )
+    assert _mismatch(rules)["programs.adult_weekend.equity_class"] == (
+        "Adult weekend: its Round 1 table isn't its equity class's (Weekends)"
+    )
+
+
+def test_a_legacy_appeal_table_that_isnt_its_class_warns() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "round2.program_tables.adult_weekend": "camp",
+        },
+    )
+    assert _mismatch(rules)["programs.adult_weekend.equity_class"] == (
+        "Adult weekend: its appeal caps table isn't its equity class's (Weekends)"
+    )
+
+
+def test_a_minimum_only_legacy_program_is_not_a_mismatch() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.teen.r1_table": "camp",
+            "round2.program_tables.teen": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "programs.family_camp.equity_class": "family",
+        },
+    )
+    assert _mismatch(rules) == {}  # adult_weekend and family_school route to None: the "minimum only" pill says it
+
+
+def test_an_ag_price_that_differs_from_its_parents_warns() -> None:
+    tuition = {**fictional_rules_json()["cost"]["tuition"], "1000199": "1900"}
+    rules = with_levers(
+        fictional_rules(),
+        {"programs.summer.session_cm_ids": [1000101, 1000102, 1000199], "cost.tuition": tuition},
+    )
+    context = ValidationContext(
+        sessions=[
+            SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101, name="AG Session 2"),
+            SessionRef(cm_id=1000101, name="Session 2"),
+        ]
+    )
+    issue = next(i for i in validate_rules(rules, context).warnings if i.code == "ag_price_differs")
+    assert issue.message == (
+        "AG Session 2 has its own tuition ($1,900), different from its parent Session 2's ($2,000); "
+        "AG sessions use their parent's price on screen"
+    )
+    assert (issue.section, issue.path, issue.session_cm_ids) == ("cost", "cost.tuition.1000199", [1000199])
+
+
+def test_an_ag_price_equal_to_its_parents_or_with_no_parent_does_not_warn() -> None:
+    """Pin: the warning needs an AG session with a parent whose own price differs."""
+    tuition = fictional_rules_json()["cost"]["tuition"]
+    equal = with_levers(fictional_rules(), {"cost.tuition": {**tuition, "1000199": "2000"}})
+    with_parent = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101)])
+    assert "ag_price_differs" not in validate_rules(equal, with_parent).codes()
+    differs = with_levers(fictional_rules(), {"cost.tuition": {**tuition, "1000199": "1900"}})
+    orphan = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="ag")])
+    assert "ag_price_differs" not in validate_rules(differs, orphan).codes()
+    assert "ag_price_differs" not in validate_rules(differs).codes()
 
 
 def test_an_id_that_isnt_a_session_this_season_warns() -> None:

@@ -20,7 +20,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.money import dollars, pct_of
-from bunking.financial_aid.rules.groups import group_of_class
+from bunking.financial_aid.rules.groups import claims_sessions, group_of_class, group_of_pool
 from bunking.financial_aid.rules.lookup import (
     Round2TableNotListedError,
     is_dependents_criterion,
@@ -546,6 +546,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                     f"{label}: session type '{session_type}' is also in {rules.programs[types[session_type]].label}",
                 )
             types[session_type] = key
+    _check_groups(rules, issues)
     if context is None:
         return
     if not context.sessions:
@@ -576,6 +577,40 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                 f"{name} is in no group, so it can't get aid. Move it to a group, or save it under Not open to aid.",
                 [ref.cm_id],
             )
+
+
+def _check_groups(rules: AidRules, issues: _Issues) -> None:
+    """Spec §9.3: until #3048 collapses programs into groups, a program's pool, equity class and award table must
+    stay one group. One warning per open, session-claiming program, the first drift found."""
+    live = {k: p for k, p in rules.programs.items() if p.open_to_aid and claims_sessions(p)}
+    words = "a program's pool, equity class and award table are one group."
+    for key, program in live.items():
+        others = [p for k, p in live.items() if k != key]
+        cls, pool = program.equity_class, program.budget_pool
+        group = group_of_pool(rules, pool)
+        group_words = group.label if group is not None else "no group"
+        message: str | None = None
+        if (
+            cls is not None
+            and pool is not None
+            and any(p.budget_pool == pool and p.equity_class not in (None, cls) for p in others)
+        ):
+            message = f"{program.label}: its pool ({group_words}) also has programs of another equity class; {words}"
+        elif cls is not None and any(p.equity_class == cls and p.budget_pool != pool for p in others):
+            message = (
+                f"{program.label}: its equity class ({_class_words(rules, cls)}) "
+                f"is also used by programs of another pool; {words}"
+            )
+        elif not program.table_from_equity_class and program.r1_table is not None and program.r1_table != cls:
+            message = f"{program.label}: its Round 1 table isn't its equity class's ({group_words})"
+        elif (
+            not program.table_from_equity_class
+            and rules.round2.program_tables.get(key) is not None
+            and rules.round2.program_tables.get(key) != cls
+        ):
+            message = f"{program.label}: its appeal caps table isn't its equity class's ({group_words})"
+        if message is not None:
+            issues.warn("programs", "group_mismatch", f"programs.{key}.equity_class", message)
 
 
 def _session_names(ids: Sequence[int], context: ValidationContext | None) -> str:
@@ -651,6 +686,22 @@ def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Iss
         else:
             code, path, message = "price_missing", "cost", f"{label}: no price for {names}"
         issues.warn("cost", code, path, message, missing)
+    if context is not None:
+        session_names = {r.cm_id: r.name for r in context.sessions if r.name}
+        for ref in context.sessions:
+            if ref.session_type != "ag" or not ref.parent_id:
+                continue
+            own, parent = rules.cost.tuition.get(ref.cm_id), rules.cost.tuition.get(ref.parent_id)
+            if own is not None and parent is not None and own != parent:
+                issues.warn(
+                    "cost",
+                    "ag_price_differs",
+                    f"cost.tuition.{ref.cm_id}",
+                    f"{session_names.get(ref.cm_id) or f'Session {ref.cm_id}'} has its own tuition ({dollars(own)}), different "
+                    f"from its parent {session_names.get(ref.parent_id) or f'session {ref.parent_id}'}'s ({dollars(parent)}); "
+                    "AG sessions use their parent's price on screen",
+                    [ref.cm_id],
+                )
     if context is not None and context.sessions:
         known = {r.cm_id for r in context.sessions}
         unknown = [s for s in dict.fromkeys(rules.cost.not_running_session_cm_ids) if s not in known]
