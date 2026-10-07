@@ -2970,6 +2970,10 @@ export type CostOverrideOut = {
    * Actor
    */
   actor: string
+  /**
+   * At
+   */
+  at?: string | null
 }
 
 /**
@@ -5991,6 +5995,14 @@ export type GridRowOut = {
    */
   appeal_refusal?: string | null
   cost_override?: CostOverrideOut | null
+  /**
+   * Rules Cost
+   */
+  rules_cost?: number | null
+  /**
+   * Rules Cost From
+   */
+  rules_cost_from?: 'catalog' | 'per_person' | null
   /**
    * Included
    */
