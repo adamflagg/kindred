@@ -145,13 +145,13 @@ def test_only_catalog_priced_programs_are_judged() -> None:
                 "1000104": "5000",
                 "1000301": "3000",
                 "1000401": "900",
-                "1000201": "50",
-                "1000501": "50",
+                "1000201": "9000",
+                "1000501": "9000",
             },
         },
     )
-    assert "Family" not in _bind_notes(rules)["award_tables.camp.tiers.6"]
-    assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("Camp table, tier 6: Summer at $4,000")
+    rules = with_lever(rules, "award_tables.camp.tiers.6.r1_pct", "1")
+    assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("Camp table, tier 6: Quest at $6,000")
 
 
 def test_notes_come_in_numeric_tier_order() -> None:
