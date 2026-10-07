@@ -29,6 +29,8 @@ export const queryKeys = {
   allSessions: (year: number) => ['all-sessions', year] as const,
   /** The season's session names (Camperships' Season tabs; Decision 28). Not under the aid prefix: aid writes don't move it. */
   campSessionNames: (year: number) => ['camp-sessions', 'names', year] as const,
+  /** The Rules card's session catalog (type, parent, date, order): `camp-sessions`, so a completed sync refreshes it. */
+  campSessionCatalog: (year: number) => ['camp-sessions', 'catalog', year] as const,
   allSessionsList: (year: number) => ['sessions', 'list', year] as const,
   session: (id: string) => ['session', id] as const,
   sessionGroups: (year: number) => ['session-groups', year] as const,
@@ -511,6 +513,11 @@ export const queryKeys = {
 
   // Weekend lodging (family camp + adult weekends)
   weekendSessions: (year: number) => ['weekend-sessions', year] as const,
+  /**
+   * The lodging board's cancelled weekends (`lodging_session_status`), read by the Camperships Rules card's muted tag.
+   * Under `weekend-sessions`, so the one writer's `invalidateLodgingRegistryQueries` refreshes it.
+   */
+  weekendSessionsCancelled: (year: number) => ['weekend-sessions', year, 'cancelled'] as const,
   /** The lander's single batched read: every weekend in a year, with counts. */
   weekendSummary: (year: number) => ['weekend-summary', year] as const,
   /**
