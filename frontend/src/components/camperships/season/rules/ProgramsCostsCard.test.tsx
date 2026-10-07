@@ -1,11 +1,13 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ApiAidValidationIssue } from '../../../../types/api-types'
+import type { ApiAidRulesDraft, ApiAidValidationIssue } from '../../../../types/api-types'
 import { ProgramsCostsCard, combinedStatus, type ProgramsCostsCardProps } from './ProgramsCostsCard'
+import { ProgramsCostsEditor } from './ProgramsCostsEditor'
 import { CATALOG, GROUPS, pcDoc } from './programsCostsFixtures'
 import type { ProgramsCostsDoc } from './programsCostsModel'
+import { rulesDraft } from './rulesFixtures'
 import type { StatusWords } from './rulesModel'
 
 // jsdom measures every height as 0: the flow is mocked to one column, as Task 10.3's last test pins for the real cut.
@@ -14,6 +16,12 @@ vi.mock('./useFlowColumns', () => ({
     ref: { current: null },
     cut: (heights: number[]) => [heights.map((_, index) => ({ index, continued: false }))],
   }),
+}))
+
+const writes = vi.hoisted(() => ({ send: vi.fn(), fresh: vi.fn() }))
+vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
+  useAidSaveRulesSections: () => ({ mutateAsync: writes.send, isPending: false }),
+  useFreshAidRulesDraft: () => writes.fresh,
 }))
 
 const wrap = (d: ProgramsCostsDoc) => ({
@@ -145,5 +153,138 @@ describe('ProgramsCostsCard', () => {
       'Draft · 2 changes'
     )
     expect(combinedStatus(words('Locked'), words('In effect')).pill).toBe('In effect')
+  })
+})
+
+/** The rules draft as the editor opens on it: the fixture's programs and cost, each with a fingerprint. */
+function editDraft(): ApiAidRulesDraft {
+  const base = rulesDraft()
+  const d = pcDoc()
+  return {
+    ...base,
+    document: {
+      ...base.document,
+      programs: d.programs,
+      cost: d.cost,
+      budget: { ...base.document.budget, pools: d.pools },
+    },
+    sections: base.sections.map((sec) =>
+      sec.section === 'programs' || sec.section === 'cost'
+        ? { ...sec, fingerprint: `fp-${sec.section}` }
+        : sec
+    ),
+  }
+}
+
+function mockSave() {
+  writes.send.mockReset().mockResolvedValue(editDraft())
+  writes.fresh.mockReset().mockImplementation(() => Promise.resolve(editDraft()))
+  return writes.send
+}
+
+function renderEditor(over: { cancelled?: ReadonlySet<number>; onDone?: () => void } = {}) {
+  const editor = (
+    <ProgramsCostsEditor
+      draft={editDraft()}
+      groups={GROUPS}
+      sessions={CATALOG}
+      cancelled={over.cancelled ?? new Set<number>()}
+      onDone={over.onDone ?? vi.fn()}
+    />
+  )
+  return render(<ProgramsCostsCard {...props({ editor })} />)
+}
+
+describe('ProgramsCostsEditor', () => {
+  it('lists every session, never pre-checks Not running, and offers only reachable groups', () => {
+    mockSave()
+    renderEditor({ cancelled: new Set([1000202]) })
+    expect(
+      screen
+        .getAllByRole('checkbox', { checked: true })
+        .map((c) => c.closest('[data-testid]')?.getAttribute('data-testid'))
+    ).toEqual(['pc-row-1000106']) // the stored list only: the lodging board's flag is a tag, not a check
+    const group = within(screen.getByTestId('pc-row-1000202')).getByRole('combobox')
+    expect(
+      within(group).getByRole('option', { name: 'School (no program prices this kind here)' })
+    ).toBeDisabled()
+  })
+
+  it('keeps Save off until something is typed, then sends only the section it changed, with its fingerprint', async () => {
+    const send = mockSave()
+    renderEditor()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.type(
+      within(screen.getByTestId('pc-row-1000202')).getByLabelText('Standard'),
+      '450'
+    )
+    await userEvent.type(within(screen.getByTestId('pc-row-1000202')).getByLabelText('Infant'), '0')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith({
+        base_version: 4,
+        expected_fingerprints: { cost: 'fp-cost' }, // prices only: programs keeps its approval (Review Focus 8)
+        contents: {
+          cost: expect.objectContaining({
+            family_rates: expect.arrayContaining([
+              { session_cm_id: 1000202, standard: '450', infant: '0' },
+            ]),
+          }),
+        },
+      })
+    )
+  })
+
+  it('sends both sections, with both fingerprints, when a group and a price change together', async () => {
+    const send = mockSave()
+    renderEditor()
+    await userEvent.selectOptions(
+      within(screen.getByTestId('pc-row-1000110')).getByRole('combobox'),
+      'Not open to aid'
+    )
+    const tuition = within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')
+    await userEvent.clear(tuition)
+    await userEvent.type(tuition, '6895')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expected_fingerprints: { programs: 'fp-programs', cost: 'fp-cost' },
+          contents: { programs: expect.any(Object), cost: expect.any(Object) },
+        })
+      )
+    )
+  })
+
+  it('shows the fix line and marks the box when a per-person pair is half typed', async () => {
+    mockSave()
+    renderEditor()
+    await userEvent.type(
+      within(screen.getByTestId('pc-row-1000202')).getByLabelText('Standard'),
+      '450'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(
+      screen.getByText(/A per-person price needs both Standard and Infant/)
+    ).toBeInTheDocument()
+    expect(within(screen.getByTestId('pc-row-1000202')).getByLabelText('Infant')).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  it('disables a checked row’s boxes', async () => {
+    mockSave()
+    renderEditor()
+    await userEvent.click(within(screen.getByTestId('pc-row-1000101')).getByRole('checkbox'))
+    expect(within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')).toBeDisabled()
+  })
+
+  it('Esc cancels', async () => {
+    mockSave()
+    const onDone = vi.fn()
+    renderEditor({ onDone })
+    await userEvent.keyboard('{Escape}')
+    expect(onDone).toHaveBeenCalledWith(null)
   })
 })

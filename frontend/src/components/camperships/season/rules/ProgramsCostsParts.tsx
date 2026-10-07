@@ -86,12 +86,24 @@ export function FormulaLine({
 }
 
 /** The row's name, with its muted tags: the program (where it adds something), minimum only, the lodging board's word. */
-export function RowName({ row, tags = true }: { row: CardRow; tags?: boolean }) {
+export function RowName({
+  row,
+  minimum = true,
+  off = false,
+}: {
+  row: CardRow
+  /** The editor leaves "minimum only" to the read view. */
+  minimum?: boolean
+  /** A row checked Not running reads muted and struck through. */
+  off?: boolean
+}) {
   return (
-    <span className="min-w-0 flex-1">
+    <span className={`min-w-0 flex-1 ${off ? 'text-muted-foreground line-through' : ''}`}>
       {row.session.name}
-      {tags && row.tag !== null && <span className={`${CS_META} ml-1.5`}>{row.tag}</span>}
-      {tags && row.minimumOnly && <span className={`${CS_PILL.muted} ml-1.5`}>minimum only</span>}
+      {row.tag !== null && <span className={`${CS_META} ml-1.5`}>{row.tag}</span>}
+      {minimum && row.minimumOnly && (
+        <span className={`${CS_PILL.muted} ml-1.5`}>minimum only</span>
+      )}
       {row.cancelledOnBoard && (
         <span className={`${CS_META} ml-1.5`}>cancelled on the lodging board</span>
       )}
