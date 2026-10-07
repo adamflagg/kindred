@@ -38,6 +38,16 @@ const WAS = 'ml-1 text-amber-700 dark:text-amber-400'
 
 const check = (on: boolean) => (on ? '✓' : '—')
 
+/** Whether a program claims any session, by id or by type: the server's `claims_sessions` (rules/validation.py). */
+function claimsSessions(program: unknown): boolean {
+  if (typeof program !== 'object' || program === null) return false
+  const listed = (key: string) => {
+    const value: unknown = (program as Record<string, unknown>)[key]
+    return Array.isArray(value) && value.length > 0
+  }
+  return listed('session_cm_ids') || listed('session_types')
+}
+
 /** A read-only column's head: its words, then "read-only" under them (§6.2 E). */
 function RoTh({
   children,
@@ -225,7 +235,8 @@ function ProgramsTable({ content, names, issues, control }: TablesProps) {
       <tbody>
         {programRows(content, issues, names)
           // Read, a program that claims no sessions has nothing to show; the editor keeps it, so it can be given one.
-          .filter((row) => control !== undefined || row.sessions.length > 0)
+          // A session type claims sessions too (validation.py `claims_sessions`), though this table shows only ids.
+          .filter((row) => control !== undefined || claimsSessions(content[row.key]))
           .map((row) => (
             <tr key={row.key}>
               <td className={`${TD_WRAP} font-bold`}>

@@ -345,6 +345,22 @@ describe('the programs table (spec §6.2 E.8)', () => {
     ).toBeInTheDocument()
   })
 
+  it('keeps a program that claims its sessions by session type when read (validation.py claims_sessions)', () => {
+    const content = {
+      ...PROGRAMS,
+      typed: {
+        ...PROGRAMS.weekend,
+        label: 'Typed program',
+        session_cm_ids: [],
+        session_types: ['main'],
+      },
+    }
+    tables({ section: 'programs', content })
+    expect(
+      within(screen.getByTestId('programs-table')).getByText('Typed program')
+    ).toBeInTheDocument()
+  })
+
   it('wraps the Sessions cell, its pills in a flex-wrap row, and the program name, so the table fits at 1100', () => {
     tables({ section: 'programs', content: PROGRAMS })
     const summer = rowOf(screen.getByTestId('programs-table'), 'Summer')
