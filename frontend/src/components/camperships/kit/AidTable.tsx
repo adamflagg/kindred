@@ -109,6 +109,11 @@ export interface AidColumn<Row> {
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
+  /**
+   * A line drawn in this column's footer cell when it has no `total` (spec §12.2: "$X outside the
+   * budget" in Needs attention's footer). Null draws nothing.
+   */
+  readonly footerNote?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly searchable?: boolean | undefined
   /** False leaves the column out of the CSV download: an action column has nothing to export (M16). */
   readonly inCsv?: boolean | undefined
@@ -896,6 +901,7 @@ export function AidTable<Row>({
                       )}
                     >
                       {index === 0 && footerLabel ? footerLabel(visible) : null}
+                      {!c.total && c.footerNote ? c.footerNote(visible) : null}
                       {c.total &&
                         (onOpenTotal ? (
                           <button
