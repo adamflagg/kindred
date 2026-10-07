@@ -956,3 +956,14 @@ def test_a_kept_options_results_carry_no_projection() -> None:
     _stub()
     body = _client().get("/api/financial-aid/scenarios/2027").json()
     assert body["options"][0]["results"]["projection"] is None
+
+
+def test_the_draft_save_forwards_the_opened_version() -> None:
+    service = _stub()
+    client = _client()
+    assert (
+        client.put("/api/financial-aid/scenarios/2027/draft", json={**DOC_BODY, "opened_version": 3}).status_code == 200
+    )
+    assert service.save_draft.await_args.kwargs == {"opened_version": 3}
+    client.put("/api/financial-aid/scenarios/2027/draft", json=DOC_BODY)
+    assert service.save_draft.await_args.kwargs == {"opened_version": None}

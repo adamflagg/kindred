@@ -163,6 +163,13 @@ class DocumentIn(BaseModel):
     document: AidRules
 
 
+class SaveDraftIn(DocumentIn):
+    """A released setting. `opened_version`: the rules version the screen showed when staff opened it; the first save
+    of a draft records it as the version the draft is built on (the version in effect now when absent)."""
+
+    opened_version: int | None = None
+
+
 class ViewIn(DocumentIn):
     """A read of a document on the frozen season, optionally on a request set (D138): the "through the Round 1
     deadline" switch or the "received through" date, never both. Off by default."""

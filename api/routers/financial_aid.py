@@ -148,7 +148,6 @@ from api.schemas.financial_aid_scenarios import (
     CommitteeOut,
     CompareColumnOut,
     CompareOut,
-    DocumentIn,
     DraftOut,
     EvaluateIn,
     EvaluateOut,
@@ -170,6 +169,7 @@ from api.schemas.financial_aid_scenarios import (
     RequestSetOut,
     ResultsOut,
     Round2CompareOut,
+    SaveDraftIn,
     SensitivityOut,
     SnapshotOut,
     TierCompareOut,
@@ -1511,10 +1511,12 @@ async def evaluate_scenario(year: _Year, body: EvaluateIn, user: AuthUser = _RUL
 
 
 @router.put("/scenarios/{year}/draft", response_model=DraftOut)
-async def save_scenario_draft(year: _Year, body: DocumentIn, user: AuthUser = _RULES) -> DraftOut:
+async def save_scenario_draft(year: _Year, body: SaveDraftIn, user: AuthUser = _RULES) -> DraftOut:
     """A released setting: your draft becomes this document, recorded in the trail (D38)."""
     try:
-        return _scenario_draft_out(await _scenarios().save_draft(year, body.document, user.email))
+        return _scenario_draft_out(
+            await _scenarios().save_draft(year, body.document, user.email, opened_version=body.opened_version)
+        )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 

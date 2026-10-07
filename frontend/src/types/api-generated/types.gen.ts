@@ -3815,13 +3815,6 @@ export type DevelopmentSourceOut = {
 }
 
 /**
- * DocumentIn
- */
-export type DocumentIn = {
-  document: AidRulesInput
-}
-
-/**
  * DraftOut
  */
 export type DraftOut = {
@@ -15056,6 +15049,20 @@ export type SatisfactionResponse = {
 }
 
 /**
+ * SaveDraftIn
+ *
+ * A released setting. `opened_version`: the rules version the screen showed when staff opened it; the first save
+ * of a draft records it as the version the draft is built on (the version in effect now when absent).
+ */
+export type SaveDraftIn = {
+  document: AidRulesInput
+  /**
+   * Opened Version
+   */
+  opened_version?: number | null
+}
+
+/**
  * SavedScenario
  *
  * Represents a saved bunking scenario
@@ -25303,7 +25310,7 @@ export type EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponse =
   EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponses[keyof EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponses]
 
 export type SaveScenarioDraftApiFinancialAidScenariosYearDraftPutData = {
-  body: DocumentIn
+  body: SaveDraftIn
   path: {
     /**
      * Year
