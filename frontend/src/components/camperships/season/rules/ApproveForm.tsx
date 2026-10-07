@@ -73,11 +73,14 @@ const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message 
 export function ApproveForm({
   initial,
   onDone,
+  onBusyChange,
 }: {
   /** The section open when the form opened; read once, so browsing the list never re-ticks. */
   initial: ApiAidRulesSection
   /** The approval's outcome, or null when cancelled. */
   onDone: (approved: Approved | null) => void
+  /** Told when a submit starts and ends, so the page can keep the panel open through a tab switch. */
+  onBusyChange?: (busy: boolean) => void
 }) {
   const approve = useAidApproveRules()
   const sessions = useAidSessionNames(useYear())
@@ -97,6 +100,11 @@ export function ApproveForm({
     }
   }, [])
   const [error, setError] = useState<string | null>(null)
+  const submitting = busy || approve.isPending
+  useEffect(() => {
+    onBusyChange?.(submitting)
+    return () => onBusyChange?.(false)
+  }, [submitting, onBusyChange])
   // Esc is Cancel (not while approving): the form is open from the first render, loaded or not.
   useOverlayEscape(true, () => {
     if (!busy && !approve.isPending) onDone(null)

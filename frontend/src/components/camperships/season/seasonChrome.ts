@@ -13,6 +13,11 @@ export interface SeasonChrome {
   readonly approving: boolean
   /** Finance, live, and a rules draft with a section waiting. */
   readonly canApprove: boolean
+  /** An editor (a Rules card, the plan) is open: Approve… waits, so it never approves the old copy of unsaved text. */
+  readonly editing: boolean
+  readonly setEditing: (on: boolean) => void
+  /** The Approve form is mid-submit: a tab switch leaves its panel open so the result notice lands. */
+  readonly setApproveBusy: (busy: boolean) => void
   readonly openApprove: () => void
   readonly closeApprove: () => void
   /** The section the panel checks first (the tab's: Rules' ?section=, Rounds & budget's budget). */
@@ -24,6 +29,9 @@ const NONE: SeasonChrome = {
   setNotice: () => undefined,
   approving: false,
   canApprove: false,
+  editing: false,
+  setEditing: () => undefined,
+  setApproveBusy: () => undefined,
   openApprove: () => undefined,
   closeApprove: () => undefined,
   section: 'budget',

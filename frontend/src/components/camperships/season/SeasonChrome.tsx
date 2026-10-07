@@ -19,9 +19,12 @@ import { SeasonChromeContext, useSeasonChrome, type SeasonChrome } from './seaso
  */
 export function SeasonChromeProvider({
   section,
+  tab,
   children,
 }: {
   section: ApiAidRulesSection
+  /** The Season tab showing: a change closes an open Approve panel unless it is mid-submit. */
+  tab: string
   children: ReactNode
 }) {
   const year = useYear()
@@ -31,6 +34,14 @@ export function SeasonChromeProvider({
   const draft = useAidRulesDraft({ enabled: finance })
   const [noticeFor, setNoticeFor] = useState<{ year: number; text: string } | null>(null)
   const [approvingFor, setApprovingFor] = useState<number | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [approveBusy, setApproveBusy] = useState(false)
+  // Leaving a tab closes approve mode (the panel would be rebuilt, losing its ticks and text), except mid-submit.
+  const [lastTab, setLastTab] = useState(tab)
+  if (lastTab !== tab) {
+    setLastTab(tab)
+    if (!approveBusy) setApprovingFor(null)
+  }
   const live = finance && asOf.kind !== 'past'
   const canApprove = live && draft.data !== undefined && draftSections(draft.data).length > 0
   const value = useMemo(
@@ -41,6 +52,9 @@ export function SeasonChromeProvider({
       // reports, and the panel must stay to show what it did. It closes on its own Done or Cancel.
       approving: approvingFor === year && live,
       canApprove,
+      editing,
+      setEditing,
+      setApproveBusy,
       openApprove: () => {
         setNoticeFor(null)
         setApprovingFor(year)
@@ -48,15 +62,15 @@ export function SeasonChromeProvider({
       closeApprove: () => setApprovingFor(null),
       section,
     }),
-    [noticeFor, approvingFor, year, live, canApprove, section]
+    [noticeFor, approvingFor, year, live, canApprove, editing, section]
   )
   return <SeasonChromeContext.Provider value={value}>{children}</SeasonChromeContext.Provider>
 }
 
-/** "Approve…" on the tab bar's right (spec §4: cs-btn2). Hidden while the panel is open. */
+/** "Approve…" on the tab bar's right (spec §4: cs-btn2). Hidden while the panel is open or an editor is. */
 export function ApproveButton() {
-  const { canApprove, approving, openApprove } = useSeasonChrome()
-  if (!canApprove || approving) return null
+  const { canApprove, approving, editing, openApprove } = useSeasonChrome()
+  if (!canApprove || approving || editing) return null
   return (
     <button type="button" className={CS_BTN2} onClick={openApprove}>
       Approve…
@@ -67,12 +81,13 @@ export function ApproveButton() {
 /** The Approve panel, at the top of the tab's content (Rules: under its lead line). */
 export function ApprovePanel() {
   const year = useYear()
-  const { approving, closeApprove, setNotice, section } = useSeasonChrome()
+  const { approving, closeApprove, setNotice, setApproveBusy, section } = useSeasonChrome()
   if (!approving) return null
   return (
     <ApproveForm
       key={year}
       initial={section}
+      onBusyChange={setApproveBusy}
       onDone={(approved) => {
         closeApprove()
         if (approved !== null) setNotice(approvedNotice(approved))

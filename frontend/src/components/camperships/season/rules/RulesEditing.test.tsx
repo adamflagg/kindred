@@ -79,7 +79,7 @@ function Page() {
   const [params] = useSearchParams()
   const section = params.get('section')
   return (
-    <SeasonChromeProvider section={isRulesSection(section) ? section : 'budget'}>
+    <SeasonChromeProvider section={isRulesSection(section) ? section : 'budget'} tab="rules">
       <ApproveButton />
       <RulesTab />
     </SeasonChromeProvider>

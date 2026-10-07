@@ -61,7 +61,7 @@ function Where() {
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <SeasonChromeProvider section="income">
+      <SeasonChromeProvider section="income" tab="rules">
         <RulesTab />
       </SeasonChromeProvider>
       <Where />

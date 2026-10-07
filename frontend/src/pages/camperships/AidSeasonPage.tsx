@@ -90,7 +90,7 @@ export default function AidSeasonPage() {
   )
 
   return (
-    <SeasonChromeProvider section={approveSection}>
+    <SeasonChromeProvider section={approveSection} tab={slug}>
       <div className="space-y-3 print:font-sans">
         {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
         <div className={`space-y-3 ${onScenarios ? 'print:hidden' : ''}`}>

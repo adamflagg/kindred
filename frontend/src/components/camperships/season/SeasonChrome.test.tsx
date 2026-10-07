@@ -40,14 +40,54 @@ function Notice() {
   )
 }
 
-function renderChrome(path = '/aid/season/rounds-budget') {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <SeasonChromeProvider section="budget">
+function Edit() {
+  const { setEditing } = useSeasonChrome()
+  return (
+    <>
+      <button type="button" onClick={() => setEditing(true)}>
+        Start editing
+      </button>
+      <button type="button" onClick={() => setEditing(false)}>
+        Stop editing
+      </button>
+    </>
+  )
+}
+
+function Busy() {
+  const { setApproveBusy } = useSeasonChrome()
+  return (
+    <button type="button" onClick={() => setApproveBusy(true)}>
+      Go busy
+    </button>
+  )
+}
+
+function tree(tab: string) {
+  return (
+    <MemoryRouter initialEntries={['/aid/season/rounds-budget']}>
+      <SeasonChromeProvider section="budget" tab={tab}>
         <ApproveButton />
         <ApprovePanel />
         <SeasonNotice />
         <Notice />
+        <Edit />
+        <Busy />
+      </SeasonChromeProvider>
+    </MemoryRouter>
+  )
+}
+
+function renderChrome(path = '/aid/season/rounds-budget') {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <SeasonChromeProvider section="budget" tab="rounds-budget">
+        <ApproveButton />
+        <ApprovePanel />
+        <SeasonNotice />
+        <Notice />
+        <Edit />
+        <Busy />
       </SeasonChromeProvider>
     </MemoryRouter>
   )
@@ -109,16 +149,7 @@ describe('SeasonChrome (spec §4)', () => {
       ...d,
       sections: d.sections.map((s) => ({ ...s, status: { ...s.status, state: 'approved' } })),
     }
-    view.rerender(
-      <MemoryRouter initialEntries={['/aid/season/rounds-budget']}>
-        <SeasonChromeProvider section="budget">
-          <ApproveButton />
-          <ApprovePanel />
-          <SeasonNotice />
-          <Notice />
-        </SeasonChromeProvider>
-      </MemoryRouter>
-    )
+    view.rerender(tree('rounds-budget'))
     expect(screen.getByTestId('approve-form')).toBeInTheDocument()
   })
 
@@ -154,5 +185,32 @@ describe('SeasonChrome (spec §4)', () => {
     }
     renderChrome()
     expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+  })
+
+  // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
+  // editor's text.
+  it('hides Approve… while an editor is open and brings it back when the editor closes', async () => {
+    renderChrome()
+    await userEvent.click(screen.getByRole('button', { name: 'Start editing' }))
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Stop editing' }))
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+  })
+
+  // Slice 2: leaving Rules closed approve mode; the rebuilt form would lose its ticks and "Approved by" text.
+  it('closes an open panel when the Season tab changes', async () => {
+    const view = renderChrome()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    expect(screen.getByTestId('approve-form')).toBeInTheDocument()
+    view.rerender(tree('history'))
+    expect(screen.queryByTestId('approve-form')).toBeNull()
+  })
+
+  it('keeps the panel on a tab change while it is submitting, so its notice lands', async () => {
+    const view = renderChrome()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Go busy' }))
+    view.rerender(tree('history'))
+    expect(screen.getByTestId('approve-form')).toBeInTheDocument()
   })
 })
