@@ -95,6 +95,8 @@ class HistoryRowOut(BaseModel):
     household_name: str | None  # None when the household has no record this season (the grid would say "Household N")
     camper_name: str | None  # None for a family-level row (an application, a household's own request)
     against_parent: HistoryParentDiffOut | None  # only on a row that created a rules version with a parent (H4)
+    request_id: str | None = None  # the request the row is about (the camper link's #request-<id>); None otherwise
+    session_cm_id: int | None = None  # that request's session (the compact table's Session); None when unmatched
 
 
 class HistoryOperationDetailOut(BaseModel):

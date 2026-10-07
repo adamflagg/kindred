@@ -883,3 +883,48 @@ async def test_a_registrar_never_sees_an_approvals_effect() -> None:
         3,
         ["aid_decisions"] * 3,
     )
+
+
+SESSION_ROWS = (
+    SimpleNamespace(
+        id=EMMA, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_EMMA, session_cm_id=1000102
+    ),
+    SimpleNamespace(
+        id=SAMUEL, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_SAMUEL, session_cm_id=0
+    ),
+    SimpleNamespace(
+        id=LIAM, application=APP_GARCIA, household_cm_id=GARCIA, person_cm_id=P_LIAM, session_cm_id=1000103
+    ),
+)
+WITH_SESSIONS = (SESSION_ROWS, APPLICATION_ROWS, CORRECTION_ROWS, GRANT_ROWS, LINK_ROWS)
+
+
+def test_a_request_subject_carries_its_session_and_an_unmatched_one_reads_zero() -> None:
+    about = subjects_from(*WITH_SESSIONS).of
+    assert about("aid_decisions", f"{EMMA}:1") == Subject(JOHNSON, P_EMMA, EMMA, 1000102)
+    assert about("aid_decisions", f"{SAMUEL}:1") == Subject(JOHNSON, P_SAMUEL, SAMUEL, 0)
+    assert about("aid_applications", APP_JOHNSON) == Subject(JOHNSON, 0, "", 0)
+
+
+def test_a_season_read_without_session_ids_still_builds_subjects() -> None:
+    """Regression guard: REQUEST_ROWS carry no session_cm_id (an older read); they read as unmatched."""
+    assert subjects_from(*SEASON).of("aid_decisions", f"{EMMA}:1") == Subject(JOHNSON, P_EMMA, EMMA, 0)
+
+
+@pytest.mark.asyncio
+async def test_each_opened_row_names_its_request_and_session_and_a_family_row_names_neither() -> None:
+    """§9.8: the compact table links the camper to #request-<id> and names the session."""
+    family = _row("f1", "aid_applications", APP_JOHNSON, OP_T, after={"household_cm_id": JOHNSON})
+    reads = _Reads(*_tick(), family, subjects=WITH_SESSIONS)
+    detail = await SeasonHistoryService(reads).operation(2027, OP_T, rules=False)
+    by_id = {r.entity_id: r for r in detail.rows}
+    assert (by_id[f"{EMMA}:1"].request_id, by_id[f"{EMMA}:1"].session_cm_id) == (EMMA, 1000102)
+    assert (by_id[f"{SAMUEL}:1"].request_id, by_id[f"{SAMUEL}:1"].session_cm_id) == (SAMUEL, None)
+    assert (by_id[APP_JOHNSON].request_id, by_id[APP_JOHNSON].session_cm_id) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_rules_row_names_no_request_and_no_session() -> None:
+    detail = await SeasonHistoryService(_Reads(_rules_save())).operation(2027, OP_R, rules=True)
+    (row,) = detail.rows
+    assert (row.request_id, row.session_cm_id) == (None, None)

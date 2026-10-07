@@ -157,7 +157,7 @@ async def test_the_subject_reads_are_five_light_season_lists() -> None:
     assert {q["filter"] for q in queries} == {"year = 2027"}
     assert sorted(q["fields"] for q in queries) == sorted(
         [
-            "id,application,household_cm_id,person_cm_id",
+            "id,application,household_cm_id,person_cm_id,session_cm_id",
             "id,household_cm_id",  # applications
             "id,application",
             "id,household_cm_id",  # grants

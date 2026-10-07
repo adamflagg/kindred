@@ -108,6 +108,7 @@ class Subject:
     household_cm_id: int
     person_cm_id: int  # 0: the row is about the family (an application, a household's own request)
     request_id: str  # "" when the row names no request
+    session_cm_id: int = 0  # the request's session; 0 when unmatched or the row names no request
 
 
 @dataclass(frozen=True)
@@ -116,7 +117,7 @@ class Subjects:
     household links. A row is matched by its entity and entity id alone, so the list (which reads no JSON) and the
     opened line agree. A rules-class collection is in none of the branches: a rules row is about no one."""
 
-    requests: Mapping[str, tuple[int, int]]  # request id -> (household, person)
+    requests: Mapping[str, tuple[int, int, int]]  # request id -> (household, person, session)
     applications: Mapping[str, int]  # application id -> household
     corrections: Mapping[str, str]  # casework correction id -> application id
     grants: Mapping[str, int]  # grant id -> household (a commitment's placement is keyed by its grant)
@@ -127,7 +128,7 @@ class Subjects:
             request_id = entity_id.split(":", 1)[0]
             found = self.requests.get(request_id)
             if found is not None:
-                return Subject(found[0], found[1], request_id)
+                return Subject(found[0], found[1], request_id, found[2])
         household: int | None
         if entity == AID_APPLICATIONS:
             household = self.applications.get(entity_id)
@@ -156,7 +157,10 @@ def subjects_from(
 ) -> Subjects:
     """The season's five light subject reads (fetch_subject_records) as one lookup."""
     return Subjects(
-        requests={str(r.id): (int(r.household_cm_id), int(r.person_cm_id or 0)) for r in requests},
+        requests={
+            str(r.id): (int(r.household_cm_id), int(r.person_cm_id or 0), int(getattr(r, "session_cm_id", 0) or 0))
+            for r in requests
+        },
         applications={str(a.id): int(a.household_cm_id) for a in applications},
         corrections={str(c.id): str(c.application or "") for c in corrections},
         grants={str(g.id): int(g.household_cm_id) for g in grants},
@@ -341,6 +345,14 @@ def name_text(op: Operation, subjects: Subjects, households: Mapping[int, str], 
 
 def _household_of(subject: Subject | None) -> int | None:
     return subject.household_cm_id if subject is not None else None
+
+
+def _request_of(subject: Subject | None) -> str | None:
+    return (subject.request_id or None) if subject is not None else None
+
+
+def _session_of(subject: Subject | None) -> int | None:
+    return (subject.session_cm_id or None) if subject is not None else None
 
 
 def _name_of(subject: Subject | None, households: Mapping[int, str]) -> str | None:
@@ -647,6 +659,8 @@ class SeasonHistoryService:
                 household_name=_name_of(about[e.id], households),
                 camper_name=_camper_of(about[e.id], persons),
                 against_parent=parents.get(e.id),
+                request_id=_request_of(about[e.id]),
+                session_cm_id=_session_of(about[e.id]),
             )
             for e, before, after in details
         ]

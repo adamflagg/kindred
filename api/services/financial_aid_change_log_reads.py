@@ -33,7 +33,7 @@ _ENTITY: Final = re.compile(r"^aid_[a-z_]+$")
 _OPERATION: Final = re.compile(r"^[a-z0-9]{15}$")
 _LIST_FIELDS: Final = "id,entity,entity_id,action,actor,reason,operation_id,created"
 _SUBJECT_FIELDS: Final = {
-    AID_REQUESTS: "id,application,household_cm_id,person_cm_id",
+    AID_REQUESTS: "id,application,household_cm_id,person_cm_id,session_cm_id",
     AID_APPLICATIONS: "id,household_cm_id",
     AID_APPLICATION_CORRECTIONS: "id,application",
     AID_GRANTS: "id,household_cm_id",

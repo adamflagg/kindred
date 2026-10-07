@@ -6461,6 +6461,14 @@ export type HistoryRowOut = {
    */
   camper_name: string | null
   against_parent: HistoryParentDiffOut | null
+  /**
+   * Request Id
+   */
+  request_id?: string | null
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number | null
 }
 
 /**
