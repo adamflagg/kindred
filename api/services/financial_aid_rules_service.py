@@ -490,13 +490,18 @@ class AidRulesRepository:
     async def fetch_session_refs(self, year: int) -> list[SessionRef]:
         rows = await self._page(
             CAMP_SESSIONS,
-            {"filter": f"year = {int(year)}", "fields": "id,cm_id,session_type,name", "sort": f"cm_id,{STABLE_SORT}"},
+            {
+                "filter": f"year = {int(year)}",
+                "fields": "id,cm_id,session_type,name,parent_id",
+                "sort": f"cm_id,{STABLE_SORT}",
+            },
         )
         return [
             SessionRef(
                 cm_id=int(row.cm_id),
                 session_type=getattr(row, "session_type", None) or None,
                 name=getattr(row, "name", None) or None,
+                parent_id=int(getattr(row, "parent_id", 0) or 0) or None,
             )
             for row in rows
         ]

@@ -385,6 +385,7 @@ async def test_session_refs_come_from_the_seasons_camp_sessions() -> None:
         [
             SimpleNamespace(cm_id=1000101, session_type="main", name="Session A"),
             SimpleNamespace(cm_id=1000201, session_type="", name=""),
+            SimpleNamespace(cm_id=1000103, session_type="ag", name="AG", parent_id=1000101),
         ]
     )
     refs = await AidRulesRepository(pb).fetch_session_refs(2031)
@@ -392,9 +393,11 @@ async def test_session_refs_come_from_the_seasons_camp_sessions() -> None:
     params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
     assert params["filter"] == "year = 2031"
     assert params["sort"].split(",")[-1] == "id"
+    assert "parent_id" in params["fields"]
     assert refs == [
         SessionRef(cm_id=1000101, session_type="main", name="Session A"),
         SessionRef(cm_id=1000201, session_type=None, name=None),
+        SessionRef(cm_id=1000103, session_type="ag", name="AG", parent_id=1000101),
     ]
 
 

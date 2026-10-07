@@ -556,6 +556,19 @@ def test_without_a_context_every_missing_session_is_named_by_its_id() -> None:
     assert "[" not in message
 
 
+def test_an_ag_session_with_a_parent_is_never_listed_as_missing_tuition() -> None:
+    """Spec §8: its parent's line carries the warning. 1000199 is an AG session under 1000101 (priced 2,000)."""
+    rules = with_lever(fictional_rules(), "programs.summer.session_cm_ids", [1000101, 1000102, 1000199])
+    context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
+    assert "tuition_missing" not in validate_rules(rules, context).codes()
+
+
+def test_an_ag_session_with_no_parent_still_needs_its_own_tuition() -> None:
+    rules = with_lever(fictional_rules(), "programs.summer.session_cm_ids", [1000101, 1000102, 1000199])
+    context = _context(SessionRef(cm_id=1000199, session_type="ag"))
+    assert "tuition_missing" in validate_rules(rules, context).codes()
+
+
 def test_a_missing_family_rate_names_the_program_and_the_session() -> None:
     rules = with_lever(fictional_rules(), "cost.family_rates", [])
     issue = next(

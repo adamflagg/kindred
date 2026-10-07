@@ -91,6 +91,15 @@ class SessionRef(BaseModel):
     cm_id: int
     session_type: str | None = None
     name: str | None = None
+    # camp_sessions.parent_id: an AG session's main session (spec §8). None when it has none.
+    parent_id: int | None = None
+
+
+def _ag_children(context: ValidationContext | None) -> frozenset[int]:
+    """AG sessions with a parent: priced at their parent's price, so never listed as missing one (spec §8)."""
+    if context is None:
+        return frozenset()
+    return frozenset(r.cm_id for r in context.sessions if r.session_type == "ag" and r.parent_id)
 
 
 class ValidationContext(BaseModel):
@@ -547,6 +556,7 @@ def _session_names(ids: Sequence[int], context: ValidationContext | None) -> str
 
 def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Issues) -> None:
     counts = Counter(r.session_cm_id for r in rules.cost.family_rates)
+    skip = _ag_children(context)
     for session, n in counts.items():
         if n > 1:
             issues.error("cost", "duplicate_family_rate", "cost.family_rates", f"Session {session} has {n} rates")
@@ -555,7 +565,7 @@ def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Iss
             continue
         path = f"programs.{key}.session_cm_ids"
         if program.cost_source == "per_person":
-            missing = [s for s in program.session_cm_ids if s not in counts]
+            missing = [s for s in program.session_cm_ids if s not in counts and s not in skip]
             if missing:
                 issues.warn(
                     "cost",
@@ -565,7 +575,7 @@ def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Iss
                     missing,
                 )
         elif program.cost_source == "catalog":
-            missing = [s for s in program.session_cm_ids if s not in rules.cost.tuition]
+            missing = [s for s in program.session_cm_ids if s not in rules.cost.tuition and s not in skip]
             if missing:
                 issues.warn(
                     "cost",
