@@ -273,7 +273,8 @@ async def test_a_reversal_returns_the_money_to_remaining_and_reads_reversed() ->
     service = _service(store)
     camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1 = next(c for c in camp.rounds if c.round == 1)
-    assert (r1.posted, r1.needs_offer, r1.remaining) == (0.0, 0.0, 340000.0)
+    # §8.1: Remaining is per pool; nothing is committed once the reversal claws the post back: 400,000 - 0.
+    assert (r1.posted, r1.needs_offer, camp.total.remaining) == (0.0, 0.0, 400000.0)
     assert (await service.remaining(YEAR)).total == 500000.0
     row = await _row(store)
     assert row.confirmation is not None

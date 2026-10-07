@@ -191,7 +191,8 @@ async def test_releasing_moves_the_round_from_below_the_line_into_needs_an_offer
     r1 = next(c for c in after.rounds if c.round == 1)
     assert after.below.held is not None
     assert (r1.needs_offer, after.below.held.requests) == (decided, 0)
-    assert r1.remaining == pytest.approx(340000.0 - decided)
+    # §8.1: Remaining is per pool: 400,000 less what the released request now needs.
+    assert after.total.remaining == pytest.approx(400000.0 - decided)
 
 
 @pytest.mark.asyncio

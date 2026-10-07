@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from api.schemas.financial_aid_decisions import BudgetResponse, GridRowOut, RoundCellOut, UnconfirmedOut
+from api.schemas.financial_aid_decisions import BudgetResponse, GridRowOut, PoolBudgetOut, RoundCellOut, UnconfirmedOut
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
@@ -55,8 +55,11 @@ def _cancel_in_campminder(store: FakeDecisionsStore) -> None:
 
 
 def _camp(out: BudgetResponse, n: int) -> RoundCellOut:
-    camp = next(p for p in out.pools if p.pool == "camp_pool")
-    return next(c for c in camp.rounds if c.round == n)
+    return next(c for c in _camp_pool(out).rounds if c.round == n)
+
+
+def _camp_pool(out: BudgetResponse) -> PoolBudgetOut:
+    return next(p for p in out.pools if p.pool == "camp_pool")
 
 
 async def _row(store: FakeDecisionsStore) -> GridRowOut:
@@ -103,7 +106,9 @@ async def test_a_cancelled_or_closed_request_with_the_same_reversal_is_still_cla
         _cancel_in_kindred(store)
     service = _service(store)
     camp_r1 = _camp(await service.budget(YEAR), 1)
-    assert (camp_r1.posted, camp_r1.remaining) == (0.0, 340000.0)
+    # §8.1: Remaining is per pool. Nothing is committed (the reversed post is clawed back), so 400,000 - 0.
+    camp = _camp_pool(await service.budget(YEAR))
+    assert (camp_r1.posted, camp.total.remaining) == (0.0, 400000.0)
     assert (await service.remaining(YEAR)).total == 500000.0
     row = await _row(store)
     assert row.confirmation is not None

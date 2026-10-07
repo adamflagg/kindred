@@ -1,6 +1,6 @@
 """Rounds & budget's figures (sub-project 10a; D44, D53, D54, D79, D82). Fictional throughout.
 
-The fixture's budget: 500,000; Camp 80% (reserves: Round 2 10%, Round 3 5%), Weekends 15%, B'mitzvah 5%."""
+The fixture's budget: 500,000; Camp 80%, Weekends 15%, B'mitzvah 5% (the fixture's reserves are ignored: §8.2, nothing reads them)."""
 
 from dataclasses import replace
 from decimal import Decimal
@@ -281,13 +281,7 @@ def test_round_1_unmet_never_goes_negative() -> None:
 
 
 def test_a_pool_given_as_an_amount_is_allocated_its_amount_to_the_cent() -> None:
-    rules = with_levers(
-        RULES,
-        {
-            "budget.pools.camp_pool": {"label": "Camp", "amount": "100.01"},
-            "budget.reserves.camp_pool": {"r2": "50", "r3": "50"},
-        },
-    )
+    rules = with_levers(RULES, {"budget.pools.camp_pool": {"label": "Camp", "amount": "100.01"}})
     assert allocations(rules)["camp_pool"] == Decimal("100.01")
 
 

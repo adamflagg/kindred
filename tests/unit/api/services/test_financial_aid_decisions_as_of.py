@@ -282,7 +282,8 @@ async def test_the_budget_on_a_past_date() -> None:
 
 @pytest.mark.asyncio
 async def test_a_past_read_masks_committed_wherever_it_masks_remaining() -> None:
-    """3c-2: Committed is Remaining's three parts, so it is masked exactly where Remaining is."""
+    """3c-2: a past read masks Committed wherever it masks Remaining. This exercises the masked case only (the
+    pool is masked here); the unmasked case is covered by the exact-figure past-read tests."""
     store = _seeded(EMMA, LIAM)
     _post_at(store, LIAM, _day(3, 5))
     out = await _service(store).budget(YEAR, as_of=MAR_9)

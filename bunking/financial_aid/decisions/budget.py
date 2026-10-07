@@ -1,6 +1,6 @@
-"""Rounds & budget's figures (campership sub-project 10a; spec §5.3, §5.9, §7.2; D44, D46, D53, D54, D79, D82).
+"""Rounds & budget's figures (campership sub-project 10a; spec §5.3, §5.9, §7.2; D44 (reserves, superseded: nothing reads them), D46, D53, D54, D79, D82).
 
-Per pool × round, and in total:
+Per pool (and per round where a figure has one), and in total:
 
   Allocated         the pool's share of the approved total (§5.3 note 1); rounds have none, and
                     Round 3 is whatever is left in the pool.
@@ -150,7 +150,7 @@ class PoolBudget:
     below: BelowTheLine
     demand: ForwardDemand
     decision_types: tuple[DecisionTypeLine, ...] = ()
-    # The pool's share from the approved rules (§5.3 note 11); None for No pool, the total, and no rules.
+    # The pool's share from the approved rules (§5.3 note 11); None for No pool, the total, no rules, and a pool given as an amount.
     share_pct: Decimal | None = None
 
 
