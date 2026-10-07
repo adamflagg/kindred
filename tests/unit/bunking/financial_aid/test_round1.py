@@ -359,7 +359,7 @@ def test_the_trace_records_the_minimum_that_was_actually_applied() -> None:
     assert (step.inputs["minimum"], step.inputs["minimum_uncapped"]) == (Decimal(50), Decimal(100))
 
 
-ADULT = {"session_cm_id": 1000401, "program_key": "adult_weekend", "ask": "900"}
+ADULT: dict[str, Any] = {"session_cm_id": 1000401, "program_key": "adult_weekend", "ask": "900"}
 
 
 def test_a_legacy_program_with_no_table_still_gets_the_minimum() -> None:
