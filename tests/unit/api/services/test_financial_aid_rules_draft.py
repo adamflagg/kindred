@@ -71,6 +71,41 @@ def test_a_section_that_does_not_parse_is_refused_naming_the_field() -> None:
         parse_section(fictional_rules(), "awards", awards)
 
 
+@pytest.mark.asyncio
+async def test_the_draft_and_approved_reads_name_the_groups() -> None:
+    service = await _approved_v1(FakeStore())
+    draft = await service.draft_view(2031)
+    approved = await service.approved_view(2031)
+    assert [g.label for g in draft.groups] == ["Camp", "Weekends", "B'mitzvah"]
+    assert approved.groups == draft.groups
+
+
+@pytest.mark.asyncio
+async def test_a_receipts_version_read_names_that_versions_groups() -> None:
+    """Pin: the groups come from the version asked for, not the one pricing the season. Version 2 renames the Camp
+    pool and prices the season, so only a read of version 1's own document still says "Camp"."""
+    service = await _approved_v1(FakeStore())
+    renamed = with_lever(fictional_rules(), "budget.pools.camp_pool.label", "Pool A")
+    await service.save_sections(2031, 1, renamed, actor=TREASURER)
+    await service.approve_sections(2031, 2, list(SECTION_NAMES), actor=FINANCE, note="Board, Feb 1")
+    assert [g.label for g in (await service.approved_view(2031)).groups] == ["Pool A", "Weekends", "B'mitzvah"]
+    approved = await service.approved_view(2031, 1)
+    assert [g.label for g in approved.groups] == ["Camp", "Weekends", "B'mitzvah"]
+
+
+@pytest.mark.asyncio
+async def test_a_version_read_never_names_groups_from_a_draft_programs_or_budget_section() -> None:
+    """D76: a draft section has no content on the approved read, so its pool labels and classes stay hidden too.
+    Version 2 holds an approved section but its renamed budget is still a draft."""
+    service = await _approved_v1(FakeStore())
+    renamed = with_lever(fictional_rules(), "budget.pools.camp_pool.label", "Pool A")
+    await service.save_sections(2031, 1, renamed, actor=TREASURER)
+    v2 = await service.load(2031, 2)
+    assert v2.section_status["budget"].state not in ("approved", "locked")
+    assert any(v2.section_status[n].state in ("approved", "locked") for n in SECTION_NAMES)
+    assert (await service.approved_view(2031, 2)).groups == ()
+
+
 # --- save_sections ---------------------------------------------------------------------------------
 
 

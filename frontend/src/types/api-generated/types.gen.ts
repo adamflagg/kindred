@@ -717,6 +717,10 @@ export type ApprovedRulesOut = {
    * Sections
    */
   sections: Array<ApprovedSectionOut>
+  /**
+   * Groups
+   */
+  groups?: Array<GroupOut>
 }
 
 /**
@@ -6066,6 +6070,26 @@ export type GridShareOut = {
    * Needs Offer
    */
   needs_offer: number | null
+}
+
+/**
+ * GroupOut
+ *
+ * One group (spec §4.1): a budget pool, its label, and the equity class its programs share.
+ */
+export type GroupOut = {
+  /**
+   * Pool
+   */
+  pool: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Equity Class
+   */
+  equity_class: string | null
 }
 
 /**
@@ -14846,6 +14870,10 @@ export type RulesDraftOut = {
    * Budget Total Locked
    */
   budget_total_locked?: boolean
+  /**
+   * Groups
+   */
+  groups?: Array<GroupOut>
 }
 
 /**

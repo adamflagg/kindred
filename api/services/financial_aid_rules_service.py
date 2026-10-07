@@ -77,6 +77,7 @@ from bunking.financial_aid.rules import (
 )
 from bunking.financial_aid.rules.derived import with_current_year_weight
 from bunking.financial_aid.rules.fixed import changed_fixed
+from bunking.financial_aid.rules.groups import Group, season_groups
 from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
     SectionNotApprovedError,
@@ -285,6 +286,8 @@ class RulesDraft:
     # tick never locks the budget section itself (D119), so the total follows Round 1. Edit Plan... then shows Total
     # read-only; the shares stay editable.
     budget_total_locked: bool = False
+    # Spec §4.1: the season's groups (budget pools by label), from the draft document.
+    groups: tuple[Group, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -304,6 +307,8 @@ class ApprovedRules:
     year: int
     version: int | None  # the version pricing the season (or the one asked for); None when none prices yet
     sections: tuple[ApprovedSection, ...]
+    # Spec §4.1: the groups of the version pricing the season (or the one asked for); () when none.
+    groups: tuple[Group, ...] = ()
 
 
 _HELD: Final = ("approved", "locked")
@@ -790,6 +795,7 @@ class FinancialAidRulesService:
             report,
             sections,
             budget_total_locked=await self._budget_total_locked(year),
+            groups=tuple(season_groups(current.document)),
         )
 
     async def _budget_total_locked(self, year: int) -> bool:
@@ -819,7 +825,15 @@ class FinancialAidRulesService:
             chosen = await self.load(year, version)
             if all(chosen.section_status[n].state not in _HELD for n in SECTION_NAMES):
                 raise RulesNotFoundError(f"{year} version {version} has no approved rules")
-            return ApprovedRules(year, chosen.version, tuple(_approved_section(chosen, n) for n in SECTION_NAMES))
+            return ApprovedRules(
+                year,
+                chosen.version,
+                tuple(_approved_section(chosen, n) for n in SECTION_NAMES),
+                # D76: groups read the programs and budget sections, so a draft of either hides them like its content.
+                tuple(season_groups(chosen.document))
+                if all(chosen.section_status[n].state in _HELD for n in ("programs", "budget"))
+                else (),
+            )
         versions = [_to_version(row) for row in await self._store.list_versions(year)]
 
         def newest(names: Collection[SectionName]) -> RulesVersion | None:
@@ -832,7 +846,12 @@ class FinancialAidRulesService:
         )
         if all(section.content is None for section in sections):
             raise RulesNotFoundError(f"{year} has no approved rules yet")
-        return ApprovedRules(year, pricing.version if pricing is not None else None, sections)
+        return ApprovedRules(
+            year,
+            pricing.version if pricing is not None else None,
+            sections,
+            tuple(season_groups(pricing.document)) if pricing is not None else (),
+        )
 
     async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
         """The version that priced `year` at the instant `at` (the as-of reads, 3c): each version's

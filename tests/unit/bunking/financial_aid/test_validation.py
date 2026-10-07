@@ -30,8 +30,15 @@ def test_the_fictional_season_has_no_errors_and_only_the_expected_warnings() -> 
     report = validate_rules(fictional_rules(), _context())
     assert report.ok
     assert report.errors == []
-    # adult_weekend and family_school deliberately have no Round 1 table.
+    # adult_weekend and family_school deliberately have no Round 1 table; the fixture's Camp pool mixes classes camp
+    # and teen, its B'mitzvah program uses class camp from another pool, and Family camp routes to the family table
+    # with no class (spec §9.3's drifts).
     assert sorted((w.code, w.path) for w in report.warnings) == [
+        ("group_mismatch", "programs.bmitzvah.equity_class"),
+        ("group_mismatch", "programs.family_camp.equity_class"),
+        ("group_mismatch", "programs.quest.equity_class"),
+        ("group_mismatch", "programs.summer.equity_class"),
+        ("group_mismatch", "programs.teen.equity_class"),
         ("no_round1_table", "programs.adult_weekend.r1_table"),
         ("no_round1_table", "programs.family_school.r1_table"),
     ]
@@ -152,6 +159,44 @@ def test_only_catalog_priced_programs_are_judged() -> None:
     )
     rules = with_lever(rules, "award_tables.camp.tiers.6.r1_pct", "1")
     assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("Camp table, tier 6: Quest at $6,000")
+
+
+def test_a_tables_note_uses_its_groups_name_never_the_key_title_cased() -> None:
+    """Spec §9.2: notes read "‹group label› table". The label keeps its capitals: "FFP table", never "Ffp table"."""
+    rules = with_levers(
+        fictional_rules(),
+        {"budget.pools.camp_pool.label": "FFP", "award_tables.camp.tiers.6.r1_pct": "1"},
+    )
+    assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("FFP table, tier 6: ")
+
+
+def test_a_table_no_group_pairs_with_keeps_its_key_words() -> None:
+    """Pin: the teen class is no group's class (Camp's is camp), so its table keeps its key's words."""
+    rules = with_levers(
+        fictional_rules(),
+        {"award_tables.teen.overrides": {"6": {"r1_pct": "1"}}, "programs.teen.r1_table": "teen"},
+    )
+    note = _bind_notes(rules).get("award_tables.teen.tiers.6")
+    assert note is not None
+    assert note.startswith("Teen table, tier 6: ")
+
+
+def _routed_to(table: str) -> AidRules:
+    """`table` added as a copy of the camp table, with tier 6 at 1% so a note binds, and adult_weekend routed to it."""
+    return with_levers(
+        fictional_rules(),
+        {
+            f"award_tables.{table}": {"inherits": "camp", "overrides": {"6": {"r1_pct": "1"}}},
+            "programs.adult_weekend.table_from_equity_class": False,
+            "programs.adult_weekend.r1_table": table,
+        },
+    )
+
+
+def test_a_tables_key_words_are_sentence_case() -> None:
+    """Review minor 11: the server words a key as the front end's keyWords does ("Spring rates"), never "Spring Rates"."""
+    notes = _bind_notes(_routed_to("spring_rates"))
+    assert notes["award_tables.spring_rates.tiers.6"].startswith("Spring rates table, tier 6: ")
 
 
 def test_notes_come_in_numeric_tier_order() -> None:
@@ -365,7 +410,11 @@ def test_a_dependent_reduction_outside_income_mode_cannot_bind() -> None:
 def test_an_unmapped_session_is_an_error_never_a_silent_zero() -> None:
     report = validate_rules(fictional_rules(), _context(SessionRef(cm_id=1000999, session_type="hebrew")))
     assert [(e.code, e.section) for e in report.errors] == [("unmapped_session", "programs")]
-    assert "1000999" in report.errors[0].message
+    assert (
+        report.errors[0].message
+        == "Session 1000999 is in no group, so it can't get aid. Move it to a group, or save it under Not open to aid."
+    )
+    assert report.errors[0].session_cm_ids == [1000999]
 
 
 def test_a_session_type_maps_a_session_no_program_lists() -> None:
@@ -511,11 +560,13 @@ def test_count_when_received_is_an_error_while_receipts_are_parked() -> None:
 # --- cost -----------------------------------------------------------------------------
 
 
-def test_a_per_person_session_without_a_rate_warns() -> None:
+def _named(*pairs: tuple[int, str | None]) -> ValidationContext:
+    return ValidationContext(sessions=[SessionRef(cm_id=cm_id, name=name) for cm_id, name in pairs])
+
+
+def test_a_per_person_session_without_a_rate_warns_for_its_group() -> None:
     rules = with_lever(fictional_rules(), "cost.family_rates", [])
-    assert ("family_rate_missing", "programs.family_camp.session_cm_ids") in {
-        (w.code, w.path) for w in validate_rules(rules).warnings
-    }
+    assert ("family_rate_missing", "cost.family_rates") in {(w.code, w.path) for w in validate_rules(rules).warnings}
 
 
 def test_a_catalog_session_without_tuition_warns() -> None:
@@ -523,17 +574,14 @@ def test_a_catalog_session_without_tuition_warns() -> None:
     assert "tuition_missing" in {w.code for w in validate_rules(rules).warnings}
 
 
-def _named(*pairs: tuple[int, str | None]) -> ValidationContext:
-    return ValidationContext(sessions=[SessionRef(cm_id=cm_id, name=name) for cm_id, name in pairs])
-
-
-def test_a_missing_tuition_names_the_program_and_the_sessions_and_carries_their_ids() -> None:
-    rules = with_lever(fictional_rules(), "cost.tuition", {"1000103": "6000", "1000104": "5000", "1000301": "3000"})
+def test_a_missing_tuition_names_the_group_and_the_sessions_and_carries_their_ids() -> None:
+    rules = with_lever(
+        fictional_rules(), "cost.tuition", {"1000103": "6000", "1000104": "5000", "1000301": "3000", "1000401": "900"}
+    )
     context = _named((1000101, "Session One"), (1000102, "Session Two"))
     issue = next(i for i in validate_rules(rules, context).warnings if i.code == "tuition_missing")
-    assert issue.message == "Summer: no tuition for Session One and Session Two"
-    assert issue.session_cm_ids == [1000101, 1000102]
-    assert issue.path == "programs.summer.session_cm_ids"
+    assert issue.message == "Camp: no tuition for Session One and Session Two"
+    assert (issue.session_cm_ids, issue.path) == ([1000101, 1000102], "cost.tuition")
 
 
 def test_three_names_join_with_commas_and_and_an_unnamed_session_falls_back_to_its_id() -> None:
@@ -541,19 +589,106 @@ def test_three_names_join_with_commas_and_and_an_unnamed_session_falls_back_to_i
         fictional_rules(),
         {
             "programs.summer.session_cm_ids": [1000101, 1000102, 1000123],
-            "cost.tuition": {"1000103": "6000", "1000104": "5000", "1000301": "3000"},
+            "cost.tuition": {"1000103": "6000", "1000104": "5000", "1000301": "3000", "1000401": "900"},
         },
     )
     context = _named((1000101, "Session One"), (1000102, "Session Two"), (1000123, None))
     message = next(i.message for i in validate_rules(rules, context).warnings if i.code == "tuition_missing")
-    assert message == "Summer: no tuition for Session One, Session Two and session 1000123"
+    assert message == "Camp: no tuition for Session One, Session Two and session 1000123"
+
+
+def test_more_than_five_names_read_as_the_first_three_and_a_count() -> None:
+    ids = [1000101, 1000102, 1000131, 1000132, 1000133, 1000134]
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.summer.session_cm_ids": ids,
+            "cost.tuition": {"1000103": "6000", "1000104": "5000", "1000301": "3000", "1000401": "900"},
+        },
+    )
+    message = next(i.message for i in validate_rules(rules).warnings if i.code == "tuition_missing")
+    assert message == "Camp: no tuition for session 1000101, session 1000102, session 1000131 and 3 more"
 
 
 def test_without_a_context_every_missing_session_is_named_by_its_id() -> None:
     rules = with_lever(fictional_rules(), "cost.tuition", {"1000101": "2000"})
     message = next(i.message for i in validate_rules(rules).warnings if i.code == "tuition_missing")
-    assert message.startswith("Summer: no tuition for session 1000102")
+    assert message.startswith("Camp: no tuition for session 1000102")
     assert "[" not in message
+
+
+def test_a_group_whose_only_per_person_session_has_no_rate_says_so() -> None:
+    rules = with_lever(fictional_rules(), "cost.family_rates", [])
+    issue = next(
+        i for i in validate_rules(rules, _named((1000201, "Session Three"))).warnings if i.code == "family_rate_missing"
+    )
+    assert issue.message == "Weekends: no per-person rates for its one per-person session (Session Three)"
+    assert issue.session_cm_ids == [1000201]
+
+
+def test_some_per_person_sessions_missing_are_named() -> None:
+    rules = with_levers(fictional_rules(), {"programs.family_camp.session_cm_ids": [1000201, 1000202]})
+    issue = next(i for i in validate_rules(rules).warnings if i.code == "family_rate_missing")
+    assert issue.message == "Weekends: no per-person rates for session 1000202"
+
+
+def test_a_group_with_no_running_session_priced_says_no_price_yet() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "cost.tuition": {
+                "1000101": "2000",
+                "1000102": "4000",
+                "1000103": "6000",
+                "1000104": "5000",
+                "1000401": "900",
+            }
+        },
+    )
+    issue = next(i for i in validate_rules(rules).warnings if i.path == "cost" and "B'mitzvah" in i.message)
+    assert (issue.code, issue.message) == ("price_missing", "B'mitzvah: no price yet for its one running session")
+
+
+def test_a_group_missing_both_kinds_says_no_price() -> None:
+    tuition = {"1000101": "2000", "1000102": "4000", "1000103": "6000", "1000104": "5000", "1000301": "3000"}
+    rules = with_levers(fictional_rules(), {"cost.family_rates": [], "cost.tuition": tuition})
+    issue = next(i for i in validate_rules(rules).warnings if i.message.startswith("Weekends:"))
+    assert (issue.code, issue.message) == ("price_missing", "Weekends: no price yet for any of its 2 running sessions")
+    rules = with_levers(
+        rules,
+        {
+            "programs.adult_weekend.session_cm_ids": [1000401, 1000402],
+            "cost.tuition": {**tuition, "1000402": "900"},
+        },
+    )
+    issue = next(i for i in validate_rules(rules).warnings if i.message.startswith("Weekends:"))
+    assert (issue.code, issue.message) == (
+        "price_missing",
+        "Weekends: no price for session 1000201 and session 1000401",
+    )
+
+
+def test_a_program_closed_to_aid_never_needs_a_price() -> None:
+    """Pin: a closed program prices nothing, so its sessions are not in its group's missing list."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.summer.open_to_aid": False,
+            "cost.tuition": {"1000103": "6000", "1000104": "5000", "1000301": "3000", "1000401": "900"},
+        },
+    )
+    assert "tuition_missing" not in validate_rules(rules).codes()
+
+
+def test_a_typed_program_never_needs_a_price() -> None:
+    """Pin: a typed program's price is typed per request, so no price warning names its session."""
+    assert not any(1000501 in i.session_cm_ids for i in validate_rules(fictional_rules(), _context()).issues)
+
+
+def test_a_session_type_claim_counts_toward_its_group() -> None:
+    context = _context(SessionRef(cm_id=1000777, session_type="main", name="Session Nine"))
+    issue = next(i for i in validate_rules(fictional_rules(), context).warnings if i.code == "tuition_missing")
+    assert issue.message == "Camp: no tuition for Session Nine"
 
 
 def test_an_ag_session_with_a_parent_is_never_listed_as_missing_tuition() -> None:
@@ -568,15 +703,6 @@ def test_an_ag_session_with_no_parent_still_needs_its_own_tuition() -> None:
     rules = with_lever(fictional_rules(), "programs.summer.session_cm_ids", [1000101, 1000102, 1000199])
     context = _context(SessionRef(cm_id=1000199, session_type="ag"))
     assert "tuition_missing" in validate_rules(rules, context).codes()
-
-
-def test_a_missing_family_rate_names_the_program_and_the_session() -> None:
-    rules = with_lever(fictional_rules(), "cost.family_rates", [])
-    issue = next(
-        i for i in validate_rules(rules, _named((1000201, "Session Three"))).warnings if i.code == "family_rate_missing"
-    )
-    assert issue.message == "Family camp: no family-camp rate for Session Three"
-    assert issue.session_cm_ids == [1000201]
 
 
 def test_an_issue_without_sessions_has_an_empty_session_list() -> None:
@@ -811,6 +937,161 @@ def test_an_ag_child_of_a_not_running_session_needs_no_tuition() -> None:
     assert "tuition_missing" in validate_rules(rules, context).codes()
     context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
     assert "tuition_missing" not in validate_rules(rules, context).codes()
+
+
+POOL_WORDS = "a program's pool, equity class and award table are one group."
+
+
+def _mismatch(rules: AidRules) -> dict[str, str]:
+    return {i.path: i.message for i in validate_rules(rules).warnings if i.code == "group_mismatch"}
+
+
+def test_a_pool_shared_by_two_classes_warns_on_each_program() -> None:
+    found = _mismatch(fictional_rules())
+    assert found["programs.teen.equity_class"] == (
+        f"Teen: its pool (Camp) also has programs of another equity class; {POOL_WORDS}"
+    )
+    assert found["programs.summer.equity_class"].startswith("Summer: its pool (Camp) also has programs of another")
+
+
+def test_a_class_shared_by_two_pools_warns() -> None:
+    rules = with_lever(fictional_rules(), "programs.teen.equity_class", "camp")  # Camp pool is all camp now
+    assert _mismatch(rules)["programs.bmitzvah.equity_class"] == (
+        f"B'mitzvah: its equity class (Camp) is also used by programs of another pool; {POOL_WORDS}"
+    )
+
+
+def test_a_class_is_named_by_its_groups_label_never_title_cased() -> None:
+    """Review M4: the class's words are its group's label, capitals kept ("FFP"), never the key title-cased."""
+    rules = with_levers(
+        fictional_rules(), {"programs.teen.equity_class": "camp", "budget.pools.camp_pool.label": "FFP"}
+    )
+    assert _mismatch(rules)["programs.bmitzvah.equity_class"] == (
+        f"B'mitzvah: its equity class (FFP) is also used by programs of another pool; {POOL_WORDS}"
+    )
+
+
+def test_a_legacy_round_1_table_that_isnt_its_class_warns() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "programs.adult_weekend.r1_table": "camp",
+        },
+    )
+    assert _mismatch(rules)["programs.adult_weekend.equity_class"] == (
+        "Adult weekend: its Round 1 table isn't its equity class's (Weekends)"
+    )
+
+
+def test_a_legacy_appeal_table_that_isnt_its_class_warns() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "round2.program_tables.adult_weekend": "camp",
+        },
+    )
+    assert _mismatch(rules)["programs.adult_weekend.equity_class"] == (
+        "Adult weekend: its appeal caps table isn't its equity class's (Weekends)"
+    )
+
+
+def test_a_minimum_only_legacy_program_is_not_a_mismatch() -> None:
+    """Pin: a legacy program routed to no table is "minimum only", never a group drift."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.teen.r1_table": "camp",
+            "round2.program_tables.teen": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "programs.family_camp.equity_class": "family",
+        },
+    )
+    assert _mismatch(rules) == {}  # adult_weekend and family_school route to None: the "minimum only" pill says it
+
+
+def test_an_ag_price_that_differs_from_its_parents_warns() -> None:
+    tuition = {**fictional_rules_json()["cost"]["tuition"], "1000199": "1900"}
+    rules = with_levers(
+        fictional_rules(),
+        {"programs.summer.session_cm_ids": [1000101, 1000102, 1000199], "cost.tuition": tuition},
+    )
+    context = ValidationContext(
+        sessions=[
+            SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101, name="AG Session 2"),
+            SessionRef(cm_id=1000101, name="Session 2"),
+        ]
+    )
+    issue = next(i for i in validate_rules(rules, context).warnings if i.code == "ag_price_differs")
+    assert issue.message == (
+        "AG Session 2 has its own tuition ($1,900), different from its parent Session 2's ($2,000); "
+        "AG sessions use their parent's price on screen"
+    )
+    assert (issue.section, issue.path, issue.session_cm_ids) == ("cost", "cost.tuition.1000199", [1000199])
+
+
+def test_an_ag_price_equal_to_its_parents_or_with_no_parent_does_not_warn() -> None:
+    """Pin: the warning needs an AG session with a parent whose own price differs."""
+    tuition = fictional_rules_json()["cost"]["tuition"]
+    equal = with_levers(fictional_rules(), {"cost.tuition": {**tuition, "1000199": "2000"}})
+    with_parent = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101)])
+    assert "ag_price_differs" not in validate_rules(equal, with_parent).codes()
+    differs = with_levers(fictional_rules(), {"cost.tuition": {**tuition, "1000199": "1900"}})
+    orphan = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="ag")])
+    assert "ag_price_differs" not in validate_rules(differs, orphan).codes()
+    assert "ag_price_differs" not in validate_rules(differs).codes()
+
+
+def test_a_closed_or_empty_program_is_never_a_mismatch_and_has_no_say() -> None:
+    """Pin: spec §9.3 judges open, session-claiming programs only, on both sides of the comparison."""
+    closed = _mismatch(with_lever(fictional_rules(), "programs.teen.open_to_aid", False))
+    assert "programs.teen.equity_class" not in closed
+    assert "another equity class" not in closed.get("programs.summer.equity_class", "")  # teen has no say in the pool
+    empty = _mismatch(with_lever(fictional_rules(), "programs.teen.session_cm_ids", []))
+    assert "programs.teen.equity_class" not in empty
+    assert "another equity class" not in empty.get("programs.summer.equity_class", "")
+
+
+def test_a_table_taken_from_the_equity_class_is_not_judged_by_its_legacy_table() -> None:
+    """Pin: the legacy Round 1 table only counts for a program routed by its own table, never by its class."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.equity_class": "camp",
+            "programs.bmitzvah.budget_pool": "camp_pool",
+            "programs.adult_weekend.table_from_equity_class": True,
+            "programs.adult_weekend.r1_table": "camp",
+        },
+    )
+    assert "programs.adult_weekend.equity_class" not in _mismatch(rules)
+
+
+def test_an_ag_price_warning_needs_an_ag_session() -> None:
+    """Pin: a main session with a parent id is not an AG session, so a differing price says nothing."""
+    tuition = {**fictional_rules_json()["cost"]["tuition"], "1000199": "1900"}
+    rules = with_levers(fictional_rules(), {"cost.tuition": tuition})
+    context = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="main", parent_id=1000101)])
+    assert "ag_price_differs" not in validate_rules(rules, context).codes()
+
+
+def test_an_ag_price_under_a_not_running_parent_does_not_warn() -> None:
+    """Spec §7: an AG session is not running when its parent isn't, and validation skips not-running sessions, so a
+    price nobody charges asks finance for nothing."""
+    tuition = {**fictional_rules_json()["cost"]["tuition"], "1000199": "1900"}
+    rules = with_levers(fictional_rules(), {"cost.tuition": tuition, "cost.not_running_session_cm_ids": [1000101]})
+    context = ValidationContext(sessions=[SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101)])
+    assert "ag_price_differs" not in validate_rules(rules, context).codes()
+
+
+def test_a_named_unmapped_session_is_called_by_its_name() -> None:
+    """Pin: the season's name for the session leads the words; its id is the fallback."""
+    context = _context(SessionRef(cm_id=1000999, session_type="hebrew", name="Session Nine"))
+    report = validate_rules(fictional_rules(), context)
+    assert report.errors[0].message.startswith("Session Nine is in no group")
 
 
 def test_an_id_that_isnt_a_session_this_season_warns() -> None:

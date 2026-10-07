@@ -20,6 +20,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.money import dollars, pct_of
+from bunking.financial_aid.rules.groups import claims_sessions, group_of_class, group_of_pool
 from bunking.financial_aid.rules.lookup import (
     Round2TableNotListedError,
     is_dependents_criterion,
@@ -416,9 +417,20 @@ def _valid_tables[V: (R1Percent, TotalPercent)](
     return valid
 
 
-def _table_label(name: str) -> str:
-    """The award table's staff-facing name: the schema gives a table no label, so its key, title-cased."""
-    return f"{name.replace('_', ' ').title()} table"
+def _class_words(rules: AidRules, key: str) -> str:
+    """An award table's or an equity class's staff-facing words (spec §9.2): the label of the group whose class it
+    is, else the key's words in sentence case, as the front end's keyWords. Never `.title()`: an acronym key would
+    read "Ffp". A12 adds the borrowed-label fallback here, between the two."""
+    group = group_of_class(rules, key)
+    if group is not None:
+        return group.label
+    words = key.replace("_", " ")
+    return words[:1].upper() + words[1:]
+
+
+def _table_label(rules: AidRules, name: str) -> str:
+    """The award table's staff-facing name: "‹group label› table" (spec §9.2), else "‹key words› table"."""
+    return f"{_class_words(rules, name)} table"
 
 
 def _catalog_price(rules: AidRules, program: ProgramProfile) -> Decimal | None:
@@ -451,7 +463,7 @@ def _note_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -
         program, price = max(decided, key=lambda pair: pair[1])
         award = pct_of(row.r1_pct, price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         message = (
-            f"{_table_label(name)}, tier {tier}: {program.label} at {dollars(price)} gets {dollars(award)}, "
+            f"{_table_label(rules, name)}, tier {tier}: {program.label} at {dollars(price)} gets {dollars(award)}, "
             f"so the {dollars(minimum)} minimum applies"
         )
         if len(routed) > 1 and len(decided) == len(routed):
@@ -466,7 +478,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
         path = f"programs.{key}"
         label = program.label
         # A program that claims no sessions prices nothing yet: no table or pool is missing from anything real.
-        claims_sessions = bool(program.session_cm_ids or program.session_types)
+        claims = claims_sessions(program)
         if program.equity_class is not None and program.equity_class not in rules.equity.weights:
             issues.error(
                 "programs",
@@ -478,7 +490,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             issues.error(
                 "programs", "unknown_budget_pool", f"{path}.budget_pool", f"{label}: no pool '{program.budget_pool}'"
             )
-        if program.open_to_aid and program.budget_pool is None and claims_sessions:
+        if program.open_to_aid and program.budget_pool is None and claims:
             issues.warn(
                 "programs", "unclassified_program", f"{path}.budget_pool", f"{label}: open to aid but in no budget pool"
             )
@@ -487,7 +499,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                 issues.error(
                     "programs", "unknown_table", f"{path}.r1_table", f"{label}: no award table '{program.r1_table}'"
                 )
-            if program.open_to_aid and program.r1_table is None and claims_sessions:
+            if program.open_to_aid and program.r1_table is None and claims:
                 issues.warn(
                     "programs",
                     "no_round1_table",
@@ -534,6 +546,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                     f"{label}: session type '{session_type}' is also in {rules.programs[types[session_type]].label}",
                 )
             types[session_type] = key
+    _check_groups(rules, issues)
     if context is None:
         return
     if not context.sessions:
@@ -556,51 +569,139 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             else None
         )
         if resolve_program(rules, ref.cm_id, ref.session_type, ag_parent=ag_parent) is None:
-            label = f" ({ref.name})" if ref.name else ""
+            name = ref.name or f"Session {ref.cm_id}"
             issues.error(
                 "programs",
                 "unmapped_session",
                 "programs",
-                f"Session {ref.cm_id}{label} belongs to no program; map it (or put it in a closed program)",
+                f"{name} is in no group, so it can't get aid. Move it to a group, or save it under Not open to aid.",
+                [ref.cm_id],
             )
 
 
+def _check_groups(rules: AidRules, issues: _Issues) -> None:
+    """Spec §9.3: until #3048 collapses programs into groups, a program's pool, equity class and award table must
+    stay one group. One warning per open, session-claiming program, the first drift found."""
+    live = {k: p for k, p in rules.programs.items() if p.open_to_aid and claims_sessions(p)}
+    words = "a program's pool, equity class and award table are one group."
+    for key, program in live.items():
+        others = [p for k, p in live.items() if k != key]
+        cls, pool = program.equity_class, program.budget_pool
+        group = group_of_pool(rules, pool)
+        group_words = group.label if group is not None else "no group"
+        message: str | None = None
+        if (
+            cls is not None
+            and pool is not None
+            and any(p.budget_pool == pool and p.equity_class not in (None, cls) for p in others)
+        ):
+            message = f"{program.label}: its pool ({group_words}) also has programs of another equity class; {words}"
+        elif cls is not None and any(p.equity_class == cls and p.budget_pool != pool for p in others):
+            message = (
+                f"{program.label}: its equity class ({_class_words(rules, cls)}) "
+                f"is also used by programs of another pool; {words}"
+            )
+        elif not program.table_from_equity_class and program.r1_table is not None and program.r1_table != cls:
+            message = f"{program.label}: its Round 1 table isn't its equity class's ({group_words})"
+        elif (
+            not program.table_from_equity_class
+            and rules.round2.program_tables.get(key) is not None
+            and rules.round2.program_tables.get(key) != cls
+        ):
+            message = f"{program.label}: its appeal caps table isn't its equity class's ({group_words})"
+        if message is not None:
+            issues.warn("programs", "group_mismatch", f"programs.{key}.equity_class", message)
+
+
 def _session_names(ids: Sequence[int], context: ValidationContext | None) -> str:
-    """ "Session One, Session Two and session 1000123": the season's names where it has them."""
+    """ "Session One, Session Two and session 1000123": the season's names where it has them; more than five read as
+    the first three and "n more" (spec §9.1)."""
     names = {ref.cm_id: ref.name for ref in context.sessions if ref.name} if context is not None else {}
     parts = [names.get(i) or f"session {i}" for i in ids]
+    if len(parts) > 5:
+        return f"{', '.join(parts[:3])} and {len(parts) - 3} more"
     return parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
+def _group_sessions(rules: AidRules, context: ValidationContext | None) -> dict[str, dict[int, str]]:
+    """pool -> {session: cost_source} for every running session an open, pooled, priced program claims: its explicit
+    ids, then the context's sessions it claims by type. AG children with a parent and not-running sessions are left out
+    (spec §7.2, §8). A `typed` program has no price to miss."""
+    skip = _ag_children(context) | _not_running(rules, context)
+    out: dict[str, dict[int, str]] = {}
+
+    def add(session: int, key: str) -> None:
+        program = rules.programs[key]
+        if not program.open_to_aid or program.budget_pool is None or program.cost_source == "typed" or session in skip:
+            return
+        out.setdefault(program.budget_pool, {}).setdefault(session, program.cost_source)
+
+    for key, program in rules.programs.items():
+        for session in program.session_cm_ids:
+            add(session, key)
+    for ref in context.sessions if context is not None else []:
+        claimed_by = resolve_program(rules, ref.cm_id, ref.session_type)
+        if claimed_by is not None:
+            add(ref.cm_id, claimed_by)
+    return out
 
 
 def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Issues) -> None:
     counts = Counter(r.session_cm_id for r in rules.cost.family_rates)
-    skip = _ag_children(context) | _not_running(rules, context)
     for session, n in counts.items():
         if n > 1:
             issues.error("cost", "duplicate_family_rate", "cost.family_rates", f"Session {session} has {n} rates")
-    for key, program in rules.programs.items():
-        if not program.open_to_aid:
+    sessions_by_pool = _group_sessions(rules, context)
+    for pool, spec in rules.budget.pools.items():
+        sessions = sessions_by_pool.get(pool, {})
+        missing = [
+            s for s, source in sessions.items() if s not in (rules.cost.tuition if source == "catalog" else counts)
+        ]
+        if not missing:
             continue
-        path = f"programs.{key}.session_cm_ids"
-        if program.cost_source == "per_person":
-            missing = [s for s in program.session_cm_ids if s not in counts and s not in skip]
-            if missing:
+        label = spec.label
+        per_person = [s for s, source in sessions.items() if source == "per_person"]
+        missing_pp = [s for s in missing if sessions[s] == "per_person"]
+        names = _session_names(missing, context)
+        # The first row of spec §9.1 that matches wins.
+        if len(missing) == len(sessions):
+            its = "its one running session" if len(sessions) == 1 else f"any of its {len(sessions)} running sessions"
+            code, path, message = "price_missing", "cost", f"{label}: no price yet for {its}"
+        elif missing_pp == missing and len(missing_pp) == len(per_person):
+            its = (
+                "its one per-person session"
+                if len(per_person) == 1
+                else f"any of its {len(per_person)} per-person sessions"
+            )
+            code, path = "family_rate_missing", "cost.family_rates"
+            message = f"{label}: no per-person rates for {its} ({names})"
+        elif missing_pp == missing:
+            code, path, message = (
+                "family_rate_missing",
+                "cost.family_rates",
+                f"{label}: no per-person rates for {names}",
+            )
+        elif not missing_pp:
+            code, path, message = "tuition_missing", "cost.tuition", f"{label}: no tuition for {names}"
+        else:
+            code, path, message = "price_missing", "cost", f"{label}: no price for {names}"
+        issues.warn("cost", code, path, message, missing)
+    if context is not None:
+        session_names = {r.cm_id: r.name for r in context.sessions if r.name}
+        not_running = _not_running(rules, context)  # spec §7: an AG session under a not-running parent isn't running
+        for ref in context.sessions:
+            if ref.session_type != "ag" or not ref.parent_id or ref.cm_id in not_running:
+                continue
+            own, parent = rules.cost.tuition.get(ref.cm_id), rules.cost.tuition.get(ref.parent_id)
+            if own is not None and parent is not None and own != parent:
                 issues.warn(
                     "cost",
-                    "family_rate_missing",
-                    path,
-                    f"{program.label}: no family-camp rate for {_session_names(missing, context)}",
-                    missing,
-                )
-        elif program.cost_source == "catalog":
-            missing = [s for s in program.session_cm_ids if s not in rules.cost.tuition and s not in skip]
-            if missing:
-                issues.warn(
-                    "cost",
-                    "tuition_missing",
-                    path,
-                    f"{program.label}: no tuition for {_session_names(missing, context)}",
-                    missing,
+                    "ag_price_differs",
+                    f"cost.tuition.{ref.cm_id}",
+                    f"{session_names.get(ref.cm_id) or f'Session {ref.cm_id}'} has its own tuition ({dollars(own)}), different "
+                    f"from its parent {session_names.get(ref.parent_id) or f'session {ref.parent_id}'}'s ({dollars(parent)}); "
+                    "AG sessions use their parent's price on screen",
+                    [ref.cm_id],
                 )
     if context is not None and context.sessions:
         known = {r.cm_id for r in context.sessions}

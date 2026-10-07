@@ -131,6 +131,7 @@ import type {
   RowStageOut,
   RulesApproveIn,
   RulesDraftOut,
+  GroupOut,
   RulesVersionOut,
   SectionSaveIn,
   SectionStatus,
@@ -280,6 +281,8 @@ export type ApiAidApprovedRules = ApprovedRulesOut
 export type ApiAidApprovedSection = ApprovedSectionOut
 export type ApiAidRulesDraft = RulesDraftOut
 export type ApiAidDraftSection = DraftSectionOut
+/** One group (pool, label, class) on the rules reads. Mirrors Python `GroupOut`. */
+export type ApiAidGroup = GroupOut
 export type ApiAidSectionStatus = SectionStatus
 export type ApiAidFieldChange = FieldChangeOut
 export type ApiAidValidationIssue = ValidationIssue

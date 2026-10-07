@@ -736,6 +736,7 @@ export type {
   GridRowOut,
   GridShareOut,
   GroupedRequestsResponse,
+  GroupOut,
   HeadcountSet,
   HealthCheckHealthGetData,
   HealthCheckHealthGetResponse,
