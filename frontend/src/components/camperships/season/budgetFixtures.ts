@@ -39,12 +39,17 @@ function cell(
   }
 }
 
-/** A round as the server sends it since PR 1: no allocation, no Remaining (§8.1). */
-const round = (n: number, c: ApiAidBudgetCell) => ({
+/** A round as the server sends it (§8.1, §9.4): no `allocated` or `remaining` key at all. */
+const round = (n: number, c: ApiAidBudgetCell): ApiAidBudgetPool['rounds'][number] => ({
   round: n,
-  ...c,
-  allocated: null,
-  remaining: null,
+  posted: c.posted,
+  accepted: c.accepted,
+  needs_offer: c.needs_offer,
+  pending_approval: c.pending_approval,
+  committed: c.committed ?? null,
+  needs_offer_count: c.needs_offer_count ?? null,
+  pending_approval_count: c.pending_approval_count ?? null,
+  ...(c.unconfirmed === undefined ? {} : { unconfirmed: c.unconfirmed }),
 })
 
 /** Money on a round with no named decision type: the server's key-null line (budget.py). */
