@@ -729,8 +729,10 @@ class FinancialAidRulesService:
         """The kept option a version's content was promoted from (Scenarios addendum §S11.2): the `edited_via` in the
         section_status of `version`'s newest whole-version log row, or None when that row carries none. Approval
         clears the stamp on the record (it replaces the whole status), but approval rows are per section, so the
-        newest whole-version row is still the promotion's. A later save is newer and carries no via, and then the
-        version is no longer the promotion's alone (plan review, minor 4). The log comes in recorded order."""
+        newest whole-version row is still the promotion's. An update row logs only the sections whose stamp changed
+        (`changed_fields`) and a create row logs them all, so the newest promotion wins. A later save is newer and
+        carries no via, and then the version is no longer the promotion's alone (plan review, minor 4). The log
+        comes in recorded order."""
         rows = [row for row in await self._store.fetch_log(year) if row.entity_id == _entity_id(year, version)]
         for row in reversed(rows):
             status = (row.after or {}).get("section_status")

@@ -414,6 +414,8 @@ async def test_the_rules_column_carries_its_version_approval_and_the_option_it_c
     await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
     await world.service.keep(YEAR, FINANCE, name="Every tier up")  # A
     await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)  # v2, via A
+    later = T0 + timedelta(hours=2)
+    world.rules._clock = lambda: later  # v2's award_tables is approved after every other section's v1 stamp
     await world.rules.approve_sections(YEAR, 2, ["award_tables"], actor=TREASURER, note="Finance committee")
     [rules] = (await world.service.compare(YEAR, FINANCE, [], rules=True, draft=False)).columns
     assert (rules.code, rules.label, rules.version, rules.via, rules.approved_at) == (
@@ -421,8 +423,39 @@ async def test_the_rules_column_carries_its_version_approval_and_the_option_it_c
         "Rules v2 in effect",
         2,
         "A",
-        T0,
+        later,  # the newest approval among the pricing sections
     )
+
+
+@pytest.mark.asyncio
+async def test_the_drafts_up_down_and_changes_are_against_the_rules_in_effect_not_its_source() -> None:
+    """Regression guard. N3, N4 (ruled): a draft from B set back to A's tables moved nothing against the rules in
+    effect (A), though against B both requests went down."""
+    world = await _started()  # A is the rules in effect
+    a = await _kept_b(world)  # B: A +5; FINANCE's draft is now from B
+    await world.service.save_draft(YEAR, _shifted(a, "0"), FINANCE)  # back to A's tables, still from B
+    [draft] = (await world.service.compare(YEAR, FINANCE, [])).columns
+    assert (draft.code, draft.up, draft.down, draft.changes) == ("draft", 0, 0, ())
+
+
+@pytest.mark.asyncio
+async def test_the_rules_column_is_served_from_a_kept_option_that_is_the_rules_in_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A kept option equal to the rules in effect stores its figures, so the rules column prices nothing."""
+    world = await _started()  # A is the rules in effect, stored on this snapshot
+    priced: list[AidRules] = []
+
+    async def counting(
+        snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+    ) -> PricedSeason:
+        priced.append(document)
+        return await price_document(snapshot, document, base, requests=requests)
+
+    monkeypatch.setattr(service_module, "price_document", counting)
+    [rules] = (await world.service.compare(YEAR, FINANCE, [], rules=True, draft=False)).columns
+    assert rules.code == "rules"
+    assert priced == []
 
 
 @pytest.mark.asyncio

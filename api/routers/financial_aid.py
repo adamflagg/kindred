@@ -1530,8 +1530,9 @@ async def compare_scenarios(
     draft: bool = Query(default=True),
     user: AuthUser = _RULES,
 ) -> CompareOut:
-    """Your draft first, beside up to 4 kept options, all on the current snapshot, on a request set when asked
-    (D138: the Round 1 deadline switch or a received-through date, not both). Each column carries what the committee
+    """The rules in effect, last season's rules, your draft (each when asked) and up to 4 kept options, in §S5 H's
+    fixed order, all on the current snapshot and each counted against the rules in effect, on a request set when
+    asked (D138: the Round 1 deadline switch or a received-through date, not both). Each column carries what the committee
     compares (RPT-17, RPT-32); `last_season` adds last season's posted money beside them."""
     if through_round1_deadline and received_through is not None:
         raise HTTPException(status_code=422, detail="Choose the Round 1 deadline or a received-through date, not both")

@@ -1178,3 +1178,21 @@ async def test_promoted_via_stops_at_a_later_save_that_unstamped_the_section() -
     awards = with_lever(moved, "awards.minimum", "175").model_dump(mode="json")["awards"]
     await service.save_section(2031, 2, "awards", awards, actor="treasurer@example.com")  # v2's awards is a draft
     assert await service.promoted_via(2031, 2) is None
+
+
+@pytest.mark.asyncio
+async def test_promoted_via_reads_the_newest_of_two_promotions_into_one_draft() -> None:
+    """Regression guard. An update row logs only the sections whose stamp changed, so a read of the whole status
+    would answer "A" (the first section in order); the newest promotion, "B", is the answer."""
+    service = FinancialAidRulesService(FakeStore(), clock=lambda: T0)
+    await service.create_version(fictional_rules(), actor="finance@example.com")
+    await service.approve_sections(2031, 1, list(SECTION_NAMES), actor="treasurer@example.com", note="Committee")
+    first = with_lever(fictional_rules(), "income.floor", "500")
+    await service.promote(
+        2031, origin_version=1, document=first, base_version=1, acknowledged={}, actor="finance@example.com", via="A"
+    )
+    second = with_lever(first, "awards.minimum", "150")
+    await service.promote(
+        2031, origin_version=1, document=second, base_version=2, acknowledged={}, actor="finance@example.com", via="B"
+    )
+    assert await service.promoted_via(2031, 2) == "B"

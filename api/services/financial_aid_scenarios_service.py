@@ -1136,22 +1136,22 @@ class FinancialAidScenariosService:
                 )
             return seen[option.code]
 
-        async def round1_of_effect() -> dict[str, Decimal]:
-            # The yardstick's Round 1 by request: a kept option that IS the rules in effect, on this snapshot and
-            # every request, already stores it, so the rules are priced only when no such option exists.
-            same = next(
-                (
-                    option
-                    for option in options.values()
-                    if option.document == effect.document and option.snapshot == meta.id and chosen is None
-                ),
-                None,
-            )
-            if same is not None:
-                return await self._store.option_round1(same.id)
-            return (await of_document("rules", effect.document)).round1
+        # A kept option that IS the rules in effect, on this snapshot and every request, stores their figures: the
+        # rules column and the yardstick read them from it, and the rules are priced only when no such option exists.
+        same = next(
+            (
+                option
+                for option in options.values()
+                if option.document == effect.document and option.snapshot == meta.id and chosen is None
+            ),
+            None,
+        )
 
-        yardstick = await round1_of_effect()
+        async def of_effect() -> Priced:
+            return await of_option(same) if same is not None else await of_document("rules", effect.document)
+
+        # The yardstick needs only Round 1 by request, which a stored option has even without the committee's rows.
+        yardstick = (await of_effect()).round1 if same is None else await self._store.option_round1(same.id)
 
         def column(code: str, label: str, document: AidRules, priced: Priced, **extra: Any) -> CompareColumn:
             up, down = (None, None) if code == "rules" else up_down(yardstick, priced.round1)
@@ -1174,7 +1174,7 @@ class FinancialAidScenariosService:
                     "rules",
                     f"{self._effect_name(effect)} in effect" if _prices(effect) else self._effect_name(effect),
                     effect.document,
-                    await of_document("rules", effect.document),
+                    await of_effect(),
                     version=effect.version,
                     approved_at=_approved_at(effect) if _prices(effect) else None,
                     via=await self._rules.promoted_via(year, effect.version),
