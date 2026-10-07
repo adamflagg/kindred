@@ -30,6 +30,7 @@ inputs (plan Decision 15).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
@@ -115,6 +116,8 @@ ReceivedRead = Callable[[int], Awaitable[list[datetime]]]
 # Curves computed from received dates, by the curve's season, per process (§S11.7). Last season's log barely moves;
 # Update Applications clears it. Per process: Update Applications clears only the worker that served it.
 _COMPUTED: dict[int, ArrivalCurve | None] = {}
+
+logger = logging.getLogger(__name__)
 
 
 def clear_computed_curves() -> None:
@@ -515,12 +518,18 @@ class FinancialAidScenariosService:
         def none(results: ScenarioResults) -> Projection | None:
             return None
 
-        curve = await self.arrival_curve(year)
+        try:
+            curve = await self.arrival_curve(year)
+            anchor = (
+                await self._deadline(year) if curve is not None and curve.aligned_on == "application_deadline" else None
+            )
+        except Exception:  # an optional estimate: a bad row or a PocketBase error must not close the read
+            logger.warning("Projection skipped for %s: its arrival curve could not be read", year, exc_info=True)
+            return none
         if curve is None:
             return none
         through = chosen.through if chosen is not None else get_camp_date(meta.created)
         if curve.aligned_on == "application_deadline":
-            anchor = await self._deadline(year)
             if anchor is None:
                 return none
         else:
@@ -559,8 +568,7 @@ class FinancialAidScenariosService:
             return None
         if isinstance(choice, date):
             return RequestSet("date", choice)
-        approved = await self._rules.latest_approved(year, ["milestones"])
-        deadline = approved.document.milestones.application_deadline if approved is not None else None
+        deadline = await self._deadline(year)
         if deadline is None:
             raise ScenarioRefusedError(
                 f"{year}'s approved rules set no application deadline (milestones): choose a received-through date"

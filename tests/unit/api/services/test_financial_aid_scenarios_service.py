@@ -1684,3 +1684,52 @@ async def test_received_moments_are_live_requests_dated_as_the_capture_dates_the
     seed_request(season, RILEY, household=1000003, person=1000031, status="withdrawn")
     log_seeded(season, JAN20)
     assert await service_module.received_moments(season, YEAR) == [JAN20, JAN20]
+
+
+@pytest.mark.asyncio
+async def test_the_share_lines_up_on_this_seasons_deadline() -> None:
+    """Regression guard. Last year's deadline was Feb 4; this season's is Feb 3. Read on this season's deadline day:
+    week 0, day 0, so 0.5 + (1 - 0.5) x 1/7 = 0.5714. Last year's date moved to this year (Feb 4) would read week -1: 0.5."""
+    stepped = ArrivalCurve(
+        YEAR - 1,
+        "application_deadline",
+        LAST_DEADLINE,
+        (CurvePoint(-2, Decimal("0.5")), CurvePoint(-1, Decimal("0.5")), CurvePoint(0, Decimal(1))),
+        400,
+        "workbook",
+    )
+    world = await _projected_world(stepped)
+    projection = (await world.service.evaluate(YEAR, WITH_DEADLINE, request_set=date(YEAR, 2, 3))).projection
+    assert projection is not None
+    assert projection.share == Decimal("0.5714")
+
+
+@pytest.mark.asyncio
+async def test_an_edited_answer_keeps_its_first_date_and_an_unlogged_request_is_left_out() -> None:
+    """Regression guard. Disagreement 8: an edited answer keeps its first date; a request with no create row is out."""
+    jan10 = datetime(YEAR, 1, 10, 18, 0, tzinfo=UTC)
+    season = FakeDecisionsStore()
+    seed_request(season, RILEY, household=1000003, person=1000031, status="withdrawn")
+    log_seeded(season, jan10)
+    seed_request(season, "req-riley-edited", household=1000003, person=1000031)
+    log_seeded(season, JAN20)
+    seed_request(season, EMMA)  # live, never logged: no known date
+    assert await service_module.received_moments(season, YEAR) == [jan10]
+
+
+@pytest.mark.asyncio
+async def test_a_curve_read_that_raises_gives_no_projection_and_still_evaluates() -> None:
+    """A bad curve row or a PocketBase error mutes the estimate; it never closes the read."""
+
+    async def broken(year: int) -> ArrivalCurve | None:
+        raise ValueError("unreadable curve row")
+
+    world = await _world(document=WITH_DEADLINE, curves=broken)
+    await world.rules.approve_sections(YEAR, 1, ["milestones"], actor=TREASURER, note="Finance committee")
+    await world.service.freeze(YEAR, FINANCE)
+    evaluation = await world.service.evaluate(YEAR, WITH_DEADLINE)
+    assert evaluation.results is not None
+    assert evaluation.projection is None
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.projection is None

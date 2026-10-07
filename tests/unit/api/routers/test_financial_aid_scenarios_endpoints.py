@@ -808,6 +808,8 @@ def test_the_router_gives_the_scenarios_service_the_live_season_read() -> None:
     financial_aid._scenarios()
     assert service_class.call_args.kwargs["season_read"] is decisions.return_value.season
     assert set(service_class.call_args.kwargs) >= {"season_read", "curves", "received"}
+    assert service_class.call_args.kwargs["curves"] is not None
+    assert callable(service_class.call_args.kwargs["received"])
 
 
 def test_rename_trims_the_name_passes_the_caller_and_bounds_it() -> None:
@@ -899,12 +901,13 @@ def test_a_projection_reads_as_money_and_a_share() -> None:
         aligned_on="application_deadline",
         requests=5,
         round1=Decimal("6066.40"),
-        round1_and_2=Decimal("6066.40"),
+        round1_and_2=Decimal("6466.40"),
         remaining=Decimal("493933.60"),
         pools=(PoolProjection("camp_pool", Decimal("393933.60")),),
     )
     service.evaluate = AsyncMock(return_value=Evaluation(DOC, RESULTS, ValidationReport(), projection=projection))
     body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]["projection"]
+    assert (body["round1_and_2"], body["basis_year"], body["aligned_on"]) == (6466.4, 2026, "application_deadline")
     assert (body["share"], body["through"], body["requests"], body["round1"], body["remaining"]) == (
         0.429,
         "2027-02-03",
@@ -913,6 +916,38 @@ def test_a_projection_reads_as_money_and_a_share() -> None:
         493933.6,
     )
     assert body["pools"] == [{"pool": "camp_pool", "remaining": 393933.6}]
+
+
+def _a_projection() -> Projection:
+    return Projection(
+        share=Decimal("0.4286"),
+        through=date(2027, 2, 3),
+        basis_year=2026,
+        aligned_on="application_deadline",
+        requests=5,
+        round1=Decimal("6066.40"),
+        round1_and_2=Decimal("6466.40"),
+        remaining=Decimal("493933.60"),
+        pools=(PoolProjection("camp_pool", Decimal("393933.60")),),
+    )
+
+
+def test_a_compare_column_carries_its_projection_to_the_wire() -> None:
+    """Regression guard. The router maps the projection onto the wire."""
+    service = _stub()
+    column = CompareColumn("draft", "no changes", DOC, (), RESULTS, None, None, projection=_a_projection())
+    service.compare = AsyncMock(return_value=Comparison(META, (column,)))
+    body = _client().get("/api/financial-aid/scenarios/2027/compare").json()["columns"][0]
+    assert body["results"]["projection"]["round1"] == 6066.4
+
+
+def test_the_draft_carries_its_projection_to_the_wire() -> None:
+    """Regression guard. The router maps the projection onto the wire."""
+    service = _stub()
+    draft = replace(DRAFT, projection=_a_projection())
+    service.workspace = AsyncMock(return_value=Workspace(2027, 1, META, draft, (KEPT,)))
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert body["draft"]["results"]["projection"]["round1"] == 6066.4
 
 
 def test_a_kept_options_results_carry_no_projection() -> None:
