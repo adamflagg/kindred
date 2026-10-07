@@ -15,6 +15,7 @@ import pytest
 
 from api.constants.collections import AID_REPORTED_HISTORY, AID_REQUESTS
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
+from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord, SessionRow
@@ -23,6 +24,7 @@ from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
     ReportedFigureNotFoundError,
     ReportsRefusedError,
+    season_closed,
     table_chips,
 )
 from bunking.financial_aid.decisions import RoundView
@@ -606,6 +608,44 @@ async def test_programs_lists_the_rules_sessions_by_pool() -> None:
     assert (session2.session_name, session2.round1.apps, session2.round1.awarded) == ("Session 2", 2, 1500.0)
     assert {row.session_cm_id for row in camp.sessions} >= {1000101, 1000104, 1000106}
     assert out.total.round1.apps == 2
+
+
+def _ag_season(ag_end: str = "") -> tuple[FakeDecisionsStore, Any]:
+    """report_season with the summer program claiming `main`/`embedded` by type (no `ag`), plus "AG Session 3"
+    (1000109, an AG session no program claims by id or type) sitting under "Session 2" (1000101, which has no end
+    date here); "Counselor In-Training" (1000107, not an AG session) also sits under it, claimed by nothing."""
+    rules = with_levers(RULES, {"programs.summer.session_types": ["main", "embedded"]})
+    store = report_season()
+    store.sessions = [
+        *(replace(s, end_date="", parent_cm_id=1000101 if s.cm_id == 1000107 else 0) for s in store.sessions),
+        SessionRow(1000109, "AG Session 3", "ag", "2027-06-20", ag_end, parent_cm_id=1000101),
+    ]
+    return store, rules
+
+
+async def test_programs_lists_an_unclaimed_ag_session_under_its_parents_program() -> None:
+    """An AG session no program claims is listed under the program of its parent session (spec §8); a session
+    that is not an AG session and is claimed by nothing is still not listed."""
+    store, rules = _ag_season()
+    out = await _service(store, rules=FakeRules(approved(rules))).programs(YEAR)
+    camp = next(group for group in out.pools if group.pool == "camp_pool")
+    listed = {row.session_cm_id for row in camp.sessions}
+    assert 1000109 in listed
+    assert 1000107 not in {row.session_cm_id for group in out.pools for row in group.sessions}
+
+
+async def test_the_season_closes_on_an_unclaimed_ag_sessions_end_through_its_parents_program() -> None:
+    """The closed-season check reads the end dates of the sessions an aid-open program claims, an AG session
+    that takes its parent's program among them."""
+    store, rules = _ag_season(ag_end="2027-08-01")
+
+    async def no_register(year: int) -> Sequence[RegisterRow]:
+        return []
+
+    season = await FinancialAidDecisionsService(store, FakeRules(approved(rules)), no_register).season(YEAR)
+    document = approved(rules).document
+    assert season_closed(season, document, date(2027, 10, 1)) is True
+    assert season_closed(season, document, date(2027, 7, 1)) is False
 
 
 # --- the committee's tables -------------------------------------------------------------------------------------

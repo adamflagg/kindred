@@ -62,6 +62,7 @@ from api.schemas.financial_aid_reports import (
     TierAppealsRowOut,
 )
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_calc_inputs import ag_parent_of
 from api.services.financial_aid_cancellations import CANCEL_REASON_LABELS
 from api.services.financial_aid_decisions_service import (
     FIRST_TICKED_SEASON,
@@ -753,7 +754,9 @@ def rules_sessions(season: Season, document: AidRules | None) -> dict[int, str |
         return {}
     out: dict[int, str | None] = {}
     for cm_id, session in season.sessions.items():
-        program = resolve_program(document, cm_id, session.session_type)
+        program = resolve_program(
+            document, cm_id, session.session_type, ag_parent=ag_parent_of(session, season.sessions)
+        )
         if program is not None:
             out[cm_id] = document.programs[program].budget_pool
     return out
@@ -776,7 +779,9 @@ def season_closed(season: Season, document: AidRules | None, today: date) -> boo
     ends: list[date] = []
     if document is not None:
         for cm_id, session in season.sessions.items():
-            program = resolve_program(document, cm_id, session.session_type)
+            program = resolve_program(
+                document, cm_id, session.session_type, ag_parent=ag_parent_of(session, season.sessions)
+            )
             if program is None or not document.programs[program].open_to_aid:
                 continue
             if (end := _end_day(session.end_date)) is not None:

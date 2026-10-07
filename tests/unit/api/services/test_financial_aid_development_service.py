@@ -287,7 +287,7 @@ async def test_ages_are_on_the_first_session_and_gender_reads_the_write_in() -> 
 
 async def test_groups_come_from_the_rules_pools_by_their_sessions_types() -> None:
     """D100: development's groups are the season's budget pools."""
-    found = grouping(intake_rules(), {s.cm_id: s.session_type for s in SESSIONS})
+    found = grouping(intake_rules(), SESSIONS)
     assert {g.key: g.kind for g in found.groups} == {
         "camp_pool": "summer",
         "weekend_pool": "families",
@@ -316,7 +316,7 @@ async def test_a_never_applied_households_unplaced_grant_is_development_money_al
 async def test_only_sessions_of_an_aid_eligible_program_are_in_a_group() -> None:
     """Owner rule (item 28): development counts only attendees of aid-eligible sessions. A session no program claims,
     a session of a program closed to aid and an "other" session are in no group; an open one is."""
-    sessions = {s.cm_id: s.session_type for s in SESSIONS} | {1000302: "hebrew", 1000999: "other"}
+    sessions = [*SESSIONS, SessionRow(1000302, "Hebrew", "hebrew"), SessionRow(1000999, "Other", "other")]
     found = grouping(intake_rules(), sessions)
     assert found.by_session[1000301] == "bmitzvah_pool"  # claimed by an open program
     assert 1000302 not in found.by_session  # B'mitzvah's family, but no program claims it: it was joined before
@@ -327,9 +327,24 @@ async def test_only_sessions_of_an_aid_eligible_program_are_in_a_group() -> None
     assert found.by_family["bmitzvah"] == "bmitzvah_pool"
 
 
+async def test_an_unclaimed_ag_session_is_grouped_with_its_parents_program() -> None:
+    """Spec §8: an AG session no program claims takes its parent session's program, so its attendees count under
+    that program's group; a session that is not an AG session and is claimed by nothing still counts nowhere."""
+    rules = with_lever(intake_rules(), "programs.summer.session_types", ["main", "embedded"])
+    sessions = [
+        *SESSIONS,
+        SessionRow(1000109, "AG Session 3", "ag", parent_cm_id=1000101),
+        SessionRow(1000110, "Counselor Session 3", "scit", parent_cm_id=1000101),
+    ]
+    found = grouping(rules, sessions)
+    assert found.by_session[1000109] == found.by_session[1000101] == "camp_pool"
+    assert 1000110 not in found.by_session
+    assert 1000109 not in grouping(rules, SESSIONS).by_session
+
+
 async def test_family_school_is_not_a_camper_program_even_where_a_program_claims_it() -> None:
     """Queue "Known limits": B*Mitzvah counts as a camper program; Family School doesn't (D107: sunsetted)."""
-    found = grouping(intake_rules(), {s.cm_id: s.session_type for s in SESSIONS} | {1000501: "school"})
+    found = grouping(intake_rules(), [*SESSIONS, SessionRow(1000501, "Family School", "school")])
     assert found.by_session[1000501] == NOT_REPORTED  # the rules' family_school program claims it
     assert "family_school" not in found.by_family
 
@@ -583,7 +598,7 @@ async def test_number_of_awards_says_what_an_award_is_and_the_average_divides_by
 
 async def test_a_grant_line_carries_its_session_into_the_awards_count() -> None:
     line = replace(grant_row("reqemma00000001", "500"), session_cm_id=1000102)
-    found = grant_money([line], grouping(intake_rules(), {s.cm_id: s.session_type for s in SESSIONS}))
+    found = grant_money([line], grouping(intake_rules(), SESSIONS))
     assert [g.session_cm_id for g in found] == [1000102]
 
 

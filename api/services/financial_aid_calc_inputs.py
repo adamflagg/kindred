@@ -128,17 +128,22 @@ def to_application_inputs(household_cm_id: int, answers: Mapping[str, EffectiveV
     )
 
 
+def ag_parent_of(session: SessionRow, sessions: Mapping[int, SessionRow]) -> tuple[int, str | None] | None:
+    """The (id, type) of the session an AG session sits under, for `resolve_program(ag_parent=...)`; None when the
+    session has no parent."""
+    if session.parent_cm_id <= 0:
+        return None
+    parent = sessions.get(session.parent_cm_id)
+    return (session.parent_cm_id, parent.session_type if parent is not None else None)
+
+
 def rules_program_key(request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules) -> str | None:
     session = sessions.get(request.session_cm_id)
     if session is None:
         return resolve_program(rules, request.session_cm_id, None)
-    parent = sessions.get(session.parent_cm_id) if session.parent_cm_id > 0 else None
-    ag_parent = (
-        (session.parent_cm_id, parent.session_type if parent is not None else None)
-        if session.parent_cm_id > 0
-        else None
+    return resolve_program(
+        rules, request.session_cm_id, session.session_type, ag_parent=ag_parent_of(session, sessions)
     )
-    return resolve_program(rules, request.session_cm_id, session.session_type, ag_parent=ag_parent)
 
 
 def to_request_inputs(
