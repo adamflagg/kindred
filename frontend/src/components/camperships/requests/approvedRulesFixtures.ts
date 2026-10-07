@@ -41,7 +41,7 @@ export const APPROVED_RULES_2026: ApiAidApprovedRules = {
       locked_at: null,
       content: {
         summer: profile('Summer', 'pool_a'),
-        tbm: profile('TBM', 'pool_a'),
+        ffp: profile('FFP', 'pool_a'),
         family_camp: profile('Family camp', 'pool_b'),
         womens_weekend: profile("Women's weekend", 'pool_b'),
         mens_weekend: profile("Men's weekend", 'pool_b'),

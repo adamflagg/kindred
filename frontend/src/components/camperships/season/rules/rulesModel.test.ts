@@ -9,6 +9,8 @@ import {
   isChanged,
   isRulesSection,
   issueWords,
+  keyLabel,
+  keyWords,
   labelOf,
   rulesVocabulary,
   sectionIssues,
@@ -244,6 +246,10 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
   // added here so each kind of key has its own label to read.
   const document: Record<string, unknown> = {
     ...RULES_DOCUMENT,
+    programs: {
+      ...(RULES_DOCUMENT.programs as Record<string, unknown>),
+      ffp: { label: 'FFP' },
+    },
     awards: {
       ...RULES_DOCUMENT.awards,
       decision_types: {
@@ -330,24 +336,34 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
     expect(labelOf(['mens_weekend'], names('programs'))).toBe('Mens weekend')
     expect(formatSetting('pool_a', ['summer', 'budget_pool'], names('programs'))).toBe('Pool A')
     expect(formatSetting('general', ['summer', 'r1_table'], names('programs'))).toBe('General')
-    expect(formatSetting('tbm', ['summer', 'equity_class'], names('programs'))).toBe('TBM')
+    expect(formatSetting('ffp', ['summer', 'equity_class'], names('programs'))).toBe('FFP')
     expect(labelOf(['program_tables', 'weekend'], names('round2'))).toBe('Weekend')
     expect(formatSetting('general', ['program_tables', 'summer'], names('round2'))).toBe('General')
-    expect(labelOf(['tables', 'tbm'], names('round2'))).toBe('TBM')
-    expect(labelOf(['tbm'], names('award_tables'))).toBe('TBM')
-    expect(formatSetting('general', ['tbm', 'inherits'], names('award_tables'))).toBe('General')
-    expect(formatSetting('tbm', ['tables', 'family', 'inherits'], names('round2'))).toBe('TBM')
+    expect(labelOf(['tables', 'ffp'], names('round2'))).toBe('FFP')
+    expect(labelOf(['ffp'], names('award_tables'))).toBe('FFP')
+    expect(formatSetting('general', ['ffp', 'inherits'], names('award_tables'))).toBe('General')
+    expect(formatSetting('ffp', ['tables', 'family', 'inherits'], names('round2'))).toBe('FFP')
     expect(formatSetting(['summer'], ['offset_programs'], names('grants'))).toBe('Summer')
     expect(formatSetting('weekend', ['offset_programs', '0'], names('grants'))).toBe('Weekend')
   })
 
   it("names equity's classes and criteria, and income's AGI", () => {
-    expect(labelOf(['weights', 'tbm'], names('equity'))).toBe('TBM')
+    expect(labelOf(['weights', 'ffp'], names('equity'))).toBe('FFP')
     expect(labelOf(['weights', 'family'], names('equity'))).toBe('Family')
     expect(labelOf(['weights', '*', 'trans_nb'], names('equity'))).toBe('Transgender / non-binary')
     expect(labelOf(['weights', '*', 'bipoc'], names('equity'))).toBe('BIPOC')
     expect(formatSetting('agi', ['basis'], names('income'))).toBe('AGI')
     expect(formatSetting('gross', ['basis'], names('income'))).toBe('gross')
+  })
+
+  it('borrows a pool’s label when no program has the key, and words a key with neither', () => {
+    const vocab = { ...vocabulary, programs: {}, pools: { pool_b: 'Weekend Pool' } }
+    expect(keyLabel('pool_b', vocab)).toBe('Weekend Pool')
+    expect(keyLabel('spring_table', vocab)).toBe('Spring table')
+  })
+
+  it('has no word of its own for a program acronym any more', () => {
+    expect(keyWords('ffp')).toBe('Ffp')
   })
 
   it("lays keyed rows out by name, keeping each row's key for the editor", () => {

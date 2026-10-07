@@ -392,14 +392,12 @@ export function rulesVocabulary(
 }
 
 /**
- * Words for a key the rules carry no label for. ⚠ Owner may veto: acronyms staff write in capitals,
- * and the equity criterion the 2026 sheet called "trans_nb".
+ * Words for a key the rules carry no label for: acronyms staff write in capitals, and one equity
+ * criterion's sheet-era key.
  */
 const KEY_WORDS: Readonly<Record<string, string>> = {
-  tbm: 'TBM',
   agi: 'AGI',
   bipoc: 'BIPOC',
-  jfam: 'JFAM',
   trans_nb: 'Trans / nonbinary',
 }
 
@@ -409,6 +407,11 @@ export function keyWords(key: string): string {
   if (known !== undefined) return known
   const plain = words(key)
   return plain.charAt(0).toUpperCase() + plain.slice(1)
+}
+
+/** A key the rules give no label: the program's label with that key, else the pool's, else its words (owner 10-07). */
+export function keyLabel(key: string, names: Pick<RulesVocabulary, 'programs' | 'pools'>): string {
+  return names.programs[key] ?? names.pools[key] ?? keyWords(key)
 }
 
 type KeyKind =
@@ -494,7 +497,7 @@ function nameOf(kind: KeyKind, key: string, names: RulesVocabulary): string {
       return KEY_WORDS[key] ?? words(key)
     case 'table':
     case 'equity_class':
-      return keyWords(key)
+      return keyLabel(key, names)
   }
 }
 

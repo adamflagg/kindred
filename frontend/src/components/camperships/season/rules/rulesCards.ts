@@ -7,7 +7,7 @@ import type { ApiAidRulesSection, ApiAidValidationIssue } from '../../../../type
 import { formatLongDate } from '../../kit/dates'
 import { formatMoney } from '../../kit/money'
 import { codeWords } from '../../requests/attention'
-import { formatSetting, keyWords, labelOf, type RulesNames } from './rulesModel'
+import { formatSetting, keyLabel, keyWords, labelOf, type RulesNames } from './rulesModel'
 import { valueAt } from './sectionEdit'
 
 export type RowType =
@@ -495,7 +495,7 @@ export function programRows(
       label: textOf(p['label']) ?? key,
       pills: [...new Set(pills)],
       sessions: listOf(p['session_cm_ids']).map((id) => sessionWords(id, names)),
-      equityClass: cls === null ? 'None' : keyWords(cls),
+      equityClass: cls === null ? 'None' : keyLabel(cls, names),
       pool: pool === null ? 'None' : (names.pools[pool] ?? keyWords(pool)),
       costFrom: CHOICE_WORDS['cost_source']?.[textOf(p['cost_source']) ?? ''] ?? '',
       openToAid: p['open_to_aid'] !== false,

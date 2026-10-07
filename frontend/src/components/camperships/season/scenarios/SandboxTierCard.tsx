@@ -12,7 +12,6 @@ import {
   CS_TH_CARD,
 } from '../../kit/csType'
 import { DefRef } from '../../kit/DefinitionNotes'
-import { keyWords } from '../rules/rulesModel'
 import {
   bandsIn,
   gridCell,
@@ -31,6 +30,7 @@ import {
   cardProblems,
   cellEditable,
   cellKey,
+  classLabel,
   fixFirstWords,
   lockNote,
   type SandboxBinding,
@@ -72,7 +72,7 @@ function Cell({
 }) {
   const tint = locked ? LOCKED_CARD : ''
   if (cellEditable(binding.typed, part, table)) {
-    const name = `${part === 'r1' ? 'Round 1 %' : 'Round 1 + 2 cap'} · ${keyWords(table)} · tier ${String(tier)}`
+    const name = `${part === 'r1' ? 'Round 1 %' : 'Round 1 + 2 cap'} · ${classLabel(table, binding.typed)} · tier ${String(tier)}`
     return (
       <td className={`${TD_NUM} ${tint}`}>
         <SandboxBox
@@ -114,8 +114,8 @@ export function SandboxTierCard({
   const awardTables = doc.award_tables as Tables
   const capTables = (doc.round2.tables ?? {}) as Tables
   const classes = gridClasses(doc.programs as Programs, awardTables)
-  const r1 = gridColumns(awardTables, classes, keyWords)
-  const caps = gridColumns(capTables, classes, keyWords)
+  const r1 = gridColumns(awardTables, classes, (key) => classLabel(key, doc))
+  const caps = gridColumns(capTables, classes, (key) => classLabel(key, doc))
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'tiers'), doc)
   return (
     <section data-card="sandbox-tiers" className={`${CS_CARD} ${r1Locked ? LOCKED_CARD : ''}`}>

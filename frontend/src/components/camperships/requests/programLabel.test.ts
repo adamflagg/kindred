@@ -7,7 +7,7 @@ describe('programLabels (the rules name their own programs)', () => {
   it("reads each program's label from the approved rules' programs section", () => {
     expect(programLabels(APPROVED_RULES_2026)).toEqual({
       summer: 'Summer',
-      tbm: 'TBM',
+      ffp: 'FFP',
       family_camp: 'Family camp',
       womens_weekend: "Women's weekend",
       mens_weekend: "Men's weekend",
@@ -107,7 +107,7 @@ describe('programGroups (T6: one Program dropdown, pools as headings)', () => {
   })
 
   it("files a program under the rules' budget pool, before the row's own", () => {
-    const moved = [{ program: 'tbm', pool: 'pool_b' }]
+    const moved = [{ program: 'ffp', pool: 'pool_b' }]
     expect(programGroups(moved, APPROVED_RULES_2026)[0]?.pool?.value).toBe('pool_a')
   })
 
