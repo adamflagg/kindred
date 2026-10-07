@@ -12,6 +12,7 @@ import {
   roundLegend,
   roundLines,
   shareCaption,
+  withPreview,
 } from './budgetCards'
 
 const LIVE: AidView = { year: 2027, asOf: { kind: 'live' } }
@@ -156,5 +157,15 @@ describe('Download CSV (spec §5.2 H)', () => {
       'Pool B',
       'Pool B',
     ])
+  })
+})
+
+describe('the cards as the typed plan draws them (spec §5.2 B)', () => {
+  it('draws the typed plan while Edit Plan… is open, Committed unchanged', () => {
+    const [, b] = withPreview(poolCards(BUDGET, null), {
+      pools: { pool_b: { allocated: 110000, remaining: 57600 } },
+      total: { allocated: 1000000, remaining: 151290 },
+    })
+    expect([b?.allocated, b?.remaining, b?.committed]).toEqual([110000, 57600, 52400])
   })
 })

@@ -17,6 +17,7 @@ import {
   TOTAL_POOL,
   type BudgetRow,
 } from './budgetModel'
+import type { Preview } from './planModel'
 
 export interface RoundPart {
   readonly round: 1 | 2 | 3
@@ -267,4 +268,23 @@ export function budgetCsvRows(budget: ApiAidBudget, pool: string | null): string
         '',
       ]),
   ])
+}
+
+/** The cards as the typed plan would draw them (§5.2 B): Allocated and Remaining move, Committed never does. */
+export function withPreview(
+  cards: readonly PoolCardModel[],
+  preview: Preview | null
+): PoolCardModel[] {
+  if (preview === null) return [...cards]
+  return cards.map((card) => {
+    const shown = preview.pools[card.key]
+    return shown === undefined
+      ? card
+      : {
+          ...card,
+          allocated: shown.allocated,
+          remaining: shown.remaining,
+          overShare: toCents(shown.remaining) < 0,
+        }
+  })
 }
