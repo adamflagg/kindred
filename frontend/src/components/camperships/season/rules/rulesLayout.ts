@@ -102,11 +102,15 @@ const cardTitle = (section: ApiAidRulesSection) =>
     ? GRID_TITLES[section as (typeof GRID_PARTS)[number]]
     : SECTION_TITLES[section]
 
-/** A folded chapter's line (rules-v3): "3 locked", "1 in effect", each draft section by name, the issues count. */
+/**
+ * A folded chapter's line (rules-v3): "3 locked", "1 in effect", each draft section by name, the issues count. `errors`
+ * is how many of `issues` are errors: they read as errors, in red, as on the section's own head.
+ */
 export function chapterSummary(
   chapter: ChapterDef,
   statuses: ReadonlyMap<ApiAidRulesSection, StatusWords>,
-  issues: number
+  issues: number,
+  errors = 0
 ): SummaryPill[] {
   const words = sectionsOf(chapter).flatMap((s) => {
     const w = statuses.get(s)
@@ -123,8 +127,14 @@ export function chapterSummary(
     if (w.pill === 'Not approved yet')
       out.push({ text: `${cardTitle(section)}: not approved yet`, tone: 'stone' })
   }
-  if (issues > 0)
-    out.push({ text: `${String(issues)} ${issues === 1 ? 'warning' : 'warnings'}`, tone: 'amber' })
+  if (errors > 0)
+    out.push({ text: `${String(errors)} ${errors === 1 ? 'error' : 'errors'}`, tone: 'red' })
+  const warnings = issues - errors
+  if (warnings > 0)
+    out.push({
+      text: `${String(warnings)} ${warnings === 1 ? 'warning' : 'warnings'}`,
+      tone: 'amber',
+    })
   return out
 }
 

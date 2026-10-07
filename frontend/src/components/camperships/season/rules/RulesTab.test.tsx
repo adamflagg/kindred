@@ -229,6 +229,27 @@ describe('RulesTab for finance (D39)', () => {
     spy.mockRestore()
   })
 
+  it('a folded chapter names its errors as errors, not warnings (scan #3043)', () => {
+    const d = rulesDraft()
+    const issue = d.report.issues?.[0]
+    if (!issue) throw new Error('fixture has no issue')
+    d.report = {
+      ...d.report,
+      issues: [
+        { ...issue, section: 'awards', severity: 'error', path: 'awards.minimum' },
+        { ...issue, section: 'awards', severity: 'error', path: 'awards.rounding' },
+      ],
+    }
+    d.sections = d.sections.map((s) => (s.section === 'awards' ? { ...s, errors: 2 } : s))
+    draft = { data: d, isLoading: false, error: null }
+    granted = FINANCE
+    renderAt('/aid/season/rules?open=1')
+    const chapter = document.getElementById('chap-2')
+    if (chapter === null) throw new Error('no Awards chapter')
+    expect(within(chapter).getByText('2 errors')).toBeInTheDocument()
+    expect(within(chapter).queryByText(/warning/)).toBeNull()
+  })
+
   it('says so when the season has no rules at all yet', () => {
     draft = { data: undefined, isLoading: false, error: new AidApiError('No rules for 2027', 404) }
     renderAt('/aid/season/rules')

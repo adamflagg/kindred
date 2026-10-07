@@ -90,6 +90,17 @@ describe('a folded chapter (spec §6.2 C; disagreement 8)', () => {
       { text: '2 warnings', tone: 'amber' },
     ])
   })
+
+  it("names a folded chapter's errors as errors, in red, before its warnings (scan #3043)", () => {
+    const statuses = new Map([
+      ['awards', { pill: 'In effect', tone: 'emerald', meta: '', note: null }],
+    ] as const)
+    expect(chapterSummary(CHAPTERS[1]!, new Map(statuses), 3, 1)).toEqual([
+      { text: '1 in effect', tone: 'emerald' },
+      { text: '1 error', tone: 'red' },
+      { text: '2 warnings', tone: 'amber' },
+    ])
+  })
 })
 
 describe('footnotes (spec §6.2 H; rules-v3 Fix 1)', () => {

@@ -21,7 +21,7 @@ import type {
 import { AMBER_NOTE } from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { aidHref } from '../../kit/asOf'
-import { CS_BTN, CS_LINK, CS_META } from '../../kit/csType'
+import { CS_BTN, CS_LINK, CS_META, CS_SMALL } from '../../kit/csType'
 import { DefinitionNotes } from '../../kit/DefinitionNotes'
 import { SEASON_CARD } from '../seasonStyles'
 import { ApprovePanel, SeasonNotice } from '../SeasonChrome'
@@ -500,7 +500,7 @@ function ChaptersBody({
         grantsHref={grantsHref}
       >
         {s.content === null ? (
-          <p className="text-muted-foreground mt-1 text-xs">
+          <p className={`${CS_SMALL} mt-1`}>
             Not approved yet: this section shows here once finance approves it.
           </p>
         ) : (
@@ -525,7 +525,7 @@ function ChaptersBody({
           canEdit={false}
           onEdit={() => undefined}
         >
-          <p className="text-muted-foreground mt-1 text-xs">
+          <p className={`${CS_SMALL} mt-1`}>
             Not approved yet: the tier grid shows here once finance approves its sections.
           </p>
         </SectionCard>
@@ -569,13 +569,14 @@ function ChaptersBody({
             <div className={`${CS_META} font-bold`}>{group}</div>
             {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
               const sections = sectionsOf(chapter)
-              const issues = sections.reduce((n, s) => n + (shownOf(s)?.issues.length ?? 0), 0)
+              const listed = sections.flatMap((s) => shownOf(s)?.issues ?? [])
+              const errors = listed.filter((i) => i.severity === 'error').length
               return (
                 <Chapter
                   key={chapter.n}
                   chapter={chapter}
                   open={open.includes(chapter.n)}
-                  summary={chapterSummary(chapter, statuses, issues)}
+                  summary={chapterSummary(chapter, statuses, listed.length, errors)}
                   onToggle={() =>
                     writeOpen(toggleChapter(open, chapter.n).split(',').filter(Boolean).map(Number))
                   }
