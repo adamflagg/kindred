@@ -822,3 +822,15 @@ def test_an_id_that_isnt_a_session_this_season_warns() -> None:
 def test_without_a_context_no_id_is_judged_unknown() -> None:
     rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000888])
     assert "not_running_unknown_session" not in validate_rules(rules).codes()
+
+
+def test_an_ag_child_of_a_not_running_session_that_maps_to_no_program_is_not_unmapped() -> None:
+    """The child of a not-running parent is skipped by derivation, even when the parent's own type maps nowhere."""
+    rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000999])
+    context = _context(
+        SessionRef(cm_id=1000999, session_type="hebrew"),
+        SessionRef(cm_id=1000998, session_type="ag", parent_id=1000999),
+    )
+    assert "unmapped_session" not in validate_rules(rules, context).codes()
+    running = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [])
+    assert "unmapped_session" in validate_rules(running, context).codes()
