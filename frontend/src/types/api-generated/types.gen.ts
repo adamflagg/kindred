@@ -11965,6 +11965,10 @@ export type PromotionPreviewOut = {
     | 'quality_checks'
     | 'milestones'
   >
+  /**
+   * Fixed Kept
+   */
+  fixed_kept?: number
 }
 
 /**
@@ -18641,6 +18645,28 @@ export type WorkspaceOut = {
    * Rules Draft Version
    */
   rules_draft_version?: number | null
+  /**
+   * Locked Sections
+   */
+  locked_sections?: Array<
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'quality_checks'
+    | 'milestones'
+  >
+  /**
+   * Locked By Round
+   */
+  locked_by_round?: number | null
 }
 
 /**

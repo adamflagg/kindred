@@ -11,11 +11,12 @@ only (the list of checks is fixed; each check's own settings are not).
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from bunking.financial_aid.rules.schema import SectionName
+from bunking.financial_aid.rules.schema import AidRules, SectionName
 
 
 @dataclass(frozen=True)
@@ -116,3 +117,59 @@ def changed_fixed(section: SectionName, before: Mapping[str, Any], after: Mappin
         if dict(_values(before, parts)) != dict(_values(after, parts)) and setting.label not in out:
             out.append(setting.label)
     return out
+
+
+def _reset(base: Any, wanted: Any, parts: Sequence[str]) -> Any:
+    """`wanted` with the value(s) at `parts` set to `base`'s (FIXED_PATHS' grammar: `*` is every key or list
+    position, `#keys` the set of keys). A `*` over a mapping keeps `base`'s keys only (an added named award or
+    program goes; a removed one comes back); over a list it aligns by position. Where `wanted` lacks the shape,
+    `base`'s value stands."""
+    if not parts:
+        return copy.deepcopy(base)
+    head, rest = parts[0], parts[1:]
+    if head == "#keys":
+        if isinstance(base, Mapping) and isinstance(wanted, Mapping):
+            return {key: copy.deepcopy(wanted.get(key, base[key])) for key in base}
+        return copy.deepcopy(base)
+    if head == "*":
+        if isinstance(base, Mapping) and isinstance(wanted, Mapping):
+            return {
+                key: _reset(base[key], wanted[key], rest) if key in wanted else copy.deepcopy(base[key]) for key in base
+            }
+        if isinstance(base, list) and isinstance(wanted, list):
+            return [
+                _reset(item, wanted[i], rest) if i < len(wanted) else copy.deepcopy(item) for i, item in enumerate(base)
+            ]
+        return copy.deepcopy(base)
+    if not isinstance(wanted, Mapping):
+        return copy.deepcopy(base)
+    out = dict(wanted)
+    if isinstance(base, Mapping) and head in base:
+        out[head] = _reset(base[head], wanted[head], rest) if head in wanted else copy.deepcopy(base[head])
+    else:
+        out.pop(head, None)
+    return out
+
+
+def reset_fixed(section: SectionName, base: Mapping[str, Any], wanted: Mapping[str, Any]) -> dict[str, Any]:
+    """`wanted`'s section with every fixed setting set back to `base`'s (Scenarios addendum §S11.3): a promotion
+    never writes a setting the Rules tab hides or shows read-only. Everything else `wanted` changed stays. Its
+    contract: `changed_fixed(section, base, reset_fixed(section, base, wanted)) == []`."""
+    out: Any = dict(wanted)
+    for setting in FIXED_PATHS.get(section, ()):
+        out = _reset(base, out, setting.path.split("."))
+    return dict(out)
+
+
+def reset_fixed_document(base: AidRules, wanted: AidRules) -> tuple[AidRules, int]:
+    """`wanted` with every section's fixed settings set back to `base`'s, and how many distinct fixed settings that
+    changed back (the promotion dialog says "‹n› fixed settings stay as the rules draft has them")."""
+    before, after = base.model_dump(), wanted.model_dump()
+    base_json, out = base.model_dump(mode="json"), wanted.model_dump(mode="json")
+    kept = 0
+    for section in FIXED_PATHS:
+        labels = changed_fixed(section, before[section], after[section])
+        if labels:
+            kept += len(labels)
+            out[section] = reset_fixed(section, base_json[section], out[section])
+    return AidRules.model_validate(out), kept

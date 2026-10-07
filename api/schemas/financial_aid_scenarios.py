@@ -122,6 +122,9 @@ class WorkspaceOut(BaseModel):
     options: list[OptionOut]
     # the rules draft's version while it differs from the rules in effect: the cue for Start from's third entry
     rules_draft_version: int | None = None
+    # a posted round locked these (§S11.3): the screen greys from them alone
+    locked_sections: list[SectionName] = Field(default_factory=list)
+    locked_by_round: int | None = None
 
 
 class DocumentIn(BaseModel):
@@ -335,6 +338,7 @@ class PromotionPreviewOut(BaseModel):
     base_version: int
     sections: list[PromotionSectionOut]
     unchanged: list[SectionName]
+    fixed_kept: int = 0  # fixed settings left as the rules draft has them (§S11.3)
 
 
 class MakeRulesDraftIn(BaseModel):

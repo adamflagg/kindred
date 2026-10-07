@@ -4,8 +4,9 @@ change. A safety net: the editor never sends one changed. Fictional only."""
 from decimal import Decimal
 from typing import Any
 
-from bunking.financial_aid.rules.fixed import FIXED_PATHS, changed_fixed
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules
+from bunking.financial_aid.rules.fixed import FIXED_PATHS, changed_fixed, reset_fixed, reset_fixed_document
+from bunking.financial_aid.rules.schema import AidRules
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_levers
 
 
 def _section(name: str) -> dict[str, Any]:
@@ -74,3 +75,62 @@ def test_a_named_award_added_or_its_kind_changed_is_refused() -> None:
         "decision_types": {**types, "full_cost_program": {**types["full_cost_program"], "kind": "top_up"}},
     }
     assert changed_fixed("awards", before, rekinded) == ["Named award › Kind"]
+
+
+# --- a promotion keeps fixed settings as the rules draft has them (Scenarios addendum §S11.3; disagreement 10) ------
+
+
+def test_reset_fixed_sets_a_fixed_setting_back_and_keeps_the_edit_beside_it() -> None:
+    base = fictional_rules()
+    wanted = with_levers(base, {"awards.ask_cap": not base.awards.ask_cap, "awards.minimum": "150"})
+    reset = reset_fixed("awards", base.awards.model_dump(), wanted.awards.model_dump())
+    assert changed_fixed("awards", base.awards.model_dump(), reset) == []
+    assert (reset["ask_cap"], reset["minimum"]) == (base.awards.ask_cap, Decimal(150))
+
+
+def test_reset_fixed_drops_a_named_award_the_option_added() -> None:
+    base = fictional_rules()
+    raw = base.model_dump(mode="json")
+    raw["awards"]["decision_types"]["named_full_cost_fund"] = {
+        "label": "Named full-cost fund",
+        "kind": "full_cost_after_aid",
+        "round": 1,
+        "counts_toward_budget": False,
+    }
+    wanted = AidRules.model_validate(raw)
+    reset = reset_fixed("awards", base.awards.model_dump(), wanted.awards.model_dump())
+    assert "named_full_cost_fund" not in reset["decision_types"]
+    assert changed_fixed("awards", base.awards.model_dump(), reset) == []
+
+
+def test_reset_fixed_aligns_criteria_by_position_and_keeps_each_ones_enabled() -> None:
+    base = fictional_rules()
+    first = base.equity.criteria[0].model_copy(update={"label": "Renamed", "enabled": False})
+    extra = base.equity.criteria[0].model_copy(update={"key": "extra_need", "label": "Extra need"})
+    criteria = [first, *base.equity.criteria[1:], extra]
+    wanted = base.model_copy(update={"equity": base.equity.model_copy(update={"criteria": criteria})})
+    reset = reset_fixed("equity", base.equity.model_dump(), wanted.equity.model_dump())
+    assert changed_fixed("equity", base.equity.model_dump(), reset) == []
+    assert [c["key"] for c in reset["criteria"]] == [c.key for c in base.equity.criteria]
+    assert (reset["criteria"][0]["label"], reset["criteria"][0]["enabled"]) == (base.equity.criteria[0].label, False)
+
+
+def test_reset_fixed_keeps_the_rules_drafts_list_of_checks() -> None:
+    base = fictional_rules()
+    wanted = with_levers(base, {"quality_checks.checks.household_income_conflict": {"severity": "hold"}})
+    reset = reset_fixed("quality_checks", base.quality_checks.model_dump(), wanted.quality_checks.model_dump())
+    assert sorted(reset["checks"]) == sorted(base.quality_checks.model_dump()["checks"])
+
+
+def test_a_whole_document_is_reset_and_counted_by_distinct_setting() -> None:
+    base = fictional_rules()
+    wanted = with_levers(
+        base, {"awards.ask_cap": not base.awards.ask_cap, "income.floor": "500", "awards.minimum": "150"}
+    )
+    document, kept = reset_fixed_document(base, wanted)
+    assert kept == 2  # "Never give more than the family asked for" and "Income floor"
+    assert (document.awards.ask_cap, document.income.floor, document.awards.minimum) == (
+        base.awards.ask_cap,
+        base.income.floor,
+        Decimal(150),
+    )

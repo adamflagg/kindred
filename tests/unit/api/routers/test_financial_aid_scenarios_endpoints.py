@@ -47,7 +47,9 @@ from api.services.financial_aid_scenarios_service import (
     LeverEffect,
     ScenarioConflictError,
     ScenarioNotFoundError,
+    ScenarioPromotion,
     ScenarioRefusedError,
+    ScenarioSectionLockedError,
     Sensitivity,
     Workspace,
 )
@@ -222,7 +224,7 @@ def _stub() -> Any:
         )
     )
     service.trail = AsyncMock(return_value=((ROW,), 1))
-    service.rules_draft_preview = AsyncMock(return_value=PREVIEW)
+    service.rules_draft_preview = AsyncMock(return_value=ScenarioPromotion(PREVIEW, 0))
     service.make_rules_draft = AsyncMock(return_value=(RULES_DRAFT, 1))
     return service
 
@@ -772,3 +774,27 @@ def test_keep_passes_its_name_and_the_option_reads_with_its_name() -> None:
         False,
         None,
     )
+
+
+def test_a_locked_section_is_409_naming_the_sections() -> None:
+    service = _stub()
+    service.save_draft = AsyncMock(side_effect=ScenarioSectionLockedError(["award_tables"]))
+    response = _client().put("/api/financial-aid/scenarios/2027/draft", json=DOC_BODY)
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": "Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.",
+        "sections": ["award_tables"],
+    }
+
+
+def test_the_workspace_says_what_is_locked_and_the_preview_how_many_fixed_settings_stay() -> None:
+    service = _stub()
+    service.workspace = AsyncMock(
+        return_value=Workspace(
+            2027, 1, META, DRAFT, (KEPT,), locked_sections=("tiers", "award_tables"), locked_by_round=1
+        )
+    )
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert (body["locked_sections"], body["locked_by_round"]) == (["tiers", "award_tables"], 1)
+    service.rules_draft_preview = AsyncMock(return_value=ScenarioPromotion(PREVIEW, 2))
+    assert _client().get("/api/financial-aid/scenarios/2027/options/A1/rules-draft").json()["fixed_kept"] == 2

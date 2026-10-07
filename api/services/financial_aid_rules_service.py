@@ -712,6 +712,19 @@ class FinancialAidRulesService:
                 return version
         return None
 
+    async def sections_locked_anywhere(self, year: int) -> frozenset[SectionName]:
+        """Every section some version of `year` holds locked (Scenarios addendum §S11.3). Any version, not just the
+        latest: a branch lifts the locks in the version it writes (`carry_forward`), as `_budget_total_locked`
+        reasons. Locks come only from a posted round (`lock_writes`), never a date. The stored statuses alone: a
+        document the current schema rejects must not fail a read."""
+        rows = await self._store.list_versions(year)
+        return frozenset(
+            name
+            for row in rows
+            for name, status in status_from_json(_json_object(row, "section_status")).items()
+            if status.state == "locked"
+        )
+
     async def draft_view(self, year: int) -> RulesDraft:
         """The Rules tab (spec §7.5, D39): the rules draft (the latest version) section by section, each with its
         status and its changes against the version pricing the season."""
@@ -1015,12 +1028,30 @@ class FinancialAidRulesService:
             raise YearMismatchError(f"The document is for {document.year}, not {year}")
         return await self._preview(await self.load(year), origin_version=origin_version, document=document)
 
-    async def _preview(self, current: RulesVersion, *, origin_version: int, document: AidRules) -> PromotionPreview:
+    async def preview_against(
+        self, current: RulesVersion, *, origin: RulesVersion, document: AidRules
+    ) -> PromotionPreview:
+        """`promotion_preview` on reads the caller already holds: the rules draft and the option's origin version.
+        Scenarios' workspace previews every kept option on one read of each (plan review, minor 3)."""
+        return await self._preview(current, origin_version=origin.version, document=document, origin=origin)
+
+    async def _preview(
+        self,
+        current: RulesVersion,
+        *,
+        origin_version: int,
+        document: AidRules,
+        origin: RulesVersion | None = None,
+    ) -> PromotionPreview:
         """The promotion preview against `current`, the rules draft as ONE read. `promote` checks the tokens against
         this same read, builds its candidate from it and writes with its revision (Ruling 2026-10-01 (plan review)),
         so a save that lands after the read is a conflict, never silently overwritten by the promotion."""
         year = current.year
-        origin = current if origin_version == current.version else await self.load(year, origin_version)
+        origin = (
+            origin
+            if origin is not None
+            else (current if origin_version == current.version else await self.load(year, origin_version))
+        )
         moved = set(changed_sections(origin.document, document))
         now, wanted = current.document.model_dump(), document.model_dump()
         entries = tuple(

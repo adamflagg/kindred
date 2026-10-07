@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -29,6 +30,7 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
 from api.services.financial_aid_rules_service import (
+    ROUND_SECTIONS,
     FinancialAidRulesService,
     NotLatestVersionError,
     ReplacementNotAcknowledgedError,
@@ -47,6 +49,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioConflictError,
     ScenarioNotFoundError,
     ScenarioRefusedError,
+    ScenarioSectionLockedError,
 )
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
@@ -86,6 +89,7 @@ class World:
     store: FakeScenarioStore
     season: FakeDecisionsStore
     rules: FinancialAidRulesService
+    rules_store: FakeStore
 
 
 async def _world(rows: Sequence[RegisterRow] = ()) -> World:
@@ -93,7 +97,8 @@ async def _world(rows: Sequence[RegisterRow] = ()) -> World:
     season = FakeDecisionsStore()
     seed_request(season, EMMA)
     seed_request(season, LIAM, household=1000002, person=1000021, income=90000.0)
-    rules = FinancialAidRulesService(FakeStore(), clock=lambda: T0)
+    rules_store = FakeStore()
+    rules = FinancialAidRulesService(rules_store, clock=lambda: T0)
     await rules.create_version(intake_rules(), actor=FINANCE)  # 2027 v1, every section draft
 
     async def register(year: int) -> Sequence[RegisterRow]:
@@ -103,7 +108,7 @@ async def _world(rows: Sequence[RegisterRow] = ()) -> World:
         return await capture_season(season, register, FakeRules(approved()), year)
 
     store = FakeScenarioStore()
-    return World(FinancialAidScenariosService(store, rules, capture), store, season, rules)
+    return World(FinancialAidScenariosService(store, rules, capture), store, season, rules, rules_store)
 
 
 async def _started() -> World:
@@ -521,7 +526,8 @@ async def test_the_trail_is_shared_and_newest_first() -> None:
 async def test_making_a_kept_option_the_rules_draft() -> None:
     world = await _started()
     await _kept_b(world)
-    preview = await world.service.rules_draft_preview(YEAR, "B")
+    promotion = await world.service.rules_draft_preview(YEAR, "B")
+    preview = promotion.preview
     assert ([s.section for s in preview.sections], preview.base_version) == (["award_tables"], 1)
     draft, branched_from = await world.service.make_rules_draft(
         YEAR, "B", base_version=1, acknowledged={}, actor=FINANCE
@@ -848,7 +854,8 @@ async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_
     # B would replace it.
     edited = _shifted(a, "-3").model_dump(mode="json")["award_tables"]
     await world.rules.save_section(YEAR, 1, "award_tables", edited, actor=TREASURER)
-    preview = await world.service.rules_draft_preview(YEAR, "B")
+    promotion = await world.service.rules_draft_preview(YEAR, "B")
+    preview = promotion.preview
     [section] = preview.sections
     assert section.warning is not None
     assert (preview.base_version, section.section, section.warning.kind, section.warning.by) == (
@@ -1138,3 +1145,166 @@ async def test_a_keep_with_nothing_recorded_is_refused() -> None:
         ScenarioRefusedError, match=r"^Your draft is the rules in effect: change a setting before keeping it$"
     ):
         await world.service.keep(YEAR, FINANCE)
+
+
+# --- the lock (Scenarios addendum §S11.3) ---------------------------------------------------------------------------
+
+
+async def _post_round(world: World, round_: int) -> None:
+    """A round's first Posted tick as the decisions service makes it: lock_writes for the sections the round read,
+    committed (ROUND_SECTIONS; spec §7.5). Never lock_section: production never calls it (parent coordinator
+    correction, 2026-10-06 late)."""
+    writes, not_locked = await world.rules.lock_writes(YEAR, 1, ROUND_SECTIONS[round_])
+    assert not_locked == []
+    await world.rules_store.commit(writes, actor=TREASURER)
+
+
+@pytest.mark.asyncio
+async def test_the_lock_reads_any_version_and_names_the_round_that_posted() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    before = await world.service.workspace(YEAR, FINANCE)
+    assert (before.locked_sections, before.locked_by_round) == ((), None)
+    await _post_round(world, 1)
+    await world.rules.new_version(YEAR, 1, actor=FINANCE, unlock=["award_tables"])  # v2 lifts it; v1 keeps it
+    after = await world.service.workspace(YEAR, FINANCE)
+    assert after.locked_sections == ("income", "tiers", "equity", "award_tables", "awards")
+    assert after.locked_by_round == 1
+    await _post_round(world, 2)
+    assert (await world.service.workspace(YEAR, FINANCE)).locked_by_round == 2
+
+
+@pytest.mark.asyncio
+async def test_a_release_that_changes_a_section_locked_since_the_screen_opened_is_refused_and_records_nothing() -> None:
+    """Review Focus 1: the screen still showed it editable; the edit is refused in staff words, the strip still
+    prices it, and nothing is recorded."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    plus_five = _shifted(intake_rules(), "5")
+    with pytest.raises(ScenarioSectionLockedError) as refused:
+        await world.service.save_draft(YEAR, plus_five, FINANCE)
+    assert str(refused.value) == (
+        "Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open."
+    )
+    assert refused.value.sections == ["award_tables"]
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+    assert (await world.service.evaluate(YEAR, plus_five)).results.round1 == Decimal(2800)
+
+
+@pytest.mark.asyncio
+async def test_two_locked_sections_are_named_together() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    both = with_minimum(_shifted(intake_rules(), "5"), Decimal(150))
+    with pytest.raises(
+        ScenarioSectionLockedError,
+        match=r"^Round 1 award table and Minimum award and named awards are locked: Round 1",
+    ):
+        await world.service.save_draft(YEAR, both, FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_the_round_1_plus_2_cap_stays_open_until_round_2_posts() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    caps = with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60")
+    assert (await world.service.save_draft(YEAR, caps, FINANCE)).from_code == "rules"
+    await _post_round(world, 2)
+    with pytest.raises(ScenarioSectionLockedError, match=r"^Appeal caps is locked: Round 2 is posted"):
+        await world.service.save_draft(YEAR, with_lever(caps, "round2.tables.camp.tiers.4.total_pct", "65"), FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_an_option_kept_before_the_lock_still_loads_and_prices_but_cannot_be_promoted() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE, name="Every tier up")  # A
+    await _post_round(world, 1)
+    await world.service.load(YEAR, TREASURER, option="A")  # a load is no edit
+    assert (await world.service.evaluate(YEAR, await _a(world))).results.round1 == Decimal(2800)
+    versions = len(await world.rules_store.list_versions(YEAR))
+    with pytest.raises(ScenarioSectionLockedError, match="Round 1 award table is locked"):
+        await world.service.rules_draft_preview(YEAR, "A")
+    with pytest.raises(ScenarioSectionLockedError):
+        await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert len(await world.rules_store.list_versions(YEAR)) == versions  # nothing written
+
+
+@pytest.mark.asyncio
+async def test_each_option_says_whether_it_can_be_promoted_and_why_not() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.load(YEAR, FINANCE, start="rules")
+    await world.service.keep(YEAR, FINANCE)  # A: the rules in effect, unchanged
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # B: Round 1 % moved
+    await world.service.save_draft(
+        YEAR, with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60"), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE)  # C: the cap alone
+
+    def why(workspace: Any) -> dict[str, tuple[bool, str | None]]:
+        return {o.record.code: (o.promotable, o.blocked) for o in workspace.options}
+
+    assert why(await world.service.workspace(YEAR, FINANCE)) == {
+        "A": (False, "is the rules in effect"),
+        "B": (True, None),
+        "C": (True, None),
+    }
+    await _post_round(world, 1)
+    assert why(await world.service.workspace(YEAR, FINANCE)) == {
+        "A": (False, "is the rules in effect"),
+        "B": (False, "changes Round 1 settings, locked since Round 1 posted"),
+        "C": (True, None),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_promotion_keeps_fixed_settings_as_the_rules_draft_has_them_and_says_how_many() -> None:
+    """§S11.3 (decided in the addendum): an option from last season's rules can carry last season's hidden values."""
+    world = await _frozen()
+    last = with_levers(
+        intake_rules(), {"year": YEAR - 1, "awards.ask_cap": False, "award_tables.camp.tiers.2.r1_pct": "80"}
+    )
+    await world.rules.create_version(last, actor=FINANCE)
+    await world.rules.approve_sections(YEAR - 1, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    await world.service.load(YEAR, FINANCE, start="last_rules")
+    await world.service.keep(YEAR, FINANCE)  # A
+    promotion = await world.service.rules_draft_preview(YEAR, "A")
+    assert ([s.section for s in promotion.preview.sections], promotion.fixed_kept) == (["award_tables"], 1)
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.awards.ask_cap is True
+    assert draft.version.document.award_tables["camp"].tiers[2].r1_pct == Decimal(80)
+
+
+# --- the budget total is never an option's to change (COORDINATOR RULING, PR 10, 2026-10-07) ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_promotion_after_the_lock_keeps_the_pricing_total_and_lands_the_rest() -> None:
+    """A scenario option can never change the budget total: the sandbox has no budget editor, and once Round 1 posts
+    the rules save refuses a new total. The promotion sets it back, so Confirm never fails with that 422."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    caps = with_levers(intake_rules(), {"round2.tables.camp.tiers.4.total_pct": "60", "budget.total": "600000"})
+    await world.service.save_draft(YEAR, caps, FINANCE)  # budget is no Scenarios section: the release records
+    await world.service.keep(YEAR, FINANCE)  # A
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.budget.total == intake_rules().budget.total
+    assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_a_budget_total_alone_is_nothing_to_promote() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, with_lever(intake_rules(), "budget.total", "600000"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # A
+    [option] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert (option.promotable, option.blocked) == (False, "is the rules in effect")
+    assert (await world.service.rules_draft_preview(YEAR, "A")).preview.sections == ()

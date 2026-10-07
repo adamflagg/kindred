@@ -288,6 +288,7 @@ from api.services.financial_aid_scenarios_service import (
     RequestSetChoice,
     ScenarioConflictError,
     ScenarioNotFoundError,
+    ScenarioSectionLockedError,
     Workspace,
 )
 from api.services.financial_aid_season_history import HistoryFilter, HistoryNotFoundError, SeasonHistoryService
@@ -1174,6 +1175,8 @@ def _scenarios() -> FinancialAidScenariosService:
 
 
 def _scenarios_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, ScenarioSectionLockedError):
+        return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, (ScenarioNotFoundError, RulesNotFoundError, SnapshotMissingError)):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ReplacementNotAcknowledgedError):
@@ -1349,6 +1352,8 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
         draft=_scenario_draft_out(workspace.draft) if workspace.draft is not None else None,
         options=[_option_out(kept) for kept in workspace.options],
         rules_draft_version=workspace.rules_draft_version,
+        locked_sections=list(workspace.locked_sections),
+        locked_by_round=workspace.locked_by_round,
     )
 
 
@@ -1384,7 +1389,7 @@ def _trail_row_out(row: TrailRecord) -> TrailRowOut:
     )
 
 
-def _preview_out(code: str, preview: PromotionPreview) -> PromotionPreviewOut:
+def _preview_out(code: str, preview: PromotionPreview, *, fixed_kept: int = 0) -> PromotionPreviewOut:
     return PromotionPreviewOut(
         code=code,
         origin_version=preview.origin_version,
@@ -1402,6 +1407,7 @@ def _preview_out(code: str, preview: PromotionPreview) -> PromotionPreviewOut:
             for s in preview.sections
         ],
         unchanged=list(preview.unchanged),
+        fixed_kept=fixed_kept,
     )
 
 
@@ -1598,7 +1604,8 @@ async def preview_scenario_rules_draft(
 ) -> PromotionPreviewOut:
     """ "Make B2 the rules draft": each section it changes, old -> new, and whose edit it would replace (D39)."""
     try:
-        return _preview_out(code, await _scenarios().rules_draft_preview(year, code))
+        promotion = await _scenarios().rules_draft_preview(year, code)
+        return _preview_out(code, promotion.preview, fixed_kept=promotion.fixed_kept)
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 

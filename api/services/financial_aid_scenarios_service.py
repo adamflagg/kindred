@@ -29,7 +29,7 @@ inputs (plan Decision 15).
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
@@ -41,6 +41,7 @@ from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, Se
 from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
+    ROUND_SECTIONS,
     FinancialAidRulesService,
     PromotionPreview,
     RulesDraft,
@@ -55,7 +56,10 @@ from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import split_by_received
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationIssue, ValidationReport
 from bunking.financial_aid.rules.derived import derive_weights
+from bunking.financial_aid.rules.fixed import reset_fixed_document
+from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import (
+    CARD_TITLES,
     SIZING_LEVERS,
     CommitteeView,
     FitResult,
@@ -96,6 +100,25 @@ def _fit_name(text: str) -> str:
     return text if len(text) <= NAME_MAX else text[: NAME_MAX - 1] + "…"
 
 
+# The sections the sandbox edits (§S11.3). Of `awards` only the minimum is on screen, but a section locks whole, as on
+# Rules.
+SCENARIO_SECTIONS: Final[tuple[SectionName, ...]] = ("tiers", "award_tables", "round2", "awards", "equity", "income")
+
+
+def _round_of(section: SectionName) -> int:
+    return next((n for n, read in ROUND_SECTIONS.items() if section in read), 1)
+
+
+def locked_words(sections: Sequence[SectionName]) -> str:
+    """§S11.3: "Income tiers and Round 1 award table are locked: Round 1 is posted, so Scenarios models only what is
+    still open." The card titles are the Rules tab's; the round is the latest that read any of them."""
+    titles = [CARD_TITLES.get(s, s) for s in sections]
+    names = titles[0] if len(titles) == 1 else f"{', '.join(titles[:-1])} and {titles[-1]}"
+    verb = "is" if len(titles) == 1 else "are"
+    posted = max(_round_of(s) for s in sections)
+    return f"{names} {verb} locked: Round {posted} is posted, so Scenarios models only what is still open."
+
+
 class ScenarioNotFoundError(FinancialAidError, LookupError):
     """No such kept option or trail row in the season."""
 
@@ -106,6 +129,21 @@ class ScenarioRefusedError(FinancialAidError, ValueError):
 
 class ScenarioConflictError(FinancialAidError, ValueError):
     """The action would duplicate something that exists (a keep that matches a kept option)."""
+
+
+class ScenarioSectionLockedError(FinancialAidError, ValueError):
+    """An edit or a promotion that changes a section a posted round locked (§S11.3): 409 {"message", "sections"},
+    the shape ReplacementNotAcknowledgedError has. Only Scenarios refuses: Rules can still correct a locked section."""
+
+    def __init__(self, sections: Sequence[SectionName]) -> None:
+        super().__init__(locked_words(sections))
+        self.sections = list(sections)
+
+
+@dataclass(frozen=True)
+class ScenarioPromotion:
+    preview: PromotionPreview
+    fixed_kept: int  # fixed settings left as the rules draft has them (§S11.3)
 
 
 SeasonCapture = Callable[[int], Awaitable[SeasonSnapshot]]
@@ -191,6 +229,8 @@ class Workspace:
     options: tuple[KeptOption, ...]
     pricing_version: int | None = None  # the version pricing the season; None while none does (final review 8)
     rules_draft_version: int | None = None  # the rules draft's version while it differs from the rules in effect
+    locked_sections: tuple[SectionName, ...] = ()  # a posted round locked these (§S11.3): the screen greys from them
+    locked_by_round: int | None = None  # 2 when round2 is locked, 1 when a Round 1 section is: the lock note's words
 
 
 @dataclass(frozen=True)
@@ -305,6 +345,23 @@ def _same_as(document: AidRules, options: Mapping[str, OptionRecord], effect: Ru
     its own: the caller passes the reads it already holds (plan review, minor 3)."""
     same = next((o.code for o in options.values() if o.document == document), None)
     return same if same is not None else ("rules" if document == effect.document else None)
+
+
+def _scenario_locked(locked: Collection[SectionName]) -> tuple[SectionName, ...]:
+    return tuple(name for name in SECTION_NAMES if name in SCENARIO_SECTIONS and name in locked)
+
+
+def _promotion_document(rules_draft: AidRules, option: AidRules) -> tuple[AidRules, int]:
+    """What a promotion copies (§S11.3; COORDINATOR RULING, PR 10, 2026-10-07): the option with its fixed settings
+    set back to the rules draft's, and the budget total too. A scenario option can never change the budget total: the
+    sandbox has no budget editor, and once Round 1 posts the rules save refuses a new total (BudgetTotalLockedError),
+    which would fail Confirm and leave the option's other changes unlanded. Always applied, locked or not. The pools'
+    shares still copy. The count is of fixed settings only; the total is not one."""
+    document, kept = reset_fixed_document(rules_draft, option)
+    if document.budget.total != rules_draft.budget.total:
+        budget = document.budget.model_copy(update={"total": rules_draft.budget.total})
+        document = document.model_copy(update={"budget": budget})
+    return document, kept
 
 
 def _when(row: TrailRecord) -> str:
@@ -738,12 +795,19 @@ class FinancialAidScenariosService:
         meta = await self._store.latest_snapshot(year)
         options = await self._options(year)
         last = await self._last_rules(year)
+        locked = await self._rules.sections_locked_anywhere(year)
+        promotability = await self._promotability(year, options, rules_draft=rules, effect=effect, locked=locked)
         kept = [
             KeptOption(
-                option, await self._label(option, options, last), stale=meta is None or option.snapshot != meta.id
+                option,
+                await self._label(option, options, last),
+                stale=meta is None or option.snapshot != meta.id,
+                promotable=promotability[option.code][0],
+                blocked=promotability[option.code][1],
             )
             for option in options.values()
         ]
+        greyed = _scenario_locked(locked)
         return Workspace(
             year,
             rules.version,
@@ -752,7 +816,67 @@ class FinancialAidScenariosService:
             tuple(kept),
             pricing_version=pricing.version if pricing is not None else None,
             rules_draft_version=rules.version if rules.document != effect.document else None,
+            locked_sections=greyed,
+            locked_by_round=2 if "round2" in greyed else 1 if any(s in ROUND_SECTIONS[1] for s in greyed) else None,
         )
+
+    async def scenario_locked_sections(self, year: int) -> tuple[SectionName, ...]:
+        """The Scenarios sections a posted round has locked in any version (§S11.3), in section order. The screen
+        greys from these alone."""
+        return _scenario_locked(await self._rules.sections_locked_anywhere(year))
+
+    async def _promotion(self, year: int, code: str) -> tuple[OptionRecord, AidRules, ScenarioPromotion]:
+        """What "Make ‹B› the Rules Draft" would copy (§S11.3): the option with its fixed settings set back to the
+        rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere. The
+        rules service's own promote is unchanged for its other callers."""
+        option = await self._option(year, code)
+        rules_draft = await self._rules.load(year)
+        try:
+            document, kept = _promotion_document(rules_draft.document, option.document)
+        except ValueError as exc:  # pydantic's ValidationError
+            raise ScenarioRefusedError(f"{code}'s fixed settings don't fit the rules draft") from exc
+        preview = await self._rules.promotion_preview(year, origin_version=option.origin_version, document=document)
+        locked = await self._rules.sections_locked_anywhere(year)
+        refused = [entry.section for entry in preview.sections if entry.section in locked]
+        if refused:
+            raise ScenarioSectionLockedError(refused)
+        return option, document, ScenarioPromotion(preview, kept)
+
+    async def _promotability(
+        self,
+        year: int,
+        options: Mapping[str, OptionRecord],
+        *,
+        rules_draft: RulesVersion,
+        effect: RulesVersion,
+        locked: Collection[SectionName],
+    ) -> dict[str, tuple[bool, str | None]]:
+        """Each option's `promotable` and `blocked` words (§S11.3; disagreement 5). It previews on the workspace's
+        own reads of the rules draft, the rules in effect and the locks, and reads each origin version once, so a
+        workspace read stays a handful of reads however many options are kept (plan review, minor 3)."""
+        origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
+        out: dict[str, tuple[bool, str | None]] = {}
+        for code, option in options.items():
+            try:
+                document, _ = _promotion_document(rules_draft.document, option.document)
+            except ValueError:
+                out[code] = (False, "its fixed settings don't fit the rules draft")
+                continue
+            if option.origin_version not in origins:
+                origins[option.origin_version] = await self._rules.load(year, option.origin_version)
+            preview = await self._rules.preview_against(
+                rules_draft, origin=origins[option.origin_version], document=document
+            )
+            refused = [entry.section for entry in preview.sections if entry.section in locked]
+            if not preview.sections:
+                same = rules_draft.document == effect.document
+                out[code] = (False, "is the rules in effect" if same else "is already the rules draft")
+            elif refused:
+                posted = max(_round_of(s) for s in refused)
+                out[code] = (False, f"changes Round {posted} settings, locked since Round {posted} posted")
+            else:
+                out[code] = (True, None)
+        return out
 
     async def trail(self, year: int, *, page: int, per_page: int) -> tuple[tuple[TrailRecord, ...], int]:
         """A page of everyone's trail, newest first; each row says whether its figures are from an older snapshot."""
@@ -789,6 +913,10 @@ class FinancialAidScenariosService:
             current, from_code = (await self._source(year, "rules")).document, "rules"
         else:
             current, from_code = row.document, _from(row)
+        locked = await self.scenario_locked_sections(year)
+        moved = [s for s in locked if getattr(derive_weights(current), s) != getattr(document, s)]
+        if moved:
+            raise ScenarioSectionLockedError(moved)
         if document != current:
             await self._record(year, actor, document=document, from_code=from_code, change=describe(current, document))
         return await self._draft(year, actor)
@@ -1063,19 +1191,20 @@ class FinancialAidScenariosService:
 
     # --- make it the rules draft --------------------------------------------------------------------
 
-    async def rules_draft_preview(self, year: int, code: str) -> PromotionPreview:
-        option = await self._option(year, code)
-        return await self._rules.promotion_preview(year, origin_version=option.origin_version, document=option.document)
+    async def rules_draft_preview(self, year: int, code: str) -> ScenarioPromotion:
+        _, _, promotion = await self._promotion(year, code)
+        return promotion
 
     async def make_rules_draft(
         self, year: int, code: str, *, base_version: int, acknowledged: Mapping[SectionName, str], actor: str
     ) -> tuple[RulesDraft, int | None]:
-        """ "Make B2 the rules draft" (D39): the rules draft as it is after, and the version it branched from."""
-        option = await self._option(year, code)
+        """ "Make B the rules draft" (D39; §S11.3): refused when it copies a locked section; fixed settings stay as
+        the rules draft has them. The rules draft as it is after, and the version it branched from."""
+        option, document, _ = await self._promotion(year, code)
         saved = await self._rules.promote(
             year,
             origin_version=option.origin_version,
-            document=option.document,
+            document=document,
             base_version=base_version,
             acknowledged=acknowledged,
             actor=actor,
