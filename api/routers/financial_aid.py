@@ -39,7 +39,7 @@ financial_aid.rules); and development's report (`/reports/{year}/development`,
 financial_aid.view or .summary: aggregates only, D65).
 """
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Final, Literal, NoReturn
 
@@ -164,7 +164,9 @@ from api.schemas.financial_aid_scenarios import (
     MakeRulesDraftIn,
     OptionCode,
     OptionOut,
+    PoolProjectionOut,
     PoolResultOut,
+    ProjectionOut,
     PromotionPreviewOut,
     PromotionSectionOut,
     RenameIn,
@@ -199,6 +201,7 @@ from api.schemas.financial_aid_to_place import (
     ToPlaceResponse,
     ToPlaceWriteOut,
 )
+from api.services.financial_aid_arrival_curves_repository import ArrivalCurveRepository
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -290,6 +293,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     ScenarioSectionLockedError,
     Workspace,
+    received_moments,
 )
 from api.services.financial_aid_season_history import HistoryFilter, HistoryNotFoundError, SeasonHistoryService
 from api.services.financial_aid_to_place_service import ToPlaceService
@@ -297,6 +301,7 @@ from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.branding import get_branding, get_camp_name
+from bunking.financial_aid.arrival import Projection
 from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
@@ -1179,7 +1184,17 @@ def _scenarios() -> FinancialAidScenariosService:
             FinancialAidDecisionsRepository(pb), GrantsService(GrantsRepository(pb)).register_rows, _rules(), year
         )
 
-    return FinancialAidScenariosService(ScenarioRepository(pb), _rules(), capture, season_read=_decisions().season)
+    async def received(year: int) -> list[datetime]:
+        return await received_moments(FinancialAidDecisionsRepository(pb), year)
+
+    return FinancialAidScenariosService(
+        ScenarioRepository(pb),
+        _rules(),
+        capture,
+        season_read=_decisions().season,
+        curves=ArrivalCurveRepository(pb).curve,
+        received=received,
+    )
 
 
 def _scenarios_http(exc: FinancialAidError) -> HTTPException:
@@ -1223,10 +1238,27 @@ def _pool_out(p: PoolResult) -> PoolResultOut:
     )
 
 
-def _results_out(r: ScenarioResults) -> ResultsOut:
+def _projection_out(projection: Projection | None) -> ProjectionOut | None:
+    if projection is None:
+        return None
+    return ProjectionOut(
+        share=round(float(projection.share), 3),
+        through=projection.through,
+        basis_year=projection.basis_year,
+        aligned_on=projection.aligned_on,
+        requests=projection.requests,
+        round1=money(projection.round1),
+        round1_and_2=money(projection.round1_and_2),
+        remaining=_cents(projection.remaining),
+        pools=[PoolProjectionOut(pool=p.pool, remaining=_cents(p.remaining)) for p in projection.pools],
+    )
+
+
+def _results_out(r: ScenarioResults, projection: Projection | None = None) -> ResultsOut:
     round2s = round2_by_tier_totals(r)
     appeals, appeals_asked = appeal_totals(r)
     return ResultsOut(
+        projection=_projection_out(projection),
         requests=r.requests,
         families=r.families,
         round1=money(r.round1),
@@ -1360,7 +1392,7 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         label=draft.label,
         document=draft.document,
         changes=[field_change_out(c) for c in draft.changes],
-        results=_results_out(draft.results) if draft.results is not None else None,
+        results=_results_out(draft.results, draft.projection) if draft.results is not None else None,
         report=draft.report,
         recorded_at=draft.recorded_at,
         source_document=draft.source_document,
@@ -1383,7 +1415,11 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
 
 
 def _evaluation_out(evaluation: Evaluation) -> EvaluateOut:
-    return EvaluateOut(document=evaluation.document, results=_results_out(evaluation.results), report=evaluation.report)
+    return EvaluateOut(
+        document=evaluation.document,
+        results=_results_out(evaluation.results, evaluation.projection),
+        report=evaluation.report,
+    )
 
 
 def _column_out(column: CompareColumn) -> CompareColumnOut:
@@ -1392,7 +1428,7 @@ def _column_out(column: CompareColumn) -> CompareColumnOut:
         label=column.label,
         document=column.document,
         changes=[field_change_out(c) for c in column.changes],
-        results=_results_out(column.results),
+        results=_results_out(column.results, column.projection),
         up=column.up,
         down=column.down,
         committee=_committee_out(column.committee) if column.committee is not None else None,

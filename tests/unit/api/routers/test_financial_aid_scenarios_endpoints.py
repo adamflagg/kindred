@@ -53,6 +53,7 @@ from api.services.financial_aid_scenarios_service import (
     Sensitivity,
     Workspace,
 )
+from bunking.financial_aid.arrival import PoolProjection, Projection
 from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.financial_aid.rules import ValidationReport
@@ -806,6 +807,7 @@ def test_the_router_gives_the_scenarios_service_the_live_season_read() -> None:
     decisions = patch("api.routers.financial_aid._decisions").start()
     financial_aid._scenarios()
     assert service_class.call_args.kwargs["season_read"] is decisions.return_value.season
+    assert set(service_class.call_args.kwargs) >= {"season_read", "curves", "received"}
 
 
 def test_rename_trims_the_name_passes_the_caller_and_bounds_it() -> None:
@@ -886,3 +888,34 @@ def test_results_carry_allocated_round2_by_tier_and_the_appeals() -> None:
     assert body["pools"][0]["allocated"] == 400000.0
     assert [(t["tier"], t["round2"]) for t in body["by_tier"]] == [(2, 300.0)]
     assert (body["appeals"], body["appeals_asked"]) == (1, 400.0)
+
+
+def test_a_projection_reads_as_money_and_a_share() -> None:
+    service = _stub()
+    projection = Projection(
+        share=Decimal("0.4286"),
+        through=date(2027, 2, 3),
+        basis_year=2026,
+        aligned_on="application_deadline",
+        requests=5,
+        round1=Decimal("6066.40"),
+        round1_and_2=Decimal("6066.40"),
+        remaining=Decimal("493933.60"),
+        pools=(PoolProjection("camp_pool", Decimal("393933.60")),),
+    )
+    service.evaluate = AsyncMock(return_value=Evaluation(DOC, RESULTS, ValidationReport(), projection=projection))
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]["projection"]
+    assert (body["share"], body["through"], body["requests"], body["round1"], body["remaining"]) == (
+        0.429,
+        "2027-02-03",
+        5,
+        6066.4,
+        493933.6,
+    )
+    assert body["pools"] == [{"pool": "camp_pool", "remaining": 393933.6}]
+
+
+def test_a_kept_options_results_carry_no_projection() -> None:
+    _stub()
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert body["options"][0]["results"]["projection"] is None

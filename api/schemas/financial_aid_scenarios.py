@@ -49,6 +49,27 @@ class RequestSetOut(BaseModel):
     unknown: int  # requests with no recorded received date, left out too
 
 
+class PoolProjectionOut(BaseModel):
+    pool: str
+    remaining: float | None
+
+
+class ProjectionOut(BaseModel):
+    """Where the season would land if the rest of the applications arrive like last year's (Scenarios addendum
+    §S11.7): every figure ÷ last year's share in by this point. Never a real figure: the screen mutes it, rounds it to
+    $1,000 and never colours it amber or red."""
+
+    share: float  # 0-1, 3 decimals
+    through: date
+    basis_year: int
+    aligned_on: Literal["application_deadline", "calendar"]
+    requests: int
+    round1: float
+    round1_and_2: float
+    remaining: float | None
+    pools: list[PoolProjectionOut]
+
+
 class ResultsOut(BaseModel):
     """A scenario's figures. Round n = Posted + Needs an offer + Pending approval (spec §5.3); Round 2 is only the
     appeals keyed so far, and `round1_unmet` (below the line) is the forward signal for Round 2 (plan Decision 10).
@@ -79,6 +100,9 @@ class ResultsOut(BaseModel):
     # The appeals keyed so far and their asks: Below the line once Round 1 posts (§S11.4).
     appeals: int = 0
     appeals_asked: float = 0
+    projection: ProjectionOut | None = (
+        None  # filled on evaluate, the draft and each priced compare column; never on a kept option's stored results or last season
+    )
 
 
 class SnapshotOut(BaseModel):

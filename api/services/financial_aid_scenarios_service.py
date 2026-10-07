@@ -36,9 +36,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Final, Literal, Protocol, cast
 
-from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
-from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, Season
+from api.constants.collections import AID_REQUESTS, AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
+from api.services.camp_calendar import CAMP_TZ, get_camp_date
+from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, DecisionsStore, Season
 from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
@@ -51,12 +51,21 @@ from api.services.financial_aid_rules_service import (
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
+from bunking.financial_aid.arrival import (
+    ArrivalCurve,
+    Projection,
+    calendar_anchor,
+    camp_date_of,
+    curve_from_dates,
+    project,
+    share_by,
+)
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions import PoolBudget, season_budget
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.received import split_by_received
+from bunking.financial_aid.received import WITHDRAWN, edit_predecessors, received_dates, split_by_received
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationIssue, ValidationReport
 from bunking.financial_aid.rules.derived import derive_weights
 from bunking.financial_aid.rules.fixed import reset_fixed_document
@@ -98,6 +107,29 @@ StartFrom = Literal["rules", "rules_draft", "last_rules"]
 # "was …" always means what is in effect (or in the rules draft, or last season's merge) when it is read.
 BUILT_IN_STARTS: Final[tuple[StartFrom, ...]] = ("rules", "rules_draft", "last_rules")
 NAME_MAX: Final = 80  # aid_scenario_options.name (1500000233_aid_scenario_names.js)
+
+# A season's stored arrival curve (aid_arrival_curves), and a season's requests' received moments (D138).
+CurveRead = Callable[[int], Awaitable[ArrivalCurve | None]]
+ReceivedRead = Callable[[int], Awaitable[list[datetime]]]
+
+# Curves computed from received dates, by the curve's season, per process (§S11.7). Last season's log barely moves;
+# Update Applications clears it. Per process: Update Applications clears only the worker that served it.
+_COMPUTED: dict[int, ArrivalCurve | None] = {}
+
+
+def clear_computed_curves() -> None:
+    _COMPUTED.clear()
+
+
+async def received_moments(store: DecisionsStore, year: int) -> list[datetime]:
+    """A season's requests' received moments, exactly as the snapshot's capture reads them (D138): each request that
+    is not withdrawn, at its first create row or its withdrawn predecessors' (an edited answer keeps its first date).
+    A request with no create row has no known date and is left out (disagreement 8)."""
+    requests = await store.fetch_requests(year)
+    log = await store.fetch_change_log(year, AID_REQUESTS)
+    live = [request.id for request in requests if request.status != WITHDRAWN]
+    dates = received_dates(live, log, predecessors=edit_predecessors(requests))
+    return [at for at in dates.values() if at is not None]
 
 
 def _fit_name(text: str) -> str:
@@ -184,6 +216,7 @@ class Evaluation:
     document: AidRules
     results: ScenarioResults
     report: ValidationReport
+    projection: Projection | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +241,7 @@ class Draft:
     recorded_at: datetime | None
     source_document: AidRules | None = None  # what it is from, read now: the strip's starting point and "was"
     same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
+    projection: Projection | None = None
 
 
 @dataclass(frozen=True)
@@ -250,6 +284,7 @@ class CompareColumn:
     version: int | None = None  # the rules version: "rules", or last season's for "last_rules"
     approved_at: datetime | None = None  # the newest approval among the pricing sections, for "rules"
     via: str | None = None  # the kept code "rules" was promoted from (promoted_via)
+    projection: Projection | None = None
 
 
 @dataclass(frozen=True)
@@ -419,11 +454,15 @@ class FinancialAidScenariosService:
         capture: SeasonCapture,
         *,
         season_read: SeasonRead | None = None,
+        curves: CurveRead | None = None,
+        received: ReceivedRead | None = None,
     ) -> None:
         self._store = store
         self._rules = rules
         self._capture = capture
         self._season_read = season_read
+        self._curves = curves
+        self._received = received
 
     # --- what every action shares -------------------------------------------------------------------
 
@@ -432,6 +471,68 @@ class FinancialAidScenariosService:
         if meta is None:
             raise ScenarioRefusedError("Update Applications first: every scenario is priced on the applications held")
         return meta
+
+    async def _deadline(self, year: int) -> date | None:
+        approved = await self._rules.latest_approved(year, ["milestones"])
+        return approved.document.milestones.application_deadline if approved is not None else None
+
+    async def arrival_curve(self, year: int) -> ArrivalCurve | None:
+        """The curve season `year` is projected on: last season's (§S11.7). A stored row first (2026's one-off load,
+        or a prior year's); else, for a ticked season (2027 on), computed from its own received dates on its approved
+        deadline, memoised per process; else none. 2026's dashboard dates are a bulk load, never arrivals."""
+        basis = year - 1
+        stored = await self._curves(basis) if self._curves is not None else None
+        if stored is not None:
+            return stored
+        if basis < FIRST_TICKED_SEASON or self._received is None:
+            return None
+        if basis not in _COMPUTED:
+            _COMPUTED[basis] = await self._computed_curve(basis)
+        return _COMPUTED[basis]
+
+    async def _computed_curve(self, basis: int) -> ArrivalCurve | None:
+        if self._received is None:
+            return None
+        moments = await self._received(basis)
+        if not moments:
+            return None
+        deadline = await self._deadline(basis)
+        return curve_from_dates(
+            (camp_date_of(moment) for moment in moments),
+            deadline if deadline is not None else calendar_anchor(basis),
+            year=basis,
+            source="received",
+            aligned_on="application_deadline" if deadline is not None else "calendar",
+        )
+
+    async def _projector(
+        self, year: int, meta: SnapshotMeta, chosen: RequestSet | None
+    ) -> Callable[[ScenarioResults], Projection | None]:
+        """The projection for one read (§S11.7), its curve and share resolved once: the Price ▾ date when one is set,
+        else the held pile's day in camp time. A deadline-aligned curve needs this season's approved deadline: with
+        none there is no projection, never a silent switch to the calendar."""
+
+        def none(results: ScenarioResults) -> Projection | None:
+            return None
+
+        curve = await self.arrival_curve(year)
+        if curve is None:
+            return none
+        through = chosen.through if chosen is not None else get_camp_date(meta.created)
+        if curve.aligned_on == "application_deadline":
+            anchor = await self._deadline(year)
+            if anchor is None:
+                return none
+        else:
+            anchor = calendar_anchor(year)
+        share = share_by(curve, through, anchor)
+        if share is None:
+            return none
+
+        def projected(results: ScenarioResults) -> Projection | None:
+            return project(results, share, through=through, basis_year=curve.year, aligned_on=curve.aligned_on)
+
+        return projected
 
     async def _pricer(self, meta: SnapshotMeta, request_set: RequestSet | None = None) -> Pricer:
         snapshot = await self._store.snapshot_inputs(meta.id)
@@ -689,6 +790,7 @@ class FinancialAidScenariosService:
         document = recorded if recorded is not None else source.document
         meta = await self._store.latest_snapshot(year)
         results: ScenarioResults | None = None
+        projection: Projection | None = None
         stored = row.results if row is not None and recorded is not None and meta is not None else None
         if meta is not None and row is not None and row.snapshot == meta.id and stored is not None:
             results = stored
@@ -697,6 +799,8 @@ class FinancialAidScenariosService:
                 results = (await (await self._pricer(meta))(document)).results
             except SnapshotError:  # unreadable snapshot: the read still opens, so Update Applications stays reachable
                 results = None
+        if results is not None and meta is not None:
+            projection = (await self._projector(year, meta, None))(results)
         return Draft(
             trail_id=row.id if row is not None and recorded is not None else None,
             from_code=source.code,
@@ -708,6 +812,7 @@ class FinancialAidScenariosService:
             recorded_at=row.created if row is not None and recorded is not None else None,
             source_document=source.document,
             same_as=_same_as(document, options, effect),
+            projection=projection,
         )
 
     # --- freeze, start, read ------------------------------------------------------------------------
@@ -726,6 +831,7 @@ class FinancialAidScenariosService:
         Two freezes at the same moment can each find the season moved and each write a snapshot: a duplicate, whose
         newest copy every read then uses. Accepted (review ruling): one person works a season's scenarios at a time,
         and a duplicate costs only storage."""
+        clear_computed_curves()
         captured = await self._capture(year)
         encoded = encode_snapshot(captured)
         latest = await self._store.latest_snapshot(year)
@@ -951,8 +1057,10 @@ class FinancialAidScenariosService:
         self._check_year(year, document)
         moved = derive_weights(apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta))
         chosen = await self._request_set(year, request_set)
-        priced = await (await self._pricer(await self._meta(year), chosen))(moved)
-        return Evaluation(moved, priced.results, await self._rules.validate_document(moved))
+        meta = await self._meta(year)
+        priced = await (await self._pricer(meta, chosen))(moved)
+        projection = (await self._projector(year, meta, chosen))(priced.results)
+        return Evaluation(moved, priced.results, await self._rules.validate_document(moved), projection=projection)
 
     async def save_draft(self, year: int, document: AidRules, actor: str) -> Draft:
         """A released setting: the draft becomes `document`, recorded in the trail with what changed. With nothing
@@ -1118,6 +1226,7 @@ class FinancialAidScenariosService:
         meta = await self._meta(year)
         chosen = await self._request_set(year, request_set)
         price = await self._pricer(meta, chosen)
+        projector = await self._projector(year, meta, chosen)
         effect = await self._in_effect(year)
         last = await self._last_rules(year)
         seen: dict[str, Priced] = {}
@@ -1166,6 +1275,7 @@ class FinancialAidScenariosService:
                 up,
                 down,
                 committee=committee_view(priced.results, document),
+                projection=projector(priced.results),
                 **extra,
             )
 

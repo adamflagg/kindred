@@ -109,6 +109,7 @@ import type {
   PostedIn,
   PreviewIn,
   ProgramProfile,
+  ProjectionOut,
   PromotionPreviewOut,
   PromotionSectionOut,
   ReceiptOut,
@@ -309,6 +310,7 @@ export type ApiAidScenarioDraft = DraftOut
 export type ApiAidScenarioOption = OptionOut
 export type ApiAidScenarioSnapshot = SnapshotOut
 export type ApiAidScenarioResults = ResultsOut
+export type ApiAidScenarioProjection = ProjectionOut
 export type ApiAidScenarioEvaluateIn = EvaluateIn
 export type ApiAidScenarioEvaluation = EvaluateOut
 export type ApiAidScenarioDocumentIn = DocumentIn
