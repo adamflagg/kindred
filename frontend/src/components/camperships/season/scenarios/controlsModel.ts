@@ -2,10 +2,13 @@
 import type { AidRequestSet } from '../../../../services/camperships/aidApi'
 import type {
   ApiAidScenarioDraft,
+  ApiAidScenarioOption,
+  ApiAidScenarioResults,
   ApiAidScenarioSnapshot,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
 import { formatShortDate, parseIsoDay } from '../../kit/dates'
+import { formatWholeMoney } from '../../kit/money'
 
 const CAMP_TIME_ZONE = 'America/Los_Angeles'
 const CODE = /^[A-Z]+[0-9]*$/
@@ -201,4 +204,34 @@ export function requestSetWords(set: AidRequestSet, through: string | null): str
   return set.kind === 'deadline'
     ? `received through ${day} (the Round 1 deadline)`
     : `received through ${day}`
+}
+
+/** The next flat letter (§S11.1), as the server's starting_point_code counts it: starting points only, so options
+ * kept before PR 10 as variants (A1, B2) never take one. A..Z, then AA, AB… */
+export function nextLetter(options: readonly ApiAidScenarioOption[]): string {
+  let number = options.filter((option) => option.starting_point === null).length + 1
+  let letters = ''
+  while (number > 0) {
+    const rest = (number - 1) % 26
+    letters = String.fromCharCode(65 + rest) + letters
+    number = Math.floor((number - 1) / 26)
+  }
+  return letters
+}
+
+/** Keep…'s line (§S5 B): Round 1 + Round 2 on the whole held pile, which is what Keep stores, whatever Price ▾
+ * says. "projects" is the arrival curve's word (§S2 rule 3), so it says "prices". */
+export function keepFigureWords(results: ApiAidScenarioResults | null): string {
+  if (results === null) return ''
+  const n = results.requests
+  return `with what it prices now: ${formatWholeMoney(results.round1 + results.round2)} on ${String(n)} application${n === 1 ? '' : 's'}`
+}
+
+/** aid_scenario_options.name's size: the server's NAME_MAX (Task 56), which KeepIn.name enforces. */
+export const KEEP_NAME_MAX = 80
+
+/** Keep…'s prefill: the draft's label cut to the name field, ending "…", exactly as the server's `_fit_name` cuts a
+ * blank name, so keeping the default is never refused (plan review M3). A label can run to 2,000 characters. */
+export function keepName(label: string): string {
+  return label.length <= KEEP_NAME_MAX ? label : `${label.slice(0, KEEP_NAME_MAX - 1)}…`
 }

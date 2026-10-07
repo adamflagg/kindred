@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   changeWords,
   formatPileMoment,
+  keepFigureWords,
+  keepName,
+  nextLetter,
   fromName,
   nothingNewWords,
   parseView,
@@ -11,7 +14,7 @@ import {
   requestSetWords,
   startEntries,
 } from './controlsModel'
-import { scenarioDraft, workspace } from './scenarioFixtures'
+import { OPTIONS, results, scenarioDraft, workspace } from './scenarioFixtures'
 
 const SNAPSHOT = {
   id: 'snp000000000001',
@@ -126,5 +129,36 @@ describe('the URL view (§S5 L)', () => {
     expect(requestSetWords({ kind: 'date', date: '2027-01-20' }, '2027-01-20')).toBe(
       'received through Jan 20'
     )
+  })
+})
+
+describe('Keep… (§S5 B; §S11.1)', () => {
+  it('names the next flat letter: variants kept before PR 10 never take one', () => {
+    expect(nextLetter(OPTIONS)).toBe('C') // A, A1 and B are kept: A and B are starting points
+    expect(nextLetter([])).toBe('A')
+  })
+
+  it('says what the draft prices now, on the whole held pile', () => {
+    expect(keepFigureWords(results(295413))).toBe(
+      'with what it prices now: $315,913 on 420 applications'
+    )
+    expect(keepFigureWords(null)).toBe('')
+  })
+
+  it('words a fractional figure in whole dollars (coordinator ruling 2026-10-07)', () => {
+    expect(
+      keepFigureWords({ ...results(295413), round1: 100000.5, round2: 20000.4, requests: 1 })
+    ).toBe('with what it prices now: $120,001 on 1 application')
+  })
+
+  it('cuts a long label to the name field as the server cuts a blank name: 80 characters, the last "…" (plan review M3)', () => {
+    // A three-phrase label (Task 53's words) of 82 characters: KeepIn.name refuses anything past 80.
+    const long =
+      'Round 1 % › Teen › Tier 2 75% · Minimum $150 · Round 1 + 2 cap › Teen › Tier 2 92%'
+    expect(keepName(long)).toBe(
+      'Round 1 % › Teen › Tier 2 75% · Minimum $150 · Round 1 + 2 cap › Teen › Tier 2 …'
+    )
+    expect(keepName(long)).toHaveLength(80)
+    expect(keepName('Minimum $75')).toBe('Minimum $75')
   })
 })

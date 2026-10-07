@@ -27,6 +27,10 @@ import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
 
 /** The figures while a slider moves: priced on the frozen season, never recorded (`evaluate`). */
+/** What a load names (§S11.2): a kept option, or a built-in start. */
+export type LoadFrom =
+  { readonly option: string } | { readonly start: 'rules' | 'rules_draft' | 'last_rules' }
+
 export type LiveResults =
   | { readonly status: 'idle' }
   | { readonly status: 'loading' }
