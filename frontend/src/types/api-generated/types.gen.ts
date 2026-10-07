@@ -14687,6 +14687,14 @@ export type RoundOut = {
    */
   counts_toward_budget: boolean
   /**
+   * Outside Budget
+   */
+  outside_budget?: number | null
+  /**
+   * Outside Label
+   */
+  outside_label?: string | null
+  /**
    * Rules Version
    */
   rules_version: number | null

@@ -232,6 +232,7 @@ from bunking.financial_aid.decisions import (
     RoundCell,
     RoundLedger,
     RoundState,
+    RoundView,
     SeasonBudget,
     apply_event,
     fold_holds,
@@ -244,6 +245,7 @@ from bunking.financial_aid.decisions import (
     season_budget,
     with_holds,
 )
+from bunking.financial_aid.decisions.budget import outside_part
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.financial_aid.rules.schema import AidRules, SectionName
@@ -745,9 +747,18 @@ def grid_row(
     cancellation: Cancellation | None = None,
     to_reverse: bool = False,
     appeal: str | None = None,
+    type_labels: Mapping[str, str] | None = None,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
+    labels = type_labels or {}
+
+    def outside(v: RoundView) -> tuple[float | None, str | None]:
+        part = outside_part(v)
+        if part <= 0:
+            return None, None
+        return _money(part), (labels.get(v.decision_type, v.decision_type) if v.decision_type else None)
+
     views = [
         RoundOut(
             round=v.round,
@@ -763,12 +774,15 @@ def grid_row(
             # A named full-cost fund round's camp award counts toward the budget (owner 10-06) though the type's own
             # flag is False: the Requests filters are row membership, so the family must match the budget strip.
             counts_toward_budget=v.counts_toward_budget or v.extra_outside,
+            outside_budget=outside_amount,
+            outside_label=outside_label,
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
             lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
             clawed_back=v.clawed_back,
             status_label=ROUND_STATUS_LABELS[v.status],
         )
         for v in priced.rounds
+        for outside_amount, outside_label in [outside(v)]
     ]
     posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None and not v.clawed_back]
     return GridRowOut(
@@ -1265,8 +1279,18 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
 
 def _posted_unknown(row: GridRowOut) -> GridRowOut:
     """A past row whose payer shares or staff placements can't be replayed: whether CampMinder had
-    reversed its posted money is unknown, so the money is left empty (never guessed)."""
-    rounds = [r.model_copy(update={"posted": None, "clawed_back": False}) for r in row.rounds]
+    reversed its posted money is unknown, so the money is left empty (never guessed). A posted round's outside part
+    is posted money too (A9), so it goes with it, as Rounds & budget empties outside_budget_posted."""
+    rounds = [
+        r.model_copy(
+            update={
+                "posted": None,
+                "clawed_back": False,
+                **({"outside_budget": None, "outside_label": None} if r.status == "posted" else {}),
+            }
+        )
+        for r in row.rounds
+    ]
     # A payer's Needs an offer part is measured from the posted total, so it goes with its posted part.
     shares = [s.model_copy(update={"posted": None, "needs_offer": None}) for s in row.payer_shares]
     return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None, "payer_shares": shares})
@@ -2221,6 +2245,7 @@ class FinancialAidDecisionsService:
         """One request's grid row, with the Requests views it is in (slice 1, D21). The grid and the
         household page build their rows here, so the two always show the same figures."""
         families, campers = names
+        rules = season.rules.document if season.rules is not None else None
         row = grid_row(
             season.requests[request_id],
             season.priced[request_id],
@@ -2235,9 +2260,9 @@ class FinancialAidDecisionsService:
             appeal=appeal_refusal(
                 season.requests[request_id], season.rounds.get(request_id, {}), season.cancellations.get(request_id)
             ),
+            type_labels={k: t.label for k, t in rules.awards.decision_types.items()} if rules is not None else None,
         )
         request = season.requests[request_id]
-        rules = season.rules.document if season.rules is not None else None
         program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None
         description = (program.campminder_description or None) if program is not None else None
         priced = season.priced[request_id]

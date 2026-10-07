@@ -237,6 +237,13 @@ def _round_money(view: RoundView) -> tuple[Decimal, Decimal] | None:
     return None
 
 
+def outside_part(view: RoundView) -> Decimal:
+    """The round's money below the line, exactly as `_tally_round` puts it in `outside_budget` (A9, spec §12.2): the
+    Requests grid tags it. 0 for a round that counts nowhere (held, refused, not decided, clawed back)."""
+    money = _round_money(view)
+    return counted_part(view, money[0])[1] if money is not None else ZERO
+
+
 def _tally_type(types: _TypeTallies, pool: str, request: PricedRequest, view: RoundView) -> None:
     money = _round_money(view)
     if money is None:
