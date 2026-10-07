@@ -1291,6 +1291,8 @@ export type BucketCount = {
 
 /**
  * BudgetPool
+ *
+ * One program's pool: its % of the season's total (owner 10-06: every pool is a %).
  */
 export type BudgetPoolInput = {
   /**
@@ -1300,15 +1302,13 @@ export type BudgetPoolInput = {
   /**
    * Share Pct
    */
-  share_pct?: number | string | null
-  /**
-   * Amount
-   */
-  amount?: number | string | null
+  share_pct: number | string
 }
 
 /**
  * BudgetPool
+ *
+ * One program's pool: its % of the season's total (owner 10-06: every pool is a %).
  */
 export type BudgetPoolOutput = {
   /**
@@ -1318,11 +1318,7 @@ export type BudgetPoolOutput = {
   /**
    * Share Pct
    */
-  share_pct?: string | null
-  /**
-   * Amount
-   */
-  amount?: string | null
+  share_pct: string
 }
 
 /**
@@ -1424,6 +1420,9 @@ export type BudgetRowOut = {
 
 /**
  * BudgetSection
+ *
+ * The season's budget plan: a total and a program split (owner 10-06: no reserves, no round plan; the split is
+ * finance's guess at each program's need, not a cap). Edited on Rounds & budget (Edit Plan...).
  */
 export type BudgetSectionInput = {
   /**
@@ -1436,28 +1435,13 @@ export type BudgetSectionInput = {
   pools?: {
     [key: string]: unknown | BudgetPoolInput
   }
-  /**
-   * Reserves
-   */
-  reserves?: {
-    [key: string]:
-      | unknown
-      | {
-          [key: string]: number | string
-        }
-  }
-  /**
-   * Spillover
-   */
-  spillover?: 'none' | 'shared'
-  /**
-   * Commit On
-   */
-  commit_on?: 'offered' | 'accepted'
 }
 
 /**
  * BudgetSection
+ *
+ * The season's budget plan: a total and a program split (owner 10-06: no reserves, no round plan; the split is
+ * finance's guess at each program's need, not a cap). Edited on Rounds & budget (Edit Plan...).
  */
 export type BudgetSectionOutput = {
   /**
@@ -1470,24 +1454,6 @@ export type BudgetSectionOutput = {
   pools?: {
     [key: string]: unknown | BudgetPoolOutput
   }
-  /**
-   * Reserves
-   */
-  reserves?: {
-    [key: string]:
-      | unknown
-      | {
-          [key: string]: string
-        }
-  }
-  /**
-   * Spillover
-   */
-  spillover?: 'none' | 'shared'
-  /**
-   * Commit On
-   */
-  commit_on?: 'offered' | 'accepted'
 }
 
 /**
@@ -4301,6 +4267,10 @@ export type EquityCriterionInput = {
    * Min Value
    */
   min_value?: number | string | null
+  /**
+   * Enabled
+   */
+  enabled?: boolean
 }
 
 /**
@@ -4350,6 +4320,10 @@ export type EquityCriterionOutput = {
    * Min Value
    */
   min_value?: string | null
+  /**
+   * Enabled
+   */
+  enabled?: boolean
 }
 
 /**

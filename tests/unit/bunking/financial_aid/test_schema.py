@@ -11,7 +11,7 @@ from bunking.financial_aid.rules.schema import (
     SECTION_NAMES,
     AidRules,
     AwardTable,
-    BudgetPool,
+    BudgetSection,
     DecisionType,
     EquityCriterion,
     EquitySection,
@@ -195,13 +195,6 @@ def test_an_unknown_quality_check_is_rejected() -> None:
         AidRules.model_validate(doc)
 
 
-def test_a_budget_pool_is_a_share_or_an_amount_never_both_or_neither() -> None:
-    with pytest.raises(ValidationError, match="exactly one"):
-        BudgetPool.model_validate({"label": "Camp", "share_pct": "80", "amount": "400000"})
-    with pytest.raises(ValidationError, match="exactly one"):
-        BudgetPool.model_validate({"label": "Camp"})
-
-
 def test_decision_type_amounts_must_fit_the_kind() -> None:
     with pytest.raises(ValidationError, match="needs amount"):
         DecisionType.model_validate({"label": "Top-up", "kind": "top_up", "round": 2, "budget_line": "t"})
@@ -224,8 +217,6 @@ _SCHEMA_TYPE_CHECKS: list[tuple[str, Any, Any]] = [
     ("cost.infant_age_cutoff_months", -1, 18),
     ("awards.rounding", "half_even", "half_up"),
     ("budget.total", "-1", "750000"),
-    ("budget.spillover", "sideways", "shared"),
-    ("budget.commit_on", "posted", "accepted"),
     ("awards.decision_types.appeal_top_up.round", 4, 3),
     ("awards.decision_types.appeal_top_up.budget_line", "", "appeal_top_ups"),
     ("awards.decision_types.appeal_top_up.kind", "gift", "top_up"),
@@ -258,3 +249,47 @@ def test_the_schema_refuses_bad_lever_values_and_keeps_good_ones(path: str, bad:
     for part in path.split("."):
         node = node[part]
     assert str(node) == str(good)
+
+
+def test_a_stored_document_with_every_retired_budget_key_still_loads_and_never_writes_them() -> None:
+    """Review Focus 1, §9.1: 2026 and the preview's 2027 v4/v5 carry reserves, spillover and commit_on."""
+    doc = fictional_rules_json()
+    doc["budget"] |= {
+        "reserves": {"camp_pool": {"r2": "10", "r3": "5"}},
+        "spillover": "shared",
+        "commit_on": "accepted",
+    }
+    rules = AidRules.model_validate(doc)
+    dumped = rules.model_dump(mode="json")["budget"]
+    assert set(dumped) == {"total", "pools"}
+
+
+def test_a_pool_given_as_an_amount_loads_as_its_exact_share() -> None:
+    """§8.4: amount / total x 100, exact in Decimal; validation then judges it like any typed share."""
+    section = BudgetSection.model_validate(
+        {
+            "total": "600000",
+            "pools": {"a": {"label": "Pool A", "amount": "150000"}, "b": {"label": "Pool B", "share_pct": "75"}},
+        }
+    )
+    assert section.pools["a"].share_pct == Decimal(25)
+    assert "amount" not in section.pools["a"].model_dump()
+
+
+def test_a_pool_given_a_null_share_and_an_amount_takes_the_amount() -> None:
+    section = BudgetSection.model_validate(
+        {"total": "200", "pools": {"a": {"label": "Pool A", "share_pct": None, "amount": "50"}}}
+    )
+    assert section.pools["a"].share_pct == Decimal(25)
+
+
+def test_a_pool_needs_a_share() -> None:
+    """Regression guard."""
+    with pytest.raises(ValidationError):
+        BudgetSection.model_validate({"total": "100", "pools": {"a": {"label": "Pool A"}}})
+
+
+def test_an_equity_criterion_is_enabled_unless_stored_otherwise() -> None:
+    """§8.6: no stored criterion carries `enabled`, so every stored document prices the same."""
+    rules = fictional_rules()
+    assert all(c.enabled for c in rules.equity.criteria)

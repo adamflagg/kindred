@@ -19,8 +19,8 @@ Money is ``Decimal``; JSON carries it as a string.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
-from typing import Annotated, Literal, Self, get_args
+from decimal import Decimal, InvalidOperation
+from typing import Annotated, Any, Literal, Self, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -29,6 +29,7 @@ Percent = Annotated[Decimal, Field(ge=0, le=100)]
 Fraction = Annotated[Decimal, Field(ge=0, le=1)]
 Weight = Annotated[Decimal, Field(ge=0)]
 Key = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)]
+HUNDRED = Decimal(100)
 
 SectionName = Literal[
     "income",
@@ -211,6 +212,8 @@ class EquityCriterion(RulesModel):
     match: Literal["equals_any", "contains_any", "at_least"]
     values: list[str] = Field(default_factory=list)
     min_value: Decimal | None = None
+    # Owner 10-06: an unchecked criterion counts for nobody and keeps its weights (flip it back on, they return).
+    enabled: bool = True
 
     @model_validator(mode="after")
     def _match_has_its_operand(self) -> Self:
@@ -451,27 +454,44 @@ class Round3Section(RulesModel):
 
 
 class BudgetPool(RulesModel):
+    """One program's pool: its % of the season's total (owner 10-06: every pool is a %)."""
+
     label: str = Field(min_length=1)
-    share_pct: Percent | None = None
-    amount: Money | None = None
-
-    @model_validator(mode="after")
-    def _share_or_amount(self) -> Self:
-        if (self.share_pct is None) == (self.amount is None):
-            raise ValueError("a budget pool sets exactly one of share_pct or amount")
-        return self
-
-
-RoundKey = Literal["r1_late", "r2", "r3"]
+    share_pct: Percent
 
 
 class BudgetSection(RulesModel):
+    """The season's budget plan: a total and a program split (owner 10-06: no reserves, no round plan; the split is
+    finance's guess at each program's need, not a cap). Edited on Rounds & budget (Edit Plan...)."""
+
     total: Money
     pools: dict[Key, BudgetPool] = Field(default_factory=dict)
-    # pool -> round -> % of that pool held back. Replaces the sheet's cascade.
-    reserves: dict[Key, dict[RoundKey, Percent]] = Field(default_factory=dict)
-    spillover: Literal["none", "shared"] = "none"
-    commit_on: Literal["offered", "accepted"] = "offered"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerant(cls, data: Any) -> Any:
+        """Stored versions and kept scenarios load: reserves, spillover and commit_on are dropped (owner 10-06), and
+        a pool stored as an `amount` becomes its exact share of the total. The stored document is never rewritten;
+        the next save simply doesn't carry them."""
+        if not isinstance(data, dict):
+            return data
+        out = {k: v for k, v in data.items() if k not in ("reserves", "spillover", "commit_on")}
+        pools = out.get("pools")
+        if isinstance(pools, dict):
+            try:
+                total = Decimal(str(out.get("total", "0")))
+            except InvalidOperation:
+                total = Decimal(0)  # a bad total is refused by the field itself; no share is derived from it
+            converted: dict[str, Any] = {}
+            for key, pool in pools.items():
+                if isinstance(pool, dict) and "amount" in pool:
+                    pool = dict(pool)
+                    amount = pool.pop("amount")
+                    if pool.get("share_pct") is None and amount is not None and total > 0:
+                        pool["share_pct"] = str(Decimal(str(amount)) / total * HUNDRED)
+                converted[key] = pool
+            out["pools"] = converted
+        return out
 
 
 # --- stages ---------------------------------------------------------------------------

@@ -376,31 +376,26 @@ def test_pool_shares_must_sum_to_100() -> None:
     assert "pool_shares_not_100" in validate_rules(rules).codes()
 
 
-def test_pools_are_all_shares_or_all_amounts() -> None:
-    rules = with_levers(
-        fictional_rules(), {"budget.pools.camp_pool.share_pct": None, "budget.pools.camp_pool.amount": "400000"}
-    )
-    assert "mixed_pool_kinds" in validate_rules(rules).codes()
-
-
-def test_pool_amounts_must_sum_to_the_total() -> None:
-    rules = with_lever(
+def test_shares_summing_to_100_by_decimal_are_clean_and_99_99_is_an_error() -> None:
+    """Regression guard. Review Focus 3: exact Decimal sums; no float drift."""
+    thirds = with_levers(
         fictional_rules(),
-        "budget.pools",
         {
-            "camp_pool": {"label": "Camp", "amount": "400000"},
-            "weekend_pool": {"label": "Weekends", "amount": "75000"},
-            "bmitzvah_pool": {"label": "B'mitzvah", "amount": "20000"},
+            "budget.pools.camp_pool.share_pct": "33.34",
+            "budget.pools.weekend_pool.share_pct": "33.33",
+            "budget.pools.bmitzvah_pool.share_pct": "33.33",
         },
     )
-    assert "pool_amounts_not_total" in validate_rules(rules).codes()
+    assert "pool_shares_not_100" not in validate_rules(thirds).codes()
+    short = with_lever(fictional_rules(), "budget.pools.bmitzvah_pool.share_pct", "4.99")
+    (issue,) = [i for i in validate_rules(short).errors if i.code == "pool_shares_not_100"]
+    assert issue.message == "Pool shares sum to 99.99%, not 100%"
 
 
-def test_reserves_name_real_pools_and_never_exceed_100() -> None:
-    rules = with_lever(fictional_rules(), "budget.reserves", {"camp_pool": {"r2": "70", "r3": "40"}, "ghost": {}})
-    codes = validate_rules(rules).codes()
-    assert "reserves_exceed_pool" in codes
-    assert "unknown_reserve_pool" in codes
+def test_no_reserve_or_amount_code_survives() -> None:
+    """Regression guard."""
+    codes = validate_rules(fictional_rules()).codes()
+    assert not codes & {"mixed_pool_kinds", "pool_amounts_not_total", "unknown_reserve_pool", "reserves_exceed_pool"}
 
 
 # --- stages and milestones ------------------------------------------------------------
