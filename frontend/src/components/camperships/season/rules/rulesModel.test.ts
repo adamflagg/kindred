@@ -362,6 +362,13 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
     expect(keyLabel('spring_table', vocab)).toBe('Spring table')
   })
 
+  it('words a key named like an Object property, never borrowing an inherited one (CodeRabbit)', () => {
+    const vocab = { ...vocabulary, programs: {}, pools: {} }
+    expect(keyLabel('constructor', vocab)).toBe('Constructor')
+    expect(keyLabel('toString', vocab)).toBe('ToString')
+    expect(keyWords('constructor')).toBe('Constructor')
+  })
+
   it('has no word of its own for a program acronym any more', () => {
     expect(keyWords('ffp')).toBe('Ffp')
   })

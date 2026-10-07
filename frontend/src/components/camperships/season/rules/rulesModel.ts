@@ -404,7 +404,7 @@ const KEY_WORDS: Readonly<Record<string, string>> = {
 
 /** A key with no label: its word, else its own words in sentence case ("camp_quest" → "Camp quest"). */
 export function keyWords(key: string): string {
-  const known = KEY_WORDS[key]
+  const known = own(KEY_WORDS, key)
   if (known !== undefined) return known
   const plain = words(key)
   return plain.charAt(0).toUpperCase() + plain.slice(1)
@@ -412,7 +412,12 @@ export function keyWords(key: string): string {
 
 /** A key the rules give no label: the program's label with that key, else the pool's, else its words (owner 10-07). */
 export function keyLabel(key: string, names: Pick<RulesVocabulary, 'programs' | 'pools'>): string {
-  return names.programs[key] ?? names.pools[key] ?? keyWords(key)
+  return own(names.programs, key) ?? own(names.pools, key) ?? keyWords(key)
+}
+
+/** A map's own entry only: a key like "constructor" must not read an inherited Object property. */
+function own(map: Readonly<Record<string, string>>, key: string): string | undefined {
+  return Object.hasOwn(map, key) ? map[key] : undefined
 }
 
 type KeyKind =
