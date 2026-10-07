@@ -18,6 +18,7 @@ import { CS_BTN_TOOL, CS_LINK, CS_PANEL, CS_PILL } from '../kit/csType'
 import { scopePool, budgetCsvName } from './budgetModel'
 import { BUDGET_CSV_HEADERS, budgetCsvRows, noPoolCommitted, poolCards } from './budgetCards'
 import { BudgetCard } from './BudgetCard'
+import { EditPlan } from './EditPlan'
 import { BudgetFoldLines } from './BudgetFoldLines'
 import { parseOpenKeys, toggleOpenKey } from './foldLinesModel'
 import { draftPillWords, planOf, previewFigures, type TypedPlan } from './planModel'
@@ -169,7 +170,20 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
           canPlan={canPlan}
           onEditPlan={openEditor}
         >
-          {/* Task 39 mounts EditPlan here, while `editing` and a typed plan are held. */}
+          {editing && draft.data !== undefined && plan !== null && typed !== null && (
+            <EditPlan
+              draft={draft.data}
+              pools={plan.pools}
+              opened={plan.plan}
+              typed={typed}
+              shareNote={numberOf('share')}
+              onType={setTyped}
+              onClose={() => {
+                setEditing(false)
+                setTyped(null)
+              }}
+            />
+          )}
         </BudgetCard>
       )}
       {cards.map((card) => (

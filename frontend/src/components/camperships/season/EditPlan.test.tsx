@@ -1,0 +1,203 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
+import { describe, expect, it, vi } from 'vitest'
+
+import { AidWriteError } from '../../../services/camperships/aidApi'
+import type { ApiAidRulesDraft } from '../../../types/api-types'
+import { EditPlan } from './EditPlan'
+import type { TypedPlan } from './planModel'
+import { rulesDraft } from './rules/rulesFixtures'
+import { SeasonChromeContext, type SeasonChrome } from './seasonChrome'
+
+const save = vi.fn()
+vi.mock('../../../hooks/camperships/useAidRulesWrites', () => ({
+  useAidSaveRulesSection: () => ({ mutate: save, isPending: false }),
+}))
+
+const POOLS = [
+  { key: 'pool_a', label: 'Pool A' },
+  { key: 'pool_b', label: 'Pool B' },
+]
+const OPENED = { total: '1000000', shares: { pool_a: '90', pool_b: '10' } }
+const CHROME: SeasonChrome = {
+  notice: null,
+  setNotice: () => undefined,
+  approving: false,
+  canApprove: false,
+  openApprove: () => undefined,
+  closeApprove: () => undefined,
+  section: 'budget',
+}
+type SectionStatus = ApiAidRulesDraft['sections'][number]['status']
+
+/** rulesDraft() with the two-pool budget, and its budget section row in `state` with the fingerprint a save sends. */
+function draftWithBudget(state: 'draft' | 'locked' = 'draft'): ApiAidRulesDraft {
+  const d = rulesDraft()
+  const status: SectionStatus =
+    state === 'locked'
+      ? {
+          state,
+          approved_by: 'Test User',
+          approved_at: '2027-01-20T18:00:00Z',
+          locked_at: '2027-03-09T18:00:00Z',
+        }
+      : { state, edited_by: 'Test User', edited_at: '2027-01-21T17:00:00Z' }
+  return {
+    ...d,
+    document: {
+      ...d.document,
+      budget: {
+        total: '1000000',
+        pools: {
+          pool_a: { label: 'Pool A', share_pct: '90' },
+          pool_b: { label: 'Pool B', share_pct: '10' },
+        },
+      },
+    },
+    sections: d.sections.map((s) =>
+      s.section === 'budget' ? { ...s, status, fingerprint: 'fp-budget', changes: [] } : s
+    ),
+  }
+}
+
+/** The server's 409 for a section that moved since it was read. */
+const conflict = () => new AidWriteError('The rules draft changed', 409)
+
+function Harness({
+  onClose = vi.fn(),
+  setNotice = vi.fn(),
+  draft = draftWithBudget(),
+}: {
+  onClose?: () => void
+  setNotice?: (text: string | null) => void
+  draft?: ApiAidRulesDraft
+}) {
+  const [typed, setTyped] = useState<TypedPlan>(OPENED)
+  return (
+    <SeasonChromeContext.Provider value={{ ...CHROME, setNotice }}>
+      <EditPlan
+        draft={draft}
+        pools={POOLS}
+        opened={OPENED}
+        typed={typed}
+        shareNote={11}
+        onType={setTyped}
+        onClose={onClose}
+      />
+    </SeasonChromeContext.Provider>
+  )
+}
+
+describe('Edit Plan… (spec §5.2 B)', () => {
+  it('shows Total $, Program split with a box per pool, the split words and No change yet', () => {
+    render(<Harness />)
+    expect(screen.getByLabelText('Total')).toHaveValue('1000000')
+    expect(screen.getByLabelText('Pool A')).toHaveValue('90')
+    expect(screen.getByText('sums to 100% · Pool A $900,000 · Pool B $100,000')).toBeInTheDocument()
+    expect(screen.getByText('No change yet')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save to Rules Draft' })).toBeDisabled()
+  })
+
+  it('holds Save while the shares miss 100%', async () => {
+    render(<Harness />)
+    await userEvent.clear(screen.getByLabelText('Pool B'))
+    await userEvent.type(screen.getByLabelText('Pool B'), '9')
+    expect(screen.getByText('Shares sum to 99%, not 100%')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save to Rules Draft' })).toBeDisabled()
+  })
+
+  it('saves {total, pools} with base_version and the fingerprint, closes, and says so in the Season notice', async () => {
+    const onClose = vi.fn()
+    const setNotice = vi.fn()
+    save.mockImplementation((_vars, { onSuccess }) =>
+      onSuccess({ ...draftWithBudget(), version: 5 })
+    )
+    render(<Harness onClose={onClose} setNotice={setNotice} />)
+    await userEvent.clear(screen.getByLabelText('Pool A'))
+    await userEvent.type(screen.getByLabelText('Pool A'), '89')
+    await userEvent.clear(screen.getByLabelText('Pool B'))
+    await userEvent.type(screen.getByLabelText('Pool B'), '11')
+    await userEvent.click(screen.getByRole('button', { name: 'Save to Rules Draft' }))
+    expect(save.mock.calls[0]![0]).toEqual({
+      section: 'budget',
+      body: {
+        base_version: draftWithBudget().version,
+        content: {
+          total: '1000000',
+          pools: {
+            pool_a: { label: 'Pool A', share_pct: '89' },
+            pool_b: { label: 'Pool B', share_pct: '11' },
+          },
+        },
+        expected_fingerprint: 'fp-budget',
+      },
+    })
+    expect(onClose).toHaveBeenCalled()
+    expect(setNotice).toHaveBeenCalledWith('Saved to the rules draft v5 · Approve on the tab bar')
+  })
+
+  it("keeps the typing on a 409, in the editor's words", async () => {
+    save.mockImplementation((_vars, { onError }) => onError(conflict()))
+    render(<Harness />)
+    await userEvent.clear(screen.getByLabelText('Total'))
+    await userEvent.type(screen.getByLabelText('Total'), '1010000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save to Rules Draft' }))
+    expect(
+      screen.getByText(
+        /Someone else changed the rules draft since you opened this section\. Nothing was saved; your typing is kept\./
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Total')).toHaveValue('1010000')
+  })
+
+  it('Esc or Cancel closes and drops the typing', async () => {
+    const onClose = vi.fn()
+    render(<Harness onClose={onClose} />)
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  // Owner 10-06 (b): "budget does lock but only the total dollar number." The shares stay editable all season.
+  it('after a posted round, shows Total read-only with the lock mark and words, and still saves the shares', async () => {
+    save.mockReset()
+    render(<Harness draft={{ ...draftWithBudget('locked'), budget_total_locked: true }} />)
+    const total = screen.getByLabelText('Total')
+    expect(total).toHaveAttribute('readonly')
+    await userEvent.type(total, '5')
+    expect(total).toHaveValue('1000000')
+    expect(screen.getByLabelText('Total locked')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
+      )
+    ).toBeInTheDocument()
+    await userEvent.clear(screen.getByLabelText('Pool A'))
+    await userEvent.type(screen.getByLabelText('Pool A'), '89')
+    await userEvent.clear(screen.getByLabelText('Pool B'))
+    await userEvent.type(screen.getByLabelText('Pool B'), '11')
+    await userEvent.click(screen.getByRole('button', { name: 'Save to Rules Draft' }))
+    expect(save.mock.calls[0]![0].body.content).toEqual({
+      total: '1000000',
+      pools: {
+        pool_a: { label: 'Pool A', share_pct: '89' },
+        pool_b: { label: 'Pool B', share_pct: '11' },
+      },
+    })
+  })
+
+  it("keeps Total read-only after a shares save put the budget back in draft: the server's flag decides, not the section's state", () => {
+    render(<Harness draft={{ ...draftWithBudget('draft'), budget_total_locked: true }} />)
+    expect(screen.getByLabelText('Total')).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Total locked')).toBeInTheDocument()
+  })
+
+  it('leaves Total editable, with no lock mark or words, before any round posts', () => {
+    render(<Harness draft={draftWithBudget()} />)
+    expect(screen.getByLabelText('Total')).not.toHaveAttribute('readonly')
+    expect(screen.queryByLabelText('Total locked')).toBeNull()
+    expect(screen.queryByText(/^Locked: a posted round read it\./)).toBeNull()
+  })
+})
