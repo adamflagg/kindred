@@ -51,7 +51,7 @@ export const SECTION_TITLES = {
   grants: 'Outside grants',
   round2: 'Round 2 caps',
   round3: 'Round 3',
-  budget: 'Budget and reserves',
+  budget: 'Budget and pools',
   programs: 'Programs and session mapping',
   cost: 'Costs and Family Camp rates',
   stages: 'Stages',
@@ -260,12 +260,6 @@ const LABELS: Readonly<Record<string, string>> = {
   total: 'Total budget',
   pools: 'Pools',
   share_pct: 'Share %',
-  reserves: 'Reserves (% of the pool)',
-  r1_late: 'Late Round 1',
-  r2: 'Round 2',
-  r3: 'Round 3',
-  spillover: 'Spillover between pools',
-  commit_on: 'Counts as committed when',
   stages: 'Stages',
   code: 'Code',
   is_offer: 'Offer',
@@ -443,7 +437,7 @@ function keyKind(section: ApiAidRulesSection, path: readonly string[]): KeyKind 
     return null
   }
   if (path.length === 2) {
-    if (section === 'budget' && (first === 'pools' || first === 'reserves')) return 'pool'
+    if (section === 'budget' && first === 'pools') return 'pool'
     if (section === 'awards' && first === 'decision_types') return 'decision_type'
     if (section === 'quality_checks' && first === 'checks') return 'check'
     if (section === 'round2' && first === 'tables') return 'table'

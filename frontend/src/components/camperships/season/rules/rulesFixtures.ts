@@ -112,12 +112,9 @@ export const RULES_DOCUMENT: ApiAidRulesDocument = {
   budget: {
     total: '1000000',
     pools: {
-      pool_a: { label: 'Pool A', share_pct: '90', amount: null },
-      pool_b: { label: 'Pool B', share_pct: '10', amount: null },
+      pool_a: { label: 'Pool A', share_pct: '90' },
+      pool_b: { label: 'Pool B', share_pct: '10' },
     },
-    reserves: { pool_a: { r2: '10', r3: '4' } },
-    spillover: 'none',
-    commit_on: 'offered',
   },
   stages: { stages: [] },
   quality_checks: {
@@ -237,8 +234,8 @@ export function rulesDraft(): ApiAidRulesDraft {
                     note: 'Finance, Jan 20 meeting',
                   },
             changes: [],
-            errors: 0,
-            warnings: section === 'budget' ? 1 : 0,
+            errors: section === 'budget' ? 1 : 0,
+            warnings: 0,
             fingerprint: `fp-${section}-v4`,
           }
     ),
@@ -246,10 +243,10 @@ export function rulesDraft(): ApiAidRulesDraft {
       issues: [
         {
           section: 'budget',
-          code: 'reserves_unset',
-          severity: 'warning',
-          path: 'reserves.pool_b',
-          message: 'Pool B sets no reserves: all of it is Round 1',
+          code: 'pool_shares_not_100',
+          severity: 'error',
+          path: 'budget.pools',
+          message: 'Pool shares sum to 99%, not 100%',
         },
       ],
     },
