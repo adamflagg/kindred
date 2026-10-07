@@ -52,7 +52,7 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
         "Anyone with family-detail access can already see the grantor list."
     ),
     Permission.FINANCIAL_AID_RULES: (
-        "Set the aid rules and budget, approve rounds, set session capacity and use the Season › Scenarios tab. "
+        "Set the aid rules and budget, approve rounds and use the Season › Scenarios tab. "
         "It only adds these to the Camperships screens that family-detail access opens."
     ),
     Permission.FINANCIAL_AID_SUMMARY: (

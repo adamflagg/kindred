@@ -60,3 +60,12 @@ def test_no_service_or_repository_reads_or_writes_capacity() -> None:
     assert not hasattr(financial_aid_intake_types, "CapacityRecord")
     assert not hasattr(financial_aid_intake_repository, "CapacityRecord")
     assert not hasattr(page_service, "round3_context")
+
+
+def test_the_rules_permission_no_longer_promises_a_capacity_setting() -> None:
+    import bunking.rbac.permissions as perms
+    from bunking.rbac.permissions import Permission
+
+    texts = [v for v in vars(perms).values() if isinstance(v, dict) and Permission.FINANCIAL_AID_RULES in v]
+    assert texts
+    assert all("capacity" not in str(d[Permission.FINANCIAL_AID_RULES]).lower() for d in texts)
