@@ -4,7 +4,6 @@
  * settings the schema lets be empty (an income ceiling, a Round 3 limit). Names, keys, references,
  * dates and lists stay as they are: adding a band, a program or a table is the season-description
  * forms', which come later (D39's build order). The server validates the whole section on save.
- * Stage `round` (nullable in the schema) stays non-clearable until the stages form.
  *
  * Settings are told apart by where they sit, never by their key alone: an equity weight is named
  * for a criterion the season chose ("child", "upper"), and must not read as the field it spells.
@@ -12,7 +11,6 @@
 import type {
   ApiAidDecisionType,
   ApiAidFieldChange,
-  ApiAidIncentiveRule,
   ApiAidProgramProfile,
   ApiAidRulesDocument,
 } from '../../../../types/api-types'
@@ -96,12 +94,12 @@ const CHOICES: Readonly<Record<string, readonly string[]>> = {
   late_grant_policy: options({ ignore: true, flag: true, recalculate: true } satisfies Options<
     Doc['grants']['late_grant_policy']
   >),
-  mode: options({ ignore: true, reduce_cost: true, reduce_award: true } satisfies Options<
-    ApiAidIncentiveRule['mode']
-  >),
-  kind: options({ full_cost: true, top_up: true, discretionary: true } satisfies Options<
-    ApiAidDecisionType['kind']
-  >),
+  kind: options({
+    full_cost: true,
+    full_cost_after_aid: true,
+    top_up: true,
+    discretionary: true,
+  } satisfies Options<ApiAidDecisionType['kind']>),
   severity: options({ hold: true, warn: true } satisfies Options<Check['severity']>),
 }
 

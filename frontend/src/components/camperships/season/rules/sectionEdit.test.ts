@@ -261,7 +261,7 @@ describe('what is never a box, however it looks', () => {
   it('offers only the kind switches that can save (m5)', () => {
     expect(fieldSpec(['decision_types', 'd', 'kind'], 'discretionary')).toEqual({
       kind: 'choice',
-      options: ['full_cost', 'discretionary'],
+      options: ['full_cost', 'full_cost_after_aid', 'discretionary'],
     })
     expect(fieldSpec(['decision_types', 'd', 'kind'], 'top_up')).toBeNull()
   })

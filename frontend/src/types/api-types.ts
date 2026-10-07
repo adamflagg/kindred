@@ -92,7 +92,6 @@ import type {
   HouseholdRequestOut,
   HouseholdShareSet,
   HouseholdTotalsOut,
-  IncentiveRule,
   IncomeOut,
   IssueOut,
   JumpIndexHousehold,
@@ -285,8 +284,6 @@ export type ApiAidRulesDocumentIn = AidRulesInput
 
 /** Rules records the document holds by key (`{[key]: unknown | T}`), named so the editor can read their choices. Mirrors Python `ProgramProfile`. */
 export type ApiAidProgramProfile = ProgramProfile
-/** Mirrors Python `IncentiveRule`. */
-export type ApiAidIncentiveRule = IncentiveRule
 /** Mirrors Python `DecisionType`. */
 export type ApiAidDecisionType = DecisionTypeOutput
 

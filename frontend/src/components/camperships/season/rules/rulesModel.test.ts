@@ -291,19 +291,9 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
     expect(labelOf(['pools', 'pool_a', 'share_pct'], names('budget'))).toBe('Share %')
   })
 
-  it('names a decision type by its label, and its budget line too', () => {
+  it('names a decision type by its label', () => {
     expect(labelOf(['decision_types', 'appeal_top_up'], names('awards'))).toBe('Appeal top-up')
-    expect(
-      formatSetting(
-        'appeal_top_up',
-        ['decision_types', 'appeal_top_up', 'budget_line'],
-        names('awards')
-      )
-    ).toBe('Appeal top-up')
     expect(labelOf(['decision_types', 'discretionary'], names('awards'))).toBe('Discretionary')
-    expect(formatSetting('appeal_top_up', ['stages', '3', 'decision_type'], names('stages'))).toBe(
-      'Appeal top-up'
-    )
   })
 
   it('names a quality check as the Requests grid does, and its severity in words', () => {
@@ -348,7 +338,6 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
     expect(formatSetting('tbm', ['tables', 'family', 'inherits'], names('round2'))).toBe('TBM')
     expect(formatSetting(['summer'], ['offset_programs'], names('grants'))).toBe('Summer')
     expect(formatSetting('weekend', ['offset_programs', '0'], names('grants'))).toBe('Weekend')
-    expect(labelOf(['incentives', 'jfam'], names('grants'))).toBe('JFAM')
   })
 
   it("names equity's classes and criteria, and income's AGI", () => {
@@ -412,5 +401,26 @@ describe('the budget section after the split (spec §8.2, §8.4)', () => {
         /\(% of the pool\)|Late Round 1|between pools|committed when/
       )
     }
+  })
+})
+
+describe('the card titles (spec §6.2 D)', () => {
+  it('names each of the thirteen sections in staff words, Stages gone', () => {
+    expect(SECTION_TITLES).toEqual({
+      income: "Counting a family's income",
+      tiers: 'Income tiers',
+      equity: 'Moving a family up a tier',
+      award_tables: 'Round 1 award table',
+      awards: 'Minimum award and named awards',
+      grants: 'Outside grants',
+      round2: 'Appeal caps',
+      round3: 'Who can ask, and how much',
+      budget: 'Budget and pools',
+      programs: 'Programs and their sessions',
+      cost: 'Costs and Family Camp rates',
+      quality_checks: 'Quality checks',
+      milestones: 'Dates',
+    })
+    expect(isRulesSection('stages')).toBe(false)
   })
 })

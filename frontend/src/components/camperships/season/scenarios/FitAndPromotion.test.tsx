@@ -261,7 +261,9 @@ describe('All settings (D39: one editor, two homes)', () => {
   async function typeMinimum() {
     renderAt()
     const all = screen.getByTestId('all-settings')
-    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     const box = within(all).getByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -272,7 +274,7 @@ describe('All settings (D39: one editor, two homes)', () => {
     const all = await typeMinimum()
     expect(
       within(all).getByText(
-        'Editing Minimum award and limits in your scenario draft (from B), not the rules'
+        'Editing Minimum award and named awards in your scenario draft (from B), not the rules'
       )
     ).toBeInTheDocument()
     await userEvent.click(within(all).getByRole('button', { name: 'Save' }))
@@ -295,7 +297,9 @@ describe('All settings (D39: one editor, two homes)', () => {
     pending = { ...NO_PENDING, tierShift: -2 }
     renderAt()
     const held = screen.getAllByTestId('all-settings')[1]!
-    await userEvent.click(within(held).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(held).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     const box = within(held).getByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -400,7 +404,9 @@ describe('Fit waits for an open All settings editor (Decision 15)', () => {
     await userEvent.click(within(fit).getByRole('button', { name: /^Fit to Budget/ }))
     expect(within(fit).getByRole('button', { name: 'Use It' })).toBeEnabled()
     const all = screen.getByTestId('all-settings')
-    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     expect(within(fit).getByRole('button', { name: 'Use It' })).toBeDisabled()
     expect(within(fit).getByText('Save or cancel the edit first.')).toBeInTheDocument()
     expect(within(fit).getByRole('button', { name: /^Fit to Budget/ })).toBeEnabled()
@@ -417,7 +423,9 @@ describe('while a write runs (m7)', () => {
     const fit = screen.getByTestId('fit-to-budget')
     await userEvent.click(within(fit).getByRole('button', { name: /^Fit to Budget/ }))
     const all = screen.getByTestId('all-settings')
-    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     const box = within(all).getByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -439,13 +447,17 @@ describe('All settings holds its list while a section is open (Decision 15)', ()
   it('disables every section name, the open one included, says why, and keeps the typing; Cancel is the way out', async () => {
     renderAt()
     const all = screen.getByTestId('all-settings')
-    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     const box = within(all).getByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
     const other = within(all).getByRole('button', { name: /Outside grants/ })
     expect(other).toBeDisabled()
-    expect(within(all).getByRole('button', { name: /Minimum award and limits/ })).toBeDisabled()
+    expect(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    ).toBeDisabled()
     expect(within(all).getByText('Save or cancel the edit first.')).toBeInTheDocument()
     expect(other).toHaveClass('disabled:opacity-50')
     await userEvent.click(other)
@@ -460,7 +472,9 @@ describe('All settings holds its list while a section is open (Decision 15)', ()
     adopt.mockImplementationOnce(() => new Promise<boolean>((resolve) => (land = resolve)))
     renderAt()
     const all = screen.getByTestId('all-settings')
-    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     const box = within(all).getByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -482,7 +496,9 @@ describe('a refused save says its words once, inside its own editor, and no othe
   const openMinimum = async () => {
     const view = renderAt()
     const all = screen.getByTestId('all-settings')
-    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    await userEvent.click(
+      within(all).getByRole('button', { name: /Minimum award and named awards/ })
+    )
     return { view, all }
   }
   const again = (view: ReturnType<typeof renderAt>) =>
@@ -617,7 +633,7 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
     await open()
     expect(
       within(screen.getByTestId('promotion-preview')).getByText(
-        'Award tables (Round 1 %) is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
+        'Round 1 award table is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
       )
     ).toBeInTheDocument()
   })

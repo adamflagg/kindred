@@ -12,8 +12,8 @@ import { RULES_DOCUMENT, rulesDraft } from './rulesFixtures'
 describe('reading the rules draft', () => {
   it('lists the sections still in draft, in the list order', () => {
     expect(draftSections(rulesDraft())).toEqual(['award_tables'])
-    expect(SECTION_ORDER).toHaveLength(14)
-    expect(new Set(SECTION_ORDER).size).toBe(14)
+    expect(SECTION_ORDER).toHaveLength(13)
+    expect(new Set(SECTION_ORDER).size).toBe(13)
   })
 
   it("tells a section that read the same from one that didn't", () => {
