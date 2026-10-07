@@ -41,7 +41,6 @@ from api.constants.collections import (
     AID_APPLICATIONS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
-    AID_SESSION_CAPACITY,
     ATTENDEES,
     CAMP_SESSIONS,
     FINANCIAL_AID_APPLICATIONS,
@@ -58,7 +57,6 @@ from api.services.financial_aid_intake_types import (
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
-    CapacityRecord,
     CorrectionRecord,
     EquityAnswers,
     FaRow,
@@ -272,17 +270,6 @@ def _correction(record: Any) -> CorrectionRecord:
         reason=_str(record.reason),
         actor=_str(record.actor),
         created=_str(getattr(record, "created", "")),
-    )
-
-
-def _capacity(record: Any) -> CapacityRecord:
-    return CapacityRecord(
-        id=record.id,
-        year=_int(record.year),
-        session_cm_id=_int(record.session_cm_id),
-        capacity=_int(getattr(record, "capacity", 0)),
-        note=_str(getattr(record, "note", "")),
-        actor=_str(record.actor),
     )
 
 
@@ -507,18 +494,6 @@ class FinancialAidIntakeRepository:
             AID_APPLICATION_CORRECTIONS, {"filter": f"year = {year}{scope}", "sort": f"created,{STABLE_SORT}"}
         )
         return [_correction(r) for r in rows]
-
-    async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None:
-        rows = await self._page(
-            AID_SESSION_CAPACITY, {"filter": f"year = {year} && session_cm_id = {session_cm_id}", "sort": STABLE_SORT}
-        )
-        return _capacity(rows[0]) if rows else None
-
-    async def fetch_capacities(self, year: int) -> list[CapacityRecord]:
-        rows = await self._page(
-            AID_SESSION_CAPACITY, {"filter": f"year = {int(year)}", "sort": f"session_cm_id,{STABLE_SORT}"}
-        )
-        return [_capacity(row) for row in rows]
 
     # -- equity (ALLOWLIST) -----------------------------------------------
 

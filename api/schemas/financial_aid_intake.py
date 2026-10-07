@@ -167,26 +167,6 @@ class HeadcountSet(BaseModel):
     reason_code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$", max_length=64)
 
 
-class CapacitySet(BaseModel):
-    capacity: int = Field(ge=0, le=5000)
-    note: str = Field(default="", max_length=2000)
-
-
-class CapacityOut(BaseModel):
-    year: int
-    session_cm_id: int
-    capacity: int
-    note: str
-    actor: str
-
-
-class CapacityListOut(BaseModel):
-    """What finance stored per session this season (Season › Rules; slice 2 Decision 23). Live only."""
-
-    year: int
-    sessions: list[CapacityOut]  # by session id
-
-
 class PayerShareIn(BaseModel):
     household_cm_id: int = Field(gt=0)
     share_pct: Decimal = Field(gt=0, le=100, decimal_places=4)

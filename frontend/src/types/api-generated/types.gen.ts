@@ -2288,62 +2288,6 @@ export type CanonicalSearchResponse = {
 }
 
 /**
- * CapacityListOut
- *
- * What finance stored per session this season (Season › Rules; slice 2 Decision 23). Live only.
- */
-export type CapacityListOut = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Sessions
-   */
-  sessions: Array<CapacityOut>
-}
-
-/**
- * CapacityOut
- */
-export type CapacityOut = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Session Cm Id
-   */
-  session_cm_id: number
-  /**
-   * Capacity
-   */
-  capacity: number
-  /**
-   * Note
-   */
-  note: string
-  /**
-   * Actor
-   */
-  actor: string
-}
-
-/**
- * CapacitySet
- */
-export type CapacitySet = {
-  /**
-   * Capacity
-   */
-  capacity: number
-  /**
-   * Note
-   */
-  note?: string
-}
-
-/**
  * CellOut
  *
  * A pool's or the season's figures: its Allocated and Remaining from the approved rules.
@@ -7284,7 +7228,6 @@ export type HouseholdRequestOut = {
    * Grants Beyond Owed
    */
   grants_beyond_owed?: number | null
-  round3_context?: Round3ContextOut | null
   /**
    * Duplicates Waiting
    */
@@ -14471,36 +14414,6 @@ export type Round3ApprovalIn = {
 }
 
 /**
- * Round3ContextOut
- *
- * A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
- * status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
- * None: not entered).
- */
-export type Round3ContextOut = {
-  /**
-   * Session Cm Id
-   */
-  session_cm_id: number
-  /**
-   * Enrolled
-   */
-  enrolled: number
-  /**
-   * Waitlisted
-   */
-  waitlisted: number
-  /**
-   * Capacity
-   */
-  capacity: number | null
-  /**
-   * Capacity Note
-   */
-  capacity_note: string
-}
-
-/**
  * Round3Section
  */
 export type Round3SectionInput = {
@@ -19299,7 +19212,6 @@ export type HouseholdRequestOutWritable = {
    * Grants Beyond Owed
    */
   grants_beyond_owed?: number | null
-  round3_context?: Round3ContextOut | null
   /**
    * Duplicates Waiting
    */
@@ -23578,38 +23490,6 @@ export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerShar
 export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponse =
   SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses]
 
-export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetData = {
-  body?: never
-  path: {
-    /**
-     * Year
-     */
-    year: number
-  }
-  query?: never
-  url: '/api/financial-aid/capacity/{year}'
-}
-
-export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetError =
-  GetAidSessionCapacitiesApiFinancialAidCapacityYearGetErrors[keyof GetAidSessionCapacitiesApiFinancialAidCapacityYearGetErrors]
-
-export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: CapacityListOut
-}
-
-export type GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponse =
-  GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponses[keyof GetAidSessionCapacitiesApiFinancialAidCapacityYearGetResponses]
-
 export type GetSeasonHistoryApiFinancialAidHistoryYearGetData = {
   body?: never
   path: {
@@ -23710,42 +23590,6 @@ export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperati
 
 export type GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponse =
   GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponses[keyof GetSeasonHistoryOperationApiFinancialAidHistoryYearOperationsOperationIdGetResponses]
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutData = {
-  body: CapacitySet
-  path: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Session Cm Id
-     */
-    session_cm_id: number
-  }
-  query?: never
-  url: '/api/financial-aid/capacity/{year}/{session_cm_id}'
-}
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutError =
-  SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors]
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses = {
-  /**
-   * Successful Response
-   */
-  200: CapacityOut
-}
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponse =
-  SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses]
 
 export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetData = {
   body?: never

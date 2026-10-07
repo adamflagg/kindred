@@ -117,16 +117,15 @@ async def test_each_casework_writer_waits_for_its_seasons_build(name: str) -> No
 
 
 @pytest.mark.asyncio
-async def test_corrections_and_capacity_do_not_wait_for_a_build() -> None:
-    # Owner decision: neither touches what a build plans (corrections are their own rows,
-    # capacity is not intake's), so they are not serialised behind it.
+async def test_corrections_do_not_wait_for_a_build() -> None:
+    # Owner decision: a correction does not touch what a build plans (corrections are their own rows),
+    # so it is not serialised behind it.
     store, _, casework = await _built()
     async with season_lock(YEAR):
         await asyncio.wait_for(
             casework.add_correction(YEAR, 1000001, "total_gross_income", "90000", "Tax return.", ACTOR), TIMEOUT
         )
-        await asyncio.wait_for(casework.set_capacity(YEAR, 1000101, 40, "Cabin count.", ACTOR), TIMEOUT)
-    assert len(store.operations) == 2
+    assert len(store.operations) == 1
 
 
 @pytest.mark.asyncio

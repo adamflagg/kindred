@@ -21,14 +21,12 @@ from api.constants.collections import (
     AID_APPLICATIONS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
-    AID_SESSION_CAPACITY,
 )
 from api.services.financial_aid_intake_repository import _exact_pct
 from api.services.financial_aid_intake_types import (
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
-    CapacityRecord,
     CorrectionRecord,
     EquityAnswers,
     FaRow,
@@ -133,7 +131,7 @@ def _request_changes(changes: Mapping[str, Any]) -> dict[str, Any]:
 
 
 # Everything a batch can change; a failed batch restores all of it.
-_TABLES = ("applications", "requests", "payer_shares", "corrections", "capacity", "change_log", "writes")
+_TABLES = ("applications", "requests", "payer_shares", "corrections", "change_log", "writes")
 
 
 class _BatchStore(Protocol):
@@ -193,7 +191,6 @@ class FakeAidStore:
         self.payer_shares: dict[str, PayerShareRecord] = {}
         self.corrections: list[CorrectionRecord] = []
         self.decision_events: list[DecisionEvent] = []  # aid_decisions rows, for the casework swap's posted check
-        self.capacity: dict[tuple[int, int], CapacityRecord] = {}
         self.equity: dict[int, EquityAnswers] = {}
         self.birthdates: dict[int, str] = {}
         self.rules: AidRules | None = None
@@ -284,12 +281,6 @@ class FakeAidStore:
 
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]:
         return [e for e in self.decision_events if e.request_id == request_id]
-
-    async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None:
-        return self.capacity.get((year, session_cm_id))
-
-    async def fetch_capacities(self, year: int) -> list[CapacityRecord]:
-        return sorted((c for (y, _), c in self.capacity.items() if y == year), key=lambda c: c.session_cm_id)
 
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]:
         return {p: self.equity[p] for p in person_cm_ids if p in self.equity}
@@ -439,15 +430,6 @@ class FakeAidStore:
                 )
             )
             return {**body, "id": rid, "created": created}
-        elif collection == AID_SESSION_CAPACITY and method == "POST":
-            if (body["year"], body["session_cm_id"]) in self.capacity:
-                raise ValueError("UNIQUE constraint failed: idx_aid_session_capacity_year_session")
-            self.capacity[(body["year"], body["session_cm_id"])] = CapacityRecord(
-                rid, body["year"], body["session_cm_id"], body["capacity"], body["note"], body["actor"]
-            )
-        elif collection == AID_SESSION_CAPACITY:
-            key = next(k for k, c in self.capacity.items() if c.id == rid)
-            self.capacity[key] = replace(self.capacity[key], **body)
         else:
             raise ValueError(f"the fake has no {method} for {collection}")
         return {**body, "id": rid}

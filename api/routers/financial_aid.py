@@ -3,11 +3,10 @@
 Thin: parse input, call the service, map its errors. Sub-project 4 adds the
 ledger (aid_sources / aid_postings / aid_household_links / overrides /
 dispositions); sub-project 5 adds intake reads (financial_aid.view), casework
-writes including payer shares and the income override (financial_aid.casework),
-and session capacity (financial_aid.rules). The rules routes (`/rules/...`, the
-rules loader) read, validate, create, save and approve a season's rules
-document (financial_aid.rules); an approval's note names the approving body
-(D39). SP9a adds the rules draft read, the section editor's save, a new version, and D76's approved
+writes including payer shares and the income override (financial_aid.casework).
+The rules routes (`/rules/...`, the rules loader) read, validate, create, save
+and approve a season's rules document (financial_aid.rules); an approval's note
+names the approving body (D39). SP9a adds the rules draft read, the section editor's save, a new version, and D76's approved
 read for financial_aid.view. Every aid_* collection is superuser-only in PocketBase, so these routes
 are the only way in. Every ledger write passes the real signed-in person
 (user.email); the write service records it (spec sec 14.4).
@@ -99,9 +98,6 @@ from api.schemas.financial_aid_household_page import HouseholdPageResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
-    CapacityListOut,
-    CapacityOut,
-    CapacitySet,
     CorrectionCreate,
     CorrectionOut,
     DuplicateMark,
@@ -633,13 +629,6 @@ async def set_aid_request_household_share(
         _raise_http(exc)
 
 
-@router.get("/capacity/{year}", response_model=CapacityListOut)
-async def get_aid_session_capacities(year: int = Path(ge=2017, le=2100), user: AuthUser = _VIEW) -> CapacityListOut:
-    """The session capacities finance stored this season (Season › Rules), for everyone with view (the Season reads'
-    gate; D76). Live only. The write stays financial_aid.rules."""
-    return await _casework().capacities(year)
-
-
 def _history() -> SeasonHistoryService:
     return SeasonHistoryService(HistoryLogReads(pb))
 
@@ -683,19 +672,6 @@ async def get_season_history_operation(
         return await _history().operation(year, operation_id, rules=_holds(user, Permission.FINANCIAL_AID_RULES))
     except HistoryNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.put("/capacity/{year}/{session_cm_id}", response_model=CapacityOut)
-async def set_aid_session_capacity(
-    body: CapacitySet,
-    year: int = Path(ge=2017, le=2100),
-    session_cm_id: int = Path(gt=0),
-    user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_RULES)),
-) -> CapacityOut:
-    try:
-        return await _casework().set_capacity(year, session_cm_id, body.capacity, body.note, user.email)
-    except _ERRORS as exc:
-        _raise_http(exc)
 
 
 @router.get("/households/{household_cm_id}", response_model=HouseholdDetailResponse)

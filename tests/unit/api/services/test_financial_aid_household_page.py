@@ -45,7 +45,7 @@ from api.services.financial_aid_household_page import (
 )
 from api.services.financial_aid_intake_types import PayerShareRecord
 from api.services.financial_aid_requesters import FaContact
-from bunking.financial_aid.decisions import DecisionEvent, RoundState
+from bunking.financial_aid.decisions import RoundState
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -543,7 +543,6 @@ class _Ledger:
         ]
         self.posting_reads: list[frozenset[int]] = []
         self.name_reads: list[frozenset[str]] = []
-        self.count_reads: list[frozenset[int]] = []
         self.household_reads: list[frozenset[int]] = []
         self.member_reads: list[frozenset[int]] = []
         self.adults_reads: list[bool] = []
@@ -629,13 +628,6 @@ class _Ledger:
             ),
         ]
         return [p for p in people if p.cm_id in cm_ids]
-
-    async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]:
-        self.count_reads.append(frozenset(session_cm_ids))
-        return {1000101: (180, 12)}
-
-    async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]:
-        return {1000101: SimpleNamespace(session_cm_id=1000101, capacity=190, note="Board figure")}
 
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
         self.name_reads.append(frozenset(emails))
@@ -1597,45 +1589,6 @@ async def test_the_page_carries_the_seasons_reason_codes() -> None:
         "missing_catalog",
         "typed_household_total",
     ]
-
-
-@pytest.mark.asyncio
-async def test_a_round_3_request_shows_its_sessions_enrollment_waitlist_and_capacity() -> None:
-    """§6.3 item 4 (context only): enrolled = attendees status 2, waitlisted = status 8, capacity as finance entered it."""
-    store = _family()
-    store.events.append(
-        DecisionEvent(
-            id="ev0000000000001",
-            request_id=EMMA,
-            round=3,
-            kind="ask",
-            created=T0,
-            amount=Decimal(500),
-            effective_on=date(2027, 3, 1),
-            statement_of_need="Lost a job this spring",
-        )
-    )
-    ledger = _Ledger()
-    page = await _page_service(store, ledger=ledger).read(YEAR, JOHNSON)
-    emma = next(r for r in page.requests if r.row.request_id == EMMA)
-    liam = next(r for r in page.requests if r.row.request_id == LIAM)
-    assert emma.round3_context is not None
-    assert emma.round3_context.model_dump() == {
-        "session_cm_id": 1000101,
-        "enrolled": 180,
-        "waitlisted": 12,
-        "capacity": 190,
-        "capacity_note": "Board figure",
-    }
-    assert liam.round3_context is None
-    assert ledger.count_reads == [frozenset({1000101})]
-
-
-@pytest.mark.asyncio
-async def test_a_page_with_no_round_3_reads_no_counts() -> None:
-    ledger = _Ledger()
-    await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
-    assert ledger.count_reads == []
 
 
 @pytest.mark.asyncio
