@@ -66,8 +66,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Cost",
         text=(
             "Cost: each request's cost, the session's list price (an AG session's is its parent session's); Family Camp by "
-            "number of people. Aid is a percentage "
-            "of list price: discounts CampMinder bills are not read."
+            "number of people; or a cost staff set, with its reason. Aid is a percentage of list price: discounts "
+            "CampMinder bills are not read."
         ),
         spec="§5.8",
         rulings=("D77", "D118"),

@@ -63,7 +63,7 @@ export const CANCEL_REASON_OPTIONS: ReadonlyArray<{
   label: CANCEL_REASON_LABELS[value],
 }))
 
-/** Edits with a settled reason rule. Cost overrides and headcounts wait for slice 1 (finding 5). */
+/** Edits with a settled reason rule. Cost overrides and headcounts have their own forms on the household page (Set Cost…, Number of People…), not this editor. */
 export type EditKind =
   | 'appeal_ask'
   | 'round3_ask'

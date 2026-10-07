@@ -191,6 +191,8 @@ export const HH_EDITOR_SIDE_HEAD = 'text-muted-foreground mb-[3px] text-xs font-
 export const HH_EDITOR_SIDE_LEAD = 'text-[15px] leading-snug'
 /** What follows it: the receipt sentence, the stage, the shares. */
 export const HH_EDITOR_SIDE_NOTE = 'text-muted-foreground mt-1 text-[12.5px]'
+/** A warning in the right column (the mock's .sw): amber, never muted. */
+export const HH_EDITOR_SIDE_WARN = 'mt-1 text-[12.5px] text-amber-700 dark:text-amber-400'
 /** A field's label, its caption above the control (the mock's .fl). */
 export const HH_EDITOR_LABEL = 'flex min-w-0 flex-col gap-1 text-[12.5px] font-semibold'
 /** A field (the mock's .in): white, 13.5px, a softened forest border. */
@@ -260,6 +262,9 @@ export const HH_CHIP_TOTAL = 'border-muted-foreground/35 flex-none border-l pl-2
 
 // round 3 · receipt placement (household-v4.html section 1 (B)) ───────────────────────────────
 
-/** Show / Hide Details beside the card's cost (the mock's .btn.sm): a small card button, receipt icon first. */
+/**
+ * The small card button beside the card's cost (the mock's .btn.sm): Show / Hide Details,
+ * receipt icon first, and Set Cost… (no icon).
+ */
 export const HH_DETAILS_BUTTON =
   'inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-[7px] border border-border bg-card px-2 py-px text-xs leading-[1.5] font-semibold text-forest-700 hover:bg-muted dark:text-forest-300'

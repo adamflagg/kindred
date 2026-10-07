@@ -9,13 +9,14 @@ import { CARD_EDIT_LABEL, cardEdits, type CardEditKind } from './cardEdits'
 import { usePrefetchCardPreviews } from './cardPreviews'
 import { caseworkOffers } from './caseworkModel'
 import { DuplicateForm, HeadcountForm, KeepThisForm, SessionForm, ShareForm } from './CaseworkForms'
+import { ClearCostForm, SetCostForm } from './SetCostForm'
 import { twinName, useDuplicatePair } from './duplicatePair'
 import { isLiveRequest } from '../requests/gridEditor'
 import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
 import { PairKeepForm } from './PairKeepForm'
 import { staffNames } from './historyWords'
-import { HH_BUTTON } from './householdStyles'
+import { HH_BUTTON, HH_DETAILS_BUTTON } from './householdStyles'
 import { OtherRequestLink } from './OtherRequestLink'
 import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
@@ -32,6 +33,8 @@ type Open =
   | { readonly kind: 'keep_this' }
   | { readonly kind: 'keep_other' }
   | { readonly kind: 'headcount' }
+  | { readonly kind: 'cost' }
+  | { readonly kind: 'clear_cost' }
   | null
 
 /**
@@ -85,14 +88,16 @@ export function WorkingRequestCard({
   const edit =
     open?.kind === 'edit' && cardEdits(request.row).includes(open.edit) ? open.edit : null
   const editing = edit !== null
-  const offers = caseworkOffers(request.row)
+  const offers = caseworkOffers(request.row, { rulesApproved: page.rules_version !== null })
   // Like `edit`: a form shows only while the request still takes it, so a refetch that moves the
   // status (Settle session saved elsewhere, the request withdrawn) cannot leave a form that is refused.
   const form =
     (open?.kind === 'shares' && offers.shares) ||
     (open?.kind === 'session' && offers.session) ||
     (open?.kind === 'duplicate' && offers.duplicate) ||
-    (open?.kind === 'headcount' && offers.headcount)
+    (open?.kind === 'headcount' && offers.headcount) ||
+    (open?.kind === 'cost' && offers.cost) ||
+    (open?.kind === 'clear_cost' && offers.cost && request.row.cost_override != null)
       ? open.kind
       : null
   useEffect(() => {
@@ -162,6 +167,28 @@ export function WorkingRequestCard({
     </>
   )
 
+  // Cost override v2: Clear (a cost is set) and Set Cost…, beside the cost in the card's header.
+  const costAction = offers.cost ? (
+    <>
+      {row.cost_override != null && (
+        <button
+          type="button"
+          className="text-forest-700 dark:text-forest-300 cursor-pointer text-[12.5px] font-semibold hover:underline"
+          onClick={() => switchTo({ kind: 'clear_cost' })}
+        >
+          Clear
+        </button>
+      )}
+      <button
+        type="button"
+        className={HH_DETAILS_BUTTON}
+        onClick={() => switchTo({ kind: 'cost' })}
+      >
+        Set Cost…
+      </button>
+    </>
+  ) : undefined
+
   const close = closeIfStill(open)
   // Like the casework forms: shown only while the pair still lets this card keep itself (or the other).
   // The active card's Keep This marks the pending twin a duplicate (it is on this page); the swaps
@@ -199,6 +226,10 @@ export function WorkingRequestCard({
     editor = (
       <PairKeepForm request={request} pair={swap.pair} keepsThis={swap.keepsThis} onDone={close} />
     )
+  } else if (form === 'cost') {
+    editor = <SetCostForm request={request} page={page} onDone={close} />
+  } else if (form === 'clear_cost') {
+    editor = <ClearCostForm request={request} page={page} onDone={close} />
   } else if (form === 'headcount') {
     editor = <HeadcountForm request={request} onDone={close} />
   } else if (open?.kind === 'cancel') {
@@ -248,6 +279,7 @@ export function WorkingRequestCard({
       page={page}
       view={view}
       actions={actions}
+      costAction={costAction}
       editor={editor}
       checklist={(line) => (
         <RoundChecklist request={request} line={line} year={year} editing={editing} />

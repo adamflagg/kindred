@@ -55,6 +55,7 @@ import type {
   CountOut,
   DecisionTypeLineOut,
   CorrectionCreate,
+  CostOverrideIn,
   CorrectionOut,
   CrossScopeEdge,
   DecisionTypeOutput,
@@ -222,6 +223,8 @@ export type ApiAidRound3AmountIn = Round3AmountIn
 export type ApiAidRound3ApprovalIn = Round3ApprovalIn
 export type ApiAidHoldReleaseIn = HoldReleaseIn
 export type ApiAidManualHoldIn = ManualHoldIn
+/** A cost set by staff, or cleared with a null amount (D22). */
+export type ApiAidCostOverrideIn = CostOverrideIn
 export type ApiAidCancellationIn = CancellationIn
 /** What a decisions write did. Mirrors Python `DecisionWriteOut`. */
 export type ApiAidWriteOut = DecisionWriteOut

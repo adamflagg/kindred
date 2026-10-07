@@ -193,8 +193,9 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
     reclassify: 'Reclassified',
   },
   // ⚠1 interim (lead-built, the owner rules later): past-tense words, so "Correct" never reads as
-  // "this figure is correct" over a corrected figure.
-  aid_application_corrections: { correct: 'Corrected', cost_override: 'Cost override set' },
+  // "this figure is correct" over a corrected figure. A cleared cost reads "Cost cleared"
+  // (`rowActionWords`).
+  aid_application_corrections: { correct: 'Corrected', cost_override: 'Cost set' },
   aid_flag_dispositions: {
     placed: 'Placed',
     reopen: 'Reopened',
@@ -615,6 +616,15 @@ export interface RowView {
   readonly camperName: string | null
 }
 
+/** The row's action in words; a cost override whose new value is empty is a cleared cost. */
+function rowActionWords(row: ApiAidHistoryRow): string {
+  if (row.entity === 'aid_application_corrections' && row.action === 'cost_override') {
+    const cleared = row.after?.['value'] === ''
+    if (cleared) return 'Cost cleared'
+  }
+  return actionWords(row.entity, row.action)
+}
+
 function rulesHead(row: ApiAidHistoryRow): string {
   const [, version, section] = row.entity_id.split(':')
   return joined([
@@ -670,11 +680,7 @@ export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, st
   )
   const context: RowContext = { sessions, correctsMoney: correctsMoney(row) }
   return {
-    head: joined([
-      actionWords(row.entity, row.action),
-      subjectOf(row, linked, sessions),
-      row.reason,
-    ]),
+    head: joined([rowActionWords(row), subjectOf(row, linked, sessions), row.reason]),
     lines: listed.map((change) => fieldLine(row.entity, change, context)),
     fields: listed.map((change) => fieldView(row.entity, change, context)),
     hidden: row.changes.length - listed.length - unlisted.length,

@@ -13,6 +13,7 @@
  * <what happened>" (ruled 2026-10-05), the event said of the round rather than done by someone.
  */
 import type { ApiAidHistoryEntry, ApiAidHouseholdPage } from '../../../types/api-types'
+import { costReasonLower } from '../kit/costReasons'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
 import { codeWords } from '../requests/attention'
@@ -121,6 +122,22 @@ const money = (value: unknown): LinePart | null => {
   return n === null ? null : strong(formatMoney(n))
 }
 
+/**
+ * A set or cleared cost (Set Cost…): `value` is the server's `code:amount`, empty once cleared.
+ * The note rides as the line's reason, as every other line's does.
+ */
+function costParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): LinePart[] | null {
+  const session =
+    page.requests.find((r) => r.row.request_id === entry.request_id)?.row.session_name ?? null
+  const of = session ?? 'the'
+  const value = textOf(field(entry.after, 'value')) ?? ''
+  if (value === '') return [plain(`cleared ${of} cost`)]
+  const [code = '', amount = ''] = value.split(':')
+  const sum = money(amount)
+  if (sum === null) return [plain(`set ${of} cost`)]
+  return [plain(`set ${of} cost to `), sum, plain(` (${costReasonLower(code)})`)]
+}
+
 /** The decision events' words (decisions `EventKind`); an amount is the basis the action names (D80). */
 function decisionParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): LinePart[] | null {
   const camper = camperOf(page, entry.request_id)
@@ -213,6 +230,7 @@ function whatParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): LinePa
     case 'aid_decisions':
       return decisionParts(page, entry)
     case 'aid_application_corrections': {
+      if (entry.action === 'cost_override') return costParts(page, entry)
       if (entry.action !== 'correct') return null
       const name = textOf(field(entry.after, 'field'))
       if (name === null) return [plain('corrected an answer')]

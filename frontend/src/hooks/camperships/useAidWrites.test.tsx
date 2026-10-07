@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import {
   useAidCancellation,
   useAidCorrection,
+  useAidCostOverride,
   useAidDuplicate,
   useAidHeadcount,
   useAidHoldRelease,
@@ -239,6 +240,25 @@ describe('the casework forms’ writes (§6.3)', () => {
       auth: new Headers(options.headers).get('Authorization'),
     }
   }
+
+  it('sets a cost override', async () => {
+    const { result } = renderHook(() => useAidCostOverride(), { wrapper })
+    const body = { amount: 1275, reason_code: 'typed_household_total', note: 'From the form' }
+    await act(() => result.current.mutateAsync({ requestId: 'reqemma00000001', body }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqemma00000001/cost-override',
+      method: 'POST',
+      body,
+      auth: 'Bearer test-jwt',
+    })
+  })
+
+  it('clears a cost override with a null amount', async () => {
+    const { result } = renderHook(() => useAidCostOverride(), { wrapper })
+    const body = { amount: null, note: 'Entered on the wrong card' }
+    await act(() => result.current.mutateAsync({ requestId: 'reqemma00000001', body }))
+    expect(lastCall()).toMatchObject({ method: 'POST', body })
+  })
 
   it('corrects an answer on the application', async () => {
     const { result } = renderHook(() => useAidCorrection(), { wrapper })

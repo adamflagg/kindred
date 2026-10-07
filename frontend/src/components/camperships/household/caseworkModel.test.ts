@@ -143,7 +143,8 @@ describe('what the forms offer', () => {
 })
 
 describe('which casework buttons a request takes (the server’s own refusals)', () => {
-  const offers = (over: Parameters<typeof gridRow>[0]) => caseworkOffers(gridRow(over))
+  const offers = (over: Parameters<typeof gridRow>[0]) =>
+    caseworkOffers(gridRow(over), { rulesApproved: true })
 
   // Owner ruling: shares are hidden on a cancelled request and on a pending duplicate, though the
   // server allows both (it refuses only a duplicate or withdrawn request).
@@ -157,6 +158,23 @@ describe('which casework buttons a request takes (the server’s own refusals)',
     const campminder = { by: 'campminder', on: null, reason: null, note: '' } as const
     expect(offers({ cancellation: kindred }).shares).toBe(false)
     expect(offers({ cancellation: campminder }).shares).toBe(false)
+  })
+
+  it('offers Set Cost… on a live, priced request', () => {
+    const cancelled = { by: 'kindred', on: '2027-06-02', reason: 'medical', note: '' } as const
+    const campminder = { by: 'campminder', on: null, reason: null, note: '' } as const
+    expect(caseworkOffers(ROW_EMMA, { rulesApproved: true }).cost).toBe(true)
+    expect(caseworkOffers(ROW_EMMA, { rulesApproved: false }).cost).toBe(false)
+    expect(
+      caseworkOffers({ ...ROW_EMMA, request_status: 'unmatched_session' }, { rulesApproved: true })
+        .cost
+    ).toBe(false)
+    expect(
+      caseworkOffers({ ...ROW_EMMA, cancellation: cancelled }, { rulesApproved: true }).cost
+    ).toBe(false)
+    expect(
+      caseworkOffers({ ...ROW_EMMA, cancellation: campminder }, { rulesApproved: true }).cost
+    ).toBe(false)
   })
 
   it('settle session only while unmatched; keep-the-other only while a duplicate is pending', () => {

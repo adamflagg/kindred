@@ -329,6 +329,39 @@ describe('who: staff by a readable name, the system by its job', () => {
   })
 })
 
+describe('historyLines: a set and a cleared cost (Set Cost…)', () => {
+  const cost = (value: string, reason: string) =>
+    historyLines({
+      ...HISTORY_PAGE,
+      history: [
+        {
+          ...HISTORY[0]!,
+          entity: 'aid_application_corrections',
+          action: 'cost_override',
+          request_id: 'reqemma00000001',
+          actor: 'registrar@example.com',
+          reason,
+          after: { field: 'cost_override', value },
+        },
+      ],
+    })[0]!
+
+  it('words a set cost with its amount and reason, the note beside it as the reason', () => {
+    const line = cost('typed_household_total:1275.00', 'From the form')
+    expect(lineText(line)).toBe(
+      "Registrar set Session 2 cost to $1,275 (family's total from the form)"
+    )
+    expect(line.parts.filter((p) => p.strong).map((p) => p.text)).toEqual(['$1,275'])
+    expect(line.reason).toBe('From the form')
+  })
+
+  it('words a cleared cost', () => {
+    const line = cost('', 'Back to the list price')
+    expect(lineText(line)).toBe('Registrar cleared Session 2 cost')
+    expect(line.reason).toBe('Back to the list price')
+  })
+})
+
 describe('historyMeta: the History tab', () => {
   it('counts the lines and dates the latest', () => {
     expect(historyMeta(historyLines(HISTORY_PAGE))).toBe('6 · latest Mar 14')

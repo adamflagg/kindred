@@ -15,6 +15,7 @@ import type {
   ApiAidDefinitions,
   ApiAidDuplicateIn,
   ApiAidGrid,
+  ApiAidCostOverrideIn,
   ApiAidHeadcountIn,
   ApiAidHoldReleaseIn,
   ApiAidHouseholdPage,
@@ -366,6 +367,21 @@ export function setAidManualHold(
     `${BASE}/requests/${requestId}/manual-hold`,
     body,
     "Couldn't change the hold"
+  )
+}
+
+/** Set the cost to price the request at with a reason and a note, or clear it (D22). */
+export function setAidCostOverride(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidCostOverrideIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/cost-override`,
+    body,
+    "Couldn't change the cost"
   )
 }
 

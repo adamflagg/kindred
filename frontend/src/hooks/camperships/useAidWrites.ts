@@ -8,6 +8,7 @@ import {
   markAidDuplicate,
   resolveAidSession,
   setAidCancellation,
+  setAidCostOverride,
   setAidHeadcount,
   setAidHoldRelease,
   setAidHouseholdShare,
@@ -24,6 +25,7 @@ import type {
   ApiAidCancellationIn,
   ApiAidCorrectionIn,
   ApiAidDuplicateIn,
+  ApiAidCostOverrideIn,
   ApiAidHeadcountIn,
   ApiAidHoldReleaseIn,
   ApiAidHouseholdShareIn,
@@ -136,6 +138,13 @@ export function useAidHoldRelease() {
 export function useAidManualHold() {
   return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidManualHoldIn>) =>
     setAidManualHold(fetchWithAuth, vars.requestId, vars.body)
+  )
+}
+
+/** Set the cost a request is priced at, or clear it (D22). */
+export function useAidCostOverride() {
+  return useAidWrite((fetchWithAuth, vars: RequestVars<ApiAidCostOverrideIn>) =>
+    setAidCostOverride(fetchWithAuth, vars.requestId, vars.body)
   )
 }
 
