@@ -46,6 +46,7 @@ import type {
   ApiAidScenarioLoadIn,
   ApiAidScenarioOption,
   ApiAidScenarioRenameIn,
+  ApiAidScenarioSaveDraftIn,
   ApiAidScenarioSnapshot,
   ApiAidScenarioWorkspace,
   ApiAidSectionSaveIn,
@@ -609,7 +610,7 @@ export function evaluateAidScenario(
 export function saveAidScenarioDraft(
   fetchWithAuth: FetchWithAuth,
   year: number,
-  body: ApiAidScenarioDocumentIn
+  body: ApiAidScenarioSaveDraftIn
 ): Promise<ApiAidScenarioDraft> {
   return send<ApiAidScenarioDraft>(
     fetchWithAuth,

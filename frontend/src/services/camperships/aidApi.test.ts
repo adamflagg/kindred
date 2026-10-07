@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { AidWriteError, hasStatus, keyAidAsk, retryUnlessRefused, writeMessage } from './aidApi'
+import {
+  AidWriteError,
+  fitAidScenario,
+  hasStatus,
+  keyAidAsk,
+  retryUnlessRefused,
+  saveAidScenarioDraft,
+  writeMessage,
+} from './aidApi'
 
 describe('writeMessage', () => {
   it("reads FastAPI's detail as one sentence: a string, a 409's message, a 422's first msg", () => {
@@ -74,5 +82,15 @@ describe('a refused write', () => {
     await expect(keyAidAsk(fetchWithAuth, 'reqemma00000001', ASK)).rejects.toThrow(
       "Couldn't save the ask (HTTP 500)"
     )
+  })
+})
+
+describe('scenario request bodies (A11b)', () => {
+  it('lets only the draft save carry the version staff opened', () => {
+    const document = {} as Parameters<typeof fitAidScenario>[2]['document']
+    const save: Parameters<typeof saveAidScenarioDraft>[2] = { document, opened_version: 2 }
+    // @ts-expect-error fit-to-budget's body forbids extra fields: the server answers 422 to an opened_version.
+    const fit: Parameters<typeof fitAidScenario>[2] = { document, opened_version: 2 }
+    expect([save.opened_version, fit.document]).toEqual([2, document])
   })
 })

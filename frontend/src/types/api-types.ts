@@ -316,7 +316,9 @@ export type ApiAidScenarioTierRow = TierRowOut
 export type ApiAidScenarioProjection = ProjectionOut
 export type ApiAidScenarioEvaluateIn = EvaluateIn
 export type ApiAidScenarioEvaluation = EvaluateOut
-export type ApiAidScenarioDocumentIn = SaveDraftIn
+/** A body that is only a document (Python `DocumentIn`); the draft save's body adds `opened_version`. */
+export type ApiAidScenarioDocumentIn = Pick<SaveDraftIn, 'document'>
+export type ApiAidScenarioSaveDraftIn = SaveDraftIn
 export type ApiAidScenarioLoadIn = LoadIn
 export type ApiAidScenarioKeepIn = KeepIn
 /** Mirrors Python `RenameIn`. */
