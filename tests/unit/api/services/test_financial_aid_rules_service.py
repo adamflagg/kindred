@@ -632,6 +632,18 @@ async def test_start_from_last_year_clears_prices_and_warns() -> None:
     assert (warning.section, warning.path) == ("cost", "cost.tuition")
 
 
+@pytest.mark.asyncio
+async def test_start_from_last_year_clears_the_not_running_list_and_says_so() -> None:
+    service = _service()
+    await service.create_version(
+        with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000102]), actor=FINANCE
+    )
+    started, report = await service.start_from_last_year(2032, actor=FINANCE)
+    assert started.document.cost.not_running_session_cm_ids == []
+    warning = next(w for w in report.warnings if w.code == "prices_cleared_for_new_season")
+    assert "the not-running list" in warning.message
+
+
 def test_every_service_refusal_is_a_financial_aid_error_and_pydantic_is_not() -> None:
     for error in (
         NoSectionsNamedError,
