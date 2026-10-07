@@ -752,15 +752,19 @@ export function pageStarts(
 export const pageBreakWords = (page: number, perPage: number, total: number): string =>
   `Page ${String(page)} · ${range(page, perPage, total)}`
 
-/** The last row while more is to come: "Scroll for 51–100", or "◌ Loading 51–100…" while it loads. */
+/**
+ * The last row while more is to come: "Scroll for 51–100", or "◌ Loading 51–100…" while it loads.
+ * `pagesRead` counts pages, not rows shown: a row repeated across two pages is shown once (Review
+ * Focus 4), so the shown count would name a page already read.
+ */
 export function scrollRowWords(
-  loaded: number,
+  pagesRead: number,
   total: number,
   perPage: number,
   loading: boolean
 ): string | null {
-  if (loaded >= total) return null
-  const next = Math.floor(loaded / perPage) + 1
+  if (pagesRead * perPage >= total) return null
+  const next = pagesRead + 1
   return loading
     ? `◌ Loading ${range(next, perPage, total)}…`
     : `Scroll for ${range(next, perPage, total)}`

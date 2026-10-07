@@ -839,12 +839,18 @@ describe('the box (spec §7.2 C)', () => {
     expect(pageStarts(pages)).toEqual([{ page: 2, index: 2 }])
   })
 
+  it('scrollRowWords names the page after the pages read, even when one repeated a row (Review Focus 4)', () => {
+    // Two pages read, 99 rows shown (one moved down between reads): the next page is still 3.
+    expect(scrollRowWords(2, 112, 50, false)).toBe('Scroll for 101–112')
+  })
+
   it('says the page break, the scroll row and the footer in the mock words', () => {
     expect(pageBreakWords(2, 50, 112)).toBe('Page 2 · 51–100')
     expect(pageBreakWords(3, 50, 112)).toBe('Page 3 · 101–112')
-    expect(scrollRowWords(50, 112, 50, false)).toBe('Scroll for 51–100')
-    expect(scrollRowWords(50, 112, 50, true)).toBe('◌ Loading 51–100…')
-    expect(scrollRowWords(112, 112, 50, false)).toBeNull()
+    // scrollRowWords counts pages read, not rows shown: a row repeated across pages is shown once.
+    expect(scrollRowWords(1, 112, 50, false)).toBe('Scroll for 51–100')
+    expect(scrollRowWords(1, 112, 50, true)).toBe('◌ Loading 51–100…')
+    expect(scrollRowWords(3, 112, 50, false)).toBeNull()
     expect(footerWords(112, 50, 1, 3)).toEqual({
       count: '112 operations',
       pageOf: 'Page 1 of 3',

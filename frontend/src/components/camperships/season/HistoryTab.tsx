@@ -130,10 +130,13 @@ export function HistoryTab() {
   )
 
   // A page number (or a ?page= link) loads every page up to it.
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = read
+  // A failed page read stops it (no retry loop); a scroll near the end asks again.
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = read
   useEffect(() => {
-    if (loaded.length < target && hasNextPage && !isFetchingNextPage) void fetchNextPage()
-  }, [loaded.length, target, hasNextPage, isFetchingNextPage, fetchNextPage])
+    if (loaded.length < target && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+      void fetchNextPage()
+    }
+  }, [loaded.length, target, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage])
   // Only a filter change returns the box to its top. filterKey is a string, so ?page= writes leave it alone;
   // the ref skips the first render, so a ?page= link's pending scroll survives the mount.
   useEffect(() => {
@@ -149,6 +152,17 @@ export function HistoryTab() {
     pendingPage.current = null
     scrollToPage(box.current, page)
   }, [loaded.length])
+  // A ?page= past the log's end, once every page has loaded, becomes its last page (and is shown).
+  const last = first === undefined ? 1 : lastPage(first)
+  const complete = first !== undefined && !stale && !hasNextPage && !isFetchingNextPage
+  useEffect(() => {
+    if (!complete || filters.page <= last) return
+    setFilter('page', last > 1 ? String(last) : null)
+    if (pendingPage.current !== null) {
+      pendingPage.current = null
+      scrollToPage(box.current, last)
+    }
+  }, [complete, filters.page, last, setFilter])
 
   const onScroll = () => {
     const el = box.current
@@ -168,8 +182,13 @@ export function HistoryTab() {
           Infinity
       ),
     ]
-    const page = pageAtScroll(tops, el.scrollTop)
-    if (page !== filters.page) setFilter('page', page <= 1 ? null : String(page))
+    // A short last page cannot bring its break row to the top: at the end of a fully loaded box, it is the page.
+    const atEnd = !hasNextPage && el.scrollHeight - el.scrollTop - el.clientHeight < 1
+    const page = atEnd ? loaded.length : pageAtScroll(tops, el.scrollTop)
+    // While a page number is still loading, ?page= stays on it until the box scrolls there.
+    if (pendingPage.current === null && page !== filters.page) {
+      setFilter('page', page <= 1 ? null : String(page))
+    }
   }
   const goTo = (page: number) => {
     setGoal({ key: filterKey, page })
@@ -178,7 +197,6 @@ export function HistoryTab() {
     else pendingPage.current = page // the effect above scrolls once it arrives
   }
 
-  const last = first === undefined ? 1 : lastPage(first)
   return (
     <div className="space-y-3">
       <HistoryFilters
@@ -225,7 +243,7 @@ export function HistoryTab() {
                     view={view}
                     lineWidth={fit.width}
                     tail={scrollRowWords(
-                      ops.length,
+                      loaded.length,
                       first.total,
                       first.per_page,
                       isFetchingNextPage

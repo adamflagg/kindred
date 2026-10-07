@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { DETAIL_POSTED } from '../season/historyFixtures'
-import { OP_MISSING, opRequestIds, opWords, parseOp } from './opFilter'
+import { OP_FAILED, OP_MISSING, OP_READING, opRequestIds, opWords, parseOp } from './opFilter'
 
 describe('the grid filter ?op= (spec §9.8)', () => {
   it('reads a real operation id only', () => {
@@ -22,5 +22,7 @@ describe('the grid filter ?op= (spec §9.8)', () => {
     expect(opWords(6)).toBe('The 6 requests in one History operation')
     expect(opWords(1)).toBe('The 1 request in one History operation')
     expect(OP_MISSING).toBe("That History operation isn't in the log you can read")
+    expect(OP_READING).toBe('Reading one History operation…')
+    expect(OP_FAILED).toBe("Couldn't read that History operation")
   })
 })

@@ -17,7 +17,13 @@ import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
-import { OP_MISSING, opRequestIds, opWords } from '../../components/camperships/requests/opFilter'
+import {
+  OP_FAILED,
+  OP_MISSING,
+  OP_READING,
+  opRequestIds,
+  opWords,
+} from '../../components/camperships/requests/opFilter'
 import { programGroups } from '../../components/camperships/requests/programLabel'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
 import {
@@ -95,6 +101,17 @@ export default function AidRequestsPage() {
     () => (op === null ? null : (opRequestIds(opRead.data) ?? new Set<string>())),
     [op, opRead.data]
   )
+  // The line says the operation is being read, or failed, rather than "The 0 requests" (a 404 has its own words).
+  const opFailed =
+    opRead.data === undefined && opRead.error !== null && !hasStatus(opRead.error, 404)
+  const opLine =
+    opRead.data !== undefined
+      ? opWords(opIds?.size ?? 0)
+      : hasStatus(opRead.error, 404)
+        ? OP_MISSING
+        : opFailed
+          ? OP_FAILED
+          : OP_READING
   // The rules name their programs and pools. A failed or missing read never blocks the grid: keys spelled out.
   const approvedRules = useAidApprovedRules(null)
   const today = campToday()
@@ -433,7 +450,15 @@ export default function AidRequestsPage() {
       )}
       {op !== null && (
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {hasStatus(opRead.error, 404) ? OP_MISSING : opWords(opIds?.size ?? 0)} ·
+          {opLine} ·
+          {opFailed && (
+            <>
+              <button type="button" className={ACTION_LINK} onClick={() => void opRead.refetch()}>
+                Try again
+              </button>
+              ·
+            </>
+          )}
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('op', null)}>
             Show All
           </button>

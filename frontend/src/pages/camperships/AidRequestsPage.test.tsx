@@ -51,6 +51,7 @@ let operation: {
   data: ApiAidHistoryOperationDetail | undefined
   error: Error | null
   isLoading: boolean
+  refetch?: () => unknown
 }
 vi.mock('../../hooks/camperships/useAidHistory', () => ({
   useAidHistoryOperation: () => operation,
@@ -434,6 +435,28 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(
       screen.getByText(/That History operation isn't in the log you can read/)
     ).toBeInTheDocument()
+  })
+
+  it('says the operation is still being read rather than "0 requests" while it loads', () => {
+    operation = { data: undefined, error: null, isLoading: true }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
+    expect(screen.getByText(/Reading one History operation…/)).toBeInTheDocument()
+    expect(screen.queryByText(/The 0 requests/)).toBeNull()
+  })
+
+  it('says a failed operation read failed, with Try again, rather than "0 requests"', async () => {
+    const refetch = vi.fn()
+    operation = {
+      data: undefined,
+      error: Object.assign(new Error('boom'), { status: 500 }),
+      isLoading: false,
+      refetch,
+    }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
+    expect(screen.getByText(/Couldn't read that History operation/)).toBeInTheDocument()
+    expect(screen.queryByText(/The 0 requests/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 
   it('carries the Season figure to the household page, so the walk keeps it', async () => {

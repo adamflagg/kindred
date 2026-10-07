@@ -26,6 +26,7 @@ let pages: {
   isPlaceholderData: boolean
   hasNextPage: boolean
   isFetchingNextPage: boolean
+  isFetchNextPageError: boolean
   fetchNextPage: ReturnType<typeof vi.fn>
 }
 let pageQueries: Array<Readonly<Record<string, string>>>
@@ -123,6 +124,7 @@ beforeEach(() => {
     isPlaceholderData: false,
     hasNextPage: true,
     isFetchingNextPage: false,
+    isFetchNextPageError: false,
     fetchNextPage: vi.fn(),
   }
   // A pasted as-of must not be after "today" (kit/asOf.ts parseAsOf), so today is fixed.
@@ -474,6 +476,34 @@ describe('History box (spec §7.2 C)', () => {
     expect(document.querySelectorAll('[data-operation]')).toHaveLength(99)
   })
 
+  it('the scroll row names the next page to read even when a page repeated a row', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 49)] } // 99 rows shown, two pages read
+    renderAt('/aid/season/history')
+    expect(screen.getByText('Scroll for 101–112')).toBeInTheDocument()
+  })
+
+  it('stops asking for pages up to a ?page= link once a page read fails', () => {
+    pages.data = { pages: [opsPage(1, 50)] }
+    pages.isFetchNextPageError = true
+    renderAt('/aid/season/history?page=3')
+    expect(pages.fetchNextPage).not.toHaveBeenCalled()
+  })
+
+  it('a ?page= past the last page becomes the last page once every page has loaded', () => {
+    pages.data = { pages: [opsPage(1, 50, 60), opsPage(2, 10, 60, 50)] }
+    pages.hasNextPage = false
+    renderAt('/aid/season/history?page=9')
+    expect(where().get('page')).toBe('2')
+    expect(screen.getByTestId('history-footer')).toHaveTextContent('Page 2 of 2')
+  })
+
+  it('a ?page= past a one-page log drops the page', () => {
+    pages.data = { pages: [opsPage(1, 10, 10)] }
+    pages.hasNextPage = false
+    renderAt('/aid/season/history?page=4')
+    expect(where().get('page')).toBeNull()
+  })
+
   it('a link with ?page=3 loads every page up to 3', () => {
     pages.data = { pages: [opsPage(1, 50)] }
     renderAt('/aid/season/history?page=3')
@@ -558,6 +588,38 @@ describe('History box scroll position (spec §7.2 C, F)', () => {
     pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50), opsPage(3, 12, 112, 100)] }
     view.refresh()
     expect(scrolledTo).toEqual(['3'])
+  })
+
+  it('a scroll while a page number is still loading leaves ?page= on the page asked for', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50)] }
+    renderAt('/aid/season/history?page=2')
+    fireEvent.click(footerButton('3'))
+    fireEvent.scroll(scrolledBox(0))
+    expect(where().get('page')).toBe('3')
+  })
+
+  it('the box scrolled to its end shows the last page, though its short last page cannot reach the top', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50), opsPage(3, 12, 112, 100)] }
+    pages.hasNextPage = false
+    renderAt('/aid/season/history')
+    const box = screen.getByTestId('history-box')
+    for (const [page, top] of [
+      ['2', 2000],
+      ['3', 4000],
+    ] as const) {
+      Object.defineProperty(box.querySelector(`[data-page-start="${page}"]`), 'offsetTop', {
+        value: top,
+        configurable: true,
+      })
+    }
+    // Page 3's 12 rows: the box stops 600px short of its break row, at its end.
+    Object.defineProperties(box, {
+      scrollHeight: { value: 4000, configurable: true },
+      clientHeight: { value: 600, configurable: true },
+      scrollTop: { value: 3400, configurable: true, writable: true },
+    })
+    fireEvent.scroll(box)
+    expect(where().get('page')).toBe('3')
   })
 
   it('a page number not loaded yet loads it, then scrolls to it', () => {
