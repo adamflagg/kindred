@@ -394,6 +394,24 @@ def test_an_unmatched_session_request_is_still_live_and_loads() -> None:
     assert _posts(plan) == {1: Decimal(3000)}
 
 
+@pytest.mark.parametrize("status", ["withdrawn", "duplicate", "duplicate_pending"])
+def test_a_sheet_row_loads_onto_the_live_request_beside_its_closed_twin(status: str) -> None:
+    # Intake keeps a duplicate in its holder's family x person x session slot, so the live one is the match.
+    twin = _request(LIAM, status=status)
+    plan = _plan([_award()], [twin, _request()], [_line("3000")])
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert _posts(plan, LIAM) == {}
+    assert "request_ambiguous" not in _kinds(plan)
+
+
+def test_a_session_override_onto_a_closed_request_is_not_listed_as_loaded() -> None:
+    rule = _override("session", person=1000002, sheet_session=1000101, session=1000102)
+    plan = _plan([_award(session_cm_id=1000101)], [_request(status="withdrawn")], [_line("3000")], overrides=[rule])
+    assert plan.creates == []
+    assert "request_not_live" in _kinds(plan)
+    assert "override_applied" not in _kinds(plan)  # the row lists only what loads under an override (owner, 10-07)
+
+
 # --- the owner's overrides: each group's answer as data, never code (owner rulings pending 10-07) -------------------
 
 
@@ -515,6 +533,14 @@ def test_a_campminder_override_on_a_withdrawn_request_is_reported_and_never_post
     plan = _plan([], [_request(status="withdrawn")], overrides=[rule])
     assert plan.creates == []
     assert "request_not_live" in _kinds(plan)
+
+
+def test_a_campminder_override_records_on_the_live_request_beside_its_duplicate_twin() -> None:
+    rule = _override("campminder", person=1000002, household=1000001, session=1000102)
+    plan = _plan([], [_request(LIAM, status="duplicate"), _request()], [_line("2500")], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(2500)}
+    assert _posts(plan, LIAM) == {}
+    assert "override_ambiguous" not in _kinds(plan)
 
 
 def test_an_override_that_matches_nothing_is_reported_and_changes_nothing() -> None:

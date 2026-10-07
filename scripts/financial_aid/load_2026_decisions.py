@@ -531,6 +531,13 @@ def reproduce(award: SheetAward, request: LoadRequest, rules: AidRules, version:
 # --- matching the sheet to the season's requests ------------------------------------------------------------------------
 
 
+def _live_first(found: list[LoadRequest]) -> list[LoadRequest]:
+    """Of several requests in one slot, the live ones: intake keeps a withdrawn or duplicate request in its live
+    holder's family x person x session, so the live one is the request a row (or an override) means."""
+    live = [r for r in found if r.status in _LIVE]
+    return live if len(found) > 1 and live else found
+
+
 def _match(award: SheetAward, requests: Sequence[LoadRequest]) -> tuple[LoadRequest | None, str]:
     if award.person_cm_id is None:
         return None, "no_campminder_id"
@@ -547,6 +554,7 @@ def _match(award: SheetAward, requests: Sequence[LoadRequest]) -> tuple[LoadRequ
             and r.person_cm_id == 0
             and r.household_cm_id == award.household_cm_id
         ]
+    found = _live_first(found)
     if len(found) == 1:
         return found[0], ""
     if len(found) > 1:
@@ -576,11 +584,13 @@ def _campminder_only(
     for rule in overrides:
         if rule.on_sheet_row:
             continue
-        found = [
-            r
-            for r in requests
-            if (r.person_cm_id, r.household_cm_id, r.session_cm_id) == (rule.person, rule.household, rule.session)
-        ]
+        found = _live_first(
+            [
+                r
+                for r in requests
+                if (r.person_cm_id, r.household_cm_id, r.session_cm_id) == (rule.person, rule.household, rule.session)
+            ]
+        )
         if not found:
             continue
         used.add(rule)
@@ -651,7 +661,6 @@ def plan_load(
             else:
                 household = rule.to_household if rule.to_household is not None else award.household_cm_id
                 award = replace(award, person_cm_id=rule.to_person, household_cm_id=household)
-            report(award, "override_applied", note=rule.note)
         request, why = _match(award, requests)
         if request is None:
             report(award, why)
@@ -675,6 +684,8 @@ def plan_load(
             report(award, "request_not_live", note=f"the request is {by_id[rid].status}: never posted onto")
             continue
         made[rid] = (award, reproduce(award, by_id[rid], rules, rules_version))
+        if (chosen := applied.get(award.row)) is not None:  # listed only once it loads (owner, 10-07)
+            report(award, "override_applied", note=chosen.note)
 
     # The owner's "campminder" answers: a request the sheet has no row for records CampMinder's money as Round 1.
     only = _campminder_only(overrides, requests, matched, staff, used, report)
