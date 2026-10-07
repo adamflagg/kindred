@@ -33,3 +33,16 @@ def test_a_class_names_the_first_group_that_uses_it() -> None:
     assert group_of_class(fictional_rules(), "camp") == Group("camp_pool", "Camp", "camp")
     assert group_of_class(fictional_rules(), "teen") is None
     assert group_of_pool(fictional_rules(), None) is None
+
+
+def test_a_program_claiming_sessions_only_by_type_still_has_its_say() -> None:
+    """Pin: `claims_sessions` counts a session type as a claim, as validation does."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.summer.session_cm_ids": [],
+            "programs.quest.session_cm_ids": [],
+            "programs.quest.session_types": ["x"],
+        },
+    )
+    assert season_groups(rules)[0].equity_class == "camp"  # summer + quest by type outvote teen
