@@ -304,7 +304,7 @@ describe('the fold lines carry what the table, strip and notes did (spec §5.2 F
     const lines = screen.getByTestId('fold-lines')
     expect(within(lines).getByRole('link', { name: '340 fam · 367 req' })).toHaveAttribute(
       'href',
-      '/aid/requests?posted=1&counted=1&year=2027'
+      '/aid/requests?posted=1&year=2027'
     )
     expect(within(lines).queryByText(/awaiting sync|not reconciled/)).toBeNull()
   })

@@ -51,8 +51,8 @@ describe('the strip (§7.2; D153, owner ruling Group 2c Q3)', () => {
   it("opens posted and accepted as All on that round's figure, not on round= (owner 10-06)", () => {
     const [r1] = stripRounds(BUDGET.strip, LIVE)
     const href = (measure: string) => r1?.counts.find((c) => c.measure === measure)?.href
-    expect(href('posted')).toBe('/aid/requests?posted=1&counted=1&year=2027')
-    expect(href('accepted')).toBe('/aid/requests?accepted=1&counted=1&year=2027')
+    expect(href('posted')).toBe('/aid/requests?posted=1&year=2027')
+    expect(href('accepted')).toBe('/aid/requests?accepted=1&year=2027')
   })
 
   it('opens needs an offer, held and pending approval on their own Requests views', () => {
@@ -60,12 +60,10 @@ describe('the strip (§7.2; D153, owner ruling Group 2c Q3)', () => {
     const href = (round: number, measure: string) =>
       rounds[round - 1]?.counts.find((c) => c.measure === measure)?.href
     // A round's queue count carries its round (lead ruling, fix-wave addition).
-    expect(href(1, 'needs_offer')).toBe(
-      '/aid/requests?view=needs-offer&round=1&counted=1&year=2027'
-    )
+    expect(href(1, 'needs_offer')).toBe('/aid/requests?view=needs-offer&round=1&year=2027')
     expect(href(1, 'held')).toBe('/aid/requests?view=holds&year=2027')
     expect(href(3, 'pending_approval')).toBe(
-      '/aid/requests?view=pending-approval&round=3&counted=1&year=2027'
+      '/aid/requests?view=pending-approval&round=3&year=2027'
     )
   })
 
@@ -77,7 +75,7 @@ describe('the strip (§7.2; D153, owner ruling Group 2c Q3)', () => {
     expect(needs?.count).toBeNull()
     expect(needs?.href).toBeNull()
     expect(past[0]?.counts.find((c) => c.measure === 'posted')?.href).toBe(
-      '/aid/requests?posted=1&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?posted=1&year=2027&as_of=2027-03-15'
     )
   })
 })
@@ -167,31 +165,42 @@ describe('a round has no Allocated or Remaining, and a past read has no count (s
 describe('where each figure opens (D20, D153)', () => {
   const rows = budgetRows(BUDGET, EVERY)
 
+  it('no Season link carries counted: every link opens the whole round (R10)', () => {
+    const columns = ['allocated', 'posted', 'accepted', 'needs_offer', 'remaining'] as const
+    const hrefs = [
+      ...stripRounds(BUDGET.strip, LIVE).flatMap((r) => r.counts.map((c) => c.href)),
+      ...rows.flatMap((r) => columns.map((col) => cellHref(r, col, LIVE, 4))),
+      ...rows.map((r) => confirmedHref(r, LIVE)),
+    ].filter((h): h is string => h !== null)
+    expect(hrefs.length).toBeGreaterThan(0)
+    expect(hrefs.filter((h) => h.includes('counted'))).toEqual([])
+  })
+
   it("opens Posted and Accepted as All on the pool and the round's figure (owner 10-06)", () => {
     expect(cellHref(row(rows, 'pool_a:2'), 'posted', LIVE, 3)).toBe(
-      '/aid/requests?pool=pool_a&posted=2&counted=1&year=2027'
+      '/aid/requests?pool=pool_a&posted=2&year=2027'
     )
     expect(cellHref(row(rows, 'pool_a:all'), 'accepted', LIVE, 3)).toBe(
-      '/aid/requests?pool=pool_a&accepted=all&counted=1&year=2027'
+      '/aid/requests?pool=pool_a&accepted=all&year=2027'
     )
     expect(cellHref(row(rows, 'total'), 'posted', LIVE, 3)).toBe(
-      '/aid/requests?posted=all&counted=1&year=2027'
+      '/aid/requests?posted=all&year=2027'
     )
   })
 
   it('opens Needs an offer and Pending approval on their views, and Allocated on the rules', () => {
     // A round line carries its round; the pool line covers every round (fix-wave addition).
     expect(cellHref(row(rows, 'pool_a:1'), 'needs_offer', LIVE, 3)).toBe(
-      '/aid/requests?view=needs-offer&pool=pool_a&round=1&counted=1&year=2027'
+      '/aid/requests?view=needs-offer&pool=pool_a&round=1&year=2027'
     )
     expect(cellHref(row(rows, 'pool_a:all'), 'needs_offer', LIVE, 3)).toBe(
-      '/aid/requests?view=needs-offer&pool=pool_a&counted=1&year=2027'
+      '/aid/requests?view=needs-offer&pool=pool_a&year=2027'
     )
     expect(cellHref(row(rows, 'total'), 'needs_offer', LIVE, 3)).toBe(
-      '/aid/requests?view=needs-offer&counted=1&year=2027'
+      '/aid/requests?view=needs-offer&year=2027'
     )
     expect(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', LIVE, 3)).toBe(
-      '/aid/requests?view=pending-approval&pool=pool_a&round=3&counted=1&year=2027'
+      '/aid/requests?view=pending-approval&pool=pool_a&round=3&year=2027'
     )
     // The approved version that priced the figure (plan review I1), keeping the page's past date
     // (I6: the pill shows on every Season tab; Task 11 review).
@@ -214,7 +223,7 @@ describe('where each figure opens (D20, D153)', () => {
 
   it('carries a past date on what it opens', () => {
     expect(cellHref(row(budgetRows(pastBudget(), EVERY), 'pool_a:1'), 'posted', PAST, 3)).toBe(
-      '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&posted=1&year=2027&as_of=2027-03-15'
     )
   })
 })
@@ -234,12 +243,8 @@ describe('a past date opens no live-only Requests view (final review I1)', () =>
     expect(count(1, 'held')?.href).toBeNull()
     expect(count(3, 'pending_approval')?.count).toEqual({ families: 1, requests: 1 })
     expect(count(3, 'pending_approval')?.href).toBeNull()
-    expect(count(1, 'posted')?.href).toBe(
-      '/aid/requests?posted=1&counted=1&year=2027&as_of=2027-03-15'
-    )
-    expect(count(1, 'accepted')?.href).toBe(
-      '/aid/requests?accepted=1&counted=1&year=2027&as_of=2027-03-15'
-    )
+    expect(count(1, 'posted')?.href).toBe('/aid/requests?posted=1&year=2027&as_of=2027-03-15')
+    expect(count(1, 'accepted')?.href).toBe('/aid/requests?accepted=1&year=2027&as_of=2027-03-15')
   })
 
   it('the table: Needs an offer and the Pending approval line open nothing; Posted and Accepted keep the date', () => {
@@ -250,10 +255,10 @@ describe('a past date opens no live-only Requests view (final review I1)', () =>
     }
     expect(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', PAST, 3)).toBeNull()
     expect(cellHref(row(rows, 'pool_a:1'), 'posted', PAST, 3)).toBe(
-      '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&posted=1&year=2027&as_of=2027-03-15'
     )
     expect(cellHref(row(rows, 'pool_a:all'), 'accepted', PAST, 3)).toBe(
-      '/aid/requests?pool=pool_a&accepted=all&counted=1&year=2027&as_of=2027-03-15'
+      '/aid/requests?pool=pool_a&accepted=all&year=2027&as_of=2027-03-15'
     )
   })
 
@@ -297,9 +302,11 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
       }),
     ]
     expect(view.key).toBe('needs_offer')
+    // The outside-money round opens too: a link opens every request in the round (R10).
     expect(filterRows(rows, view.key, filters).map((r) => r.request_id)).toEqual([
       'reqcounted00001',
       'reqcounted00002',
+      'reqoutside00001',
     ])
   })
 
@@ -337,6 +344,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     const rows = budgetRows(BUDGET, EVERY)
     expect(opened(cellHref(row(rows, 'pool_a:1'), 'needs_offer', LIVE, 3), NEEDS_ROWS)).toEqual([
       'reqround1a0001',
+      'reqround1out01',
     ])
     expect(opened(cellHref(row(rows, 'pool_a:2'), 'needs_offer', LIVE, 3), NEEDS_ROWS)).toEqual([
       'reqround2a0001',
@@ -345,7 +353,11 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     const strip = stripRounds(BUDGET.strip, LIVE)[0]?.counts.find(
       (c) => c.measure === 'needs_offer'
     )
-    expect(opened(strip?.href ?? null, NEEDS_ROWS)).toEqual(['reqround1a0001', 'reqround1b0001'])
+    expect(opened(strip?.href ?? null, NEEDS_ROWS)).toEqual([
+      'reqround1a0001',
+      'reqround1out01',
+      'reqround1b0001',
+    ])
   })
 
   it("a round's amber line opens that round's posted, counted, not-reconciled rows (Task 7 I1)", () => {
@@ -370,11 +382,13 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     ]
     const rows = budgetRows(BUDGET, EVERY)
     const on = (key: string) => opened(confirmedHref(row(rows, key), LIVE), rowsOut)
-    expect(on('pool_a:1')).toEqual(['reqr1posted0001', 'reqr2needs00001'])
+    const poolA = ['reqr1posted0001', 'reqr1outside001', 'reqr2needs00001']
+    expect(on('pool_a:1')).toEqual(poolA)
     expect(on('pool_a:2')).toEqual([])
-    expect(on('pool_a:all')).toEqual(['reqr1posted0001', 'reqr2needs00001'])
-    expect(on('total')).toEqual(['reqr1posted0001', 'reqr2needs00001', 'reqpoolb0000001'])
-    expect(on('pool_a:1')).not.toContain('reqr1outside001')
+    expect(on('pool_a:all')).toEqual(poolA)
+    expect(on('total')).toEqual([...poolA, 'reqpoolb0000001'])
+    // Outside money opens too (R10): the link lists the whole round.
+    expect(on('pool_a:1')).toContain('reqr1outside001')
   })
 
   it("a round's Pending approval opens that round's counted rows (fix-wave addition)", () => {
@@ -405,11 +419,11 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     const rows = budgetRows(BUDGET, EVERY)
     expect(
       opened(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', LIVE, 3), pendingRows)
-    ).toEqual(['reqpend3a00001'])
+    ).toEqual(['reqpend3a00001', 'reqpend3out001'])
     const strip = stripRounds(BUDGET.strip, LIVE)[2]?.counts.find(
       (c) => c.measure === 'pending_approval'
     )
-    expect(opened(strip?.href ?? null, pendingRows)).toEqual(['reqpend3a00001'])
+    expect(opened(strip?.href ?? null, pendingRows)).toEqual(['reqpend3a00001', 'reqpend3out001'])
   })
 
   it("a round's Posted and Accepted open the rows posted in that round, though they have moved on (owner 10-06)", () => {
@@ -451,15 +465,16 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     const strip = stripRounds(BUDGET.strip, LIVE)[0]?.counts
     const href = (measure: 'posted' | 'accepted') =>
       strip?.find((c) => c.measure === measure)?.href ?? null
-    expect(opened(href('posted'), postedRows)).toEqual(['reqmovedon00001', 'requnaccept0001'])
-    expect(opened(href('accepted'), postedRows)).toEqual(['reqmovedon00001'])
+    const postedIn1 = ['reqmovedon00001', 'requnaccept0001', 'reqoutside00001']
+    expect(opened(href('posted'), postedRows)).toEqual(postedIn1)
+    expect(opened(href('accepted'), postedRows)).toEqual(['reqmovedon00001', 'reqoutside00001'])
     const rows = budgetRows(BUDGET, EVERY)
-    expect(opened(cellHref(row(rows, 'pool_a:1'), 'posted', LIVE, 3), postedRows)).toEqual([
-      'reqmovedon00001',
-      'requnaccept0001',
-    ])
+    expect(opened(cellHref(row(rows, 'pool_a:1'), 'posted', LIVE, 3), postedRows)).toEqual(
+      postedIn1
+    )
     expect(opened(cellHref(row(rows, 'pool_a:all'), 'accepted', LIVE, 3), postedRows)).toEqual([
       'reqmovedon00001',
+      'reqoutside00001',
     ])
   })
 })
@@ -668,13 +683,13 @@ describe('the confirmed share under Posted (D153; owner ruling 2026-10-02)', () 
 
   it("opens Not reconciled on the row's pool, and on none for the total", () => {
     expect(confirmedHref(row(rows, 'pool_a:1'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&pool=pool_a&posted=1&counted=1&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&posted=1&year=2027'
     )
     expect(confirmedHref(row(rows, 'pool_a:all'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&pool=pool_a&posted=all&counted=1&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&posted=all&year=2027'
     )
     expect(confirmedHref(row(rows, 'total'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&posted=all&counted=1&year=2027'
+      '/aid/requests?view=not-reconciled&posted=all&year=2027'
     )
   })
 

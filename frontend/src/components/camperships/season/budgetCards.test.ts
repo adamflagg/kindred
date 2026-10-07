@@ -125,7 +125,7 @@ describe('the rounds table (spec §5.2 D)', () => {
 
   it("links each figure as today's cellHref does, and never per-round Allocated or Remaining", () => {
     const [r1] = roundLines(BUDGET, 'pool_a', LIVE)
-    expect(r1?.parts[0]?.href).toBe('/aid/requests?pool=pool_a&posted=1&counted=1&year=2027')
+    expect(r1?.parts[0]?.href).toBe('/aid/requests?pool=pool_a&posted=1&year=2027')
     expect(JSON.stringify(r1)).not.toMatch(/allocated|remaining/i)
   })
 
