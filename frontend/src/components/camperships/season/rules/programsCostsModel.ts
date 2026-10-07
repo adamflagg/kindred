@@ -264,14 +264,19 @@ export function buildContents(
     if (t !== undefined) t.session_cm_ids = [...(t.session_cm_ids ?? []), cmId]
   }
   // 1. Group picks (§4.5): the target program of the picked group and the row's kind.
+  let moved = 0
   for (const row of rows) {
     const picked = edits.get(editKey(row.session.cmId, 'g'))
     if (picked === undefined || picked === row.group) continue
     const target = pickTarget(doc, picked, kindFor(row, doc))
-    if (target !== null) place(row.session.cmId, target)
+    if (target !== null) {
+      place(row.session.cmId, target)
+      moved += 1
+    }
   }
-  // 2. AG sessions follow their parent's program, in the same save.
-  for (const ag of sessions.filter((s) => isAgChild(s, byId))) {
+  // 2. AG sessions follow their parent's program, in the same save: only after a group move, so a prices-only save
+  // never writes an AG session no program lists (Review Focus 6).
+  for (const ag of moved === 0 ? [] : sessions.filter((s) => isAgChild(s, byId))) {
     const parent = Object.entries(programs).find(([, p]) =>
       (p.session_cm_ids ?? []).map(Number).includes(ag.parentId)
     )
@@ -423,23 +428,29 @@ export function changesSince(
       lines.push({ lead: row.session.name, was: groupWords(old), now: groupWords(row) })
     }
   }
-  // Newly not running first, then running again: the order the plan's test pins (a walk of the draft's card order
-  // alone would put "running again" first, since a running row precedes the not-running fold).
-  for (const nowNotRunning of [true, false]) {
-    for (const row of order) {
+  // One status-independent order, as programs-costs-v3's changes() walks: the card's group, then its sub-section,
+  // then date. A walk of the draft's card order would put every running row before the not-running fold.
+  const groupIndex = (row: CardRow) => {
+    const i = after.groups.findIndex((g) => g.pool === row.group)
+    return i === -1 ? after.groups.length : i // Not open to aid is drawn last
+  }
+  const flips = order
+    .filter((row) => {
       const old = was.get(row.session.cmId)
-      if (
-        old === undefined ||
-        old.notRunning === row.notRunning ||
-        row.notRunning !== nowNotRunning
-      )
-        continue
-      lines.push({
-        lead: row.session.name,
-        was: null,
-        now: nowNotRunning ? 'not running' : 'running again',
-      })
-    }
+      return old !== undefined && old.notRunning !== row.notRunning
+    })
+    .sort(
+      (a, b) =>
+        groupIndex(a) - groupIndex(b) ||
+        SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) ||
+        byDate(a, b)
+    )
+  for (const row of flips) {
+    lines.push({
+      lead: row.session.name,
+      was: null,
+      now: row.notRunning ? 'not running' : 'running again',
+    })
   }
   return lines
 }

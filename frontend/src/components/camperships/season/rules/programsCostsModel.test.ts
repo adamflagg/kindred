@@ -288,6 +288,15 @@ describe('buildContents (spec §4.5, §5.2 J, §6)', () => {
   it('a prices-only Save sends cost alone', () => {
     expect(Object.keys(ok(save([[1000101, 't', '6895']])).contents)).toEqual(['cost'])
   })
+
+  it('an AG session no program lists is not written by a prices-only Save (Review Focus 6)', () => {
+    const doc = pcDoc()
+    doc.programs['summer'] = {
+      ...doc.programs['summer']!,
+      session_cm_ids: [1000101, 1000102, 1000104, 1000106, 1000107],
+    }
+    expect(Object.keys(ok(save([[1000101, 't', '6895']], doc)).contents)).toEqual(['cost'])
+  })
 })
 describe('changesSince (spec §5.2 D)', () => {
   it('says each change in session words', () => {
@@ -308,6 +317,17 @@ describe('changesSince (spec §5.2 D)', () => {
       { lead: 'Winter Retreat', was: 'Camp', now: 'Not open to aid' },
       { lead: 'Session 2', was: null, now: 'not running' },
       { lead: 'Quest: Rivers', was: null, now: 'running again' },
+    ])
+  })
+
+  it('prints Not running lines in one order, whichever way each session turned', () => {
+    const approved = pcDoc()
+    const draft = pcDoc()
+    approved.cost.not_running_session_cm_ids = [1000104] // Starter Session (06-13): running again in the draft
+    draft.cost.not_running_session_cm_ids = [1000101] // Session 2 (06-20): newly not running
+    expect(changesSince(approved, draft, GROUPS, CATALOG)).toEqual([
+      { lead: 'Starter Session', was: null, now: 'running again' },
+      { lead: 'Session 2', was: null, now: 'not running' },
     ])
   })
 })

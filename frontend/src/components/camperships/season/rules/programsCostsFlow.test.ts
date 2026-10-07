@@ -42,8 +42,13 @@ describe('flowColumns (spec §5.2 F, the mock packCols / layoutFlows)', () => {
 
   it('sizes the columns: 4 at 1440 read-only, 3 at 1100, fewer when editing', () => {
     expect(columnCount(1316, MIN_COLUMN.read)).toBe(4)
+    expect(columnCount(1316, MIN_COLUMN.editPerPerson)).toBe(3)
     expect(columnCount(976, MIN_COLUMN.read)).toBe(3)
     expect(columnCount(976, MIN_COLUMN.editPerPerson)).toBe(2)
     expect(columnCount(200, MIN_COLUMN.read)).toBe(1)
+  })
+
+  it('counts the gap between columns: 1000px fits two 330px columns, not three', () => {
+    expect(columnCount(1000, 330)).toBe(2)
   })
 })
