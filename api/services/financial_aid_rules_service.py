@@ -52,7 +52,7 @@ import json
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -66,7 +66,6 @@ from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes, record_change
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.money import ONE
 from bunking.financial_aid.rules import (
     AidRules,
     SectionName,
@@ -76,6 +75,7 @@ from bunking.financial_aid.rules import (
     ValidationReport,
     validate_rules,
 )
+from bunking.financial_aid.rules.derived import with_current_year_weight
 from bunking.financial_aid.rules.fixed import changed_fixed
 from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
@@ -335,18 +335,9 @@ def _replacement(
 
 
 def _with_derived(section: SectionName, content: Mapping[str, Any]) -> dict[str, Any]:
-    """The settings the server owns (§9.9): the current-year weight is 1 − the prior-year weight, whatever was sent."""
-    out = dict(content)
-    if section != "income" or not isinstance(out.get("weights"), Mapping):
-        return out
-    weights = dict(out["weights"])
-    try:
-        prior = Decimal(str(weights.get("prior_year")))
-    except InvalidOperation:
-        return out  # parse_section names the bad figure
-    weights["current_year"] = str(ONE - prior)
-    out["weights"] = weights
-    return out
+    """The settings the server owns (§9.9): the current-year weight is 1 − the prior-year weight, whatever was sent.
+    The derivation is shared with Scenarios (bunking.financial_aid.rules.derived; addendum §S11.5)."""
+    return with_current_year_weight(content) if section == "income" else dict(content)
 
 
 def _trim_tables(before: AidRules, candidate: AidRules) -> AidRules:

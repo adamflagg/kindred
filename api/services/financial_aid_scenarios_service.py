@@ -54,6 +54,7 @@ from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import split_by_received
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationIssue, ValidationReport
+from bunking.financial_aid.rules.derived import derive_weights
 from bunking.financial_aid.scenarios import (
     SIZING_LEVERS,
     CommitteeView,
@@ -665,7 +666,7 @@ class FinancialAidScenariosService:
         """`document` with the relative sizing settings applied, priced on the frozen season (only the requests
         received through a date, when `request_set` asks). Writes nothing."""
         self._check_year(year, document)
-        moved = apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta)
+        moved = derive_weights(apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta))
         chosen = await self._request_set(year, request_set)
         priced = await (await self._pricer(await self._meta(year), chosen))(moved)
         return Evaluation(moved, priced.results, await self._rules.validate_document(moved))
@@ -673,6 +674,7 @@ class FinancialAidScenariosService:
     async def save_draft(self, year: int, document: AidRules, actor: str) -> Draft:
         """A released setting: the draft becomes `document`, recorded in the trail with what changed."""
         self._check_year(year, document)
+        document = derive_weights(document)
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
             raise ScenarioRefusedError("Load a kept option into your draft first")
@@ -871,6 +873,7 @@ class FinancialAidScenariosService:
         tightest pool is named as information only; `budget.spillover` is not read. It refuses a request set (owner
         ruling): the fit sizes Round 1 for every request, so it never runs on part of the season."""
         self._check_year(year, document)
+        document = derive_weights(document)
         if request_set is not None:
             raise ScenarioRefusedError("Fit to budget uses every request; turn off the request set.")
         price = await self._pricer(await self._meta(year))

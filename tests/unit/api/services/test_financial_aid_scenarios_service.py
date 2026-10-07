@@ -905,3 +905,16 @@ async def test_compare_refuses_a_draft_whose_option_is_gone_as_the_draft_does() 
         await world.service.workspace(YEAR, FINANCE)
     with pytest.raises(ScenarioNotFoundError, match="no kept option A"):
         await world.service.compare(YEAR, FINANCE, [])
+
+
+@pytest.mark.asyncio
+async def test_every_scenario_read_and_write_derives_the_current_year_weight() -> None:
+    """§S11.5: a document sent with weights that don't sum to 1 is priced and recorded with current = 1 − prior."""
+    world = await _started()
+    skewed = with_levers(intake_rules(), {"income.weights.prior_year": "0.6", "income.weights.current_year": "0.9"})
+    assert (await world.service.evaluate(YEAR, skewed)).document.income.weights.current_year == Decimal("0.4")
+    assert (await world.service.save_draft(YEAR, skewed, FINANCE)).document.income.weights.current_year == Decimal(
+        "0.4"
+    )
+    fitted = await world.service.fit(YEAR, with_lever(skewed, "budget.total", "3000"))
+    assert fitted.evaluation.document.income.weights.current_year == Decimal("0.4")
