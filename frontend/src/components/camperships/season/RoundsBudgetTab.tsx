@@ -23,6 +23,7 @@ import { BudgetFoldLines } from './BudgetFoldLines'
 import { parseOpenKeys, toggleOpenKey } from './foldLinesModel'
 import { draftPillWords, planOf, previewFigures, type TypedPlan } from './planModel'
 import { NoPoolCard, PoolCard } from './PoolCard'
+import { useSeasonChrome } from './seasonChrome'
 
 const SURFACE = 'season-rounds-budget'
 
@@ -80,7 +81,10 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
   const draft = useAidRulesDraft({ enabled: finance })
   const live = view.asOf.kind !== 'past'
-  const canPlan = finance && live && budget.rules_version !== null && draft.data !== undefined
+  const { approving } = useSeasonChrome()
+  // Edit Plan… waits while the Approve panel is open, as Rules' Edit… does ("Approve or cancel first.").
+  const canPlan =
+    finance && live && budget.rules_version !== null && draft.data !== undefined && !approving
   const [editing, setEditing] = useState(false)
   const [typed, setTyped] = useState<TypedPlan | null>(null)
   // setParams changes identity on every URL change; a ref keeps `toggle` stable.

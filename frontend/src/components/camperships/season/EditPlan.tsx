@@ -1,5 +1,5 @@
 import { Lock } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useAidSaveRulesSection } from '../../../hooks/camperships/useAidRulesWrites'
 import { useOverlayEscape } from '../../../hooks/useOverlayEscape'
@@ -38,7 +38,12 @@ export function EditPlan({
   onClose: () => void
 }) {
   const save = useAidSaveRulesSection()
-  const { setNotice } = useSeasonChrome()
+  const { setNotice, setEditing } = useSeasonChrome()
+  // Approve… waits while the plan is open: it would approve the draft without the typing under it.
+  useEffect(() => {
+    setEditing(true)
+    return () => setEditing(false)
+  }, [setEditing])
   const [error, setError] = useState<string | null>(null)
   useOverlayEscape(true, () => {
     if (!save.isPending) onClose()

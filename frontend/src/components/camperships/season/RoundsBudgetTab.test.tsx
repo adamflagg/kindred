@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiAidBudget, ApiAidRulesDraft } from '../../../types/api-types'
 import { BUDGET, pastBudget, pastBudgetUnmasked } from './budgetFixtures'
 import { rulesDraft } from './rules/rulesFixtures'
+import { SeasonChromeContext } from './seasonChrome'
 import { RoundsBudgetCsv, RoundsBudgetScope, RoundsBudgetTab } from './RoundsBudgetTab'
 
 let read: { data: ApiAidBudget | undefined; isLoading: boolean; error: Error | null }
@@ -165,6 +166,32 @@ describe('Rounds & budget (spec §5)', () => {
     cleanup()
     granted = FINANCE
     renderAt('/aid/season/rounds-budget?as_of=2027-03-15')
+    expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
+  })
+
+  // Slice 2: leaving approve mode before editing; Edit Plan… waits while the Approve panel is open.
+  it('Edit Plan… waits while the Approve panel is open', () => {
+    granted = FINANCE
+    render(
+      <MemoryRouter initialEntries={['/aid/season/rounds-budget']}>
+        <SeasonChromeContext.Provider
+          value={{
+            notice: null,
+            setNotice: () => undefined,
+            approving: true,
+            canApprove: true,
+            editing: false,
+            setEditing: () => undefined,
+            setApproveBusy: () => undefined,
+            openApprove: () => undefined,
+            closeApprove: () => undefined,
+            section: 'budget',
+          }}
+        >
+          <RoundsBudgetTab />
+        </SeasonChromeContext.Provider>
+      </MemoryRouter>
+    )
     expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
   })
 

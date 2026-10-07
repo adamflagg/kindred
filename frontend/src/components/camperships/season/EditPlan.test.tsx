@@ -25,6 +25,9 @@ const CHROME: SeasonChrome = {
   setNotice: () => undefined,
   approving: false,
   canApprove: false,
+  editing: false,
+  setEditing: () => undefined,
+  setApproveBusy: () => undefined,
   openApprove: () => undefined,
   closeApprove: () => undefined,
   section: 'budget',
@@ -67,15 +70,17 @@ const conflict = () => new AidWriteError('The rules draft changed', 409)
 function Harness({
   onClose = vi.fn(),
   setNotice = vi.fn(),
+  setEditing = vi.fn(),
   draft = draftWithBudget(),
 }: {
+  setEditing?: (on: boolean) => void
   onClose?: () => void
   setNotice?: (text: string | null) => void
   draft?: ApiAidRulesDraft
 }) {
   const [typed, setTyped] = useState<TypedPlan>(OPENED)
   return (
-    <SeasonChromeContext.Provider value={{ ...CHROME, setNotice }}>
+    <SeasonChromeContext.Provider value={{ ...CHROME, setNotice, setEditing }}>
       <EditPlan
         draft={draft}
         pools={POOLS}
@@ -199,5 +204,15 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     expect(screen.getByLabelText('Total')).not.toHaveAttribute('readonly')
     expect(screen.queryByLabelText('Total locked')).toBeNull()
     expect(screen.queryByText(/^Locked: a posted round read it\./)).toBeNull()
+  })
+
+  // Slice 2: Approve… showed only when nothing was being edited. The plan's typing is unsaved text Approve must not
+  // approve around, so the chrome hides Approve… for as long as this editor is open.
+  it('tells the Season chrome it is editing while open, and clears that when it closes', () => {
+    const setEditing = vi.fn()
+    const view = render(<Harness setEditing={setEditing} />)
+    expect(setEditing).toHaveBeenLastCalledWith(true)
+    view.unmount()
+    expect(setEditing).toHaveBeenLastCalledWith(false)
   })
 })
