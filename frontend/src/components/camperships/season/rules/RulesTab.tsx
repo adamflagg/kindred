@@ -27,7 +27,6 @@ import { SEASON_CARD } from '../seasonStyles'
 import { ApprovePanel, SeasonNotice } from '../SeasonChrome'
 import { useSeasonChrome } from '../seasonChrome'
 import { BudgetPointer } from './BudgetPointer'
-import { CapacityForm } from './CapacityForm'
 import { Chapter } from './Chapter'
 import { ChapterBar } from './ChapterBar'
 import { LeadLine, type LeadState } from './LeadLine'
@@ -592,13 +591,7 @@ function ChaptersBody({
                   }
                 >
                   {chapter.cards.map((card) =>
-                    card === 'tiergrid' ? (
-                      gridCard()
-                    ) : card === 'capacity' ? (
-                      <CapacityForm key="capacity" />
-                    ) : (
-                      sectionCard(card)
-                    )
+                    card === 'tiergrid' ? gridCard() : sectionCard(card)
                   )}
                 </Chapter>
               )
@@ -666,7 +659,6 @@ export function RulesTab() {
         <LeadLine state={{ kind: 'none' }} onAll={() => undefined} />
         {chrome_}
         <NoRulesYet key={year} year={year} finance={finance} onNotice={setNotice} />
-        {finance && <CapacityForm />}
       </div>
     )
   }

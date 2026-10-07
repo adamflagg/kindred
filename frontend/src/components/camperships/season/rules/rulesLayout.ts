@@ -7,7 +7,7 @@ import type { DefinitionNote } from '../../kit/DefinitionNotes'
 import type { PillTone } from '../../kit/kitStyles'
 import { SECTION_TITLES, type StatusWords } from './rulesModel'
 
-export type CardKey = ApiAidRulesSection | 'tiergrid' | 'capacity'
+export type CardKey = ApiAidRulesSection | 'tiergrid'
 
 export interface ChapterDef {
   readonly n: number
@@ -34,7 +34,7 @@ export const CHAPTERS: readonly ChapterDef[] = [
     cards: ['income', 'tiergrid', 'equity'],
   },
   { n: 2, key: 'awards', title: 'Awards', group: 'Awards', cards: ['awards'] },
-  { n: 3, key: 'r3', title: 'Round 3', group: 'Awards', cards: ['round3', 'capacity'] },
+  { n: 3, key: 'r3', title: 'Round 3', group: 'Awards', cards: ['round3'] },
   { n: 4, key: 'checks', title: 'Checks', group: 'Awards', cards: ['quality_checks'] },
   { n: 5, key: 'programs', title: 'Programs', group: 'Setup', cards: ['programs', 'cost'] },
   { n: 6, key: 'dates', title: 'Dates', group: 'Setup', cards: ['milestones'] },
@@ -43,7 +43,7 @@ export const CHAPTERS: readonly ChapterDef[] = [
 
 export function sectionsOf(chapter: ChapterDef): ApiAidRulesSection[] {
   return chapter.cards.flatMap((card): ApiAidRulesSection[] =>
-    card === 'tiergrid' ? [...GRID_PARTS] : card === 'capacity' ? [] : [card]
+    card === 'tiergrid' ? [...GRID_PARTS] : [card]
   )
 }
 

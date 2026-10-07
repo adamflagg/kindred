@@ -10,9 +10,6 @@ import type {
   ApiAidAskIn,
   ApiAidBudget,
   ApiAidCancellationIn,
-  ApiAidCapacity,
-  ApiAidCapacityIn,
-  ApiAidCapacityList,
   ApiAidCorrectionIn,
   ApiAidCorrectionOut,
   ApiAidDefinitions,
@@ -776,35 +773,6 @@ export function makeAidRulesDraft(
     `${scenarios(year)}/options/${code}/rules-draft`,
     body,
     "Couldn't make it the rules draft"
-  )
-}
-
-/** The session capacities stored for the season (view-level; the Season reads' gate). */
-export async function fetchAidSessionCapacities(
-  fetchWithAuth: FetchWithAuth,
-  year: number
-): Promise<ApiAidCapacityList> {
-  const response = await fetchWithAuth(`${BASE}/capacity/${String(year)}`)
-  if (!response.ok) throw await toApiError(response, 'Failed to load the capacities', AidApiError)
-  return (await response.json()) as ApiAidCapacityList
-}
-
-/**
- * A session's capacity for the season, for Round 3's context only (spec §6.3, §10.4; `rules`). It
- * replaces the figure stored for the session, if any; re-entering the same figure writes nothing.
- */
-export function setAidSessionCapacity(
-  fetchWithAuth: FetchWithAuth,
-  year: number,
-  sessionCmId: number,
-  body: ApiAidCapacityIn
-): Promise<ApiAidCapacity> {
-  return send<ApiAidCapacity>(
-    fetchWithAuth,
-    'PUT',
-    `${BASE}/capacity/${String(year)}/${String(sessionCmId)}`,
-    body,
-    "Couldn't save the capacity"
   )
 }
 

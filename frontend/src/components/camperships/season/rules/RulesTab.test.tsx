@@ -49,8 +49,6 @@ let sessionNames: ReadonlyMap<number, string> | undefined
 vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => sessionNames,
 }))
-// PR 7's capacity form has its own tests (CapacityForm.test.tsx).
-vi.mock('./CapacityForm', () => ({ CapacityForm: () => <div>Session capacity form</div> }))
 
 const observed: Array<(entries: Array<{ isIntersecting: boolean; target: Element }>) => void> = []
 vi.stubGlobal(
@@ -265,16 +263,37 @@ describe('RulesTab for finance (D39)', () => {
   })
 })
 
-describe('RulesTab mounts the session capacity form (Decision 23)', () => {
-  it('shows it to finance, in the Round 3 chapter', () => {
+describe('RulesTab has no session capacity form', () => {
+  it('shows finance only the Round 3 section in chapter 3', () => {
     granted = FINANCE
     renderAt('/aid/season/rules?open=3')
-    expect(screen.getByText('Session capacity form')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /capacity/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/session capacity/i)).not.toBeInTheDocument()
   })
 
-  it('shows it to the registrar too, read only (owner 10-06, open item 3)', () => {
+  it('shows the registrar none either', () => {
     renderAt('/aid/season/rules?open=3')
-    expect(screen.getByText('Session capacity form')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /capacity/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/session capacity/i)).not.toBeInTheDocument()
+  })
+
+  it('shows finance none on a season with no rules yet', () => {
+    granted = FINANCE
+    year = 2028
+    draft = {
+      data: undefined,
+      isLoading: false,
+      error: new AidApiError('2028 has no rules yet', 404),
+    }
+    approved = {
+      data: undefined,
+      isLoading: false,
+      error: new AidApiError('2028 has no approved rules yet', 404),
+    }
+    renderAt('/aid/season/rules?year=2028')
+    expect(screen.getByText('No rules for 2028 yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /capacity/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/session capacity/i)).not.toBeInTheDocument()
   })
 })
 
