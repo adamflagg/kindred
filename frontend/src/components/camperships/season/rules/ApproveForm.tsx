@@ -11,14 +11,19 @@ import type {
   ApiAidRulesSection,
   ApiAidRulesVersion,
 } from '../../../../types/api-types'
-import {
-  AMBER_NOTE,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
-  FIELD,
-  LABEL,
-} from '../../../admin/lodging/lodgingStyles'
 import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
+import {
+  CS_AMBER_NOTE,
+  CS_BTN,
+  CS_BTN2,
+  CS_CARD,
+  CS_CARD_TITLE,
+  CS_FLABEL,
+  CS_INPUT,
+  CS_MUTED,
+  CS_SMALL,
+} from '../../kit/csType'
+import { sectionChangeWords } from './approveWords'
 import { approvePrecondition } from './precondition'
 import { draftSections, sameSection, SECTION_ORDER } from './rulesDraft'
 import { SECTION_TITLES } from './rulesModel'
@@ -111,16 +116,16 @@ export function ApproveForm({
 
   if (seen === null) {
     return (
-      <div className="card-lodge space-y-2 p-4" data-testid="approve-form">
+      <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">
         {error === null ? (
-          <p className="text-muted-foreground text-sm">Loading the rules draft as it is now…</p>
+          <p className={CS_MUTED}>Loading the rules draft as it is now…</p>
         ) : (
           <>
-            <p className={AMBER_NOTE}>{error}</p>
+            <p className={CS_AMBER_NOTE}>{error}</p>
             <div className="flex gap-2">
               <button
                 type="button"
-                className={BUTTON_SECONDARY}
+                className={CS_BTN2}
                 onClick={() => {
                   setError(null)
                   open()
@@ -128,7 +133,7 @@ export function ApproveForm({
               >
                 Try Again
               </button>
-              <button type="button" className={BUTTON_SECONDARY} onClick={() => onDone(null)}>
+              <button type="button" className={CS_BTN2} onClick={() => onDone(null)}>
                 Cancel
               </button>
             </div>
@@ -252,44 +257,46 @@ export function ApproveForm({
   const working = busy || approve.isPending
 
   return (
-    <div className="card-lodge space-y-2 p-4" data-testid="approve-form">
-      <div className="text-sm font-medium">{`Approve sections of the rules draft (v${String(seen.version)})`}</div>
+    <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">
+      <h3
+        className={CS_CARD_TITLE}
+      >{`Approve sections of the rules draft (v${String(seen.version)})`}</h3>
       {sections.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No section of the draft waits for approval.</p>
+        <p className={CS_MUTED}>No section of the draft waits for approval.</p>
       ) : (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {sections.map((section) => (
-            <label key={section} className="inline-flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={ticked.has(section)}
-                disabled={working || errorsIn(section) > 0}
-                onChange={() => toggle(section)}
-              />
-              {SECTION_TITLES[section]}
-              {errorsIn(section) > 0 && <span className={AMBER_NOTE}>fix its errors first</span>}
-            </label>
-          ))}
+        <div className="space-y-1">
+          {sections.map((section) => {
+            const row = seen.sections.find((s) => s.section === section)
+            return (
+              <div key={section} className="flex flex-wrap items-baseline gap-x-2">
+                {/* The changes sit beside the label, not in it: a checkbox's name stays its section's title. */}
+                <label className={`${CS_FLABEL} inline-flex items-baseline gap-x-2`}>
+                  <input
+                    type="checkbox"
+                    checked={ticked.has(section)}
+                    disabled={working || errorsIn(section) > 0}
+                    onChange={() => toggle(section)}
+                  />
+                  {SECTION_TITLES[section]}
+                </label>
+                {row !== undefined && row.changes.length > 0 && (
+                  <span className={CS_SMALL}>{sectionChangeWords(row.changes)}</span>
+                )}
+                {errorsIn(section) > 0 && (
+                  <span className={CS_AMBER_NOTE}>fix its errors first</span>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
-      <label className="block max-w-md">
-        <span className={LABEL}>Approved by (the body, and when: “Finance, Jan 22 meeting”)</span>
-        <input
-          className={FIELD}
-          value={note}
-          maxLength={2000}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
       {recheck !== null && (
         <div className="space-y-1" data-testid="approve-conflict">
-          <p className={AMBER_NOTE}>
+          <p className={CS_AMBER_NOTE}>
             Someone else changed the rules draft since you looked. Nothing was approved.
           </p>
-          {recheck.server !== null && (
-            <p className="text-muted-foreground text-xs">{recheck.server}</p>
-          )}
-          <p className="text-xs">
+          {recheck.server !== null && <p className={CS_SMALL}>{recheck.server}</p>}
+          <p className={CS_SMALL}>
             {`The rules draft is v${String(recheck.version)} now. `}
             {recheck.moved.length === 0 && recheck.errored.length === 0
               ? 'The sections you checked read as they did.'
@@ -298,32 +305,41 @@ export function ApproveForm({
               `Changed since you looked, so unchecked: ${recheck.moved.map((s) => SECTION_TITLES[s]).join(', ')}. Look at them again before approving.`}
           </p>
           {recheck.errored.map((section) => (
-            <p key={section} className="text-xs">
+            <p key={section} className={CS_SMALL}>
               {`${SECTION_TITLES[section]} now has errors and was unchecked.`}
             </p>
           ))}
         </div>
       )}
-      {error !== null && <p className={AMBER_NOTE}>{error}</p>}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className={BUTTON_PRIMARY}
-          disabled={working || ticked.size === 0 || note.trim() === ''}
-          onClick={() => void submit()}
-        >
-          {working
-            ? 'Approving…'
-            : `Approve ${String(ticked.size)} ${ticked.size === 1 ? 'Section' : 'Sections'}`}
-        </button>
-        <button
-          type="button"
-          className={BUTTON_SECONDARY}
-          disabled={working}
-          onClick={() => onDone(null)}
-        >
-          Cancel
-        </button>
+      {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <label className={CS_FLABEL} htmlFor="approve-note">
+          Approved by
+        </label>
+        <input
+          id="approve-note"
+          className={`${CS_INPUT} w-60`}
+          value={note}
+          maxLength={2000}
+          onChange={(event) => setNote(event.target.value)}
+        />
+        <span className={CS_SMALL}>the body, and when: &ldquo;Finance, Apr 13 meeting&rdquo;</span>
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            className={CS_BTN}
+            disabled={working || ticked.size === 0 || note.trim() === ''}
+            onClick={() => void submit()}
+          >
+            {working
+              ? 'Approving…'
+              : `Approve ${String(ticked.size)} ${ticked.size === 1 ? 'Section' : 'Sections'}`}
+          </button>
+          <button type="button" className={CS_BTN2} disabled={working} onClick={() => onDone(null)}>
+            Cancel
+          </button>
+          <span className={CS_SMALL}>Esc cancels</span>
+        </span>
       </div>
     </div>
   )
