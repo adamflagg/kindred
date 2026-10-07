@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { ExternalLink } from 'lucide-react'
 
 import { CampMinderIcon } from '../../icons'
+import { costReasonLower } from '../kit/costReasons'
+import { formatCampDateTime } from '../kit/dates'
 import type { AidView } from '../kit/asOf'
 import { Money } from '../kit/MoneyText'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
@@ -26,6 +28,7 @@ import {
   type HouseholdLabel,
 } from './householdModel'
 import { HouseholdLabelText } from './HouseholdLabel'
+import { staffNames, whoWords } from './historyWords'
 import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE } from './householdStyles'
 import { ReceiptDetailsButton, ReceiptVersions } from './ReceiptVersions'
 import { useReceiptDetails } from './useReceiptDetails'
@@ -174,6 +177,13 @@ interface RequestCardProps {
   readonly actions?: ReactNode | undefined
   /** The shared editor, opened in place on the card (§4.6). */
   readonly editor?: ReactNode | undefined
+  /** The cost's own buttons, after the cost: Clear and Set Cost… (cost override v2). Absent, none. */
+  readonly costAction?: ReactNode | undefined
+}
+
+/** "Oct 7": the day a stored time falls on, at camp. */
+function costDay(iso: string): string {
+  return formatCampDateTime(iso).split(' ').slice(0, 2).join(' ')
 }
 
 /**
@@ -190,6 +200,7 @@ export function RequestCard({
   nextAction,
   actions,
   editor,
+  costAction,
 }: RequestCardProps) {
   const row = request.row
   const stage = requestStage(row)
@@ -198,6 +209,9 @@ export function RequestCard({
   const statusWords = requestStatusWords(row.request_status)
   const cost = cardCost(request)
   const details = useReceiptDetails(request)
+  const [costDetail, setCostDetail] = useState(false)
+  const override = row.cost_override ?? null
+  const names = staffNames(page)
   return (
     <div id={`request-${row.request_id}`} className={`${HH_CARD} space-y-1.5`}>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -221,8 +235,24 @@ export function RequestCard({
           </>
         )}
         {/* household-v4 section 1 (B): the receipt opens from beside the cost. */}
-        <span className={`${HH_NOTE} ml-auto`}>
-          cost <Money value={cost} />
+        <span className="ml-auto inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={HH_NOTE}>
+            cost <Money value={cost} className={override ? 'text-foreground font-semibold' : ''} />
+          </span>
+          {override && (
+            <>
+              <span className={HH_NOTE}>·</span>
+              <button
+                type="button"
+                aria-expanded={costDetail}
+                className={`${HH_NOTE} cursor-pointer border-b border-dotted border-current`}
+                onClick={() => setCostDetail((now) => !now)}
+              >
+                {`set by staff (${costReasonLower(override.reason_code)})`}
+              </button>
+            </>
+          )}
+          {costAction}
         </span>
         <ReceiptDetailsButton request={request} open={details.open} onToggle={details.toggle} />
       </div>
@@ -231,10 +261,22 @@ export function RequestCard({
           <StatusPill tone="stone">{cancellationWords(row.cancellation)}</StatusPill>
         </div>
       )}
+      {override && costDetail && (
+        <p data-testid="cost-set-detail" className={`${HH_NOTE} text-right`}>
+          Set by <b className="text-foreground font-medium">{whoWords(override.actor, names)}</b>
+          {override.at ? `, ${costDay(override.at)}` : ''}: “{override.note}” · without it:{' '}
+          {row.rules_cost === null || row.rules_cost === undefined ? (
+            'no price'
+          ) : (
+            <Money value={row.rules_cost} />
+          )}
+        </p>
+      )}
       {/* Round 3 (B): the chip line on top; opened, a switcher across its versions, each diffed against the one before. */}
       <ReceiptVersions request={request} view={view} open={details.open} />
       {/* The server's notes (calculator warnings, D81's "not yet marked posted"), as the grid's attention cell words them. */}
-      {(row.notes ?? []).map((issue, index) => (
+      {/* A set cost answers the calculator's notes (an unknown price, say), so they go while one is set. */}
+      {(override ? [] : (row.notes ?? [])).map((issue, index) => (
         <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>
           {issue.message}
         </p>

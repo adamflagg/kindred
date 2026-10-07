@@ -458,7 +458,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       const message = 'CampMinder shows $780 for this family; not yet ticked'
       const request = householdRequest({
         ...ROW_EMMA,
-        notes: [{ code: 'ledger_note', severity: 'warn', message }],
+        notes: [{ code: 'ledger_note', severity: 'warn' as const, message }],
       })
       renderCard(request)
       expect(screen.getByText(message)).toBeInTheDocument()
@@ -625,5 +625,75 @@ describe('a C1 round on the decision panel', () => {
     unmount()
     renderCard(c1(null))
     expect(screen.queryByText(C1_SENTENCE)).toBeNull()
+  })
+  // Task 12.4: the cost line (cost override v2).
+  it('draws no Set Cost… on a card without casework buttons', () => {
+    renderCard(householdRequest(ROW_EMMA))
+    expect(screen.queryByRole('button', { name: 'Set Cost…' })).toBeNull()
+  })
+
+  it('reads a set cost with its reason and opens who, when and the note on click', async () => {
+    const row = {
+      ...ROW_EMMA,
+      cost: 1275,
+      rules_cost: 6695,
+      rules_cost_from: 'catalog' as const,
+      cost_override: {
+        amount: 1275,
+        reason_code: 'typed_household_total',
+        note: 'From the form',
+        actor: 'registrar@example.com',
+        at: '2026-10-07T17:00:00Z',
+      },
+    }
+    renderCard(householdRequest(row), householdPage())
+    expect(screen.queryByTestId('cost-set-detail')).toBeNull()
+    await userEvent.click(
+      screen.getByRole('button', { name: "set by staff (family's total from the form)" })
+    )
+    expect(screen.getByTestId('cost-set-detail')).toHaveTextContent(
+      'Oct 7: “From the form” · without it: $6,695'
+    )
+    // A View-only reader sees the set line, with no Clear or Set Cost….
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+  })
+
+  it('says "no price" when the rules cannot price a set cost', async () => {
+    const row = {
+      ...ROW_EMMA,
+      cost: 900,
+      rules_cost: null,
+      cost_override: {
+        amount: 900,
+        reason_code: 'missing_catalog',
+        note: 'Agreed',
+        actor: 'registrar@example.com',
+        at: null,
+      },
+    }
+    renderCard(householdRequest(row), householdPage())
+    await userEvent.click(screen.getByRole('button', { name: /^set by staff/ }))
+    expect(screen.getByTestId('cost-set-detail')).toHaveTextContent('without it: no price')
+  })
+
+  it('hides the calculator note once a cost is set', () => {
+    const note = {
+      code: 'cost_unknown',
+      severity: 'warn' as const,
+      message: 'No tuition for session 1000101; the minimum award was used',
+      step: 'r1',
+    }
+    const set = {
+      amount: 1275,
+      reason_code: 'discount',
+      note: 'Agreed',
+      actor: 'registrar@example.com',
+      at: null,
+    }
+    const { unmount } = renderCard(householdRequest({ ...ROW_EMMA, notes: [note] }))
+    expect(screen.getByText(note.message)).toBeInTheDocument()
+    unmount()
+    renderCard(householdRequest({ ...ROW_EMMA, notes: [note], cost_override: set }))
+    expect(screen.queryByText(note.message)).toBeNull()
   })
 })
