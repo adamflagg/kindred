@@ -193,6 +193,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
               opened={plan.plan}
               typed={typed}
               shareNote={numberOf('share')}
+              inEffectTotal={budget.rules_version === null ? null : budget.total.total.allocated}
               onType={setTyped}
               onClose={() => {
                 setEditing(false)

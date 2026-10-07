@@ -72,7 +72,9 @@ function Harness({
   setNotice = vi.fn(),
   setEditing = vi.fn(),
   draft = draftWithBudget(),
+  inEffectTotal,
 }: {
+  inEffectTotal?: number | null
   setEditing?: (on: boolean) => void
   onClose?: () => void
   setNotice?: (text: string | null) => void
@@ -87,6 +89,7 @@ function Harness({
         opened={OPENED}
         typed={typed}
         shareNote={11}
+        inEffectTotal={inEffectTotal ?? null}
         onType={setTyped}
         onClose={onClose}
       />
@@ -102,6 +105,21 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     expect(screen.getByText('sums to 100% · Pool A $900,000 · Pool B $100,000')).toBeInTheDocument()
     expect(screen.getByText('No change yet')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save to Rules Draft' })).toBeDisabled()
+  })
+
+  it('says which draft is open and what is in effect when the draft differs from it', () => {
+    const draft = draftWithBudget()
+    render(<Harness draft={draft} inEffectTotal={1111000} />)
+    expect(
+      screen.getByText(`Draft v${String(draft.version)} · in effect $1,111,000`)
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No change yet')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save to Rules Draft' })).toBeDisabled()
+  })
+
+  it('keeps "No change yet" when the draft equals what is in effect', () => {
+    render(<Harness inEffectTotal={1000000} />)
+    expect(screen.getByText('No change yet')).toBeInTheDocument()
   })
 
   it('holds Save while the shares miss 100%', async () => {

@@ -6,6 +6,7 @@ import { useOverlayEscape } from '../../../hooks/useOverlayEscape'
 import { hasStatus } from '../../../services/camperships/aidApi'
 import type { ApiAidRulesDraft } from '../../../types/api-types'
 import { DefRef } from '../kit/DefinitionNotes'
+import { formatMoney, toCents } from '../kit/money'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_INPUT, CS_LABEL, CS_SMALL } from '../kit/csType'
 import { savePrecondition } from './rules/precondition'
 import { useSeasonChrome } from './seasonChrome'
@@ -26,6 +27,7 @@ export function EditPlan({
   opened,
   typed,
   shareNote,
+  inEffectTotal,
   onType,
   onClose,
 }: {
@@ -34,6 +36,8 @@ export function EditPlan({
   opened: TypedPlan
   typed: TypedPlan
   shareNote: number | null
+  /** The budget total in effect (the version posted rounds read), when the rules have one. */
+  inEffectTotal: number | null
   onType: (plan: TypedPlan) => void
   onClose: () => void
 }) {
@@ -49,7 +53,14 @@ export function EditPlan({
     if (!save.isPending) onClose()
   })
   const keys = pools.map((p) => p.key)
-  const issues = planIssues(typed, opened, keys)
+  // Seeded from the draft, so "No change yet" would contradict a total in effect that differs: say which is which.
+  const draftDiffers =
+    inEffectTotal !== null && toCents(Number(opened.total)) !== toCents(inEffectTotal)
+  const issues = planIssues(typed, opened, keys).map((issue) =>
+    issue === 'No change yet' && draftDiffers
+      ? `Draft v${String(draft.version)} · in effect ${formatMoney(inEffectTotal)}`
+      : issue
+  )
   const split = splitWords(typed, pools)
   // Owner 10-06 (b): a posted round locks the TOTAL only; the shares stay editable all season. The server's flag, not
   // the section's state: a shares save lifts the section's lock in the version it writes, and the total stays locked.
