@@ -169,7 +169,8 @@ class LoadOverride(BaseModel):
 
     A sheet-row decision picks the included row by its sheet session (the session the sheet's text maps to), its
     Personal Id (`person`; null for a row without one), and, when given, its family id (`household`) and `sheet_row`:
-      * "session": load the row onto the person's request in `session` (CampMinder's, or the sheet's own reading);
+      * "session": load the row onto the person's request in `session` (CampMinder's session); `session` 0 is the
+        person's request with no session (an unmatched intake), whose CampMinder money is then read by the sheet's;
       * "skip": leave the row out (one of two rows on one request), reported;
       * "person": a row without a Personal Id is `to_person` (and `to_household`): it needs `sheet_row`.
     A request decision picks a request by `person` (0 for a household request), `household` and `session`:
@@ -657,12 +658,6 @@ def plan_load(
             matched[request.id].append(award)
     staff = {e.request_id for e in existing if e.actor != LOADER}
     by_id = {r.id: r for r in requests}
-    money, no_request, unplaced = campminder_money(lines, requests)
-    plan.campminder_total = sum((line.amount for line in lines if line.live()), ZERO)
-    plan.campminder_unplaced = sum(unplaced.values(), ZERO)
-    for household, amount in sorted(unplaced.items()):
-        report(None, "campminder_unplaced", _UNPLACED, household_cm_id=household, campminder_amount=amount)
-
     # Each request the sheet loads, reproduced by the engine; then CampMinder's money per family x session.
     made: dict[str, tuple[SheetAward, _Reproduced]] = {}
     loaded_only: set[Group] = set()
@@ -682,6 +677,18 @@ def plan_load(
 
     # The owner's "campminder" answers: a request the sheet has no row for records CampMinder's money as Round 1.
     only = _campminder_only(overrides, requests, matched, staff, used, report)
+
+    # A request with no session (an unmatched intake) that an override loads a row onto takes the sheet's session as
+    # its family x session for CampMinder's money: the sheet is its only session evidence ("session": 0).
+    for rid, (award, _) in made.items():
+        if not by_id[rid].session_cm_id and (chosen := applied.get(award.row)) is not None:
+            by_id[rid] = replace(by_id[rid], session_cm_id=chosen.sheet_session or 0)
+    requests = list(by_id.values())
+    money, no_request, unplaced = campminder_money(lines, requests)
+    plan.campminder_total = sum((line.amount for line in lines if line.live()), ZERO)
+    plan.campminder_unplaced = sum(unplaced.values(), ZERO)
+    for household, amount in sorted(unplaced.items()):
+        report(None, "campminder_unplaced", _UNPLACED, household_cm_id=household, campminder_amount=amount)
 
     groups: dict[Group, list[str]] = defaultdict(list)
     for rid in made:

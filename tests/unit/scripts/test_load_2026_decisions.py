@@ -417,6 +417,17 @@ def test_a_session_override_loads_the_sheet_row_onto_the_persons_request_in_that
     assert "session_mismatch" not in _kinds(plan)
 
 
+def test_a_session_override_onto_a_request_with_no_session_reads_campminder_by_the_sheets_session() -> None:
+    # An unmatched intake (no session on the request): the sheet's session is the only session evidence.
+    request = _request(session=0, status="unmatched_session")
+    award = _award(session_cm_id=1000101)
+    rule = _override("session", person=1000002, sheet_session=1000101, session=0)
+    plan = _plan([award], [request], [_line("3200", session=1000101)], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(3200)}
+    assert "campminder_without_load" not in _kinds(plan)
+    assert plan.campminder_on_loaded == Decimal(3200)
+
+
 def test_a_session_override_is_held_to_its_household_and_sheet_row_when_it_names_them() -> None:
     award = _award(session_cm_id=1000101)
     elsewhere = _override("session", person=1000002, household=1000099, sheet_session=1000101, session=1000102)
