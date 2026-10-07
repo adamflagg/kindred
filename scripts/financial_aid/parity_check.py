@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, BinaryIO, Literal
 
 import openpyxl
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -252,7 +252,7 @@ def _check_headers(ws: Any, tab: str, columns: dict[str, tuple[str, str]]) -> No
             )
 
 
-def load_sheet(path: Path, config: ParityConfig) -> Sheet:
+def load_sheet(path: Path | BinaryIO, config: ParityConfig) -> Sheet:
     workbook = openpyxl.load_workbook(path, data_only=True)
     tabs = {}
     for tab, columns in (

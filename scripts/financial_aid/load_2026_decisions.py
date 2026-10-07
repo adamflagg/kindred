@@ -54,8 +54,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, BinaryIO, Final, Protocol
+
+import jwt
+import requests
 
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_reconciliation import CampLine
@@ -669,7 +673,7 @@ def _int(value: Any) -> int | None:
     return int(text) if text and text.isdigit() else None
 
 
-def read_awards(path: Path, config: ParityConfig, rules: AidRules) -> tuple[list[SheetAward], SheetTotals]:
+def read_awards(path: Path | BinaryIO, config: ParityConfig, rules: AidRules) -> tuple[list[SheetAward], SheetTotals]:
     sheet = load_sheet(path, config)
     diagnostics = Diagnostics()
     awards: list[SheetAward] = []
@@ -708,6 +712,42 @@ def read_awards(path: Path, config: ParityConfig, rules: AidRules) -> tuple[list
             )
         )
     return awards, SheetTotals(included, excluded, r1, r2, r3)
+
+
+# --- the live sheet through the service account (--sheet-id) ------------------------------------------------------------
+
+DRIVE_READONLY: Final = "https://www.googleapis.com/auth/drive.readonly"
+XLSX: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_JWT_BEARER: Final = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+
+def export_sheet(sheet_id: str, credentials: Path, *, http: Any = None) -> bytes:
+    """The Google Sheet exported as xlsx, in memory: the service account's drive.readonly token (a signed JWT
+    exchanged at its token_uri), then Drive's export. Read-only by scope; nothing is written anywhere."""
+    http = http if http is not None else requests
+    account = json.loads(credentials.read_text(encoding="utf-8"))
+    now = int(datetime.now(UTC).timestamp())
+    assertion = jwt.encode(
+        {
+            "iss": account["client_email"],
+            "scope": DRIVE_READONLY,
+            "aud": account["token_uri"],
+            "iat": now,
+            "exp": now + 600,
+        },
+        account["private_key"],
+        algorithm="RS256",
+    )
+    token = http.post(account["token_uri"], data={"grant_type": _JWT_BEARER, "assertion": assertion}, timeout=30)
+    token.raise_for_status()
+    export = http.get(
+        f"https://www.googleapis.com/drive/v3/files/{sheet_id}/export",
+        params={"mimeType": XLSX},
+        headers={"Authorization": f"Bearer {token.json()['access_token']}"},
+        timeout=120,
+    )
+    export.raise_for_status()
+    return bytes(export.content)
 
 
 # --- PocketBase ---------------------------------------------------------------------------------------------------------
@@ -813,7 +853,15 @@ def summary_lines(plan: LoadPlan, totals: SheetTotals) -> list[str]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Load 2026's award decisions from the 2026 sheet (re-runnable).")
-    parser.add_argument("--workbook", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--workbook", type=Path, help="an xlsx export of the sheet (the default path)")
+    source.add_argument("--sheet-id", help="the live Google Sheet, exported in memory through the service account")
+    parser.add_argument(
+        "--credentials",
+        type=Path,
+        default=Path(os.getenv("GOOGLE_SERVICE_ACCOUNT_KEY_FILE", "config/google_sheets.json")),
+        help="the service account's key file (read with --sheet-id only)",
+    )
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--trackers", type=Path, default=None)
@@ -830,7 +878,8 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
     rules, version = approved
     config = ParityConfig.model_validate_json(args.config.read_text(encoding="utf-8"))
     try:
-        awards, totals = read_awards(args.workbook, config, rules)
+        book = args.workbook if args.workbook is not None else BytesIO(export_sheet(args.sheet_id, args.credentials))
+        awards, totals = read_awards(book, config, rules)
     except SheetLayoutError as exc:
         print(f"{exc}. Nothing was written.", file=sys.stderr)
         return 2

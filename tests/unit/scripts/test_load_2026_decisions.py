@@ -637,3 +637,92 @@ def test_write_commits_once_and_a_second_run_finds_it_already_loaded(
     assert _run(tmp_path, store, "--write", monkeypatch=monkeypatch) == 0
     assert len(store.commits) == 1
     assert "already loaded" in capsys.readouterr().out
+
+
+# --- --sheet-id: the live sheet through the service account (the owner's January reload path) -------------------------
+
+
+def _credentials(tmp_path: Path) -> Path:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    ).decode()
+    path = tmp_path / "service-account.json"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "service_account",
+                "client_email": "loader@fictional-project.iam.gserviceaccount.com",
+                "private_key": pem,
+                "token_uri": "https://oauth2.invalid/token",
+            }
+        )
+    )
+    return path
+
+
+class _Http:
+    def __init__(self, content: bytes) -> None:
+        self.content = content
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def post(self, url: str, **kwargs: Any) -> Any:
+        self.calls.append(("POST", url, kwargs))
+        return _Response(json_body={"access_token": "token-1", "token_type": "Bearer"})
+
+    def get(self, url: str, **kwargs: Any) -> Any:
+        self.calls.append(("GET", url, kwargs))
+        return _Response(content=self.content)
+
+
+class _Response:
+    def __init__(self, *, json_body: dict[str, Any] | None = None, content: bytes = b"") -> None:
+        self._json, self.content = json_body, content
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        assert self._json is not None
+        return self._json
+
+
+def test_a_sheet_id_is_exported_as_xlsx_read_only_through_the_service_account(tmp_path: Path) -> None:
+    http = _Http(b"PK-fictional-xlsx")
+    assert loader.export_sheet("sheet-1", _credentials(tmp_path), http=http) == b"PK-fictional-xlsx"
+    (_, token_url, token), (_, export_url, export) = http.calls
+    assert token_url == "https://oauth2.invalid/token"
+    assert token["data"]["grant_type"] == "urn:ietf:params:oauth:grant-type:jwt-bearer"
+    import jwt
+
+    claims = jwt.decode(token["data"]["assertion"], options={"verify_signature": False})
+    assert claims["scope"] == "https://www.googleapis.com/auth/drive.readonly"  # never a write scope
+    assert export_url == "https://www.googleapis.com/drive/v3/files/sheet-1/export"
+    assert export["params"]["mimeType"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert export["headers"]["Authorization"] == "Bearer token-1"
+
+
+def test_the_command_reads_the_exported_sheet_in_memory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, config = _workbook(tmp_path)
+    monkeypatch.setattr(loader, "export_sheet", lambda sheet_id, credentials, http=None: path.read_bytes())
+    monkeypatch.setattr(loader, "open_store", lambda: _Store())
+    before = set(tmp_path.iterdir())
+    code = loader.main(
+        ["--sheet-id", "sheet-1", "--credentials", str(tmp_path / "unused.json"), "--config", str(config),
+         "--year", "2031", "--report", str(tmp_path / "r.csv")]
+    )  # fmt: skip
+    assert code == 0
+    assert "Dry run" in capsys.readouterr().out
+    assert set(tmp_path.iterdir()) - before == {tmp_path / "r.csv"}  # the sheet is never written to disk
+
+
+def test_workbook_and_sheet_id_are_one_or_the_other(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        loader.main(["--workbook", "a.xlsx", "--sheet-id", "s", "--config", "c", "--report", "r"])
+    with pytest.raises(SystemExit):
+        loader.main(["--config", "c", "--report", "r"])
