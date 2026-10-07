@@ -38,6 +38,8 @@ interface CompareProps {
   readonly onLastSeason: (on: boolean) => void
   readonly byTier: boolean
   readonly onByTier: (on: boolean) => void
+  /** "Make A1 the Rules Draft…" on a kept option's column (D39); the draft's column has none. */
+  readonly onPromote?: ((code: string) => void) | undefined
 }
 
 function Cell({ cell, tint }: { cell: CompareCell; tint: boolean }) {
@@ -161,6 +163,7 @@ export function ScenarioCompare({
   onLastSeason,
   byTier,
   onByTier,
+  onPromote,
 }: CompareProps) {
   const columns = compare?.columns ?? []
   const last = lastSeason ? (compare?.last_season ?? null) : null
@@ -262,6 +265,15 @@ export function ScenarioCompare({
                       <div className="text-muted-foreground ml-auto max-w-48 text-xs font-normal">
                         {column.label}
                       </div>
+                      {onPromote !== undefined && index > 0 && (
+                        <button
+                          type="button"
+                          className="text-primary block w-full text-right text-xs font-normal hover:underline print:hidden"
+                          onClick={() => onPromote(column.code)}
+                        >
+                          {`Make ${column.code} the Rules Draft…`}
+                        </button>
+                      )}
                     </th>
                   )
                 })}

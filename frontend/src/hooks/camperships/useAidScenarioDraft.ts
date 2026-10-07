@@ -17,6 +17,7 @@ import {
   startAidScenarios,
 } from '../../services/camperships/aidApi'
 import type {
+  ApiAidRulesDocumentIn,
   ApiAidScenarioDraft,
   ApiAidScenarioResults,
   ApiAidScenarioWorkspace,
@@ -44,7 +45,7 @@ const message = (caught: unknown, fallback: string) =>
  *   answer wins), recording nothing;
  * - letting go (`release`) prices the draft with what moved and records it in the trail (`evaluate`,
  *   then `PUT /draft` with the document it returned): one trail row per release, not per pixel;
- * - every write (release, load, keep, freeze, start) runs one after another, in the order asked, so a
+ * - every write (release, load, keep, freeze, start, adopt) runs one after another, in the order asked, so a
  *   load clicked while a box still holds typing waits for that typing to be recorded first;
  * - while a write runs, `busy` names it and the sliders stand still: what they show is always what
  *   the next write will record.
@@ -57,6 +58,8 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
   const [live, setLive] = useState<LiveResults>({ status: 'idle' })
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** Which write the error came from (`adopt`'s `source`), cleared with it: null when it names none. */
+  const [errorSource, setErrorSource] = useState<string | null>(null)
   /** The last freeze found the season as frozen: nothing new to freeze (cleared by the next write). */
   const [nothingToFreeze, setNothingToFreeze] = useState(false)
   const pendingRef = useRef<Pending>(NO_PENDING)
@@ -133,17 +136,24 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
    * writes.
    */
   const run = useCallback(
-    (label: string, write: () => Promise<void>, idle?: () => boolean): Promise<boolean> => {
+    (
+      label: string,
+      write: () => Promise<void>,
+      idle?: () => boolean,
+      source: string | null = null
+    ): Promise<boolean> => {
       const done = chain.current.then(async () => {
         if (idle?.() === true) return true
         setBusy(label)
         setError(null)
+        setErrorSource(null)
         setNothingToFreeze(false)
         let landed = true
         try {
           await write()
         } catch (caught) {
           setError(message(caught, "Couldn't do that"))
+          setErrorSource(source)
           landed = false
         }
         try {
@@ -230,6 +240,39 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     [run, fetchWithAuth, year]
   )
 
+  /**
+   * Record a document built from the draft as it stands when this write's turn comes, after any
+   * release or load already queued: a fit's answer, or a section edited under "All settings". The
+   * builder runs then, never at click time, so it can't drop what a queued write recorded. With
+   * `basedOn` (the trail row the document was made from), a draft that has moved on since records
+   * nothing and says so. `source` names the home that asked (an All settings section), so that home
+   * can show a refusal as its own and the page doesn't show it twice.
+   */
+  const adopt = useCallback(
+    (
+      label: string,
+      build: (current: ApiAidRulesDocumentIn) => ApiAidRulesDocumentIn,
+      options: { readonly basedOn?: string; readonly source?: string } = {}
+    ) =>
+      run(
+        label,
+        async () => {
+          const current = draftRef.current
+          if (current === null) throw new Error('Load a kept option into your draft first')
+          if (options.basedOn !== undefined && current.trail_id !== options.basedOn) {
+            throw new Error('The draft moved since: try again')
+          }
+          settleDraft(
+            await saveAidScenarioDraft(fetchWithAuth, year, { document: build(current.document) })
+          )
+          clearPending()
+        },
+        undefined,
+        options.source ?? null
+      ),
+    [run, fetchWithAuth, year, settleDraft, clearPending]
+  )
+
   const freeze = useCallback(
     () =>
       run('Freezing the applications…', async () => {
@@ -260,5 +303,19 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     [run, fetchWithAuth, year, queryClient, clearPending]
   )
 
-  return { pending, live, busy, error, nothingToFreeze, move, release, load, keep, freeze, start }
+  return {
+    pending,
+    live,
+    busy,
+    error,
+    errorSource,
+    nothingToFreeze,
+    move,
+    release,
+    load,
+    keep,
+    adopt,
+    freeze,
+    start,
+  }
 }

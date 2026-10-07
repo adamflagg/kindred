@@ -1,5 +1,9 @@
 /** Reading the rules draft (spec §7.5; D39): one section's settings, the sections still in draft. Pure. */
-import type { ApiAidRulesDraft, ApiAidRulesSection } from '../../../../types/api-types'
+import type {
+  ApiAidRulesDocumentIn,
+  ApiAidRulesDraft,
+  ApiAidRulesSection,
+} from '../../../../types/api-types'
 import { MONEY_SECTIONS, SEASON_SECTIONS } from './rulesModel'
 
 export const SECTION_ORDER: readonly ApiAidRulesSection[] = [...MONEY_SECTIONS, ...SEASON_SECTIONS]
@@ -34,4 +38,14 @@ export function sameSection(
     rowOf(a)?.fingerprint === rowOf(b)?.fingerprint &&
     JSON.stringify(rowOf(a)?.status) === JSON.stringify(rowOf(b)?.status)
   )
+}
+
+/** A rules document with one section's settings replaced: what a scenario's "All settings" records (D39). */
+export function withSection(
+  // The draft's own document (a read) or the one `adopt` hands its builder (the write's input shape).
+  document: ApiAidRulesDraft['document'] | ApiAidRulesDocumentIn,
+  section: ApiAidRulesSection,
+  content: Readonly<Record<string, unknown>>
+): ApiAidRulesDocumentIn {
+  return { ...document, [section]: content }
 }

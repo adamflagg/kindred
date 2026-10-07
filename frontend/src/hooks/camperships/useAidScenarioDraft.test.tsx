@@ -38,12 +38,14 @@ let client: QueryClient
 let fetchSpy: MockInstance<typeof fetch>
 let calls: Array<{ route: string; body: unknown; headers: Headers }>
 let hold: Promise<void> | null
+/** What `PUT /draft` answers: the server's saved draft (a test may make it differ from the workspace's). */
+let saved = SAVED
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
 function answer(route: string): Response {
   if (route === 'POST /api/financial-aid/scenarios/2027/evaluate') return json(EVALUATED)
-  if (route === 'PUT /api/financial-aid/scenarios/2027/draft') return json(SAVED)
+  if (route === 'PUT /api/financial-aid/scenarios/2027/draft') return json(saved)
   if (route === 'POST /api/financial-aid/scenarios/2027/draft/load') return json(LOADED)
   if (route === 'POST /api/financial-aid/scenarios/2027/snapshot') return json({})
   if (route.startsWith('POST /api/financial-aid/scenarios/2027/starting-points'))
@@ -63,6 +65,7 @@ beforeEach(() => {
   client.setQueryData(queryKeys.aidScenarios(2027), workspace())
   calls = []
   hold = null
+  saved = SAVED
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const route = `${init?.method ?? 'GET'} ${String(input)}`
     calls.push({
@@ -432,5 +435,87 @@ describe('useAidScenarioDraft (Decision 19)', () => {
     await flush(300)
     expect(routes()).toEqual(['POST /evaluate', 'POST /snapshot', 'POST /evaluate'])
     expect(result.current.live.status).toBe('ready')
+  })
+})
+
+describe('adopt (PR 6: Fit to budget, All settings)', () => {
+  it('records the document the builder returns as the draft', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    let landed = false
+    await act(async () => {
+      landed = await result.current.adopt('Recording…', () => EVALUATED.document)
+    })
+    expect(landed).toBe(true)
+    expect(routes()).toEqual(['PUT /draft'])
+    expect(calls[0]?.body).toEqual({ document: EVALUATED.document })
+  })
+
+  it('builds on the draft as it stands when its turn comes: after a queued release', async () => {
+    // The release records a draft that differs from the one the page was rendered with.
+    saved = {
+      ...SAVED,
+      document: { ...SAVED.document, awards: { ...SAVED.document.awards, minimum: '150' } },
+    }
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    act(() => result.current.move({ minimum: '150' }))
+    const seen: unknown[] = []
+    let adopted: Promise<boolean> = Promise.resolve(false)
+    await act(async () => {
+      void result.current.release()
+      adopted = result.current.adopt('Recording…', (current) => {
+        seen.push(current)
+        return { ...current, year: 2099 }
+      })
+      // Queued behind the release: nothing is built at click time.
+      expect(seen).toEqual([])
+      await adopted
+    })
+    expect(routes()).toEqual(['POST /evaluate', 'PUT /draft', 'PUT /draft'])
+    // It saw what the release recorded (the server's saved draft), not the draft it was clicked on.
+    expect(seen).toEqual([saved.document])
+    expect(calls[2]?.body).toEqual({ document: { ...saved.document, year: 2099 } })
+  })
+
+  it('records nothing when the draft moved on since the document was made (basedOn)', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    let landed = true
+    await act(async () => {
+      landed = await result.current.adopt('Recording…', (current) => current, {
+        basedOn: 'trail-from-before',
+      })
+    })
+    expect(landed).toBe(false)
+    expect(calls).toEqual([])
+    expect(result.current.error).toBe('The draft moved since: try again')
+  })
+
+  it('records it when the draft is still the one it was made on', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    let landed = false
+    await act(async () => {
+      landed = await result.current.adopt('Recording…', () => EVALUATED.document, {
+        basedOn: workspace().draft?.trail_id ?? '',
+      })
+    })
+    expect(landed).toBe(true)
+    expect(routes()).toEqual(['PUT /draft'])
+  })
+
+  it('says which write an error came from, so a section editor can own its refusal', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    await act(async () => {
+      await result.current.adopt('Recording…', (current) => current, {
+        basedOn: 'trail-from-before',
+        source: 'awards',
+      })
+    })
+    expect(result.current.error).toBe('The draft moved since: try again')
+    expect(result.current.errorSource).toBe('awards')
+    // The next write clears it with the error; a refusal with no source carries none.
+    await act(async () => {
+      await result.current.adopt('Recording…', (current) => current, { basedOn: 'again' })
+    })
+    expect(result.current.error).toBe('The draft moved since: try again')
+    expect(result.current.errorSource).toBeNull()
   })
 })

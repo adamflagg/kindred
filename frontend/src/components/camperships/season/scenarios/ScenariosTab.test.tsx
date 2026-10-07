@@ -14,6 +14,7 @@ import type {
 } from '../../../../hooks/camperships/useAidScenarioDraft'
 import { AidApiError } from '../../../../services/camperships/aidApi'
 import type {
+  ApiAidRulesDocumentIn,
   ApiAidScenarioSensitivity,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
@@ -59,6 +60,7 @@ const work = {
   live: { status: 'idle' } as LiveResults,
   busy: null as string | null,
   error: null as string | null,
+  errorSource: null as string | null,
   nothingToFreeze: false as boolean,
   move: vi.fn<(patch: Partial<Pending>) => void>(),
   release: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
@@ -66,6 +68,13 @@ const work = {
     Promise.resolve(true)
   ),
   keep: vi.fn<(startingPoint: boolean) => Promise<boolean>>(() => Promise.resolve(true)),
+  adopt: vi.fn<
+    (
+      label: string,
+      build: (current: ApiAidRulesDocumentIn) => ApiAidRulesDocumentIn,
+      options?: { readonly basedOn?: string; readonly source?: string }
+    ) => Promise<boolean>
+  >(() => Promise.resolve(true)),
   freeze: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
   start: vi.fn<(from: 'rules' | 'last_season') => Promise<boolean>>(() => Promise.resolve(true)),
 } satisfies ReturnType<typeof useAidScenarioDraft>
@@ -79,6 +88,18 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   },
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+// PR 6's fit and promotion: idle unless a test reads them (FitAndPromotion.test.tsx).
+vi.mock('../../../../hooks/camperships/useAidPromotion', () => ({
+  useAidScenarioFit: () => ({
+    data: undefined,
+    error: null,
+    isPending: false,
+    mutate: vi.fn(),
+    reset: vi.fn(),
+  }),
+  useAidPromotionPreview: () => ({ data: undefined, isLoading: false, error: null }),
+  useAidMakeRulesDraft: () => ({ isPending: false, mutate: vi.fn(), reset: vi.fn() }),
+}))
 vi.mock('../../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: () => true }),
 }))
