@@ -1,7 +1,7 @@
 """PocketBase access for aid_arrival_curves (Scenarios addendum §S11.7): one season's aggregate arrival curve. The
 superuser client is the only way in (all five rules null). A save is one logged operation (action "load") through
 commit_aid_writes, like every aid write, and replaces the season's row: a bad year is corrected the way it was
-loaded."""
+loaded. Nothing changed, nothing written: a re-run with the same figures leaves the row and the log alone."""
 
 from __future__ import annotations
 
@@ -12,9 +12,10 @@ from typing import Any, Final
 from api.constants.collections import AID_ARRIVAL_CURVES
 from api.services.pb_precise_datetime import aid_collection
 from bunking.financial_aid.arrival import ArrivalCurve, points_from_json, points_json
+from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import AidWrite, commit_aid_writes
 
-_FIELDS: Final = ("source", "aligned_on", "anchor", "points", "counted", "actor")
+_FIELDS: Final = ("year", "source", "aligned_on", "anchor", "points", "counted", "actor")  # every key curve_data sends
 
 
 def curve_record(record: Any) -> ArrivalCurve:
@@ -54,7 +55,8 @@ class ArrivalCurveRepository:
         row = await self._row(year)
         return curve_record(row) if row is not None else None
 
-    async def save(self, curve: ArrivalCurve, *, actor: str) -> None:
+    async def save(self, curve: ArrivalCurve, *, actor: str) -> bool:
+        """Store the season's curve; False when its row already holds these figures (nothing written)."""
         data = curve_data(curve, actor)
         row = await self._row(curve.year)
         if row is None:
@@ -67,14 +69,18 @@ class ArrivalCurveRepository:
                 entity_id=str(curve.year),
             )
         else:
+            before = {name: getattr(row, name, None) for name in _FIELDS}
+            if changed_fields(before, data) == ({}, {}):
+                return False
             write = AidWrite(
                 collection=AID_ARRIVAL_CURVES,
                 action="update",
                 year=curve.year,
                 record_id=str(row.id),
-                before={name: getattr(row, name, None) for name in _FIELDS},
+                before=before,
                 data=data,
                 log_action="load",
                 entity_id=str(curve.year),
             )
         await asyncio.to_thread(commit_aid_writes, self.pb, [write], actor=actor)
+        return True

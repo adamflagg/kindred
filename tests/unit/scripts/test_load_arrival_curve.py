@@ -229,3 +229,31 @@ def test_write_refuses_when_no_pocketbase_is_named(
     out = capsys.readouterr()
     assert (code, saved, out.out) == (2, [], "")
     assert out.err.strip() == "Set POCKETBASE_URL to the PocketBase to write to. Nothing was written."
+
+
+@pytest.mark.parametrize(
+    ("stored", "last_line"),
+    [
+        (True, "Stored 2026's arrival curve."),
+        (False, "2026's arrival curve is already stored with these figures. Nothing was written."),
+    ],
+)
+def test_write_says_whether_it_stored_or_found_the_same_figures(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    stored: bool,
+    last_line: str,
+) -> None:
+    """A re-run with the same workbook writes nothing (the repository's "nothing changed, nothing written") and says
+    so, rather than claiming a store."""
+
+    async def save(curve: Any) -> bool:
+        return stored
+
+    monkeypatch.setattr(loader, "save_curve", save)
+    monkeypatch.setenv("POCKETBASE_URL", "http://pocketbase.invalid:8090")
+    code = loader.main(
+        ["--workbook", str(_workbook(tmp_path, ROWS)), "--year", "2026", "--deadline", "2026-02-04", "--write"]
+    )
+    assert (code, capsys.readouterr().out.splitlines()[-1]) == (0, last_line)

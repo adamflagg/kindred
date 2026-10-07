@@ -100,9 +100,8 @@ class ResultsOut(BaseModel):
     # The appeals keyed so far and their asks: Below the line once Round 1 posts (§S11.4).
     appeals: int = 0
     appeals_asked: float = 0
-    projection: ProjectionOut | None = (
-        None  # filled on evaluate, the draft and each priced compare column; never on a kept option's stored results or last season
-    )
+    # Filled on evaluate, the draft and each priced compare column; never on a kept option's stored results or last season.
+    projection: ProjectionOut | None = None
 
 
 class SnapshotOut(BaseModel):

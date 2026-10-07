@@ -30,7 +30,6 @@ inputs (plan Decision 15).
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
@@ -100,6 +99,7 @@ from bunking.financial_aid.scenarios import (
     up_down,
     uses_budget_placeholder,
 )
+from bunking.logging_config import get_logger
 
 MAX_COMPARED: Final = 4
 
@@ -117,7 +117,7 @@ ReceivedRead = Callable[[int], Awaitable[list[datetime]]]
 # Update Applications clears it. Per process: Update Applications clears only the worker that served it.
 _COMPUTED: dict[int, ArrivalCurve | None] = {}
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def clear_computed_curves() -> None:

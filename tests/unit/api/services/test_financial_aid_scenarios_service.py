@@ -1666,6 +1666,25 @@ async def test_from_2027_on_the_curve_is_computed_from_received_dates_once_per_p
 
 
 @pytest.mark.asyncio
+async def test_a_computed_curve_for_a_season_with_no_approved_deadline_lines_up_on_jan_1() -> None:
+    """Regression guard. §S11.7: a year with no deadline lines up from Jan 1 and is stored as "calendar". 2027's
+    milestones never approved: Jan 20 and Feb 3 against Jan 1 are weeks 2 and 4."""
+
+    async def received(year: int) -> list[datetime]:
+        return [datetime(2027, 1, 20, 18, 0, tzinfo=UTC), datetime(2027, 2, 3, 18, 0, tzinfo=UTC)]
+
+    world = await _world(document=WITH_DEADLINE, curves=await _stored(None), received=received)
+    curve = await world.service.arrival_curve(YEAR + 1)
+    assert curve is not None
+    assert (curve.aligned_on, curve.anchor, curve.points[0].week, curve.points[-1].week) == (
+        "calendar",
+        date(YEAR, 1, 1),
+        2,
+        4,
+    )
+
+
+@pytest.mark.asyncio
 async def test_2026_is_never_computed_from_its_bulk_loaded_dates() -> None:
     """§S11.7: 2026 was bulk-loaded on 2026-09-27, so its dashboard dates are no arrival dates; only a stored row."""
 

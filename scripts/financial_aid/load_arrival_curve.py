@@ -12,8 +12,9 @@ All are Pacific wall-clock time.
 
 The anchor is --deadline, else the year's approved milestones.application_deadline (read through the superuser
 client), else Jan 1 (stored as "calendar"). Without --write nothing is written; with it the season's row in
-aid_arrival_curves is replaced. It is run once for 2026 by the owner's prod agent, and again for a prior year only if
-that year's workbook turns up. It never runs in CD and ships no data; the workbook never enters any repository.
+aid_arrival_curves is replaced (a re-run with the same figures writes nothing). It is run once for 2026 by the owner's
+prod agent, and again for a prior year only if that year's workbook turns up. It never runs in CD and ships no data;
+the workbook never enters any repository.
 
 Environment: --write refuses unless POCKETBASE_URL is set, and needs POCKETBASE_URL, POCKETBASE_ADMIN_EMAIL and
 POCKETBASE_ADMIN_PASSWORD. A dry run WITHOUT --deadline also reads the approved deadline from PocketBase (read-only,
@@ -137,8 +138,8 @@ async def approved_deadline(year: int) -> date | None:
     return approved.document.milestones.application_deadline if approved is not None else None
 
 
-async def save_curve(curve: ArrivalCurve) -> None:
-    await ArrivalCurveRepository(_client()).save(curve, actor=LOADER)
+async def save_curve(curve: ArrivalCurve) -> bool:
+    return await ArrivalCurveRepository(_client()).save(curve, actor=LOADER)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -175,8 +176,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.write:
         print("Dry run: nothing written (add --write to store it).")
         return 0
-    asyncio.run(save_curve(curve))
-    print(f"Stored {args.year}'s arrival curve.")
+    if asyncio.run(save_curve(curve)):
+        print(f"Stored {args.year}'s arrival curve.")
+    else:
+        print(f"{args.year}'s arrival curve is already stored with these figures. Nothing was written.")
     return 0
 
 

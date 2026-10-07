@@ -14,6 +14,7 @@ import pytest
 from api.services import financial_aid_arrival_curves_repository as module
 from api.services.financial_aid_arrival_curves_repository import ArrivalCurveRepository, curve_record
 from bunking.financial_aid.arrival import ArrivalCurve, CurvePoint
+from bunking.financial_aid.change_diff import changed_fields
 
 CURVE = ArrivalCurve(
     2026,
@@ -93,3 +94,23 @@ async def test_a_rerun_replaces_the_seasons_row(monkeypatch: pytest.MonkeyPatch)
         4,
         5,
     )
+
+
+@pytest.mark.asyncio
+async def test_a_rerun_with_the_same_figures_writes_and_logs_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing changed, nothing written: re-loading the same workbook leaves the row and the change log alone."""
+    sent: list[Any] = []
+    monkeypatch.setattr(module, "commit_aid_writes", lambda pb, writes, *, actor, reason=None: sent.append(writes))
+    stored = await ArrivalCurveRepository(_pb([_row()])).save(CURVE, actor="system:arrival-curve-loader")
+    assert (stored, sent) == (False, [])
+
+
+@pytest.mark.asyncio
+async def test_a_rerun_logs_only_the_fields_that_changed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The update's before carries every field it sends, so the change log never shows the year as newly set."""
+    sent: list[Any] = []
+    monkeypatch.setattr(module, "commit_aid_writes", lambda pb, writes, *, actor, reason=None: sent.append(writes))
+    stored = await ArrivalCurveRepository(_pb([_row(counted=4)])).save(CURVE, actor="system:arrival-curve-loader")
+    [[write]] = sent
+    assert changed_fields(write.before, write.data) == ({"counted": 4}, {"counted": 5})
+    assert stored is True
