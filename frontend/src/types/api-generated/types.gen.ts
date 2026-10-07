@@ -2622,6 +2622,14 @@ export type CommitteeOut = {
    * Round2 Not In Tiers
    */
   round2_not_in_tiers: number
+  /**
+   * Requests
+   */
+  requests?: number
+  /**
+   * Average Round1
+   */
+  average_round1?: number | null
 }
 
 /**
@@ -11506,6 +11514,10 @@ export type PoolResultOut = {
    * Round1 Unmet
    */
   round1_unmet: number
+  /**
+   * Allocated
+   */
+  allocated?: number | null
 }
 
 /**
@@ -13294,6 +13306,10 @@ export type ResultsOut = {
    */
   round1_allocated: number | null
   /**
+   * Allocated
+   */
+  allocated?: number | null
+  /**
    * Round1 Remaining
    */
   round1_remaining: number | null
@@ -13338,6 +13354,14 @@ export type ResultsOut = {
    * Round2 Remaining
    */
   round2_remaining?: number | null
+  /**
+   * Appeals
+   */
+  appeals?: number
+  /**
+   * Appeals Asked
+   */
+  appeals_asked?: number
 }
 
 /**
@@ -17117,6 +17141,10 @@ export type TierRowOut = {
    * Asked
    */
   asked?: number | null
+  /**
+   * Round2
+   */
+  round2?: number
 }
 
 /**

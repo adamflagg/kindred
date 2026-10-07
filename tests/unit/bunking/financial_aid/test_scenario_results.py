@@ -25,8 +25,10 @@ from bunking.financial_aid.scenarios import (
     ScenarioResults,
     TableTierRow,
     TierRow,
+    appeal_totals,
     committee_view,
     round1_by_request,
+    round2_by_tier_totals,
     scenario_results,
     up_down,
 )
@@ -462,3 +464,52 @@ def test_a_fund_round_needing_an_offer_counts_only_its_camp_award() -> None:
 def test_a_fund_round_pending_approval_counts_only_its_camp_award() -> None:
     """Regression guard (T17 review Minor 3): the pending-approval branch splits through counted_part too."""
     assert results_module.counted(_fund_round("pending_approval", "3600")) == Decimal(2000)
+
+
+def _with_appeals() -> ScenarioResults:
+    rows = [
+        Round2TierRow(
+            table="camp",
+            tier=2,
+            appeals=1,
+            asked=Decimal(400),
+            priced=1,
+            priced_asked=Decimal(400),
+            round2=Decimal(300),
+        ),
+        Round2TierRow(
+            table="teen",
+            tier=2,
+            appeals=2,
+            asked=Decimal(900),
+            priced=1,
+            priced_asked=Decimal(500),
+            round2=Decimal(250),
+        ),
+        Round2TierRow(
+            table="camp",
+            tier=3,
+            appeals=1,
+            asked=Decimal(200),
+            priced=0,
+            priced_asked=Decimal(0),
+            round2=Decimal(0),
+        ),
+    ]
+    return _results(_season()).model_copy(update={"round2_by_tier": rows})
+
+
+def test_round2_per_tier_sums_the_round2_tables() -> None:
+    """§S11.4: the By tier popover's Round 2 after the lock, one figure per tier across the tables."""
+    assert round2_by_tier_totals(_with_appeals()) == {2: Decimal(550), 3: Decimal(0)}
+
+
+def test_the_appeals_keyed_so_far_and_their_asks_sum_the_rows() -> None:
+    """§S11.4: Below the line after the lock: four appeals asking 400 + 900 + 200."""
+    assert appeal_totals(_with_appeals()) == (4, Decimal(1500))
+
+
+def test_results_stored_before_the_round2_rows_read_as_none() -> None:
+    bare = _results(_season()).model_copy(update={"round2_by_tier": []})
+    assert round2_by_tier_totals(bare) == {}
+    assert appeal_totals(bare) == (0, Decimal(0))

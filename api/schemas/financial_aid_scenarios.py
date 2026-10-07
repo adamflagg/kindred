@@ -27,6 +27,7 @@ class PoolResultOut(BaseModel):
     round1_remaining: float | None
     remaining: float | None
     round1_unmet: float  # below the line, never subtracted (§5.9)
+    allocated: float | None = None  # the pool's Allocated: the bar's scale (§S11.4); round1_allocated stays for Fit
 
 
 class TierRowOut(BaseModel):
@@ -35,6 +36,7 @@ class TierRowOut(BaseModel):
     families: int
     round1: float
     asked: float | None = None  # the tier's Round 1 asks; filled by SP9c (RPT-17)
+    round2: float = 0  # the tier's Round 2 across the tables (§S11.4)
 
 
 class RequestSetOut(BaseModel):
@@ -58,6 +60,7 @@ class ResultsOut(BaseModel):
     round2: float
     round3: float
     round1_allocated: float | None
+    allocated: float | None = None  # the whole Allocated (§S11.4); round1_allocated stays for Fit
     round1_remaining: float | None
     remaining: float | None
     at_minimum: int
@@ -73,6 +76,9 @@ class ResultsOut(BaseModel):
     # 0 when the rules set no Round 2 reserves; None only with no rules.
     round2_allocated: float | None = None
     round2_remaining: float | None = None
+    # The appeals keyed so far and their asks: Below the line once Round 1 posts (§S11.4).
+    appeals: int = 0
+    appeals_asked: float = 0
 
 
 class SnapshotOut(BaseModel):
@@ -244,6 +250,8 @@ class CommitteeOut(BaseModel):
     round2_by_tier: list[Round2CompareOut]  # each Round 2 table's tiers, then All
     not_in_tiers: float  # Round 1 no row holds (a withdrawn request's posted round): All's rows + this = round1
     round2_not_in_tiers: float  # the same for Round 2
+    requests: int = 0  # the All rows summed (disagreement 3)
+    average_round1: float | None = None  # their Round 1 over their requests; the server divides
 
 
 class LastSeasonOut(BaseModel):

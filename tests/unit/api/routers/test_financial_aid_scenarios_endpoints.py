@@ -65,6 +65,7 @@ from bunking.financial_aid.scenarios import (
     PoolResult,
     RequestSetNote,
     Round2CompareRow,
+    Round2TierRow,
     ScenarioResults,
     SizingError,
     TierCompareRow,
@@ -858,3 +859,28 @@ def test_the_workspace_says_what_is_locked_and_the_preview_how_many_fixed_settin
     assert (body["locked_sections"], body["locked_by_round"]) == (["tiers", "award_tables"], 1)
     service.rules_draft_preview = AsyncMock(return_value=ScenarioPromotion(PREVIEW, 2))
     assert _client().get("/api/financial-aid/scenarios/2027/options/A1/rules-draft").json()["fixed_kept"] == 2
+
+
+def test_results_carry_allocated_round2_by_tier_and_the_appeals() -> None:
+    service = _stub()
+    rows = [
+        Round2TierRow(
+            table="camp",
+            tier=2,
+            appeals=1,
+            asked=Decimal(400),
+            priced=1,
+            priced_asked=Decimal(400),
+            round2=Decimal(300),
+        ),
+    ]
+    priced = RESULTS.model_copy(update={"round2_by_tier": rows, "round1_allocated": Decimal("500000.00")})
+    pools = [p.model_copy(update={"round1_allocated": Decimal("400000.00")}) for p in priced.pools]
+    service.evaluate = AsyncMock(
+        return_value=Evaluation(DOC, priced.model_copy(update={"pools": pools}), ValidationReport())
+    )
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
+    assert (body["allocated"], body["round1_allocated"]) == (500000.0, 500000.0)
+    assert body["pools"][0]["allocated"] == 400000.0
+    assert [(t["tier"], t["round2"]) for t in body["by_tier"]] == [(2, 300.0)]
+    assert (body["appeals"], body["appeals_asked"]) == (1, 400.0)

@@ -300,11 +300,19 @@ from bunking.branding import get_branding, get_camp_name
 from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.programs import ProgramsCount, ProgramsPart
 from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
-from bunking.financial_aid.scenarios import CommitteeView, PoolResult, ScenarioResults
+from bunking.financial_aid.scenarios import (
+    CommitteeView,
+    PoolResult,
+    ScenarioResults,
+    all_rows_totals,
+    appeal_totals,
+    round2_by_tier_totals,
+)
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
@@ -1211,10 +1219,13 @@ def _pool_out(p: PoolResult) -> PoolResultOut:
         round1_remaining=_cents(p.round1_remaining),
         remaining=_cents(p.remaining),
         round1_unmet=money(p.round1_unmet),
+        allocated=_cents(p.round1_allocated),
     )
 
 
 def _results_out(r: ScenarioResults) -> ResultsOut:
+    round2s = round2_by_tier_totals(r)
+    appeals, appeals_asked = appeal_totals(r)
     return ResultsOut(
         requests=r.requests,
         families=r.families,
@@ -1222,6 +1233,7 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         round2=money(r.round2),
         round3=money(r.round3),
         round1_allocated=_cents(r.round1_allocated),
+        allocated=_cents(r.round1_allocated),
         round1_remaining=_cents(r.round1_remaining),
         remaining=_cents(r.remaining),
         at_minimum=r.at_minimum,
@@ -1231,7 +1243,12 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         pools=[_pool_out(p) for p in r.pools],
         by_tier=[
             TierRowOut(
-                tier=t.tier, requests=t.requests, families=t.families, round1=money(t.round1), asked=_cents(t.asked)
+                tier=t.tier,
+                requests=t.requests,
+                families=t.families,
+                round1=money(t.round1),
+                asked=_cents(t.asked),
+                round2=money(round2s.get(t.tier, ZERO)),
             )
             for t in r.by_tier
         ],
@@ -1239,6 +1256,8 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
         round2_allocated=_cents(r.round2_allocated),
         round2_remaining=_cents(r.round2_remaining),
+        appeals=appeals,
+        appeals_asked=money(appeals_asked),
     )
 
 
@@ -1247,6 +1266,7 @@ def _pct(value: Decimal | None) -> float | None:
 
 
 def _committee_out(view: CommitteeView) -> CommitteeOut:
+    requests, average = all_rows_totals(view)
     return CommitteeOut(
         budget_total=_cents(view.budget_total),
         round1=money(view.round1),
@@ -1288,6 +1308,8 @@ def _committee_out(view: CommitteeView) -> CommitteeOut:
         ],
         not_in_tiers=money(view.not_in_tiers),
         round2_not_in_tiers=money(view.round2_not_in_tiers),
+        requests=requests,
+        average_round1=_cents(average),
     )
 
 
