@@ -7,14 +7,14 @@ import type { ProgramGroup } from './programLabel'
 
 const GROUPS: readonly ProgramGroup[] = [
   {
-    pool: { value: 'pool_a', label: 'Camp & Quest' },
+    pool: { value: 'pool_a', label: 'Pool A' },
     programs: [
       { value: 'quest', label: 'Quest' },
       { value: 'summer', label: 'Summer' },
     ],
   },
   {
-    pool: { value: 'pool_b', label: 'Weekend Programs' },
+    pool: { value: 'pool_b', label: 'Pool B' },
     programs: [{ value: 'family_camp', label: 'Family Camp' }],
   },
   { pool: null, programs: [{ value: 'not_aided', label: 'Not aided' }] },
@@ -58,10 +58,10 @@ describe('GridFiltersBar: one grouped Program dropdown (T6)', () => {
     bar({})
     expect((await openProgram()).map((o) => o.textContent)).toEqual([
       'All programs',
-      'Camp & Quest',
+      'Pool A',
       'Quest',
       'Summer',
-      'Weekend Programs',
+      'Pool B',
       'Family Camp',
       'Not aided',
     ])
@@ -70,7 +70,7 @@ describe('GridFiltersBar: one grouped Program dropdown (T6)', () => {
   it('picks a pool by its heading (the program cleared), and a program (the pool cleared)', async () => {
     const { onProgramPool } = bar({ program: 'summer' })
     await openProgram()
-    await userEvent.click(screen.getByRole('option', { name: 'Weekend Programs' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Pool B' }))
     expect(onProgramPool).toHaveBeenLastCalledWith('pool_b', null)
     await openProgram()
     await userEvent.click(screen.getByRole('option', { name: 'Quest' }))
@@ -82,7 +82,7 @@ describe('GridFiltersBar: one grouped Program dropdown (T6)', () => {
 
   it('shows what the URL picked: a pool by its heading, a program by its name', () => {
     bar({ pool: 'pool_b' })
-    expect(screen.getByLabelText('Program')).toHaveTextContent('Weekend Programs')
+    expect(screen.getByLabelText('Program')).toHaveTextContent('Pool B')
   })
 
   it('shows a picked program by its name', () => {
@@ -93,10 +93,7 @@ describe('GridFiltersBar: one grouped Program dropdown (T6)', () => {
   it('marks the picked option', async () => {
     bar({ pool: 'pool_a' })
     await openProgram()
-    expect(screen.getByRole('option', { name: 'Camp & Quest' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByRole('option', { name: 'Pool A' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('option', { name: 'Quest' })).toHaveAttribute('aria-selected', 'false')
   })
 })

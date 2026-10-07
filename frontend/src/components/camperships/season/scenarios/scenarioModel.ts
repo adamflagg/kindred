@@ -271,8 +271,9 @@ export function resultLines(results: ApiAidScenarioResults): ResultLine[] {
 
 /**
  * What Fit to budget found, in fit.py's terms: the largest shift on a half-point grid whose TOTAL row's
- * Round 1 Remaining (money on a program with no pool included) is still $0 or more (Round 2 and 3
- * reserves stay held back), or that even the ends of its range (−100 to +100 pts) don't fit. The
+ * Round 1 Remaining (money on a program with no pool included) is still $0 or more (Round 2 and 3 money
+ * already committed stays in it; nothing is held back), or that even the ends of its range (−100 to +100
+ * pts) don't fit. The
  * tightest pool is information only (D119).
  */
 export function fitWords(fit: ApiAidScenarioFit): {

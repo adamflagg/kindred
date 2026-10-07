@@ -283,6 +283,13 @@ def test_a_pool_given_a_null_share_and_an_amount_takes_the_amount() -> None:
     assert section.pools["a"].share_pct == Decimal(25)
 
 
+@pytest.mark.parametrize("amount", ["lots", [1], {"x": 1}])
+def test_a_pool_amount_that_is_not_a_number_is_refused_not_a_crash(amount: Any) -> None:
+    """A non-numeric amount derives no share, so the missing share is refused as a 422, never a raw 500."""
+    with pytest.raises(ValidationError):
+        BudgetSection.model_validate({"total": "200", "pools": {"a": {"label": "Pool A", "amount": amount}}})
+
+
 def test_a_pool_needs_a_share() -> None:
     """Regression guard."""
     with pytest.raises(ValidationError):

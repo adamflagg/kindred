@@ -295,7 +295,13 @@ def never_true_labels(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> dict[
     weighted = {key for weights in rules.equity.weights.values() for key, weight in weights.items() if weight > 0}
     labels: dict[str, str] = {}
     for criterion in rules.equity.criteria:
-        if criterion.key in weighted and criterion.source == "household" and not is_dependents_criterion(criterion):
+        # A switched-off criterion moves no one (§8.6), so nobody answering its question yes is not news.
+        if (
+            criterion.enabled
+            and criterion.key in weighted
+            and criterion.source == "household"
+            and not is_dependents_criterion(criterion)
+        ):
             for field in (criterion.field, *criterion.also_fields):
                 if field in YES_NO_ANSWER_FIELDS:
                     labels.setdefault(field, criterion.label)

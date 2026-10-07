@@ -626,6 +626,17 @@ def test_when_two_criteria_weight_a_field_the_first_in_rules_order_names_it() ->
     assert never_true_labels(rules, [fa_row(1000011)])["unemployment"] == "Unemployment"
 
 
+def test_a_switched_off_criterion_raises_no_never_true_warning() -> None:
+    """§8.6: a disabled criterion moves no one, so nobody answering its question yes is not news."""
+    rules = _labelled_rules(weights={"gov_subsidies": "1", "hardship_a": "1"})
+    criteria = [c.model_dump(mode="json") for c in rules.equity.criteria]
+    for criterion in criteria:
+        if criterion["key"] == "hardship_a":
+            criterion["enabled"] = False
+    rules = with_levers(rules, {"equity.criteria": criteria})
+    assert never_true_labels(rules, [fa_row(1000011)]) == {"gov_subsidies": "Government subsidies"}
+
+
 def test_the_never_true_line_reasons_carry_labels_and_an_unmatched_field_gets_none() -> None:
     inputs = _inputs(
         [], never_true=("gov_subsidies", "orphan"), never_true_labels={"gov_subsidies": "Government subsidies"}

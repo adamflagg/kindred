@@ -488,7 +488,10 @@ class BudgetSection(RulesModel):
                     pool = dict(pool)
                     amount = pool.pop("amount")
                     if pool.get("share_pct") is None and amount is not None and total > 0:
-                        pool["share_pct"] = str(Decimal(str(amount)) / total * HUNDRED)
+                        try:
+                            pool["share_pct"] = str(Decimal(str(amount)) / total * HUNDRED)
+                        except InvalidOperation:
+                            pass  # a non-numeric amount derives no share; the missing share is refused (422)
                 converted[key] = pool
             out["pools"] = converted
         return out
