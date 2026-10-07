@@ -20,6 +20,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.money import dollars, pct_of
+from bunking.financial_aid.rules.groups import group_of_class
 from bunking.financial_aid.rules.lookup import (
     Round2TableNotListedError,
     is_dependents_criterion,
@@ -416,9 +417,20 @@ def _valid_tables[V: (R1Percent, TotalPercent)](
     return valid
 
 
-def _table_label(name: str) -> str:
-    """The award table's staff-facing name: the schema gives a table no label, so its key, title-cased."""
-    return f"{name.replace('_', ' ').title()} table"
+def _class_words(rules: AidRules, key: str) -> str:
+    """An award table's or an equity class's staff-facing words (spec §9.2): the label of the group whose class it
+    is, else the key's words in sentence case, as the front end's keyWords. Never `.title()`: an acronym key would
+    read "Ffp". A12 adds the borrowed-label fallback here, between the two."""
+    group = group_of_class(rules, key)
+    if group is not None:
+        return group.label
+    words = key.replace("_", " ")
+    return words[:1].upper() + words[1:]
+
+
+def _table_label(rules: AidRules, name: str) -> str:
+    """The award table's staff-facing name: "‹group label› table" (spec §9.2), else "‹key words› table"."""
+    return f"{_class_words(rules, name)} table"
 
 
 def _catalog_price(rules: AidRules, program: ProgramProfile) -> Decimal | None:
@@ -451,7 +463,7 @@ def _note_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -
         program, price = max(decided, key=lambda pair: pair[1])
         award = pct_of(row.r1_pct, price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         message = (
-            f"{_table_label(name)}, tier {tier}: {program.label} at {dollars(price)} gets {dollars(award)}, "
+            f"{_table_label(rules, name)}, tier {tier}: {program.label} at {dollars(price)} gets {dollars(award)}, "
             f"so the {dollars(minimum)} minimum applies"
         )
         if len(routed) > 1 and len(decided) == len(routed):

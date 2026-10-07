@@ -154,6 +154,43 @@ def test_only_catalog_priced_programs_are_judged() -> None:
     assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("Camp table, tier 6: Quest at $6,000")
 
 
+def test_a_tables_note_uses_its_groups_name_never_the_key_title_cased() -> None:
+    """Spec §9.2: notes read "‹group label› table". The label keeps its capitals: "FFP table", never "Ffp table"."""
+    rules = with_levers(
+        fictional_rules(),
+        {"budget.pools.camp_pool.label": "FFP", "award_tables.camp.tiers.6.r1_pct": "1"},
+    )
+    assert _bind_notes(rules)["award_tables.camp.tiers.6"].startswith("FFP table, tier 6: ")
+
+
+def test_a_table_no_group_pairs_with_keeps_its_key_words() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {"award_tables.teen.overrides": {"6": {"r1_pct": "1"}}, "programs.teen.r1_table": "teen"},
+    )
+    note = _bind_notes(rules).get("award_tables.teen.tiers.6")
+    assert note is not None
+    assert note.startswith("Teen table, tier 6: ")
+
+
+def _routed_to(table: str) -> AidRules:
+    """`table` added as a copy of the camp table, with tier 6 at 1% so a note binds, and adult_weekend routed to it."""
+    return with_levers(
+        fictional_rules(),
+        {
+            f"award_tables.{table}": {"inherits": "camp", "overrides": {"6": {"r1_pct": "1"}}},
+            "programs.adult_weekend.table_from_equity_class": False,
+            "programs.adult_weekend.r1_table": table,
+        },
+    )
+
+
+def test_a_tables_key_words_are_sentence_case() -> None:
+    """Review minor 11: the server words a key as the front end's keyWords does ("Spring rates"), never "Spring Rates"."""
+    notes = _bind_notes(_routed_to("spring_rates"))
+    assert notes["award_tables.spring_rates.tiers.6"].startswith("Spring rates table, tier 6: ")
+
+
 def test_notes_come_in_numeric_tier_order() -> None:
     reversed_tiers = {str(t): {"r1_pct": "1"} for t in (6, 5, 4, 3, 2, 1)}
     reversed_tiers["4"] = {"r1_pct": "1"}
