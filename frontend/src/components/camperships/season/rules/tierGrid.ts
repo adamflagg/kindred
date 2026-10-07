@@ -1,0 +1,111 @@
+/** The combined tier grid and the tiers editor's arithmetic (spec §6.2 E.2; owner Q6: start + width + count). Pure. */
+import { formatMoney } from '../../kit/money'
+
+export interface Band {
+  readonly lower: string
+  readonly upper: string | null
+}
+
+/** Even bands from a start, a width and a count; tier n (n ≥ 2) starts at start + width × (n−1) + 1. */
+export function bandsOf(start: number, width: number, count: number): Band[] {
+  return Array.from({ length: count }, (_, i) => ({
+    lower: String(i === 0 ? start : start + i * width + 1),
+    upper: i === count - 1 ? null : String(start + (i + 1) * width),
+  }))
+}
+
+const plain = (band: Band): Band => ({
+  lower: String(Number(band.lower)),
+  upper: band.upper === null ? null : String(Number(band.upper)),
+})
+
+export function evenOf(
+  bands: readonly Band[]
+): { start: number; width: number; count: number } | null {
+  const first = bands[0]
+  if (bands.length < 3 || !first?.upper) return null
+  const start = Number(first.lower)
+  const width = Number(first.upper) - start
+  const even = bandsOf(start, width, bands.length)
+  return JSON.stringify(even) === JSON.stringify(bands.map(plain))
+    ? { start, width, count: bands.length }
+    : null
+}
+
+export const rangeWords = (band: Band) =>
+  band.upper === null
+    ? `${formatMoney(Number(band.lower))} and up`
+    : `${formatMoney(Number(band.lower))} – ${formatMoney(Number(band.upper))}`
+
+export function tierLineWords(bands: readonly Band[], ceiling: string | null): string {
+  const even = evenOf(bands)
+  const lead = even
+    ? `${formatMoney(even.width)} bands from ${formatMoney(even.start)}`
+    : `Bands set by hand from ${formatMoney(Number(bands[0]?.lower ?? 0))}`
+  const top =
+    ceiling === null ? 'no income ceiling' : `income ceiling ${formatMoney(Number(ceiling))}`
+  return `${lead} · ${String(bands.length)} tiers · ${top}`
+}
+
+/** What a changed tier count does on save (the mock's words; §9.9: fewer trims both tables, more adds empty rows). */
+export function countNote(was: number, now: number): string | null {
+  if (now === was) return null
+  const range = (a: number, b: number) =>
+    a === b ? `tier ${String(a)}` : `tiers ${String(a)}–${String(b)}`
+  if (now > was) {
+    const several = now - was > 1
+    return `Saving adds ${range(was + 1, now)} to the Round 1 and appeal tables, empty: fill ${several ? 'them' : 'it'} in before approving.`
+  }
+  return `Saving drops ${range(now + 1, was)} from the Round 1 and appeal tables.`
+}
+
+export interface TableShape {
+  readonly inherits?: string | null
+  readonly tiers?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+  readonly overrides?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+}
+
+export interface GridColumn {
+  readonly table: string
+  readonly label: string
+  readonly caption: string
+}
+
+/** The grid's columns follow the award tables' keys, which are the equity classes (owner 10-06: 1:1). */
+export function gridColumns(
+  tables: Readonly<Record<string, TableShape>>,
+  classes: readonly string[],
+  label: (key: string) => string
+): GridColumn[] {
+  return classes
+    .filter((key) => key in tables)
+    .map((key) => {
+      const table = tables[key]
+      const parent = table?.inherits ?? null
+      const changed = Object.keys(table?.overrides ?? {}).length > 0
+      return {
+        table: key,
+        label: label(key),
+        caption:
+          parent === null
+            ? 'its own'
+            : `same as ${label(parent)}${changed ? ', with changes' : ''}`,
+      }
+    })
+}
+
+export function gridCell(
+  tables: Readonly<Record<string, TableShape>>,
+  table: string,
+  tier: number,
+  key: 'r1_pct' | 'total_pct'
+): { value: string | null; inherited: boolean } {
+  const t = tables[table]
+  const at = String(tier)
+  const own = t?.tiers?.[at]?.[key] ?? t?.overrides?.[at]?.[key]
+  if (own !== undefined && own !== null) return { value: String(own), inherited: false }
+  const parent = t?.inherits ? tables[t.inherits]?.tiers?.[at]?.[key] : undefined
+  return parent === undefined || parent === null
+    ? { value: null, inherited: false }
+    : { value: String(parent), inherited: true }
+}
