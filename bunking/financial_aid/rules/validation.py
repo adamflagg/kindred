@@ -294,7 +294,7 @@ def _check_award_tables(rules: AidRules, issues: _Issues) -> None:
                     f"Tier {tier}: R1 % rises",
                 )
             previous = row.r1_pct
-        _warn_values_that_cannot_bind(rules, name, issues)
+        _note_values_that_cannot_bind(rules, name, issues)
 
 
 def _check_round2(rules: AidRules, issues: _Issues) -> None:
@@ -409,7 +409,7 @@ def _catalog_price(rules: AidRules, program: ProgramProfile) -> Decimal | None:
     return max(prices) if prices else None
 
 
-def _warn_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -> None:
+def _note_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -> None:
     """A note for each tier where the minimum award, not the table, decides a routed program's award.
 
     Judged per program, and only for programs priced from the catalog: a per-person or typed program's real
