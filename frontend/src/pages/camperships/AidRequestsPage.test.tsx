@@ -45,8 +45,12 @@ let approved: { data: ApiAidApprovedRules | undefined } = { data: APPROVED_RULES
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => approved,
 }))
+const notesProps = vi.fn()
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
-  AidDefinitionNotes: () => null,
+  AidDefinitionNotes: (props: unknown) => {
+    notesProps(props)
+    return null
+  },
 }))
 let operation: {
   data: ApiAidHistoryOperationDetail | undefined
@@ -162,6 +166,24 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(viewLink('All')).toHaveAttribute('href', '/aid/requests?year=2027')
     expect(viewLink('Holds')).toHaveTextContent('Holds 1')
     expect(viewLink('Holds')).toHaveAttribute('href', '/aid/requests?view=holds&year=2027')
+  })
+
+  // Spec §12.2: footnote 5 only when the rows shown hold outside money.
+  it('adds the outside footnote only when the shown rows hold outside money', () => {
+    const { unmount } = renderAt('/aid/requests')
+    expect(notesProps.mock.lastCall?.[0]).toMatchObject({ surface: 'requests', extra: [] })
+    unmount()
+    const outside = gridRow({
+      request_id: 'reqoutside00001',
+      camper_name: 'Avery Testcamper',
+      total_decided: 3675,
+      rounds: [roundOut(1, 'posted', { decided: 3675, outside_budget: 3675 })],
+    })
+    grid = { data: { ...LIVE, rows: [...LIVE.rows, outside] }, isLoading: false, error: null }
+    renderAt('/aid/requests')
+    expect(notesProps.mock.lastCall?.[0]).toMatchObject({
+      extra: [expect.stringMatching(/^Outside: the part of a round/)],
+    })
   })
 
   // #2994: whether CM ✓ shows is the read's `ticked_season`, not a frontend copy of the first year.

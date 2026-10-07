@@ -1281,4 +1281,27 @@ describe('money paid outside the budget', () => {
     expect(csvCells(byName('Avery Testcamper') ?? '')[at]).toBe('1224')
     expect(csvCells(byName('Emma Johnson') ?? '')[at]).toBe('')
   })
+
+  describe('the opened row', () => {
+    const detail = () => document.querySelector('[data-aid-detail]') as HTMLElement
+    const openRow = (camper: string) =>
+      userEvent.click(within(rowOf(camper)).getAllByRole('cell')[1] as HTMLElement)
+
+    const fundLineTexts = () =>
+      [...detail().querySelectorAll('[data-fund-line]')].map((el) => el.textContent)
+
+    it('names the fund and the split, one line per round with outside money', async () => {
+      render(<Grid rows={[split, whole, ROW_LIAM]} />)
+      await openRow('Avery Testcamper')
+      expect(fundLineTexts()).toEqual(['Round 1 · camp award $3,576 · Partner fund $1,224 outside'])
+      await openRow('Blake Testcamper')
+      expect(fundLineTexts()).toEqual(['Round 1 · Full-cost program $3,675 outside'])
+    })
+
+    it('shows no fund line on a row with no outside money', async () => {
+      render(<Grid rows={[split, ROW_LIAM]} />)
+      await openRow('Liam Garcia')
+      expect(fundLineTexts()).toEqual([])
+    })
+  })
 })

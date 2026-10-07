@@ -41,4 +41,23 @@ describe('AidDefinitionNotes', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('1. Decided')
     expect(screen.queryByText(/couldn't load/)).not.toBeInTheDocument()
   })
+
+  it("numbers extra notes after the registry's, and draws them when the registry has none", () => {
+    state = {
+      notes: [
+        { n: 1, text: 'Decided: the award computed or decided for the round.' },
+        { n: 2, text: 'Posted: the amount in CampMinder.' },
+      ],
+      isPending: false,
+      error: null,
+    }
+    const { unmount } = render(
+      <AidDefinitionNotes surface="requests" extra={['Outside: a fund.']} />
+    )
+    expect(screen.getAllByRole('listitem').at(-1)).toHaveTextContent('3. Outside: a fund.')
+    unmount()
+    state = { notes: [], isPending: false, error: null }
+    render(<AidDefinitionNotes surface="requests" extra={['Outside: a fund.']} />)
+    expect(screen.getByRole('listitem')).toHaveTextContent('1. Outside: a fund.')
+  })
 })

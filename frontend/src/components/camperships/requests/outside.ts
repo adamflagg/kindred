@@ -13,6 +13,9 @@ export interface CellOutside {
   readonly whole: boolean
 }
 
+/** The tag word every line ends with; the opened row draws it muted. */
+export const OUTSIDE_WORD = 'outside'
+
 /** Staff words for a round with no label sent (a posted round whose type has left the rules). */
 const FALLBACK_FUND = 'Outside fund'
 
@@ -51,7 +54,7 @@ export function outsideOfPosted(row: ApiAidGridRow): CellOutside | null {
 
 /** "outside" or "$1,224 outside". */
 export function outsideTagWords(cell: CellOutside): string {
-  return cell.whole ? 'outside' : `${formatMoney(cell.amount)} outside`
+  return cell.whole ? OUTSIDE_WORD : `${formatMoney(cell.amount)} ${OUTSIDE_WORD}`
 }
 
 /** What the footer adds up: every shown row's Total-cell outside money. */
@@ -70,7 +73,9 @@ export function fundLines(row: ApiAidGridRow): string[] {
     const campAward =
       decided !== null && toCents(outside) < toCents(decided) ? decided - outside : null
     const camp = campAward === null ? '' : `camp award ${formatMoney(campAward)} · `
-    lines.push(`Round ${String(round.round)} · ${camp}${fund} ${formatMoney(outside)} outside`)
+    lines.push(
+      `Round ${String(round.round)} · ${camp}${fund} ${formatMoney(outside)} ${OUTSIDE_WORD}`
+    )
   }
   return lines
 }
