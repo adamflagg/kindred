@@ -15,6 +15,11 @@ client), else Jan 1 (stored as "calendar"). Without --write nothing is written; 
 aid_arrival_curves is replaced. It is run once for 2026 by the owner's prod agent, and again for a prior year only if
 that year's workbook turns up. It never runs in CD and ships no data; the workbook never enters any repository.
 
+Environment: --write refuses unless POCKETBASE_URL is set, and needs POCKETBASE_URL, POCKETBASE_ADMIN_EMAIL and
+POCKETBASE_ADMIN_PASSWORD. A dry run WITHOUT --deadline also reads the approved deadline from PocketBase (read-only,
+harmless: it prints only that date), so it needs the same variables, else the local dev server. With --deadline a dry
+run touches no PocketBase.
+
 Run it as a module from the repository root (`-m`), as parity_check is.
 """
 
@@ -24,6 +29,7 @@ import argparse
 import asyncio
 import os
 import sys
+import zipfile
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -31,6 +37,7 @@ from pathlib import Path
 from typing import Final
 
 import openpyxl
+from openpyxl.utils.exceptions import InvalidFileException
 
 from api.services.financial_aid_arrival_curves_repository import ArrivalCurveRepository
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
@@ -77,7 +84,10 @@ def _blank(row: Sequence[object]) -> bool:
 
 
 def read_timestamps(path: Path) -> list[datetime]:
-    book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except (OSError, zipfile.BadZipFile, InvalidFileException) as exc:
+        raise WorkbookError("The workbook can't be opened") from exc  # fixed text: an OSError's carries the path
     try:
         if RAW_DATA not in book.sheetnames:
             raise WorkbookError(f'No sheet named "{RAW_DATA}"')

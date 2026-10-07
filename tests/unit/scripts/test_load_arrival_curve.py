@@ -101,7 +101,7 @@ def test_write_upserts_the_curve_as_the_loader(tmp_path: Path, monkeypatch: pyte
     assert (code, curve.year, curve.counted, curve.source, curve.anchor) == (0, 2026, 3, "workbook", date(2026, 2, 4))
 
 
-def test_without_a_deadline_it_reads_the_approved_one_or_stores_a_calendar_curve(
+def test_without_a_deadline_it_stores_a_calendar_curve_when_none_is_approved(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def none(year: int) -> date | None:
@@ -110,6 +110,76 @@ def test_without_a_deadline_it_reads_the_approved_one_or_stores_a_calendar_curve
     monkeypatch.setattr(loader, "approved_deadline", none)
     assert loader.main(["--workbook", str(_workbook(tmp_path, ROWS)), "--year", "2026"]) == 0
     assert capsys.readouterr().out.splitlines()[0] == "2026 arrival curve: aligned on the calendar (from 2026-01-01)"
+
+
+def test_without_a_deadline_it_aligns_on_the_approved_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard."""
+    asked: list[int] = []
+
+    async def approved(year: int) -> date | None:
+        asked.append(year)
+        return date(2026, 2, 4)
+
+    monkeypatch.setattr(loader, "approved_deadline", approved)
+    assert loader.main(["--workbook", str(_workbook(tmp_path, ROWS)), "--year", "2026"]) == 0
+    assert (
+        capsys.readouterr().out.splitlines()[0]
+        == "2026 arrival curve: aligned on the application deadline (2026-02-04)"
+    )
+    assert asked == [2026]
+
+
+def test_a_non_blank_row_with_an_empty_timestamp_stops_the_load(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard. Row 5 has a camper but no Timestamp: skipping it would silently undercount the curve."""
+    saved: list[Any] = []
+    monkeypatch.setattr(loader, "save_curve", lambda curve: saved.append(curve))
+    monkeypatch.setenv("POCKETBASE_URL", "http://pocketbase.invalid:8090")
+    rows = [*ROWS[:3], ["1000003", "Main", "Olivia Chen", None]]
+    code = loader.main(
+        ["--workbook", str(_workbook(tmp_path, rows)), "--year", "2026", "--deadline", "2026-02-04", "--write"]
+    )
+    out = capsys.readouterr()
+    assert (code, saved, out.out) == (2, [], "")
+    assert out.err.strip() == "Raw Data row 5: the Timestamp is not a date and time. Nothing was written."
+    for text in (*NAMES, "Main"):
+        assert text not in out.err
+
+
+def test_a_missing_or_corrupt_workbook_exits_2_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    corrupt = tmp_path / "corrupt.xlsx"
+    corrupt.write_text("not a workbook")
+    for path in (tmp_path / "missing.xlsx", corrupt):
+        assert loader.main(["--workbook", str(path), "--year", "2026", "--deadline", "2026-02-04"]) == 2
+        out = capsys.readouterr()
+        assert out.err.strip() == "The workbook can't be opened. Nothing was written."
+        assert (out.out, str(tmp_path) in out.err) == ("", False)
+
+
+def test_the_camp_day_turns_over_at_nine_am_local(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Regression guard. The loader counts a day exactly as the received-date source does: before 9:00 is still the previous camp day."""
+    rows: list[list[Any]] = [
+        ["1000001", "Main", "Emma Johnson", "2026/01/28 8:59:59 am PST"],
+        ["1000002", "Main", "Liam Garcia", "2026/01/28 9:00:00 am PST"],
+    ]
+    assert (
+        loader.main(["--workbook", str(_workbook(tmp_path, rows)), "--year", "2026", "--deadline", "2026-02-04"]) == 0
+    )
+    assert capsys.readouterr().out.splitlines()[1] == "counted 2 · first 2026-01-27 · last 2026-01-28"
+
+
+def test_two_timestamp_columns_are_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Regression guard."""
+    two = _workbook(tmp_path, ROWS, header=["Timestamp", "Camper", "Timestamp"])
+    assert loader.main(["--workbook", str(two), "--year", "2026", "--deadline", "2026-02-04"]) == 2
+    assert (
+        capsys.readouterr().err.strip() == 'Raw Data row 1 has more than one "Timestamp" header. Nothing was written.'
+    )
 
 
 def test_an_unreadable_timestamp_stops_naming_the_row_number_only(
