@@ -758,7 +758,9 @@ def grid_row(
             accepted=v.accepted,
             pending_approval=_money(v.pending),
             would_change_by=None,  # never emitted since 2026-10-05 (RoundOut)
-            counts_toward_budget=v.counts_toward_budget,
+            # A named full-cost fund round's camp award counts toward the budget (owner 10-06) though the type's own
+            # flag is False: the Requests filters are row membership, so the family must match the budget strip.
+            counts_toward_budget=v.counts_toward_budget or v.extra_outside,
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
             lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
             clawed_back=v.clawed_back,

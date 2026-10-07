@@ -1076,6 +1076,55 @@ async def test_a_shares_only_budget_saved_before_round_one_posts_still_approves_
 
 
 @pytest.mark.asyncio
+async def test_a_total_approved_before_round_one_cannot_become_the_pricing_total_after_it() -> None:
+    """Scan #3039: v2's new total is approved while v1 still prices the season (v2's `awards` is still draft). Round 1
+    posts from v1's total. Approving v2's last draft section would make v2 the pricing version at the new total, though
+    `budget` is not among the sections named: the guard runs on every approval, against the pricing version."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    awards = _minimum(fictional_rules(), "75").awards.model_dump(mode="json")
+    await service.save_section(2031, 2, "awards", awards, actor=FINANCE)
+    await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Feb 1")
+    pricing = await service.latest_approved(2031, PRICING_SECTIONS)
+    assert pricing is not None
+    assert pricing.version == 1
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Mar 1")
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_a_new_version_cannot_branch_from_a_version_carrying_another_total_once_locked() -> None:
+    """Scan #3039: v2 prices the season at 520000 (approved before Round 1 posted); v1 carries 500000. Branching v3 from
+    v1 would make it, all approvals carried, the pricing version at the old total."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Feb 1")
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.new_version(2031, 1, actor=FINANCE)
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_after_round_one_posts_an_unmoved_total_still_approves_and_branches() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    awards = _minimum(fictional_rules(), "75").awards.model_dump(mode="json")
+    saved = await service.save_section(2031, 1, "awards", awards, actor=FINANCE)
+    approved, _ = await service.approve_sections(2031, saved.version.version, ["awards"], actor=FINANCE, note="Mar 1")
+    assert approved.section_status["awards"].state == "approved"
+    branched = await service.new_version(2031, approved.version, actor=FINANCE)
+    assert branched.document.budget.total == Decimal(500000)
+
+
+@pytest.mark.asyncio
 async def test_the_rules_save_never_adds_a_named_award() -> None:
     """Owner 10-06 (c): a named fund comes from Grants > Grantors (slice 3) or, until then, 2027's starting file. A
     section save that adds a decision type is refused: the new key's kind reads as a change to a fixed setting."""

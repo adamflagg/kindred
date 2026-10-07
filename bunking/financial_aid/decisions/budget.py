@@ -247,6 +247,8 @@ def _tally_type(types: _TypeTallies, pool: str, request: PricedRequest, view: Ro
             (None, True, inside, posted_in, ZERO),
             (view.decision_type, False, outside, posted_out, view.extra),
         ):
+            # A type line counts money the type paid: a family the fund paid $0 (grants or the camp award covered
+            # the cost) appears only on the camp line.
             if amount > 0:
                 part = types[(pool, key, counts)]
                 part.amount += amount

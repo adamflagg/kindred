@@ -1132,8 +1132,7 @@ class FinancialAidRulesService:
             if set(fingerprints) != set(named):
                 raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
             _assert_unchanged(current, fingerprints)
-        if "budget" in named:
-            await self._assert_total_unmoved_once_locked(year, current)
+        await self._assert_total_unmoved_once_locked(year, current.document)
         before = await self._pricing_version_safely(year) if self._effects is not None else None
         report = await self.validate_document(current.document)
         at = self._clock()
@@ -1150,13 +1149,15 @@ class FinancialAidRulesService:
             )
         return await self.load(year, current.version), report
 
-    async def _assert_total_unmoved_once_locked(self, year: int, current: RulesVersion) -> None:
-        """Owner 10-06 (b), the approving half: a total saved as a draft before Round 1 posted must not become the
-        season's total after it. With no approved budget yet there is nothing to protect."""
+    async def _assert_total_unmoved_once_locked(self, year: int, document: AidRules) -> None:
+        """Owner 10-06 (b), the one guard for every route a total could take after Round 1 posts: approving any
+        section of a draft (it may complete the sections that make the draft the pricing version) and branching a new
+        version. A document whose budget total differs from the version pricing the season is refused. With no
+        pricing version there is nothing to protect."""
         if not await self._budget_total_locked(year):
             return
-        priced = await self.latest_approved(year, ["budget"])
-        if priced is not None and current.document.budget.total != priced.document.budget.total:
+        pricing = await self.latest_approved(year, PRICING_SECTIONS)
+        if pricing is not None and Decimal(document.budget.total) != Decimal(pricing.document.budget.total):
             raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
 
     async def _pricing_version(self, year: int) -> int:
@@ -1265,6 +1266,7 @@ class FinancialAidRulesService:
         # the later read's revision, let the stale copy through.
         latest = await self.load(year)
         source = latest if from_version == latest.version else await self.load(year, from_version)
+        await self._assert_total_unmoved_once_locked(year, source.document)
         version = latest.version + 1
         body = _body(
             year,
