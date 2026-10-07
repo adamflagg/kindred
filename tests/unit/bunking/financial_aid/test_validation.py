@@ -217,6 +217,12 @@ def test_with_no_program_a_tables_note_borrows_the_pools_label() -> None:
     assert notes["award_tables.weekend_pool.tiers.6"].startswith("Weekends table, tier 6: ")
 
 
+def test_a_key_that_is_both_a_program_and_a_pool_borrows_the_programs_label() -> None:
+    """Pin. The program's label comes before the pool's (plan A12: program, else pool)."""
+    rules = with_lever(_routed_to("quest"), "budget.pools.quest", {"label": "Pool A", "share_pct": "0"})
+    assert _bind_notes(rules)["award_tables.quest.tiers.6"].startswith("Quest table, tier 6: ")
+
+
 def test_notes_come_in_numeric_tier_order() -> None:
     reversed_tiers = {str(t): {"r1_pct": "1"} for t in (6, 5, 4, 3, 2, 1)}
     reversed_tiers["4"] = {"r1_pct": "1"}
