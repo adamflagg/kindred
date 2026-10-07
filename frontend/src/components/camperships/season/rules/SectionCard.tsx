@@ -14,9 +14,9 @@ import {
   CS_PILL,
   CS_SMALL,
 } from '../../kit/csType'
-import { CARD_SPECS } from './rulesCards'
+import { CARD_SPECS, type CardRow } from './rulesCards'
 import { CardRows, ReadOnlyStrip } from './CardRows'
-import { CardTables } from './CardTables'
+import { CardTables, type CellControl } from './CardTables'
 import {
   changeWords,
   issueWords,
@@ -106,6 +106,76 @@ export function SectionCardHead({
   )
 }
 
+/** A card's body (spec §6.2 D–E): the changed line, its lead, its tables, its rows, its read-only strip. The editor draws it with boxes. */
+export function CardBody({
+  section,
+  content,
+  approved,
+  approvedVersion,
+  names,
+  changes,
+  issues,
+  details,
+  dependentsMode = null,
+  grantsHref,
+  rowControl,
+  cellControl,
+}: {
+  section: ApiAidRulesSection
+  content: Record<string, unknown>
+  approved: Record<string, unknown> | null
+  approvedVersion?: number | null | undefined
+  names: RulesNames
+  changes: readonly ApiAidFieldChange[]
+  issues: readonly ApiAidValidationIssue[]
+  details: boolean
+  dependentsMode?: string | null
+  grantsHref?: string | undefined
+  /** In the editor: the box for an editable row, and for an editable table cell. */
+  rowControl?: ((row: CardRow) => ReactNode) | undefined
+  cellControl?: CellControl | undefined
+}) {
+  const spec = CARD_SPECS[section]
+  return (
+    <>
+      {changes.length > 0 && (
+        <p className={`${CS_AMBER_NOTE} mt-1`}>
+          {`Changed since v${String(approvedVersion ?? '')}: ${changes.map((c) => changeWords(c, names)).join(' · ')}`}
+        </p>
+      )}
+      {spec?.lead && (
+        <p className={`${CS_SMALL} mt-1`}>
+          {spec.lead}
+          {section === 'quality_checks' && <DefRef n={6} />}
+        </p>
+      )}
+      <CardTables
+        section={section}
+        content={content}
+        approved={approved}
+        names={names}
+        details={details}
+        issues={issues}
+        dependentsMode={dependentsMode}
+        grantsHref={grantsHref}
+        control={cellControl}
+      />
+      {spec !== undefined && (
+        <CardRows
+          spec={spec}
+          content={content}
+          approved={approved}
+          names={names}
+          control={rowControl}
+        />
+      )}
+      {spec !== undefined && spec.readOnly.length > 0 && (
+        <ReadOnlyStrip items={spec.readOnly} content={content} names={names} />
+      )}
+    </>
+  )
+}
+
 export function SectionCard({
   section,
   content,
@@ -138,9 +208,8 @@ export function SectionCard({
   children?: ReactNode
 }) {
   const [details, setDetails] = useState(false)
-  const spec = CARD_SPECS[section]
   const extra =
-    section === 'equity' ? (
+    section === 'equity' && children === undefined ? (
       <button
         type="button"
         className={`${CS_SMALL} text-primary font-medium`}
@@ -161,35 +230,18 @@ export function SectionCard({
         extra={extra}
       />
       {children ?? (
-        <>
-          {changes.length > 0 && (
-            <p className={`${CS_AMBER_NOTE} mt-1`}>
-              {`Changed since v${String(approvedVersion ?? '')}: ${changes.map((c) => changeWords(c, names)).join(' · ')}`}
-            </p>
-          )}
-          {spec?.lead && (
-            <p className={`${CS_SMALL} mt-1`}>
-              {spec.lead}
-              {section === 'quality_checks' && <DefRef n={6} />}
-            </p>
-          )}
-          <CardTables
-            section={section}
-            content={content}
-            approved={approved}
-            names={names}
-            details={details}
-            issues={issues}
-            dependentsMode={dependentsMode}
-            grantsHref={grantsHref}
-          />
-          {spec !== undefined && (
-            <CardRows spec={spec} content={content} approved={approved} names={names} />
-          )}
-          {spec !== undefined && spec.readOnly.length > 0 && (
-            <ReadOnlyStrip items={spec.readOnly} content={content} names={names} />
-          )}
-        </>
+        <CardBody
+          section={section}
+          content={content}
+          approved={approved}
+          approvedVersion={approvedVersion}
+          names={names}
+          changes={changes}
+          issues={issues}
+          details={details}
+          dependentsMode={dependentsMode}
+          grantsHref={grantsHref}
+        />
       )}
     </section>
   )

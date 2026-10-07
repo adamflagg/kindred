@@ -13,6 +13,7 @@ import type {
   ApiAidApprovedRules,
   ApiAidFieldChange,
   ApiAidRulesDocument,
+  ApiAidProgramProfile,
   ApiAidRulesDraft,
   ApiAidRulesSection,
   ApiAidValidationIssue,
@@ -51,8 +52,9 @@ import {
   type RulesNames,
   type StatusWords,
 } from './rulesModel'
+import type { EditContext } from './sectionEdit'
 import { RulesSectionEditor } from './RulesSectionEditor'
-import { SectionCard } from './SectionCard'
+import { CardBody, SectionCard } from './SectionCard'
 import { TierGridCard, type GridPart } from './TierGridCard'
 
 const PATH = '/aid/season/rules'
@@ -95,6 +97,40 @@ function fromVersion(
 /** The season's session names, for the rules' session ids (#15); undefined until they load. */
 function useSessionNames() {
   return useAidSessionNames(useYear())
+}
+
+/** What the editor's lifted boxes offer (spec §6.2 F), read from the draft and the season's session names. */
+function editContext(
+  document: ApiAidRulesDraft['document'],
+  sessionNames: ReadonlyMap<number, string> | undefined
+): EditContext {
+  const programs = Object.entries(document.programs as Record<string, ApiAidProgramProfile>)
+  const claims = (program: ApiAidProgramProfile): number[] =>
+    (program.session_cm_ids ?? []).map(Number)
+  const ids = new Set([
+    ...(sessionNames?.keys() ?? []),
+    ...programs.flatMap(([, program]) => claims(program)),
+  ])
+  return {
+    classes: Object.keys(document.equity.weights ?? {}),
+    pools: Object.entries((document.budget.pools ?? {}) as Record<string, { label: string }>).map(
+      ([key, pool]) => ({
+        key,
+        label: pool.label,
+      })
+    ),
+    sessions: [...ids]
+      .sort((a, b) => a - b)
+      .map((id) => ({ id, name: sessionNames?.get(id) ?? `Session ${String(id)}` })),
+    // Open to aid, with a class (the mock's OFFSETTABLE); a program already offset stays offered so it can be unchecked.
+    programs: programs
+      .filter(([key, program]) => {
+        if ((document.grants.offset_programs ?? []).includes(key)) return true
+        return program.open_to_aid === true && program.equity_class !== null
+      })
+      .map(([key, program]) => ({ key, label: program.label })),
+    claimed: new Set(programs.flatMap(([, program]) => claims(program))),
+  }
 }
 
 /** A season with no rules: finance can start it from last season's (§7.5), every section a draft. */
@@ -334,6 +370,26 @@ function ChaptersBody({
         section={section}
         draft={draft}
         names={{ ...names, section }}
+        context={editContext(draft.document, sessions)}
+        renderBody={
+          isGridPart(section)
+            ? undefined
+            : ({ content, control, cell }) => (
+                <CardBody
+                  section={section}
+                  content={content}
+                  approved={approvedContent(section)}
+                  names={{ ...names, section }}
+                  changes={[]}
+                  issues={shownOf(section)?.issues ?? []}
+                  details={false}
+                  dependentsMode={dependentsMode()}
+                  grantsHref={grantsHref}
+                  rowControl={control}
+                  cellControl={cell}
+                />
+              )
+        }
         onDone={(saved) => {
           setEditing(null)
           if (saved !== null) {

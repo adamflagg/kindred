@@ -10,18 +10,44 @@ import type {
   ApiAidRulesSection,
   ApiAidSectionSaveIn,
 } from '../../../../types/api-types'
+import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import { AMBER_NOTE, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_LABEL, CS_SMALL } from '../../kit/csType'
+import type { CellControl } from './CardTables'
 import { savePrecondition } from './precondition'
+import { RuleControl } from './RuleControl'
+import type { CardRow } from './rulesCards'
 import { sectionContent } from './rulesDraft'
-import { SECTION_TITLES, changeWords, type RulesNames } from './rulesModel'
-import { editKey, fieldName, refusalWords, sectionChanges, touches } from './sectionEdit'
-import { SectionEditor } from './SectionEditor'
+import { SECTION_TITLES, changeWords, formatSetting, type RulesNames } from './rulesModel'
+import {
+  editKey,
+  fieldName,
+  fieldSpec,
+  fixFirstWords,
+  prepareContent,
+  refusalWords,
+  sectionChanges,
+  touches,
+  valueAt,
+  type EditContext,
+} from './sectionEdit'
+import { SectionView } from './SectionView'
+import { useSectionDraft } from './useSectionDraft'
 
 interface Opened {
   /** The draft as read when the editor opened (or when the person put their edit on a newer one). */
   readonly draft: ApiAidRulesDraft
   readonly content: Record<string, unknown>
 }
+
+/** What a card's body draws while it is edited: the section as typed so far, and the box for a row or a table cell. */
+export interface EditorBody {
+  readonly content: Record<string, unknown>
+  readonly control: (row: CardRow) => ReactNode
+  readonly cell: CellControl
+}
+
+const NO_CONTENT: Record<string, unknown> = {}
 
 /** Why nothing was saved: someone else's change, found by the check before sending or by a 409. */
 type Refusal =
@@ -46,6 +72,8 @@ export function RulesSectionEditor({
   section,
   draft,
   names,
+  context,
+  renderBody,
   onDone,
 }: {
   section: ApiAidRulesSection
@@ -53,6 +81,10 @@ export function RulesSectionEditor({
   draft: ApiAidRulesDraft
   /** The rules' own names, as the read view has them (#15): a box still keeps and sends the key. */
   names?: RulesNames | undefined
+  /** What the lifted settings' boxes offer (classes, pools, sessions, programs); without it they stay as text. */
+  context?: EditContext | undefined
+  /** The card's own body with its boxes (spec §6.2 F). Without it the section's settings list, each with its box. */
+  renderBody?: ((body: EditorBody) => ReactNode) | undefined
   /** The saved draft, or null when cancelled. */
   onDone: (saved: ApiAidRulesDraft | null) => void
 }) {
@@ -64,6 +96,18 @@ export function RulesSectionEditor({
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const status = draft.sections.find((s) => s.section === section)?.status.state ?? 'draft'
+  const openedContent = opened?.content ?? NO_CONTENT
+  const specOf = useCallback(
+    (path: readonly string[]) =>
+      fieldSpec(path, valueAt(openedContent, path), openedContent, context),
+    [openedContent, context]
+  )
+  const draftState = useSectionDraft(openedContent, specOf)
+  const saving = save.isPending || checking
+  // Esc is Cancel, as in the household editors: nothing is left behind, and a running save finishes.
+  useOverlayEscape(opened !== null, () => {
+    if (!saving) onDone(null)
+  })
 
   const open = useCallback(() => {
     void fetchFresh().then(
@@ -169,7 +213,7 @@ export function RulesSectionEditor({
         <p key="in-use" className="text-muted-foreground text-xs">
           {status === 'locked'
             ? 'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
-            : 'Approved: saving may start a new version, and the approved rules in use stay as they are until it is approved.'}
+            : 'In effect: saving may start a new version, and the version in effect stays as it is until it is approved.'}
         </p>
       )
     }
@@ -220,19 +264,79 @@ export function RulesSectionEditor({
     return notes.length === 0 ? null : <div className="space-y-1">{notes}</div>
   }
 
+  /** The box for one setting: its typed value, "was ‹old›" once changed, and its problem; plain words where nothing can be typed. */
+  const controlAt = (path: readonly string[]): ReactNode => {
+    const value = valueAt(opened.content, path)
+    const spec = specOf(path)
+    if (spec === null) return <span>{formatSetting(value, path, names)}</span>
+    const key = editKey(path)
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        <RuleControl
+          path={path}
+          value={value}
+          spec={spec}
+          raw={draftState.rawOf(path, value, spec)}
+          problem={draftState.applied.problems.get(key) ?? null}
+          onChange={(raw) => draftState.set(path, raw)}
+        />
+        {draftState.changedKeys.has(key) && (
+          <span className={CS_AMBER_NOTE}>
+            {typeof value === 'boolean'
+              ? value
+                ? 'was checked'
+                : 'was unchecked'
+              : `was ${formatSetting(value, path, names)}`}
+          </span>
+        )}
+      </span>
+    )
+  }
+  const body: EditorBody = {
+    content: draftState.applied.content,
+    control: (row) => controlAt(row.path),
+    cell: controlAt,
+  }
+  const blocked = draftState.applied.problems.size > 0
+  const nothing = draftState.applied.changed.length === 0
   return (
-    <SectionEditor
-      opened={opened.content}
-      names={names}
-      heading={`Editing ${SECTION_TITLES[section]} in the rules draft (v${String(opened.draft.version)})`}
-      banner={banner}
-      saving={save.isPending || checking}
-      // Saving stays off while a refusal is open: the person looks at what moved first.
-      canSave={refusal === null}
-      error={error}
-      onSave={(content) => void onSave(content)}
-      onCancel={() => onDone(null)}
-    />
+    <div className="mt-1.5 space-y-2" data-testid="section-editor">
+      <div className={CS_LABEL}>
+        {`Editing ${SECTION_TITLES[section]} in the rules draft (v${String(opened.draft.version)})`}
+      </div>
+      {banner(draftState.applied.changed)}
+      {renderBody !== undefined ? (
+        renderBody(body)
+      ) : (
+        <SectionView content={body.content} renderValue={(path) => controlAt(path)} names={names} />
+      )}
+      {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={CS_BTN}
+          // Saving stays off while a refusal is open: the person looks at what moved first.
+          disabled={saving || refusal !== null || blocked || nothing}
+          onClick={() =>
+            void onSave(prepareContent(section, draftState.applied.content, opened.draft.document))
+          }
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" className={CS_BTN2} disabled={saving} onClick={() => onDone(null)}>
+          Cancel
+        </button>
+        <span className={CS_SMALL}>Esc cancels</span>
+        {blocked && (
+          <span className={CS_AMBER_NOTE}>{`Fix first: ${fixFirstWords(draftState.applied)}`}</span>
+        )}
+        {draftState.applied.gone.size > 0 && (
+          <button type="button" className={CS_BTN2} onClick={draftState.dropGone}>
+            Drop What Has Gone
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

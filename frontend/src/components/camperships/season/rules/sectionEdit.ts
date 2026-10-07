@@ -13,6 +13,8 @@ import type {
   ApiAidFieldChange,
   ApiAidProgramProfile,
   ApiAidRulesDocument,
+  ApiAidRulesDraft,
+  ApiAidRulesSection,
 } from '../../../../types/api-types'
 import { keyWords, labelOf, unitOf, type SettingUnit } from './rulesModel'
 
@@ -163,7 +165,11 @@ const MILESTONES: ReadonlySet<string> = new Set([
 ])
 
 /** The settings spec §6.2 F lifts out of "names, keys, references, dates and lists stay as they are", with the editor's context. */
-function liftedSpec(path: readonly string[], context: EditContext): FieldSpec | null {
+function liftedSpec(
+  path: readonly string[],
+  value: unknown,
+  context: EditContext
+): FieldSpec | null {
   const key = path.at(-1) ?? ''
   if (path.length === 2 && key === 'equity_class') {
     return {
@@ -184,7 +190,13 @@ function liftedSpec(path: readonly string[], context: EditContext): FieldSpec | 
     }
   }
   if (path.length === 2 && key === 'session_cm_ids') {
-    return { kind: 'sessions', options: context.sessions, claimed: context.claimed }
+    // `claimed` counts every program's sessions; this program's own are never "another program's".
+    const own = new Set(Array.isArray(value) ? value.map(Number) : [])
+    return {
+      kind: 'sessions',
+      options: context.sessions,
+      claimed: new Set([...context.claimed].filter((id) => !own.has(id))),
+    }
   }
   if (path.length === 1 && key === 'offset_programs') {
     return { kind: 'programs', options: context.programs }
@@ -245,7 +257,7 @@ export function fieldSpec(
 ): FieldSpec | null {
   const key = path.at(-1) ?? ''
   if (context !== undefined) {
-    const lifted = liftedSpec(path, context)
+    const lifted = liftedSpec(path, value, context)
     if (lifted !== null) return lifted
   }
   // The server refuses an extra amount on any decision type but full_cost: no box to type one in.
@@ -571,4 +583,58 @@ export function refusalWords(message: string): string | null {
     return path.length === 0 ? reason : `${fieldName(path)}: ${reason}`
   })
   return `The rules draft refused this change: ${parts.join('; ')}.`
+}
+
+/** The boxes that can't be read, in one line: "‹label› (‹reason›)", or the reason alone for a setting that is gone. */
+export function fixFirstWords(applied: Applied): string {
+  return [...applied.problems]
+    .map(([key, reason]) =>
+      applied.gone.has(key) ? reason : `${fieldName(pathOf(key))} (${reason})`
+    )
+    .join('; ')
+}
+
+const record = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {})
+
+/** What a section save sends beyond the boxes (spec §6.2 F, §9.9): the server's routing, derived and full forms. */
+export function prepareContent(
+  section: ApiAidRulesSection,
+  content: Record<string, unknown>,
+  document: ApiAidRulesDraft['document']
+): Record<string, unknown> {
+  if (section === 'programs') {
+    return Object.fromEntries(
+      Object.entries(content).map(([key, value]) => {
+        const program = Object.fromEntries(
+          Object.entries(record(value)).filter(([field]) => field !== 'r1_table')
+        )
+        return [key, { ...program, table_from_equity_class: true }]
+      })
+    )
+  }
+  if (section === 'round2') {
+    const allByClass = Object.values(record(document.programs)).every(
+      (p) => record(p)['table_from_equity_class'] === true
+    )
+    return allByClass ? { ...content, program_tables: {} } : content
+  }
+  if (section === 'income') {
+    const weights = Object.fromEntries(
+      Object.entries(record(content['weights'])).filter(([field]) => field !== 'current_year')
+    )
+    return { ...content, weights }
+  }
+  if (section === 'equity') {
+    const keys = (Array.isArray(content['criteria']) ? content['criteria'] : []).map((c) =>
+      String(record(c)['key'])
+    )
+    const weights = Object.fromEntries(
+      Object.entries(record(content['weights'])).map(([cls, row]) => [
+        cls,
+        { ...Object.fromEntries(keys.map((k) => [k, '0'])), ...record(row) },
+      ])
+    )
+    return { ...content, weights }
+  }
+  return content
 }

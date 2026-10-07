@@ -218,8 +218,9 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     const editor = await screen.findByTestId('section-editor')
     expect(within(editor).queryByRole('textbox')).toBeNull()
     expect(within(editor).getAllByRole('combobox').length).toBeGreaterThan(0)
-    // A list reads as words, sessions named as the read view names them (#15; no name here).
-    expect(within(editor).getByText('Session 1000101, Session 1000102')).toBeInTheDocument()
+    // Sessions are chips now (spec §6.2 E.8; Task 47), named as the read view names them (#15; no name here).
+    expect(within(editor).getByText('Session 1000101')).toBeInTheDocument()
+    expect(within(editor).getByText('Session 1000102')).toBeInTheDocument()
   })
 
   it("reads the rules' own names in the editor, as the read view does (#15)", async () => {
@@ -928,5 +929,86 @@ describe('round 3: what belongs to a season stays with it', () => {
     await screen.findByRole('checkbox', { name: 'Round 1 award table' })
     expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
     expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
+  })
+})
+
+describe('editing a card in place (spec §6.2 F; Task 48)', () => {
+  // The plan's `renderRules`, `saveSpy` and `FINANCE` are this file's `renderAt`, `calls` and the all-true
+  // permissions mock above; its saved body is `calls.at(-1).vars.body`.
+  const savedContent = () =>
+    (calls.at(-1)?.vars as { body: { content: Record<string, Record<string, unknown>> } }).body
+      .content
+
+  it('edits a card in place and saves the programs with table_from_equity_class and no r1_table', async () => {
+    renderAt('/aid/season/rules?open=5')
+    await userEvent.click(
+      within(screen.getByTestId('card-head-programs')).getByRole('button', { name: 'Edit…' })
+    )
+    // The title's words are Task 19's (see the skipped test below); the heading's shape is this task's.
+    expect(await screen.findByText(/^Editing .+ in the rules draft \(v\d+\)$/)).toBeInTheDocument()
+    await userEvent.selectOptions(
+      screen.getAllByRole('combobox', { name: /Budget pool/ })[0]!,
+      'pool_b'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const content = savedContent()
+    expect(content['summer']?.['budget_pool']).toBe('pool_b')
+    expect(
+      Object.values(content).every(
+        (p) => p['table_from_equity_class'] === true && !('r1_table' in p)
+      )
+    ).toBe(true)
+  })
+
+  // UNSKIP after Task 19 (PR 5): SECTION_TITLES.programs reads "Programs and their sessions".
+  it.skip('heads the programs editor with the card title Task 19 gives it', async () => {
+    renderAt('/aid/season/rules?open=5')
+    await userEvent.click(
+      within(screen.getByTestId('card-head-programs')).getByRole('button', { name: 'Edit…' })
+    )
+    expect(
+      await screen.findByText(/^Editing Programs and their sessions in the rules draft \(v\d+\)$/)
+    ).toBeInTheDocument()
+  })
+
+  it('greys a criterion row live when Enabled is unchecked, and keeps its weights', async () => {
+    const base = rulesDraft()
+    const equity = {
+      criteria: [
+        {
+          key: 'need',
+          label: 'Need',
+          enabled: true,
+          source: 'household' as const,
+          field: 'need',
+          match: 'equals_any' as const,
+          values: ['yes'],
+        },
+      ],
+      weights: { camp: { need: '0.5' } },
+      aggregation: 'ceil' as const,
+      max_shift: null,
+    }
+    const withEquity = { ...base, document: { ...base.document, equity } }
+    draft = { data: withEquity, isLoading: false, error: null }
+    server = [withEquity]
+    renderAt('/aid/season/rules?open=1')
+    await userEvent.click(
+      within(screen.getByTestId('card-head-equity')).getByRole('button', { name: 'Edit…' })
+    )
+    // Plan-test fix: rulesModel names the key `enabled` "On" (as the Checks table does), so the box is
+    // "Criteria › 1 › On", not ".. Enabled"; the column head says Enabled.
+    const enabled = (await screen.findAllByRole('checkbox', { name: /^Criteria › 1 › On$/ }))[0]!
+    await userEvent.click(enabled)
+    expect(enabled.closest('tr')).toHaveClass('opacity-50')
+    expect(within(enabled.closest('tr')!).getAllByRole('textbox').length).toBeGreaterThan(0)
+    expect(screen.getByText('was checked')).toBeInTheDocument()
+  })
+
+  it('disables every Edit… while the Approve panel is open', async () => {
+    renderAt('/aid/season/rules?open=1')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
   })
 })

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { contentOf } from './rulesFixtures'
+import { RULES_DOCUMENT, contentOf } from './rulesFixtures'
 import {
   applyEdits,
   editKey,
   fieldName,
   fieldSpec,
   parseSetting,
+  prepareContent,
   refusalWords,
   sectionChanges,
   setAt,
@@ -378,5 +379,66 @@ describe('the lifted settings (spec §6.2 F)', () => {
   it('never lifts a name, a key, or a legacy table route', () => {
     expect(fieldSpec(['summer', 'r1_table'], 'camp', {}, CONTEXT)).toBeNull()
     expect(fieldSpec(['summer', 'label'], 'Summer', {}, CONTEXT)).toBeNull()
+  })
+})
+
+describe('what each save writes (spec §6.2 F, §9.9)', () => {
+  it('the programs save routes every program by class and drops r1_table', () => {
+    const out = prepareContent(
+      'programs',
+      {
+        summer: {
+          label: 'Summer',
+          r1_table: 'general',
+          equity_class: 'camp',
+          table_from_equity_class: false,
+        },
+      },
+      RULES_DOCUMENT
+    )
+    expect(out).toEqual({
+      summer: { label: 'Summer', equity_class: 'camp', table_from_equity_class: true },
+    })
+  })
+
+  it('the appeal caps save writes an empty program map once every program is by class', () => {
+    const document = {
+      ...RULES_DOCUMENT,
+      programs: {
+        summer: { ...RULES_DOCUMENT.programs['summer']!, table_from_equity_class: true },
+      },
+    }
+    expect(
+      prepareContent(
+        'round2',
+        { ...RULES_DOCUMENT.round2, program_tables: { summer: 'general' } },
+        document
+      )['program_tables']
+    ).toEqual({})
+    expect(
+      prepareContent(
+        'round2',
+        { ...RULES_DOCUMENT.round2, program_tables: { summer: 'general' } },
+        RULES_DOCUMENT
+      )['program_tables']
+    ).toEqual({ summer: 'general' })
+  })
+
+  it('the income save sends no current-year weight: the server derives it', () => {
+    const out = prepareContent(
+      'income',
+      { weights: { prior_year: '0.6', current_year: '0.3' }, basis: 'gross' },
+      RULES_DOCUMENT
+    )
+    expect(out['weights']).toEqual({ prior_year: '0.6' })
+  })
+
+  it('the equity save sends the full weight matrix, zeros included', () => {
+    const out = prepareContent(
+      'equity',
+      { criteria: [{ key: 'a' }, { key: 'b' }], weights: { camp: { a: '0.5' }, family: {} } },
+      RULES_DOCUMENT
+    )
+    expect(out['weights']).toEqual({ camp: { a: '0.5', b: '0' }, family: { a: '0', b: '0' } })
   })
 })
