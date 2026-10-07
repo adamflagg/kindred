@@ -19,26 +19,43 @@ import {
 } from './historyFixtures'
 import { HistoryTab } from './HistoryTab'
 
-let read: {
-  data: ApiAidHistoryPage | undefined
+let pages: {
+  data: { pages: ApiAidHistoryPage[] } | undefined
   isLoading: boolean
-  isFetching?: boolean
-  isPlaceholderData?: boolean
   error: Error | null
+  isPlaceholderData: boolean
+  hasNextPage: boolean
+  isFetchingNextPage: boolean
+  fetchNextPage: ReturnType<typeof vi.fn>
 }
-let queries: Array<Readonly<Record<string, string>>>
+let pageQueries: Array<Readonly<Record<string, string>>>
+vi.mock('../../../hooks/camperships/useAidHistoryPages', () => ({
+  useAidHistoryPages: (query: Readonly<Record<string, string>>) => {
+    pageQueries.push(query)
+    return pages
+  },
+}))
 /** The one opened line a test reads; every other line is still loading. */
 let detail: { id: string; data: ApiAidHistoryOperationDetail } | null = null
 vi.mock('../../../hooks/camperships/useAidHistory', () => ({
-  useAidHistory: (query: Readonly<Record<string, string>>) => {
-    queries.push(query)
-    return read
-  },
   useAidHistoryOperation: (id: string) =>
     detail !== null && detail.id === id
       ? { data: detail.data, isLoading: false, error: null, refetch: vi.fn() }
       : { data: undefined, isLoading: true, error: null, refetch: vi.fn() },
 }))
+
+const opsPage = (n: number, count: number, total = 112, from = 0): ApiAidHistoryPage => ({
+  ...PAGE,
+  page: n,
+  per_page: 50,
+  total,
+  operations: Array.from({ length: count }, (_, i) => ({
+    ...PAGE.operations[0]!,
+    operation_id: `op${String(from + i).padStart(13, '0')}`,
+  })),
+})
+/** One page of a read, as the older tests put it (a single page of the log). */
+const only = (page: ApiAidHistoryPage) => ({ pages: [page] })
 let granted: string[] = []
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -74,8 +91,8 @@ function Jump({ to, testId = 'jump' }: { to: string; testId?: string }) {
   )
 }
 
-function renderAt(path = '/aid/season/history?year=2027') {
-  return render(
+function tree(path: string) {
+  return (
     <MemoryRouter initialEntries={[path]}>
       <HistoryTab />
       <Where />
@@ -85,15 +102,29 @@ function renderAt(path = '/aid/season/history?year=2027') {
   )
 }
 
+function renderAt(path = '/aid/season/history?year=2027') {
+  const view = render(tree(path))
+  // Re-renders in place: the same MemoryRouter instance keeps its current URL (initialEntries is read once).
+  return { ...view, refresh: () => view.rerender(tree(path)) }
+}
+
 const where = () => new URLSearchParams(screen.getByTestId('where').textContent)
 const replaced = () => expect(screen.getByTestId('where')).toHaveAttribute('data-nav', 'REPLACE')
-const lastQuery = () => queries.at(-1)
+const lastQuery = () => pageQueries.at(-1)
 
 beforeEach(() => {
   granted = REGISTRAR
-  queries = []
+  pageQueries = []
   detail = null
-  read = { data: PAGE, isLoading: false, error: null }
+  pages = {
+    data: only(PAGE),
+    isLoading: false,
+    error: null,
+    isPlaceholderData: false,
+    hasNextPage: true,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+  }
   // A pasted as-of must not be after "today" (kit/asOf.ts parseAsOf), so today is fixed.
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
@@ -101,10 +132,9 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('HistoryTab', () => {
-  it("shows the season's log with its count line and the page's own line", () => {
+  it("shows the season's log, its count in the box footer (the purpose line is gone, owner 10-06)", () => {
     renderAt()
-    expect(screen.getByText('Who changed what, and when. Append-only.')).toBeInTheDocument()
-    expect(screen.getByText('1–3 of 3 operations')).toBeInTheDocument()
+    expect(screen.getByTestId('history-footer')).toHaveTextContent('3 operations')
     expect(document.querySelectorAll('[data-operation]')).toHaveLength(3)
     expect(lastQuery()).toEqual({ per_page: '50' })
   })
@@ -118,7 +148,7 @@ describe('HistoryTab', () => {
 
   it('shows finance the Rules chip and the Scenarios note', () => {
     granted = FINANCE
-    read = { data: FINANCE_PAGE, isLoading: false, error: null }
+    pages.data = only(FINANCE_PAGE)
     renderAt()
     expect(screen.getByRole('button', { name: 'Rules 3' })).toBeInTheDocument()
     expect(screen.getByText(/The scenario trail stays in Scenarios/)).toBeInTheDocument()
@@ -129,7 +159,7 @@ describe('HistoryTab', () => {
     expect(screen.getByRole('button', { name: 'Holds 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Grants 0' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All 3' })).toBeInTheDocument()
-    read = { data: undefined, isLoading: true, error: null }
+    pages = { ...pages, data: undefined, isLoading: true }
     renderAt()
     expect(screen.getAllByRole('button', { name: 'Holds —' })).toHaveLength(1)
   })
@@ -148,7 +178,7 @@ describe('HistoryTab', () => {
 
   it('filters by person from the people the read lists', async () => {
     granted = FINANCE
-    read = { data: FINANCE_PAGE, isLoading: false, error: null }
+    pages.data = only(FINANCE_PAGE)
     renderAt()
     const person = screen.getByRole('combobox', { name: 'Person' })
     expect(
@@ -195,7 +225,7 @@ describe('HistoryTab', () => {
       fireEvent.change(screen.getByLabelText('From'), { target: { value: day } })
       expect(where().has('since')).toBe(false)
     }
-    expect(queries.every((q) => !('since' in q))).toBe(true)
+    expect(pageQueries.every((q) => !('since' in q))).toBe(true)
     fireEvent.blur(screen.getByLabelText('From'))
     expect(where().get('since')).toBe('2027-04-15')
   })
@@ -208,7 +238,7 @@ describe('HistoryTab', () => {
     }
     fireEvent.blur(screen.getByLabelText('From'))
     expect(where().has('since')).toBe(false)
-    expect(queries.every((q) => !('since' in q))).toBe(true)
+    expect(pageQueries.every((q) => !('since' in q))).toBe(true)
     // A day the box can't keep goes back to the URL's.
     expect(screen.getByLabelText('From')).toHaveValue('')
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2027-03-01' } })
@@ -238,10 +268,10 @@ describe('HistoryTab', () => {
     renderAt()
     const box = screen.getByRole('searchbox', { name: 'Search' })
     expect(box).toHaveAttribute('placeholder', 'Reason, person or record id')
-    const before = queries.length
+    const before = pageQueries.length
     await userEvent.type(box, 'phone')
     expect(where().has('q')).toBe(false)
-    expect(queries.slice(before).every((q) => !('q' in q))).toBe(true)
+    expect(pageQueries.slice(before).every((q) => !('q' in q))).toBe(true)
     await userEvent.type(box, '{Enter}')
     expect(where().get('q')).toBe('phone')
     expect(lastQuery()).toMatchObject({ q: 'phone' })
@@ -261,7 +291,8 @@ describe('HistoryTab', () => {
   it('writes the search on leaving the box too', async () => {
     renderAt()
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'emailed')
-    await userEvent.click(screen.getByText('Who changed what, and when. Append-only.'))
+    // Leaving the box: any click elsewhere (the purpose line it used is gone).
+    await userEvent.click(screen.getByTestId('where'))
     expect(where().get('q')).toBe('emailed')
   })
 
@@ -286,27 +317,8 @@ describe('HistoryTab', () => {
     expect(lastQuery()).toEqual({ per_page: '50' })
   })
 
-  it('pages newer and older through the URL', async () => {
-    read = { data: { ...PAGE, total: 120 }, isLoading: false, error: null }
-    renderAt()
-    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Newer' })).toBeDisabled()
-    await userEvent.click(screen.getByRole('button', { name: 'Older' }))
-    replaced()
-    expect(where().get('page')).toBe('2')
-    expect(lastQuery()).toMatchObject({ page: '2' })
-  })
-
-  it('says when a page is past the end, and Newer goes to the last page', async () => {
-    read = { data: { ...PAGE, page: 9, total: 60, operations: [] }, isLoading: false, error: null }
-    renderAt('/aid/season/history?page=9')
-    expect(screen.getByText('Nothing on page 9: 60 operations match.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Newer' }))
-    expect(where().get('page')).toBe('2')
-  })
-
   it('says when nothing matches, keeping the filters on screen', () => {
-    read = { data: { ...PAGE, total: 0, operations: [] }, isLoading: false, error: null }
+    pages.data = only({ ...PAGE, total: 0, operations: [] })
     renderAt('/aid/season/history?kind=grants')
     expect(screen.getByText('No operations match.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Grants/ })).toBeInTheDocument()
@@ -314,7 +326,7 @@ describe('HistoryTab', () => {
   })
 
   it('keeps the rows on a failed refetch (owner Group 5)', () => {
-    read = { data: PAGE, isLoading: false, error: new Error('refetch failed') }
+    pages.error = new Error('refetch failed')
     renderAt()
     expect(document.querySelectorAll('[data-operation]')).toHaveLength(3)
   })
@@ -325,18 +337,14 @@ describe('HistoryTab', () => {
   })
 
   it('keeps the rows on screen while the next page loads', () => {
-    read = { data: PAGE, isLoading: false, isFetching: true, error: null }
+    pages.isFetchingNextPage = true
     renderAt('/aid/season/history?page=2')
     expect(document.querySelectorAll('[data-operation]')).toHaveLength(3)
     expect(screen.queryByText(/Loading/)).toBeNull()
   })
 
   it("reads a round's first Posted tick to the registrar without a rules part (H6)", () => {
-    read = {
-      data: { ...PAGE, total: 1, operations: [OP_POSTED_LOCKING_REGISTRAR] },
-      isLoading: false,
-      error: null,
-    }
+    pages.data = only({ ...PAGE, total: 1, operations: [OP_POSTED_LOCKING_REGISTRAR] })
     renderAt()
     expect(
       screen.getByText('Posted · 380 requests · 352 families · $539,600 locked')
@@ -345,22 +353,22 @@ describe('HistoryTab', () => {
   })
 
   it('says so when the first read fails', () => {
-    read = { data: undefined, isLoading: false, error: new Error('down') }
+    pages = { ...pages, data: undefined, error: new Error('down') }
     renderAt()
     expect(screen.getByText(/Failed to load History data/)).toBeInTheDocument()
     expect(document.querySelectorAll('[data-operation]')).toHaveLength(0)
   })
 
   it('says so while the first read loads', () => {
-    read = { data: undefined, isLoading: true, error: null }
+    pages = { ...pages, data: undefined, isLoading: true }
     renderAt()
     expect(screen.getByText(/Loading History data/)).toBeInTheDocument()
   })
 
   it('marks the rows stale while the next page or filter loads', () => {
-    read = { data: PAGE, isLoading: false, isFetching: true, isPlaceholderData: true, error: null }
+    pages.isPlaceholderData = true
     renderAt()
-    expect(screen.getByText('1–3 of 3 operations · Updating…')).toBeInTheDocument()
+    expect(screen.getByTestId('history-footer')).toHaveTextContent('Updating…')
     expect(document.querySelector('[data-operation]')?.closest('[data-stale]')).not.toBeNull()
     expect(document.querySelectorAll('[data-operation]')).toHaveLength(3)
   })
@@ -406,7 +414,7 @@ describe('HistoryTab', () => {
   })
 
   it('does not mark a page stale just because a read is in flight', () => {
-    read = { data: PAGE, isLoading: false, isFetching: true, isPlaceholderData: false, error: null }
+    pages.isFetchingNextPage = true
     renderAt()
     expect(screen.queryByText(/Updating/)).toBeNull()
     expect(document.querySelector('[data-stale]')).toBeNull()
@@ -418,5 +426,149 @@ describe('HistoryTab', () => {
     fireEvent.click(screen.getByTestId('jump-q'))
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBe(box)
     expect(box).toHaveValue('emailed')
+  })
+})
+
+describe('History box (spec §7.2 C)', () => {
+  it('drops the purpose line (owner 10-06)', () => {
+    renderAt('/aid/season/history')
+    expect(screen.queryByText('Who changed what, and when. Append-only.')).toBeNull()
+  })
+
+  it('shows 50 rows, a "Scroll for 51–100" row, and the footer words', () => {
+    pages.data = { pages: [opsPage(1, 50)] }
+    renderAt('/aid/season/history')
+    expect(document.querySelectorAll('[data-operation]')).toHaveLength(50)
+    expect(screen.getByText('Scroll for 51–100')).toBeInTheDocument()
+    const footer = screen.getByTestId('history-footer')
+    expect(footer).toHaveTextContent('112 operations')
+    expect(footer).toHaveTextContent('Page 1 of 3')
+    expect(footer).toHaveTextContent('· 1–50 on screen; scroll for more')
+    expect(within(footer).getByRole('button', { name: 'Newer' })).toBeDisabled()
+    expect(within(footer).getByRole('button', { name: '1' })).toHaveClass('bg-primary')
+  })
+
+  it('loads the next page when the box scrolls within 160px of its end', () => {
+    pages.data = { pages: [opsPage(1, 50)] }
+    renderAt('/aid/season/history')
+    const box = screen.getByTestId('history-box')
+    Object.defineProperties(box, {
+      scrollHeight: { value: 2000, configurable: true },
+      clientHeight: { value: 600, configurable: true },
+      scrollTop: { value: 1300, configurable: true, writable: true },
+    })
+    fireEvent.scroll(box)
+    expect(pages.fetchNextPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts each later page with its page-break row', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50)] }
+    renderAt('/aid/season/history')
+    expect(screen.getByText('Page 2 · 51–100')).toBeInTheDocument()
+  })
+
+  it('a row logged between pages is not shown twice (Review Focus 4)', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 49)] } // page 2 repeats page 1's last row
+    renderAt('/aid/season/history')
+    expect(document.querySelectorAll('[data-operation]')).toHaveLength(99)
+  })
+
+  it('a link with ?page=3 loads every page up to 3', () => {
+    pages.data = { pages: [opsPage(1, 50)] }
+    renderAt('/aid/season/history?page=3')
+    expect(pages.fetchNextPage).toHaveBeenCalled()
+    expect(pageQueries.at(-1)).not.toHaveProperty('page')
+  })
+
+  it('dims the old rows, says Updating… and dims the counts while a filter re-reads', () => {
+    pages.data = { pages: [opsPage(1, 10, 10)] }
+    pages.isPlaceholderData = true
+    renderAt('/aid/season/history?kind=offers')
+    expect(screen.getByTestId('history-rows')).toHaveAttribute('data-stale')
+    expect(screen.getByTestId('history-footer')).toHaveTextContent('Updating…')
+    expect(screen.getAllByTestId('history-count')[0]).toHaveClass('opacity-35')
+  })
+
+  it('says "No operations match." when nothing does', () => {
+    pages.data = { pages: [opsPage(1, 0, 0)] }
+    renderAt('/aid/season/history?q=nobody')
+    expect(screen.getByText('No operations match.')).toBeInTheDocument()
+  })
+
+  it('loading and failing read as QueryGuard words inside the box', () => {
+    pages.data = undefined
+    pages.isLoading = true
+    renderAt('/aid/season/history')
+    expect(
+      within(screen.getByTestId('history-box')).getByText(/Loading History data/)
+    ).toBeInTheDocument()
+  })
+})
+
+describe('History box scroll position (spec §7.2 C, F)', () => {
+  let scrolledTo: Array<string | null>
+  beforeEach(() => {
+    scrolledTo = []
+    // jsdom has no scrollIntoView: record which page-break row asked to be shown.
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolledTo.push(this.getAttribute('data-page-start'))
+    }
+  })
+  afterEach(() => {
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+  })
+
+  /** The box as if the person had scrolled it to `top` (jsdom lays nothing out). */
+  const scrolledBox = (top: number) => {
+    const box = screen.getByTestId('history-box')
+    Object.defineProperty(box, 'scrollTop', { value: top, configurable: true, writable: true })
+    return box
+  }
+  const footerButton = (name: string) =>
+    within(screen.getByTestId('history-footer')).getByRole('button', { name })
+
+  it('a page change writes ?page= and leaves the box where it is', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50)] }
+    renderAt('/aid/season/history')
+    const box = scrolledBox(2100)
+    fireEvent.click(footerButton('2'))
+    expect(where().get('page')).toBe('2')
+    expect(box.scrollTop).toBe(2100)
+    expect(scrolledTo).toEqual(['2'])
+  })
+
+  it('a filter change returns the box to its top (regression guard)', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50)] }
+    renderAt('/aid/season/history?page=2')
+    const box = scrolledBox(2100)
+    fireEvent.click(screen.getByTestId('jump-q'))
+    expect(where().get('page')).toBeNull()
+    expect(box.scrollTop).toBe(0)
+  })
+
+  it('a ?page=3 link scrolls to page 3 once pages 2 and 3 have arrived, not before', () => {
+    pages.data = { pages: [opsPage(1, 50)] }
+    const view = renderAt('/aid/season/history?page=3')
+    expect(pages.fetchNextPage).toHaveBeenCalled()
+    expect(scrolledTo).toEqual([])
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50)] }
+    view.refresh()
+    expect(scrolledTo).toEqual([])
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50), opsPage(3, 12, 112, 100)] }
+    view.refresh()
+    expect(scrolledTo).toEqual(['3'])
+  })
+
+  it('a page number not loaded yet loads it, then scrolls to it', () => {
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50)] }
+    const view = renderAt('/aid/season/history?page=2')
+    scrolledTo = [] // the link itself showed page 2
+    fireEvent.click(footerButton('3'))
+    expect(where().get('page')).toBe('3')
+    expect(pages.fetchNextPage).toHaveBeenCalled()
+    expect(scrolledTo).toEqual([])
+    pages.data = { pages: [opsPage(1, 50), opsPage(2, 50, 112, 50), opsPage(3, 12, 112, 100)] }
+    view.refresh()
+    expect(scrolledTo).toEqual(['3'])
   })
 })

@@ -233,3 +233,46 @@ describe('HistoryTable', () => {
     expect(screen.getByText('and 1 recorded detail not listed')).toBeInTheDocument()
   })
 })
+
+describe('HistoryTable in the box (spec §7.2 C)', () => {
+  const inBox = (extra: Partial<React.ComponentProps<typeof HistoryTable>>) =>
+    render(
+      <MemoryRouter>
+        <HistoryTable
+          operations={[OP_SHARE, OP_RELEASE, OP_POSTED]}
+          open={[]}
+          onToggle={onToggle}
+          view={VIEW}
+          {...extra}
+        />
+      </MemoryRouter>
+    )
+
+  it('fixes its columns at 122 / 214 / 128 / auto / 56', () => {
+    inBox({})
+    const cols = Array.from(document.querySelectorAll('col')).map((c) => c.className)
+    expect(cols).toHaveLength(5)
+    expect(cols[0]).toContain('w-[122px]')
+    expect(cols[1]).toContain('w-[214px]')
+    expect(cols[2]).toContain('w-[128px]')
+    expect(cols[4]).toContain('w-[56px]')
+  })
+
+  it('puts a page-break row before the row each later page starts at', () => {
+    inBox({ starts: [{ page: 2, index: 1 }], perPage: 2, total: 3 })
+    const rows = Array.from(document.querySelectorAll('tbody > tr')).map((r) => r.textContent)
+    expect(rows[1]).toBe('Page 2 · 3–3')
+    expect(document.querySelector('[data-page-start="2"]')).not.toBeNull()
+  })
+
+  it('ends with the tail row while more is to come, and not otherwise', () => {
+    inBox({ tail: 'Scroll for 51–100' })
+    expect(screen.getByText('Scroll for 51–100')).toBeInTheDocument()
+  })
+
+  it('sizes the opened row’s line to the box', () => {
+    inBox({ open: [OP_RELEASE.operation_id], lineWidth: 640 })
+    const line = document.querySelector('td[colspan="5"] > div')
+    expect(line).toHaveStyle({ width: '640px' })
+  })
+})
