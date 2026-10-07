@@ -445,8 +445,9 @@ def _round2(
         )
         return
     if r2_table is None:
-        if work.r1 is None:
-            # A held Round 1 (by class with no equity class) never shows a $0 Round 2.
+        program = rules.programs.get(request.program_key or "")
+        if work.r1 is None and program is not None and program.table_from_equity_class:
+            # By class with no equity class, Round 1 holds: never a $0 Round 2 (a legacy program replays as stored).
             work.r2_bound = "r1_unknown"
             return
         work.r2, work.r2_bound = ZERO, "no_table"

@@ -332,3 +332,16 @@ def test_a_held_program_by_class_never_shows_a_zero_round_2() -> None:
     result = _calc(rules, session_cm_id=1000103, program_key="quest", ask="6000", appeal_amount="500")
     assert (result.r1, result.r2, result.r2_bound, result.total) == (None, None, "r1_unknown", None)
     assert "r2" not in [s.key for s in result.trace]
+
+
+def test_a_legacy_program_with_no_round_2_table_keeps_its_zero_round_2_when_round_1_fails() -> None:
+    """§8.5: a legacy program replays as stored; a missing ask leaves Round 1 None and Round 2 the old $0 no_table."""
+    school = _calc(
+        program_key="family_school",
+        session_cm_id=1000501,
+        cost_override={"amount": "1000", "reason": "missing_catalog"},
+        ask=None,
+        appeal_amount="300",
+    )
+    assert school.r1 is None
+    assert (school.r2, school.r2_bound) == (Decimal(0), "no_table")

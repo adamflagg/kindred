@@ -8,6 +8,7 @@ import pytest
 from bunking.financial_aid.calculator.engine import calculate
 from bunking.financial_aid.calculator.inputs import ApplicationInputs
 from bunking.financial_aid.calculator.result import CalcResult
+from bunking.financial_aid.decisions.holds import NEVER_A_HOLD
 from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
@@ -388,3 +389,14 @@ def test_a_program_by_class_with_no_equity_class_holds() -> None:
     assert issue.message == (
         f"Open to aid but no equity class, so no award table: its requests hold ({rules.programs['quest'].label})"
     )
+
+
+def test_a_held_program_by_class_raises_nothing_a_release_could_lift() -> None:
+    """§8.5: no_equity_class is needs_input, so a hold release must refuse it, as it does no_round1_table."""
+    rules = with_levers(
+        fictional_rules(), {"programs.quest.table_from_equity_class": True, "programs.quest.equity_class": None}
+    )
+    result = _calc(rules, session_cm_id=1000103, program_key="quest", ask="6000")
+    blocking = {i.code for i in result.issues if i.severity in ("needs_input", "error")}
+    assert "no_equity_class" in blocking
+    assert blocking <= NEVER_A_HOLD

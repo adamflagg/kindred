@@ -115,6 +115,7 @@ NEVER_A_HOLD: Final[frozenset[str]] = frozenset(
         "cost_unknown",
         "ask_missing",
         "no_round1_table",
+        "no_equity_class",
         "unknown_program",
         "program_closed",
         "unknown_decision_type",
