@@ -654,7 +654,10 @@ class FinancialAidScenariosService:
         if meta is not None and row is not None and row.snapshot == meta.id and stored is not None:
             results = stored
         elif meta is not None:
-            results = (await (await self._pricer(meta))(document)).results
+            try:
+                results = (await (await self._pricer(meta))(document)).results
+            except SnapshotError:  # unreadable snapshot: the read still opens, so Update Applications stays reachable
+                results = None
         return Draft(
             trail_id=row.id if row is not None and recorded is not None else None,
             from_code=source.code,
@@ -937,17 +940,20 @@ class FinancialAidScenariosService:
             raise ScenarioRefusedError("Load one kept option, one trail row or one starting point")
         from_code: str
         if start is not None:
-            built = await self._built_in(year, start)
             effect = await self._in_effect(year)
-            if start == "rules_draft" and built.document == effect.document:
-                raise ScenarioRefusedError("The rules draft matches the rules in effect")
-            document, from_code = built.document, start
-            if start == "rules":
-                change = f"started from {self._effect_name(effect)}"
-            elif start == "rules_draft":
-                change = f"started from Rules draft v{built.version}"
+            from_code = start
+            if start == "last_rules":  # the merge and its two checks run once: the document and its name
+                document, name = await self._last_rules_document(year, effect, words="rules in effect")
+                change = f"started from {name}"
             else:
-                change = f"started from {(await self._last_rules_document(year, effect, words='rules in effect'))[1]}"
+                built = await self._built_in(year, start, effect=effect)
+                if start == "rules_draft" and built.document == effect.document:
+                    raise ScenarioRefusedError("The rules draft matches the rules in effect")
+                document = built.document
+                if start == "rules":
+                    change = f"started from {self._effect_name(effect)}"
+                else:
+                    change = f"started from Rules draft v{built.version}"
         elif option is not None:
             found = await self._option(year, option)
             document, from_code, change = found.document, found.code, f"loaded {found.code} into the draft"

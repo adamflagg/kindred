@@ -594,3 +594,22 @@ async def test_a_draft_from_last_seasons_rules_still_opens_after_the_rules_in_ef
     # Its source is now the merge on v2 (teen to its own table); the recorded draft kept v1's routing (teen to camp).
     # Only programs.teen.r1_table differs, one change on the Programs card.
     assert (draft.from_code, draft.label) == ("last_rules", "Programs and their sessions: 1 change")
+
+
+@pytest.mark.asyncio
+async def test_a_draft_from_last_seasons_rules_reads_as_its_own_document_when_last_season_has_no_rules_any_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard. Disagreement 16, the `last is None` fallback of a read: the source is the row's own document."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    await world.service.load(YEAR, FINANCE, start="last_rules")
+
+    async def _none(year: int) -> None:
+        return None
+
+    monkeypatch.setattr(world.service, "_last_rules", _none)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert (draft.from_code, draft.label) == ("last_rules", "no changes")

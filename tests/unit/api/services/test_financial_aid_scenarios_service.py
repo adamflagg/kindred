@@ -1308,3 +1308,23 @@ async def test_a_budget_total_alone_is_nothing_to_promote() -> None:
     [option] = (await world.service.workspace(YEAR, FINANCE)).options
     assert (option.promotable, option.blocked) == (False, "is the rules in effect")
     assert (await world.service.rules_draft_preview(YEAR, "A")).preview.sections == ()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_snapshot_still_opens_an_unrecorded_draft_so_update_applications_stays_reachable() -> None:
+    """Review I1: an unrecorded draft is priced on read. A snapshot this code can't read must not turn the workspace
+    into a 422 for someone with nothing recorded (that hides Update Applications, the only way out). Writes still
+    refuse in the same words."""
+    world = await _started()
+    [row] = world.store.rows[AID_SCENARIO_SNAPSHOTS]
+    row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}  # a required key dropped
+    draft = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert draft is not None
+    assert (draft.from_code, draft.results) == ("rules", None)
+    with pytest.raises(SnapshotError, match="Update Applications again"):
+        await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), TREASURER)
+    await world.service.freeze(YEAR, FINANCE)
+    priced = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert priced is not None
+    assert priced.results is not None
+    assert priced.results.round1 == Decimal(2600)

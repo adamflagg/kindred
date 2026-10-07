@@ -12,9 +12,8 @@ The snapshot is JSON: each value goes through a pydantic TypeAdapter for the ret
 Protocol declares for that read. Nothing here writes; a replayed season can't lock rules sections.
 
 A request intake flagged as waiting for approved programs and cost rules is held by the live read, and so in every
-scenario on that snapshot: `awaiting_rules` counts them, so the screen can say "Update Applications again once the
-rules are
-approved" (plan Decision 8). Freezing never refuses for it.
+scenario on that snapshot: `awaiting_rules` counts them, so the screen can say "Update Applications again once
+the rules are approved" (plan Decision 8). Freezing never refuses for it.
 
 Freezing also records when each frozen request was received (`received`: its create row in aid_change_log, or its
 withdrawn predecessor's when the family edited its answer, D138, as bunking.financial_aid.received defines it) and which requests are live, so a scenario can price only the requests
@@ -221,9 +220,8 @@ _UNREADABLE: Final = "The frozen season stored for this year can't be read: Upda
 
 def decode_snapshot(raw: Mapping[str, Any]) -> SeasonSnapshot:
     """A stored snapshot back into a SeasonSnapshot. One this code can't read (a key missing, a value of the wrong
-    shape, a read whose type has changed) is a SnapshotError (422) that says to Update Applications again, never a 500 that
-    locks
-    staff out of Scenarios. Its message never echoes a stored value: the inputs hold families' figures."""
+    shape, a read whose type has changed) is a SnapshotError (422) that says to Update Applications again, never a
+    500 that locks staff out of Scenarios. Its message never echoes a stored value: the inputs hold families' figures."""
     try:
         if raw.get("format") != SNAPSHOT_FORMAT:
             raise SnapshotError(
