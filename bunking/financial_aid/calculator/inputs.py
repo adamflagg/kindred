@@ -114,8 +114,8 @@ class RequestInputs(_Input):
     person_cm_id: int | None = None
     session_cm_id: int | None = None
     # The AG session's parent (main) session, when the request's session is an AG session with one (spec §8). A
-    # catalog price falls back to the parent's tuition when the AG session has none of its own. None otherwise,
-    # embedded sessions included: they carry their own prices.
+    # price falls back to the parent's tuition or family rate when the AG session has none of its own. None
+    # otherwise, embedded sessions included: they carry their own prices.
     ag_parent_cm_id: int | None = None
     program_key: str
     ask: Money | None

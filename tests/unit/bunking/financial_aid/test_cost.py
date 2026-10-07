@@ -125,3 +125,26 @@ def test_an_ag_session_whose_parent_has_no_price_is_unknown_and_names_the_sessio
 def test_a_request_without_a_parent_never_falls_back() -> None:
     """Pin. Passes before and after A1 (no parent, so no fallback)."""
     assert resolve_cost(req(session_cm_id=1000199), fictional_rules()).amount is None
+
+
+def test_an_ag_session_with_no_family_rate_of_its_own_takes_its_parents() -> None:
+    """Owner 10-07 (R7): AG session costs auto-link to their parent session, per-person rates included, as validation's
+    family-rate skip assumes. The fixture rates 1000201 at 600 standard."""
+    cost = resolve_cost(
+        _family(session_cm_id=1000299, ag_parent_cm_id=1000201, headcount={"standard": 2}), fictional_rules()
+    )
+    assert (cost.amount, cost.source) == (Decimal(1200), "per_person")
+
+
+def test_an_ag_sessions_own_family_rate_wins_over_its_parents() -> None:
+    """Pin. Passes before the fallback too (it reads the own rate); guards the own-first order."""
+    rules = with_lever(
+        fictional_rules(),
+        "cost.family_rates",
+        [
+            {"session_cm_id": 1000201, "standard": "600", "infant": "300"},
+            {"session_cm_id": 1000299, "standard": "500", "infant": "250"},
+        ],
+    )
+    cost = resolve_cost(_family(session_cm_id=1000299, ag_parent_cm_id=1000201, headcount={"standard": 2}), rules)
+    assert cost.amount == Decimal(1000)
