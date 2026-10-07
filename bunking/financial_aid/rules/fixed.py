@@ -122,8 +122,9 @@ def changed_fixed(section: SectionName, before: Mapping[str, Any], after: Mappin
 def _reset(base: Any, wanted: Any, parts: Sequence[str]) -> Any:
     """`wanted` with the value(s) at `parts` set to `base`'s (FIXED_PATHS' grammar: `*` is every key or list
     position, `#keys` the set of keys). A `*` over a mapping keeps `base`'s keys only (an added named award or
-    program goes; a removed one comes back); over a list it aligns by position. Where `wanted` lacks the shape,
-    `base`'s value stands."""
+    program goes; a removed one comes back); over a list it matches entries by their `key`, in `base`'s order (an
+    entry only `wanted` has goes; one it lacks comes back whole). Where `wanted` lacks the shape, `base`'s value
+    stands."""
     if not parts:
         return copy.deepcopy(base)
     head, rest = parts[0], parts[1:]
@@ -137,8 +138,14 @@ def _reset(base: Any, wanted: Any, parts: Sequence[str]) -> Any:
                 key: _reset(base[key], wanted[key], rest) if key in wanted else copy.deepcopy(base[key]) for key in base
             }
         if isinstance(base, list) and isinstance(wanted, list):
+            # Coordinator ruling (PR 10, 2026-10-07): list entries (equity criteria) match by `key`, never by
+            # position, so a reordered or re-membered list never moves an Enabled flag onto the wrong criterion.
+            by_key = {item["key"]: item for item in wanted if isinstance(item, Mapping) and "key" in item}
             return [
-                _reset(item, wanted[i], rest) if i < len(wanted) else copy.deepcopy(item) for i, item in enumerate(base)
+                _reset(item, by_key[item["key"]], rest)
+                if isinstance(item, Mapping) and item.get("key") in by_key
+                else copy.deepcopy(item)
+                for item in base
             ]
         return copy.deepcopy(base)
     if not isinstance(wanted, Mapping):

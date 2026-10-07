@@ -103,7 +103,35 @@ def test_reset_fixed_drops_a_named_award_the_option_added() -> None:
     assert changed_fixed("awards", base.awards.model_dump(), reset) == []
 
 
-def test_reset_fixed_aligns_criteria_by_position_and_keeps_each_ones_enabled() -> None:
+def test_reset_fixed_matches_criteria_by_key_whatever_their_order_or_membership() -> None:
+    """Coordinator ruling (PR 10, 2026-10-07): a promotion matches equity criteria by key, never by list position, so
+    a reordered list, or one a criterion was added to or dropped from, never moves an Enabled flag onto the wrong
+    criterion. Base's order and membership stand; a criterion only the option has goes; one it lacks comes back whole.
+    """
+    base = fictional_rules()
+    by_key = {c.key: c for c in base.equity.criteria}
+    off = {"enabled": False}
+    extra = by_key["bipoc"].model_copy(update={"key": "extra_need", "label": "Extra need", "enabled": False})
+    criteria = [  # reversed, without gov_subsidies, plus a criterion base doesn't have
+        by_key["dependents"].model_copy(update=off),
+        by_key["trans_nb"],
+        by_key["bipoc"].model_copy(update=off),
+        by_key["unemployment"],
+        extra,
+    ]
+    wanted = base.model_copy(update={"equity": base.equity.model_copy(update={"criteria": criteria})})
+    reset = reset_fixed("equity", base.equity.model_dump(), wanted.equity.model_dump())
+    assert changed_fixed("equity", base.equity.model_dump(), reset) == []
+    assert [(c["key"], c["enabled"]) for c in reset["criteria"]] == [
+        ("unemployment", True),
+        ("gov_subsidies", True),
+        ("bipoc", False),
+        ("trans_nb", True),
+        ("dependents", False),
+    ]
+
+
+def test_reset_fixed_resets_each_criterions_fixed_settings_and_keeps_its_enabled() -> None:
     base = fictional_rules()
     first = base.equity.criteria[0].model_copy(update={"label": "Renamed", "enabled": False})
     extra = base.equity.criteria[0].model_copy(update={"key": "extra_need", "label": "Extra need"})
