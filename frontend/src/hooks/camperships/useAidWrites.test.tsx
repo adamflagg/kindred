@@ -253,6 +253,13 @@ describe('the casework forms’ writes (§6.3)', () => {
     })
   })
 
+  it('clears a cost override with a null amount', async () => {
+    const { result } = renderHook(() => useAidCostOverride(), { wrapper })
+    const body = { amount: null, note: 'Entered on the wrong card' }
+    await act(() => result.current.mutateAsync({ requestId: 'reqemma00000001', body }))
+    expect(lastCall()).toMatchObject({ method: 'POST', body })
+  })
+
   it('corrects an answer on the application', async () => {
     const { result } = renderHook(() => useAidCorrection(), { wrapper })
     const body = { field: 'num_children', new_value: '4', reason: 'Confirmed by phone' }

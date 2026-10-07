@@ -191,6 +191,8 @@ export const HH_EDITOR_SIDE_HEAD = 'text-muted-foreground mb-[3px] text-xs font-
 export const HH_EDITOR_SIDE_LEAD = 'text-[15px] leading-snug'
 /** What follows it: the receipt sentence, the stage, the shares. */
 export const HH_EDITOR_SIDE_NOTE = 'text-muted-foreground mt-1 text-[12.5px]'
+/** A warning in the right column (the mock's .sw): amber, never muted. */
+export const HH_EDITOR_SIDE_WARN = 'mt-1 text-[12.5px] text-amber-700 dark:text-amber-400'
 /** A field's label, its caption above the control (the mock's .fl). */
 export const HH_EDITOR_LABEL = 'flex min-w-0 flex-col gap-1 text-[12.5px] font-semibold'
 /** A field (the mock's .in): white, 13.5px, a softened forest border. */

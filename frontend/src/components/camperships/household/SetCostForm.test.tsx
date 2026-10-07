@@ -80,6 +80,47 @@ describe('SetCostForm (cost override v2)', () => {
       },
     })
     expect(screen.getByLabelText('Cost')).toHaveValue('1275')
+    // The reason it was set for is filled in too, as the mock opens it.
+    expect(screen.getByLabelText('Reason')).toHaveValue('discount')
+  })
+
+  it('reads a new cost against the one staff already set', async () => {
+    renderSet({
+      rules_cost: 6695,
+      rules_cost_from: 'catalog',
+      cost_override: {
+        amount: 1275,
+        reason_code: 'discount',
+        note: 'Form total',
+        actor: 'Finance Staff',
+      },
+    })
+    await userEvent.clear(screen.getByLabelText('Cost'))
+    await userEvent.type(screen.getByLabelText('Cost'), '900')
+    expect(screen.getByTestId('set-cost-lead')).toHaveTextContent(
+      '$900 instead of $1,275 (set by staff)'
+    )
+  })
+
+  it('refuses a cost typed with a thousands separator in the wrong place', async () => {
+    renderSet({})
+    await userEvent.type(screen.getByLabelText('Cost'), '1,000,001')
+    await userEvent.click(screen.getByRole('button', { name: 'Set the Cost' }))
+    expect(screen.getByText('Type the cost in dollars, like 1275 or 1275.50')).toBeInTheDocument()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('pairs the Cost and Reason boxes on one row', () => {
+    renderSet({})
+    const row = screen.getByLabelText('Cost').closest('div')!
+    expect(row).toContainElement(screen.getByLabelText('Reason'))
+    expect(row).not.toContainElement(screen.getByLabelText('Note'))
+  })
+
+  it('draws the prompt at lead size, and the posted-round warning in amber', () => {
+    renderSet({ rounds: [roundOut(1, 'posted', { posted: 900 })] })
+    expect(screen.getByText('Type the cost to see it here')).toHaveClass('text-[15px]')
+    expect(screen.getByText(/A round is already posted/)).toHaveClass('text-amber-700')
   })
 
   it('refuses each missing field in turn', async () => {
@@ -133,6 +174,11 @@ describe('SetCostForm (cost override v2)', () => {
 })
 
 describe('ClearCostForm', () => {
+  it('draws the posted-round warning in amber', () => {
+    renderClear({ rounds: [roundOut(1, 'posted', { posted: 900 })] })
+    expect(screen.getByText(/A round is already posted/)).toHaveClass('text-amber-700')
+  })
+
   it('clears back to the catalog price, or to no price yet', () => {
     renderClear({ rules_cost: 6695, rules_cost_from: 'catalog' })
     expect(screen.getByTestId('clear-cost-lead')).toHaveTextContent(

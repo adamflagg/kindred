@@ -11,9 +11,10 @@ import {
   HH_EDITOR_LABEL,
   HH_EDITOR_MONEY,
   HH_EDITOR_SIDE_LEAD,
+  HH_EDITOR_PAIR,
   HH_EDITOR_SIDE_NOTE,
+  HH_EDITOR_SIDE_WARN,
   HH_EDITOR_TEXT,
-  HH_NOTE,
 } from './householdStyles'
 import { useSubmit } from './useSubmit'
 
@@ -54,7 +55,9 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
   const { row } = request
   const set = row.cost_override ?? null
   const [cost, setCost] = useState(set === null ? '' : String(set.amount))
-  const [reason, setReason] = useState('')
+  const [reason, setReason] = useState(
+    set !== null && page.override_reasons?.includes(set.reason_code) === true ? set.reason_code : ''
+  )
   const [note, setNote] = useState('')
   const { busy, error, attempt } = useSubmit()
   const typed = parseMoneyInput(cost)
@@ -101,12 +104,14 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
               <b>{formatMoney(typed.amount)}</b> instead of {was ?? 'no price'}
             </div>
           ) : (
-            <div className={HH_NOTE}>Type the cost to see it here</div>
+            <div className={`${HH_EDITOR_SIDE_LEAD} text-muted-foreground`}>
+              Type the cost to see it here
+            </div>
           )}
           <div className={HH_EDITOR_SIDE_NOTE}>
             Rounds not yet posted are worked out again on this cost.
           </div>
-          {anyPosted(request) && <div className={HH_EDITOR_SIDE_NOTE}>{POSTED_WARNING}</div>}
+          {anyPosted(request) && <div className={HH_EDITOR_SIDE_WARN}>{POSTED_WARNING}</div>}
           {perPersonHeadcount && (
             <div className={HH_EDITOR_SIDE_NOTE}>
               To change who is counted, use Number of People… instead: the cost then follows the
@@ -116,37 +121,39 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
         </>
       }
     >
-      <label className={HH_EDITOR_LABEL}>
-        Cost
-        <span className="inline-flex items-center gap-1.5 font-normal">
-          $
-          <input
-            aria-label="Cost"
-            type="text"
-            inputMode="decimal"
-            value={cost}
-            placeholder={placeholder}
-            onChange={(event) => setCost(event.target.value)}
-            className={HH_EDITOR_MONEY}
-          />
-        </span>
-      </label>
-      <label className={HH_EDITOR_LABEL}>
-        Reason
-        <select
-          aria-label="Reason"
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          className={`${HH_EDITOR_FIELD} self-start`}
-        >
-          <option value="">Choose a reason…</option>
-          {costReasonOptions(page.override_reasons ?? []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className={HH_EDITOR_PAIR}>
+        <label className={HH_EDITOR_LABEL}>
+          Cost
+          <span className="inline-flex items-center gap-1.5 font-normal">
+            $
+            <input
+              aria-label="Cost"
+              type="text"
+              inputMode="decimal"
+              value={cost}
+              placeholder={placeholder}
+              onChange={(event) => setCost(event.target.value)}
+              className={HH_EDITOR_MONEY}
+            />
+          </span>
+        </label>
+        <label className={HH_EDITOR_LABEL}>
+          Reason
+          <select
+            aria-label="Reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            className={`${HH_EDITOR_FIELD} self-start`}
+          >
+            <option value="">Choose a reason…</option>
+            {costReasonOptions(page.override_reasons ?? []).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <label className={HH_EDITOR_LABEL}>
         Note
         <input
@@ -200,7 +207,7 @@ export function ClearCostForm({ request, onDone }: FormProps) {
               </>
             )}
           </div>
-          {anyPosted(request) && <div className={HH_EDITOR_SIDE_NOTE}>{POSTED_WARNING}</div>}
+          {anyPosted(request) && <div className={HH_EDITOR_SIDE_WARN}>{POSTED_WARNING}</div>}
         </>
       }
     >

@@ -162,6 +162,7 @@ describe('which casework buttons a request takes (the server’s own refusals)',
 
   it('offers Set Cost… on a live, priced request', () => {
     const cancelled = { by: 'kindred', on: '2027-06-02', reason: 'medical', note: '' } as const
+    const campminder = { by: 'campminder', on: null, reason: null, note: '' } as const
     expect(caseworkOffers(ROW_EMMA, { rulesApproved: true }).cost).toBe(true)
     expect(caseworkOffers(ROW_EMMA, { rulesApproved: false }).cost).toBe(false)
     expect(
@@ -170,6 +171,9 @@ describe('which casework buttons a request takes (the server’s own refusals)',
     ).toBe(false)
     expect(
       caseworkOffers({ ...ROW_EMMA, cancellation: cancelled }, { rulesApproved: true }).cost
+    ).toBe(false)
+    expect(
+      caseworkOffers({ ...ROW_EMMA, cancellation: campminder }, { rulesApproved: true }).cost
     ).toBe(false)
   })
 
