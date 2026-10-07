@@ -357,3 +357,34 @@ def test_the_trace_records_the_minimum_that_was_actually_applied() -> None:
     result = _calc(rules, application=app(**TIER_6), session_cm_id=1000101, grants_applicable=[_grant("1950")])
     step = result.step("r1_potential")
     assert (step.inputs["minimum"], step.inputs["minimum_uncapped"]) == (Decimal(50), Decimal(100))
+
+
+ADULT = {"session_cm_id": 1000401, "program_key": "adult_weekend", "ask": "900"}
+
+
+def test_a_legacy_program_with_no_table_still_gets_the_minimum() -> None:
+    """Regression guard. §8.5: 2026 routed adult programs to no Round 1 table; it replays as stored."""
+    result = _calc(**ADULT)
+    assert (result.r1, result.r1_bound) == (Decimal(100), "minimum")
+
+
+def test_a_program_by_class_prices_from_its_classs_table() -> None:
+    """§8.5 (owner 10-06): an adult program by class reads the family table: tier 2's 75% of 900."""
+    rules = with_lever(fictional_rules(), "programs.adult_weekend.table_from_equity_class", True)
+    result = _calc(rules, **ADULT)
+    assert (result.r1, result.r1_bound) == (Decimal(675), "table")
+    assert next(s for s in result.trace if s.key == "r1_pct").inputs["table"] == "family"
+
+
+def test_a_program_by_class_with_no_equity_class_holds() -> None:
+    """§8.5: "Pay the minimum when the program has no award table" goes with the per-program tables."""
+    rules = with_levers(
+        fictional_rules(), {"programs.quest.table_from_equity_class": True, "programs.quest.equity_class": None}
+    )
+    result = _calc(rules, session_cm_id=1000103, program_key="quest", ask="6000")
+    assert (result.r1, result.r1_bound) == (None, "no_table")
+    (issue,) = [i for i in result.issues if i.code == "no_equity_class"]
+    assert issue.severity == "needs_input"
+    assert issue.message == (
+        f"Open to aid but no equity class, so no award table: its requests hold ({rules.programs['quest'].label})"
+    )

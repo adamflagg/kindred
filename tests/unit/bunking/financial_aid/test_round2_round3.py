@@ -313,3 +313,13 @@ def test_the_full_trace_order() -> None:
     rules = with_lever(fictional_rules(), "round2.total_cap", {"pct_of_cost": "100", "include_grants": True})
     keys = [s.key for s in _calc(rules, appeal_amount="400", round3_amount="100", **ELIGIBLE_R3).trace]
     assert keys[keys.index("r1") :] == ["r1", "r2_cap", "r2", "r3", "total_cap", "total"]
+
+
+def test_an_appeal_by_class_is_capped_by_its_classs_round2_table() -> None:
+    """§8.5: the appeal cap comes from round2.tables[equity class], whatever program_tables says."""
+    legacy = with_lever(fictional_rules(), "round2.program_tables.adult_weekend", None)
+    by_class = with_lever(legacy, "programs.adult_weekend.table_from_equity_class", True)
+    request = {"session_cm_id": 1000401, "program_key": "adult_weekend", "ask": "900", "appeal_amount": "500"}
+    assert calculate(app(), req(**request), legacy).r2 == Decimal(0)  # legacy: no Round 2 table
+    # by class: family inherits camp, tier 2 total 90% of 900 = 810, less Round 1's 675 = 135
+    assert calculate(app(), req(**request), by_class).r2 == Decimal(135)

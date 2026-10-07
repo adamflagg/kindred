@@ -10,8 +10,9 @@ because the 2026 rules document must reproduce it row for row:
 Each quirk the sheet had is a setting, never a branch on the year: the income
 floor tested before the dependent reduction (income.floor_applies_after), the
 minimum paid on top of grants (grants.minimum_after_grants), the Round 2 cap
-that ignores grants (round2.cap_subtracts_grants), a program with no Round 1
-table (programs.<key>.r1_table = null).
+that ignores grants (round2.cap_subtracts_grants), a legacy program's stored
+tables (r1_table, round2.program_tables; a program by class reads its equity
+class's).
 
 An unknown -- a program not in the rules, a cost nobody set, an income below
 the first band, an income figure the rules need that was not reported, a rules
@@ -40,7 +41,7 @@ from bunking.financial_aid.calculator.result import (
 )
 from bunking.financial_aid.calculator.tiers import UnknownEquityClassError, equity_shift, final_tier, income_tier
 from bunking.financial_aid.money import HUNDRED, ZERO, floor_dollars, pct_of, round_dollars
-from bunking.financial_aid.rules.lookup import resolved_table
+from bunking.financial_aid.rules.lookup import Round2TableNotListedError, resolved_table, round1_table, round2_table
 from bunking.financial_aid.rules.schema import (
     AidRules,
     DecisionType,
@@ -308,9 +309,20 @@ def _round1(
             "r1", "Round 1 award", ZERO, bound="income_ceiling", note="Adjusted income is above the income ceiling"
         )
         return
+    table = round1_table(rules, program)
     if decision is not None and decision.kind == "full_cost":
         pct, source = HUNDRED, "full_cost"
-    elif program.r1_table is None:
+    elif table is None and program.table_from_equity_class:
+        # §8.5 (owner 10-06): by class, no class means no award table; it holds, never a silent minimum.
+        work.r1_bound = "no_table"
+        work.issue(
+            "no_equity_class",
+            "needs_input",
+            f"Open to aid but no equity class, so no award table: its requests hold ({program.label})",
+            "r1",
+        )
+        return
+    elif table is None:
         if not awards.minimum_without_table:
             # Holds until finance names a table (owner ruling 2026-09-25), never a silent $0.
             work.r1_bound = "no_table"
@@ -323,11 +335,11 @@ def _round1(
             return
         pct, source = ZERO, "no_table"
     else:
-        row = _tier_value(work, rules.award_tables, "Award table", program.r1_table, tier, "r1_pct")
+        row = _tier_value(work, rules.award_tables, "Award table", table, tier, "r1_pct")
         if row is None:
             return
         pct, source = row.r1_pct, "table"
-    work.step("r1_pct", "Round 1 percentage", pct, inputs={"table": program.r1_table, "tier": tier, "source": source})
+    work.step("r1_pct", "Round 1 percentage", pct, inputs={"table": table, "tier": tier, "source": source})
 
     grants = work.grants_offset or ZERO  # set by the grants step, which always runs before Round 1
     if work.cost is None:
@@ -422,7 +434,9 @@ def _round2(
         work.r2, work.r2_bound = ZERO, "not_allowed"
         work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="not_allowed")
         return
-    if request.program_key not in rules.round2.program_tables:
+    try:
+        r2_table = round2_table(rules, request.program_key or "")
+    except Round2TableNotListedError:
         work.issue(
             "rules_error",
             "error",
@@ -430,7 +444,6 @@ def _round2(
             "r2_cap",
         )
         return
-    r2_table = rules.round2.program_tables[request.program_key]
     if r2_table is None:
         work.r2, work.r2_bound = ZERO, "no_table"
         work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="no_table", note="No Round 2 table")
