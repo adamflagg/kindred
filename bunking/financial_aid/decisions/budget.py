@@ -14,6 +14,7 @@ Per pool (and per round where a figure has one), and in total:
 
 A round whose decision type does not count toward the budget is left out of Posted, Accepted and
 Needs an offer whole, base and extra alike: its money goes below the line (owner ruling 2026-09-30).
+Its request still counts in those figures' request counts, and in Pending approval's, at $0 (A8, owner 10-07).
 
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
@@ -326,7 +327,9 @@ def _tally_round(
 ) -> None:
     """`listed`: a round needing an offer is on the Requests grid's Needs an offer list (D162 C2, owner 10-03). One
     that isn't (CampMinder already holds money for it) keeps its money in Needs an offer, and Remaining with it, but
-    leaves the count, so the count is the list it opens."""
+    leaves the count, so the count is the list it opens.
+
+    A8 (owner 10-07): a wholly-outside round still counts its request, at $0."""
 
     def add(measure: str, amount: Decimal) -> None:
         tallies[(pool, view.round, measure)].add(request, amount)
@@ -335,10 +338,12 @@ def _tally_round(
         if view.clawed_back:
             return  # D54: its money came back to Remaining when CampMinder's reversal posted
         inside, outside = counted_part(view, view.locked or ZERO)
-        if view.counts_toward_budget or inside > 0:  # a wholly-outside round is no posted money, nor a posted request
-            add("posted", inside)
-            if view.accepted:
-                add("accepted", inside)
+        # A8 (owner 10-07): every request posted in the round is counted, a wholly-outside one at $0, so the count is
+        # the list its link opens. Only budget money is money here.
+        add("posted", inside)
+        if view.accepted:
+            add("accepted", inside)
+        if view.counts_toward_budget or inside > 0:
             part = ledger.get(view.round) if ledger is not None else None
             if part is not None and part.unconfirmed > 0:  # ⚠10: in the round's locked pool, as Posted
                 add("unconfirmed", part.unconfirmed)
@@ -348,16 +353,14 @@ def _tally_round(
             add("outside_budget_posted", outside)
     elif view.status == "needs_offer":
         inside, outside = counted_part(view, view.decided or ZERO)
-        if view.counts_toward_budget or inside > 0:
-            add("needs_offer", inside)
-            if listed:
-                add(_LISTED, ZERO)
+        add("needs_offer", inside)
+        if listed:
+            add(_LISTED, ZERO)
         if outside:
             add("outside_budget", outside)
     elif view.status == "pending_approval":
         inside, outside = counted_part(view, view.pending or ZERO)
-        if view.counts_toward_budget or inside > 0:
-            add("pending_approval", inside)  # D79 binds counting money
+        add("pending_approval", inside)  # D79 binds counting money
         if outside:
             add("outside_budget", outside)
     elif view.status == "held":

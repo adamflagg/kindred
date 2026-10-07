@@ -203,10 +203,10 @@ def test_a_non_counting_type_moves_its_whole_round_outside_the_budget() -> None:
     camp = pool_of(budget, "camp_pool")
     assert (camp.rounds[3].needs_offer, camp.below.outside_budget) == (ZERO, Decimal(650))
     assert camp.total.remaining == Decimal("397000.00")
-    assert budget.strip[3].needs_offer == Count(0, 0)
+    assert budget.strip[3].needs_offer == Count(1, 1)
 
 
-def test_a_posted_non_counting_round_is_wholly_outside_and_not_posted() -> None:
+def test_a_posted_non_counting_round_is_wholly_outside_but_still_a_posted_request() -> None:
     request = priced(
         "req-l", 9, view(1, "posted", locked="3000"), view(2, "posted", locked="850", counts=False, extra="250")
     )
@@ -217,7 +217,50 @@ def test_a_posted_non_counting_round_is_wholly_outside_and_not_posted() -> None:
         Decimal(850),
         Decimal(850),
     )
-    assert budget.strip[2].posted == Count(0, 0)
+    assert budget.strip[2].posted == Count(1, 1)
+
+
+def test_a_wholly_outside_posted_round_counts_its_request_at_no_money() -> None:
+    """A8 (owner 10-07): a count is the list its link opens; the money stays budget-only."""
+    request = priced("req-m", 21, view(1, "posted", locked="3600", accepted=True, counts=False))
+    budget = season_budget([request], RULES, outside_grants={})
+    assert (budget.strip[1].posted, budget.strip[1].accepted) == (Count(1, 1), Count(1, 1))
+    camp = pool_of(budget, "camp_pool")
+    assert (camp.rounds[1].posted, camp.rounds[1].accepted, camp.below.outside_budget) == (ZERO, ZERO, Decimal(3600))
+
+
+def test_a_wholly_outside_round_needing_an_offer_is_in_the_count() -> None:
+    request = priced("req-n", 22, view(1, "needs_offer", decided="3600", counts=False))
+    budget = season_budget([request], RULES, outside_grants={})
+    camp = pool_of(budget, "camp_pool")
+    assert (camp.rounds[1].needs_offer, camp.rounds[1].needs_offer_count) == (ZERO, Count(1, 1))
+    assert budget.strip[1].needs_offer == Count(1, 1)
+
+
+def test_a_wholly_outside_round_pending_approval_is_in_the_count() -> None:
+    request = priced("req-o", 23, view(3, "pending_approval", pending="700", counts=False))
+    camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[3].pending_approval, camp.rounds[3].pending_approval_count) == (ZERO, Count(1, 1))
+
+
+def test_a_posted_round_1_stays_counted_once_round_2_needs_an_offer() -> None:
+    """Pin. A pin (owner 10-07 asked whether "Posted Round 1" is cumulative: it is). Passes before and after A8: a
+    request whose Round 1 posted stays in Round 1's Posted count while its Round 2 needs an offer; F1 pins the link
+    side."""
+    request = priced(
+        "req-r", 26, view(1, "posted", locked="1800", accepted=True), view(2, "needs_offer", decided="400")
+    )
+    budget = season_budget([request], RULES, outside_grants={})
+    assert (budget.strip[1].posted, budget.strip[2].needs_offer) == (Count(1, 1), Count(1, 1))
+
+
+def test_counting_an_outside_round_moves_no_money_figure() -> None:
+    """Pin. Money stays budget-only: adding a wholly-outside posted request moves no figure."""
+    inside = priced("req-p", 24, view(1, "posted", locked="1800", accepted=True))
+    outside = priced("req-q", 25, view(1, "posted", locked="3600", accepted=True, counts=False))
+    alone, both = (season_budget(r, RULES, outside_grants={}) for r in ([inside], [inside, outside]))
+    a, b = pool_of(alone, "camp_pool"), pool_of(both, "camp_pool")
+    assert (a.rounds[1].posted, a.total.remaining) == (b.rounds[1].posted, b.total.remaining)
 
 
 def test_a_non_counting_round_with_no_extra_is_still_wholly_outside_the_budget() -> None:
