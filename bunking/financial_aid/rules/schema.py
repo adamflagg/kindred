@@ -443,6 +443,10 @@ class DecisionType(RulesModel):
             raise ValueError("only a top_up decision type has a fixed amount")
         if self.kind != "full_cost" and self.extra_amount != 0:
             raise ValueError("only a full_cost decision type has extra_amount")
+        if self.kind == "full_cost_after_aid" and self.counts_toward_budget:
+            # Owner 10-06: its camp award counts as usual and only its remainder sits below the line; a type that
+            # counts would take the whole round into the budget (budget.counted_part), the remainder included.
+            raise ValueError("a full_cost_after_aid decision type doesn't count toward the budget")
         return self
 
 

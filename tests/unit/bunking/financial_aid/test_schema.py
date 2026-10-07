@@ -196,6 +196,15 @@ def test_decision_type_amounts_must_fit_the_kind() -> None:
         )
 
 
+def test_a_full_cost_after_aid_type_never_counts_toward_the_budget() -> None:
+    """Owner 10-06: the fund's remainder sits below the line. `counts_toward_budget` defaults to True, and a type that
+    counts takes its whole round into the budget (budget.counted_part), so this kind must say False."""
+    fund = {"label": "Named full-cost fund", "kind": "full_cost_after_aid", "round": 1, "allows_appeal": False}
+    with pytest.raises(ValidationError, match="doesn't count toward the budget"):
+        DecisionType.model_validate(fund)
+    assert DecisionType.model_validate({**fund, "counts_toward_budget": False}).kind == "full_cost_after_aid"
+
+
 # Type checks only: each path refuses a bad value and keeps a good one. This is not
 # lever coverage -- test_lever_coverage.py deliberately ignores this file. The levers
 # here that the calculator reads (a decision type's kind, amount and extra_amount, a
