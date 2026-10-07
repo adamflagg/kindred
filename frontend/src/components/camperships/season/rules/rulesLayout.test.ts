@@ -15,6 +15,10 @@ import {
 } from './rulesLayout'
 
 describe('chapters (spec §6.2 C)', () => {
+  it('keeps only the Round 3 section in chapter 3', () => {
+    expect(CHAPTERS.find((c) => c.n === 3)?.cards).toEqual(['round3'])
+  })
+
   it('lists the seven chapters in their groups, Round 2 gone', () => {
     expect(CHAPTERS.map((c) => [c.n, c.title, c.group])).toEqual([
       [1, 'Tiers & equity', 'Awards'],

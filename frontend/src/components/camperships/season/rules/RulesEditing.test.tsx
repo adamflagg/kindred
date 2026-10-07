@@ -36,8 +36,6 @@ vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => year }))
 vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => undefined,
 }))
-// PR 7's capacity form has its own tests (CapacityForm.test.tsx).
-vi.mock('./CapacityForm', () => ({ CapacityForm: () => <div>Session capacity form</div> }))
 
 type Outcome = { kind: 'ok'; value: unknown } | { kind: 'refused'; status: number; message: string }
 let outcome: Outcome

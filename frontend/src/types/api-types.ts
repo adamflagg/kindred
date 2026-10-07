@@ -46,9 +46,6 @@ import type {
   CamperJourneyRow,
   CancellationIn,
   CancellationOut,
-  CapacityListOut,
-  CapacityOut,
-  CapacitySet,
   CellOut,
   CommitteeOut,
   CompareColumnOut,
@@ -343,12 +340,6 @@ export type ApiAidLastSeason = LastSeasonOut
 export type ApiAidScenarioTrailPage = TrailPageOut
 export type ApiAidScenarioTrailRow = TrailRowOut
 export type ApiAidLeverEffect = LeverEffectOut
-
-/** A session's capacity, staff-entered for Round 3's context (spec §6.3; `rules`). Mirrors Python `CapacitySet`. */
-export type ApiAidCapacityIn = CapacitySet
-export type ApiAidCapacity = CapacityOut
-/** Every session capacity stored for a season (`GET /capacity/{year}`; view-level). */
-export type ApiAidCapacityList = CapacityListOut
 
 /**
  * The Rules tab's writes (spec §7.5; D39). Each carries a per-section fingerprint and is refused
