@@ -16,14 +16,14 @@ import {
   FIELD_INLINE,
   LABEL,
 } from '../../../admin/lodging/lodgingStyles'
-import { SEASON_CARD } from '../seasonStyles'
+import { CS_CARD, CS_CARD_TITLE, CS_PILL, CS_SMALL } from '../../kit/csType'
 import { readCapacity } from './capacityModel'
 
 /**
  * Session capacity, entered by finance for Round 3's context (spec §6.3 item 4, §13 "where finance
  * enters session capacity"; Decision 23): one session at a time, with an optional note. It is
  * reference data, not part of the rules: nothing prices from it. Everyone who sees Season reads what
- * is stored; only `rules` gets the inputs. Choosing a session prefills its stored figure and note;
+ * is stored (the registrar too: owner 10-06, open item 3); only `rules` gets the inputs. Choosing a session prefills its stored figure and note;
  * what the person types wins, and a save replaces what was stored.
  */
 export function CapacityForm() {
@@ -54,12 +54,14 @@ export function CapacityForm() {
   const nameOf = (id: number) => sessions?.get(id) ?? `Session ${String(id)}`
 
   return (
-    <section className={`${SEASON_CARD} space-y-2`} data-testid="capacity-form">
-      <h2 className="font-semibold">Session capacity, for Round 3</h2>
-      <p className="text-muted-foreground text-xs">
+    <section id="card-capacity" className={`${CS_CARD} space-y-2`} data-testid="capacity-form">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className={CS_CARD_TITLE}>Session capacity, for Round 3</h3>
+        <span className={CS_PILL.stone}>Not part of the rules</span>
+      </div>
+      <p className={CS_SMALL}>
         Reference only: a Round 3 request shows its session&apos;s capacity beside its enrollment.
         Nothing prices from it.
-        {canEdit && ' Choosing a session shows what is stored; saving replaces it.'}
       </p>
       {storedRows.length > 0 && (
         <ul className="text-sm" data-testid="capacity-stored">

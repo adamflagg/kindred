@@ -251,9 +251,9 @@ describe('RulesTab mounts the session capacity form (Decision 23)', () => {
     expect(screen.getByText('Session capacity form')).toBeInTheDocument()
   })
 
-  it('keeps it from the registrar, who reads the rules only', () => {
+  it('shows it to the registrar too, read only (owner 10-06, open item 3)', () => {
     renderAt('/aid/season/rules?open=3')
-    expect(screen.queryByText('Session capacity form')).not.toBeInTheDocument()
+    expect(screen.getByText('Session capacity form')).toBeInTheDocument()
   })
 })
 

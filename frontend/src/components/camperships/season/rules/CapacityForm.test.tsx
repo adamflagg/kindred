@@ -99,9 +99,8 @@ describe('CapacityForm', () => {
     )
   })
 
-  it("won't send a figure it can't read, and says saving replaces what was stored", async () => {
+  it("won't send a figure it can't read", async () => {
     render(<CapacityForm />)
-    expect(screen.getByText(/saving replaces it/)).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 1')
     await userEvent.type(screen.getByRole('textbox', { name: 'Capacity (places)' }), '12.5')
     expect(screen.getByText('A whole number of places')).toBeInTheDocument()
@@ -217,4 +216,19 @@ describe('CapacityForm', () => {
     expect(screen.getByText(/Couldn.t refresh this list/)).toBeInTheDocument()
     expect(screen.getByTestId('capacity-stored')).toHaveTextContent('Session 1 · 80 places')
   })
+})
+
+it('shows the registrar the stored list, no form (owner 10-06, open item 3)', () => {
+  granted = ['financial_aid.view', 'financial_aid.casework']
+  stored = [{ year: 2027, session_cm_id: 1000101, capacity: 80, note: '', actor: 'A' }]
+  render(<CapacityForm />)
+  expect(screen.getByText('Not part of the rules')).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      "Reference only: a Round 3 request shows its session's capacity beside its enrollment. Nothing prices from it."
+    )
+  ).toBeInTheDocument()
+  expect(screen.getByTestId('capacity-stored')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+  expect(screen.queryByText(/Choosing a session shows what is stored/)).toBeNull()
 })

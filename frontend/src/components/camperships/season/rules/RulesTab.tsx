@@ -479,9 +479,7 @@ function ChaptersBody({
                     card === 'tiergrid' ? (
                       gridCard()
                     ) : card === 'capacity' ? (
-                      finance ? (
-                        <CapacityForm key="capacity" />
-                      ) : null
+                      <CapacityForm key="capacity" />
                     ) : (
                       sectionCard(card)
                     )
