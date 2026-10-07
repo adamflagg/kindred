@@ -127,7 +127,7 @@ export type FieldSpec =
 export interface EditContext {
   readonly classes: readonly string[]
   /** A class's display label where a program or pool shares its key; a class without one reads in words. */
-  readonly classLabels?: ReadonlyMap<string, string>
+  readonly classLabels: ReadonlyMap<string, string>
   readonly pools: ReadonlyArray<{ key: string; label: string }>
   readonly sessions: ReadonlyArray<{ id: number; name: string }>
   readonly programs: ReadonlyArray<{ key: string; label: string }>
@@ -158,7 +158,7 @@ function liftedSpec(
       options: [
         ...context.classes.map((c) => ({
           value: c,
-          label: context.classLabels?.get(c) ?? keyWords(c),
+          label: context.classLabels.get(c) ?? keyWords(c),
         })),
         { value: '', label: 'None' },
       ],

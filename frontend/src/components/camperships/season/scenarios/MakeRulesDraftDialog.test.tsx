@@ -66,12 +66,14 @@ const PREVIEW: ApiAidPromotionPreview = {
 /** Stands in for the Compare column's "Make A1 the Rules Draft…": opens the dialog on A1; the dialog closes it. */
 function Harness() {
   const [code, setCode] = useState<string | null>(null)
+  // A program 'ffp' labelled 'FFP' lends its label to the award table with that key.
+  const names = { pools: {}, programs: { ffp: 'FFP' }, decisionTypes: {}, criteria: {} }
   return (
     <>
       <button type="button" onClick={() => setCode('A1')}>
         Make A1 the Rules Draft…
       </button>
-      <MakeRulesDraftDialog code={code} onClose={() => setCode(null)} />
+      <MakeRulesDraftDialog code={code} names={names} onClose={() => setCode(null)} />
     </>
   )
 }
@@ -101,6 +103,27 @@ beforeEach(() => {
 // …the two describes, moved as described above.
 
 describe('Make it the rules draft (D39; Decision 21)', () => {
+  it('names a promoted award table by the label its same-key program carries', async () => {
+    preview = {
+      ...PREVIEW,
+      sections: [
+        {
+          section: 'award_tables',
+          changes: [
+            { path: ['ffp', 'tiers', '2', 'r1_pct'], kind: 'changed', before: '55', after: '58' },
+          ],
+          warning: null,
+        },
+      ],
+    }
+    await renderDialog('/aid/season/scenarios?compare=A1')
+    expect(
+      within(screen.getByTestId('promotion-preview')).getByText(
+        'FFP › Tiers › Tier 2 › Round 1 %: 55% → 58%'
+      )
+    ).toBeInTheDocument()
+  })
+
   it('lists each change, makes a replaced edit be confirmed, and sends its token', async () => {
     await renderDialog('/aid/season/scenarios?compare=A1')
     const dialog = screen.getByTestId('promotion-preview')

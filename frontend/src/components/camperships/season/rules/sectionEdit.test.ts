@@ -360,6 +360,7 @@ describe('the null side of a change (m4)', () => {
 
 const CONTEXT: EditContext = {
   classes: ['camp', 'teen', 'family'],
+  classLabels: new Map(),
   pools: [
     { key: 'pool_a', label: 'Pool A' },
     { key: 'pool_b', label: 'Pool B' },

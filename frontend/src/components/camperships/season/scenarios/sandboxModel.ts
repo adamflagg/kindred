@@ -7,7 +7,7 @@
 import type { ApiAidRulesDocument } from '../../../../types/api-types'
 import { formatWholeMoney } from '../../kit/money'
 import { CARD_SPECS, CHOICE_WORDS } from '../rules/rulesCards'
-import { keyLabel as borrowedLabel, keyWords, rulesVocabulary } from '../rules/rulesModel'
+import { keyLabel, keyWords, rulesVocabulary } from '../rules/rulesModel'
 import { bandsIn, bandsOf, evenOf, type TableShape } from '../rules/tierGrid'
 
 type Doc = ApiAidRulesDocument
@@ -326,14 +326,14 @@ const incomeLabel = (field: string) =>
 
 /** A table's or equity class's name in the document's words: the program or pool with that key, else its words. */
 export function classLabel(key: string, document: Doc): string {
-  return borrowedLabel(
+  return keyLabel(
     key,
     rulesVocabulary((section) => document[section])
   )
 }
 
 /** A box's label, for "Fix first": the card's own words (rulesCards.ts). */
-export function keyLabel(key: string, document: Doc): string {
+export function boxLabel(key: string, document: Doc): string {
   const fixed: Record<string, string> = {
     [TIER_START]: 'Start',
     [TIER_WIDTH]: 'Band width',
@@ -363,7 +363,7 @@ export function fixFirstWords(
   document: Doc
 ): string | null {
   if (problems.size === 0) return null
-  return `Fix first: ${[...problems].map(([key, problem]) => `${keyLabel(key, document)} (${problem})`).join('; ')}`
+  return `Fix first: ${[...problems].map(([key, problem]) => `${boxLabel(key, document)} (${problem})`).join('; ')}`
 }
 
 /** Only a table's own cells are boxes; an inheriting table's cells (and its overrides) read only (§S5 F1). */

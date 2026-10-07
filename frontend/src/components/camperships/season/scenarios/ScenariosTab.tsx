@@ -177,7 +177,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
 
   return (
     <div className="space-y-3">
-      <MakeRulesDraftDialog code={promoting} onClose={() => setPromoting(null)} />
+      <MakeRulesDraftDialog code={promoting} names={names} onClose={() => setPromoting(null)} />
       <ScenarioControls
         panel={view.panel}
         compareCount={view.panel === 'compare' || view.anyColumn ? checked.length : 0}
