@@ -324,6 +324,17 @@ def test_an_ag_session_no_program_claims_is_priced_under_its_parents_program() -
     assert priced_program(request, orphan, rules)[0] is None
 
 
+def test_an_unclaimed_ag_session_follows_a_parent_the_programs_claim_by_type() -> None:
+    """Regression guard. The parent's own type (not just its id) reaches the program lookup."""
+    rules = with_lever(intake_rules(), "programs.summer.session_types", ["main", "embedded"])  # "ag" not claimed
+    request = replace(_summer_request(), session_cm_id=1000199)
+    sessions = {
+        1000199: SessionRow(1000199, "AG Session 2", "ag", "2027-06-20", parent_cm_id=1000998),
+        1000998: SessionRow(1000998, "Session 9", "main", "2027-06-20"),  # claimed by type "main", not by id
+    }
+    assert priced_program(request, sessions, rules) == ("summer", "")
+
+
 def _summer_request() -> RequestRecord:
     return RequestRecord(
         "req000000000001",

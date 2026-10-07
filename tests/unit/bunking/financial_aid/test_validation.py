@@ -761,3 +761,21 @@ def test_an_ag_session_no_program_claims_is_in_its_parents_program_not_unmapped(
     assert "unmapped_session" not in validate_rules(fictional_rules(), context).codes()
     orphan = _context(SessionRef(cm_id=1000199, session_type="ag"))
     assert "unmapped_session" in validate_rules(fictional_rules(), orphan).codes()
+
+
+def test_an_unclaimed_ag_session_follows_a_parent_the_programs_claim_by_type() -> None:
+    """Regression guard. The parent's own type (not just its id) reaches the program lookup."""
+    context = _context(
+        SessionRef(cm_id=1000998, session_type="main"),  # claimed by type "main", not by id
+        SessionRef(cm_id=1000199, session_type="ag", parent_id=1000998),
+    )
+    assert "unmapped_session" not in validate_rules(fictional_rules(), context).codes()
+
+
+def test_an_ag_session_with_a_parent_is_never_listed_as_missing_a_family_rate() -> None:
+    """Spec §8 applies to a per-person program's list too."""
+    rules = with_lever(fictional_rules(), "programs.family_camp.session_cm_ids", [1000201, 1000199])
+    with_parent = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000201))
+    assert "family_rate_missing" not in validate_rules(rules, with_parent).codes()
+    orphan = _context(SessionRef(cm_id=1000199, session_type="ag"))
+    assert "family_rate_missing" in validate_rules(rules, orphan).codes()

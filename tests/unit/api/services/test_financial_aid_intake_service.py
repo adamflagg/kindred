@@ -268,6 +268,20 @@ async def test_an_ag_session_no_program_claims_is_not_flagged_when_its_parent_is
 
 
 @pytest.mark.asyncio
+async def test_an_unclaimed_ag_session_follows_a_parent_the_programs_claim_by_type() -> None:
+    """Regression guard. The parent's own type (not just its id) reaches the program lookup."""
+    store = seeded_store()
+    store.rules = with_lever(intake_rules(), "programs.summer.session_types", ["main", "embedded"])
+    store.sessions.append(SessionRow(1000998, "Session 9", "main", "2027-06-20"))  # claimed by type, not by id
+    store.sessions.append(SessionRow(1000199, "AG Session 2", "ag", "2027-06-20", parent_cm_id=1000998))
+    store.fa_rows.append(fa_row(1000033, 1000003, summer="AG Session 2", summer_ask=300.0))
+    store.attendees.append(AttendeeRow(1000033, 1000003, 1000199, 2))
+    await FinancialAidIntakeService(store).build(YEAR)
+    request = next(r for r in store.requests.values() if r.person_cm_id == 1000033)
+    assert all(f.get("code") != "no_program_for_session" for f in request.flags)
+
+
+@pytest.mark.asyncio
 async def test_a_billed_infant_two_or_older_on_the_first_day_counts_as_non_infant_and_is_flagged() -> None:
     store = seeded_store()  # intake_rules(): infant cutoff 24 months
     store.billing.append(
