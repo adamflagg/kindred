@@ -12,6 +12,7 @@ from bunking.financial_aid.rules import (
     resolved_table,
     validate_rules,
 )
+from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.bunking.financial_aid.fixtures import FICTIONAL_SESSION_IDS, fictional_rules, with_lever, with_levers
 
 
@@ -486,3 +487,15 @@ def test_an_income_conflict_check_that_holds_or_is_not_listed_is_fine() -> None:
     held = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", {"severity": "hold"})
     assert "household_income_conflict_must_hold" not in validate_rules(held).codes()
     assert "household_income_conflict_must_hold" not in validate_rules(fictional_rules()).codes()  # unlisted
+
+
+def test_a_disabled_dependents_criterion_with_a_weight_does_not_warn() -> None:
+    """§9.2: a weight on a disabled criterion is stored, unused."""
+    doc = fictional_rules().model_dump(mode="json")
+    doc["equity"]["weights"]["camp"]["dependents"] = "1"
+    enabled = AidRules.model_validate(doc)
+    assert "dependents_weight_cannot_bind" in validate_rules(enabled).codes()
+    for criterion in doc["equity"]["criteria"]:
+        if criterion["key"] == "dependents":
+            criterion["enabled"] = False
+    assert "dependents_weight_cannot_bind" not in validate_rules(AidRules.model_validate(doc)).codes()

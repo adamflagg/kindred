@@ -179,7 +179,7 @@ def _check_equity(rules: AidRules, issues: _Issues) -> None:
         if n > 1:
             issues.error("equity", "duplicate_criterion", "equity.criteria", f"Criterion '{key}' appears {n} times")
     known = set(counts)
-    dependents_keys = {c.key for c in rules.equity.criteria if is_dependents_criterion(c)}
+    dependents_keys = {c.key for c in rules.equity.criteria if is_dependents_criterion(c) and c.enabled}
     for cls, weights in rules.equity.weights.items():
         for key, weight in weights.items():
             path = f"equity.weights.{cls}.{key}"

@@ -93,6 +93,8 @@ def equity_shift(
     total = ZERO
     met: list[str] = []
     for criterion in equity.criteria:
+        if not criterion.enabled:
+            continue  # owner 10-06: an unchecked criterion counts for nobody; its weights stay in the document
         if is_dependents_criterion(criterion) and rules.income.dependents_mode != "tier_shift":
             continue
         if criterion_met(criterion, application, request):
