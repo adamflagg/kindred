@@ -12,6 +12,7 @@ import {
   setAt,
   touches,
   valueAt,
+  type EditContext,
 } from './sectionEdit'
 
 describe('Extra amount takes a box on a full_cost decision type only', () => {
@@ -311,5 +312,71 @@ describe('the null side of a change (m4)', () => {
     expect(sectionChanges({ a: 1 }, {})).toEqual([
       { path: ['a'], kind: 'removed', before: 1, after: null },
     ])
+  })
+})
+
+const CONTEXT: EditContext = {
+  classes: ['camp', 'teen', 'family'],
+  pools: [
+    { key: 'pool_a', label: 'Pool A' },
+    { key: 'pool_b', label: 'Pool B' },
+  ],
+  sessions: [
+    { id: 1000101, name: 'Session 1' },
+    { id: 1000102, name: 'Session 2' },
+    { id: 1000103, name: 'Session 3' },
+  ],
+  programs: [
+    { key: 'summer', label: 'Summer' },
+    { key: 'weekend', label: 'Weekend' },
+  ],
+  claimed: new Set([1000101]),
+}
+
+describe('the lifted settings (spec §6.2 F)', () => {
+  it("boxes a program's class and pool as pickers with None, only when the editor has the context", () => {
+    expect(fieldSpec(['summer', 'equity_class'], 'camp', {}, CONTEXT)).toEqual({
+      kind: 'pick',
+      options: [
+        { value: 'camp', label: 'Camp' },
+        { value: 'teen', label: 'Teen' },
+        { value: 'family', label: 'Family' },
+        { value: '', label: 'None' },
+      ],
+    })
+    expect(fieldSpec(['summer', 'equity_class'], 'camp', {})).toBeNull() // Scenarios' All settings: unchanged
+    expect(fieldSpec(['summer', 'budget_pool'], null, {}, CONTEXT)).toMatchObject({ kind: 'pick' })
+  })
+
+  it("boxes sessions as chips, the grants offset as checkboxes, a criterion's Enabled and every date", () => {
+    expect(fieldSpec(['summer', 'session_cm_ids'], [1000101], {}, CONTEXT)).toMatchObject({
+      kind: 'sessions',
+    })
+    expect(fieldSpec(['offset_programs'], ['summer'], {}, CONTEXT)).toMatchObject({
+      kind: 'programs',
+    })
+    expect(fieldSpec(['criteria', '0', 'enabled'], true, {}, CONTEXT)).toEqual({ kind: 'yesno' })
+    expect(fieldSpec(['r1_run'], null, {}, CONTEXT)).toEqual({ kind: 'date' })
+  })
+
+  it('reads them back in the server form', () => {
+    expect(parseSetting('', { kind: 'pick', options: [] })).toEqual({ kind: 'ok', value: null })
+    expect(parseSetting('2027-03-01', { kind: 'date' })).toEqual({
+      kind: 'ok',
+      value: '2027-03-01',
+    })
+    expect(parseSetting('', { kind: 'date' })).toEqual({ kind: 'ok', value: null })
+    expect(
+      parseSetting('1000101,1000103', { kind: 'sessions', options: [], claimed: new Set() })
+    ).toEqual({ kind: 'ok', value: [1000101, 1000103] })
+    expect(parseSetting('summer', { kind: 'programs', options: [] })).toEqual({
+      kind: 'ok',
+      value: ['summer'],
+    })
+  })
+
+  it('never lifts a name, a key, or a legacy table route', () => {
+    expect(fieldSpec(['summer', 'r1_table'], 'camp', {}, CONTEXT)).toBeNull()
+    expect(fieldSpec(['summer', 'label'], 'Summer', {}, CONTEXT)).toBeNull()
   })
 })

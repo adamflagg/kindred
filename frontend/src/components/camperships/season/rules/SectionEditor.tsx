@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
 
 import {
   AMBER_NOTE,
@@ -8,16 +8,9 @@ import {
 } from '../../../admin/lodging/lodgingStyles'
 import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import { formatSetting, type RulesNames } from './rulesModel'
-import {
-  applyEdits,
-  editKey,
-  fieldName,
-  fieldSpec,
-  pathOf,
-  rawOf,
-  valueAt,
-  type FieldSpec,
-} from './sectionEdit'
+import { RuleControl } from './RuleControl'
+import { editKey, fieldName, fieldSpec, pathOf, valueAt, type FieldSpec } from './sectionEdit'
+import { useSectionDraft } from './useSectionDraft'
 import { SectionView, type RenderSetting } from './SectionView'
 
 /**
@@ -69,6 +62,19 @@ function Field({
   onChange: (raw: string) => void
 }) {
   const name = fieldName(path)
+  if (spec.kind !== 'yesno' && spec.kind !== 'choice' && spec.kind !== 'number') {
+    // The lifted settings only arise with an editor context, which this editor is never given.
+    return (
+      <RuleControl
+        path={path}
+        value={value}
+        spec={spec}
+        raw={raw}
+        problem={problem}
+        onChange={onChange}
+      />
+    )
+  }
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {spec.kind === 'yesno' ? (
@@ -129,13 +135,11 @@ export function SectionEditor({
   onCancel,
   names,
 }: SectionEditorProps) {
-  const [edits, setEdits] = useState<ReadonlyMap<string, string>>(() => new Map())
   const specOf = useCallback(
     (path: readonly string[]) => fieldSpec(path, valueAt(opened, path), opened),
     [opened]
   )
-  const applied = useMemo(() => applyEdits(opened, edits, specOf), [opened, edits, specOf])
-  const changedKeys = useMemo(() => new Set(applied.changed.map(editKey)), [applied.changed])
+  const { set, applied, changedKeys, dropGone, rawOf } = useSectionDraft(opened, specOf)
 
   const renderValue: RenderSetting = (path, value) => {
     const spec = specOf(path)
@@ -146,17 +150,11 @@ export function SectionEditor({
         path={path}
         value={value}
         spec={spec}
-        raw={edits.get(key) ?? (spec.kind === 'yesno' ? String(value === true) : rawOf(value))}
+        raw={rawOf(path, value, spec)}
         problem={applied.problems.get(key) ?? null}
         changed={changedKeys.has(key)}
         names={names}
-        onChange={(raw) =>
-          setEdits((previous) => {
-            const next = new Map(previous)
-            next.set(key, raw)
-            return next
-          })
-        }
+        onChange={(raw) => set(path, raw)}
       />
     )
   }
@@ -166,8 +164,6 @@ export function SectionEditor({
     if (!saving) onCancel()
   })
   const blocked = applied.problems.size > 0
-  const dropGone = () =>
-    setEdits((previous) => new Map([...previous].filter(([key]) => !applied.gone.has(key))))
   const nothing = applied.changed.length === 0
   return (
     <div className="space-y-2" data-testid="section-editor">

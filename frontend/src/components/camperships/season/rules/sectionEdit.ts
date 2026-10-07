@@ -14,7 +14,7 @@ import type {
   ApiAidProgramProfile,
   ApiAidRulesDocument,
 } from '../../../../types/api-types'
-import { labelOf, unitOf, type SettingUnit } from './rulesModel'
+import { keyWords, labelOf, unitOf, type SettingUnit } from './rulesModel'
 
 /** Settings the schema lets be empty (`… | None`), whose box may be cleared (rules/schema.py). */
 const NULLABLE: ReadonlySet<string> = new Set([
@@ -129,6 +129,69 @@ export type FieldSpec =
     }
   | { readonly kind: 'yesno' }
   | { readonly kind: 'choice'; readonly options: readonly string[] }
+  /** A choice among labelled values; value `''` is None (saved as null). */
+  | {
+      readonly kind: 'pick'
+      readonly options: ReadonlyArray<{ readonly value: string; readonly label: string }>
+    }
+  | { readonly kind: 'date' }
+  | {
+      readonly kind: 'sessions'
+      readonly options: EditContext['sessions']
+      readonly claimed: ReadonlySet<number>
+    }
+  | { readonly kind: 'programs'; readonly options: EditContext['programs'] }
+
+/** What the Rules tab's editor knows that a section's own content doesn't (spec §6.2 F): the choices for the lifted settings. */
+export interface EditContext {
+  readonly classes: readonly string[]
+  readonly pools: ReadonlyArray<{ key: string; label: string }>
+  readonly sessions: ReadonlyArray<{ id: number; name: string }>
+  readonly programs: ReadonlyArray<{ key: string; label: string }>
+  /** Sessions another program already claims: never offered in Add a session. */
+  readonly claimed: ReadonlySet<number>
+}
+
+const MILESTONES: ReadonlySet<string> = new Set([
+  'application_deadline',
+  'r1_run',
+  'response_deadline',
+  'r2_window_start',
+  'r2_window_end',
+  'r3_window_start',
+  'r3_window_end',
+])
+
+/** The settings spec §6.2 F lifts out of "names, keys, references, dates and lists stay as they are", with the editor's context. */
+function liftedSpec(path: readonly string[], context: EditContext): FieldSpec | null {
+  const key = path.at(-1) ?? ''
+  if (path.length === 2 && key === 'equity_class') {
+    return {
+      kind: 'pick',
+      options: [
+        ...context.classes.map((c) => ({ value: c, label: keyWords(c) })),
+        { value: '', label: 'None' },
+      ],
+    }
+  }
+  if (path.length === 2 && key === 'budget_pool') {
+    return {
+      kind: 'pick',
+      options: [
+        ...context.pools.map((p) => ({ value: p.key, label: p.label })),
+        { value: '', label: 'None' },
+      ],
+    }
+  }
+  if (path.length === 2 && key === 'session_cm_ids') {
+    return { kind: 'sessions', options: context.sessions, claimed: context.claimed }
+  }
+  if (path.length === 1 && key === 'offset_programs') {
+    return { kind: 'programs', options: context.programs }
+  }
+  if (path.length === 1 && MILESTONES.has(key)) return { kind: 'date' }
+  return null
+}
 
 const DECIMAL = /^\d+(\.\d+)?$/
 
@@ -177,9 +240,14 @@ function numberSpec(path: readonly string[], whole: boolean, nullable: boolean):
 export function fieldSpec(
   path: readonly string[],
   value: unknown,
-  content?: unknown
+  content?: unknown,
+  context?: EditContext
 ): FieldSpec | null {
   const key = path.at(-1) ?? ''
+  if (context !== undefined) {
+    const lifted = liftedSpec(path, context)
+    if (lifted !== null) return lifted
+  }
   // The server refuses an extra amount on any decision type but full_cost: no box to type one in.
   if (key === 'extra_amount' && path[0] === 'decision_types' && content !== undefined) {
     if (valueAt(content, [...path.slice(0, -1), 'kind']) !== 'full_cost') return null
@@ -202,7 +270,10 @@ export function fieldSpec(
 }
 
 export type Parsed =
-  | { readonly kind: 'ok'; readonly value: string | number | boolean | null }
+  | {
+      readonly kind: 'ok'
+      readonly value: string | number | boolean | null | ReadonlyArray<string | number>
+    }
   | { readonly kind: 'invalid'; readonly reason: string }
 
 /**
@@ -217,6 +288,17 @@ export function parseSetting(raw: string, spec: FieldSpec): Parsed {
       ? { kind: 'ok', value: raw }
       : { kind: 'invalid', reason: 'Not a choice' }
   }
+  if (spec.kind === 'date') {
+    if (raw === '') return { kind: 'ok', value: null }
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw)
+      ? { kind: 'ok', value: raw }
+      : { kind: 'invalid', reason: 'Not a date' }
+  }
+  if (spec.kind === 'pick') return { kind: 'ok', value: raw === '' ? null : raw }
+  if (spec.kind === 'sessions') {
+    return { kind: 'ok', value: raw === '' ? [] : raw.split(',').map(Number) }
+  }
+  if (spec.kind === 'programs') return { kind: 'ok', value: raw === '' ? [] : raw.split(',') }
   // Only the box's own symbol is dropped; the other one is a mistake to name, not to guess at.
   let text = raw.trim()
   if (spec.unit === 'money') text = text.replace(/^\$\s*/, '')
@@ -270,6 +352,7 @@ function exceeds(digits: string, limit: bigint): boolean {
 /** What a setting's box shows before anything is typed. */
 export function rawOf(value: unknown): string {
   if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) return value.join(',')
   return String(value)
 }
 
