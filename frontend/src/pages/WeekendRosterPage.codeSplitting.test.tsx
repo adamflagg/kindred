@@ -27,6 +27,7 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useWeekendSessions: () => sessionsQuery,
   useWeekendRoster: () => rosterQuery,
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 // The Groups tab (kindred#1913) is a real React Query hook, and these page

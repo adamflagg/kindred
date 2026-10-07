@@ -39,6 +39,7 @@ from api.schemas.lodging import (
     MedicalGate,
     PartyAdult,
     PartyChild,
+    PersonNeedNarrativeResponse,
     ProximityKind,
     RampAssessment,
     RequestTextBlock,
@@ -2994,6 +2995,17 @@ class LodgingRosterService:
             year=year,
             **{field: _s(record, field) for field in sorted(MEDICAL_NARRATIVE_FIELD_NAMES)},
             **{field: _gate(record, field) for field in sorted(MEDICAL_GATE_FIELD_NAMES)},
+        )
+
+    async def get_person_need_narrative(self, year: int, person_cm_id: int) -> PersonNeedNarrativeResponse:
+        """An adult guest's own Accommodation-Explain. The router gates this on
+        `bunking.manage`. One narrow read, anchored on the person and the year;
+        distinct non-empty values are kept in order, never merged with any
+        other person's or household's text."""
+        rows = await self.repository.fetch_person_need_narratives(year, person_cm_id)
+        texts = list(dict.fromkeys(text for row in rows if (text := _s(row, "value").strip())))
+        return PersonNeedNarrativeResponse(
+            person_cm_id=person_cm_id, year=year, accommodation_explain="\n\n".join(texts)
         )
 
     async def _housing_names(self) -> HousingNameResolver:

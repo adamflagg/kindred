@@ -33,28 +33,53 @@
  * the row's own existence -- `cpap_gate = yes` matched `needs_power` 29 of 29.
  * NO SEVERITY FILL, because the glyph carries the ink and the board struck the
  * `need` amber tone. The blocker is the one exception.
+ *
+ * ## An adult guest's words (2026-10-07)
+ *
+ * Two sources, each tagged. CampMinder's Accommodation-Explain is read PER
+ * PERSON (`usePersonNeedNarrative`), never from the household's medical row,
+ * which can carry another weekend's or another person's answer. The latest
+ * Jotform filing's comment (`jotformAccommodation`) shows whatever registration
+ * says: the form had no conditional logic on it for 2026, so guests answered No
+ * and still wrote a real need. It prints once, under its Jotform line.
  */
 import { HandHeart, HandHelping, ShieldAlert, type LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { Permission } from '../../constants/permissions'
 import { usePermissions } from '../../hooks/usePermissions'
-import { useHouseholdMedical } from '../../hooks/useWeekendRoster'
-import type { JotformNeedAnswerRow, RosterPartyRow } from '../../types/lodging'
+import { useHouseholdMedical, usePersonNeedNarrative } from '../../hooks/useWeekendRoster'
+import type {
+  HouseholdMedical,
+  JotformAccommodationRow,
+  JotformNeedAnswerRow,
+  RosterPartyRow,
+} from '../../types/lodging'
 import { shortDate } from './bunkingRequest'
 import { ANSWER_PILL_CLASS, ANSWER_PILL_TONE } from './answerPill'
 import { askedNeedGlyphs, needExplainTexts } from './needGlyphs'
+import { Section } from './PanelSection'
 import { ProvenanceTag } from './panelRows'
 
 export interface HousingNeedDetailsProps {
   party: RosterPartyRow
-  /** `null` for a person-grain party — an adult weekend enrols the person
-   *  directly, so there is no household to look a narrative up by. */
+  /** The household whose medical narrative to read. `null` for an adult
+   *  weekend guest: a guest does have a household, but its row is the wrong
+   *  source -- it can hold another weekend's or another person's answer
+   *  (`adult_need_answers.py`) -- so a guest's words come by `personCmId`. */
   householdCmId: number | null
+  /** An adult weekend guest's own CampMinder id, for their own narrative. */
+  personCmId?: number | null | undefined
   year: number
   /** kindred#2759: where the guest's Jotform disagrees with registration. Adult guests only. */
   jotformSays?: readonly JotformNeedAnswerRow[] | undefined
+  /** The latest filing's accommodation answer and comment, agreeing or not. Adult guests only. */
+  jotformAccommodation?: JotformAccommodationRow | null | undefined
   /** kindred#2759: tags every row with its source ("Registration") when a second source sits beside it. */
   sourceTag?: string | undefined
+  /** Draw a titled section around the rows -- and nothing, heading included,
+   *  when there are none (owner ruling 2026-10-07: no empty headings). */
+  title?: string | undefined
 }
 
 interface PanelRow {
@@ -66,45 +91,90 @@ interface PanelRow {
   isBlocker?: boolean
 }
 
+/** What one Jotform line under a need says. `registration` is set only where
+ *  the two disagree; `answer` is `''` for an unanswered question. */
+interface JotformLine {
+  need: JotformNeedAnswerRow['need']
+  answer: string
+  registration?: string | undefined
+  submittedAt: string
+  details: string
+}
+
 /**
  * The muted Jotform line under a registration need (kindred#2759). Context
  * only: registration still drives the glyphs. The answer is a Yes/No pill in
  * `SharePreferenceChip`'s grammar and tones, after the Jotform source tag --
  * no "Jotform says" prefix, which the tag already says (owner review
- * 2026-09-24).
+ * 2026-09-24). The pill shows on agreement too, so a guest who ticked No and
+ * wrote a need reads as exactly that (owner ruling 2026-10-07). The guest's
+ * comment is its own paragraph below, printed once -- never on the pill line.
  */
-function JotformSays({ says }: { says: JotformNeedAnswerRow }) {
-  const detail = (says.detail ?? '').trim()
-  const tone = says.jotform === 'Yes' ? ANSWER_PILL_TONE.yes : ANSWER_PILL_TONE.no
+function JotformSays({ line }: { line: JotformLine }) {
+  const tone = line.answer === 'Yes' ? ANSWER_PILL_TONE.yes : ANSWER_PILL_TONE.no
   return (
-    <p
-      data-testid={`jotform-says-${says.need}`}
-      className="text-muted-foreground flex flex-wrap items-center gap-1.5 pl-6 text-xs"
-    >
-      {/* The `{' '}`s draw nothing inside the flex row (gap spaces it); they
-          keep the line's copied text and textContent readable. */}
-      <ProvenanceTag>{`Jotform · ${shortDate(says.submitted_at ?? '')}`}</ProvenanceTag>{' '}
-      <span data-testid={`jotform-answer-${says.need}`} className={`${ANSWER_PILL_CLASS} ${tone}`}>
-        {says.jotform}
-      </span>{' '}
-      <span>{`${detail.length > 0 ? `— ${detail} ` : ''}(registration: ${says.registration})`}</span>
-    </p>
+    <>
+      <p
+        data-testid={`jotform-says-${line.need}`}
+        className="text-muted-foreground flex flex-wrap items-center gap-1.5 pl-6 text-xs"
+      >
+        {/* The `{' '}`s draw nothing inside the flex row (gap spaces it); they
+            keep the line's copied text and textContent readable. */}
+        <ProvenanceTag>{`Jotform · ${shortDate(line.submittedAt)}`}</ProvenanceTag>{' '}
+        {line.answer.length > 0 && (
+          <span
+            data-testid={`jotform-answer-${line.need}`}
+            className={`${ANSWER_PILL_CLASS} ${tone}`}
+          >
+            {line.answer}
+          </span>
+        )}{' '}
+        {line.registration !== undefined && <span>{`(registration: ${line.registration})`}</span>}
+      </p>
+      {line.details.length > 0 && (
+        <p
+          data-testid={`jotform-details-${line.need}`}
+          className="text-foreground/85 pl-6 text-sm whitespace-pre-wrap"
+        >
+          {line.details}
+        </p>
+      )}
+    </>
   )
 }
 
 export function HousingNeedDetails({
   party,
   householdCmId,
+  personCmId,
   year,
   jotformSays,
+  jotformAccommodation,
   sourceTag,
+  title,
 }: HousingNeedDetailsProps) {
   const { hasPermission } = usePermissions()
-  const canRead = hasPermission(Permission.BUNKING_MANAGE) && householdCmId !== null
-  const { data, error, isLoading } = useHouseholdMedical(year, householdCmId, canRead)
-
+  const mayRead = hasPermission(Permission.BUNKING_MANAGE)
   const flags = party.flags
   const mandatory = flags?.accommodation_is_mandatory === true
+  const hasAccommodationRow = mandatory || flags?.needs_accommodation === true
+
+  const canReadHousehold = mayRead && householdCmId !== null
+  const household = useHouseholdMedical(year, householdCmId, canReadHousehold)
+  // A guest's narrative is Accommodation-Explain alone, and only the
+  // Accommodation row holds it -- so a guest without that row asks for
+  // nothing, and every adult row is painted before any fetch settles.
+  const canReadPerson =
+    mayRead && householdCmId === null && (personCmId ?? null) !== null && hasAccommodationRow
+  const person = usePersonNeedNarrative(year, personCmId ?? null, canReadPerson)
+  const canRead = canReadHousehold || canReadPerson
+  const data: Partial<HouseholdMedical> | undefined = canReadHousehold
+    ? household.data
+    : canReadPerson
+      ? person.data
+      : undefined
+  const error = canReadHousehold ? household.error : canReadPerson ? person.error : null
+  const isLoading = canReadHousehold ? household.isLoading : canReadPerson && person.isLoading
 
   // A paragraph already rendered under an earlier row is never repeated
   // under a later one. `accommodation_explain` is read directly by the
@@ -233,29 +303,69 @@ export function HousingNeedDetails({
   // pins that.
   // kindred#2759. A Jotform answer that differs from registration hangs under
   // the row it concerns; one with no registration row (Jotform says Yes,
-  // registration said No or nothing) gets its own row, never dropped.
+  // registration said No or nothing) gets its own row, never dropped. Since
+  // 2026-10-07 the accommodation comment does the same whether or not the two
+  // agree.
   const saysByNeed = new Map((jotformSays ?? []).map((says) => [says.need, says]))
-  const saysFor = (rowKey: string): JotformNeedAnswerRow | undefined =>
+  const accommodationSays = saysByNeed.get('accommodation')
+  const accommodationDetails = (jotformAccommodation?.details ?? '').trim()
+  const accommodationLine: JotformLine | undefined =
+    accommodationSays !== undefined
+      ? {
+          need: 'accommodation',
+          answer: accommodationSays.jotform,
+          registration: accommodationSays.registration,
+          submittedAt: accommodationSays.submitted_at ?? '',
+          details: accommodationDetails,
+        }
+      : accommodationDetails.length > 0 && jotformAccommodation
+        ? {
+            need: 'accommodation',
+            answer: jotformAccommodation.answer ?? '',
+            submittedAt: jotformAccommodation.submitted_at ?? '',
+            details: accommodationDetails,
+          }
+        : undefined
+  const cpapSays = saysByNeed.get('cpap')
+  const cpapLine: JotformLine | undefined =
+    cpapSays !== undefined
+      ? {
+          need: 'cpap',
+          answer: cpapSays.jotform,
+          registration: cpapSays.registration,
+          submittedAt: cpapSays.submitted_at ?? '',
+          details: '',
+        }
+      : undefined
+  const lineFor = (rowKey: string): JotformLine | undefined =>
     rowKey === 'accommodation' || rowKey === 'blocker'
-      ? saysByNeed.get('accommodation')
+      ? accommodationLine
       : rowKey === 'power'
-        ? saysByNeed.get('cpap')
+        ? cpapLine
         : undefined
   const rowKeys = new Set(rows.map((row) => row.key))
   const orphans = [
     {
-      need: 'accommodation' as const,
       label: 'Accommodation',
+      line: accommodationLine,
+      registration:
+        accommodationSays?.registration ?? jotformAccommodation?.registration ?? 'blank',
       covered: rowKeys.has('accommodation') || rowKeys.has('blocker'),
     },
-    { need: 'cpap' as const, label: 'Power (CPAP)', covered: rowKeys.has('power') },
-  ].flatMap((entry) => {
-    const says = saysByNeed.get(entry.need)
-    return says !== undefined && !entry.covered ? [{ ...entry, says }] : []
-  })
+    {
+      label: 'Power (CPAP)',
+      line: cpapLine,
+      registration: cpapSays?.registration ?? 'blank',
+      covered: rowKeys.has('power'),
+    },
+  ].flatMap(({ line, ...entry }) =>
+    line !== undefined && !entry.covered ? [{ ...entry, line }] : []
+  )
+  const titled = (node: ReactNode) =>
+    title === undefined ? node : <Section title={title}>{node}</Section>
 
   if (rows.length === 0 && orphans.length === 0 && error === null && canRead && isLoading) {
-    return (
+    return titled(
       <p data-testid="housing-need-loading" className="text-muted-foreground text-sm">
         Loading housing needs…
       </p>
@@ -267,7 +377,7 @@ export function HousingNeedDetails({
   // roster booleans rather than predicted by a flag.
   if (rows.length === 0 && orphans.length === 0 && error === null) return null
 
-  return (
+  return titled(
     <ul className="flex flex-col gap-2.5">
       {error !== null && (
         // NO SPINNER, deliberately asymmetric with the rows below: every row
@@ -325,24 +435,24 @@ export function HousingNeedDetails({
             </p>
           ))}
           {(() => {
-            const says = saysFor(row.key)
-            return says !== undefined ? <JotformSays says={says} /> : null
+            const line = lineFor(row.key)
+            return line !== undefined ? <JotformSays line={line} /> : null
           })()}
         </li>
       ))}
       {orphans.map((orphan) => (
         <li
-          key={`jotform-${orphan.need}`}
-          data-testid={`need-row-jotform-${orphan.need}`}
+          key={`jotform-${orphan.line.need}`}
+          data-testid={`need-row-jotform-${orphan.line.need}`}
           className="flex flex-col gap-1"
         >
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground font-semibold">{orphan.label}</span>
             {sourceTag !== undefined && (
-              <ProvenanceTag>{`${sourceTag}: ${orphan.says.registration}`}</ProvenanceTag>
+              <ProvenanceTag>{`${sourceTag}: ${orphan.registration}`}</ProvenanceTag>
             )}
           </div>
-          <JotformSays says={orphan.says} />
+          <JotformSays line={orphan.line} />
         </li>
       ))}
     </ul>

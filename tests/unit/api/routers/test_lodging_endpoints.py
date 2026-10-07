@@ -422,6 +422,78 @@ class TestHouseholdJourneyEndpoint:
         assert "family_camp_medical" not in collections
 
 
+def _person_narrative_reads(**kwargs: Any) -> list[Any]:
+    """One narrow read: the person's allowlisted narrative for the year."""
+    query_filter = kwargs.get("query_params", {}).get("filter", "")
+    if "person.cm_id = 3000001" in query_filter:
+        return [
+            _rec(id="v1", value="  Recovering from foot surgery. Close to the dining hall, please.  "),
+            _rec(id="v2", value=""),
+        ]
+    return []
+
+
+class TestPersonNeedNarrativeEndpoint:
+    """GET /api/lodging/persons/{id}/needs: an adult guest's own
+    Accommodation-Explain, the person-grain twin of the household medical
+    read. The household row is the wrong source for a guest (another
+    weekend's, or another person's, answer), so this reads the person."""
+
+    def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            response = TestClient(_build_app(_plain_user(), mock_pb)).get(
+                "/api/lodging/persons/3000001/needs", params={"year": 2026}
+            )
+
+        assert response.status_code == 403
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
+
+    def test_user_with_the_permission_gets_the_guests_own_words(self, mock_pb: MagicMock) -> None:
+        mock_pb.collection.return_value.get_full_list.side_effect = _person_narrative_reads
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            response = TestClient(_build_app(_manage_user(), mock_pb)).get(
+                "/api/lodging/persons/3000001/needs", params={"year": 2026}
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "person_cm_id": 3000001,
+            "year": 2026,
+            "accommodation_explain": "Recovering from foot surgery. Close to the dining hall, please.",
+        }
+
+    def test_a_person_with_nothing_on_file_gets_an_empty_narrative(self, mock_pb: MagicMock) -> None:
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            response = TestClient(_build_app(_manage_user(), mock_pb)).get(
+                "/api/lodging/persons/3000002/needs", params={"year": 2026}
+            )
+
+        assert response.status_code == 200
+        assert response.json()["accommodation_explain"] == ""
+
+    def test_it_never_reads_the_household_medical_row(self, mock_pb: MagicMock) -> None:
+        collections: list[str] = []
+
+        def _collection(name: str) -> MagicMock:
+            collections.append(name)
+            col = MagicMock()
+            col.get_full_list.side_effect = _person_narrative_reads
+            return col
+
+        mock_pb.collection.side_effect = _collection
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            response = TestClient(_build_app(_manage_user(), mock_pb)).get(
+                "/api/lodging/persons/3000001/needs", params={"year": 2026}
+            )
+
+        assert response.status_code == 200
+        assert collections == ["person_custom_values"]
+
+
 class TestMedicalEndpointIsPermissionGated:
     def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):

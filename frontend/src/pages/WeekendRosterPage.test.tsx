@@ -19,6 +19,7 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useWeekendSessions: () => sessionsQuery,
   useWeekendRoster: () => rosterQuery,
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
   // Opening `FamilyDetailsPanel` for real (kindred#2650's family-name click)
   // mounts `HouseholdJourneyCard`, which calls this unconditionally.
   useHouseholdJourney: () => ({ data: undefined, isLoading: false, error: null }),

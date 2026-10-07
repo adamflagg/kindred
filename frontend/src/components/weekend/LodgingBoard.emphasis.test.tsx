@@ -42,6 +42,7 @@ vi.mock('../../hooks/usePermissions', () => ({
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 // kindred#2759 follow-up: the board reads the Jotform queue for its write-in

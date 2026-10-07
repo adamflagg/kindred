@@ -50,6 +50,7 @@ const journeyResult = {
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => medicalResult.value,
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
   useHouseholdJourney: (...args: unknown[]) => {
     journeyCalls.push(args[0] as number | null)
     return journeyResult.value
@@ -1278,7 +1279,7 @@ describe('FamilyDetailsPanel — an adult guest’s sections (kindred#2759)', ()
     const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     expect(headings.indexOf('Bunking request (Jotform)')).toBeGreaterThanOrEqual(0)
     expect(headings.indexOf('Bunking request (Jotform)')).toBeLessThan(
-      headings.indexOf('Housing needs (Registration)')
+      headings.indexOf('Housing needs')
     )
     expect(headings).not.toContain('Share request')
   })

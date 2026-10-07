@@ -12,6 +12,7 @@ import {
   useHouseholdFamilyLabel,
   useHouseholdJourney,
   useHouseholdMedical,
+  usePersonNeedNarrative,
   useWeekendRoster,
   useWeekendSessions,
   useWeekendSummary,
@@ -22,6 +23,7 @@ const fetchWeekendSummary = vi.fn()
 const fetchWeekendRoster = vi.fn()
 const fetchHouseholdMedical = vi.fn()
 const fetchHouseholdJourney = vi.fn()
+const fetchPersonNeedNarrative = vi.fn()
 
 vi.mock('../services/lodgingApi', () => ({
   fetchWeekendSessions: (...args: unknown[]) => fetchWeekendSessions(...args),
@@ -29,6 +31,7 @@ vi.mock('../services/lodgingApi', () => ({
   fetchWeekendRoster: (...args: unknown[]) => fetchWeekendRoster(...args),
   fetchHouseholdMedical: (...args: unknown[]) => fetchHouseholdMedical(...args),
   fetchHouseholdJourney: (...args: unknown[]) => fetchHouseholdJourney(...args),
+  fetchPersonNeedNarrative: (...args: unknown[]) => fetchPersonNeedNarrative(...args),
 }))
 
 // One stable fetcher, so a test can assert the hooks hand the fetchers the
@@ -318,6 +321,37 @@ describe('useHouseholdMedical', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(fetchHouseholdMedical).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('usePersonNeedNarrative', () => {
+  beforeEach(() => {
+    fetchPersonNeedNarrative
+      .mockReset()
+      .mockResolvedValue({ person_cm_id: 1000004, year: 2026, accommodation_explain: '' })
+  })
+
+  it('stays idle while disabled, so the narrative is never fetched speculatively', () => {
+    renderHook(() => usePersonNeedNarrative(2026, 1000004, false), { wrapper })
+    expect(fetchPersonNeedNarrative).not.toHaveBeenCalled()
+  })
+
+  it('stays idle with no person to look up', () => {
+    renderHook(() => usePersonNeedNarrative(2026, null, true), { wrapper })
+    expect(fetchPersonNeedNarrative).not.toHaveBeenCalled()
+  })
+
+  it('fetches one person, under its own key, only when enabled', async () => {
+    const { result } = renderHook(() => usePersonNeedNarrative(2026, 1000004, true), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const args = fetchPersonNeedNarrative.mock.calls[0] as unknown[]
+    expect(args.slice(1)).toEqual([2026, 1000004])
+    expect(queryKeys.personNeedNarrative(2026, 1000004)).toEqual([
+      'person-need-narrative',
+      2026,
+      1000004,
+    ])
   })
 })
 

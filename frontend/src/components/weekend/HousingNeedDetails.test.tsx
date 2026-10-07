@@ -27,9 +27,20 @@ let medical: typeof DEFAULT_MEDICAL
 let medicalError: Error | null
 let canRead: boolean
 let medicalLoading: boolean
+let personNarrative:
+  { person_cm_id: number; year: number; accommodation_explain: string } | undefined
+const usePersonNeedNarrative = vi.fn(
+  (_year: number, _person: number | null, _enabled: boolean) => ({
+    data: personNarrative,
+    isLoading: false,
+    error: null,
+  })
+)
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: medical, isLoading: medicalLoading, error: medicalError }),
+  usePersonNeedNarrative: (year: number, person: number | null, enabled: boolean) =>
+    usePersonNeedNarrative(year, person, enabled),
 }))
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: () => canRead }),
@@ -40,6 +51,8 @@ beforeEach(() => {
   medicalError = null
   canRead = true
   medicalLoading = false
+  personNarrative = undefined
+  usePersonNeedNarrative.mockClear()
 })
 
 function party(flags: Record<string, boolean>) {
@@ -293,16 +306,10 @@ describe('Jotform says (kindred#2759)', () => {
     display_name: 'Olivia Chen',
     flags,
   })
-  const says = (
-    need: 'accommodation' | 'cpap',
-    registration: string,
-    jotform: string,
-    detail = ''
-  ) => ({
+  const says = (need: 'accommodation' | 'cpap', registration: string, jotform: string) => ({
     need,
     registration,
     jotform,
-    detail,
     submitted_at: '2026-08-31 09:00:00',
   })
 
@@ -353,16 +360,13 @@ describe('Jotform says (kindred#2759)', () => {
         party={adult({})}
         householdCmId={null}
         year={2026}
-        jotformSays={[
-          says('accommodation', 'No', 'Yes', 'Near a bathroom'),
-          says('cpap', 'blank', 'Yes'),
-        ]}
+        jotformSays={[says('accommodation', 'No', 'Yes'), says('cpap', 'blank', 'Yes')]}
         sourceTag="Registration"
       />
     )
     const orphan = screen.getByTestId('need-row-jotform-accommodation')
     expect(orphan).not.toHaveTextContent('Jotform says')
-    expect(orphan).toHaveTextContent('Yes — Near a bathroom (registration: No)')
+    expect(orphan).toHaveTextContent('Yes (registration: No)')
     const chip = within(orphan).getByTestId('jotform-answer-accommodation')
     expect(chip).toHaveTextContent(/^Yes$/)
     expect(chip.className).toContain('bg-emerald-100')
@@ -381,5 +385,212 @@ describe('Jotform says (kindred#2759)', () => {
     expect(
       within(screen.getByTestId('need-row-accommodation')).queryByText('Registration')
     ).toBeNull()
+  })
+})
+
+describe('the guest’s own words (2026-10-07)', () => {
+  const adult = (flags: NonNullable<RosterPartyRow['flags']>): RosterPartyRow => ({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 1000004,
+    display_name: 'Olivia Chen',
+    flags,
+  })
+  const accommodation = (answer: string, registration: string, details: string) => ({
+    answer,
+    registration,
+    details,
+    submitted_at: '2026-09-10 09:00:00',
+  })
+  const disagreement = (registration: string, jotform: string) => ({
+    need: 'accommodation' as const,
+    registration,
+    jotform,
+    submitted_at: '2026-09-10 09:00:00',
+  })
+
+  it('shows a Jotform comment when Jotform and registration both say No', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({})}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        jotformSays={[]}
+        jotformAccommodation={accommodation('No', 'No', 'Light sleeper, a quiet cabin please')}
+        sourceTag="Registration"
+      />
+    )
+    const row = screen.getByTestId('need-row-jotform-accommodation')
+    expect(row).toHaveTextContent('Accommodation')
+    expect(within(row).getByText('Registration: No')).toBeInTheDocument()
+    const line = within(row).getByTestId('jotform-says-accommodation')
+    expect(within(line).getByText('Jotform · Sep 10')).toBeInTheDocument()
+    // Owner ruling 2026-10-07: the Yes/No shows on agreement too.
+    expect(within(line).getByTestId('jotform-answer-accommodation')).toHaveTextContent(/^No$/)
+    expect(line).not.toHaveTextContent('(registration:')
+    expect(within(row).getByTestId('jotform-details-accommodation')).toHaveTextContent(
+      'Light sleeper, a quiet cabin please'
+    )
+  })
+
+  it('prints a disagreement’s comment exactly once, under the pill line', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({})}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        jotformSays={[disagreement('No', 'Yes')]}
+        jotformAccommodation={accommodation('Yes', 'No', 'Bottom bunk please')}
+        sourceTag="Registration"
+      />
+    )
+    const row = screen.getByTestId('need-row-jotform-accommodation')
+    const line = within(row).getByTestId('jotform-says-accommodation')
+    expect(within(line).getByTestId('jotform-answer-accommodation')).toHaveTextContent(/^Yes$/)
+    expect(line).toHaveTextContent('Yes (registration: No)')
+    expect(line).not.toHaveTextContent('Bottom bunk please')
+    expect(within(row).getAllByText('Bottom bunk please')).toHaveLength(1)
+  })
+
+  it('renders the comment verbatim, "N/A" included', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({})}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        jotformAccommodation={accommodation('No', 'No', '  N/A  ')}
+        sourceTag="Registration"
+      />
+    )
+    expect(screen.getByTestId('jotform-details-accommodation')).toHaveTextContent(/^N\/A$/)
+  })
+
+  it('draws no pill for an unanswered question, and nothing at all with no comment', () => {
+    const { rerender } = render(
+      <HousingNeedDetails
+        party={adult({})}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        jotformAccommodation={accommodation('', 'blank', 'Bottom bunk')}
+        sourceTag="Registration"
+      />
+    )
+    expect(screen.queryByTestId('jotform-answer-accommodation')).toBeNull()
+    expect(screen.getByText('Registration: blank')).toBeInTheDocument()
+
+    rerender(
+      <HousingNeedDetails
+        party={adult({})}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        jotformAccommodation={accommodation('No', 'No', '')}
+        sourceTag="Registration"
+      />
+    )
+    expect(screen.queryByTestId('need-row-jotform-accommodation')).toBeNull()
+  })
+
+  it('puts the CampMinder explanation and the Jotform comment under one Accommodation row', () => {
+    personNarrative = {
+      person_cm_id: 1000004,
+      year: 2026,
+      accommodation_explain: 'Recovering from foot surgery',
+    }
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_accommodation: true })}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        jotformSays={[]}
+        jotformAccommodation={accommodation('Yes', 'Yes', 'Walking boot until October')}
+        sourceTag="Registration"
+      />
+    )
+    expect(usePersonNeedNarrative).toHaveBeenLastCalledWith(2026, 1000004, true)
+    const row = screen.getByTestId('need-row-accommodation')
+    expect(within(row).getByText('Registration')).toBeInTheDocument()
+    expect(within(row).getByText('Recovering from foot surgery')).toBeInTheDocument()
+    const line = within(row).getByTestId('jotform-says-accommodation')
+    expect(within(line).getByTestId('jotform-answer-accommodation')).toHaveTextContent(/^Yes$/)
+    expect(within(row).getByTestId('jotform-details-accommodation')).toHaveTextContent(
+      'Walking boot until October'
+    )
+    expect(screen.queryByTestId('need-row-jotform-accommodation')).toBeNull()
+  })
+
+  it('fetches the guest’s narrative only when an Accommodation row will hold it', () => {
+    personNarrative = { person_cm_id: 1000004, year: 2026, accommodation_explain: 'Never shown' }
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_power: true })}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        sourceTag="Registration"
+      />
+    )
+    expect(usePersonNeedNarrative).toHaveBeenLastCalledWith(2026, 1000004, false)
+    expect(screen.queryByText('Never shown')).toBeNull()
+  })
+
+  it('never fetches the guest’s narrative without bunking.manage', () => {
+    canRead = false
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_accommodation: true })}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        sourceTag="Registration"
+      />
+    )
+    expect(usePersonNeedNarrative).toHaveBeenLastCalledWith(2026, 1000004, false)
+  })
+
+  it('never reads a household narrative for a guest', () => {
+    // The household mock answers whatever it is asked; a guest must not ask.
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_private_bathroom: true })}
+        householdCmId={null}
+        personCmId={1000004}
+        year={2026}
+        sourceTag="Registration"
+      />
+    )
+    expect(screen.queryByText(/Grandmother cannot manage/)).toBeNull()
+  })
+})
+
+describe('the section heading (owner ruling 2026-10-07)', () => {
+  it('draws its titled section when it has rows', () => {
+    render(
+      <HousingNeedDetails
+        party={party({ needs_private_bathroom: true })}
+        householdCmId={1000001}
+        year={2026}
+        title="Housing needs"
+      />
+    )
+    expect(screen.getByRole('heading', { level: 3, name: 'Housing needs' })).toBeInTheDocument()
+  })
+
+  it('draws no heading at all when it has no rows', () => {
+    medical = { ...DEFAULT_MEDICAL, bathroom_explain: '', special_needs_info: '' }
+    const { container } = render(
+      <HousingNeedDetails
+        party={party({})}
+        householdCmId={1000001}
+        year={2026}
+        title="Housing needs"
+      />
+    )
+    expect(container).toBeEmptyDOMElement()
   })
 })

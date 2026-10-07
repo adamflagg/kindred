@@ -6,6 +6,11 @@
  *
  * The adult branch keys on the WEEKEND's type (`isAdultSessionType`) as well
  * as the person grain — never on grain alone.
+ *
+ * Both panels title the needs section "Housing needs" (owner ruling
+ * 2026-10-07): a guest's rows carry their own Registration / Jotform tags now
+ * that both sources sit there. `HousingNeedDetails` draws the heading itself,
+ * so a section with no rows shows no empty heading.
  */
 import type { RosterPartyRow } from '../../types/lodging'
 import { isAdultSessionType } from '../../utils/sessionTypePredicates'
@@ -43,15 +48,16 @@ export function PartyRequestSections({
             <BunkingRequestPanel key={party.person_cm_id ?? 0} request={request} />
           </Section>
         )}
-        <Section title="Housing needs (Registration)">
-          <HousingNeedDetails
-            party={party}
-            householdCmId={null}
-            year={year}
-            jotformSays={request?.jotform_says ?? []}
-            sourceTag="Registration"
-          />
-        </Section>
+        <HousingNeedDetails
+          party={party}
+          householdCmId={null}
+          personCmId={(party.person_cm_id ?? 0) > 0 ? (party.person_cm_id ?? null) : null}
+          year={year}
+          jotformSays={request?.jotform_says ?? []}
+          jotformAccommodation={request?.accommodation ?? null}
+          sourceTag="Registration"
+          title="Housing needs"
+        />
       </>
     )
   }
@@ -62,18 +68,17 @@ export function PartyRequestSections({
         <ShareRequestPanel party={party} />
       </Section>
 
-      <Section title="Housing needs">
-        {/* ONE component now, not two. `AccessibilityFlagList` still serves
-            `HouseholdRosterRow`, where 62 rows must not fetch medical; this
-            panel shows one household, so its rows carry their own words.
-            kindred#2255's section 2 is superseded -- the duplication it
-            proposed collapsing behind a click is removed instead. */}
-        <HousingNeedDetails
-          party={party}
-          householdCmId={householdCmId > 0 ? householdCmId : null}
-          year={year}
-        />
-      </Section>
+      {/* ONE component now, not two. `AccessibilityFlagList` still serves
+          `HouseholdRosterRow`, where 62 rows must not fetch medical; this
+          panel shows one household, so its rows carry their own words.
+          kindred#2255's section 2 is superseded -- the duplication it
+          proposed collapsing behind a click is removed instead. */}
+      <HousingNeedDetails
+        party={party}
+        householdCmId={householdCmId > 0 ? householdCmId : null}
+        year={year}
+        title="Housing needs"
+      />
     </>
   )
 }

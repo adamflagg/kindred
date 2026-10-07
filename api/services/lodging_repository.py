@@ -95,7 +95,7 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
-from api.services.adult_need_answers import ADULT_NEED_FIELD_CM_IDS
+from api.services.adult_need_answers import ADULT_NEED_FIELD_CM_IDS, ADULT_NEED_NARRATIVE_FIELD_CM_IDS
 from api.services.jotform_bunking import ROSTER_ROLES, JotformBunkingRows
 from api.services.lodging_cache import cached_by_year
 from api.services.lodging_rules import (
@@ -843,6 +843,26 @@ class LodgingRepository:
             query_params={
                 "filter": f"person.cm_id = {person_cm_id} && ({field_filter})",
                 "expand": "field_definition",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_need_narratives(self, year: int, person_cm_id: int) -> list[Any]:
+        """One adult guest's own need narrative for `year`, for ONE open panel.
+
+        ⛔ `ADULT_NEED_NARRATIVE_FIELD_CM_IDS`, and nothing else -- the same
+        table holds Race, financial aid and salary-bearing staff history.
+        Uncached, like the household medical read: the narrative must not sit
+        in a process-wide cache that a later request could be answered from.
+        """
+        if person_cm_id <= 0:
+            return []
+        field_filter = " || ".join(f"field_definition.cm_id = {cm_id}" for cm_id in ADULT_NEED_NARRATIVE_FIELD_CM_IDS)
+        return await self._page(
+            PERSON_CUSTOM_VALUES,
+            query_params={
+                "filter": f"person.cm_id = {person_cm_id} && year = {year} && ({field_filter})",
+                "fields": "id,value",
                 "sort": STABLE_SORT,
             },
         )

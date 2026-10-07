@@ -35,6 +35,7 @@ vi.mock('../../hooks/usePermissions', () => ({
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 // Returns a promise because the real hook does: the board chains `.catch()`

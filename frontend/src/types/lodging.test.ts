@@ -283,10 +283,17 @@ const _exhaustiveBunkingRequest: Required<BunkingRequest> = {
       need: 'accommodation',
       registration: 'blank',
       jotform: 'Yes',
-      detail: '',
       submitted_at: '2026-08-03 09:00:00',
     },
   ],
+  // 2026-10-07: the guest's own words, whatever registration says.
+  accommodation: {
+    answer: 'Yes',
+    registration: 'blank',
+    details: 'Bottom bunk please',
+    submitted_at: '2026-08-03 09:00:00',
+  },
+  director_notes: '',
 }
 void _exhaustiveBunkingRequest
 

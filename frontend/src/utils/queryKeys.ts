@@ -589,6 +589,9 @@ export const queryKeys = {
   /** The medical narrative. Only ever fetched behind a `bunking.manage` check. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
+  /** An adult guest's own need narrative. Same gate and cache rule as the medical one. */
+  personNeedNarrative: (year: number, personCmId: number) =>
+    ['person-need-narrative', year, personCmId] as const,
   /**
    * A person's camper journey as of one viewed year (useCamperJourney), one
    * server read since kindred#2776.

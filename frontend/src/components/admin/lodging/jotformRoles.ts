@@ -17,4 +17,5 @@ export const JOTFORM_ROLE_LABELS: Readonly<Record<string, string>> = {
   housing_accommodation: 'Housing accommodation (Yes/No)',
   accommodation_details: 'Accommodation details',
   cpap: 'CPAP',
+  director_notes: 'Note to directors',
 }

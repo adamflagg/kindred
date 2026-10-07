@@ -41,6 +41,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   fetchHouseholdJourney,
   fetchHouseholdMedical,
+  fetchPersonNeedNarrative,
   fetchWeekendRoster as fetchRoster,
   fetchWeekendSessions as fetchSessions,
   fetchWeekendSummary as fetchSummary,
@@ -49,6 +50,7 @@ import { childSurnames, familyNameLabel } from '../components/weekend/householdI
 import type {
   HouseholdJourney,
   HouseholdMedical,
+  PersonNeedNarrative,
   WeekendRoster,
   WeekendSessionList,
   WeekendSummary,
@@ -191,5 +193,23 @@ export function useHouseholdMedical(year: number, householdCmId: number | null, 
     gcTime: 0,
     retry: false,
     queryFn: () => fetchHouseholdMedical(fetchWithAuth, year, householdCmId as number),
+  })
+}
+
+/**
+ * An adult weekend guest's own Accommodation-Explain, the person-grain twin of
+ * `useHouseholdMedical` with the same rules: opt-in, fetched for ONE open
+ * panel and never for the roster's rows, and `staleTime: 0, gcTime: 0` so the
+ * narrative leaves the cache when the panel closes.
+ */
+export function usePersonNeedNarrative(year: number, personCmId: number | null, enabled: boolean) {
+  const { fetchWithAuth } = useApiWithAuth()
+  return useQuery<PersonNeedNarrative>({
+    queryKey: queryKeys.personNeedNarrative(year, personCmId ?? 0),
+    enabled: enabled && year > 0 && personCmId !== null,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    queryFn: () => fetchPersonNeedNarrative(fetchWithAuth, year, personCmId as number),
   })
 }

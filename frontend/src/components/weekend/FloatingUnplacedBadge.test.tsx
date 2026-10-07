@@ -12,6 +12,7 @@ import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 let client: QueryClient

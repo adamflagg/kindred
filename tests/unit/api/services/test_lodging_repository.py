@@ -3000,6 +3000,29 @@ class TestFetchSessionScopedSyncEnds:
         assert await repo.fetch_session_scoped_sync_ends("household_custom_values_family_camp", 2026) == []
 
 
+class TestFetchPersonNeedNarratives:
+    """An adult guest's own Accommodation-Explain, for ONE open panel."""
+
+    @pytest.mark.asyncio
+    async def test_reads_only_the_allowlisted_narrative_for_one_person_and_year(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_person_need_narratives(2026, 3000001)
+
+        pb.collection.assert_called_with("person_custom_values")
+        params = _last_query(pb)
+        assert "person.cm_id = 3000001" in params["filter"]
+        assert "year = 2026" in params["filter"]
+        # ⛔ Exactly the allowlist: this table holds Race, financial aid and
+        # salary-bearing staff history.
+        assert re.findall(r"field_definition\.cm_id = (\d+)", params["filter"]) == ["224987"]
+
+    @pytest.mark.asyncio
+    async def test_never_queries_for_an_unresolvable_person(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        assert await repo.fetch_person_need_narratives(2026, 0) == []
+        pb.collection.assert_not_called()
+
+
 class TestFetchPersonCabinValues:
     """The adult camper journey's cabin read."""
 

@@ -22,6 +22,9 @@ var questions2026Shape = []FormQuestion{
 		"control_textarea", 23},
 	{"27", "If yes, please list the allergy and reaction: ", "control_textarea", 27},
 	{"29", "Are you bringing a CPAP machine to Camp? ", "control_radio", 29},
+	{"7", "Are you celebrating a special occasion at Camp? If yes, please share detail", "control_textarea", 7},
+	{"48", "Is there anything else you would like to share with the directors of this program? ",
+		"control_textarea", 48},
 	{"50", "Email", "control_email", 50},
 }
 
@@ -32,6 +35,7 @@ func TestSuggestFieldMapSuggestsEveryRoleFromThe2026Labels(t *testing.T) {
 		"first_name": "3", "last_name": "4", "nametag_name": "5", "respondent_email": "50",
 		"bunking_request": "21", "coming_with": "16", "emergency_name": "10", "emergency_phone": "12",
 		"emergency_email": "13", "housing_accommodation": "22", "accommodation_details": "23", "cpap": "29",
+		"director_notes": "48",
 	}
 	if got := SuggestFieldMap(questions2026Shape); !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %v\nwant %v", got, want)
@@ -87,6 +91,30 @@ func TestNormalizeWordingFoldsCasePunctuationAndSpace(t *testing.T) {
 }
 
 // --- Resolution tiers --------------------------------------------------------
+
+// The 2026 forms had every other role set by staff before director_notes
+// existed. The next pull must GUESS it from the wording, not leave it for a
+// pick, and must not disturb a single staff role.
+func TestResolveGuessesTheNoteToDirectorsBesideStaffRoles(t *testing.T) {
+	staff := FieldMapMeta{}
+	for role, qid := range SuggestFieldMap(questions2026Shape) {
+		if role != "director_notes" {
+			staff[role] = RoleMeta{QuestionID: qid, Source: SourceStaff}
+		}
+	}
+	fm, meta := ResolveMapping(questions2026Shape, staff, nil)
+	if fm["director_notes"] != "48" {
+		t.Fatalf("director_notes = %q, want 48", fm["director_notes"])
+	}
+	if got := meta["director_notes"]; got.Source != SourceGuessed || got.Flag != "" {
+		t.Errorf("meta = %+v; want guessed, no flag", got)
+	}
+	for role, m := range meta {
+		if role != "director_notes" && m.Source != SourceStaff {
+			t.Errorf("%s = %+v; a staff role moved", role, m)
+		}
+	}
+}
 
 func TestResolveKeepsAStaffRoleWhoseQuestionStillExists(t *testing.T) {
 	staff := FieldMapMeta{"first_name": {QuestionID: "50", Text: "Email", Source: SourceStaff}}

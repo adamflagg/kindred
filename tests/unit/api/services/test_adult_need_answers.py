@@ -16,9 +16,11 @@ import pytest
 
 from api.schemas.lodging import AccessibilityFlagSummary
 from api.services.adult_need_answers import (
+    ACCOMMODATION_EXPLAIN_FIELD_CM_ID,
     ADULT_BATHROOM_FIELD_CM_ID,
     ADULT_CPAP_FIELD_CM_ID,
     ADULT_NEED_FIELD_CM_IDS,
+    ADULT_NEED_NARRATIVE_FIELD_CM_IDS,
     ADULT_OPT_OUT_FIELD_CM_ID,
     HOUSING_ACCOMODATION_FIELD_CM_ID,
     adult_need_flags,
@@ -62,6 +64,20 @@ class TestTheAllowlist:
     def test_adult_infant_is_not_on_it(self) -> None:
         """257248's only non-"No" value is "I'm attending Men's Weekend"."""
         assert 257248 not in ADULT_NEED_FIELD_CM_IDS
+
+
+class TestTheNarrativeAllowlist:
+    def test_is_exactly_accommodation_explain(self) -> None:
+        """⛔ Pinned, and a SEPARATE tuple from the boolean one. This is the
+        one free-text answer a guest's panel reads, one person at a time,
+        behind `bunking.manage`; the same table holds Race, financial aid and
+        salary-bearing staff history, so it must never become a generic read."""
+        assert ADULT_NEED_NARRATIVE_FIELD_CM_IDS == (224987,)
+        assert ACCOMMODATION_EXPLAIN_FIELD_CM_ID == 224987
+
+    def test_no_narrative_rides_the_roster_allowlist(self) -> None:
+        """The cohort read feeds the 62-row roster payload: booleans only."""
+        assert not set(ADULT_NEED_NARRATIVE_FIELD_CM_IDS) & set(ADULT_NEED_FIELD_CM_IDS)
 
 
 class TestParseBoolFieldValue:
