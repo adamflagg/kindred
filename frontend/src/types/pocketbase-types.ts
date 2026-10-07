@@ -804,6 +804,7 @@ export type AidScenarioSnapshotsRecord<Tinputs = unknown> = {
 
 export type AidScenarioTrailRecord<Tdocument = unknown, Tresults = unknown> = {
   actor: string
+  built_on_version?: number
   change: string
   created: IsoAutoDateString
   document?: null | Tdocument
