@@ -626,7 +626,7 @@ def native_budget(season: NativeSeason, typed: _Typed | None) -> list[BudgetRow]
     pools = sorted(set(allocated) | {p for p in awarded if p is not None})
     rows: list[BudgetRow] = []
     for pool in [*pools, *([None] if None in awarded else [])]:
-        budget = sum(allocated[pool].values(), ZERO) if pool is not None and pool in allocated else None
+        budget = allocated.get(pool) if pool is not None else None
         rows.append(
             _budget_row(
                 season.year,

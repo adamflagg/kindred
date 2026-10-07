@@ -13,6 +13,7 @@ from bunking.financial_aid.reports.committee import (
     PHASE_BOUNDARY_GAP,
     NativeSeason,
     committee_tables,
+    native_budget,
     native_phases,
 )
 from bunking.financial_aid.reports.history import ReportedFigure
@@ -520,3 +521,11 @@ def test_the_band_position_compares_the_as_offered_share_not_end_of_season() -> 
     no_offer = committee_tables([], [f for f in figures if f.at != "pull"]).phases[0].bands[0]
     assert no_offer is not None
     assert no_offer.position is None  # no As offered figure: blank, never read from the other column
+
+
+def test_a_pools_budget_is_its_allocation_to_the_cent() -> None:
+    """Regression guard. §9.7: the pool's budget was the sum of its rounds' allocations; it is now the pool's
+    allocation, and the two are equal to the cent. fictional_rules(): 500,000 x 80% = 400,000.00."""
+    rows = native_budget(SEASON, None)
+    by_pool = {row.pool: row for row in rows}
+    assert by_pool["camp_pool"].budget == Decimal("400000.00")

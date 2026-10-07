@@ -4,8 +4,8 @@ priced season and its budget, exactly as sub-project 10a's Rounds & budget compu
   Round n            Posted + Needs an offer + Pending approval for round n: the money §5.3's Remaining
                      subtracts from round n's allocation. Round 2 is only the Round 2 asks keyed so far; there is
                      no appeal estimate (Decision 10).
-  Round 1 remaining  the total row's Round 1 Remaining: the pools' allocations less every Round 1 dollar (what Fit
-                     to budget fits, Decision 11 (a)); Remaining is every round's.
+  Round 1 remaining  the pool's Allocated less every Round 1 dollar (§8.2: no reserves); what Fit to budget fits
+                     (Decision 11 (a)); Remaining is every round's.
   At the minimum     live requests whose Round 1, not yet posted, is the minimum award (the calculator's r1_bound).
   By tier            each final tier's live requests, families, Round 1 and those requests' Round 1 asks, counted
                      exactly as the budget counts Round 1 (a posted Round 1 at its lock; a clawed-back round, or one
@@ -38,7 +38,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bunking.financial_aid.decisions import Cell, PoolBudget, PricedRequest, RoundView, SeasonBudget
+from bunking.financial_aid.decisions import PoolBudget, PricedRequest, RoundCell, RoundView, SeasonBudget
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.request_set import RequestSetNote
@@ -142,7 +142,9 @@ class ScenarioResults(_Result):
     by_table: list[TableTierRow] = Field(default_factory=list)
     round2_by_tier: list[Round2TierRow] = Field(default_factory=list)
     round2_not_in_tiers: Decimal = ZERO  # Round 2 the budget counts on requests in no tier: rows + this = round2
-    round2_allocated: Decimal | None = None  # "Round 2's allocation": 0 when the rules set no Round 2 reserves
+    round2_allocated: Decimal | None = (
+        None  # No Round 2 allocation exists (owner 10-06); None on new results, kept as recorded on stored ones
+    )
     round2_remaining: Decimal | None = None
     committee_rows: bool = False
 
@@ -264,8 +266,13 @@ def round2_rows(appeals: Mapping[tuple[str, int], AppealTally]) -> list[Round2Ti
     ]
 
 
-def _spent(cell: Cell) -> Decimal:
-    return cell.posted + cell.needs_offer + cell.pending_approval
+def _spent(cell: RoundCell) -> Decimal:
+    return cell.committed
+
+
+def _round1_left(allocated: Decimal | None, round1: RoundCell) -> Decimal | None:
+    """§8.2: the pool's Allocated less every Round 1 dollar (no reserves: Round 1 may use the whole share)."""
+    return None if allocated is None else allocated - round1.committed
 
 
 def round1_amount(priced: PricedRequest) -> Decimal | None:
@@ -298,8 +305,8 @@ def _pool(pool: PoolBudget) -> PoolResult:
         round1=_spent(pool.rounds[1]),
         round2=_spent(pool.rounds[2]),
         round3=_spent(pool.rounds[3]),
-        round1_allocated=pool.rounds[1].allocated,
-        round1_remaining=pool.rounds[1].remaining,
+        round1_allocated=pool.total.allocated,
+        round1_remaining=_round1_left(pool.total.allocated, pool.rounds[1]),
         remaining=pool.total.remaining,
         round1_unmet=pool.demand.round1_unmet,
     )
@@ -374,8 +381,8 @@ def scenario_results(
         round1=_spent(total.rounds[1]),
         round2=_spent(total.rounds[2]),
         round3=_spent(total.rounds[3]),
-        round1_allocated=total.rounds[1].allocated,
-        round1_remaining=total.rounds[1].remaining,
+        round1_allocated=total.total.allocated,
+        round1_remaining=_round1_left(total.total.allocated, total.rounds[1]),
         remaining=total.total.remaining,
         at_minimum=at_minimum,
         held=total.below.held.requests,
@@ -388,7 +395,7 @@ def scenario_results(
         by_table=table_rows(tables),
         round2_by_tier=round2_rows(appeals),
         round2_not_in_tiers=round2_not_in_tiers,
-        round2_allocated=total.rounds[2].allocated,
-        round2_remaining=total.rounds[2].remaining,
+        round2_allocated=None,
+        round2_remaining=None,
         committee_rows=True,
     )
