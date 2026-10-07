@@ -52,7 +52,7 @@ import {
   type StatusWords,
 } from './rulesModel'
 import type { CellControl } from './CardTables'
-import { bandsIn, gridClasses } from './tierGrid'
+import { bandsIn, gridClasses, warnedCells } from './tierGrid'
 import type { EditContext } from './sectionEdit'
 import { RulesSectionEditor } from './RulesSectionEditor'
 import { CardBody, SectionCard } from './SectionCard'
@@ -382,7 +382,12 @@ function ChaptersBody({
   const gridBody = (part: GridPart, content: Record<string, unknown>, cell: CellControl) => {
     const tables = (value: unknown) => (value ?? {}) as TablesProp
     const programs = document_.programs as ProgramsProp
-    const noWarnings: ReadonlySet<string> = new Set()
+    // The saved draft's Round 1 marks stay while editing; they follow a save, not the typing (coordinator B1).
+    const warned = warnedCells(shownOf('award_tables')?.issues ?? [])
+    const asSaved =
+      warned.size > 0 ? (
+        <p className={CS_SMALL}>⚠ marks the warnings as last saved, not what you have typed.</p>
+      ) : null
     if (part === 'tiers') {
       const live = bandsIn((tiersContent ?? document_.tiers) as Parameters<typeof bandsIn>[0])
       return (
@@ -397,9 +402,10 @@ function ChaptersBody({
             awardTables={tables(document_.award_tables)}
             appealTables={tables(document_.round2.tables)}
             classes={gridClasses(programs, document_.award_tables)}
-            warned={noWarnings}
+            warned={warned}
             onWarn={() => undefined}
           />
+          {asSaved}
         </div>
       )
     }
@@ -407,15 +413,18 @@ function ChaptersBody({
     const awardTables = tables(round1 ? content : document_.award_tables)
     const appealTables = tables(round1 ? document_.round2.tables : content['tables'])
     return (
-      <TierGridTable
-        bands={bandsIn(document_.tiers)}
-        awardTables={awardTables}
-        appealTables={appealTables}
-        classes={gridClasses(programs, awardTables)}
-        warned={noWarnings}
-        onWarn={() => undefined}
-        control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
-      />
+      <div className="space-y-2">
+        <TierGridTable
+          bands={bandsIn(document_.tiers)}
+          awardTables={awardTables}
+          appealTables={appealTables}
+          classes={gridClasses(programs, awardTables)}
+          warned={warned}
+          onWarn={() => undefined}
+          control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
+        />
+        {asSaved}
+      </div>
     )
   }
 

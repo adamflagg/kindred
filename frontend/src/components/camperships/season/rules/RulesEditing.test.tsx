@@ -1112,6 +1112,45 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
+  // Coordinator B1: the editor grids keep the saved draft's ⚠ marks, captioned as last saved (not the typing).
+  it.each(['award_tables', 'round2', 'tiers'])(
+    'the %s editor keeps the Round 1 cell ⚠ marks, captioned "as last saved"',
+    async (section) => {
+      const base = draft.data!
+      const warned = {
+        ...base,
+        report: {
+          issues: [
+            ...(base.report.issues ?? []),
+            {
+              section: 'award_tables' as const,
+              code: 'value_cannot_bind',
+              severity: 'warning' as const,
+              path: 'award_tables.general.tiers.2',
+              message: 'Tier 2 of the general table: the minimum decides every award here',
+            },
+          ],
+        },
+      }
+      draft = { data: warned, isLoading: false, error: null }
+      server = [warned]
+      renderAt(`/aid/season/rules?section=${section}`)
+      await editCard(section)
+      await screen.findByTestId('tier-grid')
+      expect(
+        within(tierRow(2)).getByRole('button', { name: "Show this table's warnings" })
+      ).toBeInTheDocument()
+      expect(
+        within(tierRow(1)).queryByRole('button', { name: "Show this table's warnings" })
+      ).toBeNull()
+      expect(
+        within(screen.getByTestId(`grid-editor-${section}`)).getByText(
+          '⚠ marks the warnings as last saved, not what you have typed.'
+        )
+      ).toBeInTheDocument()
+    }
+  )
+
   it('Round 1 award table editor puts a box in each own cell of the grid, and leaves an inherited cell as text', async () => {
     const base = rulesDraft()
     const withInheriting = {
