@@ -141,7 +141,16 @@ export function bandsIn(tiers: {
   }))
 }
 
-/** The grid's classes (§6.2 E.2): the award tables' keys in the programs' equity-class order, then any other table. */
+/** The table a table copies (`inherits`), or null for one that holds its own figures. */
+function parentOf(table: unknown): string | null {
+  if (typeof table !== 'object' || table === null || !('inherits' in table)) return null
+  return typeof table.inherits === 'string' ? table.inherits : null
+}
+
+/**
+ * The grid's classes (§6.2 E.2): the award tables' keys in the programs' equity-class order, then any other table;
+ * a table another copies comes first, so "its own" stands before the columns that say "same as" it (coordinator B6).
+ */
 export function gridClasses(
   programs: Readonly<Record<string, { readonly equity_class?: string | null }>>,
   tables: Readonly<Record<string, unknown>>
@@ -151,7 +160,9 @@ export function gridClasses(
     const cls = program.equity_class
     if (typeof cls === 'string' && cls in tables && !ordered.includes(cls)) ordered.push(cls)
   }
-  return [...ordered, ...Object.keys(tables).filter((key) => !ordered.includes(key))]
+  const all = [...ordered, ...Object.keys(tables).filter((key) => !ordered.includes(key))]
+  const sources = new Set(Object.values(tables).map(parentOf))
+  return [...all.filter((key) => sources.has(key)), ...all.filter((key) => !sources.has(key))]
 }
 
 /** The Round 1 cells a `value_cannot_bind` warning names (validation.py: `award_tables.<table>.tiers.<tier>`), as "table:tier". */

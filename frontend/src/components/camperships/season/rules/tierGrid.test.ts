@@ -104,6 +104,21 @@ it("orders the grid's classes by the programs' classes, then any other table", (
   ])
 })
 
+it('puts the table the others copy first, then the rest in their order (coordinator B6)', () => {
+  // The source sorts last by program, so the programs' order alone would put it last.
+  const programs = {
+    alpha: { equity_class: 'basic' },
+    beta: { equity_class: 'middle' },
+    gamma: { equity_class: 'zenith' },
+  }
+  const tables = {
+    basic: { inherits: 'zenith' },
+    middle: { inherits: 'zenith' },
+    zenith: { inherits: null },
+  }
+  expect(gridClasses(programs, tables)).toEqual(['zenith', 'basic', 'middle'])
+})
+
 it("reads the warned cells from value_cannot_bind paths, and a document band's open top", () => {
   const warned = warnedCells([
     { code: 'value_cannot_bind', path: 'award_tables.summer.tiers.3' },
