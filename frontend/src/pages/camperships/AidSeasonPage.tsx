@@ -62,18 +62,22 @@ export default function AidSeasonPage() {
   }
   const slug = resolved.tab?.slug ?? ROUNDS
   const onRounds = slug === ROUNDS
+  const onScenarios = slug === 'scenarios'
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <AidPageBand
-        icon={CalendarCheck}
-        title={SEASON.label}
-        subtitle={`Season ${String(year)}`}
-        // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
-        asOf={asOf}
-        stats={onRounds ? <BudgetStats /> : undefined}
-      />
-      <AidTabNav section={SEASON} tabs={resolved.tabs} view={view} />
+    <div className="space-y-3 sm:space-y-4 print:font-sans">
+      {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
+      <div className={`space-y-3 sm:space-y-4 ${onScenarios ? 'print:hidden' : ''}`}>
+        <AidPageBand
+          icon={CalendarCheck}
+          title={SEASON.label}
+          subtitle={`Season ${String(year)}`}
+          // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
+          asOf={asOf}
+          stats={onRounds ? <BudgetStats /> : undefined}
+        />
+        <AidTabNav section={SEASON} tabs={resolved.tabs} view={view} />
+      </div>
       {!onRounds && asOf.kind === 'past' && (
         <p className="text-muted-foreground text-sm">
           {`This tab shows today. Rounds & budget can show ${formatLongDate(asOf.date)}.`}

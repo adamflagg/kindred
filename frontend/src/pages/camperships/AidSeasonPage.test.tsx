@@ -120,6 +120,15 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     expect(screen.queryByText(/built in a later part/)).toBeNull()
   })
 
+  it("keeps the band and the tab strip off the Scenarios tab's printout", () => {
+    granted = FINANCE
+    const { container } = renderAt('/aid/season/scenarios')
+    const band = container.querySelector('h1')
+    const nav = container.querySelector('nav')
+    expect(band?.closest('.print\\:hidden')).not.toBeNull()
+    expect(nav?.closest('.print\\:hidden')).not.toBeNull()
+  })
+
   it('shows finance every tab', () => {
     granted = FINANCE
     renderAt('/aid/season/history')

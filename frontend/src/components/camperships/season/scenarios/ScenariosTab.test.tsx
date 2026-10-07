@@ -79,6 +79,14 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   },
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+vi.mock('../../../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => true }),
+}))
+// PR 5's panels: an idle compare and trail unless a test reads them (CompareAndTrail.test.tsx).
+vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
+  useAidScenarioCompare: () => ({ data: undefined, isLoading: true, error: null }),
+  useAidScenarioTrail: () => ({ data: undefined, isLoading: true, error: null }),
+}))
 
 function renderTab() {
   return render(
@@ -107,6 +115,16 @@ beforeEach(() => {
 })
 
 describe('ScenariosTab (§7.4; D38)', () => {
+  it('prints only the compare: the snapshot line, kept list, levers and Keep buttons are print:hidden', () => {
+    renderTab()
+    const hidden = (el: HTMLElement) => el.closest('.print\\:hidden') !== null
+    expect(hidden(screen.getByText(/Applications frozen/))).toBe(true)
+    expect(hidden(screen.getByTestId('kept-list'))).toBe(true)
+    expect(hidden(screen.getByTestId('scenario-levers'))).toBe(true)
+    expect(hidden(screen.getByRole('button', { name: /^Keep as a Variant/ }))).toBe(true)
+    expect(hidden(screen.getByRole('button', { name: /^Keep as a New Starting Point/ }))).toBe(true)
+  })
+
   it('names the frozen snapshot and the rules versions', () => {
     renderTab()
     expect(

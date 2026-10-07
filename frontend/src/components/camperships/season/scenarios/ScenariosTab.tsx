@@ -1,9 +1,18 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
+
+import { Permission } from '../../../../constants/permissions'
+import {
+  useAidScenarioCompare,
+  useAidScenarioTrail,
+} from '../../../../hooks/camperships/useAidScenarioCompare'
 import { useAidScenarioDraft } from '../../../../hooks/camperships/useAidScenarioDraft'
 import {
   useAidScenarioSensitivity,
   useAidScenarios,
 } from '../../../../hooks/camperships/useAidScenarios'
 import { useYear } from '../../../../hooks/useCurrentYear'
+import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import type { ApiAidLeverEffect, ApiAidScenarioWorkspace } from '../../../../types/api-types'
 import {
@@ -11,13 +20,18 @@ import {
   BUTTON_PRIMARY,
   BUTTON_SECONDARY,
   GROUP_HEADING,
+  TAB_PILL_ACTIVE,
+  TAB_PILL_IDLE,
 } from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { campToday, formatLongDate, formatShortDate } from '../../kit/dates'
 import { SEASON_CARD } from '../seasonStyles'
+import { parseCodes, parseRequestSet, requestSetParam, toggleCode } from './compareModel'
 import { KeptList } from './KeptList'
+import { ScenarioCompare } from './ScenarioCompare'
 import { ScenarioLevers } from './ScenarioLevers'
 import { ScenarioResults } from './ScenarioResults'
+import { ScenarioTrail } from './ScenarioTrail'
 import { changedLevers, hasPending, startingPointOf } from './scenarioModel'
 import { CHANGED_NAME, DRAFT_CHIP, DRAFT_ROW } from './scenarioStyles'
 
@@ -50,10 +64,60 @@ function rulesName(workspace: ApiAidScenarioWorkspace): string {
     : `Rules Draft (v${version})`
 }
 
+/**
+ * The compare's and the trail's view state, in the URL (D15): `panel=trail`, `compare=A1,B2`,
+ * `through=deadline|<date>` (D138), `last=1` (RPT-17), `tiers=1`, `trail_page=2`. Replaced, never
+ * pushed: Back leaves Scenarios rather than stepping through every tick. `set` and `update` are stable
+ * (the router's setter sits behind a ref), so a memo or effect that holds them never re-runs for a URL
+ * change.
+ */
+function useScenarioView() {
+  const [params, setParams] = useSearchParams()
+  const setter = useRef(setParams)
+  useEffect(() => {
+    setter.current = setParams
+  })
+  // Every write copies the params the router holds at the call, so it keeps the other params (as_of,
+  // year, the tab's own). The router reads its last render's params, so two writes in one tick would
+  // lose one: no click or effect here writes twice in a tick.
+  const update = useCallback((name: string, change: (previous: string | null) => string | null) => {
+    setter.current(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        const value = change(previous.get(name))
+        if (value === null) next.delete(name)
+        else next.set(name, value)
+        return next
+      },
+      { replace: true }
+    )
+  }, [])
+  const set = useCallback(
+    (name: string, value: string | null) => update(name, () => value),
+    [update]
+  )
+  const codesRaw = params.get('compare')
+  const throughRaw = params.get('through')
+  const codes = useMemo(() => parseCodes(codesRaw), [codesRaw])
+  const requestSet = useMemo(() => parseRequestSet(throughRaw), [throughRaw])
+  const page = Number(params.get('trail_page') ?? '1')
+  return {
+    panel: params.get('panel') === 'trail' ? ('trail' as const) : ('compare' as const),
+    codes,
+    requestSet,
+    lastSeason: params.get('last') === '1',
+    byTier: params.get('tiers') === '1',
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    pageRaw: params.get('trail_page'),
+    set,
+    update,
+  }
+}
+
 function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace; work: Draft }) {
   const snapshot = workspace.snapshot
   return (
-    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm print:hidden">
       {snapshot === null ? (
         <span>The season&apos;s applications aren&apos;t frozen for scenarios yet.</span>
       ) : (
@@ -110,6 +174,40 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const liveError =
     work.live.status === 'error' && work.live.error !== work.error ? work.live.error : null
   const unkeepable = work.busy !== null || moving || (draft?.changes.length ?? 0) === 0
+  const view = useScenarioView()
+  const { hasPermission } = usePermissions()
+  // Finance only, as every scenario route (D76): the registrar never fires either read.
+  const canRules = hasPermission(Permission.FINANCIAL_AID_RULES)
+  // A code in the URL that this year doesn't keep (a year switch, an old link) would only 404 the
+  // read: it is left out of the request, dropped from the URL, and said once.
+  const kept = useMemo(() => new Set(workspace.options.map((o) => o.code)), [workspace.options])
+  const codes = useMemo(() => view.codes.filter((c) => kept.has(c)), [view.codes, kept])
+  const gone = view.codes.filter((c) => !kept.has(c)).join(', ')
+  const [droppedNote, setDroppedNote] = useState<string | null>(null)
+  if (gone !== '' && gone !== droppedNote) setDroppedNote(gone)
+  const { set: setView } = view
+  useEffect(() => {
+    if (gone !== '') setView('compare', codes.length === 0 ? null : codes.join(','))
+  }, [gone, codes, setView])
+  const compare = useAidScenarioCompare(codes, view.requestSet, view.lastSeason, {
+    enabled: canRules && draft !== null && view.panel === 'compare',
+  })
+  const trail = useAidScenarioTrail(view.page, {
+    enabled: canRules && draft !== null && view.panel === 'trail',
+  })
+  // A trail_page below 1, not a number, or past the last page reads as the nearest valid page.
+  const lastPage = trail.data
+    ? Math.max(1, Math.ceil(trail.data.total / trail.data.per_page))
+    : null
+  const { page: trailPage, pageRaw } = view
+  useEffect(() => {
+    if (pageRaw === null) return
+    const wanted = lastPage !== null && trailPage > lastPage ? lastPage : trailPage
+    const clean = wanted === 1 ? null : String(wanted)
+    if (clean !== pageRaw) setView('trail_page', clean)
+  }, [pageRaw, trailPage, lastPage, setView])
+  // The code a fifth tick was refused for, said under the list until the next tick.
+  const [refused, setRefused] = useState<string | null>(null)
   const keepButtons = (
     <>
       <button
@@ -135,10 +233,10 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     <div className="space-y-3">
       <SnapshotLine workspace={workspace} work={work} />
       {/* Its line is always there, so nothing jumps under the pointer on every release. */}
-      <p className="text-muted-foreground h-5 text-sm">{work.busy}</p>
-      {work.error !== null && <p className={AMBER_NOTE}>{work.error}</p>}
+      <p className="text-muted-foreground h-5 text-sm print:hidden">{work.busy}</p>
+      {work.error !== null && <p className={`${AMBER_NOTE} print:hidden`}>{work.error}</p>}
       {workspace.snapshot !== null && draft === null && (
-        <div className={`${SEASON_CARD} space-y-2`}>
+        <div className={`${SEASON_CARD} space-y-2 print:hidden`}>
           <p>Start your draft from:</p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -162,8 +260,8 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         </div>
       )}
       {workspace.snapshot !== null && (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-          <div className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] print:block">
+          <div className="space-y-3 print:hidden">
             {/* One card, as the mock has it: your draft, then what's kept. */}
             <div className="card-lodge">
               {draft !== null && (
@@ -194,7 +292,34 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 options={workspace.options}
                 current={draft?.from_code ?? null}
                 onLoad={(code) => void work.load({ option: code })}
+                compare={{
+                  ticked: new Set(codes),
+                  onToggle: (code) => {
+                    const outcome: { refused: string | null } = { refused: null }
+                    view.update('compare', (previous) => {
+                      const before = parseCodes(previous)
+                      const next = toggleCode(before, code)
+                      outcome.refused = next === before ? code : null
+                      if (next === before) return previous
+                      return next.length === 0 ? null : next.join(',')
+                    })
+                    setRefused(outcome.refused)
+                    setDroppedNote(null)
+                  },
+                }}
               />
+              {droppedNote !== null && (
+                <p className={`${AMBER_NOTE} mx-3 mb-2`}>
+                  {droppedNote.includes(',')
+                    ? `${droppedNote} aren't kept in ${String(workspace.year)}, so they were left out of the compare.`
+                    : `${droppedNote} isn't kept in ${String(workspace.year)}, so it was left out of the compare.`}
+                </p>
+              )}
+              {refused !== null && (
+                <p className={`${AMBER_NOTE} mx-3 mb-2`}>
+                  {`Four are already checked: uncheck one to compare ${refused}.`}
+                </p>
+              )}
             </div>
             {draft !== null && (
               <ScenarioLevers
@@ -236,6 +361,55 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   actions={keepButtons}
                   liveError={liveError}
                 />
+              )}
+              <div className="flex gap-1 print:hidden">
+                <button
+                  type="button"
+                  className={view.panel === 'compare' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+                  onClick={() => view.set('panel', null)}
+                >
+                  {`Compare (draft + ${String(codes.length)})`}
+                </button>
+                <button
+                  type="button"
+                  className={view.panel === 'trail' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+                  onClick={() => view.set('panel', 'trail')}
+                >
+                  {trail.data
+                    ? `Trail (${String(trail.data.total)} ${trail.data.total === 1 ? 'change' : 'changes'})`
+                    : 'Trail'}
+                </button>
+              </div>
+              {view.panel === 'compare' ? (
+                <ScenarioCompare
+                  compare={compare.data}
+                  loading={compare.isLoading}
+                  error={compare.data ? null : (compare.error?.message ?? null)}
+                  stale={compare.isPlaceholderData}
+                  requestSet={view.requestSet}
+                  onRequestSet={(next) => view.set('through', requestSetParam(next))}
+                  lastSeason={view.lastSeason}
+                  onLastSeason={(on) => view.set('last', on ? '1' : null)}
+                  byTier={view.byTier}
+                  onByTier={(on) => view.set('tiers', on ? '1' : null)}
+                />
+              ) : (
+                <QueryGuard
+                  isLoading={trail.isLoading}
+                  error={trail.data ? null : trail.error}
+                  data={trail.data}
+                  label="the trail"
+                >
+                  {(data) => (
+                    <ScenarioTrail
+                      trail={data}
+                      current={draft.trail_id}
+                      stale={trail.isPlaceholderData}
+                      onLoad={(id) => void work.load({ trail_row: id })}
+                      onPage={(next) => view.set('trail_page', next === 1 ? null : String(next))}
+                    />
+                  )}
+                </QueryGuard>
               )}
             </div>
           )}

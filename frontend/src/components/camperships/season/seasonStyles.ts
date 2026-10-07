@@ -11,7 +11,12 @@ export const TH_LABEL =
 /** A money header: right-aligned, like its figures (§4.2). */
 export const TH_MONEY =
   'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-right text-xs font-semibold whitespace-nowrap'
+/** A right-aligned header that may wrap and takes its own background (a column tint): no nowrap, no bg. */
+export const TH_MONEY_TEXT =
+  'text-muted-foreground border-border border-b px-2 py-1.5 text-right text-xs font-semibold'
 export const TD_LABEL = 'border-border border-b px-2 py-1.5 text-left whitespace-nowrap'
+/** A left-aligned cell that may wrap: free text (what changed), where TD_LABEL keeps one line. */
+export const TD_TEXT = 'border-border border-b px-2 py-1.5 text-left'
 export const TD_MONEY =
   'border-border border-b px-2 py-1.5 text-right whitespace-nowrap tabular-nums'
 /** A pool's total line, and the season's total. */

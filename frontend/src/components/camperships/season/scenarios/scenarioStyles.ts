@@ -20,3 +20,7 @@ export const CHANGED_NAME = 'font-semibold text-amber-700 dark:text-amber-400'
 /** The strip: amber-tinted, as the draft's own figures. */
 export const STRIP_CARD =
   'shadow-lodge-sm flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-900/20'
+/** The draft's column in the compare: the draft's own amber, lighter, so the options read beside it. */
+export const DRAFT_COLUMN = 'bg-amber-50/60 dark:bg-amber-900/10'
+/** Requests that moved up against their reference (▲); down is NEGATIVE_INK. */
+export const UP_INK = 'text-emerald-700 dark:text-emerald-400'
