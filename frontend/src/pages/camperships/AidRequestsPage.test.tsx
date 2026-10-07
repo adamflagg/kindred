@@ -459,6 +459,24 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
+  it('does not carry the operation filter to the household page: the walk ignores it', async () => {
+    operation = {
+      data: {
+        ...DETAIL_POSTED,
+        rows: [{ ...DETAIL_POSTED.rows[0]!, request_id: GRID_ROWS[0]!.request_id }],
+      },
+      error: null,
+      isLoading: false,
+    }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}&counted=1`)
+    // The walk's filters do not read op, so a household link that carried it would walk every request.
+    await userEvent.click(screen.getByRole('link', { name: 'Emma Johnson' }))
+    const where = screen.getByTestId('where')
+    expect(where).toHaveTextContent('/aid/households/')
+    expect(where).toHaveTextContent('counted=1')
+    expect(where).not.toHaveTextContent('op=')
+  })
+
   it('carries the Season figure to the household page, so the walk keeps it', async () => {
     renderAt('/aid/requests?posted=1&counted=1')
     await userEvent.click(screen.getByRole('link', { name: 'David Chen' }))

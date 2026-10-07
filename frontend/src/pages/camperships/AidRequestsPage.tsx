@@ -371,13 +371,21 @@ export default function AidRequestsPage() {
   // The household page's walk reads the same pair: `from=<stage slug>` (or `all`) and the lens.
   const from = stage?.slug ?? 'all'
 
+  // `op` stays out of the household link: the queue walk's filters do not read it, so a link that
+  // carried it would walk every request and Back would drop it anyway.
+  const householdKeep = useMemo(
+    (): Record<string, string> =>
+      Object.fromEntries(Object.entries(keep).filter(([k]) => k !== 'op')),
+    [keep]
+  )
+
   const links = useMemo(
     (): HouseholdLinks => ({
       href: (r: ApiAidGridRow) =>
         aidHref(`/aid/households/${String(r.household_cm_id)}`, viewState, {
           from,
           ...lensKeep,
-          ...keep,
+          ...householdKeep,
           // The table's order, so the walk steps through, and Back restores, what is on screen (I1).
           ...(sort !== null ? { sort } : {}),
           ...(group !== null ? { group } : {}),
@@ -393,7 +401,7 @@ export default function AidRequestsPage() {
         })
       },
     }),
-    [viewState, from, lensKeep, keep, sort, group, setParam, navigate, leaveThen]
+    [viewState, from, lensKeep, householdKeep, sort, group, setParam, navigate, leaveThen]
   )
 
   const csvFilename = stripCsvName(
