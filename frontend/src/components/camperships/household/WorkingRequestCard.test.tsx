@@ -884,6 +884,56 @@ describe('WorkingRequestCard: a duplicate pair (item 11)', () => {
     expect(screen.getByRole('button', { name: 'Set the Cost' })).toBeInTheDocument()
   })
 
+  it('shows the set line without buttons to a reader without casework', () => {
+    const set = {
+      ...ROW_EMMA,
+      cost: 1275,
+      cost_override: {
+        amount: 1275,
+        reason_code: 'discount',
+        note: 'Agreed',
+        actor: 'registrar@example.com',
+        at: null,
+      },
+    }
+    renderCards([set], false)
+    expect(screen.getByRole('button', { name: 'set by staff (discount)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Set Cost…' })).toBeNull()
+  })
+
+  it('closes an open Set Cost… form once the request stops taking a cost', async () => {
+    const { rerender } = renderCards([ROW_EMMA])
+    await userEvent.click(screen.getByRole('button', { name: 'Set Cost…' }))
+    expect(screen.getByRole('button', { name: 'Set the Cost' })).toBeInTheDocument()
+    rerender(<Cards rows={[{ ...ROW_EMMA, request_status: 'unmatched_session' }]} />)
+    expect(screen.queryByRole('button', { name: 'Set the Cost' })).toBeNull()
+  })
+
+  it('closes an open Clear form once the cost is cleared elsewhere', async () => {
+    const set = {
+      ...ROW_EMMA,
+      cost: 1275,
+      cost_override: {
+        amount: 1275,
+        reason_code: 'discount',
+        note: 'Agreed',
+        actor: 'registrar@example.com',
+        at: null,
+      },
+    }
+    const { rerender } = renderCards([set])
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByText('Clearing the cost')).toBeInTheDocument()
+    rerender(<Cards rows={[ROW_EMMA]} />)
+    expect(screen.queryByText('Clearing the cost')).toBeNull()
+  })
+
+  it('draws Set Cost… as the small details button, like Show Details beside it', () => {
+    renderCards([ROW_EMMA])
+    expect(screen.getByRole('button', { name: 'Set Cost…' })).toHaveClass('text-xs')
+  })
+
   it('offers no Set Cost… to a reader without casework', () => {
     renderCards([ROW_EMMA], false)
     expect(screen.queryByRole('button', { name: 'Set Cost…' })).toBeNull()

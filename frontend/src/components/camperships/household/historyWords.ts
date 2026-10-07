@@ -123,14 +123,14 @@ const money = (value: unknown): LinePart | null => {
 }
 
 /**
- * A set or cleared cost (Set Cost…): `new_value` is the server's `code:amount`, empty once cleared.
+ * A set or cleared cost (Set Cost…): `value` is the server's `code:amount`, empty once cleared.
  * The note rides as the line's reason, as every other line's does.
  */
 function costParts(page: ApiAidHouseholdPage, entry: ApiAidHistoryEntry): LinePart[] | null {
   const session =
     page.requests.find((r) => r.row.request_id === entry.request_id)?.row.session_name ?? null
   const of = session ?? 'the'
-  const value = textOf(field(entry.after, 'new_value')) ?? ''
+  const value = textOf(field(entry.after, 'value')) ?? ''
   if (value === '') return [plain(`cleared ${of} cost`)]
   const [code = '', amount = ''] = value.split(':')
   const sum = money(amount)

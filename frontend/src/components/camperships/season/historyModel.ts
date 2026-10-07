@@ -618,7 +618,7 @@ export interface RowView {
 /** The row's action in words; a cost override whose new value is empty is a cleared cost. */
 function rowActionWords(row: ApiAidHistoryRow): string {
   if (row.entity === 'aid_application_corrections' && row.action === 'cost_override') {
-    const cleared = row.after?.['new_value'] === ''
+    const cleared = row.after?.['value'] === ''
     if (cleared) return 'Cost cleared'
   }
   return actionWords(row.entity, row.action)

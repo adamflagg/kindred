@@ -330,7 +330,7 @@ describe('who: staff by a readable name, the system by its job', () => {
 })
 
 describe('historyLines: a set and a cleared cost (Set Cost…)', () => {
-  const cost = (new_value: string, reason: string) =>
+  const cost = (value: string, reason: string) =>
     historyLines({
       ...HISTORY_PAGE,
       history: [
@@ -341,7 +341,7 @@ describe('historyLines: a set and a cleared cost (Set Cost…)', () => {
           request_id: 'reqemma00000001',
           actor: 'registrar@example.com',
           reason,
-          after: { field: 'cost_override', new_value },
+          after: { field: 'cost_override', value },
         },
       ],
     })[0]!

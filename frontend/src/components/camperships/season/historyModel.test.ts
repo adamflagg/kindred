@@ -227,13 +227,13 @@ describe('who, what kind, and the action words', () => {
 
   it('heads a cost row "Cost set" or "Cost cleared"', () => {
     expect(actionWords('aid_application_corrections', 'cost_override')).toBe('Cost set')
-    const costRow = (new_value: string) => ({
+    const costRow = (value: string) => ({
       ...ROW_ROUND3_AWARD,
       entity: 'aid_application_corrections',
       entity_id: 'cor000000000001',
       action: 'cost_override',
-      after: { field: 'cost_override', new_value },
-      changes: [{ path: ['new_value'], kind: 'added' as const, after: new_value }],
+      after: { field: 'cost_override', value },
+      changes: [{ path: ['value'], kind: 'added' as const, after: value }],
     })
     expect(rowView(costRow('discount:1275.00')).head).toMatch(/^Cost set/)
     expect(rowView(costRow('')).head).toMatch(/^Cost cleared/)

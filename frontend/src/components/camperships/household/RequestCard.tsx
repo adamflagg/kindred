@@ -244,7 +244,6 @@ export function RequestCard({
               <span className={HH_NOTE}>·</span>
               <button
                 type="button"
-                aria-expanded={costDetail}
                 className={`${HH_NOTE} cursor-pointer border-b border-dotted border-current`}
                 onClick={() => setCostDetail((now) => !now)}
               >
@@ -275,12 +274,14 @@ export function RequestCard({
       {/* Round 3 (B): the chip line on top; opened, a switcher across its versions, each diffed against the one before. */}
       <ReceiptVersions request={request} view={view} open={details.open} />
       {/* The server's notes (calculator warnings, D81's "not yet marked posted"), as the grid's attention cell words them. */}
-      {/* A set cost answers the calculator's notes (an unknown price, say), so they go while one is set. */}
-      {(override ? [] : (row.notes ?? [])).map((issue, index) => (
-        <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>
-          {issue.message}
-        </p>
-      ))}
+      {/* A set cost resolves an unknown price, so that note goes while one is set; the rest stay. */}
+      {(row.notes ?? [])
+        .filter((issue) => !(override && issue.code === 'cost_unknown'))
+        .map((issue, index) => (
+          <p key={`${issue.code}:${String(index)}`} className={HH_AMBER_NOTE}>
+            {issue.message}
+          </p>
+        ))}
       {/* B21 (ruled 10-04 late): a round the overnight tick passed over carries the grid's Not
           reconciled reason pill beside the server's own sentence for it. */}
       {(row.unticked ?? []).map((money) => (

@@ -16,7 +16,7 @@ import type { EditorExits } from './editorExits'
 import { ReleasedHolds } from './HoldActions'
 import { PairKeepForm } from './PairKeepForm'
 import { staffNames } from './historyWords'
-import { HH_BUTTON } from './householdStyles'
+import { HH_BUTTON, HH_DETAILS_BUTTON } from './householdStyles'
 import { OtherRequestLink } from './OtherRequestLink'
 import { ReasonForm } from './ReasonForm'
 import { RequestCard } from './RequestCard'
@@ -179,7 +179,13 @@ export function WorkingRequestCard({
           Clear
         </button>
       )}
-      {button('Set Cost…', { kind: 'cost' })}
+      <button
+        type="button"
+        className={HH_DETAILS_BUTTON}
+        onClick={() => switchTo({ kind: 'cost' })}
+      >
+        Set Cost…
+      </button>
     </>
   ) : undefined
 

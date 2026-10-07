@@ -102,7 +102,7 @@ describe('SetCostForm (cost override v2)', () => {
     )
   })
 
-  it('refuses a cost typed with a thousands separator in the wrong place', async () => {
+  it('refuses a cost over $1,000,000', async () => {
     renderSet({})
     await userEvent.type(screen.getByLabelText('Cost'), '1,000,001')
     await userEvent.click(screen.getByRole('button', { name: 'Set the Cost' }))

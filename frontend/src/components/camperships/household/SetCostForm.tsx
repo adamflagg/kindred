@@ -108,16 +108,16 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
               Type the cost to see it here
             </div>
           )}
-          <div className={HH_EDITOR_SIDE_NOTE}>
-            Rounds not yet posted are worked out again on this cost.
-          </div>
-          {anyPosted(request) && <div className={HH_EDITOR_SIDE_WARN}>{POSTED_WARNING}</div>}
           {perPersonHeadcount && (
             <div className={HH_EDITOR_SIDE_NOTE}>
               To change who is counted, use Number of People… instead: the cost then follows the
               per-person rates.
             </div>
           )}
+          <div className={HH_EDITOR_SIDE_NOTE}>
+            Rounds not yet posted are worked out again on this cost.
+          </div>
+          {anyPosted(request) && <div className={HH_EDITOR_SIDE_WARN}>{POSTED_WARNING}</div>}
         </>
       }
     >

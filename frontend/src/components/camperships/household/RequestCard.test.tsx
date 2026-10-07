@@ -696,4 +696,39 @@ describe('a C1 round on the decision panel', () => {
     renderCard(householdRequest({ ...ROW_EMMA, notes: [note], cost_override: set }))
     expect(screen.queryByText(note.message)).toBeNull()
   })
+
+  it('keeps every other note while a cost is set: only the unknown price is answered', () => {
+    const ledger = {
+      code: 'ledger_posted_not_marked',
+      severity: 'warn' as const,
+      message: 'CampMinder shows $1,000; not yet marked posted',
+      step: 'r1',
+    }
+    const set = {
+      amount: 1275,
+      reason_code: 'discount',
+      note: 'Agreed',
+      actor: 'registrar@example.com',
+      at: null,
+    }
+    renderCard(householdRequest({ ...ROW_EMMA, notes: [ledger], cost_override: set }))
+    expect(screen.getByText(ledger.message)).toBeInTheDocument()
+  })
+
+  it('dates the set cost on camp time, and names who set it', async () => {
+    const row = {
+      ...ROW_EMMA,
+      cost: 1275,
+      cost_override: {
+        amount: 1275,
+        reason_code: 'discount',
+        note: 'Agreed',
+        actor: 'registrar@example.com',
+        at: '2026-10-08T05:00:00Z',
+      },
+    }
+    renderCard(householdRequest(row), householdPage())
+    await userEvent.click(screen.getByRole('button', { name: /^set by staff/ }))
+    expect(screen.getByTestId('cost-set-detail')).toHaveTextContent('Set by Registrar, Oct 7:')
+  })
 })
