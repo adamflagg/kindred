@@ -65,7 +65,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="cost",
         term="Cost",
         text=(
-            "Cost: each request's cost, the session's list price; Family Camp by number of people. Aid is a percentage "
+            "Cost: each request's cost, the session's list price (an AG session's is its parent session's); Family Camp by "
+            "number of people. Aid is a percentage "
             "of list price: discounts CampMinder bills are not read."
         ),
         spec="§5.8",

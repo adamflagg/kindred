@@ -235,3 +235,9 @@ def test_projected_says_where_weeks_count_from_and_which_season_first_uses_recei
         "Last year's curve is 2026's applications workbook, loaded once as weekly shares; from the 2028 season on, "
         "the dashboard's own received dates (2027's applications)."
     )
+
+
+def test_the_cost_note_says_an_ag_session_takes_its_parents_price() -> None:
+    """A1 (spec §8): an AG session is priced at its parent session's list price."""
+    cost = BY_KEY["cost"]
+    assert "the session's list price (an AG session's is its parent session's)" in cost.text
