@@ -568,7 +568,7 @@ function twoDraftsDraft(): ApiAidRulesDraft {
   return {
     ...base,
     sections: base.sections.map((x) =>
-      x.section === 'budget' && award ? { ...x, status: award.status } : x
+      x.section === 'budget' && award ? { ...x, status: award.status, errors: 0, warnings: 0 } : x
     ),
   }
 }
@@ -662,7 +662,7 @@ describe('the approval form keeps its own ticks (review I2, m3)', () => {
     draft = { data: twoDraftsDraft(), isLoading: false, error: null }
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
-    await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and reserves' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and pools' }))
     expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
     const other = document.querySelector('[data-rules-section="income"]')
     if (other === null) throw new Error('no income row')
@@ -685,16 +685,14 @@ describe('the approval form keeps its own ticks (review I2, m3)', () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     const form = screen.getByTestId('approve-form')
-    await userEvent.click(
-      await within(form).findByRole('checkbox', { name: /Budget and reserves/ })
-    )
+    await userEvent.click(await within(form).findByRole('checkbox', { name: /Budget and pools/ }))
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
     await userEvent.click(within(form).getByRole('button', { name: 'Approve 2 Sections' }))
     expect(await screen.findByTestId('approve-conflict')).toHaveTextContent(
-      'Budget and reserves now has errors and was unchecked.'
+      'Budget and pools now has errors and was unchecked.'
     )
     expect(calls).toHaveLength(0)
-    expect(screen.getByRole('checkbox', { name: /Budget and reserves/ })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Budget and pools/ })).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Approve 1 Section' })).toBeInTheDocument()
   })
 

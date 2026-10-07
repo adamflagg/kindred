@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -178,7 +179,7 @@ def _check_equity(rules: AidRules, issues: _Issues) -> None:
         if n > 1:
             issues.error("equity", "duplicate_criterion", "equity.criteria", f"Criterion '{key}' appears {n} times")
     known = set(counts)
-    dependents_keys = {c.key for c in rules.equity.criteria if is_dependents_criterion(c)}
+    dependents_keys = {c.key for c in rules.equity.criteria if is_dependents_criterion(c) and c.enabled}
     for cls, weights in rules.equity.weights.items():
         for key, weight in weights.items():
             path = f"equity.weights.{cls}.{key}"
@@ -472,25 +473,11 @@ def _check_grants(rules: AidRules, issues: _Issues) -> None:
 
 def _check_budget(rules: AidRules, issues: _Issues) -> None:
     pools = rules.budget.pools
-    kinds = {"share" if p.share_pct is not None else "amount" for p in pools.values()}
-    if len(kinds) > 1:
-        issues.error("budget", "mixed_pool_kinds", "budget.pools", "Pools must all be shares or all be amounts")
-    elif kinds == {"share"}:
-        total = sum((p.share_pct for p in pools.values() if p.share_pct is not None), start=0)
-        if total != 100:
-            issues.error("budget", "pool_shares_not_100", "budget.pools", f"Pool shares sum to {total}%, not 100%")
-    elif kinds == {"amount"}:
-        total = sum((p.amount for p in pools.values() if p.amount is not None), start=0)
-        if total != rules.budget.total:
-            issues.error(
-                "budget", "pool_amounts_not_total", "budget.pools", f"Pools sum to {total}, not {rules.budget.total}"
-            )
-    for pool, per_round in rules.budget.reserves.items():
-        path = f"budget.reserves.{pool}"
-        if pool not in pools:
-            issues.error("budget", "unknown_reserve_pool", path, f"No pool '{pool}'")
-        if sum(per_round.values(), start=0) > 100:
-            issues.error("budget", "reserves_exceed_pool", path, "Reserves exceed 100% of the pool")
+    total = sum((p.share_pct for p in pools.values()), start=Decimal(0))
+    if pools and total != 100:
+        issues.error(
+            "budget", "pool_shares_not_100", "budget.pools", f"Pool shares sum to {total.normalize():f}%, not 100%"
+        )
 
 
 def _check_stages(rules: AidRules, issues: _Issues) -> None:

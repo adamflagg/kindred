@@ -606,10 +606,7 @@ def with_changes(rows: Sequence[ApplicationsRow]) -> list[ApplicationsRow]:
 def _split_pct(document: AidRules | None, pool: str) -> Decimal | None:
     if document is None or pool not in document.budget.pools:
         return None
-    share = document.budget.pools[pool]
-    if share.share_pct is not None:
-        return share.share_pct
-    return pct(share.amount, document.budget.total) if share.amount is not None else None
+    return document.budget.pools[pool].share_pct
 
 
 def native_budget(season: NativeSeason, typed: _Typed | None) -> list[BudgetRow]:

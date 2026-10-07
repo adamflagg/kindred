@@ -209,8 +209,8 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   it("narrows to a program, kept in the URL, under its pool's heading from the rules' read", async () => {
     renderAt('/aid/requests')
     await openProgram()
-    expect(screen.getByRole('option', { name: 'Weekend Programs' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Pool B' })).toBeNull()
+    expect(screen.getByRole('option', { name: 'Pool B' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'pool_b' })).toBeNull()
     // The list is already open: a second click on the button would close it mid-pick (flaky under load).
     await userEvent.click(screen.getByRole('option', { name: 'Quest' }))
     expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
@@ -220,7 +220,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   it('narrows to a pool by its heading, clearing the program, and back (T6)', async () => {
     renderAt('/aid/requests?program=summer')
-    await pickProgram('Weekend Programs')
+    await pickProgram('Pool B')
     expect(screen.getByTestId('where')).toHaveTextContent('pool=pool_b')
     expect(screen.getByTestId('where')).not.toHaveTextContent('program=')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()

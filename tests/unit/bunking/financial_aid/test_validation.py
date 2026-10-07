@@ -12,6 +12,7 @@ from bunking.financial_aid.rules import (
     resolved_table,
     validate_rules,
 )
+from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.bunking.financial_aid.fixtures import FICTIONAL_SESSION_IDS, fictional_rules, with_lever, with_levers
 
 
@@ -376,31 +377,26 @@ def test_pool_shares_must_sum_to_100() -> None:
     assert "pool_shares_not_100" in validate_rules(rules).codes()
 
 
-def test_pools_are_all_shares_or_all_amounts() -> None:
-    rules = with_levers(
-        fictional_rules(), {"budget.pools.camp_pool.share_pct": None, "budget.pools.camp_pool.amount": "400000"}
-    )
-    assert "mixed_pool_kinds" in validate_rules(rules).codes()
-
-
-def test_pool_amounts_must_sum_to_the_total() -> None:
-    rules = with_lever(
+def test_shares_summing_to_100_by_decimal_are_clean_and_99_99_is_an_error() -> None:
+    """Regression guard. Review Focus 3: exact Decimal sums; no float drift."""
+    thirds = with_levers(
         fictional_rules(),
-        "budget.pools",
         {
-            "camp_pool": {"label": "Camp", "amount": "400000"},
-            "weekend_pool": {"label": "Weekends", "amount": "75000"},
-            "bmitzvah_pool": {"label": "B'mitzvah", "amount": "20000"},
+            "budget.pools.camp_pool.share_pct": "33.34",
+            "budget.pools.weekend_pool.share_pct": "33.33",
+            "budget.pools.bmitzvah_pool.share_pct": "33.33",
         },
     )
-    assert "pool_amounts_not_total" in validate_rules(rules).codes()
+    assert "pool_shares_not_100" not in validate_rules(thirds).codes()
+    short = with_lever(fictional_rules(), "budget.pools.bmitzvah_pool.share_pct", "4.99")
+    (issue,) = [i for i in validate_rules(short).errors if i.code == "pool_shares_not_100"]
+    assert issue.message == "Pool shares sum to 99.99%, not 100%"
 
 
-def test_reserves_name_real_pools_and_never_exceed_100() -> None:
-    rules = with_lever(fictional_rules(), "budget.reserves", {"camp_pool": {"r2": "70", "r3": "40"}, "ghost": {}})
-    codes = validate_rules(rules).codes()
-    assert "reserves_exceed_pool" in codes
-    assert "unknown_reserve_pool" in codes
+def test_no_reserve_or_amount_code_survives() -> None:
+    """Regression guard."""
+    codes = validate_rules(fictional_rules()).codes()
+    assert not codes & {"mixed_pool_kinds", "pool_amounts_not_total", "unknown_reserve_pool", "reserves_exceed_pool"}
 
 
 # --- stages and milestones ------------------------------------------------------------
@@ -491,3 +487,15 @@ def test_an_income_conflict_check_that_holds_or_is_not_listed_is_fine() -> None:
     held = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", {"severity": "hold"})
     assert "household_income_conflict_must_hold" not in validate_rules(held).codes()
     assert "household_income_conflict_must_hold" not in validate_rules(fictional_rules()).codes()  # unlisted
+
+
+def test_a_disabled_dependents_criterion_with_a_weight_does_not_warn() -> None:
+    """§9.2: a weight on a disabled criterion is stored, unused."""
+    doc = fictional_rules().model_dump(mode="json")
+    doc["equity"]["weights"]["camp"]["dependents"] = "1"
+    enabled = AidRules.model_validate(doc)
+    assert "dependents_weight_cannot_bind" in validate_rules(enabled).codes()
+    for criterion in doc["equity"]["criteria"]:
+        if criterion["key"] == "dependents":
+            criterion["enabled"] = False
+    assert "dependents_weight_cannot_bind" not in validate_rules(AidRules.model_validate(doc)).codes()

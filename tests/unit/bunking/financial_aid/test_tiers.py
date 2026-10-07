@@ -301,3 +301,20 @@ def test_empty_also_fields_behaves_exactly_as_before() -> None:
     assert criterion.also_fields == []
     assert criterion_met(criterion, app(), req(equity_answers={"bipoc": "Yes"})) is True
     assert criterion_met(criterion, app(), req(equity_answers={})) is False
+
+
+# Lever literal for test_lever_coverage: "equity.criteria.enabled"
+def test_a_criterion_that_isnt_enabled_moves_no_one_and_keeps_its_weights() -> None:
+    """§8.6 (owner 10-06): unchecked counts for nobody; flip it back on and its weights return."""
+    rules = fictional_rules()
+    doc = rules.model_dump(mode="json")
+    for criterion in doc["equity"]["criteria"]:
+        if criterion["key"] == "bipoc":
+            criterion["enabled"] = False
+    off = AidRules.model_validate(doc)
+    program = rules.programs["summer"]
+    shifted, _ = equity_shift(app(), req(equity_answers={"bipoc": "yes"}), program, rules)
+    unshifted, step = equity_shift(app(), req(equity_answers={"bipoc": "yes"}), program, off)
+    assert (shifted, unshifted) == (1, 0)
+    assert off.equity.weights["camp"]["bipoc"] == Decimal("0.5")
+    assert "bipoc" not in str(step.inputs["criteria_met"])

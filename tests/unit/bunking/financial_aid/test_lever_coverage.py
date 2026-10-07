@@ -46,8 +46,6 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     "milestones.r2_window_end": _SP10,
     "milestones.r3_window_start": _SP10,
     "milestones.r3_window_end": _SP10,
-    "budget.spillover": _SP9,
-    "budget.commit_on": _SP9,
     "awards.decision_types.*.budget_line": _SP9,
     "awards.rounding": (
         "no sub-project yet: it allows one value, and the calculator always rounds half up "

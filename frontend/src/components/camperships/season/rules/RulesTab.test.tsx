@@ -89,7 +89,7 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
 
   it('opens the section the link names, read only, its figures as staff read them', () => {
     renderAt('/aid/season/rules?section=budget')
-    expect(within(panel()).getByText('Budget and reserves')).toBeInTheDocument()
+    expect(within(panel()).getByText('Budget and pools')).toBeInTheDocument()
     expect(within(panel()).getByText('$1,000,000')).toBeInTheDocument()
     expect(within(panel()).getByText('90%')).toBeInTheDocument()
     expect(within(panel()).queryByRole('textbox')).toBeNull()
@@ -200,7 +200,7 @@ describe('RulesTab for finance (D39)', () => {
     ).toBeInTheDocument()
     expect(within(panel()).getByText('55%')).toHaveClass('text-amber-700')
     renderAt('/aid/season/rules?section=budget')
-    expect(screen.getByText('Pool B sets no reserves: all of it is Round 1')).toBeInTheDocument()
+    expect(screen.getByText('Pool shares sum to 99%, not 100%')).toBeInTheDocument()
   })
 
   it('switches to the approved version, as the registrar sees it, in the URL', () => {
@@ -247,8 +247,8 @@ describe('RulesTab for finance (D39)', () => {
 describe('RulesTab reads the rules in their own names, never their codes (#15)', () => {
   it("names a pool by its label, once: a label column that repeats the row's name is left out", () => {
     renderAt('/aid/season/rules?section=budget')
-    // Once in Pools and once in Reserves; not a third time in a Label column.
-    expect(within(panel()).getAllByText('Pool A')).toHaveLength(2)
+    // Once in Pools; not a second time in a Label column.
+    expect(within(panel()).getAllByText('Pool A')).toHaveLength(1)
     expect(within(panel()).queryByText('pool_a')).toBeNull()
     expect(within(panel()).queryByText('Label')).toBeNull()
   })

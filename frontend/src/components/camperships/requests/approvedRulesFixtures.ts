@@ -58,12 +58,9 @@ export const APPROVED_RULES_2026: ApiAidApprovedRules = {
       content: {
         total: 100000,
         pools: {
-          pool_a: { label: 'Camp & Quest', share_pct: 80, amount: null },
-          pool_b: { label: 'Weekend Programs', share_pct: 20, amount: null },
+          pool_a: { label: 'Pool A', share_pct: 80 },
+          pool_b: { label: 'Pool B', share_pct: 20 },
         },
-        reserves: {},
-        spillover: 'none',
-        commit_on: 'offered',
       },
     },
     {

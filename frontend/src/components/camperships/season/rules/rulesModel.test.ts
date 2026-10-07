@@ -285,13 +285,10 @@ describe("the rules' own keys read in the document's words, never as codes (#15)
   )
   const names = (section: RulesNames['section']): RulesNames => ({ section, ...vocabulary })
 
-  it('names a budget pool by its label, in pools and reserves alike; an unlabelled one in words', () => {
+  it('names a budget pool by its label', () => {
     expect(labelOf(['pools', 'pool_a'], names('budget'))).toBe('Pool A')
-    expect(labelOf(['reserves', 'pool_b'], names('budget'))).toBe('Pool B')
-    expect(labelOf(['reserves', 'camp_quest'], names('budget'))).toBe('Camp quest')
     // A pool's own fields keep their names.
     expect(labelOf(['pools', 'pool_a', 'share_pct'], names('budget'))).toBe('Share %')
-    expect(labelOf(['reserves', 'pool_a', 'r2'], names('budget'))).toBe('Round 2')
   })
 
   it('names a decision type by its label, and its budget line too', () => {
@@ -404,5 +401,16 @@ describe("a version's lead line (#23)", () => {
     expect(versionWords(5, [{ state: 'draft' }, {}])).toBe(
       'Rules v5 · draft: 2 sections not approved yet'
     )
+  })
+})
+
+describe('the budget section after the split (spec §8.2, §8.4)', () => {
+  it('is titled Budget and pools and carries none of the old reserve, spillover or commit labels', () => {
+    expect(SECTION_TITLES.budget).toBe('Budget and pools')
+    for (const key of ['reserves', 'r1_late', 'spillover', 'commit_on']) {
+      expect(labelOf([key])).not.toMatch(
+        /\(% of the pool\)|Late Round 1|between pools|committed when/
+      )
+    }
   })
 })

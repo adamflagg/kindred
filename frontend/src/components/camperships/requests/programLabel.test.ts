@@ -65,8 +65,8 @@ describe('programLabel', () => {
 describe('poolLabels (the rules name their budget pools)', () => {
   it("reads each pool's label from the approved rules' budget section", () => {
     expect(poolLabels(APPROVED_RULES_2026)).toEqual({
-      pool_a: 'Camp & Quest',
-      pool_b: 'Weekend Programs',
+      pool_a: 'Pool A',
+      pool_b: 'Pool B',
     })
   })
 
@@ -93,14 +93,14 @@ describe('programGroups (T6: one Program dropdown, pools as headings)', () => {
   it("puts each pool's programs under its heading, in the rules' pool order, with the rules' words", () => {
     expect(programGroups(seen, APPROVED_RULES_2026)).toEqual([
       {
-        pool: { value: 'pool_a', label: 'Camp & Quest' },
+        pool: { value: 'pool_a', label: 'Pool A' },
         programs: [
           { value: 'quest', label: 'Quest' },
           { value: 'summer', label: 'Summer' },
         ],
       },
       {
-        pool: { value: 'pool_b', label: 'Weekend Programs' },
+        pool: { value: 'pool_b', label: 'Pool B' },
         programs: [{ value: 'family_camp', label: 'Family camp' }],
       },
     ])

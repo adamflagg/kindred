@@ -276,8 +276,7 @@ def allocations(rules: AidRules) -> dict[str, Decimal]:
     budget = rules.budget
     out: dict[str, Decimal] = {}
     for key, pool in budget.pools.items():
-        whole = pool.amount if pool.amount is not None else budget.total * (pool.share_pct or ZERO) / HUNDRED
-        out[key] = _cents(whole)
+        out[key] = _cents(budget.total * pool.share_pct / HUNDRED)
     return out
 
 

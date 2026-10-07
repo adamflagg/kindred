@@ -102,10 +102,6 @@ const CHOICES: Readonly<Record<string, readonly string[]>> = {
   kind: options({ full_cost: true, top_up: true, discretionary: true } satisfies Options<
     ApiAidDecisionType['kind']
   >),
-  spillover: options({ none: true, shared: true } satisfies Options<Doc['budget']['spillover']>),
-  commit_on: options({ offered: true, accepted: true } satisfies Options<
-    Doc['budget']['commit_on']
-  >),
   severity: options({ hold: true, warn: true } satisfies Options<Check['severity']>),
 }
 
