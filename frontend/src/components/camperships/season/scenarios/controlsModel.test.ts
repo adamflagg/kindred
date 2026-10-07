@@ -10,6 +10,7 @@ import {
   nothingNewWords,
   parseView,
   pillWords,
+  pricedOnFigures,
   pricedOnWords,
   requestSetParam,
   requestSetWords,
@@ -130,6 +131,36 @@ describe('the URL view (§S5 L)', () => {
     expect(requestSetWords({ kind: 'date', date: '2027-01-20' }, '2027-01-20')).toBe(
       'received through Jan 20'
     )
+  })
+
+  it('never prints a blank date, and words what the shown figures were priced on (CodeRabbit, lead #29 ruling 3)', () => {
+    // A deadline read the server refused leaves no date: the words drop it rather than "received through  (…)".
+    expect(requestSetWords({ kind: 'deadline' }, null)).toBe(
+      'received through the Round 1 deadline'
+    )
+    // Figures priced on every application held (no request_set) stay worded so while Price ▾ asks for the deadline.
+    expect(pricedOnFigures(results(735000), { kind: 'deadline' })).toBe('420 applications held')
+    const deadline = {
+      ...results(735000),
+      request_set: {
+        basis: 'round1_deadline' as const,
+        through: '2027-02-01',
+        label: 'received through Feb 1',
+        left_out: 3,
+        unknown: 0,
+      },
+    }
+    expect(pricedOnFigures(deadline, { kind: 'all' })).toBe(
+      '420 received through Feb 1 (the Round 1 deadline)'
+    )
+    expect(
+      pricedOnFigures(
+        { ...deadline, request_set: { ...deadline.request_set, basis: 'date' as const } },
+        { kind: 'all' }
+      )
+    ).toBe('420 received through Feb 1')
+    // No figures yet: the words follow Price ▾.
+    expect(pricedOnFigures(null, { kind: 'all' })).toBe('0 applications held')
   })
 
   it('puts a count before the words without a stray "the" (V F6)', () => {

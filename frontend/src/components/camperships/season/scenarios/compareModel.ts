@@ -20,7 +20,7 @@ import {
   type RulesVocabulary,
 } from '../rules/rulesModel'
 import { rangeWords } from '../rules/tierGrid'
-import { pricedOnWords, ROUND1_SECTIONS, type ScenarioView } from './controlsModel'
+import { pricedOnFigures, ROUND1_SECTIONS, type ScenarioView } from './controlsModel'
 import { roughly } from './spendModel'
 
 export const MAX_KEPT_COLUMNS = 4
@@ -519,12 +519,11 @@ export function compareRows(
   return rows
 }
 
-/** "Priced on ‹180› ‹the applications held | received through Feb 1 (the Round 1 deadline)›" (§S5 H). */
+/** "Priced on ‹180› ‹applications held | received through Feb 1 (the Round 1 deadline)›" (§S5 H), as the columns
+ * were priced (their own request set), not as Price ▾ now asks. */
 export function cornerWords(sources: readonly CompareSource[], requestSet: AidRequestSet): string {
   const first = sources.find((s) => s.kind === 'priced')
-  const results = first?.kind === 'priced' ? first.column.results : null
-  const through = results?.request_set?.through ?? null
-  return `Priced on ${pricedOnWords(results?.requests ?? 0, requestSet, through)}`
+  return `Priced on ${pricedOnFigures(first?.kind === 'priced' ? first.column.results : null, requestSet)}`
 }
 
 /** The checked columns as the URL holds them (§S5 L): kept codes in `compare`, and `1` for each built-in. */

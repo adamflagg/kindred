@@ -393,3 +393,24 @@ describe('states (§S5 M)', () => {
     expect(screen.getByRole('button', { name: 'Keep…' })).toBeDisabled() // disagreement 17: nothing can be recorded yet
   })
 })
+
+describe('a refused Price ▾ read (CodeRabbit on #3047; lead #29 ruling 3)', () => {
+  it('words By tier by what the kept figures were priced on after a refused deadline read (CodeRabbit; lead #29 ruling 3)', async () => {
+    // Priced on every application held, then Price ▾ asks for the deadline and the server refuses (422): the strip
+    // keeps the last good figures, and By tier names their set, never "received through  (the Round 1 deadline)".
+    renderAt()
+    pricing = {
+      error: new AidApiError(
+        "2027's approved rules set no application deadline (milestones): choose a received-through date",
+        422
+      ),
+      isPlaceholderData: false,
+      isFetching: false,
+    }
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    await userEvent.click(screen.getByRole('button', { name: 'By tier ▸' }))
+    expect(
+      within(screen.getByTestId('tier-popover')).getByText('By tier · 420 applications held')
+    ).toBeInTheDocument()
+  })
+})

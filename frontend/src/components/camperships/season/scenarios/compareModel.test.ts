@@ -317,6 +317,9 @@ describe('the rows (§S5 H; N3, N4, N10)', () => {
 
   it('says in the corner what every column is priced on', () => {
     expect(cornerWords(SOURCES, { kind: 'all' })).toBe('Priced on 420 applications held')
+    // The columns' own request set, not Price ▾'s: kept figures from a read on every application held stay worded
+    // so while Price ▾ asks for the deadline (CodeRabbit on #3047; lead #29 ruling 3).
+    expect(cornerWords(SOURCES, { kind: 'deadline' })).toBe('Priced on 420 applications held')
   })
 
   it('shows whole dollars where a figure has cents (coordinator ruling 2026-10-07)', () => {

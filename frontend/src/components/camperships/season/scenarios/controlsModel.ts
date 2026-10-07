@@ -200,10 +200,11 @@ export const PRICE_CHOICES: ReadonlyArray<{
 /** The corner cell's and By tier's words for what the figures are priced on (§S5 E, §S5 H). */
 export function requestSetWords(set: AidRequestSet, through: string | null): string {
   if (set.kind === 'all') return 'the applications held'
-  const day = formatShortDate(through ?? (set.kind === 'date' ? set.date : ''))
+  const day = through ?? (set.kind === 'date' ? set.date : null)
+  if (day === null) return 'received through the Round 1 deadline' // a refused deadline read: never a blank date
   return set.kind === 'deadline'
-    ? `received through ${day} (the Round 1 deadline)`
-    : `received through ${day}`
+    ? `received through ${formatShortDate(day)} (the Round 1 deadline)`
+    : `received through ${formatShortDate(day)}`
 }
 
 /** What a figure is priced on, after its count (§S5 E, §S5 H): "51 applications held", "51 received through Feb 1
@@ -211,6 +212,26 @@ export function requestSetWords(set: AidRequestSet, through: string | null): str
 export function pricedOnWords(count: number, set: AidRequestSet, through: string | null): string {
   if (set.kind === 'all') return `${String(count)} application${count === 1 ? '' : 's'} held`
   return `${String(count)} ${requestSetWords(set, through)}`
+}
+
+/**
+ * What the figures on screen were priced on (CodeRabbit on #3047): their own request set, which after a refused read
+ * (the last good figures kept, §S5 E States) is not Price ▾'s. No request set on a result means every application
+ * held; with no figures yet the words follow Price ▾.
+ */
+export function pricedOnFigures(
+  results: ApiAidScenarioResults | null,
+  asked: AidRequestSet
+): string {
+  if (results === null) return pricedOnWords(0, asked, null)
+  const note = results.request_set ?? null
+  const set: AidRequestSet =
+    note === null
+      ? { kind: 'all' }
+      : note.basis === 'round1_deadline'
+        ? { kind: 'deadline' }
+        : { kind: 'date', date: note.through }
+  return pricedOnWords(results.requests, set, note?.through ?? null)
 }
 
 /** The load guard's words (§S5 C): "1 change isn't kept. Loading A drops it." / "3 changes aren't kept. … them." */
