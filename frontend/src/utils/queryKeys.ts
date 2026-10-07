@@ -753,6 +753,7 @@ export const queryKeys = {
   aidRulesApproved: (year: number, version: number | null) =>
     ['financial-aid', 'rules', year, 'approved', version ?? 'pricing'] as const,
   aidRulesDraft: (year: number) => ['financial-aid', 'rules', year, 'draft'] as const,
+  aidCapacity: (year: number) => ['financial-aid', 'capacity', year] as const,
   aidHistoryPrefix: () => ['financial-aid', 'history'] as const,
   aidHistory: (year: number, query: Readonly<Record<string, string>>) =>
     ['financial-aid', 'history', year, 'page', query] as const,
