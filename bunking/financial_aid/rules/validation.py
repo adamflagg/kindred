@@ -419,8 +419,11 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                 f"{path}.equity_class",
                 f"Open to aid but no equity class, so no award table: its requests hold ({program.label})",
             )
-        elif program.equity_class is not None and (
-            program.equity_class not in rules.award_tables or program.equity_class not in rules.round2.tables
+        # A closed program prices nothing, and an unknown class is already its own error above.
+        elif (
+            program.open_to_aid
+            and program.equity_class in rules.equity.weights
+            and (program.equity_class not in rules.award_tables or program.equity_class not in rules.round2.tables)
         ):
             missing = "Round 1 award table" if program.equity_class not in rules.award_tables else "appeal caps table"
             issues.error(

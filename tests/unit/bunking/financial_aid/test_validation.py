@@ -524,6 +524,20 @@ def test_a_class_with_no_table_is_an_error() -> None:
     assert ("class_without_table", "programs.summer.equity_class") in codes
 
 
+def test_a_closed_program_needs_no_table_for_its_class() -> None:
+    """A program closed to aid prices nothing, so its class missing a table is no error (as no_equity_class)."""
+    rules = with_levers(fictional_rules(), BY_CLASS | {"equity.weights.extra": {}})
+    rules = with_levers(rules, {"programs.summer.equity_class": "extra", "programs.summer.open_to_aid": False})
+    assert "class_without_table" not in validate_rules(rules).codes()
+
+
+def test_an_unknown_class_is_one_error_not_two() -> None:
+    """A class the equity section doesn't name reports unknown_equity_class alone, not also class_without_table."""
+    rules = with_levers(fictional_rules(), BY_CLASS | {"programs.summer.equity_class": "nobody"})
+    codes = [(i.code, i.path) for i in validate_rules(rules).errors if i.path == "programs.summer.equity_class"]
+    assert codes == [("unknown_equity_class", "programs.summer.equity_class")]
+
+
 def test_a_program_by_class_needs_no_program_tables_entry() -> None:
     doc = with_levers(fictional_rules(), BY_CLASS).model_dump(mode="json")
     doc["round2"]["program_tables"] = {}
