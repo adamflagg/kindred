@@ -357,7 +357,7 @@ class FinancialAidIntakeRepository:
             CAMP_SESSIONS,
             {
                 "filter": f"year = {year}",
-                "fields": "id,cm_id,name,session_type,start_date,end_date",
+                "fields": "id,cm_id,name,session_type,start_date,end_date,parent_id",
                 "sort": STABLE_SORT,
             },
         )
@@ -368,6 +368,7 @@ class FinancialAidIntakeRepository:
                 _str(r.session_type),
                 _str(getattr(r, "start_date", "")),
                 _str(getattr(r, "end_date", "")),
+                _int(getattr(r, "parent_id", 0)),
             )
             for r in rows
         ]
