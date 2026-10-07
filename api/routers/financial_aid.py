@@ -167,6 +167,7 @@ from api.schemas.financial_aid_scenarios import (
     PoolResultOut,
     PromotionPreviewOut,
     PromotionSectionOut,
+    RenameIn,
     ReplacementWarningOut,
     RequestSetOut,
     ResultsOut,
@@ -1318,6 +1319,9 @@ def _option_out(kept: KeptOption) -> OptionOut:
         kept_at=r.created,
         results=_results_out(r.results),
         stale=kept.stale,
+        name=kept.name,
+        promotable=kept.promotable,
+        blocked=kept.blocked,
     )
 
 
@@ -1481,9 +1485,23 @@ async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES
 
 @router.post("/scenarios/{year}/keep", response_model=OptionOut)
 async def keep_scenario(year: _Year, body: KeepIn, user: AuthUser = _RULES) -> OptionOut:
-    """Keep your draft: a variant under its starting point, or a new starting point (two levels, D38)."""
+    """Keep your draft as the next lettered option (Scenarios addendum §S11.1), named or, when blank, by its label."""
     try:
-        return _option_out(await _scenarios().keep(year, user.email, starting_point=body.starting_point))
+        return _option_out(
+            await _scenarios().keep(year, user.email, name=body.name, starting_point=body.starting_point)
+        )
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.patch("/scenarios/{year}/options/{code}", response_model=OptionOut)
+async def rename_scenario_option(
+    year: _Year, code: _OptionCodePath, body: RenameIn, user: AuthUser = _RULES
+) -> OptionOut:
+    """Rename a kept option (Scenarios addendum §S11.1): one operation; everyone with `rules` sees it. 404 for an
+    unknown code; 422 for a blank name."""
+    try:
+        return _option_out(await _scenarios().rename(year, code, body.name, user.email))
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 

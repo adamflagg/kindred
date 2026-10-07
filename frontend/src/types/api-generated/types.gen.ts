@@ -8208,6 +8208,10 @@ export type JumpIndexResponse = {
  */
 export type KeepIn = {
   /**
+   * Name
+   */
+  name?: string | null
+  /**
    * Starting Point
    */
   starting_point?: boolean
@@ -9243,6 +9247,18 @@ export type OptionOut = {
    * Stale
    */
   stale: boolean
+  /**
+   * Name
+   */
+  name?: string
+  /**
+   * Promotable
+   */
+  promotable?: boolean
+  /**
+   * Blocked
+   */
+  blocked?: string | null
 }
 
 /**
@@ -12689,6 +12705,19 @@ export type RemainingResponse = {
    * Not Rebuilt
    */
   not_rebuilt?: Array<NotRebuiltOut>
+}
+
+/**
+ * RenameIn
+ *
+ * A kept option's new name: trimmed, at most 80 characters. A blank one reaches the service, which refuses it
+ * in staff words ("Give it a name").
+ */
+export type RenameIn = {
+  /**
+   * Name
+   */
+  name: string
 }
 
 /**
@@ -25247,6 +25276,42 @@ export type KeepScenarioApiFinancialAidScenariosYearKeepPostResponses = {
 
 export type KeepScenarioApiFinancialAidScenariosYearKeepPostResponse =
   KeepScenarioApiFinancialAidScenariosYearKeepPostResponses[keyof KeepScenarioApiFinancialAidScenariosYearKeepPostResponses]
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchData = {
+  body: RenameIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Code
+     */
+    code: string
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/options/{code}'
+}
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchError =
+  RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchErrors[keyof RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchErrors]
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: OptionOut
+}
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponse =
+  RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponses[keyof RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponses]
 
 export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
   body?: never

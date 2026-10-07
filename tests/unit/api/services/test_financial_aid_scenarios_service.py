@@ -12,6 +12,7 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -339,48 +340,24 @@ async def test_a_document_for_another_season_is_refused() -> None:
 
 
 @pytest.mark.asyncio
-async def test_keeping_lands_variants_under_their_starting_point_two_levels_deep() -> None:
-    world = await _started()
-    service, a = world.service, await _a(world)
-    await service.save_draft(YEAR, _shifted(a, "5"), FINANCE)
-    a1 = await service.keep(YEAR, FINANCE, starting_point=False)
-    await service.save_draft(YEAR, _shifted(a, "10"), FINANCE)
-    a2 = await service.keep(YEAR, FINANCE, starting_point=False)
-    await service.save_draft(YEAR, with_minimum(_shifted(a, "10"), Decimal(150)), FINANCE)
-    b = await service.keep(YEAR, FINANCE, starting_point=True)
-    await service.save_draft(YEAR, with_minimum(_shifted(a, "10"), Decimal(175)), FINANCE)
-    b1 = await service.keep(YEAR, FINANCE, starting_point=False)
-    kept = [(k.record.code, k.record.starting_point, k.record.from_code) for k in (a1, a2, b, b1)]
-    assert kept == [("A1", "A", "A"), ("A2", "A", "A1"), ("B", "", "A2"), ("B1", "B", "B")]
-    assert (a1.label, a2.label) == (
-        "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%",
-        "Tiers 1–6 +10% · Round 1 % › Teen › Tier 2 80%",
-    )
-    assert (b.label, b1.label) == ("Tiers 1–6 +10% · Round 1 % › Teen › Tier 2 80% · Minimum $150", "Minimum $175")
-    draft = (await service.workspace(YEAR, FINANCE)).draft
-    assert draft is not None
-    assert (draft.from_code, draft.label) == ("B1", "no changes")
-
-
-@pytest.mark.asyncio
 async def test_keeping_a_draft_that_matches_a_kept_option_is_refused() -> None:
     world = await _started()
     with pytest.raises(ScenarioConflictError, match="same as A"):
-        await world.service.keep(YEAR, FINANCE, starting_point=False)
+        await world.service.keep(YEAR, FINANCE)
 
 
 @pytest.mark.asyncio
 async def test_a_keep_is_one_operation_and_its_log_carries_no_document() -> None:
     world = await _started()
     await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
-    await world.service.keep(YEAR, FINANCE, starting_point=False)
+    await world.service.keep(YEAR, FINANCE)
     option_row, trail_row = world.store.log[-2:]
     assert (option_row["entity"], option_row["entity_id"], option_row["action"]) == (
         "aid_scenario_options",
-        f"{YEAR}:A1",
+        f"{YEAR}:B",
         "keep",
     )
-    assert (trail_row["entity"], trail_row["after"]) == ("aid_scenario_trail", {"kept_code": "A1"})
+    assert (trail_row["entity"], trail_row["after"]) == ("aid_scenario_trail", {"kept_code": "B"})
     assert option_row["operation_id"] == trail_row["operation_id"]
     assert "document" not in option_row["after"]
 
@@ -388,21 +365,21 @@ async def test_a_keep_is_one_operation_and_its_log_carries_no_document() -> None
 # --- compare, fit, sensitivity ------------------------------------------------------------------------
 
 
-async def _kept_a1(world: World) -> AidRules:
-    """FINANCE shifts A by +5 and keeps it: A1. Returns A's document."""
+async def _kept_b(world: World) -> AidRules:
+    """FINANCE shifts A by +5 and keeps it: B. Returns A's document."""
     a = await _a(world)
     await world.service.save_draft(YEAR, _shifted(a, "5"), FINANCE)
-    await world.service.keep(YEAR, FINANCE, starting_point=False)
+    await world.service.keep(YEAR, FINANCE)
     return a
 
 
 @pytest.mark.asyncio
 async def test_compare_puts_the_draft_first_beside_the_ticked_options() -> None:
     world = await _started()
-    a = await _kept_a1(world)
+    a = await _kept_b(world)
     await world.service.save_draft(YEAR, _shifted(a, "10"), FINANCE)
-    comparison = await world.service.compare(YEAR, FINANCE, ["A", "A1", "A"])
-    assert [c.code for c in comparison.columns] == ["draft", "A", "A1"]
+    comparison = await world.service.compare(YEAR, FINANCE, ["A", "B", "A"])
+    assert [c.code for c in comparison.columns] == ["draft", "A", "B"]
     draft, first, variant = comparison.columns
     assert (draft.label, draft.up, draft.down) == ("Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 80%", 2, 0)
     assert (first.label, first.up, first.down) == ("rules draft v1 as they were", None, None)  # v1 prices nothing
@@ -526,15 +503,15 @@ async def test_one_step_of_each_sizing_setting() -> None:
 @pytest.mark.asyncio
 async def test_the_trail_is_shared_and_newest_first() -> None:
     world = await _started()
-    await _kept_a1(world)
-    await world.service.load(YEAR, TREASURER, option="A1")
+    await _kept_b(world)
+    await world.service.load(YEAR, TREASURER, option="B")
     rows, total = await world.service.trail(YEAR, page=1, per_page=2)
     assert total == 3
     assert [(r.actor, r.change) for r in rows] == [
-        (TREASURER, "loaded A1 into the draft"),
+        (TREASURER, "loaded B into the draft"),
         (FINANCE, "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"),
     ]
-    assert (rows[1].kept_code, rows[0].document) == ("A1", None)
+    assert (rows[1].kept_code, rows[0].document) == ("B", None)
 
 
 # --- make it the rules draft --------------------------------------------------------------------------
@@ -543,15 +520,15 @@ async def test_the_trail_is_shared_and_newest_first() -> None:
 @pytest.mark.asyncio
 async def test_making_a_kept_option_the_rules_draft() -> None:
     world = await _started()
-    await _kept_a1(world)
-    preview = await world.service.rules_draft_preview(YEAR, "A1")
+    await _kept_b(world)
+    preview = await world.service.rules_draft_preview(YEAR, "B")
     assert ([s.section for s in preview.sections], preview.base_version) == (["award_tables"], 1)
     draft, branched_from = await world.service.make_rules_draft(
-        YEAR, "A1", base_version=1, acknowledged={}, actor=FINANCE
+        YEAR, "B", base_version=1, acknowledged={}, actor=FINANCE
     )
     assert (branched_from, draft.version.version) == (None, 1)  # 2027 v1 is not approved yet: saved in place
     status = draft.version.section_status["award_tables"]
-    assert (status.edited_by, status.edited_via) == (FINANCE, "A1")
+    assert (status.edited_by, status.edited_via) == (FINANCE, "B")
     assert draft.version.document.award_tables["camp"].tiers[1].r1_pct == Decimal(95)
 
 
@@ -866,12 +843,12 @@ async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_
     await world.rules.approve_sections(YEAR, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
     await world.service.freeze(YEAR, FINANCE)
     await world.service.start_from_rules(YEAR, FINANCE)  # A, from the approved v1
-    a = await _kept_a1(world)
+    a = await _kept_b(world)
     # Someone edits Round 1's tables after A was taken: the edit branches v2 (v1 prices the season), unapproved, and
-    # A1 would replace it.
+    # B would replace it.
     edited = _shifted(a, "-3").model_dump(mode="json")["award_tables"]
     await world.rules.save_section(YEAR, 1, "award_tables", edited, actor=TREASURER)
-    preview = await world.service.rules_draft_preview(YEAR, "A1")
+    preview = await world.service.rules_draft_preview(YEAR, "B")
     [section] = preview.sections
     assert section.warning is not None
     assert (preview.base_version, section.section, section.warning.kind, section.warning.by) == (
@@ -882,11 +859,11 @@ async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_
     )
     token: dict[SectionName, str] = {"award_tables": section.warning.token}
     with pytest.raises(ReplacementNotAcknowledgedError):
-        await world.service.make_rules_draft(YEAR, "A1", base_version=2, acknowledged={}, actor=FINANCE)
+        await world.service.make_rules_draft(YEAR, "B", base_version=2, acknowledged={}, actor=FINANCE)
     with pytest.raises(NotLatestVersionError):
-        await world.service.make_rules_draft(YEAR, "A1", base_version=1, acknowledged=token, actor=FINANCE)
-    draft, _ = await world.service.make_rules_draft(YEAR, "A1", base_version=2, acknowledged=token, actor=FINANCE)
-    assert (draft.version.version, draft.version.section_status["award_tables"].edited_via) == (2, "A1")
+        await world.service.make_rules_draft(YEAR, "B", base_version=1, acknowledged=token, actor=FINANCE)
+    draft, _ = await world.service.make_rules_draft(YEAR, "B", base_version=2, acknowledged=token, actor=FINANCE)
+    assert (draft.version.version, draft.version.section_status["award_tables"].edited_via) == (2, "B")
     assert draft.version.document.award_tables == _shifted(a, "5").award_tables
 
 
@@ -1055,3 +1032,109 @@ async def test_a_load_names_exactly_one_thing() -> None:
         await world.service.load(YEAR, FINANCE, option="A", start="rules")
     with pytest.raises(ScenarioRefusedError, match="one kept option, one trail row or one starting point"):
         await world.service.load(YEAR, FINANCE)
+
+
+# --- names, rename and flat letters (Scenarios addendum §S11.1) ----------------------------------------------------
+
+
+def _seed_legacy_option(world: World, code: str, starting_point: str, day: int) -> None:
+    """An option kept before PR 10 (two levels, no name): a copy of A's row under `code`."""
+    [a] = [row for row in world.store.rows[AID_SCENARIO_OPTIONS] if row.code == "A"]
+    world.store.rows[AID_SCENARIO_OPTIONS].append(
+        SimpleNamespace(
+            **{
+                **vars(a),
+                "id": f"opt{code.lower():0>12}",
+                "code": code,
+                "starting_point": starting_point,
+                "from_code": starting_point,
+                "created": (T0 + timedelta(days=day)).isoformat(),
+            }
+        )
+    )
+
+
+def _criterion_label(rules: AidRules, label: str) -> AidRules:
+    criteria = [c.model_copy(update={"label": label}) if c.key == "bipoc" else c for c in rules.equity.criteria]
+    return rules.model_copy(update={"equity": rules.equity.model_copy(update={"criteria": criteria})})
+
+
+@pytest.mark.asyncio
+async def test_keep_with_a_name_stores_it_and_a_blank_one_stores_the_label() -> None:
+    world = await _frozen()
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    named = await world.service.keep(YEAR, FINANCE, name="  Every tier up  ")
+    assert (named.record.code, named.name, named.record.from_code, named.record.starting_point) == (
+        "A",
+        "Every tier up",
+        "",  # kept from a built-in start: from_code "" (aid_scenario_options.from_code is unchanged)
+        "",
+    )
+    assert named.record.origin_version == 1
+    await world.service.save_draft(YEAR, with_minimum(_shifted(intake_rules(), "5"), Decimal(150)), FINANCE)
+    blank = await world.service.keep(YEAR, FINANCE, name="   ")
+    assert (blank.record.code, blank.name, blank.record.from_code) == ("B", "Minimum $150", "A")
+
+
+@pytest.mark.asyncio
+async def test_an_option_kept_from_the_rules_is_labelled_by_its_name_not_as_the_rules_as_they_were() -> None:
+    world = await _frozen()
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.label == kept.record.name
+
+
+@pytest.mark.asyncio
+async def test_after_a_a1_and_b_the_next_keep_is_c_and_a_legacy_variant_keeps_its_label_as_its_name() -> None:
+    """Review Focus 3: variants kept before PR 10 never take a letter; an unnamed option reads as its label."""
+    world = await _started()  # A
+    _seed_legacy_option(world, "A1", "A", 1)
+    _seed_legacy_option(world, "B", "", 2)
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.code == "C"
+    options = {o.record.code: o for o in (await world.service.workspace(YEAR, FINANCE)).options}
+    assert options["A1"].name == options["A1"].label  # no stored name: its generated label stands in
+    assert options["A1"].record.name == ""
+
+
+@pytest.mark.asyncio
+async def test_a_name_longer_than_the_field_is_cut_when_the_label_stands_in() -> None:
+    """aid_scenario_options.name holds 80 characters (Task 52): a long label is cut with "…", never refused."""
+    world = await _frozen()
+    long = _criterion_label(intake_rules(), "a very long label " * 10)
+    await world.service.save_draft(YEAR, with_lever(long, "equity.weights.camp.bipoc", "0.75"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert (len(kept.name), kept.name[-1]) == (80, "…")
+
+
+@pytest.mark.asyncio
+async def test_a_rename_is_one_logged_operation_and_leaves_the_document_alone() -> None:
+    world = await _started()
+    document = await _a(world)
+    renamed = await world.service.rename(YEAR, "A", "  The rules, as approved ", TREASURER)
+    assert (renamed.name, renamed.record.document) == ("The rules, as approved", document)
+    row = world.store.log[-1]
+    assert (row["entity"], row["entity_id"], row["action"]) == ("aid_scenario_options", f"{YEAR}:A", "rename")
+    assert (row["before"], row["after"]) == ({"name": ""}, {"name": "The rules, as approved"})
+    operations = len(world.store.operations)
+    await world.service.rename(YEAR, "A", "The rules, as approved", FINANCE)  # the same name: nothing written
+    assert len(world.store.operations) == operations
+
+
+@pytest.mark.asyncio
+async def test_a_rename_refuses_a_blank_name_and_an_unknown_code() -> None:
+    world = await _started()
+    with pytest.raises(ScenarioRefusedError, match=r"^Give it a name$"):
+        await world.service.rename(YEAR, "A", "   ", FINANCE)
+    with pytest.raises(ScenarioNotFoundError, match="no kept option Q"):
+        await world.service.rename(YEAR, "Q", "Anything", FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_keep_with_nothing_recorded_is_refused() -> None:
+    world = await _frozen()
+    with pytest.raises(
+        ScenarioRefusedError, match=r"^Your draft is the rules in effect: change a setting before keeping it$"
+    ):
+        await world.service.keep(YEAR, FINANCE)

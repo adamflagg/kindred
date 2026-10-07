@@ -480,7 +480,7 @@ async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices
     await world.service.save_draft(
         YEAR, with_levers(intake_rules(), {"award_tables.camp.tiers.2.r1_pct": "80"}), FINANCE
     )
-    await world.service.keep(YEAR, FINANCE, starting_point=False)  # A1, kept with the committee's rows
+    await world.service.keep(YEAR, FINANCE)  # B, kept with the committee's rows
     [start] = [row for row in world.store.rows[AID_SCENARIO_OPTIONS] if row.code == "A"]
     start.results = {**start.results, "committee_rows": False}  # A as SP9b stored it
     priced: list[AidRules] = []
@@ -490,10 +490,12 @@ async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices
         return await price_document(snapshot, document, *args, **kwargs)
 
     monkeypatch.setattr(service_module, "price_document", counting)
-    comparison = await world.service.compare(YEAR, FINANCE, ["A1"])
-    assert len(priced) == 1  # the draft only: A1's figures are stored, and A is only A1's reference
+    comparison = await world.service.compare(YEAR, FINANCE, ["B"])
+    assert (
+        len(priced) == 2
+    )  # the draft, and v1 as B's reference (Task 58's one yardstick reuses A's stored Round 1 again)
     kept = comparison.columns[1]
-    assert (kept.code, kept.up, kept.down) == ("A1", 1, 0)  # Emma's tier 2 went from 75% to 80%
+    assert (kept.code, kept.up, kept.down) == ("B", 1, 0)  # Emma's tier 2 went from 75% to 80%
 
 
 @pytest.mark.asyncio

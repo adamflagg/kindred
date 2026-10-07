@@ -114,6 +114,7 @@ import type {
   ReceiptOut,
   PoolBudgetOut,
   RemainingResponse,
+  RenameIn,
   ResultsOut,
   Round2CompareOut,
   RoundCellOut,
@@ -313,6 +314,8 @@ export type ApiAidScenarioEvaluation = EvaluateOut
 export type ApiAidScenarioDocumentIn = DocumentIn
 export type ApiAidScenarioLoadIn = LoadIn
 export type ApiAidScenarioKeepIn = KeepIn
+/** Mirrors Python `RenameIn`. */
+export type ApiAidScenarioRenameIn = RenameIn
 export type ApiAidScenarioSensitivity = SensitivityOut
 export type ApiAidScenarioViewIn = ViewIn
 

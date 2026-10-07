@@ -9,9 +9,9 @@ One draft per person, kept options and the trail, all over one frozen season:
   who and when; loading an option or any row (`load`) appends one too (neither appends when the draft already is
   that), so nothing is ever lost and nothing asks "discard?" (D38). `evaluate` prices without writing: the live
   preview while a slider moves. The draft is "from" its row's kept code, else the row's from code.
-- **Keep** locks the draft as an immutable, unnamed option with a spoken code: a variant (A1, B2) under the starting
-  point you work from, or a new starting point (B, C). Two levels, never deeper (D36, D38). "Start from the rules"
-  makes a starting point from the rules draft (the latest version).
+- **Keep** locks the draft as an immutable option with the next flat letter (A, B, C: Scenarios addendum §S11.1)
+  and a name (staff's, else its label); `rename` changes the name only. Options kept before names (A1, B2) keep
+  their codes. "Start from the rules" makes a starting point from the rules draft (the latest version).
 - **Compare** puts the draft beside up to 4 kept options; **Fit to budget** finds the tier shift that uses Round 1's
   allocation; **sensitivity** is what one step of each sizing setting moves Round 1 by. **Make it the rules draft**
   hands a kept option to the rules service (SP9a's promotion).
@@ -81,7 +81,6 @@ from bunking.financial_aid.scenarios import (
     tightest_pool,
     up_down,
     uses_budget_placeholder,
-    variant_code,
 )
 
 MAX_COMPARED: Final = 4
@@ -89,7 +88,12 @@ MAX_COMPARED: Final = 4
 StartFrom = Literal["rules", "rules_draft", "last_rules"]
 # The built-in starting points (§S11.2): a draft from one writes no kept option, and reads its source NOW, so
 # "was …" always means what is in effect (or in the rules draft, or last season's merge) when it is read.
+NAME_MAX: Final = 80  # aid_scenario_options.name (1500000233_aid_scenario_names.js)
 BUILT_IN_STARTS: Final[tuple[StartFrom, ...]] = ("rules", "rules_draft", "last_rules")
+
+
+def _fit_name(text: str) -> str:
+    return text if len(text) <= NAME_MAX else text[: NAME_MAX - 1] + "…"
 
 
 class ScenarioNotFoundError(FinancialAidError, LookupError):
@@ -169,6 +173,13 @@ class KeptOption:
     record: OptionRecord
     label: str
     stale: bool  # its results are from an older snapshot
+    promotable: bool = False  # Make it the Rules Draft would copy something (Task 57)
+    blocked: str | None = None  # why it can't, in staff words (Task 57)
+
+    @property
+    def name(self) -> str:
+        """The staff-given name, else the generated label (§S11.1: an option kept before names has none)."""
+        return self.record.name or self.label
 
 
 @dataclass(frozen=True)
@@ -457,6 +468,8 @@ class FinancialAidScenariosService:
     ) -> str:
         """`last`: last season's approved rules, which name a starting point made from them (RPT-18)."""
         if not option.from_code:
+            if option.name:  # kept from a built-in start with a name (§S11.1): starts never store one
+                return option.name
             # "rules vN" only when vN is approved rules and the option is them: one started from a draft that was
             # approved later with edits stays "rules draft vN", as it was.
             origin = await self._rules.load(option.year, option.origin_version)
@@ -527,6 +540,7 @@ class FinancialAidScenariosService:
         document: AidRules,
         priced: Priced,
         meta: SnapshotMeta,
+        name: str = "",
     ) -> AidWrite:
         return AidWrite(
             collection=AID_SCENARIO_OPTIONS,
@@ -538,13 +552,14 @@ class FinancialAidScenariosService:
                 "starting_point": starting_point,
                 "from_code": from_code,
                 "origin_version": origin_version,
+                "name": name,
                 "document": document.model_dump(mode="json"),
                 "results": priced.results.model_dump(mode="json"),
                 "round1_by_request": {rid: str(amount) for rid, amount in priced.round1.items()},
                 "snapshot": meta.id,
                 "actor": actor,
             },
-            after={"code": code, "starting_point": starting_point, "from_code": from_code},
+            after={"code": code, "starting_point": starting_point, "from_code": from_code, "name": name},
             log_action="keep",
             entity_id=f"{year}:{code}",
         )
@@ -819,25 +834,22 @@ class FinancialAidScenariosService:
             await self._record(year, actor, document=document, from_code=from_code, change=change)
         return await self._draft(year, actor)
 
-    async def keep(self, year: int, actor: str, *, starting_point: bool) -> KeptOption:
-        """Lock `actor`'s draft as a kept option: a variant under the starting point it is from, or a new starting
-        point. One operation: the option and the trail row's kept code."""
+    async def keep(self, year: int, actor: str, *, name: str | None = None, starting_point: bool = False) -> KeptOption:
+        """Lock `actor`'s recorded draft as the next flat lettered option (§S11.1). The letter counts only starting
+        points, so variants kept before PR 10 (A1, B2) never take one: A, A1 and B kept make C next. A blank or
+        missing `name` stores the draft's label, cut to the name field. `starting_point` is accepted and ignored
+        until PR 12 stops sending it. One operation: the option and the trail row's kept code."""
+        del starting_point
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
-            raise ScenarioRefusedError("Load a kept option into your draft first")
+            raise ScenarioRefusedError("Your draft is the rules in effect: change a setting before keeping it")
         options = await self._options(year)
         same = next((o for o in options.values() if o.document == row.document), None)
         if same is not None:
             raise ScenarioConflictError(f"Your draft is the same as {same.code}: there is nothing new to keep")
-        source = options.get(_from(row))
-        if source is None:
-            raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")
-        if starting_point:
-            head = ""
-            code = starting_point_code(sum(1 for o in options.values() if not o.starting_point))
-        else:
-            head = source.starting_point or source.code
-            code = variant_code(head, sum(1 for o in options.values() if o.starting_point == head))
+        source = await self._source(year, _from(row), options, recorded=row.document)
+        code = starting_point_code(sum(1 for o in options.values() if not o.starting_point))
+        stored = _fit_name((name or "").strip() or describe(source.document, row.document))
         meta = await self._meta(year)
         priced = await (await self._pricer(meta))(row.document)
         mark = AidWrite(
@@ -853,9 +865,10 @@ class FinancialAidScenariosService:
             year,
             actor,
             code=code,
-            starting_point=head,
-            from_code=source.code,
-            origin_version=source.origin_version,
+            starting_point="",
+            from_code="" if source.code in BUILT_IN_STARTS else source.code,
+            origin_version=source.version,
+            name=stored,
             document=row.document,
             priced=priced,
             meta=meta,
@@ -863,6 +876,34 @@ class FinancialAidScenariosService:
         await self._store.commit([option, mark], actor=actor)
         options = await self._options(year)
         return KeptOption(options[code], await self._label(options[code], options), stale=False)
+
+    async def rename(self, year: int, code: str, name: str, actor: str) -> KeptOption:
+        """A kept option's name (§S11.1): one 4a operation updating the name only; the document and results stay
+        immutable. Kept options are shared by everyone with `rules`, so a rename shows for all of them."""
+        cleaned = name.strip()
+        if not cleaned:
+            raise ScenarioRefusedError("Give it a name")
+        options = await self._options(year)
+        option = options.get(code)
+        if option is None:
+            raise ScenarioNotFoundError(f"{year} has no kept option {code}")
+        if _fit_name(cleaned) != option.name:
+            write = AidWrite(
+                collection=AID_SCENARIO_OPTIONS,
+                action="update",
+                year=year,
+                record_id=option.id,
+                before={"name": option.name},
+                data={"name": _fit_name(cleaned)},
+                log_action="rename",
+                entity_id=f"{year}:{code}",
+            )
+            await self._store.commit([write], actor=actor)
+            options = await self._options(year)
+        renamed = options[code]
+        meta = await self._store.latest_snapshot(year)
+        label = await self._label(renamed, options, await self._last_rules(year))
+        return KeptOption(renamed, label, stale=meta is None or renamed.snapshot != meta.id)
 
     # --- compare, fit, sensitivity ------------------------------------------------------------------
 

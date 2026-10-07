@@ -184,6 +184,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("PUT", "/api/financial-aid/scenarios/2027/draft", DOC_BODY),
     ("POST", "/api/financial-aid/scenarios/2027/draft/load", {"option": "A"}),
     ("POST", "/api/financial-aid/scenarios/2027/keep", {"starting_point": False}),
+    ("PATCH", "/api/financial-aid/scenarios/2027/options/A", {"name": "Every tier up"}),
     ("GET", "/api/financial-aid/scenarios/2027/compare?codes=A", None),
     ("POST", "/api/financial-aid/scenarios/2027/fit-to-budget", DOC_BODY),
     ("POST", "/api/financial-aid/scenarios/2027/sensitivity", DOC_BODY),
@@ -209,6 +210,7 @@ def _stub() -> Any:
     service.save_draft = AsyncMock(return_value=DRAFT)
     service.load = AsyncMock(return_value=DRAFT)
     service.keep = AsyncMock(return_value=KEPT)
+    service.rename = AsyncMock(return_value=KEPT)
     service.compare = AsyncMock(
         return_value=Comparison(META, (CompareColumn("draft", "no changes", DOC, (), RESULTS, None, None),))
     )
@@ -252,7 +254,7 @@ def test_writes_carry_the_callers_email() -> None:
     assert service.save_draft.await_args.args[2] == email
     assert service.load.await_args.args == (2027, email)
     assert service.load.await_args.kwargs == {"option": None, "trail_row": "trl000000000001", "start": None}
-    assert service.keep.await_args.kwargs == {"starting_point": True}
+    assert service.keep.await_args.kwargs == {"name": None, "starting_point": True}
 
 
 def test_a_load_takes_a_built_in_start_and_refuses_two_sources_before_the_service() -> None:
@@ -741,3 +743,32 @@ def test_the_router_gives_the_scenarios_service_the_live_season_read() -> None:
     decisions = patch("api.routers.financial_aid._decisions").start()
     financial_aid._scenarios()
     assert service_class.call_args.kwargs["season_read"] is decisions.return_value.season
+
+
+def test_rename_trims_the_name_passes_the_caller_and_bounds_it() -> None:
+    service = _stub()
+    client = _client()
+    email = persona_user(PERSONA_FINANCE).email
+    response = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "  Every tier up "})
+    assert response.status_code == 200
+    assert service.rename.await_args.args == (2027, "A", "Every tier up", email)
+    too_long = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "x" * 81})
+    assert too_long.status_code == 422
+    service.rename = AsyncMock(side_effect=ScenarioRefusedError("Give it a name"))
+    blank = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "   "})
+    assert (blank.status_code, blank.json()["detail"]) == (422, "Give it a name")
+
+
+def test_keep_passes_its_name_and_the_option_reads_with_its_name() -> None:
+    service = _stub()
+    service.keep = AsyncMock(
+        return_value=KeptOption(replace(OPTION, name="Every tier up"), "rules v1 as they were", stale=False)
+    )
+    body = _client().post("/api/financial-aid/scenarios/2027/keep", json={"name": "Every tier up"}).json()
+    assert service.keep.await_args.kwargs == {"name": "Every tier up", "starting_point": False}
+    assert (body["name"], body["label"], body["promotable"], body["blocked"]) == (
+        "Every tier up",
+        "rules v1 as they were",
+        False,
+        None,
+    )

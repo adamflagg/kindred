@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from api.schemas.financial_aid_rules import FieldChangeOut
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
@@ -95,6 +95,9 @@ class OptionOut(BaseModel):
     kept_at: datetime
     results: ResultsOut
     stale: bool  # its figures are from an older snapshot
+    name: str = ""  # the staff-given name, else the label (§S11.1)
+    promotable: bool = False  # Make it the Rules Draft would copy something (Task 57 fills it)
+    blocked: str | None = None  # why it can't, in staff words (Task 57)
 
 
 class DraftOut(BaseModel):
@@ -170,7 +173,26 @@ class LoadIn(BaseModel):
 class KeepIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str | None = Field(default=None, max_length=80)  # blank or missing: the draft's label (§S11.1)
+    # Accepted and ignored: every keep is the next flat letter (§S11.1). PR 12 stops sending it and removes it.
     starting_point: bool = False
+
+
+class RenameIn(BaseModel):
+    """A kept option's new name: trimmed, at most 80 characters. A blank one reaches the service, which refuses it
+    in staff words ("Give it a name")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def _trimmed(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) > 80:
+            raise ValueError("A name is at most 80 characters")
+        return value
 
 
 class TierCompareOut(BaseModel):
