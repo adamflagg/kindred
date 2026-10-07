@@ -168,6 +168,9 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const names = rulesVocabulary(
     (section) => (draft.document as unknown as Record<string, unknown>)[section]
   )
+  const sourceNames = rulesVocabulary(
+    (section) => (source as unknown as Record<string, unknown>)[section]
+  )
   const priceOff = view.requestSet.kind !== 'all'
   const choices = columnChoices(workspace, unkeptDraft)
   const fitStale =
@@ -177,7 +180,12 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
 
   return (
     <div className="space-y-3">
-      <MakeRulesDraftDialog code={promoting} names={names} onClose={() => setPromoting(null)} />
+      <MakeRulesDraftDialog
+        code={promoting}
+        names={names}
+        sourceNames={sourceNames}
+        onClose={() => setPromoting(null)}
+      />
       <ScenarioControls
         panel={view.panel}
         compareCount={view.panel === 'compare' || view.anyColumn ? checked.length : 0}

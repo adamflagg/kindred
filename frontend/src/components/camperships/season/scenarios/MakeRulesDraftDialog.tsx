@@ -26,11 +26,14 @@ import { allConfirmed, standingAcks, warningWords } from './promotionModel'
 export function MakeRulesDraftDialog({
   code,
   names,
+  sourceNames = names,
   onClose,
 }: {
   code: string | null
   /** The rules vocabulary, so a table or class key reads as the program's or pool's label it shares. */
   names: RulesVocabulary
+  /** The same vocabulary from the option's source document: it names what the draft has since removed. */
+  sourceNames?: RulesVocabulary | undefined
   onClose: () => void
 }) {
   const year = useYear()
@@ -45,6 +48,14 @@ export function MakeRulesDraftDialog({
   } | null>(null)
   const [done, setDone] = useState<number | null>(null)
   const data = preview.data
+  // Source first, draft second: the draft's labels win for additions and updates; the source names removals.
+  const labels: RulesVocabulary = {
+    pools: { ...sourceNames.pools, ...names.pools },
+    programs: { ...sourceNames.programs, ...names.programs },
+    decisionTypes: { ...sourceNames.decisionTypes, ...names.decisionTypes },
+    criteria: { ...sourceNames.criteria, ...names.criteria },
+    sessions: names.sessions ?? sourceNames.sessions,
+  }
   const rulesHref = aidHref('/aid/season/rules', { year, asOf })
   const close = () => {
     // A running write can't be walked away from: a reset would drop its answer (the write still lands).
@@ -149,7 +160,7 @@ export function MakeRulesDraftDialog({
                 <ul className={CS_SMALL}>
                   {section.changes.map((change) => (
                     <li key={change.path.join('.')}>
-                      {changeWords(change, { ...names, section: section.section }, settingWords)}
+                      {changeWords(change, { ...labels, section: section.section }, settingWords)}
                     </li>
                   ))}
                 </ul>

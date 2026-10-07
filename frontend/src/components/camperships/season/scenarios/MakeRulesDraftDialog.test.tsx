@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidApiError, AidWriteError } from '../../../../services/camperships/aidApi'
 import type { ApiAidPromotionPreview } from '../../../../types/api-types'
+import type { RulesVocabulary } from '../rules/rulesModel'
 import { MakeRulesDraftDialog } from './MakeRulesDraftDialog'
 
 let preview: ApiAidPromotionPreview | undefined
@@ -64,7 +65,7 @@ const PREVIEW: ApiAidPromotionPreview = {
 }
 
 /** Stands in for the Compare column's "Make A1 the Rules Draft…": opens the dialog on A1; the dialog closes it. */
-function Harness() {
+function Harness({ sourceNames }: { sourceNames?: RulesVocabulary | undefined }) {
   const [code, setCode] = useState<string | null>(null)
   // A program 'ffp' labelled 'FFP' lends its label to the award table with that key.
   const names = { pools: {}, programs: { ffp: 'FFP' }, decisionTypes: {}, criteria: {} }
@@ -73,22 +74,27 @@ function Harness() {
       <button type="button" onClick={() => setCode('A1')}>
         Make A1 the Rules Draft…
       </button>
-      <MakeRulesDraftDialog code={code} names={names} onClose={() => setCode(null)} />
+      <MakeRulesDraftDialog
+        code={code}
+        names={names}
+        sourceNames={sourceNames}
+        onClose={() => setCode(null)}
+      />
     </>
   )
 }
 
-const at = (path: string) => (
+const at = (path: string, sourceNames?: RulesVocabulary) => (
   <MemoryRouter initialEntries={[path]}>
-    <Harness />
+    <Harness sourceNames={sourceNames} />
   </MemoryRouter>
 )
 
 /** Renders at `path` (its `as_of` reaches the dialog's Rules link) and opens the dialog. */
-async function renderDialog(path = '/aid/season/scenarios') {
-  const view = render(at(path))
+async function renderDialog(path = '/aid/season/scenarios', sourceNames?: RulesVocabulary) {
+  const view = render(at(path, sourceNames))
   await userEvent.click(screen.getByRole('button', { name: 'Make A1 the Rules Draft…' }))
-  return { ...view, rerenderAt: () => view.rerender(at(path)) }
+  return { ...view, rerenderAt: () => view.rerender(at(path, sourceNames)) }
 }
 
 beforeEach(() => {
@@ -122,6 +128,35 @@ describe('Make it the rules draft (D39; Decision 21)', () => {
         'FFP › Tiers › Tier 2 › Round 1 %: 55% → 58%'
       )
     ).toBeInTheDocument()
+  })
+
+  it('names a program the draft removed by the label the source document gave it', async () => {
+    preview = {
+      ...PREVIEW,
+      sections: [
+        {
+          section: 'award_tables',
+          changes: [
+            {
+              path: ['prog_pine', 'tiers', '2', 'r1_pct'],
+              kind: 'removed',
+              before: '55',
+              after: null,
+            },
+          ],
+          warning: null,
+        },
+      ],
+    }
+    await renderDialog('/aid/season/scenarios?compare=A1', {
+      pools: {},
+      programs: { prog_pine: 'Pine Ridge Session' },
+      decisionTypes: {},
+      criteria: {},
+    })
+    const list = within(screen.getByTestId('promotion-preview'))
+    expect(list.getByText(/^Pine Ridge Session ›/)).toBeInTheDocument()
+    expect(list.queryByText(/prog_pine|Prog Pine/i)).not.toBeInTheDocument()
   })
 
   it('lists each change, makes a replaced edit be confirmed, and sends its token', async () => {
