@@ -201,10 +201,15 @@ def test_no_season_note_cites_another_note_by_number() -> None:
         assert "(note" not in BY_KEY[key].text
 
 
-def test_scenarios_numbers_spend_remaining_and_below_the_line() -> None:
+def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> None:
     """Scenarios addendum §S6, §S11.8: Spend and Below the line are new and signed by the addendum's approval;
-    Remaining is the parent's entry, reused, so the two tabs share one definition. Projected joins in PR 11."""
-    assert SURFACES["season-scenarios"] == ("scenario_spend", "remaining", "scenario_below_the_line")
+    Remaining is the parent's entry, reused, so the two tabs share one definition. Projected joined in PR 11."""
+    assert SURFACES["season-scenarios"] == (
+        "scenario_spend",
+        "remaining",
+        "scenario_projected",
+        "scenario_below_the_line",
+    )
     spend, below = BY_KEY["scenario_spend"], BY_KEY["scenario_below_the_line"]
     assert spend.text.startswith("Spend: what the applications priced would get under these settings")
     assert "Once a round posts, its posted amounts stand in every column" in spend.text
@@ -214,3 +219,19 @@ def test_scenarios_numbers_spend_remaining_and_below_the_line() -> None:
     # the PR body.
     assert (spend.spec, spend.rulings) == ("§7.4", ("D35", "D38"))
     assert (below.spec, below.rulings) == ("§7.4", ("D35", "D38"))
+    projected = BY_KEY["scenario_projected"]
+    assert projected.text.startswith("Projected: last year's arrival curve says what share of last year's applications")
+    assert "Projected figures are never amber or red" in projected.text
+    assert (projected.spec, projected.rulings) == ("§7.4", ("D129", "D138"))
+
+
+def test_projected_says_where_weeks_count_from_and_which_season_first_uses_received_dates() -> None:
+    """Coordinator ruling (PR 11, 2026-10-07): the words match what the code does. A curve year with no approved
+    deadline lines up on Jan 1, and 2027 projects on 2026's workbook, so the dashboard's own received dates (2027's
+    applications) first serve the 2028 season."""
+    text = BY_KEY["scenario_projected"].text
+    assert "counted in weeks from the application deadline (from Jan 1 when last year's had none)." in text
+    assert text.endswith(
+        "Last year's curve is 2026's applications workbook, loaded once as weekly shares; from the 2028 season on, "
+        "the dashboard's own received dates (2027's applications)."
+    )

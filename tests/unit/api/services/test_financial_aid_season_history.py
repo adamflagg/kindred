@@ -967,3 +967,10 @@ async def test_a_parent_stored_with_stages_diffs_cleanly_against_a_version_saved
         ["document", "awards", "minimum"],
         ["section_status", "awards", "state"],
     ]
+
+
+def test_a_curve_load_stays_out_of_history() -> None:
+    """Scenarios addendum §S11.7: the arrival curve is aggregate data, not a season operation staff read."""
+    from api.services.financial_aid_season_history import NOT_IN_HISTORY
+
+    assert "aid_arrival_curves" in NOT_IN_HISTORY

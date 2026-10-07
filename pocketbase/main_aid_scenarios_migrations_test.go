@@ -190,3 +190,64 @@ func TestAidScenarioNamesMigrationLeavesEveryRuleAndUsesNoOptionsWrapper(t *test
 		}
 	}
 }
+
+// Scenarios addendum §S11.7 (PR 11): one row per season of aggregate weekly shares, superuser only.
+const aidArrivalCurvesMigration = "pb_migrations/1500000234_aid_arrival_curves.js"
+
+func TestAidArrivalCurvesMigrationLocksEveryRule(t *testing.T) {
+	up := readAidMigrationUp(t, aidArrivalCurvesMigration)
+	if !strings.Contains(up, `name: "aid_arrival_curves"`) {
+		t.Fatal("must create aid_arrival_curves")
+	}
+	rules := aidRuleLine.FindAllStringSubmatch(up, -1)
+	if len(rules) != 5 {
+		t.Errorf("declares %d rules, want 5", len(rules))
+	}
+	for _, rule := range rules {
+		if strings.TrimSpace(rule[2]) != "null" {
+			t.Errorf("%s = %s, want null (spec 14.3: superuser only)", rule[1], rule[2])
+		}
+	}
+	if strings.Contains(up, "options:") {
+		t.Error("uses an options wrapper, which PocketBase v0.23 ignores silently")
+	}
+	if strings.Contains(up, `type: "relation"`) {
+		t.Error("the curve relates to nothing: no relation, no CampMinder or PocketBase id")
+	}
+}
+
+func TestAidArrivalCurvesMigrationDeclaresItsShape(t *testing.T) {
+	up := readAidMigrationUp(t, aidArrivalCurvesMigration)
+	block := aidScenarioCollection(t, up, "aid_arrival_curves")
+	for _, want := range []string{
+		`{ type: "number", name: "year", required: true, presentable: true, min: 2017, max: 2100, onlyInt: true }`,
+		`{ type: "select", name: "source", required: true, presentable: false, ` +
+			`values: ["workbook", "received"], maxSelect: 1 }`,
+		`{ type: "select", name: "aligned_on", required: true, presentable: false, ` +
+			`values: ["application_deadline", "calendar"], maxSelect: 1 }`,
+		`{ type: "text", name: "anchor", required: true, presentable: false, min: 10, max: 10, ` +
+			`pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }`,
+		`{ type: "json", name: "points", required: false, presentable: false, maxSize: 20000 }`,
+		`{ type: "number", name: "counted", required: true, presentable: false, min: 1, max: null, onlyInt: true }`,
+		`{ type: "text", name: "actor", required: true, presentable: false, min: 1, max: 200, pattern: "" }`,
+		`{ type: "autodate", name: "created", required: false, presentable: false, onCreate: true, onUpdate: false }`,
+		`{ type: "autodate", name: "updated", required: false, presentable: false, onCreate: true, onUpdate: true }`,
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("aid_arrival_curves must declare %q", want)
+		}
+	}
+	if got := strings.Count(block, "{ type: "); got != 9 {
+		t.Errorf("declares %d fields, want 9", got)
+	}
+	if !strings.Contains(up, "CREATE UNIQUE INDEX `idx_aid_arrival_curves_year` ON `aid_arrival_curves` (`year`)") {
+		t.Error("one row per season: a unique index on year")
+	}
+	raw, err := os.ReadFile(aidArrivalCurvesMigration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `app.delete(app.findCollectionByNameOrId("aid_arrival_curves"))`) {
+		t.Error("down must delete aid_arrival_curves")
+	}
+}

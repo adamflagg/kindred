@@ -44,13 +44,16 @@ from api.services.financial_aid_scenario_pricing import (
     price_document,
 )
 from api.services.financial_aid_scenarios_service import (
+    CurveRead,
     FinancialAidScenariosService,
+    ReceivedRead,
     RequestSetChoice,
     ScenarioConflictError,
     ScenarioNotFoundError,
     ScenarioRefusedError,
     ScenarioSectionLockedError,
 )
+from bunking.financial_aid.arrival import ArrivalCurve, CurvePoint
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.money import ZERO
@@ -83,6 +86,11 @@ def _fresh_decoded_cache() -> None:
     repository_module.clear_decoded_cache()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_curve_memo() -> None:
+    service_module.clear_computed_curves()
+
+
 @dataclass
 class World:
     service: FinancialAidScenariosService
@@ -92,14 +100,20 @@ class World:
     rules_store: FakeStore
 
 
-async def _world(rows: Sequence[RegisterRow] = ()) -> World:
+async def _world(
+    rows: Sequence[RegisterRow] = (),
+    *,
+    document: AidRules | None = None,
+    curves: CurveRead | None = None,
+    received: ReceivedRead | None = None,
+) -> World:
     """`rows`: the grants register the season prices with."""
     season = FakeDecisionsStore()
     seed_request(season, EMMA)
     seed_request(season, LIAM, household=1000002, person=1000021, income=90000.0)
     rules_store = FakeStore()
     rules = FinancialAidRulesService(rules_store, clock=lambda: T0)
-    await rules.create_version(intake_rules(), actor=FINANCE)  # 2027 v1, every section draft
+    await rules.create_version(document or intake_rules(), actor=FINANCE)  # 2027 v1, every section draft
 
     async def register(year: int) -> Sequence[RegisterRow]:
         return rows
@@ -108,7 +122,13 @@ async def _world(rows: Sequence[RegisterRow] = ()) -> World:
         return await capture_season(season, register, FakeRules(approved()), year)
 
     store = FakeScenarioStore()
-    return World(FinancialAidScenariosService(store, rules, capture), store, season, rules, rules_store)
+    return World(
+        FinancialAidScenariosService(store, rules, capture, curves=curves, received=received),
+        store,
+        season,
+        rules,
+        rules_store,
+    )
 
 
 async def _started() -> World:
@@ -1504,3 +1524,231 @@ async def test_an_option_equal_to_a_rules_draft_that_differs_from_the_rules_in_e
     await world.service.keep(YEAR, FINANCE)  # A: the rules draft itself
     [option] = (await world.service.workspace(YEAR, FINANCE)).options
     assert (option.promotable, option.blocked) == (False, "is already the rules draft")
+
+
+# --- the projection (Scenarios addendum §S11.7) ---------------------------------------------------------------------
+
+LAST_DEADLINE = date(YEAR - 1, 2, 4)
+# A flat stored curve: half of last season's applications were in at any week from 60 before its deadline to 9
+# after, so every share read inside that span is exactly 0.5 and every figure doubles.
+FLAT = ArrivalCurve(
+    YEAR - 1,
+    "application_deadline",
+    LAST_DEADLINE,
+    (CurvePoint(-60, Decimal("0.5")), CurvePoint(10, Decimal(1))),
+    400,
+    "workbook",
+)
+WITH_DEADLINE = with_lever(intake_rules(), "milestones.application_deadline", f"{YEAR}-02-03")
+
+
+async def _stored(curve: ArrivalCurve | None) -> CurveRead:
+    async def read(year: int) -> ArrivalCurve | None:
+        return curve if curve is not None and year == curve.year else None
+
+    return read
+
+
+async def _projected_world(curve: ArrivalCurve | None = FLAT, document: AidRules = WITH_DEADLINE) -> World:
+    world = await _world(document=document, curves=await _stored(curve))
+    await world.rules.approve_sections(YEAR, 1, ["milestones"], actor=TREASURER, note="Finance committee")
+    await world.service.freeze(YEAR, FINANCE)
+    return world
+
+
+@pytest.mark.asyncio
+async def test_a_stored_curve_projects_evaluate_and_the_draft() -> None:
+    """At a share of 0.5: requests 2 → 4; Round 1 2,600 → 5,200; Remaining 500,000 − 5,200 = 494,800; Camp's
+    400,000 − 5,200 = 394,800. Read for the held pile's camp day (the snapshot's, Mar 9)."""
+    world = await _projected_world()
+    projection = (await world.service.evaluate(YEAR, WITH_DEADLINE)).projection
+    assert projection is not None
+    assert (projection.share, projection.basis_year, projection.aligned_on, projection.through) == (
+        Decimal("0.5000"),
+        YEAR - 1,
+        "application_deadline",
+        date(YEAR, 3, 9),
+    )
+    assert (projection.requests, projection.round1, projection.remaining) == (
+        4,
+        Decimal("5200.00"),
+        Decimal("494800.00"),
+    )
+    camp = next(p for p in projection.pools if p.pool == "camp_pool")
+    assert camp.remaining == Decimal("394800.00")
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.projection is not None
+    assert draft.projection.round1 == Decimal("5200.00")
+
+
+@pytest.mark.asyncio
+async def test_the_share_is_read_for_the_price_date_when_one_is_set() -> None:
+    world = await _projected_world()
+    projection = (await world.service.evaluate(YEAR, WITH_DEADLINE, request_set=date(YEAR, 1, 20))).projection
+    assert projection is not None
+    assert projection.through == date(YEAR, 1, 20)
+
+
+@pytest.mark.asyncio
+async def test_a_season_with_no_deadline_has_no_projection_under_a_deadline_aligned_curve() -> None:
+    """Review Focus 5 (coordinator: "A season with no deadline has NO projection. No silent calendar switch.")."""
+    world = await _projected_world(document=with_lever(intake_rules(), "milestones.application_deadline", None))
+    assert (await world.service.evaluate(YEAR, intake_rules())).projection is None
+
+
+@pytest.mark.asyncio
+async def test_a_calendar_curve_projects_a_season_with_no_deadline() -> None:
+    calendar = ArrivalCurve(
+        YEAR - 1,
+        "calendar",
+        date(YEAR - 1, 1, 1),
+        (CurvePoint(-60, Decimal("0.5")), CurvePoint(60, Decimal(1))),
+        400,
+        "workbook",
+    )
+    world = await _projected_world(
+        calendar, document=with_lever(intake_rules(), "milestones.application_deadline", None)
+    )
+    projection = (await world.service.evaluate(YEAR, intake_rules())).projection
+    assert projection is not None
+    assert (projection.share, projection.aligned_on) == (Decimal("0.5000"), "calendar")
+
+
+@pytest.mark.asyncio
+async def test_no_curve_means_no_projection() -> None:
+    world = await _projected_world(curve=None)
+    assert (await world.service.evaluate(YEAR, WITH_DEADLINE)).projection is None
+
+
+@pytest.mark.asyncio
+async def test_every_compare_column_carries_one() -> None:
+    """A kept option's stored results never carry one: `ScenarioResults` has no projection field, so that is pinned
+    where it can fail, by the router's `test_a_kept_options_results_carry_no_projection` (plan review, minor 9)."""
+    world = await _projected_world()
+    await world.service.save_draft(YEAR, _shifted(WITH_DEADLINE, "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # A
+    comparison = await world.service.compare(YEAR, FINANCE, ["A"], rules=True)
+    assert all(column.projection is not None for column in comparison.columns)
+
+
+@pytest.mark.asyncio
+async def test_from_2027_on_the_curve_is_computed_from_received_dates_once_per_process() -> None:
+    """§S11.7 source 2: last season (2027, a ticked season) from its own received dates, on its approved deadline.
+    Jan 20 and Feb 3 (10 am Pacific) against a Feb 3 deadline: weeks −2 and 0."""
+    reads: list[int] = []
+
+    async def received(year: int) -> list[datetime]:
+        reads.append(year)
+        return [datetime(2027, 1, 20, 18, 0, tzinfo=UTC), datetime(2027, 2, 3, 18, 0, tzinfo=UTC)]
+
+    world = await _world(document=WITH_DEADLINE, curves=await _stored(None), received=received)
+    await world.rules.approve_sections(YEAR, 1, ["milestones"], actor=TREASURER, note="Finance committee")
+    curve = await world.service.arrival_curve(YEAR + 1)
+    assert curve is not None
+    assert (curve.year, curve.source, curve.aligned_on, curve.anchor, curve.counted) == (
+        YEAR,
+        "received",
+        "application_deadline",
+        date(YEAR, 2, 3),
+        2,
+    )
+    assert [(p.week, p.share) for p in curve.points] == [
+        (-2, Decimal("0.5000")),
+        (-1, Decimal("0.5000")),
+        (0, Decimal("1.0000")),
+    ]
+    await world.service.arrival_curve(YEAR + 1)
+    assert reads == [YEAR]  # memoised
+    await world.service.freeze(YEAR, FINANCE)  # Update Applications clears it
+    await world.service.arrival_curve(YEAR + 1)
+    assert reads == [YEAR, YEAR]
+
+
+@pytest.mark.asyncio
+async def test_a_computed_curve_for_a_season_with_no_approved_deadline_lines_up_on_jan_1() -> None:
+    """Regression guard. §S11.7: a year with no deadline lines up from Jan 1 and is stored as "calendar". 2027's
+    milestones never approved: Jan 20 and Feb 3 against Jan 1 are weeks 2 and 4."""
+
+    async def received(year: int) -> list[datetime]:
+        return [datetime(2027, 1, 20, 18, 0, tzinfo=UTC), datetime(2027, 2, 3, 18, 0, tzinfo=UTC)]
+
+    world = await _world(document=WITH_DEADLINE, curves=await _stored(None), received=received)
+    curve = await world.service.arrival_curve(YEAR + 1)
+    assert curve is not None
+    assert (curve.aligned_on, curve.anchor, curve.points[0].week, curve.points[-1].week) == (
+        "calendar",
+        date(YEAR, 1, 1),
+        2,
+        4,
+    )
+
+
+@pytest.mark.asyncio
+async def test_2026_is_never_computed_from_its_bulk_loaded_dates() -> None:
+    """§S11.7: 2026 was bulk-loaded on 2026-09-27, so its dashboard dates are no arrival dates; only a stored row."""
+
+    async def received(year: int) -> list[datetime]:
+        raise AssertionError("2026's received dates must not be read")
+
+    world = await _world(curves=await _stored(None), received=received)
+    assert await world.service.arrival_curve(YEAR) is None
+
+
+@pytest.mark.asyncio
+async def test_received_moments_are_live_requests_dated_as_the_capture_dates_them() -> None:
+    season = FakeDecisionsStore()
+    seed_request(season, EMMA)
+    seed_request(season, LIAM, household=1000002, person=1000021)
+    seed_request(season, RILEY, household=1000003, person=1000031, status="withdrawn")
+    log_seeded(season, JAN20)
+    assert await service_module.received_moments(season, YEAR) == [JAN20, JAN20]
+
+
+@pytest.mark.asyncio
+async def test_the_share_lines_up_on_this_seasons_deadline() -> None:
+    """Regression guard. Last year's deadline was Feb 4; this season's is Feb 3. Read on this season's deadline day:
+    week 0, day 0, so 0.5 + (1 - 0.5) x 1/7 = 0.5714. Last year's date moved to this year (Feb 4) would read week -1: 0.5."""
+    stepped = ArrivalCurve(
+        YEAR - 1,
+        "application_deadline",
+        LAST_DEADLINE,
+        (CurvePoint(-2, Decimal("0.5")), CurvePoint(-1, Decimal("0.5")), CurvePoint(0, Decimal(1))),
+        400,
+        "workbook",
+    )
+    world = await _projected_world(stepped)
+    projection = (await world.service.evaluate(YEAR, WITH_DEADLINE, request_set=date(YEAR, 2, 3))).projection
+    assert projection is not None
+    assert projection.share == Decimal("0.5714")
+
+
+@pytest.mark.asyncio
+async def test_an_edited_answer_keeps_its_first_date_and_an_unlogged_request_is_left_out() -> None:
+    """Regression guard. Disagreement 8: an edited answer keeps its first date; a request with no create row is out."""
+    jan10 = datetime(YEAR, 1, 10, 18, 0, tzinfo=UTC)
+    season = FakeDecisionsStore()
+    seed_request(season, RILEY, household=1000003, person=1000031, status="withdrawn")
+    log_seeded(season, jan10)
+    seed_request(season, "req-riley-edited", household=1000003, person=1000031)
+    log_seeded(season, JAN20)
+    seed_request(season, EMMA)  # live, never logged: no known date
+    assert await service_module.received_moments(season, YEAR) == [jan10]
+
+
+@pytest.mark.asyncio
+async def test_a_curve_read_that_raises_gives_no_projection_and_still_evaluates() -> None:
+    """A bad curve row or a PocketBase error mutes the estimate; it never closes the read."""
+
+    async def broken(year: int) -> ArrivalCurve | None:
+        raise ValueError("unreadable curve row")
+
+    world = await _world(document=WITH_DEADLINE, curves=broken)
+    await world.rules.approve_sections(YEAR, 1, ["milestones"], actor=TREASURER, note="Finance committee")
+    await world.service.freeze(YEAR, FINANCE)
+    evaluation = await world.service.evaluate(YEAR, WITH_DEADLINE)
+    assert evaluation.results is not None
+    assert evaluation.projection is None
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.projection is None

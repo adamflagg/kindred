@@ -11475,6 +11475,20 @@ export type PoolGroupOut = {
 }
 
 /**
+ * PoolProjectionOut
+ */
+export type PoolProjectionOut = {
+  /**
+   * Pool
+   */
+  pool: string
+  /**
+   * Remaining
+   */
+  remaining: number | null
+}
+
+/**
  * PoolResultOut
  */
 export type PoolResultOut = {
@@ -11962,6 +11976,52 @@ export type ProgramsResponse = {
    * Not Rebuilt
    */
   not_rebuilt: Array<NotRebuiltOut>
+}
+
+/**
+ * ProjectionOut
+ *
+ * Where the season would land if the rest of the applications arrive like last year's (Scenarios addendum
+ * §S11.7): every figure ÷ last year's share in by this point. Never a real figure: the screen mutes it, rounds it to
+ * $1,000 and never colours it amber or red.
+ */
+export type ProjectionOut = {
+  /**
+   * Share
+   */
+  share: number
+  /**
+   * Through
+   */
+  through: string
+  /**
+   * Basis Year
+   */
+  basis_year: number
+  /**
+   * Aligned On
+   */
+  aligned_on: 'application_deadline' | 'calendar'
+  /**
+   * Requests
+   */
+  requests: number
+  /**
+   * Round1
+   */
+  round1: number
+  /**
+   * Round1 And 2
+   */
+  round1_and_2: number
+  /**
+   * Remaining
+   */
+  remaining: number | null
+  /**
+   * Pools
+   */
+  pools: Array<PoolProjectionOut>
 }
 
 /**
@@ -13362,6 +13422,7 @@ export type ResultsOut = {
    * Appeals Asked
    */
   appeals_asked?: number
+  projection?: ProjectionOut | null
 }
 
 /**

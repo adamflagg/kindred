@@ -654,6 +654,21 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D35", "D38"),
     ),
     Definition(
+        key="scenario_projected",
+        term="Projected",
+        text=(
+            "Projected: last year's arrival curve says what share of last year's applications had arrived by the "
+            "same point in the season, counted in weeks from the application deadline (from Jan 1 when last year's "
+            "had none). Every figure is divided by that share, as if the rest arrive like last year's and are priced "
+            "like those already in. A pool's 'projected' figure is its Remaining on that basis. Projected figures are "
+            "never amber or red: those colours read only real figures. Last year's curve is 2026's applications "
+            "workbook, loaded once as weekly shares; from the 2028 season on, the dashboard's own received dates "
+            "(2027's applications)."
+        ),
+        spec="§7.4",
+        rulings=("D129", "D138"),
+    ),
+    Definition(
         key="scenario_below_the_line",
         term="Below the line",
         text=(
@@ -686,8 +701,8 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "committed",
         "past_date",
     ),
-    # Scenarios addendum §S6: 1-4 in this order (Projected, note 3, joins with the arrival curve in PR 11).
-    "season-scenarios": ("scenario_spend", "remaining", "scenario_below_the_line"),
+    # Scenarios addendum §S6: 1-4 in this order (Projected is note 3).
+    "season-scenarios": ("scenario_spend", "remaining", "scenario_projected", "scenario_below_the_line"),
     "money-ledger": ("in_campminder_net", "posted"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
     "money-sources": ("source_facts", "reporting_group", "source_lines"),
