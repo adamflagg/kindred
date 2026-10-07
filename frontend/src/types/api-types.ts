@@ -60,7 +60,6 @@ import type {
   DecisionTypeOutput,
   DecisionWriteOut,
   DefinitionsResponse,
-  DocumentIn,
   DraftOut,
   DraftSectionOut,
   DuplicateMark,
@@ -118,6 +117,7 @@ import type {
   Round2CompareOut,
   RoundCellOut,
   RoundCountsOut,
+  SaveDraftIn,
   SensitivityOut,
   SnapshotOut,
   TierRowOut,
@@ -316,7 +316,7 @@ export type ApiAidScenarioTierRow = TierRowOut
 export type ApiAidScenarioProjection = ProjectionOut
 export type ApiAidScenarioEvaluateIn = EvaluateIn
 export type ApiAidScenarioEvaluation = EvaluateOut
-export type ApiAidScenarioDocumentIn = DocumentIn
+export type ApiAidScenarioDocumentIn = SaveDraftIn
 export type ApiAidScenarioLoadIn = LoadIn
 export type ApiAidScenarioKeepIn = KeepIn
 /** Mirrors Python `RenameIn`. */

@@ -1109,15 +1109,23 @@ class FinancialAidScenariosService:
         projection = (await self._projector(year, meta, chosen))(priced.results)
         return Evaluation(moved, priced.results, await self._rules.validate_document(moved), projection=projection)
 
-    async def save_draft(self, year: int, document: AidRules, actor: str) -> Draft:
+    async def save_draft(
+        self, year: int, document: AidRules, actor: str, *, opened_version: int | None = None
+    ) -> Draft:
         """A released setting: the draft becomes `document`, recorded in the trail with what changed. With nothing
-        recorded yet, the release records from "rules" (§S11.2)."""
+        recorded yet, the release records from "rules" (§S11.2), built on `opened_version` (the rules version the
+        screen showed when staff opened it) when given, else on the version in effect now. Later rows copy the
+        previous row's, so `opened_version` only counts for a draft's first row."""
         self._check_year(year, document)
         document = derive_weights(document)
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
             first = await self._source(year, "rules")
-            current, from_code, built_on = first.document, "rules", first.version
+            if opened_version is not None and not 1 <= opened_version <= first.version:
+                raise ScenarioRefusedError(
+                    f"The opened version v{opened_version} is not a version of {year}'s rules up to v{first.version}"
+                )
+            current, from_code, built_on = first.document, "rules", opened_version or first.version
         else:
             current, from_code, built_on = row.document, _from(row), row.built_on_version
         locked = await self.scenario_locked_sections(year)

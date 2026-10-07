@@ -1882,6 +1882,66 @@ async def test_starting_again_on_a_newer_version_with_the_same_settings_records_
     assert kept.record.origin_version == 2
 
 
+# --- A first save records the version staff opened, not the one in effect when it lands (A11b) -------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_first_save_records_the_version_staff_opened_and_cannot_be_promoted_once_a_newer_one_is_approved() -> (
+    None
+):
+    """Scan of #3060 (D1): staff open Scenarios on v1, v2 is approved before their first save. The draft is built on
+    what they saw (v1), so its keep is built on v1 and promotion is refused."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await _v2_approved(world)  # approved between open and first save
+    draft = await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE, opened_version=1)
+    assert draft.built_on_version == 1
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 1
+    option = next(
+        o for o in (await world.service.workspace(YEAR, FINANCE)).options if o.record.code == kept.record.code
+    )
+    assert (option.promotable, option.blocked) == (
+        False,
+        "built on v1, v2 is in effect now: start it again from the rules in effect",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_first_save_without_an_opened_version_records_the_version_in_effect() -> None:
+    """Pin. Regression guard: the field is optional, and without it A11's behaviour stands."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await _v2_approved(world)
+    draft = await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    assert draft.built_on_version == 2
+
+
+@pytest.mark.asyncio
+async def test_a_later_save_ignores_the_opened_version_and_copies_the_previous_row() -> None:
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await _v2_approved(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE, opened_version=1)
+    draft = await world.service.save_draft(YEAR, _shifted(intake_rules(), "10"), FINANCE, opened_version=2)
+    assert draft.built_on_version == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("opened", [0, -1, 3])
+async def test_an_opened_version_that_is_not_a_version_up_to_the_one_in_effect_is_refused(opened: int) -> None:
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await _v2_approved(world)
+    with pytest.raises(ScenarioRefusedError, match="opened version"):
+        await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE, opened_version=opened)
+    assert not world.store.rows[AID_SCENARIO_TRAIL]
+
+
 # --- Make … the Rules Draft is off for an option built on an older version (A11) ---------------------------------------
 
 
