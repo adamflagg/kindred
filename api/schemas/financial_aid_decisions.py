@@ -362,9 +362,14 @@ class CellOut(BaseModel):
     needs_offer_count: CountOut | None = None  # None with its figure: a past read masks both together
     pending_approval_count: CountOut | None = None
     unconfirmed: UnconfirmedOut | None = None  # None: no ledger read (a past date), or before 2027
+    # Posted + Needs an offer + Pending approval (§5.3 note 12). None where a past read masks any of them.
+    committed: float | None = None
 
 
 class RoundCellOut(CellOut):
+    """A round: `allocated` and `remaining` are always null (§8.1: Remaining per pool, never per round). They leave
+    the schema with the Rounds & budget screen PR, which stops reading them."""
+
     round: int
 
 
@@ -411,6 +416,7 @@ class PoolBudgetOut(BaseModel):
     below: BelowTheLineOut
     demand: ForwardDemandOut
     decision_types: list[DecisionTypeLineOut] = Field(default_factory=list)
+    share_pct: float | None = None  # the pool's % of the approved total (§5.3 note 11)
 
 
 class RoundCountsOut(BaseModel):

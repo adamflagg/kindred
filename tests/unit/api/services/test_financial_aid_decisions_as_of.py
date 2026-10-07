@@ -267,7 +267,7 @@ async def test_the_budget_on_a_past_date() -> None:
     assert (out.as_of, out.rules_version, out.outside_grants_off_requests) == (MAR_9, 1, 0.0)
     camp = next(p for p in out.pools if p.pool == "camp_pool")
     r1 = next(c for c in camp.rounds if c.round == 1)
-    assert (r1.allocated, r1.posted, r1.accepted) == (340000.0, 1500.0, 1500.0)
+    assert (camp.total.allocated, r1.posted, r1.accepted) == (400000.0, 1500.0, 1500.0)
     assert (r1.needs_offer, r1.pending_approval, r1.remaining) == (None, None, None)
     assert (camp.below.held, camp.below.outside_budget, camp.below.outside_budget_posted) == (None, None, 0.0)
     assert (camp.demand.round2_asks.requests, camp.demand.round2_asked) == (1, 700.0)  # type: ignore[union-attr]
@@ -281,14 +281,26 @@ async def test_the_budget_on_a_past_date() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_past_read_masks_committed_wherever_it_masks_remaining() -> None:
+    """3c-2: Committed is Remaining's three parts, so it is masked exactly where Remaining is."""
+    store = _seeded(EMMA, LIAM)
+    _post_at(store, LIAM, _day(3, 5))
+    out = await _service(store).budget(YEAR, as_of=MAR_9)
+    camp = next(p for p in out.pools if p.pool == "camp_pool")
+    for cell in (camp.total, *camp.rounds):
+        assert (cell.remaining is None) == (cell.committed is None)
+
+
+@pytest.mark.asyncio
 async def test_with_no_rules_approved_by_then_nothing_is_allocated_and_posted_still_counts() -> None:
     store = _seeded(LIAM)
     _post_at(store, LIAM, _day(3, 5))
     rules = FakeRules(approved())
     rules.as_of_version = None
     out = await _service(store, rules).budget(YEAR, as_of=MAR_9)
-    r1 = next(c for c in next(p for p in out.pools if p.pool == "camp_pool").rounds if c.round == 1)
-    assert (out.rules_version, r1.allocated, r1.posted) == (None, None, 1500.0)
+    camp = next(p for p in out.pools if p.pool == "camp_pool")
+    r1 = next(c for c in camp.rounds if c.round == 1)
+    assert (out.rules_version, camp.total.allocated, r1.posted) == (None, None, 1500.0)
     assert rules.as_of_calls == [as_of_instant(MAR_9)]
 
 

@@ -19,6 +19,7 @@ import api.schemas.financial_aid_decisions as schemas
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
+    CellOut,
     ChangedRowOut,
     PostedIn,
     PostedRow,
@@ -224,6 +225,33 @@ async def test_a_posted_round_the_rules_now_price_differently_carries_no_would_c
 
 
 @pytest.mark.asyncio
+async def test_the_budget_read_sends_committed_and_share_and_no_round_allocation() -> None:
+    """Spec §9.4: new fields optional; a round's allocated and remaining are sent as null (§8.1)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    budget = await _service(store).budget(YEAR)
+    camp = next(p for p in budget.pools if p.pool == "camp_pool")
+    r1 = next(c for c in camp.rounds if c.round == 1)
+    assert (r1.allocated, r1.remaining, r1.committed) == (None, None, 3000.0)
+    assert (camp.share_pct, camp.total.allocated, camp.total.committed, camp.total.remaining) == (
+        80.0,
+        400000.0,
+        3000.0,
+        397000.0,
+    )
+    assert budget.total.share_pct is None
+    assert budget.total.total.allocated == 500000.0
+
+
+def test_committed_and_share_are_optional_so_old_fixtures_still_validate() -> None:
+    """No new REQUIRED field (Global Constraints): a cell without `committed` still validates."""
+    cell = CellOut(allocated=None, posted=0, accepted=0, needs_offer=0, pending_approval=0, remaining=None)
+    assert cell.committed is None
+
+
+@pytest.mark.asyncio
 async def test_the_budget_and_the_remaining_line_count_posted_and_needs_an_offer() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
@@ -233,7 +261,12 @@ async def test_the_budget_and_the_remaining_line_count_posted_and_needs_an_offer
     budget = await service.budget(YEAR)
     camp = next(p for p in budget.pools if p.pool == "camp_pool")
     r1 = next(c for c in camp.rounds if c.round == 1)
-    assert (r1.allocated, r1.posted, r1.needs_offer, r1.remaining) == (340000.0, 1500.0, 1500.0, 337000.0)
+    assert (r1.posted, r1.needs_offer, camp.total.allocated, camp.total.remaining) == (
+        1500.0,
+        1500.0,
+        400000.0,
+        397000.0,
+    )
     strip = next(s for s in budget.strip if s.round == 1)
     assert strip.needs_offer is not None
     assert strip.posted is not None

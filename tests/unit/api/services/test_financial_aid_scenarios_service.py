@@ -743,19 +743,23 @@ async def test_a_scenario_on_the_base_rules_shows_the_live_rounds_and_budget_fig
     def round1(cell: RoundCellOut | CellOut) -> Decimal:
         return sum((Decimal(str(v or 0)) for v in (cell.posted, cell.needs_offer, cell.pending_approval)), ZERO)
 
+    def _minus(allocated: float | None, spent: Decimal) -> float | None:
+        # §8.2: Round 1 remaining is the pool's Allocated less every Round 1 dollar.
+        return None if allocated is None else float(Decimal(str(allocated)) - spent)
+
     def cents(value: float | None) -> Decimal | None:
         return None if value is None else Decimal(str(value)).quantize(Decimal("0.01"))
 
     total_round1 = next(cell for cell in live.total.rounds if cell.round == 1)
     assert scenario.round1 == round1(total_round1) == Decimal(2250)  # Emma 1,500 - 250 grant; Liam posted 1,000
     assert (scenario.round1_remaining, scenario.remaining) == (
-        cents(total_round1.remaining),
+        cents(_minus(live.total.total.allocated, round1(total_round1))),
         cents(live.total.total.remaining),
     )
     live_pools = {
         p.pool: (
             round1(next(c for c in p.rounds if c.round == 1)),
-            cents(p.rounds[0].remaining),
+            cents(_minus(p.total.allocated, round1(next(c for c in p.rounds if c.round == 1)))),
             cents(p.total.remaining),
         )
         for p in live.pools

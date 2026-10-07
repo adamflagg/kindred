@@ -2411,6 +2411,10 @@ export type CellOut = {
   needs_offer_count?: CountOut | null
   pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null
+  /**
+   * Committed
+   */
+  committed?: number | null
 }
 
 /**
@@ -11442,6 +11446,10 @@ export type PoolBudgetOut = {
    * Decision Types
    */
   decision_types?: Array<DecisionTypeLineOut>
+  /**
+   * Share Pct
+   */
+  share_pct?: number | null
 }
 
 /**
@@ -14474,6 +14482,9 @@ export type RoundBlockOut = {
 
 /**
  * RoundCellOut
+ *
+ * A round: `allocated` and `remaining` are always null (§8.1: Remaining per pool, never per round). They leave
+ * the schema with the Rounds & budget screen PR, which stops reading them.
  */
 export type RoundCellOut = {
   /**
@@ -14503,6 +14514,10 @@ export type RoundCellOut = {
   needs_offer_count?: CountOut | null
   pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null
+  /**
+   * Committed
+   */
+  committed?: number | null
   /**
    * Round
    */
