@@ -6,7 +6,6 @@
 import type {
   ApiAidFieldChange,
   ApiAidHistoryKind,
-  ApiAidHistoryKindCount,
   ApiAidHistoryOperation,
   ApiAidHistoryPage,
   ApiAidHistoryRow,
@@ -39,21 +38,6 @@ const CHIP_ORDER: readonly ApiAidHistoryKind[] = ['rules', 'offers', 'money', 'h
 /** The kind chips, in the spec's order; Rules only for `rules` (D49, D76). */
 export function chipKinds(canSeeRules: boolean): ApiAidHistoryKind[] {
   return CHIP_ORDER.filter((kind) => canSeeRules || kind !== 'rules')
-}
-
-/**
- * A kind chip's words: its label, then the server's count once the read has it (H5), as the Requests
- * strip counts its views ("Holds 11"). The server counts each chip with that chip alone picked and
- * every other filter kept; a chip it doesn't count reads as its label alone.
- */
-export function chipWords(
-  kind: ApiAidHistoryKind,
-  counts: readonly ApiAidHistoryKindCount[] | undefined
-): string {
-  const count = counts?.find((c) => c.kind === kind)
-  return count === undefined
-    ? KIND_LABELS[kind]
-    : `${KIND_LABELS[kind]} ${String(count.operations)}`
 }
 
 export interface HistoryFilters {
@@ -148,17 +132,6 @@ export function toggleOpen(open: readonly string[], id: string): string | null {
 }
 
 const operations = (n: number) => (n === 1 ? 'operation' : 'operations')
-
-/** "1–50 of 312 operations"; nothing matching, or a page past the end, says so. */
-export function pageWords(page: ApiAidHistoryPage): string {
-  if (page.total === 0) return 'No operations match.'
-  if (page.operations.length === 0) {
-    return `Nothing on page ${String(page.page)}: ${String(page.total)} ${operations(page.total)} match${page.total === 1 ? 'es' : ''}.`
-  }
-  const first = (page.page - 1) * page.per_page + 1
-  const last = first + page.operations.length - 1
-  return `${String(first)}–${String(last)} of ${String(page.total)} ${operations(page.total)}`
-}
 
 /** The last page there is (1 when nothing matches). */
 export function lastPage(page: ApiAidHistoryPage): number {

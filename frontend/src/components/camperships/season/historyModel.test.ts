@@ -43,7 +43,6 @@ import {
   pageAtScroll,
   pageBreakWords,
   pageStarts,
-  pageWords,
   parseHistoryFilters,
   parseOpen,
   recordWords,
@@ -180,22 +179,6 @@ describe('open lines (`open=`)', () => {
 })
 
 describe('the count line and paging', () => {
-  it('says which operations the page holds', () => {
-    expect(PAGE.operations).toHaveLength(3)
-    expect(pageWords(PAGE)).toBe('1–3 of 3 operations')
-    expect(pageWords({ ...PAGE, total: 312, page: 2 })).toBe('51–53 of 312 operations')
-    expect(pageWords({ ...PAGE, total: 1, operations: PAGE.operations.slice(0, 1) })).toBe(
-      '1–1 of 1 operation'
-    )
-  })
-
-  it('says when nothing matches, and when a page is past the end', () => {
-    expect(pageWords({ ...PAGE, total: 0, operations: [] })).toBe('No operations match.')
-    expect(pageWords({ ...PAGE, page: 9, total: 60, operations: [] })).toBe(
-      'Nothing on page 9: 60 operations match.'
-    )
-  })
-
   it('knows the last page, which is 1 when nothing matches', () => {
     expect(lastPage({ ...PAGE, total: 101 })).toBe(3)
     expect(lastPage({ ...PAGE, total: 100 })).toBe(2)
