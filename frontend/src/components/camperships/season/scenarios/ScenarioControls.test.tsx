@@ -27,6 +27,7 @@ function setup(over: Partial<Props> = {}) {
     ],
     fromCode: 'B',
     loadedCode: 'B',
+    builtOn: null,
     chips: [
       { code: 'A', name: 'Tiers 3–5 +5%', loaded: false },
       { code: 'B', name: 'Minimum $75', loaded: true },

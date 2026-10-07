@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { RULES_DOCUMENT } from '../rules/rulesFixtures'
-import { results } from './scenarioFixtures'
-import { fitWords } from './scenarioModel'
+import { results, scenarioDraft, workspace } from './scenarioFixtures'
+import { builtOnWords, fitWords } from './scenarioModel'
 
 describe('Fit to budget in words (fit.py; D119)', () => {
   const fit = (outcome: 'fits' | 'over_at_lowest' | 'under_at_highest', shift: number) => ({
@@ -58,5 +58,16 @@ describe('Fit to budget in words (fit.py; D119)', () => {
     const none = fitWords({ ...fit('fits', 0), tightest_pool: null })
     expect(none.pool).toBeNull()
     expect(none.headline).not.toMatch(/pools/i)
+  })
+})
+
+describe('What a draft was built on (F6; A11)', () => {
+  it('says a draft built on an older version is not on the rules in effect', () => {
+    const ws = workspace({ pricing_version: 5 })
+    expect(builtOnWords(scenarioDraft({ built_on_version: 4 }), ws)).toBe(
+      'built on v4, v5 is in effect now'
+    )
+    expect(builtOnWords(scenarioDraft({ built_on_version: 5 }), ws)).toBeNull()
+    expect(builtOnWords(scenarioDraft({ built_on_version: null }), ws)).toBeNull()
   })
 })
