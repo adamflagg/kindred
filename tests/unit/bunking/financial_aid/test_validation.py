@@ -199,6 +199,24 @@ def test_a_tables_key_words_are_sentence_case() -> None:
     assert notes["award_tables.spring_rates.tiers.6"].startswith("Spring rates table, tier 6: ")
 
 
+def test_a_tables_note_borrows_the_label_of_the_program_with_its_key() -> None:
+    """A key with no group (teen is the Camp pool's minority class) borrows its same-key program's label."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.teen.label": "TPX",
+            "programs.teen.r1_table": "teen",
+            "award_tables.teen.overrides": {"6": {"r1_pct": "1"}},
+        },
+    )
+    assert _bind_notes(rules)["award_tables.teen.tiers.6"].startswith("TPX table, tier 6: ")
+
+
+def test_with_no_program_a_tables_note_borrows_the_pools_label() -> None:
+    notes = _bind_notes(_routed_to("weekend_pool"))
+    assert notes["award_tables.weekend_pool.tiers.6"].startswith("Weekends table, tier 6: ")
+
+
 def test_notes_come_in_numeric_tier_order() -> None:
     reversed_tiers = {str(t): {"r1_pct": "1"} for t in (6, 5, 4, 3, 2, 1)}
     reversed_tiers["4"] = {"r1_pct": "1"}

@@ -17871,7 +17871,7 @@ export type UnconfirmedOut = {
  * UnmappedDescriptionOut
  *
  * A grant description (outside or incentive) with live lines this season and no grantor
- * (opens Money › Sources). An incentive description names a grantor too: JFAM is a grant.
+ * (opens Money › Sources). An incentive description names a grantor too: an incentive's grantor is a grant.
  */
 export type UnmappedDescriptionOut = {
   /**
