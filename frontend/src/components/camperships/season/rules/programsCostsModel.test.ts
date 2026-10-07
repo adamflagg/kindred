@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 import { CATALOG, GROUPS, pcDoc } from './programsCostsFixtures'
-import { cardView, NOT_OPEN, resolveProgram } from './programsCostsModel'
+import {
+  buildContents,
+  cardView,
+  editKey,
+  fixWords,
+  kindFor,
+  NOT_OPEN,
+  pickTarget,
+  resolveProgram,
+  type EditField,
+} from './programsCostsModel'
 
 const names = (rows: ReadonlyArray<{ session: { name: string } }>) =>
   rows.map((r) => r.session.name)
@@ -108,5 +118,167 @@ describe('cardView (spec §4.2–§4.4, §5.2)', () => {
     const doc = pcDoc()
     doc.programs['school'] = { ...doc.programs['school']!, budget_pool: 'gone' }
     expect(view(doc).notOpen.map((r) => r.group)).toContain(NOT_OPEN)
+  })
+})
+
+const allRows = (v = view()) => [
+  ...v.groups.flatMap((g) => [...g.running, ...g.notRunning]),
+  ...v.notOpen,
+]
+const row = (cmId: number, v = view()) => allRows(v).find((r) => r.session.cmId === cmId)!
+const save = (edits: Array<[number, EditField, string]>, doc = pcDoc()) =>
+  buildContents(
+    doc,
+    cardView(doc, GROUPS, CATALOG, new Set()),
+    CATALOG,
+    new Map(edits.map(([id, f, v]) => [editKey(id, f), v]))
+  )
+const ok = (r: ReturnType<typeof save>) => {
+  if (r.kind !== 'ok') throw new Error(r.words)
+  return r
+}
+const programsOf = (r: ReturnType<typeof save>) =>
+  ok(r).contents.programs as Record<string, unknown>
+const costOf = (r: ReturnType<typeof save>) => ok(r).contents.cost as Record<string, unknown>
+const ids = (programs: Record<string, unknown>, key: string) =>
+  (programs[key] as { session_cm_ids: number[] }).session_cm_ids
+
+describe('the pick rule (spec §4.5)', () => {
+  it('keeps an open program’s kind, and gives one from Not open to aid its type’s kind', () => {
+    expect(kindFor(row(1000201), pcDoc())).toBe('per_person')
+    expect(kindFor(row(1000901), pcDoc())).toBe('catalog')
+    const family = { ...row(1000902), session: { ...row(1000902).session, type: 'family' } }
+    expect(kindFor(family, pcDoc())).toBe('per_person')
+  })
+
+  it('targets the open program of the group and kind that claims the most sessions, ties to document order', () => {
+    expect(pickTarget(pcDoc(), 'camp_pool', 'catalog')).toBe('summer')
+    expect(pickTarget(pcDoc(), 'weekend_pool', 'per_person')).toBe('family_camp')
+    expect(pickTarget(pcDoc(), NOT_OPEN, 'catalog')).toBe('not_aided')
+    expect(pickTarget(pcDoc(), 'school_pool', 'per_person')).toBeNull() // offered disabled: "(no program prices this kind here)"
+  })
+})
+
+describe('buildContents (spec §4.5, §5.2 J, §6)', () => {
+  it('moves a session: out of every program, into the target', () => {
+    const programs = programsOf(save([[1000110, 'g', NOT_OPEN]]))
+    expect(ids(programs, 'teen')).toEqual([])
+    expect(ids(programs, 'not_aided')).toEqual([1000901, 1000110])
+  })
+
+  it('moves a session already listed in its target without duplicating it (Review Focus 2)', () => {
+    const doc = pcDoc()
+    doc.programs['not_aided']!.session_cm_ids = [1000901, 1000110] // drift: also listed where it is moving to
+    const programs = programsOf(save([[1000110, 'g', NOT_OPEN]], doc))
+    expect(ids(programs, 'not_aided').filter((id) => id === 1000110)).toHaveLength(1)
+    expect(ids(programs, 'teen')).toEqual([])
+    expect(ok(save([[1000101, 'g', 'camp_pool']])).contents).toEqual({}) // its own group again: nothing to send
+  })
+
+  it('writes every AG session into its parent’s program, whether or not the parent moved', () => {
+    const programs = programsOf(save([[1000101, 'g', 'school_pool']]))
+    expect(ids(programs, 'school')).toEqual(expect.arrayContaining([1000501, 1000101, 1000103]))
+    expect(ids(programs, 'summer')).not.toContain(1000103)
+  })
+
+  it('writes a tuition as typed, and a blank removes it', () => {
+    const tuition = costOf(
+      save([
+        [1000101, 't', '6,895'],
+        [1000104, 't', ''],
+      ])
+    )['tuition'] as Record<string, string>
+    expect(tuition['1000101']).toBe('6895')
+    expect(tuition).not.toHaveProperty('1000104')
+  })
+
+  it('writes a per-person pair, $0 included, sorted by start date; both blank removes it', () => {
+    const cost = costOf(
+      save([
+        [1000202, 's', '450'],
+        [1000202, 'i', '0'],
+        [1000201, 's', ''],
+        [1000201, 'i', ''],
+      ])
+    )
+    expect(cost['family_rates']).toEqual([{ session_cm_id: 1000202, standard: '450', infant: '0' }])
+  })
+
+  it('refuses a per-person pair with one box blank, naming the box', () => {
+    expect(save([[1000202, 's', '450']])).toEqual({
+      kind: 'invalid',
+      words:
+        'A per-person price needs both Standard and Infant ($0 is a real price). Fix the box marked in red.',
+      boxes: [editKey(1000202, 'i')],
+    })
+  })
+
+  it('counts the boxes in the fix line: one box, or n boxes', () => {
+    expect([fixWords(1), fixWords(2)]).toEqual([
+      'Fix the box marked in red.',
+      'Fix the 2 boxes marked in red.',
+    ])
+    const pairs = save([
+      [1000202, 's', '450'],
+      [1000201, 'i', ''],
+    ])
+    expect(pairs.kind === 'invalid' && pairs.words).toBe(
+      'A per-person price needs both Standard and Infant ($0 is a real price). Fix the 2 boxes marked in red.'
+    )
+    const money = save([
+      [1000101, 't', '6895.555'],
+      [1000104, 't', 'abc'],
+    ])
+    expect(money.kind === 'invalid' && money.words).toBe(
+      'Type whole dollars. Fix the 2 boxes marked in red.'
+    )
+  })
+
+  it('refuses a box that is not whole dollars or dollars and cents', () => {
+    expect(save([[1000101, 't', '6895.555']])).toEqual({
+      kind: 'invalid',
+      words: 'Type whole dollars. Fix the box marked in red.',
+      boxes: [editKey(1000101, 't')],
+    })
+  })
+
+  it('checks and unchecks Not running, dropping duplicates', () => {
+    const cost = costOf(
+      save([
+        [1000101, 'nr', 'true'],
+        [1000106, 'nr', 'false'],
+      ])
+    )
+    expect(cost['not_running_session_cm_ids']).toEqual([1000101])
+  })
+
+  it('leaves a not-running or moved session’s stored price as it is', () => {
+    const out = ok(save([[1000106, 'g', NOT_OPEN]]))
+    expect(out.contents.cost).toBeUndefined() // its tuition stays stored, so cost isn't sent
+    expect(ids(out.contents.programs as Record<string, unknown>, 'not_aided')).toContain(1000106)
+  })
+
+  it('touches no other field', () => {
+    const out = ok(save([[1000101, 't', '6895']]))
+    expect(out.contents.programs).toBeUndefined()
+    expect({ ...(out.contents.cost as object), tuition: null }).toEqual({
+      ...pcDoc().cost,
+      tuition: null,
+    })
+  })
+
+  it('a groups-only Save sends programs alone and re-sorts no stored list (Review Focus 8)', () => {
+    const doc = pcDoc()
+    // as the runbook's API load stores them: file order, not start-date order
+    doc.cost.family_rates = [
+      { session_cm_id: 1000202, standard: '450', infant: '600' },
+      { session_cm_id: 1000201, standard: '425', infant: '0' },
+    ]
+    doc.cost.not_running_session_cm_ids = [1000106, 1000101]
+    expect(Object.keys(ok(save([[1000110, 'g', NOT_OPEN]], doc)).contents)).toEqual(['programs'])
+  })
+
+  it('a prices-only Save sends cost alone', () => {
+    expect(Object.keys(ok(save([[1000101, 't', '6895']])).contents)).toEqual(['cost'])
   })
 })

@@ -5,6 +5,7 @@
  */
 import type { CatalogSession } from '../../../../hooks/camperships/useAidSessionCatalog'
 import type { ApiAidGroup } from '../../../../types/api-types'
+import { boxText, parseSetting, type FieldSpec } from './sectionEdit'
 
 export const NOT_OPEN = 'none'
 export type SubSection = 'summer' | 'quest' | 'scit' | 'other'
@@ -195,4 +196,165 @@ export function cardView(
     }
   })
   return { groups: view, notOpen: rows.filter((r) => r.group === NOT_OPEN).sort(byDate) }
+}
+
+export type EditField = 't' | 's' | 'i' | 'g' | 'nr'
+export const editKey = (cmId: number, field: EditField) => `${String(cmId)}:${field}`
+export type Edits = ReadonlyMap<string, string>
+export type CardSection = 'programs' | 'cost'
+export type SaveResult =
+  | {
+      readonly kind: 'ok'
+      readonly contents: Readonly<Partial<Record<CardSection, Record<string, unknown>>>>
+    }
+  | { readonly kind: 'invalid'; readonly words: string; readonly boxes: readonly string[] }
+
+/** #3050's shared money box: whole dollars with digit grouping, cents to two places, as stored. */
+export const MONEY_BOX: FieldSpec = { kind: 'number', unit: 'money', whole: false, nullable: true }
+export const moneyText = (value: string | null) => (value === null ? '' : boxText(value, MONEY_BOX))
+
+/** The fix line's count, as the approved mock words it (programs-costs-v3: `bad.length === 1 ? 'box' : n + ' boxes'`). */
+export const fixWords = (n: number) =>
+  n === 1 ? 'Fix the box marked in red.' : `Fix the ${String(n)} boxes marked in red.`
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+export function kindFor(row: CardRow, doc: ProgramsCostsDoc): PriceKind {
+  const program = row.program === null ? undefined : doc.programs[row.program]
+  if (program !== undefined && program.open_to_aid !== false && program.cost_source !== 'typed') {
+    return program.cost_source
+  }
+  return row.session.type === 'family' ? 'per_person' : 'catalog'
+}
+
+export function pickTarget(doc: ProgramsCostsDoc, group: string, kind: PriceKind): string | null {
+  const candidates = Object.entries(doc.programs).filter(([, p]) =>
+    group === NOT_OPEN
+      ? p.open_to_aid === false
+      : p.open_to_aid !== false && p.budget_pool === group && p.cost_source === kind
+  )
+  let best: [string, ProgramShape] | undefined
+  for (const c of candidates) {
+    if (
+      best === undefined ||
+      (c[1].session_cm_ids ?? []).length > (best[1].session_cm_ids ?? []).length
+    )
+      best = c
+  }
+  return best?.[0] ?? null
+}
+
+export function buildContents(
+  doc: ProgramsCostsDoc,
+  view: CardView,
+  sessions: readonly CatalogSession[],
+  edits: Edits
+): SaveResult {
+  const programs = structuredClone(doc.programs)
+  const cost = structuredClone(doc.cost)
+  const rows = [...view.groups.flatMap((g) => [...g.running, ...g.notRunning]), ...view.notOpen]
+  const byId = new Map(sessions.map((s) => [s.cmId, s] as const))
+  const place = (cmId: number, target: string) => {
+    // Only a program that lists the id is rewritten, so an unmoved program serialises exactly as stored.
+    for (const p of Object.values(programs)) {
+      if ((p.session_cm_ids ?? []).map(Number).includes(cmId))
+        p.session_cm_ids = (p.session_cm_ids ?? []).map(Number).filter((id) => id !== cmId)
+    }
+    const t = programs[target]
+    if (t !== undefined) t.session_cm_ids = [...(t.session_cm_ids ?? []), cmId]
+  }
+  // 1. Group picks (§4.5): the target program of the picked group and the row's kind.
+  for (const row of rows) {
+    const picked = edits.get(editKey(row.session.cmId, 'g'))
+    if (picked === undefined || picked === row.group) continue
+    const target = pickTarget(doc, picked, kindFor(row, doc))
+    if (target !== null) place(row.session.cmId, target)
+  }
+  // 2. AG sessions follow their parent's program, in the same save.
+  for (const ag of sessions.filter((s) => isAgChild(s, byId))) {
+    const parent = Object.entries(programs).find(([, p]) =>
+      (p.session_cm_ids ?? []).map(Number).includes(ag.parentId)
+    )
+    const current = Object.entries(programs).find(([, p]) =>
+      (p.session_cm_ids ?? []).map(Number).includes(ag.cmId)
+    )
+    if (parent !== undefined && current?.[0] !== parent[0]) place(ag.cmId, parent[0])
+  }
+  // 3. Prices and Not running.
+  const bad: string[] = []
+  let pairBad = 0
+  const read = (key: string): string | null | undefined => {
+    const raw = edits.get(key)
+    if (raw === undefined) return undefined
+    const parsed = parseSetting(raw, MONEY_BOX)
+    if (parsed.kind === 'invalid') {
+      bad.push(key)
+      return undefined
+    }
+    return parsed.value as string | null
+  }
+  const tuition = new Map(Object.entries(cost.tuition ?? {}))
+  const rates = new Map(
+    (cost.family_rates ?? []).map((r) => [Number(r.session_cm_id), { ...r }] as const)
+  )
+  const notRunning = new Set((cost.not_running_session_cm_ids ?? []).map(Number))
+  for (const row of rows) {
+    const id = row.session.cmId
+    const t = read(editKey(id, 't'))
+    if (t !== undefined) {
+      if (t === null) tuition.delete(String(id))
+      else tuition.set(String(id), t)
+    }
+    const sKey = editKey(id, 's'),
+      iKey = editKey(id, 'i')
+    if (edits.has(sKey) || edits.has(iKey)) {
+      const old = rates.get(id)
+      const s = edits.has(sKey) ? read(sKey) : (old?.standard ?? null)
+      const i = edits.has(iKey) ? read(iKey) : (old?.infant ?? null)
+      if (s === undefined || i === undefined) continue // a bad box: already listed
+      if (s === null && i === null) rates.delete(id)
+      else if (s === null || i === null) {
+        pairBad += 1
+        bad.push(s === null ? sKey : iKey)
+      } else rates.set(id, { session_cm_id: id, standard: s, infant: i })
+    }
+    const nr = edits.get(editKey(id, 'nr'))
+    if (nr === 'true') notRunning.add(id)
+    if (nr === 'false') notRunning.delete(id)
+  }
+  if (bad.length > 0) {
+    return pairBad > 0
+      ? {
+          kind: 'invalid',
+          words: `A per-person price needs both Standard and Infant ($0 is a real price). ${fixWords(bad.length)}`,
+          boxes: bad,
+        }
+      : { kind: 'invalid', words: `Type whole dollars. ${fixWords(bad.length)}`, boxes: bad }
+  }
+  // Review Focus 8: a list is written (and sorted) only when its contents changed, so an untouched stored list keeps
+  // its order, and a section is sent only when it differs from what is stored.
+  const start = (id: number) => byId.get(id)?.startDate ?? ''
+  const tuitionOut = Object.fromEntries(tuition)
+  if (!same(tuitionOut, cost.tuition ?? {})) cost.tuition = tuitionOut
+  const oldRates = new Map(
+    (doc.cost.family_rates ?? []).map((r) => [Number(r.session_cm_id), r] as const)
+  )
+  if (rates.size !== oldRates.size || [...rates].some(([id, r]) => !same(r, oldRates.get(id)))) {
+    cost.family_rates = [...rates.values()].sort((a, b) =>
+      start(a.session_cm_id).localeCompare(start(b.session_cm_id))
+    )
+  }
+  const oldNotRunning = new Set((doc.cost.not_running_session_cm_ids ?? []).map(Number))
+  if (
+    notRunning.size !== oldNotRunning.size ||
+    [...notRunning].some((id) => !oldNotRunning.has(id))
+  ) {
+    cost.not_running_session_cm_ids = [...notRunning].sort(
+      (a, b) => start(a).localeCompare(start(b)) || a - b
+    )
+  }
+  const contents: Partial<Record<CardSection, Record<string, unknown>>> = {}
+  if (!same(programs, doc.programs)) contents.programs = programs
+  if (!same(cost, doc.cost)) contents.cost = cost as Record<string, unknown>
+  return { kind: 'ok', contents }
 }
