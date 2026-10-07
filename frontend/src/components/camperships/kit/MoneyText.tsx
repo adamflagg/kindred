@@ -1,26 +1,35 @@
-import { NEGATIVE_INK } from './aidStyles'
+import { NEGATIVE_INK, POOL_NEGATIVE_INK } from './aidStyles'
 import { formatShortDate } from './dates'
 import { formatMoney, formatMoneyCompact, isNegativeMoney } from './money'
 
 interface MoneyProps {
   value: number | null | undefined
   className?: string | undefined
+  /** A pool's Remaining: its negative reads amber (D74 amended), every other negative red. */
+  tone?: 'pool' | undefined
 }
 
-function classes(value: number | null | undefined, className: string | undefined): string {
-  return ['tabular-nums', isNegativeMoney(value) ? NEGATIVE_INK : '', className ?? '']
-    .filter(Boolean)
-    .join(' ')
+function classes(
+  value: number | null | undefined,
+  className: string | undefined,
+  tone: MoneyProps['tone']
+): string {
+  const negative = isNegativeMoney(value)
+    ? tone === 'pool'
+      ? POOL_NEGATIVE_INK
+      : NEGATIVE_INK
+    : ''
+  return ['tabular-nums', negative, className ?? ''].filter(Boolean).join(' ')
 }
 
-/** A money figure as D74 rules: "—" or "$0" or "$1,800", a negative in red. */
-export function Money({ value, className }: MoneyProps) {
-  return <span className={classes(value, className)}>{formatMoney(value)}</span>
+/** A money figure as D74 rules: "—" or "$0" or "$1,800", a negative in red (a pool's in amber). */
+export function Money({ value, className, tone }: MoneyProps) {
+  return <span className={classes(value, className, tone)}>{formatMoney(value)}</span>
 }
 
 /** The Remaining line's "$153k" (Decision 2). */
-export function MoneyCompact({ value, className }: MoneyProps) {
-  return <span className={classes(value, className)}>{formatMoneyCompact(value)}</span>
+export function MoneyCompact({ value, className, tone }: MoneyProps) {
+  return <span className={classes(value, className, tone)}>{formatMoneyCompact(value)}</span>
 }
 
 /** D74, D54: a reversed line stays one row, its amount struck through, left out of every net. */

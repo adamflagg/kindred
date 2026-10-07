@@ -4,16 +4,14 @@
  * AMBER_NOTE, which carries its `dark:` partner. One text-align per class string: a header never
  * carries both `text-left` and `text-right` (the kit ledger's lesson), seasonStyles.test.ts holds it.
  */
+import { TH } from '../kit/kitStyles'
 
-/** A left-aligned header cell: the label column. */
-export const TH_LABEL =
-  'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-left text-xs font-semibold whitespace-nowrap'
-/** A money header: right-aligned, like its figures (§4.2). */
-export const TH_MONEY =
-  'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-right text-xs font-semibold whitespace-nowrap'
-/** A right-aligned header that may wrap and takes its own background (a column tint): no nowrap, no bg. */
-export const TH_MONEY_TEXT =
-  'text-muted-foreground border-border border-b px-2 py-1.5 text-right text-xs font-semibold'
+/** A left-aligned header cell: the kit's TH, 12/15 (spec §1.1). */
+export const TH_LABEL = TH
+/** A money header: the same, right-aligned like its figures (§4.2). One text-align per string. */
+export const TH_MONEY = TH.replace('text-left', 'text-right')
+/** A right-aligned header that takes its own background (a column tint): no bg. */
+export const TH_MONEY_TEXT = TH_MONEY.replace('bg-muted ', '')
 export const TD_LABEL = 'border-border border-b px-2 py-1.5 text-left whitespace-nowrap'
 /** A left-aligned cell that may wrap: free text (what changed), where TD_LABEL keeps one line. */
 export const TD_TEXT = 'border-border border-b px-2 py-1.5 text-left'

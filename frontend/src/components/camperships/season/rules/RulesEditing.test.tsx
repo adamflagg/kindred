@@ -7,13 +7,15 @@
  */
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useSearchParams } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidWriteError } from '../../../../services/camperships/aidApi'
 import type { ApiAidRulesDraft } from '../../../../types/api-types'
+import { isRulesSection } from './rulesModel'
 import { approvePrecondition, savePrecondition } from './precondition'
 import { RULES_DOCUMENT, rulesDraft } from './rulesFixtures'
+import { ApproveButton, SeasonChromeProvider } from '../SeasonChrome'
 import { RulesTab } from './RulesTab'
 
 interface Read<T> {
@@ -72,10 +74,22 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
 
 const CONFLICT = 'Someone else changed this; reload and try again'
 
+/** The page's chrome around the tab, as AidSeasonPage mounts it: Approve… lives there, not in the tab (spec §4). */
+function Page() {
+  const [params] = useSearchParams()
+  const section = params.get('section')
+  return (
+    <SeasonChromeProvider section={isRulesSection(section) ? section : 'budget'} tab="rules">
+      <ApproveButton />
+      <RulesTab />
+    </SeasonChromeProvider>
+  )
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <RulesTab />
+      <Page />
     </MemoryRouter>
   )
 }
@@ -815,7 +829,7 @@ describe('the notice reads the pre-send draft, not the opening one (round 2, m3)
 describe('a year change resets the editor (round 2, m1, m3c)', () => {
   const tree = () => (
     <MemoryRouter initialEntries={['/aid/season/rules?section=awards']}>
-      <RulesTab />
+      <Page />
     </MemoryRouter>
   )
 
@@ -852,7 +866,7 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
 describe('round 3: what belongs to a season stays with it', () => {
   const treeAt = (path: string) => (
     <MemoryRouter initialEntries={[path]}>
-      <RulesTab />
+      <Page />
     </MemoryRouter>
   )
 

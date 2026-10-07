@@ -17,7 +17,7 @@ const LINE = 'text-muted-foreground block min-w-0 truncate text-xs [&>*+*]:ml-1.
  * summed over Rounds 1–3 (§5.3), each opening Rounds & budget filtered to that pool for a `view`
  * holder. For a summary-only user the figures open nothing (D65). Under ?as_of the band's amber
  * pill covers it; until 3c-2 rebuilds past Remaining, each pool shows "—" there. A season with no
- * approved rules has no pools yet: "Remaining —".
+ * approved rules has no pools yet: "Remaining —". A pool's negative is amber, "over its share" (D74 amended).
  */
 export function RemainingLine() {
   const { data, isPending, error } = useAidRemaining()
@@ -55,7 +55,8 @@ export function RemainingLine() {
       {data.pools.map((pool, index) => {
         const figure = (
           <>
-            {pool.label} <MoneyCompact value={pool.remaining} className="font-semibold" />
+            {pool.label}{' '}
+            <MoneyCompact value={pool.remaining} tone="pool" className="font-semibold" />
           </>
         )
         return (

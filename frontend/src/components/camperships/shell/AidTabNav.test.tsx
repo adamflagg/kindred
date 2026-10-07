@@ -37,4 +37,26 @@ describe('AidTabNav (§3.6: tabs live in the URL)', () => {
       '/aid/season/history?year=2027&as_of=2026-04-01'
     )
   })
+
+  it('puts the right side on the same line, after the tabs (spec §4)', () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/season/rules']}>
+        <AidTabNav
+          section={season}
+          tabs={season.tabs}
+          view={{ year: 2027, asOf: { kind: 'live' } }}
+          right={<button type="button">Approve…</button>}
+        />
+      </MemoryRouter>
+    )
+    const nav = screen.getByRole('navigation')
+    const slot = screen.getByRole('button', { name: 'Approve…' }).parentElement
+    expect(slot?.parentElement).toBe(nav)
+    expect(slot).toHaveClass('ml-auto')
+  })
+
+  it('adds nothing without a right side, so Money and Grants are unchanged', () => {
+    const { container } = renderAt('/aid/season/rules', { kind: 'live' })
+    expect(container.querySelector('nav > div')).toBeNull()
+  })
 })
