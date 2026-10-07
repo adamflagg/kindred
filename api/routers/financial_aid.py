@@ -418,6 +418,7 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
         document=version.document,
         report=draft.report,
         branched_from=branched_from,
+        budget_total_locked=draft.budget_total_locked,
         sections=[
             DraftSectionOut(
                 section=s.section,

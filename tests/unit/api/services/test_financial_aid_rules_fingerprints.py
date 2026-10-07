@@ -41,8 +41,8 @@ def _awards(minimum: str) -> dict[str, Any]:
     return {**fictional_rules_json()["awards"], "minimum": minimum}
 
 
-def _income(floor: str) -> dict[str, Any]:
-    return {**fictional_rules_json()["income"], "floor": floor}
+def _income(threshold: str) -> dict[str, Any]:
+    return {**fictional_rules_json()["income"], "medical_threshold": threshold}
 
 
 def _reversed(value: Any) -> Any:
@@ -94,7 +94,7 @@ async def test_saves_of_two_different_sections_from_the_same_opening_state_both_
     )
     await service.save_section(2031, 1, "income", _income("500"), actor=FINANCE, expected_fingerprint=opened["income"])
     doc = (await service.load(2031)).document
-    assert (str(doc.awards.minimum), str(doc.income.floor)) == ("150", "500")
+    assert (str(doc.awards.minimum), str(doc.income.medical_threshold)) == ("150", "500")
 
 
 @pytest.mark.asyncio

@@ -106,6 +106,7 @@ class RulesDraftOut(BaseModel):
     sections: list[DraftSectionOut]
     report: ValidationReport
     branched_from: int | None = None  # a save that made this version from the one it names
+    budget_total_locked: bool = False  # owner 10-06 (b): Round 1 has posted; the total is read-only, the shares edit
 
 
 class ApprovedSectionOut(BaseModel):

@@ -14695,6 +14695,10 @@ export type RulesDraftOut = {
    * Branched From
    */
   branched_from?: number | null
+  /**
+   * Budget Total Locked
+   */
+  budget_total_locked?: boolean
 }
 
 /**
