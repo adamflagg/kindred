@@ -961,6 +961,28 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     ).toBe(true)
   })
 
+  it('shows the Costs boxes in whole dollars, as stored, and an untouched editor has nothing to save (B7)', async () => {
+    const base = rulesDraft()
+    const cost = {
+      ...RULES_DOCUMENT.cost,
+      tuition: { '1000101': '6695.0', '1000102': '6695.50' },
+    }
+    const withCost = { ...base, document: { ...base.document, cost } }
+    draft = { data: withCost, isLoading: false, error: null }
+    server = [withCost]
+    renderAt('/aid/season/rules?open=5')
+    await editCard('cost')
+    const boxes = (await screen.findAllByRole('textbox')).filter((box) =>
+      (box.getAttribute('aria-label') ?? '').includes('Tuition')
+    )
+    expect(boxes.map((box) => (box as HTMLInputElement).value)).toEqual(['6,695', '6,695.50'])
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.clear(boxes[0]!)
+    await userEvent.type(boxes[0]!, '7,100')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(savedContent()['tuition']).toEqual({ '1000101': '7100', '1000102': '6695.50' })
+  })
+
   it('greys a criterion row live when Enabled is unchecked, and keeps its weights', async () => {
     const base = rulesDraft()
     const equity = {

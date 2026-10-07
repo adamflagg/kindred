@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 
-import { applyEdits, editKey, rawOf as rawValue, type Applied, type FieldSpec } from './sectionEdit'
+import { applyEdits, boxText, editKey, type Applied, type FieldSpec } from './sectionEdit'
 
 /**
  * The typed-boxes state a section editor holds (spec §6.2 F): what was typed by setting, the section
@@ -36,7 +36,7 @@ export function useSectionDraft(
   const rawOf = useCallback(
     (path: readonly string[], value: unknown, spec: FieldSpec) =>
       edits.get(editKey(path)) ??
-      (spec.kind === 'yesno' ? String(value === true) : rawValue(value)),
+      (spec.kind === 'yesno' ? String(value === true) : boxText(value, spec)),
     [edits]
   )
   return { edits, set, applied, changedKeys, dropGone, rawOf }
