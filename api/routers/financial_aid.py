@@ -1373,6 +1373,7 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         source_document=draft.source_document,
         same_as=draft.same_as,
         differs_in=list(draft.differs_in),
+        built_on_version=draft.built_on_version,
     )
 
 

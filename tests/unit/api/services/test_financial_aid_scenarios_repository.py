@@ -19,6 +19,7 @@ from api.services.financial_aid_scenarios_repository import (
     ScenarioRepository,
     SnapshotMissingError,
     option_record,
+    trail_record,
 )
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.scenarios import ScenarioResults
@@ -408,3 +409,8 @@ async def test_the_options_read_asks_for_the_name() -> None:
     query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
     assert "name" in query["fields"].split(",")
     assert option.name == "Tighter middle tiers"
+
+
+def test_a_trail_row_reads_the_version_it_was_built_on_and_a_row_without_one_reads_zero() -> None:
+    assert trail_record(_trail(built_on_version=4)).built_on_version == 4
+    assert trail_record(_trail()).built_on_version == 0

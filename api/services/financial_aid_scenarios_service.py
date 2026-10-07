@@ -226,7 +226,8 @@ class Evaluation:
 @dataclass(frozen=True)
 class Source:
     """What a draft is from: a kept option, or a built-in start read now; `version` is the rules version it was
-    taken from (an option's origin_version), which a keep records as the new option's origin."""
+    taken from (an option's origin_version). A keep records it as the new option's origin, except for a built-in start
+    whose trail row recorded the version it was started on (A11): that one is used instead."""
 
     code: str
     document: AidRules
@@ -247,6 +248,8 @@ class Draft:
     same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
     projection: Projection | None = None
     differs_in: tuple[SectionName, ...] = ()  # the sections whose content differs from the rules in effect (Task 67)
+    # The rules version the draft was started on (A11); None for a row that recorded none (before the field).
+    built_on_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -703,6 +706,14 @@ class FinancialAidScenariosService:
         return describe(await self._reference(option, options), option.document)
 
     @staticmethod
+    def _built_on_older(option: OptionRecord, effect: RulesVersion) -> str | None:
+        """Why an option built on an older rules version than the one in effect can't be promoted (A11): its fixed
+        settings were read against that older version, and copying them could bring its tables back."""
+        if option.origin_version < effect.version:
+            return f"built on v{option.origin_version}, v{effect.version} is in effect now: start it again from the rules in effect"
+        return None
+
+    @staticmethod
     def _check_year(year: int, document: AidRules) -> None:
         if document.year != year:
             raise ScenarioRefusedError(f"The document is for {document.year}, not {year}")
@@ -717,6 +728,7 @@ class FinancialAidScenariosService:
         change: str,
         results: ScenarioResults,
         meta: SnapshotMeta,
+        built_on_version: int,
         kept_code: str = "",
     ) -> AidWrite:
         return AidWrite(
@@ -732,6 +744,7 @@ class FinancialAidScenariosService:
                 "results": results.model_dump(mode="json"),
                 "snapshot": meta.id,
                 "kept_code": kept_code,
+                "built_on_version": built_on_version,
             },
             after={"change": change, "from_code": from_code, "kept_code": kept_code},
             log_action="record",
@@ -773,11 +786,20 @@ class FinancialAidScenariosService:
             entity_id=f"{year}:{code}",
         )
 
-    async def _record(self, year: int, actor: str, *, document: AidRules, from_code: str, change: str) -> None:
+    async def _record(
+        self, year: int, actor: str, *, document: AidRules, from_code: str, change: str, built_on_version: int
+    ) -> None:
         meta = await self._meta(year)
         priced = await (await self._pricer(meta))(document)
         write = self._trail_write(
-            year, actor, document=document, from_code=from_code, change=change, results=priced.results, meta=meta
+            year,
+            actor,
+            document=document,
+            from_code=from_code,
+            change=change,
+            results=priced.results,
+            meta=meta,
+            built_on_version=built_on_version,
         )
         await self._store.commit([write], actor=actor)
 
@@ -826,6 +848,7 @@ class FinancialAidScenariosService:
             same_as=_same_as(document, options, effect),
             projection=projection,
             differs_in=tuple(changed_sections(effect.document, document)),
+            built_on_version=(row.built_on_version or None) if row is not None and recorded is not None else None,
         )
 
     # --- freeze, start, read ------------------------------------------------------------------------
@@ -899,6 +922,7 @@ class FinancialAidScenariosService:
                 change=f"started from {_rules_name(rules)}",
                 results=priced.results,
                 meta=meta,
+                built_on_version=rules.version,
                 kept_code=code,
             ),
         ]
@@ -943,6 +967,7 @@ class FinancialAidScenariosService:
                 change=f"started from {name}",
                 results=priced.results,
                 meta=meta,
+                built_on_version=rules.version,
                 kept_code=code,
             ),
         ]
@@ -989,12 +1014,16 @@ class FinancialAidScenariosService:
 
     async def _promotion(self, year: int, code: str) -> tuple[OptionRecord, AidRules, ScenarioPromotion]:
         """What "Make ‹B› the Rules Draft" would copy (§S11.3): the option with its fixed settings set back to the
-        rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere. The
-        rules service's own promote is unchanged for its other callers."""
+        rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere, and
+        refused when the option was built on a version older than the one in effect (A11). The rules service's own
+        promote is unchanged for its other callers."""
         option = await self._option(year, code)
         if option.document.year != year:
             raise YearMismatchError(f"The document is for {option.document.year}, not {year}")
         rules_draft = await self._rules.load(year)
+        older = self._built_on_older(option, await self._in_effect(year))
+        if older is not None:
+            raise ScenarioRefusedError(older)
         origin = (
             rules_draft
             if option.origin_version == rules_draft.version
@@ -1026,6 +1055,10 @@ class FinancialAidScenariosService:
         origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
         out: dict[str, tuple[bool, str | None]] = {}
         for code, option in options.items():
+            older = self._built_on_older(option, effect)
+            if older is not None:
+                out[code] = (False, older)
+                continue
             if option.origin_version not in origins:
                 origins[option.origin_version] = await self._rules.load(year, option.origin_version)
             try:
@@ -1083,15 +1116,23 @@ class FinancialAidScenariosService:
         document = derive_weights(document)
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
-            current, from_code = (await self._source(year, "rules")).document, "rules"
+            first = await self._source(year, "rules")
+            current, from_code, built_on = first.document, "rules", first.version
         else:
-            current, from_code = row.document, _from(row)
+            current, from_code, built_on = row.document, _from(row), row.built_on_version
         locked = await self.scenario_locked_sections(year)
         moved = [s for s in locked if getattr(derive_weights(current), s) != getattr(document, s)]
         if moved:
             raise ScenarioSectionLockedError(moved)
         if document != current:
-            await self._record(year, actor, document=document, from_code=from_code, change=describe(current, document))
+            await self._record(
+                year,
+                actor,
+                document=document,
+                from_code=from_code,
+                change=describe(current, document),
+                built_on_version=built_on,
+            )
         return await self._draft(year, actor)
 
     async def load(
@@ -1109,17 +1150,20 @@ class FinancialAidScenariosService:
         if sum(source is not None for source in (option, trail_row, start)) != 1:
             raise ScenarioRefusedError("Load one kept option, one trail row or one starting point")
         from_code: str
+        built_on: int
         if start is not None:
             effect = await self._in_effect(year)
             from_code = start
             if start == "last_rules":  # the merge and its two checks run once: the document and its name
                 document, name = await self._last_rules_document(year, effect, words="rules in effect")
                 change = f"started from {name}"
+                built_on = effect.version
             else:
                 built = await self._built_in(year, start, effect=effect)
                 if start == "rules_draft" and built.document == effect.document:
                     raise ScenarioRefusedError("The rules draft matches the rules in effect")
                 document = built.document
+                built_on = built.version
                 if start == "rules":
                     change = f"started from {self._effect_name(effect)}"
                 else:
@@ -1127,15 +1171,25 @@ class FinancialAidScenariosService:
         elif option is not None:
             found = await self._option(year, option)
             document, from_code, change = found.document, found.code, f"loaded {found.code} into the draft"
+            built_on = found.origin_version
         else:
             row = await self._store.trail_row(cast(str, trail_row))
             if row is None or row.year != year or row.document is None:
                 raise ScenarioNotFoundError(f"{year} has no trail row {trail_row}")
             document, from_code = row.document, _from(row)
             change = f"loaded {row.actor}'s row of {_when(row)} into the draft"
+            built_on = row.built_on_version
         current = await self._store.latest_trail(year, actor)
-        if current is None or current.document != document or _from(current) != from_code:
-            await self._record(year, actor, document=document, from_code=from_code, change=change)
+        # A newer version with the same settings is still a new start: without its row the draft stays on the old one.
+        if (
+            current is None
+            or current.document != document
+            or _from(current) != from_code
+            or current.built_on_version != built_on
+        ):
+            await self._record(
+                year, actor, document=document, from_code=from_code, change=change, built_on_version=built_on
+            )
         return await self._draft(year, actor)
 
     async def keep(self, year: int, actor: str, *, name: str | None = None) -> KeptOption:
@@ -1171,7 +1225,9 @@ class FinancialAidScenariosService:
             code=code,
             starting_point="",
             from_code="" if source.code in BUILT_IN_STARTS else source.code,
-            origin_version=source.version,
+            origin_version=(row.built_on_version or source.version)
+            if source.code in BUILT_IN_STARTS
+            else source.version,
             name=stored,
             document=row.document,
             priced=priced,
