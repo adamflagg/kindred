@@ -711,6 +711,7 @@ def test_last_season_not_loaded_reads_as_its_label_with_no_figures() -> None:
         "view": None,
         "round3": 0.0,
         "pools": [],
+        "remaining": None,
     }
 
 

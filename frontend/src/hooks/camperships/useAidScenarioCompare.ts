@@ -1,10 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import {
+  compareKey,
   fetchAidScenarioCompare,
   fetchAidScenarioTrail,
   retryUnlessRefused,
-  type AidRequestSet,
+  type CompareQuery,
 } from '../../services/camperships/aidApi'
 import { useAuth } from '../../contexts/AuthContext'
 import { queryKeys } from '../../utils/queryKeys'
@@ -14,8 +15,6 @@ import { useYear } from '../useCurrentYear'
 /** A refusal in the server's words answers at once. */
 const retry = retryUnlessRefused([404, 422])
 
-const setKey = (set: AidRequestSet) => (set.kind === 'date' ? `date:${set.date}` : set.kind)
-
 /**
  * The compare (spec §7.4; D38, D138; RPT-17, RPT-32). Waits for auth to settle; the rules permission (finance only, D76) is the caller's gate, so the tab
  * passes it in `enabled` (Task 20). Enabled by the tab once a draft exists (a
@@ -23,17 +22,15 @@ const setKey = (set: AidRequestSet) => (set.kind === 'date' ? `date:${set.date}`
  * approved milestones for the deadline switch) answers at once.
  */
 export function useAidScenarioCompare(
-  codes: readonly string[],
-  requestSet: AidRequestSet,
-  lastSeason: boolean,
+  query: CompareQuery,
   { enabled = true }: { readonly enabled?: boolean } = {}
 ) {
   const year = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   const { isLoading: authLoading } = useAuth()
   return useQuery({
-    queryKey: queryKeys.aidScenarioCompare(year, codes.join(','), setKey(requestSet), lastSeason),
-    queryFn: () => fetchAidScenarioCompare(fetchWithAuth, year, codes, requestSet, lastSeason),
+    queryKey: queryKeys.aidScenarioCompare(year, compareKey(query)),
+    queryFn: () => fetchAidScenarioCompare(fetchWithAuth, year, query),
     enabled: enabled && year > 0 && !authLoading,
     retry,
     // A tick or a request-set change keeps the last table on screen, marked stale, rather than a spinner.

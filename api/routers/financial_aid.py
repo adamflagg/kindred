@@ -1354,6 +1354,7 @@ def _last_season_out(last: LastSeason) -> LastSeasonOut:
         view=_committee_out(last.view) if last.view is not None else None,
         round3=money(last.round3),
         pools=[_pool_out(p) for p in last.pools],
+        remaining=_cents(last.remaining),
     )
 
 
@@ -1397,6 +1398,7 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         recorded_at=draft.recorded_at,
         source_document=draft.source_document,
         same_as=draft.same_as,
+        differs_in=list(draft.differs_in),
     )
 
 
@@ -1411,6 +1413,7 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
         rules_draft_version=workspace.rules_draft_version,
         locked_sections=list(workspace.locked_sections),
         locked_by_round=workspace.locked_by_round,
+        last_rules_version=workspace.last_rules_version,
     )
 
 

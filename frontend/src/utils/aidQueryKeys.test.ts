@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
+import { compareKey, type AidRequestSet, type CompareQuery } from '../services/camperships/aidApi'
 import {
   invalidateAidMoneyQueries,
   invalidateAidRulesQueries,
@@ -209,18 +210,27 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
   })
 
   it('keys the compare and the trail under the scenario prefix, never at the sensitivity slot', () => {
+    const ask = (requestSet: AidRequestSet, lastSeason: boolean, codes = ['A1']): CompareQuery => ({
+      codes,
+      requestSet,
+      lastSeason,
+      rules: false,
+      lastRules: false,
+      draft: true,
+    })
+    const compareOf = (query: CompareQuery) => queryKeys.aidScenarioCompare(2027, compareKey(query))
     for (const key of [
-      queryKeys.aidScenarioCompare(2027, 'A1,B', 'deadline', true),
+      compareOf(ask({ kind: 'deadline' }, true, ['A1', 'B'])),
       queryKeys.aidScenarioTrail(2027, 2),
     ]) {
       expect(key.slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
       expect(key[3]).not.toBe('sensitivity')
     }
-    expect(queryKeys.aidScenarioCompare(2027, 'A1', 'all', false)).not.toEqual(
-      queryKeys.aidScenarioCompare(2027, 'A1', 'deadline', false)
+    expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
+      compareOf(ask({ kind: 'deadline' }, false))
     )
-    expect(queryKeys.aidScenarioCompare(2027, 'A1', 'all', false)).not.toEqual(
-      queryKeys.aidScenarioCompare(2027, 'A1', 'all', true)
+    expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
+      compareOf(ask({ kind: 'all' }, true))
     )
   })
 

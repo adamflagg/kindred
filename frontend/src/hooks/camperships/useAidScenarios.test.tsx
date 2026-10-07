@@ -14,6 +14,7 @@ import {
   freezeAidScenarioSeason,
   keepAidScenario,
   loadAidScenarioDraft,
+  renameAidScenarioOption,
   saveAidScenarioDraft,
   startAidScenarios,
 } from '../../services/camperships/aidApi'
@@ -179,6 +180,13 @@ describe('the scenario writes (wire; every route is finance-only on the server)'
     await keepAidScenario(fetchWithAuth, 2027, { starting_point: true })
     expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/keep')
     expect(JSON.parse(String(last()[1].body))).toEqual({ starting_point: true })
+  })
+
+  it('renames a kept option by PATCH with the name the caller gives (§S11.1)', async () => {
+    await renameAidScenarioOption(fetchWithAuth, 2027, 'B', { name: 'Tighter middle tiers' })
+    expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/options/B')
+    expect(last()[1].method).toBe('PATCH')
+    expect(JSON.parse(String(last()[1].body))).toEqual({ name: 'Tighter middle tiers' })
   })
 
   it("surfaces the server's words on a refusal, status kept", async () => {

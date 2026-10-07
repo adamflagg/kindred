@@ -667,3 +667,12 @@ async def test_last_season_not_loaded_has_no_pools() -> None:
     last = (await world.service.compare(YEAR, FINANCE, [], last_season=True)).last_season
     assert last is not None
     assert (last.loaded, last.pools, last.round3) == (False, (), Decimal(0))
+
+
+@pytest.mark.asyncio
+async def test_last_season_posted_says_what_it_left_in_total() -> None:
+    """Task 67: Allocated 500,000 − Posted (2,600 + 300) = 497,100, so the client sums nothing."""
+    world = await _started()
+    last = (await world.service.compare(YEAR, FINANCE, [], last_season=True)).last_season
+    assert last is not None
+    assert last.remaining == Decimal("497100.00")

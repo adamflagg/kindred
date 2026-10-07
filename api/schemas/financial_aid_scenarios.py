@@ -140,6 +140,8 @@ class DraftOut(BaseModel):
     recorded_at: datetime | None = None
     source_document: AidRules | None = None  # what it is from, read now: the strip's starting point, "was …"
     same_as: str | None = None  # a kept code whose document equals the draft, else "rules", else None
+    # the sections whose content differs from the rules in effect: the strip's "posted Round 1 stands"
+    differs_in: list[SectionName] = Field(default_factory=list)
 
 
 class WorkspaceOut(BaseModel):
@@ -154,6 +156,7 @@ class WorkspaceOut(BaseModel):
     # a posted round locked these (§S11.3): the screen greys from them alone
     locked_sections: list[SectionName] = Field(default_factory=list)
     locked_by_round: int | None = None
+    last_rules_version: int | None = None  # last season's approved version: Start from's "(none approved)"
 
 
 class DocumentIn(BaseModel):
@@ -289,6 +292,7 @@ class LastSeasonOut(BaseModel):
     view: CommitteeOut | None
     round3: float = 0
     pools: list[PoolResultOut] = Field(default_factory=list)  # each pool's Posted cells; empty until loaded
+    remaining: float | None = None  # Allocated − Posted in total; the server sums, the client shows
 
 
 class CompareColumnOut(BaseModel):

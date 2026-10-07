@@ -3900,6 +3900,24 @@ export type DraftOut = {
    * Same As
    */
   same_as?: string | null
+  /**
+   * Differs In
+   */
+  differs_in?: Array<
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'quality_checks'
+    | 'milestones'
+  >
 }
 
 /**
@@ -8274,6 +8292,10 @@ export type LastSeasonOut = {
    * Pools
    */
   pools?: Array<PoolResultOut>
+  /**
+   * Remaining
+   */
+  remaining?: number | null
 }
 
 /**
@@ -18781,6 +18803,10 @@ export type WorkspaceOut = {
    * Locked By Round
    */
   locked_by_round?: number | null
+  /**
+   * Last Rules Version
+   */
+  last_rules_version?: number | null
 }
 
 /**

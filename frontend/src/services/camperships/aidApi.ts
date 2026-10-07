@@ -48,6 +48,7 @@ import type {
   ApiAidScenarioKeepIn,
   ApiAidScenarioLoadIn,
   ApiAidScenarioOption,
+  ApiAidScenarioRenameIn,
   ApiAidScenarioSensitivity,
   ApiAidScenarioSnapshot,
   ApiAidScenarioTrailPage,
@@ -221,7 +222,7 @@ async function toWriteError(response: Response, fallback: string): Promise<AidWr
 /** One JSON write (or the preview's POST). A refusal becomes an AidWriteError in the server's words. */
 async function send<T>(
   fetchWithAuth: FetchWithAuth,
-  method: 'POST' | 'PUT',
+  method: 'POST' | 'PUT' | 'PATCH',
   url: string,
   body: unknown,
   fallback: string,
@@ -697,22 +698,72 @@ export type AidRequestSet =
   | { readonly kind: 'deadline' }
   | { readonly kind: 'date'; readonly date: string }
 
+/** Which requests a read counts (D138), as the evaluate and fit bodies say it. */
+export function requestSetBody(set: AidRequestSet): {
+  through_round1_deadline?: boolean
+  received_through?: string
+} {
+  if (set.kind === 'deadline') return { through_round1_deadline: true }
+  if (set.kind === 'date') return { received_through: set.date }
+  return {}
+}
+
+export const setKey = (set: AidRequestSet) => (set.kind === 'date' ? `date:${set.date}` : set.kind)
+
+/** What Compare asks for (§S11.2): kept codes, the built-in columns, the draft and last season, on a request set. */
+export interface CompareQuery {
+  readonly codes: readonly string[]
+  readonly requestSet: AidRequestSet
+  readonly lastSeason: boolean
+  readonly rules: boolean
+  readonly lastRules: boolean
+  readonly draft: boolean
+}
+
+export const compareKey = (query: CompareQuery) =>
+  [
+    query.codes.join(','),
+    setKey(query.requestSet),
+    query.lastSeason,
+    query.rules,
+    query.lastRules,
+    query.draft,
+  ].join('|')
+
+/** Rename a kept option (§S11.1): everyone with `rules` sees it. */
+export function renameAidScenarioOption(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  code: string,
+  body: ApiAidScenarioRenameIn
+): Promise<ApiAidScenarioOption> {
+  return send<ApiAidScenarioOption>(
+    fetchWithAuth,
+    'PATCH',
+    `${scenarios(year)}/options/${encodeURIComponent(code)}`,
+    body,
+    "Couldn't rename it"
+  )
+}
+
 /**
  * Your draft first, beside up to four kept options, on the current snapshot (spec §7.4; D38), on a
- * request set when asked (D138); with last season's posted money beside them on `lastSeason` (RPT-17).
+ * request set when asked (D138); with last season's posted money beside them on `lastSeason` (RPT-17), and the
+ * built-in columns (the rules in effect, last season's rules) when asked (§S11.2).
  */
 export async function fetchAidScenarioCompare(
   fetchWithAuth: FetchWithAuth,
   year: number,
-  codes: readonly string[],
-  requestSet: AidRequestSet,
-  lastSeason: boolean
+  compare: CompareQuery
 ): Promise<ApiAidScenarioCompare> {
   const query = new URLSearchParams()
-  for (const code of codes) query.append('codes', code)
-  if (requestSet.kind === 'deadline') query.set('through_round1_deadline', 'true')
-  if (requestSet.kind === 'date') query.set('received_through', requestSet.date)
-  if (lastSeason) query.set('last_season', 'true')
+  for (const code of compare.codes) query.append('codes', code)
+  if (compare.requestSet.kind === 'deadline') query.set('through_round1_deadline', 'true')
+  if (compare.requestSet.kind === 'date') query.set('received_through', compare.requestSet.date)
+  if (compare.lastSeason) query.set('last_season', 'true')
+  if (compare.rules) query.set('rules', 'true')
+  if (compare.lastRules) query.set('last_rules', 'true')
+  if (!compare.draft) query.set('draft', 'false')
   const search = query.toString()
   const response = await fetchWithAuth(`${scenarios(year)}/compare${search ? `?${search}` : ''}`)
   if (!response.ok) throw await toApiError(response, 'Failed to compare', AidApiError)

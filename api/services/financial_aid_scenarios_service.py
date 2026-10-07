@@ -69,6 +69,7 @@ from bunking.financial_aid.received import WITHDRAWN, edit_predecessors, receive
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationIssue, ValidationReport
 from bunking.financial_aid.rules.derived import derive_weights
 from bunking.financial_aid.rules.fixed import reset_fixed_document
+from bunking.financial_aid.rules.lifecycle import changed_sections
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import (
     CARD_TITLES,
@@ -245,6 +246,7 @@ class Draft:
     source_document: AidRules | None = None  # what it is from, read now: the strip's starting point and "was"
     same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
     projection: Projection | None = None
+    differs_in: tuple[SectionName, ...] = ()  # the sections whose content differs from the rules in effect (Task 67)
 
 
 @dataclass(frozen=True)
@@ -272,6 +274,7 @@ class Workspace:
     rules_draft_version: int | None = None  # the rules draft's version while it differs from the rules in effect
     locked_sections: tuple[SectionName, ...] = ()  # a posted round locked these (§S11.3): the screen greys from them
     locked_by_round: int | None = None  # 2 when round2 is locked, 1 when a Round 1 section is: the lock note's words
+    last_rules_version: int | None = None  # last season's approved version: Start from's "(none approved)" (Task 67)
 
 
 @dataclass(frozen=True)
@@ -302,6 +305,7 @@ class LastSeason:
     view: CommitteeView | None
     round3: Decimal = ZERO
     pools: tuple[PoolResult, ...] = ()  # each pool's Posted cells (§S11.2)
+    remaining: Decimal | None = None  # Allocated − Posted in total, so the client sums nothing (Task 67)
 
 
 @dataclass(frozen=True)
@@ -821,6 +825,7 @@ class FinancialAidScenariosService:
             source_document=source.document,
             same_as=_same_as(document, options, effect),
             projection=projection,
+            differs_in=tuple(changed_sections(effect.document, document)),
         )
 
     # --- freeze, start, read ------------------------------------------------------------------------
@@ -974,6 +979,7 @@ class FinancialAidScenariosService:
             rules_draft_version=rules.version if rules.document != effect.document else None,
             locked_sections=greyed,
             locked_by_round=2 if "round2" in greyed else 1 if any(s in ROUND_SECTIONS[1] for s in greyed) else None,
+            last_rules_version=last.version if last is not None else None,
         )
 
     async def scenario_locked_sections(self, year: int) -> tuple[SectionName, ...]:
@@ -1353,6 +1359,9 @@ class FinancialAidScenariosService:
             committee_view(posted, document),
             round3=budget.total.rounds[3].posted,
             pools=tuple(_posted_pool(pool) for pool in budget.pools),
+            remaining=None
+            if budget.total.total.allocated is None
+            else budget.total.total.allocated - sum((budget.total.rounds[n].posted for n in (1, 2, 3)), ZERO),
         )
 
     async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
