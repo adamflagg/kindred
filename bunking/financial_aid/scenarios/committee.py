@@ -52,6 +52,7 @@ from bunking.financial_aid.scenarios.results import (
     TierRow,
     TierTally,
     appeal_ask,
+    counted,
     round1_table,
     round2_rows,
     round2_table,
@@ -276,9 +277,11 @@ class PostedSeason:
 
 
 def _posted(view: RoundView | None) -> Decimal | None:
-    if view is None or view.status != "posted" or not view.counts_toward_budget or view.clawed_back:
+    """A posted round's money as the budget counts it (`results.counted`, `budget.counted_part`): a full-cost-after-aid
+    round's camp award is last season's money; a clawed-back or wholly outside round is not."""
+    if view is None or view.status != "posted":
         return None
-    return view.locked or ZERO
+    return counted(view)
 
 
 def _at_lock(state: RoundState | None, key: str) -> Any:

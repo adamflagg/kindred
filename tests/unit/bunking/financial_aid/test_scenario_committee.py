@@ -371,3 +371,21 @@ def test_a_document_has_last_seasons_criteria_whatever_else_moved() -> None:
     assert not has_last_seasons_criteria(with_levers(merged, {"awards.minimum": "175"}), last_season)
     assert not has_last_seasons_criteria(with_levers(merged, {"award_tables.camp.tiers.2.r1_pct": "75"}), last_season)
     assert not has_last_seasons_criteria(RULES, last_season)
+
+
+def test_a_full_cost_after_aid_round_keeps_its_camp_award_in_last_seasons_money() -> None:
+    """Owner 10-06 (spec §9.9): the fund's camp award counts toward the budget as usual, so it is last season's posted
+    money; only the fund's remainder (`extra`) is not, exactly as the budget splits it (budget.counted_part)."""
+    fund = _priced("req-f", 1000001, 60000, rounds={1: _lock(1, "3600", counts_toward_budget=False)})
+    fund = replace(fund, rounds=(replace(fund.rounds[0], extra=Decimal(1600), extra_outside=True),))
+    posted = posted_season([fund], {}, RULES)
+    assert posted.round1 == Decimal(2000)
+    assert [row.round1 for row in posted.by_tier] == [Decimal(2000)]
+
+
+def test_a_grant_reduced_fund_round_still_keeps_its_whole_camp_award_in_last_seasons_money() -> None:
+    """Owner 10-06 (a): a $500 grant took the fund to $1,100, so the round locked $3,100. Last season's money is still
+    the $2,000 camp award; the grant reduced only the remainder."""
+    fund = _priced("req-g", 1000001, 60000, rounds={1: _lock(1, "3100", counts_toward_budget=False)})
+    fund = replace(fund, rounds=(replace(fund.rounds[0], extra=Decimal(1100), extra_outside=True),))
+    assert posted_season([fund], {}, RULES).round1 == Decimal(2000)

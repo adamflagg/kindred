@@ -12,6 +12,7 @@ from bunking.financial_aid.calculator import CalcIssue, GrantInput
 from bunking.financial_aid.decisions import RoundState
 from bunking.financial_aid.decisions.budget import season_budget
 from bunking.financial_aid.decisions.pricing import RequestToPrice, lock_snapshot, posted_view, price_request
+from bunking.financial_aid.rules.schema import DecisionType
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
 RULES = fictional_rules()
@@ -410,3 +411,15 @@ def test_a_lock_without_decision_round_takes_the_rules_type_only_for_its_own_rou
     )
     assert elsewhere.decision_type is None
     assert posted_view(old, None, None, "camp_pool", decision_key="discretionary").decision_type is None
+
+
+def test_a_posted_fund_round_reads_extra_outside_from_its_kind_when_the_lock_predates_it() -> None:
+    fund = DecisionType(
+        label="Named full-cost fund",
+        kind="full_cost_after_aid",
+        round=1,
+        allows_appeal=False,
+        counts_toward_budget=False,
+    )
+    state = RoundState(round=1, posted=True, locked_amount=Decimal(3600), locked_at=T0, snapshot={"pool": "camp_pool"})
+    assert posted_view(state, fund, None, "camp_pool").extra_outside is True

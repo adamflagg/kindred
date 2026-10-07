@@ -211,6 +211,20 @@ class _TypeTally:
 _TypeTallies = dict[tuple[str, str | None, bool], _TypeTally]
 
 
+def counted_part(view: RoundView, amount: Decimal) -> tuple[Decimal, Decimal]:
+    """(the camp's money, the money below the line) in a round's amount. A type that doesn't count takes its whole
+    round below the line (owner ruling 2026-09-30), except a full-cost-after-aid round, whose camp award counts as usual
+    and whose own remainder (`extra`) alone sits below the line (owner 10-06). That remainder is already net of the
+    request's outside grants (the engine subtracts them, owner 10-06 (a)); the grants have their own line
+    (`outside_grants`), so nothing here subtracts them again."""
+    if view.counts_toward_budget:
+        return amount, ZERO
+    if view.extra_outside:
+        outside = min(view.extra, amount)
+        return amount - outside, outside
+    return ZERO, amount
+
+
 def _round_money(view: RoundView) -> tuple[Decimal, Decimal] | None:
     """The round's money as _tally_round counts it, and its posted part; None for money it counts nowhere."""
     if view.status == "posted":
@@ -225,6 +239,21 @@ def _round_money(view: RoundView) -> tuple[Decimal, Decimal] | None:
 def _tally_type(types: _TypeTallies, pool: str, request: PricedRequest, view: RoundView) -> None:
     money = _round_money(view)
     if money is None:
+        return
+    if view.extra_outside and not view.counts_toward_budget:
+        inside, outside = counted_part(view, money[0])
+        posted_in, posted_out = counted_part(view, money[1])
+        for key, counts, amount, posted, own in (
+            (None, True, inside, posted_in, ZERO),
+            (view.decision_type, False, outside, posted_out, view.extra),
+        ):
+            if amount > 0:
+                part = types[(pool, key, counts)]
+                part.amount += amount
+                part.posted += posted
+                part.own += own
+                part.families.add(request.household_cm_id)
+                part.requests.add(request.request_id)
         return
     key = view.decision_type
     tally = types[(pool, key, view.counts_toward_budget)]
@@ -300,18 +329,14 @@ def _tally_round(
     def add(measure: str, amount: Decimal) -> None:
         tallies[(pool, view.round, measure)].add(request, amount)
 
-    # A type that does not count toward the budget takes its whole round below the line (owner ruling
-    # 2026-09-30: only grant money is not coming out of the camp's budget), base and extra alike.
-    whole = not view.counts_toward_budget
     if view.status == "posted":
         if view.clawed_back:
             return  # D54: its money came back to Remaining when CampMinder's reversal posted
-        locked = view.locked or ZERO
-        outside = locked if whole else ZERO
-        if not whole:  # a wholly-outside round is no posted or accepted money, nor a posted request
-            add("posted", locked)
+        inside, outside = counted_part(view, view.locked or ZERO)
+        if view.counts_toward_budget or inside > 0:  # a wholly-outside round is no posted money, nor a posted request
+            add("posted", inside)
             if view.accepted:
-                add("accepted", locked)
+                add("accepted", inside)
             part = ledger.get(view.round) if ledger is not None else None
             if part is not None and part.unconfirmed > 0:  # ⚠10: in the round's locked pool, as Posted
                 add("unconfirmed", part.unconfirmed)
@@ -320,20 +345,19 @@ def _tally_round(
             add("outside_budget", outside)
             add("outside_budget_posted", outside)
     elif view.status == "needs_offer":
-        decided = view.decided or ZERO
-        outside = decided if whole else ZERO
-        if not whole:
-            add("needs_offer", decided)
+        inside, outside = counted_part(view, view.decided or ZERO)
+        if view.counts_toward_budget or inside > 0:
+            add("needs_offer", inside)
             if listed:
                 add(_LISTED, ZERO)
         if outside:
             add("outside_budget", outside)
     elif view.status == "pending_approval":
-        pending = view.pending or ZERO
-        if whole:  # not the camp's money: below the line, never lowering Remaining (D79 binds counting types)
-            add("outside_budget", pending)
-        else:
-            add("pending_approval", pending)
+        inside, outside = counted_part(view, view.pending or ZERO)
+        if view.counts_toward_budget or inside > 0:
+            add("pending_approval", inside)  # D79 binds counting money
+        if outside:
+            add("outside_budget", outside)
     elif view.status == "held":
         add("held", view.ask or ZERO)
 

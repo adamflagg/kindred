@@ -50,6 +50,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
 )
 from bunking.financial_aid.decisions import PricedRequest, RoundState, RoundView, round_exists
+from bunking.financial_aid.decisions.budget import counted_part
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import edit_predecessors
 from bunking.financial_aid.reports.facts import REPORT_ROUNDS, AsksBasis, ReportRequest, RoundFacts, Standing
@@ -103,6 +104,14 @@ def _r1_ask(request: RequestRecord, corrections: Sequence[CorrectionRecord]) -> 
     return Decimal(ask.effective) if ask.effective != "" else None
 
 
+def _split(view: RoundView | None, amount: Decimal | None) -> tuple[Decimal | None, Decimal | None]:
+    """A round's amount as the budget splits it (`budget.counted_part`): (the camp's part, the part below the line).
+    None stays None."""
+    if view is None or amount is None:
+        return None, None
+    return counted_part(view, amount)
+
+
 def _round(
     n: int,
     view: RoundView | None,
@@ -113,9 +122,15 @@ def _round(
     home_pool: str | None,
 ) -> RoundFacts:
     posted = view is not None and view.status == "posted"
-    # The round's decision type pays it wholly outside the budget (D121), posted or not: the budget's own predicate.
-    outside = view is not None and not view.counts_toward_budget
+    waiting = view is not None and view.status == "needs_offer"
+    # Wholly outside the budget (D121): a type that doesn't count, unless it is full cost after camp aid, whose camp
+    # award counts as usual and whose own remainder alone sits below the line (owner 10-06). Any part below the line
+    # is the outside funder's money (owner A1). The split is the budget's own (budget.counted_part).
+    below = view is not None and not view.counts_toward_budget
+    outside = below and view is not None and not view.extra_outside
     counts = posted and not outside
+    locked_in, locked_out = _split(view, view.locked if posted and view is not None else None)
+    decided_in, decided_out = _split(view, view.decided if waiting and view is not None else None)
     ask: Decimal | None
     if view is not None:
         ask = view.ask
@@ -130,9 +145,9 @@ def _round(
     return RoundFacts(
         round=n,
         ask=ask,
-        locked=view.locked if counts and view is not None else None,
+        locked=locked_in if counts else None,
         clawed_back=bool(view is not None and view.clawed_back),
-        decided=view.decided if view is not None and view.status == "needs_offer" and not outside else None,
+        decided=decided_in if waiting and not outside else None,
         accepted=bool(view is not None and posted and view.accepted),
         posted_on=state.posted_on if posted and state is not None else None,
         tier=tier if tier is not None else tier_now,
@@ -140,8 +155,8 @@ def _round(
         outside_budget=outside,
         # Owner A1 carried through (RULED 2026-10-02): an outside-budget round's money is the outside funder's, kept
         # apart so "% of ask incl. grants" counts it as grants while the camp's columns never do.
-        outside_posted=view.locked if posted and outside and view is not None else None,
-        outside_decided=view.decided if view is not None and view.status == "needs_offer" and outside else None,
+        outside_posted=locked_out if posted and below else None,
+        outside_decided=decided_out if waiting and below else None,
     )
 
 

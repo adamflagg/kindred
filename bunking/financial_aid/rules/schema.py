@@ -406,6 +406,9 @@ class DecisionType(RulesModel):
 
     full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
       total to cost - grants + extra_amount (a categorical full-funding program).
+    full_cost_after_aid: the family's normal award first (it counts toward the budget as usual); the type then pays
+      what that award and the request's outside grants leave of the cost, never below $0 and with no extra amount
+      (owner 10-06).
     top_up: a fixed amount added to the award (the appeal top-up).
     discretionary: staff type the amount on the request (`discretionary_amount`).
 
@@ -418,7 +421,7 @@ class DecisionType(RulesModel):
     """
 
     label: str = Field(min_length=1)
-    kind: Literal["full_cost", "top_up", "discretionary"]
+    kind: Literal["full_cost", "full_cost_after_aid", "top_up", "discretionary"]
     round: int = Field(ge=1, le=3)
     amount: Money | None = None
     extra_amount: Money = Decimal(0)
