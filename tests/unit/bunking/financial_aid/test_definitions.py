@@ -199,3 +199,18 @@ def test_no_season_note_cites_another_note_by_number() -> None:
     """§5.3: numbering is per surface, so "(note 6)" or "(note 11)" can't appear."""
     for key in SEASON_NOTES:
         assert "(note" not in BY_KEY[key].text
+
+
+def test_scenarios_numbers_spend_remaining_and_below_the_line() -> None:
+    """Scenarios addendum §S6, §S11.8: Spend and Below the line are new and signed by the addendum's approval;
+    Remaining is the parent's entry, reused, so the two tabs share one definition. Projected joins in PR 11."""
+    assert SURFACES["season-scenarios"] == ("scenario_spend", "remaining", "scenario_below_the_line")
+    spend, below = BY_KEY["scenario_spend"], BY_KEY["scenario_below_the_line"]
+    assert spend.text.startswith("Spend: what the applications priced would get under these settings")
+    assert "Once a round posts, its posted amounts stand in every column" in spend.text
+    assert below.text.startswith("Below the line, never counted in Remaining:")
+    assert "This is not Rounds & budget's 'Shown, not counted'" in below.text
+    # Disagreement 1: the registry admits a clean-spec section and D-numbers only; owner lines 666-685 are quoted in
+    # the PR body.
+    assert (spend.spec, spend.rulings) == ("§7.4", ("D35", "D38"))
+    assert (below.spec, below.rulings) == ("§7.4", ("D35", "D38"))
