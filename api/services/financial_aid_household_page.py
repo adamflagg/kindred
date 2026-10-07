@@ -74,15 +74,13 @@ from api.services.financial_aid_share_split import dollars, payers, split
 from api.utils.age import ADULT_AGE
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
+from bunking.financial_aid.decisions.rounds import REPRODUCED
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.geo_normalizer.zip_counties import county_for_postal_code
 
 _ZERO = Decimal(0)
 # The round states whose amount isn't decided yet (Decision 2): a held round's amount is unknown (D44).
 _UNDECIDED: Final = frozenset({"held", "not_decided", "pending_approval"})
-# The lock_source the 2026 decision-year load (D67) is to write on its reproduced rounds: the receipt then
-# reads "2026, reproduced from the repaired sheet". Nothing writes it yet; the load's plan owns it.
-REPRODUCED = "reproduced"
 
 
 def _share_state(

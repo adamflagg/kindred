@@ -25,6 +25,9 @@ EventKind = Literal["ask", "award", "approve", "refuse", "post", "unpost", "acce
 EVENT_KINDS: Final[tuple[EventKind, ...]] = get_args(EventKind)
 ROUNDS: Final[tuple[int, ...]] = (1, 2, 3)
 Approval = Literal["not_needed", "pending", "approved", "refused"]
+# The lock_source of a round the 2026 decision-year load wrote (D67; scripts/financial_aid/load_2026_decisions.py):
+# reproduced from the repaired sheet, never ticked in Kindred. Read-only; its receipt says where it came from.
+REPRODUCED: Final = "reproduced"
 
 
 @dataclass(frozen=True)

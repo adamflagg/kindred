@@ -246,6 +246,7 @@ from bunking.financial_aid.decisions import (
     with_holds,
 )
 from bunking.financial_aid.decisions.budget import outside_part
+from bunking.financial_aid.decisions.rounds import REPRODUCED
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.financial_aid.rules.schema import AidRules, SectionName
@@ -1365,6 +1366,16 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
 def _refuse(reason: str | None) -> None:
     if reason is not None:
         raise DecisionRefusedError(reason)
+
+
+# D67: 2026's rounds are loaded once, "read-only and labelled". Nothing undoes, (un)accepts or adds to them.
+REPRODUCED_READ_ONLY: Final = "2026's decisions are reproduced from the repaired sheet and are read-only"
+
+
+def _reproduced_refusal(rounds: Mapping[int, RoundState], n: int | None = None) -> str | None:
+    """The refusal for a write on a reproduced round (round n), or on any round of a request that carries one."""
+    states = rounds.values() if n is None else [rounds.get(n, RoundState(round=n))]
+    return REPRODUCED_READ_ONLY if any(state.lock_source == REPRODUCED for state in states) else None
 
 
 def _ask_refusal(rounds: Mapping[int, RoundState], n: int) -> str | None:
@@ -2517,6 +2528,7 @@ class FinancialAidDecisionsService:
         # wins (as on the grid) and reopening is refused, so the refusal says CampMinder's words instead.
         _refuse(_cancelled_refusal(cancellations_by_request([request], cancels, enrollments, sessions).get(request.id)))
         rounds = fold_rounds(events).get(request.id, {})
+        _refuse(_reproduced_refusal(rounds))
         return request, dict(rounds)
 
     async def _approved_rules(self, year: int) -> RulesVersion:
@@ -2756,6 +2768,7 @@ class FinancialAidDecisionsService:
         state = rounds.get(n, RoundState(round=n))
         if not state.posted:
             return self._unchanged(year)
+        _refuse(_reproduced_refusal(rounds, n))
         if state.accepted:
             raise DecisionRefusedError(f"Uncheck Accepted on Round {n} first")
         for m in range(n + 1, 4):
@@ -2954,6 +2967,8 @@ class FinancialAidDecisionsService:
             state = rounds.get(request_id, {}).get(n, RoundState(round=n))
             if state.accepted == body.accepted:
                 unchanged += 1
+            elif state.lock_source == REPRODUCED:
+                problems.append(f"{request_id}: {REPRODUCED_READ_ONLY}")
             elif body.accepted and (why_cancelled := _cancelled_refusal(cancelled.get(request_id))) is not None:
                 problems.append(f"{request_id}: {why_cancelled}")
             # An un-accept is always allowed: a same-day Accepted (C1) whose round then stops being pending would

@@ -68,6 +68,7 @@ GRANTS = "Grants"
 # not match stops the run, so a moved column cannot feed the wrong figure.
 RAW_COLUMNS: dict[str, tuple[str, str]] = {
     "unique_id": ("A", "unique id"),
+    "family_id": ("F", "family id"),
     "personal_id": ("G", "personal id"),
     "py_gross": ("N", "prior year gross pre-tax income:"),
     "py_confirm": ("O", "confirm py gross pre-tax income"),
@@ -85,6 +86,7 @@ RAW_COLUMNS: dict[str, tuple[str, str]] = {
 }
 CALC_COLUMNS: dict[str, tuple[str, str]] = {
     "unique_id": ("A", "unique id"),
+    "include": ("B", "include?"),
     "stage": ("C", "stage"),
     "session": ("F", "session(s)"),
     "ask": ("G", "aid requested"),

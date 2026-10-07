@@ -390,6 +390,7 @@ export const AidDecisionsLockSourceOptions = {
   tick: 'tick',
   ledger: 'ledger',
   placement: 'placement',
+  reproduced: 'reproduced',
 } as const
 export type AidDecisionsLockSourceOptions =
   (typeof AidDecisionsLockSourceOptions)[keyof typeof AidDecisionsLockSourceOptions]
