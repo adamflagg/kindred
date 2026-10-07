@@ -95,7 +95,7 @@ def test_no_camperships_server_string_says_headcount() -> None:
 
 def test_the_cost_definition_says_number_of_people() -> None:
     (cost,) = (d for d in DEFINITIONS if d.key == "cost")
-    assert "Family Camp by number of people." in cost.text
+    assert "Family Camp by number of people" in cost.text
 
 
 def test_the_headcount_scan_skips_keys_and_paths_and_catches_prose() -> None:

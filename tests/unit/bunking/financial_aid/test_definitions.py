@@ -241,3 +241,9 @@ def test_the_cost_note_says_an_ag_session_takes_its_parents_price() -> None:
     """A1 (spec §8): an AG session is priced at its parent session's list price."""
     cost = BY_KEY["cost"]
     assert "the session's list price (an AG session's is its parent session's)" in cost.text
+
+
+def test_the_cost_note_names_a_cost_staff_set() -> None:
+    """F3 (spec §10): Set Cost… gives a request a cost staff set, with its reason; the footnote says so."""
+    text = BY_KEY["cost"].text
+    assert "Family Camp by number of people; or a cost staff set, with its reason." in text
