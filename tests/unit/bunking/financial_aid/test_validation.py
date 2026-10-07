@@ -667,6 +667,18 @@ def test_a_group_missing_both_kinds_says_no_price() -> None:
     )
 
 
+def test_a_program_closed_to_aid_never_needs_a_price() -> None:
+    """Pin: a closed program prices nothing, so its sessions are not in its group's missing list."""
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "programs.summer.open_to_aid": False,
+            "cost.tuition": {"1000103": "6000", "1000104": "5000", "1000301": "3000", "1000401": "900"},
+        },
+    )
+    assert "tuition_missing" not in validate_rules(rules).codes()
+
+
 def test_a_typed_program_never_needs_a_price() -> None:
     assert not any(1000501 in i.session_cm_ids for i in validate_rules(fictional_rules(), _context()).issues)
 
