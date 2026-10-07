@@ -54,6 +54,8 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
   const heldRef = useRef(workspace?.snapshot !== null && workspace?.snapshot !== undefined)
   // The rules version the screen shows (A11b): a draft's first save records it as the version it is built on, so a
   // version approved while staff work doesn't claim a draft they opened on the one before. Later saves ignore it.
+  // It re-syncs with draftRef on every read, deliberately: with nothing recorded the draft's document IS that read's
+  // rules in effect, so a refresh onto v5 makes the first save v5-based too, and holding v4 here would mislabel it.
   const openedRef = useRef(workspace?.pricing_version ?? null)
   const chain = useRef<Promise<void>>(Promise.resolve())
 
