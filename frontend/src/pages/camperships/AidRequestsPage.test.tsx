@@ -8,6 +8,7 @@ import {
   APPEAL_REFUSAL_R1,
   GRID_ROWS,
   roundOut,
+  gridRow,
   ROW_SAMUEL,
 } from '../../components/camperships/requests/gridFixtures'
 import { DETAIL_POSTED } from '../../components/camperships/season/historyFixtures'
@@ -346,6 +347,17 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByLabelText('Counting toward the budget')).toBeNull()
     expect(await screen.findByText('Posted in Round 1', { exact: false })).toBeInTheDocument()
     expect(screen.queryByText(/counting toward the budget/)).toBeNull()
+  })
+
+  it('an old link’s counted=1 still shows a request whose money is outside the budget (R10)', async () => {
+    const outside = gridRow({
+      request_id: 'reqavery0000001',
+      camper_name: 'Avery Testcamper',
+      rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
+    })
+    grid = { data: { ...LIVE, rows: [...GRID_ROWS, outside] }, isLoading: false, error: null }
+    renderAt('/aid/requests?posted=1&counted=1')
+    expect(await screen.findByText('Avery Testcamper')).toBeInTheDocument()
   })
 
   it('says live=1 is on, hides withdrawn and cancelled requests, and Show All clears it', async () => {

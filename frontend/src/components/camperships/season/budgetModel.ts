@@ -77,8 +77,9 @@ const STRIP_LABELS: Readonly<Record<StripMeasure, string>> = {
  * which is the round a request is in now. A link opens every request in the round, whatever pays
  * for it (R10, owner 10-07); the figures count only the camp's own money, and the counts count
  * every request (A8).
- * Needs an offer and pending approval carry the count's round too: the grid binds `round=` to the
- * round in that status (views.ts), so the list is that round's. Held carries no
+ * Needs an offer and pending approval carry the count's round too: the grid reads `round=` as the
+ * round a request is in now (views.ts `matchesRound`), which for a row in that view is the round in
+ * that status, so the list is that round's. Held carries no
  * round (its view isn't bound to one). Null where it opens nothing: a queue view on a past date
  * (`opensQueueViews`).
  */
@@ -229,15 +230,16 @@ export function cellValue(row: BudgetRow, column: BudgetColumn): number | null {
  *   round, or `all` on a pool or total line (D153; interim per owner 10-06, seasonFigure.ts). Never
  *   `round=`: that is the round a request is in now, not the one its money was posted in.
  * - Needs an offer and Pending approval: their Requests views, on the pool and, on a round line
- *   (and the Pending approval line under it), that round; the grid binds `round=`
- *   to the round in that status (views.ts), so the list is exactly the figure's. A pool or total
- *   line covers every round and carries none.
+ *   (and the Pending approval line under it), that round; the grid reads `round=` as the round a
+ *   request is in now (views.ts `matchesRound`), which for a row in that view is the round in that
+ *   status, so the list is exactly the figure's. A pool or total line covers every round and
+ *   carries none.
  * - Allocated: the budget section of the approved version that priced the figure (`?version=`),
  *   keeping the page's past date like every Season tab (I6), and nothing while no version is
  *   approved (Decision 6; plan review I1).
+ * - Remaining: nothing; it is the others' arithmetic.
  * A link opens every request in the round, whatever pays for it (R10, owner 10-07); the figures
  * count only the camp's own money, and the counts count every request (A8).
- * - Remaining: nothing; it is the others' arithmetic.
  * A "No pool" figure opens nothing: no request can be filtered to having no pool. Nor does "—" or $0,
  * nor Needs an offer or Pending approval on a past date (`opensQueueViews`).
  */
@@ -307,7 +309,8 @@ export function confirmedWords(row: BudgetRow): string | null {
  * (`cellHref`): the row's pool (none for the total), and the Posted figure, `posted=` with a round
  * line's round or `all` (interim per owner 10-06, seasonFigure.ts); never `round=`, the round a
  * request is in now. A link opens every request in the round, whatever pays for it (R10, owner
- * 10-07); the figures count only the camp's own money, and the counts count every request (A8). Residue the grid can't close: confirmation is per request, not per round,
+ * 10-07); the figures count only the camp's own money, and the counts count every request (A8).
+ * Residue the grid can't close: confirmation is per request, not per round,
  * so an over-confirmed request (nothing unconfirmed) or one whose round N is filled while a later
  * round is short can still list. Oldest-first filling makes the second uncommon.
  * Null for the No pool line (no request filters to having no pool), where there is nothing to say,

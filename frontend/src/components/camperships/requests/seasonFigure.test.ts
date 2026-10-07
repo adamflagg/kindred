@@ -89,15 +89,6 @@ describe('matchesFigure: the budget strip counts these rows (budget.py)', () => 
     expect(ids({ measure: 'accepted', round: 1 })).toEqual(['reqmovedon00001', 'reqoutside00001'])
   })
 
-  it('keeps a posted round outside the budget', () => {
-    expect(ids({ measure: 'posted', round: 1 })).toEqual([
-      'reqmovedon00001',
-      'requnaccept0001',
-      'reqoutside00001',
-    ])
-    expect(ids({ measure: 'accepted', round: 1 })).toEqual(['reqmovedon00001', 'reqoutside00001'])
-  })
-
   it('reads all as any round', () => {
     expect(ids({ measure: 'posted', round: 'all' })).toEqual([
       'reqmovedon00001',

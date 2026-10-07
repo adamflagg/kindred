@@ -271,8 +271,8 @@ describe('a past date opens no live-only Requests view (final review I1)', () =>
   })
 })
 
-describe('a budget link opens exactly the rows its figure counts (end to end; final review I2)', () => {
-  it("Needs an offer on a pool: the grid reads the link back to the pool's counted needs-offer rows", () => {
+describe('a budget link opens every request in its round (end to end; final review I2; R10)', () => {
+  it("Needs an offer on a pool: the grid reads the link back to the pool's needs-offer rows, outside money included", () => {
     const href = cellHref(row(budgetRows(BUDGET, EVERY), 'pool_a:all'), 'needs_offer', LIVE, 3)
     const params = new URL(href ?? '', 'http://kindred.test').searchParams
     const view = requestView(params.get('view'))
@@ -280,21 +280,21 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     const needs = (id: string, over: Partial<ApiAidGridRow>) =>
       gridRow({ request_id: id, queues: ['needs_offer'], ...over })
     const rows = [
-      // Counted by the figure: a counted round needing an offer, in Pool A.
+      // A round needing an offer, in Pool A.
       needs('reqcounted00001', { rounds: [roundOut(1, 'needs_offer')] }),
       needs('reqcounted00002', {
         rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
       }),
-      // Not counted: the round needing an offer is outside the budget, though Round 1 counts.
+      // Outside the budget: opens too (R10).
       needs('reqoutside00001', {
         rounds: [
           roundOut(1, 'posted', { posted: 900 }),
           roundOut(2, 'needs_offer', { counts_toward_budget: false }),
         ],
       }),
-      // Not counted: another pool.
+      // Another pool: not opened.
       needs('reqpoolb0000001', { pool: 'pool_b', rounds: [roundOut(1, 'needs_offer')] }),
-      // Not counted: posted, in no queue.
+      // Posted, in no queue: not opened.
       gridRow({
         request_id: 'reqposted000001',
         rounds: [roundOut(1, 'posted', { posted: 900 })],
@@ -329,7 +329,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
       stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
       rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
     }),
-    // Round 1 needs the offer, outside the budget.
+    // Round 1 needs the offer, outside the budget: opens too (R10).
     queued('reqround1out01', 'needs_offer', {
       rounds: [roundOut(1, 'needs_offer', { counts_toward_budget: false })],
     }),
@@ -340,7 +340,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     }),
   ]
 
-  it("a round's Needs an offer opens that round's counted rows, not another round's (fix-wave addition)", () => {
+  it("a round's Needs an offer opens every request in that round, not another round's (fix-wave addition)", () => {
     const rows = budgetRows(BUDGET, EVERY)
     expect(opened(cellHref(row(rows, 'pool_a:1'), 'needs_offer', LIVE, 3), NEEDS_ROWS)).toEqual([
       'reqround1a0001',
@@ -360,13 +360,13 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     ])
   })
 
-  it("a round's amber line opens that round's posted, counted, not-reconciled rows (Task 7 I1)", () => {
+  it("a round's amber line opens every request in that round that is posted and not reconciled (Task 7 I1)", () => {
     const unreconciled = (id: string, over: Partial<ApiAidGridRow>) =>
       gridRow({ request_id: id, queues: ['not_reconciled'], ...over })
     const rowsOut = [
       // Posted and counted in Round 1, Pool A: listed on Pool A and on its Round 1 line.
       unreconciled('reqr1posted0001', { rounds: [roundOut(1, 'posted', { posted: 900 })] }),
-      // Posted in Round 1 outside the budget: the figure never counts it.
+      // Posted in Round 1 outside the budget: opens too (R10).
       unreconciled('reqr1outside001', {
         rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
       }),
@@ -387,11 +387,9 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     expect(on('pool_a:2')).toEqual([])
     expect(on('pool_a:all')).toEqual(poolA)
     expect(on('total')).toEqual([...poolA, 'reqpoolb0000001'])
-    // Outside money opens too (R10): the link lists the whole round.
-    expect(on('pool_a:1')).toContain('reqr1outside001')
   })
 
-  it("a round's Pending approval opens that round's counted rows (fix-wave addition)", () => {
+  it("a round's Pending approval opens every request in that round (fix-wave addition)", () => {
     const pendingRows = [
       queued('reqpend3a00001', 'pending_approval', {
         stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
@@ -408,7 +406,7 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
           roundOut(3, 'needs_offer'),
         ],
       }),
-      // Round 3 pending, outside the budget.
+      // Round 3 pending, outside the budget: opens too (R10).
       queued('reqpend3out001', 'pending_approval', {
         stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
         rounds: [
