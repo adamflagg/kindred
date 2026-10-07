@@ -753,3 +753,11 @@ def test_a_legacy_program_still_needs_its_program_tables_entry() -> None:
     del doc["round2"]["program_tables"]["quest"]
     codes = {i.code for i in validate_rules(AidRules.model_validate(doc)).errors}
     assert "missing_round2_table" in codes
+
+
+def test_an_ag_session_no_program_claims_is_in_its_parents_program_not_unmapped() -> None:
+    """Review M7: no unmapped_session error for an AG session whose parent a program claims."""
+    context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
+    assert "unmapped_session" not in validate_rules(fictional_rules(), context).codes()
+    orphan = _context(SessionRef(cm_id=1000199, session_type="ag"))
+    assert "unmapped_session" in validate_rules(fictional_rules(), orphan).codes()

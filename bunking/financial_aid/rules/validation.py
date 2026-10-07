@@ -536,8 +536,14 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             "approve again after the sessions sync",
         )
         return
+    refs = {r.cm_id: r for r in context.sessions}
     for ref in context.sessions:
-        if resolve_program(rules, ref.cm_id, ref.session_type) is None:
+        ag_parent = (
+            (ref.parent_id, refs[ref.parent_id].session_type if ref.parent_id in refs else None)
+            if ref.parent_id
+            else None
+        )
+        if resolve_program(rules, ref.cm_id, ref.session_type, ag_parent=ag_parent) is None:
             label = f" ({ref.name})" if ref.name else ""
             issues.error(
                 "programs",

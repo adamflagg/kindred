@@ -3,8 +3,13 @@ relationship"). A legacy program (stored with `r1_table`, no flag) keeps its sto
 
 import pytest
 
-from bunking.financial_aid.rules.lookup import Round2TableNotListedError, round1_table, round2_table
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_levers
+from bunking.financial_aid.rules.lookup import (
+    Round2TableNotListedError,
+    resolve_program,
+    round1_table,
+    round2_table,
+)
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever, with_levers
 
 
 def test_a_stored_program_with_r1_table_loads_as_legacy_and_keeps_its_tables() -> None:
@@ -35,3 +40,18 @@ def test_a_legacy_program_missing_from_program_tables_raises_not_listed() -> Non
     with pytest.raises(Round2TableNotListedError) as caught:
         round2_table(AidRules.model_validate(doc), "quest")
     assert caught.value.program_key == "quest"
+
+
+def test_an_ag_session_no_program_claims_takes_its_parents_program() -> None:
+    """Review M7: the card hides AG sessions under their parent, so a new AG session is never left in no program."""
+    rules = fictional_rules()  # summer claims 1000101 by id and "main" by type; nothing claims 1000199 or "ag"
+    assert resolve_program(rules, 1000199, "ag") is None
+    assert resolve_program(rules, 1000199, "ag", ag_parent=(1000101, "main")) == "summer"
+
+
+def test_only_an_unclaimed_ag_session_falls_back() -> None:
+    rules = fictional_rules()
+    assert resolve_program(rules, 1000199, "embedded", ag_parent=(1000101, "main")) is None
+    assert resolve_program(rules, 1000199, "ag", ag_parent=(0, None)) is None
+    claimed = with_lever(rules, "programs.quest.session_cm_ids", [1000199])
+    assert resolve_program(claimed, 1000199, "ag", ag_parent=(1000101, "main")) == "quest"  # a direct claim wins

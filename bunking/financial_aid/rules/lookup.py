@@ -44,11 +44,20 @@ def resolved_table[V: (R1Percent, TotalPercent)](tables: Mapping[str, TierTable[
     return resolved
 
 
-def resolve_program(rules: AidRules, session_cm_id: int | None, session_type: str | None = None) -> str | None:
+def resolve_program(
+    rules: AidRules,
+    session_cm_id: int | None,
+    session_type: str | None = None,
+    *,
+    ag_parent: tuple[int, str | None] | None = None,
+) -> str | None:
     """Which program a CampMinder session belongs to this season, or None.
 
     An explicit session id wins over a session type, so staff can pull one
-    session out of a type-wide mapping.
+    session out of a type-wide mapping. An AG session (type "ag") that no program
+    claims takes its parent session's program when `ag_parent` (the parent's id and
+    type) is given (spec §8; plan review M7): the Rules card hides AG sessions under
+    their parent, so a new one is never left in no program.
     """
     if session_cm_id is not None:
         for key, program in rules.programs.items():
@@ -58,6 +67,8 @@ def resolve_program(rules: AidRules, session_cm_id: int | None, session_type: st
         for key, program in rules.programs.items():
             if session_type in program.session_types:
                 return key
+    if session_type == "ag" and ag_parent is not None and ag_parent[0] > 0:
+        return resolve_program(rules, ag_parent[0], ag_parent[1])
     return None
 
 

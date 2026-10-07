@@ -11,6 +11,7 @@ import pytest
 from api.services.financial_aid_calc_inputs import (
     NotCalculableError,
     calculator_inputs,
+    priced_program,
     rules_program_key,
     to_application_inputs,
     to_request_inputs,
@@ -308,6 +309,19 @@ async def test_calculator_inputs_hands_the_requests_own_session_row_over() -> No
     out = calculator_inputs(request, application, effective(stored_answers()), [], sessions, [], None, intake_rules())
     assert out.request is not None
     assert out.request.ag_parent_cm_id == 1000101
+
+
+def test_an_ag_session_no_program_claims_is_priced_under_its_parents_program() -> None:
+    """Review M7: never "No program in the rules claims session ..." while its parent is claimed."""
+    rules = with_lever(intake_rules(), "programs.summer.session_types", ["main", "embedded"])  # "ag" not claimed
+    request = replace(_summer_request(), session_cm_id=1000199)
+    sessions = {
+        **SESSIONS_BY_ID,
+        1000199: SessionRow(1000199, "AG Session 2", "ag", "2027-06-20", parent_cm_id=1000101),
+    }
+    assert priced_program(request, sessions, rules) == ("summer", "")
+    orphan = {**SESSIONS_BY_ID, 1000199: SessionRow(1000199, "AG Session 2", "ag", "2027-06-20")}
+    assert priced_program(request, orphan, rules)[0] is None
 
 
 def _summer_request() -> RequestRecord:

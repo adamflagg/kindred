@@ -130,7 +130,15 @@ def to_application_inputs(household_cm_id: int, answers: Mapping[str, EffectiveV
 
 def rules_program_key(request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules) -> str | None:
     session = sessions.get(request.session_cm_id)
-    return resolve_program(rules, request.session_cm_id, session.session_type if session is not None else None)
+    if session is None:
+        return resolve_program(rules, request.session_cm_id, None)
+    parent = sessions.get(session.parent_cm_id) if session.parent_cm_id > 0 else None
+    ag_parent = (
+        (session.parent_cm_id, parent.session_type if parent is not None else None)
+        if session.parent_cm_id > 0
+        else None
+    )
+    return resolve_program(rules, request.session_cm_id, session.session_type, ag_parent=ag_parent)
 
 
 def to_request_inputs(

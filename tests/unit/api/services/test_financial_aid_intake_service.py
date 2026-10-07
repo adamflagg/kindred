@@ -20,12 +20,13 @@ from api.services.financial_aid_intake_types import (
     EquityAnswers,
     PayerShareRecord,
     RequestRecord,
+    SessionRow,
 )
 from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
 from bunking.financial_aid.rules.schema import AidRules
 from bunking.pocketbase_batch import BatchRequestFailedError
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, intake_rules, seeded_store
-from tests.unit.bunking.financial_aid.fixtures import with_levers
+from tests.unit.bunking.financial_aid.fixtures import with_lever, with_levers
 
 
 @pytest.mark.asyncio
@@ -251,6 +252,19 @@ async def test_a_session_the_approved_programs_do_not_claim_is_flagged() -> None
     await FinancialAidIntakeService(store).build(YEAR)
     adult = store.request_for(person=1000032, program="adult_weekend")
     assert {"code": "no_program_for_session", "detail": {"session_cm_id": 1000402}} in [dict(f) for f in adult.flags]
+
+
+@pytest.mark.asyncio
+async def test_an_ag_session_no_program_claims_is_not_flagged_when_its_parent_is_claimed() -> None:
+    """Review M7: intake's no-program flag follows the same parent rule as pricing."""
+    store = seeded_store()
+    store.rules = with_lever(intake_rules(), "programs.summer.session_types", ["main", "embedded"])
+    store.sessions.append(SessionRow(1000199, "AG Session 2", "ag", "2027-06-20", parent_cm_id=1000101))
+    store.fa_rows.append(fa_row(1000033, 1000003, summer="AG Session 2", summer_ask=300.0))
+    store.attendees.append(AttendeeRow(1000033, 1000003, 1000199, 2))
+    await FinancialAidIntakeService(store).build(YEAR)
+    request = next(r for r in store.requests.values() if r.person_cm_id == 1000033)
+    assert all(f.get("code") != "no_program_for_session" for f in request.flags)
 
 
 @pytest.mark.asyncio
