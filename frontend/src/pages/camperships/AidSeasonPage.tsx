@@ -79,9 +79,13 @@ export default function AidSeasonPage() {
   const onRules = slug === 'rules'
   const onScenarios = slug === 'scenarios'
   const sectionParam = params.get('section')
-  // The section the Approve panel checks first: Rules' open section, else the budget (Rounds & budget's edits).
-  const approveSection: ApiAidRulesSection =
-    onRules && isRulesSection(sectionParam) ? sectionParam : 'budget'
+  // The section the Approve panel checks first: on Rules, the URL's section, else income (Rules' first card, the fallback
+  // RulesTab used before chapters); elsewhere the budget (Rounds & budget's edits).
+  const approveSection: ApiAidRulesSection = onRules
+    ? isRulesSection(sectionParam)
+      ? sectionParam
+      : 'income'
+    : 'budget'
   const right = (
     <>
       {onRounds && <RoundsBudgetScope />}

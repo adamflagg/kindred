@@ -19,7 +19,7 @@ import {
   CS_BTN,
   CS_BTN2,
   CS_CARD,
-  CS_CARD_TITLE,
+  CS_CARD_HEADING,
   CS_FLABEL,
   CS_INPUT,
   CS_MUTED,
@@ -273,7 +273,7 @@ export function ApproveForm({
   return (
     <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">
       <h3
-        className={CS_CARD_TITLE}
+        className={CS_CARD_HEADING}
       >{`Approve sections of the rules draft (v${String(seen.version)})`}</h3>
       {sections.length === 0 ? (
         <p className={CS_MUTED}>No section of the draft waits for approval.</p>

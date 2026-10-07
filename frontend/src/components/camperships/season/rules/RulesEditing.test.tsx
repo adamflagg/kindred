@@ -72,6 +72,12 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
   useFreshAidRulesDraft: () => freshRead,
 }))
 
+/** Opens a card's editor from its own Edit… (the page is chapters of cards, so there are many). */
+const editCard = (section: string) =>
+  userEvent.click(
+    within(screen.getByTestId(`card-head-${section}`)).getByRole('button', { name: 'Edit…' })
+  )
+
 const CONFLICT = 'Someone else changed this; reload and try again'
 
 /** The page's chrome around the tab, as AidSeasonPage mounts it: Approve… lives there, not in the tab (spec §4). */
@@ -138,7 +144,7 @@ beforeEach(() => {
 describe('editing a section (D39; Decisions 14–16)', () => {
   it('says which draft it edits, and saves the section with the version it opened', async () => {
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     expect(
       await screen.findByText('Editing Minimum award and named awards in the rules draft (v4)')
     ).toBeInTheDocument()
@@ -169,7 +175,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
       message: 'awards is not a valid section: awards.minimum: Value error, must not be negative',
     }
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(
@@ -183,7 +189,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
   it('says a save landed in a new version when it would have changed approved rules in use', async () => {
     outcome = { kind: 'ok', value: { ...rulesDraft(), version: 5, branched_from: 4 } }
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByTestId('rules-notice')).toHaveTextContent(
@@ -193,7 +199,7 @@ describe('editing a section (D39; Decisions 14–16)', () => {
 
   it("won't send a box it can't read, and says why in the box's own words", async () => {
     renderAt('/aid/season/rules?section=award_tables')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('award_tables')
     const tier = await screen.findByRole('textbox', {
       name: 'General › Tiers › Tier 2 › Round 1 %',
     })
@@ -208,26 +214,27 @@ describe('editing a section (D39; Decisions 14–16)', () => {
 
   it('keeps names and lists as they are: only figures, yes/no and choices take a box', async () => {
     renderAt('/aid/season/rules?section=programs')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('programs')
     const editor = await screen.findByTestId('section-editor')
     expect(within(editor).queryByRole('textbox')).toBeNull()
     expect(within(editor).getAllByRole('combobox').length).toBeGreaterThan(0)
-    // A list reads as words, sessions named as the read view names them (#15; no name here).
-    expect(within(editor).getByText('Session 1000101, Session 1000102')).toBeInTheDocument()
+    // Sessions are chips now (spec §6.2 E.8; Task 47), named as the read view names them (#15; no name here).
+    expect(within(editor).getByText('Session 1000101')).toBeInTheDocument()
+    expect(within(editor).getByText('Session 1000102')).toBeInTheDocument()
   })
 
   it("reads the rules' own names in the editor, as the read view does (#15)", async () => {
-    renderAt('/aid/season/rules?section=budget')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    renderAt('/aid/season/rules?section=programs')
+    await editCard('programs')
     const editor = await screen.findByTestId('section-editor')
-    // A pool's row reads its label in Pools and in Reserves; the key stays in what is saved.
+    // A pool reads its label, never its key; the key stays in what is saved. (The budget section left this tab.)
     expect(within(editor).queryAllByText('pool_a')).toHaveLength(0)
-    expect(within(editor).getAllByText('Pool A').length).toBeGreaterThan(1)
+    expect(within(editor).getAllByText('Pool A').length).toBeGreaterThan(0)
   })
 
   it('says a locked section saves into a new version and posted amounts stand', async () => {
     renderAt('/aid/season/rules?section=income')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('income')
     expect(
       await screen.findByText(
         'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
@@ -235,20 +242,19 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     ).toBeInTheDocument()
   })
 
-  it('holds the section list still while editing', async () => {
+  it('holds the other cards still while editing', async () => {
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    // The list's cue, and the tab's own pills' (review m2).
-    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(2)
-    const other = document.querySelector('[data-rules-section="budget"]')
-    expect(other?.tagName).toBe('DIV')
+    await editCard('awards')
+    // The lead line's cue (review m2); no other card offers Edit….
+    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(1)
+    expect(screen.queryAllByRole('button', { name: 'Edit…' })).toHaveLength(0)
   })
 })
 
 describe('someone else changed the section (Decision 16; owner ruling 2026-10-02)', () => {
   async function typeMinimum(value: string) {
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     const box = await screen.findByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, value)
@@ -330,8 +336,10 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
       },
     ]
     renderAt('/aid/season/rules?section=tiers')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    const box = await screen.findByLabelText('Income bands › 2 › To')
+    await editCard('tiers')
+    // Task 49 (spec §6.2 E.2): the tiers editor replaces the per-band boxes; the fixture's uneven bands open it by hand,
+    // where band 2's "To" is "Tier 2 top". The "both changed" words still come from where the two edits overlap.
+    const box = await screen.findByLabelText('Tier 2 top')
     await userEvent.clear(box)
     await userEvent.type(box, '45000')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -659,7 +667,7 @@ describe('the approval form is busy until it is done (review I1)', () => {
   it('shows Saving… and holds Cancel while the save is in flight', async () => {
     pending = true
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await screen.findByRole('textbox', { name: 'Minimum award' })
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
@@ -667,16 +675,16 @@ describe('the approval form is busy until it is done (review I1)', () => {
 })
 
 describe('the approval form keeps its own ticks (review I2, m3)', () => {
-  it('keeps the ticks when another section is clicked in the list', async () => {
+  it('keeps the ticks when another chapter is jumped to', async () => {
     server = [twoDraftsDraft()]
     draft = { data: twoDraftsDraft(), isLoading: false, error: null }
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and pools' }))
     expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
-    const other = document.querySelector('[data-rules-section="income"]')
-    if (other === null) throw new Error('no income row')
-    await userEvent.click(other)
+    await userEvent.click(
+      within(screen.getByTestId('chapter-bar')).getByRole('button', { name: /^Programs/ })
+    )
     expect(screen.getByRole('button', { name: 'Approve 2 Sections' })).toBeInTheDocument()
   })
 
@@ -742,21 +750,21 @@ describe('the approval notice follows what moved (S8-⚠1 interim, review ⚠1)'
 })
 
 describe('the tab holds still while editing or approving (review m1, m2)', () => {
-  it('makes the Approved pill inert while editing, with the same cue', async () => {
+  it('makes the version in effect inert while editing, with the same cue', async () => {
     renderAt('/aid/season/rules?section=awards')
-    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
-    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'v3 in effect' })).toBeInTheDocument()
+    await editCard('awards')
+    expect(screen.queryByRole('link', { name: 'v3 in effect' })).toBeNull()
+    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(1)
   })
 
   it('makes it inert while approving too, and live again after Cancel', async () => {
     renderAt('/aid/season/rules?section=award_tables')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     await screen.findByRole('checkbox', { name: 'Round 1 award table' })
-    expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'v3 in effect' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'v3 in effect' })).toBeInTheDocument()
   })
 })
 
@@ -835,7 +843,7 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
 
   it('drops what was typed when the season changes', async () => {
     const view = renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     const box = await screen.findByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -846,19 +854,20 @@ describe('a year change resets the editor (round 2, m1, m3c)', () => {
 
   it('leaves no dead pills and no editor behind when the new season has no rules', async () => {
     const view = renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await screen.findByRole('textbox', { name: 'Minimum award' })
     year = 2028
     draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
     view.rerender(tree())
     expect(await screen.findByText('No rules for 2028 yet.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+    // The lead line has nothing to switch to, and no cue is left behind.
+    expect(within(screen.getByTestId('lead-switch')).queryByRole('link')).toBeNull()
     expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
     // Starting the season brings the draft back: the editor must not open unasked.
     await userEvent.click(screen.getByRole('button', { name: "Start 2028 from 2027's Rules" }))
     draft = { data: rulesDraft(), isLoading: false, error: null }
     view.rerender(tree())
-    expect(await screen.findByRole('button', { name: 'Edit…' })).toBeInTheDocument()
+    expect((await screen.findAllByRole('button', { name: 'Edit…' })).length).toBeGreaterThan(0)
     expect(screen.queryByText(/^Editing /)).toBeNull()
   })
 })
@@ -881,7 +890,7 @@ describe('round 3: what belongs to a season stays with it', () => {
       },
     ]
     renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     const box = await screen.findByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -907,7 +916,7 @@ describe('round 3: what belongs to a season stays with it', () => {
 
   it('drops the notice when the season changes', async () => {
     const view = renderAt('/aid/season/rules?section=awards')
-    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByTestId('rules-notice')).toBeInTheDocument()
@@ -922,5 +931,211 @@ describe('round 3: what belongs to a season stays with it', () => {
     await screen.findByRole('checkbox', { name: 'Round 1 award table' })
     expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
     expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
+  })
+})
+
+describe('editing a card in place (spec §6.2 F; Task 48)', () => {
+  // The plan's `renderRules`, `saveSpy` and `FINANCE` are this file's `renderAt`, `calls` and the all-true
+  // permissions mock above; its saved body is `calls.at(-1).vars.body`.
+  const savedContent = () =>
+    (calls.at(-1)?.vars as { body: { content: Record<string, Record<string, unknown>> } }).body
+      .content
+
+  it('edits a card in place and saves the programs with table_from_equity_class and no r1_table', async () => {
+    renderAt('/aid/season/rules?open=5')
+    await userEvent.click(
+      within(screen.getByTestId('card-head-programs')).getByRole('button', { name: 'Edit…' })
+    )
+    expect(
+      await screen.findByText(/^Editing Programs and their sessions in the rules draft \(v\d+\)$/)
+    ).toBeInTheDocument()
+    await userEvent.selectOptions(
+      screen.getAllByRole('combobox', { name: /Budget pool/ })[0]!,
+      'pool_b'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const content = savedContent()
+    expect(content['summer']?.['budget_pool']).toBe('pool_b')
+    expect(
+      Object.values(content).every(
+        (p) => p['table_from_equity_class'] === true && !('r1_table' in p)
+      )
+    ).toBe(true)
+  })
+
+  it('greys a criterion row live when Enabled is unchecked, and keeps its weights', async () => {
+    const base = rulesDraft()
+    const equity = {
+      criteria: [
+        {
+          key: 'need',
+          label: 'Need',
+          enabled: true,
+          source: 'household' as const,
+          field: 'need',
+          match: 'equals_any' as const,
+          values: ['yes'],
+        },
+      ],
+      weights: { camp: { need: '0.5' } },
+      aggregation: 'ceil' as const,
+      max_shift: null,
+    }
+    const withEquity = { ...base, document: { ...base.document, equity } }
+    draft = { data: withEquity, isLoading: false, error: null }
+    server = [withEquity]
+    renderAt('/aid/season/rules?open=1')
+    await userEvent.click(
+      within(screen.getByTestId('card-head-equity')).getByRole('button', { name: 'Edit…' })
+    )
+    // Plan-test fix: rulesModel names the key `enabled` "On" (as the Checks table does), so the box is
+    // "Criteria › 1 › On", not ".. Enabled"; the column head says Enabled.
+    const enabled = (await screen.findAllByRole('checkbox', { name: /^Criteria › 1 › On$/ }))[0]!
+    await userEvent.click(enabled)
+    expect(enabled.closest('tr')).toHaveClass('opacity-50')
+    expect(within(enabled.closest('tr')!).getAllByRole('textbox').length).toBeGreaterThan(0)
+    expect(screen.getByText('was checked')).toBeInTheDocument()
+  })
+
+  it('disables every Edit… while the Approve panel is open', async () => {
+    renderAt('/aid/season/rules?open=1')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    expect(screen.getByText('Approve or cancel first.')).toBeInTheDocument()
+  })
+
+  // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
+  // card's typing. The tab tells the chrome while any card editor (the tiers editor included) is open.
+  it.each(['programs', 'tiers'])(
+    'hides Approve… while the %s editor is open and brings it back on Cancel',
+    async (section) => {
+      renderAt(`/aid/season/rules?open=1,5&section=${section}`)
+      expect(await screen.findByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+      await editCard(section)
+      expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    }
+  )
+})
+
+describe('the tiers editor and the grid editors in the tier grid card (spec §6.2 E.2; Task 49)', () => {
+  const saved = () => calls.at(-1)?.vars as { section: string; body: { content: unknown } }
+  const tierRow = (tier: number) =>
+    screen.getByTestId('tier-grid').querySelector<HTMLElement>(`tr[data-tier="${String(tier)}"]`)!
+
+  // The fixture's three bands are uneven (a by-hand set); the tiers editor opens on even ones, so these use $40,000 bands.
+  beforeEach(() => {
+    const base = rulesDraft()
+    const even = {
+      ...base,
+      document: {
+        ...base.document,
+        tiers: {
+          bands: [
+            { lower: '0', upper: '40000' },
+            { lower: '40001', upper: '80000' },
+            { lower: '80001', upper: null },
+          ],
+          income_ceiling: null,
+          floor_tier: 1,
+        },
+      },
+    }
+    draft = { data: even, isLoading: false, error: null }
+    server = [even]
+  })
+
+  it('opens the tiers editor in the grid card and rebuilds the grid live: new tiers read "—"', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    const tiers = await screen.findByLabelText('Tiers')
+    expect(screen.getByTestId('grid-editor-tiers')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.clear(tiers)
+    await userEvent.type(tiers, '4')
+    expect(screen.getByText('was 3')).toBeInTheDocument()
+    // The grid below follows the typed bands: tier 4 starts at 120001 and has no figures yet.
+    const row = tierRow(4)
+    expect(row).toHaveTextContent('$120,001 and up')
+    expect(row).toHaveTextContent('—')
+  })
+
+  it('saves what the tiers editor reports: the bands and the income ceiling', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    const tiers = await screen.findByLabelText('Tiers')
+    await userEvent.clear(tiers)
+    await userEvent.type(tiers, '4')
+    await userEvent.type(screen.getByLabelText('Income ceiling'), '250000')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(saved().section).toBe('tiers')
+    expect(saved().body.content).toEqual({
+      bands: [
+        { lower: '0', upper: '40000' },
+        { lower: '40001', upper: '80000' },
+        { lower: '80001', upper: '120000' },
+        { lower: '120001', upper: null },
+      ],
+      income_ceiling: '250000',
+      floor_tier: 1,
+    })
+  })
+
+  it('holds Save while a tiers box is not a figure', async () => {
+    renderAt('/aid/season/rules?section=tiers')
+    await editCard('tiers')
+    const width = await screen.findByLabelText('Band width')
+    await userEvent.clear(width)
+    await userEvent.type(width, 'abc')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('Round 1 award table editor puts a box in each own cell of the grid, and leaves an inherited cell as text', async () => {
+    const base = rulesDraft()
+    const withInheriting = {
+      ...base,
+      document: {
+        ...base.document,
+        award_tables: {
+          ...base.document.award_tables,
+          special: { inherits: 'general', tiers: {}, overrides: { '2': { r1_pct: '70' } } },
+        },
+      },
+    }
+    draft = { data: withInheriting, isLoading: false, error: null }
+    server = [withInheriting]
+    renderAt('/aid/season/rules?section=award_tables')
+    await editCard('award_tables')
+    await screen.findByTestId('tier-grid')
+    const tier2 = tierRow(2)
+    expect(within(tier2).getAllByRole('textbox')).toHaveLength(2)
+    const tier1 = tierRow(1)
+    // Tier 1: general's own box, and special's inherited 90% as plain words.
+    expect(within(tier1).getAllByRole('textbox')).toHaveLength(1)
+    expect(tier1).toHaveTextContent('90%')
+    const box = within(tier2).getAllByRole('textbox')[0]!
+    await userEvent.clear(box)
+    await userEvent.type(box, '50')
+    expect(screen.getByText('was 55%')).toBeInTheDocument()
+  })
+
+  it('Appeal caps editor boxes the appeal cells of the grid and saves the round 2 section', async () => {
+    renderAt('/aid/season/rules?section=round2')
+    await editCard('round2')
+    await screen.findByTestId('tier-grid')
+    const tier1 = tierRow(1)
+    // Round 1 cell stays text here; the one appeal cell with a figure is the box.
+    expect(within(tier1).getAllByRole('textbox')).toHaveLength(1)
+    const box = within(tier1).getByRole('textbox')
+    await userEvent.clear(box)
+    await userEvent.type(box, '97')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(saved().section).toBe('round2')
+    expect(saved().body.content).toMatchObject({
+      tables: { general: { tiers: { '1': { total_pct: '97' } } } },
+    })
   })
 })

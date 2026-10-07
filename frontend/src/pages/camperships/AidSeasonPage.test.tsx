@@ -44,9 +44,17 @@ vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
 vi.mock('../../components/camperships/season/HistoryTab', () => ({
   HistoryTab: () => <div>History body</div>,
 }))
-vi.mock('../../components/camperships/season/rules/RulesTab', () => ({
-  RulesTab: () => <div>Rules tab body</div>,
-}))
+// The mock shows the section the Approve panel would tick first, which the page decides (RulesTab mounts the panel).
+vi.mock('../../components/camperships/season/rules/RulesTab', async () => {
+  const { useSeasonChrome } = await import('../../components/camperships/season/seasonChrome')
+  return {
+    RulesTab: () => (
+      <div>
+        Rules tab body <span data-testid="approve-section">{useSeasonChrome().section}</span>
+      </div>
+    ),
+  }
+})
 // Also keeps the real tab's hooks out of this suite.
 vi.mock('../../components/camperships/season/scenarios/ScenariosTab', () => ({
   ScenariosTab: () => <div>Scenarios tab body</div>,
@@ -226,6 +234,16 @@ describe('the tab bar right side (spec §4; Review Focus 5)', () => {
     renderAt('/aid/season/rules')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     expect(screen.queryByTestId('approve-form')).toBeNull()
+  })
+
+  // #3042 DECIDE 2: Rules' own fallback is the income section (the first chapter), not Rounds & budget's budget.
+  it("has Rules' Approve panel tick the income section first when the URL names none, else the named one", () => {
+    granted = FINANCE
+    const first = renderAt('/aid/season/rules')
+    expect(screen.getByTestId('approve-section')).toHaveTextContent('income')
+    first.unmount()
+    renderAt('/aid/season/rules?section=budget')
+    expect(screen.getByTestId('approve-section')).toHaveTextContent('budget')
   })
 
   it('spaces band, tab bar and content 12px at every width', () => {

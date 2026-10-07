@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
-import { contentOf } from './rulesFixtures'
+import { RULES_DOCUMENT, contentOf } from './rulesFixtures'
 import {
   applyEdits,
   editKey,
   fieldName,
   fieldSpec,
   parseSetting,
+  prepareContent,
   refusalWords,
   sectionChanges,
   setAt,
   touches,
   valueAt,
+  type EditContext,
 } from './sectionEdit'
 
 describe('Extra amount takes a box on a full_cost decision type only', () => {
@@ -257,12 +259,10 @@ describe('what is never a box, however it looks', () => {
     expect(fieldSpec(['weights', 'prior_year'], '0.5')).toMatchObject({ fraction: true })
   })
 
-  it('offers only the kind switches that can save (m5)', () => {
-    expect(fieldSpec(['decision_types', 'd', 'kind'], 'discretionary')).toEqual({
-      kind: 'choice',
-      options: ['full_cost', 'full_cost_after_aid', 'discretionary'],
-    })
-    expect(fieldSpec(['decision_types', 'd', 'kind'], 'top_up')).toBeNull()
+  it("never offers a named award's kind: the server refuses a kind change", () => {
+    for (const kind of ['full_cost', 'full_cost_after_aid', 'top_up', 'discretionary']) {
+      expect(fieldSpec(['decision_types', 'd', 'kind'], kind)).toBeNull()
+    }
   })
 })
 
@@ -311,5 +311,132 @@ describe('the null side of a change (m4)', () => {
     expect(sectionChanges({ a: 1 }, {})).toEqual([
       { path: ['a'], kind: 'removed', before: 1, after: null },
     ])
+  })
+})
+
+const CONTEXT: EditContext = {
+  classes: ['camp', 'teen', 'family'],
+  pools: [
+    { key: 'pool_a', label: 'Pool A' },
+    { key: 'pool_b', label: 'Pool B' },
+  ],
+  sessions: [
+    { id: 1000101, name: 'Session 1' },
+    { id: 1000102, name: 'Session 2' },
+    { id: 1000103, name: 'Session 3' },
+  ],
+  programs: [
+    { key: 'summer', label: 'Summer' },
+    { key: 'weekend', label: 'Weekend' },
+  ],
+  claimed: new Set([1000101]),
+}
+
+describe('the lifted settings (spec §6.2 F)', () => {
+  it("boxes a program's class and pool as pickers with None, only when the editor has the context", () => {
+    expect(fieldSpec(['summer', 'equity_class'], 'camp', {}, CONTEXT)).toEqual({
+      kind: 'pick',
+      options: [
+        { value: 'camp', label: 'Camp' },
+        { value: 'teen', label: 'Teen' },
+        { value: 'family', label: 'Family' },
+        { value: '', label: 'None' },
+      ],
+    })
+    expect(fieldSpec(['summer', 'equity_class'], 'camp', {})).toBeNull() // Scenarios' All settings: unchanged
+    expect(fieldSpec(['summer', 'budget_pool'], null, {}, CONTEXT)).toMatchObject({ kind: 'pick' })
+  })
+
+  it("boxes sessions as chips, the grants offset as checkboxes, a criterion's Enabled and every date", () => {
+    expect(fieldSpec(['summer', 'session_cm_ids'], [1000101], {}, CONTEXT)).toMatchObject({
+      kind: 'sessions',
+    })
+    expect(fieldSpec(['offset_programs'], ['summer'], {}, CONTEXT)).toMatchObject({
+      kind: 'programs',
+    })
+    expect(fieldSpec(['criteria', '0', 'enabled'], true, {}, CONTEXT)).toEqual({ kind: 'yesno' })
+    expect(fieldSpec(['r1_run'], null, {}, CONTEXT)).toEqual({ kind: 'date' })
+  })
+
+  it('reads them back in the server form', () => {
+    expect(parseSetting('', { kind: 'pick', options: [] })).toEqual({ kind: 'ok', value: null })
+    expect(parseSetting('2027-03-01', { kind: 'date' })).toEqual({
+      kind: 'ok',
+      value: '2027-03-01',
+    })
+    expect(parseSetting('', { kind: 'date' })).toEqual({ kind: 'ok', value: null })
+    expect(
+      parseSetting('1000101,1000103', { kind: 'sessions', options: [], claimed: new Set() })
+    ).toEqual({ kind: 'ok', value: [1000101, 1000103] })
+    expect(parseSetting('summer', { kind: 'programs', options: [] })).toEqual({
+      kind: 'ok',
+      value: ['summer'],
+    })
+  })
+
+  it('never lifts a name, a key, or a legacy table route', () => {
+    expect(fieldSpec(['summer', 'r1_table'], 'camp', {}, CONTEXT)).toBeNull()
+    expect(fieldSpec(['summer', 'label'], 'Summer', {}, CONTEXT)).toBeNull()
+  })
+})
+
+describe('what each save writes (spec §6.2 F, §9.9)', () => {
+  it('the programs save routes every program by class and drops r1_table', () => {
+    const out = prepareContent(
+      'programs',
+      {
+        summer: {
+          label: 'Summer',
+          r1_table: 'general',
+          equity_class: 'camp',
+          table_from_equity_class: false,
+        },
+      },
+      RULES_DOCUMENT
+    )
+    expect(out).toEqual({
+      summer: { label: 'Summer', equity_class: 'camp', table_from_equity_class: true },
+    })
+  })
+
+  it('the appeal caps save writes an empty program map once every program is by class', () => {
+    const document = {
+      ...RULES_DOCUMENT,
+      programs: {
+        summer: { ...RULES_DOCUMENT.programs['summer']!, table_from_equity_class: true },
+      },
+    }
+    expect(
+      prepareContent(
+        'round2',
+        { ...RULES_DOCUMENT.round2, program_tables: { summer: 'general' } },
+        document
+      )['program_tables']
+    ).toEqual({})
+    expect(
+      prepareContent(
+        'round2',
+        { ...RULES_DOCUMENT.round2, program_tables: { summer: 'general' } },
+        RULES_DOCUMENT
+      )['program_tables']
+    ).toEqual({ summer: 'general' })
+  })
+
+  it('the income save sends no current-year weight: the server derives it', () => {
+    const out = prepareContent(
+      'income',
+      { weights: { prior_year: '0.6', current_year: '0.3' }, basis: 'gross' },
+      RULES_DOCUMENT
+    )
+    expect(out['weights']).toEqual({ prior_year: '0.6' })
+  })
+
+  it('the equity save sends the full weight matrix, zeros included', () => {
+    const out = prepareContent(
+      'equity',
+      { criteria: [{ key: 'a' }, { key: 'b' }], weights: { camp: { a: '0.5' }, family: {} } },
+      RULES_DOCUMENT
+    )
+    expect(out['weights']).toEqual({ camp: { a: '0.5', b: '0' }, family: { a: '0', b: '0' } })
   })
 })

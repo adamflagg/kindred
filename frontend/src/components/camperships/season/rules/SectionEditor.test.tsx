@@ -61,6 +61,23 @@ describe('SectionEditor', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
+  it("shows a named award's kind as fixed words, never a box (the server refuses a change)", () => {
+    const awards = contentOf('awards')
+    const fund = {
+      label: 'Named full-cost fund',
+      kind: 'full_cost_after_aid',
+      round: 1,
+      amount: null,
+      extra_amount: '0',
+      allows_appeal: false,
+      counts_toward_budget: false,
+      ceiling_exempt: false,
+    }
+    setup({ opened: { ...awards, decision_types: { named_full_cost_fund: fund } } })
+    expect(screen.getByText('Full cost after camp aid')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /kind/i })).toBeNull()
+  })
+
   it('flips a yes/no and shows what it was', async () => {
     const { onSave, user } = setup()
     await user.click(screen.getByLabelText('The ask caps the award'))

@@ -9,12 +9,13 @@
  * for a criterion the season chose ("child", "upper"), and must not read as the field it spells.
  */
 import type {
-  ApiAidDecisionType,
   ApiAidFieldChange,
   ApiAidProgramProfile,
   ApiAidRulesDocument,
+  ApiAidRulesDraft,
+  ApiAidRulesSection,
 } from '../../../../types/api-types'
-import { labelOf, unitOf, type SettingUnit } from './rulesModel'
+import { keyWords, labelOf, unitOf, type SettingUnit } from './rulesModel'
 
 /** Settings the schema lets be empty (`… | None`), whose box may be cleared (rules/schema.py). */
 const NULLABLE: ReadonlySet<string> = new Set([
@@ -53,7 +54,6 @@ const options = <T extends string>(set: Readonly<Record<T, true>>): readonly T[]
  * Each choice's options, read from the generated types (rules/schema.py's `Literal`s), never copied
  * by hand: a regenerated `types.gen.ts` that adds or drops an option fails `tsc` here, on the PR that
  * changed the schema (the slice 1 plan review's I5 lesson, without a Python-reading test).
- * A decision type's `kind` is offered without `top_up` (see `choicesFor`).
  */
 const CHOICES: Readonly<Record<string, readonly string[]>> = {
   basis: options({ gross: true, agi: true, confirmed: true } satisfies Options<
@@ -93,26 +93,7 @@ const CHOICES: Readonly<Record<string, readonly string[]>> = {
   late_grant_policy: options({ ignore: true, flag: true, recalculate: true } satisfies Options<
     Doc['grants']['late_grant_policy']
   >),
-  kind: options({
-    full_cost: true,
-    full_cost_after_aid: true,
-    top_up: true,
-    discretionary: true,
-  } satisfies Options<ApiAidDecisionType['kind']>),
   severity: options({ hold: true, warn: true } satisfies Options<Check['severity']>),
-}
-
-/**
- * A choice's options where it sits. A decision type's `kind` never switches to or from `top_up`:
- * a top-up needs a fixed amount and no other kind may have one, and `amount` has no box, so that
- * switch could only come back as a refusal.
- */
-function choicesFor(path: readonly string[]): readonly string[] | undefined {
-  const key = path.at(-1) ?? ''
-  if (key === 'kind') {
-    return path[0] === 'decision_types' ? CHOICES['kind']?.filter((o) => o !== 'top_up') : undefined
-  }
-  return CHOICES[key]
 }
 
 export type FieldSpec =
@@ -129,6 +110,79 @@ export type FieldSpec =
     }
   | { readonly kind: 'yesno' }
   | { readonly kind: 'choice'; readonly options: readonly string[] }
+  /** A choice among labelled values; value `''` is None (saved as null). */
+  | {
+      readonly kind: 'pick'
+      readonly options: ReadonlyArray<{ readonly value: string; readonly label: string }>
+    }
+  | { readonly kind: 'date' }
+  | {
+      readonly kind: 'sessions'
+      readonly options: EditContext['sessions']
+      readonly claimed: ReadonlySet<number>
+    }
+  | { readonly kind: 'programs'; readonly options: EditContext['programs'] }
+
+/** What the Rules tab's editor knows that a section's own content doesn't (spec §6.2 F): the choices for the lifted settings. */
+export interface EditContext {
+  readonly classes: readonly string[]
+  readonly pools: ReadonlyArray<{ key: string; label: string }>
+  readonly sessions: ReadonlyArray<{ id: number; name: string }>
+  readonly programs: ReadonlyArray<{ key: string; label: string }>
+  /** Sessions another program already claims: never offered in Add a session. */
+  readonly claimed: ReadonlySet<number>
+}
+
+const MILESTONES: ReadonlySet<string> = new Set([
+  'application_deadline',
+  'r1_run',
+  'response_deadline',
+  'r2_window_start',
+  'r2_window_end',
+  'r3_window_start',
+  'r3_window_end',
+])
+
+/** The settings spec §6.2 F lifts out of "names, keys, references, dates and lists stay as they are", with the editor's context. */
+function liftedSpec(
+  path: readonly string[],
+  value: unknown,
+  context: EditContext
+): FieldSpec | null {
+  const key = path.at(-1) ?? ''
+  if (path.length === 2 && key === 'equity_class') {
+    return {
+      kind: 'pick',
+      options: [
+        ...context.classes.map((c) => ({ value: c, label: keyWords(c) })),
+        { value: '', label: 'None' },
+      ],
+    }
+  }
+  if (path.length === 2 && key === 'budget_pool') {
+    return {
+      kind: 'pick',
+      options: [
+        ...context.pools.map((p) => ({ value: p.key, label: p.label })),
+        { value: '', label: 'None' },
+      ],
+    }
+  }
+  if (path.length === 2 && key === 'session_cm_ids') {
+    // `claimed` counts every program's sessions; this program's own are never "another program's".
+    const own = new Set(Array.isArray(value) ? value.map(Number) : [])
+    return {
+      kind: 'sessions',
+      options: context.sessions,
+      claimed: new Set([...context.claimed].filter((id) => !own.has(id))),
+    }
+  }
+  if (path.length === 1 && key === 'offset_programs') {
+    return { kind: 'programs', options: context.programs }
+  }
+  if (path.length === 1 && MILESTONES.has(key)) return { kind: 'date' }
+  return null
+}
 
 const DECIMAL = /^\d+(\.\d+)?$/
 
@@ -149,6 +203,8 @@ const FIXED_KEYS: ReadonlySet<string> = new Set(['label', 'field', 'campminder_d
  */
 function isFixed(path: readonly string[]): boolean {
   const key = path.at(-1) ?? ''
+  // A named award's kind: the server refuses a change (rules/fixed.py `decision_types.*.kind`).
+  if (key === 'kind' && path[0] === 'decision_types') return true
   return FIXED_KEYS.has(key) || key.endsWith('_cm_id') || path[0] === 'program_tables'
 }
 
@@ -177,9 +233,14 @@ function numberSpec(path: readonly string[], whole: boolean, nullable: boolean):
 export function fieldSpec(
   path: readonly string[],
   value: unknown,
-  content?: unknown
+  content?: unknown,
+  context?: EditContext
 ): FieldSpec | null {
   const key = path.at(-1) ?? ''
+  if (context !== undefined) {
+    const lifted = liftedSpec(path, value, context)
+    if (lifted !== null) return lifted
+  }
   // The server refuses an extra amount on any decision type but full_cost: no box to type one in.
   if (key === 'extra_amount' && path[0] === 'decision_types' && content !== undefined) {
     if (valueAt(content, [...path.slice(0, -1), 'kind']) !== 'full_cost') return null
@@ -187,7 +248,7 @@ export function fieldSpec(
   if (typeof value === 'boolean') return { kind: 'yesno' }
   if (isFixed(path)) return null
   const weight = isEquityWeight(path)
-  const choices = weight ? undefined : choicesFor(path)
+  const choices = weight ? undefined : CHOICES[key]
   if (typeof value === 'string' && choices?.includes(value) === true) {
     return { kind: 'choice', options: choices }
   }
@@ -202,7 +263,10 @@ export function fieldSpec(
 }
 
 export type Parsed =
-  | { readonly kind: 'ok'; readonly value: string | number | boolean | null }
+  | {
+      readonly kind: 'ok'
+      readonly value: string | number | boolean | null | ReadonlyArray<string | number>
+    }
   | { readonly kind: 'invalid'; readonly reason: string }
 
 /**
@@ -217,6 +281,17 @@ export function parseSetting(raw: string, spec: FieldSpec): Parsed {
       ? { kind: 'ok', value: raw }
       : { kind: 'invalid', reason: 'Not a choice' }
   }
+  if (spec.kind === 'date') {
+    if (raw === '') return { kind: 'ok', value: null }
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw)
+      ? { kind: 'ok', value: raw }
+      : { kind: 'invalid', reason: 'Not a date' }
+  }
+  if (spec.kind === 'pick') return { kind: 'ok', value: raw === '' ? null : raw }
+  if (spec.kind === 'sessions') {
+    return { kind: 'ok', value: raw === '' ? [] : raw.split(',').map(Number) }
+  }
+  if (spec.kind === 'programs') return { kind: 'ok', value: raw === '' ? [] : raw.split(',') }
   // Only the box's own symbol is dropped; the other one is a mistake to name, not to guess at.
   let text = raw.trim()
   if (spec.unit === 'money') text = text.replace(/^\$\s*/, '')
@@ -270,6 +345,7 @@ function exceeds(digits: string, limit: bigint): boolean {
 /** What a setting's box shows before anything is typed. */
 export function rawOf(value: unknown): string {
   if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) return value.join(',')
   return String(value)
 }
 
@@ -488,4 +564,58 @@ export function refusalWords(message: string): string | null {
     return path.length === 0 ? reason : `${fieldName(path)}: ${reason}`
   })
   return `The rules draft refused this change: ${parts.join('; ')}.`
+}
+
+/** The boxes that can't be read, in one line: "‹label› (‹reason›)", or the reason alone for a setting that is gone. */
+export function fixFirstWords(applied: Applied): string {
+  return [...applied.problems]
+    .map(([key, reason]) =>
+      applied.gone.has(key) ? reason : `${fieldName(pathOf(key))} (${reason})`
+    )
+    .join('; ')
+}
+
+const record = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {})
+
+/** What a section save sends beyond the boxes (spec §6.2 F, §9.9): the server's routing, derived and full forms. */
+export function prepareContent(
+  section: ApiAidRulesSection,
+  content: Record<string, unknown>,
+  document: ApiAidRulesDraft['document']
+): Record<string, unknown> {
+  if (section === 'programs') {
+    return Object.fromEntries(
+      Object.entries(content).map(([key, value]) => {
+        const program = Object.fromEntries(
+          Object.entries(record(value)).filter(([field]) => field !== 'r1_table')
+        )
+        return [key, { ...program, table_from_equity_class: true }]
+      })
+    )
+  }
+  if (section === 'round2') {
+    const allByClass = Object.values(record(document.programs)).every(
+      (p) => record(p)['table_from_equity_class'] === true
+    )
+    return allByClass ? { ...content, program_tables: {} } : content
+  }
+  if (section === 'income') {
+    const weights = Object.fromEntries(
+      Object.entries(record(content['weights'])).filter(([field]) => field !== 'current_year')
+    )
+    return { ...content, weights }
+  }
+  if (section === 'equity') {
+    const keys = (Array.isArray(content['criteria']) ? content['criteria'] : []).map((c) =>
+      String(record(c)['key'])
+    )
+    const weights = Object.fromEntries(
+      Object.entries(record(content['weights'])).map(([cls, row]) => [
+        cls,
+        { ...Object.fromEntries(keys.map((k) => [k, '0'])), ...record(row) },
+      ])
+    )
+    return { ...content, weights }
+  }
+  return content
 }
