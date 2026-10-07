@@ -203,7 +203,7 @@ export const FINANCE_PAGE: ApiAidHistoryPage = {
   ],
 }
 
-const row = (
+export const row = (
   fields: Partial<ApiAidHistoryRow> & Pick<ApiAidHistoryRow, 'entity' | 'entity_id' | 'action'>
 ): ApiAidHistoryRow => ({
   at: '2027-04-10T16:42:00Z',

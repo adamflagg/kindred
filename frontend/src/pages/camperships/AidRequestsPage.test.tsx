@@ -10,7 +10,13 @@ import {
   roundOut,
   ROW_SAMUEL,
 } from '../../components/camperships/requests/gridFixtures'
-import type { ApiAidApprovedRules, ApiAidGrid, ApiAidRound } from '../../types/api-types'
+import { DETAIL_POSTED } from '../../components/camperships/season/historyFixtures'
+import type {
+  ApiAidApprovedRules,
+  ApiAidGrid,
+  ApiAidHistoryOperationDetail,
+  ApiAidRound,
+} from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
 interface GridResult {
@@ -40,6 +46,15 @@ vi.mock('../../hooks/camperships/useAidRules', () => ({
 }))
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
+}))
+let operation: {
+  data: ApiAidHistoryOperationDetail | undefined
+  error: Error | null
+  isLoading: boolean
+  refetch?: () => unknown
+}
+vi.mock('../../hooks/camperships/useAidHistory', () => ({
+  useAidHistoryOperation: () => operation,
 }))
 let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
@@ -130,6 +145,7 @@ beforeEach(() => {
   approved = { data: APPROVED_RULES_2026 }
   keyAsk.mockClear()
   grid = { data: LIVE, isLoading: false, error: null }
+  operation = { data: undefined, error: null, isLoading: false }
   granted = ['financial_aid.view']
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
@@ -386,6 +402,79 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
+  })
+
+  it('shows only the requests of one History operation, with its line and Show All (spec §9.8)', async () => {
+    operation = {
+      data: {
+        ...DETAIL_POSTED,
+        rows: [{ ...DETAIL_POSTED.rows[0]!, request_id: GRID_ROWS[0]!.request_id }],
+      },
+      error: null,
+      isLoading: false,
+    }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
+    expect(screen.getByText(/The 1 request in one History operation/)).toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    for (const other of ['Samuel Johnson', 'Liam Garcia', 'Olivia Chen', 'Riley Sam']) {
+      expect(screen.queryByText(other)).toBeNull()
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+    expect(screen.getByTestId('where')).not.toHaveTextContent('op=')
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+  })
+
+  it('says so when the operation is not in the log the reader can read', () => {
+    // A 404 as the History tests build it: hasStatus reads `.status`.
+    operation = {
+      data: undefined,
+      error: Object.assign(new Error('missing'), { status: 404 }),
+      isLoading: false,
+    }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
+    expect(
+      screen.getByText(/That History operation isn't in the log you can read/)
+    ).toBeInTheDocument()
+  })
+
+  it('says the operation is still being read rather than "0 requests" while it loads', () => {
+    operation = { data: undefined, error: null, isLoading: true }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
+    expect(screen.getByText(/Reading one History operation…/)).toBeInTheDocument()
+    expect(screen.queryByText(/The 0 requests/)).toBeNull()
+  })
+
+  it('says a failed operation read failed, with Try again, rather than "0 requests"', async () => {
+    const refetch = vi.fn()
+    operation = {
+      data: undefined,
+      error: Object.assign(new Error('boom'), { status: 500 }),
+      isLoading: false,
+      refetch,
+    }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
+    expect(screen.getByText(/Couldn't read that History operation/)).toBeInTheDocument()
+    expect(screen.queryByText(/The 0 requests/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not carry the operation filter to the household page: the walk ignores it', async () => {
+    operation = {
+      data: {
+        ...DETAIL_POSTED,
+        rows: [{ ...DETAIL_POSTED.rows[0]!, request_id: GRID_ROWS[0]!.request_id }],
+      },
+      error: null,
+      isLoading: false,
+    }
+    renderAt(`/aid/requests?op=${'o'.repeat(15)}&counted=1`)
+    // The walk's filters do not read op, so a household link that carried it would walk every request.
+    await userEvent.click(screen.getByRole('link', { name: 'Emma Johnson' }))
+    const where = screen.getByTestId('where')
+    expect(where).toHaveTextContent('/aid/households/')
+    expect(where).toHaveTextContent('counted=1')
+    expect(where).not.toHaveTextContent('op=')
   })
 
   it('carries the Season figure to the household page, so the walk keeps it', async () => {

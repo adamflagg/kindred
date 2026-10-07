@@ -9,7 +9,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { DETAIL_POSTED, PAGE } from '../../components/camperships/season/historyFixtures'
-import { useAidHistory, useAidHistoryOperation } from './useAidHistory'
+import { useAidHistoryOperation } from './useAidHistory'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -49,48 +49,6 @@ afterEach(() => {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-describe('useAidHistory', () => {
-  it("reads one page of the season's log through fetchWithAuth, with the page's query", async () => {
-    const { result } = renderHook(() => useAidHistory({ kind: 'holds', per_page: '50' }), {
-      wrapper,
-    })
-    await waitFor(() => expect(result.current.data).toEqual(PAGE))
-    const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/api/financial-aid/history/2027?kind=holds&per_page=50')
-    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
-  })
-
-  it('reads nothing without view (D49: History is a view surface)', async () => {
-    granted = ['financial_aid.summary']
-    renderHook(() => useAidHistory({ per_page: '50' }), { wrapper })
-    await settle()
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
-  it("keeps the page on screen while the next one loads, never another season's", async () => {
-    const firstQuery: Record<string, string> = { per_page: '50' }
-    let finishNext: ((value: Response) => void) | undefined
-    const { result, rerender } = renderHook(
-      ({ query }: { query: Record<string, string> }) => useAidHistory(query),
-      { wrapper, initialProps: { query: firstQuery } }
-    )
-    await waitFor(() => expect(result.current.data).toEqual(PAGE))
-    fetchSpy.mockImplementation(
-      () =>
-        new Promise<Response>((resolve) => {
-          finishNext = resolve
-        })
-    )
-    rerender({ query: { page: '2', per_page: '50' } })
-    expect(result.current.data).toEqual(PAGE)
-    finishNext?.(new Response(JSON.stringify({ ...PAGE, page: 2 }), { status: 200 }))
-    await waitFor(() => expect(result.current.data?.page).toBe(2))
-    season = 2028
-    rerender({ query: { per_page: '50' } })
-    expect(result.current.data).toBeUndefined()
-  })
-})
-
 describe('useAidHistoryOperation', () => {
   it("reads one operation's rows through fetchWithAuth", async () => {
     fetchSpy.mockImplementation(() => ok(DETAIL_POSTED))
@@ -99,6 +57,12 @@ describe('useAidHistoryOperation', () => {
     const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/financial-aid/history/2027/operations/op0000000000003')
     expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
+  })
+
+  it('reads nothing while { enabled: false }, for a caller that opens it later', async () => {
+    renderHook(() => useAidHistoryOperation('op0000000000003', { enabled: false }), { wrapper })
+    await settle()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('answers a 404 at once, without the retries a fault gets', async () => {

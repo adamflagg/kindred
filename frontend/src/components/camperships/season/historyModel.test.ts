@@ -22,25 +22,36 @@ import {
   PAGE,
   REGISTRAR_EMAIL,
   ROW_ROUND3_AWARD,
+  row,
 } from './historyFixtures'
 import {
   KIND_TONE,
   PER_PAGE,
   actionWords,
   actorWords,
+  allCount,
   chipKinds,
   codeText,
+  compactGroups,
+  flattenPages,
+  footerWords,
   historyQuery,
   householdHref,
   lastPage,
+  openLinks,
   operationWords,
-  pageWords,
+  pageAtScroll,
+  pageBreakWords,
+  pageStarts,
   parseHistoryFilters,
   parseOpen,
   recordWords,
+  requestHref,
   rowView,
   rulesLines,
   rulesLink,
+  runSummary,
+  scrollRowWords,
   toggleOpen,
   withFilter,
 } from './historyModel'
@@ -168,22 +179,6 @@ describe('open lines (`open=`)', () => {
 })
 
 describe('the count line and paging', () => {
-  it('says which operations the page holds', () => {
-    expect(PAGE.operations).toHaveLength(3)
-    expect(pageWords(PAGE)).toBe('1–3 of 3 operations')
-    expect(pageWords({ ...PAGE, total: 312, page: 2 })).toBe('51–53 of 312 operations')
-    expect(pageWords({ ...PAGE, total: 1, operations: PAGE.operations.slice(0, 1) })).toBe(
-      '1–1 of 1 operation'
-    )
-  })
-
-  it('says when nothing matches, and when a page is past the end', () => {
-    expect(pageWords({ ...PAGE, total: 0, operations: [] })).toBe('No operations match.')
-    expect(pageWords({ ...PAGE, page: 9, total: 60, operations: [] })).toBe(
-      'Nothing on page 9: 60 operations match.'
-    )
-  })
-
   it('knows the last page, which is 1 when nothing matches', () => {
     expect(lastPage({ ...PAGE, total: 101 })).toBe(3)
     expect(lastPage({ ...PAGE, total: 100 })).toBe(2)
@@ -252,7 +247,7 @@ describe('who, what kind, and the action words', () => {
     )
     expect(actionWords('aid_grantors', 'retire')).toBe('Retired')
     expect(actionWords('aid_sources', 'map_grantor')).toBe('Grantor mapped')
-    expect(actionWords('aid_requests', 'set_headcount')).toBe('Number of People set')
+    expect(actionWords('aid_requests', 'set_headcount')).toBe('Number of people set')
     // An unknown code reads as its own words.
     expect(actionWords('aid_attribution_overrides', 'leave_at_family_level')).toBe(
       'Leave at family level'
@@ -415,6 +410,8 @@ describe("a row's view in an opened line", () => {
         'Share pct: 100% → 60%',
         'Source: Intake default → Staff',
       ],
+      // Task 27 added RowView.fields (the old/new parts); the strike-through test below pins them.
+      fields: expect.any(Array),
       hidden: 0,
       // An update logs only what changed; the server names who the row is about (H2).
       householdCmId: 1000001,
@@ -426,6 +423,8 @@ describe("a row's view in an opened line", () => {
       // The household and the request are the row's own link: their ids aren't listed again.
       lines: ['Note: Family emailed', 'Share pct: 40%', 'Source: Staff'],
       // The nested `entered` copy (two values) is counted, not listed.
+      // Task 27 added RowView.fields (the old/new parts); the strike-through test below pins them.
+      fields: expect.any(Array),
       hidden: 2,
       householdCmId: 1000002,
       householdName: 'The Chen Family',
@@ -444,6 +443,8 @@ describe("a row's view in an opened line", () => {
         'Round: 1',
         'Rules version: 3',
       ],
+      // Task 27 added RowView.fields (the old/new parts); the strike-through test below pins them.
+      fields: expect.any(Array),
       hidden: 0,
       householdCmId: null,
       householdName: null,
@@ -479,6 +480,8 @@ describe("a row's view in an opened line", () => {
         'Note: Income confirmed by phone',
         'Request: req000000000004',
       ],
+      // Task 27 added RowView.fields (the old/new parts); the strike-through test below pins them.
+      fields: expect.any(Array),
       hidden: 0,
       householdCmId: null,
       householdName: null,
@@ -801,5 +804,178 @@ describe('an old log row naming a culled rules section', () => {
   it('names a rules section the map no longer holds by its own words (an old log row)', () => {
     const op = { ...OP_RULES_APPROVE, rules_sections: ['stages'] }
     expect(operationWords(op).what).toContain('Stages')
+  })
+})
+
+// ── Task 27: the box, compact groups and the Open links (spec §7.2 C, D) ──────
+
+// The file's VIEW above is a past date; these read the live season, as the plan's tests do.
+const LIVE: AidView = { year: 2027, asOf: { kind: 'live' } }
+const op = (id: string) => ({ ...OP_POSTED, operation_id: id })
+const pageOf = (n: number, ids: string[], total = 112) => ({
+  ...PAGE,
+  page: n,
+  per_page: 50,
+  total,
+  operations: ids.map(op),
+})
+
+describe('the box (spec §7.2 C)', () => {
+  it('flattenPages drops an operation already shown and keeps order (Review Focus 4)', () => {
+    const pages = [
+      pageOf(1, ['a'.repeat(15), 'b'.repeat(15)]),
+      pageOf(2, ['b'.repeat(15), 'c'.repeat(15)]),
+    ]
+    expect(flattenPages(pages).map((o) => o.operation_id)).toEqual(
+      ['a', 'b', 'c'].map((c) => c.repeat(15))
+    )
+  })
+
+  it('marks where each later page starts, after dedupe', () => {
+    const pages = [
+      pageOf(1, ['a'.repeat(15), 'b'.repeat(15)]),
+      pageOf(2, ['b'.repeat(15), 'c'.repeat(15)]),
+    ]
+    expect(pageStarts(pages)).toEqual([{ page: 2, index: 2 }])
+  })
+
+  it('scrollRowWords names the page after the pages read, even when one repeated a row (Review Focus 4)', () => {
+    // Two pages read, 99 rows shown (one moved down between reads): the next page is still 3.
+    expect(scrollRowWords(2, 112, 50, false)).toBe('Scroll for 101–112')
+  })
+
+  it('says the page break, the scroll row and the footer in the mock words', () => {
+    expect(pageBreakWords(2, 50, 112)).toBe('Page 2 · 51–100')
+    expect(pageBreakWords(3, 50, 112)).toBe('Page 3 · 101–112')
+    // scrollRowWords counts pages read, not rows shown: a row repeated across pages is shown once.
+    expect(scrollRowWords(1, 112, 50, false)).toBe('Scroll for 51–100')
+    expect(scrollRowWords(1, 112, 50, true)).toBe('◌ Loading 51–100…')
+    expect(scrollRowWords(3, 112, 50, false)).toBeNull()
+    expect(footerWords(112, 50, 1, 3)).toEqual({
+      count: '112 operations',
+      pageOf: 'Page 1 of 3',
+      onScreen: '· 1–50 on screen; scroll for more',
+    })
+    expect(footerWords(1, 1, 1, 1)).toEqual({
+      count: '1 operation',
+      pageOf: 'Page 1 of 1',
+      onScreen: '· all on screen',
+    })
+  })
+
+  it('follows the row at the top of the box to its page', () => {
+    expect(pageAtScroll([0, 1800, 3600], 0)).toBe(1)
+    expect(pageAtScroll([0, 1800, 3600], 1799)).toBe(1)
+    expect(pageAtScroll([0, 1800, 3600], 1800)).toBe(2)
+    expect(pageAtScroll([0, 1800, 3600], 9999)).toBe(3)
+  })
+
+  it('allCount is the total with no kind picked, the kinds summed with one picked (H5)', () => {
+    expect(allCount(undefined, null)).toBeNull()
+    expect(allCount({ ...PAGE, total: 112 }, null)).toBe(112)
+    expect(allCount(PAGE, 'holds')).toBe(PAGE.kind_counts.reduce((sum, c) => sum + c.operations, 0))
+  })
+})
+
+describe('the opened row (spec §7.2 D)', () => {
+  it('groups 3+ request rows with one action into a compact table with the total as recorded', () => {
+    const named = DETAIL_POSTED.rows.slice(0, 3).map((r, i) => ({
+      ...r,
+      household_cm_id: 1000001 + i,
+      household_name: 'The Johnson Family',
+      camper_name: 'Emma Johnson',
+      request_id: `req${String(i + 1).padStart(12, '0')}`,
+      session_cm_id: 1000102,
+    }))
+    const { groups, rest } = compactGroups(named, LIVE, new Map([[1000102, 'Session 2']]))
+    expect(rest).toEqual([])
+    const [group] = groups
+    expect(group?.head).toBe('Posted · 3 requests')
+    expect(group?.amountLabel).toBe('Amount')
+    expect(group?.total).toBe(4260)
+    expect(group?.rows[0]).toMatchObject({
+      camper: 'Emma Johnson',
+      camperHref: '/aid/households/1000001?year=2027#request-req000000000001',
+      household: 'The Johnson Family',
+      session: 'Session 2',
+      round: 'R1',
+      amount: 1420,
+    })
+  })
+
+  it('requestHref: a camper links to its request on the household page, keeping the as-of (spec §7.5)', () => {
+    const r = {
+      ...first(DETAIL_POSTED.rows),
+      camper_name: 'Emma Johnson',
+      request_id: 'req000000000001',
+    }
+    expect(requestHref(r, 1000001, LIVE)).toBe(
+      '/aid/households/1000001?year=2027#request-req000000000001'
+    )
+    expect(
+      requestHref(r, 1000001, {
+        year: 2027,
+        asOf: { kind: 'past', date: '2027-03-01', axis: 'campminder' },
+      })
+    ).toBe('/aid/households/1000001?year=2027&as_of=2027-03-01#request-req000000000001')
+    expect(requestHref({ ...r, request_id: null }, 1000001, LIVE)).toBeNull()
+    expect(requestHref({ ...r, camper_name: null }, 1000001, LIVE)).toBeNull()
+    expect(requestHref(r, null, LIVE)).toBeNull()
+  })
+
+  it('leaves two such rows as row blocks', () => {
+    const { groups, rest } = compactGroups(DETAIL_POSTED.rows.slice(0, 2), LIVE)
+    expect(groups).toEqual([])
+    expect(rest).toHaveLength(2)
+  })
+
+  it('a family-level row reads "—" for the camper', () => {
+    const famRows = DETAIL_POSTED.rows
+      .slice(0, 3)
+      .map((r) => ({ ...r, camper_name: null, household_cm_id: 1000001 }))
+    expect(compactGroups(famRows, LIVE).groups[0]?.rows[0]?.camper).toBe('—')
+  })
+
+  it('an intake run says what else it did', () => {
+    const rows = [
+      ...Array.from({ length: 2 }, () =>
+        row({ entity: 'aid_payer_shares', entity_id: 'x', action: 'create' })
+      ),
+      row({ entity: 'aid_applications', entity_id: 'y', action: 'create' }),
+    ]
+    expect(runSummary(rows)).toBe('2 × created · payer share · 1 × created · application')
+  })
+
+  it('Open: households up to 3, the full list at 3+ requests, the families line past 3', () => {
+    const rows = DETAIL_POSTED.rows.slice(0, 5).map((r, i) => ({
+      ...r,
+      household_cm_id: 1000001 + i,
+      household_name: null,
+      camper_name: 'Emma Johnson',
+      request_id: `req${String(i + 1).padStart(12, '0')}`,
+    }))
+    const links = openLinks(OP_POSTED, rows, LIVE)
+    expect(links.households).toEqual([])
+    expect(links.manyFamilies).toBe('5 families: each name in the list opens its household')
+    expect(links.fullList).toEqual({
+      label: 'Full list in Requests (5) ›',
+      href: `/aid/requests?op=${OP_POSTED.operation_id}&year=2027`, // aidHref puts its extra keys before the season
+    })
+    expect(openLinks(OP_RULES_APPROVE, [], LIVE).rules?.label).toMatch(/^Open v\d+ in Rules ›$/)
+    expect(openLinks({ ...OP_POSTED, rules_versions: [] }, [], LIVE).nothing).toBe(
+      'Nothing to open: no household or rules version'
+    )
+  })
+
+  it('reads a change as its old and new parts, for the strike-through', () => {
+    const changed = row({
+      entity: 'aid_applications',
+      entity_id: 'app',
+      action: 'update',
+      changes: [{ path: ['total_gross_income'], kind: 'changed', before: '95000', after: '60000' }],
+    })
+    expect(rowView(changed).fields).toEqual([
+      { label: 'Total gross income', kind: 'changed', before: '$95,000', after: '$60,000' },
+    ])
   })
 })
