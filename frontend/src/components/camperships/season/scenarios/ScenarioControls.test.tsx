@@ -105,6 +105,30 @@ describe('the control line (§S5 A)', () => {
     expect(props.onLoad).toHaveBeenCalledWith({ option: 'A' })
   })
 
+  it('opens Keep… from the guard in Compare too, where the chips also load (§S5 C: "Keep… (opens B)")', async () => {
+    const props = setup({
+      panel: 'compare',
+      unkept: 3,
+      changes: '3 changes',
+      keep: { enabled: true, prefill: 'Minimum $75', nextCode: 'C', figure: '' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: /^A Tiers/ }))
+    await userEvent.click(
+      within(screen.getByTestId('load-guard')).getByRole('button', { name: 'Keep…' })
+    )
+    const pop = screen.getByTestId('keep-popover')
+    await userEvent.type(within(pop).getByRole('textbox', { name: 'Name' }), '{Enter}')
+    expect(props.onKeep).toHaveBeenCalledWith('Minimum $75')
+  })
+
+  it('offers the guard’s Keep… only when Keep… itself is on (same as a kept option, nothing held)', async () => {
+    setup({ unkept: 3, changes: '3 changes, same as A' })
+    await userEvent.click(screen.getByRole('button', { name: /^A Tiers/ }))
+    const guard = screen.getByTestId('load-guard')
+    expect(within(guard).getByRole('button', { name: 'Keep…' })).toBeDisabled()
+    expect(within(guard).getByRole('button', { name: 'Drop and Load A' })).toBeEnabled()
+  })
+
   it('renames the loaded chip on Enter or leaving the box; Esc cancels; a blank name is not sent (§S5 D)', async () => {
     const props = setup()
     await userEvent.click(screen.getByRole('button', { name: 'Rename B' }))

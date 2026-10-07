@@ -13,7 +13,7 @@ import { formatWholeMoney } from '../../kit/money'
 const CAMP_TIME_ZONE = 'America/Los_Angeles'
 const CODE = /^[A-Z]+[0-9]*$/
 
-/** The sections Round 1's first post locks (api/services/financial_aid_decisions_service.py ROUND_SECTIONS[1]). */
+/** The sections Round 1's first post locks (api/services/financial_aid_rules_service.py ROUND_SECTIONS[1]). */
 export const ROUND1_SECTIONS: readonly string[] = [
   'income',
   'tiers',

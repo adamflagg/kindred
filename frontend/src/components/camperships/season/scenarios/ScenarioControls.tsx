@@ -263,6 +263,7 @@ export function ScenarioControls(props: {
                 <button
                   type="button"
                   className={CS_BTN2}
+                  disabled={!props.keep.enabled}
                   onClick={() => {
                     setGuard(null)
                     setKeeping(true)
@@ -319,17 +320,18 @@ export function ScenarioControls(props: {
             >
               Keep…
             </button>
-            {keeping && (
-              <KeepPopover
-                anchor={keepRef}
-                prefill={props.keep.prefill}
-                nextCode={props.keep.nextCode}
-                figure={props.keep.figure}
-                onKeep={props.onKeep}
-                onClose={closeKeep}
-              />
-            )}
           </>
+        )}
+        {/* Outside the panel switch: the guard's Keep… opens it from Compare too, where the chips also load. */}
+        {keeping && (
+          <KeepPopover
+            anchor={keepRef}
+            prefill={props.keep.prefill}
+            nextCode={props.keep.nextCode}
+            figure={props.keep.figure}
+            onKeep={props.onKeep}
+            onClose={closeKeep}
+          />
         )}
       </div>
       {props.error !== null && <p className={`${CS_AMBER_NOTE} w-full`}>{props.error}</p>}

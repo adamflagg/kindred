@@ -41,7 +41,7 @@ export function formatMoney(value: number | null | undefined): string {
 /**
  * "—" · "$0" · "$1,800" · "$941,979" · "−$1,200": the same contract as formatMoney, rounded to the whole dollar,
  * half away from zero on the cents ($941,978.50 is "$941,979", −$0.40 is "$0", never "−$0"). The Scenarios sandbox
- * shows whole dollars everywhere, as the rest of Camperships does (coordinator ruling, 2026-10-07).
+ * shows whole dollars everywhere (coordinator ruling, 2026-10-07); the rest of Camperships keeps formatMoney's cents.
  */
 export function formatWholeMoney(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
