@@ -4,6 +4,8 @@ import {
   useAidApproveRules,
   useFreshAidRulesDraft,
 } from '../../../../hooks/camperships/useAidRulesWrites'
+import { useAidSessionNames } from '../../../../hooks/camperships/useAidSessionNames'
+import { useYear } from '../../../../hooks/useCurrentYear'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import type {
   ApiAidRulesApproveIn,
@@ -26,7 +28,7 @@ import {
 import { sectionChangeWords } from './approveWords'
 import { approvePrecondition } from './precondition'
 import { draftSections, sameSection, SECTION_ORDER } from './rulesDraft'
-import { SECTION_TITLES } from './rulesModel'
+import { rulesVocabulary, SECTION_TITLES, type RulesNames } from './rulesModel'
 
 /** What a re-read found: the version now, and the ticked sections that moved and were unticked. */
 interface Recheck {
@@ -78,6 +80,7 @@ export function ApproveForm({
   onDone: (approved: Approved | null) => void
 }) {
   const approve = useAidApproveRules()
+  const sessions = useAidSessionNames(useYear())
   const fetchFresh = useFreshAidRulesDraft()
   const [seen, setSeen] = useState<ApiAidRulesDraft | null>(null)
   const [ticked, setTicked] = useState<ReadonlySet<ApiAidRulesSection>>(new Set())
@@ -255,6 +258,9 @@ export function ApproveForm({
   const sections = draftSections(seen)
   const errorsIn = (section: ApiAidRulesSection) => errorsOf(seen, section)
   const working = busy || approve.isPending
+  // A change names its pools, programs and sessions as the Rules tab does, not by their keys and ids.
+  const vocabulary = rulesVocabulary((section) => seen.document[section], sessions)
+  const namesFor = (section: ApiAidRulesSection): RulesNames => ({ section, ...vocabulary })
 
   return (
     <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">
@@ -280,7 +286,9 @@ export function ApproveForm({
                   {SECTION_TITLES[section]}
                 </label>
                 {row !== undefined && row.changes.length > 0 && (
-                  <span className={CS_SMALL}>{sectionChangeWords(row.changes)}</span>
+                  <span className={CS_SMALL}>
+                    {sectionChangeWords(row.changes, namesFor(section))}
+                  </span>
                 )}
                 {errorsIn(section) > 0 && (
                   <span className={CS_AMBER_NOTE}>fix its errors first</span>

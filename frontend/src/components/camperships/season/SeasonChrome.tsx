@@ -31,16 +31,15 @@ export function SeasonChromeProvider({
   const draft = useAidRulesDraft({ enabled: finance })
   const [noticeFor, setNoticeFor] = useState<{ year: number; text: string } | null>(null)
   const [approvingFor, setApprovingFor] = useState<number | null>(null)
-  const canApprove =
-    finance &&
-    asOf.kind !== 'past' &&
-    draft.data !== undefined &&
-    draftSections(draft.data).length > 0
+  const live = finance && asOf.kind !== 'past'
+  const canApprove = live && draft.data !== undefined && draftSections(draft.data).length > 0
   const value = useMemo(
     (): SeasonChrome => ({
       notice: noticeFor?.year === year ? noticeFor.text : null,
       setNotice: (text) => setNoticeFor(text === null ? null : { year, text }),
-      approving: approvingFor === year && canApprove,
+      // Not tied to the draft: an approval that clears the last waiting section refreshes the draft before it
+      // reports, and the panel must stay to show what it did. It closes on its own Done or Cancel.
+      approving: approvingFor === year && live,
       canApprove,
       openApprove: () => {
         setNoticeFor(null)
@@ -49,7 +48,7 @@ export function SeasonChromeProvider({
       closeApprove: () => setApprovingFor(null),
       section,
     }),
-    [noticeFor, approvingFor, year, canApprove, section]
+    [noticeFor, approvingFor, year, live, canApprove, section]
   )
   return <SeasonChromeContext.Provider value={value}>{children}</SeasonChromeContext.Provider>
 }

@@ -29,6 +29,9 @@ let draft: ApiAidRulesDraft | undefined = rulesDraft()
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidRulesDraft: () => ({ data: draft, isLoading: false, error: null }),
 }))
+vi.mock('../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: () => undefined,
+}))
 vi.mock('../../hooks/camperships/useAidRulesWrites', () => ({
   useAidApproveRules: () => ({ mutate: vi.fn(), isPending: false }),
   useFreshAidRulesDraft: () => () => Promise.resolve(draft as ApiAidRulesDraft),
