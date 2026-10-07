@@ -65,9 +65,25 @@ describe('RemainingLine (D48, D75; spec §7.3)', () => {
     expect(screen.getByRole('link', { name: 'Pool B $18k' })).toBeInTheDocument()
   })
 
-  it('inks an over-allocated pool in red, with a minus and no parentheses', () => {
+  it('inks an over-allocated pool in amber, with a minus and no parentheses', () => {
     renderAt()
-    expect(screen.getByText(`${MINUS}$1k`)).toHaveClass('text-red-700')
+    expect(screen.getByText(`${MINUS}$1k`)).toHaveClass('text-amber-700')
+  })
+
+  it('reads a pool past its share in amber, not red (owner 10-06, open item 1)', () => {
+    state = {
+      data: {
+        year: 2027,
+        pools: [{ pool: 'pool_a', label: 'Pool A', remaining: -1017 }],
+        total: 179734,
+      },
+      isPending: false,
+      error: null,
+    }
+    renderAt()
+    const figure = screen.getByText(`${MINUS}$1k`)
+    expect(figure).toHaveClass('text-amber-700')
+    expect(figure).not.toHaveClass('text-red-700')
   })
 
   it('opens nothing for a summary-only user (D65, D75)', () => {

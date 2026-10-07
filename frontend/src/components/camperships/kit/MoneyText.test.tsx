@@ -47,3 +47,17 @@ describe('ReversedAmount (D74: one row, struck through)', () => {
     expect(screen.getByText('reversed Jun 3')).toBeInTheDocument()
   })
 })
+
+describe('a pool tone (spec §8.3, D74 amended)', () => {
+  it('reads a negative pool figure in amber, never red', () => {
+    render(<Money value={-1017} tone="pool" />)
+    const figure = screen.getByText(`${MINUS}$1,017`)
+    expect(figure).toHaveClass('text-amber-700')
+    expect(figure).not.toHaveClass('text-red-700')
+  })
+
+  it('leaves every other negative red', () => {
+    render(<Money value={-8366} />)
+    expect(screen.getByText(`${MINUS}$8,366`)).toHaveClass('text-red-700')
+  })
+})
