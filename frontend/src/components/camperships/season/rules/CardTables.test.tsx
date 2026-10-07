@@ -329,6 +329,22 @@ describe('the programs table (spec §6.2 E.8)', () => {
     expect(within(weekend).getByText('no equity class')).toHaveClass('bg-amber-100')
     expect(within(weekend).getAllByText('None')).toHaveLength(2)
   })
+  it('leaves out a program that claims no sessions when read, and keeps it in the editor (lead ruling)', () => {
+    const content = {
+      ...PROGRAMS,
+      idle: { ...PROGRAMS.weekend, label: 'Idle program', session_cm_ids: [] },
+    }
+    const { unmount } = tables({ section: 'programs', content })
+    expect(within(screen.getByTestId('programs-table')).queryByText('Idle program')).toBeNull()
+    expect(within(screen.getByTestId('programs-table')).getByText('Summer')).toBeInTheDocument()
+    unmount()
+    const control = vi.fn((path: readonly string[]) => <input aria-label={path.join('.')} />)
+    tables({ section: 'programs', content, control })
+    expect(
+      within(screen.getByTestId('programs-table')).getByText('Idle program')
+    ).toBeInTheDocument()
+  })
+
   it('wraps the Sessions cell, its pills in a flex-wrap row, and the program name, so the table fits at 1100', () => {
     tables({ section: 'programs', content: PROGRAMS })
     const summer = rowOf(screen.getByTestId('programs-table'), 'Summer')

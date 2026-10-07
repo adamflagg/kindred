@@ -223,39 +223,44 @@ function ProgramsTable({ content, names, issues, control }: TablesProps) {
         </tr>
       </thead>
       <tbody>
-        {programRows(content, issues, names).map((row) => (
-          <tr key={row.key}>
-            <td className={`${TD_WRAP} font-bold`}>
-              {row.label}
-              {row.pills.map((pill) => (
-                <span key={pill} className={`${CS_PILL.amber} ml-1 font-normal`}>
-                  {pill}
-                </span>
-              ))}
-            </td>
-            <td className={TD_WRAP}>
-              {control ? (
-                control([row.key, 'session_cm_ids'])
-              ) : (
-                <span className="inline-flex flex-wrap items-center gap-1">
-                  {row.sessions.map((session) => (
-                    <span key={session} className={CS_PILL.muted}>
-                      {session}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </td>
-            <td className={CS_TD_CARD}>
-              {control ? control([row.key, 'equity_class']) : row.equityClass}
-            </td>
-            <td className={CS_TD_CARD}>{control ? control([row.key, 'budget_pool']) : row.pool}</td>
-            <td className={CS_TD_CARD}>{row.costFrom}</td>
-            <td className={TD_MID}>
-              {control ? control([row.key, 'open_to_aid']) : check(row.openToAid)}
-            </td>
-          </tr>
-        ))}
+        {programRows(content, issues, names)
+          // Read, a program that claims no sessions has nothing to show; the editor keeps it, so it can be given one.
+          .filter((row) => control !== undefined || row.sessions.length > 0)
+          .map((row) => (
+            <tr key={row.key}>
+              <td className={`${TD_WRAP} font-bold`}>
+                {row.label}
+                {row.pills.map((pill) => (
+                  <span key={pill} className={`${CS_PILL.amber} ml-1 font-normal`}>
+                    {pill}
+                  </span>
+                ))}
+              </td>
+              <td className={TD_WRAP}>
+                {control ? (
+                  control([row.key, 'session_cm_ids'])
+                ) : (
+                  <span className="inline-flex flex-wrap items-center gap-1">
+                    {row.sessions.map((session) => (
+                      <span key={session} className={CS_PILL.muted}>
+                        {session}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </td>
+              <td className={CS_TD_CARD}>
+                {control ? control([row.key, 'equity_class']) : row.equityClass}
+              </td>
+              <td className={CS_TD_CARD}>
+                {control ? control([row.key, 'budget_pool']) : row.pool}
+              </td>
+              <td className={CS_TD_CARD}>{row.costFrom}</td>
+              <td className={TD_MID}>
+                {control ? control([row.key, 'open_to_aid']) : check(row.openToAid)}
+              </td>
+            </tr>
+          ))}
       </tbody>
     </table>
   )
