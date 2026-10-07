@@ -165,15 +165,50 @@ export function gridClasses(
   return [...all.filter((key) => sources.has(key)), ...all.filter((key) => !sources.has(key))]
 }
 
-/** The Round 1 cells a `value_cannot_bind` warning names (validation.py: `award_tables.<table>.tiers.<tier>`), as "table:tier". */
-export function warnedCells(
-  issues: ReadonlyArray<{ readonly code: string; readonly path: string }>
-): Set<string> {
+interface Issue {
+  readonly code: string
+  readonly path: string
+}
+
+/** The Round 1 cell a `value_cannot_bind` warning names (validation.py: `award_tables.<table>.tiers.<tier>`), or null. */
+function warnedCell(issue: Issue): { table: string; tier: number } | null {
+  const match = /^award_tables\.([^.]+)\.tiers\.(\d+)$/.exec(issue.path)
+  if (issue.code !== 'value_cannot_bind' || match === null) return null
+  return { table: match[1] ?? '', tier: Number(match[2]) }
+}
+
+/** The Round 1 cells a `value_cannot_bind` warning names, as "table:tier". */
+export function warnedCells(issues: readonly Issue[]): Set<string> {
   const out = new Set<string>()
   for (const issue of issues) {
-    const match = /^award_tables\.([^.]+)\.tiers\.(\d+)$/.exec(issue.path)
-    if (issue.code === 'value_cannot_bind' && match !== null)
-      out.add(`${match[1] ?? ''}:${match[2] ?? ''}`)
+    const cell = warnedCell(issue)
+    if (cell !== null) out.add(`${cell.table}:${String(cell.tier)}`)
   }
   return out
+}
+
+/**
+ * A card's issues with its cell warnings in the grid's order (coordinator B2): any other issue first, as it came,
+ * then the cell warnings table by table as the columns run, each table's in tier order (8, 9, 10, 11; the server
+ * sorts its paths as text, 10, 11, 8, 9). `table` keeps only that table's cell warnings.
+ */
+export function gridOrdered<T extends Issue>(
+  issues: readonly T[],
+  classes: readonly string[],
+  table: string | null = null
+): T[] {
+  const cells = issues.flatMap((issue) => {
+    const cell = warnedCell(issue)
+    return cell === null ? [] : [{ issue, cell }]
+  })
+  const column = (name: string) => {
+    const at = classes.indexOf(name)
+    return at < 0 ? classes.length : at
+  }
+  const sorted = cells
+    .filter(({ cell }) => table === null || cell.table === table)
+    .sort((a, b) => column(a.cell.table) - column(b.cell.table) || a.cell.tier - b.cell.tier)
+    .map(({ issue }) => issue)
+  const others = table === null ? issues.filter((issue) => warnedCell(issue) === null) : []
+  return [...others, ...sorted]
 }

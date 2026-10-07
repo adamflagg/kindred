@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 
 import type {
   ApiAidFieldChange,
@@ -24,6 +24,7 @@ import {
   gridCell,
   gridClasses,
   gridColumns,
+  gridOrdered,
   rangeWords,
   tierLineWords,
   warnedCells,
@@ -41,6 +42,9 @@ type Programs = Readonly<Record<string, { readonly equity_class?: string | null 
 const TH_NUM = CS_TH_CARD.replace('text-left', 'text-right')
 const TH_MID = CS_TH_CARD.replace('text-left', 'text-center')
 const TD_NUM = `${CS_TD_CARD} text-right tabular-nums`
+
+/** The card's cell ⚠ click, for the grid an editor draws inside it: it opens the card's one list (coordinator B2). */
+const GridWarnContext = createContext<((table: string) => void) | null>(null)
 
 function GridCellView({
   cell,
@@ -64,7 +68,7 @@ function GridCellView({
         <button
           type="button"
           aria-label="Show this table's warnings"
-          className="ml-1 text-amber-600 dark:text-amber-400"
+          className="ml-1 cursor-pointer text-amber-600 dark:text-amber-400"
           onClick={onWarn}
         >
           ⚠
@@ -99,9 +103,12 @@ export function TierGridTable({
   appealTables: Tables
   classes: readonly string[]
   warned: ReadonlySet<string>
-  onWarn: (table: string) => void
+  /** A warned cell's click; inside the tier grid card's editor it defaults to the card's list. */
+  onWarn?: (table: string) => void
   control?: GridCellControl | undefined
 }) {
+  const fromCard = useContext(GridWarnContext)
+  const warn = onWarn ?? fromCard ?? (() => undefined)
   const r1 = gridColumns(awardTables, classes, keyWords)
   const r2 = gridColumns(appealTables, classes, keyWords)
   const boxFor = (
@@ -155,7 +162,7 @@ export function TierGridTable({
                   key={`r1:${col.table}`}
                   cell={gridCell(awardTables, col.table, tier, 'r1_pct')}
                   warned={warned.has(`${col.table}:${String(tier)}`)}
-                  onWarn={() => onWarn(col.table)}
+                  onWarn={() => warn(col.table)}
                   control={boxFor('award_tables', awardTables, col.table, tier, 'r1_pct')}
                 />
               ))}
@@ -207,7 +214,8 @@ export function TierGridCard({
   /** The open editor and the part it edits (Task 48's table editors, Task 49's tiers editor); null when none. */
   editing: { part: GridPart; node: ReactNode } | null
 }) {
-  const [warnedTable, setWarnedTable] = useState<string | null>(null)
+  // The award table head's one list: every issue (table null, the chip) or one table's cell warnings (its ⚠).
+  const [listing, setListing] = useState<{ table: string | null } | null>(null)
   const bands = bandsIn(document.tiers)
   const line = tierLineWords(bands, document.tiers.income_ceiling ?? null)
   const wasLine =
@@ -219,12 +227,11 @@ export function TierGridCard({
   const classes = gridClasses(document.programs as Programs, awardTables)
   const roundOne = issuesBySection.award_tables ?? []
   const warned = warnedCells(roundOne)
-  const listed =
-    warnedTable === null
-      ? []
-      : roundOne.filter(
-          (i) => i.code === 'value_cannot_bind' && i.path.startsWith(`award_tables.${warnedTable}.`)
-        )
+  const roundOneList = {
+    shown: listing === null ? null : gridOrdered(roundOne, classes, listing.table),
+    onChip: () => setListing(listing?.table === null ? null : { table: null }),
+  }
+  const onWarn = (table: string) => setListing(listing?.table === table ? null : { table })
   return (
     <section id="card-tiergrid" data-card="tiergrid" className={CS_CARD}>
       <div className="space-y-1">
@@ -241,6 +248,7 @@ export function TierGridCard({
                   issues={issuesBySection[part] ?? []}
                   canEdit={canEdit && editing === null}
                   onEdit={() => onEdit(part)}
+                  {...(part === 'award_tables' ? { list: roundOneList } : {})}
                 />
               )}
               {changes.length > 0 && (
@@ -254,7 +262,7 @@ export function TierGridCard({
       </div>
       {editing !== null ? (
         <div data-testid={`grid-editor-${editing.part}`} className="mt-2">
-          {editing.node}
+          <GridWarnContext.Provider value={onWarn}>{editing.node}</GridWarnContext.Provider>
         </div>
       ) : (
         <>
@@ -265,22 +273,13 @@ export function TierGridCard({
               <span className="ml-2 text-amber-700 dark:text-amber-400">{`was ${wasLine}`}</span>
             )}
           </p>
-          {listed.length > 0 && (
-            <ol data-testid="grid-warnings" className="mt-1">
-              {listed.map((issue) => (
-                <li key={issue.path} className={CS_AMBER_NOTE}>
-                  {issue.message}
-                </li>
-              ))}
-            </ol>
-          )}
           <TierGridTable
             bands={bands}
             awardTables={awardTables}
             appealTables={appealTables}
             classes={classes}
             warned={warned}
-            onWarn={(table) => setWarnedTable(warnedTable === table ? null : table)}
+            onWarn={onWarn}
           />
         </>
       )}

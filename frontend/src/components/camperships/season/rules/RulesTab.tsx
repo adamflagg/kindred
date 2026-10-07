@@ -403,7 +403,6 @@ function ChaptersBody({
             appealTables={tables(document_.round2.tables)}
             classes={gridClasses(programs, document_.award_tables)}
             warned={warned}
-            onWarn={() => undefined}
           />
           {asSaved}
         </div>
@@ -420,7 +419,6 @@ function ChaptersBody({
           appealTables={appealTables}
           classes={gridClasses(programs, awardTables)}
           warned={warned}
-          onWarn={() => undefined}
           control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
         />
         {asSaved}

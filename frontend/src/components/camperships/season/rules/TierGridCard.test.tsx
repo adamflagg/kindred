@@ -147,14 +147,83 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
 
   it("marks a warned Round 1 cell with ⚠, whose click lists that table's warnings", async () => {
     grid({ issuesBySection: { award_tables: [WARNING] } })
-    expect(screen.queryByTestId('grid-warnings')).toBeNull()
+    expect(screen.queryByTestId('card-issue')).toBeNull()
     await userEvent.click(
       within(cell(3, 2)).getByRole('button', { name: "Show this table's warnings" })
     )
-    expect(
-      within(screen.getByTestId('grid-warnings')).getByText(WARNING.message)
-    ).toBeInTheDocument()
+    expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual([
+      WARNING.message,
+    ])
     expect(within(cell(2, 2)).queryByRole('button')).toBeNull()
+  })
+
+  describe("one warnings list: the chip's, which a cell ⚠ opens filtered to its table (coordinator B2)", () => {
+    const issue = (table: string, tier: number): ApiAidValidationIssue => ({
+      ...WARNING,
+      path: `award_tables.${table}.tiers.${String(tier)}`,
+      message: `${table} tier ${String(tier)}: the minimum decides every award here`,
+    })
+    // The server's order: by path as text, so tier 10 and 11 come before 8 and 9.
+    const ISSUES = [
+      issue('summer', 11),
+      issue('teen', 10),
+      issue('teen', 11),
+      issue('teen', 8),
+      issue('teen', 9),
+    ]
+    const eleven = { ...DOC, tiers: { ...DOC.tiers, bands: bandsOf(0, 35000, 11) } }
+    const listed = () => screen.queryAllByTestId('card-issue').map((li) => li.textContent)
+    const chip = () =>
+      within(screen.getByTestId('card-head-award_tables')).getByRole('button', {
+        name: '5 warnings',
+      })
+    const warn = (tier: number, column: number) =>
+      within(cell(tier, column)).getByRole('button', { name: "Show this table's warnings" })
+
+    it("a cell ⚠ lists only its table's warnings, in tier order", async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(warn(10, 4)) // Teen, tier 10
+      expect(listed()).toEqual([
+        'teen tier 8: the minimum decides every award here',
+        'teen tier 9: the minimum decides every award here',
+        'teen tier 10: the minimum decides every award here',
+        'teen tier 11: the minimum decides every award here',
+      ])
+    })
+
+    it("the chip's own click still lists them all, table by table in the grid's order, each in tier order", async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(chip())
+      expect(listed()).toEqual([
+        'summer tier 11: the minimum decides every award here',
+        'teen tier 8: the minimum decides every award here',
+        'teen tier 9: the minimum decides every award here',
+        'teen tier 10: the minimum decides every award here',
+        'teen tier 11: the minimum decides every award here',
+      ])
+    })
+
+    it('nothing renders twice, whichever opened the list', async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(warn(11, 2)) // Summer, tier 11
+      expect(screen.getAllByText(ISSUES[0]!.message)).toHaveLength(1)
+      await userEvent.click(chip())
+      for (const i of ISSUES) expect(screen.getAllByText(i.message)).toHaveLength(1)
+      expect(screen.queryByTestId('grid-warnings')).toBeNull()
+    })
+
+    it('a second click on the same ⚠ closes the list', async () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(warn(10, 4))
+      await userEvent.click(warn(10, 4))
+      expect(listed()).toEqual([])
+    })
+
+    it('the chip and the ⚠ show a pointer', () => {
+      grid({ document: eleven, issuesBySection: { award_tables: ISSUES } })
+      expect(chip()).toHaveClass('cursor-pointer')
+      expect(warn(10, 4)).toHaveClass('cursor-pointer')
+    })
   })
 
   it('shows "—" in every table cell of a tier the tables do not have yet (more tiers)', () => {

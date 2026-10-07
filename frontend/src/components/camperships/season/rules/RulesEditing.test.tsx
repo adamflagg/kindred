@@ -1148,6 +1148,13 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
           '⚠ marks the warnings as last saved, not what you have typed.'
         )
       ).toBeInTheDocument()
+      // Coordinator B2: the ⚠ opens the chip's one list, filtered to its table, while editing too.
+      await userEvent.click(
+        within(tierRow(2)).getByRole('button', { name: "Show this table's warnings" })
+      )
+      expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual([
+        'Tier 2 of the general table: the minimum decides every award here',
+      ])
     }
   )
 
