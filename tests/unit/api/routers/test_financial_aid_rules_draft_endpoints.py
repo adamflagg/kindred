@@ -75,10 +75,18 @@ APPROVED = ApprovedRules(
 )
 AWARDS = fictional_rules_json()["awards"] | {"minimum": "150"}
 SAVE_BODY = {"base_version": 2, "content": AWARDS, "expected_fingerprint": "f" * 64}
+PROGRAMS = fictional_rules_json()["programs"]
+COST = fictional_rules_json()["cost"]
+SECTIONS_BODY = {
+    "base_version": 2,
+    "contents": {"programs": PROGRAMS, "cost": COST},
+    "expected_fingerprints": {"programs": "p" * 64, "cost": "c" * 64},
+}
 
 ROUTES: list[tuple[str, str, dict[str, Any] | None, int, str]] = [
     ("GET", "/api/financial-aid/rules/2031/draft", None, 200, Permission.FINANCIAL_AID_RULES),
     ("PUT", "/api/financial-aid/rules/2031/sections/awards", SAVE_BODY, 200, Permission.FINANCIAL_AID_RULES),
+    ("PUT", "/api/financial-aid/rules/2031/sections", SECTIONS_BODY, 200, Permission.FINANCIAL_AID_RULES),
     (
         "POST",
         "/api/financial-aid/rules/2031/versions/2/new-version",
@@ -100,6 +108,7 @@ def _stub() -> Any:
     service = patch("api.routers.financial_aid.FinancialAidRulesService").start().return_value
     service.load = AsyncMock(return_value=VERSION)
     service.save_section = AsyncMock(return_value=SectionSaveResult(VERSION, ValidationReport(), 1))
+    service.save_section_contents = AsyncMock(return_value=SectionSaveResult(VERSION, ValidationReport(), None))
     service.draft_view = AsyncMock(return_value=DRAFT)
     service.new_version = AsyncMock(return_value=VERSION)
     service.validate_document = AsyncMock(return_value=ValidationReport())
@@ -242,3 +251,46 @@ def test_approving_a_locked_budget_total_is_422_in_the_lock_words() -> None:
     body = {"sections": ["budget"], "note": "Board, Mar 1", "fingerprints": {"budget": "abc"}}
     response = _client().post("/api/financial-aid/rules/2031/versions/2/approve", json=body)
     assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)
+
+
+def test_a_two_section_save_passes_both_contents_and_fingerprints() -> None:
+    service = _stub()
+    _client().put("/api/financial-aid/rules/2031/sections", json=SECTIONS_BODY)
+    call = service.save_section_contents.await_args
+    assert call.args == (2031, 2, SECTIONS_BODY["contents"])
+    assert call.kwargs["expected_fingerprints"] == SECTIONS_BODY["expected_fingerprints"]
+    service.save_section.assert_not_called()
+
+
+def test_a_two_section_save_reports_the_branch() -> None:
+    service = _stub()
+    service.save_section_contents = AsyncMock(return_value=SectionSaveResult(VERSION, ValidationReport(), 1))
+    response = _client().put("/api/financial-aid/rules/2031/sections", json=SECTIONS_BODY)
+    assert (response.status_code, response.json()["branched_from"]) == (200, 1)
+
+
+def test_fingerprints_that_dont_name_the_sections_are_422_before_the_service() -> None:
+    service = _stub()
+    bad = SECTIONS_BODY | {"expected_fingerprints": {"programs": "p" * 64}}
+    assert _client().put("/api/financial-aid/rules/2031/sections", json=bad).status_code == 422
+    service.save_section_contents.assert_not_called()
+
+
+def test_an_unknown_section_name_or_no_section_in_a_two_section_save_is_422() -> None:
+    service = _stub()
+    unknown = {
+        "base_version": 2,
+        "contents": {"canteen": COST},
+        "expected_fingerprints": {"canteen": "c" * 64},
+    }
+    empty = {"base_version": 2, "contents": {}, "expected_fingerprints": {}}
+    for body in (unknown, empty):
+        assert _client().put("/api/financial-aid/rules/2031/sections", json=body).status_code == 422
+    service.save_section_contents.assert_not_called()
+
+
+def test_a_stale_section_in_a_two_section_save_is_409_naming_it() -> None:
+    service = _stub()
+    service.save_section_contents = AsyncMock(side_effect=SectionChangedError(["cost"]))
+    response = _client().put("/api/financial-aid/rules/2031/sections", json=SECTIONS_BODY)
+    assert (response.status_code, response.json()["detail"]["sections"]) == (409, ["cost"])

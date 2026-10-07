@@ -63,6 +63,23 @@ class SectionSaveIn(BaseModel):
     expected_fingerprint: str = Field(min_length=1)
 
 
+class SectionsSaveIn(BaseModel):
+    """Several sections' editors saved as one operation (the Programs and costs card: programs and cost)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_version: int = Field(ge=1)
+    contents: dict[SectionName, dict[str, Any]] = Field(min_length=1)
+    # Each section's fingerprint as the editor opened it: a section saved since is a 409 naming it.
+    expected_fingerprints: dict[SectionName, str]
+
+    @model_validator(mode="after")
+    def _fingerprints_match_contents(self) -> SectionsSaveIn:
+        if set(self.expected_fingerprints) != set(self.contents):
+            raise ValueError("expected_fingerprints must name exactly the sections being saved")
+        return self
+
+
 class NewVersionIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

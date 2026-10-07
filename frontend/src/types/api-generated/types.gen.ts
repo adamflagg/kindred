@@ -15357,6 +15357,32 @@ export type SectionStatus = {
 }
 
 /**
+ * SectionsSaveIn
+ *
+ * Several sections' editors saved as one operation (the Programs and costs card: programs and cost).
+ */
+export type SectionsSaveIn = {
+  /**
+   * Base Version
+   */
+  base_version: number
+  /**
+   * Contents
+   */
+  contents: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
+  /**
+   * Expected Fingerprints
+   */
+  expected_fingerprints: {
+    [key: string]: string
+  }
+}
+
+/**
  * SensitivityOut
  */
 export type SensitivityOut = {
@@ -24330,6 +24356,38 @@ export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutRespons
 
 export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponse =
   SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponses[keyof SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponses]
+
+export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutData = {
+  body: SectionsSaveIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/sections'
+}
+
+export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutError =
+  SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutErrors[keyof SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutErrors]
+
+export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesDraftOut
+}
+
+export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponse =
+  SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponses[keyof SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponses]
 
 export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostData = {
   body: NewVersionIn
