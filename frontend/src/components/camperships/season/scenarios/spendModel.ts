@@ -147,8 +147,9 @@ export function stripLead(draft: Results, from: Results | null, postedStands: bo
   }
 }
 
-/** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with no projection. Under 5%
- * of last year's applications in (owner 10-07) the server sends `tooEarly` instead, and the line says so. */
+/** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with neither a projection nor
+ * `tooEarly`. Under 5% of last year's applications in (owner 10-07) the server sends `tooEarly` instead, and the line
+ * says so. */
 export function projectionWords(
   projection: ApiAidScenarioProjection | null | undefined,
   locked: boolean,

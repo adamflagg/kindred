@@ -529,7 +529,8 @@ class FinancialAidScenariosService:
     ) -> Callable[[ScenarioResults], Projection | TooEarly | None]:
         """The projection for one read (§S11.7), its curve and share resolved once: the Price ▾ date when one is set,
         else the held pile's day in camp time. A deadline-aligned curve needs this season's approved deadline: with
-        none there is no projection, never a silent switch to the calendar."""
+        none there is no projection, never a silent switch to the calendar. Below a 5% share (none in counts) it is the
+        too-early note instead."""
 
         def none(results: ScenarioResults) -> Projection | TooEarly | None:
             return None
@@ -551,8 +552,15 @@ class FinancialAidScenariosService:
         else:
             anchor = calendar_anchor(year)
         share = share_by(curve, through, anchor)
-        if share is None:
+        if share is None and not curve.points:
             return none
+        if share is None:  # none of last year's had arrived by this point: the earliest too-early read, not a blank
+            early = TooEarly(Decimal(0), through, curve.year)
+
+            def too_early(results: ScenarioResults) -> Projection | TooEarly | None:
+                return early
+
+            return too_early
 
         def projected(results: ScenarioResults) -> Projection | TooEarly | None:
             return projection_or_too_early(

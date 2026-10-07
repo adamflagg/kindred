@@ -107,6 +107,7 @@ class ResultsOut(BaseModel):
     appeals_asked: float = 0
     # Filled on evaluate, the draft and each priced compare column; never on a kept option's stored results or last season.
     projection: ProjectionOut | None = None
+    # Set on those same reads in place of `projection` below a 5% share; at most one of the two is ever set.
     too_early: TooEarlyOut | None = None
 
 

@@ -39,7 +39,7 @@ financial_aid.view or .summary: aggregates only, D65).
 """
 
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Annotated, Final, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
@@ -1237,9 +1237,9 @@ def _projection_out(projection: Projection | None) -> ProjectionOut | None:
 def _too_early_out(too_early: TooEarly | None) -> TooEarlyOut | None:
     if too_early is None:
         return None
-    return TooEarlyOut(
-        share=round(float(too_early.share), 3), through=too_early.through, basis_year=too_early.basis_year
-    )
+    # Rounded DOWN to 3 decimals: 0.0496 rounded half-up would go out as 0.05 and read "about 5%" on a too-early line.
+    share = float(too_early.share.quantize(Decimal("0.001"), rounding=ROUND_DOWN))
+    return TooEarlyOut(share=share, through=too_early.through, basis_year=too_early.basis_year)
 
 
 def _results_out(

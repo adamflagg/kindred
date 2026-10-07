@@ -1003,3 +1003,12 @@ def test_a_projection_with_no_floor_note_has_no_too_early() -> None:
     service.evaluate = AsyncMock(return_value=Evaluation(DOC, RESULTS, ValidationReport(), projection=_a_projection()))
     body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
     assert body["too_early"] is None
+
+
+def test_the_too_early_share_rounds_down_on_the_wire() -> None:
+    """A share just under the 5% floor goes out as 0.049, never rounded up to 0.05, so the strip's round-down holds."""
+    service = _stub()
+    early = TooEarly(share=Decimal("0.0496"), through=date(2027, 1, 5), basis_year=2026)
+    service.evaluate = AsyncMock(return_value=Evaluation(DOC, RESULTS, ValidationReport(), too_early=early))
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
+    assert body["too_early"]["share"] == 0.049
