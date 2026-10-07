@@ -39,9 +39,10 @@ import {
   type RulesNames,
   type StatusWords,
 } from './rulesModel'
-import { ApproveForm, type Approved } from './ApproveForm'
+import { ApprovePanel, SeasonNotice } from '../SeasonChrome'
+import { useSeasonChrome } from '../seasonChrome'
 import { CapacityForm } from './CapacityForm'
-import { draftSections, sectionContent } from './rulesDraft'
+import { sectionContent } from './rulesDraft'
 import { RulesSectionEditor } from './RulesSectionEditor'
 import { SectionView } from './SectionView'
 
@@ -173,25 +174,7 @@ function ApprovedBody({
 
 /** A draft every section of which is approved, and so the version pricing the season. */
 const pricesTheSeason = (draft: ApiAidRulesDraft) => draft.approved_version === draft.version
-/**
- * What an approval says follows. The season is priced by the newest version in which every pricing
- * section is approved or locked, so approving some sections re-prices nothing: the first sentence
- * only when the refreshed draft's approved version is the one just approved (interim, S8-⚠1). A
- * posted amount stands either way (S1 Q1); it never quotes a change in a posted amount.
- */
-function approvedNotice({ pricing, warnings }: Approved): string {
-  return [
-    pricing === 'moved'
-      ? 'Approved. Requests not yet posted are priced on the new rules; a posted amount stands.'
-      : pricing === 'already'
-        ? 'Approved. The sections that price the season were already approved: nothing is re-priced.'
-        : 'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.',
-  ]
-    .concat(warnings.length === 0 ? [] : ['', ...warnings])
-    .join('\n')
-}
-
-type Mode = 'read' | 'edit' | 'approve'
+type Mode = 'read' | 'edit'
 
 function DraftBody({
   draft,
@@ -210,6 +193,7 @@ function DraftBody({
 }) {
   const href = useRulesHref()
   const year = useYear()
+  const chrome = useSeasonChrome()
   const sessions = useSessionNames()
   const names: RulesNames = {
     section: selected,
@@ -240,29 +224,7 @@ function DraftBody({
                 )}: it prices the season.`
               : `Rules draft v${String(draft.version)}, against the approved v${String(draft.approved_version)}.`}
         </p>
-        {finance && mode === 'read' && draftSections(draft).length > 0 && (
-          <button
-            type="button"
-            className={`${BUTTON_SECONDARY} ml-auto`}
-            onClick={() => {
-              onNotice(null)
-              setMode('approve')
-            }}
-          >
-            Approve…
-          </button>
-        )}
       </div>
-      {mode === 'approve' && (
-        <ApproveForm
-          key={year}
-          initial={selected}
-          onDone={(approved) => {
-            setMode('read')
-            if (approved !== null) onNotice(approvedNotice(approved))
-          }}
-        />
-      )}
       <div className="grid gap-3 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <RulesSectionList
           items={items}
@@ -277,7 +239,7 @@ function DraftBody({
             {item && item.status.meta !== '' && (
               <span className="text-muted-foreground text-xs font-normal">{item.status.meta}</span>
             )}
-            {finance && mode === 'read' && (
+            {finance && mode === 'read' && !chrome.approving && (
               <button
                 type="button"
                 className={`${BUTTON_SECONDARY} ml-auto`}
@@ -417,13 +379,12 @@ export function RulesTab() {
     finance && version === null && params.get('show') !== 'approved' ? 'draft' : 'approved'
   const approved = useAidApprovedRules(version, { enabled: show === 'approved' })
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
-  // The notice belongs to the season it was about: it shows only while that year is selected.
-  const [noticeFor, setNoticeFor] = useState<{ year: number; text: string } | null>(null)
-  const notice = noticeFor?.year === year ? noticeFor.text : null
-  const setNotice = (text: string | null) => setNoticeFor(text === null ? null : { year, text })
+  // The page's chrome owns the notice and the Approve panel (spec §4); Rules reads them.
+  const chrome = useSeasonChrome()
+  const setNotice = chrome.setNotice
   // Lifted so the tab's own pills hold still while an edit or an approval is open.
   const [mode, setMode] = useState<Mode>('read')
-  const holding = show === 'draft' && mode !== 'read'
+  const holding = show === 'draft' && (mode !== 'read' || chrome.approving)
   // A fully approved draft prices the season, so its pill names the version, not a draft (#23).
   const draftPill =
     draft.data === undefined
@@ -465,18 +426,8 @@ export function RulesTab() {
           )}
         </div>
       )}
-      {notice !== null && (
-        <p className="text-sm whitespace-pre-line" data-testid="rules-notice">
-          {notice}{' '}
-          <button
-            type="button"
-            className="text-primary text-xs hover:underline"
-            onClick={() => setNotice(null)}
-          >
-            Dismiss
-          </button>
-        </p>
-      )}
+      <ApprovePanel />
+      <SeasonNotice />
       {show === 'draft' ? (
         hasStatus(draft.error, 404) && !draft.data ? (
           <NoRulesYet key={year} year={year} finance={finance} onNotice={setNotice} />

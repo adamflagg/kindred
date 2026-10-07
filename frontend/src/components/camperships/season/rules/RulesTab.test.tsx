@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AidApiError } from '../../../../services/camperships/aidApi'
 import type { ApiAidApprovedRules, ApiAidRulesDraft } from '../../../../types/api-types'
 import { APPROVED_RULES, rulesDraft } from './rulesFixtures'
+import { SeasonChromeProvider } from '../SeasonChrome'
 import { RulesTab } from './RulesTab'
 
 interface Read<T> {
@@ -60,7 +61,9 @@ function Where() {
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <RulesTab />
+      <SeasonChromeProvider section="income">
+        <RulesTab />
+      </SeasonChromeProvider>
       <Where />
     </MemoryRouter>
   )

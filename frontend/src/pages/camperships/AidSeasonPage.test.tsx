@@ -3,12 +3,14 @@
  * tab while the date is past (only Rounds & budget shows that date; I6). The tabs' own bodies are
  * mocked: each has its own tests.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BUDGET } from '../../components/camperships/season/budgetFixtures'
-import type { ApiAidBudget } from '../../types/api-types'
+import { rulesDraft } from '../../components/camperships/season/rules/rulesFixtures'
+import type { ApiAidBudget, ApiAidRulesDraft } from '../../types/api-types'
 import AidSeasonPage from './AidSeasonPage'
 
 let granted: string[] = []
@@ -21,6 +23,15 @@ vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denie
 let budget: ApiAidBudget = BUDGET
 vi.mock('../../hooks/camperships/useAidBudget', () => ({
   useAidBudget: () => ({ data: budget, isLoading: false, error: null }),
+}))
+// The Season chrome's reads (Approve… and its panel), as SeasonChrome.test.tsx mocks them.
+let draft: ApiAidRulesDraft | undefined = rulesDraft()
+vi.mock('../../hooks/camperships/useAidRules', () => ({
+  useAidRulesDraft: () => ({ data: draft, isLoading: false, error: null }),
+}))
+vi.mock('../../hooks/camperships/useAidRulesWrites', () => ({
+  useAidApproveRules: () => ({ mutate: vi.fn(), isPending: false }),
+  useFreshAidRulesDraft: () => () => Promise.resolve(draft as ApiAidRulesDraft),
 }))
 vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
   RoundsBudgetTab: () => <div>Rounds and budget body</div>,
@@ -63,6 +74,7 @@ function renderAt(path: string) {
 beforeEach(() => {
   granted = REGISTRAR
   budget = BUDGET
+  draft = rulesDraft()
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
 })
@@ -137,14 +149,6 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     }
   })
 
-  it('says only Rounds & budget can show a past date, and keeps the as-of pill, which covers the Remaining line', () => {
-    renderAt('/aid/season/history?as_of=2027-03-15')
-    expect(
-      screen.getByText('This tab shows today. Rounds & budget can show Mar 15, 2027.')
-    ).toBeInTheDocument()
-    expect(screen.getByText('As of Mar 15, 2027')).toBeInTheDocument()
-  })
-
   // A regression guard: the mock ignores props, so this passes before the real tab lands. It pins
   // that the page mounts History's body on its tab for both readers (the interim is retired).
   it("mounts History's body on its tab, for the registrar and for finance (D49, D76)", () => {
@@ -154,5 +158,59 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     granted = FINANCE
     renderAt('/aid/season/history')
     expect(screen.getByText('History body')).toBeInTheDocument()
+  })
+})
+
+describe('the tab bar right side (spec §4; Review Focus 5)', () => {
+  it.each(['rounds-budget', 'rules', 'history', 'scenarios'])(
+    'shows Approve… on %s for finance while a draft waits',
+    (tab) => {
+      granted = FINANCE
+      renderAt(`/aid/season/${tab}`)
+      const nav = screen.getByRole('navigation')
+      expect(within(nav).getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    }
+  )
+
+  it('never shows Approve… to the registrar', () => {
+    granted = REGISTRAR
+    renderAt('/aid/season/rules')
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+  })
+
+  it('never shows Approve… on a past date', () => {
+    granted = FINANCE
+    renderAt('/aid/season/history?as_of=2027-03-15')
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+  })
+
+  it('puts the as-of sentence on the tab bar, not in a paragraph under it, and keeps the as-of pill', () => {
+    renderAt('/aid/season/history?as_of=2027-03-15')
+    const nav = screen.getByRole('navigation')
+    expect(
+      within(nav).getByText('This tab shows today. Rounds & budget can show Mar 15, 2027.')
+    ).toBeInTheDocument()
+    expect(screen.getByText('As of Mar 15, 2027')).toBeInTheDocument()
+  })
+
+  it('opens the Approve panel under the tab bar on a tab other than Rules', async () => {
+    granted = FINANCE
+    renderAt('/aid/season/history')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    expect(screen.getByTestId('approve-form')).toBeInTheDocument()
+  })
+
+  // RulesTab is mocked here and renders no panel of its own, so a panel under the tab bar would be the page's second one.
+  it('leaves the Approve panel to Rules, under its own lead line: the page mounts none there', async () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    expect(screen.queryByTestId('approve-form')).toBeNull()
+  })
+
+  it('spaces band, tab bar and content 12px at every width', () => {
+    const { container } = renderAt('/aid/season/history')
+    expect(container.querySelector('.space-y-3')).not.toBeNull()
+    expect(container.querySelector('[class*="sm:space-y-4"]')).toBeNull()
   })
 })

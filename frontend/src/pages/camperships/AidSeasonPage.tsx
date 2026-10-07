@@ -1,14 +1,22 @@
 import { CalendarCheck } from 'lucide-react'
 import { useMemo } from 'react'
-import { Navigate, useParams } from 'react-router'
+import { Navigate, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
+import { CS_SMALL } from '../../components/camperships/kit/csType'
 import { Money } from '../../components/camperships/kit/MoneyText'
 import { HistoryTab } from '../../components/camperships/season/HistoryTab'
 import { RoundsBudgetTab } from '../../components/camperships/season/RoundsBudgetTab'
+import { isRulesSection } from '../../components/camperships/season/rules/rulesModel'
 import { RulesTab } from '../../components/camperships/season/rules/RulesTab'
 import { ScenariosTab } from '../../components/camperships/season/scenarios/ScenariosTab'
+import {
+  ApproveButton,
+  ApprovePanel,
+  SeasonChromeProvider,
+  SeasonNotice,
+} from '../../components/camperships/season/SeasonChrome'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
@@ -16,6 +24,7 @@ import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidBudget } from '../../hooks/camperships/useAidBudget'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
+import type { ApiAidRulesSection } from '../../types/api-types'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
 const SEASON = aidSection('season')
@@ -51,6 +60,7 @@ function BudgetStats() {
  */
 export default function AidSeasonPage() {
   const { tab } = useParams()
+  const [params] = useSearchParams()
   const { hasPermission } = usePermissions()
   const year = useYear()
   const asOf = useAidAsOf()
@@ -62,31 +72,46 @@ export default function AidSeasonPage() {
   }
   const slug = resolved.tab?.slug ?? ROUNDS
   const onRounds = slug === ROUNDS
+  const onRules = slug === 'rules'
   const onScenarios = slug === 'scenarios'
+  const sectionParam = params.get('section')
+  // The section the Approve panel checks first: Rules' open section, else the budget (Rounds & budget's edits).
+  const approveSection: ApiAidRulesSection =
+    onRules && isRulesSection(sectionParam) ? sectionParam : 'budget'
+  const right = (
+    <>
+      {!onRounds && asOf.kind === 'past' && (
+        <span className={CS_SMALL}>
+          {`This tab shows today. Rounds & budget can show ${formatLongDate(asOf.date)}.`}
+        </span>
+      )}
+      <ApproveButton />
+    </>
+  )
 
   return (
-    <div className="space-y-3 sm:space-y-4 print:font-sans">
-      {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
-      <div className={`space-y-3 sm:space-y-4 ${onScenarios ? 'print:hidden' : ''}`}>
-        <AidPageBand
-          icon={CalendarCheck}
-          title={SEASON.label}
-          subtitle={`Season ${String(year)}`}
-          // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
-          asOf={asOf}
-          stats={onRounds ? <BudgetStats /> : undefined}
-        />
-        <AidTabNav section={SEASON} tabs={resolved.tabs} view={view} />
+    <SeasonChromeProvider section={approveSection}>
+      <div className="space-y-3 print:font-sans">
+        {/* Scenarios prints as the compare alone: its band and tab strip stay off the paper. */}
+        <div className={`space-y-3 ${onScenarios ? 'print:hidden' : ''}`}>
+          <AidPageBand
+            icon={CalendarCheck}
+            title={SEASON.label}
+            subtitle={`Season ${String(year)}`}
+            // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
+            asOf={asOf}
+            stats={onRounds ? <BudgetStats /> : undefined}
+          />
+          <AidTabNav section={SEASON} tabs={resolved.tabs} view={view} right={right} />
+        </div>
+        {/* Rules puts the panel and the notice under its own lead line (spec §6.2 B). */}
+        {!onRules && <ApprovePanel />}
+        {!onRules && <SeasonNotice />}
+        {onRounds && <RoundsBudgetTab />}
+        {slug === 'history' && <HistoryTab />}
+        {onRules && <RulesTab />}
+        {onScenarios && <ScenariosTab />}
       </div>
-      {!onRounds && asOf.kind === 'past' && (
-        <p className="text-muted-foreground text-sm">
-          {`This tab shows today. Rounds & budget can show ${formatLongDate(asOf.date)}.`}
-        </p>
-      )}
-      {onRounds && <RoundsBudgetTab />}
-      {slug === 'history' && <HistoryTab />}
-      {slug === 'rules' && <RulesTab />}
-      {slug === 'scenarios' && <ScenariosTab />}
-    </div>
+    </SeasonChromeProvider>
   )
 }
