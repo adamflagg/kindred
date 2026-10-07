@@ -14,6 +14,7 @@ export const Collections = {
   AdminAuditLog: 'admin_audit_log',
   AidApplicationCorrections: 'aid_application_corrections',
   AidApplications: 'aid_applications',
+  AidArrivalCurves: 'aid_arrival_curves',
   AidAttributionOverrides: 'aid_attribution_overrides',
   AidCancellations: 'aid_cancellations',
   AidChangeLog: 'aid_change_log',
@@ -261,6 +262,32 @@ export type AidApplicationsRecord<
   id: string
   member_person_cm_ids?: null | Tmember_person_cm_ids
   status: AidApplicationsStatusOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const AidArrivalCurvesSourceOptions = {
+  workbook: 'workbook',
+  received: 'received',
+} as const
+export type AidArrivalCurvesSourceOptions =
+  (typeof AidArrivalCurvesSourceOptions)[keyof typeof AidArrivalCurvesSourceOptions]
+
+export const AidArrivalCurvesAlignedOnOptions = {
+  application_deadline: 'application_deadline',
+  calendar: 'calendar',
+} as const
+export type AidArrivalCurvesAlignedOnOptions =
+  (typeof AidArrivalCurvesAlignedOnOptions)[keyof typeof AidArrivalCurvesAlignedOnOptions]
+export type AidArrivalCurvesRecord<Tpoints = unknown> = {
+  actor: string
+  aligned_on: AidArrivalCurvesAlignedOnOptions
+  anchor: string
+  counted: number
+  created: IsoAutoDateString
+  id: string
+  points?: null | Tpoints
+  source: AidArrivalCurvesSourceOptions
   updated: IsoAutoDateString
   year: number
 }
@@ -2634,6 +2661,10 @@ export type AidApplicationsResponse<
   Texpand = unknown,
 > = Required<AidApplicationsRecord<Tanswers, Tflags, Tmember_person_cm_ids>> &
   BaseSystemFields<Texpand>
+export type AidArrivalCurvesResponse<Tpoints = unknown, Texpand = unknown> = Required<
+  AidArrivalCurvesRecord<Tpoints>
+> &
+  BaseSystemFields<Texpand>
 export type AidAttributionOverridesResponse<Tsplit = unknown, Texpand = unknown> = Required<
   AidAttributionOverridesRecord<Tsplit>
 > &
@@ -2941,6 +2972,7 @@ export type CollectionRecords = {
   admin_audit_log: AdminAuditLogRecord
   aid_application_corrections: AidApplicationCorrectionsRecord
   aid_applications: AidApplicationsRecord
+  aid_arrival_curves: AidArrivalCurvesRecord
   aid_attribution_overrides: AidAttributionOverridesRecord
   aid_cancellations: AidCancellationsRecord
   aid_change_log: AidChangeLogRecord
@@ -3049,6 +3081,7 @@ export type CollectionResponses = {
   admin_audit_log: AdminAuditLogResponse
   aid_application_corrections: AidApplicationCorrectionsResponse
   aid_applications: AidApplicationsResponse
+  aid_arrival_curves: AidArrivalCurvesResponse
   aid_attribution_overrides: AidAttributionOverridesResponse
   aid_cancellations: AidCancellationsResponse
   aid_change_log: AidChangeLogResponse
