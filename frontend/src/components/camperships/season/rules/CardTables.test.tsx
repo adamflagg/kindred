@@ -329,6 +329,29 @@ describe('the programs table (spec §6.2 E.8)', () => {
     expect(within(weekend).getByText('no equity class')).toHaveClass('bg-amber-100')
     expect(within(weekend).getAllByText('None')).toHaveLength(2)
   })
+  it('wraps the Sessions cell, its pills in a flex-wrap row, and the program name, so the table fits at 1100', () => {
+    tables({ section: 'programs', content: PROGRAMS })
+    const summer = rowOf(screen.getByTestId('programs-table'), 'Summer')
+    const [name, sessions] = within(summer).getAllByRole('cell')
+    expect(sessions).toHaveClass('whitespace-normal')
+    expect(sessions).not.toHaveClass('whitespace-nowrap')
+    expect(within(summer).getByText('Session 1').parentElement).toHaveClass(
+      'inline-flex',
+      'flex-wrap'
+    )
+    expect(name).toHaveClass('whitespace-normal')
+    expect(name).not.toHaveClass('whitespace-nowrap')
+  })
+
+  it('wraps the program name in the editor too', () => {
+    const control = vi.fn((path: readonly string[]) => <input aria-label={path.join('.')} />)
+    tables({ section: 'programs', content: PROGRAMS, control })
+    const [name, sessions] = within(
+      rowOf(screen.getByTestId('programs-table'), 'Summer')
+    ).getAllByRole('cell')
+    expect(name).toHaveClass('whitespace-normal')
+    expect(sessions).toHaveClass('whitespace-normal')
+  })
 })
 
 describe('the checks table (spec §6.2 E.7)', () => {

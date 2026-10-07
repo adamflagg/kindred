@@ -32,6 +32,8 @@ const TH_MID = CS_TH_CARD.replace('text-left', 'text-center')
 const TD_NUM = `${CS_TD_CARD} text-right tabular-nums`
 const TD_MID = `${CS_TD_CARD} text-center`
 const TD_NAME = `${CS_TD_CARD} font-bold`
+// A cell whose words may run long (a program's name, its session pills) wraps, so the table fits its card.
+const TD_WRAP = CS_TD_CARD.replace('whitespace-nowrap', 'whitespace-normal')
 const WAS = 'ml-1 text-amber-700 dark:text-amber-400'
 
 const check = (on: boolean) => (on ? '✓' : '—')
@@ -223,7 +225,7 @@ function ProgramsTable({ content, names, issues, control }: TablesProps) {
       <tbody>
         {programRows(content, issues, names).map((row) => (
           <tr key={row.key}>
-            <td className={TD_NAME}>
+            <td className={`${TD_WRAP} font-bold`}>
               {row.label}
               {row.pills.map((pill) => (
                 <span key={pill} className={`${CS_PILL.amber} ml-1 font-normal`}>
@@ -231,14 +233,18 @@ function ProgramsTable({ content, names, issues, control }: TablesProps) {
                 </span>
               ))}
             </td>
-            <td className={CS_TD_CARD}>
-              {control
-                ? control([row.key, 'session_cm_ids'])
-                : row.sessions.map((session) => (
-                    <span key={session} className={`${CS_PILL.muted} mr-1`}>
+            <td className={TD_WRAP}>
+              {control ? (
+                control([row.key, 'session_cm_ids'])
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-1">
+                  {row.sessions.map((session) => (
+                    <span key={session} className={CS_PILL.muted}>
                       {session}
                     </span>
                   ))}
+                </span>
+              )}
             </td>
             <td className={CS_TD_CARD}>
               {control ? control([row.key, 'equity_class']) : row.equityClass}
