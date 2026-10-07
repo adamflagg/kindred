@@ -5,9 +5,9 @@ import type { ApiAidRulesSection, ApiAidValidationIssue } from '../../../../type
 import { DefRef } from '../../kit/DefinitionNotes'
 import {
   CS_LINK,
+  CS_PANEL_HEAD,
   CS_PILL,
   CS_SMALL,
-  CS_SUBHEAD,
   CS_TABLE_CARD,
   CS_TD_CARD,
   CS_TH_CARD,
@@ -66,7 +66,7 @@ function Caption({
 }) {
   return (
     <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
-      <span className={CS_SUBHEAD}>
+      <span className={CS_PANEL_HEAD}>
         {title}
         {note !== undefined && <DefRef n={note} />}
       </span>

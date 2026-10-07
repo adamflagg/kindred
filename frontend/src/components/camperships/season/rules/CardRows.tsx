@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { DefRef } from '../../kit/DefinitionNotes'
-import { CS_SMALL, CS_SUBHEAD } from '../../kit/csType'
+import { CS_MUTED, CS_PANEL_HEAD, CS_SMALL } from '../../kit/csType'
 import {
   dependentsNote,
   rowWords,
@@ -30,36 +30,43 @@ export function CardRows({
   control?: ((row: CardRow) => ReactNode) | undefined
 }) {
   return (
-    <div className="mt-1.5 space-y-2">
+    <div className="mt-1.5 space-y-2.5">
       {spec.groups.map((group, g) => (
         <div key={group.head ?? String(g)}>
-          {group.head !== null && <div className={CS_SUBHEAD}>{group.head}</div>}
-          {group.rows.map((r) => {
-            const { text, was } = rowWords(r, content, approved, names)
-            const desc =
-              r.path.at(-1) === 'per_dependent_reduction'
-                ? `${r.desc}${dependentsNote(content)}`
-                : r.desc
-            return (
-              <div
-                key={r.path.join('.')}
-                data-card-row
-                className="flex flex-wrap items-baseline gap-x-2 py-0.5"
-              >
-                {r.type === 'bool' && control === undefined && <span>{text}</span>}
-                <span className="font-semibold">{r.label}</span>
-                {control !== undefined ? (
-                  control(r)
-                ) : r.type === 'bool' ? null : (
-                  <span className={`tabular-nums ${was === null ? '' : CHANGED}`}>{text}</span>
-                )}
-                {was !== null && control === undefined && (
-                  <span className="text-amber-700 dark:text-amber-400">{`was ${was}`}</span>
-                )}
-                {desc !== '' && <span className="text-muted-foreground">{desc}</span>}
-              </div>
-            )
-          })}
+          {/* rules-v3 .sgh: the group's head is cs-phead (muted, smaller), so groups don't run together. */}
+          {group.head !== null && <div className={CS_PANEL_HEAD}>{group.head}</div>}
+          <div>
+            {group.rows.map((r) => {
+              const { text, was } = rowWords(r, content, approved, names)
+              const desc =
+                r.path.at(-1) === 'per_dependent_reduction'
+                  ? `${r.desc}${dependentsNote(content)}`
+                  : r.desc
+              return (
+                // rules-v3 .srow: a 20px lead column (a yes/no row's mark) indents every label 26px; a hairline
+                // divides the rows of a group.
+                <div
+                  key={r.path.join('.')}
+                  data-card-row
+                  className="border-border/65 grid grid-cols-[20px_minmax(0,1fr)] items-baseline gap-x-1.5 border-t py-1 first:border-t-0"
+                >
+                  <span>{r.type === 'bool' && control === undefined ? text : null}</span>
+                  <div className="flex flex-wrap items-baseline gap-x-2.5">
+                    <span className="font-semibold">{r.label}</span>
+                    {control !== undefined ? (
+                      control(r)
+                    ) : r.type === 'bool' ? null : (
+                      <span className={`tabular-nums ${was === null ? '' : CHANGED}`}>{text}</span>
+                    )}
+                    {was !== null && control === undefined && (
+                      <span className="text-amber-700 dark:text-amber-400">{`was ${was}`}</span>
+                    )}
+                    {desc !== '' && <span className={CS_MUTED}>{desc}</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       ))}
     </div>
