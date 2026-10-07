@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { TH } from '../kit/kitStyles'
 import * as season from './seasonStyles'
 
 const ALIGN = /\btext-(left|right|center)\b/g
@@ -52,5 +53,15 @@ describe("Season's class strings", () => {
     ]) {
       expect(token).not.toMatch(RAW_PALETTE)
     }
+  })
+})
+
+describe('header cells alias the kit TH (spec §1.1)', () => {
+  it('reads 12/15 like the grid: TH_LABEL is TH, the money ones its right-aligned twins', () => {
+    expect(season.TH_LABEL).toBe(TH)
+    expect(season.TH_MONEY).toBe(TH.replace('text-left', 'text-right'))
+    expect(season.TH_MONEY_TEXT).toBe(
+      TH.replace('text-left', 'text-right').replace('bg-muted ', '')
+    )
   })
 })
