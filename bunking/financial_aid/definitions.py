@@ -658,11 +658,12 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Projected",
         text=(
             "Projected: last year's arrival curve says what share of last year's applications had arrived by the "
-            "same point in the season, counted in weeks from the application deadline. Every figure is divided by "
-            "that share, as if the rest arrive like last year's and are priced like those already in. A pool's "
-            "'projected' figure is its Remaining on that basis. Projected figures are never amber or red: those "
-            "colours read only real figures. Last year's curve is 2026's applications workbook, loaded once as "
-            "weekly shares; from 2027 on, the dashboard's own received dates."
+            "same point in the season, counted in weeks from the application deadline (from Jan 1 when last year's "
+            "had none). Every figure is divided by that share, as if the rest arrive like last year's and are priced "
+            "like those already in. A pool's 'projected' figure is its Remaining on that basis. Projected figures are "
+            "never amber or red: those colours read only real figures. Last year's curve is 2026's applications "
+            "workbook, loaded once as weekly shares; from the 2028 season on, the dashboard's own received dates "
+            "(2027's applications)."
         ),
         spec="§7.4",
         rulings=("D129", "D138"),
