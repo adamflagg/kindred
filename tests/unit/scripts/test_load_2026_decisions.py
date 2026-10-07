@@ -468,6 +468,23 @@ def test_a_skip_override_leaves_one_of_two_rows_on_a_request_out_and_loads_the_o
     assert skipped.sheet_row == 3
 
 
+def test_a_skip_override_without_a_sheet_row_that_matches_two_rows_stops_the_load_naming_them() -> None:
+    awards = [_award(row=2), _award(row=3, r1=Decimal(500))]
+    rule = _override("skip", person=1000002, sheet_session=1000102)
+    with pytest.raises(loader.OverrideError, match=r"sheet_row") as caught:
+        _plan(awards, lines=[_line("3000")], overrides=[rule])
+    assert "1000002" in str(caught.value)  # ids only
+    assert "rows 2, 3" in str(caught.value)
+
+
+def test_a_skip_override_without_a_sheet_row_that_matches_one_row_is_valid() -> None:
+    awards = [_award(row=2), _award(row=3, person_cm_id=1000003, household_cm_id=1000001)]
+    rule = _override("skip", person=1000003, sheet_session=1000102)
+    plan = _plan(awards, lines=[_line("3000")], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert [r.sheet_row for r in plan.report if r.kind == "override_skip"] == [3]
+
+
 def test_a_person_override_names_the_campminder_person_a_weekend_row_lacks() -> None:
     award = _award(row=4, person_cm_id=None, household_cm_id=None)
     rule = _override("person", sheet_row=4, sheet_session=1000102, to_person=1000002, to_household=1000001)
@@ -482,7 +499,8 @@ def test_a_campminder_override_records_campminders_money_as_round_1_on_a_request
     (post,) = plan.creates  # posted only: with no sheet row there is no stage, so nothing is accepted
     assert post.note.startswith("CampMinder only")  # labelled as the owner asked (10-07)
     assert (post.request_id, post.round, post.kind, post.amount) == (EMMA, 1, "post", Decimal(2500))
-    assert (post.lock_source, post.rules_version) == ("reproduced", 3)
+    # Its own lock source: it never reads "Reproduced from the sheet" (coordinator ruling, 10-07).
+    assert (post.lock_source, post.rules_version) == ("campminder_only", 3)
     assert _snap(post)["reproduced"] == {
         "sheet_row": None,
         "stage": "",
@@ -883,6 +901,22 @@ def test_the_command_reads_the_overrides_file(
     store = _Store()
     assert _run(tmp_path, store, "--overrides", str(overrides), monkeypatch=monkeypatch) == 0
     assert "override_skip" in (tmp_path / "r.csv").read_text()
+
+
+def test_the_command_refuses_an_ambiguous_skip_and_writes_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    overrides = tmp_path / "overrides.json"
+    overrides.write_text(json.dumps([{"decision": "skip", "person": None, "sheet_session": 1000102}]))
+    monkeypatch.setenv("POCKETBASE_URL", "http://pocketbase.invalid:8090")
+    store = _Store()
+    awards = [_award(row=2, person_cm_id=None), _award(row=3, person_cm_id=None)]
+    monkeypatch.setattr(loader, "read_awards", lambda *a, **k: (awards, loader.SheetTotals()))
+    assert _run(tmp_path, store, "--overrides", str(overrides), "--write", monkeypatch=monkeypatch) == 2
+    err = capsys.readouterr().err
+    assert "sheet_row" in err
+    assert "Nothing was written" in err
+    assert store.commits == []
 
 
 def test_the_command_refuses_an_invalid_overrides_file_without_echoing_its_ids(

@@ -477,6 +477,8 @@ describe("a row's view in an opened line", () => {
     expect(lines('placement')).toEqual(['Locked by: Grant placement'])
     // The 2026 sheet load's rounds are read-only and labelled (D67), in the receipt's words.
     expect(lines('reproduced')).toEqual(['Locked by: Reproduced from the sheet'])
+    // The load's "CampMinder only" round (owner, 10-07) never reads as reproduced from the sheet.
+    expect(lines('campminder_only')).toEqual(['Locked by: From CampMinder (no sheet row)'])
     expect(lines('some_new_code')).toEqual(['Locked by: Some new code'])
   })
 

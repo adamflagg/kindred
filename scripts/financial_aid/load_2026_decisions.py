@@ -78,7 +78,7 @@ from bunking.financial_aid.calculator import ApplicationInputs, CalcResult, Requ
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.decisions import DecisionEvent, EventKind, fold_rounds
 from bunking.financial_aid.decisions.pricing import RequestToPrice, lock_snapshot, price_request
-from bunking.financial_aid.decisions.rounds import REPRODUCED
+from bunking.financial_aid.decisions.rounds import FROM_CAMPMINDER, REPRODUCED
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules import AidRules
 from scripts.financial_aid.parity_check import (
@@ -564,6 +564,22 @@ def _match(award: SheetAward, requests: Sequence[LoadRequest]) -> tuple[LoadRequ
     return None, "no_request"
 
 
+class OverrideError(ValueError):
+    """The overrides file can't be applied as written: the load stops and writes nothing."""
+
+
+def _refuse_wide_skips(awards: Sequence[SheetAward], overrides: Sequence[LoadOverride]) -> None:
+    """A skip without `sheet_row` must name one row: on two (a duplicate pair) it would skip both, silently."""
+    for rule in overrides:
+        if rule.decision == "skip" and rule.sheet_row is None:
+            rows = [a.row for a in awards if rule.picks(a)]
+            if len(rows) > 1:
+                raise OverrideError(
+                    f"a skip override (person {rule.person}, sheet session {rule.sheet_session}) matches sheet rows "
+                    f"{', '.join(map(str, rows))}: give it the sheet_row to skip"
+                )
+
+
 def _override_words(rule: LoadOverride) -> dict[str, Any]:
     """What a loaded row's receipt keeps of the override it was loaded under."""
     if rule.decision == "session":
@@ -644,6 +660,7 @@ def plan_load(
     used: set[LoadOverride] = set()
     applied: dict[int, LoadOverride] = {}  # sheet row -> the override it was loaded under
     matched: dict[str, list[SheetAward]] = defaultdict(list)
+    _refuse_wide_skips(awards, overrides)
     for award in awards:
         picked = [o for o in overrides if o.on_sheet_row and o.picks(award)]
         used.update(picked)
@@ -731,7 +748,7 @@ def plan_load(
         plan.campminder_on_loaded += cm_only
         plan.creates.append(
             PlannedEvent(
-                rid, 1, "post", cm_only, lock_source=REPRODUCED, rules_version=rules_version,
+                rid, 1, "post", cm_only, lock_source=FROM_CAMPMINDER, rules_version=rules_version,
                 snapshot={
                     "round": 1, "decided": str(cm_only), "result": None, "inputs": None,
                     "reproduced": {
@@ -1112,9 +1129,13 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
     requests, existing, lines = await asyncio.gather(
         store.requests(args.year), store.events_of(args.year), store.camp_lines(args.year)
     )
-    plan = plan_load(
-        awards, requests, lines, existing, rules, rules_version=version, trackers=trackers, overrides=overrides
-    )
+    try:
+        plan = plan_load(
+            awards, requests, lines, existing, rules, rules_version=version, trackers=trackers, overrides=overrides
+        )
+    except OverrideError as exc:  # ids only, as the person fixing the local file needs them
+        print(f"{exc}. Nothing was written.", file=sys.stderr)
+        return 2
     write_report(args.report, plan.report)
     print(f"rules: {args.year} v{version}")
     for line in summary_lines(plan, totals):

@@ -246,7 +246,7 @@ from bunking.financial_aid.decisions import (
     with_holds,
 )
 from bunking.financial_aid.decisions.budget import outside_part
-from bunking.financial_aid.decisions.rounds import REPRODUCED
+from bunking.financial_aid.decisions.rounds import LOADED
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.financial_aid.rules.schema import AidRules, SectionName
@@ -1375,7 +1375,7 @@ REPRODUCED_READ_ONLY: Final = "2026's decisions are reproduced from the repaired
 def _reproduced_refusal(rounds: Mapping[int, RoundState], n: int | None = None) -> str | None:
     """The refusal for a write on a reproduced round (round n), or on any round of a request that carries one."""
     states = rounds.values() if n is None else [rounds.get(n, RoundState(round=n))]
-    return REPRODUCED_READ_ONLY if any(state.lock_source == REPRODUCED for state in states) else None
+    return REPRODUCED_READ_ONLY if any(state.lock_source in LOADED for state in states) else None
 
 
 def _ask_refusal(rounds: Mapping[int, RoundState], n: int) -> str | None:
@@ -2967,7 +2967,7 @@ class FinancialAidDecisionsService:
             state = rounds.get(request_id, {}).get(n, RoundState(round=n))
             if state.accepted == body.accepted:
                 unchanged += 1
-            elif state.lock_source == REPRODUCED:
+            elif state.lock_source in LOADED:
                 problems.append(f"{request_id}: {REPRODUCED_READ_ONLY}")
             elif body.accepted and (why_cancelled := _cancelled_refusal(cancelled.get(request_id))) is not None:
                 problems.append(f"{request_id}: {why_cancelled}")

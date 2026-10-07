@@ -13,7 +13,7 @@ import api.schemas.financial_aid_decisions as schemas
 from api.schemas.financial_aid_decisions import AcceptedIn, AskIn, Round3AmountIn, RoundRef, UnpostIn
 from api.services.financial_aid_decisions_service import DecisionRefusedError
 from bunking.financial_aid.decisions import DecisionEvent
-from bunking.financial_aid.decisions.rounds import REPRODUCED
+from bunking.financial_aid.decisions.rounds import FROM_CAMPMINDER, REPRODUCED
 from tests.unit.api.services.decisions_fakes import ACTOR, EMMA, T0, FakeDecisionsStore, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import _service
@@ -26,7 +26,7 @@ def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(schemas, "today", lambda: date(2027, 12, 31))
 
 
-def _reproduced(store: FakeDecisionsStore, n: int = 1, *, accepted: bool = False) -> None:
+def _reproduced(store: FakeDecisionsStore, n: int = 1, *, accepted: bool = False, source: str = REPRODUCED) -> None:
     seed_request(store, EMMA)
     store.events.append(
         DecisionEvent(
@@ -36,7 +36,7 @@ def _reproduced(store: FakeDecisionsStore, n: int = 1, *, accepted: bool = False
             kind="post",
             created=T0,
             amount=Decimal(1500),
-            lock_source=REPRODUCED,
+            lock_source=source,
             rules_version=1,
             snapshot={"pool": "camp_pool", "counts_toward_budget": True},
             actor="system:2026-sheet-load",
@@ -86,3 +86,19 @@ async def test_the_season_still_reads_a_reproduced_round_as_posted() -> None:
     _reproduced(store)
     (row,) = (await _service(store).grid(YEAR)).rows
     assert (row.rounds[0].status, row.rounds[0].posted, row.rounds[0].lock_source) == ("posted", 1500.0, REPRODUCED)
+
+
+@pytest.mark.asyncio
+async def test_a_campminder_only_round_is_read_only_too() -> None:
+    # The load's "CampMinder only" Round 1 (owner, 10-07): a request the sheet has no row for. Same D67 guards.
+    store = FakeDecisionsStore()
+    _reproduced(store, source=FROM_CAMPMINDER)
+    service = _service(store)
+    with pytest.raises(DecisionRefusedError, match=READ_ONLY):
+        await service.undo_posted(YEAR, UnpostIn(request_id=EMMA, round=1, reason="x"), ACTOR)
+    body = AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True)
+    with pytest.raises(DecisionRefusedError, match=READ_ONLY):
+        await service.tick_accepted(YEAR, body, ACTOR)
+    with pytest.raises(DecisionRefusedError, match=READ_ONLY):
+        await service.key_ask(EMMA, AskIn(round=2, amount=Decimal(400), asked_on=date(2027, 4, 1)), ACTOR)
+    assert store.operations == []

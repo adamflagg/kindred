@@ -14,7 +14,7 @@ func TestAidDecisionsReproducedMigrationAddsTheReproducedLock(t *testing.T) {
 	up := readAidMigrationUp(t, aidDecisionsReproducedMigration)
 	for _, want := range []string{
 		`findCollectionByNameOrId("aid_decisions")`,
-		`getByName("lock_source").values = ["tick", "ledger", "placement", "reproduced"]`,
+		`getByName("lock_source").values = ["tick", "ledger", "placement", "reproduced", "campminder_only"]`,
 	} {
 		if !strings.Contains(up, want) {
 			t.Errorf("up must contain %q", want)
