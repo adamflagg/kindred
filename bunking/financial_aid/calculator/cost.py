@@ -56,7 +56,7 @@ def resolve_cost(request: RequestInputs, rules: AidRules) -> CostResolution:
             return _unknown("the request has no session")
         price = rules.cost.tuition.get(request.session_cm_id)
         if price is None and request.ag_parent_cm_id is not None:
-            price = rules.cost.tuition.get(request.ag_parent_cm_id)  # an AG session's own price first (spec §8)
+            price = rules.cost.tuition.get(request.ag_parent_cm_id)  # no own price: the AG parent's (spec §8)
         if price is None:
             return _unknown(f"no tuition for session {request.session_cm_id}")
         return CostResolution(amount=price, source="catalog")

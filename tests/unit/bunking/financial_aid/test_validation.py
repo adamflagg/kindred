@@ -564,6 +564,7 @@ def test_an_ag_session_with_a_parent_is_never_listed_as_missing_tuition() -> Non
 
 
 def test_an_ag_session_with_no_parent_still_needs_its_own_tuition() -> None:
+    """Pin. Passes before and after A1: an AG session with no parent has no parent's line to carry the warning."""
     rules = with_lever(fictional_rules(), "programs.summer.session_cm_ids", [1000101, 1000102, 1000199])
     context = _context(SessionRef(cm_id=1000199, session_type="ag"))
     assert "tuition_missing" in validate_rules(rules, context).codes()
@@ -773,7 +774,7 @@ def test_an_unclaimed_ag_session_follows_a_parent_the_programs_claim_by_type() -
 
 
 def test_an_ag_session_with_a_parent_is_never_listed_as_missing_a_family_rate() -> None:
-    """Spec §8 applies to a per-person program's list too."""
+    """Regression guard. Spec §8 applies to a per-person program's list too."""
     rules = with_lever(fictional_rules(), "programs.family_camp.session_cm_ids", [1000201, 1000199])
     with_parent = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000201))
     assert "family_rate_missing" not in validate_rules(rules, with_parent).codes()
