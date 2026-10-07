@@ -118,6 +118,8 @@ export interface CaseworkOffers {
   readonly session: boolean
   readonly duplicate: boolean
   readonly headcount: boolean
+  /** Set Cost…: a live request on a season whose rules are approved (the server's own gate). */
+  readonly cost: boolean
 }
 
 /**
@@ -138,7 +140,10 @@ function offersShares(row: ApiAidGridRow): boolean {
  * belongs to a Family Camp household request; Settle session and Keep the other request are for the
  * two statuses intake sets. Headcount and Settle session are also hidden on a cancelled request.
  */
-export function caseworkOffers(row: ApiAidGridRow): CaseworkOffers {
+export function caseworkOffers(
+  row: ApiAidGridRow,
+  { rulesApproved }: { rulesApproved: boolean }
+): CaseworkOffers {
   const closed = row.request_status === 'duplicate' || row.request_status === 'withdrawn'
   // Lead's parity call (final review m6), matching the owner's Payer Shares… ruling: a cancelled
   // request (CampMinder's or Kindred's) takes no Headcount… or Settle Session… — reopen first. The
@@ -149,5 +154,6 @@ export function caseworkOffers(row: ApiAidGridRow): CaseworkOffers {
     session: !cancelled && row.request_status === 'unmatched_session',
     duplicate: row.request_status === 'duplicate_pending',
     headcount: !closed && !cancelled && row.person_cm_id === 0 && row.program_key === 'family_camp',
+    cost: row.request_status === 'active' && !cancelled && rulesApproved,
   }
 }

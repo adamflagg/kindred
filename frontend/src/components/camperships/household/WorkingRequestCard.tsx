@@ -85,7 +85,7 @@ export function WorkingRequestCard({
   const edit =
     open?.kind === 'edit' && cardEdits(request.row).includes(open.edit) ? open.edit : null
   const editing = edit !== null
-  const offers = caseworkOffers(request.row)
+  const offers = caseworkOffers(request.row, { rulesApproved: page.rules_version !== null })
   // Like `edit`: a form shows only while the request still takes it, so a refetch that moves the
   // status (Settle session saved elsewhere, the request withdrawn) cannot leave a form that is refused.
   const form =
