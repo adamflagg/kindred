@@ -3862,6 +3862,10 @@ export type DraftOut = {
     | 'quality_checks'
     | 'milestones'
   >
+  /**
+   * Built On Version
+   */
+  built_on_version?: number | null
 }
 
 /**

@@ -1766,3 +1766,97 @@ async def test_the_workspace_names_last_seasons_approved_version_and_the_draft_w
     assert workspace.last_rules_version == 1
     assert workspace.draft is not None
     assert workspace.draft.differs_in == ("award_tables", "awards")
+
+
+# --- a draft remembers the rules version it was built on (A11) -------------------------------------------------------
+
+
+async def _v2_approved(world: World) -> None:
+    """v1 is in effect, then someone approves a v2 that moves the minimum: the rules in effect are v2 now."""
+    await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)
+    await world.rules.approve_sections(YEAR, 2, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+
+
+@pytest.mark.asyncio
+async def test_a_draft_kept_after_a_new_approval_records_the_version_it_was_built_on() -> None:
+    """Owner 10-07: v1 in effect when the draft starts; v2 approved mid-session; the kept option's origin is v1."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules")
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await _v2_approved(world)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 1
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.built_on_version == 1
+
+
+@pytest.mark.asyncio
+async def test_a_first_release_with_no_row_records_the_version_in_effect_then() -> None:
+    """The implicit draft (no row yet) is the rules in effect: its first released setting records that version."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await _v2_approved(world)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 1
+
+
+@pytest.mark.asyncio
+async def test_each_later_trail_row_copies_the_previous_rows_version() -> None:
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules")
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await _v2_approved(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "6"), FINANCE)  # recorded after v2 is in effect
+    versions = [row.built_on_version for row in world.store.rows[AID_SCENARIO_TRAIL]]
+    assert versions == [1, 1, 1]
+
+
+@pytest.mark.asyncio
+async def test_a_started_option_and_its_trail_row_record_the_version_it_started_from() -> None:
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.start_from_rules(YEAR, FINANCE)
+    [row] = world.store.rows[AID_SCENARIO_TRAIL]
+    assert row.built_on_version == 1
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.built_on_version == 1
+
+
+@pytest.mark.asyncio
+async def test_a_draft_loaded_from_a_kept_option_is_built_on_that_options_version() -> None:
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.start_from_rules(YEAR, FINANCE)  # A, origin v1
+    await _v2_approved(world)
+    await world.service.load(YEAR, TREASURER, option="A")
+    draft = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert draft is not None
+    assert draft.built_on_version == 1
+
+
+@pytest.mark.asyncio
+async def test_a_draft_with_no_recorded_version_reports_none_and_keeps_the_old_behaviour() -> None:
+    """Rows from before the field read 0 = not recorded: the draft says None and a keep uses the version read now."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules")
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    for row in world.store.rows[AID_SCENARIO_TRAIL]:
+        row.built_on_version = 0
+    await _v2_approved(world)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.built_on_version is None
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 2

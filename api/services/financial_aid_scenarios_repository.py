@@ -94,6 +94,8 @@ class TrailRecord:
     # The service's trail read sets it: the row's figures are from an older snapshot than the newest. A record read
     # straight from the store leaves it False.
     stale: bool = False
+    # The rules version the draft was started on (A11); 0 = not recorded (a row from before the field).
+    built_on_version: int = 0
 
 
 def _json(value: Any) -> Any:
@@ -162,6 +164,7 @@ def trail_record(record: Any) -> TrailRecord:
         snapshot=_text(record, "snapshot"),
         kept_code=_text(record, "kept_code"),
         created=_created(record),
+        built_on_version=int(getattr(record, "built_on_version", 0) or 0),
     )
 
 

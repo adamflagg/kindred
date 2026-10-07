@@ -247,6 +247,8 @@ class Draft:
     same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
     projection: Projection | None = None
     differs_in: tuple[SectionName, ...] = ()  # the sections whose content differs from the rules in effect (Task 67)
+    # The rules version the draft was started on (A11); None for a row that recorded none (before the field).
+    built_on_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -717,6 +719,7 @@ class FinancialAidScenariosService:
         change: str,
         results: ScenarioResults,
         meta: SnapshotMeta,
+        built_on_version: int,
         kept_code: str = "",
     ) -> AidWrite:
         return AidWrite(
@@ -732,6 +735,7 @@ class FinancialAidScenariosService:
                 "results": results.model_dump(mode="json"),
                 "snapshot": meta.id,
                 "kept_code": kept_code,
+                "built_on_version": built_on_version,
             },
             after={"change": change, "from_code": from_code, "kept_code": kept_code},
             log_action="record",
@@ -773,11 +777,20 @@ class FinancialAidScenariosService:
             entity_id=f"{year}:{code}",
         )
 
-    async def _record(self, year: int, actor: str, *, document: AidRules, from_code: str, change: str) -> None:
+    async def _record(
+        self, year: int, actor: str, *, document: AidRules, from_code: str, change: str, built_on_version: int
+    ) -> None:
         meta = await self._meta(year)
         priced = await (await self._pricer(meta))(document)
         write = self._trail_write(
-            year, actor, document=document, from_code=from_code, change=change, results=priced.results, meta=meta
+            year,
+            actor,
+            document=document,
+            from_code=from_code,
+            change=change,
+            results=priced.results,
+            meta=meta,
+            built_on_version=built_on_version,
         )
         await self._store.commit([write], actor=actor)
 
@@ -826,6 +839,7 @@ class FinancialAidScenariosService:
             same_as=_same_as(document, options, effect),
             projection=projection,
             differs_in=tuple(changed_sections(effect.document, document)),
+            built_on_version=(row.built_on_version or None) if row is not None and recorded is not None else None,
         )
 
     # --- freeze, start, read ------------------------------------------------------------------------
@@ -899,6 +913,7 @@ class FinancialAidScenariosService:
                 change=f"started from {_rules_name(rules)}",
                 results=priced.results,
                 meta=meta,
+                built_on_version=rules.version,
                 kept_code=code,
             ),
         ]
@@ -943,6 +958,7 @@ class FinancialAidScenariosService:
                 change=f"started from {name}",
                 results=priced.results,
                 meta=meta,
+                built_on_version=rules.version,
                 kept_code=code,
             ),
         ]
@@ -1083,15 +1099,23 @@ class FinancialAidScenariosService:
         document = derive_weights(document)
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
-            current, from_code = (await self._source(year, "rules")).document, "rules"
+            first = await self._source(year, "rules")
+            current, from_code, built_on = first.document, "rules", first.version
         else:
-            current, from_code = row.document, _from(row)
+            current, from_code, built_on = row.document, _from(row), row.built_on_version
         locked = await self.scenario_locked_sections(year)
         moved = [s for s in locked if getattr(derive_weights(current), s) != getattr(document, s)]
         if moved:
             raise ScenarioSectionLockedError(moved)
         if document != current:
-            await self._record(year, actor, document=document, from_code=from_code, change=describe(current, document))
+            await self._record(
+                year,
+                actor,
+                document=document,
+                from_code=from_code,
+                change=describe(current, document),
+                built_on_version=built_on,
+            )
         return await self._draft(year, actor)
 
     async def load(
@@ -1109,17 +1133,20 @@ class FinancialAidScenariosService:
         if sum(source is not None for source in (option, trail_row, start)) != 1:
             raise ScenarioRefusedError("Load one kept option, one trail row or one starting point")
         from_code: str
+        built_on: int
         if start is not None:
             effect = await self._in_effect(year)
             from_code = start
             if start == "last_rules":  # the merge and its two checks run once: the document and its name
                 document, name = await self._last_rules_document(year, effect, words="rules in effect")
                 change = f"started from {name}"
+                built_on = effect.version
             else:
                 built = await self._built_in(year, start, effect=effect)
                 if start == "rules_draft" and built.document == effect.document:
                     raise ScenarioRefusedError("The rules draft matches the rules in effect")
                 document = built.document
+                built_on = built.version
                 if start == "rules":
                     change = f"started from {self._effect_name(effect)}"
                 else:
@@ -1127,15 +1154,19 @@ class FinancialAidScenariosService:
         elif option is not None:
             found = await self._option(year, option)
             document, from_code, change = found.document, found.code, f"loaded {found.code} into the draft"
+            built_on = found.origin_version
         else:
             row = await self._store.trail_row(cast(str, trail_row))
             if row is None or row.year != year or row.document is None:
                 raise ScenarioNotFoundError(f"{year} has no trail row {trail_row}")
             document, from_code = row.document, _from(row)
             change = f"loaded {row.actor}'s row of {_when(row)} into the draft"
+            built_on = row.built_on_version
         current = await self._store.latest_trail(year, actor)
         if current is None or current.document != document or _from(current) != from_code:
-            await self._record(year, actor, document=document, from_code=from_code, change=change)
+            await self._record(
+                year, actor, document=document, from_code=from_code, change=change, built_on_version=built_on
+            )
         return await self._draft(year, actor)
 
     async def keep(self, year: int, actor: str, *, name: str | None = None) -> KeptOption:
@@ -1171,7 +1202,9 @@ class FinancialAidScenariosService:
             code=code,
             starting_point="",
             from_code="" if source.code in BUILT_IN_STARTS else source.code,
-            origin_version=source.version,
+            origin_version=(row.built_on_version or source.version)
+            if source.code in BUILT_IN_STARTS
+            else source.version,
             name=stored,
             document=row.document,
             priced=priced,

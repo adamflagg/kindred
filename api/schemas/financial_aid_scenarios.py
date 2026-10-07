@@ -138,6 +138,8 @@ class DraftOut(BaseModel):
     same_as: str | None = None  # a kept code whose document equals the draft, else "rules", else None
     # the sections whose content differs from the rules in effect: the strip's "posted Round 1 stands"
     differs_in: list[SectionName] = Field(default_factory=list)
+    # the rules version the draft was started on (A11); None for a draft recorded before the field
+    built_on_version: int | None = None
 
 
 class WorkspaceOut(BaseModel):
