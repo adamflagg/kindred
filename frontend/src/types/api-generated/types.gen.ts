@@ -2622,6 +2622,14 @@ export type CommitteeOut = {
    * Round2 Not In Tiers
    */
   round2_not_in_tiers: number
+  /**
+   * Requests
+   */
+  requests?: number
+  /**
+   * Average Round1
+   */
+  average_round1?: number | null
 }
 
 /**
@@ -2693,6 +2701,18 @@ export type CompareColumnOut = {
    */
   down: number | null
   committee?: CommitteeOut | null
+  /**
+   * Version
+   */
+  version?: number | null
+  /**
+   * Approved At
+   */
+  approved_at?: string | null
+  /**
+   * Via
+   */
+  via?: string | null
 }
 
 /**
@@ -2709,6 +2729,10 @@ export type CompareOut = {
    */
   columns: Array<CompareColumnOut>
   last_season?: LastSeasonOut | null
+  /**
+   * Last Rules Refused
+   */
+  last_rules_refused?: string | null
 }
 
 /**
@@ -3851,7 +3875,7 @@ export type DraftOut = {
   /**
    * Trail Id
    */
-  trail_id: string
+  trail_id?: string | null
   /**
    * From Code
    */
@@ -3870,7 +3894,12 @@ export type DraftOut = {
   /**
    * Recorded At
    */
-  recorded_at: string
+  recorded_at?: string | null
+  source_document?: AidRulesOutput | null
+  /**
+   * Same As
+   */
+  same_as?: string | null
 }
 
 /**
@@ -8203,6 +8232,10 @@ export type JumpIndexResponse = {
  */
 export type KeepIn = {
   /**
+   * Name
+   */
+  name?: string | null
+  /**
    * Starting Point
    */
   starting_point?: boolean
@@ -8212,7 +8245,8 @@ export type KeepIn = {
  * LastSeasonOut
  *
  * Last season's posted money, at each lock, beside the compare (RPT-17's and RPT-32's last-season columns).
- * `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate.
+ * `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate. The pools are
+ * each pool's Posted cells, empty until last season is loaded.
  */
 export type LastSeasonOut = {
   /**
@@ -8232,6 +8266,14 @@ export type LastSeasonOut = {
    */
   rules_version: number | null
   view: CommitteeOut | null
+  /**
+   * Round3
+   */
+  round3?: number
+  /**
+   * Pools
+   */
+  pools?: Array<PoolResultOut>
 }
 
 /**
@@ -8435,6 +8477,10 @@ export type LoadIn = {
    * Trail Row
    */
   trail_row?: string | null
+  /**
+   * Start
+   */
+  start?: 'rules' | 'rules_draft' | 'last_rules' | null
 }
 
 /**
@@ -9234,6 +9280,18 @@ export type OptionOut = {
    * Stale
    */
   stale: boolean
+  /**
+   * Name
+   */
+  name?: string
+  /**
+   * Promotable
+   */
+  promotable?: boolean
+  /**
+   * Blocked
+   */
+  blocked?: string | null
 }
 
 /**
@@ -11456,6 +11514,10 @@ export type PoolResultOut = {
    * Round1 Unmet
    */
   round1_unmet: number
+  /**
+   * Allocated
+   */
+  allocated?: number | null
 }
 
 /**
@@ -11940,6 +12002,10 @@ export type PromotionPreviewOut = {
     | 'quality_checks'
     | 'milestones'
   >
+  /**
+   * Fixed Kept
+   */
+  fixed_kept?: number
 }
 
 /**
@@ -12683,6 +12749,19 @@ export type RemainingResponse = {
 }
 
 /**
+ * RenameIn
+ *
+ * A kept option's new name: trimmed, at most 80 characters. A blank one reaches the service, which refuses it
+ * in staff words ("Give it a name").
+ */
+export type RenameIn = {
+  /**
+   * Name
+   */
+  name: string
+}
+
+/**
  * ReplacementWarningOut
  */
 export type ReplacementWarningOut = {
@@ -13227,6 +13306,10 @@ export type ResultsOut = {
    */
   round1_allocated: number | null
   /**
+   * Allocated
+   */
+  allocated?: number | null
+  /**
    * Round1 Remaining
    */
   round1_remaining: number | null
@@ -13271,6 +13354,14 @@ export type ResultsOut = {
    * Round2 Remaining
    */
   round2_remaining?: number | null
+  /**
+   * Appeals
+   */
+  appeals?: number
+  /**
+   * Appeals Asked
+   */
+  appeals_asked?: number
 }
 
 /**
@@ -17050,6 +17141,10 @@ export type TierRowOut = {
    * Asked
    */
   asked?: number | null
+  /**
+   * Round2
+   */
+  round2?: number
 }
 
 /**
@@ -18599,6 +18694,32 @@ export type WorkspaceOut = {
    * Options
    */
   options: Array<OptionOut>
+  /**
+   * Rules Draft Version
+   */
+  rules_draft_version?: number | null
+  /**
+   * Locked Sections
+   */
+  locked_sections?: Array<
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'quality_checks'
+    | 'milestones'
+  >
+  /**
+   * Locked By Round
+   */
+  locked_by_round?: number | null
 }
 
 /**
@@ -25235,6 +25356,42 @@ export type KeepScenarioApiFinancialAidScenariosYearKeepPostResponses = {
 export type KeepScenarioApiFinancialAidScenariosYearKeepPostResponse =
   KeepScenarioApiFinancialAidScenariosYearKeepPostResponses[keyof KeepScenarioApiFinancialAidScenariosYearKeepPostResponses]
 
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchData = {
+  body: RenameIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Code
+     */
+    code: string
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/options/{code}'
+}
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchError =
+  RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchErrors[keyof RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchErrors]
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: OptionOut
+}
+
+export type RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponse =
+  RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponses[keyof RenameScenarioOptionApiFinancialAidScenariosYearOptionsCodePatchResponses]
+
 export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
   body?: never
   path: {
@@ -25260,6 +25417,18 @@ export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
      * Last Season
      */
     last_season?: boolean
+    /**
+     * Rules
+     */
+    rules?: boolean
+    /**
+     * Last Rules
+     */
+    last_rules?: boolean
+    /**
+     * Draft
+     */
+    draft?: boolean
   }
   url: '/api/financial-aid/scenarios/{year}/compare'
 }

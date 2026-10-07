@@ -167,6 +167,7 @@ from api.schemas.financial_aid_scenarios import (
     PoolResultOut,
     PromotionPreviewOut,
     PromotionSectionOut,
+    RenameIn,
     ReplacementWarningOut,
     RequestSetOut,
     ResultsOut,
@@ -287,6 +288,7 @@ from api.services.financial_aid_scenarios_service import (
     RequestSetChoice,
     ScenarioConflictError,
     ScenarioNotFoundError,
+    ScenarioSectionLockedError,
     Workspace,
 )
 from api.services.financial_aid_season_history import HistoryFilter, HistoryNotFoundError, SeasonHistoryService
@@ -298,11 +300,19 @@ from bunking.branding import get_branding, get_camp_name
 from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.programs import ProgramsCount, ProgramsPart
 from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
-from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
+from bunking.financial_aid.scenarios import (
+    CommitteeView,
+    PoolResult,
+    ScenarioResults,
+    all_rows_totals,
+    appeal_totals,
+    round2_by_tier_totals,
+)
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
@@ -1173,6 +1183,8 @@ def _scenarios() -> FinancialAidScenariosService:
 
 
 def _scenarios_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, ScenarioSectionLockedError):
+        return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, (ScenarioNotFoundError, RulesNotFoundError, SnapshotMissingError)):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ReplacementNotAcknowledgedError):
@@ -1196,7 +1208,24 @@ def _cents(value: Decimal | None) -> float | None:
     return money(value) if value is not None else None
 
 
+def _pool_out(p: PoolResult) -> PoolResultOut:
+    return PoolResultOut(
+        pool=p.pool,
+        label=p.label,
+        round1=money(p.round1),
+        round2=money(p.round2),
+        round3=money(p.round3),
+        round1_allocated=_cents(p.round1_allocated),
+        round1_remaining=_cents(p.round1_remaining),
+        remaining=_cents(p.remaining),
+        round1_unmet=money(p.round1_unmet),
+        allocated=_cents(p.round1_allocated),
+    )
+
+
 def _results_out(r: ScenarioResults) -> ResultsOut:
+    round2s = round2_by_tier_totals(r)
+    appeals, appeals_asked = appeal_totals(r)
     return ResultsOut(
         requests=r.requests,
         families=r.families,
@@ -1204,29 +1233,22 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         round2=money(r.round2),
         round3=money(r.round3),
         round1_allocated=_cents(r.round1_allocated),
+        allocated=_cents(r.round1_allocated),
         round1_remaining=_cents(r.round1_remaining),
         remaining=_cents(r.remaining),
         at_minimum=r.at_minimum,
         held=r.held,
         held_asked=money(r.held_asked),
         round1_unmet=money(r.round1_unmet),
-        pools=[
-            PoolResultOut(
-                pool=p.pool,
-                label=p.label,
-                round1=money(p.round1),
-                round2=money(p.round2),
-                round3=money(p.round3),
-                round1_allocated=_cents(p.round1_allocated),
-                round1_remaining=_cents(p.round1_remaining),
-                remaining=_cents(p.remaining),
-                round1_unmet=money(p.round1_unmet),
-            )
-            for p in r.pools
-        ],
+        pools=[_pool_out(p) for p in r.pools],
         by_tier=[
             TierRowOut(
-                tier=t.tier, requests=t.requests, families=t.families, round1=money(t.round1), asked=_cents(t.asked)
+                tier=t.tier,
+                requests=t.requests,
+                families=t.families,
+                round1=money(t.round1),
+                asked=_cents(t.asked),
+                round2=money(round2s.get(t.tier, ZERO)),
             )
             for t in r.by_tier
         ],
@@ -1234,6 +1256,8 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
         round2_allocated=_cents(r.round2_allocated),
         round2_remaining=_cents(r.round2_remaining),
+        appeals=appeals,
+        appeals_asked=money(appeals_asked),
     )
 
 
@@ -1242,6 +1266,7 @@ def _pct(value: Decimal | None) -> float | None:
 
 
 def _committee_out(view: CommitteeView) -> CommitteeOut:
+    requests, average = all_rows_totals(view)
     return CommitteeOut(
         budget_total=_cents(view.budget_total),
         round1=money(view.round1),
@@ -1283,6 +1308,8 @@ def _committee_out(view: CommitteeView) -> CommitteeOut:
         ],
         not_in_tiers=money(view.not_in_tiers),
         round2_not_in_tiers=money(view.round2_not_in_tiers),
+        requests=requests,
+        average_round1=_cents(average),
     )
 
 
@@ -1293,6 +1320,8 @@ def _last_season_out(last: LastSeason) -> LastSeasonOut:
         label=last.label,
         rules_version=last.rules_version,
         view=_committee_out(last.view) if last.view is not None else None,
+        round3=money(last.round3),
+        pools=[_pool_out(p) for p in last.pools],
     )
 
 
@@ -1318,6 +1347,9 @@ def _option_out(kept: KeptOption) -> OptionOut:
         kept_at=r.created,
         results=_results_out(r.results),
         stale=kept.stale,
+        name=kept.name,
+        promotable=kept.promotable,
+        blocked=kept.blocked,
     )
 
 
@@ -1331,6 +1363,8 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         results=_results_out(draft.results) if draft.results is not None else None,
         report=draft.report,
         recorded_at=draft.recorded_at,
+        source_document=draft.source_document,
+        same_as=draft.same_as,
     )
 
 
@@ -1342,6 +1376,9 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
         snapshot=_snapshot_out(workspace.snapshot) if workspace.snapshot is not None else None,
         draft=_scenario_draft_out(workspace.draft) if workspace.draft is not None else None,
         options=[_option_out(kept) for kept in workspace.options],
+        rules_draft_version=workspace.rules_draft_version,
+        locked_sections=list(workspace.locked_sections),
+        locked_by_round=workspace.locked_by_round,
     )
 
 
@@ -1359,6 +1396,9 @@ def _column_out(column: CompareColumn) -> CompareColumnOut:
         up=column.up,
         down=column.down,
         committee=_committee_out(column.committee) if column.committee is not None else None,
+        version=column.version,
+        approved_at=column.approved_at,
+        via=column.via,
     )
 
 
@@ -1377,7 +1417,7 @@ def _trail_row_out(row: TrailRecord) -> TrailRowOut:
     )
 
 
-def _preview_out(code: str, preview: PromotionPreview) -> PromotionPreviewOut:
+def _preview_out(code: str, preview: PromotionPreview, *, fixed_kept: int = 0) -> PromotionPreviewOut:
     return PromotionPreviewOut(
         code=code,
         origin_version=preview.origin_version,
@@ -1395,6 +1435,7 @@ def _preview_out(code: str, preview: PromotionPreview) -> PromotionPreviewOut:
             for s in preview.sections
         ],
         unchanged=list(preview.unchanged),
+        fixed_kept=fixed_kept,
     )
 
 
@@ -1466,9 +1507,11 @@ async def save_scenario_draft(year: _Year, body: DocumentIn, user: AuthUser = _R
 
 @router.post("/scenarios/{year}/draft/load", response_model=DraftOut)
 async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES) -> DraftOut:
-    """A kept option or any trail row into your draft; recorded, so nothing is lost."""
+    """A kept option, any trail row or a built-in start into your draft; recorded, so nothing is lost."""
     try:
-        draft = await _scenarios().load(year, user.email, option=body.option, trail_row=body.trail_row)
+        draft = await _scenarios().load(
+            year, user.email, option=body.option, trail_row=body.trail_row, start=body.start
+        )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
     return _scenario_draft_out(draft)
@@ -1476,9 +1519,23 @@ async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES
 
 @router.post("/scenarios/{year}/keep", response_model=OptionOut)
 async def keep_scenario(year: _Year, body: KeepIn, user: AuthUser = _RULES) -> OptionOut:
-    """Keep your draft: a variant under its starting point, or a new starting point (two levels, D38)."""
+    """Keep your draft as the next lettered option (Scenarios addendum §S11.1), named or, when blank, by its label."""
     try:
-        return _option_out(await _scenarios().keep(year, user.email, starting_point=body.starting_point))
+        return _option_out(
+            await _scenarios().keep(year, user.email, name=body.name, starting_point=body.starting_point)
+        )
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.patch("/scenarios/{year}/options/{code}", response_model=OptionOut)
+async def rename_scenario_option(
+    year: _Year, code: _OptionCodePath, body: RenameIn, user: AuthUser = _RULES
+) -> OptionOut:
+    """Rename a kept option (Scenarios addendum §S11.1): one operation; everyone with `rules` sees it. 404 for an
+    unknown code; 422 for a blank name."""
+    try:
+        return _option_out(await _scenarios().rename(year, code, body.name, user.email))
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 
@@ -1490,17 +1547,28 @@ async def compare_scenarios(
     through_round1_deadline: bool = Query(default=False),
     received_through: date | None = Query(default=None),
     last_season: bool = Query(default=False),
+    rules: bool = Query(default=False),
+    last_rules: bool = Query(default=False),
+    draft: bool = Query(default=True),
     user: AuthUser = _RULES,
 ) -> CompareOut:
-    """Your draft first, beside up to 4 kept options, all on the current snapshot, on a request set when asked
-    (D138: the Round 1 deadline switch or a received-through date, not both). Each column carries what the committee
+    """The rules in effect, last season's rules, your draft (each when asked) and up to 4 kept options, in §S5 H's
+    fixed order, all on the current snapshot and each counted against the rules in effect, on a request set when
+    asked (D138: the Round 1 deadline switch or a received-through date, not both). Each column carries what the committee
     compares (RPT-17, RPT-32); `last_season` adds last season's posted money beside them."""
     if through_round1_deadline and received_through is not None:
         raise HTTPException(status_code=422, detail="Choose the Round 1 deadline or a received-through date, not both")
     request_set: RequestSetChoice | None = "round1_deadline" if through_round1_deadline else received_through
     try:
         comparison = await _scenarios().compare(
-            year, user.email, codes, request_set=request_set, last_season=last_season
+            year,
+            user.email,
+            codes,
+            request_set=request_set,
+            last_season=last_season,
+            rules=rules,
+            last_rules=last_rules,
+            draft=draft,
         )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
@@ -1509,6 +1577,7 @@ async def compare_scenarios(
         snapshot=_snapshot_out(comparison.snapshot),
         columns=[_column_out(c) for c in comparison.columns],
         last_season=_last_season_out(comparison.last_season) if comparison.last_season is not None else None,
+        last_rules_refused=comparison.last_rules_refused,
     )
 
 
@@ -1575,7 +1644,8 @@ async def preview_scenario_rules_draft(
 ) -> PromotionPreviewOut:
     """ "Make B2 the rules draft": each section it changes, old -> new, and whose edit it would replace (D39)."""
     try:
-        return _preview_out(code, await _scenarios().rules_draft_preview(year, code))
+        promotion = await _scenarios().rules_draft_preview(year, code)
+        return _preview_out(code, promotion.preview, fixed_kept=promotion.fixed_kept)
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 

@@ -352,7 +352,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
             {draft !== null && (
               <FitToBudget
                 document={draft.document}
-                trailId={draft.trail_id}
+                trailId={draft.trail_id ?? ''}
                 disabled={work.busy !== null || moving}
                 editing={setting !== null}
                 onUse={(fitted, askedOn) =>
@@ -451,7 +451,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   {(data) => (
                     <ScenarioTrail
                       trail={data}
-                      current={draft.trail_id}
+                      current={draft.trail_id ?? ''}
                       stale={trail.isPlaceholderData}
                       onLoad={(id) => void work.load({ trail_row: id })}
                       onPage={(next) => view.set('trail_page', next === 1 ? null : String(next))}

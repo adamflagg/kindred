@@ -13,11 +13,13 @@ from bunking.financial_aid.decisions import PricedRequest, RequestToPrice, Round
 from bunking.financial_aid.scenarios import (
     CRITERIA_BUT,
     CRITERIA_SECTIONS,
+    CommitteeView,
     Round2CompareRow,
     Round2TierRow,
     TableTierRow,
     TierCompareRow,
     TierRow,
+    all_rows_totals,
     budget_unset,
     committee_view,
     has_last_seasons_criteria,
@@ -389,3 +391,60 @@ def test_a_grant_reduced_fund_round_still_keeps_its_whole_camp_award_in_last_sea
     fund = _priced("req-g", 1000001, 60000, rounds={1: _lock(1, "3100", counts_toward_budget=False)})
     fund = replace(fund, rounds=(replace(fund.rounds[0], extra=Decimal(1100), extra_outside=True),))
     assert posted_season([fund], {}, RULES).round1 == Decimal(2000)
+
+
+def _compare_row(table: str | None, tier: int, requests: int, round1: str) -> TierCompareRow:
+    return TierCompareRow(
+        table=table,
+        tier=tier,
+        requests=requests,
+        families=requests,
+        asked=Decimal(0),
+        average_ask=None,
+        fee_pct=None,
+        pct_of_ask=None,
+        round1=Decimal(round1),
+        average_round1=None,
+        held=0,
+    )
+
+
+def test_the_seasons_requests_and_average_round1_sum_the_all_rows_and_the_server_divides() -> None:
+    """Disagreement 3: the All rows are per tier; the season-wide average is their Round 1 over their requests, cents
+    half up: (1,500 + 2,101) / 3 = 1,200.333... -> 1,200.33. The per-table rows are not counted twice."""
+    view = CommitteeView(
+        budget_total=Decimal(500000),
+        round1=Decimal(3601),
+        round1_pct_of_budget=None,
+        round2=Decimal(0),
+        round1_by_tier=(
+            _compare_row("camp", 2, 1, "1500"),
+            _compare_row("camp", 3, 2, "2101"),
+            _compare_row(None, 2, 1, "1500"),
+            _compare_row(None, 3, 2, "2101"),
+        ),
+        round2_by_tier=(),
+        not_in_tiers=Decimal(0),
+        round2_not_in_tiers=Decimal(0),
+    )
+    assert all_rows_totals(view) == (3, Decimal("1200.33"))
+
+
+def test_no_request_counted_has_no_average() -> None:
+    empty = CommitteeView(Decimal(1), Decimal(0), None, Decimal(0), (), (), Decimal(0), Decimal(0))
+    assert all_rows_totals(empty) == (0, None)
+
+
+def test_the_average_rounds_cents_half_up() -> None:
+    """Regression guard: 1,000.01 / 2 = 500.005 reads 500.01 half up (500.00 half-even or down)."""
+    view = CommitteeView(
+        Decimal(1),
+        Decimal("1000.01"),
+        None,
+        Decimal(0),
+        (_compare_row(None, 1, 2, "1000.01"),),
+        (),
+        Decimal(0),
+        Decimal(0),
+    )
+    assert all_rows_totals(view) == (2, Decimal("500.01"))

@@ -9,12 +9,13 @@ One draft per person, kept options and the trail, all over one frozen season:
   who and when; loading an option or any row (`load`) appends one too (neither appends when the draft already is
   that), so nothing is ever lost and nothing asks "discard?" (D38). `evaluate` prices without writing: the live
   preview while a slider moves. The draft is "from" its row's kept code, else the row's from code.
-- **Keep** locks the draft as an immutable, unnamed option with a spoken code: a variant (A1, B2) under the starting
-  point you work from, or a new starting point (B, C). Two levels, never deeper (D36, D38). "Start from the rules"
-  makes a starting point from the rules draft (the latest version).
-- **Compare** puts the draft beside up to 4 kept options; **Fit to budget** finds the tier shift that uses Round 1's
-  allocation; **sensitivity** is what one step of each sizing setting moves Round 1 by. **Make it the rules draft**
-  hands a kept option to the rules service (SP9a's promotion).
+- **Keep** locks the draft as an immutable option with the next flat letter (A, B, C: Scenarios addendum §S11.1)
+  and a name (staff's, else its label); `rename` changes the name only. Options kept before names (A1, B2) keep
+  their codes. "Start from the rules" makes a starting point from the rules draft (the latest version).
+- **Compare** puts the rules in effect, last season's rules and the draft (each when asked) beside up to 4 kept
+  options, every column counted against the rules in effect (§S11.2); **Fit to budget** finds the tier shift that
+  uses Round 1's allocation; **sensitivity** is what one step of each sizing setting moves Round 1 by. **Make it the
+  rules draft** hands a kept option to the rules service (SP9a's promotion).
 
 **What the committee compares** (sub-project 9c; spec §9.7 RPT-17, RPT-18, RPT-32) rides on compare: each column
 carries its Round 1 and Round 2 tables by tier and its share of the total budget, and, when asked, last season's
@@ -29,11 +30,11 @@ inputs (plan Decision 15).
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol, cast
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
@@ -41,23 +42,31 @@ from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, Se
 from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
+    ROUND_SECTIONS,
     FinancialAidRulesService,
     PromotionPreview,
     RulesDraft,
     RulesVersion,
+    YearMismatchError,
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.decisions import PoolBudget, season_budget
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import split_by_received
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationIssue, ValidationReport
+from bunking.financial_aid.rules.derived import derive_weights
+from bunking.financial_aid.rules.fixed import reset_fixed_document
+from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import (
+    CARD_TITLES,
     SIZING_LEVERS,
     CommitteeView,
     FitResult,
+    PoolResult,
     RequestSet,
     RequestSetNote,
     ScenarioResults,
@@ -80,10 +89,38 @@ from bunking.financial_aid.scenarios import (
     tightest_pool,
     up_down,
     uses_budget_placeholder,
-    variant_code,
 )
 
 MAX_COMPARED: Final = 4
+
+StartFrom = Literal["rules", "rules_draft", "last_rules"]
+# The built-in starting points (§S11.2): a draft from one writes no kept option, and reads its source NOW, so
+# "was …" always means what is in effect (or in the rules draft, or last season's merge) when it is read.
+BUILT_IN_STARTS: Final[tuple[StartFrom, ...]] = ("rules", "rules_draft", "last_rules")
+NAME_MAX: Final = 80  # aid_scenario_options.name (1500000233_aid_scenario_names.js)
+
+
+def _fit_name(text: str) -> str:
+    return text if len(text) <= NAME_MAX else text[: NAME_MAX - 1] + "…"
+
+
+# The sections the sandbox edits (§S11.3). Of `awards` only the minimum is on screen, but a section locks whole, as on
+# Rules.
+SCENARIO_SECTIONS: Final[tuple[SectionName, ...]] = ("tiers", "award_tables", "round2", "awards", "equity", "income")
+
+
+def _round_of(section: SectionName) -> int:
+    return next((n for n, read in ROUND_SECTIONS.items() if section in read), 1)
+
+
+def locked_words(sections: Sequence[SectionName]) -> str:
+    """§S11.3: "Income tiers and Round 1 award table are locked: Round 1 is posted, so Scenarios models only what is
+    still open." The card titles are the Rules tab's; the round is the latest that read any of them."""
+    titles = [CARD_TITLES.get(s, s) for s in sections]
+    names = titles[0] if len(titles) == 1 else f"{', '.join(titles[:-1])} and {titles[-1]}"
+    verb = "is" if len(titles) == 1 else "are"
+    posted = max(_round_of(s) for s in sections)
+    return f"{names} {verb} locked: Round {posted} is posted, so Scenarios models only what is still open."
 
 
 class ScenarioNotFoundError(FinancialAidError, LookupError):
@@ -96,6 +133,21 @@ class ScenarioRefusedError(FinancialAidError, ValueError):
 
 class ScenarioConflictError(FinancialAidError, ValueError):
     """The action would duplicate something that exists (a keep that matches a kept option)."""
+
+
+class ScenarioSectionLockedError(FinancialAidError, ValueError):
+    """An edit or a promotion that changes a section a posted round locked (§S11.3): 409 {"message", "sections"},
+    the shape ReplacementNotAcknowledgedError has. Only Scenarios refuses: Rules can still correct a locked section."""
+
+    def __init__(self, sections: Sequence[SectionName]) -> None:
+        super().__init__(locked_words(sections))
+        self.sections = list(sections)
+
+
+@dataclass(frozen=True)
+class ScenarioPromotion:
+    preview: PromotionPreview
+    fixed_kept: int  # fixed settings left as the rules draft has them (§S11.3)
 
 
 SeasonCapture = Callable[[int], Awaitable[SeasonSnapshot]]
@@ -135,15 +187,27 @@ class Evaluation:
 
 
 @dataclass(frozen=True)
-class Draft:
-    trail_id: str
-    from_code: str
+class Source:
+    """What a draft is from: a kept option, or a built-in start read now; `version` is the rules version it was
+    taken from (an option's origin_version), which a keep records as the new option's origin."""
+
+    code: str
     document: AidRules
-    label: str  # what differs from the option it is from
+    version: int
+
+
+@dataclass(frozen=True)
+class Draft:
+    trail_id: str | None  # None: nothing recorded yet, so the draft is the rules in effect (§S11.2)
+    from_code: str  # a kept code, or "rules" | "rules_draft" | "last_rules"
+    document: AidRules
+    label: str  # what differs from its source, in staff words (§S11.6)
     changes: tuple[FieldChange, ...]  # the same, setting by setting (the screen's amber)
     results: ScenarioResults | None  # None before any freeze
     report: ValidationReport
-    recorded_at: datetime
+    recorded_at: datetime | None
+    source_document: AidRules | None = None  # what it is from, read now: the strip's starting point and "was"
+    same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
 
 
 @dataclass(frozen=True)
@@ -151,6 +215,13 @@ class KeptOption:
     record: OptionRecord
     label: str
     stale: bool  # its results are from an older snapshot
+    promotable: bool = False  # Make it the Rules Draft would copy something (Task 57)
+    blocked: str | None = None  # why it can't, in staff words (Task 57)
+
+    @property
+    def name(self) -> str:
+        """The staff-given name, else the generated label (§S11.1: an option kept before names has none)."""
+        return self.record.name or self.label
 
 
 @dataclass(frozen=True)
@@ -161,18 +232,24 @@ class Workspace:
     draft: Draft | None
     options: tuple[KeptOption, ...]
     pricing_version: int | None = None  # the version pricing the season; None while none does (final review 8)
+    rules_draft_version: int | None = None  # the rules draft's version while it differs from the rules in effect
+    locked_sections: tuple[SectionName, ...] = ()  # a posted round locked these (§S11.3): the screen greys from them
+    locked_by_round: int | None = None  # 2 when round2 is locked, 1 when a Round 1 section is: the lock note's words
 
 
 @dataclass(frozen=True)
 class CompareColumn:
-    code: str  # "draft" for the draft
+    code: str  # "rules", "last_rules", "draft", or a kept code
     label: str
     document: AidRules
-    changes: tuple[FieldChange, ...]  # against its reference: the screen's amber
+    changes: tuple[FieldChange, ...]  # against the rules in effect (N4): a row lines up across columns
     results: ScenarioResults
-    up: int | None  # requests whose Round 1 is higher than in its reference; None for rules as they were
+    up: int | None  # requests whose Round 1 is higher than under the rules in effect (N3); None for the rules column
     down: int | None
     committee: CommitteeView | None = None  # RPT-17 / RPT-32's tables by tier and the budget share (SP9c)
+    version: int | None = None  # the rules version: "rules", or last season's for "last_rules"
+    approved_at: datetime | None = None  # the newest approval among the pricing sections, for "rules"
+    via: str | None = None  # the kept code "rules" was promoted from (promoted_via)
 
 
 @dataclass(frozen=True)
@@ -185,6 +262,8 @@ class LastSeason:
     label: str
     rules_version: int | None  # the version that priced it; None when it has no approved rules
     view: CommitteeView | None
+    round3: Decimal = ZERO
+    pools: tuple[PoolResult, ...] = ()  # each pool's Posted cells (§S11.2)
 
 
 @dataclass(frozen=True)
@@ -192,6 +271,7 @@ class Comparison:
     snapshot: SnapshotMeta
     columns: tuple[CompareColumn, ...]
     last_season: LastSeason | None = None  # only when asked for
+    last_rules_refused: str | None = None  # why the last season's rules column asked for is left out
 
 
 @dataclass(frozen=True)
@@ -252,6 +332,28 @@ def _posted_label(year: int, as_of: datetime | None) -> str:
     return f"{year}, {basis} (as of {local:%b} {local.day}, {local.year})"
 
 
+def _posted_pool(pool: PoolBudget) -> PoolResult:
+    """Last season by pool (§S11.2): each round's Posted cell, never an estimate; Remaining = Allocated − Posted."""
+    round1, round2, round3 = (pool.rounds[n].posted for n in (1, 2, 3))
+    allocated = pool.total.allocated
+    return PoolResult(
+        pool=pool.pool,
+        label=pool.label,
+        round1=round1,
+        round2=round2,
+        round3=round3,
+        round1_allocated=allocated,
+        round1_remaining=None if allocated is None else allocated - round1,
+        remaining=None if allocated is None else allocated - round1 - round2 - round3,
+        round1_unmet=ZERO,
+    )
+
+
+def _approved_at(version: RulesVersion) -> datetime | None:
+    stamps = [version.section_status[name].approved_at for name in PRICING_SECTIONS]
+    return max((stamp for stamp in stamps if stamp is not None), default=None)
+
+
 def _last_season_name(last: RulesVersion, year: int, origin: RulesVersion, *, placeholder: bool = False) -> str:
     """RPT-18's starting point: last season's criteria on this season's applications, the rest from this season's
     rules, named as SP9b names them ("rules draft vN" while that version can't price the season)."""
@@ -268,6 +370,33 @@ def _introduced(before: Sequence[ValidationIssue], after: Sequence[ValidationIss
 
 def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
     return tuple(field_changes(old.model_dump(), new.model_dump()))
+
+
+def _same_as(document: AidRules, options: Mapping[str, OptionRecord], effect: RulesVersion) -> str | None:
+    """A kept code whose document equals `document`, else "rules" when it is the rules in effect (§S11.2). No read of
+    its own: the caller passes the reads it already holds (plan review, minor 3)."""
+    same = next((o.code for o in options.values() if o.document == document), None)
+    return same if same is not None else ("rules" if document == effect.document else None)
+
+
+def _scenario_locked(locked: Collection[SectionName]) -> tuple[SectionName, ...]:
+    return tuple(name for name in SECTION_NAMES if name in SCENARIO_SECTIONS and name in locked)
+
+
+def _promotion_document(rules_draft: AidRules, option: AidRules, origin: AidRules) -> tuple[AidRules, int]:
+    """What a promotion copies (§S11.3; COORDINATOR RULING, PR 10, 2026-10-07): the option with its fixed settings
+    set back to the rules draft's, and the budget total too. A scenario option can never change the budget total: the
+    sandbox has no budget editor, and once Round 1 posts the rules save refuses a new total (BudgetTotalLockedError),
+    which would fail Confirm and leave the option's other changes unlanded. Always applied, locked or not. The pools'
+    shares copy only when the option moved them from `origin`, where it started: otherwise the rules draft's own
+    budget edit since then would look moved and be reverted. The count is of fixed settings only; the total is not
+    one."""
+    document, kept = reset_fixed_document(rules_draft, option)
+    pools = document.budget.pools if document.budget.pools != origin.budget.pools else rules_draft.budget.pools
+    budget = rules_draft.budget.model_copy(update={"pools": pools})
+    if budget != document.budget:
+        document = document.model_copy(update={"budget": budget})
+    return document, kept
 
 
 def _when(row: TrailRecord) -> str:
@@ -301,7 +430,7 @@ class FinancialAidScenariosService:
     async def _meta(self, year: int) -> SnapshotMeta:
         meta = await self._store.latest_snapshot(year)
         if meta is None:
-            raise ScenarioRefusedError(f"Freeze {year}'s applications first: every scenario runs on a frozen snapshot")
+            raise ScenarioRefusedError("Update Applications first: every scenario is priced on the applications held")
         return meta
 
     async def _pricer(self, meta: SnapshotMeta, request_set: RequestSet | None = None) -> Pricer:
@@ -356,6 +485,76 @@ class FinancialAidScenariosService:
         """Last season's approved rules: the version that priced it (every pricing section approved)."""
         return await self._rules.latest_approved(year - 1, PRICING_SECTIONS)
 
+    async def _in_effect(self, year: int) -> RulesVersion:
+        """The rules in effect (§S11.2): the newest version every pricing section approves, or the latest version
+        while none prices the season (the screen then names it "Rules draft · vN")."""
+        return await self._rules.latest_approved(year, PRICING_SECTIONS) or await self._rules.load(year)
+
+    @staticmethod
+    def _effect_name(version: RulesVersion) -> str:
+        return f"Rules v{version.version}" if _prices(version) else f"Rules draft v{version.version}"
+
+    async def _last_rules_document(self, year: int, base: RulesVersion, *, words: str) -> tuple[AidRules, str]:
+        """RPT-18's merge on `base` and its name; refused when last season has no approved rules, or when the merge
+        adds a validation error `base` did not already have (say which). `words` names `base` in the refusal."""
+        last = await self._last_rules(year)
+        if last is None:
+            raise ScenarioRefusedError(f"{year - 1} has no approved rules to start from: load and approve them first")
+        document = last_seasons_criteria(base.document, last.document)
+        introduced = _introduced(
+            (await self._rules.validate_document(base.document)).errors,
+            (await self._rules.validate_document(document)).errors,
+        )
+        if introduced:
+            named = "; ".join(f"{issue.path}: {issue.message}" for issue in introduced[:3])
+            raise ScenarioRefusedError(
+                f"{year - 1}'s criteria don't fit {year}'s {words} ({named}): start from the rules and edit instead"
+            )
+        placeholder = uses_budget_placeholder(base.document, last.document)
+        return document, _last_season_name(last, year, base, placeholder=placeholder)
+
+    async def _built_in(
+        self, year: int, start: StartFrom, *, recorded: AidRules | None = None, effect: RulesVersion | None = None
+    ) -> Source:
+        """A built-in start, read now. A load passes no `recorded` and keeps last season's two refusals. A read of a
+        recorded draft passes the row's own document and never refuses (disagreement 16): the rules in effect can
+        change after the load so that the merge no longer fits, and a 422 there would hide Start from, the only way
+        out. Its source is then the merge without the check, or the row's own document when last season has no
+        approved rules any more (or the merge doesn't even build)."""
+        effect = effect if effect is not None else await self._in_effect(year)
+        if start == "rules":
+            return Source("rules", effect.document, effect.version)
+        if start == "rules_draft":
+            draft = await self._rules.load(year)
+            return Source("rules_draft", draft.document, draft.version)
+        if recorded is None:
+            document, _ = await self._last_rules_document(year, effect, words="rules in effect")
+            return Source("last_rules", document, effect.version)
+        last = await self._last_rules(year)
+        try:
+            merged = recorded if last is None else last_seasons_criteria(effect.document, last.document)
+        except ValueError:  # pydantic's ValidationError: a read never fails for its source
+            merged = recorded
+        return Source("last_rules", merged, effect.version)
+
+    async def _source(
+        self,
+        year: int,
+        code: str,
+        options: Mapping[str, OptionRecord] | None = None,
+        *,
+        recorded: AidRules | None = None,
+        effect: RulesVersion | None = None,
+    ) -> Source:
+        """A draft's source by its row's from code (§S11.2): a kept option's document, or a built-in read now.
+        `recorded`: the row's own document, for a read (see `_built_in`)."""
+        if code in BUILT_IN_STARTS:
+            return await self._built_in(year, code, recorded=recorded, effect=effect)
+        option = (options if options is not None else await self._options(year)).get(code)
+        if option is None:
+            raise ScenarioNotFoundError(f"{year} has no kept option {code}")
+        return Source(option.code, option.document, option.origin_version)
+
     async def _label(
         self, option: OptionRecord, options: Mapping[str, OptionRecord], last: RulesVersion | None = None
     ) -> str:
@@ -381,6 +580,12 @@ class FinancialAidScenariosService:
                     option.document.budget == last.document.budget and option.document.budget != origin.document.budget
                 )
                 return _last_season_name(last, option.year, origin, placeholder=placeholder)
+            if option.name:
+                # Kept from a built-in start with changes (§S11.1): its words are what differs from that start, and
+                # `name` alone carries staff's words. A start kept before names stores none, so it stays "as they
+                # were" below, as SP9b named it, until someone renames it: then it reads as what differs from its
+                # origin too (lead ruling, Task 56: narrow, and truthful once the draft was edited in place).
+                return describe(origin.document, option.document)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)
 
@@ -431,6 +636,7 @@ class FinancialAidScenariosService:
         document: AidRules,
         priced: Priced,
         meta: SnapshotMeta,
+        name: str = "",
     ) -> AidWrite:
         return AidWrite(
             collection=AID_SCENARIO_OPTIONS,
@@ -442,13 +648,14 @@ class FinancialAidScenariosService:
                 "starting_point": starting_point,
                 "from_code": from_code,
                 "origin_version": origin_version,
+                "name": name,
                 "document": document.model_dump(mode="json"),
                 "results": priced.results.model_dump(mode="json"),
                 "round1_by_request": {rid: str(amount) for rid, amount in priced.round1.items()},
                 "snapshot": meta.id,
                 "actor": actor,
             },
-            after={"code": code, "starting_point": starting_point, "from_code": from_code},
+            after={"code": code, "starting_point": starting_point, "from_code": from_code, "name": name},
             log_action="keep",
             entity_id=f"{year}:{code}",
         )
@@ -461,35 +668,47 @@ class FinancialAidScenariosService:
         )
         await self._store.commit([write], actor=actor)
 
-    async def _draft(self, year: int, actor: str) -> Draft | None:
+    async def _draft(
+        self,
+        year: int,
+        actor: str,
+        *,
+        effect: RulesVersion | None = None,
+        options: Mapping[str, OptionRecord] | None = None,
+    ) -> Draft:
+        """`actor`'s draft: their newest trail row, from its source read now. With no row, the rules in effect,
+        unrecorded (§S11.2): the tab opens on them without a write, and the first release records from "rules". A
+        read never refuses for its source (disagreement 16). `effect` and `options` are the caller's reads, when it
+        holds them: the workspace reads each once (plan review, minor 3)."""
         row = await self._store.latest_trail(year, actor)
-        if row is None or row.document is None:
-            return None
-        source = (await self._options(year)).get(_from(row))
-        if source is None:
-            raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")
+        effect = effect if effect is not None else await self._in_effect(year)
+        options = options if options is not None else await self._options(year)
+        recorded = row.document if row is not None else None
+        code = _from(row) if row is not None and recorded is not None else "rules"
+        source = await self._source(year, code, options, recorded=recorded, effect=effect)
+        document = recorded if recorded is not None else source.document
         meta = await self._store.latest_snapshot(year)
         results: ScenarioResults | None = None
-        if meta is not None and row.snapshot == meta.id and row.results is not None:
-            results = row.results
+        stored = row.results if row is not None and recorded is not None and meta is not None else None
+        if meta is not None and row is not None and row.snapshot == meta.id and stored is not None:
+            results = stored
         elif meta is not None:
-            results = (await (await self._pricer(meta))(row.document)).results
+            try:
+                results = (await (await self._pricer(meta))(document)).results
+            except SnapshotError:  # unreadable snapshot: the read still opens, so Update Applications stays reachable
+                results = None
         return Draft(
-            trail_id=row.id,
+            trail_id=row.id if row is not None and recorded is not None else None,
             from_code=source.code,
-            document=row.document,
-            label=describe(source.document, row.document),
-            changes=_changes(source.document, row.document),
+            document=document,
+            label=describe(source.document, document),
+            changes=_changes(source.document, document),
             results=results,
-            report=await self._rules.validate_document(row.document),
-            recorded_at=row.created,
+            report=await self._rules.validate_document(document),
+            recorded_at=row.created if row is not None and recorded is not None else None,
+            source_document=source.document,
+            same_as=_same_as(document, options, effect),
         )
-
-    async def _my_draft(self, year: int, actor: str) -> Draft:
-        draft = await self._draft(year, actor)
-        if draft is None:
-            raise ScenarioRefusedError("Load a kept option into your draft first")
-        return draft
 
     # --- freeze, start, read ------------------------------------------------------------------------
 
@@ -576,21 +795,8 @@ class FinancialAidScenariosService:
         (say which; the draft's own errors never block it). When a kept option already is that document, it is
         loaded instead of copied."""
         meta = await self._meta(year)
-        last = await self._last_rules(year)
-        if last is None:
-            raise ScenarioRefusedError(f"{year - 1} has no approved rules to start from: load and approve them first")
         rules = await self._rules.load(year)
-        document = last_seasons_criteria(rules.document, last.document)
-        placeholder = uses_budget_placeholder(rules.document, last.document)
-        introduced = _introduced(
-            (await self._rules.validate_document(rules.document)).errors,
-            (await self._rules.validate_document(document)).errors,
-        )
-        if introduced:
-            named = "; ".join(f"{issue.path}: {issue.message}" for issue in introduced[:3])
-            raise ScenarioRefusedError(
-                f"{year - 1}'s criteria don't fit {year}'s rules draft ({named}): start from the rules and edit instead"
-            )
+        document, name = await self._last_rules_document(year, rules, words="rules draft")
         options = await self._options(year)
         same = next((o for o in options.values() if o.document == document), None)
         if same is not None:
@@ -615,7 +821,7 @@ class FinancialAidScenariosService:
                 actor,
                 document=document,
                 from_code=code,
-                change=f"started from {_last_season_name(last, year, rules, placeholder=placeholder)}",
+                change=f"started from {name}",
                 results=priced.results,
                 meta=meta,
                 kept_code=code,
@@ -627,23 +833,101 @@ class FinancialAidScenariosService:
     async def workspace(self, year: int, actor: str) -> Workspace:
         rules = await self._rules.load(year)
         pricing = await self._rules.latest_approved(year, PRICING_SECTIONS)
+        effect = pricing or rules  # _in_effect's answer, from the reads already here
         meta = await self._store.latest_snapshot(year)
         options = await self._options(year)
         last = await self._last_rules(year)
+        locked = await self._rules.sections_locked_anywhere(year)
+        promotability = await self._promotability(year, options, rules_draft=rules, effect=effect, locked=locked)
         kept = [
             KeptOption(
-                option, await self._label(option, options, last), stale=meta is None or option.snapshot != meta.id
+                option,
+                await self._label(option, options, last),
+                stale=meta is None or option.snapshot != meta.id,
+                promotable=promotability[option.code][0],
+                blocked=promotability[option.code][1],
             )
             for option in options.values()
         ]
+        greyed = _scenario_locked(locked)
         return Workspace(
             year,
             rules.version,
             meta,
-            await self._draft(year, actor),
+            await self._draft(year, actor, effect=effect, options=options),
             tuple(kept),
             pricing_version=pricing.version if pricing is not None else None,
+            rules_draft_version=rules.version if rules.document != effect.document else None,
+            locked_sections=greyed,
+            locked_by_round=2 if "round2" in greyed else 1 if any(s in ROUND_SECTIONS[1] for s in greyed) else None,
         )
+
+    async def scenario_locked_sections(self, year: int) -> tuple[SectionName, ...]:
+        """The Scenarios sections a posted round has locked in any version (§S11.3), in section order. The screen
+        greys from these alone."""
+        return _scenario_locked(await self._rules.sections_locked_anywhere(year))
+
+    async def _promotion(self, year: int, code: str) -> tuple[OptionRecord, AidRules, ScenarioPromotion]:
+        """What "Make ‹B› the Rules Draft" would copy (§S11.3): the option with its fixed settings set back to the
+        rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere. The
+        rules service's own promote is unchanged for its other callers."""
+        option = await self._option(year, code)
+        if option.document.year != year:
+            raise YearMismatchError(f"The document is for {option.document.year}, not {year}")
+        rules_draft = await self._rules.load(year)
+        origin = (
+            rules_draft
+            if option.origin_version == rules_draft.version
+            else await self._rules.load(year, option.origin_version)
+        )
+        try:
+            document, kept = _promotion_document(rules_draft.document, option.document, origin.document)
+        except ValueError as exc:  # pydantic's ValidationError
+            raise ScenarioRefusedError(f"{code}'s fixed settings don't fit the rules draft") from exc
+        preview = await self._rules.preview_against(rules_draft, origin=origin, document=document)
+        locked = await self._rules.sections_locked_anywhere(year)
+        refused = [entry.section for entry in preview.sections if entry.section in locked]
+        if refused:
+            raise ScenarioSectionLockedError(refused)
+        return option, document, ScenarioPromotion(preview, kept)
+
+    async def _promotability(
+        self,
+        year: int,
+        options: Mapping[str, OptionRecord],
+        *,
+        rules_draft: RulesVersion,
+        effect: RulesVersion,
+        locked: Collection[SectionName],
+    ) -> dict[str, tuple[bool, str | None]]:
+        """Each option's `promotable` and `blocked` words (§S11.3; disagreement 5). It previews on the workspace's
+        own reads of the rules draft, the rules in effect and the locks, and reads each origin version once, so a
+        workspace read stays a handful of reads however many options are kept (plan review, minor 3)."""
+        origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
+        out: dict[str, tuple[bool, str | None]] = {}
+        for code, option in options.items():
+            if option.origin_version not in origins:
+                origins[option.origin_version] = await self._rules.load(year, option.origin_version)
+            try:
+                document, _ = _promotion_document(
+                    rules_draft.document, option.document, origins[option.origin_version].document
+                )
+            except ValueError:
+                out[code] = (False, "its fixed settings don't fit the rules draft")
+                continue
+            preview = await self._rules.preview_against(
+                rules_draft, origin=origins[option.origin_version], document=document
+            )
+            refused = [entry.section for entry in preview.sections if entry.section in locked]
+            if not preview.sections:
+                same = rules_draft.document == effect.document
+                out[code] = (False, "is the rules in effect" if same else "is already the rules draft")
+            elif refused:
+                posted = max(_round_of(s) for s in refused)
+                out[code] = (False, f"changes Round {posted} settings, locked since Round {posted} posted")
+            else:
+                out[code] = (True, None)
+        return out
 
     async def trail(self, year: int, *, page: int, per_page: int) -> tuple[tuple[TrailRecord, ...], int]:
         """A page of everyone's trail, newest first; each row says whether its figures are from an older snapshot."""
@@ -665,60 +949,91 @@ class FinancialAidScenariosService:
         """`document` with the relative sizing settings applied, priced on the frozen season (only the requests
         received through a date, when `request_set` asks). Writes nothing."""
         self._check_year(year, document)
-        moved = apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta)
+        moved = derive_weights(apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta))
         chosen = await self._request_set(year, request_set)
         priced = await (await self._pricer(await self._meta(year), chosen))(moved)
         return Evaluation(moved, priced.results, await self._rules.validate_document(moved))
 
     async def save_draft(self, year: int, document: AidRules, actor: str) -> Draft:
-        """A released setting: the draft becomes `document`, recorded in the trail with what changed."""
+        """A released setting: the draft becomes `document`, recorded in the trail with what changed. With nothing
+        recorded yet, the release records from "rules" (§S11.2)."""
         self._check_year(year, document)
+        document = derive_weights(document)
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
-            raise ScenarioRefusedError("Load a kept option into your draft first")
-        if row.document != document:
-            await self._record(
-                year, actor, document=document, from_code=_from(row), change=describe(row.document, document)
-            )
-        return await self._my_draft(year, actor)
+            current, from_code = (await self._source(year, "rules")).document, "rules"
+        else:
+            current, from_code = row.document, _from(row)
+        locked = await self.scenario_locked_sections(year)
+        moved = [s for s in locked if getattr(derive_weights(current), s) != getattr(document, s)]
+        if moved:
+            raise ScenarioSectionLockedError(moved)
+        if document != current:
+            await self._record(year, actor, document=document, from_code=from_code, change=describe(current, document))
+        return await self._draft(year, actor)
 
-    async def load(self, year: int, actor: str, *, option: str | None = None, trail_row: str | None = None) -> Draft:
-        """A kept option, or any trail row, into `actor`'s draft, recorded as a trail row of its own."""
-        if option is not None and trail_row is None:
+    async def load(
+        self,
+        year: int,
+        actor: str,
+        *,
+        option: str | None = None,
+        trail_row: str | None = None,
+        start: StartFrom | None = None,
+    ) -> Draft:
+        """A kept option, any trail row, or a built-in start into `actor`'s draft, recorded as a trail row of its
+        own (§S11.2). A built-in writes no kept option. The rules draft is refused while it matches the rules in
+        effect, so a stale screen can't start from it."""
+        if sum(source is not None for source in (option, trail_row, start)) != 1:
+            raise ScenarioRefusedError("Load one kept option, one trail row or one starting point")
+        from_code: str
+        if start is not None:
+            effect = await self._in_effect(year)
+            from_code = start
+            if start == "last_rules":  # the merge and its two checks run once: the document and its name
+                document, name = await self._last_rules_document(year, effect, words="rules in effect")
+                change = f"started from {name}"
+            else:
+                built = await self._built_in(year, start, effect=effect)
+                if start == "rules_draft" and built.document == effect.document:
+                    raise ScenarioRefusedError("The rules draft matches the rules in effect")
+                document = built.document
+                if start == "rules":
+                    change = f"started from {self._effect_name(effect)}"
+                else:
+                    change = f"started from Rules draft v{built.version}"
+        elif option is not None:
             found = await self._option(year, option)
             document, from_code, change = found.document, found.code, f"loaded {found.code} into the draft"
-        elif trail_row is not None and option is None:
-            row = await self._store.trail_row(trail_row)
+        else:
+            row = await self._store.trail_row(cast(str, trail_row))
             if row is None or row.year != year or row.document is None:
                 raise ScenarioNotFoundError(f"{year} has no trail row {trail_row}")
             document, from_code = row.document, _from(row)
             change = f"loaded {row.actor}'s row of {_when(row)} into the draft"
-        else:
-            raise ScenarioRefusedError("Load one kept option or one trail row")
         current = await self._store.latest_trail(year, actor)
         if current is None or current.document != document or _from(current) != from_code:
             await self._record(year, actor, document=document, from_code=from_code, change=change)
-        return await self._my_draft(year, actor)
+        return await self._draft(year, actor)
 
-    async def keep(self, year: int, actor: str, *, starting_point: bool) -> KeptOption:
-        """Lock `actor`'s draft as a kept option: a variant under the starting point it is from, or a new starting
-        point. One operation: the option and the trail row's kept code."""
+    async def keep(self, year: int, actor: str, *, name: str | None = None, starting_point: bool = False) -> KeptOption:
+        """Lock `actor`'s recorded draft as the next flat lettered option (§S11.1). The letter counts only starting
+        points, so variants kept before PR 10 (A1, B2) never take one: A, A1 and B kept make C next. A blank or
+        missing `name` stores the draft's label, cut to the name field. `starting_point` is accepted and ignored
+        until PR 12 stops sending it. One operation: the option and the trail row's kept code."""
+        del starting_point
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
-            raise ScenarioRefusedError("Load a kept option into your draft first")
+            raise ScenarioRefusedError("Your draft is the rules in effect: change a setting before keeping it")
         options = await self._options(year)
         same = next((o for o in options.values() if o.document == row.document), None)
         if same is not None:
             raise ScenarioConflictError(f"Your draft is the same as {same.code}: there is nothing new to keep")
-        source = options.get(_from(row))
-        if source is None:
-            raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")
-        if starting_point:
-            head = ""
-            code = starting_point_code(sum(1 for o in options.values() if not o.starting_point))
-        else:
-            head = source.starting_point or source.code
-            code = variant_code(head, sum(1 for o in options.values() if o.starting_point == head))
+        if row.document == (await self._in_effect(year)).document:
+            raise ScenarioRefusedError("Your draft is the rules in effect: change a setting before keeping it")
+        source = await self._source(year, _from(row), options, recorded=row.document)
+        code = starting_point_code(sum(1 for o in options.values() if not o.starting_point))
+        stored = _fit_name((name or "").strip() or describe(source.document, row.document))
         meta = await self._meta(year)
         priced = await (await self._pricer(meta))(row.document)
         mark = AidWrite(
@@ -734,9 +1049,10 @@ class FinancialAidScenariosService:
             year,
             actor,
             code=code,
-            starting_point=head,
-            from_code=source.code,
-            origin_version=source.origin_version,
+            starting_point="",
+            from_code="" if source.code in BUILT_IN_STARTS else source.code,
+            origin_version=source.version,
+            name=stored,
             document=row.document,
             priced=priced,
             meta=meta,
@@ -744,6 +1060,34 @@ class FinancialAidScenariosService:
         await self._store.commit([option, mark], actor=actor)
         options = await self._options(year)
         return KeptOption(options[code], await self._label(options[code], options), stale=False)
+
+    async def rename(self, year: int, code: str, name: str, actor: str) -> KeptOption:
+        """A kept option's name (§S11.1): one 4a operation updating the name only; the document and results stay
+        immutable. Kept options are shared by everyone with `rules`, so a rename shows for all of them."""
+        cleaned = name.strip()
+        if not cleaned:
+            raise ScenarioRefusedError("Give it a name")
+        options = await self._options(year)
+        option = options.get(code)
+        if option is None:
+            raise ScenarioNotFoundError(f"{year} has no kept option {code}")
+        if _fit_name(cleaned) != option.name:
+            write = AidWrite(
+                collection=AID_SCENARIO_OPTIONS,
+                action="update",
+                year=year,
+                record_id=option.id,
+                before={"name": option.name},
+                data={"name": _fit_name(cleaned)},
+                log_action="rename",
+                entity_id=f"{year}:{code}",
+            )
+            await self._store.commit([write], actor=actor)
+            options = await self._options(year)
+        renamed = options[code]
+        meta = await self._store.latest_snapshot(year)
+        label = await self._label(renamed, options, await self._last_rules(year))
+        return KeptOption(renamed, label, stale=meta is None or renamed.snapshot != meta.id)
 
     # --- compare, fit, sensitivity ------------------------------------------------------------------
 
@@ -755,11 +1099,15 @@ class FinancialAidScenariosService:
         *,
         request_set: RequestSetChoice | None = None,
         last_season: bool = False,
+        rules: bool = False,
+        last_rules: bool = False,
+        draft: bool = True,
     ) -> Comparison:
-        """`actor`'s draft first, then up to 4 kept options, every one on the current snapshot. Each shows what
-        differs from its reference (a variant's starting point; a starting point's origin rules; the draft's
-        option), how many requests' Round 1 went up or down against it, and the committee's tables (RPT-17, RPT-32).
-        `last_season` adds last season's posted money beside them (one live read of last season)."""
+        """Columns in §S5 H's fixed order: the rules in effect, last season's rules on these applications, `actor`'s
+        draft, then the kept options asked for, in the order they were kept. Every one is on the current snapshot
+        and counts its changes and its requests up / down against the rules in effect (N3, N4); the rules column's
+        own up / down is None. `draft` defaults on so today's screen is unchanged; PR 12 sends it. `last_season`
+        adds last season's posted money beside them (one live read)."""
         wanted = list(dict.fromkeys(codes))
         if len(wanted) > MAX_COMPARED:
             raise ScenarioRefusedError(f"Compare up to {MAX_COMPARED} kept options beside your draft")
@@ -770,8 +1118,14 @@ class FinancialAidScenariosService:
         meta = await self._meta(year)
         chosen = await self._request_set(year, request_set)
         price = await self._pricer(meta, chosen)
+        effect = await self._in_effect(year)
         last = await self._last_rules(year)
         seen: dict[str, Priced] = {}
+
+        async def of_document(key: str, document: AidRules) -> Priced:
+            if key not in seen:
+                seen[key] = await price(document)
+            return seen[key]
 
         async def of_option(option: OptionRecord) -> Priced:
             # A kept option's stored figures are on every request of its own snapshot: reused only when both hold,
@@ -784,69 +1138,78 @@ class FinancialAidScenariosService:
                 )
             return seen[option.code]
 
-        async def round1_of(option: OptionRecord) -> dict[str, Decimal]:
-            # A reference needed only for up/down: its stored Round 1 by request is enough when it is on this
-            # snapshot and every request, committee rows or not (SP9b's kept options are never priced for them).
-            if option.code in seen:
-                return seen[option.code].round1
-            if option.snapshot == meta.id and chosen is None:
-                return await self._store.option_round1(option.id)
-            return (await of_option(option)).round1
+        # A kept option that IS the rules in effect, on this snapshot and every request, stores their figures: the
+        # rules column and the yardstick read them from it, and the rules are priced only when no such option exists.
+        same = next(
+            (
+                option
+                for option in options.values()
+                if option.document == effect.document and option.snapshot == meta.id and chosen is None
+            ),
+            None,
+        )
 
-        async def of_rules(version: int) -> Priced:
-            key = f"rules v{version}"
-            if key not in seen:
-                seen[key] = await price((await self._rules.load(year, version)).document)
-            return seen[key]
+        async def of_effect() -> Priced:
+            return await of_option(same) if same is not None else await of_document("rules", effect.document)
+
+        # The yardstick needs only Round 1 by request, which a stored option has even without the committee's rows.
+        yardstick = (await of_effect()).round1 if same is None else await self._store.option_round1(same.id)
+
+        def column(code: str, label: str, document: AidRules, priced: Priced, **extra: Any) -> CompareColumn:
+            up, down = (None, None) if code == "rules" else up_down(yardstick, priced.round1)
+            return CompareColumn(
+                code,
+                label,
+                document,
+                _changes(effect.document, document),
+                priced.results,
+                up,
+                down,
+                committee=committee_view(priced.results, document),
+                **extra,
+            )
 
         columns: list[CompareColumn] = []
-        row = await self._store.latest_trail(year, actor)
-        if row is not None and row.document is not None:
-            source = options.get(_from(row))
-            if source is None:
-                raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")  # as the draft read does
-            mine = await price(row.document)
-            up, down = up_down(await round1_of(source), mine.round1)
+        if rules:
             columns.append(
-                CompareColumn(
-                    "draft",
-                    describe(source.document, row.document),
-                    row.document,
-                    _changes(source.document, row.document),
-                    mine.results,
-                    up,
-                    down,
-                    committee=committee_view(mine.results, row.document),
+                column(
+                    "rules",
+                    f"{self._effect_name(effect)} in effect" if _prices(effect) else self._effect_name(effect),
+                    effect.document,
+                    await of_effect(),
+                    version=effect.version,
+                    approved_at=_approved_at(effect) if _prices(effect) else None,
+                    via=await self._rules.promoted_via(year, effect.version),
                 )
             )
-        for code in wanted:
+        refused: str | None = None
+        if last_rules:
+            # The load's two refusals (no approved rules last season; a merge that adds an error) leave this one
+            # column out, in the server's words: they never fail the whole compare (disagreement 16).
+            try:
+                merged, _ = await self._last_rules_document(year, effect, words="rules in effect")
+            except ScenarioRefusedError as exc:
+                refused = str(exc)
+            else:
+                if last is not None:  # with no `last`, _last_rules_document has refused
+                    label = f"{last.year} rules v{last.version}, on these applications"
+                    priced_last = await of_document("last_rules", merged)
+                    columns.append(column("last_rules", label, merged, priced_last, version=last.version))
+        if draft:
+            row = await self._store.latest_trail(year, actor)
+            if row is not None and row.document is not None:
+                source = await self._source(year, _from(row), options, recorded=row.document, effect=effect)
+                priced = await of_document("draft", row.document)
+                columns.append(column("draft", describe(source.document, row.document), row.document, priced))
+        for code in (code for code in options if code in wanted):
             option = options[code]
-            priced = await of_option(option)
-            reference = await self._reference(option, options)
-            up_or_down: tuple[int | None, int | None] = (None, None)  # a start from the rules: nothing to be up from
-            if option.from_code:
-                against = (
-                    await round1_of(options[option.starting_point])
-                    if option.starting_point
-                    else (await of_rules(option.origin_version)).round1
-                )
-                up_or_down = up_down(against, priced.round1)
-            columns.append(
-                CompareColumn(
-                    code,
-                    await self._label(option, options, last),
-                    option.document,
-                    _changes(reference, option.document),
-                    priced.results,
-                    *up_or_down,
-                    committee=committee_view(priced.results, option.document),
-                )
-            )
+            label = await self._label(option, options, last)
+            columns.append(column(code, label, option.document, await of_option(option)))
         previous = await self.last_season(year) if last_season else None
         if previous is not None and previous.loaded and chosen is not None:
             # Last season is always its whole season: say so beside columns priced on part of this one (D138).
             previous = replace(previous, label=f"{previous.label}, every request")
-        return Comparison(meta, tuple(columns), previous)
+        return Comparison(meta, tuple(columns), previous, last_rules_refused=refused)
 
     async def last_season(self, year: int) -> LastSeason:
         """Last season's posted money by tier, read live (RPT-17's and RPT-32's last-season columns): every round
@@ -863,7 +1226,16 @@ class FinancialAidScenariosService:
             return LastSeason(year - 1, False, label, None, None)
         version = season.rules.version if season.rules is not None else None
         label = _posted_label(year - 1, posted.as_of)
-        return LastSeason(year - 1, True, label, version, committee_view(posted, document))
+        budget = season_budget(season.priced.values(), document, outside_grants={})
+        return LastSeason(
+            year - 1,
+            True,
+            label,
+            version,
+            committee_view(posted, document),
+            round3=budget.total.rounds[3].posted,
+            pools=tuple(_posted_pool(pool) for pool in budget.pools),
+        )
 
     async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
         """Fit to budget: the largest shift of every Round 1 table cell that keeps the total row's Round 1 Remaining
@@ -871,6 +1243,7 @@ class FinancialAidScenariosService:
         tightest pool is named as information only; `budget.spillover` is not read. It refuses a request set (owner
         ruling): the fit sizes Round 1 for every request, so it never runs on part of the season."""
         self._check_year(year, document)
+        document = derive_weights(document)
         if request_set is not None:
             raise ScenarioRefusedError("Fit to budget uses every request; turn off the request set.")
         price = await self._pricer(await self._meta(year))
@@ -891,6 +1264,7 @@ class FinancialAidScenariosService:
         """What one step of each sizing setting moves Round 1 by (spec §7.4), on the frozen season. The
         dollar-for-dollar switch's one step is flipping it (D137)."""
         self._check_year(year, document)
+        document = derive_weights(document)
         price = await self._pricer(await self._meta(year), await self._request_set(year, request_set))
         base = (await price(document)).results
         effects: list[LeverEffect] = []
@@ -902,19 +1276,20 @@ class FinancialAidScenariosService:
 
     # --- make it the rules draft --------------------------------------------------------------------
 
-    async def rules_draft_preview(self, year: int, code: str) -> PromotionPreview:
-        option = await self._option(year, code)
-        return await self._rules.promotion_preview(year, origin_version=option.origin_version, document=option.document)
+    async def rules_draft_preview(self, year: int, code: str) -> ScenarioPromotion:
+        _, _, promotion = await self._promotion(year, code)
+        return promotion
 
     async def make_rules_draft(
         self, year: int, code: str, *, base_version: int, acknowledged: Mapping[SectionName, str], actor: str
     ) -> tuple[RulesDraft, int | None]:
-        """ "Make B2 the rules draft" (D39): the rules draft as it is after, and the version it branched from."""
-        option = await self._option(year, code)
+        """ "Make B the rules draft" (D39; §S11.3): refused when it copies a locked section; fixed settings stay as
+        the rules draft has them. The rules draft as it is after, and the version it branched from."""
+        option, document, _ = await self._promotion(year, code)
         saved = await self._rules.promote(
             year,
             origin_version=option.origin_version,
-            document=option.document,
+            document=document,
             base_version=base_version,
             acknowledged=acknowledged,
             actor=actor,

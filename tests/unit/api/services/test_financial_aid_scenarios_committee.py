@@ -480,7 +480,7 @@ async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices
     await world.service.save_draft(
         YEAR, with_levers(intake_rules(), {"award_tables.camp.tiers.2.r1_pct": "80"}), FINANCE
     )
-    await world.service.keep(YEAR, FINANCE, starting_point=False)  # A1, kept with the committee's rows
+    await world.service.keep(YEAR, FINANCE)  # B, kept with the committee's rows
     [start] = [row for row in world.store.rows[AID_SCENARIO_OPTIONS] if row.code == "A"]
     start.results = {**start.results, "committee_rows": False}  # A as SP9b stored it
     priced: list[AidRules] = []
@@ -490,10 +490,11 @@ async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices
         return await price_document(snapshot, document, *args, **kwargs)
 
     monkeypatch.setattr(service_module, "price_document", counting)
-    comparison = await world.service.compare(YEAR, FINANCE, ["A1"])
-    assert len(priced) == 1  # the draft only: A1's figures are stored, and A is only A1's reference
+    comparison = await world.service.compare(YEAR, FINANCE, ["B"])
+    # the draft only: B's figures are stored, and the yardstick is A's stored Round 1 (A is the rules in effect)
+    assert len(priced) == 1
     kept = comparison.columns[1]
-    assert (kept.code, kept.up, kept.down) == ("A1", 1, 0)  # Emma's tier 2 went from 75% to 80%
+    assert (kept.code, kept.up, kept.down) == ("B", 1, 0)  # Emma's tier 2 went from 75% to 80%
 
 
 @pytest.mark.asyncio
@@ -525,3 +526,144 @@ async def test_last_season_without_a_season_read_is_refused() -> None:
 
 async def _no_capture(year: int) -> SeasonSnapshot:
     raise AssertionError("never captured")
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_load_as_a_built_in_start_and_write_no_option() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    draft = await world.service.load(YEAR, FINANCE, start="last_rules")
+    # Emma at 2026's 80% of 2,000 = 1,600; Liam's tier 3 is 55% in both: 1,100.
+    assert (draft.from_code, draft.label) == ("last_rules", "no changes")
+    assert draft.results is not None
+    assert draft.results.round1 == Decimal(2700)
+    assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+    [trail] = (await world.service.trail(YEAR, page=1, per_page=10))[0]
+    assert (trail.from_code, trail.change) == (
+        "last_rules",
+        "started from 2026 v1 rules on 2027's applications, the rest from rules draft v1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_as_a_start_keep_their_two_refusals() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await world.rules.create_version(last_season_rules(), actor=FINANCE)  # a 2026 draft, never approved
+    with pytest.raises(ScenarioRefusedError, match="2026 has no approved rules to start from"):
+        await world.service.load(YEAR, FINANCE, start="last_rules")
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_that_dont_fit_are_refused_as_a_start_too() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"  # 2026 had no teen table
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    with pytest.raises(ScenarioRefusedError, match=r"2026's criteria don't fit 2027's rules in effect \("):
+        await world.service.load(YEAR, FINANCE, start="last_rules")
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+
+
+@pytest.mark.asyncio
+async def test_a_draft_from_last_seasons_rules_still_opens_after_the_rules_in_effect_stop_fitting_them() -> None:
+    """Disagreement 16 (plan review M2): the two refusals guard a load only. 2027 v1 sends teen to the camp table, so
+    2026's rules (no teen table) fit and load. Then v2, which sends teen to its own table, is approved: a new load is
+    refused, but the recorded draft still reads, so finance can still reach Start from."""
+    camp_only = intake_rules().model_dump(mode="json")
+    camp_only["programs"]["teen"]["r1_table"] = "camp"
+    world = await _world(this_season=AidRules.model_validate(camp_only))
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"  # 2026 had no teen table
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    await world.service.load(YEAR, FINANCE, start="last_rules")
+    v2 = await world.rules.create_version(intake_rules(), actor=FINANCE)
+    await world.rules.approve_sections(YEAR, v2.version, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    refused = r"2026's criteria don't fit 2027's rules in effect \(programs\.teen"
+    with pytest.raises(ScenarioRefusedError, match=refused):
+        await world.service.load(YEAR, FINANCE, start="last_rules")
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    # Its source is now the merge on v2 (teen to its own table); the recorded draft kept v1's routing (teen to camp).
+    # Only programs.teen.r1_table differs, one change on the Programs card.
+    assert (draft.from_code, draft.label) == ("last_rules", "Programs and their sessions: 1 change")
+
+
+@pytest.mark.asyncio
+async def test_a_draft_from_last_seasons_rules_reads_as_its_own_document_when_last_season_has_no_rules_any_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard. Disagreement 16, the `last is None` fallback of a read: the source is the row's own document."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    await world.service.load(YEAR, FINANCE, start="last_rules")
+
+    async def _none(year: int) -> None:
+        return None
+
+    monkeypatch.setattr(world.service, "_last_rules", _none)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert (draft.from_code, draft.label) == ("last_rules", "no changes")
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_column_prices_the_merge_on_these_applications() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    [column] = (await world.service.compare(YEAR, FINANCE, [], last_rules=True, draft=False)).columns
+    # Emma at 2026's 80% (1,600, up from 1,500 under the rules in effect); Liam unchanged at 1,100.
+    assert (column.code, column.version, column.results.round1, column.up, column.down) == (
+        "last_rules",
+        1,
+        Decimal(2700),
+        1,
+        0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_season_posted_reads_by_pool_from_its_posted_cells() -> None:
+    """§S11.2: each pool's Posted cell per round; Allocated is last season's pool allocation (500,000 × 80%);
+    Remaining is Allocated − Posted. Never an estimate."""
+    world = await _started()
+    last = (await world.service.compare(YEAR, FINANCE, ["A"], last_season=True)).last_season
+    assert last is not None
+    camp = next(p for p in last.pools if p.pool == "camp_pool")
+    assert (camp.round1, camp.round2, camp.round3) == (Decimal(2600), Decimal(300), Decimal(0))
+    assert (camp.round1_allocated, camp.remaining) == (Decimal("400000.00"), Decimal("397100.00"))
+    assert last.round3 == Decimal(0)
+
+
+@pytest.mark.asyncio
+async def test_a_last_seasons_rules_column_that_does_not_fit_is_left_out_with_the_reason() -> None:
+    """Disagreement 16 (plan review, minor 5): the merge's refusal leaves that one column out and says why; the
+    other columns still price. 2026 had no teen table, and 2027 v1 sends teen to its own."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    comparison = await world.service.compare(YEAR, FINANCE, [], rules=True, last_rules=True, draft=False)
+    assert [c.code for c in comparison.columns] == ["rules"]
+    assert comparison.last_rules_refused is not None
+    assert comparison.last_rules_refused.startswith(
+        "2026's criteria don't fit 2027's rules in effect (programs.teen.r1_table"
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_season_not_loaded_has_no_pools() -> None:
+    world = await _started(last_posted=False)
+    last = (await world.service.compare(YEAR, FINANCE, [], last_season=True)).last_season
+    assert last is not None
+    assert (last.loaded, last.pools, last.round3) == (False, (), Decimal(0))

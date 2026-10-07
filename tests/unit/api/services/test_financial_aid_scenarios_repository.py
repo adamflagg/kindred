@@ -390,3 +390,21 @@ async def test_a_kept_scenario_stored_with_the_culled_keys_still_loads() -> None
     dumped = option.document.model_dump(mode="json")
     assert "stages" not in dumped
     assert "incentives" not in dumped["grants"]
+
+
+def test_an_option_kept_before_names_reads_an_empty_name() -> None:
+    """§S11.1: no backfill. A record with no `name` field (every option kept before PR 10) parses with ""."""
+    assert option_record(_option()).name == ""
+
+
+def test_an_option_reads_its_stored_name() -> None:
+    assert option_record(_option(name="Tighter middle tiers")).name == "Tighter middle tiers"
+
+
+@pytest.mark.asyncio
+async def test_the_options_read_asks_for_the_name() -> None:
+    pb = _pb([_option(name="Tighter middle tiers")])
+    [option] = await ScenarioRepository(pb).options(YEAR)
+    query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert "name" in query["fields"].split(",")
+    assert option.name == "Tighter middle tiers"

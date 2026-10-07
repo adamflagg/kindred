@@ -401,3 +401,13 @@ def has_last_seasons_criteria(document: AidRules, last_season: AidRules) -> bool
     holds. Names RPT-18's starting point by its criteria alone, so an edit in place to this season's rules draft (its
     budget, its routing) never renames it."""
     return _criteria(document) == _criteria(last_season)
+
+
+def all_rows_totals(view: CommitteeView) -> tuple[int, Decimal | None]:
+    """The season's requests counted and its average Round 1 per request (Compare's "Requests priced" for last
+    season and "Average Round 1 per request"; Scenarios addendum disagreement 3): the All rows (table None, one per
+    tier) summed, Round 1 / requests, cents half up. None when no request is counted."""
+    rows = [row for row in view.round1_by_tier if row.table is None]
+    requests = sum(row.requests for row in rows)
+    round1 = sum((row.round1 for row in rows), ZERO)
+    return requests, (round1 / requests).quantize(_CENT, rounding=ROUND_HALF_UP) if requests else None

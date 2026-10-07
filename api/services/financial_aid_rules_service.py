@@ -52,7 +52,7 @@ import json
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -66,7 +66,6 @@ from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes, record_change
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.money import ONE
 from bunking.financial_aid.rules import (
     AidRules,
     SectionName,
@@ -76,6 +75,7 @@ from bunking.financial_aid.rules import (
     ValidationReport,
     validate_rules,
 )
+from bunking.financial_aid.rules.derived import with_current_year_weight
 from bunking.financial_aid.rules.fixed import changed_fixed
 from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
@@ -335,18 +335,9 @@ def _replacement(
 
 
 def _with_derived(section: SectionName, content: Mapping[str, Any]) -> dict[str, Any]:
-    """The settings the server owns (§9.9): the current-year weight is 1 − the prior-year weight, whatever was sent."""
-    out = dict(content)
-    if section != "income" or not isinstance(out.get("weights"), Mapping):
-        return out
-    weights = dict(out["weights"])
-    try:
-        prior = Decimal(str(weights.get("prior_year")))
-    except InvalidOperation:
-        return out  # parse_section names the bad figure
-    weights["current_year"] = str(ONE - prior)
-    out["weights"] = weights
-    return out
+    """The settings the server owns (§9.9): the current-year weight is 1 − the prior-year weight, whatever was sent.
+    The derivation is shared with Scenarios (bunking.financial_aid.rules.derived; addendum §S11.5)."""
+    return with_current_year_weight(content) if section == "income" else dict(content)
 
 
 def _trim_tables(before: AidRules, candidate: AidRules) -> AidRules:
@@ -721,6 +712,40 @@ class FinancialAidRulesService:
                 return version
         return None
 
+    async def sections_locked_anywhere(self, year: int) -> frozenset[SectionName]:
+        """Every section some version of `year` holds locked (Scenarios addendum §S11.3). Any version, not just the
+        latest: a branch lifts the locks in the version it writes (`carry_forward`), as `_budget_total_locked`
+        reasons. Locks come only from a posted round (`lock_writes`), never a date. The stored statuses alone: a
+        document the current schema rejects must not fail a read."""
+        rows = await self._store.list_versions(year)
+        return frozenset(
+            name
+            for row in rows
+            for name, status in status_from_json(_json_object(row, "section_status")).items()
+            if status.state == "locked"
+        )
+
+    async def promoted_via(self, year: int, version: int) -> str | None:
+        """The kept option a version's content was promoted from (Scenarios addendum §S11.2): the `edited_via` in the
+        section_status of `version`'s newest whole-version log row, or None when that row carries none. Approval
+        clears the stamp on the record (it replaces the whole status), but approval rows are per section, so the
+        newest whole-version row is still the promotion's. An update row logs only the sections whose stamp changed
+        (`changed_fields`) and a create row logs them all, so the newest promotion wins. A later save is newer and
+        carries no via, and then the version is no longer the promotion's alone (plan review, minor 4). The log
+        comes in recorded order."""
+        rows = [row for row in await self._store.fetch_log(year) if row.entity_id == _entity_id(year, version)]
+        for row in reversed(rows):
+            status = (row.after or {}).get("section_status")
+            if not isinstance(status, Mapping):
+                continue
+            vias = [
+                str(entry["edited_via"])
+                for name in SECTION_NAMES
+                if isinstance(entry := status.get(name), Mapping) and entry.get("edited_via")
+            ]
+            return vias[0] if vias else None
+        return None
+
     async def draft_view(self, year: int) -> RulesDraft:
         """The Rules tab (spec §7.5, D39): the rules draft (the latest version) section by section, each with its
         status and its changes against the version pricing the season."""
@@ -1024,12 +1049,30 @@ class FinancialAidRulesService:
             raise YearMismatchError(f"The document is for {document.year}, not {year}")
         return await self._preview(await self.load(year), origin_version=origin_version, document=document)
 
-    async def _preview(self, current: RulesVersion, *, origin_version: int, document: AidRules) -> PromotionPreview:
+    async def preview_against(
+        self, current: RulesVersion, *, origin: RulesVersion, document: AidRules
+    ) -> PromotionPreview:
+        """`promotion_preview` on reads the caller already holds: the rules draft and the option's origin version.
+        Scenarios' workspace previews every kept option on one read of each (plan review, minor 3)."""
+        return await self._preview(current, origin_version=origin.version, document=document, origin=origin)
+
+    async def _preview(
+        self,
+        current: RulesVersion,
+        *,
+        origin_version: int,
+        document: AidRules,
+        origin: RulesVersion | None = None,
+    ) -> PromotionPreview:
         """The promotion preview against `current`, the rules draft as ONE read. `promote` checks the tokens against
         this same read, builds its candidate from it and writes with its revision (Ruling 2026-10-01 (plan review)),
         so a save that lands after the read is a conflict, never silently overwritten by the promotion."""
         year = current.year
-        origin = current if origin_version == current.version else await self.load(year, origin_version)
+        origin = (
+            origin
+            if origin is not None
+            else (current if origin_version == current.version else await self.load(year, origin_version))
+        )
         moved = set(changed_sections(origin.document, document))
         now, wanted = current.document.model_dump(), document.model_dump()
         entries = tuple(

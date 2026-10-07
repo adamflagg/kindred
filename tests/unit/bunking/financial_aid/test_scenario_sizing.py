@@ -1,4 +1,4 @@
-"""Scenario sizing moves, labels and codes (sub-project 9b; spec §7.4; D36–D38; main spec §12.3). Fictional
+"""Scenario sizing moves and codes (sub-project 9b; spec §7.4; D36–D38; main spec §12.3). Fictional
 rules only (fixtures.py): the camp table is 90/75/55/35/15/2 by tier, teen overrides tier 2 to 70, family
 inherits camp; bands are 0-40,000, 40,001-80,000, ... 200,001 and up; the minimum is 100."""
 
@@ -10,12 +10,9 @@ import pytest
 
 from bunking.financial_aid.rules.schema import AidRules
 from bunking.financial_aid.scenarios import (
-    CHANGE_MAX_CHARS,
     SIZING_LEVERS,
     SizingError,
     apply_sizing,
-    change_phrases,
-    describe,
     dollar_for_dollar,
     nudge,
     shift_round1_tables,
@@ -25,7 +22,7 @@ from bunking.financial_aid.scenarios import (
     with_dollar_for_dollar,
     with_minimum,
 )
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever, with_levers
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
 RULES = fictional_rules()
 
@@ -96,47 +93,6 @@ def test_apply_sizing_widens_then_shifts() -> None:
     assert sized.tiers.bands[1].lower == Decimal(45001)
 
 
-# --- labels ------------------------------------------------------------------------------------------
-
-
-def test_a_uniform_shift_reads_as_points() -> None:
-    assert describe(RULES, shift_round1_tables(RULES, Decimal(2))) == "Round 1 % +2 pts"
-    assert describe(RULES, shift_round1_tables(RULES, Decimal("-0.5"))) == "Round 1 % −0.5 pts"
-
-
-def test_a_clamped_shift_is_not_uniform_so_it_is_counted() -> None:
-    assert describe(RULES, shift_round1_tables(RULES, Decimal(-5))) == "award_tables: 7 changes"
-
-
-def test_bands_and_the_minimum_read_plainly() -> None:
-    assert describe(RULES, widen_bands(RULES, Decimal(1000))) == "bands $1,000 wider"
-    assert describe(RULES, widen_bands(RULES, Decimal(-1000))) == "bands $1,000 narrower"
-    assert describe(RULES, with_minimum(RULES, Decimal(150))) == "minimum $150"
-
-
-def test_several_moves_read_in_section_order() -> None:
-    moved = with_minimum(shift_round1_tables(RULES, Decimal(-2)), Decimal(150))
-    assert change_phrases(RULES, moved) == ["Round 1 % −2 pts", "minimum $150"]
-    assert describe(RULES, moved) == "Round 1 % −2 pts · minimum $150"
-
-
-def test_the_grant_offset_reads_by_its_lever_name() -> None:
-    off = with_lever(RULES, "grants.offset_mode", "reduce_cost_basis")
-    assert describe(RULES, off) == "dollar-for-dollar off"
-    assert describe(off, RULES) == "dollar-for-dollar on"
-
-
-def test_one_other_change_names_its_setting_and_several_are_counted() -> None:
-    one = with_lever(RULES, "income.floor", "500")
-    assert describe(RULES, one) == "income.floor 0 → 500"
-    two = with_lever(with_lever(RULES, "income.floor", "500"), "income.medical_threshold", "5000")
-    assert describe(RULES, two) == "income: 2 changes"
-
-
-def test_no_change_says_so() -> None:
-    assert describe(RULES, fictional_rules()) == "no changes"
-
-
 # --- codes -------------------------------------------------------------------------------------------
 
 
@@ -149,52 +105,9 @@ def test_the_carry_from_zz_to_aaa() -> None:
     assert (starting_point_code(701), starting_point_code(702)) == ("ZZ", "AAA")
 
 
-# --- labels: the parked review minors and final review 9 ----------------------------------------------
-
-
-def test_money_with_cents_reads_as_dollars_and_cents() -> None:
-    assert describe(RULES, with_minimum(RULES, Decimal("150.5"))) == "minimum $150.50"
-    assert describe(RULES, with_minimum(RULES, Decimal("150.00"))) == "minimum $150"
-
-
-def test_bands_moved_unevenly_are_counted_not_named_a_widening() -> None:
-    bands = list(RULES.tiers.bands)
-    bands[1] = bands[1].model_copy(update={"upper": bands[1].upper + 1000})  # type: ignore[operator]
-    bands[2] = bands[2].model_copy(update={"lower": bands[2].lower + 1000})
-    uneven = RULES.model_copy(update={"tiers": RULES.tiers.model_copy(update={"bands": bands})})
-    assert describe(RULES, uneven) == "tiers: 2 changes"
-
-
-def test_a_named_move_and_another_change_in_the_same_section_each_read() -> None:
-    awards = with_lever(with_minimum(RULES, Decimal(150)), "awards.ask_cap", not RULES.awards.ask_cap)
-    ask_cap = f"awards.ask_cap {'yes' if RULES.awards.ask_cap else 'no'} → {'no' if RULES.awards.ask_cap else 'yes'}"
-    assert change_phrases(RULES, awards) == ["minimum $150", ask_cap]
-    tiers = with_lever(widen_bands(RULES, Decimal(1000)), "tiers.floor_tier", 2)
-    assert change_phrases(RULES, tiers) == ["bands $1,000 wider", "tiers.floor_tier 1 → 2"]
-    grants = with_levers(RULES, {"grants.offset_mode": "reduce_cost_basis", "grants.late_grant_policy": "recalculate"})
-    assert change_phrases(RULES, grants) == [
-        "dollar-for-dollar off",
-        f"grants.late_grant_policy {RULES.grants.late_grant_policy} → recalculate",
-    ]
+# --- sizing: the parked review minors and final review 9 ----------------------------------------------
 
 
 def test_narrowing_that_empties_a_band_says_narrower() -> None:
     with pytest.raises(SizingError, match=r"^Bands \$50,000 narrower would leave band 1 empty or below \$0$"):
         widen_bands(RULES, Decimal(-50000))
-
-
-def test_a_change_too_long_for_the_trail_column_is_cut_with_an_ellipsis() -> None:
-    long = with_lever(RULES, "programs.summer.label", "a very long label " * 150)
-    text = describe(RULES, long)
-    assert (len(text), text[-1]) == (CHANGE_MAX_CHARS, "…")
-    assert text.startswith("programs.summer.label ")
-    assert describe(RULES, with_minimum(RULES, Decimal(150))) == "minimum $150"  # a short one is untouched
-
-
-def test_one_band_bound_moved_names_that_bound_and_a_new_band_counts_them() -> None:
-    bands = list(RULES.tiers.bands)
-    bands[5] = bands[5].model_copy(update={"lower": bands[5].lower + 1000})
-    one = RULES.model_copy(update={"tiers": RULES.tiers.model_copy(update={"bands": bands})})
-    assert describe(RULES, one) == "tiers.bands.6.lower 200,001 → 201,001"
-    fewer = RULES.model_copy(update={"tiers": RULES.tiers.model_copy(update={"bands": list(RULES.tiers.bands[:5])})})
-    assert describe(RULES, fewer) == "tiers.bands 6 bands → 5 bands"

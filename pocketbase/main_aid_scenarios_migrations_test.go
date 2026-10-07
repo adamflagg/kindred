@@ -128,3 +128,65 @@ func TestAidScenariosMigrationDeclaresItsShape(t *testing.T) {
 		}
 	}
 }
+
+// Scenarios addendum §S11.1, §S11.2 (PR 10): kept options get a name, and the trail's from_code takes the three
+// built-in starts. An ALTER: it touches no API rule (all five stay null) and adds no relation.
+const aidScenarioNamesMigration = "pb_migrations/1500000233_aid_scenario_names.js"
+
+// aidMigrationBlock is the part of `up` from the first mention of `marker` to the next app.save(.
+func aidMigrationBlock(t *testing.T, up, marker string) string {
+	t.Helper()
+	_, rest, found := strings.Cut(up, marker)
+	if !found {
+		t.Fatalf("up does not mention %s", marker)
+	}
+	block, _, found := strings.Cut(rest, "app.save(")
+	if !found {
+		t.Fatalf("%s is never saved", marker)
+	}
+	return block
+}
+
+func TestAidScenarioNamesMigrationAddsAnOptionalNameOfEightyCharacters(t *testing.T) {
+	up := readAidMigrationUp(t, aidScenarioNamesMigration)
+	block := aidMigrationBlock(t, up, `findCollectionByNameOrId("aid_scenario_options")`)
+	wants := []string{`new Field({`, `type: "text"`, `name: "name"`, `required: false`, `min: 0`, `max: 80`, `pattern: ""`}
+	for _, want := range wants {
+		if !strings.Contains(block, want) {
+			t.Errorf("aid_scenario_options.name must declare %s", want)
+		}
+	}
+	if !strings.Contains(block, "fields.add(") {
+		t.Error("a new field goes through fields.add(new Field(...)), never a plain object")
+	}
+}
+
+func TestAidScenarioNamesMigrationWidensTheTrailCodeToTheBuiltInStarts(t *testing.T) {
+	up := readAidMigrationUp(t, aidScenarioNamesMigration)
+	block := aidMigrationBlock(t, up, `findCollectionByNameOrId("aid_scenario_trail")`)
+	if !strings.Contains(block, `getByName("from_code")`) {
+		t.Error("must change the existing from_code field in place, so it keeps its id")
+	}
+	if !strings.Contains(block, `"^([A-Z]+[0-9]*|rules|rules_draft|last_rules)$"`) {
+		t.Error("from_code must accept a kept code or one of rules, rules_draft, last_rules")
+	}
+}
+
+func TestAidScenarioNamesMigrationLeavesEveryRuleAndUsesNoOptionsWrapper(t *testing.T) {
+	up := readAidMigrationUp(t, aidScenarioNamesMigration)
+	if aidRuleLine.MatchString(up) {
+		t.Error("an ALTER here sets no API rule: all five stay null (spec 14.3)")
+	}
+	if strings.Contains(up, "options:") {
+		t.Error("uses an options wrapper, which PocketBase v0.23 ignores silently")
+	}
+	raw, err := os.ReadFile(aidScenarioNamesMigration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`removeByName("name")`, `"^[A-Z]+[0-9]*$"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("down must restore 1500000218's shape: missing %s", want)
+		}
+	}
+}

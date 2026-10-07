@@ -47,7 +47,9 @@ from api.services.financial_aid_scenarios_service import (
     LeverEffect,
     ScenarioConflictError,
     ScenarioNotFoundError,
+    ScenarioPromotion,
     ScenarioRefusedError,
+    ScenarioSectionLockedError,
     Sensitivity,
     Workspace,
 )
@@ -63,6 +65,7 @@ from bunking.financial_aid.scenarios import (
     PoolResult,
     RequestSetNote,
     Round2CompareRow,
+    Round2TierRow,
     ScenarioResults,
     SizingError,
     TierCompareRow,
@@ -184,6 +187,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("PUT", "/api/financial-aid/scenarios/2027/draft", DOC_BODY),
     ("POST", "/api/financial-aid/scenarios/2027/draft/load", {"option": "A"}),
     ("POST", "/api/financial-aid/scenarios/2027/keep", {"starting_point": False}),
+    ("PATCH", "/api/financial-aid/scenarios/2027/options/A", {"name": "Every tier up"}),
     ("GET", "/api/financial-aid/scenarios/2027/compare?codes=A", None),
     ("POST", "/api/financial-aid/scenarios/2027/fit-to-budget", DOC_BODY),
     ("POST", "/api/financial-aid/scenarios/2027/sensitivity", DOC_BODY),
@@ -209,6 +213,7 @@ def _stub() -> Any:
     service.save_draft = AsyncMock(return_value=DRAFT)
     service.load = AsyncMock(return_value=DRAFT)
     service.keep = AsyncMock(return_value=KEPT)
+    service.rename = AsyncMock(return_value=KEPT)
     service.compare = AsyncMock(
         return_value=Comparison(META, (CompareColumn("draft", "no changes", DOC, (), RESULTS, None, None),))
     )
@@ -220,7 +225,7 @@ def _stub() -> Any:
         )
     )
     service.trail = AsyncMock(return_value=((ROW,), 1))
-    service.rules_draft_preview = AsyncMock(return_value=PREVIEW)
+    service.rules_draft_preview = AsyncMock(return_value=ScenarioPromotion(PREVIEW, 0))
     service.make_rules_draft = AsyncMock(return_value=(RULES_DRAFT, 1))
     return service
 
@@ -251,8 +256,37 @@ def test_writes_carry_the_callers_email() -> None:
     assert service.freeze.await_args.args == (2027, email)
     assert service.save_draft.await_args.args[2] == email
     assert service.load.await_args.args == (2027, email)
-    assert service.load.await_args.kwargs == {"option": None, "trail_row": "trl000000000001"}
-    assert service.keep.await_args.kwargs == {"starting_point": True}
+    assert service.load.await_args.kwargs == {"option": None, "trail_row": "trl000000000001", "start": None}
+    assert service.keep.await_args.kwargs == {"name": None, "starting_point": True}
+
+
+def test_a_load_takes_a_built_in_start_and_refuses_two_sources_before_the_service() -> None:
+    service = _stub()
+    client = _client()
+    assert client.post("/api/financial-aid/scenarios/2027/draft/load", json={"start": "rules_draft"}).status_code == 200
+    assert service.load.await_args.kwargs == {"option": None, "trail_row": None, "start": "rules_draft"}
+    both = client.post("/api/financial-aid/scenarios/2027/draft/load", json={"option": "A", "start": "rules"})
+    assert both.status_code == 422
+    assert client.post("/api/financial-aid/scenarios/2027/draft/load", json={"start": "nope"}).status_code == 422
+
+
+def test_an_unrecorded_draft_reads_with_no_trail_row_and_says_what_it_is_from() -> None:
+    service = _stub()
+    service.workspace = AsyncMock(
+        return_value=Workspace(
+            2027,
+            2,
+            META,
+            replace(DRAFT, trail_id=None, recorded_at=None, from_code="rules", source_document=DOC, same_as="rules"),
+            (KEPT,),
+            pricing_version=1,
+            rules_draft_version=2,
+        )
+    )
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert (body["rules_draft_version"], body["draft"]["trail_id"], body["draft"]["recorded_at"]) == (2, None, None)
+    assert (body["draft"]["from_code"], body["draft"]["same_as"]) == ("rules", "rules")
+    assert body["draft"]["source_document"]["year"] == 2027
 
 
 def test_evaluate_passes_the_sizing_settings() -> None:
@@ -270,7 +304,13 @@ def test_compare_passes_the_ticked_codes_in_order() -> None:
     service = _stub()
     _client().get("/api/financial-aid/scenarios/2027/compare", params=[("codes", "A1"), ("codes", "B")])
     assert service.compare.await_args.args[2] == ["A1", "B"]
-    assert service.compare.await_args.kwargs == {"request_set": None, "last_season": False}
+    assert service.compare.await_args.kwargs == {
+        "request_set": None,
+        "last_season": False,
+        "rules": False,
+        "last_rules": False,
+        "draft": True,
+    }
 
 
 def test_the_request_set_controls_reach_every_read() -> None:
@@ -283,7 +323,13 @@ def test_the_request_set_controls_reach_every_read() -> None:
     assert service.evaluate.await_args.kwargs["request_set"] == "round1_deadline"
     assert service.fit.await_args.kwargs == {"request_set": date(2027, 2, 1)}
     assert service.sensitivity.await_args.kwargs == {"request_set": date(2027, 2, 1)}
-    assert service.compare.await_args.kwargs == {"request_set": "round1_deadline", "last_season": False}
+    assert service.compare.await_args.kwargs == {
+        "request_set": "round1_deadline",
+        "last_season": False,
+        "rules": False,
+        "last_rules": False,
+        "draft": True,
+    }
 
 
 def test_both_request_set_controls_at_once_is_422_before_the_service() -> None:
@@ -508,7 +554,7 @@ def test_a_stored_season_this_code_cant_read_is_422_and_a_freeze_replaces_it() -
     row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}
     evaluated = client.post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY)
     assert evaluated.status_code == 422
-    assert "freeze the applications again" in evaluated.json()["detail"]
+    assert "Update Applications again" in evaluated.json()["detail"]
     assert client.get("/api/financial-aid/scenarios/2027").status_code == 200
     again = client.post("/api/financial-aid/scenarios/2027/snapshot")
     assert (again.status_code, again.json()["id"] != first["id"]) == (200, True)
@@ -639,8 +685,16 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "pct_of_ask": 60.0,
         "held_asked": 500.0,
     }
+    # Disagreement 3: the season-wide figures ride the wire (COMMITTEE's one All row: 1 request, Round 1 1,500).
+    assert (committee["requests"], committee["average_round1"]) == (1, 1500.0)
     assert (body["last_season"]["year"], body["last_season"]["label"]) == (2026, LAST_LABEL)
-    assert service.compare.await_args.kwargs == {"request_set": None, "last_season": True}
+    assert service.compare.await_args.kwargs == {
+        "request_set": None,
+        "last_season": True,
+        "rules": False,
+        "last_rules": False,
+        "draft": True,
+    }
 
 
 def test_last_season_not_loaded_reads_as_its_label_with_no_figures() -> None:
@@ -648,7 +702,47 @@ def test_last_season_not_loaded_reads_as_its_label_with_no_figures() -> None:
     label = "2026's decisions are not loaded yet, so there is no last-season column"
     service.compare = AsyncMock(return_value=Comparison(META, (), LastSeason(2026, False, label, None, None)))
     body = _client().get("/api/financial-aid/scenarios/2027/compare", params={"last_season": "true"}).json()
-    assert body["last_season"] == {"year": 2026, "loaded": False, "label": label, "rules_version": None, "view": None}
+    assert body["last_season"] == {
+        "year": 2026,
+        "loaded": False,
+        "label": label,
+        "rules_version": None,
+        "view": None,
+        "round3": 0.0,
+        "pools": [],
+    }
+
+
+def test_compare_passes_the_built_in_columns_and_reads_their_version() -> None:
+    service = _stub()
+    rules = CompareColumn(
+        "rules", "Rules v4 in effect", DOC, (), RESULTS, None, None, version=4, approved_at=T, via="B"
+    )
+    service.compare = AsyncMock(
+        return_value=Comparison(
+            META,
+            (rules,),
+            last_rules_refused="2026 has no approved rules to start from: load and approve them first",
+        )
+    )
+    body = (
+        _client()
+        .get(
+            "/api/financial-aid/scenarios/2027/compare",
+            params={"rules": "true", "last_rules": "true", "draft": "false"},
+        )
+        .json()
+    )
+    assert service.compare.await_args.kwargs == {
+        "request_set": None,
+        "last_season": False,
+        "rules": True,
+        "last_rules": True,
+        "draft": False,
+    }
+    [column] = body["columns"]
+    assert (column["code"], column["version"], column["via"], column["up"]) == ("rules", 4, "B", None)
+    assert body["last_rules_refused"] == "2026 has no approved rules to start from: load and approve them first"
 
 
 def test_results_carry_round2s_allocation_and_what_is_left() -> None:
@@ -712,3 +806,83 @@ def test_the_router_gives_the_scenarios_service_the_live_season_read() -> None:
     decisions = patch("api.routers.financial_aid._decisions").start()
     financial_aid._scenarios()
     assert service_class.call_args.kwargs["season_read"] is decisions.return_value.season
+
+
+def test_rename_trims_the_name_passes_the_caller_and_bounds_it() -> None:
+    service = _stub()
+    client = _client()
+    email = persona_user(PERSONA_FINANCE).email
+    response = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "  Every tier up "})
+    assert response.status_code == 200
+    assert service.rename.await_args.args == (2027, "A", "Every tier up", email)
+    too_long = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "x" * 81})
+    assert too_long.status_code == 422
+    service.rename = AsyncMock(side_effect=ScenarioRefusedError("Give it a name"))
+    blank = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "   "})
+    assert (blank.status_code, blank.json()["detail"]) == (422, "Give it a name")
+    service.rename = AsyncMock(side_effect=ScenarioNotFoundError("2027 has no kept option Q"))
+    assert client.patch("/api/financial-aid/scenarios/2027/options/Q", json={"name": "x"}).status_code == 404
+
+
+def test_keep_passes_its_name_and_the_option_reads_with_its_name() -> None:
+    service = _stub()
+    service.keep = AsyncMock(
+        return_value=KeptOption(replace(OPTION, name="Every tier up"), "rules v1 as they were", stale=False)
+    )
+    body = _client().post("/api/financial-aid/scenarios/2027/keep", json={"name": "Every tier up"}).json()
+    assert service.keep.await_args.kwargs == {"name": "Every tier up", "starting_point": False}
+    assert (body["name"], body["label"], body["promotable"], body["blocked"]) == (
+        "Every tier up",
+        "rules v1 as they were",
+        False,
+        None,
+    )
+
+
+def test_a_locked_section_is_409_naming_the_sections() -> None:
+    service = _stub()
+    service.save_draft = AsyncMock(side_effect=ScenarioSectionLockedError(["award_tables"]))
+    response = _client().put("/api/financial-aid/scenarios/2027/draft", json=DOC_BODY)
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": "Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.",
+        "sections": ["award_tables"],
+    }
+
+
+def test_the_workspace_says_what_is_locked_and_the_preview_how_many_fixed_settings_stay() -> None:
+    service = _stub()
+    service.workspace = AsyncMock(
+        return_value=Workspace(
+            2027, 1, META, DRAFT, (KEPT,), locked_sections=("tiers", "award_tables"), locked_by_round=1
+        )
+    )
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert (body["locked_sections"], body["locked_by_round"]) == (["tiers", "award_tables"], 1)
+    service.rules_draft_preview = AsyncMock(return_value=ScenarioPromotion(PREVIEW, 2))
+    assert _client().get("/api/financial-aid/scenarios/2027/options/A1/rules-draft").json()["fixed_kept"] == 2
+
+
+def test_results_carry_allocated_round2_by_tier_and_the_appeals() -> None:
+    service = _stub()
+    rows = [
+        Round2TierRow(
+            table="camp",
+            tier=2,
+            appeals=1,
+            asked=Decimal(400),
+            priced=1,
+            priced_asked=Decimal(400),
+            round2=Decimal(300),
+        ),
+    ]
+    priced = RESULTS.model_copy(update={"round2_by_tier": rows, "round1_allocated": Decimal("500000.00")})
+    pools = [p.model_copy(update={"round1_allocated": Decimal("400000.00")}) for p in priced.pools]
+    service.evaluate = AsyncMock(
+        return_value=Evaluation(DOC, priced.model_copy(update={"pools": pools}), ValidationReport())
+    )
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
+    assert (body["allocated"], body["round1_allocated"]) == (500000.0, 500000.0)
+    assert body["pools"][0]["allocated"] == 400000.0
+    assert [(t["tier"], t["round2"]) for t in body["by_tier"]] == [(2, 300.0)]
+    assert (body["appeals"], body["appeals_asked"]) == (1, 400.0)

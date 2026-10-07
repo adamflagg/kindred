@@ -8,6 +8,7 @@ from bunking.financial_aid.scenarios.committee import (
     PostedSeason,
     Round2CompareRow,
     TierCompareRow,
+    all_rows_totals,
     budget_unset,
     committee_view,
     has_last_seasons_criteria,
@@ -18,6 +19,7 @@ from bunking.financial_aid.scenarios.committee import (
     uses_budget_placeholder,
 )
 from bunking.financial_aid.scenarios.describe import (
+    CARD_TITLES,
     CHANGE_MAX_CHARS,
     change_phrases,
     describe,
@@ -41,8 +43,10 @@ from bunking.financial_aid.scenarios.results import (
     ScenarioResults,
     TableTierRow,
     TierRow,
+    appeal_totals,
     round1_amount,
     round1_by_request,
+    round2_by_tier_totals,
     scenario_results,
     up_down,
 )
@@ -61,6 +65,7 @@ from bunking.financial_aid.scenarios.sizing import (
 )
 
 __all__ = [
+    "CARD_TITLES",
     "CHANGE_MAX_CHARS",
     "CRITERIA_BUT",
     "CRITERIA_SECTIONS",
@@ -85,6 +90,8 @@ __all__ = [
     "TableTierRow",
     "TierCompareRow",
     "TierRow",
+    "all_rows_totals",
+    "appeal_totals",
     "apply_sizing",
     "budget_unset",
     "change_phrases",
@@ -100,6 +107,7 @@ __all__ = [
     "request_set_note",
     "round1_amount",
     "round1_by_request",
+    "round2_by_tier_totals",
     "round2_compare",
     "scenario_results",
     "shift_round1_tables",

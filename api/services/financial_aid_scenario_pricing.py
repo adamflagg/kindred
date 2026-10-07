@@ -6,14 +6,14 @@ over a recording wrapper of the decisions store, and keeps every value each `fet
 register rows it priced with. Pricing a scenario (`price_document`) replays those values into the SAME season read,
 with the scenario's document standing in as the approved rules. So a scenario is priced by exactly the code that
 prices the live season (price_request, season_budget, holds and all), including anything a later PR adds to that
-read, without this module knowing its name: a read the snapshot lacks is refused with "freeze again".
+read, without this module knowing its name: a read the snapshot lacks is refused with "Update Applications again".
 
 The snapshot is JSON: each value goes through a pydantic TypeAdapter for the return type the DecisionsStore
 Protocol declares for that read. Nothing here writes; a replayed season can't lock rules sections.
 
 A request intake flagged as waiting for approved programs and cost rules is held by the live read, and so in every
-scenario on that snapshot: `awaiting_rules` counts them, so the screen can say "freeze again once the rules are
-approved" (plan Decision 8). Freezing never refuses for it.
+scenario on that snapshot: `awaiting_rules` counts them, so the screen can say "Update Applications again once
+the rules are approved" (plan Decision 8). Freezing never refuses for it.
 
 Freezing also records when each frozen request was received (`received`: its create row in aid_change_log, or its
 withdrawn predecessor's when the family edited its answer, D138, as bunking.financial_aid.received defines it) and which requests are live, so a scenario can price only the requests
@@ -82,7 +82,9 @@ class PricedSeason:
 def _adapter(name: str) -> TypeAdapter[Any]:
     method = getattr(DecisionsStore, name, None)
     if not name.startswith("fetch_") or method is None:
-        raise SnapshotError(f"The season read {name}, which the decisions store does not declare: freeze again")
+        raise SnapshotError(
+            f"The season read {name}, which the decisions store does not declare: Update Applications again"
+        )
     return TypeAdapter(get_type_hints(method)["return"])
 
 
@@ -129,7 +131,7 @@ class _Replay:
 
     def __getattr__(self, name: str) -> Any:
         if name not in self._calls:
-            raise SnapshotError(f"This snapshot predates the season read {name}: freeze the applications again")
+            raise SnapshotError(f"This snapshot predates the season read {name}: Update Applications again")
         value = self._calls[name]
 
         async def call(*args: Any, **kwargs: Any) -> Any:
@@ -213,17 +215,17 @@ def encode_snapshot(snapshot: SeasonSnapshot) -> dict[str, Any]:
     }
 
 
-_UNREADABLE: Final = "The frozen season stored for this year can't be read: freeze the applications again"
+_UNREADABLE: Final = "The frozen season stored for this year can't be read: Update Applications again"
 
 
 def decode_snapshot(raw: Mapping[str, Any]) -> SeasonSnapshot:
     """A stored snapshot back into a SeasonSnapshot. One this code can't read (a key missing, a value of the wrong
-    shape, a read whose type has changed) is a SnapshotError (422) that says to freeze again, never a 500 that locks
-    staff out of Scenarios. Its message never echoes a stored value: the inputs hold families' figures."""
+    shape, a read whose type has changed) is a SnapshotError (422) that says to Update Applications again, never a
+    500 that locks staff out of Scenarios. Its message never echoes a stored value: the inputs hold families' figures."""
     try:
         if raw.get("format") != SNAPSHOT_FORMAT:
             raise SnapshotError(
-                "This snapshot was frozen by an older version of the dashboard: freeze the applications again"
+                "This snapshot was frozen by an older version of the dashboard: Update Applications again"
             )
         return _decoded(raw)
     except SnapshotError:

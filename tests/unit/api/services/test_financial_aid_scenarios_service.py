@@ -12,10 +12,17 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
-from api.constants.collections import AID_REQUESTS, AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS
+from api.constants.collections import (
+    AID_REQUESTS,
+    AID_SCENARIO_OPTIONS,
+    AID_SCENARIO_SNAPSHOTS,
+    AID_SCENARIO_TRAIL,
+)
 from api.schemas.financial_aid_decisions import CellOut, RoundCellOut
 from api.services import financial_aid_scenarios_repository as repository_module
 from api.services import financial_aid_scenarios_service as service_module
@@ -23,6 +30,7 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
 from api.services.financial_aid_rules_service import (
+    ROUND_SECTIONS,
     FinancialAidRulesService,
     NotLatestVersionError,
     ReplacementNotAcknowledgedError,
@@ -41,6 +49,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioConflictError,
     ScenarioNotFoundError,
     ScenarioRefusedError,
+    ScenarioSectionLockedError,
 )
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
@@ -80,6 +89,7 @@ class World:
     store: FakeScenarioStore
     season: FakeDecisionsStore
     rules: FinancialAidRulesService
+    rules_store: FakeStore
 
 
 async def _world(rows: Sequence[RegisterRow] = ()) -> World:
@@ -87,7 +97,8 @@ async def _world(rows: Sequence[RegisterRow] = ()) -> World:
     season = FakeDecisionsStore()
     seed_request(season, EMMA)
     seed_request(season, LIAM, household=1000002, person=1000021, income=90000.0)
-    rules = FinancialAidRulesService(FakeStore(), clock=lambda: T0)
+    rules_store = FakeStore()
+    rules = FinancialAidRulesService(rules_store, clock=lambda: T0)
     await rules.create_version(intake_rules(), actor=FINANCE)  # 2027 v1, every section draft
 
     async def register(year: int) -> Sequence[RegisterRow]:
@@ -97,7 +108,7 @@ async def _world(rows: Sequence[RegisterRow] = ()) -> World:
         return await capture_season(season, register, FakeRules(approved()), year)
 
     store = FakeScenarioStore()
-    return World(FinancialAidScenariosService(store, rules, capture), store, season, rules)
+    return World(FinancialAidScenariosService(store, rules, capture), store, season, rules, rules_store)
 
 
 async def _started() -> World:
@@ -179,7 +190,7 @@ async def test_a_stored_season_this_code_cant_read_is_refused_and_freezing_repla
     world = await _started()
     [row] = world.store.rows[AID_SCENARIO_SNAPSHOTS]
     row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}  # a required key dropped
-    with pytest.raises(SnapshotError, match="freeze the applications again"):
+    with pytest.raises(SnapshotError, match="Update Applications again"):
         await world.service.evaluate(YEAR, intake_rules())
     frozen = await world.service.freeze(YEAR, FINANCE)  # an unreadable latest counts as "the season moved"
     assert frozen.id != row.id
@@ -190,7 +201,7 @@ async def test_a_stored_season_this_code_cant_read_is_refused_and_freezing_repla
 @pytest.mark.asyncio
 async def test_nothing_runs_before_the_applications_are_frozen() -> None:
     world = await _world()
-    with pytest.raises(ScenarioRefusedError, match="Freeze"):
+    with pytest.raises(ScenarioRefusedError, match="Update Applications first"):
         await world.service.start_from_rules(YEAR, FINANCE)
 
 
@@ -248,12 +259,12 @@ async def _a(world: World) -> AidRules:
 async def test_releasing_a_setting_records_a_trail_row_with_its_results() -> None:
     world = await _started()
     draft = await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
-    assert (draft.from_code, draft.label) == ("A", "Round 1 % +5 pts")
+    assert (draft.from_code, draft.label) == ("A", "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%")
     assert draft.results is not None
     assert draft.results.round1 == Decimal(2800)
     assert {c.path[0] for c in draft.changes} == {"award_tables"}
     rows, total = await world.service.trail(YEAR, page=1, per_page=50)
-    assert (total, rows[0].change, rows[0].actor) == (2, "Round 1 % +5 pts", FINANCE)
+    assert (total, rows[0].change, rows[0].actor) == (2, "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%", FINANCE)
 
 
 @pytest.mark.asyncio
@@ -267,10 +278,18 @@ async def test_releasing_the_same_settings_twice_records_once() -> None:
 
 @pytest.mark.asyncio
 async def test_the_draft_is_per_person() -> None:
+    """Ruled (§S11.2): TREASURER has recorded nothing, so their draft is the rules in effect, unrecorded, beside
+    FINANCE's draft from A. Their first release records from "rules", and FINANCE's draft is untouched."""
     world = await _started()
-    assert (await world.service.workspace(YEAR, TREASURER)).draft is None
-    with pytest.raises(ScenarioRefusedError, match="Load"):
-        await world.service.save_draft(YEAR, intake_rules(), TREASURER)
+    theirs = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert theirs is not None
+    assert (theirs.trail_id, theirs.from_code, theirs.label) == (None, "rules", "no changes")
+    released = await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), TREASURER)
+    assert (released.from_code, released.label) == ("rules", PLUS_FIVE)  # +5 against v1: Task 53's derivation
+    assert released.trail_id is not None
+    mine = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert mine is not None
+    assert (mine.from_code, mine.label) == ("A", "no changes")
 
 
 @pytest.mark.asyncio
@@ -282,7 +301,7 @@ async def test_loading_an_option_or_an_old_row_never_loses_the_draft() -> None:
     rows, total = await world.service.trail(YEAR, page=1, per_page=50)
     assert (total, rows[0].change) == (3, "loaded A into the draft")
     back = await world.service.load(YEAR, FINANCE, trail_row=rows[1].id)
-    assert back.label == "Round 1 % +5 pts"
+    assert back.label == "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"
     newest, _ = await world.service.trail(YEAR, page=1, per_page=1)
     assert newest[0].change.startswith(f"loaded {FINANCE}'s row of ")
 
@@ -326,45 +345,24 @@ async def test_a_document_for_another_season_is_refused() -> None:
 
 
 @pytest.mark.asyncio
-async def test_keeping_lands_variants_under_their_starting_point_two_levels_deep() -> None:
-    world = await _started()
-    service, a = world.service, await _a(world)
-    await service.save_draft(YEAR, _shifted(a, "5"), FINANCE)
-    a1 = await service.keep(YEAR, FINANCE, starting_point=False)
-    await service.save_draft(YEAR, _shifted(a, "10"), FINANCE)
-    a2 = await service.keep(YEAR, FINANCE, starting_point=False)
-    await service.save_draft(YEAR, with_minimum(_shifted(a, "10"), Decimal(150)), FINANCE)
-    b = await service.keep(YEAR, FINANCE, starting_point=True)
-    await service.save_draft(YEAR, with_minimum(_shifted(a, "10"), Decimal(175)), FINANCE)
-    b1 = await service.keep(YEAR, FINANCE, starting_point=False)
-    kept = [(k.record.code, k.record.starting_point, k.record.from_code) for k in (a1, a2, b, b1)]
-    assert kept == [("A1", "A", "A"), ("A2", "A", "A1"), ("B", "", "A2"), ("B1", "B", "B")]
-    assert (a1.label, a2.label) == ("Round 1 % +5 pts", "Round 1 % +10 pts")
-    assert (b.label, b1.label) == ("Round 1 % +10 pts · minimum $150", "minimum $175")
-    draft = (await service.workspace(YEAR, FINANCE)).draft
-    assert draft is not None
-    assert (draft.from_code, draft.label) == ("B1", "no changes")
-
-
-@pytest.mark.asyncio
 async def test_keeping_a_draft_that_matches_a_kept_option_is_refused() -> None:
     world = await _started()
     with pytest.raises(ScenarioConflictError, match="same as A"):
-        await world.service.keep(YEAR, FINANCE, starting_point=False)
+        await world.service.keep(YEAR, FINANCE)
 
 
 @pytest.mark.asyncio
 async def test_a_keep_is_one_operation_and_its_log_carries_no_document() -> None:
     world = await _started()
     await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
-    await world.service.keep(YEAR, FINANCE, starting_point=False)
+    await world.service.keep(YEAR, FINANCE)
     option_row, trail_row = world.store.log[-2:]
     assert (option_row["entity"], option_row["entity_id"], option_row["action"]) == (
         "aid_scenario_options",
-        f"{YEAR}:A1",
+        f"{YEAR}:B",
         "keep",
     )
-    assert (trail_row["entity"], trail_row["after"]) == ("aid_scenario_trail", {"kept_code": "A1"})
+    assert (trail_row["entity"], trail_row["after"]) == ("aid_scenario_trail", {"kept_code": "B"})
     assert option_row["operation_id"] == trail_row["operation_id"]
     assert "document" not in option_row["after"]
 
@@ -372,31 +370,92 @@ async def test_a_keep_is_one_operation_and_its_log_carries_no_document() -> None
 # --- compare, fit, sensitivity ------------------------------------------------------------------------
 
 
-async def _kept_a1(world: World) -> AidRules:
-    """FINANCE shifts A by +5 and keeps it: A1. Returns A's document."""
+async def _kept_b(world: World) -> AidRules:
+    """FINANCE shifts A by +5 and keeps it: B. Returns A's document."""
     a = await _a(world)
     await world.service.save_draft(YEAR, _shifted(a, "5"), FINANCE)
-    await world.service.keep(YEAR, FINANCE, starting_point=False)
+    await world.service.keep(YEAR, FINANCE)
     return a
 
 
+# --- compare (Scenarios addendum §S11.2; N3, N4, N11) ---------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_compare_puts_the_draft_first_beside_the_ticked_options() -> None:
+async def test_compare_counts_every_column_against_the_rules_in_effect_in_the_fixed_order() -> None:
+    """N3, N4, N11 (ruled): one yardstick, the rules in effect, for every column; §S5 H's fixed order, never the
+    order asked."""
+    world = await _started()  # A: the rules draft v1, which is also the rules in effect (none approved)
+    a = await _kept_b(world)  # B: A +5
+    await world.service.save_draft(YEAR, _shifted(a, "10"), FINANCE)  # the draft: A +10, from B
+    comparison = await world.service.compare(YEAR, FINANCE, ["B", "A", "B"], rules=True)
+    assert [c.code for c in comparison.columns] == ["rules", "draft", "A", "B"]
+    rules, draft, first, variant = comparison.columns
+    assert (rules.label, rules.version, rules.up, rules.down, rules.changes) == ("Rules draft v1", 1, None, None, ())
+    assert (draft.label, draft.up, draft.down) == ("Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 80%", 2, 0)
+    assert {c.path[0] for c in draft.changes} == {"award_tables"}  # against the rules in effect, not B
+    assert (first.up, first.down, first.changes) == (0, 0, ())
+    assert (variant.up, variant.down, variant.results.round1) == (2, 0, Decimal(2800))
+
+
+@pytest.mark.asyncio
+async def test_the_draft_column_is_left_out_when_not_asked_for() -> None:
     world = await _started()
-    a = await _kept_a1(world)
-    await world.service.save_draft(YEAR, _shifted(a, "10"), FINANCE)
-    comparison = await world.service.compare(YEAR, FINANCE, ["A", "A1", "A"])
-    assert [c.code for c in comparison.columns] == ["draft", "A", "A1"]
-    draft, first, variant = comparison.columns
-    assert (draft.label, draft.up, draft.down) == ("Round 1 % +5 pts", 2, 0)
-    assert (first.label, first.up, first.down) == ("rules draft v1 as they were", None, None)  # v1 prices nothing
-    assert (variant.label, variant.up, variant.down, variant.results.round1) == (
-        "Round 1 % +5 pts",
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    comparison = await world.service.compare(YEAR, FINANCE, ["A"], draft=False)
+    assert [c.code for c in comparison.columns] == ["A"]
+
+
+@pytest.mark.asyncio
+async def test_the_rules_column_carries_its_version_approval_and_the_option_it_came_from() -> None:
+    """Disagreement 2: approval clears a section's edited_via, so `via` is read from the rules log."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE, name="Every tier up")  # A
+    await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)  # v2, via A
+    later = T0 + timedelta(hours=2)
+    world.rules._clock = lambda: later  # v2's award_tables is approved after every other section's v1 stamp
+    await world.rules.approve_sections(YEAR, 2, ["award_tables"], actor=TREASURER, note="Finance committee")
+    [rules] = (await world.service.compare(YEAR, FINANCE, [], rules=True, draft=False)).columns
+    assert (rules.code, rules.label, rules.version, rules.via, rules.approved_at) == (
+        "rules",
+        "Rules v2 in effect",
         2,
-        0,
-        Decimal(2800),
+        "A",
+        later,  # the newest approval among the pricing sections
     )
-    assert {c.path[0] for c in variant.changes} == {"award_tables"}
+
+
+@pytest.mark.asyncio
+async def test_the_drafts_up_down_and_changes_are_against_the_rules_in_effect_not_its_source() -> None:
+    """Regression guard. N3, N4 (ruled): a draft from B set back to A's tables moved nothing against the rules in
+    effect (A), though against B both requests went down."""
+    world = await _started()  # A is the rules in effect
+    a = await _kept_b(world)  # B: A +5; FINANCE's draft is now from B
+    await world.service.save_draft(YEAR, _shifted(a, "0"), FINANCE)  # back to A's tables, still from B
+    [draft] = (await world.service.compare(YEAR, FINANCE, [])).columns
+    assert (draft.code, draft.up, draft.down, draft.changes) == ("draft", 0, 0, ())
+
+
+@pytest.mark.asyncio
+async def test_the_rules_column_is_served_from_a_kept_option_that_is_the_rules_in_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A kept option equal to the rules in effect stores its figures, so the rules column prices nothing."""
+    world = await _started()  # A is the rules in effect, stored on this snapshot
+    priced: list[AidRules] = []
+
+    async def counting(
+        snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+    ) -> PricedSeason:
+        priced.append(document)
+        return await price_document(snapshot, document, base, requests=requests)
+
+    monkeypatch.setattr(service_module, "price_document", counting)
+    [rules] = (await world.service.compare(YEAR, FINANCE, [], rules=True, draft=False)).columns
+    assert rules.code == "rules"
+    assert priced == []
 
 
 @pytest.mark.asyncio
@@ -510,15 +569,15 @@ async def test_one_step_of_each_sizing_setting() -> None:
 @pytest.mark.asyncio
 async def test_the_trail_is_shared_and_newest_first() -> None:
     world = await _started()
-    await _kept_a1(world)
-    await world.service.load(YEAR, TREASURER, option="A1")
+    await _kept_b(world)
+    await world.service.load(YEAR, TREASURER, option="B")
     rows, total = await world.service.trail(YEAR, page=1, per_page=2)
     assert total == 3
     assert [(r.actor, r.change) for r in rows] == [
-        (TREASURER, "loaded A1 into the draft"),
-        (FINANCE, "Round 1 % +5 pts"),
+        (TREASURER, "loaded B into the draft"),
+        (FINANCE, "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"),
     ]
-    assert (rows[1].kept_code, rows[0].document) == ("A1", None)
+    assert (rows[1].kept_code, rows[0].document) == ("B", None)
 
 
 # --- make it the rules draft --------------------------------------------------------------------------
@@ -527,15 +586,16 @@ async def test_the_trail_is_shared_and_newest_first() -> None:
 @pytest.mark.asyncio
 async def test_making_a_kept_option_the_rules_draft() -> None:
     world = await _started()
-    await _kept_a1(world)
-    preview = await world.service.rules_draft_preview(YEAR, "A1")
+    await _kept_b(world)
+    promotion = await world.service.rules_draft_preview(YEAR, "B")
+    preview = promotion.preview
     assert ([s.section for s in preview.sections], preview.base_version) == (["award_tables"], 1)
     draft, branched_from = await world.service.make_rules_draft(
-        YEAR, "A1", base_version=1, acknowledged={}, actor=FINANCE
+        YEAR, "B", base_version=1, acknowledged={}, actor=FINANCE
     )
     assert (branched_from, draft.version.version) == (None, 1)  # 2027 v1 is not approved yet: saved in place
     status = draft.version.section_status["award_tables"]
-    assert (status.edited_by, status.edited_via) == (FINANCE, "A1")
+    assert (status.edited_by, status.edited_via) == (FINANCE, "B")
     assert draft.version.document.award_tables["camp"].tiers[1].r1_pct == Decimal(95)
 
 
@@ -710,7 +770,10 @@ async def test_trail_rows_say_whether_their_figures_are_from_an_older_snapshot()
     await world.service.freeze(YEAR, FINANCE)
     await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
     rows, _ = await world.service.trail(YEAR, page=1, per_page=50)
-    assert (rows[0].change, rows[0].stale) == ("Round 1 % +5 pts", False)  # priced on the newest snapshot
+    assert (rows[0].change, rows[0].stale) == (
+        "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%",
+        False,
+    )  # priced on the newest snapshot
     assert [r.stale for r in rows] == [False, True]  # the start row's figures are from the first snapshot
 
 
@@ -847,12 +910,13 @@ async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_
     await world.rules.approve_sections(YEAR, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
     await world.service.freeze(YEAR, FINANCE)
     await world.service.start_from_rules(YEAR, FINANCE)  # A, from the approved v1
-    a = await _kept_a1(world)
+    a = await _kept_b(world)
     # Someone edits Round 1's tables after A was taken: the edit branches v2 (v1 prices the season), unapproved, and
-    # A1 would replace it.
+    # B would replace it.
     edited = _shifted(a, "-3").model_dump(mode="json")["award_tables"]
     await world.rules.save_section(YEAR, 1, "award_tables", edited, actor=TREASURER)
-    preview = await world.service.rules_draft_preview(YEAR, "A1")
+    promotion = await world.service.rules_draft_preview(YEAR, "B")
+    preview = promotion.preview
     [section] = preview.sections
     assert section.warning is not None
     assert (preview.base_version, section.section, section.warning.kind, section.warning.by) == (
@@ -863,17 +927,18 @@ async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_
     )
     token: dict[SectionName, str] = {"award_tables": section.warning.token}
     with pytest.raises(ReplacementNotAcknowledgedError):
-        await world.service.make_rules_draft(YEAR, "A1", base_version=2, acknowledged={}, actor=FINANCE)
+        await world.service.make_rules_draft(YEAR, "B", base_version=2, acknowledged={}, actor=FINANCE)
     with pytest.raises(NotLatestVersionError):
-        await world.service.make_rules_draft(YEAR, "A1", base_version=1, acknowledged=token, actor=FINANCE)
-    draft, _ = await world.service.make_rules_draft(YEAR, "A1", base_version=2, acknowledged=token, actor=FINANCE)
-    assert (draft.version.version, draft.version.section_status["award_tables"].edited_via) == (2, "A1")
+        await world.service.make_rules_draft(YEAR, "B", base_version=1, acknowledged=token, actor=FINANCE)
+    draft, _ = await world.service.make_rules_draft(YEAR, "B", base_version=2, acknowledged=token, actor=FINANCE)
+    assert (draft.version.version, draft.version.section_status["award_tables"].edited_via) == (2, "B")
     assert draft.version.document.award_tables == _shifted(a, "5").award_tables
 
 
 @pytest.mark.asyncio
 async def test_compare_prices_no_reference_for_a_starting_point_from_the_rules(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A starting point from the rules shows no up / down, so its rules are loaded for the changes, never priced."""
+    """A starting point that is the rules in effect moves nothing (0 up, 0 down), and the yardstick is its stored
+    Round 1, so those rules are never priced."""
     world = await _started()
     priced: list[AidRules] = []
 
@@ -887,7 +952,7 @@ async def test_compare_prices_no_reference_for_a_starting_point_from_the_rules(m
     await world.service.load(YEAR, TREASURER, option="A")  # TREASURER's draft is A, unchanged
     priced.clear()
     draft, a = (await world.service.compare(YEAR, TREASURER, ["A"])).columns
-    assert (a.code, a.changes, a.up, a.down) == ("A", (), None, None)
+    assert (a.code, a.changes, a.up, a.down) == ("A", (), 0, 0)  # A is the rules in effect: nothing moved
     assert len(priced) == 1  # the draft only: A's figures are stored, and v1 is never priced as its reference
 
 
@@ -899,3 +964,543 @@ async def test_compare_refuses_a_draft_whose_option_is_gone_as_the_draft_does() 
         await world.service.workspace(YEAR, FINANCE)
     with pytest.raises(ScenarioNotFoundError, match="no kept option A"):
         await world.service.compare(YEAR, FINANCE, [])
+
+
+@pytest.mark.asyncio
+async def test_every_scenario_read_and_write_derives_the_current_year_weight() -> None:
+    """§S11.5: a document sent with weights that don't sum to 1 is priced and recorded with current = 1 − prior."""
+    world = await _started()
+    skewed = with_levers(intake_rules(), {"income.weights.prior_year": "0.6", "income.weights.current_year": "0.9"})
+    assert (await world.service.evaluate(YEAR, skewed)).document.income.weights.current_year == Decimal("0.4")
+    assert (await world.service.save_draft(YEAR, skewed, FINANCE)).document.income.weights.current_year == Decimal(
+        "0.4"
+    )
+    fitted = await world.service.fit(YEAR, with_lever(skewed, "budget.total", "3000"))
+    assert fitted.evaluation.document.income.weights.current_year == Decimal("0.4")
+
+
+@pytest.mark.asyncio
+async def test_sensitivity_prices_the_derived_current_year_weight_as_evaluate_does(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """§S11.5 (PR 10 scan): sensitivity prices a scenario document too, so its base and every one-step nudge are
+    priced with current = 1 − prior, as evaluate, the draft and Fit are."""
+    world = await _started()
+    skewed = with_levers(intake_rules(), {"income.weights.prior_year": "0.6", "income.weights.current_year": "0.9"})
+    priced: list[Decimal] = []
+    pricer = world.service._pricer
+
+    async def spying(*args: Any, **kwargs: Any) -> Any:
+        price = await pricer(*args, **kwargs)
+
+        async def recorded(document: AidRules) -> Any:
+            priced.append(document.income.weights.current_year)
+            return await price(document)
+
+        return recorded
+
+    monkeypatch.setattr(world.service, "_pricer", spying)
+    await world.service.sensitivity(YEAR, skewed)
+    assert priced
+    assert set(priced) == {Decimal("0.4")}
+
+
+# --- built-in starts and the implicit draft (Scenarios addendum §S11.2) --------------------------------------------
+
+
+async def _frozen() -> World:
+    """Frozen, nothing loaded: FINANCE's draft is the implicit one, from the rules in effect."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    return world
+
+
+async def _approved_v1(world: World) -> None:
+    await world.rules.approve_sections(YEAR, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+
+
+PLUS_FIVE = "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"
+
+
+@pytest.mark.asyncio
+async def test_with_no_draft_recorded_the_tab_opens_on_the_rules_in_effect_without_a_write() -> None:
+    world = await _frozen()
+    writes = len(world.store.operations)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert (draft.trail_id, draft.recorded_at, draft.from_code, draft.label, draft.changes) == (
+        None,
+        None,
+        "rules",
+        "no changes",
+        (),
+    )
+    assert draft.document == draft.source_document == intake_rules()  # v1: nothing approved, so the latest version
+    assert draft.same_as == "rules"
+    assert draft.results is not None
+    assert draft.results.round1 == Decimal(2600)
+    assert len(world.store.operations) == writes  # opening the tab wrote nothing
+
+
+@pytest.mark.asyncio
+async def test_the_first_release_records_the_draft_from_the_rules() -> None:
+    world = await _frozen()
+    draft = await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    assert (draft.from_code, draft.label, draft.same_as, draft.source_document) == (
+        "rules",
+        PLUS_FIVE,
+        None,
+        intake_rules(),
+    )
+    assert draft.trail_id is not None
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=10)
+    assert [(r.from_code, r.change) for r in rows] == [("rules", PLUS_FIVE)]
+    assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+
+
+@pytest.mark.asyncio
+async def test_loading_the_rules_records_a_start_from_the_version_in_effect_and_keeps_nothing() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)  # v2, a draft
+    draft = await world.service.load(YEAR, FINANCE, start="rules")
+    assert (draft.from_code, draft.document, draft.label) == ("rules", intake_rules(), "no changes")
+    workspace = await world.service.workspace(YEAR, FINANCE)
+    assert (workspace.rules_draft_version, workspace.options) == (2, ())
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=10)
+    assert [(r.from_code, r.change) for r in rows] == [("rules", "started from Rules v1")]
+
+
+@pytest.mark.asyncio
+async def test_loading_the_rules_draft_records_it_now_while_it_differs() -> None:
+    """§S15 item 4 ("draft sure"): a third start, offered only while the draft differs from the rules in effect."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)
+    draft = await world.service.load(YEAR, FINANCE, start="rules_draft")
+    assert (draft.from_code, draft.document.awards.minimum, draft.label) == ("rules_draft", Decimal(150), "no changes")
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=10)
+    assert rows[0].change == "started from Rules draft v2"
+
+
+@pytest.mark.asyncio
+async def test_the_rules_draft_is_refused_when_it_matches_the_rules_in_effect() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    assert (await world.service.workspace(YEAR, FINANCE)).rules_draft_version is None
+    with pytest.raises(ScenarioRefusedError, match=r"^The rules draft matches the rules in effect$"):
+        await world.service.load(YEAR, FINANCE, start="rules_draft")
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+
+
+@pytest.mark.asyncio
+async def test_a_draft_from_the_rules_reads_its_edits_against_the_version_in_effect_now() -> None:
+    """§S11.2, deliberate: after a new version is approved, "was" means what is in effect then."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    v2 = await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)
+    await world.rules.approve_sections(YEAR, v2.version, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.source_document is not None
+    assert draft.source_document.awards.minimum == Decimal(150)
+    assert draft.label == f"{PLUS_FIVE} · Minimum $100"
+
+
+@pytest.mark.asyncio
+async def test_same_as_names_a_kept_option_first_then_the_rules() -> None:
+    world = await _started()  # A is the rules draft v1, which is also the rules in effect (none approved)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.same_as == "A"
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.same_as is None
+
+
+@pytest.mark.asyncio
+async def test_a_load_names_exactly_one_thing() -> None:
+    world = await _frozen()
+    with pytest.raises(ScenarioRefusedError, match="one kept option, one trail row or one starting point"):
+        await world.service.load(YEAR, FINANCE, option="A", start="rules")
+    with pytest.raises(ScenarioRefusedError, match="one kept option, one trail row or one starting point"):
+        await world.service.load(YEAR, FINANCE)
+
+
+# --- names, rename and flat letters (Scenarios addendum §S11.1) ----------------------------------------------------
+
+
+def _seed_legacy_option(world: World, code: str, starting_point: str, day: int) -> None:
+    """An option kept before PR 10 (two levels, no name): a copy of A's row under `code`."""
+    [a] = [row for row in world.store.rows[AID_SCENARIO_OPTIONS] if row.code == "A"]
+    world.store.rows[AID_SCENARIO_OPTIONS].append(
+        SimpleNamespace(
+            **{
+                **vars(a),
+                "id": f"opt{code.lower():0>12}",
+                "code": code,
+                "starting_point": starting_point,
+                "from_code": starting_point,
+                "created": (T0 + timedelta(days=day)).isoformat(),
+            }
+        )
+    )
+
+
+def _criterion_label(rules: AidRules, label: str) -> AidRules:
+    criteria = [c.model_copy(update={"label": label}) if c.key == "bipoc" else c for c in rules.equity.criteria]
+    return rules.model_copy(update={"equity": rules.equity.model_copy(update={"criteria": criteria})})
+
+
+@pytest.mark.asyncio
+async def test_keep_with_a_name_stores_it_and_a_blank_one_stores_the_label() -> None:
+    world = await _frozen()
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    named = await world.service.keep(YEAR, FINANCE, name="  Every tier up  ")
+    assert (named.record.code, named.name, named.record.from_code, named.record.starting_point) == (
+        "A",
+        "Every tier up",
+        "",  # kept from a built-in start: from_code "" (aid_scenario_options.from_code is unchanged)
+        "",
+    )
+    assert named.record.origin_version == 1
+    await world.service.save_draft(YEAR, with_minimum(_shifted(intake_rules(), "5"), Decimal(150)), FINANCE)
+    blank = await world.service.keep(YEAR, FINANCE, name="   ")
+    assert (blank.record.code, blank.name, blank.record.from_code) == ("B", "Minimum $150", "A")
+
+
+@pytest.mark.asyncio
+async def test_an_option_kept_from_the_rules_keeps_its_generated_label_whatever_its_name() -> None:
+    """I6/m1: never "… as they were" for a document that differs; a rename changes `name`, never `label`."""
+    world = await _frozen()
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    words = "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"
+    assert (kept.label, kept.name) == (words, words)
+    renamed = await world.service.rename(YEAR, "A", "Every tier up", FINANCE)
+    assert (renamed.label, renamed.name) == (words, "Every tier up")
+    [listed] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert (listed.label, listed.name) == (words, "Every tier up")
+
+
+@pytest.mark.asyncio
+async def test_a_draft_that_is_the_rules_in_effect_is_not_kept() -> None:
+    world = await _frozen()
+    await world.service.load(YEAR, FINANCE, start="rules")
+    with pytest.raises(
+        ScenarioRefusedError, match=r"^Your draft is the rules in effect: change a setting before keeping it$"
+    ):
+        await world.service.keep(YEAR, FINANCE)
+    assert not world.store.rows[AID_SCENARIO_OPTIONS]
+
+
+@pytest.mark.asyncio
+async def test_after_a_a1_and_b_the_next_keep_is_c_and_a_legacy_variant_keeps_its_label_as_its_name() -> None:
+    """Review Focus 3: variants kept before PR 10 never take a letter; an unnamed option reads as its label."""
+    world = await _started()  # A
+    _seed_legacy_option(world, "A1", "A", 1)
+    _seed_legacy_option(world, "B", "", 2)
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.code == "C"
+    options = {o.record.code: o for o in (await world.service.workspace(YEAR, FINANCE)).options}
+    assert options["A1"].name == options["A1"].label  # no stored name: its generated label stands in
+    assert options["A1"].record.name == ""
+    renamed = await world.service.rename(YEAR, "A1", "Older idea", FINANCE)
+    assert (renamed.name, renamed.record.code) == ("Older idea", "A1")
+
+
+@pytest.mark.asyncio
+async def test_a_name_longer_than_the_field_is_cut_when_the_label_stands_in() -> None:
+    """aid_scenario_options.name holds 80 characters (Task 52): a long label is cut with "…", never refused."""
+    world = await _frozen()
+    long = _criterion_label(intake_rules(), "a very long label " * 10)
+    await world.service.save_draft(YEAR, with_lever(long, "equity.weights.camp.bipoc", "0.75"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert (len(kept.name), kept.name[-1]) == (80, "…")
+
+
+@pytest.mark.asyncio
+async def test_a_rename_is_one_logged_operation_and_leaves_the_document_alone() -> None:
+    world = await _started()
+    document = await _a(world)
+    renamed = await world.service.rename(YEAR, "A", "  The rules, as approved ", TREASURER)
+    assert (renamed.name, renamed.record.document) == ("The rules, as approved", document)
+    row = world.store.log[-1]
+    assert (row["entity"], row["entity_id"], row["action"]) == ("aid_scenario_options", f"{YEAR}:A", "rename")
+    assert (row["before"], row["after"]) == ({"name": ""}, {"name": "The rules, as approved"})
+    operations = len(world.store.operations)
+    await world.service.rename(YEAR, "A", "The rules, as approved", FINANCE)  # the same name: nothing written
+    assert len(world.store.operations) == operations
+
+
+@pytest.mark.asyncio
+async def test_a_rename_refuses_a_blank_name_and_an_unknown_code() -> None:
+    world = await _started()
+    with pytest.raises(ScenarioRefusedError, match=r"^Give it a name$"):
+        await world.service.rename(YEAR, "A", "   ", FINANCE)
+    with pytest.raises(ScenarioNotFoundError, match="no kept option Q"):
+        await world.service.rename(YEAR, "Q", "Anything", FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_keep_with_nothing_recorded_is_refused() -> None:
+    world = await _frozen()
+    with pytest.raises(
+        ScenarioRefusedError, match=r"^Your draft is the rules in effect: change a setting before keeping it$"
+    ):
+        await world.service.keep(YEAR, FINANCE)
+
+
+# --- the lock (Scenarios addendum §S11.3) ---------------------------------------------------------------------------
+
+
+async def _post_round(world: World, round_: int) -> None:
+    """A round's first Posted tick as the decisions service makes it: lock_writes for the sections the round read,
+    committed (ROUND_SECTIONS; spec §7.5). Never lock_section: production never calls it (parent coordinator
+    correction, 2026-10-06 late)."""
+    writes, not_locked = await world.rules.lock_writes(YEAR, 1, ROUND_SECTIONS[round_])
+    assert not_locked == []
+    await world.rules_store.commit(writes, actor=TREASURER)
+
+
+@pytest.mark.asyncio
+async def test_the_lock_reads_any_version_and_names_the_round_that_posted() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    before = await world.service.workspace(YEAR, FINANCE)
+    assert (before.locked_sections, before.locked_by_round) == ((), None)
+    await _post_round(world, 1)
+    await world.rules.new_version(YEAR, 1, actor=FINANCE, unlock=["award_tables"])  # v2 lifts it; v1 keeps it
+    after = await world.service.workspace(YEAR, FINANCE)
+    assert after.locked_sections == ("income", "tiers", "equity", "award_tables", "awards")
+    assert after.locked_by_round == 1
+    await _post_round(world, 2)
+    assert (await world.service.workspace(YEAR, FINANCE)).locked_by_round == 2
+
+
+@pytest.mark.asyncio
+async def test_a_release_that_changes_a_section_locked_since_the_screen_opened_is_refused_and_records_nothing() -> None:
+    """Review Focus 1: the screen still showed it editable; the edit is refused in staff words, the strip still
+    prices it, and nothing is recorded."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    plus_five = _shifted(intake_rules(), "5")
+    with pytest.raises(ScenarioSectionLockedError) as refused:
+        await world.service.save_draft(YEAR, plus_five, FINANCE)
+    assert str(refused.value) == (
+        "Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open."
+    )
+    assert refused.value.sections == ["award_tables"]
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+    assert (await world.service.evaluate(YEAR, plus_five)).results.round1 == Decimal(2800)
+
+
+@pytest.mark.asyncio
+async def test_two_locked_sections_are_named_together() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    both = with_minimum(_shifted(intake_rules(), "5"), Decimal(150))
+    with pytest.raises(
+        ScenarioSectionLockedError,
+        match=r"^Round 1 award table and Minimum award and named awards are locked: Round 1",
+    ):
+        await world.service.save_draft(YEAR, both, FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_the_round_1_plus_2_cap_stays_open_until_round_2_posts() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    caps = with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60")
+    assert (await world.service.save_draft(YEAR, caps, FINANCE)).from_code == "rules"
+    await _post_round(world, 2)
+    with pytest.raises(ScenarioSectionLockedError, match=r"^Appeal caps is locked: Round 2 is posted"):
+        await world.service.save_draft(YEAR, with_lever(caps, "round2.tables.camp.tiers.4.total_pct", "65"), FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_an_option_kept_before_the_lock_still_loads_and_prices_but_cannot_be_promoted() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE, name="Every tier up")  # A
+    await _post_round(world, 1)
+    await world.service.load(YEAR, TREASURER, option="A")  # a load is no edit
+    assert (await world.service.evaluate(YEAR, await _a(world))).results.round1 == Decimal(2800)
+    versions = len(await world.rules_store.list_versions(YEAR))
+    with pytest.raises(ScenarioSectionLockedError, match="Round 1 award table is locked"):
+        await world.service.rules_draft_preview(YEAR, "A")
+    with pytest.raises(ScenarioSectionLockedError):
+        await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert len(await world.rules_store.list_versions(YEAR)) == versions  # nothing written
+
+
+@pytest.mark.asyncio
+async def test_each_option_says_whether_it_can_be_promoted_and_why_not() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.start_from_rules(YEAR, FINANCE)  # A: the rules in effect, unchanged (keep refuses that)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # B: Round 1 % moved
+    await world.service.save_draft(
+        YEAR, with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60"), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE)  # C: the cap alone
+
+    def why(workspace: Any) -> dict[str, tuple[bool, str | None]]:
+        return {o.record.code: (o.promotable, o.blocked) for o in workspace.options}
+
+    assert why(await world.service.workspace(YEAR, FINANCE)) == {
+        "A": (False, "is the rules in effect"),
+        "B": (True, None),
+        "C": (True, None),
+    }
+    await _post_round(world, 1)
+    assert why(await world.service.workspace(YEAR, FINANCE)) == {
+        "A": (False, "is the rules in effect"),
+        "B": (False, "changes Round 1 settings, locked since Round 1 posted"),
+        "C": (True, None),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_promotion_keeps_fixed_settings_as_the_rules_draft_has_them_and_says_how_many() -> None:
+    """§S11.3 (decided in the addendum): an option from last season's rules can carry last season's hidden values."""
+    world = await _frozen()
+    last = with_levers(
+        intake_rules(), {"year": YEAR - 1, "awards.ask_cap": False, "award_tables.camp.tiers.2.r1_pct": "80"}
+    )
+    await world.rules.create_version(last, actor=FINANCE)
+    await world.rules.approve_sections(YEAR - 1, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    await world.service.load(YEAR, FINANCE, start="last_rules")
+    await world.service.keep(YEAR, FINANCE)  # A
+    promotion = await world.service.rules_draft_preview(YEAR, "A")
+    assert ([s.section for s in promotion.preview.sections], promotion.fixed_kept) == (["award_tables"], 1)
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.awards.ask_cap is True
+    assert draft.version.document.award_tables["camp"].tiers[2].r1_pct == Decimal(80)
+
+
+# --- the budget total is never an option's to change (COORDINATOR RULING, PR 10, 2026-10-07) ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_promotion_after_the_lock_keeps_the_pricing_total_and_lands_the_rest() -> None:
+    """A scenario option can never change the budget total: the sandbox has no budget editor, and once Round 1 posts
+    the rules save refuses a new total. The promotion sets it back, so Confirm never fails with that 422."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    caps = with_levers(intake_rules(), {"round2.tables.camp.tiers.4.total_pct": "60", "budget.total": "600000"})
+    await world.service.save_draft(YEAR, caps, FINANCE)  # budget is no Scenarios section: the release records
+    await world.service.keep(YEAR, FINANCE)  # A
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.budget.total == intake_rules().budget.total
+    assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_a_budget_total_alone_is_nothing_to_promote() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, with_lever(intake_rules(), "budget.total", "600000"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # A
+    [option] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert (option.promotable, option.blocked) == (False, "is the rules in effect")
+    assert (await world.service.rules_draft_preview(YEAR, "A")).preview.sections == ()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_snapshot_still_opens_an_unrecorded_draft_so_update_applications_stays_reachable() -> None:
+    """Review I1: an unrecorded draft is priced on read. A snapshot this code can't read must not turn the workspace
+    into a 422 for someone with nothing recorded (that hides Update Applications, the only way out). Writes still
+    refuse in the same words."""
+    world = await _started()
+    [row] = world.store.rows[AID_SCENARIO_SNAPSHOTS]
+    row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}  # a required key dropped
+    draft = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert draft is not None
+    assert (draft.from_code, draft.results) == ("rules", None)
+    with pytest.raises(SnapshotError, match="Update Applications again"):
+        await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), TREASURER)
+    await world.service.freeze(YEAR, FINANCE)
+    priced = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert priced is not None
+    assert priced.results is not None
+    assert priced.results.round1 == Decimal(2600)
+
+
+# --- Fix round 1: the strip must not make an untouched budget look moved; the pools still land -------------------------
+
+SPLIT_70_25 = {
+    "budget.pools.camp_pool.share_pct": "70",
+    "budget.pools.weekend_pool.share_pct": "25",
+}
+
+
+@pytest.mark.asyncio
+async def test_an_option_that_never_touched_the_budget_does_not_revert_the_drafts_newer_budget() -> None:
+    """Finance moves the rules draft's total and split after A was kept from v1; A changed round2 only, so the
+    promotion lists round2 alone and v2's budget stays."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(
+        YEAR, with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60"), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE)  # A
+    budget = with_levers(intake_rules(), {"budget.total": "550000", **SPLIT_70_25}).budget
+    await world.rules.save_section(YEAR, 1, "budget", budget.model_dump(mode="json"), actor=FINANCE)  # branches v2
+    promotion = await world.service.rules_draft_preview(YEAR, "A")
+    assert [s.section for s in promotion.preview.sections] == ["round2"]
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=2, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.budget.total == Decimal(550000)
+    assert draft.version.document.budget.pools["camp_pool"].share_pct == Decimal(70)
+    assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_the_pools_an_option_moved_still_land_when_its_total_is_stripped_after_the_lock() -> None:
+    """Regression guard: the strip takes the total only."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    await world.service.save_draft(
+        YEAR, with_levers(intake_rules(), {"budget.total": "600000", **SPLIT_70_25}), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE)  # A
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.budget.total == intake_rules().budget.total
+    assert draft.version.document.budget.pools["camp_pool"].share_pct == Decimal(70)
+
+
+@pytest.mark.asyncio
+async def test_a_release_compares_against_the_persons_draft_not_the_rules() -> None:
+    """Regression guard. §S11.3: an option kept before the lock still loads, and an edit to a still-open section saves."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # A, before the lock
+    await _post_round(world, 1)
+    await world.service.load(YEAR, TREASURER, option="A")
+    caps = with_lever(await _a(world), "round2.tables.camp.tiers.4.total_pct", "60")
+    saved = await world.service.save_draft(YEAR, caps, TREASURER)
+    assert saved.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_an_option_equal_to_a_rules_draft_that_differs_from_the_rules_in_effect_says_so() -> None:
+    """Regression guard: disagreement 5's second wording."""
+    world = await _frozen()
+    await _approved_v1(world)
+    edited = _shifted(intake_rules(), "-3").model_dump(mode="json")["award_tables"]
+    await world.rules.save_section(YEAR, 1, "award_tables", edited, actor=TREASURER)  # branches v2
+    await world.service.load(YEAR, FINANCE, start="rules_draft")
+    await world.service.keep(YEAR, FINANCE)  # A: the rules draft itself
+    [option] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert (option.promotable, option.blocked) == (False, "is already the rules draft")

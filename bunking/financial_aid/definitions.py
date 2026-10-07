@@ -639,6 +639,32 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.7",
         rulings=("D55", "D87"),
     ),
+    # Scenarios addendum §S6 (owner 10-06, lines 666-685, approved with the addendum).
+    Definition(
+        key="scenario_spend",
+        term="Spend",
+        text=(
+            "Spend: what the applications priced would get under these settings, against the season's budget (set "
+            "with Edit Plan… on Rounds & budget). A what-if: nothing here touches a family, the rules or Rounds & "
+            "budget. Before Round 1, Rounds 2 and 3 are $0: no appeals exist yet, and Round 3 amounts are typed by "
+            "staff, so no formula prices them. Once a round posts, its posted amounts stand in every column; "
+            "settings change only what is not yet posted."
+        ),
+        spec="§7.4",
+        rulings=("D35", "D38"),
+    ),
+    Definition(
+        key="scenario_below_the_line",
+        term="Below the line",
+        text=(
+            "Below the line, never counted in Remaining: held requests (no amount yet), the Round 1 unmet ask (what "
+            "families asked for above their Round 1), and, after Round 1, the appeals keyed so far. The number at "
+            "the minimum is shown beside them. This is not Rounds & budget's 'Shown, not counted', which lists "
+            "outside grants and money outside {camp}'s budget."
+        ),
+        spec="§7.4",
+        rulings=("D35", "D38"),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -660,6 +686,8 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "committed",
         "past_date",
     ),
+    # Scenarios addendum §S6: 1-4 in this order (Projected, note 3, joins with the arrival curve in PR 11).
+    "season-scenarios": ("scenario_spend", "remaining", "scenario_below_the_line"),
     "money-ledger": ("in_campminder_net", "posted"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
     "money-sources": ("source_facts", "reporting_group", "source_lines"),

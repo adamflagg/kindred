@@ -30,7 +30,9 @@ from bunking.pocketbase_batch import BatchRequestFailedError
 PAGE_SIZE: Final = 1000
 _PB_ID: Final = re.compile(r"^[a-z0-9]{15}$")
 _SNAPSHOT_FIELDS: Final = "id,year,requests,awaiting_rules,actor,created"
-_OPTION_FIELDS: Final = "id,year,code,starting_point,from_code,origin_version,document,results,snapshot,actor,created"
+_OPTION_FIELDS: Final = (
+    "id,year,code,starting_point,from_code,origin_version,name,document,results,snapshot,actor,created"
+)
 _TRAIL_PAGE_FIELDS: Final = "id,year,actor,from_code,change,results,snapshot,kept_code,created"
 # Decoded snapshots by record id. A snapshot never changes once written, so a decoded one never goes stale. Three are
 # kept (the current one plus two older ones a compare re-prices options on); the least recently used goes first.
@@ -72,6 +74,9 @@ class OptionRecord:
     snapshot: str
     actor: str
     created: datetime
+    # Scenarios addendum §S11.1: the staff-given name; "" for an option kept before names (no backfill), which then
+    # reads as its generated label.
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -139,6 +144,7 @@ def option_record(record: Any) -> OptionRecord:
         snapshot=str(record.snapshot),
         actor=_text(record, "actor"),
         created=_created(record),
+        name=_text(record, "name"),
     )
 
 

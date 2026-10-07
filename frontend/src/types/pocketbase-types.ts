@@ -756,6 +756,7 @@ export type AidScenarioOptionsRecord<
   document?: null | Tdocument
   from_code?: string
   id: string
+  name?: string
   origin_version: number
   results?: null | Tresults
   round1_by_request?: null | Tround1_by_request

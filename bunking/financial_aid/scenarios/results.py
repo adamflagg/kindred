@@ -410,3 +410,20 @@ def scenario_results(
         round2_remaining=None,
         committee_rows=True,
     )
+
+
+def round2_by_tier_totals(results: ScenarioResults) -> dict[int, Decimal]:
+    """Round 2 per final tier, summed across the Round 2 tables (Scenarios addendum §S11.4: the By tier popover once
+    Round 1 posts). Results stored before the rows existed read as {}."""
+    totals: dict[int, Decimal] = {}
+    for row in results.round2_by_tier:
+        totals[row.tier] = totals.get(row.tier, ZERO) + row.round2
+    return totals
+
+
+def appeal_totals(results: ScenarioResults) -> tuple[int, Decimal]:
+    """The appeals keyed so far and their asks (§S11.4: Below the line after the lock): the Round 2 rows summed.
+    A request sits in one Round 2 table, so the sum counts each appeal once. It counts the appeals in a tier: an
+    appeal on a request with no final tier sits in no tier row, so only its money shows (in `round2_not_in_tiers`)
+    and it is left out of this count."""
+    return sum(row.appeals for row in results.round2_by_tier), sum((row.asked for row in results.round2_by_tier), ZERO)

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from api.schemas.financial_aid_rules import FieldChangeOut
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
@@ -27,6 +27,7 @@ class PoolResultOut(BaseModel):
     round1_remaining: float | None
     remaining: float | None
     round1_unmet: float  # below the line, never subtracted (§5.9)
+    allocated: float | None = None  # the pool's Allocated: the bar's scale (§S11.4); round1_allocated stays for Fit
 
 
 class TierRowOut(BaseModel):
@@ -35,6 +36,7 @@ class TierRowOut(BaseModel):
     families: int
     round1: float
     asked: float | None = None  # the tier's Round 1 asks; filled by SP9c (RPT-17)
+    round2: float = 0  # the tier's Round 2 across the tables (§S11.4)
 
 
 class RequestSetOut(BaseModel):
@@ -58,6 +60,7 @@ class ResultsOut(BaseModel):
     round2: float
     round3: float
     round1_allocated: float | None
+    allocated: float | None = None  # the whole Allocated (§S11.4); round1_allocated stays for Fit
     round1_remaining: float | None
     remaining: float | None
     at_minimum: int
@@ -73,6 +76,9 @@ class ResultsOut(BaseModel):
     # 0 when the rules set no Round 2 reserves; None only with no rules.
     round2_allocated: float | None = None
     round2_remaining: float | None = None
+    # The appeals keyed so far and their asks: Below the line once Round 1 posts (§S11.4).
+    appeals: int = 0
+    appeals_asked: float = 0
 
 
 class SnapshotOut(BaseModel):
@@ -95,17 +101,22 @@ class OptionOut(BaseModel):
     kept_at: datetime
     results: ResultsOut
     stale: bool  # its figures are from an older snapshot
+    name: str = ""  # the staff-given name, else the label (§S11.1)
+    promotable: bool = False  # Make it the Rules Draft would copy something (Task 57 fills it)
+    blocked: str | None = None  # why it can't, in staff words (Task 57)
 
 
 class DraftOut(BaseModel):
-    trail_id: str
-    from_code: str
+    trail_id: str | None = None  # None: nothing recorded yet; the draft is the rules in effect (§S11.2)
+    from_code: str  # a kept code, or "rules" | "rules_draft" | "last_rules"
     label: str
     document: AidRules
     changes: list[FieldChangeOut]
     results: ResultsOut | None
     report: ValidationReport
-    recorded_at: datetime
+    recorded_at: datetime | None = None
+    source_document: AidRules | None = None  # what it is from, read now: the strip's starting point, "was …"
+    same_as: str | None = None  # a kept code whose document equals the draft, else "rules", else None
 
 
 class WorkspaceOut(BaseModel):
@@ -115,6 +126,11 @@ class WorkspaceOut(BaseModel):
     snapshot: SnapshotOut | None
     draft: DraftOut | None
     options: list[OptionOut]
+    # the rules draft's version while it differs from the rules in effect: the cue for Start from's third entry
+    rules_draft_version: int | None = None
+    # a posted round locked these (§S11.3): the screen greys from them alone
+    locked_sections: list[SectionName] = Field(default_factory=list)
+    locked_by_round: int | None = None
 
 
 class DocumentIn(BaseModel):
@@ -154,18 +170,38 @@ class LoadIn(BaseModel):
 
     option: OptionCode | None = None
     trail_row: RecordId | None = None
+    start: Literal["rules", "rules_draft", "last_rules"] | None = None  # a built-in start (§S11.2)
 
     @model_validator(mode="after")
     def _one_source(self) -> Self:
-        if self.option is None and self.trail_row is None:
-            raise ValueError("name a kept option or a trail row to load")
+        if sum(value is not None for value in (self.option, self.trail_row, self.start)) != 1:
+            raise ValueError("name one kept option, one trail row or one starting point to load")
         return self
 
 
 class KeepIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str | None = Field(default=None, max_length=80)  # blank or missing: the draft's label (§S11.1)
+    # Accepted and ignored: every keep is the next flat letter (§S11.1). PR 12 stops sending it and removes it.
     starting_point: bool = False
+
+
+class RenameIn(BaseModel):
+    """A kept option's new name: trimmed, at most 80 characters. A blank one reaches the service, which refuses it
+    in staff words ("Give it a name")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def _trimmed(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) > 80:
+            raise ValueError("A name is at most 80 characters")
+        return value
 
 
 class TierCompareOut(BaseModel):
@@ -214,21 +250,26 @@ class CommitteeOut(BaseModel):
     round2_by_tier: list[Round2CompareOut]  # each Round 2 table's tiers, then All
     not_in_tiers: float  # Round 1 no row holds (a withdrawn request's posted round): All's rows + this = round1
     round2_not_in_tiers: float  # the same for Round 2
+    requests: int = 0  # the All rows summed (disagreement 3)
+    average_round1: float | None = None  # their Round 1 over their requests; the server divides
 
 
 class LastSeasonOut(BaseModel):
     """Last season's posted money, at each lock, beside the compare (RPT-17's and RPT-32's last-season columns).
-    `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate."""
+    `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate. The pools are
+    each pool's Posted cells, empty until last season is loaded."""
 
     year: int
     loaded: bool
     label: str
     rules_version: int | None
     view: CommitteeOut | None
+    round3: float = 0
+    pools: list[PoolResultOut] = Field(default_factory=list)  # each pool's Posted cells; empty until loaded
 
 
 class CompareColumnOut(BaseModel):
-    code: str  # "draft" for the draft
+    code: str  # "rules", "last_rules", "draft", or a kept code
     label: str
     document: AidRules
     changes: list[FieldChangeOut]
@@ -236,6 +277,9 @@ class CompareColumnOut(BaseModel):
     up: int | None
     down: int | None
     committee: CommitteeOut | None = None
+    version: int | None = None
+    approved_at: datetime | None = None
+    via: str | None = None
 
 
 class CompareOut(BaseModel):
@@ -243,6 +287,8 @@ class CompareOut(BaseModel):
     snapshot: SnapshotOut
     columns: list[CompareColumnOut]
     last_season: LastSeasonOut | None = None  # only with ?last_season=true
+    # The server's words when "last season's rules" was asked for and can't be built (disagreement 16)
+    last_rules_refused: str | None = None
 
 
 class FitOut(BaseModel):
@@ -308,6 +354,7 @@ class PromotionPreviewOut(BaseModel):
     base_version: int
     sections: list[PromotionSectionOut]
     unchanged: list[SectionName]
+    fixed_kept: int = 0  # fixed settings left as the rules draft has them (§S11.3)
 
 
 class MakeRulesDraftIn(BaseModel):
