@@ -102,6 +102,15 @@ def _ag_children(context: ValidationContext | None) -> frozenset[int]:
     return frozenset(r.cm_id for r in context.sessions if r.session_type == "ag" and r.parent_id)
 
 
+def _not_running(rules: AidRules, context: ValidationContext | None) -> frozenset[int]:
+    """Sessions finance marked not running, and the AG sessions under them (spec §7.1: derived, never stored)."""
+    listed = set(rules.cost.not_running_session_cm_ids)
+    children = {
+        r.cm_id for r in (context.sessions if context else []) if r.parent_id in listed and r.session_type == "ag"
+    }
+    return frozenset(listed | children)
+
+
 class ValidationContext(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -537,7 +546,10 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
         )
         return
     refs = {r.cm_id: r for r in context.sessions}
+    skip = _not_running(rules, context)
     for ref in context.sessions:
+        if ref.cm_id in skip:
+            continue
         ag_parent = (
             (ref.parent_id, refs[ref.parent_id].session_type if ref.parent_id in refs else None)
             if ref.parent_id
@@ -562,7 +574,7 @@ def _session_names(ids: Sequence[int], context: ValidationContext | None) -> str
 
 def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Issues) -> None:
     counts = Counter(r.session_cm_id for r in rules.cost.family_rates)
-    skip = _ag_children(context)
+    skip = _ag_children(context) | _not_running(rules, context)
     for session, n in counts.items():
         if n > 1:
             issues.error("cost", "duplicate_family_rate", "cost.family_rates", f"Session {session} has {n} rates")
@@ -590,6 +602,17 @@ def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Iss
                     f"{program.label}: no tuition for {_session_names(missing, context)}",
                     missing,
                 )
+    if context is not None and context.sessions:
+        known = {r.cm_id for r in context.sessions}
+        unknown = [s for s in dict.fromkeys(rules.cost.not_running_session_cm_ids) if s not in known]
+        if unknown:
+            issues.warn(
+                "cost",
+                "not_running_unknown_session",
+                "cost.not_running_session_cm_ids",
+                f"{', '.join(str(s) for s in unknown)} is marked not running but isn't a session in {rules.year}",
+                unknown,
+            )
 
 
 def _check_grants(rules: AidRules, issues: _Issues) -> None:
