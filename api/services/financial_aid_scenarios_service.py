@@ -46,6 +46,7 @@ from api.services.financial_aid_rules_service import (
     PromotionPreview,
     RulesDraft,
     RulesVersion,
+    YearMismatchError,
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
@@ -351,15 +352,18 @@ def _scenario_locked(locked: Collection[SectionName]) -> tuple[SectionName, ...]
     return tuple(name for name in SECTION_NAMES if name in SCENARIO_SECTIONS and name in locked)
 
 
-def _promotion_document(rules_draft: AidRules, option: AidRules) -> tuple[AidRules, int]:
+def _promotion_document(rules_draft: AidRules, option: AidRules, origin: AidRules) -> tuple[AidRules, int]:
     """What a promotion copies (§S11.3; COORDINATOR RULING, PR 10, 2026-10-07): the option with its fixed settings
     set back to the rules draft's, and the budget total too. A scenario option can never change the budget total: the
     sandbox has no budget editor, and once Round 1 posts the rules save refuses a new total (BudgetTotalLockedError),
     which would fail Confirm and leave the option's other changes unlanded. Always applied, locked or not. The pools'
-    shares still copy. The count is of fixed settings only; the total is not one."""
+    shares copy only when the option moved them from `origin`, where it started: otherwise the rules draft's own
+    budget edit since then would look moved and be reverted. The count is of fixed settings only; the total is not
+    one."""
     document, kept = reset_fixed_document(rules_draft, option)
-    if document.budget.total != rules_draft.budget.total:
-        budget = document.budget.model_copy(update={"total": rules_draft.budget.total})
+    pools = document.budget.pools if document.budget.pools != origin.budget.pools else rules_draft.budget.pools
+    budget = rules_draft.budget.model_copy(update={"pools": pools})
+    if budget != document.budget:
         document = document.model_copy(update={"budget": budget})
     return document, kept
 
@@ -836,12 +840,19 @@ class FinancialAidScenariosService:
         rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere. The
         rules service's own promote is unchanged for its other callers."""
         option = await self._option(year, code)
+        if option.document.year != year:
+            raise YearMismatchError(f"The document is for {option.document.year}, not {year}")
         rules_draft = await self._rules.load(year)
+        origin = (
+            rules_draft
+            if option.origin_version == rules_draft.version
+            else await self._rules.load(year, option.origin_version)
+        )
         try:
-            document, kept = _promotion_document(rules_draft.document, option.document)
+            document, kept = _promotion_document(rules_draft.document, option.document, origin.document)
         except ValueError as exc:  # pydantic's ValidationError
             raise ScenarioRefusedError(f"{code}'s fixed settings don't fit the rules draft") from exc
-        preview = await self._rules.promotion_preview(year, origin_version=option.origin_version, document=document)
+        preview = await self._rules.preview_against(rules_draft, origin=origin, document=document)
         locked = await self._rules.sections_locked_anywhere(year)
         refused = [entry.section for entry in preview.sections if entry.section in locked]
         if refused:
@@ -863,13 +874,15 @@ class FinancialAidScenariosService:
         origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
         out: dict[str, tuple[bool, str | None]] = {}
         for code, option in options.items():
+            if option.origin_version not in origins:
+                origins[option.origin_version] = await self._rules.load(year, option.origin_version)
             try:
-                document, _ = _promotion_document(rules_draft.document, option.document)
+                document, _ = _promotion_document(
+                    rules_draft.document, option.document, origins[option.origin_version].document
+                )
             except ValueError:
                 out[code] = (False, "its fixed settings don't fit the rules draft")
                 continue
-            if option.origin_version not in origins:
-                origins[option.origin_version] = await self._rules.load(year, option.origin_version)
             preview = await self._rules.preview_against(
                 rules_draft, origin=origins[option.origin_version], document=document
             )

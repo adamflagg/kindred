@@ -1346,3 +1346,73 @@ async def test_an_unreadable_snapshot_still_opens_an_unrecorded_draft_so_update_
     assert priced is not None
     assert priced.results is not None
     assert priced.results.round1 == Decimal(2600)
+
+
+# --- Fix round 1: the strip must not make an untouched budget look moved; the pools still land -------------------------
+
+SPLIT_70_25 = {
+    "budget.pools.camp_pool.share_pct": "70",
+    "budget.pools.weekend_pool.share_pct": "25",
+}
+
+
+@pytest.mark.asyncio
+async def test_an_option_that_never_touched_the_budget_does_not_revert_the_drafts_newer_budget() -> None:
+    """Finance moves the rules draft's total and split after A was kept from v1; A changed round2 only, so the
+    promotion lists round2 alone and v2's budget stays."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(
+        YEAR, with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60"), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE)  # A
+    budget = with_levers(intake_rules(), {"budget.total": "550000", **SPLIT_70_25}).budget
+    await world.rules.save_section(YEAR, 1, "budget", budget.model_dump(mode="json"), actor=FINANCE)  # branches v2
+    promotion = await world.service.rules_draft_preview(YEAR, "A")
+    assert [s.section for s in promotion.preview.sections] == ["round2"]
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=2, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.budget.total == Decimal(550000)
+    assert draft.version.document.budget.pools["camp_pool"].share_pct == Decimal(70)
+    assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_the_pools_an_option_moved_still_land_when_its_total_is_stripped_after_the_lock() -> None:
+    """Regression guard: the strip takes the total only."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await _post_round(world, 1)
+    await world.service.save_draft(
+        YEAR, with_levers(intake_rules(), {"budget.total": "600000", **SPLIT_70_25}), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE)  # A
+    draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
+    assert draft.version.document.budget.total == intake_rules().budget.total
+    assert draft.version.document.budget.pools["camp_pool"].share_pct == Decimal(70)
+
+
+@pytest.mark.asyncio
+async def test_a_release_compares_against_the_persons_draft_not_the_rules() -> None:
+    """Regression guard. §S11.3: an option kept before the lock still loads, and an edit to a still-open section saves."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    await world.service.keep(YEAR, FINANCE)  # A, before the lock
+    await _post_round(world, 1)
+    await world.service.load(YEAR, TREASURER, option="A")
+    caps = with_lever(await _a(world), "round2.tables.camp.tiers.4.total_pct", "60")
+    saved = await world.service.save_draft(YEAR, caps, TREASURER)
+    assert saved.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_an_option_equal_to_a_rules_draft_that_differs_from_the_rules_in_effect_says_so() -> None:
+    """Regression guard: disagreement 5's second wording."""
+    world = await _frozen()
+    await _approved_v1(world)
+    edited = _shifted(intake_rules(), "-3").model_dump(mode="json")["award_tables"]
+    await world.rules.save_section(YEAR, 1, "award_tables", edited, actor=TREASURER)  # branches v2
+    await world.service.load(YEAR, FINANCE, start="rules_draft")
+    await world.service.keep(YEAR, FINANCE)  # A: the rules draft itself
+    [option] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert (option.promotable, option.blocked) == (False, "is already the rules draft")
