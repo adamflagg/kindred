@@ -187,7 +187,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", "/api/financial-aid/scenarios/2027/evaluate", DOC_BODY),
     ("PUT", "/api/financial-aid/scenarios/2027/draft", DOC_BODY),
     ("POST", "/api/financial-aid/scenarios/2027/draft/load", {"option": "A"}),
-    ("POST", "/api/financial-aid/scenarios/2027/keep", {"starting_point": False}),
+    ("POST", "/api/financial-aid/scenarios/2027/keep", {"name": "Every tier up"}),
     ("PATCH", "/api/financial-aid/scenarios/2027/options/A", {"name": "Every tier up"}),
     ("GET", "/api/financial-aid/scenarios/2027/compare?codes=A", None),
     ("POST", "/api/financial-aid/scenarios/2027/fit-to-budget", DOC_BODY),
@@ -253,12 +253,12 @@ def test_writes_carry_the_callers_email() -> None:
     client.post("/api/financial-aid/scenarios/2027/snapshot")
     client.put("/api/financial-aid/scenarios/2027/draft", json=DOC_BODY)
     client.post("/api/financial-aid/scenarios/2027/draft/load", json={"trail_row": "trl000000000001"})
-    client.post("/api/financial-aid/scenarios/2027/keep", json={"starting_point": True})
+    client.post("/api/financial-aid/scenarios/2027/keep", json={"name": "Kept"})
     assert service.freeze.await_args.args == (2027, email)
     assert service.save_draft.await_args.args[2] == email
     assert service.load.await_args.args == (2027, email)
     assert service.load.await_args.kwargs == {"option": None, "trail_row": "trl000000000001", "start": None}
-    assert service.keep.await_args.kwargs == {"name": None, "starting_point": True}
+    assert service.keep.await_args.kwargs == {"name": "Kept"}
 
 
 def test_a_load_takes_a_built_in_start_and_refuses_two_sources_before_the_service() -> None:
@@ -415,7 +415,7 @@ def test_a_body_that_is_not_a_rules_document_is_422() -> None:
 def test_refusals_map_to_404_409_and_422(error: Exception, status: int) -> None:
     service = _stub()
     service.keep = AsyncMock(side_effect=error)
-    response = _client().post("/api/financial-aid/scenarios/2027/keep", json={"starting_point": False})
+    response = _client().post("/api/financial-aid/scenarios/2027/keep", json={"name": "Every tier up"})
     assert (response.status_code, response.json()["detail"]) == (status, str(error))
 
 
@@ -747,12 +747,13 @@ def test_compare_passes_the_built_in_columns_and_reads_their_version() -> None:
     assert body["last_rules_refused"] == "2026 has no approved rules to start from: load and approve them first"
 
 
-def test_results_carry_round2s_allocation_and_what_is_left() -> None:
+def test_keep_refuses_the_retired_starting_point_and_results_send_no_round2_allocation() -> None:
     service = _stub()
-    results = RESULTS.model_copy(update={"round2_allocated": Decimal(40000), "round2_remaining": Decimal("39400.00")})
-    service.evaluate = AsyncMock(return_value=Evaluation(DOC, results, ValidationReport()))
-    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()
-    assert (body["results"]["round2_allocated"], body["results"]["round2_remaining"]) == (40000.0, 39400.0)
+    assert _client().post("/api/financial-aid/scenarios/2027/keep", json={"starting_point": True}).status_code == 422
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
+    assert "round2_allocated" not in body
+    assert "round2_remaining" not in body
+    service.keep.assert_not_called()
 
 
 def test_start_from_last_season_passes_the_caller_and_maps_a_refusal_to_422() -> None:
@@ -835,7 +836,7 @@ def test_keep_passes_its_name_and_the_option_reads_with_its_name() -> None:
         return_value=KeptOption(replace(OPTION, name="Every tier up"), "rules v1 as they were", stale=False)
     )
     body = _client().post("/api/financial-aid/scenarios/2027/keep", json={"name": "Every tier up"}).json()
-    assert service.keep.await_args.kwargs == {"name": "Every tier up", "starting_point": False}
+    assert service.keep.await_args.kwargs == {"name": "Every tier up"}
     assert (body["name"], body["label"], body["promotable"], body["blocked"]) == (
         "Every tier up",
         "rules v1 as they were",

@@ -6,6 +6,7 @@ import { rulesVocabulary } from '../rules/rulesModel'
 import {
   columnChoices,
   columnHeads,
+  columnParams,
   columnsFromView,
   compareQuery,
   compareRows,
@@ -320,6 +321,25 @@ describe('the rows (§S5 H; N3, N4, N10)', () => {
     expect(out.find((r) => r.label === 'Remaining')?.cells[0]).toEqual({
       text: '−$41,496',
       tone: 'total-negative',
+    })
+  })
+})
+
+describe('the URL (§S5 L)', () => {
+  it('writes the checked columns back to the URL (§S5 L)', () => {
+    expect(columnParams(['rules', 'draft', 'kept:B', 'kept:A', 'last_season'])).toEqual({
+      compare: 'B,A',
+      rules: '1',
+      lastrules: null,
+      draft: '1',
+      last: '1',
+    })
+    expect(columnParams([])).toEqual({
+      compare: null,
+      rules: null,
+      lastrules: null,
+      draft: null,
+      last: null,
     })
   })
 })

@@ -153,7 +153,7 @@ describe('HistoryTab', () => {
     pages.data = only(FINANCE_PAGE)
     renderAt()
     expect(screen.getByRole('button', { name: 'Rules 3' })).toBeInTheDocument()
-    expect(screen.getByText(/The scenario trail stays in Scenarios/)).toBeInTheDocument()
+    expect(screen.getByText(/Scenario edits stay in Scenarios/)).toBeInTheDocument()
   })
 
   it('counts each chip as the server counts it, and shows "—" for every count while it loads (H5; spec §7.2 A)', () => {

@@ -209,7 +209,7 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
     )
   })
 
-  it('keys the compare and the trail under the scenario prefix, never at the sensitivity slot', () => {
+  it('keys the compare under the scenario prefix, never at the sensitivity slot', () => {
     const ask = (requestSet: AidRequestSet, lastSeason: boolean, codes = ['A1']): CompareQuery => ({
       codes,
       requestSet,
@@ -219,13 +219,9 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
       draft: true,
     })
     const compareOf = (query: CompareQuery) => queryKeys.aidScenarioCompare(2027, compareKey(query))
-    for (const key of [
-      compareOf(ask({ kind: 'deadline' }, true, ['A1', 'B'])),
-      queryKeys.aidScenarioTrail(2027, 2),
-    ]) {
-      expect(key.slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
-      expect(key[3]).not.toBe('sensitivity')
-    }
+    const key = compareOf(ask({ kind: 'deadline' }, true, ['A1', 'B']))
+    expect(key.slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
+    expect(key[3]).not.toBe('sensitivity')
     expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
       compareOf(ask({ kind: 'deadline' }, false))
     )

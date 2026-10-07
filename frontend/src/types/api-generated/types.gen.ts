@@ -8253,10 +8253,6 @@ export type KeepIn = {
    * Name
    */
   name?: string | null
-  /**
-   * Starting Point
-   */
-  starting_point?: boolean
 }
 
 /**
@@ -13428,14 +13424,6 @@ export type ResultsOut = {
    */
   not_in_tiers: number
   request_set?: RequestSetOut | null
-  /**
-   * Round2 Allocated
-   */
-  round2_allocated?: number | null
-  /**
-   * Round2 Remaining
-   */
-  round2_remaining?: number | null
   /**
    * Appeals
    */

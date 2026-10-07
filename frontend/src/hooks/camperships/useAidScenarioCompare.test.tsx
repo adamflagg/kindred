@@ -1,12 +1,12 @@
-/** The compare and the trail reads: through fetchWithAuth, each view setting in the query (D38, D138). */
+/** The compare read: through fetchWithAuth, each view setting in the query (D38, D138). */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import { TRAIL, compareOut } from '../../components/camperships/season/scenarios/scenarioFixtures'
+import { compareOut } from '../../components/camperships/season/scenarios/scenarioFixtures'
 import type { AidRequestSet, CompareQuery } from '../../services/camperships/aidApi'
-import { useAidScenarioCompare, useAidScenarioTrail } from './useAidScenarioCompare'
+import { useAidScenarioCompare } from './useAidScenarioCompare'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -27,9 +27,9 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   authLoading = false
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) =>
+  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
     Promise.resolve(
-      new Response(JSON.stringify(String(input).includes('/trail') ? TRAIL : compareOut()), {
+      new Response(JSON.stringify(compareOut()), {
         status: 200,
       })
     )
@@ -106,32 +106,7 @@ describe('useAidScenarioCompare', () => {
   })
 })
 
-describe('useAidScenarioTrail paging', () => {
-  it('keeps the page showing, as a placeholder, while the next one loads', async () => {
-    const { result, rerender } = renderHook(
-      ({ page }: { page: number }) => useAidScenarioTrail(page),
-      {
-        wrapper,
-        initialProps: { page: 1 },
-      }
-    )
-    await waitFor(() => expect(result.current.data).toBeDefined())
-    fetchSpy.mockImplementation(() => new Promise<Response>(() => undefined))
-    rerender({ page: 2 })
-    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true))
-    expect(result.current.data).toBeDefined()
-  })
-})
-
-describe('useAidScenarioTrail', () => {
-  it('reads a page of 50, newest first', async () => {
-    const { result } = renderHook(() => useAidScenarioTrail(2), { wrapper })
-    await waitFor(() => expect(result.current.data).toEqual(TRAIL))
-    expect(url()).toBe('/api/financial-aid/scenarios/2027/trail?page=2&per_page=50')
-  })
-})
-
-describe('the gates and the refusals both reads share', () => {
+describe('the gates and the refusals', () => {
   const refuse = (status: number) =>
     fetchSpy.mockImplementation(() =>
       Promise.resolve(new Response(JSON.stringify({ detail: 'No deadline yet' }), { status }))
@@ -143,15 +118,15 @@ describe('the gates and the refusals both reads share', () => {
     const compare = renderHook(() => useAidScenarioCompare(ask([], { kind: 'deadline' }, false)), {
       wrapper,
     })
-    const trail = renderHook(() => useAidScenarioTrail(1), { wrapper })
     await waitFor(() => expect(compare.result.current.isError).toBe(true))
-    await waitFor(() => expect(trail.result.current.isError).toBe(true))
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('sends the trail through fetchWithAuth too', async () => {
-    const { result } = renderHook(() => useAidScenarioTrail(1), { wrapper })
-    await waitFor(() => expect(result.current.data).toEqual(TRAIL))
+  it('sends the compare through fetchWithAuth', async () => {
+    const { result } = renderHook(() => useAidScenarioCompare(ask([], { kind: 'all' }, false)), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.data).toEqual(compareOut()))
     const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
   })
@@ -161,10 +136,8 @@ describe('the gates and the refusals both reads share', () => {
     const compare = renderHook(() => useAidScenarioCompare(ask([], { kind: 'all' }, false)), {
       wrapper,
     })
-    const trail = renderHook(() => useAidScenarioTrail(1), { wrapper })
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(compare.result.current.fetchStatus).toBe('idle')
-    expect(trail.result.current.fetchStatus).toBe('idle')
   })
 })

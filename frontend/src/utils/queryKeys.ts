@@ -767,8 +767,6 @@ export const queryKeys = {
     ['financial-aid', 'scenarios', year, 'evaluate', snapshotId, requestSet, document] as const,
   aidScenarioCompare: (year: number, query: string) =>
     ['financial-aid', 'scenarios', year, 'compare', query] as const,
-  aidScenarioTrail: (year: number, page: number) =>
-    ['financial-aid', 'scenarios', year, 'trail', page] as const,
   aidPromotionPreview: (year: number, code: string) =>
     ['financial-aid', 'scenarios', year, 'promotion', code] as const,
 }
@@ -994,7 +992,7 @@ export function invalidateAidRulesQueries(
 
 /**
  * Every scenario write calls this on settle (spec §7.4, §10): a scenario never writes live awards, so
- * it moves the scenario reads only (the workspace, the compare, the trail), except each step's
+ * it moves the scenario reads only (the workspace, the compare), except each step's
  * effect, whose key is its inputs.
  * Returns a promise like the other aid helpers, so an onSettled can wait for the refetch.
  */

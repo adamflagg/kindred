@@ -1286,8 +1286,6 @@ def _results_out(r: ScenarioResults, projection: Projection | None = None) -> Re
         ],
         not_in_tiers=money(r.not_in_tiers),
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
-        round2_allocated=_cents(r.round2_allocated),
-        round2_remaining=_cents(r.round2_remaining),
         appeals=appeals,
         appeals_asked=money(appeals_asked),
     )
@@ -1560,9 +1558,7 @@ async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES
 async def keep_scenario(year: _Year, body: KeepIn, user: AuthUser = _RULES) -> OptionOut:
     """Keep your draft as the next lettered option (Scenarios addendum §S11.1), named or, when blank, by its label."""
     try:
-        return _option_out(
-            await _scenarios().keep(year, user.email, name=body.name, starting_point=body.starting_point)
-        )
+        return _option_out(await _scenarios().keep(year, user.email, name=body.name))
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 

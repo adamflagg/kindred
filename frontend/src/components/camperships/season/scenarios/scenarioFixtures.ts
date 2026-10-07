@@ -11,7 +11,6 @@ import type {
   ApiAidScenarioDraft,
   ApiAidScenarioOption,
   ApiAidScenarioResults,
-  ApiAidScenarioTrailPage,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
 import { RULES_DOCUMENT } from '../rules/rulesFixtures'
@@ -64,8 +63,6 @@ export function results(
     ],
     not_in_tiers: 0,
     request_set: null,
-    round2_allocated: 60000,
-    round2_remaining: 39500,
     ...over,
   }
 }
@@ -280,36 +277,4 @@ export function compareOut(over: Partial<ApiAidScenarioCompare> = {}): ApiAidSce
     },
     ...over,
   }
-}
-
-export const TRAIL: ApiAidScenarioTrailPage = {
-  page: 1,
-  per_page: 50,
-  total: 2,
-  rows: [
-    {
-      id: 'trail0000000002',
-      recorded_at: '2027-01-15T17:03:00Z',
-      actor: 'Test User',
-      from_code: 'B',
-      change: 'shift every tier 0 pts → −5 pts',
-      kept_code: null,
-      round1: 735000,
-      round1_remaining: 65000,
-      at_minimum: 12,
-      stale: false,
-    },
-    {
-      id: 'trail0000000001',
-      recorded_at: '2027-01-14T17:20:00Z',
-      actor: 'Test User',
-      from_code: 'A',
-      change: 'band width $24k → $29k',
-      kept_code: 'B',
-      round1: 740000,
-      round1_remaining: 60000,
-      at_minimum: 10,
-      stale: true,
-    },
-  ],
 }

@@ -1138,12 +1138,10 @@ class FinancialAidScenariosService:
             await self._record(year, actor, document=document, from_code=from_code, change=change)
         return await self._draft(year, actor)
 
-    async def keep(self, year: int, actor: str, *, name: str | None = None, starting_point: bool = False) -> KeptOption:
+    async def keep(self, year: int, actor: str, *, name: str | None = None) -> KeptOption:
         """Lock `actor`'s recorded draft as the next flat lettered option (§S11.1). The letter counts only starting
         points, so variants kept before PR 10 (A1, B2) never take one: A, A1 and B kept make C next. A blank or
-        missing `name` stores the draft's label, cut to the name field. `starting_point` is accepted and ignored
-        until PR 12 stops sending it. One operation: the option and the trail row's kept code."""
-        del starting_point
+        missing `name` stores the draft's label, cut to the name field. One operation: the option and the trail row's kept code."""
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
             raise ScenarioRefusedError("Your draft is the rules in effect: change a setting before keeping it")

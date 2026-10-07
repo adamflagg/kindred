@@ -3,7 +3,6 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   compareKey,
   fetchAidScenarioCompare,
-  fetchAidScenarioTrail,
   retryUnlessRefused,
   type CompareQuery,
 } from '../../services/camperships/aidApi'
@@ -34,24 +33,6 @@ export function useAidScenarioCompare(
     enabled: enabled && year > 0 && !authLoading,
     retry,
     // A tick or a request-set change keeps the last table on screen, marked stale, rather than a spinner.
-    placeholderData: keepPreviousData,
-  })
-}
-
-/** The trail, newest first, a page of 50 at a time (D38). The caller gates it on the rules permission. */
-export function useAidScenarioTrail(
-  page: number,
-  { enabled = true }: { readonly enabled?: boolean } = {}
-) {
-  const year = useYear()
-  const { fetchWithAuth } = useApiWithAuth()
-  const { isLoading: authLoading } = useAuth()
-  return useQuery({
-    queryKey: queryKeys.aidScenarioTrail(year, page),
-    queryFn: () => fetchAidScenarioTrail(fetchWithAuth, year, page),
-    enabled: enabled && year > 0 && !authLoading,
-    retry,
-    // Newer / Older keep the page on screen, marked stale, rather than blanking to a spinner.
     placeholderData: keepPreviousData,
   })
 }

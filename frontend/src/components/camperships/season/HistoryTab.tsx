@@ -42,7 +42,7 @@ const NOTES: readonly DefinitionNote[] = [
   },
   {
     n: 3,
-    text: 'The scenario trail stays in Scenarios; making a kept option the rules draft appears here as a rules operation.',
+    text: 'Scenario edits stay in Scenarios; making a kept option the rules draft appears here as a rules operation.',
   },
 ]
 const NOTES_WITHOUT_SCENARIOS = NOTES.slice(0, 2)

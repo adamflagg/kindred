@@ -31,7 +31,7 @@ export interface ColumnChoice {
   readonly disabled: boolean
 }
 
-const optionName = (option: ApiAidScenarioOption) =>
+export const optionName = (option: ApiAidScenarioOption) =>
   (option.name ?? '') === '' ? option.label : (option.name ?? '')
 
 /** Columns ▾'s list, in the one fixed order the table shows (§S5 H): it reads the same each time. */
@@ -489,4 +489,19 @@ export function cornerWords(sources: readonly CompareSource[], requestSet: AidRe
   const results = first?.kind === 'priced' ? first.column.results : null
   const through = results?.request_set?.through ?? null
   return `Priced on ${String(results?.requests ?? 0)} ${requestSetWords(requestSet, through)}`
+}
+
+/** The checked columns as the URL holds them (§S5 L): kept codes in `compare`, and `1` for each built-in. */
+export function columnParams(checked: readonly ColumnKey[]): Record<string, string | null> {
+  const codes = checked
+    .filter((key) => key.startsWith('kept:'))
+    .map((key) => key.slice('kept:'.length))
+  const on = (key: ColumnKey) => (checked.includes(key) ? '1' : null)
+  return {
+    compare: codes.length === 0 ? null : codes.join(','),
+    rules: on('rules'),
+    lastrules: on('last_rules'),
+    draft: on('draft'),
+    last: on('last_season'),
+  }
 }

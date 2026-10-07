@@ -49,10 +49,7 @@ import type {
   ApiAidScenarioLoadIn,
   ApiAidScenarioOption,
   ApiAidScenarioRenameIn,
-  ApiAidScenarioSensitivity,
   ApiAidScenarioSnapshot,
-  ApiAidScenarioTrailPage,
-  ApiAidScenarioViewIn,
   ApiAidScenarioWorkspace,
   ApiAidSectionSaveIn,
   ApiAidSessionIn,
@@ -594,24 +591,6 @@ export function freezeAidScenarioSeason(
   )
 }
 
-/**
- * A starting point loaded into your draft: from the rules draft, or from last season's approved
- * criteria (RPT-18). 422 when last season has no approved rules, or its criteria don't fit.
- */
-export function startAidScenarios(
-  fetchWithAuth: FetchWithAuth,
-  year: number,
-  from: 'rules' | 'last_season'
-): Promise<ApiAidScenarioWorkspace> {
-  return send<ApiAidScenarioWorkspace>(
-    fetchWithAuth,
-    'POST',
-    `${scenarios(year)}/starting-points${from === 'last_season' ? '/last-season' : ''}`,
-    {},
-    "Couldn't start a scenario"
-  )
-}
-
 /** A document priced on the frozen season with the sliders applied; records nothing (the live figures). */
 export function evaluateAidScenario(
   fetchWithAuth: FetchWithAuth,
@@ -671,24 +650,6 @@ export function keepAidScenario(
     `${scenarios(year)}/keep`,
     body,
     "Couldn't keep the draft"
-  )
-}
-
-/**
- * What one step of each sizing setting moves Round 1 by (§7.4), the dollar-for-dollar switch included
- * (D137). The body is the draft's document alone (Decision 22).
- */
-export function fetchAidScenarioSensitivity(
-  fetchWithAuth: FetchWithAuth,
-  year: number,
-  body: Pick<ApiAidScenarioViewIn, 'document'>
-): Promise<ApiAidScenarioSensitivity> {
-  return send<ApiAidScenarioSensitivity>(
-    fetchWithAuth,
-    'POST',
-    `${scenarios(year)}/sensitivity`,
-    body,
-    "Couldn't work out each setting's step"
   )
 }
 
@@ -768,19 +729,6 @@ export async function fetchAidScenarioCompare(
   const response = await fetchWithAuth(`${scenarios(year)}/compare${search ? `?${search}` : ''}`)
   if (!response.ok) throw await toApiError(response, 'Failed to compare', AidApiError)
   return (await response.json()) as ApiAidScenarioCompare
-}
-
-/** Every released setting, everyone's, newest first (D38), a page at a time. */
-export async function fetchAidScenarioTrail(
-  fetchWithAuth: FetchWithAuth,
-  year: number,
-  page: number
-): Promise<ApiAidScenarioTrailPage> {
-  const response = await fetchWithAuth(
-    withQuery(`${scenarios(year)}/trail`, { page: String(page), per_page: '50' })
-  )
-  if (!response.ok) throw await toApiError(response, 'Failed to load the trail', AidApiError)
-  return (await response.json()) as ApiAidScenarioTrailPage
 }
 
 /**
