@@ -365,7 +365,7 @@ describe('CamperDetailsPanel', () => {
       // row carries no housing label at all.
       mockUseCamperJourney.mockReturnValue(
         journeyWith([
-          { year: 2024, sessionName: 'Family Camp 2: Keshet Weekend', sessionType: 'family' },
+          { year: 2024, sessionName: 'Family Camp 2: Spring Weekend', sessionType: 'family' },
         ])
       )
 
@@ -380,7 +380,7 @@ describe('CamperDetailsPanel', () => {
         journeyWith([
           {
             year: 2024,
-            sessionName: 'Family Camp 2: Keshet Weekend',
+            sessionName: 'Family Camp 2: Spring Weekend',
             sessionType: 'family',
             bunkName: 'Cedar Lodge',
           },
@@ -593,7 +593,7 @@ describe('CamperDetailsPanel', () => {
       // journey, staff knows"). One rows component means one rule.
       //
       // RULED CHANGE (owner, 2026-09-22 late): this test used to pin the
-      // subtitle ("JFAM") stacked under the name here. Every sidebar now shows
+      // program subtitle stacked under the name here. Every sidebar now shows
       // the journey the same COMPACT way — no subtitle ("it's kinda
       // obvious") — and only the full camper page keeps it.
       setupDeclinedRequestMocks()

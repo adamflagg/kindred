@@ -143,7 +143,7 @@ func TestAidPostingsSyncSeedsNewDescriptionsFromTheConfigFile(t *testing.T) {
 	t.Parallel()
 	f := newAidFixture(t)
 	seedAidSiblings(f, 2026)
-	f.txn(9010, 2026, -200, aidCategoryJFAM, aidTestIncentive, 100, 0, 0, false)
+	f.txn(9010, 2026, -200, aidCategoryFamilyIncentive, aidTestIncentive, 100, 0, 0, false)
 	f.txn(9011, 2026, -300, aidCategoryAdjustments, aidTestLegacy, 100, 0, 0, false)
 
 	s := f.run(f.writeConfig(aidTestConfig), 2026)

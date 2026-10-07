@@ -26,7 +26,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 	t.Helper()
 	app := newSyncTestApp(t)
 	f := &rosterFixture{t: t, app: app}
-	f.sessionID = f.addSession(cmIDFamilyCamp1, "Family Camp 2: Keshet LGBTQ Weekend", "family",
+	f.sessionID = f.addSession(cmIDFamilyCamp1, "Family Camp 2: Spring Weekend", "family",
 		"2026-08-20 07:00:00.000Z", "2026-08-23 07:00:00.000Z")
 	return f
 }
@@ -231,7 +231,7 @@ func TestBuildFamilyCampRosterOrdersOneHousehold(t *testing.T) {
 	if block.City != "Berkeley" {
 		t.Errorf("city = %q, want %q", block.City, "Berkeley")
 	}
-	if roster.SessionName != "Family Camp 2: Keshet LGBTQ Weekend" {
+	if roster.SessionName != "Family Camp 2: Spring Weekend" {
 		t.Errorf("session name = %q", roster.SessionName)
 	}
 	if roster.CamperCount() != 2 || roster.AdultCount() != 2 || roster.HouseholdCount() != 1 {

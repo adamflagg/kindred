@@ -169,7 +169,7 @@ func TestRosterExportCreatesTheWorkbookOnFirstRun(t *testing.T) {
 	if got := h.drive.CreatedFolders; len(got) != 1 || got[0] != "roster-folder/2026" {
 		t.Errorf("created folders = %v, want exactly [roster-folder/2026]", got)
 	}
-	wantTitle := "(DEV) Family Camp 2: Keshet LGBTQ Weekend 2026 Roster"
+	wantTitle := "(DEV) Family Camp 2: Spring Weekend 2026 Roster"
 	if got := h.drive.CreatedSpreadsheet; len(got) != 1 || got[0] != wantTitle {
 		t.Errorf("created spreadsheets = %v, want exactly [%q]", got, wantTitle)
 	}
@@ -286,7 +286,7 @@ func TestRosterExportRefusesWithoutTheRosterFolder(t *testing.T) {
 func TestRosterExportRelinksAWorkbookFoundInDrive(t *testing.T) {
 	t.Parallel()
 	h := newExportHarness(t)
-	title := "(DEV) Family Camp 2: Keshet LGBTQ Weekend 2026 Roster"
+	title := "(DEV) Family Camp 2: Spring Weekend 2026 Roster"
 	h.drive.folders["roster-folder/2026"] = "existing-year-folder"
 	h.drive.spreadsheet["existing-year-folder/"+title] = "already-there"
 

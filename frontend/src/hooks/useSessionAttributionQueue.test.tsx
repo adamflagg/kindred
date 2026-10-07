@@ -78,7 +78,7 @@ const SESSIONS = [
   {
     session_id: 'sess_a',
     session_cm_id: 1309515,
-    name: 'Family Camp 2: Keshet Weekend',
+    name: 'Family Camp 2: Spring Weekend',
     session_type: 'family',
     start_date: '2026-08-20',
     end_date: '2026-08-23',

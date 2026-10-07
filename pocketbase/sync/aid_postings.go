@@ -17,7 +17,7 @@ import (
 )
 
 // CampMinder financial categories that carry aid (analysis §4.2). 3840 and
-// 19616 are SP1's aidCategoryFinancialAssistance and aidCategoryJFAM
+// 19616 are SP1's aidCategoryFinancialAssistance and aidCategoryFamilyIncentive
 // (aid_cohort.go). 3839 (Adjustments) is mostly staff discounts and work
 // exchange; a 3839 row counts only when aid_sources classifies its description
 // as aid (2017's grants).
@@ -362,7 +362,7 @@ func includeAidRow(category int, amount float64, src *aidSourceView) bool {
 	if amount == 0 || src == nil {
 		return false
 	}
-	primary := category == aidCategoryFinancialAssistance || category == aidCategoryJFAM
+	primary := category == aidCategoryFinancialAssistance || category == aidCategoryFamilyIncentive
 	if src.ClassifiedBy == aidClassifiedUnclassified {
 		return primary
 	}
@@ -379,7 +379,7 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 	txns, err := findAllRecords(s.App, "financial_transactions",
 		"year = {:year} && (is_reversed = false || amount < 0) && ("+txnCategoryCMID+" = {:fa} || "+
 			txnCategoryCMID+" = {:inc} || "+txnCategoryCMID+" = {:adj})",
-		dbx.Params{"year": year, "fa": aidCategoryFinancialAssistance, "inc": aidCategoryJFAM, "adj": aidCategoryAdjustments})
+		dbx.Params{"year": year, "fa": aidCategoryFinancialAssistance, "inc": aidCategoryFamilyIncentive, "adj": aidCategoryAdjustments})
 	if err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 			key = aidBlankDescriptionKey
 		}
 		src := sources[key]
-		if src == nil && (category == aidCategoryFinancialAssistance || category == aidCategoryJFAM) {
+		if src == nil && (category == aidCategoryFinancialAssistance || category == aidCategoryFamilyIncentive) {
 			if src, err = s.ensureUnclassifiedSource(sources, key, description); err != nil {
 				return err
 			}

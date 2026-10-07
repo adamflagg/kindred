@@ -178,7 +178,7 @@ def test_a_reversed_line_counts_as_a_line_and_never_in_a_net() -> None:
 
 
 def test_outside_and_incentive_lines_are_outside_grants_with_no_level() -> None:
-    """D97: JFAM's incentive lines go to Outside grants with the outside ones, and carry no level (note 4)."""
+    """D97: the family incentive lines go to Outside grants with the outside ones, and carry no level (note 4)."""
     store = _johnsons()
     camp = seed_line(store, 9001, "1500")
     lines = [_camp(camp), _other(9101, "250"), _other(9102, "100", funder="incentive", family="jfam_incentive")]

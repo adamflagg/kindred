@@ -9,10 +9,10 @@ import (
 )
 
 // CampMinder financial categories whose postings are aid (campership design §6.4):
-// "Financial Assistance" and "JFAM". Stable CampMinder ids.
+// "Financial Assistance" and a family-incentive category. Stable CampMinder ids.
 const (
 	aidCategoryFinancialAssistance = 3840
-	aidCategoryJFAM                = 19616
+	aidCategoryFamilyIncentive     = 19616
 )
 
 // aidCohort is who the bounded daily custom-values pass keeps fresh for financial aid in
@@ -48,7 +48,7 @@ func loadAidCohort(app core.App, year int) (aidCohort, error) {
 
 	postings, err := app.FindRecordsByFilter("financial_transactions", fmt.Sprintf(
 		"(year = %d || year = %d) && (financial_category_cm_id = %d || financial_category_cm_id = %d)",
-		year, year+1, aidCategoryFinancialAssistance, aidCategoryJFAM), "", 0, 0)
+		year, year+1, aidCategoryFinancialAssistance, aidCategoryFamilyIncentive), "", 0, 0)
 	if err != nil {
 		return aidCohort{}, fmt.Errorf("aid cohort: reading aid postings: %w", err)
 	}
