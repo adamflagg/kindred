@@ -18,6 +18,7 @@ from bunking.financial_aid.scenarios.committee import (
     uses_budget_placeholder,
 )
 from bunking.financial_aid.scenarios.describe import (
+    CARD_TITLES,
     CHANGE_MAX_CHARS,
     change_phrases,
     describe,
@@ -61,6 +62,7 @@ from bunking.financial_aid.scenarios.sizing import (
 )
 
 __all__ = [
+    "CARD_TITLES",
     "CHANGE_MAX_CHARS",
     "CRITERIA_BUT",
     "CRITERIA_SECTIONS",

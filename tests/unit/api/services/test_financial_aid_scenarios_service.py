@@ -248,12 +248,12 @@ async def _a(world: World) -> AidRules:
 async def test_releasing_a_setting_records_a_trail_row_with_its_results() -> None:
     world = await _started()
     draft = await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
-    assert (draft.from_code, draft.label) == ("A", "Round 1 % +5 pts")
+    assert (draft.from_code, draft.label) == ("A", "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%")
     assert draft.results is not None
     assert draft.results.round1 == Decimal(2800)
     assert {c.path[0] for c in draft.changes} == {"award_tables"}
     rows, total = await world.service.trail(YEAR, page=1, per_page=50)
-    assert (total, rows[0].change, rows[0].actor) == (2, "Round 1 % +5 pts", FINANCE)
+    assert (total, rows[0].change, rows[0].actor) == (2, "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%", FINANCE)
 
 
 @pytest.mark.asyncio
@@ -282,7 +282,7 @@ async def test_loading_an_option_or_an_old_row_never_loses_the_draft() -> None:
     rows, total = await world.service.trail(YEAR, page=1, per_page=50)
     assert (total, rows[0].change) == (3, "loaded A into the draft")
     back = await world.service.load(YEAR, FINANCE, trail_row=rows[1].id)
-    assert back.label == "Round 1 % +5 pts"
+    assert back.label == "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"
     newest, _ = await world.service.trail(YEAR, page=1, per_page=1)
     assert newest[0].change.startswith(f"loaded {FINANCE}'s row of ")
 
@@ -339,8 +339,11 @@ async def test_keeping_lands_variants_under_their_starting_point_two_levels_deep
     b1 = await service.keep(YEAR, FINANCE, starting_point=False)
     kept = [(k.record.code, k.record.starting_point, k.record.from_code) for k in (a1, a2, b, b1)]
     assert kept == [("A1", "A", "A"), ("A2", "A", "A1"), ("B", "", "A2"), ("B1", "B", "B")]
-    assert (a1.label, a2.label) == ("Round 1 % +5 pts", "Round 1 % +10 pts")
-    assert (b.label, b1.label) == ("Round 1 % +10 pts · minimum $150", "minimum $175")
+    assert (a1.label, a2.label) == (
+        "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%",
+        "Tiers 1–6 +10% · Round 1 % › Teen › Tier 2 80%",
+    )
+    assert (b.label, b1.label) == ("Tiers 1–6 +10% · Round 1 % › Teen › Tier 2 80% · Minimum $150", "Minimum $175")
     draft = (await service.workspace(YEAR, FINANCE)).draft
     assert draft is not None
     assert (draft.from_code, draft.label) == ("B1", "no changes")
@@ -388,10 +391,10 @@ async def test_compare_puts_the_draft_first_beside_the_ticked_options() -> None:
     comparison = await world.service.compare(YEAR, FINANCE, ["A", "A1", "A"])
     assert [c.code for c in comparison.columns] == ["draft", "A", "A1"]
     draft, first, variant = comparison.columns
-    assert (draft.label, draft.up, draft.down) == ("Round 1 % +5 pts", 2, 0)
+    assert (draft.label, draft.up, draft.down) == ("Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 80%", 2, 0)
     assert (first.label, first.up, first.down) == ("rules draft v1 as they were", None, None)  # v1 prices nothing
     assert (variant.label, variant.up, variant.down, variant.results.round1) == (
-        "Round 1 % +5 pts",
+        "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%",
         2,
         0,
         Decimal(2800),
@@ -516,7 +519,7 @@ async def test_the_trail_is_shared_and_newest_first() -> None:
     assert total == 3
     assert [(r.actor, r.change) for r in rows] == [
         (TREASURER, "loaded A1 into the draft"),
-        (FINANCE, "Round 1 % +5 pts"),
+        (FINANCE, "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"),
     ]
     assert (rows[1].kept_code, rows[0].document) == ("A1", None)
 
@@ -710,7 +713,10 @@ async def test_trail_rows_say_whether_their_figures_are_from_an_older_snapshot()
     await world.service.freeze(YEAR, FINANCE)
     await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
     rows, _ = await world.service.trail(YEAR, page=1, per_page=50)
-    assert (rows[0].change, rows[0].stale) == ("Round 1 % +5 pts", False)  # priced on the newest snapshot
+    assert (rows[0].change, rows[0].stale) == (
+        "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%",
+        False,
+    )  # priced on the newest snapshot
     assert [r.stale for r in rows] == [False, True]  # the start row's figures are from the first snapshot
 
 
