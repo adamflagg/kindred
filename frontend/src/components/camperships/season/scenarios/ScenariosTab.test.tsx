@@ -2,7 +2,7 @@
  * Season › Scenarios on screen (Scenarios addendum §S4–§S5): the workspace, the draft's work, the pricing and the
  * compare are mocked; each model and component has its own tests. Fictional only.
  */
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useReducer } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -39,7 +39,7 @@ const work = {
     ) => Promise<boolean>
   >(() => Promise.resolve(true)),
   discard: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
-  keep: vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(true)),
+  keep: vi.fn<(name: string) => Promise<string | null>>(() => Promise.resolve('C')),
   update: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
   adopt: vi.fn<(document: ApiAidRulesDocumentIn, basedOn: string | null) => Promise<boolean>>(() =>
     Promise.resolve(true)
@@ -348,6 +348,17 @@ describe('Compare (§S5 H) and the URL (§S5 L)', () => {
     // `draft=1` left in the URL must not ask for a column nobody can uncheck.
     renderAt('?panel=compare&draft=1&compare=B', { draft: scenarioDraft({ same_as: 'B' }) })
     expect(compareCalls.at(-1)?.query.draft).toBe(false)
+  })
+
+  it('adds a new keep to Compare’s columns while there is room (§S5 B; plan review M5)', async () => {
+    work.edits = new Map([['awards.minimum', '125']])
+    renderAt('?compare=B&rules=1') // the sandbox, with Compare's columns already chosen
+    await userEvent.click(screen.getByRole('button', { name: 'Keep…' }))
+    await userEvent.click(
+      within(screen.getByTestId('keep-popover')).getByRole('button', { name: 'Keep as C' })
+    )
+    await waitFor(() => expect(location).toContain('compare=B%2CC'))
+    expect(location).toContain('rules=1')
   })
 
   it('never fetches the compare without the rules permission', () => {

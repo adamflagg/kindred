@@ -14,6 +14,7 @@ import {
   cornerWords,
   defaultColumns,
   toggleColumn,
+  withNewKeep,
   type ColumnKey,
 } from './compareModel'
 import { compareOut, OPTIONS, workspace } from './scenarioFixtures'
@@ -124,6 +125,19 @@ describe('Columns ▾ (§S5 H; N11)', () => {
     })
     expect(toggleColumn(['kept:B'], 'rules', order).checked).toEqual(['rules', 'kept:B'])
     expect(toggleColumn(['rules', 'kept:B'], 'rules', order).checked).toEqual(['kept:B'])
+  })
+
+  it('adds a new keep to the checked columns in its place while there is room (§S5 B)', () => {
+    // Columns ▾ read before C arrives: rules, last_rules, kept:A, kept:A1, kept:B, last_season.
+    const order = columnChoices(WS, false).map((c) => c.key)
+    expect(withNewKeep(['rules', 'kept:B', 'last_season'], 'C', order)).toEqual([
+      'rules',
+      'kept:B',
+      'kept:C',
+      'last_season',
+    ])
+    expect(withNewKeep(['draft', 'kept:A', 'kept:A1', 'kept:B'], 'C', order)).toBeNull() // four already
+    expect(withNewKeep([], 'C', order)).toBeNull() // no columns: Compare opens on its defaults, which hold C
   })
 
   it('opens first with the rules in effect, the three newest kept options and last season', () => {

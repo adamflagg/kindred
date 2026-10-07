@@ -197,6 +197,23 @@ describe('useAidScenarioDraft', () => {
     expect(result.current.nothingNew).toBe(true)
   })
 
+  it('resolves a keep to the new code, and to null when it is refused (§S5 B)', async () => {
+    keep.mockResolvedValueOnce({ code: 'C' })
+    const { result } = setup()
+    const codes: Array<string | null> = []
+    await act(async () => {
+      codes.push(await result.current.keep('Higher minimum'))
+    })
+    keep.mockRejectedValueOnce(
+      new AidWriteError('Your draft is the same as C: there is nothing new to keep', 409)
+    )
+    await act(async () => {
+      codes.push(await result.current.keep('Again'))
+    })
+    expect(codes).toEqual(['C', null])
+    expect(result.current.error).toBe('Your draft is the same as C: there is nothing new to keep')
+  })
+
   it('refuses a fitted document once the draft has moved on', async () => {
     const { result } = setup()
     let landed = true

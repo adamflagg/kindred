@@ -187,12 +187,15 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
   }, [load])
 
   /** Keep… (§S5 B): the next flat letter, with the name given; it keeps the recorded draft, so it queues behind a
-   * pending release. */
+   * pending release. Resolves to the new option's code, so Compare can add it to its columns, or null when refused. */
   const keep = useCallback(
-    (name: string) =>
-      run('Keeping…', async () => {
-        await keepAidScenario(fetchWithAuth, year, { name })
-      }),
+    async (name: string): Promise<string | null> => {
+      const kept: { code: string | null } = { code: null }
+      const landed = await run('Keeping…', async () => {
+        kept.code = (await keepAidScenario(fetchWithAuth, year, { name })).code
+      })
+      return landed ? kept.code : null
+    },
     [run, fetchWithAuth, year]
   )
 

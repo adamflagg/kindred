@@ -505,3 +505,20 @@ export function columnParams(checked: readonly ColumnKey[]): Record<string, stri
     last: on('last_season'),
   }
 }
+
+/**
+ * After a keep (§S5 B): the new code joins the checked columns when Compare has columns and there is room (fewer
+ * than four kept-or-draft); null when it doesn't join. `order` is Columns ▾'s, read before the new option arrives,
+ * so the new code takes the kept options' last place, before last season.
+ */
+export function withNewKeep(
+  checked: readonly ColumnKey[],
+  code: string,
+  order: readonly ColumnKey[]
+): ColumnKey[] | null {
+  const key: ColumnKey = `kept:${code}`
+  if (checked.length === 0 || checked.includes(key)) return null
+  const rest = order.filter((k) => k !== key && k !== 'last_season')
+  const result = toggleColumn(checked, key, [...rest, key, 'last_season'])
+  return result.refused === null ? result.checked : null
+}

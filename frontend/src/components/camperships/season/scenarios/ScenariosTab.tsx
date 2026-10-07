@@ -27,6 +27,7 @@ import {
   defaultColumns,
   optionName,
   toggleColumn,
+  withNewKeep,
   type ColumnKey,
 } from './compareModel'
 import {
@@ -207,7 +208,20 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
           nextCode: nextLetter(workspace.options),
           figure: keepFigureWords(draft.results),
         }}
-        onKeep={(keepName) => void work.keep(keepName)}
+        onKeep={(keepName) =>
+          void work.keep(keepName).then((code) => {
+            // §S5 B: the new code joins Compare's columns, when Compare has columns and room for it.
+            const next =
+              code !== null && view.anyColumn
+                ? withNewKeep(
+                    checked,
+                    code,
+                    choices.map((c) => c.key)
+                  )
+                : null
+            if (next !== null) write(columnParams(next))
+          })
+        }
         promote={promote}
         onPromote={setPromoting}
         compareTools={
