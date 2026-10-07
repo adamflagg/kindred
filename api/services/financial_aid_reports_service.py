@@ -124,7 +124,7 @@ from bunking.financial_aid.reports.statistics import (
     tier_appeals,
     tier_members,
 )
-from bunking.financial_aid.rules import AidRules, resolve_program
+from bunking.financial_aid.rules import AidRules, resolve_program, round1_table
 from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetNote, request_set_note
 from bunking.pocketbase_batch import MAX_BATCH_REQUESTS
 
@@ -220,7 +220,7 @@ def table_chips(document: AidRules | None) -> list[ChipOut]:
         return []
     out: list[ChipOut] = []
     for key in document.award_tables:
-        programs_ = [p for p in document.programs.values() if (p.r1_table or "") == key]
+        programs_ = [p for p in document.programs.values() if (round1_table(document, p) or "") == key]
         pools = {p.budget_pool for p in programs_}
         if len(pools) == 1 and (pool := next(iter(pools))) is not None and pool in document.budget.pools:
             label = document.budget.pools[pool].label

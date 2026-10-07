@@ -499,3 +499,41 @@ def test_a_disabled_dependents_criterion_with_a_weight_does_not_warn() -> None:
         if criterion["key"] == "dependents":
             criterion["enabled"] = False
     assert "dependents_weight_cannot_bind" not in validate_rules(AidRules.model_validate(doc)).codes()
+
+
+BY_CLASS = {
+    f"programs.{k}.table_from_equity_class": True
+    for k in ("summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend", "family_school")
+}
+
+
+def test_an_open_program_by_class_with_no_class_warns_in_the_mocks_words() -> None:
+    rules = with_levers(fictional_rules(), BY_CLASS)  # family_camp and family_school have no class
+    warnings = [i for i in validate_rules(rules).warnings if i.code == "no_equity_class"]
+    assert {i.path for i in warnings} == {"programs.family_camp.equity_class", "programs.family_school.equity_class"}
+    for warning in warnings:
+        key = warning.path.split(".")[1]
+        label = rules.programs[key].label
+        assert warning.message == f"Open to aid but no equity class, so no award table: its requests hold ({label})"
+
+
+def test_a_class_with_no_table_is_an_error() -> None:
+    rules = with_levers(fictional_rules(), BY_CLASS | {"equity.weights.extra": {}})
+    rules = with_lever(rules, "programs.summer.equity_class", "extra")
+    codes = {(i.code, i.path) for i in validate_rules(rules).errors}
+    assert ("class_without_table", "programs.summer.equity_class") in codes
+
+
+def test_a_program_by_class_needs_no_program_tables_entry() -> None:
+    doc = with_levers(fictional_rules(), BY_CLASS).model_dump(mode="json")
+    doc["round2"]["program_tables"] = {}
+    codes = {i.code for i in validate_rules(AidRules.model_validate(doc)).errors}
+    assert "missing_round2_table" not in codes
+
+
+def test_a_legacy_program_still_needs_its_program_tables_entry() -> None:
+    """Regression guard."""
+    doc = fictional_rules().model_dump(mode="json")
+    del doc["round2"]["program_tables"]["quest"]
+    codes = {i.code for i in validate_rules(AidRules.model_validate(doc)).errors}
+    assert "missing_round2_table" in codes

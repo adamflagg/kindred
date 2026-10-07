@@ -23,6 +23,7 @@ from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
     ReportedFigureNotFoundError,
     ReportsRefusedError,
+    table_chips,
 )
 from bunking.financial_aid.decisions import RoundView
 from bunking.financial_aid.reports.committee import NO_DEADLINE_CUT_GAP, PHASE_BOUNDARY_GAP
@@ -842,3 +843,15 @@ async def test_a_committee_read_for_a_season_before_requests_is_typed_history_on
     out = await _service(report_season(), history).committee(2025)
     assert out.seasons == [2024]
     assert [(row.year, row.basis) for row in out.phases] == [(2024, "r")]
+
+
+async def test_a_table_chip_counts_a_program_that_prices_from_it_by_class() -> None:
+    """§9.9: table_chips reads the resolver. Adult weekend has no Round 1 table of its own; by class (Family) it prices
+    from `family`, beside Family camp. Moved to another pool, the two programs no longer share one, so the chip names
+    both programs instead of a pool. Before this task the chip read `r1_table` and said "Weekends"."""
+    rules = with_levers(
+        intake_rules(),
+        {"programs.adult_weekend.table_from_equity_class": True, "programs.adult_weekend.budget_pool": "camp_pool"},
+    )
+    chips = {chip.key: chip.label for chip in table_chips(rules)}
+    assert chips["family"] == "Family camp · Adult weekend"
