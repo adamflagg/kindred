@@ -34,6 +34,7 @@ from api.services.financial_aid_rules_service import (
     _to_version,
     section_fingerprint,
 )
+from bunking.financial_aid.calculator import calculate
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, SessionRef
@@ -51,8 +52,10 @@ from bunking.pocketbase_batch import BatchRequestFailedError
 from tests.unit.api.services.rules_fakes import FakeStore
 from tests.unit.bunking.financial_aid.fixtures import (
     FICTIONAL_SESSION_IDS,
+    app,
     fictional_rules,
     fictional_rules_json,
+    req,
     with_lever,
     with_levers,
 )
@@ -281,6 +284,53 @@ async def test_start_from_last_year() -> None:
         await service.start_from_last_year(2032, actor=FINANCE)
     with pytest.raises(RulesNotFoundError):
         await service.start_from_last_year(2040, actor=FINANCE)
+
+
+# --- a new season starts every program on its class tables (§14.3, A5) -----------------------------------------
+
+
+def _pct_source(rules: AidRules, **request: Any) -> tuple[object, object]:
+    """Round 1's table and its source in the trace ("table", or "no_table" for the minimum only)."""
+    result = calculate(app(), req(**request), rules)
+    step = next(s for s in result.trace if s.key == "r1_pct")
+    return step.inputs.get("table"), step.inputs.get("source")
+
+
+@pytest.mark.asyncio
+async def test_a_new_season_starts_every_program_on_its_class_tables() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)  # every program legacy, as 2026's file
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE)
+    programs = started.document.programs
+    assert {(k, p.table_from_equity_class, p.r1_table) for k, p in programs.items()} == {
+        (k, True, None) for k in programs
+    }
+    assert started.document.round2.program_tables == {}
+    assert (await service.load(2031)).document.programs["adult_weekend"].table_from_equity_class is False  # untouched
+
+
+@pytest.mark.asyncio
+async def test_a_minimum_only_program_prices_from_its_class_table_in_the_new_season() -> None:
+    """§14.3: the fixture's adult weekend (class family, no Round 1 table) got the minimum only; started, it reads the
+    family table. This is the number that moves for a season's minimum-only programs."""
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE)
+    priced = with_lever(started.document, "cost.tuition", {"1000401": "900"})
+    weekend = {"person_cm_id": 1000002, "session_cm_id": 1000401, "program_key": "adult_weekend", "ask": "900"}
+    assert _pct_source(fictional_rules(), **weekend)[1] == "no_table"
+    assert _pct_source(priced, **weekend) == ("family", "table")
+
+
+@pytest.mark.asyncio
+async def test_by_class_carries_into_every_later_season() -> None:
+    """Owner 10-07: it carries forward into 2028+, because start-from-last-year copies the by-group programs."""
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.start_from_last_year(2032, actor=FINANCE)
+    later, _ = await service.start_from_last_year(2033, actor=FINANCE)
+    assert all(p.table_from_equity_class and p.r1_table is None for p in later.document.programs.values())
+    assert later.document.round2.program_tables == {}
 
 
 @pytest.mark.asyncio

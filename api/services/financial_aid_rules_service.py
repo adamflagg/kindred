@@ -1400,6 +1400,7 @@ class FinancialAidRulesService:
         are keyed by CampMinder session id, and CampMinder reuses session ids across years,
         so a carried price would silently price this year's session of the same id at last
         year's rate. Approvals are not carried: a new season's rules go to the board again.
+        Programs are written by equity class (§14.3).
         """
         if await self._store.list_versions(year):
             raise VersionExistsError(f"{year} already has aid rules; make a new version instead")
@@ -1407,7 +1408,23 @@ class FinancialAidRulesService:
         cost = prior.document.cost.model_copy(
             update={"tuition": {}, "family_rates": [], "not_running_session_cm_ids": []}
         )
-        document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection(), "cost": cost})
+        # §14.3 (owner 10-07, A5): a new season routes every program by its equity class, so last season's legacy
+        # routing (2026's file) is never inherited. Idempotent on a by-class program, so it carries into every later
+        # season. The prior season's own stored document is never rewritten.
+        programs = {
+            key: program.model_copy(update={"table_from_equity_class": True, "r1_table": None})
+            for key, program in prior.document.programs.items()
+        }
+        round2 = prior.document.round2.model_copy(update={"program_tables": {}})
+        document = prior.document.model_copy(
+            update={
+                "year": year,
+                "milestones": MilestonesSection(),
+                "cost": cost,
+                "programs": programs,
+                "round2": round2,
+            }
+        )
         body = _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
         created = await self._create(body, log_action="start_from_last_year", actor=actor, supersedes=None)
         report = await self.validate_document(created.document)
