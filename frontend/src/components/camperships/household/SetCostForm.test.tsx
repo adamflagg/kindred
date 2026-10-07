@@ -102,6 +102,36 @@ describe('SetCostForm (cost override v2)', () => {
     )
   })
 
+  const STAFF_SET = {
+    amount: 1275,
+    reason_code: 'discount',
+    note: 'Form total',
+    actor: 'Finance Staff',
+  }
+
+  it('reads the staff-set cost against the rules price when it is left as it is', async () => {
+    renderSet({ rules_cost: 5400, rules_cost_from: 'catalog', cost_override: STAFF_SET })
+    // The box opens on the cost already set: its line reads against what the rules say.
+    await userEvent.clear(screen.getByLabelText('Cost'))
+    await userEvent.type(screen.getByLabelText('Cost'), '1275')
+    const lead = screen.getByTestId('set-cost-lead')
+    expect(lead).toHaveTextContent('$1,275 instead of $5,400 from the rules')
+    expect(lead).not.toHaveTextContent('set by staff')
+  })
+
+  it('shows the line against the rules price as soon as the form opens on a staff-set cost', () => {
+    renderSet({ rules_cost: 5400, rules_cost_from: 'catalog', cost_override: STAFF_SET })
+    expect(screen.getByTestId('set-cost-lead')).toHaveTextContent(
+      '$1,275 instead of $5,400 from the rules'
+    )
+  })
+
+  it('hides the line when the cost is unchanged and the rules have no price to compare', () => {
+    renderSet({ rules_cost: null, rules_cost_from: null, cost_override: STAFF_SET })
+    expect(screen.queryByTestId('set-cost-lead')).toBeNull()
+    expect(screen.queryByText(/instead of/)).toBeNull()
+  })
+
   it('refuses a cost over $1,000,000', async () => {
     renderSet({})
     await userEvent.type(screen.getByLabelText('Cost'), '1,000,001')

@@ -4,7 +4,7 @@ import { useAidCostOverride } from '../../../hooks/camperships/useAidWrites'
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { costReasonOptions } from '../kit/costReasons'
 import { parseMoneyInput } from '../kit/editor'
-import { formatMoney } from '../kit/money'
+import { formatMoney, toCents } from '../kit/money'
 import { FormShell } from './CaseworkForms'
 import {
   HH_EDITOR_FIELD,
@@ -68,6 +68,10 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
       : price === null
         ? null
         : `${price.amount}, ${price.source}`
+  // Left at the cost staff already set, "instead of" that same cost reads as nothing: compare it with
+  // what the rules say, and with nothing to compare, say nothing.
+  const unchanged =
+    typed.kind === 'ok' && set !== null && toCents(typed.amount) === toCents(set.amount)
   const perPersonHeadcount = reason === 'headcount' && row.rules_cost_from === 'per_person'
 
   const submit = () =>
@@ -100,9 +104,14 @@ export function SetCostForm({ request, page, onDone }: FormProps) {
       side={
         <>
           {typed.kind === 'ok' ? (
-            <div data-testid="set-cost-lead" className={HH_EDITOR_SIDE_LEAD}>
-              <b>{formatMoney(typed.amount)}</b> instead of {was ?? 'no price'}
-            </div>
+            unchanged && price === null ? null : (
+              <div data-testid="set-cost-lead" className={HH_EDITOR_SIDE_LEAD}>
+                <b>{formatMoney(typed.amount)}</b> instead of{' '}
+                {unchanged && price !== null
+                  ? `${price.amount} from the rules`
+                  : (was ?? 'no price')}
+              </div>
+            )
           ) : (
             <div className={`${HH_EDITOR_SIDE_LEAD} text-muted-foreground`}>
               Type the cost to see it here
