@@ -169,6 +169,7 @@ def test_which_holds_a_release_can_lift() -> None:
         "payer_shares_incomplete",
         "awaiting_approved_rules",
         "unmatched_session",
+        "session_not_running",
         "no_approved_rules",
         "not_priceable",
         MANUAL_HOLD,

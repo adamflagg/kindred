@@ -368,6 +368,10 @@ class CostSection(RulesModel):
     # cross-check family-camp headcounts; the calculator does not read it.
     infant_age_cutoff_months: int | None = Field(default=None, ge=0)
     override_reasons: list[Key] = Field(default_factory=_default_override_reasons)
+    # This season's sessions finance marked not running (spec §7.1): their live requests are on hold until the
+    # session runs again or the request moves. CampMinder session ids, this season only: Start From Last Year clears
+    # it, since CampMinder reuses ids across years. Stored documents without it load as [].
+    not_running_session_cm_ids: list[int] = Field(default_factory=list)
 
 
 # --- grants ---------------------------------------------------------------------------

@@ -148,6 +148,16 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
             "program_closed", "error", f"Program '{request.program_key}' is not open to aid in {rules.year}", "program"
         )
         return work.result()
+    not_running = set(rules.cost.not_running_session_cm_ids)
+    if request.session_cm_id in not_running or (
+        request.ag_parent_cm_id is not None and request.ag_parent_cm_id in not_running
+    ):
+        work.issue(
+            "session_not_running",
+            "hold",
+            "This session is not running this season: cancel the request or move it to a session that runs",
+            "cost",
+        )
     decision = _decision_type(work, request, rules)
     if request.decision_type is not None and decision is None:
         return work.result()

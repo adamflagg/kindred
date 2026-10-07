@@ -8,6 +8,7 @@ export const UNRELEASABLE_CODES: ReadonlySet<string> = new Set([
   'payer_shares_incomplete',
   'awaiting_approved_rules',
   'unmatched_session',
+  'session_not_running',
   'no_approved_rules',
   'not_priceable',
   'manual_hold',
