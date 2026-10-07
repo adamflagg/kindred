@@ -10,6 +10,7 @@ import pytest
 
 from api.services.financial_aid_calc_inputs import (
     NotCalculableError,
+    calculator_inputs,
     rules_program_key,
     to_application_inputs,
     to_request_inputs,
@@ -18,7 +19,7 @@ from api.services.financial_aid_casework_service import CaseworkValidationError,
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REQUEST_CORRECTABLE, effective_values
 from api.services.financial_aid_household import BOOL_FIELDS, INCOME_FIELDS, NUMBER_FIELDS, TEXT_FIELDS
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import CorrectionRecord, EquityAnswers, RequestRecord
+from api.services.financial_aid_intake_types import CorrectionRecord, EquityAnswers, RequestRecord, SessionRow
 from api.services.financial_aid_payer_shares import ShareSpec
 from bunking.financial_aid.calculator import IncomeOverride, calculate
 from bunking.financial_aid.rules.schema import IncomeFigure
@@ -276,6 +277,37 @@ async def test_rules_for_another_season_are_refused() -> None:
     _, casework = await built()
     with pytest.raises(CaseworkValidationError, match="2031"):
         await casework.calculator_inputs_for(YEAR, 1000001, fictional_rules())
+
+
+AG_ROW = SessionRow(1000103, "AG Session 2", "ag", "2027-06-20", parent_cm_id=1000101)
+EMBEDDED_ROW = SessionRow(1000102, "Session 2b", "embedded", "2027-06-20", parent_cm_id=1000101)
+
+
+def test_an_ag_session_carries_its_parent_into_the_calculator() -> None:
+    request = replace(_summer_request(), session_cm_id=1000103)
+    inputs = to_request_inputs(request, _ask("1500.00"), None, "summer", session=AG_ROW)
+    assert inputs.ag_parent_cm_id == 1000101
+
+
+@pytest.mark.parametrize(
+    "session",
+    [EMBEDDED_ROW, SessionRow(1000103, "AG Session 2", "ag", "2027-06-20"), None],
+    ids=["embedded-with-a-parent", "ag-without-a-parent", "no-session-row"],
+)
+def test_only_an_ag_session_with_a_parent_falls_back(session: SessionRow | None) -> None:
+    request = replace(_summer_request(), session_cm_id=1000103)
+    assert to_request_inputs(request, _ask("1500.00"), None, "summer", session=session).ag_parent_cm_id is None
+
+
+@pytest.mark.asyncio
+async def test_calculator_inputs_hands_the_requests_own_session_row_over() -> None:
+    store, _ = await built()
+    application = next(a for a in store.applications.values() if a.household_cm_id == 1000001)
+    request = replace(_summer_request(), session_cm_id=1000103)
+    sessions = {**SESSIONS_BY_ID, 1000103: AG_ROW}
+    out = calculator_inputs(request, application, effective(stored_answers()), [], sessions, [], None, intake_rules())
+    assert out.request is not None
+    assert out.request.ag_parent_cm_id == 1000101
 
 
 def _summer_request() -> RequestRecord:

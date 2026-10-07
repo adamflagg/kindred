@@ -139,15 +139,18 @@ def to_request_inputs(
     equity: EquityAnswers | None,
     program_key: str,
     cost_override: CostOverride | None = None,
+    session: SessionRow | None = None,
 ) -> RequestInputs:
     if request.session_cm_id <= 0:
         raise NotCalculableError("an unmatched request has no session and cannot be priced")
     household_level = request.person_cm_id == 0
     known_headcount = household_level and request.headcount_source != ""
     answers = UNKNOWN_EQUITY if household_level or equity is None else equity
+    ag_parent = session.parent_cm_id if session is not None and session.session_type == "ag" else 0
     return RequestInputs(
         person_cm_id=None if household_level else request.person_cm_id,
         session_cm_id=request.session_cm_id,
+        ag_parent_cm_id=ag_parent if ag_parent > 0 else None,
         program_key=program_key,
         ask=_money(ask),
         cost_override=cost_override,
@@ -278,5 +281,10 @@ def calculator_inputs(
     ask = effective_ask(request, corrections)
     override = request_cost_override(request.id, corrections)
     return CalculatorInputs(
-        request.id, app_inputs, to_request_inputs(request, ask, equity, program_key, cost_override=override), issues
+        request.id,
+        app_inputs,
+        to_request_inputs(
+            request, ask, equity, program_key, cost_override=override, session=sessions.get(request.session_cm_id)
+        ),
+        issues,
     )
