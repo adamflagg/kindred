@@ -96,7 +96,7 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
   it("shows Rounds & budget's body, its Allocated and rules version, and the as-of pill", () => {
     renderAt('/aid/season/rounds-budget?as_of=2027-03-15')
     expect(screen.getByText('Rounds and budget body')).toBeInTheDocument()
-    expect(screen.getByText('$1,043,600')).toBeInTheDocument()
+    expect(screen.getByText('$1,000,000')).toBeInTheDocument()
     expect(screen.getByText('priced by rules v3')).toBeInTheDocument()
     expect(screen.getByText('As of Mar 15, 2027')).toBeInTheDocument()
   })
@@ -110,7 +110,7 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
 
   it("shows the band's Allocated on Rounds & budget only, even with the read cached (Task 5 m2)", () => {
     renderAt('/aid/season/history')
-    expect(screen.queryByText('$1,043,600')).toBeNull()
+    expect(screen.queryByText('$1,000,000')).toBeNull()
     expect(screen.queryByText(/priced by rules/)).toBeNull()
   })
 

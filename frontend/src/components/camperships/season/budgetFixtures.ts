@@ -31,12 +31,21 @@ function cell(
     needs_offer: needs,
     pending_approval: pending,
     remaining: allocated === null ? null : allocated - posted - needs - pending,
+    committed: posted + needs + pending,
     // A live cell always carries both counts, at least {0, 0} (the server's `_cell`).
     needs_offer_count: count(0, 0),
     pending_approval_count: count(0, 0),
     ...extra,
   }
 }
+
+/** A round as the server sends it since PR 1: no allocation, no Remaining (§8.1). */
+const round = (n: number, c: ApiAidBudgetCell) => ({
+  round: n,
+  ...c,
+  allocated: null,
+  remaining: null,
+})
 
 /** Money on a round with no named decision type: the server's key-null line (budget.py). */
 const NO_TYPE_LINE: ApiAidDecisionTypeLine = {
@@ -52,32 +61,33 @@ const NO_TYPE_LINE: ApiAidDecisionTypeLine = {
 const POOL_A: ApiAidBudgetPool = {
   pool: 'pool_a',
   label: 'Pool A',
+  share_pct: 90,
   rounds: [
-    {
-      round: 1,
-      ...cell(800000, 764540, 598300, 8100, 0, {
+    round(
+      1,
+      cell(null, 764540, 598300, 8100, 0, {
         needs_offer_count: count(3, 3),
         pending_approval_count: count(0, 0),
         unconfirmed: { count: 4, families: 4, amount: 5200 },
-      }),
-    },
-    {
-      round: 2,
-      ...cell(110000, 14200, 9800, 5520, 0, {
+      })
+    ),
+    round(
+      2,
+      cell(null, 14200, 9800, 5520, 0, {
         needs_offer_count: count(8, 8),
         pending_approval_count: count(0, 0),
         unconfirmed: { count: 2, families: 2, amount: 1800 },
-      }),
-    },
-    {
-      round: 3,
-      ...cell(40000, 1800, 900, 300, 650, {
+      })
+    ),
+    round(
+      3,
+      cell(null, 1800, 900, 300, 650, {
         needs_offer_count: count(2, 2),
         pending_approval_count: count(1, 1),
-      }),
-    },
+      })
+    ),
   ],
-  total: cell(950000, 780540, 609000, 13920, 650, {
+  total: cell(900000, 780540, 609000, 13920, 650, {
     needs_offer_count: count(13, 13),
     pending_approval_count: count(1, 1),
     unconfirmed: { count: 6, families: 6, amount: 7000 },
@@ -137,18 +147,19 @@ const POOL_A: ApiAidBudgetPool = {
 const POOL_B: ApiAidBudgetPool = {
   pool: 'pool_b',
   label: 'Pool B',
+  share_pct: 10,
   rounds: [
-    {
-      round: 1,
-      ...cell(93600, 52400, 40000, 0, 0, {
+    round(
+      1,
+      cell(null, 52400, 40000, 0, 0, {
         needs_offer_count: count(0, 0),
         pending_approval_count: count(0, 0),
-      }),
-    },
-    { round: 2, ...cell(0, 0, 0, 0, 0) },
-    { round: 3, ...cell(0, 0, 0, 0, 0) },
+      })
+    ),
+    round(2, cell(null, 0, 0, 0, 0)),
+    round(3, cell(null, 0, 0, 0, 0)),
   ],
-  total: cell(93600, 52400, 40000, 0, 0),
+  total: cell(100000, 52400, 40000, 0, 0),
   below: {
     held: count(1, 1),
     held_asked: 2000,
@@ -186,9 +197,9 @@ const NO_POOL: ApiAidBudgetPool = {
   pool: '',
   label: 'No pool',
   rounds: [
-    { round: 1, ...cell(null, 1200, 0, 0, 0) },
-    { round: 2, ...cell(null, 0, 0, 0, 0) },
-    { round: 3, ...cell(null, 0, 0, 0, 0) },
+    round(1, cell(null, 1200, 0, 0, 0)),
+    round(2, cell(null, 0, 0, 0, 0)),
+    round(3, cell(null, 0, 0, 0, 0)),
   ],
   total: cell(null, 1200, 0, 0, 0),
   below: {
@@ -217,31 +228,31 @@ const TOTAL: ApiAidBudgetPool = {
   pool: '*',
   label: 'Total',
   rounds: [
-    {
-      round: 1,
-      ...cell(893600, 818140, 638300, 8100, 0, {
+    round(
+      1,
+      cell(null, 818140, 638300, 8100, 0, {
         needs_offer_count: count(3, 3),
         pending_approval_count: count(0, 0),
         unconfirmed: { count: 4, families: 4, amount: 5200 },
-      }),
-    },
-    {
-      round: 2,
-      ...cell(110000, 14200, 9800, 5520, 0, {
+      })
+    ),
+    round(
+      2,
+      cell(null, 14200, 9800, 5520, 0, {
         needs_offer_count: count(8, 8),
         pending_approval_count: count(0, 0),
         unconfirmed: { count: 2, families: 2, amount: 1800 },
-      }),
-    },
-    {
-      round: 3,
-      ...cell(40000, 1800, 900, 300, 650, {
+      })
+    ),
+    round(
+      3,
+      cell(null, 1800, 900, 300, 650, {
         needs_offer_count: count(2, 2),
         pending_approval_count: count(1, 1),
-      }),
-    },
+      })
+    ),
   ],
-  total: cell(1043600, 834140, 649000, 13920, 650, {
+  total: cell(1000000, 834140, 649000, 13920, 650, {
     needs_offer_count: count(13, 13),
     pending_approval_count: count(1, 1),
     unconfirmed: { count: 6, families: 6, amount: 7000 },
@@ -412,5 +423,25 @@ export function pastBudget(): ApiAidBudget {
     as_of: '2027-03-15',
     as_of_axis: 'campminder',
     not_rebuilt: [{ figure: 'needs_offer', reason: 'Priced from the answers as they stood then' }],
+  }
+}
+
+/** Pool B past its share (the season still has money): an amber state, never red (D74 amended). */
+export function poolOverShare(): ApiAidBudget {
+  return {
+    ...BUDGET,
+    pools: BUDGET.pools.map((p) =>
+      p.pool === 'pool_b'
+        ? { ...p, total: { ...p.total, posted: 101200, committed: 101200, remaining: -1200 } }
+        : p
+    ),
+  }
+}
+
+/** The season's total below $0: the only red state. */
+export function overBudget(): ApiAidBudget {
+  return {
+    ...BUDGET,
+    total: { ...BUDGET.total, total: { ...BUDGET.total.total, remaining: -8366 } },
   }
 }

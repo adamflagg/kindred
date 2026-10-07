@@ -106,7 +106,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
       'href',
       '/aid/requests?pool=pool_a&posted=1&counted=1&year=2027'
     )
-    expect(within(line('total')).getByText('$194,890')).toBeInTheDocument()
+    expect(within(line('total')).getByText('$151,290')).toBeInTheDocument()
   })
 
   it('words Needs an offer as "n · $X", the whole of it opening the rows (read 2)', () => {
@@ -331,10 +331,10 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     // The table's lines on screen, and only those: no other pool, no total, no below-the-line.
     expect(content.split('\n')).toEqual([
       'Pool,Round,Allocated,Posted,Accepted,Needs an offer,Needs an offer requests,Pending approval,Pending approval requests,Remaining',
-      'Pool B,,93600,52400,40000,0,0,0,0,41200',
-      'Pool B,1,93600,52400,40000,0,0,0,0,41200',
-      'Pool B,2,0,0,0,0,0,0,0,0',
-      'Pool B,3,0,0,0,0,0,0,0,0',
+      'Pool B,,100000,52400,40000,0,0,0,0,47600',
+      'Pool B,1,,52400,40000,0,0,0,0,',
+      'Pool B,2,,0,0,0,0,0,0,',
+      'Pool B,3,,0,0,0,0,0,0,',
       '',
       `Link,${window.location.href}`,
     ])

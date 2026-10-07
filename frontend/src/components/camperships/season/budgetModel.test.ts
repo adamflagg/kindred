@@ -130,7 +130,7 @@ describe('the table (§7.2; D53, D79)', () => {
     expect(cellValue(row(rows, 'pool_a:3:pending'), 'needs_offer')).toBe(650)
     expect(cellValue(row(rows, 'pool_a:3:pending'), 'remaining')).toBeNull()
     expect(cellValue(row(rows, ':all'), 'allocated')).toBeNull()
-    expect(cellValue(row(rows, 'total'), 'remaining')).toBe(194890)
+    expect(cellValue(row(rows, 'total'), 'remaining')).toBe(151290)
   })
 
   it('says "and N · $X pending approval" with the count the server sent (read 2)', () => {
@@ -239,13 +239,14 @@ describe('where each figure opens (D20, D153)', () => {
     )
     // The approved version that priced the figure (plan review I1), keeping the page's past date
     // (I6: the pill shows on every Season tab; Task 11 review).
-    expect(cellHref(row(rows, 'pool_a:1'), 'allocated', PAST, 3)).toBe(
+    expect(cellHref(row(rows, 'pool_a:all'), 'allocated', PAST, 3)).toBe(
       '/aid/season/rules?version=3&section=budget&year=2027&as_of=2027-03-15'
     )
-    expect(cellHref(row(rows, 'pool_a:1'), 'allocated', LIVE, 3)).toBe(
+    expect(cellHref(row(rows, 'pool_a:all'), 'allocated', LIVE, 3)).toBe(
       '/aid/season/rules?version=3&section=budget&year=2027'
     )
-    expect(cellHref(row(rows, 'pool_a:1'), 'allocated', LIVE, null)).toBeNull()
+    expect(cellHref(row(rows, 'pool_a:all'), 'allocated', LIVE, null)).toBeNull()
+    expect(cellHref(row(rows, 'pool_a:1'), 'allocated', LIVE, 3)).toBeNull()
   })
 
   it('opens nothing for Remaining, a zero, a "—", or a No pool line', () => {
@@ -686,10 +687,10 @@ describe('the URL and the download (D15, D70, §11)', () => {
     ])
     const rows = budgetRows(BUDGET, { pool: 'pool_a', folded: new Set() })
     expect(budgetCsvRows(rows)).toEqual([
-      ['Pool A', '', '950000', '780540', '609000', '13920', '13', '650', '1', '154890'],
-      ['Pool A', '1', '800000', '764540', '598300', '8100', '3', '0', '0', '27360'],
-      ['Pool A', '2', '110000', '14200', '9800', '5520', '8', '0', '0', '90280'],
-      ['Pool A', '3', '40000', '1800', '900', '300', '2', '650', '1', '37250'],
+      ['Pool A', '', '900000', '780540', '609000', '13920', '13', '650', '1', '104890'],
+      ['Pool A', '1', '', '764540', '598300', '8100', '3', '0', '0', ''],
+      ['Pool A', '2', '', '14200', '9800', '5520', '8', '0', '0', ''],
+      ['Pool A', '3', '', '1800', '900', '300', '2', '650', '1', ''],
     ])
     expect(budgetCsvName(2027, 'Pool A', '2027-03-15')).toBe(
       'camperships-season-rounds-budget-pool-a-2027-as-of-2027-03-15.csv'
@@ -699,7 +700,7 @@ describe('the URL and the download (D15, D70, §11)', () => {
 
   it('leaves a count empty when the server sent none (a past date)', () => {
     const rows = budgetCsvRows(budgetRows(pastBudget(), { pool: 'pool_a', folded: new Set() }))
-    expect(rows[1]).toEqual(['Pool A', '1', '800000', '764540', '598300', '', '', '', '', ''])
+    expect(rows[1]).toEqual(['Pool A', '1', '', '764540', '598300', '', '', '', '', ''])
   })
 })
 
