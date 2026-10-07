@@ -4,10 +4,9 @@ Thin: parse input, call the service, map its errors. Sub-project 4 adds the
 ledger (aid_sources / aid_postings / aid_household_links / overrides /
 dispositions); sub-project 5 adds intake reads (financial_aid.view), casework
 writes including payer shares and the income override (financial_aid.casework).
-The rules routes (`/rules/...`, the
-rules loader) read, validate, create, save and approve a season's rules
-document (financial_aid.rules); an approval's note names the approving body
-(D39). SP9a adds the rules draft read, the section editor's save, a new version, and D76's approved
+The rules routes (`/rules/...`, the rules loader) read, validate, create, save
+and approve a season's rules document (financial_aid.rules); an approval's note
+names the approving body (D39). SP9a adds the rules draft read, the section editor's save, a new version, and D76's approved
 read for financial_aid.view. Every aid_* collection is superuser-only in PocketBase, so these routes
 are the only way in. Every ledger write passes the real signed-in person
 (user.email); the write service records it (spec sec 14.4).

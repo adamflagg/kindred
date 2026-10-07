@@ -1,9 +1,9 @@
 """Season › History (D49, app spec §7.6): the season's aid_change_log, one line per operation (operation_id), rules
 and casework on one timeline, newest first. Pure: grouping, kinds and filters; the reads are in Task 13's service.
 
-Read access follows the data: rules rows (and session capacity, set on the Rules tab) need financial_aid.rules. An
-operation is "rules" only when every row is; a Posted tick that also locks rules sections is "offers", and a reader
-without rules sees it minus those rows (for_reader). A rules-only operation stays hidden from them.
+Read access follows the data: rules rows (and any session capacity row from before capacity was dropped) need
+financial_aid.rules. An operation is "rules" only when every row is; a Posted tick that also locks rules sections is
+"offers", and a reader without rules sees it minus those rows (for_reader). A rules-only operation stays hidden from them.
 Intake runs (system:intake) are hidden unless asked. The scenario trail stays in Scenarios, so its collections are
 left out. Amounts are what the rows recorded at the time, never recomputed."""
 
@@ -68,7 +68,7 @@ from bunking.financial_aid.rules.lifecycle import SectionStatusMissingError, sta
 INTAKE_ACTOR: Final = "system:intake"
 ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_RULES: "rules",
-    AID_SESSION_CAPACITY: "rules",
+    AID_SESSION_CAPACITY: "rules",  # nothing writes it now; kept so a past row stays a rules row, never money
     RULES_EFFECT_ENTITY: "rules",  # H3: an approval's effect, rules readers only
     AID_DECISIONS: "offers",
     AID_CANCELLATIONS: "offers",
