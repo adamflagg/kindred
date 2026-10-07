@@ -339,8 +339,9 @@ export function unitOf(path: readonly string[]): SettingUnit {
 /**
  * What the screen knows to name the rules' keys by: each pool's, program's, decision type's and
  * equity criterion's label as the rules document carries it, and the season's session names when
- * the screen has them. Staff never read a key or a CampMinder id where a name exists; a key with no
- * label reads in words (`keyWords`), a session with no name as "Session 9300101".
+ * the screen has them. Staff never read a key or a CampMinder id where a name exists; a table or
+ * equity class with no label borrows its same-key program's or pool's (`keyLabel`), any other key
+ * with no label reads in words (`keyWords`), and a session with no name as "Session 9300101".
  */
 export interface RulesVocabulary {
   readonly pools: Readonly<Record<string, string>>
