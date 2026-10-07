@@ -1,6 +1,12 @@
+import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
-import { invalidateAidMoneyQueries, invalidateAidRulesQueries, queryKeys } from './queryKeys'
+import {
+  invalidateAidMoneyQueries,
+  invalidateAidRulesQueries,
+  invalidateAidScenarioQueries,
+  queryKeys,
+} from './queryKeys'
 
 describe('Camperships query keys', () => {
   it("sit under one 'financial-aid' prefix, so a sync or a write can invalidate by prefix (spec §10)", () => {
@@ -68,6 +74,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'rules'],
       // Every write logs a row (spec §4.11), so every write moves Season › History (D49).
       ['financial-aid', 'history'],
+      ['financial-aid', 'scenarios'],
     ])
   })
 
@@ -83,6 +90,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'application'],
       ['financial-aid', 'rules'],
       ['financial-aid', 'history'],
+      ['financial-aid', 'scenarios'],
       ['financial-aid', 'jump-index'],
     ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
@@ -144,6 +152,7 @@ describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
       ['financial-aid', 'today'],
       // A draft save logs a rules row too (D49), though it prices nothing.
       ['financial-aid', 'history'],
+      ['financial-aid', 'scenarios'],
     ])
   })
 
@@ -180,5 +189,83 @@ describe("Season › History's keys (D49)", () => {
       queryKeys.aidHistory(2027, { per_page: '50' })
     )
     expect(queryKeys.aidHistoryPrefix()[0]).toBe(queryKeys.aidPrefix()[0])
+  })
+})
+
+describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
+  it('refreshes the scenario reads only: a scenario never writes live awards', async () => {
+    const invalidateQueries = vi.fn((_args: unknown) => Promise.resolve())
+    await invalidateAidScenarioQueries({ invalidateQueries })
+    expect(invalidateQueries.mock.calls).toHaveLength(1)
+    expect(invalidateQueries.mock.calls[0]?.[0]).toMatchObject({
+      queryKey: ['financial-aid', 'scenarios'],
+    })
+    expect(queryKeys.aidScenarios(2027).slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
+    expect(queryKeys.aidScenarioSensitivity(2027, 't', 's').slice(0, 2)).toEqual(
+      queryKeys.aidScenariosPrefix()
+    )
+  })
+
+  it('waits for the refetch: its promise settles only after the invalidation does', async () => {
+    let release: () => void = () => undefined
+    const invalidateQueries = vi.fn(() => new Promise<void>((resolve) => (release = resolve)))
+    let done = false
+    const waiting = invalidateAidScenarioQueries({ invalidateQueries }).then(() => (done = true))
+    await Promise.resolve()
+    expect(done).toBe(false)
+    release()
+    await waiting
+    expect(done).toBe(true)
+  })
+
+  it('keeps the scenario keys apart from every other aid read and from each other', () => {
+    expect(queryKeys.aidScenarios(2027)).not.toEqual(queryKeys.aidScenarios(2028))
+    expect(queryKeys.aidScenarioSensitivity(2027, 't1', 's')).not.toEqual(
+      queryKeys.aidScenarioSensitivity(2027, 't2', 's')
+    )
+    expect(queryKeys.aidScenarioSensitivity(2027, 't', 's1')).not.toEqual(
+      queryKeys.aidScenarioSensitivity(2027, 't', 's2')
+    )
+    expect(queryKeys.aidScenarios(2027)).not.toEqual(queryKeys.aidScenarioSensitivity(2027, '', ''))
+    const otherPrefixes = Object.entries(queryKeys)
+      .filter(([name]) => /^aid.*Prefix$/.test(name) && name !== 'aidScenariosPrefix')
+      .map(([, build]) => (build as () => readonly unknown[])())
+    expect(otherPrefixes.length).toBeGreaterThan(5)
+    for (const prefix of otherPrefixes) expect(prefix).not.toEqual(queryKeys.aidScenariosPrefix())
+  })
+})
+
+describe("each step's effect is a pure function of its key (lead ruling, review I1)", () => {
+  // Real client: the filter each helper hands over decides what is marked stale.
+  function seeded() {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.aidScenarios(2027), { w: 1 })
+    client.setQueryData(queryKeys.aidScenarioSensitivity(2027, 't', 's'), { s: 1 })
+    return client
+  }
+  const stale = (client: QueryClient, key: readonly unknown[]) =>
+    client.getQueryState(key)?.isInvalidated
+
+  it.each([
+    ['a scenario write', (c: QueryClient) => invalidateAidScenarioQueries(c)],
+    ['a rules write', (c: QueryClient) => invalidateAidRulesQueries(c)],
+    ['an approval', (c: QueryClient) => invalidateAidRulesQueries(c, { priced: true })],
+    ['a money write', (c: QueryClient) => invalidateAidMoneyQueries(c)],
+  ])('%s refreshes the workspace and leaves every sensitivity read alone', async (_name, run) => {
+    const client = seeded()
+    await run(client)
+    expect(stale(client, queryKeys.aidScenarios(2027))).toBe(true)
+    expect(stale(client, queryKeys.aidScenarioSensitivity(2027, 't', 's'))).toBe(false)
+  })
+
+  it('invalidates the scenario prefix once on an approval, which money already covers', () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidRulesQueries({ invalidateQueries }, { priced: true })
+    const scenarioCalls = invalidateQueries.mock.calls.filter(
+      ([args]) =>
+        JSON.stringify((args as { queryKey: unknown[] }).queryKey) ===
+        JSON.stringify(queryKeys.aidScenariosPrefix())
+    )
+    expect(scenarioCalls).toHaveLength(1)
   })
 })

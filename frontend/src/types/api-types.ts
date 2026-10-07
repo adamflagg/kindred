@@ -57,9 +57,13 @@ import type {
   DecisionTypeOutput,
   DecisionWriteOut,
   DefinitionsResponse,
+  DocumentIn,
+  DraftOut,
   DraftSectionOut,
   DuplicateMark,
   EditorPreviewOut,
+  EvaluateIn,
+  EvaluateOut,
   ExpectedOut,
   FieldChangeOut,
   GrantRowOut,
@@ -86,7 +90,11 @@ import type {
   IssueOut,
   JumpIndexHousehold,
   JumpIndexResponse,
+  KeepIn,
+  LeverEffectOut,
+  LoadIn,
   ManualHoldIn,
+  OptionOut,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
@@ -96,7 +104,10 @@ import type {
   ReceiptOut,
   PoolBudgetOut,
   RemainingResponse,
+  ResultsOut,
   RoundCountsOut,
+  SensitivityOut,
+  SnapshotOut,
   RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
@@ -115,6 +126,8 @@ import type {
   UseFormIn,
   UseFormOut,
   ValidationIssue,
+  ViewIn,
+  WorkspaceOut,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -270,3 +283,18 @@ export type ApiAidHistoryEffect = HistoryEffectOut
 export type ApiAidHistoryKindCount = HistoryKindCountOut
 /** Mirrors Python `HistoryKind`. */
 export type ApiAidHistoryKind = HistoryOperationOut['kind']
+
+/** Season › Scenarios (spec §7.4; D35–D38; SP9b). Mirrors Python `WorkspaceOut` and its parts. */
+export type ApiAidScenarioWorkspace = WorkspaceOut
+export type ApiAidScenarioDraft = DraftOut
+export type ApiAidScenarioOption = OptionOut
+export type ApiAidScenarioSnapshot = SnapshotOut
+export type ApiAidScenarioResults = ResultsOut
+export type ApiAidScenarioEvaluateIn = EvaluateIn
+export type ApiAidScenarioEvaluation = EvaluateOut
+export type ApiAidScenarioDocumentIn = DocumentIn
+export type ApiAidScenarioLoadIn = LoadIn
+export type ApiAidScenarioKeepIn = KeepIn
+export type ApiAidScenarioSensitivity = SensitivityOut
+export type ApiAidScenarioViewIn = ViewIn
+export type ApiAidLeverEffect = LeverEffectOut
