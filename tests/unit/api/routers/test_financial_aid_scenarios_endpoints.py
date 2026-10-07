@@ -251,8 +251,37 @@ def test_writes_carry_the_callers_email() -> None:
     assert service.freeze.await_args.args == (2027, email)
     assert service.save_draft.await_args.args[2] == email
     assert service.load.await_args.args == (2027, email)
-    assert service.load.await_args.kwargs == {"option": None, "trail_row": "trl000000000001"}
+    assert service.load.await_args.kwargs == {"option": None, "trail_row": "trl000000000001", "start": None}
     assert service.keep.await_args.kwargs == {"starting_point": True}
+
+
+def test_a_load_takes_a_built_in_start_and_refuses_two_sources_before_the_service() -> None:
+    service = _stub()
+    client = _client()
+    assert client.post("/api/financial-aid/scenarios/2027/draft/load", json={"start": "rules_draft"}).status_code == 200
+    assert service.load.await_args.kwargs == {"option": None, "trail_row": None, "start": "rules_draft"}
+    both = client.post("/api/financial-aid/scenarios/2027/draft/load", json={"option": "A", "start": "rules"})
+    assert both.status_code == 422
+    assert client.post("/api/financial-aid/scenarios/2027/draft/load", json={"start": "nope"}).status_code == 422
+
+
+def test_an_unrecorded_draft_reads_with_no_trail_row_and_says_what_it_is_from() -> None:
+    service = _stub()
+    service.workspace = AsyncMock(
+        return_value=Workspace(
+            2027,
+            2,
+            META,
+            replace(DRAFT, trail_id=None, recorded_at=None, from_code="rules", source_document=DOC, same_as="rules"),
+            (KEPT,),
+            pricing_version=1,
+            rules_draft_version=2,
+        )
+    )
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert (body["rules_draft_version"], body["draft"]["trail_id"], body["draft"]["recorded_at"]) == (2, None, None)
+    assert (body["draft"]["from_code"], body["draft"]["same_as"]) == ("rules", "rules")
+    assert body["draft"]["source_document"]["year"] == 2027
 
 
 def test_evaluate_passes_the_sizing_settings() -> None:
@@ -508,7 +537,7 @@ def test_a_stored_season_this_code_cant_read_is_422_and_a_freeze_replaces_it() -
     row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}
     evaluated = client.post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY)
     assert evaluated.status_code == 422
-    assert "freeze the applications again" in evaluated.json()["detail"]
+    assert "Update Applications again" in evaluated.json()["detail"]
     assert client.get("/api/financial-aid/scenarios/2027").status_code == 200
     again = client.post("/api/financial-aid/scenarios/2027/snapshot")
     assert (again.status_code, again.json()["id"] != first["id"]) == (200, True)

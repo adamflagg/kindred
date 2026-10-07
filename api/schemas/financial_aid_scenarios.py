@@ -98,14 +98,16 @@ class OptionOut(BaseModel):
 
 
 class DraftOut(BaseModel):
-    trail_id: str
-    from_code: str
+    trail_id: str | None = None  # None: nothing recorded yet; the draft is the rules in effect (§S11.2)
+    from_code: str  # a kept code, or "rules" | "rules_draft" | "last_rules"
     label: str
     document: AidRules
     changes: list[FieldChangeOut]
     results: ResultsOut | None
     report: ValidationReport
-    recorded_at: datetime
+    recorded_at: datetime | None = None
+    source_document: AidRules | None = None  # what it is from, read now: the strip's starting point, "was …"
+    same_as: str | None = None  # a kept code whose document equals the draft, else "rules", else None
 
 
 class WorkspaceOut(BaseModel):
@@ -115,6 +117,8 @@ class WorkspaceOut(BaseModel):
     snapshot: SnapshotOut | None
     draft: DraftOut | None
     options: list[OptionOut]
+    # the rules draft's version while it differs from the rules in effect: the cue for Start from's third entry
+    rules_draft_version: int | None = None
 
 
 class DocumentIn(BaseModel):
@@ -154,11 +158,12 @@ class LoadIn(BaseModel):
 
     option: OptionCode | None = None
     trail_row: RecordId | None = None
+    start: Literal["rules", "rules_draft", "last_rules"] | None = None  # a built-in start (§S11.2)
 
     @model_validator(mode="after")
     def _one_source(self) -> Self:
-        if self.option is None and self.trail_row is None:
-            raise ValueError("name a kept option or a trail row to load")
+        if sum(value is not None for value in (self.option, self.trail_row, self.start)) != 1:
+            raise ValueError("name one kept option, one trail row or one starting point to load")
         return self
 
 

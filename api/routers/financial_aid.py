@@ -1331,6 +1331,8 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         results=_results_out(draft.results) if draft.results is not None else None,
         report=draft.report,
         recorded_at=draft.recorded_at,
+        source_document=draft.source_document,
+        same_as=draft.same_as,
     )
 
 
@@ -1342,6 +1344,7 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
         snapshot=_snapshot_out(workspace.snapshot) if workspace.snapshot is not None else None,
         draft=_scenario_draft_out(workspace.draft) if workspace.draft is not None else None,
         options=[_option_out(kept) for kept in workspace.options],
+        rules_draft_version=workspace.rules_draft_version,
     )
 
 
@@ -1466,9 +1469,11 @@ async def save_scenario_draft(year: _Year, body: DocumentIn, user: AuthUser = _R
 
 @router.post("/scenarios/{year}/draft/load", response_model=DraftOut)
 async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES) -> DraftOut:
-    """A kept option or any trail row into your draft; recorded, so nothing is lost."""
+    """A kept option, any trail row or a built-in start into your draft; recorded, so nothing is lost."""
     try:
-        draft = await _scenarios().load(year, user.email, option=body.option, trail_row=body.trail_row)
+        draft = await _scenarios().load(
+            year, user.email, option=body.option, trail_row=body.trail_row, start=body.start
+        )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
     return _scenario_draft_out(draft)

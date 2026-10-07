@@ -33,7 +33,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol, cast
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
@@ -86,6 +86,11 @@ from bunking.financial_aid.scenarios import (
 
 MAX_COMPARED: Final = 4
 
+StartFrom = Literal["rules", "rules_draft", "last_rules"]
+# The built-in starting points (§S11.2): a draft from one writes no kept option, and reads its source NOW, so
+# "was …" always means what is in effect (or in the rules draft, or last season's merge) when it is read.
+BUILT_IN_STARTS: Final[tuple[StartFrom, ...]] = ("rules", "rules_draft", "last_rules")
+
 
 class ScenarioNotFoundError(FinancialAidError, LookupError):
     """No such kept option or trail row in the season."""
@@ -136,15 +141,27 @@ class Evaluation:
 
 
 @dataclass(frozen=True)
-class Draft:
-    trail_id: str
-    from_code: str
+class Source:
+    """What a draft is from: a kept option, or a built-in start read now; `version` is the rules version it was
+    taken from (an option's origin_version), which a keep records as the new option's origin."""
+
+    code: str
     document: AidRules
-    label: str  # what differs from the option it is from
+    version: int
+
+
+@dataclass(frozen=True)
+class Draft:
+    trail_id: str | None  # None: nothing recorded yet, so the draft is the rules in effect (§S11.2)
+    from_code: str  # a kept code, or "rules" | "rules_draft" | "last_rules"
+    document: AidRules
+    label: str  # what differs from its source, in staff words (§S11.6)
     changes: tuple[FieldChange, ...]  # the same, setting by setting (the screen's amber)
     results: ScenarioResults | None  # None before any freeze
     report: ValidationReport
-    recorded_at: datetime
+    recorded_at: datetime | None
+    source_document: AidRules | None = None  # what it is from, read now: the strip's starting point and "was"
+    same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
 
 
 @dataclass(frozen=True)
@@ -162,6 +179,7 @@ class Workspace:
     draft: Draft | None
     options: tuple[KeptOption, ...]
     pricing_version: int | None = None  # the version pricing the season; None while none does (final review 8)
+    rules_draft_version: int | None = None  # the rules draft's version while it differs from the rules in effect
 
 
 @dataclass(frozen=True)
@@ -271,6 +289,13 @@ def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
     return tuple(field_changes(old.model_dump(), new.model_dump()))
 
 
+def _same_as(document: AidRules, options: Mapping[str, OptionRecord], effect: RulesVersion) -> str | None:
+    """A kept code whose document equals `document`, else "rules" when it is the rules in effect (§S11.2). No read of
+    its own: the caller passes the reads it already holds (plan review, minor 3)."""
+    same = next((o.code for o in options.values() if o.document == document), None)
+    return same if same is not None else ("rules" if document == effect.document else None)
+
+
 def _when(row: TrailRecord) -> str:
     local = row.created.astimezone(CAMP_TZ)
     return f"{local:%b} {local.day} {local:%H:%M}"
@@ -302,7 +327,7 @@ class FinancialAidScenariosService:
     async def _meta(self, year: int) -> SnapshotMeta:
         meta = await self._store.latest_snapshot(year)
         if meta is None:
-            raise ScenarioRefusedError(f"Freeze {year}'s applications first: every scenario runs on a frozen snapshot")
+            raise ScenarioRefusedError("Update Applications first: every scenario is priced on the applications held")
         return meta
 
     async def _pricer(self, meta: SnapshotMeta, request_set: RequestSet | None = None) -> Pricer:
@@ -356,6 +381,76 @@ class FinancialAidScenariosService:
     async def _last_rules(self, year: int) -> RulesVersion | None:
         """Last season's approved rules: the version that priced it (every pricing section approved)."""
         return await self._rules.latest_approved(year - 1, PRICING_SECTIONS)
+
+    async def _in_effect(self, year: int) -> RulesVersion:
+        """The rules in effect (§S11.2): the newest version every pricing section approves, or the latest version
+        while none prices the season (the screen then names it "Rules draft · vN")."""
+        return await self._rules.latest_approved(year, PRICING_SECTIONS) or await self._rules.load(year)
+
+    @staticmethod
+    def _effect_name(version: RulesVersion) -> str:
+        return f"Rules v{version.version}" if _prices(version) else f"Rules draft v{version.version}"
+
+    async def _last_rules_document(self, year: int, base: RulesVersion, *, words: str) -> tuple[AidRules, str]:
+        """RPT-18's merge on `base` and its name; refused when last season has no approved rules, or when the merge
+        adds a validation error `base` did not already have (say which). `words` names `base` in the refusal."""
+        last = await self._last_rules(year)
+        if last is None:
+            raise ScenarioRefusedError(f"{year - 1} has no approved rules to start from: load and approve them first")
+        document = last_seasons_criteria(base.document, last.document)
+        introduced = _introduced(
+            (await self._rules.validate_document(base.document)).errors,
+            (await self._rules.validate_document(document)).errors,
+        )
+        if introduced:
+            named = "; ".join(f"{issue.path}: {issue.message}" for issue in introduced[:3])
+            raise ScenarioRefusedError(
+                f"{year - 1}'s criteria don't fit {year}'s {words} ({named}): start from the rules and edit instead"
+            )
+        placeholder = uses_budget_placeholder(base.document, last.document)
+        return document, _last_season_name(last, year, base, placeholder=placeholder)
+
+    async def _built_in(
+        self, year: int, start: StartFrom, *, recorded: AidRules | None = None, effect: RulesVersion | None = None
+    ) -> Source:
+        """A built-in start, read now. A load passes no `recorded` and keeps last season's two refusals. A read of a
+        recorded draft passes the row's own document and never refuses (disagreement 16): the rules in effect can
+        change after the load so that the merge no longer fits, and a 422 there would hide Start from, the only way
+        out. Its source is then the merge without the check, or the row's own document when last season has no
+        approved rules any more (or the merge doesn't even build)."""
+        effect = effect if effect is not None else await self._in_effect(year)
+        if start == "rules":
+            return Source("rules", effect.document, effect.version)
+        if start == "rules_draft":
+            draft = await self._rules.load(year)
+            return Source("rules_draft", draft.document, draft.version)
+        if recorded is None:
+            document, _ = await self._last_rules_document(year, effect, words="rules in effect")
+            return Source("last_rules", document, effect.version)
+        last = await self._last_rules(year)
+        try:
+            merged = recorded if last is None else last_seasons_criteria(effect.document, last.document)
+        except ValueError:  # pydantic's ValidationError: a read never fails for its source
+            merged = recorded
+        return Source("last_rules", merged, effect.version)
+
+    async def _source(
+        self,
+        year: int,
+        code: str,
+        options: Mapping[str, OptionRecord] | None = None,
+        *,
+        recorded: AidRules | None = None,
+        effect: RulesVersion | None = None,
+    ) -> Source:
+        """A draft's source by its row's from code (§S11.2): a kept option's document, or a built-in read now.
+        `recorded`: the row's own document, for a read (see `_built_in`)."""
+        if code in BUILT_IN_STARTS:
+            return await self._built_in(year, code, recorded=recorded, effect=effect)
+        option = (options if options is not None else await self._options(year)).get(code)
+        if option is None:
+            raise ScenarioNotFoundError(f"{year} has no kept option {code}")
+        return Source(option.code, option.document, option.origin_version)
 
     async def _label(
         self, option: OptionRecord, options: Mapping[str, OptionRecord], last: RulesVersion | None = None
@@ -462,35 +557,44 @@ class FinancialAidScenariosService:
         )
         await self._store.commit([write], actor=actor)
 
-    async def _draft(self, year: int, actor: str) -> Draft | None:
+    async def _draft(
+        self,
+        year: int,
+        actor: str,
+        *,
+        effect: RulesVersion | None = None,
+        options: Mapping[str, OptionRecord] | None = None,
+    ) -> Draft:
+        """`actor`'s draft: their newest trail row, from its source read now. With no row, the rules in effect,
+        unrecorded (§S11.2): the tab opens on them without a write, and the first release records from "rules". A
+        read never refuses for its source (disagreement 16). `effect` and `options` are the caller's reads, when it
+        holds them: the workspace reads each once (plan review, minor 3)."""
         row = await self._store.latest_trail(year, actor)
-        if row is None or row.document is None:
-            return None
-        source = (await self._options(year)).get(_from(row))
-        if source is None:
-            raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")
+        effect = effect if effect is not None else await self._in_effect(year)
+        options = options if options is not None else await self._options(year)
+        recorded = row.document if row is not None else None
+        code = _from(row) if row is not None and recorded is not None else "rules"
+        source = await self._source(year, code, options, recorded=recorded, effect=effect)
+        document = recorded if recorded is not None else source.document
         meta = await self._store.latest_snapshot(year)
         results: ScenarioResults | None = None
-        if meta is not None and row.snapshot == meta.id and row.results is not None:
-            results = row.results
+        stored = row.results if row is not None and recorded is not None and meta is not None else None
+        if meta is not None and row is not None and row.snapshot == meta.id and stored is not None:
+            results = stored
         elif meta is not None:
-            results = (await (await self._pricer(meta))(row.document)).results
+            results = (await (await self._pricer(meta))(document)).results
         return Draft(
-            trail_id=row.id,
+            trail_id=row.id if row is not None and recorded is not None else None,
             from_code=source.code,
-            document=row.document,
-            label=describe(source.document, row.document),
-            changes=_changes(source.document, row.document),
+            document=document,
+            label=describe(source.document, document),
+            changes=_changes(source.document, document),
             results=results,
-            report=await self._rules.validate_document(row.document),
-            recorded_at=row.created,
+            report=await self._rules.validate_document(document),
+            recorded_at=row.created if row is not None and recorded is not None else None,
+            source_document=source.document,
+            same_as=_same_as(document, options, effect),
         )
-
-    async def _my_draft(self, year: int, actor: str) -> Draft:
-        draft = await self._draft(year, actor)
-        if draft is None:
-            raise ScenarioRefusedError("Load a kept option into your draft first")
-        return draft
 
     # --- freeze, start, read ------------------------------------------------------------------------
 
@@ -577,21 +681,8 @@ class FinancialAidScenariosService:
         (say which; the draft's own errors never block it). When a kept option already is that document, it is
         loaded instead of copied."""
         meta = await self._meta(year)
-        last = await self._last_rules(year)
-        if last is None:
-            raise ScenarioRefusedError(f"{year - 1} has no approved rules to start from: load and approve them first")
         rules = await self._rules.load(year)
-        document = last_seasons_criteria(rules.document, last.document)
-        placeholder = uses_budget_placeholder(rules.document, last.document)
-        introduced = _introduced(
-            (await self._rules.validate_document(rules.document)).errors,
-            (await self._rules.validate_document(document)).errors,
-        )
-        if introduced:
-            named = "; ".join(f"{issue.path}: {issue.message}" for issue in introduced[:3])
-            raise ScenarioRefusedError(
-                f"{year - 1}'s criteria don't fit {year}'s rules draft ({named}): start from the rules and edit instead"
-            )
+        document, name = await self._last_rules_document(year, rules, words="rules draft")
         options = await self._options(year)
         same = next((o for o in options.values() if o.document == document), None)
         if same is not None:
@@ -616,7 +707,7 @@ class FinancialAidScenariosService:
                 actor,
                 document=document,
                 from_code=code,
-                change=f"started from {_last_season_name(last, year, rules, placeholder=placeholder)}",
+                change=f"started from {name}",
                 results=priced.results,
                 meta=meta,
                 kept_code=code,
@@ -628,6 +719,7 @@ class FinancialAidScenariosService:
     async def workspace(self, year: int, actor: str) -> Workspace:
         rules = await self._rules.load(year)
         pricing = await self._rules.latest_approved(year, PRICING_SECTIONS)
+        effect = pricing or rules  # _in_effect's answer, from the reads already here
         meta = await self._store.latest_snapshot(year)
         options = await self._options(year)
         last = await self._last_rules(year)
@@ -641,9 +733,10 @@ class FinancialAidScenariosService:
             year,
             rules.version,
             meta,
-            await self._draft(year, actor),
+            await self._draft(year, actor, effect=effect, options=options),
             tuple(kept),
             pricing_version=pricing.version if pricing is not None else None,
+            rules_draft_version=rules.version if rules.document != effect.document else None,
         )
 
     async def trail(self, year: int, *, page: int, per_page: int) -> tuple[tuple[TrailRecord, ...], int]:
@@ -672,35 +765,59 @@ class FinancialAidScenariosService:
         return Evaluation(moved, priced.results, await self._rules.validate_document(moved))
 
     async def save_draft(self, year: int, document: AidRules, actor: str) -> Draft:
-        """A released setting: the draft becomes `document`, recorded in the trail with what changed."""
+        """A released setting: the draft becomes `document`, recorded in the trail with what changed. With nothing
+        recorded yet, the release records from "rules" (§S11.2)."""
         self._check_year(year, document)
         document = derive_weights(document)
         row = await self._store.latest_trail(year, actor)
         if row is None or row.document is None:
-            raise ScenarioRefusedError("Load a kept option into your draft first")
-        if row.document != document:
-            await self._record(
-                year, actor, document=document, from_code=_from(row), change=describe(row.document, document)
-            )
-        return await self._my_draft(year, actor)
+            current, from_code = (await self._source(year, "rules")).document, "rules"
+        else:
+            current, from_code = row.document, _from(row)
+        if document != current:
+            await self._record(year, actor, document=document, from_code=from_code, change=describe(current, document))
+        return await self._draft(year, actor)
 
-    async def load(self, year: int, actor: str, *, option: str | None = None, trail_row: str | None = None) -> Draft:
-        """A kept option, or any trail row, into `actor`'s draft, recorded as a trail row of its own."""
-        if option is not None and trail_row is None:
+    async def load(
+        self,
+        year: int,
+        actor: str,
+        *,
+        option: str | None = None,
+        trail_row: str | None = None,
+        start: StartFrom | None = None,
+    ) -> Draft:
+        """A kept option, any trail row, or a built-in start into `actor`'s draft, recorded as a trail row of its
+        own (§S11.2). A built-in writes no kept option. The rules draft is refused while it matches the rules in
+        effect, so a stale screen can't start from it."""
+        if sum(source is not None for source in (option, trail_row, start)) != 1:
+            raise ScenarioRefusedError("Load one kept option, one trail row or one starting point")
+        from_code: str
+        if start is not None:
+            built = await self._built_in(year, start)
+            effect = await self._in_effect(year)
+            if start == "rules_draft" and built.document == effect.document:
+                raise ScenarioRefusedError("The rules draft matches the rules in effect")
+            document, from_code = built.document, start
+            if start == "rules":
+                change = f"started from {self._effect_name(effect)}"
+            elif start == "rules_draft":
+                change = f"started from Rules draft v{built.version}"
+            else:
+                change = f"started from {(await self._last_rules_document(year, effect, words='rules in effect'))[1]}"
+        elif option is not None:
             found = await self._option(year, option)
             document, from_code, change = found.document, found.code, f"loaded {found.code} into the draft"
-        elif trail_row is not None and option is None:
-            row = await self._store.trail_row(trail_row)
+        else:
+            row = await self._store.trail_row(cast(str, trail_row))
             if row is None or row.year != year or row.document is None:
                 raise ScenarioNotFoundError(f"{year} has no trail row {trail_row}")
             document, from_code = row.document, _from(row)
             change = f"loaded {row.actor}'s row of {_when(row)} into the draft"
-        else:
-            raise ScenarioRefusedError("Load one kept option or one trail row")
         current = await self._store.latest_trail(year, actor)
         if current is None or current.document != document or _from(current) != from_code:
             await self._record(year, actor, document=document, from_code=from_code, change=change)
-        return await self._my_draft(year, actor)
+        return await self._draft(year, actor)
 
     async def keep(self, year: int, actor: str, *, starting_point: bool) -> KeptOption:
         """Lock `actor`'s draft as a kept option: a variant under the starting point it is from, or a new starting

@@ -15,7 +15,12 @@ from decimal import Decimal
 
 import pytest
 
-from api.constants.collections import AID_REQUESTS, AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS
+from api.constants.collections import (
+    AID_REQUESTS,
+    AID_SCENARIO_OPTIONS,
+    AID_SCENARIO_SNAPSHOTS,
+    AID_SCENARIO_TRAIL,
+)
 from api.schemas.financial_aid_decisions import CellOut, RoundCellOut
 from api.services import financial_aid_scenarios_repository as repository_module
 from api.services import financial_aid_scenarios_service as service_module
@@ -179,7 +184,7 @@ async def test_a_stored_season_this_code_cant_read_is_refused_and_freezing_repla
     world = await _started()
     [row] = world.store.rows[AID_SCENARIO_SNAPSHOTS]
     row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}  # a required key dropped
-    with pytest.raises(SnapshotError, match="freeze the applications again"):
+    with pytest.raises(SnapshotError, match="Update Applications again"):
         await world.service.evaluate(YEAR, intake_rules())
     frozen = await world.service.freeze(YEAR, FINANCE)  # an unreadable latest counts as "the season moved"
     assert frozen.id != row.id
@@ -190,7 +195,7 @@ async def test_a_stored_season_this_code_cant_read_is_refused_and_freezing_repla
 @pytest.mark.asyncio
 async def test_nothing_runs_before_the_applications_are_frozen() -> None:
     world = await _world()
-    with pytest.raises(ScenarioRefusedError, match="Freeze"):
+    with pytest.raises(ScenarioRefusedError, match="Update Applications first"):
         await world.service.start_from_rules(YEAR, FINANCE)
 
 
@@ -267,10 +272,18 @@ async def test_releasing_the_same_settings_twice_records_once() -> None:
 
 @pytest.mark.asyncio
 async def test_the_draft_is_per_person() -> None:
+    """Ruled (§S11.2): TREASURER has recorded nothing, so their draft is the rules in effect, unrecorded, beside
+    FINANCE's draft from A. Their first release records from "rules", and FINANCE's draft is untouched."""
     world = await _started()
-    assert (await world.service.workspace(YEAR, TREASURER)).draft is None
-    with pytest.raises(ScenarioRefusedError, match="Load"):
-        await world.service.save_draft(YEAR, intake_rules(), TREASURER)
+    theirs = (await world.service.workspace(YEAR, TREASURER)).draft
+    assert theirs is not None
+    assert (theirs.trail_id, theirs.from_code, theirs.label) == (None, "rules", "no changes")
+    released = await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), TREASURER)
+    assert (released.from_code, released.label) == ("rules", PLUS_FIVE)  # +5 against v1: Task 53's derivation
+    assert released.trail_id is not None
+    mine = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert mine is not None
+    assert (mine.from_code, mine.label) == ("A", "no changes")
 
 
 @pytest.mark.asyncio
@@ -918,3 +931,127 @@ async def test_every_scenario_read_and_write_derives_the_current_year_weight() -
     )
     fitted = await world.service.fit(YEAR, with_lever(skewed, "budget.total", "3000"))
     assert fitted.evaluation.document.income.weights.current_year == Decimal("0.4")
+
+
+# --- built-in starts and the implicit draft (Scenarios addendum §S11.2) --------------------------------------------
+
+
+async def _frozen() -> World:
+    """Frozen, nothing loaded: FINANCE's draft is the implicit one, from the rules in effect."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    return world
+
+
+async def _approved_v1(world: World) -> None:
+    await world.rules.approve_sections(YEAR, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+
+
+PLUS_FIVE = "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"
+
+
+@pytest.mark.asyncio
+async def test_with_no_draft_recorded_the_tab_opens_on_the_rules_in_effect_without_a_write() -> None:
+    world = await _frozen()
+    writes = len(world.store.operations)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert (draft.trail_id, draft.recorded_at, draft.from_code, draft.label, draft.changes) == (
+        None,
+        None,
+        "rules",
+        "no changes",
+        (),
+    )
+    assert draft.document == draft.source_document == intake_rules()  # v1: nothing approved, so the latest version
+    assert draft.same_as == "rules"
+    assert draft.results is not None
+    assert draft.results.round1 == Decimal(2600)
+    assert len(world.store.operations) == writes  # opening the tab wrote nothing
+
+
+@pytest.mark.asyncio
+async def test_the_first_release_records_the_draft_from_the_rules() -> None:
+    world = await _frozen()
+    draft = await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    assert (draft.from_code, draft.label, draft.same_as, draft.source_document) == (
+        "rules",
+        PLUS_FIVE,
+        None,
+        intake_rules(),
+    )
+    assert draft.trail_id is not None
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=10)
+    assert [(r.from_code, r.change) for r in rows] == [("rules", PLUS_FIVE)]
+    assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+
+
+@pytest.mark.asyncio
+async def test_loading_the_rules_records_a_start_from_the_version_in_effect_and_keeps_nothing() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)  # v2, a draft
+    draft = await world.service.load(YEAR, FINANCE, start="rules")
+    assert (draft.from_code, draft.document, draft.label) == ("rules", intake_rules(), "no changes")
+    workspace = await world.service.workspace(YEAR, FINANCE)
+    assert (workspace.rules_draft_version, workspace.options) == (2, ())
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=10)
+    assert [(r.from_code, r.change) for r in rows] == [("rules", "started from Rules v1")]
+
+
+@pytest.mark.asyncio
+async def test_loading_the_rules_draft_records_it_now_while_it_differs() -> None:
+    """§S15 item 4 ("draft sure"): a third start, offered only while the draft differs from the rules in effect."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)
+    draft = await world.service.load(YEAR, FINANCE, start="rules_draft")
+    assert (draft.from_code, draft.document.awards.minimum, draft.label) == ("rules_draft", Decimal(150), "no changes")
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=10)
+    assert rows[0].change == "started from Rules draft v2"
+
+
+@pytest.mark.asyncio
+async def test_the_rules_draft_is_refused_when_it_matches_the_rules_in_effect() -> None:
+    world = await _frozen()
+    await _approved_v1(world)
+    assert (await world.service.workspace(YEAR, FINANCE)).rules_draft_version is None
+    with pytest.raises(ScenarioRefusedError, match=r"^The rules draft matches the rules in effect$"):
+        await world.service.load(YEAR, FINANCE, start="rules_draft")
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+
+
+@pytest.mark.asyncio
+async def test_a_draft_from_the_rules_reads_its_edits_against_the_version_in_effect_now() -> None:
+    """§S11.2, deliberate: after a new version is approved, "was" means what is in effect then."""
+    world = await _frozen()
+    await _approved_v1(world)
+    await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
+    v2 = await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)
+    await world.rules.approve_sections(YEAR, v2.version, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.source_document is not None
+    assert draft.source_document.awards.minimum == Decimal(150)
+    assert draft.label == f"{PLUS_FIVE} · Minimum $100"
+
+
+@pytest.mark.asyncio
+async def test_same_as_names_a_kept_option_first_then_the_rules() -> None:
+    world = await _started()  # A is the rules draft v1, which is also the rules in effect (none approved)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.same_as == "A"
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.same_as is None
+
+
+@pytest.mark.asyncio
+async def test_a_load_names_exactly_one_thing() -> None:
+    world = await _frozen()
+    with pytest.raises(ScenarioRefusedError, match="one kept option, one trail row or one starting point"):
+        await world.service.load(YEAR, FINANCE, option="A", start="rules")
+    with pytest.raises(ScenarioRefusedError, match="one kept option, one trail row or one starting point"):
+        await world.service.load(YEAR, FINANCE)

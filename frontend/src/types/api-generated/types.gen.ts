@@ -3851,7 +3851,7 @@ export type DraftOut = {
   /**
    * Trail Id
    */
-  trail_id: string
+  trail_id?: string | null
   /**
    * From Code
    */
@@ -3870,7 +3870,12 @@ export type DraftOut = {
   /**
    * Recorded At
    */
-  recorded_at: string
+  recorded_at?: string | null
+  source_document?: AidRulesOutput | null
+  /**
+   * Same As
+   */
+  same_as?: string | null
 }
 
 /**
@@ -8435,6 +8440,10 @@ export type LoadIn = {
    * Trail Row
    */
   trail_row?: string | null
+  /**
+   * Start
+   */
+  start?: 'rules' | 'rules_draft' | 'last_rules' | null
 }
 
 /**
@@ -18599,6 +18608,10 @@ export type WorkspaceOut = {
    * Options
    */
   options: Array<OptionOut>
+  /**
+   * Rules Draft Version
+   */
+  rules_draft_version?: number | null
 }
 
 /**

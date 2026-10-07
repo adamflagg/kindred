@@ -525,3 +525,70 @@ async def test_last_season_without_a_season_read_is_refused() -> None:
 
 async def _no_capture(year: int) -> SeasonSnapshot:
     raise AssertionError("never captured")
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_load_as_a_built_in_start_and_write_no_option() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    draft = await world.service.load(YEAR, FINANCE, start="last_rules")
+    # Emma at 2026's 80% of 2,000 = 1,600; Liam's tier 3 is 55% in both: 1,100.
+    assert (draft.from_code, draft.label) == ("last_rules", "no changes")
+    assert draft.results is not None
+    assert draft.results.round1 == Decimal(2700)
+    assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+    [trail] = (await world.service.trail(YEAR, page=1, per_page=10))[0]
+    assert (trail.from_code, trail.change) == (
+        "last_rules",
+        "started from 2026 v1 rules on 2027's applications, the rest from rules draft v1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_as_a_start_keep_their_two_refusals() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await world.rules.create_version(last_season_rules(), actor=FINANCE)  # a 2026 draft, never approved
+    with pytest.raises(ScenarioRefusedError, match="2026 has no approved rules to start from"):
+        await world.service.load(YEAR, FINANCE, start="last_rules")
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_that_dont_fit_are_refused_as_a_start_too() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"  # 2026 had no teen table
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    with pytest.raises(ScenarioRefusedError, match=r"2026's criteria don't fit 2027's rules in effect \("):
+        await world.service.load(YEAR, FINANCE, start="last_rules")
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
+
+
+@pytest.mark.asyncio
+async def test_a_draft_from_last_seasons_rules_still_opens_after_the_rules_in_effect_stop_fitting_them() -> None:
+    """Disagreement 16 (plan review M2): the two refusals guard a load only. 2027 v1 sends teen to the camp table, so
+    2026's rules (no teen table) fit and load. Then v2, which sends teen to its own table, is approved: a new load is
+    refused, but the recorded draft still reads, so finance can still reach Start from."""
+    camp_only = intake_rules().model_dump(mode="json")
+    camp_only["programs"]["teen"]["r1_table"] = "camp"
+    world = await _world(this_season=AidRules.model_validate(camp_only))
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"  # 2026 had no teen table
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    await world.service.load(YEAR, FINANCE, start="last_rules")
+    v2 = await world.rules.create_version(intake_rules(), actor=FINANCE)
+    await world.rules.approve_sections(YEAR, v2.version, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    refused = r"2026's criteria don't fit 2027's rules in effect \(programs\.teen"
+    with pytest.raises(ScenarioRefusedError, match=refused):
+        await world.service.load(YEAR, FINANCE, start="last_rules")
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    # Its source is now the merge on v2 (teen to its own table); the recorded draft kept v1's routing (teen to camp).
+    # Only programs.teen.r1_table differs, one change on the Programs card.
+    assert (draft.from_code, draft.label) == ("last_rules", "Programs and their sessions: 1 change")

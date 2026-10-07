@@ -235,7 +235,7 @@ async def test_the_frozen_season_is_plain_json_and_counts_its_live_requests() ->
 @pytest.mark.asyncio
 async def test_a_snapshot_in_another_format_is_refused() -> None:
     encoded = encode_snapshot(await capture_season(_store(), _register(), FakeRules(approved()), YEAR))
-    with pytest.raises(SnapshotError, match="freeze"):
+    with pytest.raises(SnapshotError, match="Update Applications again"):
         decode_snapshot({**encoded, "format": 0})
 
 
@@ -298,7 +298,7 @@ async def _encoded() -> dict[str, object]:
 async def test_a_stored_snapshot_missing_a_key_is_a_snapshot_error(key: str) -> None:
     encoded = await _encoded()
     del encoded[key]
-    with pytest.raises(SnapshotError, match="can't be read: freeze the applications again"):
+    with pytest.raises(SnapshotError, match="can't be read: Update Applications again"):
         decode_snapshot(encoded)
 
 
@@ -312,7 +312,7 @@ async def test_a_stored_read_that_no_longer_validates_is_a_snapshot_error_that_n
     calls["fetch_requests"] = requests
     with pytest.raises(SnapshotError) as raised:
         decode_snapshot({**encoded, "calls": calls})
-    assert "freeze the applications again" in str(raised.value)
+    assert "Update Applications again" in str(raised.value)
     assert "XYZZY" not in str(raised.value)
 
 
