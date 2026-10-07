@@ -148,18 +148,6 @@ class ReceiptOut(BaseModel):
     label: ReceiptLabelOut
 
 
-class Round3ContextOut(BaseModel):
-    """A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
-    status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
-    None: not entered)."""
-
-    session_cm_id: int
-    enrolled: int
-    waitlisted: int
-    capacity: int | None
-    capacity_note: str
-
-
 class DuplicateWaitingOut(BaseModel):
     """A possible duplicate waiting on a request: a `duplicate_pending` request in the season, on any household's page,
     whose `duplicate_of` is that request. Named so the active request's card can offer "Keep the Other Request…" and
@@ -185,7 +173,6 @@ class HouseholdRequestOut(BaseModel):
     # a decided total, and on a request outside the band (D77's included).
     grants_applied: float | None = None
     grants_beyond_owed: float | None = None  # grants − grants_applied
-    round3_context: Round3ContextOut | None = None  # only on a request with a Round 3
     # Every duplicate_pending request in the season, on any household, whose duplicate_of is this request, by household
     # then request id. Defaulted only so older fixtures still type-check; the page always fills it.
     duplicates_waiting: list[DuplicateWaitingOut] = Field(default_factory=list)

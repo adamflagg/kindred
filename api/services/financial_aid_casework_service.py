@@ -11,7 +11,7 @@ edits are fields intake treats as staff-owned (financial_aid_intake_plan).
 The writers that touch what an intake build plans (a request's session, status,
 headcount and payer shares) take the build's per-season lock (`season_lock`) and
 re-read the request inside it, so a build cannot commit over a staff write it
-read before. Corrections and capacity are not intake's and do not wait.
+read before. Corrections are not intake's and do not wait.
 """
 
 from __future__ import annotations
@@ -27,15 +27,12 @@ from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
-    AID_SESSION_CAPACITY,
 )
 from api.schemas.financial_aid_intake import (
     AnswerOut,
     ApplicationDetailResponse,
     ApplicationListResponse,
     ApplicationSummaryOut,
-    CapacityListOut,
-    CapacityOut,
     CorrectionOut,
     FlagOut,
     IssueOut,
@@ -76,7 +73,6 @@ from api.services.financial_aid_intake_types import (
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
     ApplicationRecord,
-    CapacityRecord,
     CorrectionRecord,
     EquityAnswers,
     PayerShareRecord,
@@ -126,8 +122,6 @@ class CaseworkStore(Protocol):
     async def fetch_sessions(self, year: int) -> list[SessionRow]: ...
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
-    async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None: ...
-    async def fetch_capacities(self, year: int) -> list[CapacityRecord]: ...
     async def fetch_payer_shares(
         self, year: int, request_ids: Sequence[str] | None = None
     ) -> list[PayerShareRecord]: ...
@@ -834,61 +828,6 @@ class FinancialAidCaseworkService:
             reason=f"{reason_code}: {reason.strip()}" if reason_code else reason,
         )
         return await self._request_out(updated)
-
-    async def capacities(self, year: int) -> CapacityListOut:
-        """Every session capacity finance stored for the season (live only: no past date is rebuilt)."""
-        rows = await self._store.fetch_capacities(year)
-        return CapacityListOut(
-            year=year,
-            sessions=[
-                CapacityOut(year=r.year, session_cm_id=r.session_cm_id, capacity=r.capacity, note=r.note, actor=r.actor)
-                for r in sorted(rows, key=lambda r: r.session_cm_id)
-            ],
-        )
-
-    async def set_capacity(self, year: int, session_cm_id: int, capacity: int, note: str, actor: str) -> CapacityOut:
-        if capacity < 0:
-            raise CaseworkValidationError("capacity cannot be negative")
-        sessions = await self._store.fetch_sessions(year)
-        if not any(s.cm_id == session_cm_id for s in sessions):
-            raise CaseworkNotFoundError("no such session in that season")
-        current = await self._store.fetch_capacity(year, session_cm_id)
-        data = {
-            "year": year,
-            "session_cm_id": session_cm_id,
-            "capacity": capacity,
-            "note": note.strip(),
-            "actor": actor,
-        }
-        if current is None:
-            write = AidWrite(
-                collection=AID_SESSION_CAPACITY, action="create", year=year, data=data, log_action="set_capacity"
-            )
-            should_write = True
-        else:
-            before = {
-                "year": current.year,
-                "session_cm_id": current.session_cm_id,
-                "capacity": current.capacity,
-                "note": current.note,
-                "actor": current.actor,
-            }
-            changes = _changed(before, data)
-            # A different staff member re-entering the same figure is not a change (the brief):
-            # `actor` alone never triggers a write, though it IS written when something real did.
-            should_write = any(key != "actor" for key in changes)
-            write = AidWrite(
-                collection=AID_SESSION_CAPACITY,
-                action="update",
-                year=year,
-                record_id=current.id,
-                before=before,
-                data=changes,
-                log_action="set_capacity",
-            )
-        if should_write:
-            await self._store.commit([write], actor=actor, reason=note.strip())
-        return CapacityOut(year=year, session_cm_id=session_cm_id, capacity=capacity, note=note.strip(), actor=actor)
 
     async def calculator_inputs_for(self, year: int, household_cm_id: int, rules: AidRules) -> list[CalculatorInputs]:
         """Every live request (active or unmatched) on the family's application, converted under

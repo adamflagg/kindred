@@ -226,16 +226,6 @@ class CorrectionRecord:
 
 
 @dataclass(frozen=True)
-class CapacityRecord:
-    id: str
-    year: int
-    session_cm_id: int
-    capacity: int
-    note: str
-    actor: str
-
-
-@dataclass(frozen=True)
 class PayerShareRecord:
     """One aid_payer_shares row: a household and its percentage of the request. Dollars are
     never stored; they are computed from the current award (financial_aid_payer_shares)."""

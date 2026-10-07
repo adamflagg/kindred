@@ -19,8 +19,6 @@ from api.schemas.financial_aid_intake import (
     AnswerOut,
     ApplicationDetailResponse,
     ApplicationListResponse,
-    CapacityListOut,
-    CapacityOut,
     CorrectionOut,
     RequestOut,
     RequestQueueResponse,
@@ -65,7 +63,6 @@ REQUEST = RequestOut(
 )
 
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
-    ("GET", "/api/financial-aid/capacity/2027", None, "view"),
     ("GET", "/api/financial-aid/applications?year=2027", None, "view"),
     ("GET", "/api/financial-aid/applications/2027/1000001", None, "view"),
     ("GET", "/api/financial-aid/requests?year=2027&status=unmatched_session", None, "view"),
@@ -102,7 +99,6 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str]] = [
         },
         "casework",
     ),
-    ("PUT", "/api/financial-aid/capacity/2027/1000101", {"capacity": 120}, "rules"),
 ]
 ALLOWED = {
     "view": {PERSONA_REGISTRAR, PERSONA_FINANCE},
@@ -113,7 +109,6 @@ ALLOWED = {
 
 def _stub() -> MagicMock:
     stub = MagicMock()
-    stub.capacities = AsyncMock(return_value=CapacityListOut(year=2027, sessions=[]))
     stub.list_applications = AsyncMock(return_value=ApplicationListResponse(year=2027, applications=[]))
     stub.application_detail = AsyncMock(
         return_value=ApplicationDetailResponse(
@@ -158,9 +153,6 @@ def _stub() -> MagicMock:
     stub.set_headcount = AsyncMock(return_value=REQUEST)
     stub.set_payer_shares = AsyncMock(return_value=REQUEST)
     stub.set_household_share = AsyncMock(return_value=REQUEST)
-    stub.set_capacity = AsyncMock(
-        return_value=CapacityOut(year=2027, session_cm_id=1000101, capacity=120, note="", actor="staff@example.com")
-    )
     return stub
 
 
@@ -197,8 +189,6 @@ def test_every_handler_declares_its_permission() -> None:
         (r.set_aid_request_headcount, Permission.FINANCIAL_AID_CASEWORK),
         (r.set_aid_request_payer_shares, Permission.FINANCIAL_AID_CASEWORK),
         (r.set_aid_request_household_share, Permission.FINANCIAL_AID_CASEWORK),
-        (r.get_aid_session_capacities, Permission.FINANCIAL_AID_VIEW),
-        (r.set_aid_session_capacity, Permission.FINANCIAL_AID_RULES),
     ):
         assert_requires_permission(endpoint, permission)
 

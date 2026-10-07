@@ -14,7 +14,7 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AttendeeRow, CapacityRecord
+from api.services.financial_aid_intake_types import AttendeeRow
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, seeded_store
 
 ACTOR = "registrar@example.com"
@@ -164,28 +164,6 @@ async def test_a_staff_headcount_is_stored_with_its_source_and_only_on_family_re
 
 
 @pytest.mark.asyncio
-async def test_capacity_is_created_then_updated_and_logged_with_before_and_after() -> None:
-    store, casework = await built()
-    first = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "finance@example.com")
-    second = await casework.set_capacity(YEAR, 1000101, 110, "", "finance@example.com")
-    assert (first.capacity, second.capacity) == (120, 110)
-    assert [r["before"] for r in rows(store)] == [None, {"capacity": 120, "note": "Board figure."}]
-    assert [r["after"]["capacity"] for r in rows(store)] == [120, 110]
-    assert len({r["entity_id"] for r in rows(store)}) == 1  # one aid_session_capacity record
-    with pytest.raises(CaseworkNotFoundError):
-        await casework.set_capacity(YEAR, 1000999, 10, "", "finance@example.com")
-
-
-@pytest.mark.asyncio
-async def test_set_capacity_by_a_different_actor_with_the_same_figure_writes_nothing() -> None:
-    store, casework = await built()
-    first = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "finance@example.com")
-    second = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "other-staff@example.com")
-    assert (first.capacity, second.capacity) == (120, 120)
-    assert len(store.operations) == 1  # a different actor re-entering the same figure writes nothing
-
-
-@pytest.mark.asyncio
 async def test_resolving_again_to_the_same_session_writes_nothing() -> None:
     store, casework = await built()
     request = store.request_for(person=1000015, program="summer")
@@ -260,24 +238,3 @@ async def test_without_a_code_source_the_rules_defaults_apply() -> None:
     family = store.request_for(household=1000001, program="family_camp")
     out = await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR, reason_code="headcount")
     assert out.headcount_non_infant == 4
-
-
-@pytest.mark.asyncio
-async def test_the_capacity_read_lists_the_seasons_sessions_by_id() -> None:
-    store, casework = await built()
-    for year, session, figure in ((YEAR, 1000102, 90), (YEAR, 1000101, 120), (YEAR + 1, 1000101, 70)):
-        store.capacity[(year, session)] = CapacityRecord(
-            id=f"cap{session:012d}",
-            year=year,
-            session_cm_id=session,
-            capacity=figure,
-            note="Board figure.",
-            actor=ACTOR,
-        )
-    out = await casework.capacities(YEAR)
-    assert out.year == YEAR
-    assert [(c.session_cm_id, c.capacity, c.note) for c in out.sessions] == [
-        (1000101, 120, "Board figure."),
-        (1000102, 90, "Board figure."),
-    ]
-    assert (await casework.capacities(YEAR + 2)).sessions == []

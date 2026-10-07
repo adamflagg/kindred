@@ -25,7 +25,6 @@ from api.constants.collections import (
     AID_GRANTORS,
     AID_HOUSEHOLD_LINKS,
     AID_POSTINGS,
-    AID_SESSION_CAPACITY,
     AID_SOURCES,
     ATTENDEES,
     CAMP_SESSIONS,
@@ -201,28 +200,6 @@ class FinancialAidRepository:
     async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]:
         """This season's people whose own household is one of these (chunked by id, ID_CHUNK at a time)."""
         return await self._by_ids(PERSONS, f"year = {int(year)}", "household_id", household_ids)
-
-    async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]:
-        """Each session's enrolled (status 2, as the solver counts them) and waitlisted (status 8) registrations this
-        season: Round 3's context (§6.3 item 4)."""
-        rows = await self._by_ids(
-            ATTENDEES,
-            f"year = {int(year)} && (status_id = 2 || status_id = 8)",
-            "session.cm_id",
-            session_cm_ids,
-            {"expand": "session", "fields": "status_id,expand.session.cm_id"},
-        )
-        counts = {s: [0, 0] for s in _positive_unique(session_cm_ids)}
-        for row in rows:
-            session = int(getattr((getattr(row, "expand", None) or {}).get("session"), "cm_id", 0) or 0)
-            if session in counts:
-                counts[session][0 if int(row.status_id) == 2 else 1] += 1
-        return {s: (enrolled, waitlisted) for s, (enrolled, waitlisted) in counts.items()}
-
-    async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]:
-        """The capacity finance entered per session (aid_session_capacity), by session."""
-        rows = await self._by_ids(AID_SESSION_CAPACITY, f"year = {int(year)}", "session_cm_id", session_cm_ids)
-        return {int(r.session_cm_id): r for r in rows}
 
     async def fetch_household_persons(self, year: int, household_ids: Collection[int]) -> list[Any]:
         """Everyone the Go transform treats as a candidate for these households:
