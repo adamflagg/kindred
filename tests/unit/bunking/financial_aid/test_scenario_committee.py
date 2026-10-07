@@ -433,3 +433,18 @@ def test_the_seasons_requests_and_average_round1_sum_the_all_rows_and_the_server
 def test_no_request_counted_has_no_average() -> None:
     empty = CommitteeView(Decimal(1), Decimal(0), None, Decimal(0), (), (), Decimal(0), Decimal(0))
     assert all_rows_totals(empty) == (0, None)
+
+
+def test_the_average_rounds_cents_half_up() -> None:
+    """Regression guard: 1,000.01 / 2 = 500.005 reads 500.01 half up (500.00 half-even or down)."""
+    view = CommitteeView(
+        Decimal(1),
+        Decimal("1000.01"),
+        None,
+        Decimal(0),
+        (_compare_row(None, 1, 2, "1000.01"),),
+        (),
+        Decimal(0),
+        Decimal(0),
+    )
+    assert all_rows_totals(view) == (2, Decimal("500.01"))
