@@ -39,6 +39,19 @@ export function formatMoney(value: number | null | undefined): string {
 }
 
 /**
+ * "—" · "$0" · "$1,800" · "$941,979" · "−$1,200": the same contract as formatMoney, rounded to the whole dollar,
+ * half away from zero on the cents ($941,978.50 is "$941,979", −$0.40 is "$0", never "−$0"). The Scenarios sandbox
+ * shows whole dollars everywhere (coordinator ruling, 2026-10-07); the rest of Camperships keeps formatMoney's cents.
+ */
+export function formatWholeMoney(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  const dollars = Math.round(Math.abs(toCents(value)) / 100)
+  if (dollars === 0) return '$0'
+  const body = '$' + dollars.toLocaleString('en-US')
+  return toCents(value) < 0 ? MINUS + body : body
+}
+
+/**
  * The Remaining line's figure (D48, spec §7.3; Decision 2, RULED 2026-10-01): "$153k". Thousands
  * round toward zero, so the line never shows more than is left ($1,500 is "$1k", never "$2k").
  * Under $1,000 it is the exact figure ("$840", "$999.60"), so a nearly spent pool never reads "$0k".

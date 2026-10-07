@@ -1,4 +1,4 @@
-/** The scenario workspace and each setting's step (spec §7.4): through fetchWithAuth, `rules` only. */
+/** The scenario workspace (spec §7.4): through fetchWithAuth, `rules` only. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -10,14 +10,13 @@ import {
 } from '../../components/camperships/season/scenarios/scenarioFixtures'
 import {
   evaluateAidScenario,
-  fetchAidScenarioSensitivity,
   freezeAidScenarioSeason,
   keepAidScenario,
   loadAidScenarioDraft,
+  renameAidScenarioOption,
   saveAidScenarioDraft,
-  startAidScenarios,
 } from '../../services/camperships/aidApi'
-import { useAidScenarioSensitivity, useAidScenarios } from './useAidScenarios'
+import { useAidScenarios } from './useAidScenarios'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -87,41 +86,6 @@ describe('useAidScenarios (D38, D76)', () => {
   })
 })
 
-describe('useAidScenarioSensitivity (§7.4)', () => {
-  it("POSTs the draft's document, and waits for a draft and a snapshot", async () => {
-    renderHook(() => useAidScenarioSensitivity(null, workspace().snapshot), { wrapper })
-    await settle()
-    expect(fetchSpy).not.toHaveBeenCalled()
-    renderHook(() => useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot), { wrapper })
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
-    const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/api/financial-aid/scenarios/2027/sensitivity')
-    expect(options.method).toBe('POST')
-    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
-    expect(JSON.parse(String(options.body))).toEqual({ document: scenarioDraft().document })
-  })
-
-  it('reads nothing without rules, whatever it was handed', async () => {
-    granted = ['financial_aid.view']
-    renderHook(() => useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot), { wrapper })
-    await settle()
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
-  it('reads nothing while auth is still loading', async () => {
-    authLoading = true
-    renderHook(() => useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot), { wrapper })
-    await settle()
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
-  it('waits for a snapshot too', async () => {
-    renderHook(() => useAidScenarioSensitivity(scenarioDraft(), null), { wrapper })
-    await settle()
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-})
-
 describe('the scenario writes (wire; every route is finance-only on the server)', () => {
   // The writes take fetchWithAuth, which is what attaches the bearer: assert the call shape they make.
   const calls: Array<[string, RequestInit | undefined]> = []
@@ -141,27 +105,12 @@ describe('the scenario writes (wire; every route is finance-only on the server)'
     expect(last()[1].method).toBe('POST')
   })
 
-  it('starts from the rules draft, or from last season at its own route', async () => {
-    await startAidScenarios(fetchWithAuth, 2027, 'rules')
-    expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/starting-points')
-    await startAidScenarios(fetchWithAuth, 2027, 'last_season')
-    expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/starting-points/last-season')
-    expect(last()[1].method).toBe('POST')
-  })
-
   it('evaluates by POST with the body and the abort signal', async () => {
     const controller = new AbortController()
     await evaluateAidScenario(fetchWithAuth, 2027, doc, controller.signal)
     expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/evaluate')
     expect(last()[1].method).toBe('POST')
     expect(last()[1].signal).toBe(controller.signal)
-    expect(JSON.parse(String(last()[1].body))).toEqual(doc)
-  })
-
-  it("asks each setting's step by POST, with the draft's document alone (Decision 22)", async () => {
-    await fetchAidScenarioSensitivity(fetchWithAuth, 2027, doc)
-    expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/sensitivity')
-    expect(last()[1].method).toBe('POST')
     expect(JSON.parse(String(last()[1].body))).toEqual(doc)
   })
 
@@ -176,9 +125,16 @@ describe('the scenario writes (wire; every route is finance-only on the server)'
   })
 
   it('keeps by POST', async () => {
-    await keepAidScenario(fetchWithAuth, 2027, { starting_point: true })
+    await keepAidScenario(fetchWithAuth, 2027, { name: 'Every tier up' })
     expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/keep')
-    expect(JSON.parse(String(last()[1].body))).toEqual({ starting_point: true })
+    expect(JSON.parse(String(last()[1].body))).toEqual({ name: 'Every tier up' })
+  })
+
+  it('renames a kept option by PATCH with the name the caller gives (§S11.1)', async () => {
+    await renameAidScenarioOption(fetchWithAuth, 2027, 'B', { name: 'Tighter middle tiers' })
+    expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/options/B')
+    expect(last()[1].method).toBe('PATCH')
+    expect(JSON.parse(String(last()[1].body))).toEqual({ name: 'Tighter middle tiers' })
   })
 
   it("surfaces the server's words on a refusal, status kept", async () => {
@@ -186,7 +142,7 @@ describe('the scenario writes (wire; every route is finance-only on the server)'
       Promise.resolve(
         new Response(JSON.stringify({ detail: 'No approved rules' }), { status: 422 })
       )
-    await expect(startAidScenarios(refusing, 2027, 'last_season')).rejects.toMatchObject({
+    await expect(keepAidScenario(refusing, 2027, { name: 'Every tier up' })).rejects.toMatchObject({
       status: 422,
     })
   })

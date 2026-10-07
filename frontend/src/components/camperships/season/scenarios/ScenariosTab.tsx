@@ -2,82 +2,64 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
-import {
-  useAidScenarioCompare,
-  useAidScenarioTrail,
-} from '../../../../hooks/camperships/useAidScenarioCompare'
+import { useAidScenarioFit } from '../../../../hooks/camperships/useAidPromotion'
+import { useAidRenameOption } from '../../../../hooks/camperships/useAidRenameOption'
+import { useAidScenarioCompare } from '../../../../hooks/camperships/useAidScenarioCompare'
 import { useAidScenarioDraft } from '../../../../hooks/camperships/useAidScenarioDraft'
-import {
-  useAidScenarioSensitivity,
-  useAidScenarios,
-} from '../../../../hooks/camperships/useAidScenarios'
+import { useAidScenarioPricing } from '../../../../hooks/camperships/useAidScenarioPricing'
+import { useAidScenarios } from '../../../../hooks/camperships/useAidScenarios'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
-import type {
-  ApiAidLeverEffect,
-  ApiAidRulesSection,
-  ApiAidScenarioWorkspace,
-} from '../../../../types/api-types'
-import {
-  AMBER_NOTE,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
-  GROUP_HEADING,
-  TAB_PILL_ACTIVE,
-  TAB_PILL_IDLE,
-} from '../../../admin/lodging/lodgingStyles'
+import type { ApiAidScenarioResults, ApiAidScenarioWorkspace } from '../../../../types/api-types'
 import { QueryGuard } from '../../../QueryGuard'
-import { campToday, formatLongDate, formatShortDate } from '../../kit/dates'
-import { withSection } from '../rules/rulesDraft'
-import { SEASON_CARD } from '../seasonStyles'
-import { AllSettings } from './AllSettings'
-import { parseCodes, parseRequestSet, requestSetParam, toggleCode } from './compareModel'
-import { FitToBudget } from './FitToBudget'
-import { KeptList } from './KeptList'
+import { CS_AMBER_NOTE, CS_CARD } from '../../kit/csType'
+import { campToday, formatLongDate } from '../../kit/dates'
+import { DefinitionNotes } from '../../kit/DefinitionNotes'
+import { AidDefinitionNotes } from '../../shell/AidDefinitionNotes'
+import { rulesVocabulary } from '../rules/rulesModel'
+import { CompareTable, CompareTools } from './CompareTable'
+import {
+  columnChoices,
+  columnParams,
+  columnsFromView,
+  compareQuery,
+  defaultColumns,
+  optionName,
+  toggleColumn,
+  withNewKeep,
+  type ColumnKey,
+} from './compareModel'
+import {
+  ROUND1_SECTIONS,
+  changeWords,
+  fromName,
+  isStart,
+  keepFigureWords,
+  nextLetter,
+  nothingNewWords,
+  parseView,
+  pillWords,
+  requestSetParam,
+  pricedOnFigures,
+  startEntries,
+} from './controlsModel'
+import { FitAnswer, FitToBudgetButton } from './FitToBudget'
 import { MakeRulesDraftDialog } from './MakeRulesDraftDialog'
-import { ScenarioCompare } from './ScenarioCompare'
-import { ScenarioLevers } from './ScenarioLevers'
-import { ScenarioResults } from './ScenarioResults'
-import { ScenarioTrail } from './ScenarioTrail'
-import { changedLevers, hasPending, startingPointOf } from './scenarioModel'
-import { CHANGED_NAME, DRAFT_CHIP, DRAFT_ROW } from './scenarioStyles'
+import { SandboxEquityCard } from './SandboxEquityCard'
+import { SandboxIncomeCard } from './SandboxIncomeCard'
+import { SandboxTierCard } from './SandboxTierCard'
+import { bindingOf, changeCount } from './sandboxModel'
+import { ScenarioControls } from './ScenarioControls'
+import { SCENARIO_PAGE_NOTES } from './scenarioNotes'
+import { SpendStrip } from './SpendStrip'
 
-type Draft = ReturnType<typeof useAidScenarioDraft>
-
-/** One empty list for every render while the step read is out, never a new one each time. */
-const NO_EFFECTS: readonly ApiAidLeverEffect[] = []
-
-const STEPS_FAILED = "Couldn't work out each setting's step"
-
-/** The sensitivity read's fault, said once: the client's own fallback already names it. */
-function stepsFailed(words: string): string {
-  return words.startsWith(STEPS_FAILED) ? words : `${STEPS_FAILED}: ${words}`
-}
-
-/** "6 kept · 2 levels deep" (the mock's count): variants make the second level, never deeper (D38). */
-function keptCount(workspace: ApiAidScenarioWorkspace): string {
-  const levels = workspace.options.some((option) => option.starting_point !== null) ? 2 : 1
-  return `${String(workspace.options.length)} kept · ${String(levels)} level${levels === 1 ? '' : 's'} deep`
-}
-
-/** A server timestamp's day on camp time: a freeze at 6 pm Pacific is that day, not the UTC next. */
-const campDay = (iso: string) => campToday(new Date(iso))
-
-/** The newest rules version, named as the Rules tab names it: "rules" once it prices the season. */
-function rulesName(workspace: ApiAidScenarioWorkspace): string {
-  const version = String(workspace.rules_version)
-  return workspace.pricing_version === workspace.rules_version
-    ? `Rules (v${version})`
-    : `Rules Draft (v${version})`
-}
+const SURFACE = 'season-scenarios'
 
 /**
- * The compare's and the trail's view state, in the URL (D15): `panel=trail`, `compare=A1,B2`,
- * `through=deadline|<date>` (D138), `last=1` (RPT-17), `tiers=1`, `trail_page=2`. Replaced, never
- * pushed: Back leaves Scenarios rather than stepping through every tick. `set` and `update` are stable
- * (the router's setter sits behind a ref), so a memo or effect that holds them never re-runs for a URL
- * change.
+ * The view's params (§S5 L; D15), replaced, never pushed: Back leaves Scenarios rather than stepping through every
+ * click. Every write drops today's `trail_page` and `panel=trail`. The setter sits behind a ref, so a memo or
+ * effect holding `write` never re-runs for a URL change.
  */
 function useScenarioView() {
   const [params, setParams] = useSearchParams()
@@ -85,400 +67,281 @@ function useScenarioView() {
   useEffect(() => {
     setter.current = setParams
   })
-  // Every write copies the params the router holds at the call, so it keeps the other params (as_of,
-  // year, the tab's own). The router reads its last render's params, so two writes in one tick would
-  // lose one: no click or effect here writes twice in a tick.
-  const update = useCallback((name: string, change: (previous: string | null) => string | null) => {
+  const search = params.toString()
+  const view = useMemo(() => parseView(new URLSearchParams(search)), [search])
+  const write = useCallback((changes: Readonly<Record<string, string | null>>) => {
     setter.current(
       (previous) => {
         const next = new URLSearchParams(previous)
-        const value = change(previous.get(name))
-        if (value === null) next.delete(name)
-        else next.set(name, value)
+        next.delete('trail_page')
+        if (next.get('panel') === 'trail') next.delete('panel')
+        for (const [name, value] of Object.entries(changes)) {
+          if (value === null) next.delete(name)
+          else next.set(name, value)
+        }
         return next
       },
       { replace: true }
     )
   }, [])
-  const set = useCallback(
-    (name: string, value: string | null) => update(name, () => value),
-    [update]
-  )
-  const codesRaw = params.get('compare')
-  const throughRaw = params.get('through')
-  const codes = useMemo(() => parseCodes(codesRaw), [codesRaw])
-  const requestSet = useMemo(() => parseRequestSet(throughRaw), [throughRaw])
-  const page = Number(params.get('trail_page') ?? '1')
-  return {
-    panel: params.get('panel') === 'trail' ? ('trail' as const) : ('compare' as const),
-    codes,
-    requestSet,
-    lastSeason: params.get('last') === '1',
-    byTier: params.get('tiers') === '1',
-    page: Number.isInteger(page) && page > 0 ? page : 1,
-    pageRaw: params.get('trail_page'),
-    set,
-    update,
-  }
-}
-
-function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace; work: Draft }) {
-  const snapshot = workspace.snapshot
-  return (
-    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm print:hidden">
-      {snapshot === null ? (
-        <span>The season&apos;s applications aren&apos;t frozen for scenarios yet.</span>
-      ) : (
-        <span>
-          {`Applications frozen ${formatLongDate(campDay(snapshot.taken_at))} by ${snapshot.taken_by} · ${String(snapshot.requests)} requests`}
-          {snapshot.awaiting_rules > 0 &&
-            // An approved version pricing the season means programs and cost are approved: the flag
-            // stays until the next intake run, so freezing again changes nothing.
-            (workspace.pricing_version === null
-              ? ` · ${String(snapshot.awaiting_rules)} held in every scenario: freeze again once programs and cost are approved`
-              : ` · ${String(snapshot.awaiting_rules)} held in every scenario until the next intake run clears ${snapshot.awaiting_rules === 1 ? 'it' : 'them'}`)}
-        </span>
-      )}
-      <span>
-        {workspace.pricing_version === workspace.rules_version
-          ? `Rules v${String(workspace.rules_version)} prices the season`
-          : `Rules draft v${String(workspace.rules_version)}${
-              workspace.pricing_version === null
-                ? ' · no version prices the season yet'
-                : ` · v${String(workspace.pricing_version)} prices the season`
-            }`}
-      </span>
-      {/* Never held while a write runs: the hook queues a freeze after it (Decision 19). */}
-      <button type="button" className={BUTTON_SECONDARY} onClick={() => void work.freeze()}>
-        {snapshot === null ? `Freeze the Applications` : 'Freeze Again'}
-      </button>
-      {work.nothingToFreeze && snapshot !== null && (
-        <span>{`The applications haven't moved since ${formatShortDate(campDay(snapshot.taken_at))}: nothing new to freeze`}</span>
-      )}
-    </div>
-  )
+  return { view, write }
 }
 
 function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
-  const work = useAidScenarioDraft(workspace)
-  const draft = workspace.draft
-  const sensitivity = useAidScenarioSensitivity(draft, workspace.snapshot)
-  const moving = hasPending(work.pending)
-  const results =
-    moving && work.live.status === 'ready' ? work.live.results : (draft?.results ?? null)
-  const state = !moving
-    ? 'recorded'
-    : work.live.status === 'ready'
-      ? 'moving'
-      : work.live.status === 'error'
-        ? 'failed'
-        : 'updating'
-  const head = draft === null ? null : startingPointOf(workspace.options, draft.from_code)
-  // Held while anything moves or runs, and while the draft is the same as where it came from: the
-  // server would only answer "nothing new to keep" (as the mock disables it).
-  // Said in the strip (or under Keep with no figures), never as a line above the grid, which would
-  // move the slider under the pointer mid-drag (rereview m1). A refused release says its words once:
-  // as the write's error, not again as the live one (F-m6).
-  const liveError =
-    work.live.status === 'error' && work.live.error !== work.error ? work.live.error : null
-  const unkeepable = work.busy !== null || moving || (draft?.changes.length ?? 0) === 0
-  const view = useScenarioView()
   const { hasPermission } = usePermissions()
-  // Finance only, as every scenario route (D76): the registrar never fires either read.
-  const canRules = hasPermission(Permission.FINANCIAL_AID_RULES)
-  // A code in the URL that this year doesn't keep (a year switch, an old link) would only 404 the
-  // read: it is left out of the request, dropped from the URL, and said once.
+  const canEdit = hasPermission(Permission.FINANCIAL_AID_RULES)
+  const { view, write } = useScenarioView()
+  const work = useAidScenarioDraft(workspace)
+  const rename = useAidRenameOption()
+  const fit = useAidScenarioFit()
+  const [fitAskedOn, setFitAskedOn] = useState<string | null | undefined>(undefined)
+  const [promoting, setPromoting] = useState<string | null>(null)
+  const [refused, setRefused] = useState<string | null>(null)
+  const draft = workspace.draft
+  const snapshot = workspace.snapshot
+  const locked = workspace.locked_sections ?? []
+  const isLocked = locked.length > 0
+
+  // A kept code in the URL this year doesn't hold (a year switch, an old link): left out, dropped, said once.
   const kept = useMemo(() => new Set(workspace.options.map((o) => o.code)), [workspace.options])
-  const codes = useMemo(() => view.codes.filter((c) => kept.has(c)), [view.codes, kept])
-  const gone = view.codes.filter((c) => !kept.has(c)).join(', ')
+  const codes = view.codes.filter((code) => kept.has(code))
+  const codesKey = codes.join(',')
+  const gone = view.codes.filter((code) => !kept.has(code)).join(', ')
   const [droppedNote, setDroppedNote] = useState<string | null>(null)
   if (gone !== '' && gone !== droppedNote) setDroppedNote(gone)
-  const { set: setView } = view
   useEffect(() => {
-    if (gone !== '') setView('compare', codes.length === 0 ? null : codes.join(','))
-  }, [gone, codes, setView])
-  const compare = useAidScenarioCompare(codes, view.requestSet, view.lastSeason, {
-    enabled: canRules && draft !== null && view.panel === 'compare',
-  })
-  const trail = useAidScenarioTrail(view.page, {
-    enabled: canRules && draft !== null && view.panel === 'trail',
-  })
-  // A trail_page below 1, not a number, or past the last page reads as the nearest valid page.
-  const lastPage = trail.data
-    ? Math.max(1, Math.ceil(trail.data.total / trail.data.per_page))
-    : null
-  const { page: trailPage, pageRaw } = view
-  useEffect(() => {
-    if (pageRaw === null) return
-    const wanted = lastPage !== null && trailPage > lastPage ? lastPage : trailPage
-    const clean = wanted === 1 ? null : String(wanted)
-    if (clean !== pageRaw) setView('trail_page', clean)
-  }, [pageRaw, trailPage, lastPage, setView])
-  // The code a fifth tick was refused for, said under the list until the next tick.
-  const [refused, setRefused] = useState<string | null>(null)
-  const [setting, setSetting] = useState<ApiAidRulesSection | null>(null)
-  const [promoting, setPromoting] = useState<string | null>(null)
-  // A refused All settings save says its words inside its own editor, once; any other write's error
-  // stays at the top. The hook tags the error with the section that asked (`errorSource`).
-  const editorError = setting !== null && work.errorSource === setting ? work.error : null
-  const keepButtons = (
-    <>
-      <button
-        type="button"
-        className={BUTTON_PRIMARY}
-        disabled={unkeepable}
-        onClick={() => void work.keep(false)}
-      >
-        {`Keep as a Variant of ${head ?? ''}`}
-      </button>
-      <button
-        type="button"
-        className={BUTTON_SECONDARY}
-        disabled={unkeepable}
-        onClick={() => void work.keep(true)}
-      >
-        Keep as a New Starting Point
-      </button>
-    </>
+    if (gone !== '') write({ compare: codesKey === '' ? null : codesKey })
+  }, [gone, codesKey, write])
+
+  const pricing = useAidScenarioPricing(work.pricedDocument, view.requestSet, snapshot?.id ?? null)
+  const starting = useAidScenarioPricing(
+    draft?.source_document ?? null,
+    view.requestSet,
+    snapshot?.id ?? null
   )
+  // A refused read (a 422) keeps the last good figures on screen (§S5 E States).
+  const fresh = pricing.data?.results ?? null
+  const [lastGood, setLastGood] = useState<ApiAidScenarioResults | null>(null)
+  if (fresh !== null && fresh !== lastGood) setLastGood(fresh)
+  const figures =
+    fresh ?? lastGood ?? (view.requestSet.kind === 'all' ? (draft?.results ?? null) : null)
+
+  // The draft is a Compare column only while it holds changes no kept option has (N11). A `draft=1` still in the URL
+  // after a keep is dropped here too, or Compare would show a column Columns ▾ no longer lists (plan review, minor 16).
+  const sameAs = draft !== null && work.edits.size === 0 ? (draft.same_as ?? null) : null
+  const keptSame = sameAs !== null && sameAs !== 'rules'
+  const unkeptDraft =
+    draft !== null && (draft.trail_id ?? null) !== null && draft.changes.length > 0 && !keptSame
+  const wanted: ColumnKey[] = view.anyColumn
+    ? columnsFromView({ ...view, codes })
+    : defaultColumns(workspace)
+  const checked = unkeptDraft ? wanted : wanted.filter((key) => key !== 'draft')
+  const compare = useAidScenarioCompare(compareQuery(checked, view.requestSet), {
+    enabled: canEdit && snapshot !== null && view.panel === 'compare',
+  })
+
+  if (draft === null) return null // never since PR 10: the workspace always holds a draft, recorded or not
+  const source = draft.source_document ?? draft.document
+  const binding = bindingOf({
+    recorded: draft.document,
+    source,
+    edits: work.edits,
+    locked,
+    byRound: workspace.locked_by_round ?? null,
+    canEdit,
+    type: work.type,
+    release: () => void work.release(),
+  })
+  const count = changeCount(binding.typed, source)
+  const loaded = isStart(draft.from_code) ? null : draft.from_code
+  const option = loaded === null ? undefined : workspace.options.find((o) => o.code === loaded)
+  const promote =
+    option !== undefined && count === 0 && option.promotable === true ? option.code : null
+  const name = fromName(draft, workspace)
+  const effectName =
+    workspace.pricing_version === null
+      ? `Rules draft v${String(workspace.rules_version)}`
+      : `Rules v${String(workspace.pricing_version)}`
+  const postedStands =
+    isLocked && (draft.differs_in ?? []).some((section) => ROUND1_SECTIONS.includes(section))
+  // The vocabulary only: Compare reads each setting under its own section (Task 72; disagreement 13).
+  const names = rulesVocabulary(
+    (section) => (draft.document as unknown as Record<string, unknown>)[section]
+  )
+  const priceOff = view.requestSet.kind !== 'all'
+  const choices = columnChoices(workspace, unkeptDraft)
+  const fitStale =
+    fitAskedOn !== undefined && (fitAskedOn !== (draft.trail_id ?? null) || work.edits.size > 0)
+  const recordedChanges = draft.changes.length
+  const pricedOn = pricedOnFigures(figures, view.requestSet)
 
   return (
     <div className="space-y-3">
       <MakeRulesDraftDialog code={promoting} onClose={() => setPromoting(null)} />
-      <SnapshotLine workspace={workspace} work={work} />
-      {/* Its line is always there, so nothing jumps under the pointer on every release. */}
-      <p className="text-muted-foreground h-5 text-sm print:hidden">{work.busy}</p>
-      {work.error !== null && work.error !== editorError && (
-        <p className={`${AMBER_NOTE} print:hidden`}>{work.error}</p>
+      <ScenarioControls
+        panel={view.panel}
+        compareCount={view.panel === 'compare' || view.anyColumn ? checked.length : 0}
+        onPanel={(panel) => write({ panel: panel === 'compare' ? 'compare' : null })}
+        pill={pillWords(snapshot)}
+        nothingNew={work.nothingNew && snapshot !== null ? nothingNewWords(snapshot) : null}
+        onUpdate={() => void work.update()}
+        price={view.requestSet}
+        onPrice={(set) => write({ through: requestSetParam(set) })}
+        start={startEntries(workspace)}
+        fromCode={draft.from_code}
+        loadedCode={loaded}
+        chips={workspace.options.map((o) => ({
+          code: o.code,
+          name: optionName(o),
+          loaded: o.code === loaded,
+        }))}
+        unkept={count}
+        onLoad={(from) => void work.load(from)}
+        canEdit={canEdit}
+        onRename={(code, newName) => rename.mutate({ code, name: newName })}
+        changes={changeWords(count, sameAs, workspace)}
+        onDiscard={() => void work.discard()}
+        keep={{
+          // Nothing can be recorded before applications are held (disagreement 17), so nothing can be kept either.
+          enabled: canEdit && snapshot !== null && count > 0 && !keptSame,
+          prefill: draft.label,
+          nextCode: nextLetter(workspace.options),
+          figure: keepFigureWords(draft.results),
+        }}
+        onKeep={(keepName) =>
+          void work.keep(keepName).then((code) => {
+            // §S5 B: the new code joins Compare's columns, when Compare has columns and room for it.
+            const next =
+              code !== null && view.anyColumn
+                ? withNewKeep(
+                    checked,
+                    code,
+                    choices.map((c) => c.key)
+                  )
+                : null
+            if (next !== null) write(columnParams(next))
+          })
+        }
+        promote={promote}
+        onPromote={setPromoting}
+        compareTools={
+          <CompareTools
+            choices={choices}
+            checked={checked}
+            refused={refused}
+            onToggle={(key) => {
+              const result = toggleColumn(
+                checked,
+                key,
+                choices.map((c) => c.key)
+              )
+              setRefused(result.refused)
+              if (result.refused === null) write(columnParams(result.checked))
+            }}
+            byTier={view.byTier}
+            onByTier={(on) => write({ tiers: on ? '1' : null })}
+          />
+        }
+        error={work.error ?? rename.error?.message ?? null}
+      />
+      {droppedNote !== null && (
+        <p className={`${CS_AMBER_NOTE} print:hidden`}>
+          {droppedNote.includes(',')
+            ? `${droppedNote} aren't kept in ${String(workspace.year)}, so they were left out of the compare.`
+            : `${droppedNote} isn't kept in ${String(workspace.year)}, so it was left out of the compare.`}
+        </p>
       )}
-      {workspace.snapshot !== null && draft === null && (
-        <div className={`${SEASON_CARD} space-y-2 print:hidden`}>
-          <p>Start your draft from:</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={BUTTON_PRIMARY}
-              disabled={work.busy !== null}
-              onClick={() => void work.start('rules')}
-            >
-              {`The ${rulesName(workspace)}`}
-            </button>
-            <button
-              type="button"
-              className={BUTTON_SECONDARY}
-              disabled={work.busy !== null}
-              onClick={() => void work.start('last_season')}
-            >
-              Last Season&apos;s Approved Rules
-            </button>
-          </div>
-          {workspace.options.length > 0 && <p className="text-sm">or load a kept option:</p>}
-        </div>
-      )}
-      {workspace.snapshot !== null && (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] print:block">
-          <div className="space-y-3 print:hidden">
-            {/* One card, as the mock has it: your draft, then what's kept. */}
-            <div className="card-lodge">
-              {draft !== null && (
-                <>
-                  <div className={`${GROUP_HEADING} px-3 pt-2`}>Your draft</div>
-                  <div className="px-3 pt-1" data-testid="scenario-draft">
-                    <div className={DRAFT_ROW}>
-                      <span className={`${DRAFT_CHIP} mr-2`}>Draft</span>
-                      {`from ${draft.from_code}: `}
-                      <span className={draft.changes.length > 0 ? CHANGED_NAME : ''}>
-                        {draft.label}
-                      </span>
-                    </div>
-                  </div>
-                </>
-              )}
-              <div className={`${GROUP_HEADING} flex justify-between gap-2 px-3 pt-2`}>
-                <span>Kept (locked)</span>
-                {workspace.options.length > 0 && (
-                  <span className="font-medium tracking-normal normal-case">
-                    {keptCount(workspace)}
-                  </span>
-                )}
-              </div>
-              {/* Never held while a write runs: the hook queues a load after it, so a click while a
-                  box still holds typing records the typing first (Decision 19). */}
-              <KeptList
-                options={workspace.options}
-                current={draft?.from_code ?? null}
-                onLoad={(code) => void work.load({ option: code })}
-                compare={{
-                  ticked: new Set(codes),
-                  onToggle: (code) => {
-                    const outcome: { refused: string | null } = { refused: null }
-                    view.update('compare', (previous) => {
-                      const before = parseCodes(previous)
-                      const next = toggleCode(before, code)
-                      outcome.refused = next === before ? code : null
-                      if (next === before) return previous
-                      return next.length === 0 ? null : next.join(',')
-                    })
-                    setRefused(outcome.refused)
-                    setDroppedNote(null)
-                  },
-                }}
-              />
-              {droppedNote !== null && (
-                <p className={`${AMBER_NOTE} mx-3 mb-2`}>
-                  {droppedNote.includes(',')
-                    ? `${droppedNote} aren't kept in ${String(workspace.year)}, so they were left out of the compare.`
-                    : `${droppedNote} isn't kept in ${String(workspace.year)}, so it was left out of the compare.`}
-                </p>
-              )}
-              {refused !== null && (
-                <p className={`${AMBER_NOTE} mx-3 mb-2`}>
-                  {`Four are already checked: uncheck one to compare ${refused}.`}
-                </p>
-              )}
-            </div>
-            {draft !== null && (
-              <ScenarioLevers
-                document={draft.document}
-                from={draft.from_code}
-                pending={work.pending}
-                changed={changedLevers(draft.changes, work.pending)}
-                effects={sensitivity.data?.levers ?? NO_EFFECTS}
-                disabled={work.busy !== null}
-                onMove={work.move}
-                onRelease={() => void work.release()}
-              />
-            )}
-            {draft !== null && (
-              <FitToBudget
-                document={draft.document}
-                trailId={draft.trail_id ?? ''}
-                disabled={work.busy !== null || moving}
-                editing={setting !== null}
-                onUse={(fitted, askedOn) =>
-                  work.adopt('Recording…', () => fitted, { basedOn: askedOn })
-                }
-              />
-            )}
-            {draft !== null && (
-              <AllSettings
-                draft={draft}
-                open={setting}
-                busy={work.busy !== null}
-                held={moving}
-                error={editorError}
-                onOpen={setSetting}
-                onSave={(section, content) => {
-                  void work
-                    .adopt('Recording…', (doc) => withSection(doc, section, content), {
-                      source: section,
-                    })
-                    .then((landed) => {
-                      // Closes the section it saved, never whichever is open by the time it lands.
-                      if (landed) setSetting((now) => (now === section ? null : now))
-                    })
-                }}
-              />
-            )}
-            {draft !== null && sensitivity.error !== null && sensitivity.data === undefined && (
-              <p className={`${AMBER_NOTE} flex flex-wrap items-center gap-2`}>
-                {stepsFailed(sensitivity.error.message)}
-                <button
-                  type="button"
-                  className="underline"
-                  onClick={() => void sensitivity.refetch()}
-                >
-                  Try Again
-                </button>
-              </p>
-            )}
-          </div>
-          {draft !== null && (
-            <div className="space-y-3">
-              {results === null ? (
-                <>
-                  <div className="flex flex-wrap gap-2">{keepButtons}</div>
-                  <p className="text-muted-foreground text-sm">No figures for this draft yet.</p>
-                  {liveError !== null && <p className={AMBER_NOTE}>{liveError}</p>}
-                </>
-              ) : (
-                <ScenarioResults
-                  results={results}
-                  state={state}
-                  actions={keepButtons}
-                  liveError={liveError}
+      {view.panel === 'sandbox' ? (
+        <>
+          <SpendStrip
+            draft={figures}
+            from={starting.data?.results ?? null}
+            stale={pricing.isPlaceholderData || (pricing.isFetching && fresh !== null)}
+            error={pricing.error?.message ?? null}
+            fromName={name}
+            locked={isLocked}
+            postedStands={postedStands}
+            pricedOn={pricedOn}
+            held={snapshot !== null}
+          />
+          <SandboxTierCard
+            binding={binding}
+            fitButton={
+              canEdit ? (
+                <FitToBudgetButton
+                  disabled={locked.includes('award_tables') || priceOff}
+                  reason={priceOff ? 'Fit uses every application held' : null}
+                  pending={fit.isPending}
+                  onFit={() => {
+                    setFitAskedOn(draft.trail_id ?? null)
+                    fit.mutate(binding.typed)
+                  }}
                 />
-              )}
-              <div className="flex gap-1 print:hidden">
-                <button
-                  type="button"
-                  className={view.panel === 'compare' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-                  onClick={() => view.set('panel', null)}
-                >
-                  {`Compare (draft + ${String(codes.length)})`}
-                </button>
-                <button
-                  type="button"
-                  className={view.panel === 'trail' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-                  onClick={() => view.set('panel', 'trail')}
-                >
-                  {trail.data
-                    ? `Trail (${String(trail.data.total)} ${trail.data.total === 1 ? 'change' : 'changes'})`
-                    : 'Trail'}
-                </button>
-              </div>
-              {view.panel === 'compare' ? (
-                <ScenarioCompare
-                  compare={compare.data}
-                  loading={compare.isLoading}
-                  error={compare.data ? null : (compare.error?.message ?? null)}
-                  stale={compare.isPlaceholderData}
-                  requestSet={view.requestSet}
-                  onRequestSet={(next) => view.set('through', requestSetParam(next))}
-                  lastSeason={view.lastSeason}
-                  onLastSeason={(on) => view.set('last', on ? '1' : null)}
-                  byTier={view.byTier}
-                  onByTier={(on) => view.set('tiers', on ? '1' : null)}
-                  onPromote={setPromoting}
+              ) : null
+            }
+            fitAnswer={
+              fit.data !== undefined ? (
+                <FitAnswer
+                  answer={fit.data}
+                  stale={fitStale}
+                  canUse={work.busy === null}
+                  onUse={() => {
+                    void work.adopt(fit.data.document, fitAskedOn ?? null).then((landed) => {
+                      if (landed) fit.reset()
+                    })
+                  }}
+                  onDismiss={() => fit.reset()}
                 />
-              ) : (
-                <QueryGuard
-                  isLoading={trail.isLoading}
-                  error={trail.data ? null : trail.error}
-                  data={trail.data}
-                  label="the trail"
-                >
-                  {(data) => (
-                    <ScenarioTrail
-                      trail={data}
-                      current={draft.trail_id ?? ''}
-                      stale={trail.isPlaceholderData}
-                      onLoad={(id) => void work.load({ trail_row: id })}
-                      onPage={(next) => view.set('trail_page', next === 1 ? null : String(next))}
-                    />
-                  )}
-                </QueryGuard>
-              )}
-            </div>
-          )}
-        </div>
+              ) : fit.error !== null ? (
+                <p className={CS_AMBER_NOTE}>{fit.error.message}</p>
+              ) : null
+            }
+          />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <SandboxEquityCard binding={binding} />
+            <SandboxIncomeCard binding={binding} />
+          </div>
+        </>
+      ) : (
+        <CompareTable
+          compare={compare.data}
+          loading={compare.isLoading}
+          error={compare.data === undefined ? (compare.error?.message ?? null) : null}
+          stale={compare.isPlaceholderData}
+          workspace={workspace}
+          lastSeason={checked.includes('last_season')}
+          requestSet={view.requestSet}
+          byTier={view.byTier}
+          locked={isLocked}
+          draftName={`from ${name} · ${String(recordedChanges)} change${recordedChanges === 1 ? '' : 's'}`}
+          effectName={effectName}
+          names={names}
+          canEdit={canEdit}
+          printedOn={formatLongDate(campToday())}
+          onPromote={setPromoting}
+          onRename={(code, newName) => rename.mutate({ code, name: newName })}
+        />
       )}
+      <div className="print:hidden">
+        <AidDefinitionNotes surface={SURFACE} />
+        <DefinitionNotes notes={SCENARIO_PAGE_NOTES} />
+      </div>
     </div>
   )
 }
 
 /**
- * Season › Scenarios (spec §7.4; D35–D38; scenarios-v2.html): finance's own draft per person, kept
- * options in two levels and their trail, all on one frozen snapshot of the season's applications. A
- * scenario never writes live awards; a kept option reaches the rules only through "Make it the rules
- * draft" (PR 6). `rules` only: the tab is hidden from everyone else (D76).
+ * Season › Scenarios (Scenarios addendum; scenarios-v4.html): finance's sandbox, built from the Rules tab's pieces,
+ * with the spend strip on top, three cards, named flat kept options and Compare. A scenario never writes live
+ * awards; a kept option reaches the rules only through Make It the Rules Draft. `rules` only: the tab is hidden
+ * from everyone else (D76), and a past date shows today (parent §4's as-of sentence on the tab bar).
  */
 export function ScenariosTab() {
   const year = useYear()
   const workspace = useAidScenarios()
   if (!workspace.data && (hasStatus(workspace.error, 404) || hasStatus(workspace.error, 422))) {
     return (
-      <div className={`${SEASON_CARD} text-muted-foreground`}>
+      <div className={`${CS_CARD} text-muted-foreground`}>
         {workspace.error?.message ?? `Scenarios can't open for ${String(year)} yet.`}
       </div>
     )

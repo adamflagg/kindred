@@ -109,6 +109,7 @@ import type {
   PostedIn,
   PreviewIn,
   ProgramProfile,
+  PoolResultOut,
   ProjectionOut,
   PromotionPreviewOut,
   PromotionSectionOut,
@@ -122,6 +123,7 @@ import type {
   RoundCountsOut,
   SensitivityOut,
   SnapshotOut,
+  TierRowOut,
   TierCompareOut,
   RequestOut,
   RequestsGridResponse,
@@ -310,6 +312,10 @@ export type ApiAidScenarioDraft = DraftOut
 export type ApiAidScenarioOption = OptionOut
 export type ApiAidScenarioSnapshot = SnapshotOut
 export type ApiAidScenarioResults = ResultsOut
+/** Mirrors Python `PoolResultOut`. */
+export type ApiAidScenarioPool = PoolResultOut
+/** Mirrors Python `TierRowOut`. */
+export type ApiAidScenarioTierRow = TierRowOut
 export type ApiAidScenarioProjection = ProjectionOut
 export type ApiAidScenarioEvaluateIn = EvaluateIn
 export type ApiAidScenarioEvaluation = EvaluateOut

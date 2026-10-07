@@ -1,6 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
+import { documentKey } from '../hooks/camperships/useAidScenarioPricing'
+import { compareKey, type AidRequestSet, type CompareQuery } from '../services/camperships/aidApi'
 import {
   invalidateAidMoneyQueries,
   invalidateAidRulesQueries,
@@ -208,19 +210,24 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
     )
   })
 
-  it('keys the compare and the trail under the scenario prefix, never at the sensitivity slot', () => {
-    for (const key of [
-      queryKeys.aidScenarioCompare(2027, 'A1,B', 'deadline', true),
-      queryKeys.aidScenarioTrail(2027, 2),
-    ]) {
-      expect(key.slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
-      expect(key[3]).not.toBe('sensitivity')
-    }
-    expect(queryKeys.aidScenarioCompare(2027, 'A1', 'all', false)).not.toEqual(
-      queryKeys.aidScenarioCompare(2027, 'A1', 'deadline', false)
+  it('keys the compare under the scenario prefix, never at the sensitivity slot', () => {
+    const ask = (requestSet: AidRequestSet, lastSeason: boolean, codes = ['A1']): CompareQuery => ({
+      codes,
+      requestSet,
+      lastSeason,
+      rules: false,
+      lastRules: false,
+      draft: true,
+    })
+    const compareOf = (query: CompareQuery) => queryKeys.aidScenarioCompare(2027, compareKey(query))
+    const key = compareOf(ask({ kind: 'deadline' }, true, ['A1', 'B']))
+    expect(key.slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
+    expect(key[3]).not.toBe('sensitivity')
+    expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
+      compareOf(ask({ kind: 'deadline' }, false))
     )
-    expect(queryKeys.aidScenarioCompare(2027, 'A1', 'all', false)).not.toEqual(
-      queryKeys.aidScenarioCompare(2027, 'A1', 'all', true)
+    expect(compareOf(ask({ kind: 'all' }, false))).not.toEqual(
+      compareOf(ask({ kind: 'all' }, true))
     )
   })
 
@@ -274,6 +281,58 @@ describe("each step's effect is a pure function of its key (lead ruling, review 
     await run(client)
     expect(stale(client, queryKeys.aidScenarios(2027))).toBe(true)
     expect(stale(client, queryKeys.aidScenarioSensitivity(2027, 't', 's'))).toBe(false)
+  })
+
+  // #3047 scan DECIDE 2 (lead #29 ruling 2). An evaluate prices the document in its key on the latest snapshot, the
+  // approved rules (the Round 1 deadline, who is held) and the posted money. No scenario write moves those: a release
+  // or a load changes the document (a new key), Update Applications a new pile (a new snapshot id, or the same pile
+  // when nothing moved), and a keep, a rename or Make… leaves every input alone.
+  const EVALUATE = queryKeys.aidScenarioEvaluate(
+    2027,
+    'snp1',
+    'all',
+    documentKey({ minimum: '100' })
+  )
+  function seededWithEvaluate() {
+    const client = seeded()
+    client.setQueryData(EVALUATE, { e: 1 })
+    client.setQueryData(queryKeys.aidScenarioCompare(2027, 'q'), { c: 1 })
+    client.setQueryData(queryKeys.aidPromotionPreview(2027, 'B'), { p: 1 })
+    return client
+  }
+
+  it('a scenario write leaves an evaluate fresh, and still refreshes the workspace, the compare and Make…', async () => {
+    const client = seededWithEvaluate()
+    await invalidateAidScenarioQueries(client)
+    expect(stale(client, EVALUATE)).toBe(false)
+    expect(stale(client, queryKeys.aidScenarios(2027))).toBe(true)
+    expect(stale(client, queryKeys.aidScenarioCompare(2027, 'q'))).toBe(true)
+    expect(stale(client, queryKeys.aidPromotionPreview(2027, 'B'))).toBe(true)
+  })
+
+  it.each([
+    ['a rules write', (c: QueryClient) => invalidateAidRulesQueries(c)],
+    ['an approval', (c: QueryClient) => invalidateAidRulesQueries(c, { priced: true })],
+    ['a money write', (c: QueryClient) => invalidateAidMoneyQueries(c)],
+  ])(
+    '%s re-prices every evaluate: it can move what one prices under the same key',
+    async (_name, run) => {
+      const client = seededWithEvaluate()
+      await run(client)
+      expect(stale(client, EVALUATE)).toBe(true)
+    }
+  )
+
+  it('re-prices a new pile or a changed draft by its key (regression guard: the key holds both)', () => {
+    expect(
+      queryKeys.aidScenarioEvaluate(2027, 'snp2', 'all', documentKey({ minimum: '100' }))
+    ).not.toEqual(EVALUATE)
+    expect(
+      queryKeys.aidScenarioEvaluate(2027, 'snp1', 'all', documentKey({ minimum: '125' }))
+    ).not.toEqual(EVALUATE)
+    expect(
+      queryKeys.aidScenarioEvaluate(2027, 'snp1', 'deadline', documentKey({ minimum: '100' }))
+    ).not.toEqual(EVALUATE)
   })
 
   it('invalidates the scenario prefix once on an approval, which money already covers', () => {

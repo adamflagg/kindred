@@ -1752,3 +1752,17 @@ async def test_a_curve_read_that_raises_gives_no_projection_and_still_evaluates(
     draft = (await world.service.workspace(YEAR, FINANCE)).draft
     assert draft is not None
     assert draft.projection is None
+
+
+@pytest.mark.asyncio
+async def test_the_workspace_names_last_seasons_approved_version_and_the_draft_where_it_differs() -> None:
+    """Task 67: the client's cue for Start from's "(none approved)" and the strip's "posted Round 1 stands"."""
+    world = await _frozen()
+    assert (await world.service.workspace(YEAR, FINANCE)).last_rules_version is None
+    await world.rules.create_version(with_lever(intake_rules(), "year", YEAR - 1), actor=FINANCE)
+    await world.rules.approve_sections(YEAR - 1, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    await world.service.save_draft(YEAR, with_minimum(_shifted(intake_rules(), "5"), Decimal(150)), FINANCE)
+    workspace = await world.service.workspace(YEAR, FINANCE)
+    assert workspace.last_rules_version == 1
+    assert workspace.draft is not None
+    assert workspace.draft.differs_in == ("award_tables", "awards")

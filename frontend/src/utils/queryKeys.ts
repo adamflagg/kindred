@@ -763,10 +763,10 @@ export const queryKeys = {
   aidScenarios: (year: number) => ['financial-aid', 'scenarios', year, 'workspace'] as const,
   aidScenarioSensitivity: (year: number, trailId: string, snapshotId: string) =>
     ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId] as const,
-  aidScenarioCompare: (year: number, codes: string, requestSet: string, lastSeason: boolean) =>
-    ['financial-aid', 'scenarios', year, 'compare', codes, requestSet, lastSeason] as const,
-  aidScenarioTrail: (year: number, page: number) =>
-    ['financial-aid', 'scenarios', year, 'trail', page] as const,
+  aidScenarioEvaluate: (year: number, snapshotId: string, requestSet: string, document: string) =>
+    ['financial-aid', 'scenarios', year, 'evaluate', snapshotId, requestSet, document] as const,
+  aidScenarioCompare: (year: number, query: string) =>
+    ['financial-aid', 'scenarios', year, 'compare', query] as const,
   aidPromotionPreview: (year: number, code: string) =>
     ['financial-aid', 'scenarios', year, 'promotion', code] as const,
 }
@@ -991,15 +991,29 @@ export function invalidateAidRulesQueries(
 }
 
 /**
+ * A scenario write's refresh also skips every evaluate (#3047 scan DECIDE 2). An evaluate prices the document in its
+ * key on the latest snapshot, under the approved rules (the Round 1 deadline, who is held) and the posted money; no
+ * scenario write moves those. A release or a load changes the document, so its key; Update Applications mints a new
+ * snapshot id (or, when nothing moved, keeps the same pile); a keep, rename or Make… touches no input. The rules and
+ * money writers keep SCENARIO_REFRESH, which refreshes evaluate: an approval or a posted round can move it.
+ */
+const SCENARIO_WRITE_REFRESH: ScenarioRefresh = {
+  queryKey: queryKeys.aidScenariosPrefix(),
+  predicate: (query) => query.queryKey[3] !== 'sensitivity' && query.queryKey[3] !== 'evaluate',
+}
+
+/**
  * Every scenario write calls this on settle (spec §7.4, §10): a scenario never writes live awards, so
- * it moves the scenario reads only (the workspace, the compare, the trail), except each step's
- * effect, whose key is its inputs.
+ * it moves the scenario reads only (the workspace, the compare, Make…'s preview), except each step's
+ * effect and each evaluate, whose keys are their inputs.
  * Returns a promise like the other aid helpers, so an onSettled can wait for the refetch.
  */
 export function invalidateAidScenarioQueries(queryClient: {
   invalidateQueries: (args: ScenarioRefresh) => unknown
 }): Promise<void> {
-  return Promise.resolve(queryClient.invalidateQueries(SCENARIO_REFRESH)).then(() => undefined)
+  return Promise.resolve(queryClient.invalidateQueries(SCENARIO_WRITE_REFRESH)).then(
+    () => undefined
+  )
 }
 
 /**

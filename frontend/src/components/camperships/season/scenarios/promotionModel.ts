@@ -4,13 +4,8 @@
  * the server gave with the warning: a re-edit since the preview brings a new token, so an old tick
  * no longer counts (Decision 21).
  */
-import type {
-  ApiAidPromotionPreview,
-  ApiAidPromotionSection,
-  ApiAidRulesSection,
-} from '../../../../types/api-types'
+import type { ApiAidPromotionPreview, ApiAidPromotionSection } from '../../../../types/api-types'
 import { campToday, formatLongDate } from '../../kit/dates'
-import { SECTION_TITLES } from '../rules/rulesModel'
 
 /** Who and what a replaced change was, in words. */
 export function warningWords(section: ApiAidPromotionSection): string | null {
@@ -51,13 +46,4 @@ export function allConfirmed(
   return preview.sections.every(
     (section) => section.warning === null || section.section in standing
   )
-}
-
-/**
- * A section a posted round read is locked: the server may start a new version of it, or lift a lock
- * the draft only carried from its parent, in place (`_save_over`/`_protected`). Either way what was
- * posted stands (§7.5; S1 Q1).
- */
-export function lockedWords(section: ApiAidRulesSection): string {
-  return `${SECTION_TITLES[section]} is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.`
 }

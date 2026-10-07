@@ -1286,8 +1286,6 @@ def _results_out(r: ScenarioResults, projection: Projection | None = None) -> Re
         ],
         not_in_tiers=money(r.not_in_tiers),
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
-        round2_allocated=_cents(r.round2_allocated),
-        round2_remaining=_cents(r.round2_remaining),
         appeals=appeals,
         appeals_asked=money(appeals_asked),
     )
@@ -1354,6 +1352,7 @@ def _last_season_out(last: LastSeason) -> LastSeasonOut:
         view=_committee_out(last.view) if last.view is not None else None,
         round3=money(last.round3),
         pools=[_pool_out(p) for p in last.pools],
+        remaining=_cents(last.remaining),
     )
 
 
@@ -1397,6 +1396,7 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         recorded_at=draft.recorded_at,
         source_document=draft.source_document,
         same_as=draft.same_as,
+        differs_in=list(draft.differs_in),
     )
 
 
@@ -1411,6 +1411,7 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
         rules_draft_version=workspace.rules_draft_version,
         locked_sections=list(workspace.locked_sections),
         locked_by_round=workspace.locked_by_round,
+        last_rules_version=workspace.last_rules_version,
     )
 
 
@@ -1557,9 +1558,7 @@ async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES
 async def keep_scenario(year: _Year, body: KeepIn, user: AuthUser = _RULES) -> OptionOut:
     """Keep your draft as the next lettered option (Scenarios addendum §S11.1), named or, when blank, by its label."""
     try:
-        return _option_out(
-            await _scenarios().keep(year, user.email, name=body.name, starting_point=body.starting_point)
-        )
+        return _option_out(await _scenarios().keep(year, user.email, name=body.name))
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 

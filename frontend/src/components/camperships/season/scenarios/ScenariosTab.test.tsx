@@ -1,84 +1,57 @@
 /**
- * Season › Scenarios on screen (spec §7.4; D35–D38). The workspace read and the draft's work are
- * mocked; useAidScenarioDraft has its own tests for the order of the calls.
+ * Season › Scenarios on screen (Scenarios addendum §S4–§S5): the workspace, the draft's work, the pricing and the
+ * compare are mocked; each model and component has its own tests. Fictional only.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useReducer } from 'react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type {
-  LiveResults,
-  useAidScenarioDraft,
-} from '../../../../hooks/camperships/useAidScenarioDraft'
-import { AidApiError } from '../../../../services/camperships/aidApi'
+import type { useAidScenarioDraft } from '../../../../hooks/camperships/useAidScenarioDraft'
+import {
+  AidApiError,
+  type AidRequestSet,
+  type CompareQuery,
+} from '../../../../services/camperships/aidApi'
 import type {
   ApiAidRulesDocumentIn,
-  ApiAidScenarioSensitivity,
+  ApiAidScenarioResults,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
-import { NO_PENDING, type Pending } from './scenarioModel'
-import { OPTIONS, results, scenarioDraft, workspace } from './scenarioFixtures'
+import { compareOut, OPTIONS, results, scenarioDraft, workspace } from './scenarioFixtures'
 import { ScenariosTab } from './ScenariosTab'
 
-interface Read<T> {
-  data: T | undefined
-  isLoading: boolean
-  error: Error | null
-}
-let read: Read<ApiAidScenarioWorkspace>
-const STEPS: ApiAidScenarioSensitivity = {
-  results: results(735000),
-  levers: [
-    {
-      lever: 'tier_shift',
-      label: 'Shift every tier (Round 1 %)',
-      step: 1,
-      on: null,
-      round1_change: 12400,
-    },
-    {
-      lever: 'dollar_for_dollar',
-      label: 'Grants offset dollar-for-dollar',
-      step: null,
-      on: true,
-      round1_change: -3100,
-    },
-  ],
-}
-const refetchSteps = vi.fn(() => Promise.resolve())
-let steps: Read<ApiAidScenarioSensitivity> & { refetch: typeof refetchSteps }
+let read: { data: ApiAidScenarioWorkspace | undefined; isLoading: boolean; error: Error | null }
+let rerenderRead: () => void = () => undefined
 vi.mock('../../../../hooks/camperships/useAidScenarios', () => ({
-  useAidScenarios: () => read,
-  useAidScenarioSensitivity: () => steps,
+  useAidScenarios: () => {
+    const [, bump] = useReducer((n: number) => n + 1, 0)
+    rerenderRead = bump
+    return read
+  },
 }))
 
-// Typed against the hook (F-m5): a change to what the hook returns fails tsc here.
 const work = {
-  pending: NO_PENDING,
-  live: { status: 'idle' } as LiveResults,
+  edits: new Map<string, string>() as ReadonlyMap<string, string>,
+  pricedDocument: scenarioDraft().document,
   busy: null as string | null,
   error: null as string | null,
-  errorSource: null as string | null,
-  nothingToFreeze: false as boolean,
-  move: vi.fn<(patch: Partial<Pending>) => void>(),
+  nothingNew: false as boolean,
+  type: vi.fn<(key: string, raw: string) => void>(),
   release: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
-  load: vi.fn<(from: { option: string } | { trail_row: string }) => Promise<boolean>>(() =>
-    Promise.resolve(true)
-  ),
-  keep: vi.fn<(startingPoint: boolean) => Promise<boolean>>(() => Promise.resolve(true)),
-  adopt: vi.fn<
+  load: vi.fn<
     (
-      label: string,
-      build: (current: ApiAidRulesDocumentIn) => ApiAidRulesDocumentIn,
-      options?: { readonly basedOn?: string; readonly source?: string }
+      from: { option: string } | { start: 'rules' | 'rules_draft' | 'last_rules' }
     ) => Promise<boolean>
   >(() => Promise.resolve(true)),
-  freeze: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
-  start: vi.fn<(from: 'rules' | 'last_season') => Promise<boolean>>(() => Promise.resolve(true)),
+  discard: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
+  keep: vi.fn<(name: string) => Promise<string | null>>(() => Promise.resolve('C')),
+  update: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
+  adopt: vi.fn<(document: ApiAidRulesDocumentIn, basedOn: string | null) => Promise<boolean>>(() =>
+    Promise.resolve(true)
+  ),
 } satisfies ReturnType<typeof useAidScenarioDraft>
-// The page re-renders when the double's state changes, as it would with the real hook's.
 let rerenderWork: () => void = () => undefined
 vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   useAidScenarioDraft: () => {
@@ -87,426 +60,374 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
     return work
   },
 }))
-vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
-// PR 6's fit and promotion: idle unless a test reads them (FitAndPromotion.test.tsx).
-vi.mock('../../../../hooks/camperships/useAidPromotion', () => ({
-  useAidScenarioFit: () => ({
-    data: undefined,
-    error: null,
-    isPending: false,
-    mutate: vi.fn(),
-    reset: vi.fn(),
-  }),
-  useAidPromotionPreview: () => ({ data: undefined, isLoading: false, error: null }),
-  useAidMakeRulesDraft: () => ({ isPending: false, mutate: vi.fn(), reset: vi.fn() }),
-}))
-vi.mock('../../../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
-}))
-// PR 5's panels: an idle compare and trail unless a test reads them (CompareAndTrail.test.tsx).
-vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
-  useAidScenarioCompare: () => ({ data: undefined, isLoading: true, error: null }),
-  useAidScenarioTrail: () => ({ data: undefined, isLoading: true, error: null }),
+
+const pricingCalls: Array<{ requestSet: AidRequestSet; snapshot: string | null }> = []
+let pricing: {
+  data?: { results: ApiAidScenarioResults }
+  error: Error | null
+  isPlaceholderData: boolean
+  isFetching: boolean
+}
+vi.mock('../../../../hooks/camperships/useAidScenarioPricing', () => ({
+  useAidScenarioPricing: (
+    _document: unknown,
+    requestSet: AidRequestSet,
+    snapshot: string | null
+  ) => {
+    pricingCalls.push({ requestSet, snapshot })
+    return pricing
+  },
 }))
 
-function renderTab() {
-  return render(
-    <MemoryRouter>
+const compareCalls: Array<{ query: CompareQuery; enabled: boolean | undefined }> = []
+vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
+  useAidScenarioCompare: (query: CompareQuery, options: { enabled?: boolean } = {}) => {
+    compareCalls.push({ query, enabled: options.enabled })
+    return { data: compareOut(), isLoading: false, error: null, isPlaceholderData: false }
+  },
+}))
+
+const rename = { mutate: vi.fn(), error: null }
+vi.mock('../../../../hooks/camperships/useAidRenameOption', () => ({
+  useAidRenameOption: () => rename,
+}))
+const fit = { mutate: vi.fn(), reset: vi.fn(), data: undefined, error: null, isPending: false }
+vi.mock('../../../../hooks/camperships/useAidPromotion', () => ({
+  useAidScenarioFit: () => fit,
+  useAidPromotionPreview: () => ({ data: undefined, isLoading: false, error: null }),
+  useAidMakeRulesDraft: () => ({ mutate: vi.fn(), isPending: false, reset: vi.fn() }),
+}))
+vi.mock('../../../../hooks/camperships/useAidDefinitions', () => ({
+  useAidDefinitions: () => ({ notes: [], numberOf: () => null, isPending: false, error: null }),
+}))
+vi.mock('../../../../hooks/camperships/useAidAsOf', () => ({
+  useAidAsOf: () => ({ kind: 'live' }),
+}))
+vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let granted = true
+vi.mock('../../../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => granted }),
+}))
+
+let location = ''
+function Where() {
+  location = useLocation().search
+  return null
+}
+
+function renderAt(search = '', ws: Partial<ApiAidScenarioWorkspace> = {}) {
+  read = {
+    data: workspace({ last_rules_version: 3, locked_sections: [], locked_by_round: null, ...ws }),
+    isLoading: false,
+    error: null,
+  }
+  render(
+    <MemoryRouter initialEntries={[`/aid/season/scenarios${search}`]}>
       <ScenariosTab />
+      <Where />
     </MemoryRouter>
   )
 }
 
 beforeEach(() => {
-  read = { data: workspace(), isLoading: false, error: null }
-  steps = { data: STEPS, isLoading: false, error: null, refetch: refetchSteps }
-  work.pending = NO_PENDING
-  work.live = { status: 'idle' }
-  work.busy = null
+  granted = true
+  pricingCalls.length = 0
+  compareCalls.length = 0
+  work.edits = new Map()
   work.error = null
-  work.nothingToFreeze = false
-  for (const fn of [work.move, work.release, work.load, work.keep, work.freeze, work.start])
-    fn.mockReset()
-  work.release.mockResolvedValue(true)
-  work.load.mockResolvedValue(true)
-  work.keep.mockResolvedValue(true)
-  work.freeze.mockResolvedValue(true)
-  work.start.mockResolvedValue(true)
-  refetchSteps.mockClear()
+  work.nothingNew = false
+  for (const fn of [
+    work.type,
+    work.release,
+    work.load,
+    work.discard,
+    work.keep,
+    work.update,
+    rename.mutate,
+    fit.mutate,
+  ])
+    fn.mockClear()
+  pricing = {
+    data: { results: results(735000, { allocated: 1000000 }) },
+    error: null,
+    isPlaceholderData: false,
+    isFetching: false,
+  }
 })
 
-describe('ScenariosTab (§7.4; D38)', () => {
-  it('prints only the compare: the snapshot line, kept list, levers and Keep buttons are print:hidden', () => {
-    renderTab()
-    const hidden = (el: HTMLElement) => el.closest('.print\\:hidden') !== null
-    expect(hidden(screen.getByText(/Applications frozen/))).toBe(true)
-    expect(hidden(screen.getByTestId('kept-list'))).toBe(true)
-    expect(hidden(screen.getByTestId('scenario-levers'))).toBe(true)
-    expect(hidden(screen.getByRole('button', { name: /^Keep as a Variant/ }))).toBe(true)
-    expect(hidden(screen.getByRole('button', { name: /^Keep as a New Starting Point/ }))).toBe(true)
+describe('the control line (§S5 A)', () => {
+  it('says the held pile, or that nothing is held yet, and updates it only on the button', async () => {
+    renderAt()
+    expect(screen.getByText('420 applications · as of Jan 12, 10:00 am')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Update Applications' }))
+    expect(work.update).toHaveBeenCalledOnce()
   })
 
-  it('names the frozen snapshot and the rules versions', () => {
-    renderTab()
+  it('says nothing new since the pile, after an update that found nothing', () => {
+    work.nothingNew = true
+    renderAt()
+    expect(screen.getByText('Nothing new since Jan 12, 10:00 am')).toBeInTheDocument()
+  })
+
+  it('prices both the sandbox and Compare on Price ▾ (N6)', async () => {
+    renderAt('?panel=compare')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    expect(location).toContain('through=deadline')
+    expect(compareCalls.at(-1)?.query.requestSet).toEqual({ kind: 'deadline' })
+    await userEvent.click(screen.getByRole('button', { name: 'Sandbox' }))
+    expect(pricingCalls.at(-1)?.requestSet).toEqual({ kind: 'deadline' })
+  })
+
+  it('offers the rules draft in Start from only while it differs (§S15 item 4)', () => {
+    renderAt('', { pricing_version: 4, rules_version: 5, rules_draft_version: 5 })
     expect(
-      screen.getByText(/Applications frozen Jan 12, 2027 by Test User · 420 requests/)
+      within(screen.getByRole('combobox', { name: 'Start from' })).getByRole('option', {
+        name: 'Rules draft · v5',
+      })
     ).toBeInTheDocument()
-    expect(screen.getByText('Rules draft v4 · v3 prices the season')).toBeInTheDocument()
   })
 
-  it('shows the draft, what it differs by, and the kept options in two levels', () => {
-    renderTab()
-    expect(screen.getByTestId('scenario-draft')).toHaveTextContent('from B: Round 1 % −5 pts')
-    const kept = screen.getByTestId('kept-list')
-    expect(within(kept).getByText('Round 1 % −2 pts')).toBeInTheDocument()
-    expect(document.querySelector('[data-kept="A1"]')?.parentElement?.className).toContain('pl-5')
+  it('loads a chip at once with nothing unkept, and asks first with changes (§S5 C)', async () => {
+    renderAt()
+    await userEvent.click(screen.getByRole('button', { name: /^A rules draft v4 as they were$/ }))
+    expect(work.load).toHaveBeenCalledWith({ option: 'A' })
+    work.edits = new Map([['awards.minimum', '125']])
+    rerenderWork()
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^A rules draft v4 as they were$/ })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Drop and Load A' }))
+    expect(work.load).toHaveBeenCalledTimes(2)
   })
 
-  it('loads a kept option with a click, never asking to discard anything', async () => {
-    renderTab()
-    await userEvent.click(within(screen.getByTestId('kept-list')).getByText('Round 1 % −2 pts'))
-    expect(work.load).toHaveBeenCalledWith({ option: 'A1' })
+  it('renames the loaded chip through the rename write', async () => {
+    renderAt()
+    await userEvent.click(screen.getByRole('button', { name: 'Rename B' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name of B' }), ' more{Enter}')
+    expect(rename.mutate).toHaveBeenCalledWith({ code: 'B', name: 'bands $5,000 wider more' })
   })
 
-  it("shows beside each setting what one step moves Round 1 by, in the server's words", () => {
-    renderTab()
-    const levers = screen.getByTestId('scenario-levers')
-    expect(within(levers).getByText('Each +1 pt moves Round 1 by $12,400')).toBeInTheDocument()
-    expect(within(levers).getByText('Turning it off moves Round 1 by −$3,100')).toBeInTheDocument()
+  it('keeps with the draft’s label prefilled and what it prices now on the whole pile', async () => {
+    work.edits = new Map([['awards.minimum', '125']])
+    renderAt()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep…' }))
+    const pop = screen.getByTestId('keep-popover')
+    expect(within(pop).getByRole('textbox', { name: 'Name' })).toHaveValue(scenarioDraft().label)
+    // The recorded draft's results: Round 1 735,000 + Round 2 20,500 on 420 applications.
+    expect(
+      within(pop).getByText('with what it prices now: $755,500 on 420 applications')
+    ).toBeInTheDocument()
+    await userEvent.click(within(pop).getByRole('button', { name: 'Keep as C' }))
+    expect(work.keep).toHaveBeenCalledWith(scenarioDraft().label)
   })
 
-  it('moves the figures live while a slider moves, and records when it is let go (D37)', () => {
-    renderTab()
-    const slider = screen.getByRole('slider', { name: 'Shift every tier, slider' })
-    fireEvent.change(slider, { target: { value: '-2' } })
-    expect(work.move).toHaveBeenCalledWith({ tierShift: -2 })
-    expect(work.release).not.toHaveBeenCalled()
-    fireEvent.pointerUp(slider)
-    expect(work.release).toHaveBeenCalledTimes(1)
+  it('shows a refusal as one amber line in the server’s words', () => {
+    work.error =
+      'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.'
+    renderAt()
+    expect(screen.getByText(work.error)).toBeInTheDocument()
   })
 
-  it('records a typed minimum when the box is left, and the switch at once', async () => {
-    renderTab()
-    const box = screen.getByRole('textbox', { name: 'Minimum award, dollars' })
-    await userEvent.clear(box)
-    await userEvent.type(box, '150')
-    expect(work.move).toHaveBeenLastCalledWith({ minimum: '150' })
-    await userEvent.tab()
-    expect(work.release).toHaveBeenCalled()
-    await userEvent.click(screen.getByRole('checkbox', { name: /dollar lowers the award/ }))
-    expect(work.move).toHaveBeenLastCalledWith({ dollar: false })
+  it('keeps Start from open after a refused load, so the way back is one choice away (disagreement 16)', () => {
+    // A load of last season's rules is still refused when they don't fit; the tab stays open on the draft, and the
+    // rules in effect are the first entry of Start from.
+    work.error =
+      "2026's criteria don't fit 2027's rules in effect (programs.teen.r1_table: no such table): start from the rules and edit instead"
+    renderAt()
+    expect(screen.getByText(work.error)).toBeInTheDocument()
+    const start = screen.getByRole('combobox', { name: 'Start from' })
+    expect(start).toBeEnabled()
+    expect(within(start).getByRole('option', { name: 'Rules in effect · v3' })).toBeEnabled()
+  })
+})
+
+describe('the sandbox (§S5 E–G)', () => {
+  it('shows the strip and the three cards', () => {
+    renderAt()
+    expect(screen.getByTestId('spend-strip')).toBeInTheDocument()
+    expect(screen.getByText('Tiers & Round 1')).toBeInTheDocument()
+    expect(screen.getByText('Equity')).toBeInTheDocument()
+    expect(screen.getByText('Income counting')).toBeInTheDocument()
   })
 
-  it('shows the live figures while moving, labelled as not yet recorded, and holds Keep', () => {
-    work.pending = { ...NO_PENDING, tierShift: -2 }
-    work.live = { status: 'ready', results: results(700000) }
-    renderTab()
-    expect(screen.getByText('Moving: recorded when you let go')).toBeInTheDocument()
-    expect(screen.getByText('$700,000')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Keep as a Variant of B' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Keep as a New Starting Point' })).toBeDisabled()
+  it('a refused Price ▾ leaves the last figures and says the server’s words (Review Focus 5)', () => {
+    // Priced through the deadline, so the draft's own stored results (priced on every application held) are no
+    // fallback: only the last good read can keep 1,000,000 − 735,000 − 21,450 = $243,550 on the strip (plan review M6).
+    renderAt('?through=deadline')
+    expect(screen.getByText('$243,550')).toBeInTheDocument()
+    pricing = {
+      error: new AidApiError(
+        "2027's approved rules set no application deadline (milestones): choose a received-through date",
+        422
+      ),
+      isPlaceholderData: false,
+      isFetching: false,
+    }
+    act(() => rerenderWork())
+    expect(screen.getByText(/set no application deadline/)).toBeInTheDocument()
+    expect(screen.getByText('$243,550')).toBeInTheDocument()
   })
 
-  it('keeps as a variant of the starting point, or as a new starting point (D38)', async () => {
-    renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'Keep as a Variant of B' }))
-    expect(work.keep).toHaveBeenCalledWith(false)
-    await userEvent.click(screen.getByRole('button', { name: 'Keep as a New Starting Point' }))
-    expect(work.keep).toHaveBeenCalledWith(true)
+  it('shows whole dollars across the strip when the server sends cents (coordinator ruling 2026-10-07)', () => {
+    const fractional = results(735000.4, { allocated: 1000000 })
+    pricing = {
+      data: {
+        results: {
+          ...fractional,
+          remaining: 243550.4,
+          pools: [{ ...fractional.pools[0]!, remaining: 41495.66 }, fractional.pools[1]!],
+        },
+      },
+      error: null,
+      isPlaceholderData: false,
+      isFetching: false,
+    }
+    renderAt()
+    const strip = screen.getByTestId('spend-strip')
+    expect(within(strip).getByText('$243,550')).toBeInTheDocument()
+    expect(within(strip).getByText('$41,496')).toBeInTheDocument()
+    expect(strip.textContent).not.toMatch(/\.\d/)
   })
 
-  it('holds the sliders still while a write runs, and says which', () => {
-    work.busy = 'Recording…'
-    renderTab()
-    expect(screen.getByText('Recording…')).toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: 'Shift every tier, slider' })).toBeDisabled()
+  it('turns Fit off under Price ▾, with its reason', () => {
+    renderAt('?through=deadline')
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
+    expect(screen.getByText('Fit uses every application held')).toBeInTheDocument()
   })
 
-  it('asks to freeze the applications first, then offers the two starts', async () => {
-    read = { data: workspace({ snapshot: null, draft: null }), isLoading: false, error: null }
-    const view = renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze the Applications' }))
-    expect(work.freeze).toHaveBeenCalled()
-    read = { data: workspace({ draft: null }), isLoading: false, error: null }
-    view.rerender(
+  it('turns Fit off after Round 1 posts', () => {
+    renderAt('', { locked_sections: ['award_tables'], locked_by_round: 1 })
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
+    expect(screen.queryByText('Fit uses every application held')).toBeNull()
+  })
+
+  it('greys the locked cards with one note each', () => {
+    renderAt('', {
+      locked_sections: ['income', 'tiers', 'equity', 'award_tables', 'awards'],
+      locked_by_round: 1,
+    })
+    expect(
+      screen.getByText('Locked: Round 1 is posted · the Round 1 + 2 cap stays open')
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('Locked: Round 1 is posted')).toHaveLength(2)
+  })
+})
+
+describe('Compare (§S5 H) and the URL (§S5 L)', () => {
+  it('opens on its default columns the first time, and asks for exactly them', () => {
+    renderAt('?panel=compare')
+    expect(compareCalls.at(-1)).toEqual({
+      query: {
+        codes: ['A', 'A1', 'B'],
+        requestSet: { kind: 'all' },
+        lastSeason: true,
+        rules: true,
+        lastRules: false,
+        draft: false,
+      },
+      enabled: true,
+    })
+    expect(screen.getByTestId('compare-table')).toBeInTheDocument()
+  })
+
+  it('drops a kept code the year doesn’t hold, and says so once', () => {
+    renderAt('?panel=compare&compare=A,Q')
+    expect(
+      screen.getByText("Q isn't kept in 2027, so it was left out of the compare.")
+    ).toBeInTheDocument()
+    expect(location).toContain('compare=A')
+    expect(location).not.toContain('Q')
+  })
+
+  it('reads an old trail link as the sandbox and drops its params on the next write', async () => {
+    renderAt('?panel=trail&trail_page=2')
+    expect(screen.getByTestId('spend-strip')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    expect(location).not.toContain('trail_page')
+    expect(location).not.toContain('panel=trail')
+  })
+
+  it('asks for the draft column only while the draft holds changes no kept option has (N11; plan review, minor 16)', () => {
+    renderAt('?panel=compare&draft=1&compare=B')
+    expect(compareCalls.at(-1)?.query.draft).toBe(true)
+    cleanup()
+    // Kept since: the draft is the same as B with nothing typed. Columns ▾ no longer lists "Your draft", so a
+    // `draft=1` left in the URL must not ask for a column nobody can uncheck.
+    renderAt('?panel=compare&draft=1&compare=B', { draft: scenarioDraft({ same_as: 'B' }) })
+    expect(compareCalls.at(-1)?.query.draft).toBe(false)
+  })
+
+  it('adds a new keep to Compare’s columns while there is room (§S5 B; plan review M5)', async () => {
+    work.edits = new Map([['awards.minimum', '125']])
+    renderAt('?compare=B&rules=1') // the sandbox, with Compare's columns already chosen
+    // As the server does, the workspace read holds the new option once the keep lands, so C stays in the URL.
+    work.keep.mockImplementationOnce((name: string) => {
+      const ws = read.data!
+      read = {
+        ...read,
+        data: { ...ws, options: [...ws.options, { ...OPTIONS[2]!, code: 'C', name }] },
+      }
+      rerenderRead() // the workspace refetch after a keep re-renders the tab
+      return Promise.resolve('C')
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Keep…' }))
+    await userEvent.click(
+      within(screen.getByTestId('keep-popover')).getByRole('button', { name: 'Keep as C' })
+    )
+    await waitFor(() => expect(location).toContain('compare=B%2CC'))
+    expect(location).toContain('rules=1')
+  })
+
+  it('never fetches the compare without the rules permission', () => {
+    granted = false
+    renderAt('?panel=compare')
+    expect(compareCalls.every((call) => call.enabled === false)).toBe(true)
+  })
+})
+
+describe('states (§S5 M)', () => {
+  it('says why the tab can’t open for a season with no rules', () => {
+    read = {
+      data: undefined,
+      isLoading: false,
+      error: new AidApiError('No aid rules for 2028', 404),
+    }
+    render(
       <MemoryRouter>
         <ScenariosTab />
       </MemoryRouter>
     )
-    await userEvent.click(screen.getByRole('button', { name: "Last Season's Approved Rules" }))
-    expect(work.start).toHaveBeenCalledWith('last_season')
+    expect(screen.getByText('No aid rules for 2028')).toBeInTheDocument()
   })
 
-  it("says the server's refusal when the season can't run scenarios yet", () => {
-    read = { data: undefined, isLoading: false, error: new AidApiError('No rules for 2027', 404) }
-    renderTab()
-    expect(screen.getByText('No rules for 2027')).toBeInTheDocument()
-  })
-
-  it('does not move the draft for a minimum that is not an amount, and says so', async () => {
-    renderTab()
-    const box = screen.getByRole('textbox', { name: 'Minimum award, dollars' })
-    await userEvent.clear(box)
-    await userEvent.type(box, 'abc')
-    expect(work.move).not.toHaveBeenCalled()
-    expect(screen.getByText('not an amount')).toBeInTheDocument()
-  })
-  it('records the switch at once (T17-m1)', async () => {
-    renderTab()
-    await userEvent.click(screen.getByRole('checkbox', { name: /dollar lowers the award/ }))
-    expect(work.move).toHaveBeenLastCalledWith({ dollar: false })
-    expect(work.release).toHaveBeenCalledTimes(1)
-  })
-
-  it('records when the band and minimum sliders are let go, by pointer or key (T17-m2)', () => {
-    renderTab()
-    fireEvent.pointerUp(screen.getByRole('slider', { name: 'Widen every band, slider' }))
-    expect(work.release).toHaveBeenCalledTimes(1)
-    fireEvent.pointerUp(screen.getByRole('slider', { name: 'Minimum award, slider' }))
-    expect(work.release).toHaveBeenCalledTimes(2)
-    fireEvent.keyUp(screen.getByRole('slider', { name: 'Shift every tier, slider' }), {
-      key: 'ArrowRight',
-    })
-    expect(work.release).toHaveBeenCalledTimes(3)
-  })
-
-  it('records a typed step on Enter or on leaving the box (T17-m2)', () => {
-    renderTab()
-    const shift = screen.getByRole('textbox', { name: 'Shift every tier, points' })
-    fireEvent.change(shift, { target: { value: '-2' } })
-    expect(work.move).toHaveBeenLastCalledWith({ tierShift: -2 })
-    fireEvent.keyDown(shift, { key: 'Enter' })
-    expect(work.release).toHaveBeenCalledTimes(1)
-    const band = screen.getByRole('textbox', { name: 'Widen every band, dollars' })
-    fireEvent.change(band, { target: { value: '500' } })
-    expect(work.move).toHaveBeenLastCalledWith({ bandDelta: 500 })
-    fireEvent.blur(band)
-    expect(work.release).toHaveBeenCalledTimes(2)
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Minimum award, dollars' }), {
-      key: 'Enter',
-    })
-    expect(work.release).toHaveBeenCalledTimes(3)
-  })
-
-  it('records when a slider loses focus, if a pointer-up never came (T17-m7)', () => {
-    renderTab()
-    fireEvent.blur(screen.getByRole('slider', { name: 'Shift every tier, slider' }))
-    expect(work.release).toHaveBeenCalledTimes(1)
-  })
-
-  it('records typing first when a kept option is clicked while it records (T17-I1)', async () => {
-    work.release.mockImplementation(() => {
-      work.busy = 'Recording…'
-      rerenderWork()
-      return Promise.resolve(true)
-    })
-    renderTab()
-    const box = screen.getByRole('textbox', { name: 'Minimum award, dollars' })
-    await userEvent.clear(box)
-    await userEvent.type(box, '150')
-    await userEvent.click(within(screen.getByTestId('kept-list')).getByText('Round 1 % −2 pts'))
-    expect(work.release).toHaveBeenCalledTimes(1)
-    expect(work.load).toHaveBeenCalledWith({ option: 'A1' })
-    expect(work.release.mock.invocationCallOrder[0]).toBeLessThan(
-      work.load.mock.invocationCallOrder[0] ?? 0
-    )
-  })
-
-  it('leaves Load and Freeze open while a write runs: the hook queues them (T17-I1)', async () => {
-    work.busy = 'Recording…'
-    renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze Again' }))
-    expect(work.freeze).toHaveBeenCalledTimes(1)
-    await userEvent.click(within(screen.getByTestId('kept-list')).getByText('Round 1 % −2 pts'))
-    expect(work.load).toHaveBeenCalledWith({ option: 'A1' })
-  })
-
-  it("says a refused write in the server's words (T17-m3)", () => {
-    work.error = 'Your draft is the same as A1'
-    renderTab()
-    expect(screen.getByText('Your draft is the same as A1')).toBeInTheDocument()
-  })
-
-  it("says the live figures couldn't be worked out, and shows the recorded ones (T17-m3, m8)", () => {
-    work.pending = { ...NO_PENDING, bandDelta: -10000 }
-    work.live = { status: 'error', error: 'Bands $10,000 narrower would leave band 1 empty' }
-    renderTab()
-    expect(screen.getByText('Bands $10,000 narrower would leave band 1 empty')).toBeInTheDocument()
+  it('says nothing is held yet before the first update, the strip says to update, and Keep… is off', () => {
+    work.edits = new Map([['awards.minimum', '125']])
+    renderAt('', { snapshot: null })
+    expect(screen.getByText('No applications held yet')).toBeInTheDocument()
     expect(
-      screen.getByText("The live figures couldn't be worked out: these are the draft as recorded")
+      screen.getByText('Update Applications to price the applications held.')
     ).toBeInTheDocument()
-    expect(screen.getByText('$735,000')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Keep…' })).toBeDisabled() // disagreement 17: nothing can be recorded yet
   })
+})
 
-  it('keeps the recorded figures with a quiet marker while the live ones are worked out (T17-m8)', () => {
-    work.pending = { ...NO_PENDING, tierShift: -2 }
-    work.live = { status: 'loading' }
-    renderTab()
-    expect(screen.getByText('The draft as recorded')).toBeInTheDocument()
-    expect(screen.getByText('updating…')).toBeInTheDocument()
-    expect(screen.queryByText('Working it out…')).toBeNull()
-  })
-
-  it('shows a refused release once, not as the live error and the write error both (F-m6)', () => {
-    const refused = 'Bands $10,000 narrower would leave band 1 empty or below $0'
-    work.pending = { ...NO_PENDING, bandDelta: -10000 }
-    work.error = refused
-    work.live = { status: 'error', error: refused }
-    renderTab()
-    expect(screen.getAllByText(refused)).toHaveLength(1)
-  })
-
-  it('starts from the rules draft (T17-m3)', async () => {
-    read = { data: workspace({ draft: null }), isLoading: false, error: null }
-    renderTab()
-    await userEvent.click(screen.getByRole('button', { name: 'The Rules Draft (v4)' }))
-    expect(work.start).toHaveBeenCalledWith('rules')
-  })
-
-  it('names the version pricing the season as the rules, not a draft (F-m3)', () => {
-    read = { data: workspace({ pricing_version: 4, draft: null }), isLoading: false, error: null }
-    renderTab()
-    expect(screen.getByText('Rules v4 prices the season')).toBeInTheDocument()
-    expect(screen.queryByText(/Rules draft v4/)).toBeNull()
-    expect(screen.getByRole('button', { name: 'The Rules (v4)' })).toBeInTheDocument()
-  })
-
-  it('offers no Keep while the draft is the same as where it came from (T17-m4)', () => {
-    read = {
-      data: workspace({ draft: scenarioDraft({ label: 'no changes', changes: [] }) }),
-      isLoading: false,
-      error: null,
+describe('a refused Price ▾ read (CodeRabbit on #3047; lead #29 ruling 3)', () => {
+  it('words By tier by what the kept figures were priced on after a refused deadline read (CodeRabbit; lead #29 ruling 3)', async () => {
+    // Priced on every application held, then Price ▾ asks for the deadline and the server refuses (422): the strip
+    // keeps the last good figures, and By tier names their set, never "received through  (the Round 1 deadline)".
+    renderAt()
+    pricing = {
+      error: new AidApiError(
+        "2027's approved rules set no application deadline (milestones): choose a received-through date",
+        422
+      ),
+      isPlaceholderData: false,
+      isFetching: false,
     }
-    renderTab()
-    expect(screen.getByRole('button', { name: 'Keep as a Variant of B' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Keep as a New Starting Point' })).toBeDisabled()
-  })
-
-  it('dates the freeze and each keep by the camp day, not the UTC one (T17-m5)', () => {
-    const evening = '2027-01-13T02:00:00Z' // Jan 12, 6 pm in camp time
-    read = {
-      data: workspace({
-        snapshot: { ...workspace().snapshot!, taken_at: evening },
-        options: OPTIONS.map((option) => ({ ...option, kept_at: evening })),
-      }),
-      isLoading: false,
-      error: null,
-    }
-    renderTab()
-    expect(screen.getByText(/Applications frozen Jan 12, 2027 by Test User/)).toBeInTheDocument()
-    expect(screen.getAllByText(/kept by Test User, Jan 12/)).toHaveLength(OPTIONS.length)
-  })
-
-  it("says held requests wait for a freeze after approval, in the server's words (F-⚠1)", () => {
-    read = {
-      data: workspace({
-        pricing_version: null,
-        snapshot: { ...workspace().snapshot!, awaiting_rules: 9 },
-      }),
-      isLoading: false,
-      error: null,
-    }
-    renderTab()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    await userEvent.click(screen.getByRole('button', { name: 'By tier ▸' }))
     expect(
-      screen.getByText(
-        /· 9 held in every scenario: freeze again once programs and cost are approved/
-      )
+      within(screen.getByTestId('tier-popover')).getByText('By tier · 420 applications held')
     ).toBeInTheDocument()
-  })
-
-  it('does not say to wait for an approval that has happened: the hold clears at the next intake run', () => {
-    read = {
-      data: workspace({ snapshot: { ...workspace().snapshot!, awaiting_rules: 1 } }),
-      isLoading: false,
-      error: null,
-    }
-    renderTab()
-    expect(
-      screen.getByText(/· 1 held in every scenario until the next intake run clears it/)
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/freeze again once/)).toBeNull()
-  })
-
-  it('says so when a freeze found nothing new since the last one (F-m7)', () => {
-    work.nothingToFreeze = true
-    renderTab()
-    expect(
-      screen.getByText("The applications haven't moved since Jan 12: nothing new to freeze")
-    ).toBeInTheDocument()
-  })
-
-  it("says each setting's step couldn't be worked out, and tries again (F-m8)", async () => {
-    steps = {
-      data: undefined,
-      isLoading: false,
-      error: new AidApiError('Freeze 2027 again: the snapshot lacks a read', 422),
-      refetch: refetchSteps,
-    }
-    renderTab()
-    expect(
-      screen.getByText(
-        "Couldn't work out each setting's step: Freeze 2027 again: the snapshot lacks a read"
-      )
-    ).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
-    expect(refetchSteps).toHaveBeenCalledTimes(1)
-  })
-
-  it("heads the pool table with the strip's own qualifiers (T17-⚠1)", () => {
-    renderTab()
-    const headers = within(screen.getByTestId('scenario-results'))
-      .getAllByRole('columnheader')
-      .map((th) => th.textContent)
-    expect(headers).toEqual(
-      expect.arrayContaining(['Round 2 (appeals keyed so far)', 'Remaining (every round)'])
-    )
-    expect(headers).not.toContain('Round 2')
-    expect(headers).not.toContain('Remaining')
-  })
-  it('says what a step box takes, and leaves the draft be, for a value off its step (residue 12)', () => {
-    renderTab()
-    const band = screen.getByRole('textbox', { name: 'Widen every band, dollars' })
-    fireEvent.change(band, { target: { value: '1200' } })
-    expect(screen.getByText('in steps of $500')).toBeInTheDocument()
-    fireEvent.change(band, { target: { value: '20000' } })
-    expect(screen.getByText('from −$10,000 to $10,000')).toBeInTheDocument()
-    expect(work.move).not.toHaveBeenCalled()
-  })
-  it('puts a refused shift back where it was, though a prefix of it was a step (rereview I1)', async () => {
-    renderTab()
-    const shift = screen.getByRole('textbox', { name: 'Shift every tier, points' })
-    await userEvent.clear(shift)
-    await userEvent.type(shift, '11')
-    expect(work.move).toHaveBeenCalledWith({ tierShift: 1 })
-    expect(work.move).toHaveBeenLastCalledWith({ tierShift: 0 })
-    expect(screen.getByText('from −15 to +10 pts')).toBeInTheDocument()
-  })
-
-  it('puts a refused band width back where it was (rereview I1)', async () => {
-    renderTab()
-    const band = screen.getByRole('textbox', { name: 'Widen every band, dollars' })
-    await userEvent.clear(band)
-    await userEvent.type(band, '20000')
-    expect(work.move).toHaveBeenCalledWith({ bandDelta: 2000 })
-    expect(work.move).toHaveBeenLastCalledWith({ bandDelta: 0 })
-  })
-
-  it("puts a refused minimum back as it was, saying the box's reason (rereview I1, m3)", async () => {
-    renderTab()
-    const box = screen.getByRole('textbox', { name: 'Minimum award, dollars' })
-    await userEvent.clear(box)
-    await userEvent.type(box, '12.345')
-    expect(work.move).toHaveBeenCalledWith({ minimum: '12.34' })
-    expect(work.move).toHaveBeenLastCalledWith({ minimum: null })
-    expect(screen.getByText('cents go to two places')).toBeInTheDocument()
-  })
-
-  it('says a failed live answer in the strip, not in a line that pushes the grid (rereview m1)', () => {
-    const refused = 'Bands $10,000 narrower would leave band 1 empty or below $0'
-    work.pending = { ...NO_PENDING, bandDelta: -10000 }
-    work.live = { status: 'error', error: refused }
-    renderTab()
-    expect(within(screen.getByTestId('scenario-results')).getByText(refused)).toBeInTheDocument()
-    expect(screen.getAllByText(refused)).toHaveLength(1)
   })
 })

@@ -62,6 +62,9 @@ export const CS_CHIP_COUNT = STRIP_COUNT_WATCH
 /** cs-flabel 14/20: a filter's label ("Person", "From"). */
 export const CS_FLABEL = 'text-foreground text-sm'
 export const CS_SELECT = FIELD_INLINE
+/** A select on Scenarios' control line (scenarios-v4 `.ctl .cs-select`): 12px, padded 3px 6px, so the line fits. */
+export const CS_SELECT_CTL =
+  'border-border bg-background focus:ring-primary/50 rounded-md border px-1.5 py-[3px] text-xs focus:ring-2 focus:outline-none'
 export const CS_SEARCH = AID_SEARCH_INPUT
 export const CS_BTN_TOOL = BUTTON_SECONDARY
 

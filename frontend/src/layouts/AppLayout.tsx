@@ -311,7 +311,7 @@ export const AppLayout = () => {
     <div className="bg-background min-h-screen">
       {/* One sticky block: the admin preview strip (only while previewing) sits
           above the nav and never scrolls away or overlaps it. */}
-      <div className="sticky top-0 z-50">
+      <div data-app-chrome className="sticky top-0 z-50">
         {/* Admin "View as": the strip above the nav while previewing, plus its
             menu, opened from the user menu's "View as…" item. */}
         <ViewAsSwitcher open={isViewAsOpen} onOpenChange={setIsViewAsOpen} />
@@ -609,7 +609,7 @@ export const AppLayout = () => {
       </div>
 
       {/* Secondary Navigation Bar */}
-      <div className="bg-muted/20 border-border/30 border-b">
+      <div data-app-chrome className="bg-muted/20 border-border/30 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between">
             {/* Left side: Year context + sync status (summer only) */}
@@ -803,7 +803,9 @@ export const AppLayout = () => {
       </div>
 
       {/* Cache status bar */}
-      <CacheStatus />
+      <div data-app-chrome>
+        <CacheStatus />
+      </div>
 
       {/* Main content */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -811,7 +813,7 @@ export const AppLayout = () => {
       </main>
 
       {/* Version badge - fixed bottom right, subtle */}
-      <div className="fixed right-4 bottom-4 z-10">
+      <div data-app-chrome className="fixed right-4 bottom-4 z-10">
         <VersionInfo className="opacity-50 transition-opacity hover:opacity-100" />
       </div>
 

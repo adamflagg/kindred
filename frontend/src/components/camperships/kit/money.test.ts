@@ -8,6 +8,7 @@ import {
   MINUS,
   formatGap,
   formatMoney,
+  formatWholeMoney,
   formatMoneyCompact,
   isNegativeMoney,
   moneyCsv,
@@ -40,6 +41,27 @@ describe('formatMoney (D74)', () => {
 
   it('uses the true minus sign (U+2212), which lines up with the figures', () => {
     expect(MINUS).toBe('−')
+  })
+})
+
+describe('formatWholeMoney (the Scenarios sandbox shows whole dollars)', () => {
+  it.each([
+    [null, '—'],
+    [undefined, '—'],
+    [0, '$0'],
+    [1800, '$1,800'],
+    [1234567, '$1,234,567'],
+    [-1200, `${MINUS}$1,200`],
+    [941978.88, '$941,979'],
+    [41495.66, '$41,496'],
+    [941978.5, '$941,979'],
+    [941978.49, '$941,978'],
+    [-941978.5, `${MINUS}$941,979`],
+    [-0.4, '$0'],
+    [-0.5, `${MINUS}$1`],
+    [0.4, '$0'],
+  ])('%s reads %s', (value, expected) => {
+    expect(formatWholeMoney(value)).toBe(expected)
   })
 })
 

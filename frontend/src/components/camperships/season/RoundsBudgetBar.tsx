@@ -1,7 +1,7 @@
 import type { BarSegment, PoolCardModel } from './budgetCards'
 import { poolBar } from './budgetCards'
 
-const AMBER_STRIPES =
+export const AMBER_STRIPES =
   'bg-[repeating-linear-gradient(45deg,var(--color-amber-500)_0_3px,var(--color-amber-200)_3px_6px)] dark:bg-[repeating-linear-gradient(45deg,var(--color-amber-400)_0_3px,var(--color-amber-800)_3px_6px)]'
 const RED_STRIPES =
   'bg-[repeating-linear-gradient(45deg,var(--color-red-600)_0_3px,var(--color-red-300)_3px_6px)] dark:bg-[repeating-linear-gradient(45deg,var(--color-red-400)_0_3px,var(--color-red-800)_3px_6px)]'

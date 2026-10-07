@@ -93,10 +93,6 @@ class ResultsOut(BaseModel):
     # Round 1 on requests in no tier (a withdrawn request's posted round): the tier rows plus this are `round1`.
     not_in_tiers: float
     request_set: RequestSetOut | None = None
-    # "Round 2's allocation" and what is left of it (spec §5.3): RPT-32's "against the appeals allocation" (SP9c).
-    # 0 when the rules set no Round 2 reserves; None only with no rules.
-    round2_allocated: float | None = None
-    round2_remaining: float | None = None
     # The appeals keyed so far and their asks: Below the line once Round 1 posts (§S11.4).
     appeals: int = 0
     appeals_asked: float = 0
@@ -140,6 +136,8 @@ class DraftOut(BaseModel):
     recorded_at: datetime | None = None
     source_document: AidRules | None = None  # what it is from, read now: the strip's starting point, "was …"
     same_as: str | None = None  # a kept code whose document equals the draft, else "rules", else None
+    # the sections whose content differs from the rules in effect: the strip's "posted Round 1 stands"
+    differs_in: list[SectionName] = Field(default_factory=list)
 
 
 class WorkspaceOut(BaseModel):
@@ -154,6 +152,7 @@ class WorkspaceOut(BaseModel):
     # a posted round locked these (§S11.3): the screen greys from them alone
     locked_sections: list[SectionName] = Field(default_factory=list)
     locked_by_round: int | None = None
+    last_rules_version: int | None = None  # last season's approved version: Start from's "(none approved)"
 
 
 class DocumentIn(BaseModel):
@@ -206,8 +205,6 @@ class KeepIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, max_length=80)  # blank or missing: the draft's label (§S11.1)
-    # Accepted and ignored: every keep is the next flat letter (§S11.1). PR 12 stops sending it and removes it.
-    starting_point: bool = False
 
 
 class RenameIn(BaseModel):
@@ -289,6 +286,7 @@ class LastSeasonOut(BaseModel):
     view: CommitteeOut | None
     round3: float = 0
     pools: list[PoolResultOut] = Field(default_factory=list)  # each pool's Posted cells; empty until loaded
+    remaining: float | None = None  # Allocated − Posted in total; the server sums, the client shows
 
 
 class CompareColumnOut(BaseModel):

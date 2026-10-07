@@ -703,12 +703,19 @@ export function isChanged(path: readonly string[], changes: readonly ApiAidField
   return changes.some((change) => startsWith(path, change.path) || startsWith(change.path, path))
 }
 
-/** "General › Tiers › Tier 2 › Round 1 %: 60% → 55%"; a whole list or set of settings "changed". */
-export function changeWords(change: ApiAidFieldChange, names?: RulesNames): string {
+/**
+ * "General › Tiers › Tier 2 › Round 1 %: 60% → 55%"; a whole list or set of settings "changed". `format` words each
+ * figure: formatSetting unless a screen words its own (Scenarios shows whole dollars).
+ */
+export function changeWords(
+  change: ApiAidFieldChange,
+  names?: RulesNames,
+  format: typeof formatSetting = formatSetting
+): string {
   const where = change.path
     .map((_, index) => labelOf(change.path.slice(0, index + 1), names))
     .join(' › ')
-  const show = (value: unknown) => formatSetting(value, change.path, names)
+  const show = (value: unknown) => format(value, change.path, names)
   if (change.kind === 'added') {
     return isCellValue(change.after) ? `${where}: added, ${show(change.after)}` : `${where}: added`
   }

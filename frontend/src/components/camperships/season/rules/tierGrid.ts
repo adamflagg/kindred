@@ -32,10 +32,11 @@ export function evenOf(
     : null
 }
 
-export const rangeWords = (band: Band) =>
+/** "$0 – $40,000", "$70,001 and up". `money` words each end (Scenarios passes its whole dollars). */
+export const rangeWords = (band: Band, money: (value: number) => string = formatMoney) =>
   band.upper === null
-    ? `${formatMoney(Number(band.lower))} and up`
-    : `${formatMoney(Number(band.lower))} – ${formatMoney(Number(band.upper))}`
+    ? `${money(Number(band.lower))} and up`
+    : `${money(Number(band.lower))} – ${money(Number(band.upper))}`
 
 export function tierLineWords(bands: readonly Band[], ceiling: string | null): string {
   const even = evenOf(bands)
