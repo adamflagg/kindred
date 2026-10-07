@@ -93,6 +93,19 @@ async def test_a_receipts_version_read_names_that_versions_groups() -> None:
     assert [g.label for g in approved.groups] == ["Camp", "Weekends", "B'mitzvah"]
 
 
+@pytest.mark.asyncio
+async def test_a_version_read_never_names_groups_from_a_draft_programs_or_budget_section() -> None:
+    """D76: a draft section has no content on the approved read, so its pool labels and classes stay hidden too.
+    Version 2 holds an approved section but its renamed budget is still a draft."""
+    service = await _approved_v1(FakeStore())
+    renamed = with_lever(fictional_rules(), "budget.pools.camp_pool.label", "Pool A")
+    await service.save_sections(2031, 1, renamed, actor=TREASURER)
+    v2 = await service.load(2031, 2)
+    assert v2.section_status["budget"].state not in ("approved", "locked")
+    assert any(v2.section_status[n].state in ("approved", "locked") for n in SECTION_NAMES)
+    assert (await service.approved_view(2031, 2)).groups == ()
+
+
 # --- save_sections ---------------------------------------------------------------------------------
 
 

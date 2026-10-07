@@ -829,7 +829,10 @@ class FinancialAidRulesService:
                 year,
                 chosen.version,
                 tuple(_approved_section(chosen, n) for n in SECTION_NAMES),
-                tuple(season_groups(chosen.document)),
+                # D76: groups read the programs and budget sections, so a draft of either hides them like its content.
+                tuple(season_groups(chosen.document))
+                if all(chosen.section_status[n].state in _HELD for n in ("programs", "budget"))
+                else (),
             )
         versions = [_to_version(row) for row in await self._store.list_versions(year)]
 
