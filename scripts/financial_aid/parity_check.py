@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, BinaryIO, Literal
 
 import openpyxl
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -68,6 +68,7 @@ GRANTS = "Grants"
 # not match stops the run, so a moved column cannot feed the wrong figure.
 RAW_COLUMNS: dict[str, tuple[str, str]] = {
     "unique_id": ("A", "unique id"),
+    "family_id": ("F", "family id"),
     "personal_id": ("G", "personal id"),
     "py_gross": ("N", "prior year gross pre-tax income:"),
     "py_confirm": ("O", "confirm py gross pre-tax income"),
@@ -85,6 +86,7 @@ RAW_COLUMNS: dict[str, tuple[str, str]] = {
 }
 CALC_COLUMNS: dict[str, tuple[str, str]] = {
     "unique_id": ("A", "unique id"),
+    "include": ("B", "include?"),
     "stage": ("C", "stage"),
     "session": ("F", "session(s)"),
     "ask": ("G", "aid requested"),
@@ -250,7 +252,7 @@ def _check_headers(ws: Any, tab: str, columns: dict[str, tuple[str, str]]) -> No
             )
 
 
-def load_sheet(path: Path, config: ParityConfig) -> Sheet:
+def load_sheet(path: Path | BinaryIO, config: ParityConfig) -> Sheet:
     workbook = openpyxl.load_workbook(path, data_only=True)
     tabs = {}
     for tab, columns in (

@@ -25,6 +25,13 @@ EventKind = Literal["ask", "award", "approve", "refuse", "post", "unpost", "acce
 EVENT_KINDS: Final[tuple[EventKind, ...]] = get_args(EventKind)
 ROUNDS: Final[tuple[int, ...]] = (1, 2, 3)
 Approval = Literal["not_needed", "pending", "approved", "refused"]
+# The lock_source of a round the 2026 decision-year load wrote (D67; scripts/financial_aid/load_2026_decisions.py):
+# reproduced from the repaired sheet, never ticked in Kindred. Read-only; its receipt says where it came from.
+REPRODUCED: Final = "reproduced"
+# The same load's "CampMinder only" Round 1 (owner, 2026-10-07): a request the sheet has no row for, posted at
+# CampMinder's money. Read-only like REPRODUCED, and never labelled as reproduced from the sheet.
+FROM_CAMPMINDER: Final = "campminder_only"
+LOADED: Final = frozenset({REPRODUCED, FROM_CAMPMINDER})
 
 
 @dataclass(frozen=True)

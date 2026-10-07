@@ -504,6 +504,10 @@ const LOCK_SOURCE_WORDS: ReadonlyMap<string, string> = new Map([
   ['tick', 'Posted check'],
   ['ledger', 'CampMinder match'],
   ['placement', 'Grant placement'],
+  // The 2026 sheet load (D67: read-only and labelled), in the receipt's own words.
+  ['reproduced', 'Reproduced from the sheet'],
+  // The same load's Round 1 on a request the sheet has no row for (owner, 10-07: "CampMinder only").
+  ['campminder_only', 'From CampMinder (no sheet row)'],
 ])
 
 /** What a row's values are read with: the season's session names, and whether it corrects money. */
