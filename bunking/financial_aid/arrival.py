@@ -1,4 +1,5 @@
-"""Last year's arrival curve, and the season projected on it (Scenarios addendum §S11.7; owner §S15 items 1-3). Pure (it reads only camp_calendar's stdlib helpers).
+"""Last year's arrival curve, and the season projected on it (Scenarios addendum §S11.7; owner §S15 items 1-3).
+Pure (it reads only camp_calendar's stdlib helpers).
 
 The curve is how much of a season's applications had arrived by the end of each week, counted in whole weeks from
 that season's approved application deadline, the way the registration metrics line years up by weeks from the
