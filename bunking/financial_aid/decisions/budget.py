@@ -1,15 +1,16 @@
-"""Rounds & budget's figures (campership sub-project 10a; spec §5.3, §5.9, §7.2; D44, D46, D53, D54, D79, D82).
+"""Rounds & budget's figures (campership sub-project 10a; spec §5.3, §5.9, §7.2; D44 (reserves, superseded: nothing reads them), D46, D53, D54, D79, D82).
 
-Per pool × round, and in total:
+Per pool (and per round where a figure has one), and in total:
 
-  Allocated         the round's share of the pool, from the approved rules. Round 2 and Round 3 get
-                    their reserves (budget.reserves, % of the pool); Round 1 gets the rest, its
-                    late-Round-1 reserve included (D44: unused reserves stay inside each round).
+  Allocated         the pool's share of the approved total (§5.3 note 1); rounds have none, and
+                    Round 3 is whatever is left in the pool.
   Posted            the locked amounts of posted rounds (D53).
   Accepted          the locked amounts of posted rounds ticked Accepted: shown, never subtracted.
   Needs an offer    the decided amounts of rounds decided and not posted.
   Pending approval  Round 3 amounts above the registrar's limit awaiting finance, at the keyed amount (D79).
-  Remaining         Allocated − Posted − Needs an offer − Pending approval (D44, D53, D79).
+  Committed         Posted + Needs an offer + Pending approval.
+  Remaining         Allocated − Posted − Needs an offer − Pending approval, per pool and in total,
+                    never per round (D53, D79).
 
 A round whose decision type does not count toward the budget is left out of Posted, Accepted and
 Needs an offer whole, base and extra alike: its money goes below the line (owner ruling 2026-09-30).
@@ -70,8 +71,10 @@ class RoundLedger:
 
 
 @dataclass(frozen=True)
-class Cell:
-    allocated: Decimal | None
+class RoundCell:
+    """One round's money (spec §5.3): what it committed. A round has no allocation of its own and no Remaining
+    (owner, round 2: "Remaining per POOL, not per round"; owner 10-06: the round plan dropped)."""
+
     posted: Decimal
     accepted: Decimal
     needs_offer: Decimal
@@ -83,11 +86,23 @@ class Cell:
     unconfirmed_count: Count | None = None
 
     @property
+    def committed(self) -> Decimal:
+        """Posted + Needs an offer + Pending approval: the three figures Remaining takes away (§5.3 note 12)."""
+        return self.posted + self.needs_offer + self.pending_approval
+
+
+@dataclass(frozen=True)
+class PoolCell(RoundCell):
+    """A pool's money, or the season's: its rounds summed, and its allocation from the approved rules."""
+
+    allocated: Decimal | None = None
+
+    @property
     def remaining(self) -> Decimal | None:
-        """Allocated − Posted − Needs an offer − Pending approval (D44, D53, D79); None with no allocation."""
+        """Allocated − Posted − Needs an offer − Pending approval (§5.3 note 6); None with no allocation."""
         if self.allocated is None:
             return None
-        return self.allocated - self.posted - self.needs_offer - self.pending_approval
+        return self.allocated - self.committed
 
 
 @dataclass(frozen=True)
@@ -130,11 +145,13 @@ class ForwardDemand:
 class PoolBudget:
     pool: str
     label: str
-    rounds: Mapping[int, Cell]
-    total: Cell
+    rounds: Mapping[int, RoundCell]
+    total: PoolCell
     below: BelowTheLine
     demand: ForwardDemand
     decision_types: tuple[DecisionTypeLine, ...] = ()
+    # The pool's share from the approved rules (§5.3 note 11); None for No pool, the total, no rules, and a pool given as an amount.
+    share_pct: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -253,17 +270,14 @@ def _merged(tallies: Iterable[_Tally]) -> _Tally:
     return out
 
 
-def allocations(rules: AidRules) -> dict[str, dict[int, Decimal]]:
-    """pool -> round -> Allocated (Decision 6): Round 2 and 3 get their reserves, Round 1 the rest."""
-    out: dict[str, dict[int, Decimal]] = {}
+def allocations(rules: AidRules) -> dict[str, Decimal]:
+    """pool -> Allocated (§5.3 note 1): the approved total × the pool's share, to the cent, half up. Rounds have no
+    allocation of their own and nothing is held back for a later round (owner 10-06): Round 3 is whatever is left."""
     budget = rules.budget
+    out: dict[str, Decimal] = {}
     for key, pool in budget.pools.items():
         whole = pool.amount if pool.amount is not None else budget.total * (pool.share_pct or ZERO) / HUNDRED
-        reserves = budget.reserves.get(key, {})
-        r2 = _cents(whole * reserves.get("r2", ZERO) / HUNDRED)
-        r3 = _cents(whole * reserves.get("r3", ZERO) / HUNDRED)
-        # Round 1 is the remainder after the reserves round, never below 0 (an odd cent at 100% reserves).
-        out[key] = {1: max(_cents(whole) - r2 - r3, ZERO), 2: r2, 3: r3}
+        out[key] = _cents(whole)
     return out
 
 
@@ -382,7 +396,8 @@ def _tally_of(tallies: _Tallies, pool: str, n: int, measure: str) -> _Tally:
 def _pool_budget(
     pool: str,
     label: str,
-    by_round: Mapping[int, Decimal] | None,
+    allocated: Decimal | None,
+    share_pct: Decimal | None,
     tallies: _Tallies,
     *,
     grants: Decimal,
@@ -398,8 +413,7 @@ def _pool_budget(
         return _tally_of(tallies, pool, n, measure).count()
 
     rounds = {
-        n: Cell(
-            allocated=by_round[n] if by_round is not None else None,
+        n: RoundCell(
             posted=amount(n, "posted"),
             accepted=amount(n, "accepted"),
             needs_offer=amount(n, "needs_offer"),
@@ -412,8 +426,8 @@ def _pool_budget(
         for n in ROUNDS
     }
     cells = list(rounds.values())
-    total = Cell(
-        allocated=sum((c.allocated for c in cells if c.allocated is not None), ZERO) if by_round is not None else None,
+    total = PoolCell(
+        allocated=allocated,
         posted=sum((c.posted for c in cells), ZERO),
         accepted=sum((c.accepted for c in cells), ZERO),
         needs_offer=sum((c.needs_offer for c in cells), ZERO),
@@ -451,6 +465,7 @@ def _pool_budget(
             round1_held_asked=demand.held1.amount,
         ),
         decision_types=decision_types,
+        share_pct=share_pct,
     )
 
 
@@ -472,6 +487,7 @@ def season_budget(
     (request, round)s needing an offer that the Requests grid's Needs an offer list leaves out (D162 C2: CampMinder
     already holds money for them): their money stays in Needs an offer, and they leave its counts."""
     allocated = allocations(rules) if rules is not None else {}
+    shares = {key: pool.share_pct for key, pool in rules.budget.pools.items()} if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
     tallies: _Tallies = defaultdict(_Tally)
     grants: dict[str, Decimal] = defaultdict(Decimal)
@@ -506,11 +522,12 @@ def season_budget(
     seen.discard(TOTAL)
     order = [*allocated, *sorted(seen - set(allocated) - {NO_POOL}), *([NO_POOL] if NO_POOL in seen else [])]
 
-    def budget_for(pool: str, label: str, by_round: Mapping[int, Decimal] | None) -> PoolBudget:
+    def budget_for(pool: str, label: str, allocation: Decimal | None, share: Decimal | None) -> PoolBudget:
         return _pool_budget(
             pool,
             label,
-            by_round,
+            allocation,
+            share,
             tallies,
             grants=grants[pool],
             demand=demand.get(pool) or _Demand(),
@@ -520,14 +537,15 @@ def season_budget(
         )
 
     pools = tuple(
-        budget_for(pool, labels.get(pool) or (NO_POOL_LABEL if pool == NO_POOL else pool), allocated.get(pool))
+        budget_for(
+            pool,
+            labels.get(pool) or (NO_POOL_LABEL if pool == NO_POOL else pool),
+            allocated.get(pool),
+            shares.get(pool),
+        )
         for pool in order
     )
-    total_allocated = (
-        {n: sum((per_round[n] for per_round in allocated.values()), ZERO) for n in ROUNDS}
-        if rules is not None
-        else None
-    )
+    total_allocated = sum(allocated.values(), ZERO) if rules is not None else None
     strip = {
         n: RoundCounts(
             **{
@@ -541,7 +559,7 @@ def season_budget(
     }
     return SeasonBudget(
         pools=pools,
-        total=budget_for(TOTAL, "Total", total_allocated),
+        total=budget_for(TOTAL, "Total", total_allocated, None),
         strip=strip,
         outside_grants_off_requests=outside_grants_off_requests,
     )

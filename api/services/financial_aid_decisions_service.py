@@ -214,7 +214,6 @@ from bunking.financial_aid.decisions import (
     REMAINING_GAPS,
     TOTAL,
     UNRELEASABLE,
-    Cell,
     Count,
     DecisionEvent,
     EventKind,
@@ -222,8 +221,10 @@ from bunking.financial_aid.decisions import (
     HoldEventKind,
     HoldState,
     PoolBudget,
+    PoolCell,
     PricedRequest,
     RequestToPrice,
+    RoundCell,
     RoundLedger,
     RoundState,
     SeasonBudget,
@@ -829,7 +830,7 @@ def _count(count: Count) -> CountOut:
     return CountOut(families=count.families, requests=count.requests)
 
 
-def _unconfirmed(cell: Cell) -> UnconfirmedOut | None:
+def _unconfirmed(cell: RoundCell) -> UnconfirmedOut | None:
     if cell.unconfirmed is None or cell.unconfirmed_count is None:
         return None
     return UnconfirmedOut(
@@ -841,7 +842,23 @@ def _maybe_count(count: Count | None) -> CountOut | None:
     return _count(count) if count is not None else None
 
 
-def _cell(cell: Cell) -> CellOut:
+def _round_cell(n: int, cell: RoundCell) -> RoundCellOut:
+    return RoundCellOut(
+        round=n,
+        allocated=None,
+        posted=money(cell.posted),
+        accepted=money(cell.accepted),
+        needs_offer=money(cell.needs_offer),
+        pending_approval=money(cell.pending_approval),
+        remaining=None,
+        needs_offer_count=_count(cell.needs_offer_count),
+        pending_approval_count=_count(cell.pending_approval_count),
+        unconfirmed=_unconfirmed(cell),
+        committed=money(cell.committed),
+    )
+
+
+def _cell(cell: PoolCell) -> CellOut:
     return CellOut(
         allocated=_money(cell.allocated),
         posted=money(cell.posted),
@@ -852,6 +869,7 @@ def _cell(cell: Cell) -> CellOut:
         needs_offer_count=_count(cell.needs_offer_count),
         pending_approval_count=_count(cell.pending_approval_count),
         unconfirmed=_unconfirmed(cell),
+        committed=money(cell.committed),
     )
 
 
@@ -859,7 +877,8 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
     return PoolBudgetOut(
         pool=pool.pool,
         label=pool.label,
-        rounds=[RoundCellOut(round=n, **_cell(cell).model_dump()) for n, cell in sorted(pool.rounds.items())],
+        rounds=[_round_cell(n, cell) for n, cell in sorted(pool.rounds.items())],
+        share_pct=float(pool.share_pct) if pool.share_pct is not None else None,
         total=_cell(pool.total),
         below=BelowTheLineOut(
             held=_count(pool.below.held),
@@ -1194,6 +1213,7 @@ def _past_cell[C: CellOut](cell: C, *, priced: bool, posted: bool) -> C:
     )
     if not (priced and posted):
         update["remaining"] = None
+        update["committed"] = None
     return cell.model_copy(update=update)
 
 

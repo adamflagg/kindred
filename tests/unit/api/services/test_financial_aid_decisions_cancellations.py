@@ -406,12 +406,12 @@ def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 async def _figures(service: FinancialAidDecisionsService) -> tuple[float | None, ...]:
-    """The camp pool's Round 1 Needs an offer and Remaining, Round 3 Pending approval, Round 1 unmet
+    """The camp pool's Round 1 Needs an offer, the pool's Remaining (§8.1), Round 3 Pending approval, Round 1 unmet
     ask (forward demand), and the Remaining line."""
     camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1, r3 = (next(c for c in camp.rounds if c.round == n) for n in (1, 3))
     line = next(p for p in (await service.remaining(YEAR)).pools if p.pool == "camp_pool")
-    return r1.needs_offer, r1.remaining, r3.pending_approval, camp.demand.round1_unmet, line.remaining
+    return r1.needs_offer, camp.total.remaining, r3.pending_approval, camp.demand.round1_unmet, line.remaining
 
 
 def test_d141s_body_rules() -> None:
@@ -441,7 +441,7 @@ async def test_the_registrar_cancels_in_kindred_with_a_reason_and_can_reopen() -
     _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
     service = _service(store)
     before = await _figures(service)
-    assert before == (1500.0, 338500.0, 900.0, 2500.0, 397600.0)
+    assert before == (1500.0, 397600.0, 900.0, 2500.0, 397600.0)
     out = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="aid_not_enough"), ACTOR)
     assert (out.written, out.unchanged) == (1, 0)
     assert store.cancel_events[-1].in_kindred is True
@@ -454,9 +454,9 @@ async def test_the_registrar_cancels_in_kindred_with_a_reason_and_can_reopen() -
         "aid_not_enough",
     )
     assert (row.todos, row.rounds) == ([], [])  # not live: its decided Round 1 left Needs an offer
-    # Decision 14: Needs an offer 1,500 -> 0 (Round 1's Remaining rises by 1,500), Pending approval 900 -> 0,
+    # Decision 14: Needs an offer 1,500 -> 0 (the pool's Remaining rises by 1,500), Pending approval 900 -> 0,
     # forward demand 2,500 -> 0, and the Remaining line rises by both.
-    assert await _figures(service) == (0.0, 340000.0, 0.0, 0.0, 400000.0)
+    assert await _figures(service) == (0.0, 400000.0, 0.0, 0.0, 400000.0)
     again = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="aid_not_enough"), ACTOR)
     assert (again.written, again.unchanged, len(store.operations)) == (0, 1, 1)
     await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)  # the latest wins
@@ -478,9 +478,9 @@ async def test_a_campminder_cancellation_with_a_pending_round3_ask_drops_the_sam
     _event(store, EMMA, 3, "ask", amount=Decimal(900), effective_on=date(2027, 3, 1), statement_of_need="Job loss")
     _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
     service = _service(store)
-    assert await _figures(service) == (1500.0, 338500.0, 900.0, 2500.0, 397600.0)
+    assert await _figures(service) == (1500.0, 397600.0, 900.0, 2500.0, 397600.0)
     _enrol(store, 32)
-    assert await _figures(service) == (0.0, 340000.0, 0.0, 0.0, 400000.0)
+    assert await _figures(service) == (0.0, 400000.0, 0.0, 0.0, 400000.0)
 
 
 @pytest.mark.asyncio

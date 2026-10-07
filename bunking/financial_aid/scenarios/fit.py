@@ -7,10 +7,9 @@ percentage never lowers a Round 1 (the minimum and the ask cap only flatten it),
 rises and a bisection finds the edge in about ten pricings. When even FIT_LOW is over, or even FIT_HIGH stays
 within it, it says so (§12.3: an infeasible target is explained, never a silent failure).
 
-The margin is Round 1's, not the total budget's: Round 2's and Round 3's reserves stay held back. Pools are guidance and
-only the total is hard (D119), so one pool may end below zero while another has money left; `tightest_pool` names the
-pool with the least Round 1 Remaining, as information only. `budget.spillover` is not read (its default is unchanged,
-and how money moves between pools is open, O-930-8).
+The margin is Round 1's: Round 2 and 3 money already committed is left in the margin; nothing is held back. Pools are
+guidance and only the total is hard (D119), so one pool may end below zero while another has money left;
+`tightest_pool` names the pool with the least Round 1 Remaining, as information only.
 """
 
 from __future__ import annotations
@@ -68,15 +67,15 @@ async def fit_tier_shift(
 
 
 def fit_margin(results: ScenarioResults) -> Decimal:
-    """What Fit to budget keeps >= 0: the pools' Round 1 allocations summed, less every Round 1 dollar (money on a
-    program with no pool included: it has no allocation of its own, but it spends the budget)."""
+    """What Fit to budget keeps >= 0: the pools' Allocated summed, less every Round 1 dollar (money on a program with
+    no pool included: it has no allocation of its own, but it spends the budget)."""
     if results.round1_remaining is None:
-        raise ValueError("these rules give Round 1 no allocation")
+        raise ValueError("these rules give the pools no allocation")
     return results.round1_remaining
 
 
 def tightest_pool(results: ScenarioResults) -> PoolResult | None:
-    """The pool with the least Round 1 Remaining (information only, never a limit); None when no pool has a Round 1
+    """The pool with the least Round 1 Remaining (information only, never a limit); None when no pool has an
     allocation. Ties go to the first pool in the rules' order."""
     tightest: PoolResult | None = None
     for pool in results.pools:

@@ -1,6 +1,6 @@
 """Rounds & budget's figures (sub-project 10a; D44, D53, D54, D79, D82). Fictional throughout.
 
-The fixture's budget: 500,000; Camp 80% (reserves: Round 2 10%, Round 3 5%), Weekends 15%, B'mitzvah 5%."""
+The fixture's budget: 500,000; Camp 80%, Weekends 15%, B'mitzvah 5% (the fixture's reserves are ignored: §8.2, nothing reads them)."""
 
 from dataclasses import replace
 from decimal import Decimal
@@ -8,9 +8,10 @@ from decimal import Decimal
 from bunking.financial_aid.decisions import PricedRequest, RoundLedger, RoundStatus, RoundView
 from bunking.financial_aid.decisions.budget import (
     NO_POOL,
-    Cell,
     Count,
     PoolBudget,
+    PoolCell,
+    RoundCell,
     SeasonBudget,
     allocations,
     season_budget,
@@ -74,27 +75,13 @@ def pool_of(budget: SeasonBudget, key: str) -> PoolBudget:
     return next(p for p in budget.pools if p.pool == key)
 
 
-def test_rounds_2_and_3_get_their_reserves_and_round_1_the_rest() -> None:
-    assert allocations(RULES) == {
-        "camp_pool": {1: Decimal("340000.00"), 2: Decimal("40000.00"), 3: Decimal("20000.00")},
-        "weekend_pool": {1: Decimal("75000.00"), 2: Decimal("0.00"), 3: Decimal("0.00")},
-        "bmitzvah_pool": {1: Decimal("25000.00"), 2: Decimal("0.00"), 3: Decimal("0.00")},
-    }
-
-
-def test_the_late_round_1_reserve_stays_inside_round_1() -> None:
-    rules = with_lever(RULES, "budget.reserves", {"weekend_pool": {"r1_late": "20", "r2": "10"}})
-    assert allocations(rules)["weekend_pool"] == {1: Decimal("67500.00"), 2: Decimal("7500.00"), 3: Decimal("0.00")}
-    assert allocations(rules)["camp_pool"][1] == Decimal("400000.00")
-
-
 def test_a_pool_set_as_an_amount_and_the_season_total_are_rules_settings() -> None:
     rules = with_levers(
         RULES,
         {"budget.total": "600000", "budget.pools.camp_pool.share_pct": None, "budget.pools.camp_pool.amount": "410000"},
     )
-    assert allocations(rules)["camp_pool"] == {1: Decimal("348500.00"), 2: Decimal("41000.00"), 3: Decimal("20500.00")}
-    assert allocations(rules)["weekend_pool"][1] == Decimal("90000.00")
+    assert allocations(rules)["camp_pool"] == Decimal("410000.00")
+    assert allocations(rules)["weekend_pool"] == Decimal("90000.00")
 
 
 def test_remaining_is_allocated_less_posted_needs_an_offer_and_pending_approval() -> None:
@@ -109,14 +96,8 @@ def test_remaining_is_allocated_less_posted_needs_an_offer_and_pending_approval(
     )
     camp = pool_of(budget, "camp_pool")
     r1, r3 = camp.rounds[1], camp.rounds[3]
-    assert (r1.allocated, r1.posted, r1.accepted, r1.needs_offer) == (
-        Decimal("340000.00"),
-        Decimal(3800),
-        Decimal(1800),
-        Decimal(1450),
-    )
-    assert r1.remaining == Decimal("334750.00")  # Accepted is shown, never subtracted
-    assert (r3.pending_approval, r3.remaining) == (Decimal(500), Decimal("19500.00"))
+    assert (r1.posted, r1.accepted, r1.needs_offer) == (Decimal(3800), Decimal(1800), Decimal(1450))
+    assert r3.pending_approval == Decimal(500)
     assert camp.total.remaining == Decimal("394250.00")
 
 
@@ -125,7 +106,7 @@ def test_a_held_round_sits_below_the_line_with_its_ask() -> None:
     camp = pool_of(budget, "camp_pool")
     assert (camp.below.held, camp.below.held_asked) == (Count(1, 1), Decimal(2000))
     assert camp.rounds[1].needs_offer == 0
-    assert camp.rounds[1].remaining == Decimal("340000.00")
+    assert camp.total.remaining == Decimal("400000.00")
     assert budget.strip[1].held == Count(1, 1)
 
 
@@ -197,7 +178,7 @@ def test_money_on_a_program_with_no_pool_counts_in_the_total_only() -> None:
         [priced("req-j", 7, view(1, "needs_offer", decided="400", pool=None))], RULES, outside_grants={}
     )
     nowhere = pool_of(budget, NO_POOL)
-    assert (nowhere.label, nowhere.rounds[1].allocated, nowhere.rounds[1].remaining) == ("No pool", None, None)
+    assert (nowhere.label, nowhere.total.allocated, nowhere.total.remaining) == ("No pool", None, None)
     assert budget.total.rounds[1].needs_offer == Decimal(400)
     assert budget.total.total.remaining == Decimal("499600.00")
 
@@ -205,7 +186,7 @@ def test_money_on_a_program_with_no_pool_counts_in_the_total_only() -> None:
 def test_with_no_approved_rules_posted_money_still_counts_and_nothing_is_allocated() -> None:
     budget = season_budget([priced("req-a", 1, view(1, "posted", locked="1800"))], None, outside_grants={})
     camp = pool_of(budget, "camp_pool")
-    assert (camp.rounds[1].allocated, camp.rounds[1].posted, camp.rounds[1].remaining) == (None, Decimal(1800), None)
+    assert (camp.total.allocated, camp.rounds[1].posted, camp.total.remaining) == (None, Decimal(1800), None)
     assert budget.total.total.remaining is None
 
 
@@ -221,7 +202,7 @@ def test_a_non_counting_type_moves_its_whole_round_outside_the_budget() -> None:
     budget = season_budget([request], RULES, outside_grants={})
     camp = pool_of(budget, "camp_pool")
     assert (camp.rounds[3].needs_offer, camp.below.outside_budget) == (ZERO, Decimal(650))
-    assert camp.rounds[3].remaining == Decimal("20000.00")
+    assert camp.total.remaining == Decimal("397000.00")
     assert budget.strip[3].needs_offer == Count(0, 0)
 
 
@@ -243,10 +224,10 @@ def test_a_non_counting_round_with_no_extra_is_still_wholly_outside_the_budget()
     """The whole round leaves, whatever the top-up: a non-counting type with extra at zero is not a base round."""
     request = priced("req-p", 13, view(3, "needs_offer", decided="400", counts=False, extra="0"))
     camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
-    assert (camp.rounds[3].needs_offer, camp.below.outside_budget, camp.rounds[3].remaining) == (
+    assert (camp.rounds[3].needs_offer, camp.below.outside_budget, camp.total.remaining) == (
         ZERO,
         Decimal(400),
-        Decimal("20000.00"),
+        Decimal("400000.00"),
     )
 
 
@@ -269,13 +250,13 @@ def test_a_non_counting_round_pending_approval_sits_below_the_line_and_never_low
         Decimal(500),
         ZERO,
     )
-    assert camp.rounds[3].remaining == Decimal("20000.00")
+    assert camp.total.remaining == Decimal("397000.00")
 
 
 def test_a_counting_round_pending_approval_is_still_subtracted() -> None:
     request = priced("req-m2", 15, view(1, "posted", locked="3000"), view(3, "pending_approval", pending="500"))
     camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
-    assert (camp.rounds[3].pending_approval, camp.rounds[3].remaining) == (Decimal(500), Decimal("19500.00"))
+    assert (camp.rounds[3].pending_approval, camp.total.remaining) == (Decimal(500), Decimal("396500.00"))
 
 
 def test_a_non_counting_round_adds_no_forward_demand() -> None:
@@ -299,16 +280,9 @@ def test_round_1_unmet_never_goes_negative() -> None:
     assert pool_of(budget, "camp_pool").demand.round1_unmet == Decimal(500)
 
 
-def test_round_1_s_allocation_is_the_rounded_remainder_and_never_below_zero() -> None:
-    # 100.01 with 50% + 50% reserves: each reserve rounds up to 50.01, leaving Round 1 no cent.
-    rules = with_levers(
-        RULES,
-        {
-            "budget.pools.camp_pool": {"label": "Camp", "amount": "100.01"},
-            "budget.reserves.camp_pool": {"r2": "50", "r3": "50"},
-        },
-    )
-    assert allocations(rules)["camp_pool"] == {1: ZERO, 2: Decimal("50.01"), 3: Decimal("50.01")}
+def test_a_pool_given_as_an_amount_is_allocated_its_amount_to_the_cent() -> None:
+    rules = with_levers(RULES, {"budget.pools.camp_pool": {"label": "Camp", "amount": "100.01"}})
+    assert allocations(rules)["camp_pool"] == Decimal("100.01")
 
 
 def test_posted_money_outside_the_budget_is_shown_as_its_own_posted_figure() -> None:
@@ -339,7 +313,7 @@ def test_a_request_left_out_of_demand_adds_no_round_2_ask_and_keeps_its_money() 
     assert left.total.total.needs_offer == kept.total.total.needs_offer == Decimal(400)
 
 
-def _cell(budget: SeasonBudget, pool: str, n: int) -> Cell:
+def _cell(budget: SeasonBudget, pool: str, n: int) -> RoundCell:
     holder = budget.total if pool == "*" else pool_of(budget, pool)
     return holder.rounds[n]
 
@@ -549,3 +523,104 @@ def test_a_pool_reached_only_by_demand_is_still_listed_as_before() -> None:
     appeal = priced("a", 1000001, view(2, "not_decided", ask="0", pool="other_pool"))
     budget = season_budget([appeal], RULES, outside_grants={})
     assert pool_of(budget, "other_pool").demand.round2_asks == Count(1, 1)
+
+
+def test_each_pool_is_allocated_the_total_times_its_share_to_the_cent() -> None:
+    """§5.3 note 1 (owner 10-06: the round plan dropped): one allocation per pool, no rounds, no reserves."""
+    assert allocations(RULES) == {
+        "camp_pool": Decimal("400000.00"),
+        "weekend_pool": Decimal("75000.00"),
+        "bmitzvah_pool": Decimal("25000.00"),
+    }
+
+
+def test_allocation_golden_cases_match_the_frontend_preview_to_the_cent() -> None:
+    """Pinned on both sides (planModel.test.ts carries the same two, Task 35), so the server's Decimal and Edit Plan…'s
+    integer preview can never drift apart: 4.2% of $1,111,000 is exactly $46,662.00, and 50% of $100.01 is $50.005,
+    which rounds half up to $50.01, never to banker's $50.00."""
+    split = {"budget.pools.bmitzvah_pool.share_pct": "0"}
+    golden = with_levers(
+        RULES,
+        split
+        | {
+            "budget.total": "1111000",
+            "budget.pools.camp_pool.share_pct": "4.2",
+            "budget.pools.weekend_pool.share_pct": "95.8",
+        },
+    )
+    assert (allocations(golden)["camp_pool"], allocations(golden)["weekend_pool"]) == (
+        Decimal("46662.00"),
+        Decimal("1064338.00"),
+    )
+    half = with_levers(
+        RULES,
+        split
+        | {
+            "budget.total": "100.01",
+            "budget.pools.camp_pool.share_pct": "50",
+            "budget.pools.weekend_pool.share_pct": "50",
+        },
+    )
+    assert allocations(half)["camp_pool"] == Decimal("50.01")
+
+
+def test_reserves_move_no_allocation() -> None:
+    """§8.2: reserves are read nowhere; the pool keeps its whole share."""
+    rules = with_lever(RULES, "budget.reserves", {"weekend_pool": {"r1_late": "20", "r2": "10"}})
+    assert allocations(rules) == allocations(RULES)
+
+
+def test_a_round_has_no_allocation_and_says_what_it_committed() -> None:
+    """§8.1: Remaining per pool, never per round. Committed = Posted + Needs an offer + Pending approval (note 12)."""
+    budget = season_budget(
+        [
+            priced("req-a", 1, view(1, "posted", locked="1800", accepted=True)),
+            priced("req-b", 2, view(1, "needs_offer", decided="1450")),
+            priced("req-c", 3, view(1, "posted", locked="2000"), view(3, "pending_approval", pending="500")),
+        ],
+        RULES,
+        outside_grants={},
+    )
+    camp = pool_of(budget, "camp_pool")
+    r1, r3 = camp.rounds[1], camp.rounds[3]
+    assert isinstance(r1, RoundCell)
+    assert not isinstance(r1, PoolCell)
+    assert not hasattr(r1, "allocated")
+    assert not hasattr(r1, "remaining")
+    assert (r1.committed, r3.committed) == (Decimal(5250), Decimal(500))
+    assert (camp.total.allocated, camp.total.committed, camp.total.remaining) == (
+        Decimal("400000.00"),
+        Decimal(5750),
+        Decimal("394250.00"),
+    )
+
+
+def test_each_pool_carries_its_share_and_no_pool_and_the_total_carry_none() -> None:
+    budget = season_budget(
+        [priced("req-j", 7, view(1, "needs_offer", decided="400", pool=None))], RULES, outside_grants={}
+    )
+    assert [(p.pool, p.share_pct) for p in budget.pools] == [
+        ("camp_pool", Decimal(80)),
+        ("weekend_pool", Decimal(15)),
+        ("bmitzvah_pool", Decimal(5)),
+        (NO_POOL, None),
+    ]
+    assert budget.total.share_pct is None
+
+
+def test_the_totals_allocation_is_the_sum_of_the_pools_and_its_remaining_the_sum_of_theirs() -> None:
+    """§5.3 note 6: the total's Remaining is the sum of the pools', less any money in No pool (it spends the total only)."""
+    budget = season_budget(
+        [
+            priced("req-a", 1, view(1, "posted", locked="1800")),
+            priced("req-j", 7, view(1, "needs_offer", decided="400", pool=None)),
+        ],
+        RULES,
+        outside_grants={},
+    )
+    total = budget.total.total
+    assert total.allocated == Decimal("500000.00")
+    assert total.remaining == Decimal("497800.00")
+    assert total.remaining == sum(
+        (p.total.remaining for p in budget.pools if p.total.remaining is not None), Decimal(0)
+    ) - Decimal(400)

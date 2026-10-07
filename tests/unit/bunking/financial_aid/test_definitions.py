@@ -102,7 +102,7 @@ def test_rounds_and_budget_adds_forward_demand_and_the_confirmed_share_after_its
         "remaining",
         "below_the_line",
     )
-    assert keys[7:] == ("round2_asks", "round1_unmet", "unconfirmed")
+    assert keys[7:10] == ("round2_asks", "round1_unmet", "unconfirmed")
     assert "held appeals' asks included" in BY_KEY["round2_asks"].text
     assert "oldest round first" in BY_KEY["unconfirmed"].text
 
@@ -134,3 +134,68 @@ def test_the_grants_note_defines_grants_applied_not_the_counted_total() -> None:
     assert d.term == "Grants applied"
     assert "beyond what was owed" in d.text
     assert "still owed after camp aid" in d.text
+
+
+SEASON_NOTES = (
+    "allocated",
+    "budget_posted",
+    "accepted",
+    "needs_offer",
+    "pending_approval",
+    "remaining",
+    "below_the_line",
+    "round2_asks",
+    "round1_unmet",
+    "unconfirmed",
+    "share",
+    "committed",
+    "past_date",
+)
+
+
+def test_rounds_and_budget_numbers_thirteen_notes_appending_share_committed_and_a_past_date() -> None:
+    """Spec §9.6 (owner 10-06): today's ten keep 1–10, the three new figures number 11–13."""
+    assert SURFACES["season-rounds-budget"] == SEASON_NOTES
+
+
+def test_allocated_is_per_pool_and_rounds_have_none() -> None:
+    assert BY_KEY["allocated"].text == (
+        "Allocated: per pool, the approved total × the pool's share from the approved rules' budget section (see "
+        "Share); in total, the approved total, which the pools add up to. Rounds have no allocation of their own: "
+        "each round shows only what it committed, and Round 3 is whatever is left in the pool."
+    )
+
+
+def test_remaining_is_per_pool_and_in_total_and_reads_amber_for_a_pool() -> None:
+    """§8.3 (D74 amended): a pool's negative is amber, "over its share"; only the total's is red."""
+    text = BY_KEY["remaining"].text
+    assert text.startswith(
+        "Remaining = Allocated − Posted − Needs an offer − Pending approval, per pool and in total, never per round."
+    )
+    assert 'reads amber, "over its share"' in text
+    assert 'Only the total\'s Remaining below $0 reads red, "over budget".' in text
+
+
+def test_the_totals_remaining_is_said_to_take_off_no_pool_money() -> None:
+    """§5.3 note 6 matches budget.py: the total counts No pool money the pools never see (test_decision_budget)."""
+    text = BY_KEY["remaining"].text
+    assert "The total's Remaining is the sum of the pools', less any money in No pool." in text
+    assert "The total's Remaining is the sum of the pools'. " not in text
+
+
+def test_share_committed_and_a_past_date_say_the_specs_words() -> None:
+    assert BY_KEY["share"].text.endswith("Only the total is a cap. There are no reserves and no round plan.")
+    assert "the shares add up to 100%" in BY_KEY["share"].text
+    assert BY_KEY["committed"].text == (
+        "Committed: Posted + Needs an offer + Pending approval, the three figures Remaining takes away. A label for "
+        "that sum, not a new measure; Accepted is inside Posted."
+    )
+    assert BY_KEY["past_date"].text == (
+        'A past date shows what the dashboard can rebuild exactly: a figure it can\'t reads "—", never an estimate.'
+    )
+
+
+def test_no_season_note_cites_another_note_by_number() -> None:
+    """§5.3: numbering is per surface, so "(note 6)" or "(note 11)" can't appear."""
+    for key in SEASON_NOTES:
+        assert "(note" not in BY_KEY[key].text

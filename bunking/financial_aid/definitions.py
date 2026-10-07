@@ -98,8 +98,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="allocated",
         term="Allocated",
         text=(
-            "Allocated: the round's allocation from the approved rules, per pool. Unused reserves stay inside "
-            "each round's allocation. Only the total budget is hard; the pool split is finance's soft setting."
+            "Allocated: per pool, the approved total × the pool's share from the approved rules' budget section (see "
+            "Share); in total, the approved total, which the pools add up to. Rounds have no allocation of their own: "
+            "each round shows only what it committed, and Round 3 is whatever is left in the pool."
         ),
         spec="§5.3",
         rulings=("D44", "D119"),
@@ -146,11 +147,14 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="remaining",
         term="Remaining",
         text=(
-            "Remaining = Allocated − Posted − Needs an offer − Pending approval, per pool and round and in "
-            "total. Accepted is shown, never subtracted."
+            "Remaining = Allocated − Posted − Needs an offer − Pending approval, per pool and in total, never per "
+            "round. Accepted is shown, never subtracted. The total's Remaining is the sum of the pools', less any "
+            "money in No pool. A pool's "
+            'Remaining below $0 reads amber, "over its share": the pool has committed more than its share while the '
+            'season may still have money. Only the total\'s Remaining below $0 reads red, "over budget".'
         ),
         spec="§5.3",
-        rulings=("D44", "D53", "D79"),
+        rulings=("D44", "D53", "D79", "D74"),
     ),
     Definition(
         key="below_the_line",
@@ -210,6 +214,35 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         ),
         spec="§7.2",
         rulings=("D59", "D153"),
+    ),
+    Definition(
+        key="share",
+        term="Share",
+        text=(
+            "Share, from the approved rules' budget section: each program's % of the total; the shares add up to "
+            "100%. A share is finance's guess at the program's need, not a cap: a pool can go past it while the season "
+            "has money left. Finance moves money between programs by changing the shares (Edit Plan…, approved like "
+            "any rules change). Only the total is a cap. There are no reserves and no round plan."
+        ),
+        spec="§5.3",
+        rulings=("D119",),
+    ),
+    Definition(
+        key="committed",
+        term="Committed",
+        text=(
+            "Committed: Posted + Needs an offer + Pending approval, the three figures Remaining takes away. A label for "
+            "that sum, not a new measure; Accepted is inside Posted."
+        ),
+        spec="§5.3",
+        rulings=("D44", "D53", "D79"),
+    ),
+    Definition(
+        key="past_date",
+        term="A past date",
+        text='A past date shows what the dashboard can rebuild exactly: a figure it can\'t reads "—", never an estimate.',
+        spec="§5.3",
+        rulings=("D21", "D74"),
     ),
     # Reports (slice 4's back end, Part A): finance's report words (§5.6). "Awarded" labels money here only.
     Definition(
@@ -623,6 +656,9 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "round2_asks",
         "round1_unmet",
         "unconfirmed",
+        "share",
+        "committed",
+        "past_date",
     ),
     "money-ledger": ("in_campminder_net", "posted"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),

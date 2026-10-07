@@ -423,16 +423,17 @@ async def test_an_option_kept_on_an_older_snapshot_is_repriced_for_compare_but_k
 @pytest.mark.asyncio
 async def test_fit_to_budget_uses_the_pools_summed_round1_remaining_and_names_the_tightest_pool() -> None:
     world = await _started()
-    # Budget 3,000: Round 1's allocations are Camp 2,040 (after its reserves), Weekends 450 and B'mitzvah 150, so
-    # 2,640 in all. Both requests are Camp's, spending 2,600 at no shift, and each point adds 40: +1 spends 2,640.
-    # Camp alone is then 600 over; it is named, not enforced (D119: only the total is hard).
+    # Budget 3,000: the pools' allocations are Camp 2,400, Weekends 450 and B'mitzvah 150, so 3,000 in all (no
+    # reserves: §8.2). Both requests are Camp's, spending 2,600 at no shift, and each point adds 40: +10 spends
+    # 3,000; +10.5 would spend 3,020. Camp alone is then 600 over (3,000 - 2,400); it is named, not enforced (D119:
+    # only the total is hard).
     fitted = await world.service.fit(YEAR, with_lever(intake_rules(), "budget.total", "3000"))
-    assert (fitted.fit.kind, fitted.fit.shift, fitted.tightest_pool) == ("fits", Decimal(1), "camp_pool")
+    assert (fitted.fit.kind, fitted.fit.shift, fitted.tightest_pool) == ("fits", Decimal(10), "camp_pool")
     results = fitted.evaluation.results
     pools = {p.pool: p for p in results.pools}
-    assert (results.round1, results.round1_remaining) == (Decimal(2640), Decimal("0.00"))
+    assert (results.round1, results.round1_remaining) == (Decimal(3000), Decimal("0.00"))
     assert pools["camp_pool"].round1_remaining == Decimal("-600.00")
-    assert fitted.evaluation.document.award_tables["camp"].tiers[2].r1_pct == Decimal(76)
+    assert fitted.evaluation.document.award_tables["camp"].tiers[2].r1_pct == Decimal(85)
 
 
 @pytest.mark.asyncio
@@ -440,7 +441,7 @@ async def test_fit_reads_no_spillover_setting() -> None:
     world = await _started()
     shared = with_levers(intake_rules(), {"budget.total": "3000", "budget.spillover": "shared"})
     fitted = await world.service.fit(YEAR, shared)
-    assert (fitted.fit.kind, fitted.fit.shift, fitted.tightest_pool) == ("fits", Decimal(1), "camp_pool")
+    assert (fitted.fit.kind, fitted.fit.shift, fitted.tightest_pool) == ("fits", Decimal(10), "camp_pool")
 
 
 @pytest.mark.asyncio
@@ -468,22 +469,24 @@ async def test_fit_never_moves_a_posted_round1() -> None:
         )
     )
     await world.service.freeze(YEAR, FINANCE)
-    # Emma's Round 1 stays at its 1,400 lock under every shift; only Liam's 1,100 moves, 20 a point. The 2,640 Round 1
-    # allocation leaves 140 for him: +7. Were Emma's money moving too, the fit would stop at +1.
+    # Emma's Round 1 stays at its 1,400 lock under every shift; only Liam's 1,100 moves, 20 a point. The 3,000 of
+    # allocations leaves 1,600 for him: +25 (55% + 25 = 80% of 2,000); +25.5 would be 1,610. Were Emma's money moving
+    # too, the fit would stop at +10.
     fitted = await world.service.fit(YEAR, with_lever(intake_rules(), "budget.total", "3000"))
-    assert (fitted.fit.kind, fitted.fit.shift, fitted.evaluation.results.round1) == ("fits", Decimal(7), Decimal(2640))
+    assert (fitted.fit.kind, fitted.fit.shift, fitted.evaluation.results.round1) == ("fits", Decimal(25), Decimal(3000))
 
 
 @pytest.mark.asyncio
 async def test_money_on_a_program_with_no_pool_counts_against_the_fit() -> None:
     world = await _started()
     # Summer has no pool here, so both requests are "No pool" money: no allocation of its own, but it spends the
-    # budget. The fit still stops at +1 (2,600 + 2 x 20 = 2,640), not at the highest shift.
+    # budget. The fit still stops at +10 (2,600 + 10 x 40 = 3,000), not at the highest shift. The pools keep their
+    # whole allocations (Camp 2,400, Weekends 450, B'mitzvah 150) and spend nothing, so B'mitzvah has the least left.
     no_pool = with_levers(intake_rules(), {"budget.total": "3000", "programs.summer.budget_pool": None})
     fitted = await world.service.fit(YEAR, no_pool)
     pools = {p.pool: p for p in fitted.evaluation.results.pools}
-    assert (fitted.fit.kind, fitted.fit.shift) == ("fits", Decimal(1))
-    assert (pools[""].round1, pools[""].round1_allocated) == (Decimal(2640), None)
+    assert (fitted.fit.kind, fitted.fit.shift) == ("fits", Decimal(10))
+    assert (pools[""].round1, pools[""].round1_allocated) == (Decimal(3000), None)
     assert fitted.tightest_pool == "bmitzvah_pool"
 
 
@@ -743,19 +746,23 @@ async def test_a_scenario_on_the_base_rules_shows_the_live_rounds_and_budget_fig
     def round1(cell: RoundCellOut | CellOut) -> Decimal:
         return sum((Decimal(str(v or 0)) for v in (cell.posted, cell.needs_offer, cell.pending_approval)), ZERO)
 
+    def _minus(allocated: float | None, spent: Decimal) -> float | None:
+        # §8.2: Round 1 remaining is the pool's Allocated less every Round 1 dollar.
+        return None if allocated is None else float(Decimal(str(allocated)) - spent)
+
     def cents(value: float | None) -> Decimal | None:
         return None if value is None else Decimal(str(value)).quantize(Decimal("0.01"))
 
     total_round1 = next(cell for cell in live.total.rounds if cell.round == 1)
     assert scenario.round1 == round1(total_round1) == Decimal(2250)  # Emma 1,500 - 250 grant; Liam posted 1,000
     assert (scenario.round1_remaining, scenario.remaining) == (
-        cents(total_round1.remaining),
+        cents(_minus(live.total.total.allocated, round1(total_round1))),
         cents(live.total.total.remaining),
     )
     live_pools = {
         p.pool: (
             round1(next(c for c in p.rounds if c.round == 1)),
-            cents(p.rounds[0].remaining),
+            cents(_minus(p.total.allocated, round1(next(c for c in p.rounds if c.round == 1)))),
             cents(p.total.remaining),
         )
         for p in live.pools

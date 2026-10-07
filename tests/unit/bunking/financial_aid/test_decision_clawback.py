@@ -1,6 +1,6 @@
 """A clawed-back round counts nowhere (campership sub-project 10b; spec §5.3; D54): its money came
-back when CampMinder's reversal posted. Fictional throughout (the fixture's Camp pool: Round 1
-allocated 340,000)."""
+back when CampMinder's reversal posted. Fictional throughout (the fixture's Camp pool:
+allocated 400,000)."""
 
 from dataclasses import replace
 from decimal import Decimal
@@ -15,7 +15,7 @@ def test_a_clawed_back_round_leaves_posted_and_accepted_and_its_money_returns_to
     budget = season_budget([priced("emma", 1, back), priced("liam", 2, kept)], RULES, outside_grants={})
     r1 = pool_of(budget, "camp_pool").rounds[1]
     assert (r1.posted, r1.accepted, r1.needs_offer) == (Decimal(1500), Decimal(1500), Decimal(0))
-    assert r1.remaining == Decimal("338500.00")
+    assert pool_of(budget, "camp_pool").total.remaining == Decimal("398500.00")
     assert (budget.strip[1].posted, budget.strip[1].accepted) == (Count(1, 1), Count(1, 1))
 
 

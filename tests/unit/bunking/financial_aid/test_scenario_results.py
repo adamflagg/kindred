@@ -1,7 +1,7 @@
 """A scenario's results from the priced season (sub-project 9b; spec §7.4, §5.3). Real SP10a pricing over
 fictional rules: session 1000102 costs 4,000 and the camp table gives tier 2 75%, so a 60,000 family's Round 1 is
-3,000, and a 250,000 family (tier 6, 2% = 80) gets the 100 minimum. Round 1's allocation is 440,000 (camp 340,000
-after its reserves, weekends 75,000, b'mitzvah 25,000)."""
+3,000, and a 250,000 family (tier 6, 2% = 80) gets the 100 minimum. The pools' Allocated is 500,000 (camp 400,000,
+weekends 75,000, b'mitzvah 25,000), with no reserves held back (§8.2)."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _results(priced: list[PricedRequest]) -> ScenarioResults:
 def test_round1_and_its_remaining_are_the_budgets_own_figures() -> None:
     results = _results(_season())
     assert (results.round1, results.round2, results.round3) == (Decimal(3100), Decimal(0), Decimal(0))
-    assert (results.round1_allocated, results.round1_remaining) == (Decimal("440000.00"), Decimal("436900.00"))
+    assert (results.round1_allocated, results.round1_remaining) == (Decimal("500000.00"), Decimal("496900.00"))
     assert results.remaining == Decimal("496900.00")
     assert (results.requests, results.families) == (3, 3)
 
@@ -67,7 +67,7 @@ def test_round1_unmet_is_reported_below_the_line_and_never_subtracted() -> None:
     assert results.round1_unmet == Decimal(8900)
     pools = {p.pool: p for p in results.pools}
     assert (pools["camp_pool"].round1_unmet, pools[""].round1_unmet) == (Decimal(4900), Decimal(4000))
-    assert results.round1_remaining == Decimal("436900.00")  # unchanged by it
+    assert results.round1_remaining == Decimal("496900.00")  # unchanged by it
 
 
 def test_the_minimum_the_tiers_and_what_is_held() -> None:
@@ -83,8 +83,8 @@ def test_the_minimum_the_tiers_and_what_is_held() -> None:
 def test_each_pool_has_its_round1_and_its_remaining() -> None:
     pools = {p.pool: p for p in _results(_season()).pools}
     camp = pools["camp_pool"]
-    assert (camp.label, camp.round1, camp.round1_allocated) == ("Camp", Decimal(3100), Decimal("340000.00"))
-    assert camp.round1_remaining == Decimal("336900.00")
+    assert (camp.label, camp.round1, camp.round1_allocated) == ("Camp", Decimal(3100), Decimal("400000.00"))
+    assert camp.round1_remaining == Decimal("396900.00")
     assert pools["weekend_pool"].round1 == Decimal(0)
 
 
@@ -229,7 +229,7 @@ def test_round2_by_tier_counts_appeals_their_asks_and_the_round2_the_budget_coun
     ]
     assert results.round2 == Decimal(600)
     assert results.round2_not_in_tiers == Decimal(0)
-    assert (results.round2_allocated, results.round2_remaining) == (Decimal("40000.00"), Decimal("39400.00"))
+    assert (results.round2_allocated, results.round2_remaining) == (None, None)
 
 
 def _held_by_a_check(request_id: str, household: int, **fields: Any) -> PricedRequest:
@@ -321,13 +321,6 @@ def test_by_table_sums_to_by_tier_in_every_tier() -> None:
         assert sum((row.asked for row in rows), Decimal(0)) == tier.asked
 
 
-def test_round2s_allocation_is_zero_when_the_rules_set_no_round2_reserves() -> None:
-    rules = with_levers(RULES, {"budget.reserves": {}})
-    priced = _season()
-    results = scenario_results(priced, season_budget(priced, rules, outside_grants={}), document=rules)
-    assert results.round2_allocated == Decimal(0)
-
-
 def test_a_request_with_no_round2_ask_is_not_an_appeal() -> None:
     assert _results(_season()).round2_by_tier == []
 
@@ -390,3 +383,37 @@ def test_round2_rows_split_by_the_round2_table_not_the_award_table() -> None:
     results = scenario_results([teen], season_budget([teen], RULES, outside_grants={}), document=moved)
     assert [(row.table, row.tier) for row in results.by_table] == [("teen", 2)]
     assert [(row.table, row.tier, row.appeals) for row in results.round2_by_tier] == [("camp", 2, 1)]
+
+
+def test_round1_remaining_is_the_pools_allocation_less_every_round1_dollar() -> None:
+    """§8.2 (owner 10-06, open item 2 accepted): no reserves, so Round 1 may draw on the pool's whole share."""
+    results = _results(_season())
+    pools = {p.pool: p for p in results.pools}
+    camp = pools["camp_pool"]
+    assert (camp.round1_allocated, camp.round1_remaining) == (Decimal("400000.00"), Decimal("396900.00"))
+    assert (results.round1_allocated, results.round1_remaining) == (Decimal("500000.00"), Decimal("496900.00"))
+
+
+def test_round1_remaining_takes_off_round1_dollars_only_while_remaining_takes_off_every_round() -> None:
+    """Regression guard. §8.2 (owner 10-06, open item 2 accepted): Round 1 remaining is the pool's Allocated less
+    Round 1's money alone; Round 2's committed money comes off Remaining, never off Round 1 remaining."""
+    # req-a's Round 1 is 3,000 and its 1,000 appeal is capped at 600 (90% of 4,000, less 3,000).
+    results = _results([_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")})])
+    camp = {p.pool: p for p in results.pools}["camp_pool"]
+    assert (camp.round1_remaining, camp.remaining) == (Decimal("397000.00"), Decimal("396400.00"))
+    assert (results.round1_remaining, results.remaining) == (Decimal("497000.00"), Decimal("496400.00"))
+
+
+def test_round2_has_no_allocation_so_its_figures_are_null() -> None:
+    results = _results(_season())
+    assert (results.round2_allocated, results.round2_remaining) == (None, None)
+
+
+def test_a_result_stored_with_round2_figures_still_loads_and_keeps_them() -> None:
+    """Regression guard. Kept options keep their figures as recorded (ScenarioResults is extra="ignore")."""
+    stored = _results(_season()).model_dump(mode="json") | {
+        "round2_allocated": "40000.00",
+        "round2_remaining": "39400.00",
+    }
+    loaded = ScenarioResults.model_validate(stored)
+    assert loaded.round2_allocated == Decimal("40000.00")
