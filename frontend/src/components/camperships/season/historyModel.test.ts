@@ -205,6 +205,7 @@ describe('who, what kind, and the action words', () => {
     expect(actorWords('system:intake')).toBe('Intake')
     expect(actorWords('system:ledger')).toBe('Ledger sync')
     expect(actorWords('system:grant-placement')).toBe('Grant placement')
+    expect(actorWords('system:2026-sheet-load')).toBe('2026 sheet load')
     expect(actorWords('system:something_new')).toBe('Something new')
     expect(actorWords(REGISTRAR_EMAIL)).toBe(REGISTRAR_EMAIL)
   })
@@ -474,6 +475,8 @@ describe("a row's view in an opened line", () => {
     expect(lines('tick')).toEqual(['Locked by: Posted check'])
     expect(lines('ledger')).toEqual(['Locked by: CampMinder match'])
     expect(lines('placement')).toEqual(['Locked by: Grant placement'])
+    // The 2026 sheet load's rounds are read-only and labelled (D67), in the receipt's words.
+    expect(lines('reproduced')).toEqual(['Locked by: Reproduced from the sheet'])
     expect(lines('some_new_code')).toEqual(['Locked by: Some new code'])
   })
 

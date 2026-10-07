@@ -19,7 +19,8 @@ have written had 2026 been run in it, read-only and labelled:
     receipt reads as "2026, reproduced from the repaired sheet". There is no decision date (effective_on is unset).
 
 It never invents: a sheet row with no CampMinder id, a session the config can't map, a person whose request is for
-another session, no request at all, or two rows on one request, is reported and not loaded. CampMinder money on a
+another session, no request at all, two rows on one request, or a request withdrawn or a duplicate, is reported and
+not loaded (an --overrides answer from the owner can load the first kinds; nothing posts onto a request not live). CampMinder money on a
 request the sheet doesn't load, and money CampMinder could not place, are reported too. A request staff have already
 decided on is left alone. Nothing is ever "fixed": every difference goes to the report for a person to resolve.
 
@@ -28,7 +29,8 @@ the loader wrote before (found by its actor) and writes the new set, in one oper
 
     uv run python -m scripts.financial_aid.load_2026_decisions \\
         (--workbook <export.xlsx> | --sheet-id <id> [--credentials <service account key>]) \\
-        --config <parity config json> --report <report.csv> [--trackers <json>] [--year 2026] [--write]
+        --config <parity config json> --report <report.csv> [--trackers <json>] [--overrides <json>] \\
+        [--year 2026] [--write]
 
 --sheet-id exports the live Google Sheet as xlsx in memory through the service account's drive.readonly scope
 (--credentials, default $GOOGLE_SERVICE_ACCOUNT_KEY_FILE else config/google_sheets.json); nothing is stored.
@@ -36,6 +38,8 @@ the loader wrote before (found by its actor) and writes the new set, in one oper
 The console prints totals only, never a name, id or a family's amount; the --report CSV names CampMinder ids and
 amounts for the person resolving it, so keep it out of every repository. --trackers optionally maps household
 CampMinder ids to the staff trackers' letters ({"<household id>": "E"}), local and gitignored like the config.
+--overrides optionally applies the owner's answers on the cases left unloaded (a JSON list of LoadOverride), local
+and gitignored too; without one, every such case stays unloaded and reported.
 
 Environment: as load_arrival_curve. --write refuses unless POCKETBASE_URL is set; POCKETBASE_URL,
 POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD reach the superuser client. A dry run reads PocketBase too (the
@@ -54,18 +58,20 @@ import secrets
 import string
 import sys
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
-from typing import Any, BinaryIO, Final, Protocol
+from typing import Any, BinaryIO, Final, Literal, Protocol
 
 import jwt
 import requests
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, model_validator
 
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
+from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED
 from api.services.financial_aid_reconciliation import CampLine
 from api.services.financial_aid_rules_service import PRICING_SECTIONS, AidRulesRepository, FinancialAidRulesService
 from bunking.financial_aid.calculator import ApplicationInputs, CalcResult, RequestInputs, calculate
@@ -98,6 +104,9 @@ _UNMATCHED: Final = "unmatched"
 _UNPLACED: Final = "Q-L12"
 _OUTSIDE: Final = "outside"  # money outside the budget (D121); never a program's name
 _UNCLASSIFIED: Final = "unclassified"
+# The statuses a request is still live in (decisions_service._LIVE): a withdrawn or duplicate request is never
+# posted onto, only reported (coordinator ruling 10-07, with the owner's "never invent").
+_LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 _ID_ALPHABET: Final = string.ascii_lowercase + string.digits
 
 
@@ -147,6 +156,66 @@ class LoadRequest:
     person_cm_id: int
     session_cm_id: int
     status: str
+
+
+# --- the owner's overrides ---------------------------------------------------------------------------------------------
+
+Decision = Literal["session", "skip", "person", "campminder"]
+
+
+class LoadOverride(BaseModel):
+    """One of the owner's answers on a case the load would otherwise leave unloaded (10-07: "bring them to me for
+    insight"), as data so an answer needs no code change. Read from a local, gitignored --overrides file.
+
+    A sheet-row decision picks the included row by its sheet session (the session the sheet's text maps to), its
+    Personal Id (`person`; null for a row without one), and, when given, its family id (`household`) and `sheet_row`:
+      * "session": load the row onto the person's request in `session` (CampMinder's, or the sheet's own reading);
+      * "skip": leave the row out (one of two rows on one request), reported;
+      * "person": a row without a Personal Id is `to_person` (and `to_household`): it needs `sheet_row`.
+    A request decision picks a request by `person` (0 for a household request), `household` and `session`:
+      * "campminder": record CampMinder's net money for that family x session as its Round 1, posted.
+    An override carries no money of its own. One that matches nothing, or a row two overrides match, is reported and
+    changes nothing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    decision: Decision
+    person: int | None = None
+    household: int | None = None
+    sheet_session: int | None = None
+    sheet_row: int | None = None
+    session: int | None = None
+    to_person: int | None = None
+    to_household: int | None = None
+    note: str = ""
+
+    @model_validator(mode="after")
+    def _complete(self) -> LoadOverride:
+        need: dict[Decision, tuple[str, ...]] = {
+            "session": ("sheet_session", "session"),
+            "skip": ("sheet_session",),
+            "person": ("sheet_session", "sheet_row", "to_person"),
+            "campminder": ("person", "household", "session"),
+        }
+        missing = [name for name in need[self.decision] if getattr(self, name) is None]
+        if missing:
+            raise ValueError(f"a {self.decision!r} override needs {', '.join(missing)}")
+        return self
+
+    @property
+    def on_sheet_row(self) -> bool:
+        return self.decision != "campminder"
+
+    def picks(self, award: SheetAward) -> bool:
+        return (
+            self.sheet_session == award.session_cm_id
+            and self.person == award.person_cm_id
+            and self.household in (None, award.household_cm_id)
+            and self.sheet_row in (None, award.row)
+        )
+
+
+_OVERRIDES: Final = TypeAdapter(list[LoadOverride])
 
 
 # --- the plan -----------------------------------------------------------------------------------------------------------
@@ -486,6 +555,51 @@ def _match(award: SheetAward, requests: Sequence[LoadRequest]) -> tuple[LoadRequ
     return None, "no_request"
 
 
+def _override_words(rule: LoadOverride) -> dict[str, Any]:
+    """What a loaded row's receipt keeps of the override it was loaded under."""
+    if rule.decision == "session":
+        return {"decision": "session", "sheet_session": rule.sheet_session}
+    return {"decision": rule.decision}
+
+
+def _campminder_only(
+    overrides: Sequence[LoadOverride],
+    requests: Sequence[LoadRequest],
+    matched: Mapping[str, Sequence[SheetAward]],
+    staff: Collection[str],
+    used: set[LoadOverride],
+    report: Any,
+) -> dict[str, LoadOverride]:
+    """The requests a "campminder" override names that may take one: live, untouched by staff, with no sheet row."""
+    out: dict[str, LoadOverride] = {}
+    for rule in overrides:
+        if rule.on_sheet_row:
+            continue
+        found = [
+            r
+            for r in requests
+            if (r.person_cm_id, r.household_cm_id, r.session_cm_id) == (rule.person, rule.household, rule.session)
+        ]
+        if not found:
+            continue
+        used.add(rule)
+        fields = {"household_cm_id": rule.household, "person_cm_id": rule.person, "session_cm_id": rule.session}
+        if len(found) > 1 or found[0].id in out:
+            report(None, "override_ambiguous", **fields, note="the override names more than one request")
+            out.pop(found[0].id, None)
+            continue
+        (request,) = found
+        if request.id in matched:
+            report(None, "override_conflict", **fields, note="the sheet has a row for this request")
+        elif request.id in staff:
+            report(None, "staff_rows", **fields, note="staff have already decided on this request; left as it is")
+        elif request.status not in _LIVE:
+            report(None, "request_not_live", **fields, note=f"the request is {request.status}: never posted onto")
+        else:
+            out[request.id] = rule
+    return out
+
+
 def _sheet_total(award: SheetAward) -> Decimal:
     return (award.r1 or ZERO) + (award.r2 or ZERO) + award.extra
 
@@ -499,6 +613,7 @@ def plan_load(
     *,
     rules_version: int,
     trackers: Mapping[int, str],
+    overrides: Sequence[LoadOverride] = (),
 ) -> LoadPlan:
     plan = LoadPlan()
 
@@ -515,8 +630,26 @@ def plan_load(
             }
         plan.report.append(ReportRow(kind=kind, tracker=tracker, **fields))
 
+    used: set[LoadOverride] = set()
+    applied: dict[int, LoadOverride] = {}  # sheet row -> the override it was loaded under
     matched: dict[str, list[SheetAward]] = defaultdict(list)
     for award in awards:
+        picked = [o for o in overrides if o.on_sheet_row and o.picks(award)]
+        used.update(picked)
+        if len(picked) > 1:
+            report(award, "override_ambiguous", note=f"{len(picked)} overrides name this row: none applied")
+            continue
+        if picked:
+            (rule,) = picked
+            if rule.decision == "skip":
+                report(award, "override_skip", note=rule.note)
+                continue
+            applied[award.row] = rule
+            if rule.decision == "session":
+                award = replace(award, session_cm_id=rule.session)
+            else:
+                household = rule.to_household if rule.to_household is not None else award.household_cm_id
+                award = replace(award, person_cm_id=rule.to_person, household_cm_id=household)
         request, why = _match(award, requests)
         if request is None:
             report(award, why)
@@ -532,6 +665,7 @@ def plan_load(
 
     # Each request the sheet loads, reproduced by the engine; then CampMinder's money per family x session.
     made: dict[str, tuple[SheetAward, _Reproduced]] = {}
+    loaded_only: set[Group] = set()
     for rid, found in matched.items():
         if len(found) > 1:
             for award in found:
@@ -541,11 +675,56 @@ def plan_load(
         if rid in staff:
             report(award, "staff_rows", note="staff have already decided on this request; left as it is")
             continue
+        if by_id[rid].status not in _LIVE:
+            report(award, "request_not_live", note=f"the request is {by_id[rid].status}: never posted onto")
+            continue
         made[rid] = (award, reproduce(award, by_id[rid], rules, rules_version))
+
+    # The owner's "campminder" answers: a request the sheet has no row for records CampMinder's money as Round 1.
+    only = _campminder_only(overrides, requests, matched, staff, used, report)
 
     groups: dict[Group, list[str]] = defaultdict(list)
     for rid in made:
         groups[_group(by_id[rid])].append(rid)
+    alone: dict[Group, list[str]] = defaultdict(list)
+    for rid in only:
+        alone[_group(by_id[rid])].append(rid)
+    for group, rids in sorted(alone.items()):
+        household, session = group
+        cm_only: Decimal | None = money.get(group, ZERO if household not in unplaced else None)
+        if group in groups or len(rids) > 1 or cm_only is None:
+            for rid in rids:
+                request = by_id[rid]
+                kind = "campminder_unmatched" if cm_only is None else "override_conflict"
+                why = (
+                    "CampMinder's money in this household could not be placed by session: nothing recorded"
+                    if cm_only is None
+                    else "another request in this family x session is loaded too: CampMinder's money is not split"
+                )
+                report(None, kind, household_cm_id=household, person_cm_id=request.person_cm_id,
+                       session_cm_id=session, note=why)  # fmt: skip
+            continue
+        (rid,) = rids
+        tracker = trackers.get(household, _UNCLASSIFIED)
+        report(None, "campminder_only", tracker, household_cm_id=household, person_cm_id=by_id[rid].person_cm_id,
+               session_cm_id=session, campminder_amount=cm_only, posted_amount=cm_only,
+               note=only[rid].note)  # fmt: skip
+        plan.campminder_on_loaded += cm_only
+        plan.creates.append(
+            PlannedEvent(
+                rid, 1, "post", cm_only, lock_source=REPRODUCED, rules_version=rules_version,
+                snapshot={
+                    "round": 1, "decided": str(cm_only), "result": None, "inputs": None,
+                    "reproduced": {
+                        "sheet_row": None, "stage": "", "sheet": None, "engine": None, "released_holds": [],
+                        "campminder": str(cm_only), "override": {"decision": "campminder"},
+                    },
+                },
+                note="Reproduced from CampMinder's posted money; the 2026 sheet has no row for it",
+            )
+        )  # fmt: skip
+        plan.loaded.append(LoadedRequest(rid, household, ZERO, ZERO, cm_only, False, cm_only))
+        loaded_only.add(group)
     posted: dict[Slot, Decimal] = {}
     source: dict[str, Decimal | None] = {}
     for group, rids in sorted(groups.items()):
@@ -593,6 +772,8 @@ def plan_load(
                 amount = posted[(rid, event.round)]
                 snapshot = {**(event.snapshot or {})}
                 snapshot["reproduced"] = {**snapshot["reproduced"], "campminder": None if cm is None else str(amount)}
+                if (chosen := applied.get(award.row)) is not None:
+                    snapshot["reproduced"]["override"] = _override_words(chosen)
                 event = replace(
                     event,
                     amount=amount,
@@ -614,7 +795,13 @@ def plan_load(
             )
         )
 
-    loaded_groups = set(groups)
+    loaded_groups = set(groups) | loaded_only
+    for rule in overrides:
+        if rule not in used:
+            report(None, "override_unused", household_cm_id=rule.household,
+                   person_cm_id=rule.person if rule.person is not None else rule.to_person,
+                   session_cm_id=rule.session if rule.decision == "campminder" else rule.sheet_session,
+                   sheet_row=rule.sheet_row, note=f"{rule.decision} override matched nothing")  # fmt: skip
     for group, amount in sorted([*money.items(), *no_request.items()]):
         if group in loaded_groups:
             continue
@@ -870,6 +1057,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--trackers", type=Path, default=None)
+    parser.add_argument(
+        "--overrides", type=Path, default=None, help="the owner's answers, local and gitignored (see LoadOverride)"
+    )
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--write", action="store_true")
     return parser
@@ -888,13 +1078,24 @@ async def _run(args: argparse.Namespace, store: LoadStore) -> int:
     except SheetLayoutError as exc:
         print(f"{exc}. Nothing was written.", file=sys.stderr)
         return 2
+    overrides: list[LoadOverride] = []
+    if args.overrides is not None:
+        try:
+            overrides = _OVERRIDES.validate_json(args.overrides.read_bytes())
+        except ValidationError as exc:
+            # Where, never what: the values are CampMinder ids.
+            where = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['type']}" for e in exc.errors())
+            print(f"The overrides file is not valid ({where}). Nothing was written.", file=sys.stderr)
+            return 2
     trackers: dict[int, str] = {}
     if args.trackers is not None:
         trackers = {int(k): str(v) for k, v in json.loads(args.trackers.read_text(encoding="utf-8")).items()}
     requests, existing, lines = await asyncio.gather(
         store.requests(args.year), store.events_of(args.year), store.camp_lines(args.year)
     )
-    plan = plan_load(awards, requests, lines, existing, rules, rules_version=version, trackers=trackers)
+    plan = plan_load(
+        awards, requests, lines, existing, rules, rules_version=version, trackers=trackers, overrides=overrides
+    )
     write_report(args.report, plan.report)
     print(f"rules: {args.year} v{version}")
     for line in summary_lines(plan, totals):

@@ -67,9 +67,9 @@ def _award(row: int = 2, **fields: Any) -> SheetAward:
 
 
 def _request(
-    rid: str = EMMA, *, household: int = 1000001, person: int = 1000002, session: int = 1000102
+    rid: str = EMMA, *, household: int = 1000001, person: int = 1000002, session: int = 1000102, status: str = "active"
 ) -> LoadRequest:
-    return LoadRequest(id=rid, household_cm_id=household, person_cm_id=person, session_cm_id=session, status="active")
+    return LoadRequest(id=rid, household_cm_id=household, person_cm_id=person, session_cm_id=session, status=status)
 
 
 def _line(
@@ -95,6 +95,7 @@ def _plan(
     existing: Sequence[DecisionEvent] = (),
     rules: AidRules = RULES,
     trackers: dict[int, str] | None = None,
+    overrides: Sequence[loader.LoadOverride] = (),
 ) -> loader.LoadPlan:
     return plan_load(
         awards,
@@ -104,6 +105,7 @@ def _plan(
         rules,
         rules_version=3,
         trackers=trackers or {},
+        overrides=overrides,
     )
 
 
@@ -373,6 +375,173 @@ def test_two_sheet_rows_on_one_request_are_both_reported_and_neither_is_loaded()
     plan = _plan([_award(row=2), _award(row=3)], lines=[_line("3000")])
     assert [e for e in plan.creates if e.request_id == EMMA] == []
     assert [r.sheet_row for r in plan.report if r.kind == "duplicate"] == [2, 3]
+
+
+# --- requests that are no longer live (coordinator ruling 10-07: skip and report, never post onto them) -------------
+
+
+@pytest.mark.parametrize("status", ["withdrawn", "duplicate"])
+def test_a_sheet_row_on_a_withdrawn_or_duplicate_request_is_reported_and_never_posted_onto(status: str) -> None:
+    plan = _plan([_award()], [_request(status=status)], [_line("3000")])
+    assert plan.creates == []
+    (row,) = [r for r in plan.report if r.kind == "request_not_live"]
+    assert (row.sheet_row, row.person_cm_id) == (2, 1000002)
+    assert status in row.note
+
+
+def test_an_unmatched_session_request_is_still_live_and_loads() -> None:
+    plan = _plan([_award()], [_request(status="unmatched_session")], [_line("3000")])
+    assert _posts(plan) == {1: Decimal(3000)}
+
+
+# --- the owner's overrides: each group's answer as data, never code (owner rulings pending 10-07) -------------------
+
+
+def _override(decision: str, **fields: Any) -> loader.LoadOverride:
+    return loader.LoadOverride(decision=decision, **fields)
+
+
+def test_without_an_override_a_session_mismatch_stays_unloaded() -> None:
+    plan = _plan([_award(session_cm_id=1000101)], lines=[_line("3000")])
+    assert plan.creates == []
+    assert "session_mismatch" in _kinds(plan)
+
+
+def test_a_session_override_loads_the_sheet_row_onto_the_persons_request_in_that_session() -> None:
+    award = _award(session_cm_id=1000101)  # the sheet says Session B; the request and CampMinder say Session A
+    rule = _override("session", person=1000002, sheet_session=1000101, session=1000102, note="follows CampMinder")
+    plan = _plan([award], lines=[_line("3000")], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(3000)}
+    post = next(e for e in plan.creates if e.kind == "post")
+    assert _snap(post)["reproduced"]["override"] == {"decision": "session", "sheet_session": 1000101}
+    assert "session_mismatch" not in _kinds(plan)
+
+
+def test_a_session_override_is_held_to_its_household_and_sheet_row_when_it_names_them() -> None:
+    award = _award(session_cm_id=1000101)
+    elsewhere = _override("session", person=1000002, household=1000099, sheet_session=1000101, session=1000102)
+    other_row = _override("session", person=1000002, sheet_session=1000101, sheet_row=9, session=1000102)
+    plan = _plan([award], lines=[_line("3000")], overrides=[elsewhere, other_row])
+    assert plan.creates == []
+    assert _kinds(plan)["override_unused"] == 2
+
+
+def test_a_skip_override_leaves_one_of_two_rows_on_a_request_out_and_loads_the_other() -> None:
+    awards = [_award(row=2), _award(row=3, r1=Decimal(500))]
+    rule = _override("skip", person=1000002, sheet_session=1000102, sheet_row=3)
+    plan = _plan(awards, lines=[_line("3000")], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert "duplicate" not in _kinds(plan)
+    (skipped,) = [r for r in plan.report if r.kind == "override_skip"]
+    assert skipped.sheet_row == 3
+
+
+def test_a_person_override_names_the_campminder_person_a_weekend_row_lacks() -> None:
+    award = _award(row=4, person_cm_id=None, household_cm_id=None)
+    rule = _override("person", sheet_row=4, sheet_session=1000102, to_person=1000002, to_household=1000001)
+    plan = _plan([award], lines=[_line("3000")], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(3000)}
+    assert "no_campminder_id" not in _kinds(plan)
+
+
+def test_a_campminder_override_records_campminders_money_as_round_1_on_a_request_with_no_sheet_row() -> None:
+    rule = _override("campminder", person=1000002, household=1000001, session=1000102)
+    plan = _plan([], lines=[_line("2500")], overrides=[rule], trackers={1000001: "C"})
+    (post,) = plan.creates  # posted only: with no sheet row there is no stage, so nothing is accepted
+    assert (post.request_id, post.round, post.kind, post.amount) == (EMMA, 1, "post", Decimal(2500))
+    assert (post.lock_source, post.rules_version) == ("reproduced", 3)
+    assert _snap(post)["reproduced"] == {
+        "sheet_row": None,
+        "stage": "",
+        "sheet": None,
+        "engine": None,
+        "released_holds": [],
+        "campminder": "2500",
+        "override": {"decision": "campminder"},
+    }
+    (row,) = plan.report
+    assert (row.kind, row.tracker, row.posted_amount, row.campminder_amount) == (
+        "campminder_only",
+        "C",
+        Decimal(2500),
+        Decimal(2500),
+    )
+    assert plan.campminder_on_loaded == Decimal(2500)
+    assert plan.campminder_unloaded == Decimal(0)
+    again = _plan([], lines=[_line("2500")], existing=_as_events(plan), overrides=[rule])
+    assert again.unchanged
+
+
+def test_a_campminder_override_on_a_request_campminder_holds_nothing_for_records_zero() -> None:
+    rule = _override("campminder", person=1000002, household=1000001, session=1000102)
+    plan = _plan([], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(0)}
+
+
+def test_a_campminder_override_is_never_applied_where_campminders_money_cannot_be_placed() -> None:
+    requests = [_request(), _request(LIAM, person=1000003, session=1000101)]
+    unplaceable = _line("900", person=0, session=0)  # two sessions in the household: CampMinder can't tell which
+    rule = _override("campminder", person=1000002, household=1000001, session=1000102)
+    plan = _plan([], requests, [unplaceable], overrides=[rule])
+    assert plan.creates == []
+    assert "campminder_unmatched" in _kinds(plan)
+
+
+def test_a_campminder_override_never_shares_a_family_and_session_the_sheet_loads() -> None:
+    requests = [_request(), _request(LIAM, person=1000003)]
+    rule = _override("campminder", person=1000003, household=1000001, session=1000102)
+    plan = _plan([_award()], requests, [_line("3000")], overrides=[rule])
+    assert set(_posts(plan, LIAM)) == set()
+    assert "override_conflict" in _kinds(plan)
+
+
+def test_a_campminder_override_on_a_withdrawn_request_is_reported_and_never_posted_onto() -> None:
+    rule = _override("campminder", person=1000002, household=1000001, session=1000102)
+    plan = _plan([], [_request(status="withdrawn")], overrides=[rule])
+    assert plan.creates == []
+    assert "request_not_live" in _kinds(plan)
+
+
+def test_an_override_that_matches_nothing_is_reported_and_changes_nothing() -> None:
+    rule = _override("campminder", person=1000077, household=1000076, session=1000102)
+    plan = _plan([_award()], lines=[_line("3000")], overrides=[rule])
+    assert _posts(plan) == {1: Decimal(3000)}
+    (row,) = plan.report
+    assert (row.kind, row.person_cm_id, row.household_cm_id, row.session_cm_id) == (
+        "override_unused",
+        1000077,
+        1000076,
+        1000102,
+    )
+
+
+def test_two_overrides_on_one_sheet_row_are_reported_and_neither_is_applied() -> None:
+    award = _award(session_cm_id=1000101)
+    rules = [
+        _override("session", person=1000002, sheet_session=1000101, session=1000102),
+        _override("skip", person=1000002, sheet_session=1000101),
+    ]
+    plan = _plan([award], lines=[_line("3000")], overrides=rules)
+    assert plan.creates == []
+    assert "override_ambiguous" in _kinds(plan)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"decision": "session", "person": 1, "sheet_session": 2},  # which session?
+        {"decision": "skip", "person": 1},  # which sheet session?
+        {"decision": "person", "sheet_session": 2, "to_person": 3},  # which sheet row?
+        {"decision": "campminder", "person": 1, "session": 2},  # which household?
+        {"decision": "invent", "person": 1, "sheet_session": 2},
+        {"decision": "skip", "person": 1, "sheet_session": 2, "amount": 500},  # an override never carries money
+    ],
+)
+def test_an_override_missing_what_its_decision_needs_is_refused(fields: dict[str, Any]) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        loader.LoadOverride.model_validate(fields)
 
 
 # --- re-running ------------------------------------------------------------------------------------------------------
@@ -661,6 +830,31 @@ def test_write_commits_once_and_a_second_run_finds_it_already_loaded(
     assert _run(tmp_path, store, "--write", monkeypatch=monkeypatch) == 0
     assert len(store.commits) == 1
     assert "already loaded" in capsys.readouterr().out
+
+
+def test_the_command_reads_the_overrides_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    overrides = tmp_path / "overrides.json"
+    overrides.write_text(
+        json.dumps([{"decision": "skip", "person": 1000002, "sheet_session": 1000102, "note": "fictional"}])
+    )
+    store = _Store()
+    assert _run(tmp_path, store, "--overrides", str(overrides), monkeypatch=monkeypatch) == 0
+    assert "override_skip" in (tmp_path / "r.csv").read_text()
+
+
+def test_the_command_refuses_an_invalid_overrides_file_without_echoing_its_ids(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    overrides = tmp_path / "overrides.json"
+    overrides.write_text(json.dumps([{"decision": "session", "person": 1000002, "sheet_session": 1000102}]))
+    store = _Store()
+    assert _run(tmp_path, store, "--overrides", str(overrides), monkeypatch=monkeypatch) == 2
+    err = capsys.readouterr().err
+    assert "Nothing was written" in err
+    assert "1000002" not in err
+    assert store.commits == []
 
 
 # --- --sheet-id: the live sheet through the service account (the owner's January reload path) -------------------------
