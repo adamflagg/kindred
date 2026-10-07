@@ -18,6 +18,8 @@ import {
   cellHref,
   cellValue,
   cellWords,
+  confirmedHref,
+  confirmedWords,
   overWords,
   parseFolded,
   pendingNote,
@@ -389,6 +391,35 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     expect(opened(strip?.href ?? null, NEEDS_ROWS)).toEqual(['reqround1a0001', 'reqround1b0001'])
   })
 
+  it("a round's amber line opens that round's posted, counted, not-reconciled rows (Task 7 I1)", () => {
+    const unreconciled = (id: string, over: Partial<ApiAidGridRow>) =>
+      gridRow({ request_id: id, queues: ['not_reconciled'], ...over })
+    const rowsOut = [
+      // Posted and counted in Round 1, Pool A: listed on Pool A and on its Round 1 line.
+      unreconciled('reqr1posted0001', { rounds: [roundOut(1, 'posted', { posted: 900 })] }),
+      // Posted in Round 1 outside the budget: the figure never counts it.
+      unreconciled('reqr1outside001', {
+        rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
+      }),
+      // Round 1 posted, Round 2 only needs an offer: not Round 2's unconfirmed.
+      unreconciled('reqr2needs00001', {
+        rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+      }),
+      // Pool B, Round 1 posted and counted.
+      unreconciled('reqpoolb0000001', {
+        pool: 'pool_b',
+        rounds: [roundOut(1, 'posted', { posted: 900 })],
+      }),
+    ]
+    const rows = budgetRows(BUDGET, EVERY)
+    const on = (key: string) => opened(confirmedHref(row(rows, key), LIVE), rowsOut)
+    expect(on('pool_a:1')).toEqual(['reqr1posted0001', 'reqr2needs00001'])
+    expect(on('pool_a:2')).toEqual([])
+    expect(on('pool_a:all')).toEqual(['reqr1posted0001', 'reqr2needs00001'])
+    expect(on('total')).toEqual(['reqr1posted0001', 'reqr2needs00001', 'reqpoolb0000001'])
+    expect(on('pool_a:1')).not.toContain('reqr1outside001')
+  })
+
   it("a round's Pending approval opens that round's counted rows (fix-wave addition)", () => {
     const pendingRows = [
       queued('reqpend3a00001', 'pending_approval', {
@@ -669,5 +700,90 @@ describe('the URL and the download (D15, D70, §11)', () => {
   it('leaves a count empty when the server sent none (a past date)', () => {
     const rows = budgetCsvRows(budgetRows(pastBudget(), { pool: 'pool_a', folded: new Set() }))
     expect(rows[1]).toEqual(['Pool A', '1', '800000', '764540', '598300', '', '', '', '', ''])
+  })
+})
+
+describe('the confirmed share under Posted (D153; owner ruling 2026-10-02)', () => {
+  const rows = budgetRows(BUDGET, EVERY)
+
+  it("words the server's count and amount, on pool, round and total lines alike", () => {
+    expect(confirmedWords(row(rows, 'pool_a:1'))).toBe('4 not yet confirmed · $5,200')
+    expect(confirmedWords(row(rows, 'pool_a:2'))).toBe('2 not yet confirmed · $1,800')
+    expect(confirmedWords(row(rows, 'pool_a:all'))).toBe('6 not yet confirmed · $7,000')
+    expect(confirmedWords(row(rows, 'total'))).toBe('6 not yet confirmed · $7,000')
+  })
+
+  it('says nothing when the read sends none, or a count of 0', () => {
+    expect(confirmedWords(row(rows, 'pool_a:3'))).toBeNull()
+    const zero = { ...row(rows, 'pool_a:1') }
+    const none = {
+      ...zero,
+      cell: { ...zero.cell, unconfirmed: { count: 0, families: 0, amount: 0 } },
+    }
+    expect(confirmedWords(none)).toBeNull()
+    expect(confirmedWords(row(budgetRows(pastBudget(), EVERY), 'pool_a:1'))).toBeNull()
+  })
+
+  it("keeps it off the Pending approval line, which shares its round's cell", () => {
+    // Round 3 carries both a pending amount and a confirmed share, so its two lines share the share.
+    const round3 = { unconfirmed: { count: 1, families: 1, amount: 400 } }
+    const poolA = BUDGET.pools[0]
+    if (poolA === undefined) throw new Error('no Pool A')
+    const budget = {
+      ...BUDGET,
+      pools: [
+        { ...poolA, rounds: poolA.rounds.map((r) => (r.round === 3 ? { ...r, ...round3 } : r)) },
+      ],
+    }
+    const both = budgetRows(budget, EVERY)
+    expect(confirmedWords(row(both, 'pool_a:3'))).toBe('1 not yet confirmed · $400')
+    expect(confirmedWords(row(both, 'pool_a:3:pending'))).toBeNull()
+  })
+
+  it("opens Not reconciled on the row's pool, and on none for the total", () => {
+    expect(confirmedHref(row(rows, 'pool_a:1'), LIVE)).toBe(
+      '/aid/requests?view=not-reconciled&pool=pool_a&posted=1&counted=1&year=2027'
+    )
+    expect(confirmedHref(row(rows, 'pool_a:all'), LIVE)).toBe(
+      '/aid/requests?view=not-reconciled&pool=pool_a&posted=all&counted=1&year=2027'
+    )
+    expect(confirmedHref(row(rows, 'total'), LIVE)).toBe(
+      '/aid/requests?view=not-reconciled&posted=all&counted=1&year=2027'
+    )
+  })
+
+  it('opens the rows posted in that round, though they have moved on to the next (owner 10-06)', () => {
+    // Posted in Round 1 and short in CampMinder, now needing an offer in Round 2.
+    const movedOn = gridRow({
+      request_id: 'reqmovedon00001',
+      rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+      queues: ['not_reconciled', 'needs_offer'],
+    })
+    // Not reconciled, but posted only in Round 2.
+    const round2 = gridRow({
+      request_id: 'reqroundtwo0001',
+      rounds: [roundOut(2, 'posted', { posted: 300 })],
+      stage: { round: 2, code: 'posted', label: 'R2 · Posted' },
+      queues: ['not_reconciled'],
+    })
+    const params = new URL(confirmedHref(row(rows, 'pool_a:1'), LIVE) ?? '', 'http://x.test')
+      .searchParams
+    expect(params.get('round')).toBeNull()
+    const { filters } = gridFiltersFrom(params)
+    const view = requestView(params.get('view')).key
+    expect(filterRows([movedOn, round2], view, filters).map((r) => r.request_id)).toEqual([
+      'reqmovedon00001',
+    ])
+  })
+
+  it('opens nothing for the No pool line, for nothing to say, or on a past date', () => {
+    const noPool = { ...row(rows, 'pool_a:1'), pool: '' }
+    expect(confirmedHref(noPool, LIVE)).toBeNull()
+    expect(confirmedHref(row(rows, 'pool_a:3'), LIVE)).toBeNull()
+    // Not reconciled is today's queue: the Requests page refuses it on a past date.
+    const unmasked = budgetRows(pastBudgetUnmasked(), EVERY)
+    expect(confirmedWords(row(unmasked, 'pool_a:1'))).toBe('4 not yet confirmed · $5,200')
+    expect(confirmedHref(row(unmasked, 'pool_a:1'), PAST)).toBeNull()
   })
 })
