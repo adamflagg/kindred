@@ -180,13 +180,15 @@ describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
 describe("Season › History's keys (D49)", () => {
   it('sit under the history prefix, apart per season, query and operation', () => {
     const query = { kind: 'holds', per_page: '50' }
-    expect(queryKeys.aidHistory(2027, query).slice(0, 2)).toEqual(queryKeys.aidHistoryPrefix())
+    expect(queryKeys.aidHistoryPages(2027, query).slice(0, 2)).toEqual(queryKeys.aidHistoryPrefix())
     expect(queryKeys.aidHistoryOperation(2027, 'op0000000000003').slice(0, 2)).toEqual(
       queryKeys.aidHistoryPrefix()
     )
-    expect(queryKeys.aidHistory(2027, query)).not.toEqual(queryKeys.aidHistory(2028, query))
-    expect(queryKeys.aidHistory(2027, query)).not.toEqual(
-      queryKeys.aidHistory(2027, { per_page: '50' })
+    expect(queryKeys.aidHistoryPages(2027, query)).not.toEqual(
+      queryKeys.aidHistoryPages(2028, query)
+    )
+    expect(queryKeys.aidHistoryPages(2027, query)).not.toEqual(
+      queryKeys.aidHistoryPages(2027, { per_page: '50' })
     )
     expect(queryKeys.aidHistoryPrefix()[0]).toBe(queryKeys.aidPrefix()[0])
   })
