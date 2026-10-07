@@ -101,6 +101,12 @@ describe('useAidHistoryOperation', () => {
     expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
   })
 
+  it('reads nothing while { enabled: false }, for a caller that opens it later', async () => {
+    renderHook(() => useAidHistoryOperation('op0000000000003', { enabled: false }), { wrapper })
+    await settle()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('answers a 404 at once, without the retries a fault gets', async () => {
     // A client that would retry three times, at once: only the hook's own rule stops it.
     client = new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } })

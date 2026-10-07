@@ -38,8 +38,11 @@ export function useAidHistory(query: Readonly<Record<string, string>>) {
   })
 }
 
-/** One operation's rows, read when its line opens (D49: a bulk operation expands to its rows). */
-export function useAidHistoryOperation(operationId: string) {
+/** One operation's rows, read when its line opens (D49: a bulk operation expands to its rows); `enabled` holds the read until a caller needs it. */
+export function useAidHistoryOperation(
+  operationId: string,
+  { enabled = true }: { enabled?: boolean } = {}
+) {
   const year = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   const { isLoading: authLoading } = useAuth()
@@ -47,7 +50,7 @@ export function useAidHistoryOperation(operationId: string) {
   return useQuery({
     queryKey: queryKeys.aidHistoryOperation(year, operationId),
     queryFn: () => fetchAidHistoryOperation(fetchWithAuth, year, operationId),
-    enabled: year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
+    enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
     retry: retryUnlessMissing,
   })
 }

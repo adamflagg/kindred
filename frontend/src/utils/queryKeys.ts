@@ -757,6 +757,8 @@ export const queryKeys = {
   aidHistoryPrefix: () => ['financial-aid', 'history'] as const,
   aidHistory: (year: number, query: Readonly<Record<string, string>>) =>
     ['financial-aid', 'history', year, 'page', query] as const,
+  aidHistoryPages: (year: number, query: Readonly<Record<string, string>>) =>
+    ['financial-aid', 'history', year, 'pages', query] as const,
   aidHistoryOperation: (year: number, operationId: string) =>
     ['financial-aid', 'history', year, 'operation', operationId] as const,
   aidScenariosPrefix: () => ['financial-aid', 'scenarios'] as const,
