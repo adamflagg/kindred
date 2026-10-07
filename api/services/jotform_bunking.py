@@ -33,6 +33,7 @@ from api.schemas.lodging import (
     BunkingRequestSummary,
     BunkingRequestVersion,
     ComingWithToken,
+    JotformAccommodationAnswer,
     JotformNeedAnswer,
 )
 from api.services.adult_need_answers import (
@@ -268,12 +269,14 @@ ROLE_COMING_WITH = "coming_with"
 ROLE_HOUSING_ACCOMMODATION = "housing_accommodation"
 ROLE_ACCOMMODATION_DETAILS = "accommodation_details"
 ROLE_CPAP = "cpap"
+ROLE_DIRECTOR_NOTES = "director_notes"
 ROSTER_ROLES: tuple[str, ...] = (
     ROLE_BUNKING_REQUEST,
     ROLE_COMING_WITH,
     ROLE_HOUSING_ACCOMMODATION,
     ROLE_ACCOMMODATION_DETAILS,
     ROLE_CPAP,
+    ROLE_DIRECTOR_NOTES,
 )
 _LIVE_MATCHES = frozenset({"auto", "staff"})
 
@@ -297,6 +300,7 @@ class JotformFiling:
     housing_accommodation: str = ""
     accommodation_details: str = ""
     cpap: str = ""
+    director_notes: str = ""
     staff_linked: bool = False
 
 
@@ -376,6 +380,7 @@ def _filings(rows: JotformBunkingRows, *, session_cm_id: int) -> list[tuple[Any,
                     housing_accommodation=_role_text(by_question, field_map, ROLE_HOUSING_ACCOMMODATION),
                     accommodation_details=_role_text(by_question, field_map, ROLE_ACCOMMODATION_DETAILS),
                     cpap=_role_text(by_question, field_map, ROLE_CPAP),
+                    director_notes=_role_text(by_question, field_map, ROLE_DIRECTOR_NOTES),
                     staff_linked=status in ("staff", "write_in"),
                 ),
             )
@@ -405,7 +410,6 @@ def jotform_need_disagreements(latest: JotformFiling, registration: Mapping[int,
                     need="accommodation",
                     registration=_registration_label(raw, reg),
                     jotform="Yes" if jot else "No",
-                    detail=latest.accommodation_details,
                     submitted_at=latest.submitted_at,
                 )
             )
@@ -423,6 +427,19 @@ def jotform_need_disagreements(latest: JotformFiling, registration: Mapping[int,
                 )
             )
     return says
+
+
+def jotform_accommodation(latest: JotformFiling, registration: Mapping[int, str]) -> JotformAccommodationAnswer:
+    """The latest filing's accommodation answer and comment, unconditionally:
+    unlike `jotform_need_disagreements`, agreement drops nothing."""
+    raw = registration.get(HOUSING_ACCOMODATION_FIELD_CM_ID)
+    answer = latest.housing_accommodation
+    return JotformAccommodationAnswer(
+        answer=("Yes" if parse_bool_field_value(answer) else "No") if answer else "",
+        registration=_registration_label(raw, parse_bool_field_value(raw or "")),
+        details=latest.accommodation_details,
+        submitted_at=latest.submitted_at,
+    )
 
 
 def build_bunking_request(
@@ -447,4 +464,6 @@ def build_bunking_request(
         submitted=[f.submitted_at for f in filings],
         staff_linked=any(f.staff_linked for f in filings),
         jotform_says=jotform_need_disagreements(latest, registration or {}),
+        accommodation=jotform_accommodation(latest, registration or {}),
+        director_notes=latest.director_notes,
     )

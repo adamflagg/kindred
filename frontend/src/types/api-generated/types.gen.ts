@@ -1654,6 +1654,11 @@ export type BunkingRequestSummary = {
    * Jotform Says
    */
   jotform_says?: Array<JotformNeedAnswer>
+  accommodation?: JotformAccommodationAnswer | null
+  /**
+   * Director Notes
+   */
+  director_notes?: string
 }
 
 /**
@@ -7596,6 +7601,35 @@ export type IssueOut = {
 }
 
 /**
+ * JotformAccommodationAnswer
+ *
+ * The latest filing's housing-accommodation answer and its comment,
+ * whatever registration says. Jotform has no conditional logic on the
+ * comment, so a guest who answers No can still write a real need; it used to
+ * ride only `JotformNeedAnswer`, so an agreeing guest's words were dropped.
+ * The comment is the guest's own Jotform text, under the same
+ * `bunking.manage` envelope as the rest of `BunkingRequestSummary`.
+ */
+export type JotformAccommodationAnswer = {
+  /**
+   * Answer
+   */
+  answer?: string
+  /**
+   * Registration
+   */
+  registration?: string
+  /**
+   * Details
+   */
+  details?: string
+  /**
+   * Submitted At
+   */
+  submitted_at?: string
+}
+
+/**
  * JotformActionResult
  *
  * What a link, ignore, unlink or restore did (kindred#2839 follow-up):
@@ -7780,10 +7814,6 @@ export type JotformNeedAnswer = {
    * Jotform
    */
   jotform: string
-  /**
-   * Detail
-   */
-  detail?: string
   /**
    * Submitted At
    */
@@ -10408,6 +10438,32 @@ export type PersonHousingWeekend = {
    * Cabin Name Raw
    */
   cabin_name_raw?: string
+}
+
+/**
+ * PersonNeedNarrativeResponse
+ *
+ * An adult guest's own housing-need narrative, the person-grain twin of
+ * `HouseholdMedicalResponse`. Served by ONE endpoint gated on
+ * `bunking.manage`, for one open panel. Never nested elsewhere.
+ *
+ * Person grain because the household row is the wrong source for a guest:
+ * it can carry another weekend's answer or another person's, and its
+ * `accommodation_explain` is a first-non-empty flatten across members.
+ */
+export type PersonNeedNarrativeResponse = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Accommodation Explain
+   */
+  accommodation_explain?: string
 }
 
 /**
@@ -22298,6 +22354,45 @@ export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetRespon
 
 export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponse =
   GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses[keyof GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses]
+
+export type GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetData = {
+  body?: never
+  path: {
+    /**
+     * Person Cm Id
+     */
+    person_cm_id: number
+  }
+  query: {
+    /**
+     * Year
+     *
+     * Year of the registration
+     */
+    year: number
+  }
+  url: '/api/lodging/persons/{person_cm_id}/needs'
+}
+
+export type GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetError =
+  GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetErrors[keyof GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetErrors]
+
+export type GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PersonNeedNarrativeResponse
+}
+
+export type GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetResponse =
+  GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetResponses[keyof GetPersonNeedNarrativeApiLodgingPersonsPersonCmIdNeedsGetResponses]
 
 export type DeletePlacementApiLodgingPlacementsDeleteData = {
   body: PlacementDeleteRequest

@@ -10,9 +10,10 @@ from typing import Any
 
 import pytest
 
-from api.schemas.lodging import BunkingRequestVersion
+from api.schemas.lodging import BunkingRequestVersion, JotformAccommodationAnswer, JotformNeedAnswer
 from api.services.adult_need_answers import ADULT_CPAP_FIELD_CM_ID, HOUSING_ACCOMODATION_FIELD_CM_ID
 from api.services.jotform_bunking import (
+    ROSTER_ROLES,
     JotformBunkingRows,
     JotformFiling,
     build_bunking_request,
@@ -284,6 +285,7 @@ FIELD_MAP = {
     "housing_accommodation": "22",
     "accommodation_details": "23",
     "cpap": "29",
+    "director_notes": "48",
 }
 
 
@@ -337,6 +339,25 @@ class TestFilingsByPerson:
         assert olivia[1].coming_with == ("family", "friends")
         assert olivia[1].housing_accommodation == "Yes"
         assert olivia[1].staff_linked is True
+
+    def test_reads_the_accommodation_comment_and_the_note_to_directors(self) -> None:
+        rows = _rows(
+            [_sub("r1", "6600000000000000001", 1000004, "09-10")],
+            [
+                _ans("r1", "22", "No"),
+                _ans("r1", "23", "  Light sleeper, a quiet cabin please  "),
+                _ans("r1", "48", "  Happy to help with the campfire.  "),
+            ],
+        )
+        [filing] = filings_by_person(rows, session_cm_id=SESSION)[1000004]
+        assert filing.accommodation_details == "Light sleeper, a quiet cabin please"
+        assert filing.director_notes == "Happy to help with the campfire."
+
+
+def test_the_roster_reads_the_note_to_directors_role() -> None:
+    """The repository narrows answers to ROSTER_ROLES' question ids, so a role
+    missing here never reaches the board even when the form maps it."""
+    assert "director_notes" in ROSTER_ROLES
 
 
 class TestBuildBunkingRequest:
@@ -404,6 +425,91 @@ class TestBuildBunkingRequest:
         assert build_bunking_request([self._f("08-03", "Emma Johnson"), self._f("08-31", "")]).changed is True
 
 
+class TestJotformAccommodation:
+    """The Q25 comment reaches the board whatever Q24 says (Jotform has no
+    conditional logic on it: guests answer No and still write a real need).
+    It used to ride only the disagreement, so an agreeing No/No or Yes/Yes
+    guest's words were dropped."""
+
+    def _f(self, date: str, **kw: Any) -> JotformFiling:
+        return JotformFiling(submission_id=f"66{date}", submitted_at=f"2026-{date} 09:00:00", **kw)
+
+    def test_the_comment_shows_when_jotform_and_registration_both_say_no(self) -> None:
+        summary = build_bunking_request(
+            [self._f("09-10", housing_accommodation="No", accommodation_details="Light sleeper, a quiet cabin please")],
+            {HOUSING_ACCOMODATION_FIELD_CM_ID: "No"},
+        )
+        assert summary.jotform_says == []
+        assert summary.accommodation == JotformAccommodationAnswer(
+            answer="No",
+            registration="No",
+            details="Light sleeper, a quiet cabin please",
+            submitted_at="2026-09-10 09:00:00",
+        )
+
+    def test_the_comment_shows_when_both_say_yes(self) -> None:
+        summary = build_bunking_request(
+            [self._f("09-14", housing_accommodation="Yes", accommodation_details="Ground floor, please")],
+            {HOUSING_ACCOMODATION_FIELD_CM_ID: "Yes"},
+        )
+        assert summary.jotform_says == []
+        assert summary.accommodation is not None
+        assert (summary.accommodation.answer, summary.accommodation.registration) == ("Yes", "Yes")
+        assert summary.accommodation.details == "Ground floor, please"
+
+    def test_the_latest_filing_is_current_even_when_its_comment_is_blank(self) -> None:
+        # Owner ruling 2026-09-24: the latest filing is current even when blank.
+        summary = build_bunking_request(
+            [
+                self._f("08-03", housing_accommodation="Yes", accommodation_details="Near the dining hall"),
+                self._f("09-10", housing_accommodation="No"),
+            ]
+        )
+        assert summary.accommodation is not None
+        assert (summary.accommodation.answer, summary.accommodation.details) == ("No", "")
+
+    def test_the_comment_is_verbatim_with_no_n_a_filter(self) -> None:
+        summary = build_bunking_request([self._f("09-10", housing_accommodation="No", accommodation_details="N/A")])
+        assert summary.accommodation is not None
+        assert summary.accommodation.details == "N/A"
+
+    def test_an_unanswered_question_has_no_answer_and_a_blank_registration_is_named(self) -> None:
+        summary = build_bunking_request([self._f("09-10", accommodation_details="Bottom bunk")])
+        assert summary.accommodation is not None
+        assert (summary.accommodation.answer, summary.accommodation.registration) == ("", "blank")
+
+    def test_no_form_carries_no_accommodation_and_no_note(self) -> None:
+        summary = build_bunking_request([])
+        assert summary.accommodation is None
+        assert summary.director_notes == ""
+
+    def test_the_comment_rides_its_own_field_never_the_disagreement(self) -> None:
+        """Printed once (owner ruling 2026-10-07): the disagreement keeps its
+        Yes/No pill and no longer carries the comment."""
+        assert "detail" not in JotformNeedAnswer.model_fields
+        summary = build_bunking_request(
+            [self._f("09-12", housing_accommodation="Yes", accommodation_details="Bottom bunk please")],
+            {HOUSING_ACCOMODATION_FIELD_CM_ID: "No"},
+        )
+        assert [(s.need, s.registration, s.jotform) for s in summary.jotform_says] == [("accommodation", "No", "Yes")]
+        assert summary.accommodation is not None
+        assert summary.accommodation.details == "Bottom bunk please"
+
+
+class TestDirectorNotes:
+    """Q48, "anything else you would like to share with the directors"."""
+
+    def _f(self, date: str, notes: str) -> JotformFiling:
+        return JotformFiling(submission_id=f"66{date}", submitted_at=f"2026-{date} 09:00:00", director_notes=notes)
+
+    def test_the_latest_filings_note_is_carried(self) -> None:
+        summary = build_bunking_request([self._f("08-03", "An older note"), self._f("09-08", "First time back")])
+        assert summary.director_notes == "First time back"
+
+    def test_a_blank_latest_note_is_current(self) -> None:
+        assert build_bunking_request([self._f("08-03", "An older note"), self._f("09-08", "")]).director_notes == ""
+
+
 class TestNeedDisagreements:
     def _latest(self, **kw: Any) -> JotformFiling:
         return JotformFiling(submission_id="66", submitted_at="2026-08-31 09:00:00", **kw)
@@ -413,9 +519,7 @@ class TestNeedDisagreements:
             self._latest(housing_accommodation="Yes", accommodation_details="Near a bathroom, please"),
             {HOUSING_ACCOMODATION_FIELD_CM_ID: "No"},
         )
-        assert [(s.need, s.registration, s.jotform, s.detail) for s in says] == [
-            ("accommodation", "No", "Yes", "Near a bathroom, please")
-        ]
+        assert [(s.need, s.registration, s.jotform) for s in says] == [("accommodation", "No", "Yes")]
 
     def test_a_blank_registration_is_named_blank(self) -> None:
         says = jotform_need_disagreements(self._latest(housing_accommodation="Yes"), {})

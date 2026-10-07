@@ -30,6 +30,7 @@ vi.mock('../../hooks/usePermissions', () => ({
 
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  usePersonNeedNarrative: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 vi.mock('../../hooks/useLodgingPlacement', () => ({

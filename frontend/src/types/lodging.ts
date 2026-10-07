@@ -31,6 +31,7 @@ import type {
   HouseholdJourneyWeekendCabin,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
+  JotformAccommodationAnswer,
   JotformNeedAnswer,
   LodgingUnitSummary,
   LodgingWriteResponse,
@@ -38,6 +39,7 @@ import type {
   PartyChild,
   PersonHousingResponse,
   PersonHousingWeekend,
+  PersonNeedNarrativeResponse,
   RequestTextBlock,
   RequestTextEntry,
   RosterCounts,
@@ -78,6 +80,8 @@ export type BunkingRequestChangeRow = BunkingRequestChange
 export type BunkingRequestItem = BunkingRequestChangeItem
 export type BunkingRequestVersionRow = BunkingRequestVersion
 export type JotformNeedAnswerRow = JotformNeedAnswer
+/** The latest filing's accommodation answer and comment, whatever registration says. */
+export type JotformAccommodationRow = JotformAccommodationAnswer
 export type ComingWith = NonNullable<BunkingRequestSummary['coming_with']>[number]
 /**
  * A scenario against the CampMinder mirror, for one family-camp weekend
@@ -133,6 +137,8 @@ export type WeekendSummary = WeekendSummaryResponse
 export type WeekendSummaryRow = WeekendSummaryEntry
 /** The medical narrative. Only ever fetched from the endpoint gated on `bunking.manage`. */
 export type HouseholdMedical = HouseholdMedicalResponse
+/** An adult guest's own need narrative — the person-grain twin, behind the same gate. */
+export type PersonNeedNarrative = PersonNeedNarrativeResponse
 /** A household's year-over-year family-camp record, newest year first. */
 export type HouseholdJourney = HouseholdJourneyResponse
 /** One year of it — housing, enrollment, the weekends, and that year's own party. */

@@ -62,6 +62,18 @@ ADULT_NEED_FIELD_CM_IDS: tuple[int, ...] = (
     HOUSING_ACCOMODATION_FIELD_CM_ID,
 )
 
+# The one free-text need answer an adult guest's panel reads, ONE person at a
+# time behind `Permission.BUNKING_MANAGE` (`LodgingRepository.
+# fetch_person_need_narratives`), never on the roster. "Accommodation-Explain"
+# is the Adult twin of the family form's "Housing Accommodation-Yes"; the Go
+# ingest routes the same field into the HOUSEHOLD medical row, which is the
+# wrong source for a guest (see this module's docstring).
+#
+# ⛔ A SEPARATE ALLOWLIST from the boolean one, pinned by a test, for the
+# reason above it: this table holds Race, financial aid and salary.
+ACCOMMODATION_EXPLAIN_FIELD_CM_ID = 224987  # "Accommodation-Explain" (Adult partition)
+ADULT_NEED_NARRATIVE_FIELD_CM_IDS: tuple[int, ...] = (ACCOMMODATION_EXPLAIN_FIELD_CM_ID,)
+
 # Go's `parseBoolFieldValue` bare tokens and leading-"yes" separators.
 _BARE_TRUE = frozenset({"yes", "true", "1", "y"})
 _YES = "yes"

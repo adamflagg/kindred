@@ -19,6 +19,7 @@ from api.schemas.lodging import (
     MEDICAL_GATE_FIELD_NAMES,
     MEDICAL_NARRATIVE_FIELD_NAMES,
     HouseholdMedicalResponse,
+    PersonNeedNarrativeResponse,
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
@@ -213,8 +214,11 @@ def test_every_model_in_the_module_is_walked_not_just_the_named_roots() -> None:
     to the module and returned by a new endpoint is checked by nothing until
     somebody remembers to add a fourth test. This closes that: every BaseModel
     declared in api.schemas.lodging is walked, and the only one permitted to
-    carry narrative is the response of the endpoint gated on `bunking.manage`
+    carry narrative is the response of an endpoint gated on `bunking.manage`
     (kindred#2312 retargeted the gate from the now-removed `lodging.phi`).
+    There are two, named below: the household medical read, and its
+    person-grain twin for an adult guest (`/persons/{id}/needs`, whose 403 is
+    pinned in test_lodging_endpoints.py).
 
     The write layer (1500000132) is the first thing this catches that the named
     roots do not -- its request models are reachable from no response payload
@@ -231,12 +235,24 @@ def test_every_model_in_the_module_is_walked_not_just_the_named_roots() -> None:
     ]
     assert declared, "found no models to walk; the discovery above is broken"
 
+    gated_carriers = (HouseholdMedicalResponse, PersonNeedNarrativeResponse)
     offenders: dict[str, list[str]] = {}
     for model in declared:
-        if model is HouseholdMedicalResponse:
+        if model in gated_carriers:
             continue
         leaked = _all_field_names(model) & MEDICAL_NARRATIVE_FIELD_NAMES
         if leaked:
             offenders[model.__name__] = sorted(leaked)
 
     assert not offenders, f"narrative fields reachable from non-gated models: {offenders}"
+
+
+def test_person_need_narrative_is_not_reachable_from_any_list_payload() -> None:
+    """The adult guest's narrative has its own gated, one-person endpoint;
+    no roster, session-list or summary model may reach its model."""
+    for payload in (WeekendRosterResponse, WeekendSessionListResponse, WeekendSummaryResponse):
+        assert PersonNeedNarrativeResponse not in _reachable_models(payload)
+
+
+def test_person_need_narrative_carries_only_the_allowlisted_text() -> None:
+    assert set(PersonNeedNarrativeResponse.model_fields) == {"person_cm_id", "year", "accommodation_explain"}

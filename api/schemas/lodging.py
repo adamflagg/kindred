@@ -1166,7 +1166,20 @@ class JotformNeedAnswer(BaseModel):
     need: Literal["accommodation", "cpap"]
     registration: str  # "Yes" | "No" | "blank"
     jotform: str  # "Yes" | "No"
-    detail: str = ""
+    submitted_at: str = ""
+
+
+class JotformAccommodationAnswer(BaseModel):
+    """The latest filing's housing-accommodation answer and its comment,
+    whatever registration says. Jotform has no conditional logic on the
+    comment, so a guest who answers No can still write a real need; it used to
+    ride only `JotformNeedAnswer`, so an agreeing guest's words were dropped.
+    The comment is the guest's own Jotform text, under the same
+    `bunking.manage` envelope as the rest of `BunkingRequestSummary`."""
+
+    answer: str = ""  # "Yes" | "No" | "" (unanswered)
+    registration: str = "blank"  # "Yes" | "No" | "blank"
+    details: str = ""
     submitted_at: str = ""
 
 
@@ -1191,6 +1204,11 @@ class BunkingRequestSummary(BaseModel):
     submitted: list[str] = Field(default_factory=list)
     staff_linked: bool = False
     jotform_says: list[JotformNeedAnswer] = Field(default_factory=list)
+    # The latest filing's (owner ruling 2026-09-24), `None` with no filing.
+    accommodation: JotformAccommodationAnswer | None = None
+    # Q48, "anything else you would like to share with the directors", from
+    # the latest filing, verbatim and trimmed.
+    director_notes: str = ""
 
 
 class RosterParty(BaseModel):
@@ -1418,6 +1436,20 @@ class HouseholdMedicalResponse(BaseModel):
     special_needs_gate: MedicalGate = "unknown"
     physician_gate: MedicalGate = "unknown"
     cpap_gate: MedicalGate = "unknown"
+
+
+class PersonNeedNarrativeResponse(BaseModel):
+    """An adult guest's own housing-need narrative, the person-grain twin of
+    `HouseholdMedicalResponse`. Served by ONE endpoint gated on
+    `bunking.manage`, for one open panel. Never nested elsewhere.
+
+    Person grain because the household row is the wrong source for a guest:
+    it can carry another weekend's answer or another person's, and its
+    `accommodation_explain` is a first-non-empty flatten across members."""
+
+    person_cm_id: int
+    year: int
+    accommodation_explain: str = ""
 
 
 # What is known about where a household slept in one year (kindred#2073).

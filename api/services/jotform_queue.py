@@ -46,6 +46,7 @@ JOTFORM_ROLES: tuple[str, ...] = (
     "housing_accommodation",
     "accommodation_details",
     "cpap",
+    "director_notes",
 )
 
 _BARE_ID = re.compile(r"^\d{12,20}$")

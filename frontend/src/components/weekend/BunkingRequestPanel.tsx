@@ -12,7 +12,7 @@
  * a blank re-file WITHDRAWS the request, and the names it withdrew are what
  * staff need to see (P8).
  */
-import { CalendarDays, Handshake } from 'lucide-react'
+import { CalendarDays, Handshake, MessageSquareText } from 'lucide-react'
 import { useState } from 'react'
 
 import type {
@@ -202,6 +202,20 @@ export function BunkingRequestPanel({ request }: { request: BunkingRequest }) {
           label={comingWithLabel(tokens)}
           tag={jotformTag}
         />
+      )}
+
+      {/* Q48, "anything else to share with the directors" (owner ruling
+          2026-10-07: a row here, before Submitted). The latest filing's,
+          verbatim; no fold, it is one short paragraph. */}
+      {(request.director_notes ?? '').trim().length > 0 && (
+        <li data-testid="director-notes-row" className="flex flex-col gap-[3px]">
+          <div className="flex items-center gap-1.5 text-[13.5px]">
+            <RowChip Icon={MessageSquareText} className={NOTE_CHIP_CLASS} />
+            <span className="ml-0.5 font-semibold">Note to directors</span>
+            <ProvenanceTag>{jotformTag}</ProvenanceTag>
+          </div>
+          <RowText text={(request.director_notes ?? '').trim()} testId="director-notes" />
+        </li>
       )}
 
       <li className="flex flex-col gap-[3px]">

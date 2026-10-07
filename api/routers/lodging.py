@@ -22,6 +22,7 @@ from api.schemas.lodging import (
     LodgingCopyResponse,
     LodgingWriteResponse,
     PersonHousingResponse,
+    PersonNeedNarrativeResponse,
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
@@ -272,6 +273,23 @@ async def get_household_medical(
     tests/unit/api/test_lodging_medical_narrative_containment.py.
     """
     return await _service().get_household_medical(year, household_cm_id)
+
+
+@router.get("/persons/{person_cm_id}/needs", response_model=PersonNeedNarrativeResponse)
+async def get_person_need_narrative(
+    person_cm_id: int,
+    year: int = Query(..., description="Year of the registration", ge=2000, le=2100),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> PersonNeedNarrativeResponse:
+    """An adult weekend guest's own words behind their Accommodation row: the
+    person-grain twin of the household medical read above, under the same
+    `bunking.manage` gate and the same containment (never on the roster).
+
+    The panel fetches it for ONE open guest, never for the 62-row roster.
+    It reads one allowlisted CampMinder field and nothing else -- see
+    `adult_need_answers.ADULT_NEED_NARRATIVE_FIELD_CM_IDS`.
+    """
+    return await _service().get_person_need_narrative(year, person_cm_id)
 
 
 # --------------------------------------------------------------------- writes

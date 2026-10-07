@@ -12,6 +12,7 @@ import {
   deleteWriteIn,
   executeWriteInPush,
   fetchHouseholdMedical,
+  fetchPersonNeedNarrative,
   fetchPushPreview,
   fetchWeekendRoster,
   fetchWeekendSessions,
@@ -563,6 +564,33 @@ describe('fetchHouseholdMedical', () => {
     })
 
     await expect(fetchHouseholdMedical(mockFetch, 2026, 2000001)).rejects.toThrow(/bunking\.manage/)
+  })
+})
+
+describe('fetchPersonNeedNarrative', () => {
+  it('hits the `bunking.manage`-gated person needs endpoint through fetchWithAuth', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(
+        okResponse({ person_cm_id: 1000004, year: 2026, accommodation_explain: '' })
+      )
+
+    await fetchPersonNeedNarrative(mockFetch, 2026, 1000004)
+
+    const [url] = mockFetch.mock.calls[0] as [string]
+    expect(url).toBe('/api/lodging/persons/1000004/needs?year=2026')
+  })
+
+  it('reports a 403 clearly so the UI can show a permission message', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ detail: 'Permission required: bunking.manage' }),
+    })
+
+    await expect(fetchPersonNeedNarrative(mockFetch, 2026, 1000004)).rejects.toThrow(
+      /bunking\.manage/
+    )
   })
 })
 

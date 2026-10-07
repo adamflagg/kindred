@@ -13,6 +13,7 @@ import type {
   HouseholdJourney,
   HouseholdMedical,
   LodgingWriteResult,
+  PersonNeedNarrative,
   ScenarioCompare,
   SessionAttributionConflicts,
   WeekendRoster,
@@ -500,6 +501,22 @@ export async function fetchHouseholdMedical(
   )
   if (!response.ok) throw await toError(response, 'Failed to load medical details')
   return response.json() as Promise<HouseholdMedical>
+}
+
+/**
+ * An adult guest's own words behind their Accommodation row: the person-grain
+ * twin of `fetchHouseholdMedical`, gated on `bunking.manage` the same way.
+ */
+export async function fetchPersonNeedNarrative(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  personCmId: number
+): Promise<PersonNeedNarrative> {
+  const response = await fetchWithAuth(
+    `${API_BASE}/persons/${String(personCmId)}/needs?year=${String(year)}`
+  )
+  if (!response.ok) throw await toError(response, 'Failed to load housing need details')
+  return response.json() as Promise<PersonNeedNarrative>
 }
 
 /**

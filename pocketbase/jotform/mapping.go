@@ -12,7 +12,7 @@ import (
 var Roles = []string{
 	RoleFirstName, RoleLastName, RoleNametag, RoleRespondentEmail,
 	"bunking_request", "coming_with", "emergency_name", "emergency_phone", "emergency_email",
-	"housing_accommodation", "accommodation_details", "cpap",
+	"housing_accommodation", "accommodation_details", "cpap", "director_notes",
 }
 
 // Where a role's question came from, in trust order (kindred#2828).
@@ -104,6 +104,12 @@ var wordingRules = []wordingRule{
 		return strings.HasPrefix(t, "if yes, please comment") || strings.Contains(t, "live alone")
 	}},
 	{"cpap", func(q *FormQuestion) bool { return strings.Contains(ruleText(q), "cpap") }},
+	// "Is there anything else you would like to share with the directors?" Both
+	// words, because "share" alone also asks about a special occasion.
+	{"director_notes", func(q *FormQuestion) bool {
+		t := ruleText(q)
+		return strings.Contains(t, "anything else") && strings.Contains(t, "share")
+	}},
 	{RoleRespondentEmail, func(q *FormQuestion) bool {
 		return !emergency(q) && (q.Type == "control_email" || ruleText(q) == "email")
 	}},

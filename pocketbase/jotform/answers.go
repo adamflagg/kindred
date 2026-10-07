@@ -10,7 +10,7 @@ import (
 
 // Field-map roles the ingest reads. The full role list (bunking_request,
 // coming_with, emergency_*, housing_accommodation, accommodation_details,
-// cpap) is the API's concern; matching needs only these four.
+// cpap, director_notes) is the API's concern; matching needs only these four.
 const (
 	RoleFirstName       = "first_name"
 	RoleLastName        = "last_name"

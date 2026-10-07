@@ -93,6 +93,31 @@ describe('BunkingRequestPanel', () => {
     expect(screen.getAllByText('Jotform · Aug 31').length).toBeGreaterThan(0)
   })
 
+  it('shows the note to directors, tagged Jotform, before the submitted row', () => {
+    render(
+      <BunkingRequestPanel
+        request={base({
+          state: 'none',
+          current_text: '',
+          director_notes: 'First time back in years',
+        })}
+      />
+    )
+    const row = screen.getByTestId('director-notes-row')
+    expect(within(row).getByText('Note to directors')).toBeInTheDocument()
+    expect(within(row).getByText('Jotform · Aug 31')).toBeInTheDocument()
+    expect(within(row).getByTestId('director-notes')).toHaveTextContent(
+      /^First time back in years$/
+    )
+    const items = screen.getAllByRole('listitem')
+    expect(items.indexOf(row)).toBe(items.length - 2)
+  })
+
+  it('draws no note row without a note', () => {
+    render(<BunkingRequestPanel request={base({ director_notes: '' })} />)
+    expect(screen.queryByTestId('director-notes-row')).toBeNull()
+  })
+
   it('says "No bunking request" for a filing without one', () => {
     render(
       <BunkingRequestPanel request={base({ state: 'none', current_text: '', coming_with: [] })} />
