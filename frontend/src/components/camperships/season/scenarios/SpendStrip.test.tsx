@@ -121,4 +121,12 @@ describe('SpendStrip (§S5 E)', () => {
     expect(screen.getByText('$243,550')).toBeInTheDocument()
     expect(within(screen.getByTestId('strip-pool-pool_a')).getByText('$41,496')).toBeInTheDocument()
   })
+
+  it('says to update before any applications are held, even when a draft was priced (regression guard for the held guard)', () => {
+    render(<SpendStrip {...base} held={false} />)
+    expect(
+      screen.getByText('Update Applications to price the applications held.')
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('strip-pool-pool_a')).toBeNull()
+  })
 })
