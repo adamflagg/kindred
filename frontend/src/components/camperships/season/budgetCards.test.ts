@@ -26,6 +26,34 @@ describe('pool cards (spec §5.2 C)', () => {
     expect(poolCards(BUDGET, 'pool_b').map((c) => c.key)).toEqual(['pool_b'])
   })
 
+  it('a pool the rules dropped still shows its Committed money, its share, Allocated and Remaining blank', () => {
+    const base = BUDGET.pools.find((p) => p.pool === 'pool_b')!
+    const dropped = {
+      ...BUDGET,
+      pools: [
+        ...BUDGET.pools,
+        {
+          ...base,
+          pool: 'pool_c',
+          label: 'Pool C',
+          share_pct: null,
+          total: { ...base.total, allocated: null, remaining: null, committed: 5000 },
+        },
+      ],
+    }
+    const card = poolCards(dropped, null).find((c) => c.key === 'pool_c')
+    expect(card).toMatchObject({ share: null, allocated: null, remaining: null, committed: 5000 })
+    expect(
+      poolCards(
+        {
+          ...dropped,
+          pools: [{ ...dropped.pools[3]!, total: { ...dropped.pools[3]!.total, committed: 0 } }],
+        },
+        null
+      )
+    ).toEqual([])
+  })
+
   it('a pool past its share is "over its share" (amber), the total stays positive (§8.3)', () => {
     const [, b] = poolCards(poolOverShare(), null)
     expect(b?.remaining).toBe(-1200)

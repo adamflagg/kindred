@@ -60,11 +60,18 @@ function cardOf(pool: ApiAidBudgetPool): PoolCardModel {
   }
 }
 
-/** One card per rules pool (those the rules allocate), in the server's order; No pool is its own slim card. */
+/** One card per rules pool (those the rules allocate, plus any with Committed money), in the server's order; No pool is its own slim card. */
 export function poolCards(budget: ApiAidBudget, pool: string | null): PoolCardModel[] {
   return budget.pools
     .filter((p) => p.pool !== NO_POOL && (pool === null || p.pool === pool))
-    .filter((p) => pool !== null || p.total.allocated !== null || p.share_pct != null)
+    .filter(
+      (p) =>
+        pool !== null ||
+        p.total.allocated !== null ||
+        p.share_pct != null ||
+        // A pool the rules dropped after a round posted to it keeps its Committed money on show.
+        (budget.rules_version !== null && toCents(p.total.committed ?? 0) !== 0)
+    )
     .map(cardOf)
 }
 
