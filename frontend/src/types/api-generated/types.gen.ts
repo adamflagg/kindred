@@ -3003,6 +3003,10 @@ export type CostSectionInput = {
    * Override Reasons
    */
   override_reasons?: Array<string>
+  /**
+   * Not Running Session Cm Ids
+   */
+  not_running_session_cm_ids?: Array<number>
 }
 
 /**
@@ -3027,6 +3031,10 @@ export type CostSectionOutput = {
    * Override Reasons
    */
   override_reasons?: Array<string>
+  /**
+   * Not Running Session Cm Ids
+   */
+  not_running_session_cm_ids?: Array<number>
 }
 
 /**
