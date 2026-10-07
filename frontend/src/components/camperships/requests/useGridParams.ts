@@ -56,6 +56,8 @@ export function useGridParams(): GridParams {
         const next = new URLSearchParams(previous)
         // The retired Checklist chips' `?tick=` (#3000): nothing reads it, so an old link's goes.
         next.delete('tick')
+        // The retired counting filter's `?counted=` (R10, owner 10-07): an old Season link's goes too.
+        next.delete('counted')
         for (const [name, value] of Object.entries(changes)) {
           if (value === null) next.delete(name)
           else next.set(name, value)

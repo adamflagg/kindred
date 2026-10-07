@@ -322,9 +322,9 @@ describe('a budget link opens every request in its round (end to end; final revi
     over: Partial<ApiAidGridRow>
   ) => gridRow({ request_id: id, queues: [queue], ...over })
   const NEEDS_ROWS = [
-    // Round 1 needs the offer, counted, Pool A.
+    // Round 1 needs the offer, Pool A.
     queued('reqround1a0001', 'needs_offer', { rounds: [roundOut(1, 'needs_offer')] }),
-    // Round 2 needs the offer; Round 1 is posted and counted.
+    // Round 2 needs the offer; Round 1 is posted.
     queued('reqround2a0001', 'needs_offer', {
       stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
       rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
@@ -364,7 +364,7 @@ describe('a budget link opens every request in its round (end to end; final revi
     const unreconciled = (id: string, over: Partial<ApiAidGridRow>) =>
       gridRow({ request_id: id, queues: ['not_reconciled'], ...over })
     const rowsOut = [
-      // Posted and counted in Round 1, Pool A: listed on Pool A and on its Round 1 line.
+      // Posted in Round 1, Pool A: listed on Pool A and on its Round 1 line.
       unreconciled('reqr1posted0001', { rounds: [roundOut(1, 'posted', { posted: 900 })] }),
       // Posted in Round 1 outside the budget: opens too (R10).
       unreconciled('reqr1outside001', {
@@ -374,7 +374,7 @@ describe('a budget link opens every request in its round (end to end; final revi
       unreconciled('reqr2needs00001', {
         rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
       }),
-      // Pool B, Round 1 posted and counted.
+      // Pool B, Round 1 posted.
       unreconciled('reqpoolb0000001', {
         pool: 'pool_b',
         rounds: [roundOut(1, 'posted', { posted: 900 })],
@@ -398,7 +398,7 @@ describe('a budget link opens every request in its round (end to end; final revi
           roundOut(3, 'pending_approval', { pending_approval: 450 }),
         ],
       }),
-      // Pending on Round 2, with a counted Round 3 needing an offer: not Round 3's pending.
+      // Pending on Round 2, with a Round 3 needing an offer: not Round 3's pending.
       queued('reqpend2a00001', 'pending_approval', {
         stage: { round: 2, code: 'pending_approval', label: 'R2 · Pending approval' },
         rounds: [

@@ -37,7 +37,7 @@ describe('parseSeasonFigure (owner 10-06, option a)', () => {
 })
 
 describe('matchesFigure: the budget strip counts these rows (budget.py)', () => {
-  // Posted in Round 1 (counted, accepted), and now in Round 2: still Round 1's posted figure.
+  // Posted in Round 1 (accepted), and now in Round 2: still Round 1's posted figure.
   const moved = gridRow({
     request_id: 'reqmovedon00001',
     rounds: [
