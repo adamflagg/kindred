@@ -1158,6 +1158,46 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
     }
   )
 
+  // B3: the editor grids keep the "min" marks too, captioned as last saved.
+  it.each(['award_tables', 'round2', 'tiers'])(
+    'the %s editor keeps the "min" marks, captioned "as last saved", and footnotes a click',
+    async (section) => {
+      const base = draft.data!
+      const message =
+        'general table, tier 3: Program A at $600 gets $52.50, so the $75 minimum applies'
+      const noted = {
+        ...base,
+        report: {
+          issues: [
+            ...(base.report.issues ?? []),
+            {
+              section: 'award_tables' as const,
+              code: 'value_cannot_bind',
+              severity: 'note' as const,
+              path: 'award_tables.general.tiers.3',
+              message,
+            },
+          ],
+        },
+      }
+      draft = { data: noted, isLoading: false, error: null }
+      server = [noted]
+      renderAt(`/aid/season/rules?section=${section}`)
+      await editCard(section)
+      await screen.findByTestId('tier-grid')
+      const mark = within(tierRow(3)).getByRole('button', { name: 'min' })
+      expect(mark).toHaveAttribute('title', message)
+      expect(screen.queryByRole('button', { name: "Show this table's warnings" })).toBeNull()
+      expect(
+        within(screen.getByTestId(`grid-editor-${section}`)).getByText(
+          'min marks where the minimum decides, as last saved, not what you have typed.'
+        )
+      ).toBeInTheDocument()
+      await userEvent.click(mark)
+      expect(screen.getAllByText(message)).toHaveLength(1)
+    }
+  )
+
   it('Round 1 award table editor puts a box in each own cell of the grid, and leaves an inherited cell as text', async () => {
     const base = rulesDraft()
     const withInheriting = {

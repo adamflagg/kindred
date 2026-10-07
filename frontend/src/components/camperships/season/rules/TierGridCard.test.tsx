@@ -226,6 +226,60 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     })
   })
 
+  describe('the "min" mark: where the minimum decides, a note, not a warning (B3, #3049)', () => {
+    const note = (table: string, tier: number): ApiAidValidationIssue => ({
+      ...WARNING,
+      severity: 'note',
+      path: `award_tables.${table}.tiers.${String(tier)}`,
+      message: `${table} table, tier ${String(tier)}: Program A at $600 gets $52.50, so the $75 minimum applies`,
+    })
+    // One warning (Summer tier 3) and two notes (Teen tier 2, and Summer tier 3 again).
+    const ISSUES = [WARNING, note('teen', 2), note('summer', 3)]
+    const min = (tier: number, column: number) =>
+      within(cell(tier, column)).queryByRole('button', { name: 'min' })
+
+    it('reads "1 warning", wears ⚠ on the warned cell only, and "min" on both noted cells', () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      expect(
+        within(screen.getByTestId('card-head-award_tables')).getByRole('button', {
+          name: '1 warning',
+        })
+      ).toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: "Show this table's warnings" })).toHaveLength(1)
+      expect(
+        within(cell(3, 2)).getByRole('button', { name: "Show this table's warnings" })
+      ).toBeInTheDocument()
+      expect(min(2, 4)).toHaveAttribute('title', note('teen', 2).message)
+      expect(min(3, 2)).toHaveAttribute('title', note('summer', 3).message) // both marks on one cell
+      expect(min(1, 2)).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'min' })).toHaveLength(2)
+    })
+
+    it("a click footnotes the note's words once, under the grid; a second click folds it", async () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      const message = note('teen', 2).message
+      expect(screen.queryByText(message)).toBeNull()
+      await userEvent.click(min(2, 4)!)
+      expect(screen.getAllByText(message)).toHaveLength(1)
+      expect(screen.getByTestId('grid-note')).toHaveTextContent(message)
+      await userEvent.click(min(2, 4)!)
+      expect(screen.queryByText(message)).toBeNull()
+    })
+
+    it('is small, muted and shows a pointer', () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      expect(min(2, 4)).toHaveClass('text-xs', 'text-muted-foreground', 'cursor-pointer')
+    })
+
+    it("stays out of the chip's list: the list holds the warning only", async () => {
+      grid({ issuesBySection: { award_tables: ISSUES } })
+      await userEvent.click(screen.getByRole('button', { name: '1 warning' }))
+      expect(screen.getAllByTestId('card-issue').map((li) => li.textContent)).toEqual([
+        WARNING.message,
+      ])
+    })
+  })
+
   it('shows "—" in every table cell of a tier the tables do not have yet (more tiers)', () => {
     grid({ document: { ...DOC, tiers: { ...DOC.tiers, bands: bandsOf(0, 35000, 4) } } })
     expect(cell(4, 1)).toHaveTextContent('$105,001 and up')
