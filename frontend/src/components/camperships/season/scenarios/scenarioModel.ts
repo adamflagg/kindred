@@ -13,7 +13,7 @@ import type {
   ApiAidScenarioOption,
   ApiAidScenarioResults,
 } from '../../../../types/api-types'
-import { formatMoney, isNegativeMoney } from '../../kit/money'
+import { formatMoney, formatWholeMoney, isNegativeMoney } from '../../kit/money'
 
 /**
  * What the sliders have moved and not yet released: the two relative moves the server applies
@@ -272,7 +272,7 @@ export function resultLines(results: ApiAidScenarioResults): ResultLine[] {
 /**
  * What Fit to budget found, in fit.py's terms: the largest shift on a half-point grid whose TOTAL row's
  * Round 1 Remaining (money on a program with no pool included) is still $0 or more (Round 2 and 3 money
- * already committed stays in it; nothing is held back), or that even the ends of its range (−100 to +100
+ * already committed stays in it; no reserves are held back, parent §8.2), or that even the ends of its range (−100 to +100
  * pts) don't fit. The
  * tightest pool is information only (D119).
  */
@@ -286,21 +286,21 @@ export function fitWords(fit: ApiAidScenarioFit): {
   const tightest =
     pool === undefined
       ? null
-      : `Tightest pool: ${pool.label}, Round 1 remaining ${formatMoney(pool.round1_remaining)}. Pools are guidance; only the total budget is hard.`
+      : `Tightest pool: ${pool.label}, Round 1 remaining ${formatWholeMoney(pool.round1_remaining)}. Pools are guidance; only the total budget is hard.`
   if (fit.outcome === 'over_at_lowest') {
     return {
-      headline: `Even the lowest shift (${shiftWords(fit.tier_shift)}) leaves Round 1 over its allocation.`,
+      headline: `Even the lowest shift (${shiftWords(fit.tier_shift)}) leaves Round 1 over the budget.`,
       pool: tightest,
     }
   }
   if (fit.outcome === 'under_at_highest') {
     return {
-      headline: `Even the highest shift (${shiftWords(fit.tier_shift)}) leaves part of Round 1's allocation unused.`,
+      headline: `Even the highest shift (${shiftWords(fit.tier_shift)}) leaves part of the budget unused.`,
       pool: tightest,
     }
   }
   return {
-    headline: `Shifting every tier ${shiftWords(fit.tier_shift)} uses Round 1's allocation: Round 1 ${formatMoney(fit.results.round1)}, ${formatMoney(fit.results.round1_remaining)} left.`,
+    headline: `Shifting every tier ${shiftWords(fit.tier_shift)} uses the budget: Round 1 ${formatWholeMoney(fit.results.round1)}, ${formatWholeMoney(fit.results.round1_remaining)} left.`,
     pool: tightest,
   }
 }
