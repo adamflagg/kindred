@@ -153,7 +153,8 @@ def _reset(base: Any, wanted: Any, parts: Sequence[str]) -> Any:
 
 def reset_fixed(section: SectionName, base: Mapping[str, Any], wanted: Mapping[str, Any]) -> dict[str, Any]:
     """`wanted`'s section with every fixed setting set back to `base`'s (Scenarios addendum §S11.3): a promotion
-    never writes a setting the Rules tab hides or shows read-only. Everything else `wanted` changed stays. Its
+    never writes a setting the Rules tab hides or shows read-only. Everything else `wanted` changed stays, except an
+    entry a `*` or `#keys` path adds or removes: the set of keys is itself fixed, so it follows `base` whole. Its
     contract: `changed_fixed(section, base, reset_fixed(section, base, wanted)) == []`."""
     out: Any = dict(wanted)
     for setting in FIXED_PATHS.get(section, ()):

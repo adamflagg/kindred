@@ -12,9 +12,10 @@ One draft per person, kept options and the trail, all over one frozen season:
 - **Keep** locks the draft as an immutable option with the next flat letter (A, B, C: Scenarios addendum §S11.1)
   and a name (staff's, else its label); `rename` changes the name only. Options kept before names (A1, B2) keep
   their codes. "Start from the rules" makes a starting point from the rules draft (the latest version).
-- **Compare** puts the draft beside up to 4 kept options; **Fit to budget** finds the tier shift that uses Round 1's
-  allocation; **sensitivity** is what one step of each sizing setting moves Round 1 by. **Make it the rules draft**
-  hands a kept option to the rules service (SP9a's promotion).
+- **Compare** puts the rules in effect, last season's rules and the draft (each when asked) beside up to 4 kept
+  options, every column counted against the rules in effect (§S11.2); **Fit to budget** finds the tier shift that
+  uses Round 1's allocation; **sensitivity** is what one step of each sizing setting moves Round 1 by. **Make it the
+  rules draft** hands a kept option to the rules service (SP9a's promotion).
 
 **What the committee compares** (sub-project 9c; spec §9.7 RPT-17, RPT-18, RPT-32) rides on compare: each column
 carries its Round 1 and Round 2 tables by tier and its share of the total budget, and, when asked, last season's
@@ -580,9 +581,10 @@ class FinancialAidScenariosService:
                 )
                 return _last_season_name(last, option.year, origin, placeholder=placeholder)
             if option.name:
-                # Kept from a built-in start with changes (§S11.1), or a start renamed: its words are what differs
-                # from that start. `name` alone carries staff's words, so a rename never moves the label. A start
-                # never stores a name, so an unnamed one stays "as they were" below, as SP9b named it.
+                # Kept from a built-in start with changes (§S11.1): its words are what differs from that start, and
+                # `name` alone carries staff's words. A start kept before names stores none, so it stays "as they
+                # were" below, as SP9b named it, until someone renames it: then it reads as what differs from its
+                # origin too (lead ruling, Task 56: narrow, and truthful once the draft was edited in place).
                 return describe(origin.document, option.document)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)
@@ -1262,6 +1264,7 @@ class FinancialAidScenariosService:
         """What one step of each sizing setting moves Round 1 by (spec §7.4), on the frozen season. The
         dollar-for-dollar switch's one step is flipping it (D137)."""
         self._check_year(year, document)
+        document = derive_weights(document)
         price = await self._pricer(await self._meta(year), await self._request_set(year, request_set))
         base = (await price(document)).results
         effects: list[LeverEffect] = []

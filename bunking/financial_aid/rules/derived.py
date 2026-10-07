@@ -1,7 +1,7 @@
 """The settings the server owns (parent §9.9; Scenarios addendum §S11.5): the current-year weight is 1 − the
 prior-year weight, whatever was sent. One derivation, called by the rules section save (`_with_derived`) and by every
-scenario document the server records or prices (evaluate, the draft, Fit), so a scenario can't hold inconsistent
-weights and a promotion carries consistent ones. Pure."""
+scenario document the server records or prices (evaluate, the draft, Fit, sensitivity), so a scenario can't hold
+inconsistent weights and a promotion carries consistent ones. Pure."""
 
 from __future__ import annotations
 

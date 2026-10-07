@@ -979,6 +979,32 @@ async def test_every_scenario_read_and_write_derives_the_current_year_weight() -
     assert fitted.evaluation.document.income.weights.current_year == Decimal("0.4")
 
 
+@pytest.mark.asyncio
+async def test_sensitivity_prices_the_derived_current_year_weight_as_evaluate_does(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """§S11.5 (PR 10 scan): sensitivity prices a scenario document too, so its base and every one-step nudge are
+    priced with current = 1 − prior, as evaluate, the draft and Fit are."""
+    world = await _started()
+    skewed = with_levers(intake_rules(), {"income.weights.prior_year": "0.6", "income.weights.current_year": "0.9"})
+    priced: list[Decimal] = []
+    pricer = world.service._pricer
+
+    async def spying(*args: Any, **kwargs: Any) -> Any:
+        price = await pricer(*args, **kwargs)
+
+        async def recorded(document: AidRules) -> Any:
+            priced.append(document.income.weights.current_year)
+            return await price(document)
+
+        return recorded
+
+    monkeypatch.setattr(world.service, "_pricer", spying)
+    await world.service.sensitivity(YEAR, skewed)
+    assert priced
+    assert set(priced) == {Decimal("0.4")}
+
+
 # --- built-in starts and the implicit draft (Scenarios addendum §S11.2) --------------------------------------------
 
 
