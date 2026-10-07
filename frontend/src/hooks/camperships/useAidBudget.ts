@@ -13,8 +13,8 @@ import { useAidAsOf } from './useAidAsOf'
 /**
  * Rounds & budget's one read (spec §7.2; D21: the server does every sum). `view` holders only
  * (D48), live or as of the page's past day. Inherits the app's cache defaults (spec §10): every
- * money write refreshes it through `invalidateAidMoneyQueries`, a rules approval (its writer
- * lands in a later slice 2 PR) through this same helper once it exists, and a sync completion through the 'financial-aid' prefix.
+ * money write refreshes it through `invalidateAidMoneyQueries`, a rules approval through
+ * `invalidateAidRulesQueries({ priced: true })`, and a sync completion through the 'financial-aid' prefix.
  */
 export function useAidBudget({ enabled = true }: { readonly enabled?: boolean } = {}) {
   const year = useYear()

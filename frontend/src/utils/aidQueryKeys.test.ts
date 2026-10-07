@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { invalidateAidMoneyQueries, queryKeys } from './queryKeys'
+import { invalidateAidMoneyQueries, invalidateAidRulesQueries, queryKeys } from './queryKeys'
 
 describe('Camperships query keys', () => {
   it("sit under one 'financial-aid' prefix, so a sync or a write can invalidate by prefix (spec §10)", () => {
@@ -65,6 +65,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'today'],
       ['financial-aid', 'household-page'],
       ['financial-aid', 'application'],
+      ['financial-aid', 'rules'],
     ])
   })
 
@@ -78,6 +79,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'today'],
       ['financial-aid', 'household-page'],
       ['financial-aid', 'application'],
+      ['financial-aid', 'rules'],
       ['financial-aid', 'jump-index'],
     ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
@@ -124,5 +126,37 @@ describe('the Rounds & budget key (slice 2)', () => {
     expect(queryKeys.aidBudget(2027, '2026-04-01', null)).toEqual(
       queryKeys.aidBudget(2027, '2026-04-01', 'campminder')
     )
+  })
+})
+
+describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
+  const keysOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.map(([args]) => (args as { queryKey: unknown[] }).queryKey)
+
+  it("refreshes the rules and Today's Finance line on a draft save, and no money read", () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidRulesQueries({ invalidateQueries })
+    expect(keysOf(invalidateQueries)).toEqual([
+      ['financial-aid', 'rules'],
+      ['financial-aid', 'today'],
+    ])
+  })
+
+  it('refreshes every money read too on an approval, which re-prices the season', () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidRulesQueries({ invalidateQueries }, { priced: true })
+    const keys = keysOf(invalidateQueries)
+    expect(keys).toContainEqual(['financial-aid', 'budget'])
+    expect(keys).toContainEqual(['financial-aid', 'grid'])
+    expect(keys).toContainEqual(['financial-aid', 'household-page'])
+    expect(queryKeys.aidRulesDraft(2027).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
+    expect(queryKeys.aidRulesApproved(2027, 3).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
+  })
+
+  it('invalidates each prefix once on an approval, so no active read is cancelled and refetched twice', () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidRulesQueries({ invalidateQueries }, { priced: true })
+    const keys = keysOf(invalidateQueries).map((k) => JSON.stringify(k))
+    expect(new Set(keys).size).toBe(keys.length)
   })
 })
