@@ -340,6 +340,22 @@ def _with_derived(section: SectionName, content: Mapping[str, Any]) -> dict[str,
     return with_current_year_weight(content) if section == "income" else dict(content)
 
 
+def _keep_legacy_routing(stored: AidRules, content: Mapping[str, Any]) -> dict[str, Any]:
+    """A Programs save that sends no `r1_table` for a program stored as legacy (routed by `r1_table`, not by its
+    class) must not re-route it. The editor drops `r1_table` and sends `table_from_equity_class: true` for every
+    program, which on a legacy season would silently move its pricing to the class tables. The stored routing
+    is put back, `r1_table` included (None too). A program that sends `r1_table` is an explicit legacy edit, and
+    a by-class or new program is untouched."""
+    kept = {key: dict(program) if isinstance(program, Mapping) else program for key, program in content.items()}
+    for key, program in kept.items():
+        before = stored.programs.get(key)
+        if before is None or before.table_from_equity_class or not isinstance(program, dict) or "r1_table" in program:
+            continue
+        program["table_from_equity_class"] = False
+        program["r1_table"] = before.r1_table
+    return kept
+
+
 def _trim_tables(before: AidRules, candidate: AidRules) -> AidRules:
     """Fewer tiers (§6.2 E.2): the tiers above the new count leave every Round 1 and appeal table, overrides included,
     in the same save, so one operation logs it. More tiers write nothing else: validation holds approval until finance
@@ -974,6 +990,8 @@ class FinancialAidRulesService:
         current = await self._rules_draft(year, base_version)
         if expected_fingerprint is not None:
             _assert_unchanged(current, {section: expected_fingerprint})
+        if section == "programs":
+            content = _keep_legacy_routing(current.document, content)
         candidate = parse_section(current.document, section, _with_derived(section, content))
         if section == "tiers":
             candidate = _trim_tables(current.document, candidate)

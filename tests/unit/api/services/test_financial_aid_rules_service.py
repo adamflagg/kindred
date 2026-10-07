@@ -50,6 +50,7 @@ from tests.unit.bunking.financial_aid.fixtures import (
     fictional_rules,
     fictional_rules_json,
     with_lever,
+    with_levers,
 )
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
@@ -1052,3 +1053,68 @@ async def test_a_stored_status_with_a_stages_entry_loads_and_the_next_write_drop
     assert "stages" not in (await service.load(2031)).section_status
     await service.save_section(2031, 1, "awards", fictional_rules_json()["awards"] | {"minimum": "150"}, actor=FINANCE)
     assert "stages" not in store.rows[0].section_status
+
+
+# --- a Programs save keeps a legacy program's routing -----------------------------------------------
+
+
+def _programs_as_the_editor_sends_them(rules: AidRules) -> dict[str, Any]:
+    """What the Programs editor posts: every program without `r1_table`, flagged by-class."""
+    programs = rules.model_dump(mode="json")["programs"]
+    return {
+        key: {k: v for k, v in program.items() if k != "r1_table"} | {"table_from_equity_class": True}
+        for key, program in programs.items()
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_programs_save_keeps_a_legacy_programs_routing_and_lands_its_other_edits() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    content = _programs_as_the_editor_sends_them(fictional_rules())
+    content["summer"]["label"] = "Summer Camp"
+    content["adult_weekend"]["label"] = "Spring Weekend"  # a legacy program whose r1_table is None
+    saved = await service.save_section(2031, 1, "programs", content, actor=FINANCE)
+    programs = saved.version.document.programs
+    assert (programs["summer"].table_from_equity_class, programs["summer"].r1_table) == (False, "camp")
+    assert (programs["adult_weekend"].table_from_equity_class, programs["adult_weekend"].r1_table) == (False, None)
+    assert (programs["summer"].label, programs["adult_weekend"].label) == ("Summer Camp", "Spring Weekend")
+
+
+@pytest.mark.asyncio
+async def test_a_programs_save_leaves_a_by_class_program_alone() -> None:
+    """Regression guard."""
+    by_class = with_lever(fictional_rules(), "programs.summer.table_from_equity_class", True)
+    by_class = with_levers(
+        by_class,
+        {
+            "programs.summer.r1_table": None,
+            "programs.quest.table_from_equity_class": True,
+            "programs.quest.r1_table": None,
+        },
+    )
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(by_class, actor=FINANCE)
+    content = _programs_as_the_editor_sends_them(by_class)
+    content["quest"]["label"] = "Spring Weekend"
+    saved = await service.save_section(2031, 1, "programs", content, actor=FINANCE)
+    programs = saved.version.document.programs
+    assert programs["summer"].table_from_equity_class is True
+    assert programs["summer"].r1_table is None
+    assert programs["quest"].label == "Spring Weekend"
+    assert (programs["quest"].table_from_equity_class, programs["quest"].r1_table) == (True, None)
+
+
+@pytest.mark.asyncio
+async def test_a_programs_save_that_sends_r1_table_is_an_explicit_legacy_edit() -> None:
+    """Regression guard."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    content = fictional_rules().model_dump(mode="json")["programs"]
+    content["summer"]["r1_table"] = "teen"
+    saved = await service.save_section(2031, 1, "programs", content, actor=FINANCE)
+    assert saved.version.document.programs["summer"].r1_table == "teen"
+    assert saved.version.document.programs["summer"].table_from_equity_class is False
