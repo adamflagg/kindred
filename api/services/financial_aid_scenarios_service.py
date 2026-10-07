@@ -226,7 +226,8 @@ class Evaluation:
 @dataclass(frozen=True)
 class Source:
     """What a draft is from: a kept option, or a built-in start read now; `version` is the rules version it was
-    taken from (an option's origin_version), which a keep records as the new option's origin."""
+    taken from (an option's origin_version). A keep records it as the new option's origin, except for a built-in start
+    whose trail row recorded the version it was started on (A11): that one is used instead."""
 
     code: str
     document: AidRules
@@ -1013,8 +1014,9 @@ class FinancialAidScenariosService:
 
     async def _promotion(self, year: int, code: str) -> tuple[OptionRecord, AidRules, ScenarioPromotion]:
         """What "Make ‹B› the Rules Draft" would copy (§S11.3): the option with its fixed settings set back to the
-        rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere. The
-        rules service's own promote is unchanged for its other callers."""
+        rules draft's, and the preview of that. Refused (409) when a section it would copy is locked anywhere, and
+        refused when the option was built on a version older than the one in effect (A11). The rules service's own
+        promote is unchanged for its other callers."""
         option = await self._option(year, code)
         if option.document.year != year:
             raise YearMismatchError(f"The document is for {option.document.year}, not {year}")
@@ -1178,7 +1180,13 @@ class FinancialAidScenariosService:
             change = f"loaded {row.actor}'s row of {_when(row)} into the draft"
             built_on = row.built_on_version
         current = await self._store.latest_trail(year, actor)
-        if current is None or current.document != document or _from(current) != from_code:
+        # A newer version with the same settings is still a new start: without its row the draft stays on the old one.
+        if (
+            current is None
+            or current.document != document
+            or _from(current) != from_code
+            or current.built_on_version != built_on
+        ):
             await self._record(
                 year, actor, document=document, from_code=from_code, change=change, built_on_version=built_on
             )

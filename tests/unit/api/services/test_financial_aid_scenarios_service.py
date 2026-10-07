@@ -1862,6 +1862,26 @@ async def test_a_draft_with_no_recorded_version_reports_none_and_keeps_the_old_b
     assert kept.record.origin_version == 2
 
 
+@pytest.mark.asyncio
+async def test_starting_again_on_a_newer_version_with_the_same_settings_records_the_newer_version() -> None:
+    """Scan of #3060: v2 is approved with v1's settings unchanged. Starting from the rules again must record v2, or
+    the draft stays built on v1 and its keep can never be promoted, however often staff start again."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules")
+    same = (await world.rules.load(YEAR, 1)).document
+    await world.rules.create_version(same, actor=FINANCE)
+    await world.rules.approve_sections(YEAR, 2, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    await world.service.load(YEAR, FINANCE, start="rules")
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.built_on_version == 2
+    await world.service.save_draft(YEAR, _shifted(same, "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 2
+
+
 # --- Make … the Rules Draft is off for an option built on an older version (A11) ---------------------------------------
 
 
