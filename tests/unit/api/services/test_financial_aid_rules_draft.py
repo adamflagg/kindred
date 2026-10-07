@@ -80,6 +80,14 @@ async def test_the_draft_and_approved_reads_name_the_groups() -> None:
     assert approved.groups == draft.groups
 
 
+@pytest.mark.asyncio
+async def test_a_receipts_version_read_names_that_versions_groups() -> None:
+    """Pin: the groups come from the version asked for, not the one pricing the season."""
+    service = await _approved_v1(FakeStore())
+    approved = await service.approved_view(2031, 1)
+    assert [g.label for g in approved.groups] == ["Camp", "Weekends", "B'mitzvah"]
+
+
 # --- save_sections ---------------------------------------------------------------------------------
 
 
