@@ -262,6 +262,9 @@ export const HH_CHIP_TOTAL = 'border-muted-foreground/35 flex-none border-l pl-2
 
 // round 3 · receipt placement (household-v4.html section 1 (B)) ───────────────────────────────
 
-/** Show / Hide Details beside the card's cost (the mock's .btn.sm): a small card button, receipt icon first. */
+/**
+ * The small card button beside the card's cost (the mock's .btn.sm): Show / Hide Details,
+ * receipt icon first, and Set Cost… (no icon).
+ */
 export const HH_DETAILS_BUTTON =
   'inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-[7px] border border-border bg-card px-2 py-px text-xs leading-[1.5] font-semibold text-forest-700 hover:bg-muted dark:text-forest-300'

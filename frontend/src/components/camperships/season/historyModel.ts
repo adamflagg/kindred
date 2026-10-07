@@ -193,7 +193,8 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
     reclassify: 'Reclassified',
   },
   // ⚠1 interim (lead-built, the owner rules later): past-tense words, so "Correct" never reads as
-  // "this figure is correct" over a corrected figure.
+  // "this figure is correct" over a corrected figure. A cleared cost reads "Cost cleared"
+  // (`rowActionWords`).
   aid_application_corrections: { correct: 'Corrected', cost_override: 'Cost set' },
   aid_flag_dispositions: {
     placed: 'Placed',

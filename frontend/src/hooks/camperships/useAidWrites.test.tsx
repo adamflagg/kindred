@@ -241,7 +241,7 @@ describe('the casework forms’ writes (§6.3)', () => {
     }
   }
 
-  it('sets a cost override, and clears it with a null amount', async () => {
+  it('sets a cost override', async () => {
     const { result } = renderHook(() => useAidCostOverride(), { wrapper })
     const body = { amount: 1275, reason_code: 'typed_household_total', note: 'From the form' }
     await act(() => result.current.mutateAsync({ requestId: 'reqemma00000001', body }))
