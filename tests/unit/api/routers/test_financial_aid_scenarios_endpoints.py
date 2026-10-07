@@ -759,6 +759,8 @@ def test_rename_trims_the_name_passes_the_caller_and_bounds_it() -> None:
     service.rename = AsyncMock(side_effect=ScenarioRefusedError("Give it a name"))
     blank = client.patch("/api/financial-aid/scenarios/2027/options/A", json={"name": "   "})
     assert (blank.status_code, blank.json()["detail"]) == (422, "Give it a name")
+    service.rename = AsyncMock(side_effect=ScenarioNotFoundError("2027 has no kept option Q"))
+    assert client.patch("/api/financial-aid/scenarios/2027/options/Q", json={"name": "x"}).status_code == 404
 
 
 def test_keep_passes_its_name_and_the_option_reads_with_its_name() -> None:

@@ -92,8 +92,8 @@ MAX_COMPARED: Final = 4
 StartFrom = Literal["rules", "rules_draft", "last_rules"]
 # The built-in starting points (§S11.2): a draft from one writes no kept option, and reads its source NOW, so
 # "was …" always means what is in effect (or in the rules draft, or last season's merge) when it is read.
-NAME_MAX: Final = 80  # aid_scenario_options.name (1500000233_aid_scenario_names.js)
 BUILT_IN_STARTS: Final[tuple[StartFrom, ...]] = ("rules", "rules_draft", "last_rules")
+NAME_MAX: Final = 80  # aid_scenario_options.name (1500000233_aid_scenario_names.js)
 
 
 def _fit_name(text: str) -> str:
@@ -525,8 +525,6 @@ class FinancialAidScenariosService:
     ) -> str:
         """`last`: last season's approved rules, which name a starting point made from them (RPT-18)."""
         if not option.from_code:
-            if option.name:  # kept from a built-in start with a name (§S11.1): starts never store one
-                return option.name
             # "rules vN" only when vN is approved rules and the option is them: one started from a draft that was
             # approved later with edits stays "rules draft vN", as it was.
             origin = await self._rules.load(option.year, option.origin_version)
@@ -547,6 +545,11 @@ class FinancialAidScenariosService:
                     option.document.budget == last.document.budget and option.document.budget != origin.document.budget
                 )
                 return _last_season_name(last, option.year, origin, placeholder=placeholder)
+            if option.name:
+                # Kept from a built-in start with changes (§S11.1), or a start renamed: its words are what differs
+                # from that start. `name` alone carries staff's words, so a rename never moves the label. A start
+                # never stores a name, so an unnamed one stays "as they were" below, as SP9b named it.
+                return describe(origin.document, option.document)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)
 
@@ -981,6 +984,8 @@ class FinancialAidScenariosService:
         same = next((o for o in options.values() if o.document == row.document), None)
         if same is not None:
             raise ScenarioConflictError(f"Your draft is the same as {same.code}: there is nothing new to keep")
+        if row.document == (await self._in_effect(year)).document:
+            raise ScenarioRefusedError("Your draft is the rules in effect: change a setting before keeping it")
         source = await self._source(year, _from(row), options, recorded=row.document)
         code = starting_point_code(sum(1 for o in options.values() if not o.starting_point))
         stored = _fit_name((name or "").strip() or describe(source.document, row.document))

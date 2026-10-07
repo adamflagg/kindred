@@ -491,9 +491,8 @@ async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices
 
     monkeypatch.setattr(service_module, "price_document", counting)
     comparison = await world.service.compare(YEAR, FINANCE, ["B"])
-    assert (
-        len(priced) == 2
-    )  # the draft, and v1 as B's reference (Task 58's one yardstick reuses A's stored Round 1 again)
+    # the draft, and v1 as B's reference (Task 58's one yardstick reuses A's stored Round 1 again)
+    assert len(priced) == 2
     kept = comparison.columns[1]
     assert (kept.code, kept.up, kept.down) == ("B", 1, 0)  # Emma's tier 2 went from 75% to 80%
 

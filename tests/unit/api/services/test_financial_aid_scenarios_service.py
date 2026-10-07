@@ -1084,11 +1084,28 @@ async def test_keep_with_a_name_stores_it_and_a_blank_one_stores_the_label() -> 
 
 
 @pytest.mark.asyncio
-async def test_an_option_kept_from_the_rules_is_labelled_by_its_name_not_as_the_rules_as_they_were() -> None:
+async def test_an_option_kept_from_the_rules_keeps_its_generated_label_whatever_its_name() -> None:
+    """I6/m1: never "… as they were" for a document that differs; a rename changes `name`, never `label`."""
     world = await _frozen()
     await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
     kept = await world.service.keep(YEAR, FINANCE)
-    assert kept.label == kept.record.name
+    words = "Tiers 1–6 +5% · Round 1 % › Teen › Tier 2 75%"
+    assert (kept.label, kept.name) == (words, words)
+    renamed = await world.service.rename(YEAR, "A", "Every tier up", FINANCE)
+    assert (renamed.label, renamed.name) == (words, "Every tier up")
+    [listed] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert (listed.label, listed.name) == (words, "Every tier up")
+
+
+@pytest.mark.asyncio
+async def test_a_draft_that_is_the_rules_in_effect_is_not_kept() -> None:
+    world = await _frozen()
+    await world.service.load(YEAR, FINANCE, start="rules")
+    with pytest.raises(
+        ScenarioRefusedError, match=r"^Your draft is the rules in effect: change a setting before keeping it$"
+    ):
+        await world.service.keep(YEAR, FINANCE)
+    assert not world.store.rows[AID_SCENARIO_OPTIONS]
 
 
 @pytest.mark.asyncio
@@ -1103,6 +1120,8 @@ async def test_after_a_a1_and_b_the_next_keep_is_c_and_a_legacy_variant_keeps_it
     options = {o.record.code: o for o in (await world.service.workspace(YEAR, FINANCE)).options}
     assert options["A1"].name == options["A1"].label  # no stored name: its generated label stands in
     assert options["A1"].record.name == ""
+    renamed = await world.service.rename(YEAR, "A1", "Older idea", FINANCE)
+    assert (renamed.name, renamed.record.code) == ("Older idea", "A1")
 
 
 @pytest.mark.asyncio
@@ -1238,8 +1257,7 @@ async def test_an_option_kept_before_the_lock_still_loads_and_prices_but_cannot_
 async def test_each_option_says_whether_it_can_be_promoted_and_why_not() -> None:
     world = await _frozen()
     await _approved_v1(world)
-    await world.service.load(YEAR, FINANCE, start="rules")
-    await world.service.keep(YEAR, FINANCE)  # A: the rules in effect, unchanged
+    await world.service.start_from_rules(YEAR, FINANCE)  # A: the rules in effect, unchanged (keep refuses that)
     await world.service.save_draft(YEAR, _shifted(intake_rules(), "5"), FINANCE)
     await world.service.keep(YEAR, FINANCE)  # B: Round 1 % moved
     await world.service.save_draft(
