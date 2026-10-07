@@ -67,15 +67,15 @@ async def fit_tier_shift(
 
 
 def fit_margin(results: ScenarioResults) -> Decimal:
-    """What Fit to budget keeps >= 0: the pools' Round 1 allocations summed, less every Round 1 dollar (money on a
-    program with no pool included: it has no allocation of its own, but it spends the budget)."""
+    """What Fit to budget keeps >= 0: the pools' Allocated summed, less every Round 1 dollar (money on a program with
+    no pool included: it has no allocation of its own, but it spends the budget)."""
     if results.round1_remaining is None:
-        raise ValueError("these rules give Round 1 no allocation")
+        raise ValueError("these rules give the pools no allocation")
     return results.round1_remaining
 
 
 def tightest_pool(results: ScenarioResults) -> PoolResult | None:
-    """The pool with the least Round 1 Remaining (information only, never a limit); None when no pool has a Round 1
+    """The pool with the least Round 1 Remaining (information only, never a limit); None when no pool has an
     allocation. Ties go to the first pool in the rules' order."""
     tightest: PoolResult | None = None
     for pool in results.pools:

@@ -1,7 +1,7 @@
 """A scenario's results from the priced season (sub-project 9b; spec §7.4, §5.3). Real SP10a pricing over
 fictional rules: session 1000102 costs 4,000 and the camp table gives tier 2 75%, so a 60,000 family's Round 1 is
-3,000, and a 250,000 family (tier 6, 2% = 80) gets the 100 minimum. Round 1's allocation is 440,000 (camp 340,000
-after its reserves, weekends 75,000, b'mitzvah 25,000)."""
+3,000, and a 250,000 family (tier 6, 2% = 80) gets the 100 minimum. The pools' Allocated is 500,000 (camp 400,000,
+weekends 75,000, b'mitzvah 25,000), with no reserves held back (§8.2)."""
 
 from __future__ import annotations
 
@@ -392,6 +392,16 @@ def test_round1_remaining_is_the_pools_allocation_less_every_round1_dollar() -> 
     camp = pools["camp_pool"]
     assert (camp.round1_allocated, camp.round1_remaining) == (Decimal("400000.00"), Decimal("396900.00"))
     assert (results.round1_allocated, results.round1_remaining) == (Decimal("500000.00"), Decimal("496900.00"))
+
+
+def test_round1_remaining_takes_off_round1_dollars_only_while_remaining_takes_off_every_round() -> None:
+    """Regression guard. §8.2 (owner 10-06, open item 2 accepted): Round 1 remaining is the pool's Allocated less
+    Round 1's money alone; Round 2's committed money comes off Remaining, never off Round 1 remaining."""
+    # req-a's Round 1 is 3,000 and its 1,000 appeal is capped at 600 (90% of 4,000, less 3,000).
+    results = _results([_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")})])
+    camp = {p.pool: p for p in results.pools}["camp_pool"]
+    assert (camp.round1_remaining, camp.remaining) == (Decimal("397000.00"), Decimal("396400.00"))
+    assert (results.round1_remaining, results.remaining) == (Decimal("497000.00"), Decimal("496400.00"))
 
 
 def test_round2_has_no_allocation_so_its_figures_are_null() -> None:

@@ -1,9 +1,9 @@
 """A scenario's results (sub-project 9b; spec §7.4, §5.3; the mock's strip, Compare and Trail). Pure: from the
 priced season and its budget, exactly as sub-project 10a's Rounds & budget computes them.
 
-  Round n            Posted + Needs an offer + Pending approval for round n: the money §5.3's Remaining
-                     subtracts from round n's allocation. Round 2 is only the Round 2 asks keyed so far; there is
-                     no appeal estimate (Decision 10).
+  Round n            Posted + Needs an offer + Pending approval for round n (round n's Committed): the money
+                     §5.3's Remaining subtracts from the pool's Allocated. Round 2 is only the Round 2 asks keyed so
+                     far; there is no appeal estimate (Decision 10).
   Round 1 remaining  the pool's Allocated less every Round 1 dollar (§8.2: no reserves); what Fit to budget fits
                      (Decision 11 (a)); Remaining is every round's.
   At the minimum     live requests whose Round 1, not yet posted, is the minimum award (the calculator's r1_bound).
@@ -110,6 +110,8 @@ class PoolResult(_Result):
     round1: Decimal
     round2: Decimal
     round3: Decimal
+    # The pool's whole Allocated (§8.2: no reserves). Rows stored before the reserves were dropped keep the older
+    # figure, Round 1's allocation after Round 2's and Round 3's reserves, until the option is priced again.
     round1_allocated: Decimal | None
     round1_remaining: Decimal | None
     remaining: Decimal | None
@@ -122,6 +124,7 @@ class ScenarioResults(_Result):
     round1: Decimal
     round2: Decimal
     round3: Decimal
+    # The pools' whole Allocated summed (§8.2); stored rows keep the older figure, reserves taken off, as PoolResult's.
     round1_allocated: Decimal | None
     round1_remaining: Decimal | None
     remaining: Decimal | None
@@ -142,9 +145,8 @@ class ScenarioResults(_Result):
     by_table: list[TableTierRow] = Field(default_factory=list)
     round2_by_tier: list[Round2TierRow] = Field(default_factory=list)
     round2_not_in_tiers: Decimal = ZERO  # Round 2 the budget counts on requests in no tier: rows + this = round2
-    round2_allocated: Decimal | None = (
-        None  # No Round 2 allocation exists (owner 10-06); None on new results, kept as recorded on stored ones
-    )
+    # No Round 2 allocation exists (owner 10-06); None on new results, kept as recorded on stored ones.
+    round2_allocated: Decimal | None = None
     round2_remaining: Decimal | None = None
     committee_rows: bool = False
 
