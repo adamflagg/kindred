@@ -71,6 +71,15 @@ def test_a_section_that_does_not_parse_is_refused_naming_the_field() -> None:
         parse_section(fictional_rules(), "awards", awards)
 
 
+@pytest.mark.asyncio
+async def test_the_draft_and_approved_reads_name_the_groups() -> None:
+    service = await _approved_v1(FakeStore())
+    draft = await service.draft_view(2031)
+    approved = await service.approved_view(2031)
+    assert [g.label for g in draft.groups] == ["Camp", "Weekends", "B'mitzvah"]
+    assert approved.groups == draft.groups
+
+
 # --- save_sections ---------------------------------------------------------------------------------
 
 

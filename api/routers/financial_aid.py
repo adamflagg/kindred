@@ -136,6 +136,7 @@ from api.schemas.financial_aid_rules import (
     ApprovedRulesOut,
     ApprovedSectionOut,
     DraftSectionOut,
+    GroupOut,
     NewVersionIn,
     RulesApproveIn,
     RulesDocumentIn,
@@ -430,6 +431,7 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
         report=draft.report,
         branched_from=branched_from,
         budget_total_locked=draft.budget_total_locked,
+        groups=[GroupOut(pool=g.pool, label=g.label, equity_class=g.equity_class) for g in draft.groups],
         sections=[
             DraftSectionOut(
                 section=s.section,
@@ -448,6 +450,7 @@ def _approved_out(rules: ApprovedRules) -> ApprovedRulesOut:
     return ApprovedRulesOut(
         year=rules.year,
         version=rules.version,
+        groups=[GroupOut(pool=g.pool, label=g.label, equity_class=g.equity_class) for g in rules.groups],
         sections=[
             ApprovedSectionOut(
                 section=s.section,

@@ -94,6 +94,14 @@ class DraftSectionOut(BaseModel):
     fingerprint: str  # sha256 of the section's stored content; saves and approvals send it back
 
 
+class GroupOut(BaseModel):
+    """One group (spec §4.1): a budget pool, its label, and the equity class its programs share."""
+
+    pool: str
+    label: str
+    equity_class: str | None
+
+
 class RulesDraftOut(BaseModel):
     """The Rules tab: the rules draft (the latest version) section by section (spec §7.5, D39)."""
 
@@ -107,6 +115,7 @@ class RulesDraftOut(BaseModel):
     report: ValidationReport
     branched_from: int | None = None  # a save that made this version from the one it names
     budget_total_locked: bool = False  # owner 10-06 (b): Round 1 has posted; the total is read-only, the shares edit
+    groups: list[GroupOut] = Field(default_factory=list)
 
 
 class ApprovedSectionOut(BaseModel):
@@ -126,3 +135,4 @@ class ApprovedRulesOut(BaseModel):
     year: int
     version: int | None  # the version pricing the season (or the `version` asked for); None while none prices
     sections: list[ApprovedSectionOut]
+    groups: list[GroupOut] = Field(default_factory=list)

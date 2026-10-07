@@ -30,6 +30,7 @@ from api.services.financial_aid_rules_service import (
 from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.financial_aid.rules import ValidationReport
+from bunking.financial_aid.rules.groups import Group
 from bunking.financial_aid.rules.lifecycle import SectionStatus, initial_status
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.rbac.permissions import Permission
@@ -55,6 +56,7 @@ DRAFT = RulesDraft(
     version=VERSION,
     approved_version=1,
     report=ValidationReport(),
+    groups=(Group("camp_pool", "Camp", "camp"),),
     sections=tuple(
         DraftSection(
             name,
@@ -66,7 +68,10 @@ DRAFT = RulesDraft(
     ),
 )
 APPROVED = ApprovedRules(
-    year=2031, version=1, sections=tuple(ApprovedSection(name, SectionStatus(), None, None) for name in SECTION_NAMES)
+    year=2031,
+    version=1,
+    sections=tuple(ApprovedSection(name, SectionStatus(), None, None) for name in SECTION_NAMES),
+    groups=(Group("camp_pool", "Camp", "camp"),),
 )
 AWARDS = fictional_rules_json()["awards"] | {"minimum": "150"}
 SAVE_BODY = {"base_version": 2, "content": AWARDS, "expected_fingerprint": "f" * 64}
@@ -207,6 +212,13 @@ def test_the_draft_read_gives_each_section_its_fingerprint() -> None:
     _stub()
     body = _client().get("/api/financial-aid/rules/2031/draft").json()
     assert all(len(s["fingerprint"]) == 64 for s in body["sections"])
+
+
+def test_both_reads_carry_the_groups() -> None:
+    _stub()
+    expected = [{"pool": "camp_pool", "label": "Camp", "equity_class": "camp"}]
+    assert _client().get("/api/financial-aid/rules/2031/draft").json()["groups"] == expected
+    assert _client().get("/api/financial-aid/rules/2031/approved").json()["groups"] == expected
 
 
 def test_the_draft_read_says_whether_the_budget_total_is_locked() -> None:
