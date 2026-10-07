@@ -268,7 +268,7 @@ async def test_the_budget_on_a_past_date() -> None:
     camp = next(p for p in out.pools if p.pool == "camp_pool")
     r1 = next(c for c in camp.rounds if c.round == 1)
     assert (camp.total.allocated, r1.posted, r1.accepted) == (400000.0, 1500.0, 1500.0)
-    assert (r1.needs_offer, r1.pending_approval, r1.remaining) == (None, None, None)
+    assert (r1.needs_offer, r1.pending_approval) == (None, None)
     assert (camp.below.held, camp.below.outside_budget, camp.below.outside_budget_posted) == (None, None, 0.0)
     assert (camp.demand.round2_asks.requests, camp.demand.round2_asked) == (1, 700.0)  # type: ignore[union-attr]
     assert (camp.demand.round2_computed, camp.demand.round1_unmet) == (None, None)
@@ -288,8 +288,8 @@ async def test_a_past_read_masks_committed_wherever_it_masks_remaining() -> None
     _post_at(store, LIAM, _day(3, 5))
     out = await _service(store).budget(YEAR, as_of=MAR_9)
     camp = next(p for p in out.pools if p.pool == "camp_pool")
-    for cell in (camp.total, *camp.rounds):
-        assert (cell.remaining is None) == (cell.committed is None)
+    assert (camp.total.remaining is None) == (camp.total.committed is None)
+    assert all(cell.committed is None for cell in camp.rounds)  # a round has no remaining to compare (spec §9.4)
 
 
 @pytest.mark.asyncio

@@ -116,6 +116,7 @@ import type {
   RemainingResponse,
   ResultsOut,
   Round2CompareOut,
+  RoundCellOut,
   RoundCountsOut,
   SensitivityOut,
   SnapshotOut,
@@ -262,6 +263,8 @@ export type ApiAidIssue = IssueOut
 export type ApiAidBudget = BudgetResponse
 export type ApiAidBudgetPool = PoolBudgetOut
 export type ApiAidBudgetCell = CellOut
+/** A round's figures: what it committed, never an Allocated or Remaining. Mirrors Python `RoundCellOut`. */
+export type ApiAidBudgetRoundCell = RoundCellOut
 export type ApiAidRoundCounts = RoundCountsOut
 /** "3 families · 4 requests" (principle 7). Mirrors Python `CountOut`. */
 export type ApiAidCount = CountOut

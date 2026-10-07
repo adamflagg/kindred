@@ -7,13 +7,14 @@ import type {
   ApiAidBudget,
   ApiAidBudgetCell,
   ApiAidBudgetPool,
+  ApiAidBudgetRoundCell,
   ApiAidCount,
   ApiAidDecisionTypeLine,
   ApiAidRoundCounts,
 } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
-import { formatMoney, moneyCsv, toCents } from '../kit/money'
+import { formatMoney, toCents } from '../kit/money'
 import { figureLink } from '../requests/seasonFigure'
 import { REQUEST_VIEWS, type RequestViewKey } from '../requests/views'
 
@@ -130,23 +131,6 @@ export function stripRounds(strip: readonly ApiAidRoundCounts[], view: AidView):
 
 export type BudgetColumn = 'allocated' | 'posted' | 'accepted' | 'needs_offer' | 'remaining'
 
-export const BUDGET_COLUMNS: readonly BudgetColumn[] = [
-  'allocated',
-  'posted',
-  'accepted',
-  'needs_offer',
-  'remaining',
-]
-
-/** Each column's header and its note in the registry's `season-rounds-budget` surface (§4.8). */
-export const COLUMN_HEADERS: Readonly<Record<BudgetColumn, { header: string; note: string }>> = {
-  allocated: { header: 'Allocated', note: 'allocated' },
-  posted: { header: 'Posted', note: 'budget_posted' },
-  accepted: { header: 'Accepted', note: 'accepted' },
-  needs_offer: { header: 'Needs an offer', note: 'needs_offer' },
-  remaining: { header: 'Remaining', note: 'remaining' },
-}
-
 export type BudgetRowKind = 'pool' | 'round' | 'pending' | 'total'
 
 export interface BudgetRow {
@@ -157,22 +141,22 @@ export interface BudgetRow {
   readonly poolLabel: string
   readonly label: string
   readonly round: number | null
-  readonly cell: ApiAidBudgetCell
+  readonly cell: ApiAidBudgetCell | ApiAidBudgetRoundCell
 }
 
 export interface BudgetScope {
   /** `?pool=`: the Remaining line opens Rounds & budget on one pool (D48). Null: every pool. */
   readonly pool: string | null
-  /** `?fold=`: pools shown as their total line only. */
+  /** Pools shown as their total line only. Rounds & budget's pool cards pass none (`?fold=` is retired). */
   readonly folded: ReadonlySet<string>
 }
 
 const hasMoney = (value: number | null) => value !== null && toCents(value) !== 0
 
 /**
- * The table's rows, in the server's pool order: each pool's total line, then (unless folded) its
+ * The budget's rows, in the server's pool order: each pool's total line, then (unless folded) its
  * rounds, with Pending approval as its own line under the round that holds it (D79); then the
- * total, unless the page is on one pool.
+ * total, unless the page is on one pool. The pool cards' rounds tables read them (`roundLines`).
  */
 export function budgetRows(budget: ApiAidBudget, scope: BudgetScope): BudgetRow[] {
   const rows: BudgetRow[] = []
@@ -233,15 +217,11 @@ export function budgetRows(budget: ApiAidBudget, scope: BudgetScope): BudgetRow[
  */
 export function cellValue(row: BudgetRow, column: BudgetColumn): number | null {
   if (row.kind === 'pending') return column === 'needs_offer' ? row.cell.pending_approval : null
+  // A round has no Allocated or Remaining (spec §8.1, §9.4): only a pool or the total does.
+  if (column === 'allocated' || column === 'remaining') {
+    return 'allocated' in row.cell ? row.cell[column] : null
+  }
   return row.cell[column]
-}
-
-/** Remaining below zero (§4.2): "over allocation" on a pool or round, "over budget" on the total (D119). */
-export function overWords(row: BudgetRow, column: BudgetColumn): string | null {
-  if (column !== 'remaining' || row.kind === 'pending') return null
-  const value = row.cell.remaining
-  if (value === null || toCents(value) >= 0) return null
-  return row.kind === 'total' ? 'over budget' : 'over allocation'
 }
 
 /**
@@ -309,23 +289,6 @@ export function cellCount(row: BudgetRow, column: BudgetColumn): ApiAidCount | n
   const count =
     row.kind === 'pending' ? row.cell.pending_approval_count : row.cell.needs_offer_count
   return count ?? null
-}
-
-/** A cell as the mock words it: "n · $X" with n = requests, or the dollars alone when there is no count. */
-export function cellWords(row: BudgetRow, column: BudgetColumn): string {
-  const money = formatMoney(cellValue(row, column))
-  const count = cellCount(row, column)
-  return count === null ? money : `${String(count.requests)} · ${money}`
-}
-
-/** A pool or total line's Pending approval, under its Needs an offer (running-rounds.html). */
-export function pendingNote(row: BudgetRow): string | null {
-  if (row.kind !== 'pool' && row.kind !== 'total') return null
-  const pending = row.cell.pending_approval
-  if (!hasMoney(pending)) return null
-  const count = row.cell.pending_approval_count
-  const lead = count == null ? '' : `${String(count.requests)} · `
-  return `and ${lead}${formatMoney(pending)} pending approval`
 }
 
 /**
@@ -493,61 +456,7 @@ export function budgetTypeLines(budget: ApiAidBudget, pool: string | null): Type
   return (scope.decision_types ?? []).filter((t) => t.counts_toward_budget).map(typeLine)
 }
 
-// ── The view's state in the URL (D15) ─────────────────────────────────────────
-
-/** `?fold=pool_a,pool_b`. The No pool line has an empty key, so it never folds. */
-export function parseFolded(raw: string | null): ReadonlySet<string> {
-  return new Set((raw ?? '').split(',').filter((key) => key !== ''))
-}
-
-/** The `fold` parameter after toggling one pool; null when nothing stays folded. */
-export function toggleFolded(folded: ReadonlySet<string>, pool: string): string | null {
-  const next = new Set(folded)
-  if (next.has(pool)) next.delete(pool)
-  else next.add(pool)
-  return next.size === 0 ? null : [...next].join(',')
-}
-
 // ── Download CSV (§11; D70) ───────────────────────────────────────────────────
-
-export const BUDGET_CSV_HEADERS = [
-  'Pool',
-  'Round',
-  'Allocated',
-  'Posted',
-  'Accepted',
-  'Needs an offer',
-  'Needs an offer requests',
-  'Pending approval',
-  'Pending approval requests',
-  'Remaining',
-]
-
-const countCsv = (count: ApiAidCount | null | undefined): string =>
-  count == null ? '' : String(count.requests)
-
-/**
- * The table's lines on screen (§11), one per pool, round and total, as folded and scoped; Pending
- * approval as its own column, each dollar column followed by its request count (empty where the
- * server sent none). The strip, below the line and the decision-type block are not in it (plan
- * Decision 7, M8).
- */
-export function budgetCsvRows(rows: readonly BudgetRow[]): string[][] {
-  return rows
-    .filter((row) => row.kind !== 'pending')
-    .map((row) => [
-      row.poolLabel,
-      row.round === null ? '' : String(row.round),
-      moneyCsv(row.cell.allocated),
-      moneyCsv(row.cell.posted),
-      moneyCsv(row.cell.accepted),
-      moneyCsv(row.cell.needs_offer),
-      countCsv(row.cell.needs_offer_count),
-      moneyCsv(row.cell.pending_approval),
-      countCsv(row.cell.pending_approval_count),
-      moneyCsv(row.cell.remaining),
-    ])
-}
 
 /** `camperships-season-rounds-budget[-<pool>]-<season>[-as-of-<date>].csv` (D70). */
 export function budgetCsvName(

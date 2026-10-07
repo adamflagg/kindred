@@ -25,6 +25,7 @@ from api.schemas.financial_aid_decisions import (
     PostedRow,
     Round3AmountIn,
     Round3ApprovalIn,
+    RoundCellOut,
     RoundRef,
     UnpostIn,
 )
@@ -238,7 +239,7 @@ async def test_the_budget_read_sends_committed_and_share_and_no_round_allocation
     budget = await _service(store).budget(YEAR)
     camp = next(p for p in budget.pools if p.pool == "camp_pool")
     r1 = next(c for c in camp.rounds if c.round == 1)
-    assert (r1.allocated, r1.remaining, r1.committed) == (None, None, 3000.0)
+    assert r1.committed == 3000.0  # a round has no allocated or remaining (spec §9.4)
     assert (camp.share_pct, camp.total.allocated, camp.total.committed, camp.total.remaining) == (
         80.0,
         400000.0,
@@ -879,3 +880,9 @@ async def test_live_pricing_reads_the_synced_equity_answers_not_intakes_recorded
     inputs = (await _service(store).season(YEAR)).priced[EMMA].inputs
     assert inputs is not None
     assert inputs.equity_answers["bipoc"] == "No"
+
+
+def test_a_round_cell_no_longer_carries_allocated_or_remaining() -> None:
+    """Spec §9.4: the Rounds & budget screen stopped reading them, so they leave the schema."""
+    assert {"allocated", "remaining"} & set(RoundCellOut.model_fields) == set()
+    assert {"allocated", "remaining", "committed"} <= set(CellOut.model_fields)

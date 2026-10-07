@@ -89,6 +89,7 @@ from api.schemas.financial_aid_decisions import (
     UnconfirmedOut,
     UnpostIn,
     UntickedMoneyOut,
+    _CellBase,
 )
 from api.schemas.financial_aid_intake import IssueOut
 from api.services.camp_calendar import CAMP_TZ
@@ -843,12 +844,10 @@ def _maybe_count(count: Count | None) -> CountOut | None:
 def _round_cell(n: int, cell: RoundCell) -> RoundCellOut:
     return RoundCellOut(
         round=n,
-        allocated=None,
         posted=money(cell.posted),
         accepted=money(cell.accepted),
         needs_offer=money(cell.needs_offer),
         pending_approval=money(cell.pending_approval),
-        remaining=None,
         needs_offer_count=_count(cell.needs_offer_count),
         pending_approval_count=_count(cell.pending_approval_count),
         unconfirmed=_unconfirmed(cell),
@@ -1203,15 +1202,16 @@ def _masked(pool: str, gapped: frozenset[str] | None) -> bool:
     return bool(gapped) if pool == TOTAL else pool in gapped
 
 
-def _past_cell[C: CellOut](cell: C, *, priced: bool, posted: bool) -> C:
+def _past_cell[C: _CellBase](cell: C, *, priced: bool, posted: bool) -> C:
     update: dict[str, Any] = (
         {}
         if priced
         else {"needs_offer": None, "pending_approval": None, "needs_offer_count": None, "pending_approval_count": None}
     )
     if not (priced and posted):
-        update["remaining"] = None
         update["committed"] = None
+        if isinstance(cell, CellOut):
+            update["remaining"] = None
     return cell.model_copy(update=update)
 
 
@@ -1281,7 +1281,7 @@ def _decided_unknown(row: GridRowOut) -> GridRowOut:
 def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
     """The budget's posted and accepted figures, when some request's posted money is unknown."""
 
-    def cell[C: CellOut](cell: C) -> C:
+    def cell[C: _CellBase](cell: C) -> C:
         return cell.model_copy(update={"posted": None, "accepted": None})
 
     def pool(p: PoolBudgetOut) -> PoolBudgetOut:
