@@ -267,13 +267,33 @@ describe('RulesTab has no session capacity form', () => {
   it('shows finance only the Round 3 section in chapter 3', () => {
     granted = FINANCE
     renderAt('/aid/season/rules?open=3')
-    expect(screen.queryByText('Session capacity form')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /capacity/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/session capacity/i)).not.toBeInTheDocument()
   })
 
   it('shows the registrar none either', () => {
     renderAt('/aid/season/rules?open=3')
-    expect(screen.queryByText('Session capacity form')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /capacity/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/session capacity/i)).not.toBeInTheDocument()
+  })
+
+  it('shows finance none on a season with no rules yet', () => {
+    granted = FINANCE
+    year = 2028
+    draft = {
+      data: undefined,
+      isLoading: false,
+      error: new AidApiError('2028 has no rules yet', 404),
+    }
+    approved = {
+      data: undefined,
+      isLoading: false,
+      error: new AidApiError('2028 has no approved rules yet', 404),
+    }
+    renderAt('/aid/season/rules?year=2028')
+    expect(screen.getByText('No rules for 2028 yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /capacity/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/session capacity/i)).not.toBeInTheDocument()
   })
 })
 
