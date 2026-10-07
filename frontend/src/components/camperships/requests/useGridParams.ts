@@ -7,7 +7,7 @@ import { resolveStrip, shownView, type RequestLens } from './strip'
 import { parseRoundFilter, type RequestView, type RoundFilter } from './views'
 
 export type GridParamName =
-  'program' | 'pool' | 'round' | 'counted' | 'live' | FigureMeasure | 'ids' | 'row' | 'op'
+  'program' | 'pool' | 'round' | 'live' | FigureMeasure | 'ids' | 'row' | 'op'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
@@ -19,7 +19,6 @@ export interface GridParams {
   readonly program: string | null
   readonly pool: string | null
   readonly round: RoundFilter | null
-  readonly counted: boolean
   readonly live: boolean
   /** `?posted=` / `?accepted=`: a Season figure's rows (interim, owner 10-06; seasonFigure.ts). */
   readonly figure: SeasonFigure | null
@@ -83,7 +82,6 @@ export function useGridParams(): GridParams {
     program: params.get('program'),
     pool: params.get('pool'),
     round: parseRoundFilter(params.get('round')),
-    counted: params.get('counted') === '1',
     live: params.get('live') === '1',
     figure: parseSeasonFigure(params),
     op: parseOp(params.get('op')),
