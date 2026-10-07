@@ -33,4 +33,19 @@ describe('useGridParams', () => {
     expect(search.get('program')).toBe('Summer')
     expect(search.get('round')).toBe('2')
   })
+
+  // The counting filter's `?counted=` is retired too (R10, owner 10-07): an old Season link's goes
+  // with the first filter change, as `tick=` does.
+  it('drops a retired ?counted= with the next write, and keeps the rest', async () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/requests?posted=1&counted=1&program=Summer']}>
+        <Probe />
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Round 2' }))
+    const search = new URLSearchParams(screen.getByLabelText('search').textContent)
+    expect(search.get('counted')).toBeNull()
+    expect(search.get('posted')).toBe('1')
+    expect(search.get('program')).toBe('Summer')
+  })
 })

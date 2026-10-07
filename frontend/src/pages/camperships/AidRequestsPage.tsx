@@ -83,7 +83,6 @@ export default function AidRequestsPage() {
     program,
     pool,
     round,
-    counted,
     live: liveOnly,
     figure,
     op,
@@ -137,8 +136,8 @@ export default function AidRequestsPage() {
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, counted, live: liveOnly, figure, ids: opIds }),
-    [program, pool, round, counted, liveOnly, figure, opIds]
+    (): GridFilters => ({ program, pool, round, live: liveOnly, figure, ids: opIds }),
+    [program, pool, round, liveOnly, figure, opIds]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -299,15 +298,12 @@ export default function AidRequestsPage() {
       leaveThen(null, () => setParams({ pool: nextPool, program: nextProgram })),
     [leaveThen, setParams]
   )
-  // A Season figure's Show All (interim, owner 10-06): the figure and the counted that its line
-  // names both go; the other filters keep their own controls and lines.
+  // A Season figure's Show All (interim, owner 10-06): the figure its line names goes; the other
+  // filters keep their own controls and lines.
   const clearFigure = useCallback(
     () =>
       leaveThen(null, () =>
-        setParams({
-          ...Object.fromEntries(FIGURE_PARAMS.map((name) => [name, null])),
-          counted: null,
-        })
+        setParams(Object.fromEntries(FIGURE_PARAMS.map((name) => [name, null])))
       ),
     [leaveThen, setParams]
   )
@@ -346,12 +342,11 @@ export default function AidRequestsPage() {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(figure !== null ? figureParam(figure) : {}),
-      ...(counted ? { counted: '1' } : {}),
       ...(liveOnly ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(op !== null ? { op } : {}),
     }),
-    [program, pool, round, figure, counted, liveOnly, showIds, op]
+    [program, pool, round, figure, liveOnly, showIds, op]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -418,7 +413,6 @@ export default function AidRequestsPage() {
       program={program}
       pool={pool}
       round={round}
-      counted={counted}
       onChange={changeFilter}
       onProgramPool={onProgramPool}
     />
@@ -474,7 +468,7 @@ export default function AidRequestsPage() {
       )}
       {figure !== null && (
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {figureWords(figure, counted)} ·
+          {figureWords(figure)} ·
           <button type="button" className={ACTION_LINK} onClick={clearFigure}>
             Show All
           </button>

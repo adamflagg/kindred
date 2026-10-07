@@ -37,7 +37,7 @@ describe('parseSeasonFigure (owner 10-06, option a)', () => {
 })
 
 describe('matchesFigure: the budget strip counts these rows (budget.py)', () => {
-  // Posted in Round 1 (counted, accepted), and now in Round 2: still Round 1's posted figure.
+  // Posted in Round 1 (accepted), and now in Round 2: still Round 1's posted figure.
   const moved = gridRow({
     request_id: 'reqmovedon00001',
     rounds: [
@@ -69,73 +69,76 @@ describe('matchesFigure: the budget strip counts these rows (budget.py)', () => 
   // Needs an offer, nothing posted.
   const needs = gridRow({ request_id: 'reqneedsoffer01' })
   const rows = [moved, clawed, unaccepted, outside, round2, needs]
-  const ids = (figure: SeasonFigure, counted: boolean) =>
-    rows.filter((r) => matchesFigure(r, figure, counted)).map((r) => r.request_id)
+  const ids = (figure: SeasonFigure) =>
+    rows.filter((r) => matchesFigure(r, figure)).map((r) => r.request_id)
 
   it('opens a round posted in Round 1 though the request has moved on to Round 2', () => {
-    expect(ids({ measure: 'posted', round: 1 }, true)).toEqual([
+    expect(ids({ measure: 'posted', round: 1 })).toEqual([
       'reqmovedon00001',
       'requnaccept0001',
+      'reqoutside00001',
     ])
   })
 
   it('leaves out a clawed-back posted round', () => {
-    expect(ids({ measure: 'posted', round: 1 }, false)).not.toContain('reqclawed000001')
-    expect(ids({ measure: 'accepted', round: 'all' }, false)).not.toContain('reqclawed000001')
+    expect(ids({ measure: 'posted', round: 1 })).not.toContain('reqclawed000001')
+    expect(ids({ measure: 'accepted', round: 'all' })).not.toContain('reqclawed000001')
   })
 
   it('opens accepted only where the posted round is accepted', () => {
-    expect(ids({ measure: 'accepted', round: 1 }, true)).toEqual(['reqmovedon00001'])
-  })
-
-  it('keeps a posted round outside the budget only without counted', () => {
-    expect(ids({ measure: 'posted', round: 1 }, false)).toEqual([
-      'reqmovedon00001',
-      'requnaccept0001',
-      'reqoutside00001',
-    ])
-    expect(ids({ measure: 'accepted', round: 1 }, false)).toEqual([
-      'reqmovedon00001',
-      'reqoutside00001',
-    ])
-    expect(ids({ measure: 'posted', round: 1 }, true)).not.toContain('reqoutside00001')
+    expect(ids({ measure: 'accepted', round: 1 })).toEqual(['reqmovedon00001', 'reqoutside00001'])
   })
 
   it('reads all as any round', () => {
-    expect(ids({ measure: 'posted', round: 'all' }, true)).toEqual([
+    expect(ids({ measure: 'posted', round: 'all' })).toEqual([
       'reqmovedon00001',
       'requnaccept0001',
+      'reqoutside00001',
       'reqroundtwo0001',
     ])
-    expect(ids({ measure: 'accepted', round: 'all' }, true)).toEqual([
+    expect(ids({ measure: 'accepted', round: 'all' })).toEqual([
       'reqmovedon00001',
+      'reqoutside00001',
       'reqroundtwo0001',
     ])
-    expect(ids({ measure: 'posted', round: 2 }, true)).toEqual(['reqroundtwo0001'])
-    expect(ids({ measure: 'posted', round: 3 }, true)).toEqual([])
+    expect(ids({ measure: 'posted', round: 2 })).toEqual(['reqroundtwo0001'])
+    expect(ids({ measure: 'posted', round: 3 })).toEqual([])
   })
 
   it('lets every row through with no figure', () => {
-    expect(rows.filter((r) => matchesFigure(r, null, true))).toHaveLength(rows.length)
+    expect(rows.filter((r) => matchesFigure(r, null))).toHaveLength(rows.length)
+  })
+})
+
+describe('a figure opens the whole round (R10, owner 10-07)', () => {
+  it('a figure opens every round posted in that round, outside money included', () => {
+    const outside = gridRow({
+      rounds: [roundOut(1, 'posted', { posted: 3600, counts_toward_budget: false })],
+    })
+    expect(matchesFigure(outside, { measure: 'posted', round: 1 })).toBe(true)
+    expect(figureWords({ measure: 'posted', round: 1 })).toBe('Posted in Round 1')
+  })
+
+  it('"Posted in Round 1" stays cumulative: a request whose Round 2 now needs an offer is still in it', () => {
+    // A pin (owner 10-07 asked; it is cumulative, seasonFigure.ts:55-69): passes before and after F1, and A8's
+    // strip counts the same request (Task 8.1's pin), so the count and the list agree.
+    const moved = gridRow({
+      rounds: [
+        roundOut(1, 'posted', { posted: 1800 }),
+        roundOut(2, 'needs_offer', { decided: 400 }),
+      ],
+    })
+    expect(matchesFigure(moved, { measure: 'posted', round: 1 })).toBe(true)
   })
 })
 
 describe('figureWords: the grid line that says what the list is', () => {
-  it('names the measure, the round and the budget', () => {
-    expect(figureWords({ measure: 'posted', round: 1 }, true)).toBe(
-      'Posted in Round 1 · counting toward the budget'
-    )
-    expect(figureWords({ measure: 'accepted', round: 2 }, true)).toBe(
-      'Accepted in Round 2 · counting toward the budget'
-    )
-    expect(figureWords({ measure: 'posted', round: 'all' }, true)).toBe(
-      'Posted in any round · counting toward the budget'
-    )
-  })
-
-  it('drops the budget part when counted is off', () => {
-    expect(figureWords({ measure: 'posted', round: 3 }, false)).toBe('Posted in Round 3')
-    expect(figureWords({ measure: 'accepted', round: 'all' }, false)).toBe('Accepted in any round')
+  it('names the measure and the round, with no budget part (R10)', () => {
+    expect(figureWords({ measure: 'posted', round: 1 })).toBe('Posted in Round 1')
+    expect(figureWords({ measure: 'accepted', round: 2 })).toBe('Accepted in Round 2')
+    expect(figureWords({ measure: 'posted', round: 'all' })).toBe('Posted in any round')
+    expect(figureWords({ measure: 'posted', round: 3 })).toBe('Posted in Round 3')
+    expect(figureWords({ measure: 'accepted', round: 'all' })).toBe('Accepted in any round')
   })
 
   it('names the CSV after the figure', () => {

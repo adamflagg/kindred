@@ -527,8 +527,6 @@ export interface GridFilters {
   readonly round: RoundFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
   readonly ids: ReadonlySet<string> | null
-  /** Only rounds whose money counts toward the budget (Rounds & budget's figures; plan review I5). */
-  readonly counted: boolean
   /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
   readonly live: boolean
   /**
@@ -554,7 +552,6 @@ export const NO_FILTERS: GridFilters = {
   pool: null,
   round: null,
   ids: null,
-  counted: false,
   live: false,
   figure: null,
 }
@@ -567,33 +564,21 @@ function currentRound(row: ApiAidGridRow): number | null {
   return stage.code === 'cancelled' ? (latestRound(row)?.round ?? null) : null
 }
 
-function matchesRound(row: ApiAidGridRow, round: RoundFilter | null): boolean {
-  return round === null || currentRound(row) === round
-}
-
 /**
- * `counted` (slice 2): the row has a round whose money counts toward the budget; with `round=`, that
- * round (the one it is in now, as matchesRound reads it) is the one that must count.
+ * Round= in the Needs an offer and Pending approval views reads the round in that status (what the
+ * Season figure counts, whatever pays for it: R10), so a request pending in Round 2 and needing an
+ * offer in Round 3 is Round 2's pending and Round 3's needs-an-offer. Every other view matches the
+ * round a request is in now.
  */
-function matchesCounted(row: ApiAidGridRow, round: RoundFilter | null, counted: boolean): boolean {
-  if (!counted) return true
-  return row.rounds.some((r) => r.counts_toward_budget && (round === null || r.round === round))
-}
-
-/**
- * Needs an offer and Pending approval hold a row for a round in that status, and the budget counts
- * that round's money only when the round counts toward it (budget.py). So `counted` binds to that
- * round, on `round=` too: a counted posted Round 1 doesn't let in a Round 2 needing an offer outside
- * the budget (final review I2). Other views are unchanged.
- */
-function countedInView(row: ApiAidGridRow, view: RequestViewKey, filters: GridFilters): boolean {
-  if (!filters.counted || (view !== 'needs_offer' && view !== 'pending_approval')) return true
-  return row.rounds.some(
-    (r) =>
-      r.status === view &&
-      r.counts_toward_budget &&
-      (filters.round === null || r.round === filters.round)
-  )
+function matchesRound(
+  row: ApiAidGridRow,
+  view: RequestViewKey,
+  round: RoundFilter | null
+): boolean {
+  if (round === null) return true
+  if (view === 'needs_offer' || view === 'pending_approval')
+    return row.rounds.some((r) => r.status === view && r.round === round)
+  return currentRound(row) === round
 }
 
 export function filterRows(
@@ -607,10 +592,8 @@ export function filterRows(
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
       (!filters.live || isLiveRow(row)) &&
-      matchesRound(row, filters.round) &&
-      matchesCounted(row, filters.round, filters.counted) &&
-      matchesFigure(row, filters.figure, filters.counted) &&
-      countedInView(row, view, filters) &&
+      matchesRound(row, view, filters.round) &&
+      matchesFigure(row, filters.figure) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }

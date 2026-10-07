@@ -10,7 +10,7 @@
  *
  * Its meaning is the budget's count (bunking/financial_aid/decisions/budget.py), not the grid's
  * `round=`: a round whose NUMBER is n (any round for `all`) is posted and not clawed back, and for
- * accepted also accepted; with `counted=1` that same round counts toward the budget. A request
+ * accepted also accepted, whatever pays for it (R10, owner 10-07). A request
  * posted in Round 1 that has moved on to Round 2 is still Round 1's figure, so a link never sends
  * `round=` (the round a request is in now) beside it.
  */
@@ -52,19 +52,14 @@ export function figureLink(measure: FigureMeasure, round: number | null): Record
 /** The names a clearing write deletes: both, so Show All leaves no figure behind. */
 export const FIGURE_PARAMS: readonly FigureMeasure[] = MEASURES
 
-export function matchesFigure(
-  row: ApiAidGridRow,
-  figure: SeasonFigure | null,
-  counted: boolean
-): boolean {
+export function matchesFigure(row: ApiAidGridRow, figure: SeasonFigure | null): boolean {
   if (figure === null) return true
   return row.rounds.some(
     (r) =>
       (figure.round === 'all' || r.round === figure.round) &&
       r.status === 'posted' &&
       r.clawed_back !== true &&
-      (figure.measure === 'posted' || r.accepted) &&
-      (!counted || r.counts_toward_budget)
+      (figure.measure === 'posted' || r.accepted)
   )
 }
 
@@ -72,11 +67,10 @@ function roundWords(round: FigureRound): string {
   return round === 'all' ? 'any round' : `Round ${String(round)}`
 }
 
-/** "Posted in Round 1 · counting toward the budget": the grid's line over a figure's rows. */
-export function figureWords(figure: SeasonFigure, counted: boolean): string {
+/** "Posted in Round 1": the grid's line over a figure's rows. */
+export function figureWords(figure: SeasonFigure): string {
   const measure = figure.measure === 'posted' ? 'Posted' : 'Accepted'
-  const words = `${measure} in ${roundWords(figure.round)}`
-  return counted ? `${words} · counting toward the budget` : words
+  return `${measure} in ${roundWords(figure.round)}`
 }
 
 /** The CSV file name's words for a figure: "posted round 1", "accepted any round". */

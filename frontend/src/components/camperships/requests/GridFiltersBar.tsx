@@ -163,7 +163,6 @@ export function GridFiltersBar({
   program,
   pool,
   round,
-  counted,
   onChange,
   onProgramPool,
 }: {
@@ -171,7 +170,6 @@ export function GridFiltersBar({
   program: string | null
   pool: string | null
   round: RoundFilter | null
-  counted: boolean
   onChange: (name: GridParamName, value: string | null) => void
   /** The Program dropdown writes both at once: one is always cleared. */
   onProgramPool: (pool: string | null, program: string | null) => void
@@ -185,14 +183,6 @@ export function GridFiltersBar({
         options={ROUNDS}
         onChange={(v) => onChange('round', v)}
       />
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={counted}
-          onChange={(event) => onChange('counted', event.target.checked ? '1' : null)}
-        />
-        Counting toward the budget
-      </label>
     </>
   )
 }

@@ -34,6 +34,8 @@ import {
   REQUEST_VIEWS,
   requestsCsvName,
   requestView,
+  type RequestViewKey,
+  type RoundFilter,
   viewColumns,
   viewCount,
   viewCounts,
@@ -187,10 +189,8 @@ describe('filterRows', () => {
   it('opens a Season figure: rounds posted in that round, not the current round (owner 10-06)', () => {
     const names = (filters: Partial<typeof NO_FILTERS>) =>
       filterRows(GRID_ROWS, 'all', { ...NO_FILTERS, ...filters }).map((r) => r.camper_name)
-    expect(names({ figure: { measure: 'accepted', round: 1 }, counted: true })).toEqual([
-      'Olivia Chen',
-    ])
-    expect(names({ figure: { measure: 'posted', round: 1 }, counted: true }).sort()).toEqual([
+    expect(names({ figure: { measure: 'accepted', round: 1 } })).toEqual(['Olivia Chen'])
+    expect(names({ figure: { measure: 'posted', round: 1 } }).sort()).toEqual([
       'Olivia Chen',
       'Riley Sam',
       'Samuel Johnson',
@@ -202,32 +202,33 @@ describe('filterRows', () => {
     expect(NO_FILTERS.figure).toBeNull()
   })
 
-  it('reads counted alone as any round counting, and with round= as that round counting', () => {
-    // Round 1 posted outside the budget; Round 2, counted, needs an offer.
-    const laterCounts = gridRow({
-      request_id: 'reqlatercount01',
-      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+  it('Needs an offer lists a round needing an offer whatever pays for it', () => {
+    const outside = gridRow({
+      queues: ['needs_offer'],
+      rounds: [roundOut(1, 'needs_offer', { decided: 3600, counts_toward_budget: false })],
+    })
+    expect(filterRows([outside], 'needs_offer', { ...NO_FILTERS, round: 1 })).toHaveLength(1)
+  })
+
+  it('Needs an offer and Pending approval read round= as the round in that status, not the latest round', () => {
+    // Round 2 pending, Round 3 needing an offer: the request is in Round 3 now.
+    const both = gridRow({
+      queues: ['pending_approval', 'needs_offer'],
+      stage: { round: 3, code: 'needs_offer', label: 'R3 · Needs an offer' },
       rounds: [
-        roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
-        roundOut(2, 'needs_offer'),
+        roundOut(2, 'pending_approval', { pending_approval: 300 }),
+        roundOut(3, 'needs_offer'),
       ],
     })
-    // Round 1 posted and counted; Round 2, outside the budget, needs an offer.
-    const earlierCounts = gridRow({
-      request_id: 'reqearlycount01',
-      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
-      rounds: [
-        roundOut(1, 'posted', { posted: 900 }),
-        roundOut(2, 'needs_offer', { counts_toward_budget: false }),
-      ],
-    })
-    const ids = (filters: Partial<typeof NO_FILTERS>) =>
-      filterRows([laterCounts, earlierCounts], 'all', { ...NO_FILTERS, ...filters }).map(
-        (r) => r.request_id
-      )
-    expect(ids({ counted: true })).toEqual(['reqlatercount01', 'reqearlycount01'])
-    expect(ids({ counted: true, round: 2 })).toEqual(['reqlatercount01'])
-    expect(ids({ counted: true, round: 1 })).toEqual([])
+    const ids = (view: RequestViewKey, round: RoundFilter) =>
+      filterRows([both], view, { ...NO_FILTERS, round }).length
+    expect(ids('pending_approval', 2)).toBe(1)
+    expect(ids('pending_approval', 3)).toBe(0)
+    expect(ids('needs_offer', 3)).toBe(1)
+    expect(ids('needs_offer', 2)).toBe(0)
+    // Every other view keeps the latest-round match.
+    expect(ids('all', 3)).toBe(1)
+    expect(ids('all', 2)).toBe(0)
   })
 
   it('puts a cancelled request under the last round it reached, and a row with no stage under none', () => {
@@ -247,112 +248,6 @@ describe('filterRows', () => {
     expect(ids(1)).toEqual([])
     expect(ids(3)).toEqual([])
     expect(filterRows([noStage], 'all', NO_FILTERS)).toEqual([noStage])
-  })
-
-  it('keeps only rounds that count toward the budget, on the same round as round= (I5)', () => {
-    const outside = {
-      ...ROW_SAMUEL,
-      request_id: 'reqoutside00001',
-      rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
-    }
-    const rows = [...GRID_ROWS, outside]
-    const ids = (filters: Partial<typeof NO_FILTERS>) =>
-      filterRows(rows, 'all', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
-    expect(ids({})).toContain('reqoutside00001')
-    expect(ids({ round: 1, counted: true })).not.toContain('reqoutside00001')
-    expect(ids({ counted: true })).toEqual(
-      GRID_ROWS.filter((r) => r.rounds.some((x) => x.counts_toward_budget)).map((r) => r.request_id)
-    )
-  })
-
-  it('binds counted to the round that puts a row in Needs an offer (final review I2)', () => {
-    // Round 1 counts and is posted; Round 2, outside the budget, needs the offer.
-    const outsideNeeds = gridRow({
-      request_id: 'reqoutneeds0001',
-      // Now in Round 2 (main's round= reads the Stage's round, owner 10-04).
-      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
-      rounds: [
-        roundOut(1, 'posted', { posted: 900 }),
-        roundOut(2, 'needs_offer', { counts_toward_budget: false }),
-      ],
-      queues: ['needs_offer'],
-    })
-    // The reverse: Round 1 is outside the budget, the counted Round 2 needs the offer.
-    const countedNeeds = gridRow({
-      request_id: 'reqcntneeds0001',
-      // Now in Round 2 (main's round= reads the Stage's round, owner 10-04).
-      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
-      rounds: [
-        roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
-        roundOut(2, 'needs_offer'),
-      ],
-      queues: ['needs_offer'],
-    })
-    const rows = [outsideNeeds, countedNeeds]
-    const ids = (filters: Partial<typeof NO_FILTERS>) =>
-      filterRows(rows, 'needs_offer', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
-    expect(ids({})).toEqual(['reqoutneeds0001', 'reqcntneeds0001'])
-    expect(ids({ counted: true })).toEqual(['reqcntneeds0001'])
-    // round= binds to the same round as the view's status.
-    expect(ids({ counted: true, round: 2 })).toEqual(['reqcntneeds0001'])
-    expect(ids({ counted: true, round: 1 })).toEqual([])
-    // Both rounds count, Round 1 posted, Round 2 needing the offer: Round 1 holds no offer to make.
-    const bothCounted = gridRow({
-      request_id: 'reqbothcnt00001',
-      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
-      rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
-      queues: ['needs_offer'],
-    })
-    const round = (n: 1 | 2) =>
-      filterRows([bothCounted], 'needs_offer', { ...NO_FILTERS, counted: true, round: n }).map(
-        (r) => r.request_id
-      )
-    expect(round(1)).toEqual([])
-    expect(round(2)).toEqual(['reqbothcnt00001'])
-  })
-
-  it('binds counted to the round that puts a row in Pending approval (final review I2)', () => {
-    const outsidePending = gridRow({
-      request_id: 'reqoutpend00001',
-      stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
-      rounds: [
-        roundOut(1, 'posted', { posted: 900 }),
-        roundOut(3, 'pending_approval', { pending_approval: 450, counts_toward_budget: false }),
-      ],
-      queues: ['pending_approval'],
-    })
-    const countedPending = gridRow({
-      request_id: 'reqcntpend00001',
-      stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
-      rounds: [
-        roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
-        roundOut(3, 'pending_approval', { pending_approval: 450 }),
-      ],
-      queues: ['pending_approval'],
-    })
-    const rows = [outsidePending, countedPending]
-    const ids = (filters: Partial<typeof NO_FILTERS>) =>
-      filterRows(rows, 'pending_approval', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
-    expect(ids({})).toEqual(['reqoutpend00001', 'reqcntpend00001'])
-    expect(ids({ counted: true })).toEqual(['reqcntpend00001'])
-    // round= binds to the pending round, as it does for Needs an offer.
-    expect(ids({ counted: true, round: 3 })).toEqual(['reqcntpend00001'])
-    expect(ids({ counted: true, round: 1 })).toEqual([])
-    const bothCounted = gridRow({
-      request_id: 'reqbothpend0001',
-      stage: { round: 3, code: 'pending_approval', label: 'R3 · Pending approval' },
-      rounds: [
-        roundOut(1, 'posted', { posted: 900 }),
-        roundOut(3, 'pending_approval', { pending_approval: 450 }),
-      ],
-      queues: ['pending_approval'],
-    })
-    const round = (n: 1 | 3) =>
-      filterRows([bothCounted], 'pending_approval', { ...NO_FILTERS, counted: true, round: n }).map(
-        (r) => r.request_id
-      )
-    expect(round(1)).toEqual([])
-    expect(round(3)).toEqual(['reqbothpend0001'])
   })
 
   it("keeps only live requests with live=1: the server's live statuses, not cancelled (owner, Decision 6(b))", () => {

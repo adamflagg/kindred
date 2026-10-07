@@ -74,10 +74,12 @@ const STRIP_LABELS: Readonly<Record<StripMeasure, string>> = {
  * approval open their Requests views; posted and accepted open All (no `view`: All is its absence)
  * on the round's figure, `posted=n` / `accepted=n` (interim per owner 10-06, seasonFigure.ts), so
  * the list holds the rows the count counts, by the round the money was posted in; never `round=`,
- * which is the round a request is in now. Every count but held also carries `counted=1`
- * (Decision 6): only rounds that count toward the budget make these figures.
- * Needs an offer and pending approval carry the count's round too: the grid binds `counted` and
- * `round=` to the round in that status (views.ts), so the list is that round's. Held carries no
+ * which is the round a request is in now. A link opens every request in the round, whatever pays
+ * for it (R10, owner 10-07); the figures count only the camp's own money, and the counts count
+ * every request (A8).
+ * Needs an offer and pending approval carry the count's round too: in those two views the grid reads
+ * `round=` as the round in that status (views.ts `matchesRound`), not the round a request is in now,
+ * so the list is exactly what the figure counts. Held carries no
  * round (its view isn't bound to one). Null where it opens nothing: a queue view on a past date
  * (`opensQueueViews`).
  */
@@ -89,17 +91,15 @@ function stripTarget(
   const queues = opensQueueViews(view)
   switch (measure) {
     case 'needs_offer':
-      return queues ? { view: viewSlug('needs_offer'), round: String(round), counted: '1' } : null
+      return queues ? { view: viewSlug('needs_offer'), round: String(round) } : null
     case 'posted':
-      return { ...figureLink('posted', round), counted: '1' }
+      return figureLink('posted', round)
     case 'accepted':
-      return { ...figureLink('accepted', round), counted: '1' }
+      return figureLink('accepted', round)
     case 'held':
       return queues ? { view: viewSlug('holds') } : null
     case 'pending_approval':
-      return queues
-        ? { view: viewSlug('pending_approval'), round: String(round), counted: '1' }
-        : null
+      return queues ? { view: viewSlug('pending_approval'), round: String(round) } : null
   }
 }
 
@@ -230,14 +230,16 @@ export function cellValue(row: BudgetRow, column: BudgetColumn): number | null {
  *   round, or `all` on a pool or total line (D153; interim per owner 10-06, seasonFigure.ts). Never
  *   `round=`: that is the round a request is in now, not the one its money was posted in.
  * - Needs an offer and Pending approval: their Requests views, on the pool and, on a round line
- *   (and the Pending approval line under it), that round; the grid binds `counted` and `round=`
- *   to the round in that status (views.ts), so the list is exactly the figure's. A pool or total
- *   line covers every round and carries none.
+ *   (and the Pending approval line under it), that round; in those views the grid reads `round=`
+ *   as the round in that status (views.ts `matchesRound`), not the round a request is in now, so
+ *   the list is exactly the figure's. A pool or total line covers every round and
+ *   carries none.
  * - Allocated: the budget section of the approved version that priced the figure (`?version=`),
  *   keeping the page's past date like every Season tab (I6), and nothing while no version is
  *   approved (Decision 6; plan review I1).
- * Every request link but Holds carries `counted=1`, so it opens only rounds that count (Decision 6).
  * - Remaining: nothing; it is the others' arithmetic.
+ * A link opens every request in the round, whatever pays for it (R10, owner 10-07); the figures
+ * count only the camp's own money, and the counts count every request (A8).
  * A "No pool" figure opens nothing: no request can be filtered to having no pool. Nor does "—" or $0,
  * nor Needs an offer or Pending approval on a past date (`opensQueueViews`).
  */
@@ -256,16 +258,15 @@ export function cellHref(
       view: viewSlug('pending_approval'),
       ...pool,
       ...round,
-      counted: '1',
     })
   }
   switch (column) {
     case 'posted':
     case 'accepted':
-      return requests(view, { ...pool, ...figureLink(column, row.round), counted: '1' })
+      return requests(view, { ...pool, ...figureLink(column, row.round) })
     case 'needs_offer':
       if (!opensQueueViews(view)) return null
-      return requests(view, { view: viewSlug('needs_offer'), ...pool, ...round, counted: '1' })
+      return requests(view, { view: viewSlug('needs_offer'), ...pool, ...round })
     case 'allocated':
       // The version that priced the figure: `?version=` always opens the approved read (Decision 31).
       // The page's date rides along, as on every Season tab (I6).
@@ -306,9 +307,10 @@ export function confirmedWords(row: BudgetRow): string | null {
 /**
  * Where the amber line opens: Requests › Not reconciled, filtered as the Posted figure beside it is
  * (`cellHref`): the row's pool (none for the total), and the Posted figure, `posted=` with a round
- * line's round or `all` (interim per owner 10-06, seasonFigure.ts), and `counted=1`, so it keeps
- * only rounds posted in that round that count toward the budget, which are the ones the figure
- * counts; never `round=`, the round a request is in now. Residue the grid can't close: confirmation is per request, not per round,
+ * line's round or `all` (interim per owner 10-06, seasonFigure.ts); never `round=`, the round a
+ * request is in now. A link opens every request in the round, whatever pays for it (R10, owner
+ * 10-07); the figures count only the camp's own money, and the counts count every request (A8).
+ * Residue the grid can't close: confirmation is per request, not per round,
  * so an over-confirmed request (nothing unconfirmed) or one whose round N is filled while a later
  * round is short can still list. Oldest-first filling makes the second uncommon.
  * Null for the No pool line (no request filters to having no pool), where there is nothing to say,
@@ -321,7 +323,6 @@ export function confirmedHref(row: BudgetRow, view: AidView): string | null {
     view: viewSlug('not_reconciled'),
     ...pool,
     ...figureLink('posted', row.round),
-    counted: '1',
   })
 }
 
