@@ -43,6 +43,7 @@ import {
   toggleChapter,
 } from './rulesLayout'
 import {
+  isNote,
   isRulesSection,
   rulesVocabulary,
   sectionIssues,
@@ -575,7 +576,9 @@ function ChaptersBody({
             <div className={`${CS_META} font-bold`}>{group}</div>
             {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
               const sections = sectionsOf(chapter)
-              const listed = sections.flatMap((s) => shownOf(s)?.issues ?? [])
+              const listed = sections
+                .flatMap((s) => shownOf(s)?.issues ?? [])
+                .filter((i) => !isNote(i))
               const errors = listed.filter((i) => i.severity === 'error').length
               return (
                 <Chapter

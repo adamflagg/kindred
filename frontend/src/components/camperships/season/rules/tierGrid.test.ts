@@ -7,6 +7,8 @@ import {
   evenOf,
   gridCell,
   gridClasses,
+  gridOrdered,
+  notedCells,
   gridColumns,
   rangeWords,
   tierLineWords,
@@ -129,4 +131,29 @@ it("reads the warned cells from value_cannot_bind paths, and a document band's o
     { lower: '0', upper: '100' },
     { lower: '101', upper: null },
   ])
+})
+
+describe('a note is neither a warning nor an error (B3)', () => {
+  const cell = (severity: string, table: string, tier: number) => ({
+    code: 'value_cannot_bind',
+    severity,
+    path: `award_tables.${table}.tiers.${String(tier)}`,
+    message: `${table} ${String(tier)} ${severity}`,
+  })
+  const issues = [cell('note', 'alpha', 9), cell('warning', 'alpha', 3), cell('note', 'beta', 11)]
+
+  it('marks ⚠ only on warned cells, and reads the noted cells with their messages', () => {
+    expect([...warnedCells(issues)]).toEqual(['alpha:3'])
+    expect([...notedCells(issues)]).toEqual([
+      ['alpha:9', 'alpha 9 note'],
+      ['beta:11', 'beta 11 note'],
+    ])
+  })
+
+  it("leaves the notes out of the chip's list, whichever opened it", () => {
+    expect(gridOrdered(issues, ['alpha', 'beta']).map((i) => i.message)).toEqual([
+      'alpha 3 warning',
+    ])
+    expect(gridOrdered(issues, ['alpha', 'beta'], 'beta')).toEqual([])
+  })
 })

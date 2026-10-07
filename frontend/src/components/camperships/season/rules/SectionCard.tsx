@@ -19,6 +19,7 @@ import { CardRows, ReadOnlyStrip } from './CardRows'
 import { CardTables, type CellControl } from './CardTables'
 import {
   changeWords,
+  isNote,
   issueWords,
   SECTION_TITLES,
   type RulesNames,
@@ -53,9 +54,11 @@ export function SectionCardHead({
 }) {
   const [full, setFull] = useState(false)
   const [listed, setListed] = useState(false)
-  const shown = list !== undefined ? list.shown : listed ? issues : null
-  const errors = issues.filter((i) => i.severity === 'error').length
-  const words = issueWords(errors, issues.length - errors)
+  // Notes live on their cells (B3): the chip counts and lists the errors and warnings only.
+  const counted = issues.filter((i) => !isNote(i))
+  const shown = list !== undefined ? list.shown : listed ? counted : null
+  const errors = counted.filter((i) => i.severity === 'error').length
+  const words = issueWords(errors, counted.length - errors)
   return (
     <>
       <div
