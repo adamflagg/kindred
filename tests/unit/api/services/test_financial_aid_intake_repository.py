@@ -124,6 +124,22 @@ async def test_fetch_sessions_is_scoped_to_the_season_and_carries_the_first_day(
     assert handle.get_full_list.call_args.kwargs["query_params"]["filter"] == "year = 2028"
 
 
+@pytest.mark.asyncio
+async def test_fetch_sessions_carries_an_ag_sessions_parent() -> None:
+    handle = MagicMock()
+    handle.get_full_list.return_value = [
+        SimpleNamespace(
+            cm_id=1000103, name="AG Session 2", session_type="ag", start_date="", end_date="", parent_id=1000101
+        ),
+        SimpleNamespace(cm_id=1000101, name="Session 2", session_type="main", start_date="", end_date=""),
+    ]
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    ag, main = await FinancialAidIntakeRepository(pb).fetch_sessions(2028)
+    assert (ag.parent_cm_id, main.parent_cm_id) == (1000101, 0)
+    assert "parent_id" in handle.get_full_list.call_args.kwargs["query_params"]["fields"]
+
+
 def _rules_row(version: int, approved: tuple[SectionName, ...]) -> SimpleNamespace:
     status = initial_status()
     for name in approved:

@@ -251,10 +251,14 @@ def _rules_check(rules: AidRules | None, sessions: Sequence[SessionRow]) -> Rule
         waiting = Flag(FLAG_AWAITING_RULES, {"sections": list(INTAKE_RULES_SECTIONS)})
         return lambda session_cm_id: [waiting]
     approved: AidRules = rules
+    by_id = {s.cm_id: s for s in sessions}
     session_types = {s.cm_id: s.session_type for s in sessions}
 
     def check(session_cm_id: int) -> list[Flag]:
-        if resolve_program(approved, session_cm_id, session_types.get(session_cm_id)) is None:
+        row = by_id.get(session_cm_id)
+        parent_id = row.parent_cm_id if row is not None else 0
+        ag_parent = (parent_id, session_types.get(parent_id)) if parent_id > 0 else None
+        if resolve_program(approved, session_cm_id, session_types.get(session_cm_id), ag_parent=ag_parent) is None:
             return [Flag(FLAG_NO_PROGRAM, {"session_cm_id": session_cm_id})]
         return []
 

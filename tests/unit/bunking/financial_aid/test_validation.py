@@ -556,6 +556,20 @@ def test_without_a_context_every_missing_session_is_named_by_its_id() -> None:
     assert "[" not in message
 
 
+def test_an_ag_session_with_a_parent_is_never_listed_as_missing_tuition() -> None:
+    """Spec §8: its parent's line carries the warning. 1000199 is an AG session under 1000101 (priced 2,000)."""
+    rules = with_lever(fictional_rules(), "programs.summer.session_cm_ids", [1000101, 1000102, 1000199])
+    context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
+    assert "tuition_missing" not in validate_rules(rules, context).codes()
+
+
+def test_an_ag_session_with_no_parent_still_needs_its_own_tuition() -> None:
+    """Pin. Passes before and after A1: an AG session with no parent has no parent's line to carry the warning."""
+    rules = with_lever(fictional_rules(), "programs.summer.session_cm_ids", [1000101, 1000102, 1000199])
+    context = _context(SessionRef(cm_id=1000199, session_type="ag"))
+    assert "tuition_missing" in validate_rules(rules, context).codes()
+
+
 def test_a_missing_family_rate_names_the_program_and_the_session() -> None:
     rules = with_lever(fictional_rules(), "cost.family_rates", [])
     issue = next(
@@ -740,3 +754,29 @@ def test_a_legacy_program_still_needs_its_program_tables_entry() -> None:
     del doc["round2"]["program_tables"]["quest"]
     codes = {i.code for i in validate_rules(AidRules.model_validate(doc)).errors}
     assert "missing_round2_table" in codes
+
+
+def test_an_ag_session_no_program_claims_is_in_its_parents_program_not_unmapped() -> None:
+    """Review M7: no unmapped_session error for an AG session whose parent a program claims."""
+    context = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000101))
+    assert "unmapped_session" not in validate_rules(fictional_rules(), context).codes()
+    orphan = _context(SessionRef(cm_id=1000199, session_type="ag"))
+    assert "unmapped_session" in validate_rules(fictional_rules(), orphan).codes()
+
+
+def test_an_unclaimed_ag_session_follows_a_parent_the_programs_claim_by_type() -> None:
+    """Regression guard. The parent's own type (not just its id) reaches the program lookup."""
+    context = _context(
+        SessionRef(cm_id=1000998, session_type="main"),  # claimed by type "main", not by id
+        SessionRef(cm_id=1000199, session_type="ag", parent_id=1000998),
+    )
+    assert "unmapped_session" not in validate_rules(fictional_rules(), context).codes()
+
+
+def test_an_ag_session_with_a_parent_is_never_listed_as_missing_a_family_rate() -> None:
+    """Regression guard. Spec §8 applies to a per-person program's list too."""
+    rules = with_lever(fictional_rules(), "programs.family_camp.session_cm_ids", [1000201, 1000199])
+    with_parent = _context(SessionRef(cm_id=1000199, session_type="ag", parent_id=1000201))
+    assert "family_rate_missing" not in validate_rules(rules, with_parent).codes()
+    orphan = _context(SessionRef(cm_id=1000199, session_type="ag"))
+    assert "family_rate_missing" in validate_rules(rules, orphan).codes()

@@ -55,6 +55,8 @@ def resolve_cost(request: RequestInputs, rules: AidRules) -> CostResolution:
         if request.session_cm_id is None:
             return _unknown("the request has no session")
         price = rules.cost.tuition.get(request.session_cm_id)
+        if price is None and request.ag_parent_cm_id is not None:
+            price = rules.cost.tuition.get(request.ag_parent_cm_id)  # no own price: the AG parent's (spec §8)
         if price is None:
             return _unknown(f"no tuition for session {request.session_cm_id}")
         return CostResolution(amount=price, source="catalog")
@@ -68,6 +70,8 @@ def _per_person(request: RequestInputs, rules: AidRules) -> CostResolution:
     if headcount is None or headcount.standard + headcount.infants + headcount.children == 0:
         return _unknown("the family-camp number of people is missing")
     rate = next((r for r in rules.cost.family_rates if r.session_cm_id == request.session_cm_id), None)
+    if rate is None and request.ag_parent_cm_id is not None:  # no own rate: the AG parent's (spec §8)
+        rate = next((r for r in rules.cost.family_rates if r.session_cm_id == request.ag_parent_cm_id), None)
     if rate is None:
         return _unknown(f"no family-camp rate for session {request.session_cm_id}")
     amount = rate.standard * (headcount.standard + headcount.children) + rate.infant * headcount.infants

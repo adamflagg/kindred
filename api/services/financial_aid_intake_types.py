@@ -112,6 +112,9 @@ class SessionRow:
     session_type: str
     start_date: str = ""  # camp_sessions.start_date, "YYYY-MM-DD..."; "" when unknown
     end_date: str = ""  # camp_sessions.end_date, the same shape; "" when unknown
+    # camp_sessions.parent_id: the main session an AG (or embedded) session sits under, a CampMinder id; 0 when none.
+    # The sync sets it for an AG session only on an exact start-and-end match (pocketbase/sync/sessions.go:346-366).
+    parent_cm_id: int = 0
 
 
 @dataclass(frozen=True)

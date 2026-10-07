@@ -48,6 +48,7 @@ from api.schemas.financial_aid_reports import (
     ZipTableOut,
 )
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_calc_inputs import ag_parent_of
 from api.services.financial_aid_cancellations import CANCEL_REASON_LABELS, CANCEL_REASONS
 from api.services.financial_aid_decisions_service import (
     FIRST_TICKED_SEASON,
@@ -65,6 +66,7 @@ from api.services.financial_aid_development_repository import (
     StoredColumns,
 )
 from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow
+from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_ledger_service import (
     GRANT_FUNDER_TYPES,
     as_of_cutoff,
@@ -183,7 +185,7 @@ class Grouping:
     by_family: Mapping[str, str]  # program family -> pool (the first program claiming that family's sessions)
 
 
-def grouping(document: AidRules | None, session_types: Mapping[int, str]) -> Grouping:
+def grouping(document: AidRules | None, sessions: Iterable[SessionRow]) -> Grouping:
     """Owner rule (2026-10-02, item 28): development counts only attendees of AID-ELIGIBLE sessions, those a program
     open to aid claims in the season's rules. A session no program claims, or one a program closed to aid claims, is
     in no group (and so in `by_session` not at all); an attendee of only those sessions counts nowhere."""
@@ -192,9 +194,11 @@ def grouping(document: AidRules | None, session_types: Mapping[int, str]) -> Gro
     by_session: dict[int, str] = {}
     types_by_pool: dict[str, set[str]] = defaultdict(set)
     by_family: dict[str, str] = {}
-    for cm_id, session_type in session_types.items():
+    by_id = {session.cm_id: session for session in sessions}
+    for cm_id, session in by_id.items():
+        session_type = session.session_type
         family = PROGRAM_FAMILY_BY_SESSION_TYPE.get(session_type, "other")
-        key = resolve_program(document, cm_id, session_type)
+        key = resolve_program(document, cm_id, session_type, ag_parent=ag_parent_of(session, by_id))
         program = document.programs[key] if key is not None else None
         if program is None or not program.open_to_aid:
             continue
@@ -469,9 +473,7 @@ class FinancialAidDevelopmentService:
         """The season's groups without pricing it: the newest approved programs and budget, and its sessions."""
         approved = await self._rules.latest_approved(year, ["programs", "budget"])
         sessions = await self._store.fetch_sessions(year)
-        return grouping(
-            approved.document if approved is not None else None, {s.cm_id: s.session_type for s in sessions}
-        )
+        return grouping(approved.document if approved is not None else None, sessions)
 
     # --- dated columns (§9.4's "+ Add a dated column"; Part C) -----------------------------------------------
 
@@ -531,7 +533,7 @@ class FinancialAidDevelopmentService:
             found, attended, column = native.grouping, native.attended, native.column
         else:
             document = season.rules.document if season.rules is not None else None
-            found = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
+            found = grouping(document, season.sessions.values())
             attended = attendance(await self._development.attendances(year), found)
             column = None
         chosen, group_key, group_label = _zip_groups(found.groups, group, year)
@@ -724,7 +726,7 @@ class FinancialAidDevelopmentService:
         # attended (D29, ruled as built: R2b).
         document = season.rules.document if season.rules is not None else None
         records = await self._development.attendances(season.year)
-        grouping_ = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
+        grouping_ = grouping(document, season.sessions.values())
         attended = attendance(records, grouping_, as_of=as_of)
         kinds = {g.key: g.kind for g in grouping_.groups}
         summer_people = {a.person_cm_id for a in attended if kinds.get(a.group) == "summer"}
@@ -817,7 +819,7 @@ class FinancialAidDevelopmentService:
         if latest is None:
             season = await self._decisions.season(year)
             document = season.rules.document if season.rules is not None else None
-            latest = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
+            latest = grouping(document, season.sessions.values())
         columns = _columns(typed, natives, today, dated)
         ages = {
             season: await self._rebuilt_ages(season, sources)

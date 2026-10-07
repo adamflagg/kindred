@@ -168,7 +168,7 @@ async def test_zip_group_membership_is_developments_for_every_pool() -> None:
     """The same grouping the Development screen uses: each group's every-camper count is its attendees."""
     development = _development()
     rules = intake_rules()
-    found = grouping(rules, {s.cm_id: s.session_type for s in SESSIONS})
+    found = grouping(rules, SESSIONS)
     attended = attendance(development.registrations, found)
     service = _service(development)
     for pool in found.groups:
