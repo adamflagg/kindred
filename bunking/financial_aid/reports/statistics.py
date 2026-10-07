@@ -48,7 +48,8 @@ from typing import Final, Literal
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.committee import RowKind
 from bunking.financial_aid.reports.facts import REPORT_ROUNDS, ReportRequest, average, in_round, in_table
-from bunking.financial_aid.rules import AidRules
+from bunking.financial_aid.rules import AidRules, round1_table, round2_table
+from bunking.financial_aid.rules.lookup import Round2TableNotListedError
 from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_pct
 
 Basis = Literal["posted", "posted_and_decided"]
@@ -215,11 +216,15 @@ def _bands(document: AidRules | None) -> dict[int, tuple[Decimal, Decimal | None
 
 
 def _round2_tables(document: AidRules, table: str) -> set[str]:
-    return {
-        document.round2.program_tables.get(key) or ""
-        for key, program in document.programs.items()
-        if (program.r1_table or "") == table
-    } - {""}
+    out: set[str] = set()
+    for key, program in document.programs.items():
+        if (round1_table(document, program) or "") != table:
+            continue
+        try:
+            out.add(round2_table(document, key) or "")
+        except Round2TableNotListedError:
+            continue
+    return out - {""}
 
 
 def _fee(document: AidRules | None, table: str | None, round_: RoundChip, tier: int | None) -> Decimal | None:

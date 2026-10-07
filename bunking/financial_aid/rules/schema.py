@@ -281,18 +281,19 @@ class Round2Table(TierTable[TotalPercent]):
 
 
 class ProgramProfile(RulesModel):
-    """One program's settings. Replaces the sheet's single "award class".
+    """One program's settings. Its equity class picks both its row of equity weights and its award tables (owner
+    10-06: "the equity class determines the table - its a 1:1 relationship"): Round 1 is `award_tables[class]` and
+    the appeal cap `round2.tables[class]` (`table_from_equity_class`, the default).
 
-    `r1_table` of None means "no table": the R1 percentage is 0, so only the minimum
-    award can apply, or the request holds when the minimum does not apply without a
-    table. That is how 2026 routed four of its adult and family programs. Which Round 2
-    table a program's appeals use is a Round 2 lever: `round2.program_tables`.
+    LEGACY: a program stored with `r1_table` and no flag (every program in 2026's file) loads with the flag False and
+    prices exactly as stored, from `r1_table` (None: no table, the minimum only), `round2.program_tables` and
+    `awards.minimum_without_table`. The new programs editor never writes them.
     """
 
     label: str = Field(min_length=1)
     session_cm_ids: list[int] = Field(default_factory=list)
     session_types: list[str] = Field(default_factory=list)
-    r1_table: Key | None
+    r1_table: Key | None = None
     equity_class: Key | None
     budget_pool: Key | None
     cost_source: Literal["catalog", "per_person", "typed"]
@@ -300,6 +301,15 @@ class ProgramProfile(RulesModel):
     # The CampMinder description to post this program's aid under (app spec §6.2 Needs an offer, §13). Blank: none
     # named. Whether 2027 has per-program descriptions at all is O-930-26 (D128); a blank field decides nothing.
     campminder_description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
+    table_from_equity_class: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_routing(cls, data: Any) -> Any:
+        """A stored program with `r1_table` and no flag is legacy, so 2026 replays from its own file (§8.5)."""
+        if isinstance(data, dict) and "r1_table" in data and "table_from_equity_class" not in data:
+            return {**data, "table_from_equity_class": False}
+        return data
 
 
 # --- cost -----------------------------------------------------------------------------
@@ -419,7 +429,7 @@ class TotalCap(RulesModel):
 class AwardsSection(RulesModel):
     minimum: Money
     minimum_when_cost_unknown: bool
-    minimum_without_table: bool
+    minimum_without_table: bool = True  # LEGACY: read only for a legacy program with no Round 1 table
     rounding: Literal["half_up"] = "half_up"
     ask_cap: bool = True
     decision_types: dict[Key, DecisionType] = Field(default_factory=dict)
@@ -434,7 +444,7 @@ class Round2Section(RulesModel):
     cap_by_original_ask: bool
     tables: dict[Key, Round2Table] = Field(default_factory=dict)
     # program -> its Round 2 table; None means no Round 2 table (Round 2 is 0). Every
-    # program open to aid must be listed.
+    # program open to aid must be listed. LEGACY: read only for a program without table_from_equity_class.
     program_tables: dict[Key, Key | None] = Field(default_factory=dict)
     total_cap: TotalCap | None = None
 

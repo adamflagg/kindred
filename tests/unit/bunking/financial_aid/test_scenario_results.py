@@ -9,6 +9,7 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
+import bunking.financial_aid.scenarios.results as results_module
 from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import PricedRequest, RequestToPrice, RoundState, price_request, season_budget
 from bunking.financial_aid.scenarios import (
@@ -21,7 +22,7 @@ from bunking.financial_aid.scenarios import (
     scenario_results,
     up_down,
 )
-from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_levers
+from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
 RULES = fictional_rules()
 
@@ -417,3 +418,11 @@ def test_a_result_stored_with_round2_figures_still_loads_and_keeps_them() -> Non
     }
     loaded = ScenarioResults.model_validate(stored)
     assert loaded.round2_allocated == Decimal("40000.00")
+
+
+def test_by_table_rows_follow_the_resolver_for_a_program_by_class() -> None:
+    """§9.9: Scenarios' per-table rows name the table the program prices from."""
+    rules = with_lever(RULES, "programs.adult_weekend.table_from_equity_class", True)
+    assert results_module.round1_table(rules, "adult_weekend") == "family"
+    assert results_module.round1_table(RULES, "adult_weekend") == ""  # legacy: no Round 1 table
+    assert results_module.round2_table(rules, "nonexistent") == ""

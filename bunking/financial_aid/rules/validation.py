@@ -20,7 +20,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.money import pct_of
-from bunking.financial_aid.rules.lookup import is_dependents_criterion, resolve_program, resolved_table
+from bunking.financial_aid.rules.lookup import (
+    Round2TableNotListedError,
+    is_dependents_criterion,
+    resolve_program,
+    resolved_table,
+    round1_table,
+    round2_table,
+)
 from bunking.financial_aid.rules.schema import (
     RETIRED_YES_NO_FIELDS,
     YES_NO_ANSWER_FIELDS,
@@ -277,7 +284,8 @@ def _check_round2(rules: AidRules, issues: _Issues) -> None:
         if table is not None and table not in tables:
             issues.error("round2", "unknown_table", path, f"No Round 2 table '{table}'")
     for key, program in rules.programs.items():
-        if program.open_to_aid and key not in routing:
+        # §9.9: only a legacy program says which Round 2 table it uses; by class, the class says.
+        if program.open_to_aid and not program.table_from_equity_class and key not in routing:
             issues.error(
                 "round2",
                 "missing_round2_table",
@@ -292,9 +300,15 @@ def _check_r1_within_total(rules: AidRules, issues: _Issues) -> None:
     Round 2, the lever set later, so a locked Round 1 is never blamed for it."""
     pairs: set[tuple[str, str]] = set()
     for key, program in rules.programs.items():
-        r2_name = rules.round2.program_tables.get(key)
-        if program.open_to_aid and program.r1_table is not None and r2_name is not None:
-            pairs.add((program.r1_table, r2_name))
+        if not program.open_to_aid:
+            continue
+        r1_name = round1_table(rules, program)
+        try:
+            r2_name = round2_table(rules, key)
+        except Round2TableNotListedError:
+            continue  # reported as missing_round2_table
+        if r1_name is not None and r2_name is not None:
+            pairs.add((r1_name, r2_name))
     for r1_name, r2_name in sorted(pairs):
         try:
             r1 = resolved_table(rules.award_tables, r1_name)
@@ -354,7 +368,7 @@ def _warn_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -
     prices = [
         rules.cost.tuition[s]
         for program in rules.programs.values()
-        if program.open_to_aid and program.r1_table == name
+        if program.open_to_aid and round1_table(rules, program) == name
         for s in program.session_cm_ids
         if s in rules.cost.tuition
     ]
@@ -378,8 +392,6 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
     types: dict[str, str] = {}
     for key, program in rules.programs.items():
         path = f"programs.{key}"
-        if program.r1_table is not None and program.r1_table not in rules.award_tables:
-            issues.error("programs", "unknown_table", f"{path}.r1_table", f"No award table '{program.r1_table}'")
         if program.equity_class is not None and program.equity_class not in rules.equity.weights:
             issues.error(
                 "programs", "unknown_equity_class", f"{path}.equity_class", f"No equity class '{program.equity_class}'"
@@ -388,14 +400,37 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             issues.error("programs", "unknown_budget_pool", f"{path}.budget_pool", f"No pool '{program.budget_pool}'")
         if program.open_to_aid and program.budget_pool is None:
             issues.warn("programs", "unclassified_program", f"{path}.budget_pool", "Open to aid but in no budget pool")
-        if program.open_to_aid and program.r1_table is None:
+        if not program.table_from_equity_class:
+            if program.r1_table is not None and program.r1_table not in rules.award_tables:
+                issues.error("programs", "unknown_table", f"{path}.r1_table", f"No award table '{program.r1_table}'")
+            if program.open_to_aid and program.r1_table is None:
+                issues.warn(
+                    "programs",
+                    "no_round1_table",
+                    f"{path}.r1_table",
+                    "No Round 1 table: only the minimum award can apply in Round 1"
+                    if rules.awards.minimum_without_table
+                    else "No Round 1 table: every request in this program holds until finance names one",
+                )
+        elif program.open_to_aid and program.equity_class is None:
             issues.warn(
                 "programs",
-                "no_round1_table",
-                f"{path}.r1_table",
-                "No Round 1 table: only the minimum award can apply in Round 1"
-                if rules.awards.minimum_without_table
-                else "No Round 1 table: every request in this program holds until finance names one",
+                "no_equity_class",
+                f"{path}.equity_class",
+                f"Open to aid but no equity class, so no award table: its requests hold ({program.label})",
+            )
+        # A closed program prices nothing, and an unknown class is already its own error above.
+        elif (
+            program.open_to_aid
+            and program.equity_class in rules.equity.weights
+            and (program.equity_class not in rules.award_tables or program.equity_class not in rules.round2.tables)
+        ):
+            missing = "Round 1 award table" if program.equity_class not in rules.award_tables else "appeal caps table"
+            issues.error(
+                "programs",
+                "class_without_table",
+                f"{path}.equity_class",
+                f"Equity class '{program.equity_class}' has no {missing}",
             )
         for session in program.session_cm_ids:
             if session in ids and ids[session] != key:

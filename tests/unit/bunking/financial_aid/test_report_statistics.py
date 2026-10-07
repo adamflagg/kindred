@@ -14,7 +14,7 @@ from bunking.financial_aid.reports.statistics import (
     statistics,
     tier_appeals,
 )
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_levers
 from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
 
 RULES = fictional_rules()
@@ -336,3 +336,16 @@ def test_an_outside_funded_rounds_money_leaves_with_a_clawback_or_a_cancellation
     ]
     two = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
     assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(0), Decimal("16.7"))
+
+
+def test_the_round_2_fee_percent_follows_the_class_table_for_a_program_by_class() -> None:
+    """§9.9: a by-class program counts under its class's Round 2 table, not under its stale program_tables entry."""
+    requests = [req("reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="800", posted="300", tier=3))]
+    legacy = RULES.model_copy(deep=True)
+    legacy.round2.program_tables["summer"] = "family"  # summer's appeals now use a second table
+    assert _tier(statistics(requests, legacy, table="camp", round_=2).rows, 3).fee_pct is None
+    # By class, summer prices from teen, so it leaves the camp chip and its stale entry no longer counts.
+    by_class = with_levers(
+        legacy, {"programs.summer.table_from_equity_class": True, "programs.summer.equity_class": "teen"}
+    )
+    assert _tier(statistics(requests, by_class, table="camp", round_=2).rows, 3).fee_pct is not None

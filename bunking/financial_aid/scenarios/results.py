@@ -41,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bunking.financial_aid.decisions import PoolBudget, PricedRequest, RoundCell, RoundView, SeasonBudget
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules import AidRules
+from bunking.financial_aid.rules import lookup as rules_lookup
 from bunking.financial_aid.scenarios.request_set import RequestSetNote
 
 
@@ -207,14 +208,19 @@ def appeal_ask(view: RoundView | None) -> Decimal | None:
 
 
 def round1_table(document: AidRules, program_key: str | None) -> str:
-    """The award table a program uses under `document`; "" for a program with no Round 1 table (or no program)."""
+    """The award table a program prices from under `document` (the resolver, §9.9); "" for none."""
     program = document.programs.get(program_key) if program_key is not None else None
-    return (program.r1_table or "") if program is not None else ""
+    return (rules_lookup.round1_table(document, program) or "") if program is not None else ""
 
 
 def round2_table(document: AidRules, program_key: str | None) -> str:
-    """The Round 2 table a program's appeals use under `document`; "" when it has none."""
-    return (document.round2.program_tables.get(program_key) or "") if program_key is not None else ""
+    """The Round 2 table a program's appeals use under `document`; "" when it has none or isn't listed."""
+    if program_key is None:
+        return ""
+    try:
+        return rules_lookup.round2_table(document, program_key) or ""
+    except rules_lookup.Round2TableNotListedError:
+        return ""
 
 
 def tier_rows(tiers: Mapping[int, TierTally]) -> list[TierRow]:

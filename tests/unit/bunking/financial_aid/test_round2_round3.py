@@ -313,3 +313,35 @@ def test_the_full_trace_order() -> None:
     rules = with_lever(fictional_rules(), "round2.total_cap", {"pct_of_cost": "100", "include_grants": True})
     keys = [s.key for s in _calc(rules, appeal_amount="400", round3_amount="100", **ELIGIBLE_R3).trace]
     assert keys[keys.index("r1") :] == ["r1", "r2_cap", "r2", "r3", "total_cap", "total"]
+
+
+def test_an_appeal_by_class_is_capped_by_its_classs_round2_table() -> None:
+    """§8.5: the appeal cap comes from round2.tables[equity class], whatever program_tables says."""
+    legacy = with_lever(fictional_rules(), "round2.program_tables.adult_weekend", None)
+    by_class = with_lever(legacy, "programs.adult_weekend.table_from_equity_class", True)
+    request = {"session_cm_id": 1000401, "program_key": "adult_weekend", "ask": "900", "appeal_amount": "500"}
+    assert calculate(app(), req(**request), legacy).r2 == Decimal(0)  # legacy: no Round 2 table
+    # by class: family inherits camp, tier 2 total 90% of 900 = 810, less Round 1's 675 = 135
+    assert calculate(app(), req(**request), by_class).r2 == Decimal(135)
+
+
+def test_a_held_program_by_class_never_shows_a_zero_round_2() -> None:
+    """§8.5: by class with no equity class, Round 1 holds, so Round 2 is not computed, never a $0 "No Round 2 table"."""
+    rules = with_lever(fictional_rules(), "programs.quest.table_from_equity_class", True)
+    rules = with_lever(rules, "programs.quest.equity_class", None)
+    result = _calc(rules, session_cm_id=1000103, program_key="quest", ask="6000", appeal_amount="500")
+    assert (result.r1, result.r2, result.r2_bound, result.total) == (None, None, "r1_unknown", None)
+    assert "r2" not in [s.key for s in result.trace]
+
+
+def test_a_legacy_program_with_no_round_2_table_keeps_its_zero_round_2_when_round_1_fails() -> None:
+    """§8.5: a legacy program replays as stored; a missing ask leaves Round 1 None and Round 2 the old $0 no_table."""
+    school = _calc(
+        program_key="family_school",
+        session_cm_id=1000501,
+        cost_override={"amount": "1000", "reason": "missing_catalog"},
+        ask=None,
+        appeal_amount="300",
+    )
+    assert school.r1 is None
+    assert (school.r2, school.r2_bound) == (Decimal(0), "no_table")
