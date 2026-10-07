@@ -349,12 +349,23 @@ def _keep_legacy_routing(stored: AidRules, content: Mapping[str, Any]) -> dict[s
     """A Programs save that sends no `r1_table` for a program stored as legacy (routed by `r1_table`, not by its
     class) must not re-route it. The editor drops `r1_table` and sends `table_from_equity_class: true` for every
     program, which on a legacy season would silently move its pricing to the class tables. The stored routing
-    is put back, `r1_table` included (None too). A program that sends `r1_table` is an explicit legacy edit, and
-    a by-class or new program is untouched."""
+    is put back, `r1_table` included (None too). A legacy program that sends `r1_table` is an explicit legacy edit, and
+    a new program is untouched. A program stored by class that arrives in the old shape (`r1_table`, no flag) stays
+    by class; only an explicit `table_from_equity_class: false` re-legacies it (review B1)."""
     kept = {key: dict(program) if isinstance(program, Mapping) else program for key, program in content.items()}
     for key, program in kept.items():
         before = stored.programs.get(key)
-        if before is None or before.table_from_equity_class or not isinstance(program, dict) or "r1_table" in program:
+        if before is None or not isinstance(program, dict):
+            continue
+        if before.table_from_equity_class:
+            # Review B1 / Review Focus 7: an old-shape program (r1_table, no flag) saved over a by-class program stays
+            # by class, so loading a legacy-shaped file can't undo A5. Only an explicit `table_from_equity_class: false`
+            # re-legacies one.
+            if "r1_table" in program and "table_from_equity_class" not in program:
+                program.pop("r1_table")
+                program["table_from_equity_class"] = True
+            continue
+        if "r1_table" in program:
             continue
         program["table_from_equity_class"] = False
         program["r1_table"] = before.r1_table

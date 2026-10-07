@@ -333,6 +333,40 @@ async def test_by_class_carries_into_every_later_season() -> None:
     assert later.document.round2.program_tables == {}
 
 
+def _old_shape(programs: dict[str, Any]) -> dict[str, Any]:
+    """A legacy-shaped file's programs: `r1_table` on every program, no `table_from_equity_class` anywhere."""
+    return {
+        key: {k: v for k, v in program.items() if k != "table_from_equity_class"}
+        | {"r1_table": program.get("r1_table")}
+        for key, program in programs.items()
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_old_shape_programs_save_never_re_legacies_a_by_class_season() -> None:
+    """Review Focus 7 (B1): saving a legacy-shaped programs section over a season started by class keeps it by class."""
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE)
+    old = _old_shape(fictional_rules().model_dump(mode="json")["programs"])
+    saved = await service.save_section(2032, started.version, "programs", old, actor=FINANCE)
+    programs = saved.version.document.programs
+    assert all(p.table_from_equity_class and p.r1_table is None for p in programs.values())
+
+
+@pytest.mark.asyncio
+async def test_only_an_explicit_flag_re_legacies_a_by_class_program() -> None:
+    """Pin. An explicit `table_from_equity_class: false` still re-legacies a by-class program."""
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE)
+    old = _old_shape(fictional_rules().model_dump(mode="json")["programs"])
+    old["summer"]["table_from_equity_class"] = False
+    saved = await service.save_section(2032, started.version, "programs", old, actor=FINANCE)
+    summer = saved.version.document.programs["summer"]
+    assert (summer.table_from_equity_class, summer.r1_table) == (False, "camp")
+
+
 @pytest.mark.asyncio
 async def test_every_write_commits_with_its_log_row() -> None:
     store = FakeStore()
