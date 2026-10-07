@@ -19,11 +19,18 @@ import type {
   ApiAidScenarioResults,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
-import { compareOut, results, scenarioDraft, workspace } from './scenarioFixtures'
+import { compareOut, OPTIONS, results, scenarioDraft, workspace } from './scenarioFixtures'
 import { ScenariosTab } from './ScenariosTab'
 
 let read: { data: ApiAidScenarioWorkspace | undefined; isLoading: boolean; error: Error | null }
-vi.mock('../../../../hooks/camperships/useAidScenarios', () => ({ useAidScenarios: () => read }))
+let rerenderRead: () => void = () => undefined
+vi.mock('../../../../hooks/camperships/useAidScenarios', () => ({
+  useAidScenarios: () => {
+    const [, bump] = useReducer((n: number) => n + 1, 0)
+    rerenderRead = bump
+    return read
+  },
+}))
 
 const work = {
   edits: new Map<string, string>() as ReadonlyMap<string, string>,
@@ -353,6 +360,16 @@ describe('Compare (§S5 H) and the URL (§S5 L)', () => {
   it('adds a new keep to Compare’s columns while there is room (§S5 B; plan review M5)', async () => {
     work.edits = new Map([['awards.minimum', '125']])
     renderAt('?compare=B&rules=1') // the sandbox, with Compare's columns already chosen
+    // As the server does, the workspace read holds the new option once the keep lands, so C stays in the URL.
+    work.keep.mockImplementationOnce((name: string) => {
+      const ws = read.data!
+      read = {
+        ...read,
+        data: { ...ws, options: [...ws.options, { ...OPTIONS[2]!, code: 'C', name }] },
+      }
+      rerenderRead() // the workspace refetch after a keep re-renders the tab
+      return Promise.resolve('C')
+    })
     await userEvent.click(screen.getByRole('button', { name: 'Keep…' }))
     await userEvent.click(
       within(screen.getByTestId('keep-popover')).getByRole('button', { name: 'Keep as C' })
