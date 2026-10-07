@@ -15,7 +15,7 @@ const base = {
   fromName: 'Rules v4',
   locked: false,
   postedStands: false,
-  pricedOn: '420 the applications held',
+  pricedOn: '420 applications held',
   held: true,
 }
 
@@ -105,10 +105,23 @@ describe('SpendStrip (§S5 E)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'By tier ▸' }))
     expect(screen.queryByTestId('below-popover')).toBeNull()
     expect(
-      within(screen.getByTestId('tier-popover')).getByText('By tier · 420 the applications held')
+      within(screen.getByTestId('tier-popover')).getByText('By tier · 420 applications held')
     ).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByTestId('tier-popover')).toBeNull()
+  })
+
+  it('names each tier "Tier n" and shows a dash where nothing changed, as the mock does (V F6)', async () => {
+    // Tier 2 prices the same in the draft and its starting point; the Below the line rows "Held" and the unmet ask too.
+    render(<SpendStrip {...base} />)
+    await userEvent.click(screen.getByRole('button', { name: 'By tier ▸' }))
+    const tiers = screen.getByTestId('tier-popover')
+    const tier2 = within(tiers).getByText('Tier 2').closest('tr')
+    expect(within(tiers).getByText('Tier 1')).toBeInTheDocument()
+    expect(tier2?.lastElementChild).toHaveTextContent(/^—$/)
+    await userEvent.click(screen.getByRole('button', { name: /unmet ask/ }))
+    const held = within(screen.getByTestId('below-popover')).getByText('Held: no amount yet')
+    expect(held.closest('tr')?.lastElementChild).toHaveTextContent(/^—$/)
   })
 
   it('shows whole dollars for a figure with cents (coordinator ruling 2026-10-07)', () => {

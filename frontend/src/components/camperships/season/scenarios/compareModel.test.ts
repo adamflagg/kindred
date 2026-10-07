@@ -316,7 +316,7 @@ describe('the rows (§S5 H; N3, N4, N10)', () => {
   })
 
   it('says in the corner what every column is priced on', () => {
-    expect(cornerWords(SOURCES, { kind: 'all' })).toBe('Priced on 420 the applications held')
+    expect(cornerWords(SOURCES, { kind: 'all' })).toBe('Priced on 420 applications held')
   })
 
   it('shows whole dollars where a figure has cents (coordinator ruling 2026-10-07)', () => {
@@ -336,6 +336,46 @@ describe('the rows (§S5 H; N3, N4, N10)', () => {
       text: '−$41,496',
       tone: 'total-negative',
     })
+  })
+
+  it('shows a money setting with cents in whole dollars, and words income bands (coordinator ruling 1; V F1)', () => {
+    // A fractional threshold and a changed list of bands. The shared formatSetting would print "$1,500.50" and the
+    // bands as raw JSON; Compare reads whole dollars and the bands as the Rules tab's tier grid words a range.
+    const bands = [
+      { lower: '0', upper: '35000' },
+      { lower: '35001', upper: null },
+    ]
+    const fractional: ApiAidCompareColumn = {
+      ...KEPT_B,
+      document: {
+        ...RULES_DOCUMENT,
+        income: { ...RULES_DOCUMENT.income, medical_threshold: '1500.5' },
+        tiers: { ...RULES_DOCUMENT.tiers, bands },
+      },
+      changes: [
+        { path: ['income', 'medical_threshold'], kind: 'changed', before: '5000', after: '1500.5' },
+        {
+          path: ['tiers', 'bands'],
+          kind: 'changed',
+          before: RULES_DOCUMENT.tiers.bands,
+          after: bands,
+        },
+      ],
+    }
+    const out = compareRows(
+      compareSources(compareOut({ columns: [RULES_COLUMN, fractional] }), false),
+      { byTier: false, locked: false, effectName: 'Rules v4', names: NAMES }
+    )
+    const cells = (label: string) =>
+      out.find((r) => r.label === label)?.cells.map((c) => [c.text, c.tone ?? null])
+    expect(cells("Counting a family's income › Medical expenses counted above")).toEqual([
+      ['$5,000', null],
+      ['$1,501', 'changed'],
+    ])
+    expect(cells('Income tiers › Income bands')).toEqual([
+      ['$0 – $40,000, $40,001 – $70,000, $70,001 and up', null],
+      ['$0 – $35,000, $35,001 and up', 'changed'],
+    ])
   })
 })
 

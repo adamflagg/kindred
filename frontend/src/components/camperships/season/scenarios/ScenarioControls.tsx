@@ -22,7 +22,7 @@ import {
 } from '../../kit/csType'
 import type { LoadFrom } from '../../../../hooks/camperships/useAidScenarioDraft'
 import { campToday } from '../../kit/dates'
-import { PRICE_CHOICES, type StartEntry } from './controlsModel'
+import { guardWords, PRICE_CHOICES, type StartEntry } from './controlsModel'
 import { KeepPopover } from './KeepPopover'
 import { ScenarioPopover } from './ScenarioPopover'
 import { WAS_INK } from './scenarioStyles'
@@ -256,9 +256,9 @@ export function ScenarioControls(props: {
         >
           {guard !== null && (
             <div className="space-y-2">
-              <p
-                className={CS_SMALL}
-              >{`${props.changes?.split(',')[0] ?? `${String(props.unkept)} changes`} aren't kept. Loading ${guard.name === 'It' ? 'it' : guard.name} drops them.`}</p>
+              <p className={CS_SMALL}>
+                {guardWords(props.unkept, guard.name === 'It' ? 'it' : guard.name)}
+              </p>
               <div className="flex gap-2">
                 <button
                   type="button"

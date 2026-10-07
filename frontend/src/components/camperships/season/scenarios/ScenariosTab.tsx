@@ -41,7 +41,7 @@ import {
   parseView,
   pillWords,
   requestSetParam,
-  requestSetWords,
+  pricedOnWords,
   startEntries,
 } from './controlsModel'
 import { FitAnswer, FitToBudgetButton } from './FitToBudget'
@@ -173,7 +173,11 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const fitStale =
     fitAskedOn !== undefined && (fitAskedOn !== (draft.trail_id ?? null) || work.edits.size > 0)
   const recordedChanges = draft.changes.length
-  const pricedOn = `${String(figures?.requests ?? 0)} ${requestSetWords(view.requestSet, figures?.request_set?.through ?? null)}`
+  const pricedOn = pricedOnWords(
+    figures?.requests ?? 0,
+    view.requestSet,
+    figures?.request_set?.through ?? null
+  )
 
   return (
     <div className="space-y-3">

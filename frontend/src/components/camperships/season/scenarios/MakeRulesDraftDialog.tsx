@@ -13,6 +13,7 @@ import { aidHref } from '../../kit/asOf'
 import { CS_AMBER_NOTE, CS_BODY, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import { PILL } from '../../kit/kitStyles'
 import { SECTION_TITLES, changeWords } from '../rules/rulesModel'
+import { settingWords } from './compareModel'
 import { allConfirmed, standingAcks, warningWords } from './promotionModel'
 
 /**
@@ -144,7 +145,9 @@ export function MakeRulesDraftDialog({
                 </div>
                 <ul className={CS_SMALL}>
                   {section.changes.map((change) => (
-                    <li key={change.path.join('.')}>{changeWords(change)}</li>
+                    <li key={change.path.join('.')}>
+                      {changeWords(change, undefined, settingWords)}
+                    </li>
                   ))}
                 </ul>
                 {warning !== null && (

@@ -15,10 +15,12 @@ import {
   isRulesSection,
   labelOf,
   SECTION_TITLES,
+  unitOf,
   type RulesNames,
   type RulesVocabulary,
 } from '../rules/rulesModel'
-import { ROUND1_SECTIONS, requestSetWords, type ScenarioView } from './controlsModel'
+import { rangeWords } from '../rules/tierGrid'
+import { pricedOnWords, ROUND1_SECTIONS, type ScenarioView } from './controlsModel'
 import { roughly } from './spendModel'
 
 export const MAX_KEPT_COLUMNS = 4
@@ -266,6 +268,40 @@ function settingLabel(path: readonly string[], names: RulesVocabulary): string {
   ].join(' › ')
 }
 
+const isBand = (
+  item: unknown
+): item is { lower: string | number; upper?: string | number | null } =>
+  typeof item === 'object' && item !== null && 'lower' in item
+
+/**
+ * A setting's figure in Scenarios' words (coordinator ruling 2026-10-07): money in whole dollars, and a list of income
+ * bands as ranges ("$0 – $35,000, $35,001 and up", the Rules tier grid's words), where the shared formatSetting would
+ * print cents and raw JSON. Everything else reads as formatSetting reads it, so the Rules tab is unchanged.
+ */
+export function settingWords(value: unknown, path: readonly string[], names?: RulesNames): string {
+  if (path.at(-1) === 'bands' && Array.isArray(value) && value.length > 0 && value.every(isBand)) {
+    return value
+      .map((band) =>
+        rangeWords(
+          {
+            lower: String(band.lower),
+            upper: band.upper === null || band.upper === undefined ? null : String(band.upper),
+          },
+          formatWholeMoney
+        )
+      )
+      .join(', ')
+  }
+  const n = Number(value)
+  if (
+    unitOf(path) === 'money' &&
+    (typeof value === 'number' || (typeof value === 'string' && value !== '')) &&
+    Number.isFinite(n)
+  )
+    return formatWholeMoney(n)
+  return formatSetting(value, path, names)
+}
+
 const round1Differs = (column: ApiAidCompareColumn) =>
   column.changes.some((change) => ROUND1_SECTIONS.includes(String(change.path[0])))
 
@@ -313,7 +349,7 @@ export function compareRows(
       label: settingLabel(path, names),
       cells: sources.map((s) => {
         if (s.kind === 'season') return DASH
-        const text = formatSetting(valueAt(s.column.document, path), path.slice(1), scoped)
+        const text = settingWords(valueAt(s.column.document, path), path.slice(1), scoped)
         return s.column.changes.some((c) => c.path.join('.') === key)
           ? { text, tone: 'changed' }
           : { text }
@@ -488,7 +524,7 @@ export function cornerWords(sources: readonly CompareSource[], requestSet: AidRe
   const first = sources.find((s) => s.kind === 'priced')
   const results = first?.kind === 'priced' ? first.column.results : null
   const through = results?.request_set?.through ?? null
-  return `Priced on ${String(results?.requests ?? 0)} ${requestSetWords(requestSet, through)}`
+  return `Priced on ${pricedOnWords(results?.requests ?? 0, requestSet, through)}`
 }
 
 /** The checked columns as the URL holds them (§S5 L): kept codes in `compare`, and `1` for each built-in. */

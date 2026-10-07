@@ -56,7 +56,7 @@ function table(over: Partial<Parameters<typeof CompareTable>[0]> = {}) {
 describe('CompareTable (§S5 H)', () => {
   it('puts what every column is priced on in the corner and a head on each column', () => {
     table()
-    expect(screen.getByText('Priced on 420 the applications held')).toBeInTheDocument()
+    expect(screen.getByText('Priced on 420 applications held')).toBeInTheDocument()
     expect(screen.getByText('your draft, not kept')).toBeInTheDocument()
     expect(screen.getByText('Last season, posted')).toBeInTheDocument()
   })
@@ -81,7 +81,7 @@ describe('CompareTable (§S5 H)', () => {
       'Season 2027 · Scenarios compare'
     )
     expect(screen.getByTestId('compare-print-head')).toHaveTextContent(
-      'Printed Feb 3, 2027 · 420 the applications held · Rules v4 in effect'
+      'Printed Feb 3, 2027 · 420 applications held · Rules v4 in effect'
     )
   })
 

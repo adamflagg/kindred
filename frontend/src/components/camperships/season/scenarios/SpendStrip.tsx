@@ -34,6 +34,8 @@ import {
 } from './spendModel'
 
 const TD_NUM = `${CS_TD_CARD} text-right tabular-nums`
+/** No change from the starting point: a muted dash, as the mock's `.none`. */
+const NO_CHANGE = <span className="text-muted-foreground">—</span>
 
 function ChangeMark({ change }: { change: Change | null }) {
   if (change === null) return null
@@ -194,12 +196,12 @@ export function SpendStrip({
               <tbody>
                 {byTierRows(draft, from, locked).map((row) => (
                   <tr key={row.tier}>
-                    <td className={CS_TD_CARD}>{row.tier}</td>
+                    <td className={CS_TD_CARD}>{`Tier ${String(row.tier)}`}</td>
                     <td className={TD_NUM}>{row.requests}</td>
                     <td className={TD_NUM}>{row.round1}</td>
                     {locked && <td className={TD_NUM}>{row.round2}</td>}
                     <td className={TD_NUM}>
-                      <ChangeMark change={row.change} />
+                      {row.change === null ? NO_CHANGE : <ChangeMark change={row.change} />}
                     </td>
                   </tr>
                 ))}
@@ -295,7 +297,7 @@ export function SpendStrip({
                     <td className={CS_TD_CARD}>{row.label}</td>
                     <td className={TD_NUM}>{row.draft}</td>
                     <td className={TD_NUM}>{row.from}</td>
-                    <td className={TD_NUM}>{row.change}</td>
+                    <td className={TD_NUM}>{row.change === '' ? NO_CHANGE : row.change}</td>
                   </tr>
                 ))}
               </tbody>

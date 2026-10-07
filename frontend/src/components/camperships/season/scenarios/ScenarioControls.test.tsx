@@ -105,6 +105,14 @@ describe('the control line (§S5 A)', () => {
     expect(props.onLoad).toHaveBeenCalledWith({ option: 'A' })
   })
 
+  it('says "isn’t" and "it" for one unkept change (V F5)', async () => {
+    setup({ unkept: 1, changes: '1 change' })
+    await userEvent.click(screen.getByRole('button', { name: /^A Tiers/ }))
+    expect(
+      within(screen.getByTestId('load-guard')).getByText("1 change isn't kept. Loading A drops it.")
+    ).toBeInTheDocument()
+  })
+
   it('opens Keep… from the guard in Compare too, where the chips also load (§S5 C: "Keep… (opens B)")', async () => {
     const props = setup({
       panel: 'compare',

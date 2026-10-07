@@ -206,6 +206,20 @@ export function requestSetWords(set: AidRequestSet, through: string | null): str
     : `received through ${day}`
 }
 
+/** What a figure is priced on, after its count (§S5 E, §S5 H): "51 applications held", "51 received through Feb 1
+ * (the Round 1 deadline)". The held pile's words lose their "the" after a count. */
+export function pricedOnWords(count: number, set: AidRequestSet, through: string | null): string {
+  if (set.kind === 'all') return `${String(count)} application${count === 1 ? '' : 's'} held`
+  return `${String(count)} ${requestSetWords(set, through)}`
+}
+
+/** The load guard's words (§S5 C): "1 change isn't kept. Loading A drops it." / "3 changes aren't kept. … them." */
+export function guardWords(count: number, name: string): string {
+  return count === 1
+    ? `1 change isn't kept. Loading ${name} drops it.`
+    : `${String(count)} changes aren't kept. Loading ${name} drops them.`
+}
+
 /** The next flat letter (§S11.1), as the server's starting_point_code counts it: starting points only, so options
  * kept before PR 10 as variants (A1, B2) never take one. A..Z, then AA, AB… */
 export function nextLetter(options: readonly ApiAidScenarioOption[]): string {

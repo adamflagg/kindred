@@ -247,6 +247,27 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
     expect(screen.getByRole('button', { name: 'Make It the Rules Draft' })).toBeDisabled()
   })
 
+  it('shows a money setting with cents in whole dollars (coordinator ruling 1)', async () => {
+    preview = {
+      ...PREVIEW,
+      sections: [
+        {
+          section: 'income',
+          changes: [
+            { path: ['medical_threshold'], kind: 'changed', before: '5000', after: '1500.5' },
+          ],
+          warning: null,
+        },
+      ],
+    }
+    await renderDialog()
+    expect(
+      within(screen.getByTestId('promotion-preview')).getByText(
+        'Medical expenses counted above: $5,000 → $1,501'
+      )
+    ).toBeInTheDocument()
+  })
+
   it('says what an empty list means accurately', async () => {
     preview = { ...PREVIEW, sections: [], unchanged: ['income'] }
     await renderDialog('/aid/season/scenarios?compare=A1')

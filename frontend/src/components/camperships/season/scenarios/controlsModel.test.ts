@@ -10,6 +10,7 @@ import {
   nothingNewWords,
   parseView,
   pillWords,
+  pricedOnWords,
   requestSetParam,
   requestSetWords,
   startEntries,
@@ -128,6 +129,18 @@ describe('the URL view (§S5 L)', () => {
     )
     expect(requestSetWords({ kind: 'date', date: '2027-01-20' }, '2027-01-20')).toBe(
       'received through Jan 20'
+    )
+  })
+
+  it('puts a count before the words without a stray "the" (V F6)', () => {
+    // After a count the Price ▾ label's "the applications held" reads "51 applications held", one "application".
+    expect(pricedOnWords(51, { kind: 'all' }, null)).toBe('51 applications held')
+    expect(pricedOnWords(1, { kind: 'all' }, null)).toBe('1 application held')
+    expect(pricedOnWords(51, { kind: 'deadline' }, '2027-02-01')).toBe(
+      '51 received through Feb 1 (the Round 1 deadline)'
+    )
+    expect(pricedOnWords(12, { kind: 'date', date: '2027-01-20' }, '2027-01-20')).toBe(
+      '12 received through Jan 20'
     )
   })
 })
