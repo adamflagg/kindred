@@ -195,3 +195,39 @@ def test_the_card_titles_are_the_rules_tabs_section_titles_word_for_word() -> No
     block = source.split("export const SECTION_TITLES = {", 1)[1].split("}", 1)[0]
     titles = {key: text for key, _, text in re.findall(r"^\s*(\w+):\s*(['\"])(.*)\2,?\s*$", block, re.MULTILINE)}
     assert titles == dict(CARD_TITLES)
+
+
+def test_a_named_phrase_and_another_change_in_the_same_section_each_read() -> None:
+    """Regression guard: restates the removed sizing-file label cases under §S11.6's words."""
+    awards = with_levers(RULES, {"awards.minimum": "150", "awards.ask_cap": False})
+    assert describe(RULES, awards) == "Minimum $150 · Minimum award and named awards: 1 change"
+    tiers = with_lever(widen_bands(RULES, Decimal(1000)), "tiers.floor_tier", 2)
+    assert describe(RULES, tiers) == "Band width $41,000 · Income tiers: 1 change"
+    assert describe(RULES, widen_bands(RULES, Decimal(-1000))) == "Band width $39,000"
+    assert describe(RULES, with_lever(RULES, "round2.cap_subtracts_grants", True)) == "Appeal caps: 1 change"
+    assert describe(RULES, _criterion(RULES, "bipoc", label="Renamed")) == "Moving a family up a tier: 1 change"
+
+
+def test_a_lone_current_year_weight_change_is_counted_not_dropped() -> None:
+    """Review m1: the derived weight is skipped only when the prior-year weight moved with it."""
+    lone = with_lever(RULES, "income.weights.current_year", "0.35")
+    assert describe(RULES, lone) == "Counting a family's income: 1 change"
+
+
+def test_an_empty_weights_row_added_is_counted_not_a_crash() -> None:
+    """Review m2: with no criteria a class row is {}, so its leaf path has one part."""
+    doc = RULES.model_dump(mode="json")
+    doc["equity"]["criteria"] = []
+    doc["equity"]["weights"] = {"camp": {}}
+    bare = AidRules.model_validate(doc)
+    doc["equity"]["weights"] = {"camp": {}, "teen": {}}
+    assert describe(bare, AidRules.model_validate(doc)) == "Moving a family up a tier: 1 change"
+
+
+def test_a_table_new_in_the_draft_is_counted_not_spelled_cell_by_cell() -> None:
+    """Review m3: a table a Last season's start adds is counted; only an existing table's cells read as phrases."""
+    doc = RULES.model_dump(mode="json")
+    doc["award_tables"]["quest"] = doc["award_tables"]["camp"]
+    text = describe(RULES, AidRules.model_validate(doc))
+    assert "›" not in text
+    assert text.startswith("Round 1 award table: ")

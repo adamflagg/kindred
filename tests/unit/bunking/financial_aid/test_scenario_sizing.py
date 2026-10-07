@@ -1,4 +1,4 @@
-"""Scenario sizing moves, labels and codes (sub-project 9b; spec §7.4; D36–D38; main spec §12.3). Fictional
+"""Scenario sizing moves and codes (sub-project 9b; spec §7.4; D36–D38; main spec §12.3). Fictional
 rules only (fixtures.py): the camp table is 90/75/55/35/15/2 by tier, teen overrides tier 2 to 70, family
 inherits camp; bands are 0-40,000, 40,001-80,000, ... 200,001 and up; the minimum is 100."""
 
@@ -93,9 +93,6 @@ def test_apply_sizing_widens_then_shifts() -> None:
     assert sized.tiers.bands[1].lower == Decimal(45001)
 
 
-# --- labels ------------------------------------------------------------------------------------------
-
-
 # --- codes -------------------------------------------------------------------------------------------
 
 
@@ -108,7 +105,7 @@ def test_the_carry_from_zz_to_aaa() -> None:
     assert (starting_point_code(701), starting_point_code(702)) == ("ZZ", "AAA")
 
 
-# --- labels: the parked review minors and final review 9 ----------------------------------------------
+# --- sizing: the parked review minors and final review 9 ----------------------------------------------
 
 
 def test_narrowing_that_empties_a_band_says_narrower() -> None:

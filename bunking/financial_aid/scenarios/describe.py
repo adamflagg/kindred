@@ -143,7 +143,7 @@ def _table_phrases(
 
     for change in field_changes(dump(old), dump(new)):
         table, *more = change.path
-        if len(more) == 3 and more[0] in ("tiers", "overrides") and more[2] == field:
+        if table in old and len(more) == 3 and more[0] in ("tiers", "overrides") and more[2] == field:
             tier = int(more[1])
             if tier > top or (table == root and more[0] == "tiers" and change.kind == "changed"):
                 continue  # the count's consequence, or the run's cell
@@ -209,8 +209,8 @@ def _equity_phrases(old: EquitySection, new: EquitySection) -> tuple[list[str], 
         else:
             rest += 1  # the list itself changed (a Last season's start): counted, never spelled out
     for change in field_changes(old.weights, new.weights):
-        cls, key = (str(part) for part in change.path)
-        if change.kind == "changed":
+        if change.kind == "changed" and len(change.path) == 2:
+            cls, key = (str(part) for part in change.path)
             phrases.append(f"Weight › {_words(cls)} › {labels.get(key, _words(key))} {_plain(change.after)}")
         else:
             rest += 1
@@ -222,9 +222,10 @@ def _equity_phrases(old: EquitySection, new: EquitySection) -> tuple[list[str], 
 def _income_phrases(old: IncomeSection, new: IncomeSection) -> tuple[list[str], int]:
     phrases: list[str] = []
     rest = 0
+    prior_moved = old.weights.prior_year != new.weights.prior_year
     for change in field_changes(old.model_dump(), new.model_dump()):
         path = tuple(str(part) for part in change.path)
-        if path == ("weights", "current_year"):
+        if path == ("weights", "current_year") and prior_moved:
             continue  # derived: 1 − the prior-year weight (§S11.5); the prior-year phrase says it
         if path == ("weights", "prior_year") and change.kind == "changed":
             phrases.append(f"Prior-year weight {_plain(change.after * 100)}%")
