@@ -13,12 +13,15 @@ from api.services.camp_calendar import camp_week_offset
 from bunking.financial_aid.arrival import (
     ArrivalCurve,
     CurvePoint,
+    Projection,
+    TooEarly,
     calendar_anchor,
     camp_date_of,
     curve_from_dates,
     points_from_json,
     points_json,
     project,
+    projection_or_too_early,
     share_by,
 )
 from bunking.financial_aid.scenarios import PoolResult, ScenarioResults
@@ -237,3 +240,19 @@ def test_a_curve_needs_at_least_one_dated_application() -> None:
 def test_points_survive_their_json() -> None:
     assert points_from_json(points_json(CURVE)) == CURVE.points
     assert points_json(CURVE)[0] == {"week": -3, "share": "0.1250"}
+
+
+def test_below_a_five_percent_share_there_is_no_projection() -> None:
+    """Owner 10-07: no projection below a 5% share; the screen reads "too early to project"."""
+    out = projection_or_too_early(
+        _results(), Decimal("0.0499"), through=date(2027, 1, 5), basis_year=2026, aligned_on="application_deadline"
+    )
+    assert out == TooEarly(share=Decimal("0.0499"), through=date(2027, 1, 5), basis_year=2026)
+
+
+def test_at_five_percent_it_projects() -> None:
+    """Pin: the floor is "below 5%", so exactly 5% still projects."""
+    out = projection_or_too_early(
+        _results(), Decimal("0.05"), through=date(2027, 1, 5), basis_year=2026, aligned_on="application_deadline"
+    )
+    assert isinstance(out, Projection)

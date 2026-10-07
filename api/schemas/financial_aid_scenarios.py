@@ -70,6 +70,15 @@ class ProjectionOut(BaseModel):
     pools: list[PoolProjectionOut]
 
 
+class TooEarlyOut(BaseModel):
+    """Owner 10-07: under 5% of last year's applications had arrived by this point, so there is no projection; the
+    screen says it is too early and how much had arrived."""
+
+    share: float  # 0-1, 3 decimals
+    through: date
+    basis_year: int
+
+
 class ResultsOut(BaseModel):
     """A scenario's figures. Round n = Posted + Needs an offer + Pending approval (spec §5.3); Round 2 is only the
     appeals keyed so far, and `round1_unmet` (below the line) is the forward signal for Round 2 (plan Decision 10).
@@ -98,6 +107,7 @@ class ResultsOut(BaseModel):
     appeals_asked: float = 0
     # Filled on evaluate, the draft and each priced compare column; never on a kept option's stored results or last season.
     projection: ProjectionOut | None = None
+    too_early: TooEarlyOut | None = None
 
 
 class SnapshotOut(BaseModel):

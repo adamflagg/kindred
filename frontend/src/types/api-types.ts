@@ -108,6 +108,7 @@ import type {
   ProgramProfile,
   PoolResultOut,
   ProjectionOut,
+  TooEarlyOut,
   PromotionPreviewOut,
   PromotionSectionOut,
   ReceiptOut,
@@ -320,6 +321,8 @@ export type ApiAidScenarioPool = PoolResultOut
 /** Mirrors Python `TierRowOut`. */
 export type ApiAidScenarioTierRow = TierRowOut
 export type ApiAidScenarioProjection = ProjectionOut
+/** Mirrors Python `TooEarlyOut`: under 5% of last year's applications had arrived, so no projection. */
+export type ApiAidScenarioTooEarly = TooEarlyOut
 export type ApiAidScenarioEvaluateIn = EvaluateIn
 export type ApiAidScenarioEvaluation = EvaluateOut
 /** A body that is only a document (Python `DocumentIn`); the draft save's body adds `opened_version`. */

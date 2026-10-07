@@ -53,7 +53,7 @@ from api.services.financial_aid_scenarios_service import (
     Sensitivity,
     Workspace,
 )
-from bunking.financial_aid.arrival import PoolProjection, Projection
+from bunking.financial_aid.arrival import PoolProjection, Projection, TooEarly
 from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.financial_aid.rules import ValidationReport
@@ -967,3 +967,39 @@ def test_the_draft_save_forwards_the_opened_version() -> None:
     assert service.save_draft.await_args.kwargs == {"opened_version": 3}
     client.put("/api/financial-aid/scenarios/2027/draft", json=DOC_BODY)
     assert service.save_draft.await_args.kwargs == {"opened_version": None}
+
+
+def _too_early() -> TooEarly:
+    return TooEarly(share=Decimal("0.0304"), through=date(2027, 1, 5), basis_year=2026)
+
+
+def test_evaluate_carries_too_early_to_the_wire() -> None:
+    service = _stub()
+    service.evaluate = AsyncMock(return_value=Evaluation(DOC, RESULTS, ValidationReport(), too_early=_too_early()))
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
+    assert body["projection"] is None
+    assert body["too_early"] == {"share": 0.03, "through": "2027-01-05", "basis_year": 2026}
+
+
+def test_a_compare_column_carries_too_early_to_the_wire() -> None:
+    service = _stub()
+    column = CompareColumn("draft", "no changes", DOC, (), RESULTS, None, None, too_early=_too_early())
+    service.compare = AsyncMock(return_value=Comparison(META, (column,)))
+    body = _client().get("/api/financial-aid/scenarios/2027/compare").json()["columns"][0]["results"]
+    assert body["too_early"]["basis_year"] == 2026
+
+
+def test_the_draft_carries_too_early_to_the_wire() -> None:
+    service = _stub()
+    draft = replace(DRAFT, too_early=_too_early())
+    service.workspace = AsyncMock(return_value=Workspace(2027, 1, META, draft, (KEPT,)))
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert body["draft"]["results"]["too_early"]["share"] == 0.03
+
+
+def test_a_projection_with_no_floor_note_has_no_too_early() -> None:
+    """Pin: the field is optional and null on a projected read and on a kept option."""
+    service = _stub()
+    service.evaluate = AsyncMock(return_value=Evaluation(DOC, RESULTS, ValidationReport(), projection=_a_projection()))
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()["results"]
+    assert body["too_early"] is None

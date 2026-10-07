@@ -13473,6 +13473,7 @@ export type ResultsOut = {
    */
   appeals_asked?: number
   projection?: ProjectionOut | null
+  too_early?: TooEarlyOut | null
 }
 
 /**
@@ -17614,6 +17615,27 @@ export type TodoOut = {
    * Message
    */
   message: string
+}
+
+/**
+ * TooEarlyOut
+ *
+ * Owner 10-07: under 5% of last year's applications had arrived by this point, so there is no projection; the
+ * screen says it is too early and how much had arrived.
+ */
+export type TooEarlyOut = {
+  /**
+   * Share
+   */
+  share: number
+  /**
+   * Through
+   */
+  through: string
+  /**
+   * Basis Year
+   */
+  basis_year: number
 }
 
 /**

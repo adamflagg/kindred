@@ -175,6 +175,7 @@ from api.schemas.financial_aid_scenarios import (
     SnapshotOut,
     TierCompareOut,
     TierRowOut,
+    TooEarlyOut,
     TrailPageOut,
     TrailRowOut,
     ViewIn,
@@ -298,7 +299,7 @@ from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.branding import get_branding, get_camp_name
-from bunking.financial_aid.arrival import Projection
+from bunking.financial_aid.arrival import Projection, TooEarly
 from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
@@ -1233,11 +1234,22 @@ def _projection_out(projection: Projection | None) -> ProjectionOut | None:
     )
 
 
-def _results_out(r: ScenarioResults, projection: Projection | None = None) -> ResultsOut:
+def _too_early_out(too_early: TooEarly | None) -> TooEarlyOut | None:
+    if too_early is None:
+        return None
+    return TooEarlyOut(
+        share=round(float(too_early.share), 3), through=too_early.through, basis_year=too_early.basis_year
+    )
+
+
+def _results_out(
+    r: ScenarioResults, projection: Projection | None = None, too_early: TooEarly | None = None
+) -> ResultsOut:
     round2s = round2_by_tier_totals(r)
     appeals, appeals_asked = appeal_totals(r)
     return ResultsOut(
         projection=_projection_out(projection),
+        too_early=_too_early_out(too_early),
         requests=r.requests,
         families=r.families,
         round1=money(r.round1),
@@ -1370,7 +1382,7 @@ def _scenario_draft_out(draft: Draft) -> DraftOut:
         label=draft.label,
         document=draft.document,
         changes=[field_change_out(c) for c in draft.changes],
-        results=_results_out(draft.results, draft.projection) if draft.results is not None else None,
+        results=_results_out(draft.results, draft.projection, draft.too_early) if draft.results is not None else None,
         report=draft.report,
         recorded_at=draft.recorded_at,
         source_document=draft.source_document,
@@ -1398,7 +1410,7 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
 def _evaluation_out(evaluation: Evaluation) -> EvaluateOut:
     return EvaluateOut(
         document=evaluation.document,
-        results=_results_out(evaluation.results, evaluation.projection),
+        results=_results_out(evaluation.results, evaluation.projection, evaluation.too_early),
         report=evaluation.report,
     )
 
@@ -1409,7 +1421,7 @@ def _column_out(column: CompareColumn) -> CompareColumnOut:
         label=column.label,
         document=column.document,
         changes=[field_change_out(c) for c in column.changes],
-        results=_results_out(column.results, column.projection),
+        results=_results_out(column.results, column.projection, column.too_early),
         up=column.up,
         down=column.down,
         committee=_committee_out(column.committee) if column.committee is not None else None,
