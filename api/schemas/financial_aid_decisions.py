@@ -249,6 +249,7 @@ class CostOverrideOut(BaseModel):
     reason_code: str
     note: str
     actor: str
+    at: datetime | None = None  # when it was set: the correction row's created (spec §10.5)
 
 
 RowStageCode = Literal[
@@ -313,6 +314,10 @@ class GridRowOut(BaseModel):
     # a past read names it in not_rebuilt.
     appeal_refusal: str | None = None
     cost_override: CostOverrideOut | None = None
+    # The price the rules give with the override removed, and how (spec §10.5): Set Cost…'s "instead of $X" and the
+    # set line's "without it". None when the rules can't price the request.
+    rules_cost: float | None = None
+    rules_cost_from: Literal["catalog", "per_person"] | None = None
     # D77/D129: live and not cancelled (derived; staff have no override on it). None on a past read: it reads the
     # cancellation, which a past date doesn't rebuild (not_rebuilt names it).
     included: bool | None = None

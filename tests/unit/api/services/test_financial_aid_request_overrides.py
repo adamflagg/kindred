@@ -29,9 +29,17 @@ from api.services.financial_aid_request_overrides import (
     parse_cost_override,
 )
 from bunking.financial_aid.calculator import CostOverride
-from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore, FakeRules, log_seeded, seed_request
-from tests.unit.api.services.financial_aid_fakes import YEAR
+from tests.unit.api.services.decisions_fakes import (
+    ACTOR,
+    FakeDecisionsStore,
+    FakeRules,
+    approved,
+    log_seeded,
+    seed_request,
+)
+from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _posted, _service
+from tests.unit.bunking.financial_aid.fixtures import with_lever
 
 APP = f"app{1000001:012d}"  # seed_request's application id for the Johnson household
 
@@ -297,3 +305,46 @@ async def test_a_cost_override_with_nothing_posted_carries_no_warning() -> None:
     seed_request(store, EMMA)
     out = await _service(store).set_cost_override(EMMA, OVERRIDE, ACTOR)
     assert out.warning is None
+
+
+@pytest.mark.asyncio
+async def test_a_row_says_the_catalog_price_without_its_override_and_when_it_was_set() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.corrections.append(_correction(COST_OVERRIDE, "discount:3500.00", "2027-02-01 17:00:00.000Z"))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert (row.cost, row.rules_cost, row.rules_cost_from) == (3500.0, 2000.0, "catalog")
+    assert row.cost_override is not None
+    assert row.cost_override.at == datetime(2027, 2, 1, 17, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_row_without_an_override_carries_its_own_price_as_the_rules_price() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert (row.rules_cost, row.rules_cost_from, row.cost_override) == (2000.0, "catalog", None)
+
+
+@pytest.mark.asyncio
+async def test_an_override_on_a_request_the_rules_cannot_price_says_none_never_zero() -> None:
+    """Review Focus 4: "instead of no price", never "$0"."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.corrections.append(_correction(COST_OVERRIDE, "missing_catalog:1800.00", "2027-02-01 17:00:00.000Z"))
+    unpriced = FakeRules(approved(with_lever(intake_rules(), "cost.tuition", {})))
+    (row,) = (await _service(store, unpriced).grid(YEAR)).rows
+    assert (row.cost, row.rules_cost, row.rules_cost_from) == (1800.0, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_family_camp_request_says_its_per_person_price_without_the_override() -> None:
+    """Family Camp 6 (1000201) bills 600 a standard person under fictional_rules; three people make 1,800."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, person=0, session=1000201)
+    store.requests[EMMA] = replace(
+        store.requests[EMMA], program_key="family_camp", headcount_non_infant=3, headcount_source="application"
+    )
+    store.corrections.append(_correction(COST_OVERRIDE, "discount:1000.00", "2027-02-01 17:00:00.000Z"))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert (row.cost, row.rules_cost, row.rules_cost_from) == (1000.0, 1800.0, "per_person")

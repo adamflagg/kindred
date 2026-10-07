@@ -204,6 +204,7 @@ from api.services.financial_aid_to_place import (
     withhold,
 )
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
+from bunking.financial_aid.calculator.cost import CostResolution, resolve_cost
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.change_replay import LogRow, Replayed, replay
 from bunking.financial_aid.decisions import (
@@ -2239,6 +2240,15 @@ class FinancialAidDecisionsService:
         rules = season.rules.document if season.rules is not None else None
         program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None
         description = (program.campminder_description or None) if program is not None else None
+        priced = season.priced[request_id]
+        without: CostResolution | None = None
+        if rules is not None and priced.inputs is not None:
+            without = resolve_cost(priced.inputs.model_copy(update={"cost_override": None}), rules)
+        listed = (
+            without
+            if without is not None and without.amount is not None and without.source in ("catalog", "per_person")
+            else None
+        )
         standing = season.cost_overrides.get(request_id)
         parsed = parse_cost_override(standing.new_value) if standing is not None else None
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
@@ -2287,10 +2297,13 @@ class FinancialAidDecisionsService:
                         reason_code=parsed.reason,
                         note=standing.reason,
                         actor=standing.actor,
+                        at=parse_pb_datetime(standing.created),
                     )
                     if standing is not None and parsed is not None
                     else None
                 ),
+                "rules_cost": money(listed.amount) if listed is not None and listed.amount is not None else None,
+                "rules_cost_from": listed.source if listed is not None else None,
                 "included": is_included(row.request_status, cancelled=row.cancellation is not None),
             }
         )
