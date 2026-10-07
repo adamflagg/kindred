@@ -103,3 +103,25 @@ def test_a_typed_program_needs_an_override() -> None:
     assert resolve_cost(req(cost_override={"amount": "1000", "reason": "missing_catalog"}), rules).amount == Decimal(
         1000
     )
+
+
+def test_an_ag_session_with_no_price_of_its_own_takes_its_parents() -> None:
+    """Owner 10-07 (R7): AG session costs auto-link to their parent session. The fixture prices 1000101 at 2,000."""
+    cost = resolve_cost(req(session_cm_id=1000199, ag_parent_cm_id=1000101), fictional_rules())
+    assert (cost.amount, cost.source) == (Decimal(2000), "catalog")
+
+
+def test_an_ag_sessions_own_price_wins_over_its_parents() -> None:
+    rules = with_lever(fictional_rules(), "cost.tuition", {"1000101": "2000", "1000199": "1900"})
+    assert resolve_cost(req(session_cm_id=1000199, ag_parent_cm_id=1000101), rules).amount == Decimal(1900)
+
+
+def test_an_ag_session_whose_parent_has_no_price_is_unknown_and_names_the_session() -> None:
+    cost = resolve_cost(req(session_cm_id=1000199, ag_parent_cm_id=1000188), fictional_rules())
+    assert (cost.amount, cost.source) == (None, "unknown")
+    assert "1000199" in (cost.missing or "")
+
+
+def test_a_request_without_a_parent_never_falls_back() -> None:
+    """Pin. Passes before and after A1 (no parent, so no fallback)."""
+    assert resolve_cost(req(session_cm_id=1000199), fictional_rules()).amount is None
