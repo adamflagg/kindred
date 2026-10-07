@@ -10,16 +10,10 @@ import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AidWriteError } from '../../../../services/camperships/aidApi'
+import { AidApiError, AidWriteError } from '../../../../services/camperships/aidApi'
 import type { ApiAidPromotionPreview } from '../../../../types/api-types'
 import { MakeRulesDraftDialog } from './MakeRulesDraftDialog'
 
-let lockedSections: string[] = []
-vi.mock('../../../../hooks/camperships/useAidRules', () => ({
-  useAidRulesDraft: () => ({
-    data: { sections: lockedSections.map((section) => ({ section, status: { state: 'locked' } })) },
-  }),
-}))
 let preview: ApiAidPromotionPreview | undefined
 let previewError: Error | null = null
 const promoted: unknown[] = []
@@ -102,7 +96,6 @@ beforeEach(() => {
   promoteRefusal = null
   promoteStatus = 409
   promoteBusy = false
-  lockedSections = []
 })
 
 // …the two describes, moved as described above.
@@ -124,7 +117,7 @@ describe('Make it the rules draft (D39; Decision 21)', () => {
       body: { base_version: 4, acknowledged: { award_tables: 'tok-1' } },
     })
     expect(screen.getByTestId('promotion-done')).toHaveTextContent(
-      "A1's changes are in the rules draft, v5."
+      "A1's changes are in the rules draft, v5. Each changed section now needs approval: Rules ›, or Approve… on the tab bar."
     )
     expect(screen.getByRole('link', { name: /Rules/ })).toHaveAttribute(
       'href',
@@ -228,21 +221,30 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
     )
   })
 
-  it('says a locked section may start a new version and posted amounts stand', async () => {
-    lockedSections = ['award_tables']
-    await renderDialog('/aid/season/scenarios?compare=A1')
-    expect(
-      within(screen.getByTestId('promotion-preview')).getByText(
-        'Round 1 award table is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
-      )
-    ).toBeInTheDocument()
-  })
-
   it('says nothing about a lock when no changed section is locked, and states no version it cannot promise', async () => {
     await renderDialog('/aid/season/scenarios?compare=A1')
     const dialog = screen.getByTestId('promotion-preview')
     expect(within(dialog).queryByText(/locked by a posted round/)).toBeNull()
     expect(dialog).not.toHaveTextContent('(v4)')
+  })
+
+  it('says how many fixed settings stay as the rules draft has them (§S5 I; §S11.3)', async () => {
+    preview = { ...PREVIEW, fixed_kept: 2 }
+    await renderDialog()
+    expect(
+      screen.getByText('2 fixed settings stay as the rules draft has them')
+    ).toBeInTheDocument()
+  })
+
+  it('shows a locked refusal from the preview in the server’s words, with nothing to confirm', async () => {
+    preview = undefined
+    previewError = new AidApiError(
+      'Round 1 award table is locked: Round 1 is posted, so Scenarios models only what is still open.',
+      409
+    )
+    await renderDialog()
+    expect(screen.getByText(/Round 1 award table is locked/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Make It the Rules Draft' })).toBeDisabled()
   })
 
   it('says what an empty list means accurately', async () => {

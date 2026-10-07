@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 
-import { useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
 import {
   useAidMakeRulesDraft,
   useAidPromotionPreview,
@@ -9,20 +8,12 @@ import {
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { hasStatus } from '../../../../services/camperships/aidApi'
-import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
-import type { ApiAidRulesSection } from '../../../../types/api-types'
 import { Modal } from '../../../ui/Modal'
 import { aidHref } from '../../kit/asOf'
+import { CS_AMBER_NOTE, CS_BODY, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import { PILL } from '../../kit/kitStyles'
 import { SECTION_TITLES, changeWords } from '../rules/rulesModel'
-import { allConfirmed, lockedWords, standingAcks, warningWords } from './promotionModel'
-
-/** A changed section a posted round locked: the server starts a new version of it (§7.5; S1 Q1). */
-function LockedNote({ section }: { section: ApiAidRulesSection }) {
-  const draft = useAidRulesDraft()
-  const state = draft.data?.sections.find((s) => s.section === section)?.status.state
-  return state === 'locked' ? <p className={AMBER_NOTE}>{lockedWords(section)}</p> : null
-}
+import { allConfirmed, standingAcks, warningWords } from './promotionModel'
 
 /**
  * "Make A1 the Rules Draft…" (spec §7.5; D39; rules.html A): lists each section the option changes,
@@ -92,17 +83,12 @@ export function MakeRulesDraftDialog({
       footer={
         done === null ? (
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className={BUTTON_SECONDARY}
-              disabled={promote.isPending}
-              onClick={close}
-            >
+            <button type="button" className={CS_BTN2} disabled={promote.isPending} onClick={close}>
               Cancel
             </button>
             <button
               type="button"
-              className={BUTTON_PRIMARY}
+              className={CS_BTN}
               disabled={
                 data === undefined ||
                 promote.isPending ||
@@ -116,7 +102,7 @@ export function MakeRulesDraftDialog({
           </div>
         ) : (
           <div className="flex justify-end">
-            <button type="button" className={BUTTON_PRIMARY} onClick={close}>
+            <button type="button" className={CS_BTN} onClick={close}>
               Done
             </button>
           </div>
@@ -124,21 +110,22 @@ export function MakeRulesDraftDialog({
       }
     >
       {done !== null ? (
-        <p className="text-sm" data-testid="promotion-done">
+        <p className={CS_BODY} data-testid="promotion-done">
           {`${code ?? ''}'s changes are in the rules draft, v${String(done)}. Each changed section now needs approval: `}
           <Link to={rulesHref} className="text-primary hover:underline">
             Rules ›
           </Link>
+          , or Approve… on the tab bar.
         </p>
       ) : preview.isLoading ? (
-        <p className="text-muted-foreground text-sm">Looking at the changes…</p>
+        <p className={CS_SMALL}>Looking at the changes…</p>
       ) : data === undefined ? (
-        <p className={AMBER_NOTE}>{preview.error?.message ?? "Couldn't look at the changes."}</p>
+        <p className={CS_AMBER_NOTE}>{preview.error?.message ?? "Couldn't look at the changes."}</p>
       ) : (
-        <div className="space-y-3 text-sm" data-testid="promotion-preview">
+        <div className={`${CS_BODY} space-y-3`} data-testid="promotion-preview">
           <p>{`These settings from ${data.code} go into the rules draft. Each changed section then needs approval.`}</p>
           {data.sections.length === 0 && (
-            <p className="text-muted-foreground">
+            <p className={CS_SMALL}>
               Nothing to change: what this option changed is already in the rules draft.
             </p>
           )}
@@ -155,14 +142,13 @@ export function MakeRulesDraftDialog({
                   {SECTION_TITLES[section.section]}
                   <span className={PILL.amber}>becomes Draft</span>
                 </div>
-                <ul className="text-xs">
+                <ul className={CS_SMALL}>
                   {section.changes.map((change) => (
                     <li key={change.path.join('.')}>{changeWords(change)}</li>
                   ))}
                 </ul>
-                <LockedNote section={section.section} />
                 {warning !== null && (
-                  <label className={`${AMBER_NOTE} flex items-center gap-1.5`}>
+                  <label className={`${CS_AMBER_NOTE} flex items-center gap-1.5`}>
                     <input
                       type="checkbox"
                       checked={acks.get(section.section) === token}
@@ -182,15 +168,22 @@ export function MakeRulesDraftDialog({
             )
           })}
           {data.unchanged.length > 0 && (
-            <p className="text-muted-foreground text-xs">{`Unchanged: the other ${String(data.unchanged.length)} sections.`}</p>
+            <p
+              className={CS_SMALL}
+            >{`Unchanged: the other ${String(data.unchanged.length)} sections.`}</p>
+          )}
+          {data.fixed_kept !== undefined && data.fixed_kept > 0 && (
+            <p
+              className={CS_SMALL}
+            >{`${String(data.fixed_kept)} fixed setting${data.fixed_kept === 1 ? '' : 's'} stay as the rules draft has them`}</p>
           )}
           {failure?.kind === 'refused' && (
-            <p className={AMBER_NOTE} data-testid="promotion-refused">
+            <p className={CS_AMBER_NOTE} data-testid="promotion-refused">
               {`${failure.message} Nothing was changed. The list above is the rules draft as it is now: look again, then confirm.`}
             </p>
           )}
           {failure?.kind === 'unknown' && (
-            <p className={AMBER_NOTE} data-testid="promotion-unknown">
+            <p className={CS_AMBER_NOTE} data-testid="promotion-unknown">
               {`${failure.message} Couldn't tell whether it was saved: look at the rules draft before trying again. `}
               <Link to={rulesHref} className="underline">
                 Rules ›

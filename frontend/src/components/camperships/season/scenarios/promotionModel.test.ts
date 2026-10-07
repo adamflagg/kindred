@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ApiAidPromotionPreview } from '../../../../types/api-types'
-import { allConfirmed, lockedWords, standingAcks, warningWords } from './promotionModel'
+import { allConfirmed, standingAcks, warningWords } from './promotionModel'
 
 const PREVIEW: ApiAidPromotionPreview = {
   code: 'A1',
@@ -54,7 +54,7 @@ describe('making a kept option the rules draft (D39; Decision 21)', () => {
   })
 })
 
-describe('the warning names the edit on camp time, and a locked section says what a new version does', () => {
+describe('the warning names the edit on camp time', () => {
   it('reads an evening edit as that camp day, not the UTC next one', () => {
     const section = {
       ...PREVIEW.sections[0]!,
@@ -62,12 +62,6 @@ describe('the warning names the edit on camp time, and a locked section says wha
     }
     expect(warningWords(section)).toBe(
       'Replaces an unapproved change in the rules draft (Test User, Jan 21, 2027, from B2).'
-    )
-  })
-
-  it('says a posted round locks the section, that a new version may start, and that posted amounts stand', () => {
-    expect(lockedWords('award_tables')).toBe(
-      'Round 1 award table is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
     )
   })
 })

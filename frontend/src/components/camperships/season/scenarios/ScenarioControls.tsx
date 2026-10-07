@@ -38,16 +38,18 @@ interface Guard {
   readonly name: string
 }
 
-function Rename({
+export function RenameBox({
   code,
   name,
   onRename,
   onDone,
+  width = 210,
 }: {
   code: string
   name: string
   onRename: (code: string, name: string) => void
   onDone: () => void
+  width?: number
 }) {
   const [value, setValue] = useState(name)
   const done = useRef(false)
@@ -61,7 +63,8 @@ function Rename({
   return (
     <input
       aria-label={`Name of ${code}`}
-      className={`${CS_INPUT} w-[210px]`}
+      className={CS_INPUT}
+      style={{ width }}
       value={value}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => finish(true)}
@@ -216,7 +219,7 @@ export function ScenarioControls(props: {
         {props.chips.length === 0 && <span className={CS_SMALL}>nothing kept yet</span>}
         {props.chips.map((chip) =>
           renaming === chip.code ? (
-            <Rename
+            <RenameBox
               key={chip.code}
               code={chip.code}
               name={chip.name}
