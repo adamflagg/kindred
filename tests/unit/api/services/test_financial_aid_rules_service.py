@@ -20,15 +20,19 @@ from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
     AidRulesRepository,
     FinancialAidRulesService,
+    FingerprintsMismatchError,
+    FixedSettingError,
     NoSectionsNamedError,
     NotLatestVersionError,
     RulesHistoryIncompleteError,
     RulesNotFoundError,
+    SectionChangedError,
     VersionExistsError,
     YearMismatchError,
     _dump,
     _stored,
     _to_version,
+    section_fingerprint,
 )
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
@@ -1133,3 +1137,133 @@ async def test_a_programs_save_that_sends_r1_table_is_an_explicit_legacy_edit() 
     saved = await service.save_section(2031, 1, "programs", content, actor=FINANCE)
     assert saved.version.document.programs["summer"].r1_table == "teen"
     assert saved.version.document.programs["summer"].table_from_equity_class is False
+
+
+# --- several sections saved as one operation (spec §15.5) --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_programs_and_cost_save_together_as_one_operation() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    current = await service.load(2031)
+    programs = fictional_rules().model_dump(mode="json")["programs"]
+    programs["quest"]["session_cm_ids"] = []
+    programs["summer"]["session_cm_ids"] = [1000101, 1000102, 1000103]
+    cost = fictional_rules().model_dump(mode="json")["cost"] | {"not_running_session_cm_ids": [1000104]}
+    before = len(store.operations)
+    saved = await service.save_section_contents(
+        2031,
+        1,
+        {"programs": programs, "cost": cost},
+        actor=FINANCE,
+        expected_fingerprints={
+            "programs": section_fingerprint(current.document, "programs"),
+            "cost": section_fingerprint(current.document, "cost"),
+        },
+    )
+    assert len(store.operations) == before + 1  # one operation
+    assert len(store.operations[-1]) == 1  # one log row
+    assert saved.version.document.programs["summer"].session_cm_ids == [1000101, 1000102, 1000103]
+    assert saved.version.document.cost.not_running_session_cm_ids == [1000104]
+
+
+@pytest.mark.asyncio
+async def test_a_stale_fingerprint_on_either_section_is_refused_naming_it() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    current = await service.load(2031)
+    with pytest.raises(SectionChangedError) as caught:
+        await service.save_section_contents(
+            2031,
+            1,
+            {
+                "programs": fictional_rules().model_dump(mode="json")["programs"],
+                "cost": fictional_rules().model_dump(mode="json")["cost"],
+            },
+            actor=FINANCE,
+            expected_fingerprints={"programs": section_fingerprint(current.document, "programs"), "cost": "0" * 64},
+        )
+    assert caught.value.sections == ["cost"]
+
+
+@pytest.mark.asyncio
+async def test_fingerprints_must_name_exactly_the_sections_saved() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(FingerprintsMismatchError):
+        await service.save_section_contents(
+            2031,
+            1,
+            {"cost": fictional_rules().model_dump(mode="json")["cost"]},
+            actor=FINANCE,
+            expected_fingerprints={"programs": "x", "cost": "y"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_contents_save_naming_no_section_is_refused() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(NoSectionsNamedError):
+        await service.save_section_contents(2031, 1, {}, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_programs_content_saved_together_still_keeps_legacy_routing() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    saved = await service.save_section_contents(
+        2031,
+        1,
+        {
+            "programs": _programs_as_the_editor_sends_them(fictional_rules()),
+            "cost": fictional_rules().model_dump(mode="json")["cost"],
+        },
+        actor=FINANCE,
+    )
+    summer = saved.version.document.programs["summer"]
+    assert (summer.table_from_equity_class, summer.r1_table) == (False, "camp")
+
+
+@pytest.mark.asyncio
+async def test_a_fixed_setting_in_either_section_is_refused_and_nothing_is_written() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    before = len(store.operations)
+    programs = fictional_rules().model_dump(mode="json")["programs"]
+    programs["summer"]["label"] = "Summer Camp"  # a valid edit that must not land when the other section is refused
+    cost = fictional_rules().model_dump(mode="json")["cost"] | {"infant_age_cutoff_months": 12}
+    with pytest.raises(FixedSettingError):
+        await service.save_section_contents(2031, 1, {"programs": programs, "cost": cost}, actor=FINANCE)
+    assert len(store.operations) == before
+    assert (await service.load(2031)).document == fictional_rules()
+
+
+@pytest.mark.asyncio
+async def test_a_one_section_contents_save_leaves_the_other_sections_approval_alone() -> None:
+    """Review Focus 8: the card's groups-only Save sends programs alone (Task 10.5); cost keeps its approval."""
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, ["programs", "cost"], actor=FINANCE, note="Finance")
+    before = (await service.load(2031)).section_status["cost"]
+    programs = fictional_rules().model_dump(mode="json")["programs"]
+    programs["quest"]["session_cm_ids"] = []
+    saved = await service.save_section_contents(2031, 1, {"programs": programs}, actor=FINANCE)
+    assert saved.version.section_status["cost"].state == before.state == "approved"
+    assert saved.version.section_status["programs"].state != "approved"
+
+
+@pytest.mark.asyncio
+async def test_a_locked_section_saved_together_branches_a_new_version() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, ["programs", "cost"], actor=FINANCE, note="Finance")
+    await service.lock_section(2031, 1, "cost", actor=FINANCE)
+    cost = fictional_rules().model_dump(mode="json")["cost"] | {"not_running_session_cm_ids": [1000104]}
+    programs = fictional_rules().model_dump(mode="json")["programs"]
+    programs["quest"]["session_cm_ids"] = []
+    saved = await service.save_section_contents(2031, 1, {"programs": programs, "cost": cost}, actor=FINANCE)
+    assert saved.branched_from == 1
