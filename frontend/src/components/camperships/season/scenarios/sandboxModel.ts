@@ -366,3 +366,63 @@ export function cellEditable(document: Doc, part: 'r1' | 'cap', table: string): 
   const shape = tables[table]
   return shape !== undefined && (shape.inherits === null || shape.inherits === undefined)
 }
+
+/** What a card reads and reports (§S5 F): the typed document, each box's text, its bad figure and "was", the lock,
+ * and the two actions: typing prices live and records nothing; leaving a box or Enter records it. */
+export interface SandboxBinding {
+  readonly typed: Doc
+  readonly source: Doc | null
+  readonly problems: ReadonlyMap<string, Problem>
+  readonly locked: readonly string[]
+  readonly byRound: number | null
+  readonly canEdit: boolean
+  value(key: string): string
+  bad(key: string): boolean
+  was(key: string): string | null
+  type(key: string, raw: string): void
+  release(): void
+}
+
+export function bindingOf(input: {
+  readonly recorded: Doc
+  readonly source: Doc | null
+  readonly edits: ReadonlyMap<string, string>
+  readonly locked: readonly string[]
+  readonly byRound: number | null
+  readonly canEdit: boolean
+  readonly type: (key: string, raw: string) => void
+  readonly release: () => void
+}): SandboxBinding {
+  const applied = applyEdits(input.recorded, input.edits)
+  return {
+    typed: applied.document,
+    source: input.source,
+    problems: applied.problems,
+    locked: input.locked,
+    byRound: input.byRound,
+    canEdit: input.canEdit,
+    value: (key) => input.edits.get(key) ?? shownValue(key, applied.document),
+    bad: (key) => applied.problems.has(key),
+    was: (key) => wasWords(key, applied.document, input.source),
+    type: input.type,
+    release: input.release,
+  }
+}
+
+const CARD_KEYS: Readonly<Record<SandboxCard, (key: string) => boolean>> = {
+  tiers: (key) =>
+    key.startsWith('tiers.') ||
+    key === MINIMUM ||
+    key.startsWith('award_tables.') ||
+    key.startsWith('round2.'),
+  equity: (key) => key.startsWith('equity.'),
+  income: (key) => key.startsWith('income.'),
+}
+
+/** The bad figures a card shows: each card keeps its own ("Fix first" names only its boxes). */
+export function cardProblems(
+  problems: ReadonlyMap<string, Problem>,
+  card: SandboxCard
+): Map<string, Problem> {
+  return new Map([...problems].filter(([key]) => CARD_KEYS[card](key)))
+}

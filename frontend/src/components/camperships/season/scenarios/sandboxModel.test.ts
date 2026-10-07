@@ -10,7 +10,9 @@ import {
   TIER_START,
   TIER_WIDTH,
   applyEdits,
+  bindingOf,
   cellEditable,
+  cardProblems,
   cellKey,
   changeCount,
   currentYearWords,
@@ -196,5 +198,55 @@ describe('the lock (§S5 F; §S11.3; §S15 item 5)', () => {
       cellEditable(SANDBOX_DOC, 'r1', 'general'),
       cellEditable(SANDBOX_DOC, 'r1', 'teen'),
     ]).toEqual([true, false])
+  })
+})
+
+describe('the cards’ binding (§S5 F)', () => {
+  const bind = (entries: Record<string, string>) =>
+    bindingOf({
+      recorded: SANDBOX_DOC,
+      source: SANDBOX_DOC,
+      edits: edits(entries),
+      locked: [],
+      byRound: null,
+      canEdit: true,
+      type: () => undefined,
+      release: () => undefined,
+    })
+
+  it('shows the typing while typed, else the document’s value; marks bad figures and changes', () => {
+    const binding = bind({ [TIER_WIDTH]: '35,000', [MINIMUM]: 'abc' })
+    expect([binding.value(TIER_WIDTH), binding.value(TIER_COUNT), binding.value(MINIMUM)]).toEqual([
+      '35,000',
+      '3',
+      'abc',
+    ])
+    expect([binding.bad(MINIMUM), binding.bad(TIER_WIDTH)]).toEqual([true, false])
+    expect(binding.was(TIER_WIDTH)).toBe('was $40,000')
+  })
+
+  it('words a fractional starting point in whole dollars (coordinator ruling 2026-10-07)', () => {
+    const source = { ...SANDBOX_DOC, awards: { ...SANDBOX_DOC.awards, minimum: '125.50' } }
+    const binding = bindingOf({
+      recorded: SANDBOX_DOC,
+      source,
+      edits: edits({}),
+      locked: [],
+      byRound: null,
+      canEdit: true,
+      type: () => undefined,
+      release: () => undefined,
+    })
+    expect(binding.was(MINIMUM)).toBe('was $126')
+  })
+
+  it('keeps each card’s bad figures to itself', () => {
+    const problems = new Map([
+      [MINIMUM, 'needs a figure' as const],
+      [PRIOR_WEIGHT, '0 to 100' as const],
+    ])
+    expect([...cardProblems(problems, 'tiers').keys()]).toEqual([MINIMUM])
+    expect([...cardProblems(problems, 'income').keys()]).toEqual([PRIOR_WEIGHT])
+    expect(cardProblems(problems, 'equity').size).toBe(0)
   })
 })
