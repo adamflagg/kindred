@@ -1,8 +1,13 @@
 /**
  * Season › Scenarios' words for Fit to Budget (spec §7.4; D119). Pure. The sandbox's own words live in
- * controlsModel, spendModel, sandboxModel and compareModel; what is left here is Fit's answer in words.
+ * controlsModel, spendModel, sandboxModel and compareModel; what is left here is Fit's answer in words, and
+ * what a draft was built on.
  */
-import type { ApiAidScenarioFit } from '../../../../types/api-types'
+import type {
+  ApiAidScenarioDraft,
+  ApiAidScenarioFit,
+  ApiAidScenarioWorkspace,
+} from '../../../../types/api-types'
 import { formatWholeMoney } from '../../kit/money'
 
 /** "−5 pts", "+2.5 pts", "0 pts". */
@@ -47,4 +52,18 @@ export function fitWords(fit: ApiAidScenarioFit): {
     headline: `Shifting every tier ${shiftWords(fit.tier_shift)} uses the budget: Round 1 ${formatWholeMoney(fit.results.round1)}, ${formatWholeMoney(fit.results.round1_remaining)} left.`,
     pool: tightest,
   }
+}
+
+/**
+ * "built on v4, v5 is in effect now" when the draft was built on a version older than the rules in effect (A11:
+ * the server then refuses to make it the rules draft); null when it is on the rules in effect, or says nothing.
+ */
+export function builtOnWords(
+  draft: Pick<ApiAidScenarioDraft, 'built_on_version'>,
+  workspace: Pick<ApiAidScenarioWorkspace, 'pricing_version'>
+): string | null {
+  const built = draft.built_on_version ?? null
+  const inEffect = workspace.pricing_version
+  if (built === null || inEffect === null || built >= inEffect) return null
+  return `built on v${String(built)}, v${String(inEffect)} is in effect now`
 }

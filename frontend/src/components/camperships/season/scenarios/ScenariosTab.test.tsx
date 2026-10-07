@@ -187,6 +187,29 @@ describe('the control line (§S5 A)', () => {
     ).toBeInTheDocument()
   })
 
+  it('says on the Start from line what an option was built on, offers no Make … the Rules Draft, and Compare still opens (F6; A11)', async () => {
+    renderAt('', {
+      pricing_version: 5,
+      draft: scenarioDraft({ built_on_version: 4 }),
+      options: OPTIONS.map((o) => (o.code === 'B' ? { ...o, promotable: false } : o)),
+    })
+    const strip = screen.getByRole('combobox', { name: 'Start from' }).parentElement as HTMLElement
+    expect(within(strip).getByText('built on v4, v5 is in effect now')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /the Rules Draft…$/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Compare/ }))
+    expect(location).toContain('panel=compare')
+  })
+
+  it('says nothing about the version, and offers Make … the Rules Draft, for an option built on the rules in effect', () => {
+    renderAt('', {
+      pricing_version: 5,
+      draft: scenarioDraft({ built_on_version: 5 }),
+      options: OPTIONS.map((o) => (o.code === 'B' ? { ...o, promotable: true } : o)),
+    })
+    expect(screen.queryByText(/^built on v/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Make B the Rules Draft…' })).toBeInTheDocument()
+  })
+
   it('loads a chip at once with nothing unkept, and asks first with changes (§S5 C)', async () => {
     renderAt()
     await userEvent.click(screen.getByRole('button', { name: /^A rules draft v4 as they were$/ }))

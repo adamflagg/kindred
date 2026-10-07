@@ -99,6 +99,8 @@ export function ScenarioControls(props: {
   fromCode: string
   /** The kept option loaded, if any: the select then shows "‹code›, kept". */
   loadedCode: string | null
+  /** "built on v4, v5 is in effect now" for a draft built on older rules (A11), else null. */
+  builtOn: string | null
   chips: readonly KeptChip[]
   /** Unkept changes: a load asks first (§S5 C). */
   unkept: number
@@ -214,6 +216,7 @@ export function ScenarioControls(props: {
             </option>
           ))}
         </select>
+        {props.builtOn !== null && <span className={CS_SMALL}>{props.builtOn}</span>}
         <span className="bg-border h-5 w-px" />
         {props.chips.length === 0 && <span className={CS_SMALL}>nothing kept yet</span>}
         {props.chips.map((chip) =>

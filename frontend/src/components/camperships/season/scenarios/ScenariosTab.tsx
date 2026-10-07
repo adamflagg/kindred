@@ -51,6 +51,7 @@ import { SandboxIncomeCard } from './SandboxIncomeCard'
 import { SandboxTierCard } from './SandboxTierCard'
 import { bindingOf, changeCount } from './sandboxModel'
 import { ScenarioControls } from './ScenarioControls'
+import { builtOnWords } from './scenarioModel'
 import { SCENARIO_PAGE_NOTES } from './scenarioNotes'
 import { SpendStrip } from './SpendStrip'
 
@@ -198,6 +199,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         start={startEntries(workspace)}
         fromCode={draft.from_code}
         loadedCode={loaded}
+        builtOn={builtOnWords(draft, workspace)}
         chips={workspace.options.map((o) => ({
           code: o.code,
           name: optionName(o),
