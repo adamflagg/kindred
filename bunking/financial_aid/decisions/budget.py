@@ -388,6 +388,7 @@ def _tally_demand(request: PricedRequest, demand: _Demand) -> None:
         if r2.status == "held":
             demand.held2.add(request, r2.ask)
         if not r2.counts_toward_budget:
+            # Deliberate for the full-cost fund too: it allows no appeal and pays the rest of the cost, so it leaves no unmet ask.
             return  # a non-counting round is not the camp's money: no forward demand
         if r2.status == "posted":
             demand.computed2 += r2.locked or ZERO
@@ -402,6 +403,7 @@ def _tally_demand(request: PricedRequest, demand: _Demand) -> None:
             demand.unmet1.add(request, r1.ask)
             demand.held1.add(request, r1.ask)
     elif not r1.counts_toward_budget:
+        # Deliberate for the full-cost fund too: it allows no appeal and pays the rest of the cost, so it leaves no unmet ask.
         return  # a non-counting round is not the camp's money: no unmet demand against it
     elif r1.status in ("needs_offer", "posted"):
         amount = r1.locked if r1.status == "posted" else r1.decided

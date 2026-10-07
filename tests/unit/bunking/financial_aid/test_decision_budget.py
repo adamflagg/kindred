@@ -670,3 +670,14 @@ def test_a_fund_round_reduced_by_an_outside_grant_puts_only_its_smaller_remainde
     assert camp.total.remaining == Decimal("398000.00")
     lines = {(t.key, t.counts_toward_budget): t for t in camp.decision_types}
     assert lines[("named_full_cost_fund", False)].amount == Decimal(1100)
+
+
+def test_a_posted_fund_round_with_a_camp_part_ledger_shows_no_unconfirmed_beyond_the_camp_part() -> None:
+    """Regression guard. A posted $3,600 fund round is a $2,000 camp award plus a $1,600 remainder. round_ledger
+    reconciles the camp part only, so with $1,500 of camp lines it reads $500 unconfirmed ($2,000 − $1,500). The
+    budget books that $500 in the camp pool, never the remainder's $1,600: unconfirmed is $500, not $2,100."""
+    fund = replace(view(1, "posted", locked="3600", counts=False, extra="1600"), extra_outside=True)
+    ledger = {"req-i": {1: RoundLedger(Decimal(500), False)}}
+    camp = pool_of(season_budget([priced("req-i", 24, fund)], RULES, outside_grants={}, ledger=ledger), "camp_pool")
+    assert camp.rounds[1].posted == Decimal(2000)
+    assert camp.rounds[1].unconfirmed == Decimal(500)

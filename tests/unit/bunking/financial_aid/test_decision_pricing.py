@@ -14,6 +14,7 @@ from bunking.financial_aid.decisions.budget import season_budget
 from bunking.financial_aid.decisions.pricing import RequestToPrice, lock_snapshot, posted_view, price_request
 from bunking.financial_aid.rules.schema import DecisionType
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
+from tests.unit.bunking.financial_aid.test_decision_types import _fund_rules
 
 RULES = fictional_rules()
 T0 = datetime(2031, 3, 9, 17, 0, tzinfo=UTC)
@@ -423,3 +424,17 @@ def test_a_posted_fund_round_reads_extra_outside_from_its_kind_when_the_lock_pre
     )
     state = RoundState(round=1, posted=True, locked_amount=Decimal(3600), locked_at=T0, snapshot={"pool": "camp_pool"})
     assert posted_view(state, fund, None, "camp_pool").extra_outside is True
+
+
+def test_a_live_request_decided_on_the_fund_prices_its_round_as_extra_outside() -> None:
+    """Regression guard. A $2,000 camp award on a $3,600 session leaves $1,600 for the named full-cost fund: the live
+    round carries that remainder as `extra`, flagged `extra_outside`, and the lock snapshot records the flag."""
+    keyed = RoundState(round=1, discretionary_type="named_full_cost_fund")
+    fund_request = item(
+        r1_ask=Decimal(2000), request=req(ask="2000", decision_type="named_full_cost_fund"), rounds={1: keyed}
+    )
+    priced = price_request(fund_request, _fund_rules())
+    r1 = priced.view(1)
+    assert r1 is not None
+    assert (r1.extra_outside, r1.extra, r1.decided) == (True, Decimal(1600), Decimal(3600))
+    assert lock_snapshot(priced, 1, 1)["extra_outside"] is True
