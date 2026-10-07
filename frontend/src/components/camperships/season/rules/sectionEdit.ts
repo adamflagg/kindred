@@ -188,8 +188,16 @@ function numberSpec(path: readonly string[], whole: boolean, nullable: boolean):
 }
 
 /** How a setting is typed, or null when it stays as it is (a name, a key, a reference, a date, a list). */
-export function fieldSpec(path: readonly string[], value: unknown): FieldSpec | null {
+export function fieldSpec(
+  path: readonly string[],
+  value: unknown,
+  content?: unknown
+): FieldSpec | null {
   const key = path.at(-1) ?? ''
+  // The server refuses an extra amount on any decision type but full_cost: no box to type one in.
+  if (key === 'extra_amount' && path[0] === 'decision_types' && content !== undefined) {
+    if (valueAt(content, [...path.slice(0, -1), 'kind']) !== 'full_cost') return null
+  }
   if (typeof value === 'boolean') return { kind: 'yesno' }
   if (isFixed(path)) return null
   const weight = isEquityWeight(path)
@@ -476,4 +484,22 @@ export function sectionChanges(
 /** "General › Tiers › Tier 2 › Round 1 %": a setting's full name, for its box and for a change. */
 export function fieldName(path: readonly string[]): string {
   return path.map((_, index) => labelOf(path.slice(0, index + 1))).join(' › ')
+}
+
+/**
+ * A section save's 422 ("awards is not a valid section: awards.decision_types.x.extra_amount: Value
+ * error, …") as a sentence naming each field the way its box is named; null for any other message.
+ * The server's reason stays, as it wrote it.
+ */
+export function refusalWords(message: string): string | null {
+  const lead = /^\w+ is not a valid section: (.+)$/s.exec(message)
+  if (lead?.[1] === undefined) return null
+  const parts = lead[1].split('; ').map((detail) => {
+    const at = detail.indexOf(': ')
+    if (at < 0) return detail
+    const path = detail.slice(0, at).split('.').slice(1)
+    const reason = detail.slice(at + 2).replace(/^Value error, /, '')
+    return path.length === 0 ? reason : `${fieldName(path)}: ${reason}`
+  })
+  return `The rules draft refused this change: ${parts.join('; ')}.`
 }

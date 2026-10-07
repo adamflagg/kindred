@@ -127,7 +127,10 @@ import type {
   Round3ApprovalIn,
   RoundOut,
   RowStageOut,
+  RulesApproveIn,
   RulesDraftOut,
+  RulesVersionOut,
+  SectionSaveIn,
   SectionStatus,
   SessionResolve,
   ShareLineOut,
@@ -335,3 +338,11 @@ export type ApiAidCapacityIn = CapacitySet
 export type ApiAidCapacity = CapacityOut
 /** Every session capacity stored for a season (`GET /capacity/{year}`; view-level). */
 export type ApiAidCapacityList = CapacityListOut
+
+/**
+ * The Rules tab's writes (spec §7.5; D39). Each carries a per-section fingerprint and is refused
+ * with 409 when the section moved since it was read (Decisions 16-17; owner ruling 2026-10-02).
+ */
+export type ApiAidSectionSaveIn = SectionSaveIn
+export type ApiAidRulesApproveIn = RulesApproveIn
+export type ApiAidRulesVersion = RulesVersionOut

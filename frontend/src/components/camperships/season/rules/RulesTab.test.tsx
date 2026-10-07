@@ -27,6 +27,16 @@ vi.mock('../../../../hooks/camperships/useAidRules', () => ({
   useAidRulesDraft: ({ enabled = true } = {}) =>
     enabled ? draft : { data: undefined, isLoading: false, error: null },
 }))
+// The editing has its own tests (RulesEditing.test.tsx); here the writes do nothing.
+vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => {
+  const idle = () => ({ isPending: false, mutate: vi.fn() })
+  return {
+    useAidSaveRulesSection: idle,
+    useAidApproveRules: idle,
+    useAidStartRulesFromLastYear: idle,
+    useFreshAidRulesDraft: () => () => new Promise(() => undefined),
+  }
+})
 let granted: string[] = []
 vi.mock('../../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),

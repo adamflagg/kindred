@@ -33,7 +33,10 @@ import type {
   ApiAidHistoryPage,
   ApiAidMakeRulesDraftIn,
   ApiAidPromotionPreview,
+  ApiAidRulesApproveIn,
   ApiAidRulesDraft,
+  ApiAidRulesSection,
+  ApiAidRulesVersion,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
   ApiAidScenarioDocumentIn,
@@ -50,6 +53,7 @@ import type {
   ApiAidScenarioTrailPage,
   ApiAidScenarioViewIn,
   ApiAidScenarioWorkspace,
+  ApiAidSectionSaveIn,
   ApiAidSessionIn,
   ApiAidUnpostIn,
   ApiAidUseFormIn,
@@ -802,5 +806,58 @@ export function setAidSessionCapacity(
     `${BASE}/capacity/${String(year)}/${String(sessionCmId)}`,
     body,
     "Couldn't save the capacity"
+  )
+}
+
+/**
+ * One section editor's save into the rules draft (spec §7.5; D39). It lands in a new version when it
+ * would change approved rules in use (`branched_from`). 409 (G6) when the section changed since the
+ * editor opened (`expected_fingerprint`), or the version is no longer the latest: nothing is written.
+ */
+export function saveAidRulesSection(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  section: ApiAidRulesSection,
+  body: ApiAidSectionSaveIn
+): Promise<ApiAidRulesDraft> {
+  return send<ApiAidRulesDraft>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/rules/${String(year)}/sections/${section}`,
+    body,
+    "Couldn't save the section"
+  )
+}
+
+/**
+ * Approve sections of `version` as one logged operation, the note naming the approving body (D39).
+ * 409 (G6) when `version` is no longer the rules draft, or a section changed under the approval.
+ */
+export function approveAidRules(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  version: number,
+  body: ApiAidRulesApproveIn
+): Promise<ApiAidRulesVersion> {
+  return send<ApiAidRulesVersion>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/rules/${String(year)}/versions/${String(version)}/approve`,
+    body,
+    "Couldn't approve the sections"
+  )
+}
+
+/** Version 1 of an empty season, copied from last season's rules, every section a draft (§7.5). 409 when the season already has rules. */
+export function startAidRulesFromLastYear(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidRulesVersion> {
+  return send<ApiAidRulesVersion>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/rules/${String(year)}/start-from-last-year`,
+    {},
+    "Couldn't start the season's rules"
   )
 }

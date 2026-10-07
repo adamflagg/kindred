@@ -24,6 +24,18 @@ function setup(props: Partial<Parameters<typeof SectionEditor>[0]> = {}) {
 }
 
 describe('SectionEditor', () => {
+  it('Esc is Cancel, wherever focus is', async () => {
+    const { onCancel, user } = setup()
+    await user.keyboard('{Escape}')
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores Esc while a save is running', async () => {
+    const { onCancel, user } = setup({ saving: true })
+    await user.keyboard('{Escape}')
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('has Save off until something changes, then sends the whole section', async () => {
     const { onSave, user } = setup()
     const save = screen.getByRole('button', { name: 'Save' })
