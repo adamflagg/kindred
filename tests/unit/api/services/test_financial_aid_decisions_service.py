@@ -40,18 +40,21 @@ from api.services.financial_aid_intake_types import EquityAnswers
 from bunking.financial_aid.decisions import DecisionEvent, fold_rounds
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
-    EMMA,
     T0,
     FakeDecisionsStore,
     FakeRules,
     approved,
     grant_row,
     seed_request,
+    tick,
 )
-from tests.unit.api.services.decisions_fakes import tick as _tick
+from tests.unit.api.services.decisions_fakes import (
+    EMMA as EMMA,  # re-exported: sibling test modules import it from here
+)
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.bunking.financial_aid.fixtures import with_lever
 
+_tick = tick  # re-exported: sibling test modules import it from here
 LIAM = "reqliam00000001"
 
 
