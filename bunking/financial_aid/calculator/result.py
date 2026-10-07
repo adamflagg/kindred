@@ -41,7 +41,8 @@ class TraceStep(BaseModel):
 
 
 class CalcIssue(BaseModel):
-    """error / needs_input set the result's status; hold / warn come from quality checks."""
+    """error / needs_input set the result's status; hold / warn come from the quality checks, and the
+    engine's own session_not_running hold (calculator/engine.py)."""
 
     model_config = ConfigDict(frozen=True)
 

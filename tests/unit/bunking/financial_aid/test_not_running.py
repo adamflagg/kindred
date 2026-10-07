@@ -85,6 +85,7 @@ def _item(**overrides: Any) -> RequestToPrice:
 
 
 def test_a_not_running_requests_unposted_round_is_held_and_leaves_needs_an_offer() -> None:
+    """Pin. Passes on first run: the hold flows through price_request and the budget's held branch unchanged."""
     rules = with_lever(fictional_rules(), NOT_RUNNING, [1000102])
     priced = price_request(with_holds(_item(), NO_HOLDS), rules)
     view = priced.view(1)
@@ -95,6 +96,7 @@ def test_a_not_running_requests_unposted_round_is_held_and_leaves_needs_an_offer
 
 
 def test_a_posted_round_on_a_not_running_session_stands() -> None:
+    """Pin. Passes on first run: a posted round reads from its lock whatever the holds (D43)."""
     rules = with_lever(fictional_rules(), NOT_RUNNING, [1000102])
     posted = RoundState(
         round=1, posted=True, locked_amount=Decimal(3000), snapshot={"pool": "camp_pool", "counts_toward_budget": True}
@@ -106,6 +108,7 @@ def test_a_posted_round_on_a_not_running_session_stands() -> None:
 
 
 def test_a_release_event_never_lifts_it() -> None:
+    """Pin. Passes on first run: released_holds already filters out every UNRELEASABLE code."""
     rules = with_lever(fictional_rules(), NOT_RUNNING, [1000102])
     released = HoldEvent(
         id="hev0001",

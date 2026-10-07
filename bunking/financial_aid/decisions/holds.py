@@ -46,7 +46,9 @@ UNRELEASABLE: Final[Mapping[str, str]] = {
     "payer_shares_incomplete": "set the payer shares to add up to 100%, and it clears",
     "awaiting_approved_rules": "it clears when finance approves the season's rules and intake runs",
     "unmatched_session": "resolve the session, and it clears",
-    "session_not_running": "cancel the request, move it to a running session, or mark the session running again in Rules",
+    "session_not_running": (
+        "cancel the request, move it to a running session, or mark the session running again in Rules"
+    ),
     NO_APPROVED_RULES: "it clears when finance approves the season's pricing rules",
     "not_priceable": "it clears when the request can be priced",
     MANUAL_HOLD: "lift the manual hold instead",

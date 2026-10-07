@@ -802,6 +802,7 @@ def test_a_not_running_session_needs_no_tuition_and_no_program() -> None:
 
 
 def test_an_ag_child_of_a_not_running_session_needs_no_tuition() -> None:
+    """Pin. Passes before A2: A1's _ag_children already skips an AG session with a parent."""
     rules = with_levers(
         fictional_rules(),
         {"programs.summer.session_cm_ids": [1000101, 1000102, 1000199], "cost.not_running_session_cm_ids": [1000101]},
@@ -820,12 +821,14 @@ def test_an_id_that_isnt_a_session_this_season_warns() -> None:
 
 
 def test_without_a_context_no_id_is_judged_unknown() -> None:
+    """Pin. Passes before A2: with no context there is nothing to judge an id against."""
     rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000888])
     assert "not_running_unknown_session" not in validate_rules(rules).codes()
 
 
 def test_an_ag_child_of_a_not_running_session_that_maps_to_no_program_is_not_unmapped() -> None:
-    """The child of a not-running parent is skipped by derivation, even when the parent's own type maps nowhere."""
+    """Regression guard. The child of a not-running parent is skipped by derivation, even when the parent's own type
+    maps nowhere. Written after the code to kill a mutant (the derived children dropped) that survived the plan's tests."""
     rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000999])
     context = _context(
         SessionRef(cm_id=1000999, session_type="hebrew"),

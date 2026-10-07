@@ -1348,9 +1348,9 @@ class FinancialAidRulesService:
         """Copy the previous season's latest version into an empty season, every section draft.
 
         Milestone dates are cleared: they belong to a season. Tuition and family-camp
-        rates and the not-running list are cleared too, with a warning on the report: they are keyed by
-        CampMinder session id, and CampMinder reuses session ids across years, so a
-        carried price would silently price this year's session of the same id at last
+        rates and the not-running list are cleared too, with a warning on the report: they
+        are keyed by CampMinder session id, and CampMinder reuses session ids across years,
+        so a carried price would silently price this year's session of the same id at last
         year's rate. Approvals are not carried: a new season's rules go to the board again.
         """
         if await self._store.list_versions(year):
@@ -1369,8 +1369,8 @@ class FinancialAidRulesService:
             severity="warning",
             path="cost.tuition",
             message=(
-                f"Tuition, family-camp rates and the not-running list were not carried from {prior.year}: session ids are reused "
-                f"across years, so enter {year}'s prices"
+                f"Tuition, family-camp rates and the not-running list were not carried from {prior.year}: "
+                f"session ids are reused across years, so enter {year}'s prices"
             ),
         )
         return created, ValidationReport(issues=[cleared, *report.issues])
