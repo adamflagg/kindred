@@ -5,7 +5,6 @@ import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { aidHref, type AidView } from '../kit/asOf'
-import { REPORT_NOTE } from '../kit/reportStyles'
 import { ReportTable } from '../kit/ReportTable'
 import { AsOfColumn } from './AsOfColumn'
 import {
@@ -15,7 +14,6 @@ import {
   developmentCsvName,
   developmentHeading,
   developmentRows,
-  notBuiltLines,
   notRebuiltColumnWords,
   rebuildReason,
   unconfirmedWords,
@@ -26,7 +24,7 @@ const PATH = '/aid/reports/development'
 /**
  * Reports › Development › Report (spec §9.4; D65, D66, D87–D94, D96, D99, D158; development-v2.html,
  * S4-4): development's lines by group with seasons from 2022 as columns, all money, never a family.
- * "Show the dashboard's rebuild" stays off with the server's reason while the read doesn't serve it
+ * "Show the dashboard's rebuild" stays off (no reason line) while the read doesn't serve it
  * (Decision 16); the as-of column is on demand and saved nowhere (D68). Live only.
  */
 export function DevelopmentReport({ view }: { view: AidView }) {
@@ -72,10 +70,6 @@ export function DevelopmentReport({ view }: { view: AidView }) {
                   refusal={asOf !== null && asked.isError ? asked.error.message : null}
                 />
               </div>
-              {rebuild !== null && <p className={REPORT_NOTE}>{`Not built yet: ${rebuild}.`}</p>}
-              {notBuiltLines(data).map((line) => (
-                <p key={line} className={REPORT_NOTE}>{`Not built yet: ${line}`}</p>
-              ))}
               {unconfirmed !== null && <p className={AMBER_NOTE}>{unconfirmed}</p>}
               {notRebuilt !== null && <p className={AMBER_NOTE}>{notRebuilt}</p>}
               <ReportTable
@@ -84,7 +78,26 @@ export function DevelopmentReport({ view }: { view: AidView }) {
                 rows={developmentRows(data)}
                 csvFilename={developmentCsvName(view, 'report')}
                 link={link}
-                footnote="All money: the camp's awards and every outside grant (D87). r = as reported, typed once; P = the dashboard's. Each line is the server's own figure over every group, money in no group included; the groups under a line are never added up to make it (Money in no group is its own line)."
+                footnote={
+                  <ol className="list-decimal space-y-0.5 pl-5">
+                    <li>
+                      Every outside source is listed by name with its facts: who paid, incentive or
+                      need-based, and its group.
+                    </li>
+                    <li>
+                      r = as reported, typed once, read only. P = the dashboard&apos;s decisions, as
+                      of any date; the dashboard computes every %.
+                    </li>
+                    <li>
+                      No family is ever named on this report; rows are quantities and dollars.
+                    </li>
+                    <li>
+                      Each line is the server&apos;s own figure over every group, money in no group
+                      included; the groups under a line are never added up to make it (Money in no
+                      group is its own line).
+                    </li>
+                  </ol>
+                }
               />
             </div>
           )

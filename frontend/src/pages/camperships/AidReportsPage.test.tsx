@@ -117,6 +117,15 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(screen.getByText('Development report body')).toBeInTheDocument()
   })
 
+  it('names the Development band in its own words (D4)', () => {
+    granted = DEVELOPMENT
+    renderAt('/aid/reports/development')
+    expect(screen.getByText('Development report')).toBeInTheDocument()
+    expect(
+      screen.getByText(/^Aid by season, for grant writing: numbers and quantities, never a family/)
+    ).toBeInTheDocument()
+  })
+
   it('sends an unknown tab to the first tab', () => {
     renderAt('/aid/reports/nonsense')
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/reports/statistics?year=2027')

@@ -15,7 +15,6 @@ import {
   dayBefore,
   developmentColumns,
   developmentRows,
-  notBuiltLines,
   notRebuiltColumnWords,
   rebuildReason,
   SUB_LINES,
@@ -162,7 +161,6 @@ describe('the report', () => {
   it("names a dated column's empty lines, and the rebuild's reason, in the server's words", () => {
     expect(notRebuiltColumnWords(DEVELOPMENT)).toContain('2027 as of Mar 9 (1 lines)')
     expect(rebuildReason(DEVELOPMENT)).toContain('waits on the 2017–2024 ledger backfill')
-    expect(notBuiltLines(DEVELOPMENT)).toEqual([])
   })
 })
 

@@ -51,10 +51,12 @@ export default function AidReportsPage() {
     <div className="space-y-3 sm:space-y-4">
       <AidPageBand
         icon={FileBarChart}
-        title={REPORTS.label}
+        title={current.slug === 'development' ? 'Development report' : REPORTS.label}
         subtitle={
           current.slug === 'development'
-            ? `Season ${String(year)} · aid by season for grant writing: numbers and quantities, never a family`
+            ? at === 'zip'
+              ? `Where ${String(year)} campers live, by ZIP: counts and dollars, never a family`
+              : 'Aid by season, for grant writing: numbers and quantities, never a family'
             : `Season ${String(year)} · from the dashboard's Posted amounts and the typed history`
         }
         asOf={asOf}

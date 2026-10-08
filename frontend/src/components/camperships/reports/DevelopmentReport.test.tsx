@@ -84,11 +84,21 @@ describe('DevelopmentReport (spec §9.4)', () => {
     expect(screen.queryByRole('table', { name: '2027 by source' })).not.toBeInTheDocument()
   })
 
-  it("keeps Show the dashboard's rebuild off, saying why in the server's words (Decision 16)", async () => {
+  it("keeps Show the dashboard's rebuild off, with no “Not built yet” line and none of the server's reasons (D4)", async () => {
+    liveAnswer = () =>
+      json({
+        ...DEVELOPMENT_LIVE,
+        not_built: [
+          ...DEVELOPMENT_LIVE.not_built,
+          { figure: 'other', reason: 'Some other figure waits' },
+        ],
+      })
     renderReport()
     await screen.findByRole('table', { name: 'Development report' })
     expect(screen.getByRole('checkbox', { name: /Show the dashboard's rebuild/ })).toBeDisabled()
-    expect(screen.getByText(/waits on the 2017–2024 ledger backfill/)).toBeInTheDocument()
+    expect(screen.queryByText(/Not built yet/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ledger backfill/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Some other figure waits/)).not.toBeInTheDocument()
   })
 })
 
@@ -123,6 +133,28 @@ describe('the grantor lines (D3)', () => {
       within(table).getByText('another funder · need-based · needs a group')
     ).toBeInTheDocument()
     expect(screen.getAllByRole('table')).toHaveLength(1)
+  })
+})
+
+describe('the footnotes (D4)', () => {
+  it('list every outside source with its facts, r typed once, and that no family is named', async () => {
+    renderReport()
+    await screen.findByRole('table', { name: 'Development report' })
+    expect(
+      screen.getByText(
+        'Every outside source is listed by name with its facts: who paid, incentive or need-based, and its group.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText(/r = as reported, typed once, read only/)).toBeInTheDocument()
+    expect(
+      screen.getByText('No family is ever named on this report; rows are quantities and dollars.')
+    ).toBeInTheDocument()
+  })
+
+  it('carry no internal id: no D-code, RPT- or O-930 anywhere on the report', async () => {
+    renderReport()
+    await screen.findByRole('table', { name: 'Development report' })
+    expect(document.body.textContent).not.toMatch(/\bD\d{2,3}\b|RPT-|O-930/)
   })
 })
 

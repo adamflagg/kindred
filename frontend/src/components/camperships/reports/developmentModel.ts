@@ -212,11 +212,6 @@ export function rebuildReason(dev: ApiAidDevelopment): string | null {
   return dev.not_built.find((item) => item.figure === 'rebuild')?.reason ?? null
 }
 
-/** The other figures the read doesn't build yet, each in the server's words. */
-export function notBuiltLines(dev: ApiAidDevelopment): string[] {
-  return dev.not_built.filter((item) => item.figure !== 'rebuild').map((item) => item.reason)
-}
-
 /**
  * The grantor lines under Outside grants (D88): one per source another funder paid, named, with its
  * facts in muted words. Its amount sits only in the read's own season, the dashboard's column as of the
