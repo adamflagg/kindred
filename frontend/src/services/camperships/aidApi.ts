@@ -27,6 +27,8 @@ import type {
   ApiAidPlaceLineIn,
   ApiAidPlaceLinesIn,
   ApiAidPlaceOut,
+  ApiAidPlacePreview,
+  ApiAidPlacePreviewIn,
   ApiAidPostedIn,
   ApiAidPreviewIn,
   ApiAidReclassifyLineIn,
@@ -974,5 +976,25 @@ export function reclassifyAidLine(
     `${toPlaceLine(year, transactionCmId)}/reclassify`,
     body,
     "Couldn't reclassify the line"
+  )
+}
+
+/**
+ * What placing these parts on one line would mark posted, lock and withhold (slice 3 ask 8, #2975),
+ * worked out by the plan the write runs. Writes nothing; refuses (4xx, the server's sentence) as the
+ * write would. `casework`.
+ */
+export function previewAidPlacement(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  transactionCmId: number,
+  body: ApiAidPlacePreviewIn
+): Promise<ApiAidPlacePreview> {
+  return send<ApiAidPlacePreview>(
+    fetchWithAuth,
+    'POST',
+    `${toPlaceLine(year, transactionCmId)}/preview`,
+    body,
+    "Couldn't work out what placing this would do"
   )
 }

@@ -785,6 +785,8 @@ export const queryKeys = {
   aidLedgerPrefix: () => ['financial-aid', 'ledger'] as const,
   aidSourcesPrefix: () => ['financial-aid', 'sources'] as const,
   aidGrantorsPrefix: () => ['financial-aid', 'grantors'] as const,
+  aidPlacePreview: (year: number, transactionCmId: number, parts: string) =>
+    ['financial-aid', 'to-place', year, 'preview', transactionCmId, parts] as const,
 }
 
 /**

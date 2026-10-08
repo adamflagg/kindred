@@ -48,3 +48,14 @@ export async function inStaffWords<T>(write: Promise<T>): Promise<T> {
     throw new Error(refusalWords(caught), { cause: caught })
   }
 }
+
+/**
+ * A refused placement preview (P-4) in staff's words, or null when the preview simply failed (a
+ * dropped connection, a 5xx): then the read's own preview stands and Confirm stays, since the write
+ * checks `expected_locked` itself. A 4xx means the write would be refused the same way.
+ */
+export function previewRefusalWords(error: unknown): string | null {
+  if (error === null || error === undefined || !wroteNothing(statusOf(error))) return null
+  const detail = error instanceof Error ? error.message : ''
+  return `Confirm can't place this as suggested now: ${detail}`
+}

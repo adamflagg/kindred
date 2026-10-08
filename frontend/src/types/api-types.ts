@@ -110,6 +110,8 @@ import type {
   PlaceLineIn,
   PlaceLinesIn,
   PlaceOut,
+  PlacePreviewIn,
+  PlacePreviewOut,
   PostedIn,
   PreviewIn,
   ProgramProfile,
@@ -395,3 +397,7 @@ export type ApiAidPlaceOut = PlaceOut
 export type ApiAidLeaveLineIn = LeaveLineIn
 export type ApiAidReclassifyLineIn = ReclassifyLineIn
 export type ApiAidToPlaceWriteOut = ToPlaceWriteOut
+
+/** What placing typed parts would do, before anything is written (slice 3 ask 8, #2975). Mirrors Python `PlacePreviewIn`/`PlacePreviewOut`. */
+export type ApiAidPlacePreviewIn = PlacePreviewIn
+export type ApiAidPlacePreview = PlacePreviewOut

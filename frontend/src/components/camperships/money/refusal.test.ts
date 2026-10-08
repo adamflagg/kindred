@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { AidWriteError } from '../../../services/camperships/aidApi'
-import { inStaffWords, refusalWords } from './refusal'
+import { inStaffWords, previewRefusalWords, refusalWords } from './refusal'
 
 describe('refusalWords', () => {
   it('says a race wrote nothing and the page reloaded', () => {
@@ -48,5 +48,17 @@ describe('refusalWords', () => {
     expect(refusalWords(new AidWriteError('Server error', 500))).toMatch(
       /^We can't tell whether this was saved/
     )
+  })
+})
+
+describe('previewRefusalWords (P-4)', () => {
+  const refused = (status: number, message: string) => Object.assign(new Error(message), { status })
+
+  it('words a 4xx as Confirm being unable to place it, and passes anything else through', () => {
+    expect(previewRefusalWords(refused(422, 'line 3000003 is already on a request'))).toBe(
+      "Confirm can't place this as suggested now: line 3000003 is already on a request"
+    )
+    expect(previewRefusalWords(refused(500, 'Server error'))).toBeNull()
+    expect(previewRefusalWords(null)).toBeNull()
   })
 })

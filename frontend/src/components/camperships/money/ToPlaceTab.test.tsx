@@ -47,30 +47,63 @@ const WROTE = {
 }
 
 let reads: ApiAidToPlace[] = []
+// The read the server sent last: the preview route answers from it (P-4). A test can set
+// `previewAnswer` to answer otherwise.
+let lastRead: ApiAidToPlace | null = null
+let previewAnswer: ((txn: number) => Response) | null = null
 let answers: Response[] = []
 // A write held open until the test lets it go (the in-flight traps), and reads that fail.
 let gate: Promise<Response> | null = null
 let failReads = false
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+const calls = () =>
+  fetchSpy.mock.calls.map(([url, init]) => ({
+    url: String(url),
+    method: init?.method ?? 'GET',
+    body: init?.body,
+  }))
+// What changes state: the placement preview (P-4) writes nothing, so it is not a write.
 const writes = () =>
-  fetchSpy.mock.calls
-    .map(([url, init]) => ({ url: String(url), method: init?.method ?? 'GET', body: init?.body }))
-    .filter((call) => call.method !== 'GET')
+  calls().filter((call) => call.method !== 'GET' && !call.url.endsWith('/preview'))
+const previews = () => calls().filter((call) => call.url.endsWith('/preview'))
+
+/** The preview the server would send for a line of `read` (its suggestion's own would_*). */
+function echoPreview(read: ApiAidToPlace | null, txn: number): Response {
+  const line = read?.groups.flatMap((g) => g.lines).find((l) => l.transaction_cm_id === txn)
+  const s = line?.suggestion
+  return json({
+    year: 2027,
+    transaction_cm_id: txn,
+    parts: s?.parts ?? [],
+    would_tick: s?.would_tick ?? [],
+    would_lock: s?.would_lock ?? 0,
+    would_leave: s?.would_leave ?? [],
+    would_not_tick: s?.would_not_tick ?? [],
+  })
+}
 
 beforeEach(() => {
   granted = REGISTRAR
   reads = [TO_PLACE]
+  lastRead = null
+  previewAnswer = null
   answers = []
   gate = null
   failReads = false
   downloadSpy.mockClear()
-  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+    const path = String(url)
     if ((init?.method ?? 'GET') === 'GET') {
       if (failReads) return Promise.resolve(json({ detail: 'Server error' }, 500))
       // Each read takes the next answer; the last one repeats.
       const next = reads.length > 1 ? reads.shift() : reads[0]
-      return Promise.resolve(json(next ?? TO_PLACE))
+      lastRead = next ?? TO_PLACE
+      return Promise.resolve(json(lastRead))
+    }
+    if (path.endsWith('/preview')) {
+      const txn = Number(path.split('/').at(-2))
+      return Promise.resolve(previewAnswer ? previewAnswer(txn) : echoPreview(lastRead, txn))
     }
     if (gate) return gate
     return Promise.resolve(answers.shift() ?? json(PLACED))
@@ -551,5 +584,104 @@ describe('a line opens in three panels, the grid’s opened row (owner ruling A,
     await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByTestId('to-place-row')).toBeNull()
+  })
+})
+
+describe('Confirm reads a fresh preview when its line opens (P-4; review item 19)', () => {
+  const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
+
+  it('asks the preview for the suggestion’s parts, shows its answer, and sends its lock', async () => {
+    previewAnswer = (txn) =>
+      json({
+        year: 2027,
+        transaction_cm_id: txn,
+        parts: [{ request_id: 'reqolivia000003', amount: 1500 }],
+        would_tick: [{ request_id: 'reqolivia000003', round: 2, amount: 1400 }],
+        would_lock: 1400,
+        would_leave: [],
+        would_not_tick: [],
+      })
+    renderTab()
+    const row = await openLine(CHEN)
+    expect(
+      await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400 locked')
+    ).toBeInTheDocument()
+    expect(previews()).toEqual([
+      {
+        url: '/api/financial-aid/money/2027/to-place/3000003/preview',
+        method: 'POST',
+        body: JSON.stringify({
+          parts: [{ request_id: 'reqolivia000003', amount: '1500.00' }],
+          note: '',
+        }),
+      },
+    ])
+    await userEvent.click(within(row).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toMatchObject({ expected_locked: '1400.00' })
+  })
+
+  it('a refused preview says why and offers no Confirm; Leave stays; Try Again asks again', async () => {
+    previewAnswer = () =>
+      json({ detail: 'line 3000003: line 3000003 is already on a request' }, 422)
+    renderTab()
+    const row = await openLine(CHEN)
+    expect(
+      await within(row).findByText(
+        "Confirm can't place this as suggested now: line 3000003: line 3000003 is already on a request"
+      )
+    ).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Confirm' })).toBeNull()
+    expect(within(row).getByRole('button', { name: 'Leave at Family Level…' })).toBeEnabled()
+    // R1-14: a passing race clears on a second ask; Confirm comes back with the new answer.
+    previewAnswer = null
+    await userEvent.click(within(row).getByRole('button', { name: 'Try Again' }))
+    expect(await within(row).findByRole('button', { name: 'Confirm' })).toBeEnabled()
+    expect(previews()).toHaveLength(2)
+  })
+
+  it('hides Confirm while the Leave form is open, so only the form’s own button sends (R1-12)', async () => {
+    renderTab()
+    const row = await openLine(CHEN)
+    expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    await userEvent.click(within(row).getByRole('button', { name: 'Leave at Family Level…' }))
+    expect(within(row).queryByRole('button', { name: 'Confirm' })).toBeNull()
+    await userEvent.click(within(row).getByRole('button', { name: 'Back' }))
+    expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+  })
+
+  it('asks only for a line that stays open: a line passed over asks nothing (R1-2)', async () => {
+    renderTab()
+    await openLine('$600 · Camp aid · Summer · posted to Liam Garcia · Apr 3')
+    // Straight on to the next line, before the first has settled.
+    const row = await openLine(CHEN)
+    await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500 locked')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(previews().map((p) => p.url)).toEqual([
+      '/api/financial-aid/money/2027/to-place/3000003/preview',
+    ])
+  })
+
+  it('a preview that fails (a 500) leaves the read’s preview and Confirm in place', async () => {
+    previewAnswer = () => json({ detail: 'Server error' }, 500)
+    renderTab()
+    const row = await openLine(CHEN)
+    await waitFor(() => expect(previews()).toHaveLength(1))
+    expect(
+      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500 locked')
+    ).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Confirm' })).toBeEnabled()
+  })
+
+  it('view-only staff see the read’s preview and no preview call (the route is casework)', async () => {
+    granted = ['financial_aid.view']
+    renderTab()
+    const row = await openLine(CHEN)
+    expect(
+      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500 locked')
+    ).toBeInTheDocument()
+    // Past the settle time, so a call would have been made by now.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(previews()).toHaveLength(0)
   })
 })

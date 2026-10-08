@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
+import {
+  PREVIEW_SETTLE_MS,
+  useAidPlacePreview,
+} from '../../../hooks/camperships/useAidPlacePreview'
 import { useAidLeaveLine, useAidPlaceLine } from '../../../hooks/camperships/useAidToPlaceWrites'
-import type { ApiAidToPlaceLine } from '../../../types/api-types'
+import type { ApiAidPlacePreviewIn, ApiAidToPlaceLine } from '../../../types/api-types'
 import { ReasonForm } from '../household/ReasonForm'
 import { aidHref, type AidView } from '../kit/asOf'
 import {
@@ -14,7 +18,7 @@ import {
   CS_PANEL_RULE,
   CS_PMETA,
 } from '../kit/csType'
-import { inStaffWords, refusalWords } from './refusal'
+import { inStaffWords, previewRefusalWords, refusalWords } from './refusal'
 import {
   candidateDetail,
   candidateLabel,
@@ -47,6 +51,12 @@ const LEFT = `flex min-w-0 flex-col gap-1.5 border-r pr-4 ${CS_PANEL_RULE}`
 const MIDDLE = `flex min-w-0 flex-col gap-1.5 border-r px-4 ${CS_PANEL_RULE}`
 const RIGHT = 'flex min-w-0 flex-col gap-1.5 pl-4'
 
+/** The suggestion's parts, as the preview route takes them (exact to the cent, P-4). */
+function suggestionBody(line: ApiAidToPlaceLine): ApiAidPlacePreviewIn | null {
+  const body = confirmBody(line)
+  return body === null ? null : { parts: body.parts, note: '' }
+}
+
 /**
  * A To place line opened (owner ruling A, 10-06: "yes, the grid's 3-panel opened row"), in
  * `AidTable`'s detail line: it wraps and stays put while the rows scroll sideways.
@@ -54,6 +64,9 @@ const RIGHT = 'flex min-w-0 flex-col gap-1.5 pl-4'
  *   the suggestion and its evidence.
  * - Middle: the requests it could belong to, each with what it still lacks ("not yet in CampMinder").
  * - Right: what Confirm does before the click (§4.10), the refusal if any, the buttons and links.
+ * For casework, a line that stays open `PREVIEW_SETTLE_MS` asks the server afresh what Confirm would
+ * do (P-4); Confirm sends that answer's lock. Until it answers, and for view-only staff, the read's
+ * own preview shows.
  */
 export function ToPlaceOpenRow({
   line,
@@ -81,7 +94,23 @@ export function ToPlaceOpenRow({
   const busy = inFlight.has(txn)
   const still = stillNotPlacedWords(line)
   const evidence = evidenceWords(line)
-  const body = confirmBody(line)
+  // R1-2: ask only once the line has stayed open a moment. ↑/↓ opens each row it passes, and every
+  // preview is a season read; a line passed over asks nothing. (Keyed by the line, so no reset.)
+  const [settledOn, setSettledOn] = useState<number | null>(null)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledOn(txn), PREVIEW_SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [txn])
+  const settled = settledOn === txn
+  const asked = useMemo(
+    () => (access.casework && settled ? suggestionBody(line) : null),
+    [access, line, settled]
+  )
+  const preview = useAidPlacePreview(year, txn, asked)
+  // A refused preview means Confirm would be refused too: say why, and offer no Confirm.
+  const previewRefused = previewRefusalWords(preview.error)
+  const would = preview.data ?? line.suggestion
+  const body = previewRefused === null ? confirmBody(line, would) : null
 
   const confirm = async () => {
     // A second press while one is in flight is ignored (ReasonForm's pattern): `isPending` from the
@@ -92,8 +121,8 @@ export function ToPlaceOpenRow({
       const out = await place.mutateAsync({ year, transactionCmId: txn, body })
       onDone(placedWords(out, [line], requestLabels([line])))
     } catch (caught) {
-      // The reads refreshed before this rejection: "What Confirm does" already shows the new
-      // answer, so Confirm stays on and confirms what it now shows.
+      // The reads (and this preview) refreshed before this rejection: "What Confirm does" already
+      // shows the new answer, so Confirm stays on and confirms what it now shows.
       const words = refusalWords(caught)
       setError(words)
       onRefused(words)
@@ -132,18 +161,34 @@ export function ToPlaceOpenRow({
         {line.suggestion !== null && (
           <>
             <p className={CS_PANEL_HEAD}>What Confirm does</p>
-            <ul className="space-y-0.5">
-              {confirmLines(line).map((words) => (
-                <li key={words} className={isMarkLine(words) ? MARK_TEXT : undefined}>
-                  {words}
-                </li>
-              ))}
-            </ul>
+            {previewRefused === null ? (
+              <ul className="space-y-0.5">
+                {confirmLines(line, would).map((words) => (
+                  <li key={words} className={isMarkLine(words) ? MARK_TEXT : undefined}>
+                    {words}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <>
+                <p className={CS_AMBER_NOTE}>{previewRefused}</p>
+                {/* R1-14: a refusal can be a passing race ("Someone else changed this"); ask again. */}
+                <button
+                  type="button"
+                  className={`${CS_BTN2} self-start`}
+                  disabled={preview.isFetching}
+                  onClick={() => void preview.refetch()}
+                >
+                  Try Again
+                </button>
+              </>
+            )}
           </>
         )}
         {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {access.casework && body !== null && (
+          {/* R1-12: Confirm sends the suggestion; while an editor is open, its own button sends. */}
+          {access.casework && mode === 'none' && body !== null && (
             <button
               type="button"
               className={CS_BTN}
