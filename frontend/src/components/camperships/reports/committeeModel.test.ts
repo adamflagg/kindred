@@ -4,14 +4,18 @@ import { describe, expect, it } from 'vitest'
 import { reportText } from '../kit/report'
 import { COMMITTEE } from './committeeFixtures'
 import {
+  appealsRows,
   applicationRows,
   bandWords,
   budgetRows,
+  committeeCsvName,
+  committeeHeading,
   overUnderWords,
   parsePhaseShare,
   phaseColumns,
   phaseLabels,
   phaseRows,
+  round1Rows,
   seasonWords,
 } from './committeeModel'
 
@@ -67,6 +71,10 @@ describe('the phase table (RPT-1; owner N2)', () => {
     expect(overUnderWords(0, 'on')).toBe('on budget')
     expect(overUnderWords(null, null)).toBe('—')
     expect(bandWords(null)).toBe('—')
+    expect(bandWords({ low_pct: 51, high_pct: 55, low: 1, high: 2, position: null })).toBe('51–55%')
+    expect(bandWords({ low_pct: 51, high_pct: 55, low: 1, high: 2, position: 'below' })).toBe(
+      '51–55%: below'
+    )
   })
 })
 
@@ -99,5 +107,58 @@ describe('the other four tables', () => {
       '—',
       'first board-approved budget',
     ])
+  })
+
+  it('draws a pool row of the applications table whole, with no note and its changes as sent', () => {
+    const pool = applicationRows(COMMITTEE)[1]
+    expect(texts(pool)).toEqual([
+      '2027 · P',
+      'Pool A',
+      'Feb 1',
+      '2',
+      '$6,000',
+      '$3,000',
+      '0',
+      '$0',
+      '—',
+      '2',
+      '$6,000',
+      '$3,000',
+      'Apr 10',
+      '—',
+      '—',
+      '0',
+    ])
+  })
+
+  it('draws the appeals table, a real 0% appeal rate included', () => {
+    expect(appealsRows(COMMITTEE).map(texts)).toEqual([
+      ['2026 · r', '520', '104', '20.0%'],
+      ['2027 · P', '2', '0', '0.0%'],
+    ])
+  })
+
+  it("draws Round 1's share of the ask as sent", () => {
+    expect(round1Rows(COMMITTEE).map(texts)).toEqual([
+      ['2027 · P', 'All pools', '$1,500', '$7,000', '$6,000', '25.0%'],
+    ])
+  })
+
+  it('heads each table on the mixed basis, and names the share file apart from the default', () => {
+    expect(committeeHeading(COMMITTEE, 'Appeals')).toMatchObject({
+      title: 'Appeals',
+      season: 2027,
+      figuresOn: '2027-04-10',
+    })
+    const view = { year: 2027, asOf: { kind: 'live' } } as const
+    expect(committeeCsvName(view, 'phases', 'share')).toBe(
+      'camperships-reports-year-over-year-phases-share-of-phases-2027.csv'
+    )
+    expect(committeeCsvName(view, 'phases', 'budget')).toBe(
+      'camperships-reports-year-over-year-phases-2027.csv'
+    )
+    expect(committeeCsvName(view, 'appeals', 'share')).toBe(
+      'camperships-reports-year-over-year-appeals-2027.csv'
+    )
   })
 })
