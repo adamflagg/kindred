@@ -248,9 +248,17 @@ describe('RulesTab for finance (D39)', () => {
 
   it("shows a section's changes in words and in amber", () => {
     renderAt('/aid/season/rules')
-    expect(screen.getByText(/Changed since v3: .*Tier 2 › Round 1 %: 60% → 55%/)).toHaveClass(
-      'text-amber-700'
-    )
+    const line = screen.getByText(/Tier 2 › Round 1 %: 60% → 55%/)
+    expect(line.closest('[data-testid="changed-since"]')).toHaveTextContent(/^Changed since v3:/)
+    expect(line.closest('[data-testid="changed-since"]')).toHaveClass('text-amber-700')
+  })
+
+  it('puts the draft / in-effect switch and Open All / Close All on the chapter bar’s line', () => {
+    renderAt('/aid/season/rules')
+    const bar = screen.getByTestId('chapter-bar')
+    expect(within(bar).getByTestId('lead-switch')).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Open All' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Close All' })).toBeInTheDocument()
   })
 
   it('switches to the approved version, as the registrar sees it, in the URL', () => {
@@ -396,7 +404,8 @@ describe('Rules as chapters (spec §6)', () => {
     expect(
       // The fixture has no issue in any chapter, so no chip carries a count: the text is the name alone.
       within(bar)
-        .getAllByRole('button')
+        .getAllByTestId('chapter-strip')
+        .flatMap((strip) => within(strip).getAllByRole('button'))
         .map((b) => b.textContent)
     ).toEqual(['Tiers & equity', 'Awards', 'Round 3', 'Checks', 'Programs', 'Dates', 'Grants'])
     expect(within(bar).getByRole('link', { name: 'Budget ›' })).toHaveAttribute(

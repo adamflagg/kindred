@@ -806,6 +806,8 @@ export const queryKeys = {
     ['financial-aid', 'ledger', year, 'families', query] as const,
   aidLedgerLines: (year: number, total: string, query: string) =>
     ['financial-aid', 'ledger', year, 'lines', total, query] as const,
+  // Read at the click only (staleTime 0), never a standing query: the March file (spec §8.3).
+  aidMarchFile: (year: number) => ['financial-aid', 'march-file', year] as const,
 }
 
 /**

@@ -15,6 +15,11 @@ import { BulkConfirmDialog } from '../../components/camperships/requests/BulkCon
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
 import { GridFiltersBar, ShowIdsToggle } from '../../components/camperships/requests/GridFiltersBar'
 import {
+  MarchFileItem,
+  MarchFileResult,
+} from '../../components/camperships/requests/MarchFileButton'
+import { useMarchFile } from '../../components/camperships/requests/useMarchFile'
+import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
@@ -173,6 +178,10 @@ export default function AidRequestsPage() {
   const { hasPermission } = usePermissions()
   // Casework edits a live read only: a past date shows what was, not what can change.
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK) && live
+  // P-21, rework R1: Download CSV's menu offers the March File on Needs an offer with R1 lit, for casework
+  // on a live read: a past date never offers the file.
+  const march = useMarchFile(year)
+  const marchOffered = view.key === 'needs_offer' && round === 1 && canWork
   const { mutateAsync: keyAsk } = useAidKeyAsk()
   // The hand Posted tick (#2996): the existing Posted write, one round at its decided amount.
   const { mutateAsync: tickPosted } = useAidTickPosted()
@@ -574,6 +583,8 @@ export default function AidRequestsPage() {
               links={links}
               filters={filtersBar}
               filtersAfterGrouping={idsToggle}
+              csvMenu={marchOffered ? <MarchFileItem march={march} /> : undefined}
+              toolbarStatus={marchOffered ? <MarchFileResult march={march} /> : undefined}
               onLeave={leaveForFold}
               foldScope={`${lens}/${view.key}`}
               selected={canWork ? selected : undefined}

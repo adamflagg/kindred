@@ -18,8 +18,8 @@ What the lines look like, measured on the 2026 snapshot:
   category-to-session map is learned from live Child lines. A category seen
   with two sessions maps neither, because its Adult lines cannot be split.
   Those requests get no billed headcount and are flagged missing.
-* A baby is under the season's infant cutoff on the session's FIRST DAY (spec
-  2 item 22). When an `age_rule` knows a billed child's or infant's age, it
+* A baby is under 2 (`headcount.INFANT_UNDER_MONTHS`) on the session's FIRST
+  DAY (spec 2 item 22). When an `age_rule` knows a billed child's or infant's age, it
   decides infant vs non-infant and any disagreement with the billing label is
   counted in `reclassified` (the request is flagged; billing is a cross-check).
   Adult lines carry no person and are always non-infant.

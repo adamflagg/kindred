@@ -351,7 +351,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "Round 1 phases: phase 1 is Round 1 money on requests received by the application deadline; phase 2 is "
             "Round 1 money on requests received after it; phase 3 is appeals (Rounds 2 and 3). A request received "
             "on time but posted later stays in phase 1. Each phase has two columns. As offered: the lock as posted "
-            "(D80's awarded = offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
+            "(awarded means offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
             "outside the budget (an outside funder's full-cost round) is in neither column; for a season finance "
             "typed, the deck's figure and its as-of date. End of season: net of cancellations and clawback; for a "
             'season the dashboard priced it reads "to date" until the season closes, meaning the last session open to '
@@ -369,7 +369,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Appeals",
         text=(
             "Appeals: the appeal rate and each tier's appeals count every request with a Round 2 or later ask, "
-            "cancelled ones included, because the rate divides by applications, which include cancellations (D131). "
+            "cancelled ones included, because the rate divides by applications, which include cancellations. "
             "The outcomes table and the Season screen's Round 2 asks leave cancelled requests out."
         ),
         spec="§9.7",
@@ -420,7 +420,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Basis unconfirmed: a 2022–2025 column shows the figures development already sent funders, typed once. "
             "The dashboard counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
-            "{camp}'s own aid only (O-930-1). Until that is settled, comparing such a column with 2026 or later "
+            "{camp}'s own aid only. Until that is settled, comparing such a column with 2026 or later "
             "may compare two bases. This note is the dashboard's interim default, not a ruling."
         ),
         spec="§5.7",
@@ -467,7 +467,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Three facts",
         text=(
             "Three facts: every source is listed by name with who paid ({camp} or another funder), whether it is an "
-            "incentive or need-based (a per-source flag, never funder_type), and the source itself. Each outside "
+            "incentive or need-based (a flag set on each source), and the source itself. Each outside "
             "source names its reporting group, one of the season's budget pools."
         ),
         spec="§5.7",
@@ -532,7 +532,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Appeals: an ask in Round 2 or any later round, for a camper who attended, counted once per request. "
             "Approved = a posted award above $0 in those rounds, in full or in part. Declined due to insufficient aid "
-            "= requests cancelled with that reason. Since D158 every cancel-reason line includes campers who didn't attend."
+            "= requests cancelled with that reason. Now every cancel-reason line includes campers who didn't attend."
         ),
         spec="§5.11",
         rulings=("D101", "D141"),

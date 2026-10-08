@@ -149,6 +149,14 @@ export type AidLikeOutside = {
  */
 export type AidPostingLine = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Transaction Cm Id
    */
   transaction_cm_id: number
@@ -168,10 +176,6 @@ export type AidPostingLine = {
    * Effective Source Key
    */
   effective_source_key: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Funder Type
    */
@@ -317,6 +321,14 @@ export type AidRulesOutput = {
  */
 export type AidSourceRow = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Id
    */
   id: string
@@ -332,10 +344,6 @@ export type AidSourceRow = {
    * Source Name
    */
   source_name: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Funder Type
    */
@@ -5558,6 +5566,14 @@ export type GradeEnrollment = {
  */
 export type GrantRowOut = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Kind
    */
   kind: 'ledger' | 'commitment'
@@ -5617,10 +5633,6 @@ export type GrantRowOut = {
    * Description
    */
   description: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Funder Type
    */
@@ -5724,6 +5736,14 @@ export type GrantorCreate = {
  */
 export type GrantorDescription = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Source Id
    */
   source_id: string
@@ -5735,10 +5755,6 @@ export type GrantorDescription = {
    * Description
    */
   description: string
-  /**
-   * Source Family
-   */
-  source_family: string
 }
 
 /**
@@ -6726,6 +6742,14 @@ export type HouseholdEnrollment = {
  */
 export type HouseholdGrantRowOut = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Kind
    */
   kind: 'ledger' | 'commitment'
@@ -6785,10 +6809,6 @@ export type HouseholdGrantRowOut = {
    * Description
    */
   description: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Funder Type
    */
@@ -8430,6 +8450,14 @@ export type LedgerFamilyOut = {
  */
 export type LedgerLineOut = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Transaction Cm Id
    */
   transaction_cm_id: number
@@ -8453,10 +8481,6 @@ export type LedgerLineOut = {
    * Description
    */
   description: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Program
    */
@@ -9129,6 +9153,14 @@ export type NeedsCamperOut = {
  */
 export type NetAidTotal = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Posting Household Cm Id
    */
   posting_household_cm_id: number
@@ -9144,10 +9176,6 @@ export type NetAidTotal = {
    * Effective Source Key
    */
   effective_source_key: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Funder Type
    */
@@ -16986,6 +17014,14 @@ export type SuggestionOut = {
  */
 export type SummaryCell = {
   /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Source Family Label
+   */
+  source_family_label?: string
+  /**
    * Program
    */
   program: string
@@ -16993,10 +17029,6 @@ export type SummaryCell = {
    * Program Label
    */
   program_label?: string
-  /**
-   * Source Family
-   */
-  source_family: string
   /**
    * Amount
    */

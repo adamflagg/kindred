@@ -16,6 +16,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from api.schemas.source_family_labels import SourceFamilyLabelled
+
 ProgramFamily = Literal["summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend", "family_school", "other"]
 # A posting's reporting bucket: its program family, or "ambiguous" (placed on a
 # household or person spanning families), or "unattributed" (no enrollment).
@@ -65,7 +67,7 @@ WhoPaid = Literal["the camp", "another funder"]
 OverrideSource = Literal["sheet_2026_match", "staff"]
 
 
-class AidPostingLine(BaseModel):
+class AidPostingLine(SourceFamilyLabelled):
     """One aid_postings row. source_key is the posting's own description;
     effective_source_key, source_family, funder_type and counts_toward_budget are
     after any per-posting reclassification. A reversed row is history: is_reversed
@@ -123,7 +125,7 @@ class HouseholdDetailResponse(BaseModel):
     fa_requested: FaRequested
 
 
-class SummaryCell(BaseModel):
+class SummaryCell(SourceFamilyLabelled):
     program: str
     program_label: str = ""  # the season's rules label for the program family; "" for a bucket the rules don't name
     source_family: str
@@ -190,7 +192,7 @@ class SummaryResponse(BaseModel):
     camp_aid_levels: list[CampAidLevel] = Field(default_factory=list)
 
 
-class NetAidTotal(BaseModel):
+class NetAidTotal(SourceFamilyLabelled):
     """Net aid dollars for one group of postings, for sub-project 11's
     reconciliation and for as-of reads. posting_household_cm_id is the household
     the postings were posted to (a payer share is checked against its own
@@ -288,7 +290,7 @@ class SourceChangeOut(BaseModel):
     note: str  # the reason logged with it
 
 
-class AidSourceRow(BaseModel):
+class AidSourceRow(SourceFamilyLabelled):
     id: str
     description_key: str
     description: str
@@ -336,9 +338,9 @@ class AidSourceUpdate(BaseModel):
     @model_validator(mode="after")
     def _budget(self) -> AidSourceUpdate:
         if self.counts_toward_budget and self.source_family != "camp_fa":
-            raise ValueError("only the camp's own aid (camp_fa) may count toward the budget")
+            raise ValueError("only the camp's own financial aid may count toward the budget")
         if self.counts_toward_budget and not self.counts_as_aid:
-            raise ValueError("counts_toward_budget requires counts_as_aid")
+            raise ValueError("a source that counts toward the budget must also count as aid")
         return self
 
 
@@ -411,7 +413,7 @@ class OverrideBulkLoad(BaseModel):
     def _unique_transactions(self) -> OverrideBulkLoad:
         ids = [r.transaction_cm_id for r in self.rows]
         if len(ids) != len(set(ids)):
-            raise ValueError("each transaction_cm_id may appear once per load")
+            raise ValueError("each CampMinder line may appear once per load")
         return self
 
 

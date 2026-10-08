@@ -373,9 +373,11 @@ export interface ChangeLine {
   readonly lead: string
   readonly was: string | null
   readonly now: string
+  /** A price: the card says it on the row itself, so Changed since lists only moves and Not running flips. */
+  readonly price?: true
 }
 
-/** A price as the changes line words it: "$6,695", or "No price yet" when none is stored. */
+/** A price as a change words it, old → new: "$6,695", or "No price yet" when none is stored. */
 export const priceWords = (value: string | null) =>
   value === null ? 'No price yet' : `$${moneyText(value)}`
 
@@ -387,7 +389,8 @@ export const agWords = (n: number) =>
 
 const NOT_OPEN_WORDS = 'Not open to aid'
 
-/** What changed since the approved rules, in session words (spec §5.2 D): prices, then groups, then Not running. */
+/** What changed since the approved rules, in session words (spec §5.2 D): prices, then groups, then Not running.
+ * Price lines carry `price: true`: the card draws them under their rows, and Changed since lists only the rest. */
 export function changesSince(
   approved: ProgramsCostsDoc,
   draft: ProgramsCostsDoc,
@@ -412,19 +415,30 @@ export function changesSince(
     const old = was.get(row.session.cmId)
     const name = row.session.name
     if (old === undefined) continue
-    if (old.tuition !== row.tuition)
-      lines.push({ lead: name, was: priceWords(old.tuition), now: priceWords(row.tuition) })
+    // A row the card draws says its own price change; one it doesn't (not running, not open to aid) leaves the
+    // line to Changed since, so the pill never counts a change shown nowhere.
+    const drawn: { price?: true } = row.group !== NOT_OPEN && !row.notRunning ? { price: true } : {}
+    // A program priced on the request draws no tuition, so a stored one changing is no change staff can see.
+    if (old.tuition !== row.tuition && row.kind !== 'typed')
+      lines.push({
+        lead: name,
+        was: priceWords(old.tuition),
+        now: priceWords(row.tuition),
+        ...drawn,
+      })
     if (old.standard !== row.standard)
       lines.push({
         lead: `${name} standard`,
         was: priceWords(old.standard),
         now: priceWords(row.standard),
+        ...drawn,
       })
     if (old.infant !== row.infant)
       lines.push({
         lead: `${name} infant`,
         was: priceWords(old.infant),
         now: priceWords(row.infant),
+        ...drawn,
       })
   }
   for (const row of order) {

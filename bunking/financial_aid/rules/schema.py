@@ -363,9 +363,8 @@ class CostSection(RulesModel):
     # CampMinder session cm_id -> this season's tuition.
     tuition: dict[int, Money] = Field(default_factory=dict)
     family_rates: list[FamilyRate] = Field(default_factory=list)
-    # A person under this many months on the SESSION'S FIRST DAY is an infant (spec 2 item 22).
-    # Intake (sub-project 5) reads it through bunking/financial_aid/headcount.py to pre-fill and
-    # cross-check family-camp headcounts; the calculator does not read it.
+    # LEGACY: no longer read. Infants are under 2, a constant (headcount.INFANT_UNDER_MONTHS; owner 2026-10-08). Kept so
+    # every stored version still loads.
     infant_age_cutoff_months: int | None = Field(default=None, ge=0)
     override_reasons: list[Key] = Field(default_factory=_default_override_reasons)
     # This season's sessions finance marked not running (spec §7.1): their live requests are on hold until the

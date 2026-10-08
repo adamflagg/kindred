@@ -49,7 +49,7 @@ export function LeadLine({
   // A done season says so to finance and the registrar both (spec §11.3).
   const doneSeason = done && <span className={CS_PILL.muted}>Done season</span>
   const folds = (
-    <span className="ml-auto flex gap-2">
+    <span className="ml-auto flex shrink-0 gap-2">
       <button type="button" className={CS_BTN2} onClick={() => onAll(true)}>
         Open All
       </button>
@@ -76,12 +76,12 @@ export function LeadLine({
         </Link>
       )
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <span data-testid="lead-switch" className={CS_SEG}>
+      <div className="flex min-w-0 items-center justify-end gap-2 whitespace-nowrap">
+        <span data-testid="lead-switch" className={`${CS_SEG} shrink-0`}>
           {seg(state.show === 'draft', draftWord, state.draftHref)}
           {seg(state.show === 'approved', inEffect, state.approvedHref)}
         </span>
-        <span className={CS_SMALL}>
+        <span className={`${CS_SMALL} min-w-0 truncate`}>
           {state.hold === 'edit'
             ? 'Save or cancel the edit first.'
             : state.hold === 'approve'

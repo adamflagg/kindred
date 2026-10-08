@@ -40,6 +40,7 @@ import type {
   ApiAidHistoryOperationDetail,
   ApiAidHistoryPage,
   ApiAidMakeRulesDraftIn,
+  ApiAidMarchFile,
   ApiAidPromotionPreview,
   ApiAidRulesApproveIn,
   ApiAidRulesDraft,
@@ -1291,4 +1292,17 @@ export function unretireAidGrantor(
     body,
     "Couldn't unretire the grantor"
   )
+}
+
+/**
+ * The March file's rows (spec §8.3; D73; S3-7; `casework`): one per payer share of each Round 1 offer,
+ * and the count of $0 Round 1 offers left out (ruling E). Reads only; changes nothing.
+ */
+export async function fetchAidMarchFile(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidMarchFile> {
+  const response = await fetchWithAuth(`${BASE}/decisions/${String(year)}/march-file`)
+  if (!response.ok) throw await toApiError(response, "Couldn't make the March file", AidApiError)
+  return (await response.json()) as ApiAidMarchFile
 }

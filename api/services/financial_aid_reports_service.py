@@ -151,21 +151,20 @@ ALL_POOLS_LABEL: Final = "All pools"
 RECONCILIATION_LABEL: Final = "headline − Σ pools"
 NOT_BUILT: Final[Mapping[str, str]] = {
     NO_DEADLINE_CUT_GAP: (
-        "A season with no received dates (before 2027, D138) or no application deadline can't split Round 1 at the "
+        "A season with no received dates (before 2027) or no application deadline can't split Round 1 at the "
         "deadline: phases 1 and 2 are blank; typed history shows the decks' figures"
     ),
-    "enrollment_pct_of_goal": "Enrollment % of goal waits for its basis (O-930-15, finance); nothing is shown",
+    "enrollment_pct_of_goal": "Enrollment % of goal waits for finance to set its basis; nothing is shown",
     "round1_pct_start_of_season": (
-        "Round 1 % of ask at the start of the season is Scenarios › Compare's rules column (RPT-17), on the frozen "
-        "snapshot"
+        "Round 1 % of ask at the start of the season is Scenarios › Compare's rules column, on the frozen snapshot"
     ),
     "rebuild_history": (
         "Seasons before the dashboard's decisions show finance's typed figures only. The dashboard's approximate "
         "rebuild (≈) is deferred: demand and application counts from the aid form mirror need an outlier-ask rule, "
         "and money by pool needs the 2017–2024 ledger backfill"
     ),
-    "typed_tiers": "Typed per-tier history (RPT-9's earlier seasons) loads but isn't shown yet",
-    "typed_cancellations": "Earlier seasons' recipients who cancelled (RPT-22) have no typed history yet",
+    "typed_tiers": "Typed per-tier history for earlier seasons loads but isn't shown yet",
+    "typed_cancellations": "Earlier seasons' recipients who cancelled have no typed history yet",
 }
 
 
@@ -261,7 +260,7 @@ class FinancialAidReportsService:
         if year < FIRST_RECEIVED_SEASON:
             raise ReportsRefusedError(
                 f"The reporting controls work from {FIRST_RECEIVED_SEASON}: every {year} request was recorded on one "
-                "day, so there is no received date to cut on (D138)"
+                "day, so there is no received date to cut on"
             )
         if through is not None:
             return RequestSet("date", through)
@@ -520,9 +519,11 @@ class FinancialAidReportsService:
         if part in ("tier", "total") and count is None:
             raise ReportsRefusedError("Choose a count: apps, cancelled, asks, awarded or decided")
         if part == "cancelled" and (reason is None or posted_round is None):
-            raise ReportsRefusedError("An RPT-22 row is named by its reason and its round (and its pool, if any)")
+            raise ReportsRefusedError("A cancellations row is named by its reason and its round (and its pool, if any)")
         if part == "outcome" and (outcome_row is None or outcome is None or (outcome_row == "pool" and pool is None)):
-            raise ReportsRefusedError("An RPT-23 count is named by its row (pool, no_pool or headline) and outcome")
+            raise ReportsRefusedError(
+                "An outcomes count is named by its row (a pool, no pool or the headline) and its outcome"
+            )
         read, _ = await self._statistics_read(
             year, table=table, through_deadline=through_deadline, through=through, as_of=as_of, axis=axis
         )
@@ -584,7 +585,7 @@ class FinancialAidReportsService:
         if through is not None and year < FIRST_RECEIVED_SEASON:
             raise ReportsRefusedError(
                 f"The reporting controls work from {FIRST_RECEIVED_SEASON}: every {year} request was recorded on one "
-                "day, so there is no received date to cut on (D138)"
+                "day, so there is no received date to cut on"
             )
         natives: list[NativeSeason] = []
         for season_year in range(max(FIRST_REQUEST_SEASON, FIRST_REPORT_SEASON), year + 1):

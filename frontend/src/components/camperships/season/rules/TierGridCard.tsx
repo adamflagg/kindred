@@ -7,14 +7,7 @@ import type {
   ApiAidValidationIssue,
 } from '../../../../types/api-types'
 import { DefRef } from '../../kit/DefinitionNotes'
-import {
-  CS_AMBER_NOTE,
-  CS_CARD,
-  CS_SMALL,
-  CS_TABLE_CARD,
-  CS_TD_CARD,
-  CS_TH_CARD,
-} from '../../kit/csType'
+import { CS_CARD, CS_SMALL, CS_TABLE_CARD, CS_TD_CARD, CS_TH_CARD } from '../../kit/csType'
 import { GRID_PARTS, GRID_TITLES } from './rulesLayout'
 import {
   changeWords,
@@ -24,6 +17,7 @@ import {
   type StatusWords,
 } from './rulesModel'
 import { SectionCardHead } from './SectionCard'
+import { ChangedSince } from './ChangedSince'
 import {
   bandsIn,
   cellPath,
@@ -305,11 +299,10 @@ export function TierGridCard({
                   {...(part === 'award_tables' ? { list: roundOneList } : {})}
                 />
               )}
-              {changes.length > 0 && (
-                <p className={`${CS_AMBER_NOTE} mt-1`}>
-                  {`Changed since v${String(approvedVersion ?? '')}: ${changes.map((c) => changeWords(c, { ...names, section: part })).join(' · ')}`}
-                </p>
-              )}
+              <ChangedSince
+                version={approvedVersion}
+                lines={changes.map((c) => changeWords(c, { ...names, section: part }))}
+              />
             </div>
           )
         })}

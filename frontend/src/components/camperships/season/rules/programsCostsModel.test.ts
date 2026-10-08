@@ -348,13 +348,34 @@ describe('changesSince (spec §5.2 D)', () => {
     draft.programs['not_aided']!.session_cm_ids = [1000901, 1000110]
     draft.cost.not_running_session_cm_ids = [1000101]
     expect(changesSince(approved, draft, GROUPS, CATALOG)).toEqual([
+      // Session 2 is newly not running, so no row draws its price: the line stays in Changed since (no `price`).
       { lead: 'Session 2', was: '$6,695', now: '$6,895' },
-      { lead: 'Family Camp B standard', was: 'No price yet', now: '$425' },
-      { lead: 'Family Camp B infant', was: 'No price yet', now: '$600' },
+      { lead: 'Family Camp B standard', was: 'No price yet', now: '$425', price: true },
+      { lead: 'Family Camp B infant', was: 'No price yet', now: '$600', price: true },
       { lead: 'Winter Retreat', was: 'Camp', now: 'Not open to aid' },
       { lead: 'Session 2', was: null, now: 'not running' },
       { lead: 'Quest: Rivers', was: null, now: 'running again' },
     ])
+  })
+
+  it('flags a price for its row only when the row is drawn: running and in a group', () => {
+    const approved = pcDoc()
+    const draft = pcDoc()
+    draft.cost.tuition = { ...draft.cost.tuition, '1000104': '1895', '1000106': '6895' }
+    // Starter Session runs: its row draws the change. Quest: Rivers is not running: Changed since must say it.
+    expect(changesSince(approved, draft, GROUPS, CATALOG)).toEqual([
+      { lead: 'Starter Session', was: '$1,795', now: '$1,895', price: true },
+      { lead: 'Quest: Rivers', was: '$6,695', now: '$6,895' },
+    ])
+  })
+
+  it('says nothing of a stored tuition on a program priced on the request', () => {
+    const approved = pcDoc()
+    approved.programs['school']!.cost_source = 'typed'
+    const draft = pcDoc()
+    draft.programs['school']!.cost_source = 'typed'
+    draft.cost.tuition = { ...draft.cost.tuition, '1000501': '4100' }
+    expect(changesSince(approved, draft, GROUPS, CATALOG)).toEqual([])
   })
 
   it('prints Not running lines in one order, whichever way each session turned', () => {

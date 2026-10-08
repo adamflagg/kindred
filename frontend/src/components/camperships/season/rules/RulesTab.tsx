@@ -495,16 +495,10 @@ function ChaptersBody({
           )
         }
         saveAs={section === 'tiers' ? { content: tiersContent } : undefined}
-        onDone={(saved) => {
+        // No "Saved to the rules draft" line to dismiss (owner 10-08): the switch above names the draft it landed in.
+        onDone={() => {
           setEditing(null)
           setTiersContent(null)
-          if (saved !== null) {
-            onNotice(
-              saved.branched_from === null || saved.branched_from === undefined
-                ? `Saved to the rules draft v${String(saved.version)}.`
-                : `Saved as a new version, v${String(saved.version)}: the approved rules in use stay as they are until it is approved.`
-            )
-          }
         }}
       />
     ) : undefined
@@ -603,16 +597,7 @@ function ChaptersBody({
               groups={groups}
               sessions={catalog}
               cancelled={cancelled ?? NO_CANCELLED}
-              onDone={(saved) => {
-                setEditing(null)
-                if (saved !== null) {
-                  onNotice(
-                    saved.branched_from === null || saved.branched_from === undefined
-                      ? `Saved to the rules draft v${String(saved.version)}.`
-                      : `Saved as a new version, v${String(saved.version)}: the approved rules in use stay as they are until it is approved.`
-                  )
-                }
-              }}
+              onDone={() => setEditing(null)}
             />
           ) : undefined
         }
@@ -667,11 +652,13 @@ function ChaptersBody({
 
   return (
     <div className="space-y-3">
-      <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump} />
-      <LeadLine
-        state={leadFor(editing !== null ? 'edit' : chrome.approving ? 'approve' : null)}
-        onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
-      />
+      {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
+      <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
+        <LeadLine
+          state={leadFor(editing !== null ? 'edit' : chrome.approving ? 'approve' : null)}
+          onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
+        />
+      </ChapterBar>
       <ApprovePanel />
       <UnlockPanel />
       <SeasonNotice />

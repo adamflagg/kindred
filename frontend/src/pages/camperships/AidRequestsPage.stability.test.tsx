@@ -47,6 +47,16 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidTickAccepted: () => ({ mutateAsync, isPending: false }),
   useAidTickPosted: () => ({ mutateAsync, isPending: false }),
 }))
+// The March File's hook reads with auth at the click; this page-shape test draws no March control.
+vi.mock('../../components/camperships/requests/useMarchFile', () => ({
+  useMarchFile: () => ({
+    busy: false,
+    said: null,
+    error: null,
+    download: () => undefined,
+    dismiss: () => undefined,
+  }),
+}))
 
 function Where() {
   const { search } = useLocation()

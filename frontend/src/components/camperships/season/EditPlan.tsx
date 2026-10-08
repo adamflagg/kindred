@@ -42,7 +42,7 @@ export function EditPlan({
   onClose: () => void
 }) {
   const save = useAidSaveRulesSection()
-  const { setNotice, setEditing } = useSeasonChrome()
+  const { setEditing } = useSeasonChrome()
   // Approve… waits while the plan is open: it would approve the draft without the typing under it.
   useEffect(() => {
     setEditing(true)
@@ -84,9 +84,9 @@ export function EditPlan({
         },
       },
       {
-        onSuccess: (saved) => {
+        onSuccess: () => {
+          // No "Saved to the rules draft" line to dismiss (owner 10-08): the Rules switch names the draft.
           onClose()
-          setNotice(`Saved to the rules draft v${String(saved.version)} · Approve on the tab bar`)
         },
         onError: (caught) => setError(hasStatus(caught, 409) ? CONFLICT : caught.message),
       }

@@ -140,7 +140,8 @@ describe('SeasonChrome (spec §4)', () => {
   it('words the panel as the mock does, with Esc named and the checkbox named by its section alone', async () => {
     renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
-    expect(await screen.findByLabelText('Approved by')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Notes')).toBeInTheDocument()
+    expect(screen.getByText(/^e\.g\. “Board approved Apr 13”/)).toBeInTheDocument()
     expect(screen.getByText('Esc cancels')).toBeInTheDocument()
   })
 
@@ -223,7 +224,7 @@ describe('SeasonChrome (spec §4)', () => {
     expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
   })
 
-  // Slice 2: leaving Rules closed approve mode; the rebuilt form would lose its ticks and "Approved by" text.
+  // Slice 2: leaving Rules closed approve mode; the rebuilt form would lose its ticks and its Notes text.
   it('closes an open panel when the Season tab changes', async () => {
     const view = renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))

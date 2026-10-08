@@ -3,6 +3,7 @@
  * `$` boxes for the kind its pick lands on. Save sends only the sections the typing changed, each with the fingerprint
  * the fresh read holds (Review Focus 8); a section someone else changed since the editor opened is never overwritten.
  */
+import { ArrowRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import {
@@ -77,8 +78,18 @@ function MoneyBox({
   const original = moneyText(stored)
   const raw = edits.get(key) ?? original
   return (
-    <span className="whitespace-nowrap">
-      <span className="text-muted-foreground mr-0.5">$</span>
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      {/* ‹old› → before a typed box (owner 10-08), never "was ‹old›" after it: the box stays where it was. */}
+      {edits.has(key) && (
+        <span
+          data-testid="pc-old"
+          className="inline-flex items-center gap-1 text-xs text-amber-700 tabular-nums dark:text-amber-300"
+        >
+          {priceWords(stored)}
+          <ArrowRight className="size-3" />
+        </span>
+      )}
+      <span className="text-muted-foreground">$</span>
       {/* aria-label and aria-invalid are test handles (frontend/CLAUDE.md, Accessibility). */}
       <input
         aria-label={label}
@@ -89,14 +100,12 @@ function MoneyBox({
         disabled={disabled}
         onChange={(e) => onType(key, e.target.value, original)}
       />
-      {edits.has(key) && (
-        <span className={`${CS_SMALL} ml-1 text-amber-700 dark:text-amber-300`}>
-          {`was ${priceWords(stored)}`}
-        </span>
-      )}
     </span>
   )
 }
+
+/** A per-person price on its own line under the row (owner 10-08): the session's name keeps the row's width. */
+const PRICE_LINE = 'flex items-center justify-end gap-2 pl-5'
 
 export function ProgramsCostsEditor({
   draft: current,
@@ -244,45 +253,22 @@ export function ProgramsCostsEditor({
     const off = (edits.get(editKey(id, 'nr')) ?? String(original.notRunning)) === 'true'
     const inGroup = r.group !== NOT_OPEN
     const red = (field: EditField) => fix?.boxes.has(editKey(id, field)) ?? false
-    const boxes =
-      inGroup && r.kind === 'per_person' ? (
-        <>
-          <MoneyBox
-            label="Standard"
-            cmId={id}
-            field="s"
-            stored={r.standard}
-            edits={edits}
-            red={red('s')}
-            disabled={off}
-            onType={type}
-          />
-          <MoneyBox
-            label="Infant"
-            cmId={id}
-            field="i"
-            stored={r.infant}
-            edits={edits}
-            red={red('i')}
-            disabled={off}
-            onType={type}
-          />
-        </>
-      ) : inGroup && r.kind !== 'typed' ? (
-        <MoneyBox
-          label="Tuition"
-          cmId={id}
-          field="t"
-          stored={r.tuition}
-          edits={edits}
-          red={red('t')}
-          disabled={off}
-          onType={type}
-        />
-      ) : null
+    const perPerson = inGroup && r.kind === 'per_person'
+    const box = (label: string, field: 't' | 's' | 'i', stored: string | null) => (
+      <MoneyBox
+        label={label}
+        cmId={id}
+        field={field}
+        stored={stored}
+        edits={edits}
+        red={red(field)}
+        disabled={off}
+        onType={type}
+      />
+    )
     const kind = kindFor(original, doc)
-    return (
-      <div data-testid={`pc-row-${String(id)}`} className={`${ROW} items-center gap-1.5 py-px`}>
+    const head = (
+      <>
         {inGroup && (
           <input
             type="checkbox"
@@ -308,7 +294,30 @@ export function ProgramsCostsEditor({
             )
           })}
         </select>
-        {boxes}
+      </>
+    )
+    if (perPerson) {
+      return (
+        <div
+          data-testid={`pc-row-${String(id)}`}
+          className={`${ROW} flex-col items-stretch gap-0.5 py-0.5`}
+        >
+          <div className="flex items-center gap-1.5">{head}</div>
+          <div data-testid="pc-price-s" className={PRICE_LINE}>
+            <span className={`${CS_SMALL} mr-auto`}>Standard</span>
+            {box('Standard', 's', r.standard)}
+          </div>
+          <div data-testid="pc-price-i" className={PRICE_LINE}>
+            <span className={`${CS_SMALL} mr-auto`}>Infant</span>
+            {box('Infant', 'i', r.infant)}
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div data-testid={`pc-row-${String(id)}`} className={`${ROW} items-center gap-1.5 py-px`}>
+        {head}
+        {inGroup && r.kind !== 'typed' && box('Tuition', 't', r.tuition)}
       </div>
     )
   }
@@ -340,7 +349,7 @@ export function ProgramsCostsEditor({
               <span>{`· ${String(rows.filter((r) => !isOff(r)).length)} running`}</span>
               {g.agCount > 0 && <span>{`· ${agWords(g.agCount)}`}</span>}
             </div>
-            {perPerson && <FormulaLine cutoff={doc.cost.infant_age_cutoff_months} readOnlyTag />}
+            {perPerson && <FormulaLine />}
             {items.length > 0 && (
               <Flow
                 items={items}

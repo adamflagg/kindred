@@ -16,7 +16,7 @@ import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_LABEL, CS_SMALL } from '../../kit/cs
 import type { CellControl } from './CardTables'
 import { savePrecondition } from './precondition'
 import { RuleControl } from './RuleControl'
-import { fixedSettingText, type CardRow } from './rulesCards'
+import { fixedSettingText, fractionText, settingText, type CardRow } from './rulesCards'
 import { sectionContent } from './rulesDraft'
 import { SECTION_TITLES, changeWords, formatSetting, type RulesNames } from './rulesModel'
 import {
@@ -270,14 +270,30 @@ export function RulesSectionEditor({
     return notes.length === 0 ? null : <div className="space-y-1">{notes}</div>
   }
 
-  /** The box for one setting: its typed value, "was ‹old›" once changed, and its problem; plain words where nothing can be typed. */
-  const controlAt = (path: readonly string[]): ReactNode => {
+  /**
+   * The box for one setting: its typed value, "was ‹old›" once changed, and its problem; plain words where nothing can
+   * be typed. In a table cell the "was" goes under the box: beside it, every changed cell widened its column. A card's
+   * row says its "was" as the read view says the value ("No limit", "50%"), not in the generic words.
+   */
+  const controlAt = (path: readonly string[], inCell = false, row?: CardRow): ReactNode => {
     const value = valueAt(opened.content, path)
     const spec = specOf(path)
+    const wasWords = () =>
+      row !== undefined && names !== undefined
+        ? settingText(value, row.type, row.path, names, row.nullWord)
+        : spec?.kind === 'number' && spec.fraction === true && value != null
+          ? fractionText(value)
+          : formatSetting(value, path, names)
     if (spec === null) return <span>{fixedSettingText(value, path, names)}</span>
     const key = editKey(path)
     return (
-      <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span
+        className={
+          inCell
+            ? 'inline-flex flex-col items-end gap-0.5'
+            : 'inline-flex flex-wrap items-center gap-1.5'
+        }
+      >
         <RuleControl
           path={path}
           value={value}
@@ -287,12 +303,12 @@ export function RulesSectionEditor({
           onChange={(raw) => draftState.set(path, raw)}
         />
         {draftState.changedKeys.has(key) && (
-          <span className={CS_AMBER_NOTE}>
+          <span className={inCell ? `${CS_AMBER_NOTE} text-[11px] leading-none` : CS_AMBER_NOTE}>
             {typeof value === 'boolean'
               ? value
                 ? 'was checked'
                 : 'was unchecked'
-              : `was ${formatSetting(value, path, names)}`}
+              : `was ${wasWords()}`}
           </span>
         )}
       </span>
@@ -300,8 +316,8 @@ export function RulesSectionEditor({
   }
   const body: EditorBody = {
     content: draftState.applied.content,
-    control: (row) => controlAt(row.path),
-    cell: controlAt,
+    control: (row) => controlAt(row.path, false, row),
+    cell: (path) => controlAt(path, true),
   }
   // What this editor changes, for "you both changed": the typed boxes' paths, or the paths a built section differs at.
   const mine =

@@ -9,7 +9,8 @@ export interface FlowCell {
   readonly continued: boolean
 }
 
-export const MIN_COLUMN = { read: 250, edit: 330, editPerPerson: 420 } as const
+// An edit row: checkbox, name, group pick and (one line, or per person one line each) ‹old› → $ box.
+export const MIN_COLUMN = { read: 250, edit: 400, editPerPerson: 360 } as const
 const GAP = 28
 
 export function columnCount(width: number, minColumn: number): number {

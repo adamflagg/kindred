@@ -13,6 +13,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
+from api.schemas.source_family_labels import SourceFamilyLabelled
+
 GrantorKey = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60, pattern=r"^[a-z][a-z0-9_]*$")
 ]
@@ -43,13 +45,13 @@ class GrantorFields(BaseModel):
     @model_validator(mode="after")
     def _canteen_needs_full_coverage(self) -> GrantorFields:
         if self.covers_canteen != "unknown" and not self.full_coverage:
-            raise ValueError("covers_canteen is recorded only for a full-coverage grantor")
+            raise ValueError("whether it covers canteen is recorded only for a full-coverage grantor")
         return self
 
     @model_validator(mode="after")
     def _pays_after_needs_full_coverage(self) -> GrantorFields:
         if self.pays_after_camp_aid and not self.full_coverage:
-            raise ValueError("pays_after_camp_aid is recorded only for a full-coverage grantor")
+            raise ValueError("paying after camp aid is recorded only for a full-coverage grantor")
         return self
 
 
@@ -70,7 +72,7 @@ class GrantorRetireIn(BaseModel):
     reason: _Note
 
 
-class GrantorDescription(BaseModel):
+class GrantorDescription(SourceFamilyLabelled):
     """One CampMinder description mapped to the grantor, read from aid_sources (D58)."""
 
     source_id: str
@@ -137,7 +139,7 @@ class RequestShareOut(BaseModel):
     round_amount: float | None = None
 
 
-class GrantRowOut(BaseModel):
+class GrantRowOut(SourceFamilyLabelled):
     """One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
     posted. person_cm_id 0 = needs a camper, except camper_basis "household": a household
     program's grant (Family Camp), which needs none; and a line in a household that never applied,
@@ -276,7 +278,7 @@ class PlaceGrantsIn(BaseModel):
     def _each_line_once(self) -> PlaceGrantsIn:
         ids = [p.transaction_cm_id for p in self.placements]
         if len(ids) != len(set(ids)):
-            raise ValueError("each transaction_cm_id may appear once per placement")
+            raise ValueError("each CampMinder line may appear once per placement")
         return self
 
 
