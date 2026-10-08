@@ -379,11 +379,10 @@ _ERRORS = (CaseworkNotFoundError, DuplicateRequestError, CaseworkValidationError
 
 
 async def _program_labels(year: int) -> dict[str, str]:
-    """The season's rules label for each program key (a posting's program family). A season with no rules has none."""
-    try:
-        return program_labels((await _rules().load(year)).document)
-    except RulesNotFoundError:
-        return {}
+    """The season's rules label for each program key (a posting's program family): the newest version whose programs
+    section is approved, the same rules Money > Ledger prices with, never a draft. No such version: no labels."""
+    approved = await _rules().latest_approved(year, ["programs"])
+    return program_labels(approved.document if approved is not None else None)
 
 
 def _ledger() -> FinancialAidLedgerService:

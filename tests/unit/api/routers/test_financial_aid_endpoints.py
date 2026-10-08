@@ -337,3 +337,20 @@ def test_a_past_day_or_a_season_before_to_place_reads_gos_levels(query: str) -> 
     assert _client(PERSONA_FINANCE).get(f"/api/financial-aid/summary?{query}").status_code == 200
     decisions.season.assert_not_awaited()
     assert ledger.return_value.summary.call_args.kwargs.get("split_placed") is None  # main's route passes only as_of
+
+
+@pytest.mark.asyncio
+async def test_summary_program_labels_come_from_the_approved_programs_never_a_draft() -> None:
+    from api.routers import financial_aid as router
+    from tests.unit.bunking.financial_aid.fixtures import fictional_rules
+
+    version = SimpleNamespace(document=fictional_rules())
+    rules = SimpleNamespace(latest_approved=AsyncMock(return_value=version), load=AsyncMock())
+    with patch.object(router, "_rules", return_value=rules):
+        assert (await router._program_labels(2027))["summer"] == "Summer"
+    rules.latest_approved.assert_awaited_once_with(2027, ["programs"])
+    rules.load.assert_not_awaited()  # load() is the newest version, a draft included
+
+    rules = SimpleNamespace(latest_approved=AsyncMock(return_value=None))
+    with patch.object(router, "_rules", return_value=rules):
+        assert await router._program_labels(2027) == {}
