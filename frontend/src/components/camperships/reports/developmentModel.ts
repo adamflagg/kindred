@@ -31,8 +31,6 @@ export const SECTION_WORDS: Readonly<Record<ApiAidDevelopmentRow['section'], str
   appeals: 'Appeals and cancellations',
 }
 
-export const EVERY_GROUP = 'Every group'
-
 /** A column's header: its season label and basis (§9.7: every figure prints its basis). */
 export function columnHeader(column: ApiAidDevelopmentColumn): string {
   return `${column.label} · ${column.basis}${column.basis_unconfirmed ? ' · basis unconfirmed' : ''}`
@@ -41,14 +39,12 @@ export function columnHeader(column: ApiAidDevelopmentColumn): string {
 export function developmentColumns(dev: ApiAidDevelopment): ReportColumn[] {
   return [
     { key: 'line', header: 'Line' },
-    { key: 'group', header: 'Group', align: 'left' },
     ...dev.columns.map((c, index) => ({ key: `column-${String(index)}`, header: columnHeader(c) })),
   ]
 }
 
-/** The group's label from the read (the rules'), or "Every group" for a line over every group (D158). */
-export function groupWords(dev: ApiAidDevelopment, group: string | null): string {
-  if (group === null) return EVERY_GROUP
+/** The group's label from the read (the rules'). */
+export function groupWords(dev: ApiAidDevelopment, group: string): string {
   return dev.groups.find((g) => g.key === group)?.label ?? group.replace(/_/g, ' ')
 }
 
@@ -58,30 +54,96 @@ function valueCell(unit: ApiAidDevelopmentRow['unit'], value: number | null): Re
   return countValue(value)
 }
 
-/** Each section under its name, its lines in the server's order, each with its own definition (D99). */
+/** The lines the mock breaks out by group, under the line's every-group figure. */
+const BROKEN_OUT: ReadonlySet<string> = new Set(['total_awards', 'recipients'])
+
+/** The mock's hierarchy: a sub-line sits under its parent (1), an incentive award under a camp's (2). */
+export const SUB_LINES: Readonly<Record<string, 1 | 2>> = {
+  camp_awards: 1,
+  outside_awards: 1,
+  incentive_awards: 2,
+  shared_households: 1,
+  shared_campers: 1,
+  appeals_in_full: 1,
+  appeals_in_part: 1,
+  appeals_approved: 1,
+  gender_recipients: 1,
+  gender_enrolled: 1,
+}
+
+function lineIndent(key: string): 0 | 1 | 2 {
+  return SUB_LINES[key] ?? (key.startsWith('cancelled_') ? 1 : 0)
+}
+
+/**
+ * Each section under its name, one row per line (development-v2.html): the line's every-group figure
+ * with its definition (D99), the group rows only under the two lines the mock breaks out. A line limited
+ * to some group kinds has no every-group figure, so it reads "label, group" for each group it has.
+ */
 export function developmentRows(dev: ApiAidDevelopment): ReportRow[] {
   const rows: ReportRow[] = []
   let section: string | null = null
-  dev.rows.forEach((row, index) => {
-    if (row.section !== section) {
-      section = row.section
+  let start = 0
+  while (start < dev.rows.length) {
+    const first = dev.rows[start] as ApiAidDevelopmentRow
+    let end = start
+    while (dev.rows[end + 1]?.key === first.key) end += 1
+    const line = dev.rows.slice(start, end + 1)
+    if (first.section !== section) {
+      section = first.section
       rows.push({
-        key: `section-${row.section}`,
+        key: `section-${first.section}`,
         kind: 'heading',
-        cells: [textValue(SECTION_WORDS[row.section])],
+        cells: [textValue(SECTION_WORDS[first.section])],
       })
     }
-    rows.push({
-      key: `${row.key}-${row.group ?? 'every'}-${String(index)}`,
-      kind: 'body',
-      note: row.definition === '' ? undefined : row.definition,
-      cells: [
-        textValue(row.label),
-        textValue(groupWords(dev, row.group)),
-        ...row.values.map((value) => valueCell(row.unit, value)),
-      ],
-    })
-  })
+    const rowKey = (row: ApiAidDevelopmentRow, offset: number) =>
+      `${row.key}-${row.group ?? 'every'}-${String(start + offset)}`
+    const cells = (label: string, row: ApiAidDevelopmentRow) => [
+      textValue(label),
+      ...row.values.map((value) => valueCell(row.unit, value)),
+    ]
+    const indent = lineIndent(first.key)
+    const everyIndex = line.findIndex((row) => row.group === null)
+    if (everyIndex >= 0) {
+      const every = line[everyIndex] as ApiAidDevelopmentRow
+      rows.push({
+        key: rowKey(every, everyIndex),
+        kind: 'body',
+        indent,
+        note: every.definition === '' ? undefined : every.definition,
+        cells: cells(every.label, every),
+      })
+      if (BROKEN_OUT.has(first.key)) {
+        line.forEach((row, offset) => {
+          if (row.group === null) return
+          rows.push({
+            key: rowKey(row, offset),
+            kind: 'body',
+            indent: Math.min(indent + 1, 2) as 1 | 2,
+            cells: cells(groupWords(dev, row.group), row),
+          })
+        })
+      }
+    } else {
+      let lastNote = ''
+      line.forEach((row, offset) => {
+        const showNote = row.definition !== '' && row.definition !== lastNote
+        if (row.definition !== '') lastNote = row.definition
+        rows.push({
+          key: rowKey(row, offset),
+          kind: 'body',
+          indent,
+          note: showNote ? row.definition : undefined,
+          cells: cells(
+            row.group === null ? row.label : `${row.label}, ${groupWords(dev, row.group)}`,
+            row
+          ),
+        })
+      })
+    }
+    start = end + 1
+  }
   return rows
 }
 

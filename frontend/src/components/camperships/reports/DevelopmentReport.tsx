@@ -73,7 +73,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
                 rows={developmentRows(data)}
                 csvFilename={developmentCsvName(view, 'report')}
                 link={link}
-                footnote="All money: the camp's awards and every outside grant (D87). r = as reported, typed once; P = the dashboard's. Every group is the server's own figure over every group, money in no group included, never the groups shown added up."
+                footnote="All money: the camp's awards and every outside grant (D87). r = as reported, typed once; P = the dashboard's. Each line is the server's own figure over every group, money in no group included; the groups under a line are never added up to make it (Money in no group is its own line)."
               />
               <ReportTable
                 heading={developmentHeading(data, `${String(data.year)} by source`)}

@@ -65,11 +65,13 @@ function renderReport() {
 }
 
 describe('DevelopmentReport (spec §9.4)', () => {
-  it('draws the lines by section and group, seasons as columns, never a family', async () => {
+  it('draws the lines by section, one row each, seasons as columns, never a family', async () => {
     renderReport()
     const table = await screen.findByRole('table', { name: 'Development report' })
     expect(within(table).getByText('Money')).toBeInTheDocument()
-    expect(within(table).getAllByText('Every group')).toHaveLength(2)
+    expect(within(table).queryByText('Every group')).not.toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'Group' })).not.toBeInTheDocument()
+    expect(within(table).getAllByText('Total Awards Granted')).toHaveLength(1)
     expect(
       within(table).getByText('2025 (as reported) · r · basis unconfirmed')
     ).toBeInTheDocument()
@@ -81,6 +83,18 @@ describe('DevelopmentReport (spec §9.4)', () => {
     await screen.findByRole('table', { name: 'Development report' })
     expect(screen.getByRole('checkbox', { name: /Show the dashboard's rebuild/ })).toBeDisabled()
     expect(screen.getByText(/waits on the 2017–2024 ledger backfill/)).toBeInTheDocument()
+  })
+})
+
+describe('the footnote', () => {
+  it('says each line is the server’s own figure and the groups under it are never added up', async () => {
+    renderReport()
+    await screen.findByRole('table', { name: 'Development report' })
+    expect(
+      screen.getByText(
+        /Each line is the server's own figure over every group, money in no group included; the groups under a line are never added up to make it \(Money in no group is its own line\)\./
+      )
+    ).toBeInTheDocument()
   })
 })
 
