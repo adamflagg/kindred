@@ -18,6 +18,7 @@ import {
   phaseColumns,
   phaseLabels,
   phaseRows,
+  reconciliationWords,
   ROUND1_COLUMNS,
   round1Rows,
   seasonWords,
@@ -27,24 +28,55 @@ const texts = (row: { cells: ReadonlyArray<Parameters<typeof reportText>[0]> } |
   (row?.cells ?? []).map(reportText)
 
 describe('the phase table (RPT-1; owner N2)', () => {
-  it('shows each phase As offered and End of season, as % of budget by default (R1)', () => {
+  it('draws 14 columns: the season, three phases of As offered · End of season · %, the total, the budget, over / under', () => {
+    const columns = phaseColumns('budget', () => null)
+    expect(columns).toHaveLength(14)
+    expect(columns.map((c) => c.header)).toEqual([
+      'Season',
+      ...[0, 1, 2].flatMap(() => ['As offered', 'End of season', '% of budget']),
+      'End of season',
+      '% of budget',
+      'Budget',
+      'Over / under',
+    ])
+    const keys = columns.map((c) => c.key)
+    expect(keys.some((k) => k.endsWith('band') || k === 'reconciliation')).toBe(false)
+    expect(keys).toHaveLength(new Set(keys).size)
+  })
+
+  it("takes each phase's % from End of season's, with the band words as that cell's note (R3)", () => {
     expect(parsePhaseShare(null)).toBe('budget')
-    const cells = texts(phaseRows(COMMITTEE, 'budget')[0])
-    expect(cells.slice(0, 6)).toEqual([
+    const row = phaseRows(COMMITTEE, 'budget')[0]
+    expect(row?.cells).toHaveLength(14)
+    expect(texts(row)).toEqual([
       '2026 · r',
       '$300,000',
-      '60.0%',
       '$300,000',
       '60.0%',
-      '51–55%: above',
+      '—',
+      '$100,000',
+      '20.0%',
+      '—',
+      '$50,000',
+      '10.0%',
+      '$460,000',
+      '92.0%',
+      '$500,000',
+      '$40,000 under',
     ])
-    expect(cells.slice(-5)).toEqual(['$460,000', '92.0%', '$500,000', '$40,000 under', '$10,000'])
+    // The band sits in the first phase's % cell; a phase with no band has no note, never "—".
+    expect(row?.cells[3]).toMatchObject({ kind: 'pct', value: 60, note: '51–55%: above' })
+    expect(row?.cells[6]).not.toHaveProperty('note')
+    expect(row?.cells[9]).not.toHaveProperty('note')
   })
 
   it("switches every phase's % to the share of the phases, never mixing the two", () => {
-    const cells = texts(phaseRows(COMMITTEE, 'share')[0])
-    expect(cells.slice(1, 5)).toEqual(['$300,000', '—', '$300,000', '66.7%'])
-    expect(phaseColumns('share', () => null)[2]?.header).toBe('share of the phases')
+    const row = phaseRows(COMMITTEE, 'share')[0]
+    expect(row?.cells[3]).toMatchObject({ value: 66.7, note: '51–55%: above' })
+    expect(row?.cells[6]).toMatchObject({ value: 22.2 })
+    expect(row?.cells[11]).toMatchObject({ value: 92 })
+    expect(phaseColumns('share', () => null)[3]?.header).toBe('Share of the phases')
+    expect(phaseColumns('share', () => null)[11]?.header).toBe('% of budget')
   })
 
   it("heads the phase columns with the read's own labels, today's words only with no row (owner N2)", () => {
@@ -57,11 +89,31 @@ describe('the phase table (RPT-1; owner N2)', () => {
       })),
     }
     const headers = phaseColumns('budget', () => null, phaseLabels(relabelled)).map((c) => c.header)
-    expect(headers.slice(1, 4)).toEqual(['Offered', '% of budget', 'Season end'])
+    expect(headers.slice(1, 4)).toEqual(['Offered', 'Season end', '% of budget'])
+    expect(headers[10]).toBe('Season end')
     expect(phaseLabels({ ...COMMITTEE, phases: [] })).toEqual({
       offered: 'As offered',
       end: 'End of season',
     })
+  })
+
+  it('words the add-up check only for seasons whose total differs from the phases', () => {
+    expect(reconciliationWords(COMMITTEE)).toBe('Total − Σ phases: 2026 $10,000')
+    const both = {
+      ...COMMITTEE,
+      phases: COMMITTEE.phases.map((row) => ({ ...row, reconciliation: 1200 })),
+    }
+    expect(reconciliationWords(both)).toBe('Total − Σ phases: 2026 $1,200; 2027 $1,200')
+    const none = {
+      ...COMMITTEE,
+      phases: COMMITTEE.phases.map((row) => ({ ...row, reconciliation: 0 })),
+    }
+    expect(reconciliationWords(none)).toBeNull()
+    const absent = {
+      ...COMMITTEE,
+      phases: COMMITTEE.phases.map((row) => ({ ...row, reconciliation: null })),
+    }
+    expect(reconciliationWords(absent)).toBeNull()
   })
 
   it("marks a P season that hasn't closed as to date", () => {

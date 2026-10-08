@@ -106,3 +106,25 @@ describe('Copy and CSV carry the as-of and the basis (RPT-33)', () => {
     ])
   })
 })
+
+describe('a cell with a note under its figure (R3)', () => {
+  it('carries the note on any kind of value, and keeps it out of the text, Copy and the CSV', () => {
+    const cell = { ...pctValue(60), note: '51–55%: above' }
+    expect(cell.note).toBe('51–55%: above')
+    expect(reportText(cell)).toBe('60.0%')
+    expect(reportCsv(cell)).toBe('60.0')
+    for (const kind of [moneyValue(5), countValue(5), textValue('x')]) {
+      expect({ ...kind, note: 'n' }.note).toBe('n')
+    }
+    const rows: ReportRow[] = [{ key: 'a', kind: 'body', cells: [cell] }]
+    const columns: ReportColumn[] = [{ key: 'pct', header: '%' }]
+    expect(copyText(HEADING, columns, rows)).not.toContain('51–55%')
+    expect(csvLines(HEADING, columns, rows, '/x').flat().join('|')).not.toContain('51–55%')
+  })
+
+  it('builds a pct with a note through pctValue', () => {
+    expect(pctValue(60, '51–55%: above')).toEqual({ kind: 'pct', value: 60, note: '51–55%: above' })
+    expect(pctValue(60)).toEqual({ kind: 'pct', value: 60 })
+    expect(pctValue(null, undefined)).toEqual({ kind: 'pct', value: null })
+  })
+})

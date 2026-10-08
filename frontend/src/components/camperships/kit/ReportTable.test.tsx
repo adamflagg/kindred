@@ -7,7 +7,14 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { countValue, moneyValue, textValue, type ReportColumn, type ReportRow } from './report'
+import {
+  countValue,
+  moneyValue,
+  pctValue,
+  textValue,
+  type ReportColumn,
+  type ReportRow,
+} from './report'
 import { ReportTable } from './ReportTable'
 
 const downloadCsv = vi.fn<(content: string, name: string) => void>()
@@ -220,5 +227,23 @@ describe('ReportTable', () => {
       'border-l'
     )
     expect(screen.getByText('$1,200').closest('td')?.className).not.toContain('border-l')
+  })
+
+  it("draws a cell's note as a muted second line under the figure, and keeps it out of the CSV", async () => {
+    renderTable({
+      rows: [
+        {
+          key: 'n',
+          kind: 'body',
+          cells: [textValue('00010'), { ...pctValue(60), note: '51–55%: above' }, moneyValue(5)],
+        },
+      ],
+    })
+    const note = screen.getByText('51–55%: above')
+    expect(note.className).toContain('text-xs')
+    expect(note.className).toContain('text-muted-foreground')
+    expect(note.parentElement).toHaveTextContent('60.0%')
+    await userEvent.click(screen.getByRole('button', { name: /Download CSV/ }))
+    expect(downloadCsv.mock.calls[0]?.[0]).not.toContain('51–55%')
   })
 })

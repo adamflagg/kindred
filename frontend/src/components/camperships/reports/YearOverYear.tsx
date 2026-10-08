@@ -24,6 +24,7 @@ import {
   phaseColumns,
   phaseLabels,
   phaseRows,
+  reconciliationWords,
   round1Rows,
   ROUND1_COLUMNS,
 } from './committeeModel'
@@ -95,58 +96,70 @@ export function YearOverYear({ view }: { view: AidView }) {
         label="year-over-year"
         emptyMessage="Nothing to show for this date."
       >
-        {(data) => (
-          <div className="space-y-4">
-            {data.not_built.map((item) => (
-              <p key={item.figure} className={REPORT_NOTE}>
-                {`Not built yet: ${item.reason}`}
-              </p>
-            ))}
-            <ReportTable
-              heading={committeeHeading(data, 'Round 1 phases, year over year (RPT-1)')}
-              columns={phaseColumns(share, numberOf, phaseLabels(data))}
-              rows={phaseRows(data, share)}
-              csvFilename={committeeCsvName(view, 'phases', share)}
-              link={link}
-              emptyText="No season has phases yet."
-              footnote="Phase 1 is Round 1 money on requests received by the deadline; phase 2, Round 1 after it; phase 3, appeals (D155). As offered never changes after posting; End of season is net of cancellations, and reads to date until the season closes. The band compares As offered."
-            />
-            <ReportTable
-              heading={committeeHeading(
-                data,
-                'Applications and Round 1 ask at the cutoff (RPT-2, RPT-6)'
-              )}
-              columns={applicationColumns(numberOf)}
-              rows={applicationRows(data)}
-              csvFilename={committeeCsvName(view, 'applications', share)}
-              link={link}
-              footnote="Round 1 asks only, as they stood at the cutoff; appeals are never part of it. A row headed headline − Σ pools is a typed season whose pools don't add up, shown rather than hidden."
-            />
-            <ReportTable
-              heading={committeeHeading(data, 'Budget against actuals by pool (RPT-7, RPT-24)')}
-              columns={budgetColumns(numberOf)}
-              rows={budgetRows(data)}
-              csvFilename={committeeCsvName(view, 'budget', share)}
-              link={link}
-              footnote="The camp's own money only, never Total Awards Granted (D106). The rules split is a reference (D119)."
-            />
-            <ReportTable
-              heading={committeeHeading(data, 'Applications and appeals (RPT-8)')}
-              columns={appealsColumns(numberOf)}
-              rows={appealsRows(data)}
-              csvFilename={committeeCsvName(view, 'appeals', share)}
-              link={link}
-              footnote="Finance's appeals: requests with any Round 2 or later ask, cancelled included. Not Development's appeals figure (a different population)."
-            />
-            <ReportTable
-              heading={committeeHeading(data, '% of ask awarded in Round 1 (RPT-13)')}
-              columns={ROUND1_COLUMNS}
-              rows={round1Rows(data)}
-              csvFilename={committeeCsvName(view, 'round1', share)}
-              link={link}
-            />
-          </div>
-        )}
+        {(data) => {
+          const reconciliation = reconciliationWords(data)
+          const phasesFootnote = (
+            <>
+              Phase 1 is Round 1 money on requests received by the deadline; phase 2, Round 1 after
+              it; phase 3, appeals (D155). As offered never changes after posting; End of season is
+              net of cancellations, and reads to date until the season closes. The band under a %
+              compares As offered.
+              {reconciliation !== null && <span className="block">{reconciliation}</span>}
+            </>
+          )
+          return (
+            <div className="space-y-4">
+              {data.not_built.map((item) => (
+                <p key={item.figure} className={REPORT_NOTE}>
+                  {`Not built yet: ${item.reason}`}
+                </p>
+              ))}
+              <ReportTable
+                heading={committeeHeading(data, 'Round 1 phases, year over year (RPT-1)')}
+                columns={phaseColumns(share, numberOf, phaseLabels(data))}
+                rows={phaseRows(data, share)}
+                csvFilename={committeeCsvName(view, 'phases', share)}
+                link={link}
+                emptyText="No season has phases yet."
+                footnote={phasesFootnote}
+              />
+              <ReportTable
+                heading={committeeHeading(
+                  data,
+                  'Applications and Round 1 ask at the cutoff (RPT-2, RPT-6)'
+                )}
+                columns={applicationColumns(numberOf)}
+                rows={applicationRows(data)}
+                csvFilename={committeeCsvName(view, 'applications', share)}
+                link={link}
+                footnote="Round 1 asks only, as they stood at the cutoff; appeals are never part of it. A row headed headline − Σ pools is a typed season whose pools don't add up, shown rather than hidden."
+              />
+              <ReportTable
+                heading={committeeHeading(data, 'Budget against actuals by pool (RPT-7, RPT-24)')}
+                columns={budgetColumns(numberOf)}
+                rows={budgetRows(data)}
+                csvFilename={committeeCsvName(view, 'budget', share)}
+                link={link}
+                footnote="The camp's own money only, never Total Awards Granted (D106). The rules split is a reference (D119)."
+              />
+              <ReportTable
+                heading={committeeHeading(data, 'Applications and appeals (RPT-8)')}
+                columns={appealsColumns(numberOf)}
+                rows={appealsRows(data)}
+                csvFilename={committeeCsvName(view, 'appeals', share)}
+                link={link}
+                footnote="Finance's appeals: requests with any Round 2 or later ask, cancelled included. Not Development's appeals figure (a different population)."
+              />
+              <ReportTable
+                heading={committeeHeading(data, '% of ask awarded in Round 1 (RPT-13)')}
+                columns={ROUND1_COLUMNS}
+                rows={round1Rows(data)}
+                csvFilename={committeeCsvName(view, 'round1', share)}
+                link={link}
+              />
+            </div>
+          )
+        }}
       </QueryGuard>
       <AidDefinitionNotes surface="reports-committee" />
     </div>

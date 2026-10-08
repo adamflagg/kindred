@@ -21,18 +21,20 @@ vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 let fetchSpy: MockInstance<typeof fetch>
+let committee = COMMITTEE
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const committeeCalls = () =>
   fetchSpy.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/committee'))
 
 beforeEach(() => {
+  committee = COMMITTEE
   fetchSpy = vi
     .spyOn(globalThis, 'fetch')
     .mockImplementation((url) =>
       Promise.resolve(
         String(url).includes('/definitions')
           ? json({ surface: 'reports-committee', notes: [] })
-          : json(COMMITTEE)
+          : json(committee)
       )
     )
 })
@@ -72,6 +74,30 @@ describe('YearOverYear (spec §9.7; S4-2)', () => {
     }
     expect(screen.getByText(/Not built yet: Enrollment % of goal/)).toBeInTheDocument()
     expect(committeeCalls()).toHaveLength(1)
+  })
+
+  it("puts the band words under the first phase's %, and draws the add-up check only when non-zero", async () => {
+    renderView()
+    const phases = await screen.findByRole('table', {
+      name: 'Round 1 phases, year over year (RPT-1)',
+    })
+    expect(
+      within(phases)
+        .getAllByRole('columnheader')
+        .filter((h) => h.textContent === 'End of season')
+    ).toHaveLength(4)
+    expect(within(phases).getByText('51–55%: above')).toBeInTheDocument()
+    expect(screen.getByText('Total − Σ phases: 2026 $10,000')).toBeInTheDocument()
+  })
+
+  it('draws no add-up check when every season adds up', async () => {
+    committee = {
+      ...COMMITTEE,
+      phases: COMMITTEE.phases.map((row) => ({ ...row, reconciliation: 0 })),
+    }
+    renderView()
+    await screen.findByRole('table', { name: 'Round 1 phases, year over year (RPT-1)' })
+    expect(screen.queryByText(/Total − Σ phases/)).toBeNull()
   })
 
   it('draws the phases switch as separate pills, the chosen one in forest', async () => {

@@ -9,11 +9,13 @@ import { formatMoney, moneyCsv } from './money'
 import type { CellValue } from './table'
 
 export type ReportValue =
-  | { readonly kind: 'money'; readonly value: number | null }
-  | { readonly kind: 'count'; readonly value: number | null }
-  | { readonly kind: 'pct'; readonly value: number | null }
-  | { readonly kind: 'text'; readonly value: string }
+  | { readonly kind: 'money'; readonly value: number | null; readonly note?: string | undefined }
+  | { readonly kind: 'count'; readonly value: number | null; readonly note?: string | undefined }
+  | { readonly kind: 'pct'; readonly value: number | null; readonly note?: string | undefined }
+  | { readonly kind: 'text'; readonly value: string; readonly note?: string | undefined }
 
+// A `note` is a muted second line under the figure (RPT-1's band words): drawn on screen only, never
+// in Copy or the CSV.
 export const moneyValue = (value: number | null | undefined): ReportValue => ({
   kind: 'money',
   value: value ?? null,
@@ -22,9 +24,10 @@ export const countValue = (value: number | null | undefined): ReportValue => ({
   kind: 'count',
   value: value ?? null,
 })
-export const pctValue = (value: number | null | undefined): ReportValue => ({
+export const pctValue = (value: number | null | undefined, note?: string): ReportValue => ({
   kind: 'pct',
   value: value ?? null,
+  ...(note === undefined ? {} : { note }),
 })
 export const textValue = (value: string): ReportValue => ({ kind: 'text', value })
 

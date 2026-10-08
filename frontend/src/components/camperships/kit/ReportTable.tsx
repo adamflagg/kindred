@@ -63,6 +63,17 @@ const BODY_KINDS = new Set(['body', 'end'])
 
 /** A cell as the kit draws it: money through `Money`, a count above 0 with a link as that link (D20). */
 function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
+  const figure = figureContent(cell, href)
+  if (cell.note === undefined) return figure
+  return (
+    <>
+      {figure}
+      <div className="text-muted-foreground text-xs font-normal">{cell.note}</div>
+    </>
+  )
+}
+
+function figureContent(cell: ReportValue, href: string | undefined): ReactNode {
   if (cell.kind === 'money') return <Money value={cell.value} />
   if (href !== undefined && cell.kind === 'count' && cell.value !== null && cell.value > 0) {
     return (

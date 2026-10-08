@@ -85,52 +85,59 @@ export function phaseColumns(
   noteOf: NoteOf,
   labels: PhaseLabels = DEFAULT_PHASE_LABELS
 ): ReportColumn[] {
-  const pct = share === 'budget' ? '% of budget' : 'share of the phases'
+  const pct = share === 'budget' ? '% of budget' : 'Share of the phases'
   return [
     { key: 'season', header: 'Season' },
     ...PHASE_NAMES.flatMap((group, index): ReportColumn[] => [
       { key: `p${String(index)}-offered`, header: labels.offered, group, divider: 'before' },
-      { key: `p${String(index)}-offeredPct`, header: pct, group },
       {
         key: `p${String(index)}-end`,
         header: labels.end,
         group,
         note: noteOf('round1_phases'),
       },
-      { key: `p${String(index)}-endPct`, header: pct, group },
-      { key: `p${String(index)}-band`, header: `Band (${labels.offered.toLowerCase()})`, group },
+      // The % is End of season's (R3); the band words sit under it as that cell's note.
+      { key: `p${String(index)}-pct`, header: pct, group },
     ]),
     { key: 'total', header: labels.end, group: 'Total', divider: 'before' },
     { key: 'totalPct', header: '% of budget', group: 'Total' },
     { key: 'budget', header: 'Budget', note: noteOf('finance_budget') },
     { key: 'overUnder', header: 'Over / under' },
-    { key: 'reconciliation', header: 'Total − Σ phases' },
   ]
 }
 
 export function phaseRows(committee: ApiAidCommitteeReport, share: PhaseShare): ReportRow[] {
   return committee.phases.map((row: ApiAidPhaseRow) => {
-    const offeredPct = share === 'budget' ? row.offered_pct_of_budget : row.offered_share_of_phases
     const endPct = share === 'budget' ? row.pct_of_budget : row.share_of_phases
     const cells: ReportValue[] = [textValue(seasonWords(row.year, row.basis, row.to_date))]
     for (let i = 0; i < PHASE_NAMES.length; i += 1) {
+      const band = row.bands[i]
       cells.push(
         moneyValue(row.offered[i]),
-        pctValue(offeredPct[i]),
         moneyValue(row.phases[i]),
-        pctValue(endPct[i]),
-        textValue(bandWords(row.bands[i]))
+        pctValue(endPct[i], band === null || band === undefined ? undefined : bandWords(band))
       )
     }
     cells.push(
       moneyValue(row.total),
       pctValue(row.total_pct_of_budget),
       moneyValue(row.budget),
-      textValue(overUnderWords(row.variance, row.side)),
-      moneyValue(row.reconciliation)
+      textValue(overUnderWords(row.variance, row.side))
     )
     return { key: `phases-${String(row.year)}-${row.basis}`, kind: 'body', cells }
   })
+}
+
+/**
+ * "Total − Σ phases: 2025 $1,200": the seasons whose typed total isn't the phases' sum, the server's
+ * figure for each (D21). Null when every season adds up: nothing is drawn.
+ */
+export function reconciliationWords(committee: ApiAidCommitteeReport): string | null {
+  const off = committee.phases.filter(
+    (row) => row.reconciliation !== null && row.reconciliation !== 0
+  )
+  if (off.length === 0) return null
+  return `Total − Σ phases: ${off.map((row) => `${String(row.year)} ${formatMoney(row.reconciliation)}`).join('; ')}`
 }
 
 const counted = (c: ApiAidCounted | null): ReportValue[] => [
