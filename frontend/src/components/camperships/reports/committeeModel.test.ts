@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { reportText } from '../kit/report'
 import { COMMITTEE } from './committeeFixtures'
 import {
+  appealsColumns,
   appealsRows,
+  applicationColumns,
   applicationRows,
   bandWords,
+  budgetColumns,
   budgetRows,
   committeeCsvName,
   committeeHeading,
@@ -15,6 +18,7 @@ import {
   phaseColumns,
   phaseLabels,
   phaseRows,
+  ROUND1_COLUMNS,
   round1Rows,
   seasonWords,
 } from './committeeModel'
@@ -160,5 +164,32 @@ describe('the other four tables', () => {
     expect(committeeCsvName(view, 'appeals', 'share')).toBe(
       'camperships-reports-year-over-year-appeals-2027.csv'
     )
+  })
+})
+
+describe("Year over year's dividers, where statistics-v2.html draws them (.bl)", () => {
+  const divided = (columns: readonly { key: string; divider?: 'before' | undefined }[]) =>
+    columns.filter((c) => c.divider === 'before').map((c) => c.key)
+
+  it('divides each phase and the total in RPT-1', () => {
+    expect(divided(phaseColumns('budget', () => null))).toEqual([
+      'p0-offered',
+      'p1-offered',
+      'p2-offered',
+      'total',
+    ])
+  })
+
+  it('divides the cutoff, received-since and season-end blocks in RPT-2/6', () => {
+    expect(divided(applicationColumns(() => null))).toEqual(['cutApps', 'sinceApps', 'endApps'])
+  })
+
+  it("divides the budget's figures from the pool, and the share, in RPT-7/24", () => {
+    expect(divided(budgetColumns(() => null))).toEqual(['budget', 'share'])
+  })
+
+  it('divides the figures from the season in RPT-8 and RPT-13', () => {
+    expect(divided(appealsColumns(() => null))).toEqual(['applications'])
+    expect(divided(ROUND1_COLUMNS)).toEqual(['awarded'])
   })
 })

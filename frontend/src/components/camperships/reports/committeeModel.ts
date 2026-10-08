@@ -89,7 +89,7 @@ export function phaseColumns(
   return [
     { key: 'season', header: 'Season' },
     ...PHASE_NAMES.flatMap((group, index): ReportColumn[] => [
-      { key: `p${String(index)}-offered`, header: labels.offered, group },
+      { key: `p${String(index)}-offered`, header: labels.offered, group, divider: 'before' },
       { key: `p${String(index)}-offeredPct`, header: pct, group },
       {
         key: `p${String(index)}-end`,
@@ -100,7 +100,7 @@ export function phaseColumns(
       { key: `p${String(index)}-endPct`, header: pct, group },
       { key: `p${String(index)}-band`, header: `Band (${labels.offered.toLowerCase()})`, group },
     ]),
-    { key: 'total', header: labels.end, group: 'Total' },
+    { key: 'total', header: labels.end, group: 'Total', divider: 'before' },
     { key: 'totalPct', header: '% of budget', group: 'Total' },
     { key: 'budget', header: 'Budget', note: noteOf('finance_budget') },
     { key: 'overUnder', header: 'Over / under' },
@@ -144,13 +144,19 @@ export function applicationColumns(noteOf: NoteOf): ReportColumn[] {
     { key: 'season', header: 'Season' },
     { key: 'pool', header: 'Pool', align: 'left' },
     { key: 'cutoff', header: 'Cutoff', align: 'left' },
-    { key: 'cutApps', header: 'Apps', group: 'At the cutoff', note: noteOf('apps') },
+    {
+      key: 'cutApps',
+      header: 'Apps',
+      group: 'At the cutoff',
+      note: noteOf('apps'),
+      divider: 'before',
+    },
     { key: 'cutAsked', header: 'Asked', group: 'At the cutoff' },
     { key: 'cutAvg', header: 'Avg ask', group: 'At the cutoff' },
-    { key: 'sinceApps', header: 'Apps', group: 'Received since' },
+    { key: 'sinceApps', header: 'Apps', group: 'Received since', divider: 'before' },
     { key: 'sinceAsked', header: 'Asked', group: 'Received since' },
     { key: 'sinceAvg', header: 'Avg ask', group: 'Received since' },
-    { key: 'endApps', header: 'Apps', group: 'Season end' },
+    { key: 'endApps', header: 'Apps', group: 'Season end', divider: 'before' },
     { key: 'endAsked', header: 'Asked', group: 'Season end' },
     { key: 'endAvg', header: 'Avg ask', group: 'Season end' },
     { key: 'endAsOf', header: 'As of', group: 'Season end' },
@@ -191,11 +197,11 @@ export function budgetColumns(noteOf: NoteOf): ReportColumn[] {
   return [
     { key: 'season', header: 'Season' },
     { key: 'pool', header: 'Pool', align: 'left' },
-    { key: 'budget', header: 'Budget', note: noteOf('finance_budget') },
+    { key: 'budget', header: 'Budget', note: noteOf('finance_budget'), divider: 'before' },
     { key: 'awarded', header: 'Awarded', note: noteOf('awarded') },
     { key: 'overUnder', header: 'Over / under' },
     { key: 'pct', header: '% of budget' },
-    { key: 'share', header: 'Pool share' },
+    { key: 'share', header: 'Pool share', divider: 'before' },
     { key: 'split', header: 'Rules split (a reference)' },
     { key: 'note', header: 'Note', align: 'left' },
   ]
@@ -222,7 +228,7 @@ export function budgetRows(committee: ApiAidCommitteeReport): ReportRow[] {
 export function appealsColumns(noteOf: NoteOf): ReportColumn[] {
   return [
     { key: 'season', header: 'Season' },
-    { key: 'applications', header: 'Applications' },
+    { key: 'applications', header: 'Applications', divider: 'before' },
     { key: 'appeals', header: 'Appeals', note: noteOf('appeals') },
     { key: 'rate', header: 'Appeal rate' },
   ]
@@ -244,7 +250,7 @@ export function appealsRows(committee: ApiAidCommitteeReport): ReportRow[] {
 export const ROUND1_COLUMNS: readonly ReportColumn[] = [
   { key: 'season', header: 'Season' },
   { key: 'pool', header: 'Pool', align: 'left' },
-  { key: 'awarded', header: 'R1 awarded' },
+  { key: 'awarded', header: 'R1 awarded', divider: 'before' },
   { key: 'asked', header: 'R1 asked' },
   { key: 'inBudget', header: 'R1 asked (in budget)' },
   { key: 'pct', header: '% of ask in R1' },
