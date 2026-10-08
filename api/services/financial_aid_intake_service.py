@@ -345,20 +345,15 @@ class FinancialAidIntakeService:
         async with season_lock(year):
             return await self._build(year)
 
-    async def _age_rule(
-        self, year: int, rules: AidRules | None, sessions: Sequence[SessionRow], billing: Sequence[BillingLine]
-    ) -> AgeRule | None:
-        """Infant or not on each session's first day, under the season's cutoff (Task 4).
-        None when the season has no rules or no cutoff: billing's labels then stand."""
-        if rules is None or rules.cost.infant_age_cutoff_months is None:
-            return None
-        season_rules: AidRules = rules
+    async def _age_rule(self, year: int, sessions: Sequence[SessionRow], billing: Sequence[BillingLine]) -> AgeRule:
+        """Infant or not on each session's first day: under 2 (Task 4; owner 2026-10-08, a fixed fact, so it holds
+        before the season's rules are approved too). An unknown date answers None, and billing's label stands."""
         first_days = {s.cm_id: _day(s.start_date) for s in sessions}
         people = [line.person_cm_id for line in billing if line.person_cm_id > 0]
         births = {p: _day(text) for p, text in (await self._store.fetch_birthdates(year, people)).items()}
 
         def rule(person_cm_id: int, session_cm_id: int) -> bool | None:
-            return is_infant(births.get(person_cm_id), first_days.get(session_cm_id), season_rules)
+            return is_infant(births.get(person_cm_id), first_days.get(session_cm_id))
 
         return rule
 
@@ -407,7 +402,7 @@ class FinancialAidIntakeService:
             households.append(HouseholdIntake(household_cm_id, members, answers, flags, specs))
 
         family_households = [h.household_cm_id for h in households if any(s.person_cm_id == 0 for s in h.requests)]
-        billed = billed_headcounts(billing, family_households, await self._age_rule(year, rules, sessions, billing))
+        billed = billed_headcounts(billing, family_households, await self._age_rule(year, sessions, billing))
         # 3c-2: each camper-level request records its camper's equity answers, so a past date can price
         # them as they stood. Live pricing keeps reading the synced answers (owner ruling 2026-09-30).
         people = sorted({s.person_cm_id for h in households for s in h.requests if s.person_cm_id > 0})

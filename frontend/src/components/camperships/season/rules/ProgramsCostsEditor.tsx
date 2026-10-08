@@ -349,7 +349,7 @@ export function ProgramsCostsEditor({
               <span>{`· ${String(rows.filter((r) => !isOff(r)).length)} running`}</span>
               {g.agCount > 0 && <span>{`· ${agWords(g.agCount)}`}</span>}
             </div>
-            {perPerson && <FormulaLine cutoff={doc.cost.infant_age_cutoff_months} />}
+            {perPerson && <FormulaLine />}
             {items.length > 0 && (
               <Flow
                 items={items}

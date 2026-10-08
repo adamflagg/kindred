@@ -64,22 +64,14 @@ export const PerPersonHead = ({ editing = false }: { editing?: boolean }) => (
 )
 
 /**
- * The per-person formula, once under a group's header (spec §5.2 E). With no infant age set, intake keeps CampMinder's
- * billing labels (`bunking/financial_aid/headcount.py`), so the line says that rather than a bare "not set".
+ * The per-person formula, once under a group's header (spec §5.2 E). Infants are under 2 on the session's first day, a
+ * fixed fact (owner 2026-10-08; `bunking/financial_aid/headcount.py` INFANT_UNDER_MONTHS), not a season setting.
  */
-export function FormulaLine({ cutoff }: { cutoff: number | null | undefined }) {
+export function FormulaLine() {
   return (
     <p className={CS_SMALL}>
-      Per person: everyone but infants pays the standard rate, infants the infant rate ·{' '}
-      {cutoff == null ? (
-        'who counts as an infant: as CampMinder bills them'
-      ) : (
-        <>
-          infants are under{' '}
-          <b className="text-foreground font-medium">{`${String(cutoff)} months`}</b> on the
-          session&apos;s first day
-        </>
-      )}
+      Per person: everyone but infants pays the standard rate, infants the infant rate · infants are
+      under <b className="text-foreground font-medium">2</b> on the session’s first day
     </p>
   )
 }

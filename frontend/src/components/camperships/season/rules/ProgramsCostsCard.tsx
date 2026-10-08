@@ -288,7 +288,7 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
           )}
           {g.agCount > 0 && <span>{`· ${agWords(g.agCount)}`}</span>}
         </div>
-        {hasPerPerson && <FormulaLine cutoff={doc.cost.infant_age_cutoff_months} />}
+        {hasPerPerson && <FormulaLine />}
         {items.length > 0 && <Flow items={items} width={width} minColumn={MIN_COLUMN.read} />}
         {g.notRunning.length > 0 && (
           <div className={FOLD}>

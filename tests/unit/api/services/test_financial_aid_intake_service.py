@@ -234,14 +234,15 @@ async def test_the_first_run_after_approval_resolves_waiting_requests_in_place()
     await service.build(YEAR)
     first_ids = set(store.requests)
     family = store.request_for(household=1000001, program="family_camp")
-    assert (family.headcount_non_infant, family.headcount_infant) == (3, 1)  # billing's labels, for now
+    # Under 2 on the first day is a fixed fact (owner 2026-10-08), not a rules setting: it holds before approval too.
+    assert (family.headcount_non_infant, family.headcount_infant) == (4, 0)
     store.rules = intake_rules()  # finance approves
     report = await service.build(YEAR)
     assert set(store.requests) == first_ids  # the same requests: created dates untouched
     assert (report.requests_created, report.awaiting_approved_rules) == (0, 0)
     assert all(f.get("code") != "awaiting_approved_rules" for r in store.requests.values() for f in r.flags)
     family = store.request_for(household=1000001, program="family_camp")
-    assert (family.headcount_non_infant, family.headcount_infant) == (4, 0)  # the infant rule, now approved
+    assert (family.headcount_non_infant, family.headcount_infant) == (4, 0)  # unchanged by the approval
 
 
 @pytest.mark.asyncio

@@ -145,10 +145,10 @@ describe('ProgramsCostsCard', () => {
     )
   })
 
-  it('says, with no infant age set, that CampMinder’s billing decides who is an infant', () => {
+  it('says infants are under 2 on the session’s first day: a fixed fact, not a setting', () => {
     render(<ProgramsCostsCard {...props()} />)
     expect(screen.getByText(/everyone but infants pays the standard rate/)).toHaveTextContent(
-      'who counts as an infant: as CampMinder bills them'
+      'infants are under 2 on the session’s first day'
     )
   })
 
