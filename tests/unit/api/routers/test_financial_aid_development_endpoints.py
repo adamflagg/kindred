@@ -99,7 +99,9 @@ def test_a_dated_column_on_demand_reaches_the_service_as_season_and_day() -> Non
     service.development.assert_awaited_with(2027, column=DatedColumn(season=2027, as_of=date(2027, 3, 5)))
 
 
-@pytest.mark.parametrize("column", ["2027", "2027-03-05", "27:2027-03-05", "2027:2027-3-5", "2027:2027-02-30"])
+@pytest.mark.parametrize(
+    "column", ["2027", "2027-03-05", "27:2027-03-05", "2027:2027-3-5", "2027:20270305", "2027:2027-02-30"]
+)
 def test_a_malformed_dated_column_is_refused_before_the_service(column: str) -> None:
     service = patch("api.routers.financial_aid.FinancialAidDevelopmentService").start().return_value
     service.development = AsyncMock(side_effect=ReportsRefusedError("stub"))
