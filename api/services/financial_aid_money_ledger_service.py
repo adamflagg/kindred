@@ -39,6 +39,7 @@ from api.services.financial_aid_money_ledger import (
     ledger_pieces,
     total_lines,
 )
+from api.services.financial_aid_program_labels import program_labels
 from api.services.financial_aid_reconciliation import SeasonLedger, camp_date
 from api.services.financial_aid_to_place import LeftLine, SourceRow
 from bunking.financial_aid.money import ZERO
@@ -64,6 +65,7 @@ class _Read:
     families: dict[int, str]
     persons: dict[int, str]
     sources: dict[str, SourceRow]
+    program_labels: Mapping[str, str]  # the season's rules label for each program key
 
 
 def _name(names: Mapping[int, str], household: int) -> str:
@@ -122,7 +124,8 @@ class MoneyLedgerService:
         families, persons = await self._store.fetch_names(
             year, {p.family[0] for p in pieces}, {p.person_cm_id for p in pieces if p.person_cm_id > 0}
         )
-        return _Read(day, axis if day is not None else None, pieces, families, persons, sources)
+        labels = program_labels(season.rules.document if season.rules is not None else None)
+        return _Read(day, axis if day is not None else None, pieces, families, persons, sources, labels)
 
     async def ledger(
         self,
@@ -194,6 +197,7 @@ class MoneyLedgerService:
                 description=described(lt.first.source_key),
                 source_family=lt.first.source_family,
                 program=lt.first.program,
+                program_label=read.program_labels.get(lt.first.program, ""),
                 amount=money(lt.amount),
                 posted_on=camp_date(lt.first.post_date) if lt.first.post_date is not None else None,
                 is_reversed=not lt.first.live,

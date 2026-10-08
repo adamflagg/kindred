@@ -336,6 +336,36 @@ async def test_summary_splits_each_program_by_who_paid() -> None:
 
 
 @pytest.mark.asyncio
+async def test_summary_names_each_program_with_the_rules_label_not_its_key() -> None:
+    """The screens show `program_label`; the key (a program family) is for filtering. The words come from the season's
+    rules programs. A bucket the rules don't name (ambiguous, unattributed) carries ''."""
+    asked: list[int] = []
+
+    async def labels(year: int) -> dict[str, str]:
+        asked.append(year)
+        return {"summer": "Fictional Summer Program", "quest": "Fictional Quest"}
+
+    got = await FinancialAidLedgerService(_repo(fetch_postings=_five_postings()), program_labels=labels).summary(2026)
+    assert asked == [2026]
+    assert [(r.program, r.program_label) for r in got.by_program] == [
+        ("ambiguous", ""),
+        ("summer", "Fictional Summer Program"),
+        ("unattributed", ""),
+    ]
+    assert {(c.program, c.program_label) for c in got.cells} == {
+        ("ambiguous", ""),
+        ("summer", "Fictional Summer Program"),
+        ("unattributed", ""),
+    }
+
+
+@pytest.mark.asyncio
+async def test_summary_labels_default_to_empty_without_a_label_source() -> None:
+    got = await FinancialAidLedgerService(_repo(fetch_postings=_five_postings())).summary(2026)
+    assert {r.program_label for r in got.by_program} == {""}
+
+
+@pytest.mark.asyncio
 async def test_summary_camp_aid_levels_are_shares_of_camp_aid_only() -> None:
     """The mock's line: placed / at household level / not placed, each a share of camp aid. The outside grant at
     level none (9003) is not in "not placed"."""
@@ -589,3 +619,13 @@ async def test_data_quality_lists_off_season_sessions_and_aid_like_rows_outside_
     assert [
         (a.category_cm_id, a.description, a.transactions, a.net_posted) for a in got.aid_like_outside_categories
     ] == [(5000, "Summer Grant", 2, -300.0)]
+
+
+def test_program_labels_come_from_the_rules_programs_and_are_empty_without_rules() -> None:
+    from api.services.financial_aid_program_labels import program_labels
+    from tests.unit.bunking.financial_aid.fixtures import fictional_rules
+
+    labels = program_labels(fictional_rules())
+    assert labels["summer"] == "Summer"
+    assert labels["family_camp"] == "Family camp"
+    assert program_labels(None) == {}

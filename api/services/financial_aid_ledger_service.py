@@ -51,6 +51,7 @@ from api.schemas.financial_aid import (
     WhoPaid,
 )
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_program_labels import ProgramLabelLoader
 from api.services.financial_aid_repository import FaRequestRow, FinancialAidRepository
 from bunking.financial_aid.errors import FinancialAidError
 
@@ -338,8 +339,12 @@ def _unclassified(postings: Iterable[Any], sources: Mapping[str, Any]) -> list[U
 
 
 class FinancialAidLedgerService:
-    def __init__(self, repo: FinancialAidRepository) -> None:
+    def __init__(self, repo: FinancialAidRepository, *, program_labels: ProgramLabelLoader | None = None) -> None:
         self.repo = repo
+        self._program_labels = program_labels  # a season's rules labels by program key; None: no labels
+
+    async def _labels(self, year: int) -> Mapping[str, str]:
+        return await self._program_labels(year) if self._program_labels is not None else {}
 
     async def _sources_by_key(self) -> dict[str, Any]:
         return {str(s.description_key): s for s in await self.repo.fetch_sources()}
@@ -430,6 +435,7 @@ class FinancialAidLedgerService:
         season's three figures, and camp aid's shares by how far it was placed (a split line's placed dollars count as
         placed, D151)."""
         postings, undated = await self._counted(year, as_of)
+        names = await self._labels(year)
         amounts: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
         counts: Counter[tuple[str, str]] = Counter()
         households: dict[tuple[str, str], set[int]] = defaultdict(set)
@@ -469,6 +475,7 @@ class FinancialAidLedgerService:
         cells = [
             SummaryCell(
                 program=k[0],
+                program_label=names.get(k[0], ""),
                 source_family=k[1],
                 amount=money(amounts[k]),
                 postings=counts[k],
@@ -479,6 +486,7 @@ class FinancialAidLedgerService:
         by_program = [
             ProgramSplit(
                 program=program,
+                program_label=names.get(program, ""),
                 camp_aid=money(split[program]["camp"]),
                 outside_grants=money(split[program]["outside"]),
                 unclassified=money(split[program]["unclassified"]),
