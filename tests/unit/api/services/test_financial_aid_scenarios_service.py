@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -1423,6 +1424,18 @@ async def test_a_promotion_after_the_lock_keeps_the_pricing_total_and_lands_the_
     draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=1, acknowledged={}, actor=FINANCE)
     assert draft.version.document.budget.total == intake_rules().budget.total
     assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_options_cannot_be_promoted() -> None:
+    """Review minor 7: on a done season every kept option says why it can't become the rules draft."""
+    world = await _started()
+    world.rules.season_state = AsyncMock(return_value=(True, YEAR + 1))  # type: ignore[method-assign]  # the rules service's one test of "done"
+    options = (await world.service.workspace(YEAR, FINANCE)).options
+    assert options
+    assert {(o.promotable, o.blocked) for o in options} == {
+        (False, f"{YEAR} is done: a sandbox never writes a done season")
+    }
 
 
 @pytest.mark.asyncio
