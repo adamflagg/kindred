@@ -16,6 +16,7 @@ import type {
   ApiAidApprovedRules,
   ApiAidGrid,
   ApiAidHistoryOperationDetail,
+  ApiAidReportRequestIds,
   ApiAidRound,
 } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
@@ -60,6 +61,15 @@ let operation: {
 }
 vi.mock('../../hooks/camperships/useAidHistory', () => ({
   useAidHistoryOperation: () => operation,
+}))
+// The requests behind a Reports count (slice 4 J): set per test.
+let reportIdsRead: {
+  data: ApiAidReportRequestIds | undefined
+  error: Error | null
+  refetch?: () => unknown
+}
+vi.mock('../../hooks/camperships/useAidReportRequests', () => ({
+  useAidReportRequests: () => reportIdsRead,
 }))
 let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
@@ -151,6 +161,7 @@ beforeEach(() => {
   keyAsk.mockClear()
   grid = { data: LIVE, isLoading: false, error: null }
   operation = { data: undefined, error: null, isLoading: false }
+  reportIdsRead = { data: undefined, error: null }
   granted = ['financial_aid.view']
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
@@ -466,7 +477,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText(/The 0 requests/)).toBeNull()
   })
 
-  it('says a failed operation read failed, with Try again, rather than "0 requests"', async () => {
+  it('says a failed operation read failed, with Try Again, rather than "0 requests"', async () => {
     const refetch = vi.fn()
     operation = {
       data: undefined,
@@ -477,7 +488,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
     expect(screen.getByText(/Couldn't read that History operation/)).toBeInTheDocument()
     expect(screen.queryByText(/The 0 requests/)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
@@ -497,6 +508,61 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(where).toHaveTextContent('/aid/households/')
     expect(where).toHaveTextContent('live=1')
     expect(where).not.toHaveTextContent('op=')
+  })
+
+  describe("a Reports count's requests (slice 4 J; D20)", () => {
+    const COUNT = `/aid/requests?report=${encodeURIComponent('statistics?part=tier&tier=1&count=apps&round=1')}`
+    const ids = (requestIds: string[]): ApiAidReportRequestIds => ({
+      year: 2027,
+      as_of: null,
+      as_of_axis: null,
+      figures_on: '2027-04-01',
+      request_set: null,
+      request_ids: requestIds,
+    })
+
+    it('shows exactly the requests the count counts, with its line and Show All', async () => {
+      reportIdsRead = { data: ids([GRID_ROWS[0]!.request_id]), error: null }
+      renderAt(COUNT)
+      expect(screen.getByText(/The 1 request behind one Statistics count/)).toBeInTheDocument()
+      expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+      for (const other of ['Samuel Johnson', 'Liam Garcia', 'Olivia Chen', 'Riley Sam']) {
+        expect(screen.queryByText(other)).toBeNull()
+      }
+      await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+      expect(screen.getByTestId('where')).not.toHaveTextContent('report=')
+      expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    })
+
+    it('shows none of the rows while the ids are out, and says so', () => {
+      renderAt(COUNT)
+      expect(screen.getByText(/Reading the requests behind one Reports count/)).toBeInTheDocument()
+      expect(screen.queryByText('Emma Johnson')).toBeNull()
+    })
+
+    it('says a failed read failed, with Try Again', async () => {
+      const refetch = vi.fn()
+      reportIdsRead = { data: undefined, error: new Error('boom'), refetch }
+      renderAt(COUNT)
+      expect(
+        screen.getByText(/Couldn't read the requests behind that Reports count/)
+      ).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
+      expect(refetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the count on view links but off the household link, which the walk would ignore', async () => {
+      reportIdsRead = { data: ids([GRID_ROWS[0]!.request_id]), error: null }
+      renderAt(COUNT)
+      expect(viewLink('Needs an offer')).toHaveAttribute(
+        'href',
+        expect.stringContaining('report=statistics')
+      )
+      await userEvent.click(screen.getByRole('link', { name: 'Emma Johnson' }))
+      const where = screen.getByTestId('where')
+      expect(where).toHaveTextContent('/aid/households/')
+      expect(where).not.toHaveTextContent('report=')
+    })
   })
 
   it('carries the Season figure to the household page, so the walk keeps it', async () => {

@@ -3,8 +3,10 @@
  * Rounds & budget Posted or Accepted figure opens exactly the requests it counts. Hidden: no chip and
  * no control; the grid says what it is on a line of its own, with Show All.
  *
- * INTERIM, per the owner 10-06 ("a but c eventually"): slice 4 J replaces it with the server sending
- * each figure's request ids (a today=-style key), so this module is meant to be swapped out whole.
+ * INTERIM, per the owner 10-06 ("a but c eventually"): the server sending each figure's request ids
+ * replaces it, so this module is meant to be swapped out whole. Slice 4 J built that for Reports
+ * counts (`?report=`, reportFilter.ts, on #2974's routes); a Season figure needs its own ids route
+ * first, so this module stays until one exists.
  * Everything it knows lives here; GridFilters, useGridParams, filterRows, AidRequestsPage and the
  * queue walk only carry it.
  *

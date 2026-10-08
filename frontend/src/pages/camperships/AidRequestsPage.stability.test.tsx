@@ -29,6 +29,10 @@ vi.mock('../../hooks/camperships/useAidGrid', () => ({
 vi.mock('../../hooks/camperships/useAidHistory', () => ({
   useAidHistoryOperation: () => ({ data: undefined, error: null, isLoading: false }),
 }))
+// The page reads a Reports count's requests for `?report=` (slice 4 J): idle here, no auth provider needed.
+vi.mock('../../hooks/camperships/useAidReportRequests', () => ({
+  useAidReportRequests: () => ({ data: undefined, error: null }),
+}))
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => ({ data: undefined }),
 }))
