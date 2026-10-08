@@ -81,6 +81,20 @@ export function sourceFamilyOptions(rows: readonly ApiAidSourceRow[]): string[] 
   return [...new Set(rows.map((r) => r.source_family))].filter((f) => f !== '').sort()
 }
 
+/**
+ * A select's choices plus the value the URL sends when none of them is it (a stale or hand-edited
+ * `?source=`/`?program=`): what is sent is what is shown, so the select never says "all" over a
+ * filtered read.
+ */
+export function withSentValue(
+  options: ReadonlyArray<{ readonly value: string; readonly label: string }>,
+  sent: string | null,
+  label: (key: string) => string
+): ReadonlyArray<{ readonly value: string; readonly label: string }> {
+  if (sent === null || options.some((o) => o.value === sent)) return options
+  return [...options, { value: sent, label: label(sent) }]
+}
+
 /** "6 · 2 reversed", or "3". */
 export function linesWords(lines: number, reversed: number): string {
   return reversed > 0 ? `${String(lines)} · ${String(reversed)} reversed` : String(lines)

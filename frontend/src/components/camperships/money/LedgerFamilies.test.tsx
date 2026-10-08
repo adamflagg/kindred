@@ -157,4 +157,44 @@ describe('Money › Ledger family rows (P-22)', () => {
         .map((o) => o.textContent)
     ).toEqual(['all', 'camp fa', 'named fund', 'other outside', 'placeholder', 'unclassified'])
   })
+
+  it('shows a stale or hand-edited ?source= and ?program= in its select, since that is what is sent', async () => {
+    renderAt('/aid/money/ledger?source=old_family&program=old_program')
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    expect(ledgerCalls()[0]).toBe(
+      '/api/financial-aid/money/2027/ledger?source=old_family&program=old_program'
+    )
+    const source = screen.getByRole('combobox', { name: 'Source' })
+    const program = screen.getByRole('combobox', { name: 'Program' })
+    expect(source).toHaveDisplayValue('old family')
+    expect(program).toHaveDisplayValue('Old program')
+    // A value the select already offers is not listed twice.
+    expect(within(source).getAllByRole('option', { name: 'camp fa' })).toHaveLength(1)
+  })
+
+  it('disables the two totals while a refiltered read shows the old rows, then enables them', async () => {
+    renderAt('/aid/money/ledger')
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    const totals = () => within(screen.getByTestId('ledger-totals')).getAllByRole('button')
+    expect(totals()).toHaveLength(2)
+    for (const b of totals()) expect(b).toBeEnabled()
+    let release: (r: Response) => void = () => undefined
+    const held = new Promise<Response>((resolve) => {
+      release = resolve
+    })
+    const normal = fetchSpy.getMockImplementation()
+    fetchSpy.mockImplementation((url, init) =>
+      String(url).includes('level=household') ? held : (normal?.(url, init) as Promise<Response>)
+    )
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Level' }),
+      'household level'
+    )
+    await waitFor(() => expect(ledgerCalls().at(-1)).toContain('level=household'))
+    for (const b of totals()) expect(b).toBeDisabled()
+    release(new Response(JSON.stringify(LEDGER), { status: 200 }))
+    await waitFor(() => {
+      for (const b of totals()) expect(b).toBeEnabled()
+    })
+  })
 })

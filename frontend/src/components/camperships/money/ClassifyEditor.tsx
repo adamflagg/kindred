@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useFreshAidSources } from '../../../hooks/camperships/useAidSources'
 import { useAidClassifySource } from '../../../hooks/camperships/useAidSourceWrites'
@@ -78,6 +78,11 @@ export function ClassifyEditor({
   }, [fresh, initial])
 
   const read = readDraft(draft)
+  // The draft as it stands now: typing during the pre-send re-check is what gets sent.
+  const draftRef = useRef(draft)
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
   const families = [...new Set([...familyOptions(rows), ...(draft.family ? [draft.family] : [])])]
   const funders: string[] = [
     ...new Set([...OFFERED_FUNDERS, ...(draft.funder ? [draft.funder] : [])]),
@@ -109,8 +114,10 @@ export function ClassifyEditor({
       setProblem(movedWords(changed))
       return
     }
+    const now = readDraft(draftRef.current)
+    if (!now.ok) return
     try {
-      await classify.mutateAsync({ sourceId: initial.id, body: read.body })
+      await classify.mutateAsync({ sourceId: initial.id, body: now.body })
       onDone(`${initial.description}: classification saved, with your note.`)
     } catch (caught) {
       setProblem(refusalWords(caught))

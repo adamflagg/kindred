@@ -26,6 +26,7 @@ import {
   parseLedgerFilters,
   parseLinesTotal,
   sourceFamilyOptions,
+  withSentValue,
 } from './ledgerFamiliesModel'
 import { LedgerLines } from './LedgerLines'
 import { keyWords, PROGRAM_FAMILIES } from './sourcesModel'
@@ -173,13 +174,21 @@ export function LedgerFamilies({ view }: { view: AidView }) {
         'source',
         'Source',
         filters.source,
-        sourceOptions.map((s) => ({ value: s, label: keyWords(s) }))
+        withSentValue(
+          sourceOptions.map((s) => ({ value: s, label: keyWords(s) })),
+          filters.source,
+          keyWords
+        )
       )}
       {select(
         'program',
         'Program',
         filters.program,
-        PROGRAM_FAMILIES.map((p) => ({ value: p, label: programLabel(names, p) }))
+        withSentValue(
+          PROGRAM_FAMILIES.map((p) => ({ value: p, label: programLabel(names, p) })),
+          filters.program,
+          (key) => programLabel(names, key)
+        )
       )}
       {select(
         'level',
@@ -226,6 +235,9 @@ export function LedgerFamilies({ view }: { view: AidView }) {
                   <button
                     type="button"
                     className={CS_LINK}
+                    // Placeholder rows are the old filters' totals: opening them would show lines
+                    // under a heading that differs from the button.
+                    disabled={ledger.isPlaceholderData}
                     onClick={() => setParam('lines', total)}
                   >
                     {`${LEDGER_TOTAL_WORDS[total]} `}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useFreshAidFundingSources } from '../../../hooks/camperships/useAidFundingSources'
 import { useAidSetSourceGroup } from '../../../hooks/camperships/useAidSourceWrites'
@@ -79,6 +79,11 @@ export function GroupEditor({
     }
   }, [fresh, initial])
 
+  // The draft as it stands now: typing during the pre-send re-check is what gets sent.
+  const draftRef = useRef(draft)
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
   const set = (patch: Partial<GroupDraft>) => setDraft((d) => ({ ...d, ...patch }))
   const ready = opened !== null && groupEdited(opened, draft) && !save.isPending
 
@@ -110,7 +115,7 @@ export function GroupEditor({
       const out = await save.mutateAsync({
         year,
         sourceId: initial.source_id,
-        body: groupBody(draft),
+        body: groupBody(draftRef.current),
       })
       onDone(
         `${row.description}: reporting group ${out.group_label || 'none'}, ${out.incentive ? 'incentive' : 'need-based'}.`

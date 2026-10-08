@@ -138,6 +138,21 @@ export function LedgerLines({
 
   return (
     <section className={`${CS_CARD} space-y-2 p-3`} data-testid="ledger-lines">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className={CS_LABEL}>
+          {lines.data !== undefined && (
+            <>
+              {`${LEDGER_TOTAL_WORDS[lines.data.total]} ${formatMoney(lines.data.amount)} · the ${String(lines.data.lines.length)} ${lines.data.lines.length === 1 ? 'line' : 'lines'} behind it`}
+              {/* R3-14: the amount counts live lines only; say how many reversed ones it leaves out. */}
+              {reversedWords(lines.data.lines.filter((l) => l.is_reversed).length)}
+            </>
+          )}
+        </p>
+        {/* Outside the guard: a loading or failed read must never pin the card open. */}
+        <button type="button" className={CS_BTN2} onClick={onClose}>
+          Close
+        </button>
+      </div>
       <QueryGuard
         isLoading={lines.isLoading}
         // Owner ruling Group 5: a failed background refetch keeps what loaded.
@@ -146,26 +161,14 @@ export function LedgerLines({
         label="the lines behind the total"
       >
         {(data) => (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className={CS_LABEL}>
-                {`${LEDGER_TOTAL_WORDS[data.total]} ${formatMoney(data.amount)} · the ${String(data.lines.length)} ${data.lines.length === 1 ? 'line' : 'lines'} behind it`}
-                {/* R3-14: the amount counts live lines only; say how many reversed ones it leaves out. */}
-                {reversedWords(data.lines.filter((l) => l.is_reversed).length)}
-              </p>
-              <button type="button" className={CS_BTN2} onClick={onClose}>
-                Close
-              </button>
-            </div>
-            <AidTable
-              rows={data.lines}
-              columns={columns}
-              rowKey={lineKey}
-              urlPrefix="lines_"
-              csvFilename={ledgerLinesCsvName(view.year, total, filters, asOf)}
-              emptyText="No lines make this total."
-            />
-          </>
+          <AidTable
+            rows={data.lines}
+            columns={columns}
+            rowKey={lineKey}
+            urlPrefix="lines_"
+            csvFilename={ledgerLinesCsvName(view.year, total, filters, asOf)}
+            emptyText="No lines make this total."
+          />
         )}
       </QueryGuard>
     </section>
