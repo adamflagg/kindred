@@ -23,6 +23,13 @@ vi.mock('../../components/camperships/money/ToPlaceTab', () => ({
   },
 }))
 
+vi.mock('../../components/camperships/money/LedgerTab', () => ({
+  LedgerTab: () => <div>Ledger body</div>,
+}))
+vi.mock('../../components/camperships/money/SourcesTab', () => ({
+  SourcesTab: () => <div>Sources body</div>,
+}))
+
 function Where() {
   const { pathname, search } = useLocation()
   return <div data-testid="where">{pathname + search}</div>
@@ -94,11 +101,21 @@ describe('AidMoneyPage (spec §8.1; D62)', () => {
     expect(screen.getByText('As of May 1, 2027')).toBeInTheDocument()
   })
 
-  it('says which tabs are still to come in slice 3', () => {
+  it("shows Sources and the Ledger on their tabs, each under the mock's purpose line", () => {
     renderAt('/aid/money/sources')
+    expect(screen.getByText('Sources body')).toBeInTheDocument()
     expect(
-      screen.getByText('Money › Sources is built in a later part of slice 3.')
+      screen.getByText("Finance's list of CampMinder descriptions and how each one is classified.")
     ).toBeInTheDocument()
+  })
+
+  it('shows the Ledger on a past date with no "shows today" line: its totals read that day', () => {
+    renderAt('/aid/money/ledger?as_of=2027-05-01')
+    expect(screen.getByText('Ledger body')).toBeInTheDocument()
+    expect(
+      screen.getByText("One row per family, plus finance's posted totals by program and source.")
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/This tab shows today/)).toBeNull()
   })
 })
 
