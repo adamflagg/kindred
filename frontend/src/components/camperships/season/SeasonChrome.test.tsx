@@ -291,6 +291,14 @@ describe('SeasonChrome: a done season (spec §11.3)', () => {
     ])
   })
 
+  // A done season usually has no draft left: finance's draft read is a 404, and the approved rules still say done.
+  it('finance with no draft reads done from the approved rules', () => {
+    granted = FINANCE
+    approved = { season_done: true }
+    const { chrome } = renderProbe({ failure: new AidApiError('No rules draft for 2026', 404) })
+    expect([chrome().done, chrome().locked, chrome().unreadable]).toEqual([true, true, null])
+  })
+
   it('the registrar reads done from the approved rules', () => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     approved = { season_done: true }

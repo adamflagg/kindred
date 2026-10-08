@@ -45,10 +45,11 @@ export function SeasonChromeProvider({
   const { hasPermission } = usePermissions()
   const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
   const draft = useAidRulesDraft({ enabled: finance })
-  // Finance reads `season_done` off the draft; everyone else off the approved rules (spec §11.3).
-  const approved = useAidApprovedRules(null, { enabled: !finance })
+  // Finance reads `season_done` off the draft; everyone else off the approved rules (spec §11.3). A done season
+  // usually has no draft left (finance's draft read is a 404), so finance falls back to the approved rules too.
+  const approved = useAidApprovedRules(null)
   const read = finance ? draft : approved
-  const done = read.data?.season_done === true
+  const done = (read.data?.season_done ?? approved.data?.season_done) === true
   // A 503: the server couldn't read the dashboard's season, so it treats no season as open. Neither does the screen.
   const unreadable =
     read.error !== null && hasStatus(read.error, 503) && !read.data ? read.error.message : null
