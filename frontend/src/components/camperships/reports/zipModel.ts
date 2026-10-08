@@ -77,3 +77,10 @@ export function zipCsvName(view: AidView, zip: ApiAidZip, table: string): string
     season: view.year,
   })
 }
+
+/** Why there's no aid table yet, in plain words: the server's reason carries an internal id. */
+export function noAidWords(zip: ApiAidZip): string | null {
+  return zip.with_aid === null
+    ? `Campers who got aid by ZIP start with ${String(zip.year)}'s decisions.`
+    : null
+}

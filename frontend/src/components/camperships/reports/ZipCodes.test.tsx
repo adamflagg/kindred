@@ -95,10 +95,13 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
   it("says why there's no aid table before the season's decisions", async () => {
     answer = () => ZIP_NO_AID
     renderZip()
-    expect(await screen.findByText(/Not built yet: The aid table waits/)).toBeInTheDocument()
+    expect(
+      await screen.findByText("Campers who got aid by ZIP start with 2027's decisions.")
+    ).toBeInTheDocument()
     expect(screen.queryByRole('table', { name: 'Campers who got aid · Pool A' })).toBeNull()
-    // the server's line only: no second, hand-written sentence saying the same
-    expect(screen.queryByText(/not shown until/)).toBeNull()
+    // one plain sentence: no "Not built yet" line and no server reason carrying an internal id
+    expect(screen.queryByText(/Not built yet/)).toBeNull()
+    expect(screen.queryByText(/The aid table waits/)).toBeNull()
   })
 
   it("shows the server's refusal for an unknown group at once, and one click back to the default", async () => {

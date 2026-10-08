@@ -60,7 +60,7 @@ export const isDecided = (stats: ApiAidStatistics) => stats.basis === 'posted_an
  * (the read's `awarded`, #2974); on the decided basis an amber "Decided (not yet offered)" sits beside
  * it, and the two % columns take the server's labels, which name "(posted + decided)" there (owner
  * B4a (b)). The average award and its population are the camp's Posted money (D157; owner R2a D5):
- * "Awards (camp aid)" so nobody compares it with Development's Number of awards, which counts every
+ * "Awards" so nobody compares it with Development's Number of awards, which counts every
  * source (L). % of ask's denominator, the live requests' in-budget asks, is its own column right
  * before it: it isn't the Asked column, which counts every app's ask, cancelled included (owner B4a (c)).
  */

@@ -11,7 +11,15 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { REPORT_NOTE } from '../kit/reportStyles'
 import { ReportTable } from '../kit/ReportTable'
 import { useReportParam } from './useReportParam'
-import { zipColumns, zipCsvName, zipGroups, zipHeading, zipRows, zipScopeWords } from './zipModel'
+import {
+  noAidWords,
+  zipColumns,
+  zipCsvName,
+  zipGroups,
+  zipHeading,
+  zipRows,
+  zipScopeWords,
+} from './zipModel'
 
 const PATH = '/aid/reports/zip-codes'
 
@@ -68,9 +76,7 @@ export function ZipCodes({ view }: { view: AidView }) {
                   </div>
                 </div>
               )}
-              {data.not_built.map((item) => (
-                <p key={item.figure} className={REPORT_NOTE}>{`Not built yet: ${item.reason}.`}</p>
-              ))}
+              {noAidWords(data) !== null && <p className={REPORT_NOTE}>{noAidWords(data)}</p>}
               <div className="grid gap-4 xl:grid-cols-2">
                 <ReportTable
                   heading={zipHeading(data, 'Every camper')}
@@ -84,7 +90,7 @@ export function ZipCodes({ view }: { view: AidView }) {
                   description={zipScopeWords(data)}
                   defaultSort={{ key: 'campers', dir: 'desc' }}
                 />
-                {/* With no aid table, the server's own "Not built yet" line above says why. */}
+                {/* With no aid table, the line above says why. */}
                 {data.with_aid !== null && (
                   <ReportTable
                     heading={zipHeading(data, 'Campers who got aid')}
