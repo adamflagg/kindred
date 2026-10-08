@@ -5,6 +5,7 @@ import {
   CS_BODY,
   CS_BTN2,
   CS_LINK,
+  CS_PILL,
   CS_SEG,
   CS_SEG_BUTTON,
   CS_SEG_OFF,
@@ -12,6 +13,7 @@ import {
   CS_SMALL,
 } from '../../kit/csType'
 
+import { useSeasonChrome } from '../seasonChrome'
 import { frozenFact } from './leadWords'
 
 /*
@@ -43,6 +45,9 @@ export function LeadLine({
   onAll: (open: boolean) => void
   children?: ReactNode
 }) {
+  const { done } = useSeasonChrome()
+  // A done season says so to finance and the registrar both (spec §11.3).
+  const doneSeason = done && <span className={CS_PILL.muted}>Done season</span>
   const folds = (
     <span className="ml-auto flex gap-2">
       <button type="button" className={CS_BTN2} onClick={() => onAll(true)}>
@@ -83,6 +88,7 @@ export function LeadLine({
               ? 'Approve or cancel first.'
               : frozenFact(state.show, state.draftVersion, state.approvedVersion)}
         </span>
+        {doneSeason}
         {children}
         {folds}
       </div>
@@ -96,6 +102,7 @@ export function LeadLine({
             ? 'No version prices the season yet: each section shows its newest approved copy.'
             : `The approved rules: v${String(state.version)}, in effect and frozen.`}
         </span>
+        {doneSeason}
         {folds}
       </div>
     )

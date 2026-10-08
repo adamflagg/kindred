@@ -29,7 +29,7 @@ import { aidHref } from '../../kit/asOf'
 import { CS_BTN, CS_LINK, CS_META, CS_SMALL } from '../../kit/csType'
 import { DefinitionNotes } from '../../kit/DefinitionNotes'
 import { SEASON_CARD } from '../seasonStyles'
-import { ApprovePanel, SeasonNotice } from '../SeasonChrome'
+import { ApprovePanel, SeasonNotice, UnlockPanel } from '../SeasonChrome'
 import { useSeasonChrome } from '../seasonChrome'
 import { BudgetPointer } from './BudgetPointer'
 import { Chapter } from './Chapter'
@@ -320,7 +320,8 @@ function ChaptersBody({
     sessions
   )
   const live = asOf.kind === 'live'
-  const canEdit = finance && live && !receipt && !chrome.approving && editing === null
+  const canEdit =
+    finance && live && !receipt && !chrome.approving && !chrome.locked && editing === null
 
   // Open: the link's list, else the chapters holding a draft section or an issue; a named section's chapter, and the
   // chapter being edited, stay open.
@@ -672,6 +673,7 @@ function ChaptersBody({
         onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
       />
       <ApprovePanel />
+      <UnlockPanel />
       <SeasonNotice />
       <div className="space-y-3">
         {(['Awards', 'Setup'] as const).map((group) => (
@@ -766,6 +768,7 @@ export function RulesTab() {
   const chrome_ = (
     <>
       <ApprovePanel />
+      <UnlockPanel />
       <SeasonNotice />
     </>
   )

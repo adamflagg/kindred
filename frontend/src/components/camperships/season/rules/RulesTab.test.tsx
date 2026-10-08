@@ -11,7 +11,7 @@ import { AidApiError } from '../../../../services/camperships/aidApi'
 import type { ApiAidApprovedRules, ApiAidRulesDraft } from '../../../../types/api-types'
 import { CATALOG } from './programsCostsFixtures'
 import { APPROVED_RULES, rulesDraft } from './rulesFixtures'
-import { ApproveButton, SeasonChromeProvider } from '../SeasonChrome'
+import { ApproveButton, SeasonChromeProvider, UnlockButton } from '../SeasonChrome'
 import { RulesTab } from './RulesTab'
 
 interface Read<T> {
@@ -87,6 +87,7 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <SeasonChromeProvider section="income" tab="rules">
         <ApproveButton />
+        <UnlockButton />
         <RulesTab />
       </SeasonChromeProvider>
       <Where />
@@ -581,3 +582,67 @@ function fullyApproved(): ApiAidRulesDraft {
     ),
   }
 }
+
+describe('a done season on Rules (spec §11.3)', () => {
+  it('hides Edit… until finance unlocks it, and Lock Again hides it again', async () => {
+    granted = FINANCE
+    draft = {
+      data: { ...rulesDraft(), season_done: true, configured_year: 2028 },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rules')
+    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock…' }))
+    await userEvent.type(
+      screen.getByLabelText('Why correct a done season?'),
+      'A typo in the minimum'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock' }))
+    expect(screen.getAllByRole('button', { name: 'Edit…' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Lock Again' }))
+    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+  })
+
+  it('says "Done season" in the lead line, for finance and the registrar both', () => {
+    granted = FINANCE
+    draft = {
+      data: { ...rulesDraft(), season_done: true, configured_year: 2028 },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rules')
+    expect(screen.getByText('Done season')).toBeInTheDocument()
+    cleanup()
+    granted = REGISTRAR
+    approved = {
+      data: { ...APPROVED_RULES, season_done: true, configured_year: 2028 },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rules')
+    expect(screen.getByText('Done season')).toBeInTheDocument()
+  })
+
+  it('says nothing of it on an open season', () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules')
+    expect(screen.queryByText('Done season')).toBeNull()
+  })
+})
+
+describe("Rules when the dashboard's season can't be read (503)", () => {
+  const WORDS =
+    "The dashboard's season couldn't be read, so no rules change is accepted; try again shortly"
+
+  it("shows the server's words, not a generic failure, and no Edit… or Unlock…", () => {
+    granted = FINANCE
+    draft = { data: undefined, isLoading: false, error: new AidApiError(WORDS, 503) }
+    renderAt('/aid/season/rules')
+    expect(screen.getAllByText(new RegExp(WORDS)).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Unlock…' })).toBeNull()
+  })
+})

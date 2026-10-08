@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BUDGET } from '../../components/camperships/season/budgetFixtures'
 import { rulesDraft } from '../../components/camperships/season/rules/rulesFixtures'
 import type { ApiAidBudget, ApiAidRulesDraft } from '../../types/api-types'
+import { AidApiError } from '../../services/camperships/aidApi'
 import AidSeasonPage from './AidSeasonPage'
 
 let granted: string[] = []
@@ -26,8 +27,16 @@ vi.mock('../../hooks/camperships/useAidBudget', () => ({
 }))
 // The Season chrome's reads (Approve… and its panel), as SeasonChrome.test.tsx mocks them.
 let draft: ApiAidRulesDraft | undefined = rulesDraft()
+// The registrar's `season_done` rides the approved read.
+let approvedDone = false
+let draftError: Error | null = null
 vi.mock('../../hooks/camperships/useAidRules', () => ({
-  useAidRulesDraft: () => ({ data: draft, isLoading: false, error: null }),
+  useAidRulesDraft: () => ({ data: draft, isLoading: false, error: draftError }),
+  useAidApprovedRules: () => ({
+    data: { season_done: approvedDone },
+    isLoading: false,
+    error: null,
+  }),
 }))
 vi.mock('../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => undefined,
@@ -95,6 +104,8 @@ beforeEach(() => {
   granted = REGISTRAR
   budget = BUDGET
   draft = rulesDraft()
+  approvedDone = false
+  draftError = null
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
 })
@@ -257,5 +268,45 @@ describe('the tab bar right side (spec §4; Review Focus 5)', () => {
     const { container } = renderAt('/aid/season/history')
     expect(container.querySelector('.space-y-3')).not.toBeNull()
     expect(container.querySelector('[class*="sm:space-y-4"]')).toBeNull()
+  })
+})
+
+describe('a done season on the tab bar (spec §11.3)', () => {
+  it('shows finance Unlock… on every tab, in Approve…’s place, and the registrar nothing', () => {
+    granted = FINANCE
+    draft = { ...rulesDraft(), season_done: true, configured_year: 2028 }
+    for (const tab of ['rounds-budget', 'scenarios', 'rules', 'history']) {
+      renderAt(`/aid/season/${tab}`)
+      expect(screen.getByRole('button', { name: 'Unlock…' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+      cleanup()
+    }
+    granted = REGISTRAR
+    approvedDone = true
+    renderAt('/aid/season/history')
+    expect(screen.queryByRole('button', { name: 'Unlock…' })).toBeNull()
+  })
+
+  it('opens the Unlock panel under the tab bar, and unlocking brings Approve… back with the pill', async () => {
+    granted = FINANCE
+    draft = { ...rulesDraft(), season_done: true, configured_year: 2028 }
+    renderAt('/aid/season/history')
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock…' }))
+    expect(screen.getByText('Unlock 2027')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Why correct a done season?'), 'Late fix')
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock' }))
+    expect(screen.getByRole('button', { name: 'Unlocked: Late fix' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+  })
+
+  it("says why in amber, with no Unlock…, when the dashboard's season can't be read", () => {
+    granted = FINANCE
+    draft = undefined
+    draftError = new AidApiError("The dashboard's season couldn't be read; try again shortly", 503)
+    renderAt('/aid/season/history')
+    expect(
+      screen.getByText("The dashboard's season couldn't be read; try again shortly")
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unlock…' })).toBeNull()
   })
 })

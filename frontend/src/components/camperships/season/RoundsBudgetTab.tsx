@@ -81,10 +81,15 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
   const draft = useAidRulesDraft({ enabled: finance })
   const live = view.asOf.kind !== 'past'
-  const { approving } = useSeasonChrome()
+  const { approving, locked } = useSeasonChrome()
   // Edit Plan… waits while the Approve panel is open, as Rules' Edit… does ("Approve or cancel first.").
   const canPlan =
-    finance && live && budget.rules_version !== null && draft.data !== undefined && !approving
+    finance &&
+    live &&
+    budget.rules_version !== null &&
+    draft.data !== undefined &&
+    !approving &&
+    !locked
   const [editing, setEditing] = useState(false)
   const [typed, setTyped] = useState<TypedPlan | null>(null)
   // The editor lives in the Budget card, which a one-pool page and a past date do not show: arriving at either closes
