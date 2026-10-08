@@ -82,13 +82,17 @@ function lineIndent(key: string): 0 | 1 | 2 {
  */
 export function developmentRows(dev: ApiAidDevelopment): ReportRow[] {
   const rows: ReportRow[] = []
+  // Each section once, in SECTION_WORDS' order (the mock's), its lines in the server's order: the read
+  // sends a few lines after a later section's (household-level dollars, the gender rows).
+  const order = Object.keys(SECTION_WORDS)
+  const sent = [...dev.rows].sort((a, b) => order.indexOf(a.section) - order.indexOf(b.section))
   let section: string | null = null
   let start = 0
-  while (start < dev.rows.length) {
-    const first = dev.rows[start] as ApiAidDevelopmentRow
+  while (start < sent.length) {
+    const first = sent[start] as ApiAidDevelopmentRow
     let end = start
-    while (dev.rows[end + 1]?.key === first.key) end += 1
-    const line = dev.rows.slice(start, end + 1)
+    while (sent[end + 1]?.key === first.key) end += 1
+    const line = sent.slice(start, end + 1)
     if (first.section !== section) {
       section = first.section
       rows.push({

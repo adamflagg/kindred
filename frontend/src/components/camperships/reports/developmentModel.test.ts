@@ -46,6 +46,32 @@ describe('the report', () => {
     ])
   })
 
+  it('draws each section once, Money · Counts · Appeals, when the server sends a line out of its section', () => {
+    // The read sends Household-level grant dollars (money) after the counts lines and the gender
+    // rows (counts) after the appeals: each still sits under its own section's one heading.
+    const late = {
+      ...DEVELOPMENT,
+      rows: [
+        ...DEVELOPMENT.rows,
+        {
+          ...DEVELOPMENT.rows[0]!,
+          key: 'household_level_amount',
+          label: 'Household-level grant dollars',
+          group: null,
+        },
+      ],
+    }
+    const drawn = developmentRows(late).map((r) => [r.kind, texts(r)[0]])
+    expect(drawn.filter(([kind]) => kind === 'heading').map(([, text]) => text)).toEqual([
+      'Money',
+      'Counts',
+      'Appeals and cancellations',
+    ])
+    const money = drawn.findIndex(([, text]) => text === 'Household-level grant dollars')
+    expect(money).toBeGreaterThan(drawn.findIndex(([, text]) => text === '% of need met, Pool A'))
+    expect(money).toBeLessThan(drawn.findIndex(([, text]) => text === 'Counts'))
+  })
+
   it('has no Group column: the header is Line and the season columns', () => {
     expect(developmentColumns(DEVELOPMENT).map((c) => c.header)).toEqual([
       'Line',
