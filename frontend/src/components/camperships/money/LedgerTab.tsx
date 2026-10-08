@@ -81,7 +81,7 @@ export function LedgerTab({ view }: { view: AidView }) {
 
   return (
     <div className="space-y-3">
-      <LedgerFamilies view={view} />
+      <LedgerFamilies view={view} unclassified={data?.unclassified} />
       <section className="space-y-2">
         {/* A div, not an h3: bare headings are styled outside the cascade layers (csType.ts). */}
         <div className={`flex flex-wrap items-baseline gap-2 ${CS_LABEL}`}>

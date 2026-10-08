@@ -57,7 +57,7 @@ export default function AidMoneyPage() {
       <AidPageBand
         icon={Landmark}
         title={MONEY.label}
-        subtitle={`Season ${String(year)} · what CampMinder posted that no request explains`}
+        subtitle={`Season ${String(year)} · what CampMinder posted`}
         asOf={asOf}
       />
       <AidTabNav section={MONEY} tabs={resolved.tabs} view={view} />

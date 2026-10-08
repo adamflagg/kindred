@@ -26,6 +26,7 @@ import {
   parseLedgerFilters,
   parseLinesTotal,
   sourceFamilyOptions,
+  unclassifiedNote,
   withSentValue,
 } from './ledgerFamiliesModel'
 import { LedgerLines } from './LedgerLines'
@@ -50,7 +51,14 @@ const TOTALS: readonly ApiAidLedgerTotal[] = ['in_campminder_net', 'outside_gran
  * `?level=`); the family opens its household page. Under the table, the server's two totals, each
  * opening the lines behind it (`?lines=`).
  */
-export function LedgerFamilies({ view }: { view: AidView }) {
+export function LedgerFamilies({
+  view,
+  unclassified,
+}: {
+  view: AidView
+  /** The season's unclassified money from `GET /summary` (same as-of); absent until it loads. */
+  unclassified?: number | null | undefined
+}) {
   const [params, setParams] = useSearchParams()
   const filters = parseLedgerFilters(params)
   const openTotal = parseLinesTotal(params.get('lines'))
@@ -199,6 +207,10 @@ export function LedgerFamilies({ view }: { view: AidView }) {
     </div>
   )
   const asOf = view.asOf.kind === 'past' ? view.asOf.date : null
+  const note = unclassifiedNote(
+    unclassified,
+    filters.source !== null || filters.program !== null || filters.level !== null
+  )
 
   return (
     // R3-4: the filters sit outside the QueryGuard (as History and Scenarios do on main), so a
@@ -245,6 +257,12 @@ export function LedgerFamilies({ view }: { view: AidView }) {
                   </button>
                 </Fragment>
               ))}
+              {note !== null && (
+                <>
+                  {' '}
+                  <span className={CS_PMETA}>{note}</span>
+                </>
+              )}
               <span className={`${CS_PMETA} ml-2`}>
                 each total opens its lines; the totals follow the filters, not the search
               </span>
