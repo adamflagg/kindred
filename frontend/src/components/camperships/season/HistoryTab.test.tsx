@@ -158,17 +158,17 @@ describe('HistoryTab', () => {
 
   it('counts each chip as the server counts it, and shows "—" for every count while it loads (H5; spec §7.2 A)', () => {
     renderAt()
-    expect(screen.getByRole('button', { name: 'Holds 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'On hold 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Grants 0' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'All 3' })).toBeInTheDocument()
     pages = { ...pages, data: undefined, isLoading: true }
     renderAt()
-    expect(screen.getAllByRole('button', { name: 'Holds —' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'On hold —' })).toHaveLength(1)
   })
 
   it('filters by kind through the URL, back on page 1 (D15)', async () => {
     renderAt('/aid/season/history?year=2027&page=3')
-    await userEvent.click(screen.getByRole('button', { name: 'Holds 1' }))
+    await userEvent.click(screen.getByRole('button', { name: 'On hold 1' }))
     replaced()
     expect(where().get('kind')).toBe('holds')
     expect(where().has('page')).toBe(false)

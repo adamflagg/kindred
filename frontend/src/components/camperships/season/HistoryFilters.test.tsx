@@ -69,7 +69,7 @@ describe('the History strip (spec §7.2 A)', () => {
 
   it('picks one kind at a time; clicking it again, or All, clears it', async () => {
     const onChange = renderFilters({ filters: { ...NONE, kind: 'holds' } })
-    await userEvent.click(screen.getByRole('button', { name: /^Holds/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^On hold/ }))
     expect(onChange).toHaveBeenLastCalledWith('kind', null)
     await userEvent.click(screen.getByRole('button', { name: /^Money edits/ }))
     expect(onChange).toHaveBeenLastCalledWith('kind', 'money')
