@@ -96,7 +96,7 @@ def test_a_program_with_no_round_1_table_gets_only_the_minimum() -> None:
 
 def test_no_table_and_no_minimum_without_one_holds_rather_than_paying_zero() -> None:
     # Owner ruling 2026-09-25 (spec section 2 item 22): an open program with no Round 1
-    # table holds until finance names one. A silent $0 with status "ok" is what this replaced.
+    # table waits until finance names one. A silent $0 with status "ok" is what this replaced.
     rules = with_lever(fictional_rules(), "awards.minimum_without_table", False)
     result = _calc(rules, program_key="adult_weekend", session_cm_id=1000401)
     assert (result.status, result.r1, result.r1_bound, result.total) == ("needs_input", None, "no_table", None)
