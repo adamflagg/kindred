@@ -415,26 +415,30 @@ export function changesSince(
     const old = was.get(row.session.cmId)
     const name = row.session.name
     if (old === undefined) continue
-    if (old.tuition !== row.tuition)
+    // A row the card draws says its own price change; one it doesn't (not running, not open to aid) leaves the
+    // line to Changed since, so the pill never counts a change shown nowhere.
+    const drawn: { price?: true } = row.group !== NOT_OPEN && !row.notRunning ? { price: true } : {}
+    // A program priced on the request draws no tuition, so a stored one changing is no change staff can see.
+    if (old.tuition !== row.tuition && row.kind !== 'typed')
       lines.push({
         lead: name,
         was: priceWords(old.tuition),
         now: priceWords(row.tuition),
-        price: true,
+        ...drawn,
       })
     if (old.standard !== row.standard)
       lines.push({
         lead: `${name} standard`,
         was: priceWords(old.standard),
         now: priceWords(row.standard),
-        price: true,
+        ...drawn,
       })
     if (old.infant !== row.infant)
       lines.push({
         lead: `${name} infant`,
         was: priceWords(old.infant),
         now: priceWords(row.infant),
-        price: true,
+        ...drawn,
       })
   }
   for (const row of order) {

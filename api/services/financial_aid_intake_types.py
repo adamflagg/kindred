@@ -54,9 +54,10 @@ HEADCOUNT_INFANT_MAX: Final = 20
 SHARE_SOURCE_INTAKE: Final = "intake_default"
 SHARE_SOURCE_STAFF: Final = "staff"
 
-# The rules sections intake itself reads (owner ruling Q4, 2026-09-25): `programs`, to check
-# that a resolved session belongs to a program, and `cost`, for the infant age cutoff. Intake
-# only ever uses a version in which BOTH are approved or locked, never a draft.
+# The rules sections intake waits on (owner ruling Q4, 2026-09-25): `programs`, which it reads to
+# check that a resolved session belongs to a program, and `cost`, which it no longer reads (infants
+# are under 2, a constant) but keeps so intake waits for the whole Programs and costs card, approved
+# together. Intake only ever uses a version in which BOTH are approved or locked, never a draft.
 INTAKE_RULES_SECTIONS: Final[tuple[SectionName, ...]] = ("programs", "cost")
 # No version has those sections approved yet: the request is recorded, and waits visibly.
 FLAG_AWAITING_RULES: Final = "awaiting_approved_rules"
