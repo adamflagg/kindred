@@ -78,7 +78,6 @@ from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
-from bunking.financial_aid.decisions.budget import allocations
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.development import (
@@ -145,9 +144,9 @@ GRANTS_AWARDS_LABEL: Final = "Grants/Awards"
 # The development-v2 mock's Budget row (owner 10-08): this camp's own aid budget, never the all-money total.
 BUDGET_LABEL: Final = "Budget (this camp's, the first board-passed)"
 BUDGET_DEFINITION: Final = (
-    "This camp's own aid budget as first passed by the board, never the all-money total. A season the dashboard "
-    "reads uses the season's first approved budget, which doesn't move with later revisions, each group its share; "
-    "an as-reported season uses the budget finance typed"
+    "This camp's own aid budget as first passed by the board, one total, never the all-money total. A season the "
+    "dashboard reads uses the season's first approved budget, which doesn't move with later revisions; an "
+    "as-reported season uses the budget finance typed"
 )
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
@@ -334,7 +333,7 @@ class _RowSpec:
 
 
 _ROWS: Final[tuple[_RowSpec, ...]] = (
-    _RowSpec("budget", "money", BUDGET_LABEL, "dollars", True, None, "budget", BUDGET_DEFINITION),
+    _RowSpec("budget", "money", BUDGET_LABEL, "dollars", False, None, "budget", BUDGET_DEFINITION),
     _RowSpec("total_awards", "money", "Total Awards Granted", "dollars", True, None, "total_awards"),
     _RowSpec("camp_awards", "money", "The camp's own awards", "dollars", True, None, None),
     _RowSpec("outside_awards", "money", "Grants from other funders", "dollars", True, None, None),
@@ -735,10 +734,10 @@ class FinancialAidDevelopmentService:
         *,
         as_of: date | None = None,
         register: Sequence[RegisterRow] | None = None,
-        budget: Mapping[str, Decimal] | None = None,
+        budget: Decimal | None = None,
     ) -> _Native:
         """One P column: `season` priced now, or (a dated column) `season` as of the end of `as_of` (3c-1's past
-        read) with the live season's `register` cut to that day. `budget`: the Budget row's allocations by group."""
+        read) with the live season's `register` cut to that day. `budget`: the Budget row's total."""
         # Development's money is all money (the camp's awards plus every live outside grant line) on campers who
         # attended (D29, ruled as built: R2b).
         document = season.rules.document if season.rules is not None else None
@@ -777,7 +776,7 @@ class FinancialAidDevelopmentService:
             incentive_sources=frozenset(s.description_key for s in sources if s.incentive),
         )
         built = development_column(inputs)
-        if budget:  # the Budget row: each group (a budget pool, D100) its share of the first approved total
+        if budget is not None:  # the Budget row: this camp's first approved budget total (D96)
             built = replace(built, budget=budget)
         return _Native(built, grouping_, attended)
 
@@ -832,7 +831,7 @@ class FinancialAidDevelopmentService:
             # The Budget row (owner 10-08, D96): the season's FIRST approved budget, fixed when a later version is
             # approved; a dated column shows it too (the board-passed figure, not the budget as of the day).
             first = await self._rules.first_approved(season_year, ["budget"])
-            budget = allocations(first.document) if first is not None else None
+            budget = first.document.budget.total if first is not None else None
             native = await self._native(season, sources, budget=budget)
             natives[season_year], latest = native.column, native.grouping
             if column is not None and column.season == season_year:
@@ -952,13 +951,6 @@ def _columns(
     return out
 
 
-def _budget_value(column: DevelopmentColumn, scope: DevGroup | None) -> Decimal | None:
-    """A Kindred column's budget: the group's allocation, or (the total line) every group's; None with no rules."""
-    if not column.budget:
-        return None
-    return sum(column.budget.values(), ZERO) if scope is None else column.budget.get(scope.key)
-
-
 def _check_dated(season: int, day: date, today: date) -> None:
     """A dated column needs dated decisions, so 2026 (reproduced, undated, D67) and earlier are refused; its day must
     be a past day of its season (today is not past: development shows a column only once its day is)."""
@@ -997,7 +989,7 @@ def _rows(
                 if spec.key in column.not_rebuilt:
                     value = None
                 elif isinstance(data, DevelopmentColumn) and spec.key == "budget":
-                    value = _budget_value(data, scope)
+                    value = data.budget  # total only (owner 10-08): the row has no group
                 elif isinstance(data, DevelopmentColumn):
                     if scope is None:
                         value = _total_value(spec.key, data)

@@ -721,28 +721,31 @@ async def test_an_ask_above_its_sessions_cost_is_capped_though_the_familys_incom
 BUDGET_LABEL = "Budget (this camp's, the first board-passed)"
 
 
-async def test_the_budget_row_reads_the_rules_budget_on_a_kindred_column() -> None:
-    """The mock's Budget row: this camp's own aid budget (D96), never the all-money total. A P column reads the
-    season's approved rules: each group its share of the total (the fictional rules: 500,000; Camp 80%)."""
+def _budget_rows(out: Any) -> list[Any]:
+    return [r for r in out.rows if r.key == "budget"]
+
+
+async def test_the_budget_row_is_one_total_line_from_the_rules_on_a_kindred_column() -> None:
+    """The mock's Budget row, total only (owner 10-08): one line, this camp's own aid budget (D96), never the
+    all-money total and never split by group. A P column reads the season's approved rules: 500,000."""
     out = await _service(_development()).development(YEAR)
-    camp = _row(out, "budget", "camp_pool")
-    assert (camp.label, camp.section, camp.unit, camp.values) == (BUDGET_LABEL, "money", "dollars", [400000.0])
-    assert _row(out, "budget", None).values == [500000.0]
+    [budget] = _budget_rows(out)
+    assert (budget.group, budget.label, budget.section, budget.unit) == (None, BUDGET_LABEL, "money", "dollars")
+    assert budget.values == [500000.0]
     assert out.rows[0].key == "budget"  # the first money line, as the mock draws it
 
 
 async def test_the_budget_row_reads_the_seasons_first_approved_budget() -> None:
-    """Owner 10-08 (D96, "the first (board-passed) budget"): a P column shows the allocations of the season's FIRST
+    """Owner 10-08 (D96, "the first (board-passed) budget"): a P column shows the total of the season's FIRST
     approved budget, which doesn't move when a later version with another budget is approved and prices the season.
     A dated column shows the same figure: it is the board-passed budget, not the budget as of the day."""
     fake = FakeRules(approved(with_lever(intake_rules(), "budget.total", "600000"), version=2))
-    fake.first = approved(intake_rules(), version=1)  # 500,000; Camp 80%
+    fake.first = approved(with_lever(intake_rules(), "budget.total", "450000"), version=1)
     out = await _service(_development(), fake_rules=fake).development(
         YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5))
     )
     assert [(c.basis, c.as_of) for c in out.columns] == [("P", date(2027, 4, 1)), ("P", date(2027, 3, 5))]
-    assert _row(out, "budget", None).values == [500000.0, 500000.0]
-    assert _row(out, "budget", "camp_pool").values == [400000.0, 400000.0]
+    assert [(r.group, r.values) for r in _budget_rows(out)] == [(None, [450000.0, 450000.0])]
 
 
 async def test_a_season_with_no_approved_budget_shows_none_on_its_kindred_column() -> None:
@@ -750,14 +753,12 @@ async def test_a_season_with_no_approved_budget_shows_none_on_its_kindred_column
     fake = FakeRules(approved(intake_rules()))
     fake.first = None
     out = await _service(_development(), fake_rules=fake).development(YEAR)
-    assert _row(out, "budget", None).values == [None]
-    assert _row(out, "budget", "camp_pool").values == [None]
-    assert _row(out, "budget", "camp_pool").label == BUDGET_LABEL
+    assert [(r.group, r.values, r.label) for r in _budget_rows(out)] == [(None, [None], BUDGET_LABEL)]
 
 
 async def test_the_budget_row_reads_the_typed_budget_on_an_as_reported_column() -> None:
-    """An r column's budget is finance's typed budget for that season (the first one typed: the board-passed one);
-    finance's other typed figures still never reach development."""
+    """An r column's budget is finance's typed total budget for that season (the first one typed: the board-passed
+    one); a pool's typed budget and finance's other typed figures never reach development."""
     history = FakeReportsStore()
     history.seed(
         ReportedFigure(
@@ -771,8 +772,7 @@ async def test_the_budget_row_reads_the_typed_budget_on_an_as_reported_column() 
     history.seed(ReportedFigure(2026, "finance", "awarded", "", 0, 0, "season_end", date(2026, 10, 10), Decimal(1)))
     out = await _service(_development(), history).development(YEAR)
     assert [(c.season, c.basis) for c in out.columns] == [(2026, "r"), (2027, "P")]
-    assert _row(out, "budget", None).values == [1111000.0, 500000.0]
-    assert _row(out, "budget", "camp_pool").values == [900000.0, 400000.0]
+    assert [(r.group, r.values) for r in _budget_rows(out)] == [(None, [1111000.0, 500000.0])]
 
 
 async def test_the_awards_count_is_called_grants_and_awards() -> None:

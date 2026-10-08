@@ -194,7 +194,7 @@ class DevelopmentColumn:
     by_source: tuple[SourceLine, ...]
     not_in_group: NotInGroup = NotInGroup(ZERO, ZERO, 0, 0)
     requests_capped: int = 0  # Rule M: the groups' requests counted at their session's cost in Total Requests
-    budget: Mapping[str, Decimal] = field(default_factory=dict)  # group (budget pool) -> its allocation; the service's
+    budget: Decimal | None = None  # the Budget row: this camp's first approved budget total; the service's
 
 
 def gender_label(name: str, write_in: str) -> str:
