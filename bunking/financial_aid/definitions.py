@@ -171,7 +171,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="in_campminder_net",
         term="In CampMinder (net)",
         text=(
-            "In CampMinder (net): the family's live CampMinder camp-aid lines this season (lines Money › Sources "
+            "In CampMinder (net): the family's live CampMinder camp-aid lines this season (lines Money › Funders "
             "classes as camp aid, after any reclassifying override), across the households in the page scope, "
             "net of reversals. Outside grants are a separate column and are not in it. It is not Posted."
         ),
@@ -709,8 +709,8 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "season-scenarios": ("scenario_spend", "remaining", "scenario_projected", "scenario_below_the_line"),
     "money-ledger": ("in_campminder_net", "posted"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
-    "money-sources": ("source_facts", "reporting_group", "source_lines"),
-    "grants": ("grants", "expected_grant", "last_dollar", "household_level", "grantor_season"),
+    "money-sources": ("source_facts", "reporting_group", "source_lines", "grantor_season"),  # Money › Funders
+    "grants": ("grants", "expected_grant", "last_dollar", "household_level"),
     "reports-statistics": (
         "apps",
         "cancelled_applicants",
