@@ -32,6 +32,13 @@ vi.mock('../../hooks/camperships/useAidRules', () => ({
 vi.mock('../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => undefined,
 }))
+vi.mock('../../hooks/camperships/useAidSessionCatalog', () => ({
+  useAidSessionCatalog: () => [],
+  useAidSessionCatalogError: () => null,
+}))
+vi.mock('../../hooks/camperships/useLodgingCancelledSessions', () => ({
+  useLodgingCancelledSessions: () => new Set<number>(),
+}))
 vi.mock('../../hooks/camperships/useAidRulesWrites', () => ({
   useAidApproveRules: () => ({ mutate: vi.fn(), isPending: false }),
   useFreshAidRulesDraft: () => () => Promise.resolve(draft as ApiAidRulesDraft),

@@ -7,6 +7,7 @@
  */
 import type {
   ApiAidFieldChange,
+  ApiAidGroup,
   ApiAidRulesSection,
   ApiAidSectionStatus,
   ApiAidValidationIssue,
@@ -121,6 +122,20 @@ export function statusWords(status: ApiAidSectionStatus, changes: number | null)
     ]),
     note: null,
   }
+}
+
+/** The stamp a section's words carry: when it was locked, approved or last edited (null when none is stored). */
+export function stampOf(
+  status: Pick<ApiAidSectionStatus, 'state' | 'approved_at' | 'edited_at' | 'locked_at'>
+): string | null {
+  const state = status.state ?? 'draft'
+  return (
+    (state === 'locked'
+      ? status.locked_at
+      : state === 'approved'
+        ? status.approved_at
+        : status.edited_at) ?? null
+  )
 }
 
 /**
@@ -420,6 +435,15 @@ export function keyLabel(key: string, names: Pick<RulesVocabulary, 'programs' | 
 function own(map: Readonly<Record<string, string>>, key: string): string | undefined {
   return Object.hasOwn(map, key) ? map[key] : undefined
 }
+
+/**
+ * An equity class's column head by the group it pairs with ("Pool A", spec §9.2), else the label it borrows
+ * from a same-key program or pool (`keyLabel`), else its own words.
+ */
+export const groupWords =
+  (groups: readonly ApiAidGroup[], names: Pick<RulesVocabulary, 'programs' | 'pools'>) =>
+  (key: string) =>
+    groups.find((g) => g.equity_class === key)?.label ?? keyLabel(key, names)
 
 type KeyKind =
   | 'pool'

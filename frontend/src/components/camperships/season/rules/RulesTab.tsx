@@ -5,7 +5,12 @@ import { Permission } from '../../../../constants/permissions'
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
 import { useAidStartRulesFromLastYear } from '../../../../hooks/camperships/useAidRulesWrites'
+import {
+  useAidSessionCatalog,
+  useAidSessionCatalogError,
+} from '../../../../hooks/camperships/useAidSessionCatalog'
 import { useAidSessionNames } from '../../../../hooks/camperships/useAidSessionNames'
+import { useLodgingCancelledSessions } from '../../../../hooks/camperships/useLodgingCancelledSessions'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
@@ -43,11 +48,13 @@ import {
   toggleChapter,
 } from './rulesLayout'
 import {
+  groupWords,
   isNote,
   isRulesSection,
   keyLabel,
   rulesVocabulary,
   sectionIssues,
+  stampOf,
   statusWords,
   versionWords,
   type RulesNames,
@@ -57,12 +64,15 @@ import {
 import type { CellControl } from './CardTables'
 import { bandsIn, gridClasses, notedCells, warnedCells } from './tierGrid'
 import type { EditContext } from './sectionEdit'
+import { ProgramsCostsCard, combinedStatus } from './ProgramsCostsCard'
+import { ProgramsCostsEditor } from './ProgramsCostsEditor'
 import { RulesSectionEditor } from './RulesSectionEditor'
 import { CardBody, SectionCard } from './SectionCard'
 import { TierGridCard, TierGridTable, type GridPart } from './TierGridCard'
 import { TiersEditor } from './TiersEditor'
 
 const PATH = '/aid/season/rules'
+const NO_CANCELLED: ReadonlySet<number> = new Set()
 
 type TablesProp = ComponentProps<typeof TierGridTable>['awardTables']
 type ProgramsProp = Readonly<Record<string, { readonly equity_class?: string | null }>>
@@ -206,6 +216,8 @@ interface Shown {
   readonly section: ApiAidRulesSection
   readonly content: Record<string, unknown> | null
   readonly status: StatusWords
+  /** When the status was stamped (locked, approved or last edited): `combinedStatus` picks the newer on a tie. */
+  readonly stamp: string | null
   readonly changes: readonly ApiAidFieldChange[]
   readonly issues: readonly ApiAidValidationIssue[]
 }
@@ -219,6 +231,7 @@ const shownFromDraft = (draft: ApiAidRulesDraft): Shown[] =>
     section: s.section,
     content: sectionContent(draft.document, s.section),
     status: statusWords(s.status, s.changes.length),
+    stamp: stampOf(s.status),
     changes: s.changes,
     issues: sectionIssues(draft.report.issues, s.section),
   }))
@@ -244,6 +257,7 @@ const shownFromApproved = (rules: ApiAidApprovedRules): Shown[] =>
             s.version,
             rules.version
           ),
+    stamp: stampOf({ state: s.state, approved_at: s.approved_at, locked_at: s.locked_at }),
     changes: [],
     issues: [],
   }))
@@ -285,6 +299,10 @@ function ChaptersBody({
   const asOf = useAidAsOf()
   const chrome = useSeasonChrome()
   const sessions = useSessionNames()
+  // Programs and costs' two reads live here, beside the names, so the card and its editor take them as props.
+  const catalog = useAidSessionCatalog(year)
+  const catalogError = useAidSessionCatalogError(year)
+  const cancelled = useLodgingCancelledSessions(year)
   const [params, setSearchParams] = useSearchParams()
   const [inView, setInView] = useState<number | null>(null)
   // What the tiers editor would save (null while a box can't be read): Save sends it, and the grid follows it live.
@@ -294,6 +312,8 @@ function ChaptersBody({
   const grantsHref = aidHref('/aid/grants/grantors', { year, asOf })
 
   const contents = new Map(shown.map((s) => [s.section, s.content]))
+  // The groups the server derived from the pools (A3): the draft's, or the version in effect's.
+  const groups = draft?.groups ?? approvedRules?.groups ?? []
   const statuses = new Map(shown.map((s) => [s.section, s.status]))
   const names: Omit<RulesNames, 'section'> = rulesVocabulary(
     (section) => contents.get(section) ?? undefined,
@@ -331,7 +351,9 @@ function ChaptersBody({
         : isRulesSection(sectionParam)
           ? isGridPart(sectionParam)
             ? 'card-tiergrid'
-            : `card-${sectionParam}`
+            : sectionParam === 'programs' || sectionParam === 'cost'
+              ? 'card-programs_costs'
+              : `card-${sectionParam}`
           : null
     if (id !== null) document.getElementById(id)?.scrollIntoView({ block: 'start' })
   }, [sectionParam])
@@ -419,7 +441,7 @@ function ChaptersBody({
             classes={gridClasses(programs, document_.award_tables)}
             warned={warned}
             noted={noted}
-            names={names}
+            label={groupWords(groups, names)}
           />
           {asSaved}
         </div>
@@ -437,7 +459,7 @@ function ChaptersBody({
           classes={gridClasses(programs, awardTables)}
           warned={warned}
           noted={noted}
-          names={names}
+          label={groupWords(groups, names)}
           control={(controlled, path) => (controlled === part ? cell(path) : undefined)}
         />
         {asSaved}
@@ -463,7 +485,6 @@ function ChaptersBody({
               approved={approvedContent(section)}
               names={{ ...names, section }}
               changes={[]}
-              issues={shownOf(section)?.issues ?? []}
               details={false}
               dependentsMode={dependentsMode()}
               grantsHref={grantsHref}
@@ -535,6 +556,69 @@ function ChaptersBody({
     )
   }
 
+  /**
+   * Programs and costs: one card over the two sections (spec §5.2 A). Editing it is `editing === 'programs'`, the
+   * single-editor state every card shares, so chapter 5 stays open and Approve… waits.
+   */
+  const programsCostsCard = () => {
+    const programs = shownOf('programs')
+    const cost = shownOf('cost')
+    const sections = (source: (section: ApiAidRulesSection) => unknown) => ({
+      programs: source('programs'),
+      cost: source('cost'),
+      budget: source('budget'),
+    })
+    const inEffectSections =
+      draft === null || approvedContent('programs') === null || approvedContent('cost') === null
+        ? null
+        : sections(approvedContent)
+    const waiting = programs?.content == null || cost?.content == null
+    return (
+      <ProgramsCostsCard
+        key="programs_costs"
+        document={sections((section) => document_[section as keyof ApiAidRulesDocument] ?? null)}
+        approved={inEffectSections}
+        approvedVersion={approvedVersion}
+        groups={groups}
+        sessions={catalog}
+        sessionsError={catalogError?.message ?? null}
+        cancelled={cancelled}
+        status={combinedStatus(programs?.status ?? NOT_APPROVED, cost?.status ?? NOT_APPROVED, {
+          programs: programs?.stamp ?? null,
+          cost: cost?.stamp ?? null,
+        })}
+        issues={[...(programs?.issues ?? []), ...(cost?.issues ?? [])]}
+        canEdit={canEdit && catalog !== undefined && !waiting}
+        onEdit={() => startEdit('programs')}
+        editor={
+          waiting ? (
+            <p className={`${CS_SMALL} mt-1`}>
+              Not approved yet: this card shows here once finance approves its sections.
+            </p>
+          ) : draft !== null && editing === 'programs' && catalog !== undefined ? (
+            <ProgramsCostsEditor
+              key={`${String(year)}:programs_costs`}
+              draft={draft}
+              groups={groups}
+              sessions={catalog}
+              cancelled={cancelled ?? NO_CANCELLED}
+              onDone={(saved) => {
+                setEditing(null)
+                if (saved !== null) {
+                  onNotice(
+                    saved.branched_from === null || saved.branched_from === undefined
+                      ? `Saved to the rules draft v${String(saved.version)}.`
+                      : `Saved as a new version, v${String(saved.version)}: the approved rules in use stay as they are until it is approved.`
+                  )
+                }
+              }}
+            />
+          ) : undefined
+        }
+      />
+    )
+  }
+
   const gridCard = () => {
     if (!gridReady) {
       return (
@@ -571,6 +655,7 @@ function ChaptersBody({
         canEdit={canEdit}
         onEdit={startEdit}
         editing={part !== null && node !== undefined ? { part, node } : null}
+        label={groupWords(groups, names)}
       />
     )
   }
@@ -619,7 +704,11 @@ function ChaptersBody({
                   }
                 >
                   {chapter.cards.map((card) =>
-                    card === 'tiergrid' ? gridCard() : sectionCard(card)
+                    card === 'tiergrid'
+                      ? gridCard()
+                      : card === 'programs_costs'
+                        ? programsCostsCard()
+                        : sectionCard(card)
                   )}
                 </Chapter>
               )
@@ -745,7 +834,7 @@ export function RulesTab() {
         <Missing
           text={
             version === null
-              ? `No approved rules for ${String(year)} yet.`
+              ? `No rules are in effect for ${String(year)} yet.`
               : `Rules v${String(version)} doesn't exist for ${String(year)}.`
           }
         >

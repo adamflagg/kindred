@@ -127,7 +127,6 @@ export function CardBody({
   approvedVersion,
   names,
   changes,
-  issues,
   details,
   dependentsMode = null,
   grantsHref,
@@ -140,7 +139,6 @@ export function CardBody({
   approvedVersion?: number | null | undefined
   names: RulesNames
   changes: readonly ApiAidFieldChange[]
-  issues: readonly ApiAidValidationIssue[]
   details: boolean
   dependentsMode?: string | null
   grantsHref?: string | undefined
@@ -168,7 +166,6 @@ export function CardBody({
         approved={approved}
         names={names}
         details={details}
-        issues={issues}
         dependentsMode={dependentsMode}
         grantsHref={grantsHref}
         control={cellControl}
@@ -250,7 +247,6 @@ export function SectionCard({
           approvedVersion={approvedVersion}
           names={names}
           changes={changes}
-          issues={issues}
           details={details}
           dependentsMode={dependentsMode}
           grantsHref={grantsHref}

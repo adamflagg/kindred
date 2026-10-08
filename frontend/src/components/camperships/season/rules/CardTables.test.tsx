@@ -2,7 +2,6 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ApiAidValidationIssue } from '../../../../types/api-types'
 import { CardTables } from './CardTables'
 import type { RulesNames } from './rulesModel'
 
@@ -96,56 +95,11 @@ const AWARDS = {
   },
 }
 
-const PROGRAMS = {
-  // Its class is `camp`, not `summer`, so the row's name and its class word ("Camp") differ: getByText finds one cell.
-  summer: {
-    label: 'Summer',
-    session_cm_ids: [1000101, 1000102],
-    session_types: [],
-    equity_class: 'camp',
-    budget_pool: 'pool_a',
-    cost_source: 'catalog',
-    open_to_aid: true,
-  },
-  weekend: {
-    label: 'Weekend',
-    session_cm_ids: [1000201],
-    session_types: [],
-    equity_class: null,
-    budget_pool: null,
-    cost_source: 'per_person',
-    open_to_aid: true,
-  },
-}
-const PROGRAM_ISSUES: ApiAidValidationIssue[] = [
-  {
-    section: 'programs',
-    code: 'unclassified_program',
-    severity: 'warning',
-    path: 'programs.weekend.budget_pool',
-    message: 'Open to aid but in no budget pool',
-  },
-  {
-    section: 'programs',
-    code: 'no_equity_class',
-    severity: 'warning',
-    path: 'programs.weekend.equity_class',
-    message: 'Open to aid but no equity class, so no award table: its requests hold',
-  },
-]
-
 const CHECKS = {
   checks: {
     income_above: { enabled: true, severity: 'hold', threshold: '250000' },
     placeholder_income: { enabled: false, severity: 'warn', threshold: null },
   },
-}
-
-const COST = {
-  tuition: { '1000101': '2000', '1000102': '4000' },
-  family_rates: [{ session_cm_id: 1000201, standard: '600', infant: '300' }],
-  infant_age_cutoff_months: 24,
-  override_reasons: ['headcount'],
 }
 
 type Props = Parameters<typeof CardTables>[0]
@@ -157,7 +111,6 @@ function tables(over: Partial<Props> & Pick<Props, 'section' | 'content'>) {
         approved={null}
         names={NAMES}
         details={false}
-        issues={[]}
         dependentsMode="income_reduction"
         {...over}
       />
@@ -298,94 +251,6 @@ describe('the named awards table (spec §6.2 E.4)', () => {
   })
 })
 
-describe('the programs table (spec §6.2 E.8)', () => {
-  it('heads Program · Sessions · Equity class⁷ and award table · Budget pool · Cost from (read-only) · Open to aid, no Round 1 table', () => {
-    tables({ section: 'programs', content: PROGRAMS })
-    expect(heads(screen.getByTestId('programs-table'))).toEqual([
-      'Program',
-      'Sessions',
-      'Equity class7and award table',
-      'Budget pool',
-      'Cost fromread-only',
-      'Open to aid',
-    ])
-    expect(screen.queryByText(/Round 1 table/)).toBeNull()
-  })
-
-  it('reads sessions as chips by name, and the class and pool by their words', () => {
-    tables({ section: 'programs', content: PROGRAMS })
-    const summer = rowOf(screen.getByTestId('programs-table'), 'Summer')
-    expect(within(summer).getByText('Session 1')).toHaveClass('bg-muted')
-    expect(within(summer).getByText('Session 2')).toBeInTheDocument()
-    expect(summer).toHaveTextContent('Camp')
-    expect(summer).toHaveTextContent('Pool A')
-    expect(summer).toHaveTextContent('Session price')
-  })
-
-  it('carries "no pool" and "no equity class" pills on a program with those issues, and None in its cells', () => {
-    tables({ section: 'programs', content: PROGRAMS, issues: PROGRAM_ISSUES })
-    const weekend = rowOf(screen.getByTestId('programs-table'), 'Weekend')
-    expect(within(weekend).getByText('no pool')).toHaveClass('bg-amber-100')
-    expect(within(weekend).getByText('no equity class')).toHaveClass('bg-amber-100')
-    expect(within(weekend).getAllByText('None')).toHaveLength(2)
-  })
-  it('leaves out a program that claims no sessions when read, and keeps it in the editor (lead ruling)', () => {
-    const content = {
-      ...PROGRAMS,
-      idle: { ...PROGRAMS.weekend, label: 'Idle program', session_cm_ids: [] },
-    }
-    const { unmount } = tables({ section: 'programs', content })
-    expect(within(screen.getByTestId('programs-table')).queryByText('Idle program')).toBeNull()
-    expect(within(screen.getByTestId('programs-table')).getByText('Summer')).toBeInTheDocument()
-    unmount()
-    const control = vi.fn((path: readonly string[]) => <input aria-label={path.join('.')} />)
-    tables({ section: 'programs', content, control })
-    expect(
-      within(screen.getByTestId('programs-table')).getByText('Idle program')
-    ).toBeInTheDocument()
-  })
-
-  it('keeps a program that claims its sessions by session type when read (validation.py claims_sessions)', () => {
-    const content = {
-      ...PROGRAMS,
-      typed: {
-        ...PROGRAMS.weekend,
-        label: 'Typed program',
-        session_cm_ids: [],
-        session_types: ['main'],
-      },
-    }
-    tables({ section: 'programs', content })
-    expect(
-      within(screen.getByTestId('programs-table')).getByText('Typed program')
-    ).toBeInTheDocument()
-  })
-
-  it('wraps the Sessions cell, its pills in a flex-wrap row, and the program name, so the table fits at 1100', () => {
-    tables({ section: 'programs', content: PROGRAMS })
-    const summer = rowOf(screen.getByTestId('programs-table'), 'Summer')
-    const [name, sessions] = within(summer).getAllByRole('cell')
-    expect(sessions).toHaveClass('whitespace-normal')
-    expect(sessions).not.toHaveClass('whitespace-nowrap')
-    expect(within(summer).getByText('Session 1').parentElement).toHaveClass(
-      'inline-flex',
-      'flex-wrap'
-    )
-    expect(name).toHaveClass('whitespace-normal')
-    expect(name).not.toHaveClass('whitespace-nowrap')
-  })
-
-  it('wraps the program name in the editor too', () => {
-    const control = vi.fn((path: readonly string[]) => <input aria-label={path.join('.')} />)
-    tables({ section: 'programs', content: PROGRAMS, control })
-    const [name, sessions] = within(
-      rowOf(screen.getByTestId('programs-table'), 'Summer')
-    ).getAllByRole('cell')
-    expect(name).toHaveClass('whitespace-normal')
-    expect(sessions).toHaveClass('whitespace-normal')
-  })
-})
-
 describe('the checks table (spec §6.2 E.7)', () => {
   it('reads Check · On · Hold or warn · Above in the grid words', () => {
     tables({ section: 'quality_checks', content: CHECKS })
@@ -393,19 +258,5 @@ describe('the checks table (spec §6.2 E.7)', () => {
     expect(heads(table)).toEqual(['Check', 'On', 'Hold or warn', 'Above'])
     expect(rowOf(table, 'High income')).toHaveTextContent('High income✓Hold$250,000')
     expect(rowOf(table, 'Placeholder income')).toHaveTextContent('Placeholder income—Warning—')
-  })
-})
-
-describe('the cost tables (spec §6.2 E.9)', () => {
-  it('shows tuition by session beside the Family Camp rates, with no child column', () => {
-    tables({ section: 'cost', content: COST })
-    const tuition = screen.getByTestId('tuition-table')
-    expect(heads(tuition)).toEqual(['Session', 'Tuition'])
-    expect(rowOf(tuition, 'Session 1')).toHaveTextContent('Session 1$2,000')
-    const rates = screen.getByTestId('family-rates-table')
-    expect(heads(rates)).toEqual(['Session', 'Standard', 'Infant'])
-    expect(rowOf(rates, 'Weekend A')).toHaveTextContent('Weekend A$600$300')
-    expect(screen.getByText('Everyone but infants pays the standard rate.')).toBeInTheDocument()
-    expect(screen.queryByText(/Child/)).toBeNull()
   })
 })

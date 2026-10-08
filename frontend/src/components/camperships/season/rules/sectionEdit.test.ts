@@ -446,24 +446,6 @@ describe('the lifted settings (spec §6.2 F)', () => {
 })
 
 describe('what each save writes (spec §6.2 F, §9.9)', () => {
-  it('the programs save routes every program by class and drops r1_table', () => {
-    const out = prepareContent(
-      'programs',
-      {
-        summer: {
-          label: 'Summer',
-          r1_table: 'general',
-          equity_class: 'camp',
-          table_from_equity_class: false,
-        },
-      },
-      RULES_DOCUMENT
-    )
-    expect(out).toEqual({
-      summer: { label: 'Summer', equity_class: 'camp', table_from_equity_class: true },
-    })
-  })
-
   it('the appeal caps save writes an empty program map once every program is by class', () => {
     const document = {
       ...RULES_DOCUMENT,

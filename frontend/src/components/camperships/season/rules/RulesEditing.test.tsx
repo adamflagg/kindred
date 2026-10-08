@@ -36,6 +36,14 @@ vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => year }))
 vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => undefined,
 }))
+// The Programs and costs card's reads: the season's sessions (none here) and no lodging-board cancellations.
+vi.mock('../../../../hooks/camperships/useAidSessionCatalog', () => ({
+  useAidSessionCatalog: () => [],
+  useAidSessionCatalogError: () => null,
+}))
+vi.mock('../../../../hooks/camperships/useLodgingCancelledSessions', () => ({
+  useLodgingCancelledSessions: () => new Set<number>(),
+}))
 
 type Outcome = { kind: 'ok'; value: unknown } | { kind: 'refused'; status: number; message: string }
 let outcome: Outcome
@@ -65,6 +73,7 @@ function freshRead(): Promise<ApiAidRulesDraft> {
 }
 vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
   useAidSaveRulesSection: () => fakeWrite('save'),
+  useAidSaveRulesSections: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useAidApproveRules: () => fakeWrite('approve'),
   useAidStartRulesFromLastYear: () => fakeWrite('start'),
   useFreshAidRulesDraft: () => freshRead,
@@ -208,26 +217,6 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     await userEvent.clear(tier)
     await userEvent.type(tier, '12,50')
     expect(screen.getByText('Not a number')).toBeInTheDocument()
-  })
-
-  it('keeps names and lists as they are: only figures, yes/no and choices take a box', async () => {
-    renderAt('/aid/season/rules?section=programs')
-    await editCard('programs')
-    const editor = await screen.findByTestId('section-editor')
-    expect(within(editor).queryByRole('textbox')).toBeNull()
-    expect(within(editor).getAllByRole('combobox').length).toBeGreaterThan(0)
-    // Sessions are chips now (spec §6.2 E.8; Task 47), named as the read view names them (#15; no name here).
-    expect(within(editor).getByText('Session 1000101')).toBeInTheDocument()
-    expect(within(editor).getByText('Session 1000102')).toBeInTheDocument()
-  })
-
-  it("reads the rules' own names in the editor, as the read view does (#15)", async () => {
-    renderAt('/aid/season/rules?section=programs')
-    await editCard('programs')
-    const editor = await screen.findByTestId('section-editor')
-    // A pool reads its label, never its key; the key stays in what is saved. (The budget section left this tab.)
-    expect(within(editor).queryAllByText('pool_a')).toHaveLength(0)
-    expect(within(editor).getAllByText('Pool A').length).toBeGreaterThan(0)
   })
 
   it('says a locked section saves into a new version and posted amounts stand', async () => {
@@ -933,56 +922,6 @@ describe('round 3: what belongs to a season stays with it', () => {
 })
 
 describe('editing a card in place (spec §6.2 F; Task 48)', () => {
-  // The plan's `renderRules`, `saveSpy` and `FINANCE` are this file's `renderAt`, `calls` and the all-true
-  // permissions mock above; its saved body is `calls.at(-1).vars.body`.
-  const savedContent = () =>
-    (calls.at(-1)?.vars as { body: { content: Record<string, Record<string, unknown>> } }).body
-      .content
-
-  it('edits a card in place and saves the programs with table_from_equity_class and no r1_table', async () => {
-    renderAt('/aid/season/rules?open=5')
-    await userEvent.click(
-      within(screen.getByTestId('card-head-programs')).getByRole('button', { name: 'Edit…' })
-    )
-    expect(
-      await screen.findByText(/^Editing Programs and their sessions in the rules draft \(v\d+\)$/)
-    ).toBeInTheDocument()
-    await userEvent.selectOptions(
-      screen.getAllByRole('combobox', { name: /Budget pool/ })[0]!,
-      'pool_b'
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    const content = savedContent()
-    expect(content['summer']?.['budget_pool']).toBe('pool_b')
-    expect(
-      Object.values(content).every(
-        (p) => p['table_from_equity_class'] === true && !('r1_table' in p)
-      )
-    ).toBe(true)
-  })
-
-  it('shows the Costs boxes in whole dollars, as stored, and an untouched editor has nothing to save (B7)', async () => {
-    const base = rulesDraft()
-    const cost = {
-      ...RULES_DOCUMENT.cost,
-      tuition: { '1000101': '6695.0', '1000102': '6695.50' },
-    }
-    const withCost = { ...base, document: { ...base.document, cost } }
-    draft = { data: withCost, isLoading: false, error: null }
-    server = [withCost]
-    renderAt('/aid/season/rules?open=5')
-    await editCard('cost')
-    const boxes = (await screen.findAllByRole('textbox')).filter((box) =>
-      (box.getAttribute('aria-label') ?? '').includes('Tuition')
-    )
-    expect(boxes.map((box) => (box as HTMLInputElement).value)).toEqual(['6,695', '6,695.50'])
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
-    await userEvent.clear(boxes[0]!)
-    await userEvent.type(boxes[0]!, '7,100')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(savedContent()['tuition']).toEqual({ '1000101': '7100', '1000102': '6695.50' })
-  })
-
   it('greys a criterion row live when Enabled is unchecked, and keeps its weights', async () => {
     const base = rulesDraft()
     const equity = {
@@ -1017,6 +956,18 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     expect(screen.getByText('was checked')).toBeInTheDocument()
   })
 
+  it('opens the Programs and costs card’s own editor from Edit…, and Approve… waits while it is open', async () => {
+    renderAt('/aid/season/rules?open=5')
+    expect(await screen.findByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    await editCard('programs')
+    expect(
+      await screen.findByText(/^Editing Programs and costs in the rules draft \(v\d+\)$/)
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+  })
+
   it('disables every Edit… while the Approve panel is open', async () => {
     renderAt('/aid/season/rules?open=1')
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
@@ -1026,7 +977,7 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
 
   // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
   // card's typing. The tab tells the chrome while any card editor (the tiers editor included) is open.
-  it.each(['programs', 'tiers'])(
+  it.each(['tiers'])(
     'hides Approve… while the %s editor is open and brings it back on Cancel',
     async (section) => {
       renderAt(`/aid/season/rules?open=1,5&section=${section}`)

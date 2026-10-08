@@ -2,13 +2,14 @@
  * Season › Rules on screen (spec §6, §7.5; D39, D76), as chapters under a chapter bar. The reads are mocked with
  * rulesFixtures' invented 2027 rules; finance holds `rules`, the registrar doesn't.
  */
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidApiError } from '../../../../services/camperships/aidApi'
 import type { ApiAidApprovedRules, ApiAidRulesDraft } from '../../../../types/api-types'
+import { CATALOG } from './programsCostsFixtures'
 import { APPROVED_RULES, rulesDraft } from './rulesFixtures'
 import { ApproveButton, SeasonChromeProvider } from '../SeasonChrome'
 import { RulesTab } from './RulesTab'
@@ -48,6 +49,17 @@ vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => year }))
 let sessionNames: ReadonlyMap<number, string> | undefined
 vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => sessionNames,
+}))
+
+// The Programs and costs card's two reads (RulesTab calls them beside useAidSessionNames).
+let catalog: typeof CATALOG | undefined
+let catalogError: Error | null
+vi.mock('../../../../hooks/camperships/useAidSessionCatalog', () => ({
+  useAidSessionCatalog: () => catalog,
+  useAidSessionCatalogError: () => catalogError,
+}))
+vi.mock('../../../../hooks/camperships/useLodgingCancelledSessions', () => ({
+  useLodgingCancelledSessions: () => new Set<number>(),
 }))
 
 const observed: Array<(entries: Array<{ isIntersecting: boolean; target: Element }>) => void> = []
@@ -90,6 +102,8 @@ beforeEach(() => {
   askedVersion.length = 0
   observed.length = 0
   sessionNames = undefined
+  catalog = CATALOG
+  catalogError = null
 })
 
 describe('RulesTab for the registrar (D76: the approved version, read only)', () => {
@@ -110,13 +124,60 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
       error: new AidApiError('2027 has no approved rules yet', 404),
     }
     renderAt('/aid/season/rules')
-    expect(screen.getByText('No approved rules for 2027 yet.')).toBeInTheDocument()
+    expect(screen.getByText('No rules are in effect for 2027 yet.')).toBeInTheDocument()
   })
 
   it('opens a chapter its link names and says a never-approved section is not approved yet', () => {
     renderAt('/aid/season/rules?section=milestones')
     expect(screen.getByTestId('card-head-milestones')).toBeInTheDocument()
     expect(screen.getByText(/shows here once finance approves it/)).toBeInTheDocument()
+  })
+})
+
+describe('RulesTab chapter 5: one Programs and costs card (spec §5.2 A)', () => {
+  it('says so when the season’s sessions fail to load, instead of loading for ever', async () => {
+    granted = FINANCE
+    catalog = undefined
+    catalogError = new Error('Network down')
+    renderAt('/aid/season/rules?open=5')
+    expect(
+      await screen.findByText("Couldn't load the season's sessions: Network down")
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Loading the season/)).toBeNull()
+  })
+
+  it('holds one Programs and costs card and no programs or tuition table', async () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules?open=5')
+    expect(await screen.findByRole('heading', { name: 'Programs and costs' })).toBeInTheDocument()
+    expect(screen.queryByTestId('programs-table')).toBeNull()
+    expect(screen.queryByTestId('tuition-table')).toBeNull()
+  })
+
+  it('names the tier grid’s columns by the draft’s groups (spec §9.2)', () => {
+    granted = FINANCE
+    draft = {
+      data: {
+        ...rulesDraft(),
+        groups: [{ pool: 'pool_a', label: 'Pool A', equity_class: 'general' }],
+      },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rules?open=1')
+    expect(
+      within(screen.getByTestId('tier-grid')).getAllByRole('columnheader', { name: /Pool A/ })
+        .length
+    ).toBeGreaterThan(0)
+  })
+
+  it('?section=cost scrolls to the card', async () => {
+    granted = FINANCE
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    renderAt('/aid/season/rules?section=cost')
+    await waitFor(() => expect(scroll).toHaveBeenCalled())
+    expect(scroll.mock.contexts[0]).toHaveProperty('id', 'card-programs_costs')
   })
 })
 

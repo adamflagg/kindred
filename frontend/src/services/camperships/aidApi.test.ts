@@ -6,6 +6,7 @@ import {
   hasStatus,
   keyAidAsk,
   retryUnlessRefused,
+  saveAidRulesSections,
   saveAidScenarioDraft,
   writeMessage,
 } from './aidApi'
@@ -92,5 +93,35 @@ describe('scenario request bodies (A11b)', () => {
     // @ts-expect-error fit-to-budget's body forbids extra fields: the server answers 422 to an opened_version.
     const fit: Parameters<typeof fitAidScenario>[2] = { document, opened_version: 2 }
     expect([save.opened_version, fit.document]).toEqual([2, document])
+  })
+})
+
+describe('saveAidRulesSections (spec §15.6)', () => {
+  const BODY = {
+    base_version: 4,
+    contents: { programs: {}, cost: {} },
+    expected_fingerprints: { programs: 'p', cost: 'c' },
+  }
+
+  it('PUTs both sections to the one route', async () => {
+    const fetchWithAuth = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ version: 5 }), { status: 200 }))
+    )
+    await saveAidRulesSections(fetchWithAuth, 2027, BODY)
+    const [url, init] = fetchWithAuth.mock.calls[0] ?? []
+    expect(url).toBe('/api/financial-aid/rules/2027/sections')
+    expect(init?.method).toBe('PUT')
+    expect(JSON.parse(String(init?.body))).toEqual(BODY)
+  })
+
+  it("rejects a 409 with the server's words", async () => {
+    const fetchWithAuth = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: 'The cost section changed' }), { status: 409 })
+      )
+    )
+    await expect(saveAidRulesSections(fetchWithAuth, 2027, BODY)).rejects.toThrow(
+      'The cost section changed'
+    )
   })
 })

@@ -602,16 +602,6 @@ export function prepareContent(
   content: Record<string, unknown>,
   document: ApiAidRulesDraft['document']
 ): Record<string, unknown> {
-  if (section === 'programs') {
-    return Object.fromEntries(
-      Object.entries(content).map(([key, value]) => {
-        const program = Object.fromEntries(
-          Object.entries(record(value)).filter(([field]) => field !== 'r1_table')
-        )
-        return [key, { ...program, table_from_equity_class: true }]
-      })
-    )
-  }
   if (section === 'round2') {
     const allByClass = Object.values(record(document.programs)).every(
       (p) => record(p)['table_from_equity_class'] === true
