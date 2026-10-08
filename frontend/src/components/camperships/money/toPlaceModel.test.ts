@@ -11,18 +11,22 @@ import {
   TO_PLACE,
 } from './toPlaceFixtures'
 import { CAMP_QUEST, GRANTOR_C_FULL_RIDE, SOURCES, UNCLASSIFIED } from './sourcesFixtures'
+import { groupWords } from './toPlaceColumns'
 import {
   allLines,
   candidateDetail,
   candidateLabel,
+  CONFIRM_DOES,
   confirmBody,
   confirmLines,
   confirmSummary,
   exactAmount,
+  grantLinesFor,
   isMarkLine,
   isOpen,
   lineWords,
   NOTHING_MARKED,
+  openLineWords,
   placeChoices,
   placedWords,
   reclassifyTargets,
@@ -31,6 +35,7 @@ import {
   suggestionWords,
   suggestsSplit,
   targetWords,
+  toPlaceCount,
   toPlaceCsvName,
   wouldLines,
 } from './toPlaceModel'
@@ -318,5 +323,56 @@ describe('Reclassify targets (D104; P-7)', () => {
     expect(targetWords(GRANTOR_C_FULL_RIDE)).toBe('Grantor C full-ride program (outside)')
     expect(targetWords(CAMP_QUEST)).toBe('Camp aid · Quest (camp aid)')
     expect(targetWords(UNCLASSIFIED)).toBe('Returning-family bonus 2027')
+  })
+})
+
+describe('what each group says Confirm does (M5)', () => {
+  it('names the camp-aid sentence by reason, and says a no-request line has nothing to mark', () => {
+    expect(CONFIRM_DOES.several).toBe('Camp aid: Confirm marks the round Posted.')
+    expect(CONFIRM_DOES.program_mismatch).toBe('Camp aid: Confirm marks the round Posted.')
+    expect(CONFIRM_DOES.no_request).toBe(
+      'Camp aid: this line has no request to mark, so it is reclassified or left with a note.'
+    )
+  })
+
+  it('draws counts, then the sentence, in each group heading', () => {
+    expect(groupWords([JOHNSON_SPLIT, GARCIA_WITHHELD, CHEN_EXACT])).toBe(
+      '3 households · 3 lines · Camp aid: Confirm marks the round Posted.'
+    )
+    expect(groupWords([SAM_NO_REQUEST])).toBe(
+      '1 household · 1 line · Camp aid: this line has no request to mark, so it is reclassified or left with a note.'
+    )
+  })
+})
+
+describe('the open line and the tab count (M5)', () => {
+  it('reads "N lines open · $X camp aid", the grant part only when there are grant lines', () => {
+    expect(openLineWords(5, 6920, [])).toBe('5 lines open · $6,920 camp aid')
+    expect(openLineWords(1, 900, [])).toBe('1 line open · $900 camp aid')
+  })
+
+  it('counts both kinds of line in N and adds the outside grants', () => {
+    const grants = [{ amount: 1500 }, { amount: 500.5 }]
+    expect(openLineWords(5, 6920, grants)).toBe(
+      '7 lines open · $6,920 camp aid · $2,000.50 outside grants'
+    )
+  })
+
+  it('the tab count is the camp-aid open_count plus the grant lines that need a camper', () => {
+    expect(toPlaceCount(30, 10)).toBe(40)
+    expect(toPlaceCount(0, 3)).toBe(3)
+  })
+
+  it('has no count until both reads have loaded, and draws none for zero', () => {
+    expect(toPlaceCount(undefined, 10)).toBeNull()
+    expect(toPlaceCount(30, undefined)).toBeNull()
+    expect(toPlaceCount(0, 0)).toBeNull()
+  })
+
+  it('keeps only one household’s grant lines under a scope', () => {
+    const a = { grant: { household_cm_id: 1000001 } }
+    const b = { grant: { household_cm_id: 1000002 } }
+    expect(grantLinesFor([a, b], null)).toEqual([a, b])
+    expect(grantLinesFor([a, b], 1000002)).toEqual([b])
   })
 })

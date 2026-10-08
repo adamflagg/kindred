@@ -2,12 +2,19 @@
  * Money's page (spec §8.1; D58, D62): its URL-held tabs, where a bare link lands, and the as-of.
  * The tabs' bodies are mocked: each has its own tests.
  */
-import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import AidMoneyPage from './AidMoneyPage'
 
+vi.mock('../../lib/pocketbase', () => ({
+  pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
+}))
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+}))
 let granted: string[] = []
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -42,22 +49,42 @@ function Where() {
 }
 
 function renderAt(path: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/aid/money/:tab?" element={<AidMoneyPage />} />
-      </Routes>
-      <Where />
-    </MemoryRouter>
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/aid/money/:tab?" element={<AidMoneyPage />} />
+        </Routes>
+        <Where />
+      </MemoryRouter>
+    </QueryClientProvider>
   )
 }
 
+// The tab count's two reads: camp aid's To place and the grants (`needs_camper`).
+let toPlaceRead: unknown = { year: 2027, open_count: 30, groups: [] }
+let grantsRead: unknown = { year: 2027, needs_camper: [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}] }
+let fetchSpy: MockInstance<typeof fetch>
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+
 beforeEach(() => {
+  toPlaceRead = { year: 2027, open_count: 30, groups: [] }
+  grantsRead = { year: 2027, needs_camper: [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}] }
+  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+    const path = String(url)
+    if (path.includes('/to-place')) return Promise.resolve(json(toPlaceRead))
+    if (path.includes('/grants/')) return Promise.resolve(json(grantsRead))
+    return Promise.resolve(new Response('{}', { status: 404 }))
+  })
   granted = ['financial_aid.view', 'financial_aid.casework']
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-06-03T18:00:00Z'))
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  fetchSpy.mockRestore()
+})
 
 const DEVELOPMENT = [
   'financial_aid.summary',
@@ -173,5 +200,49 @@ describe("one family's To place (P-8; ruling C)", () => {
     toPlaceProps.mockClear()
     renderAt('/aid/money/to-place?household=junk')
     expect(toPlaceProps).toHaveBeenLastCalledWith(expect.objectContaining({ householdCmId: null }))
+  })
+})
+
+describe('the To place tab count (M5)', () => {
+  it('adds the camp-aid open_count to the grant lines that need a camper, season-wide', async () => {
+    renderAt('/aid/money/ledger')
+    expect(await screen.findByRole('link', { name: 'To place 40' })).toBeInTheDocument()
+    const urls = fetchSpy.mock.calls.map(([url]) => String(url))
+    expect(urls.some((u) => u.includes('/to-place') && !u.includes('household'))).toBe(true)
+  })
+
+  it('stays season-wide when the page is scoped to one family', async () => {
+    renderAt('/aid/money/to-place?household=1000001')
+    expect(await screen.findByRole('link', { name: 'To place 40' })).toBeInTheDocument()
+    const toPlaceReads = fetchSpy.mock.calls.filter(([url]) => String(url).includes('/to-place'))
+    expect(toPlaceReads.length).toBeGreaterThan(0)
+    expect(toPlaceReads.some(([url]) => String(url).includes('household_cm_id'))).toBe(false)
+  })
+
+  it('draws no count until both reads have loaded', async () => {
+    fetchSpy.mockImplementation((url) =>
+      String(url).includes('/grants/')
+        ? new Promise<Response>(() => undefined)
+        : Promise.resolve(json(toPlaceRead))
+    )
+    renderAt('/aid/money/ledger')
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(screen.getByRole('link', { name: 'To place' })).toBeInTheDocument()
+  })
+
+  it('draws no count for zero', async () => {
+    toPlaceRead = { year: 2027, open_count: 0, groups: [] }
+    grantsRead = { year: 2027, needs_camper: [] }
+    renderAt('/aid/money/ledger')
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByRole('link', { name: 'To place' })).toBeInTheDocument()
+  })
+
+  it('reads nothing and shows no count for development, who may not view To place', () => {
+    granted = DEVELOPMENT
+    renderAt('/aid/money/funders')
+    expect(screen.queryByRole('link', { name: /To place/ })).toBeNull()
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('/to-place'))).toBe(false)
   })
 })

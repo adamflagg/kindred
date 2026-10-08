@@ -6,7 +6,13 @@
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
 import type { AidColumn, AidCsvExtra, AidGrouping } from '../kit/AidTable'
 import { moneyCsv } from '../kit/money'
-import { candidateDetail, candidateLabel, confirmSummary, suggestionWords } from './toPlaceModel'
+import {
+  candidateDetail,
+  candidateLabel,
+  CONFIRM_DOES,
+  confirmSummary,
+  suggestionWords,
+} from './toPlaceModel'
 
 export const lineKey = (line: ApiAidToPlaceLine) => String(line.transaction_cm_id)
 
@@ -73,10 +79,14 @@ export function reasonGrouping(
 }
 
 /**
- * "2 households · 3 lines": what a group holds on screen (counts, never money). Distinct
- * `household_cm_id`s, so "households", not D26 families: a split family counts twice (plan review m11).
+ * "2 households · 3 lines · Camp aid: Confirm marks the round Posted.": what a group holds on screen
+ * (counts, never money) and what Confirm does there (M5). Distinct `household_cm_id`s, so
+ * "households", not D26 families: a split family counts twice (plan review m11). A group's lines
+ * share one reason.
  */
 export function groupWords(lines: readonly ApiAidToPlaceLine[]): string {
   const households = new Set(lines.map((l) => l.household_cm_id)).size
-  return `${String(households)} ${households === 1 ? 'household' : 'households'} · ${String(lines.length)} ${lines.length === 1 ? 'line' : 'lines'}`
+  const counts = `${String(households)} ${households === 1 ? 'household' : 'households'} · ${String(lines.length)} ${lines.length === 1 ? 'line' : 'lines'}`
+  const [first] = lines
+  return first === undefined ? counts : `${counts} · ${CONFIRM_DOES[first.reason]}`
 }

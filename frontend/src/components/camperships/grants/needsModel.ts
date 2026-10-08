@@ -1,8 +1,8 @@
 /**
- * Grants › Needs attention's words and the bulk confirm's plan (spec §8.2; D16, D55, D126; S3-6;
- * P-17; grants-v2.html). Pure.
+ * To place's outside-grant lines: their words and the bulk confirm's plan (spec §8.2; D16, D55,
+ * D126; S3-6; P-17; M5). Pure.
  */
-import type { ApiAidNeedsCamper, ApiAidWaitingCommitment } from '../../../types/api-types'
+import type { ApiAidNeedsCamper } from '../../../types/api-types'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
 
@@ -68,25 +68,4 @@ export function planWords(plan: GrantPlan): string {
   const lines = plan.lines.length
   const households = new Set(plan.lines.map(({ need }) => need.grant.household_cm_id)).size
   return `${String(lines)} ${lines === 1 ? 'line' : 'lines'} in ${String(households)} ${households === 1 ? 'household' : 'households'}`
-}
-
-/** Why a commitment is still waiting (the read's four reasons). `satisfies`: a new reason fails tsc. */
-export const WAITING_WORDS = {
-  not_posted: 'not posted in CampMinder yet',
-  posted_then_reversed: 'posted, then reversed',
-  possible_match: 'a CampMinder line may be this one',
-  camper_cancelled: 'the camper cancelled',
-} as const satisfies Record<ApiAidWaitingCommitment['reason'], string>
-
-/** "Riley Sam · Grantor C · $6,200 · 18 days · not posted in CampMinder yet", and the line it names. */
-export function waitingWords(w: ApiAidWaitingCommitment): string {
-  const g = w.grant
-  return [
-    g.camper_name || g.family_name,
-    g.grantor_name,
-    formatMoney(g.amount),
-    `${String(w.days_waiting)} ${w.days_waiting === 1 ? 'day' : 'days'}`,
-    WAITING_WORDS[w.reason],
-    ...(w.transaction_cm_id > 0 ? [`CampMinder line ${String(w.transaction_cm_id)}`] : []),
-  ].join(' · ')
 }

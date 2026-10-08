@@ -30,6 +30,16 @@ describe('placeModel', () => {
     )
   })
 
+  it("prefers the server's program_label over the rules' names (M5)", () => {
+    if (GARCIA?.suggestion == null) throw new Error('fixture')
+    const labelled = {
+      ...GARCIA,
+      suggestion: { ...GARCIA.suggestion, program_label: 'Summer Camp 2' },
+    }
+    expect(suggestedWords(labelled, {})).toBe('Liam Garcia (Summer Camp 2)')
+    expect(suggestedWords(labelled, { summer: 'Other name' })).toBe('Liam Garcia (Summer Camp 2)')
+  })
+
   it("sends the suggestion's session with the suggested camper, and none with another (P-17)", () => {
     if (GARCIA === undefined) throw new Error('fixture')
     expect(placementFor(GARCIA, 2000002)).toEqual({

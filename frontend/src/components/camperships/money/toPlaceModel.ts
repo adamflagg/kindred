@@ -31,6 +31,21 @@ export type PlacementWould = Pick<
   'would_tick' | 'would_lock' | 'would_leave' | 'would_not_tick'
 >
 
+/**
+ * What Confirm does, by reason: said in each group's heading (M5, mock Q4). A line with no request
+ * has nothing to mark Posted, so it is reclassified or left with a note instead.
+ */
+export const CONFIRM_DOES = {
+  several: 'Camp aid: Confirm marks the round Posted.',
+  program_mismatch: 'Camp aid: Confirm marks the round Posted.',
+  no_request:
+    'Camp aid: this line has no request to mark, so it is reclassified or left with a note.',
+} as const satisfies Record<ToPlaceReason, string>
+
+/** The outside-grant group's sentence: its Confirm lowers a camper's share, never Posted or the budget. */
+export const GRANT_CONFIRM_DOES =
+  "Confirm puts it on a camper's request; it lowers their share in the round it counts in, never Posted or the camp's budget."
+
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`
 
 /** A money figure as the server's Decimal reads it: exact to the cent, no float noise ("780.00"). */
@@ -319,4 +334,44 @@ export function targetWords(source: ApiAidSourceRow): string {
   if (source.who_paid === 'the camp') return `${source.description} (camp aid)`
   if (source.who_paid === 'another funder') return `${source.description} (outside)`
   return source.description
+}
+
+/** The grant lines that need a camper: all of them, or one household's under `?household=`. */
+export function grantLinesFor<T extends { readonly grant: { readonly household_cm_id: number } }>(
+  needs: readonly T[],
+  householdCmId: number | null
+): T[] {
+  return householdCmId === null
+    ? [...needs]
+    : needs.filter((n) => n.grant.household_cm_id === householdCmId)
+}
+
+/**
+ * "7 lines open · $6,920 camp aid · $2,000 outside grants": N counts both kinds of line; the camp-aid
+ * figure is the server's `open_total`, the outside-grant figure the sum of those lines' amounts
+ * (exact to the cent). The grant part shows only when there are grant lines.
+ */
+export function openLineWords(
+  campCount: number,
+  campTotal: number,
+  grants: ReadonlyArray<{ readonly amount: number }>
+): string {
+  const n = campCount + grants.length
+  const head = `${plural(n, 'line', 'lines')} open · ${formatMoney(campTotal)} camp aid`
+  if (grants.length === 0) return head
+  const cents = grants.reduce((sum, g) => sum + toCents(g.amount), 0)
+  return `${head} · ${formatMoney(cents / 100)} outside grants`
+}
+
+/**
+ * The count on Money's "To place" tab: camp-aid `open_count` plus the outside-grant lines that need a
+ * camper, both season-wide. Null until both reads have loaded, and for zero (a 0 is not drawn).
+ */
+export function toPlaceCount(
+  campOpenCount: number | undefined,
+  grantLineCount: number | undefined
+): number | null {
+  if (campOpenCount === undefined || grantLineCount === undefined) return null
+  const total = campOpenCount + grantLineCount
+  return total > 0 ? total : null
 }

@@ -1,11 +1,10 @@
-/** Grants › Needs attention's words and the bulk plan (§8.2; D126; S3-6; P-17). */
+/** To place's outside-grant lines: words and the bulk plan (§8.2; D126; S3-6; P-17). */
 import { describe, expect, it } from 'vitest'
 
 import { GRANTS } from './grantsFixtures'
-import { grantLineWords, grantPlan, planWords, singleSuggestion, waitingWords } from './needsModel'
+import { grantLineWords, grantPlan, planWords, singleSuggestion } from './needsModel'
 
 const [GARCIA] = GRANTS.needs_camper
-const [RILEY, SAMUEL] = GRANTS.waiting
 
 describe('needs a camper', () => {
   it('words the line', () => {
@@ -35,18 +34,5 @@ describe('grantPlan', () => {
     expect(plan.leftOut).toEqual([])
     expect(plan.gone).toBe(1)
     expect(planWords(plan)).toBe('1 line in 1 household')
-  })
-})
-
-describe('a commitment waiting', () => {
-  it('says who, how long and why, in the read’s four reasons', () => {
-    expect(RILEY && waitingWords(RILEY)).toBe(
-      'Riley Sam · Grantor C · $6,200 · 18 days · not posted in CampMinder yet'
-    )
-    expect(
-      SAMUEL && waitingWords({ ...SAMUEL, reason: 'possible_match', transaction_cm_id: 4000012 })
-    ).toBe(
-      'Samuel Johnson · Grantor B · $1,500 · 12 days · a CampMinder line may be this one · CampMinder line 4000012'
-    )
   })
 })

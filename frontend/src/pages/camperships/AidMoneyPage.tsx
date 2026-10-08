@@ -13,8 +13,11 @@ import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
+import { toPlaceCount } from '../../components/camperships/money/toPlaceModel'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
+import { useAidGrants } from '../../hooks/camperships/useAidGrants'
+import { useAidToPlace } from '../../hooks/camperships/useAidToPlace'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 import PermissionDeniedPage from '../PermissionDeniedPage'
@@ -38,6 +41,12 @@ export default function AidMoneyPage() {
   const year = useYear()
   const asOf = useAidAsOf()
   const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
+  // The To place tab's count (M5): camp aid's open_count plus the outside-grant lines that need a
+  // camper, both season-wide whatever `?household=` says. The reads are the tab's own cache entries
+  // and are enabled for view holders only.
+  const campAid = useAidToPlace(null)
+  const grants = useAidGrants()
+  const placeCount = toPlaceCount(campAid.data?.open_count, grants.data?.needs_camper.length)
   // The old Sources tab is Funders now; links keep their `?row=`.
   const alias = tab === undefined ? undefined : MONEY_TAB_ALIASES[tab]
   if (alias !== undefined) return <Navigate to={`${MONEY.path}/${alias}${search}`} replace />
@@ -58,7 +67,12 @@ export default function AidMoneyPage() {
         subtitle={`Season ${String(year)} · what CampMinder posted`}
         asOf={asOf}
       />
-      <AidTabNav section={MONEY} tabs={resolved.tabs} view={view} />
+      <AidTabNav
+        section={MONEY}
+        tabs={resolved.tabs}
+        view={view}
+        counts={{ 'to-place': placeCount ?? undefined }}
+      />
       {slug !== 'ledger' && asOf.kind === 'past' && (
         <p className="text-muted-foreground text-sm">
           {slug === 'grants'

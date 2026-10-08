@@ -1,7 +1,8 @@
 /**
- * Grants › Needs attention through its real hooks (spec §8.2; D126, D160; S3-6; P-9, P-17; ruling G,
- * review item 8): the three groups, Confirm, Another Camper…, and the bulk confirm of single, exact
- * suggestions. Only `fetch` is faked.
+ * Money › To place's fourth group, the outside-grant lines that need a camper, through the real
+ * hooks (spec §8.2; D126, D160; S3-6; P-9, P-17; M5): the dashboard's suggestion, Confirm, Another
+ * Camper…, and the bulk confirm of single, exact suggestions. Moved from Grants › Needs attention.
+ * Only `fetch` is faked.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -10,8 +11,8 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { ApiAidGrants } from '../../../types/api-types'
-import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from './grantsFixtures'
-import { NeedsAttentionTab } from './NeedsAttentionTab'
+import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
+import { GrantLinesGroup } from './GrantLinesGroup'
 
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -109,7 +110,9 @@ const writes = () =>
     .filter((call) => call.method !== 'GET')
 const PLACED = { year: 2027, placed: 1, unchanged: 0, operation_id: 'op0000000000001' }
 
+let done: string[] = []
 beforeEach(() => {
+  done = []
   granted = ['financial_aid.view', 'financial_aid.casework']
   read = GRANTS
   stored = null
@@ -123,40 +126,67 @@ beforeEach(() => {
 })
 afterEach(() => fetchSpy.mockRestore())
 
-function renderTab() {
+function renderGroup(householdCmId: number | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <NeedsAttentionTab view={VIEW} />
+        <GrantLinesGroup
+          view={VIEW}
+          householdCmId={householdCmId}
+          canWork={granted.includes('financial_aid.casework')}
+          onDone={(words) => done.push(words)}
+        />
       </MemoryRouter>
     </QueryClientProvider>
   )
 }
 
-describe('Grants › Needs attention (§8.2)', () => {
-  it('groups by reason: unmapped descriptions link to their Sources row, commitments to the Register', async () => {
-    renderTab()
-    expect(await screen.findByText('Needs a camper · 1 line')).toBeInTheDocument()
-    expect(screen.getByText(/The dashboard suggests; a person confirms\./)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Map It in Money › Sources ›' })).toHaveAttribute(
-      'href',
-      '/aid/money/sources?row=srcgrantore0005&year=2027'
-    )
+const GARCIA_LINE = '$1,500 · Grantor B · posted to the household · Apr 3'
+
+describe('To place › Outside grant posted to the family (M5)', () => {
+  it('heads the group with its count and says what Confirm does, in a note of its own', async () => {
+    renderGroup()
+    expect(await screen.findByText('Outside grant posted to the family')).toBeInTheDocument()
+    expect(screen.getByText('1 line')).toBeInTheDocument()
     expect(
-      screen.getByText('Riley Sam · Grantor C · $6,200 · 18 days · not posted in CampMinder yet')
+      screen.getByText(
+        "Confirm puts it on a camper's request; it lowers their share in the round it counts in, never Posted or the camp's budget."
+      )
     ).toBeInTheDocument()
-    const [riley] = screen.getAllByRole('link', { name: 'Edit or Withdraw in the Register ›' })
-    expect(riley).toHaveAttribute('href', '/aid/grants/register?row=ccmtriley0000001&year=2027')
-    // Ruling G: no pointer to Today anywhere.
-    expect(screen.queryByRole('link', { name: /Today/ })).toBeNull()
+  })
+
+  it('draws the family, the line, and the dashboard’s suggestion with the program label', async () => {
+    renderGroup()
+    expect(await screen.findByText(GARCIA_LINE)).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /The line in CampMinder/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: /The dashboard.s suggestion/ })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia (Summer)')).toBeInTheDocument()
+  })
+
+  it('draws nothing when no grant line needs a camper', async () => {
+    read = { ...GRANTS, needs_camper: [] }
+    const { container } = renderGroup()
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(screen.queryByText('Outside grant posted to the family')).toBeNull()
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('under ?household= lists only that household’s lines', async () => {
+    read = TWO
+    renderGroup(1000003)
+    expect(await screen.findByText('1 line')).toBeInTheDocument()
+    expect(
+      screen.getByText('$800 · Grantor A · posted to the household · Mar 12')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(GARCIA_LINE)).toBeNull()
   })
 
   it('Confirm places the line on the suggested camper and session, after a fresh read (P-9)', async () => {
-    renderTab()
-    await userEvent.click(
-      await screen.findByText('$1,500 · Grantor B · posted to the household · Apr 3')
-    )
+    renderGroup()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
     const panel = await screen.findByTestId('needs-camper-panel')
     expect(
       within(panel).getByText("Liam Garcia: the household's one camper enrolled this season.")
@@ -177,15 +207,34 @@ describe('Grants › Needs attention (§8.2)', () => {
         note: '',
       }),
     })
-    expect(await screen.findByText(/^✓ 1 line placed on its camper/)).toBeInTheDocument()
+    await waitFor(() => expect(done[0]).toMatch(/^1 line placed on its camper/))
+  })
+
+  it('a placement refreshes the grants read, so the placed line leaves the group', async () => {
+    renderGroup()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    const reads = () =>
+      fetchSpy.mock.calls.filter(
+        ([url, init]) =>
+          (init?.method ?? 'GET') === 'GET' &&
+          String(url).startsWith('/api/financial-aid/grants/2027') &&
+          !String(url).includes('offsets=false')
+      ).length
+    const before = reads()
+    // The fresh check still lists the line; the refetch after the write does not.
+    stored = GRANTS
+    read = { ...GRANTS, needs_camper: [] }
+    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    await waitFor(() => expect(reads()).toBeGreaterThan(before))
+    await waitFor(() => expect(screen.queryByText(GARCIA_LINE)).toBeNull())
   })
 
   it('Confirm sends nothing when the line was placed meanwhile', async () => {
     stored = { ...GRANTS, needs_camper: [] }
-    renderTab()
-    await userEvent.click(
-      await screen.findByText('$1,500 · Grantor B · posted to the household · Apr 3')
-    )
+    renderGroup()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
     const panel = await screen.findByTestId('needs-camper-panel')
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(await within(panel).findByText(/This line has its camper now/)).toBeInTheDocument()
@@ -194,7 +243,7 @@ describe('Grants › Needs attention (§8.2)', () => {
 
   it('Another Camper… places on the camper picked, with no session (P-17)', async () => {
     read = TWO
-    renderTab()
+    renderGroup()
     await userEvent.click(
       await screen.findByText('$800 · Grantor A · posted to the household · Mar 12')
     )
@@ -207,15 +256,31 @@ describe('Grants › Needs attention (§8.2)', () => {
     )
     await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]?.method).toBe('POST')
+    expect(writes()[0]?.url).toBe('/api/financial-aid/grants/2027/placements')
     expect(JSON.parse(String(writes()[0]?.body))).toEqual({
       placements: [{ transaction_cm_id: 4000008, person_cm_id: 2000010, session_cm_id: null }],
       note: '',
     })
   })
 
+  it('offers only Confirm and Another Camper… on an opened line', async () => {
+    read = TWO
+    renderGroup()
+    await userEvent.click(
+      await screen.findByText('$800 · Grantor A · posted to the household · Mar 12')
+    )
+    const panel = await screen.findByTestId('needs-camper-panel')
+    expect(
+      within(panel)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Confirm', 'Another Camper…'])
+  })
+
   it('bulk: the button takes every single, exact suggestion and nothing else (S3-6)', async () => {
     read = TWO
-    renderTab()
+    renderGroup()
     await userEvent.click(
       await screen.findByRole('button', { name: 'Confirm the 1 Single, Exact Suggestion…' })
     )
@@ -229,7 +294,7 @@ describe('Grants › Needs attention (§8.2)', () => {
 
   it('bulk: rows checked by hand stay checked across a search, and a line that is not single is left out by name', async () => {
     read = TWO
-    renderTab()
+    renderGroup()
     const boxes = await screen.findAllByRole('checkbox', { name: 'Select' })
     await userEvent.click(boxes[0] as HTMLElement)
     await userEvent.click(boxes[1] as HTMLElement)
@@ -242,7 +307,7 @@ describe('Grants › Needs attention (§8.2)', () => {
 
   it('bulk: sends nothing when a line was placed meanwhile, refreshes, and Confirm then sends what still needs a camper (P-9)', async () => {
     read = THREE
-    renderTab()
+    renderGroup()
     await userEvent.click(
       await screen.findByRole('button', { name: 'Confirm the 2 Single, Exact Suggestions…' })
     )
@@ -271,13 +336,11 @@ describe('Grants › Needs attention (§8.2)', () => {
 
   it('offers view-only staff nothing to change', async () => {
     granted = ['financial_aid.view']
-    renderTab()
-    await userEvent.click(
-      await screen.findByText('$1,500 · Grantor B · posted to the household · Apr 3')
-    )
+    renderGroup()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
     const panel = await screen.findByTestId('needs-camper-panel')
     expect(within(panel).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.getAllByRole('link', { name: 'Open in the Register ›' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /Single, Exact/ })).toBeNull()
   })
 })

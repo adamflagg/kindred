@@ -1,7 +1,7 @@
 /**
  * Placing a household-level grant line on a camper (spec §8.2; D16, D126; P-17): the suggestion in
  * words, the placement the route takes, and what it did. Pure; shared by the household page's
- * "Place on a Camper…" (part 3a) and Grants › Needs attention (part 3b).
+ * "Place on a Camper…" (part 3a) and To place's outside-grant group (part 3b).
  */
 import type {
   ApiAidGrants,
@@ -41,7 +41,7 @@ export function evidenceWords(need: ApiAidNeedsCamper): string {
   return `${s.camper_name}: ${words}.`
 }
 
-/** "Liam Garcia (Summer)": the suggested camper and the program, in the rules' words. */
+/** "Liam Garcia (Summer)": the suggested camper and the program, in the server's `program_label`, else the rules' words. */
 export function suggestedWords(
   need: ApiAidNeedsCamper,
   names: Readonly<Record<string, string>>
@@ -50,7 +50,7 @@ export function suggestedWords(
   if (s === null) return 'No suggestion: pick the camper'
   return s.program_family === ''
     ? s.camper_name
-    : `${s.camper_name} (${programLabel(names, s.program_family)})`
+    : `${s.camper_name} (${s.program_label || programLabel(names, s.program_family)})`
 }
 
 /**
