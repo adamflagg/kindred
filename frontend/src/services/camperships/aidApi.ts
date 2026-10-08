@@ -794,6 +794,11 @@ export function makeAidRulesDraft(
   )
 }
 
+/** A rules write's body, carrying a done season's unlock reason (spec §11.3) only when there is one. */
+function withReason<B extends object>(body: B, pastSeasonReason: string | null): B {
+  return pastSeasonReason === null ? body : { ...body, past_season_reason: pastSeasonReason }
+}
+
 /**
  * One section editor's save into the rules draft (spec §7.5; D39). It lands in a new version when it
  * would change approved rules in use (`branched_from`). 409 (G6) when the section changed since the
@@ -803,13 +808,14 @@ export function saveAidRulesSection(
   fetchWithAuth: FetchWithAuth,
   year: number,
   section: ApiAidRulesSection,
-  body: ApiAidSectionSaveIn
+  body: ApiAidSectionSaveIn,
+  pastSeasonReason: string | null = null
 ): Promise<ApiAidRulesDraft> {
   return send<ApiAidRulesDraft>(
     fetchWithAuth,
     'PUT',
     `${BASE}/rules/${String(year)}/sections/${section}`,
-    body,
+    withReason(body, pastSeasonReason),
     "Couldn't save the section"
   )
 }
@@ -818,13 +824,14 @@ export function saveAidRulesSection(
 export function saveAidRulesSections(
   fetchWithAuth: FetchWithAuth,
   year: number,
-  body: ApiAidSectionsSaveIn
+  body: ApiAidSectionsSaveIn,
+  pastSeasonReason: string | null = null
 ): Promise<ApiAidRulesDraft> {
   return send<ApiAidRulesDraft>(
     fetchWithAuth,
     'PUT',
     `${BASE}/rules/${String(year)}/sections`,
-    body,
+    withReason(body, pastSeasonReason),
     "Couldn't save the card"
   )
 }
@@ -837,13 +844,14 @@ export function approveAidRules(
   fetchWithAuth: FetchWithAuth,
   year: number,
   version: number,
-  body: ApiAidRulesApproveIn
+  body: ApiAidRulesApproveIn,
+  pastSeasonReason: string | null = null
 ): Promise<ApiAidRulesVersion> {
   return send<ApiAidRulesVersion>(
     fetchWithAuth,
     'POST',
     `${BASE}/rules/${String(year)}/versions/${String(version)}/approve`,
-    body,
+    withReason(body, pastSeasonReason),
     "Couldn't approve the sections"
   )
 }
@@ -851,13 +859,14 @@ export function approveAidRules(
 /** Version 1 of an empty season, copied from last season's rules, every section a draft (§7.5). 409 when the season already has rules. */
 export function startAidRulesFromLastYear(
   fetchWithAuth: FetchWithAuth,
-  year: number
+  year: number,
+  pastSeasonReason: string | null = null
 ): Promise<ApiAidRulesVersion> {
   return send<ApiAidRulesVersion>(
     fetchWithAuth,
     'POST',
     `${BASE}/rules/${String(year)}/start-from-last-year`,
-    {},
+    withReason({}, pastSeasonReason),
     "Couldn't start the season's rules"
   )
 }

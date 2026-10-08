@@ -9,10 +9,15 @@ import {
   savePrecondition,
 } from '../../components/camperships/season/rules/precondition'
 import { rulesDraft } from '../../components/camperships/season/rules/rulesFixtures'
+import {
+  SeasonChromeContext,
+  type SeasonChrome,
+} from '../../components/camperships/season/seasonChrome'
 import { queryKeys } from '../../utils/queryKeys'
 import {
   useAidApproveRules,
   useAidSaveRulesSection,
+  useAidSaveRulesSections,
   useAidStartRulesFromLastYear,
   useFreshAidRulesDraft,
 } from './useAidRulesWrites'
@@ -221,5 +226,71 @@ describe('useFreshAidRulesDraft (Decisions 16-17; plan review C1, C2)', () => {
     expect((fetchSpy.mock.calls[0] as [string])[0]).toBe('/api/financial-aid/rules/2027/draft')
     expect(fresh).toEqual(rulesDraft())
     expect(client.getQueryData(queryKeys.aidRulesDraft(2027))).toEqual(rulesDraft())
+  })
+})
+
+describe("a done season's reason rides every rules write (spec §11.3)", () => {
+  function unlockedWrapper(reason: string | null) {
+    const chrome = { pastSeasonReason: reason } as SeasonChrome
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={client}>
+          <SeasonChromeContext.Provider value={chrome}>{children}</SeasonChromeContext.Provider>
+        </QueryClientProvider>
+      )
+    }
+  }
+  const saveBody = {
+    base_version: 4,
+    content: { minimum: '150' },
+    ...savePrecondition(rulesDraft(), 'awards'),
+  }
+
+  it('a section save sends past_season_reason while unlocked', async () => {
+    const { result } = renderHook(() => useAidSaveRulesSection(), {
+      wrapper: unlockedWrapper('Late fix'),
+    })
+    await act(() => result.current.mutateAsync({ section: 'awards', body: saveBody }))
+    expect(sent().body).toEqual({ ...saveBody, past_season_reason: 'Late fix' })
+  })
+
+  it('the one-step Programs and costs save sends it too', async () => {
+    const { result } = renderHook(() => useAidSaveRulesSections(), {
+      wrapper: unlockedWrapper('Late fix'),
+    })
+    const body = {
+      base_version: 4,
+      contents: { programs: {}, cost: {} },
+      expected_fingerprints: { programs: 'p', cost: 'c' },
+    }
+    await act(() => result.current.mutateAsync(body))
+    expect(sent().body).toEqual({ ...body, past_season_reason: 'Late fix' })
+  })
+
+  it('an approval sends it', async () => {
+    const { result } = renderHook(() => useAidApproveRules(), {
+      wrapper: unlockedWrapper('Late fix'),
+    })
+    const body = { note: 'Finance', ...approvePrecondition(rulesDraft(), ['awards']) }
+    await act(() => result.current.mutateAsync({ version: 4, body }))
+    expect(sent().body).toEqual({ ...body, past_season_reason: 'Late fix' })
+  })
+
+  it('a start from last year sends it as the body, and an empty body without it', async () => {
+    const { result } = renderHook(() => useAidStartRulesFromLastYear(), {
+      wrapper: unlockedWrapper('Late fix'),
+    })
+    await act(() => result.current.mutateAsync(undefined))
+    expect(sent().body).toEqual({ past_season_reason: 'Late fix' })
+    fetchSpy.mockClear()
+    const plain = renderHook(() => useAidStartRulesFromLastYear(), { wrapper })
+    await act(() => plain.result.current.mutateAsync(undefined))
+    expect(sent().body).toEqual({})
+  })
+
+  it('outside a Season page, or locked, no write carries the key', async () => {
+    const { result } = renderHook(() => useAidSaveRulesSection(), { wrapper })
+    await act(() => result.current.mutateAsync({ section: 'awards', body: saveBody }))
+    expect(sent().body).toEqual(saveBody)
   })
 })

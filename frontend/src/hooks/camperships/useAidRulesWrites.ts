@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
+import { useSeasonChrome } from '../../components/camperships/season/seasonChrome'
+
 import {
   approveAidRules,
   fetchAidRulesDraft,
@@ -38,14 +40,21 @@ export interface ApproveVars {
  * a start creates every section as a draft, so both are unpriced.
  */
 function useRulesWrite<Vars, Out>(
-  write: (fetchWithAuth: FetchWithAuth, year: number, vars: Vars) => Promise<Out>,
+  write: (
+    fetchWithAuth: FetchWithAuth,
+    year: number,
+    vars: Vars,
+    pastSeasonReason: string | null
+  ) => Promise<Out>,
   priced: boolean
 ) {
   const year = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
+  // A done season's unlock reason (spec §11.3); null outside a Season page and while locked.
+  const { pastSeasonReason } = useSeasonChrome()
   return useMutation({
-    mutationFn: (vars: Vars) => write(fetchWithAuth, year, vars),
+    mutationFn: (vars: Vars) => write(fetchWithAuth, year, vars, pastSeasonReason),
     onSettled: () => invalidateAidRulesQueries(queryClient, { priced }),
   })
 }
@@ -53,8 +62,8 @@ function useRulesWrite<Vars, Out>(
 /** One section editor's save into the rules draft (D39): prices nothing until approved. */
 export function useAidSaveRulesSection() {
   return useRulesWrite(
-    (fetchWithAuth, year, vars: SectionSaveVars) =>
-      saveAidRulesSection(fetchWithAuth, year, vars.section, vars.body),
+    (fetchWithAuth, year, vars: SectionSaveVars, reason) =>
+      saveAidRulesSection(fetchWithAuth, year, vars.section, vars.body, reason),
     false
   )
 }
@@ -62,8 +71,8 @@ export function useAidSaveRulesSection() {
 /** The Programs and costs card's save: programs and cost in one operation (D39): prices nothing until approved. */
 export function useAidSaveRulesSections() {
   return useRulesWrite(
-    (fetchWithAuth, year, body: ApiAidSectionsSaveIn) =>
-      saveAidRulesSections(fetchWithAuth, year, body),
+    (fetchWithAuth, year, body: ApiAidSectionsSaveIn, reason) =>
+      saveAidRulesSections(fetchWithAuth, year, body, reason),
     false
   )
 }
@@ -71,8 +80,8 @@ export function useAidSaveRulesSections() {
 /** Approve sections with a note naming the approving body (D39): may re-price the season. */
 export function useAidApproveRules() {
   return useRulesWrite(
-    (fetchWithAuth, year, vars: ApproveVars) =>
-      approveAidRules(fetchWithAuth, year, vars.version, vars.body),
+    (fetchWithAuth, year, vars: ApproveVars, reason) =>
+      approveAidRules(fetchWithAuth, year, vars.version, vars.body, reason),
     true
   )
 }
@@ -80,7 +89,8 @@ export function useAidApproveRules() {
 /** Start an empty season from last season's rules, every section a draft (§7.5). */
 export function useAidStartRulesFromLastYear() {
   return useRulesWrite(
-    (fetchWithAuth, year, _vars: undefined) => startAidRulesFromLastYear(fetchWithAuth, year),
+    (fetchWithAuth, year, _vars: undefined, reason) =>
+      startAidRulesFromLastYear(fetchWithAuth, year, reason),
     false
   )
 }
