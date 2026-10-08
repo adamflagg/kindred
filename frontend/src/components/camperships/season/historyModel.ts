@@ -28,7 +28,7 @@ export const KIND_LABELS = {
   rules: 'Rules',
   offers: 'Offers & stages',
   money: 'Money edits',
-  holds: 'Holds',
+  holds: 'On hold',
   grants: 'Grants',
   intake: 'Intake',
 } as const satisfies Record<ApiAidHistoryKind, string>

@@ -8,6 +8,7 @@ import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
 import { appealTarget } from './gridEditor'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
+import { fundLines, OUTSIDE_WORD } from './outside'
 import { roundOf } from './stage'
 import { acceptedTarget, nameOf, type TickAction } from './ticks'
 import { cmDetail, type ColumnContext } from './views'
@@ -225,6 +226,12 @@ export function RequestDetailLine({
           </>
         )}
       </div>
+      {fundLines(row).map((line) => (
+        <div key={line} data-fund-line="" className="text-xs">
+          {line.slice(0, -OUTSIDE_WORD.length)}
+          <span className={MUTED}>{OUTSIDE_WORD}</span>
+        </div>
+      ))}
     </div>
   )
   if (beside) {

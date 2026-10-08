@@ -13,7 +13,15 @@ vi.mock('../../../utils/csvExport', async (importActual) => ({
 import { AidWriteError } from '../../../services/camperships/aidApi'
 import type { ApiAidGridRow } from '../../../types/api-types'
 import type { AidRowNav } from '../kit/AidTable'
-import { confirmationOut, GRID_ROWS, gridRow, roundOut, ROW_LIAM, ROW_OLIVIA } from './gridFixtures'
+import {
+  confirmationOut,
+  GRID_ROWS,
+  gridRow,
+  roundOut,
+  ROW_EMMA,
+  ROW_LIAM,
+  ROW_OLIVIA,
+} from './gridFixtures'
 import { RequestsGrid } from './RequestsGrid'
 import { CM_PENDING_WORD, filterRows, GRID_COLUMNS, NO_FILTERS, requestView } from './views'
 
@@ -218,7 +226,7 @@ describe('RequestsGrid', () => {
     const headings = [...document.querySelectorAll('[data-group-heading] button')].map((b) =>
       b.textContent.slice(1)
     )
-    expect(headings).toEqual(['Needs an offer', 'Not reconciled', 'To reverse', 'Holds'])
+    expect(headings).toEqual(['Needs an offer', 'Not reconciled', 'To reverse', 'On hold'])
   })
 
   it('opens the Appeals lens grouped under the strip stages', () => {
@@ -1191,5 +1199,122 @@ describe("Needs an offer's split marker (⚠ Decision 39; #2941's payer_count)",
   it('draws the marker in Needs an offer only', () => {
     render(<Grid slug="all" rows={[gridRow({ payer_count: 2 })]} />)
     expect(screen.queryByText(/^split ·/)).toBeNull()
+  })
+})
+
+// Spec §12.2 (owner 10-07): the muted "outside" tag, the footer note, the CSV column.
+describe('money paid outside the budget', () => {
+  const split = gridRow({
+    request_id: 'reqsplit0000001',
+    camper_name: 'Avery Testcamper',
+    household_cm_id: 1000031,
+    person_cm_id: 1000032,
+    total_decided: 4800,
+    total_posted: 4800,
+    stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+    rounds: [
+      roundOut(1, 'posted', {
+        decided: 4800,
+        posted: 4800,
+        outside_budget: 1224,
+        outside_label: 'Partner fund',
+      }),
+    ],
+    queues: [],
+  })
+  const whole = gridRow({
+    request_id: 'reqwhole0000002',
+    camper_name: 'Blake Testcamper',
+    household_cm_id: 1000033,
+    person_cm_id: 1000034,
+    total_decided: 3675,
+    total_posted: 3675,
+    stage: { round: 1, code: 'posted', label: 'R1 · Posted' },
+    rounds: [
+      roundOut(1, 'posted', {
+        decided: 3675,
+        posted: 3675,
+        outside_budget: 3675,
+        outside_label: 'Full-cost program',
+      }),
+    ],
+    queues: [],
+  })
+
+  const cellOf = (camper: string, header: string) => {
+    const heads = within(screen.getAllByRole('row')[0] as HTMLElement).getAllByRole('columnheader')
+    const at = heads.findIndex((th) => th.textContent.startsWith(header))
+    const cells = within(rowOf(camper)).getAllByRole('cell')
+    return cells[at] as HTMLElement
+  }
+
+  it('draws the tag as a muted second line in R1, Total and Posted', () => {
+    render(<Grid rows={[split, whole]} />)
+    for (const col of ['R1', 'Total', 'Posted']) {
+      const tag = within(cellOf('Avery Testcamper', col)).getByText('$1,224 outside')
+      expect(tag.className).toMatch(/muted/)
+      expect(within(cellOf('Blake Testcamper', col)).getByText('outside')).toBeInTheDocument()
+    }
+  })
+
+  // requests-outside-v1 keeps the money columns' widths and lets "$1,224 outside" and the footer
+  // note wrap inside their cells (+32 px for the part-outside row); the cells are nowrap, so without
+  // this the words clip ("$1,224 outs").
+  it('wraps the tag and the footer note inside their cells rather than clipping them', () => {
+    render(<Grid rows={[split, whole]} />)
+    expect(within(cellOf('Avery Testcamper', 'R1')).getByText('$1,224 outside')).toHaveClass(
+      'whitespace-normal'
+    )
+    const note = screen.getByText('$4,899 outside the budget')
+    expect(note).toHaveClass('block')
+    expect(note).toHaveClass('whitespace-normal')
+  })
+
+  it('leaves a row with no outside money untagged', () => {
+    render(<Grid rows={[split, ROW_LIAM]} />)
+    expect(within(rowOf('Liam Garcia')).queryByText(/outside/)).toBeNull()
+  })
+
+  it('adds "$X outside the budget" to the footer only when the list holds some', () => {
+    const { unmount } = render(<Grid rows={[split, whole]} />)
+    expect(screen.getByText('$4,899 outside the budget')).toBeInTheDocument()
+    unmount()
+    render(<Grid rows={[ROW_LIAM]} />)
+    expect(screen.queryByText(/outside the budget/)).toBeNull()
+  })
+
+  it('writes an "Outside the budget" CSV column on every view, blank when none', async () => {
+    render(<Grid slug="needs_offer" rows={[split, ROW_EMMA]} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    const [header, ...lines] = content.split('\n')
+    const at = csvCells(header ?? '').indexOf('Outside the budget')
+    expect(at).toBeGreaterThan(-1)
+    const byName = (name: string) => lines.find((l) => l.startsWith(name))
+    expect(csvCells(byName('Avery Testcamper') ?? '')[at]).toBe('1224')
+    expect(csvCells(byName('Emma Johnson') ?? '')[at]).toBe('')
+  })
+
+  describe('the opened row', () => {
+    const detail = () => document.querySelector('[data-aid-detail]') as HTMLElement
+    const openRow = (camper: string) =>
+      userEvent.click(within(rowOf(camper)).getAllByRole('cell')[1] as HTMLElement)
+
+    const fundLineTexts = () =>
+      [...detail().querySelectorAll('[data-fund-line]')].map((el) => el.textContent)
+
+    it('names the fund and the split, one line per round with outside money', async () => {
+      render(<Grid rows={[split, whole, ROW_LIAM]} />)
+      await openRow('Avery Testcamper')
+      expect(fundLineTexts()).toEqual(['Round 1 · camp award $3,576 · Partner fund $1,224 outside'])
+      await openRow('Blake Testcamper')
+      expect(fundLineTexts()).toEqual(['Round 1 · Full-cost program $3,675 outside'])
+    })
+
+    it('shows no fund line on a row with no outside money', async () => {
+      render(<Grid rows={[split, ROW_LIAM]} />)
+      await openRow('Liam Garcia')
+      expect(fundLineTexts()).toEqual([])
+    })
   })
 })

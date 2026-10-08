@@ -19,6 +19,14 @@ import { IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
+import {
+  listOutside,
+  outsideOfPosted,
+  outsideOfRound,
+  outsideOfTotal,
+  outsideTagWords,
+  type CellOutside,
+} from './outside'
 import { RequestDetailLine, type MarkPosted } from './RequestDetailLine'
 import { requestStage, roundOf } from './stage'
 import { acceptedTarget, type TickAction } from './ticks'
@@ -98,6 +106,36 @@ const R3_PENDING_CSV: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
   },
 ]
 
+/** Every view's CSV carries the row's outside money across its rounds (spec §12.2, owner 10-07). */
+const OUTSIDE_CSV: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
+  {
+    header: 'Outside the budget',
+    value: (row) => moneyCsv(outsideOfTotal(row)?.amount ?? null),
+  },
+]
+const CSV_EXTRA_WITH_R3: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
+  ...OUTSIDE_CSV,
+  ...R3_PENDING_CSV,
+]
+
+/** The muted second line under an amount: "outside" or "$1,224 outside" (spec §12.2, knob 1 a). */
+function OutsideTag({ cell }: { cell: CellOutside | null }) {
+  return cell ? (
+    <span className="text-muted-foreground block text-xs whitespace-normal">
+      {outsideTagWords(cell)}
+    </span>
+  ) : null
+}
+
+/** The money columns that carry the tag: R1, R2, R3, Total and Posted. */
+const OUTSIDE_OF: Partial<Record<GridColumnKey, (row: ApiAidGridRow) => CellOutside | null>> = {
+  r1: (row) => outsideOfRound(row, 1),
+  r2: (row) => outsideOfRound(row, 2),
+  r3: (row) => outsideOfRound(row, 3),
+  total: outsideOfTotal,
+  posted: outsideOfPosted,
+}
+
 const NAME_LINK = 'text-primary font-medium hover:underline'
 
 function renderFor(
@@ -157,7 +195,12 @@ function renderFor(
         if (r3?.status === 'pending_approval') {
           return <span className={AMBER_NOTE}>pending {formatMoney(r3.pending_approval)}</span>
         }
-        return <Money value={r3?.decided ?? null} />
+        return (
+          <>
+            <Money value={r3?.decided ?? null} />
+            <OutsideTag cell={outsideOfRound(row, 3)} />
+          </>
+        )
       }
     case 'cancelledOn':
       return (row) => (row.cancellation?.on ? formatShortDate(row.cancellation.on) : '—')
@@ -191,9 +234,24 @@ function renderFor(
       )
     default: {
       const spec = GRID_COLUMNS[key]
-      return spec.money ? (row) => <Money value={asMoney(spec.value(row, ctx))} /> : undefined
+      if (!spec.money) return undefined
+      const outsideOf = OUTSIDE_OF[key]
+      return (row) => (
+        <>
+          <Money value={asMoney(spec.value(row, ctx))} />
+          {outsideOf ? <OutsideTag cell={outsideOf(row)} /> : null}
+        </>
+      )
     }
   }
+}
+
+/** "$X outside the budget" in the footer, only when the shown rows hold some (spec §12.2, knob 2). */
+function outsideFooterNote(rows: readonly ApiAidGridRow[]): ReactNode {
+  const outside = listOutside(rows)
+  return outside > 0 ? (
+    <span className="text-muted-foreground block text-xs font-normal whitespace-normal">{`${formatMoney(outside)} outside the budget`}</span>
+  ) : null
 }
 
 function buildColumns(
@@ -224,6 +282,7 @@ function buildColumns(
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
       sortValue: spec.sortValue,
       render: renderFor(key, ctx, links, onTick),
+      footerNote: key === 'attention' ? outsideFooterNote : undefined,
       total:
         spec.money && spec.noTotal !== true
           ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
@@ -299,7 +358,9 @@ export function RequestsGrid({
       defaultGrouping={view.groupBy === null ? undefined : 'reason'}
       csvFilename={csvFilename}
       csvExtra={
-        view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
+        view.columns.includes('r3') || view.columns.includes('r3Ask')
+          ? CSV_EXTRA_WITH_R3
+          : OUTSIDE_CSV
       }
       toolbarLead={filters}
       toolbarAfterGrouping={filtersAfterGrouping}

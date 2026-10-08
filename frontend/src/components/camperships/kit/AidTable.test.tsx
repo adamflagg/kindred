@@ -683,6 +683,23 @@ describe('the footer label', () => {
   })
 })
 
+describe('a column footer note', () => {
+  const noted = (note: (rows: readonly Row[]) => string | null): Array<AidColumn<Row>> =>
+    COLUMNS.map((c) => (c.key === 'attention' ? { ...c, footerNote: note } : c))
+
+  it('draws in the footer cell of a column with no total, over the rows on screen', () => {
+    renderTable('/aid/requests', { columns: noted((rows) => `${String(rows.length)} noted`) })
+    const footer = screen.getAllByRole('row').at(-1) as HTMLElement
+    expect(within(footer).getByText('4 noted')).toBeInTheDocument()
+  })
+
+  it('draws nothing when the note is null', () => {
+    renderTable('/aid/requests', { columns: noted(() => null) })
+    const footer = screen.getAllByRole('row').at(-1) as HTMLElement
+    expect(footer.textContent).not.toMatch(/noted/)
+  })
+})
+
 // Owner ruling R1 (2026-10-01): the row you are on stays on screen under a search that hides it,
 // but totals, group counts and the CSV always mean the rows matching the search.
 describe('a row kept on screen under a search', () => {

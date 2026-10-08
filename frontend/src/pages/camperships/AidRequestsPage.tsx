@@ -54,6 +54,7 @@ import {
   type GridFilters,
   type RequestView,
 } from '../../components/camperships/requests/views'
+import { listOutside, OUTSIDE_FOOTNOTE } from '../../components/camperships/requests/outside'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
@@ -144,6 +145,11 @@ export default function AidRequestsPage() {
   const visible = useMemo(
     () => (lensed ? filterRows(lensed, view.key, filters) : []),
     [lensed, view.key, filters]
+  )
+  // Footnote 5 (spec §12.2): only when the rows shown hold outside money.
+  const outsideNotes = useMemo(
+    () => (listOutside(visible) > 0 ? [OUTSIDE_FOOTNOTE] : []),
+    [visible]
   )
   const counts = useMemo(
     () => (lensed ? viewCounts(lensed, filters, live) : null),
@@ -576,7 +582,7 @@ export default function AidRequestsPage() {
           )
         }
       </QueryGuard>
-      <AidDefinitionNotes surface="requests" />
+      <AidDefinitionNotes surface="requests" extra={outsideNotes} />
     </div>
   )
 }

@@ -78,7 +78,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
   it('puts the exception badges on the right: Holds, Duplicates, Session unclear, To reverse (no cancel-reason badge: owner ruling B)', () => {
     strip()
     expect(names(screen.getByTestId('strip-exceptions'))).toEqual([
-      'Holds 2',
+      'On hold 2',
       'Duplicates 3',
       'Session unclear 1',
       'To reverse 4',
@@ -98,7 +98,7 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(within(screen.getByTestId('strip-exceptions')).queryAllByRole('link')).toEqual([])
     unmount()
     strip({ counts: new Map([['all', count(9)]]), stage: 'holds' })
-    expect(link('Holds')).toHaveTextContent('Holds —')
+    expect(link('On hold')).toHaveTextContent('On hold —')
   })
 
   it('draws no badge while the counts load (no flash of zeros), but keeps the picked one', () => {
@@ -119,12 +119,12 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     strip({ lens: 'appeals', stage: 'needs_offer' })
     expect(link('Appeals')).toHaveAttribute('data-state', 'lens')
     expect(link('Needs an offer')).toHaveAttribute('data-state', 'on')
-    expect(link('Holds')).not.toHaveAttribute('data-state')
+    expect(link('On hold')).not.toHaveAttribute('data-state')
   })
 
   it('marks a picked badge', () => {
     strip({ stage: 'holds' })
-    expect(link('Holds')).toHaveAttribute('data-state', 'on')
+    expect(link('On hold')).toHaveAttribute('data-state', 'on')
     expect(link('All')).toHaveAttribute('data-state', 'lens')
   })
 
@@ -197,19 +197,19 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(within(link('Waiting on the family')).getByText('5').className).not.toContain(
       'bg-amber-100'
     )
-    expect(link('Holds').className).toContain('bg-red-100')
+    expect(link('On hold').className).toContain('bg-red-100')
     expect(link('Session unclear').className).toContain('bg-amber-100')
   })
 
   it('hands a plain click to onOpen, and leaves a modified click to the browser (new tab)', () => {
     const onOpen = vi.fn()
     strip({ onOpen })
-    fireEvent.click(link('Holds'))
+    fireEvent.click(link('On hold'))
     expect(onOpen).toHaveBeenCalledWith('/s/holds')
     fireEvent.click(link('Appeals'))
     expect(onOpen).toHaveBeenCalledWith('/l/appeals')
     onOpen.mockClear()
-    fireEvent.click(link('Holds'), { metaKey: true })
+    fireEvent.click(link('On hold'), { metaKey: true })
     expect(onOpen).not.toHaveBeenCalled()
   })
 })
@@ -283,7 +283,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
   it('folds the trailing badges into +N when they do not fit (To reverse first)', () => {
     navWidth = 1000 // 350 for badges: three of them (300) and the chip (40); four need 400
     strip()
-    expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3', 'Session unclear 1'])
+    expect(shownBadges()).toEqual(['On hold 2', 'Duplicates 3', 'Session unclear 1'])
     expect(chip()).toHaveTextContent('+1')
   })
 
@@ -291,7 +291,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
     strip()
     expect(chip()).toBeNull()
     resize(900) // 250: two badges and the chip
-    expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3'])
+    expect(shownBadges()).toEqual(['On hold 2', 'Duplicates 3'])
     expect(chip()).toHaveTextContent('+2')
     resize(1150)
     expect(shownBadges()).toHaveLength(4)
@@ -410,7 +410,7 @@ describe('RequestViewNav: the +N overflow chip (owner 2026-10-04)', () => {
   it('tones the chip amber when only an amber badge is folded', () => {
     navWidth = 900 // three badges shown: two fit beside the chip, Session unclear folds
     strip({ counts: new Map([...COUNTS, ['to_reverse', count(0)]]) })
-    expect(shownBadges()).toEqual(['Holds 2', 'Duplicates 3'])
+    expect(shownBadges()).toEqual(['On hold 2', 'Duplicates 3'])
     expect(chip()).toHaveTextContent('+1')
     expect(chip()?.className).toContain('bg-amber-100')
   })
