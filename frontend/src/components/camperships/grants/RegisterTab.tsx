@@ -177,7 +177,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'offsets',
         header: 'Aid request it offsets',
-        width: 180,
+        width: 164,
         value: (r) => offsetWords(r, needsCamper),
         render: (r) =>
           r.counts && r.requests.length > 0 ? (
@@ -207,7 +207,8 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'standing',
         header: 'Where it stands',
-        width: 210,
+        // Room for the whole "Committed · not yet in CampMinder" pill: 210 clipped it.
+        width: 230,
         value: standingCsv,
         render: (r) =>
           r.kind === 'commitment' ? (
@@ -234,7 +235,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'counted',
         header: 'Counted',
-        width: 100,
+        width: 110,
         value: (r) => (countsInTotal(r, needsCamper) ? 'counted' : 'not counted'),
         render: (r) =>
           countsInTotal(r, needsCamper) ? '' : <StatusPill tone="muted">Not counted</StatusPill>,

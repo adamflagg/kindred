@@ -363,7 +363,7 @@ describe('Grants › Register (§8.2)', () => {
     expect(screen.getByText('Not placed')).toBeInTheDocument()
   })
 
-  it('fits a 1440 screen: the columns sum to no more than the ~1216px content width', async () => {
+  it('fits a 1440 screen: the columns sum to no more than the 1214px inside the card border', async () => {
     renderTab()
     await screen.findByTestId('register-chips')
     const cols = Array.from(document.querySelectorAll('table colgroup col'))
@@ -373,7 +373,20 @@ describe('Grants › Register (§8.2)', () => {
       0
     )
     expect(total).toBeGreaterThan(0)
-    expect(total).toBeLessThanOrEqual(1216)
+    expect(total).toBeLessThanOrEqual(1214)
+  })
+
+  it('gives the pill columns room for their whole pills: "Committed · not yet in CampMinder", "Not counted"', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent.trim())
+    const cols = Array.from(document.querySelectorAll('table colgroup col')) as HTMLElement[]
+    const offset = cols.length - headers.length
+    const standing = cols[headers.findIndex((h) => h.startsWith('Where it stands')) + offset]
+    expect(parseFloat(standing.style.width)).toBeGreaterThanOrEqual(228)
+    // and "Counted" for the whole "Not counted" pill (cut off at 100px once the table filled its card).
+    const counted = cols[headers.findIndex((h) => h.startsWith('Counted')) + offset]
+    expect(parseFloat(counted.style.width)).toBeGreaterThanOrEqual(110)
   })
 
   it('words the Grantor and Program filters\' no-filter choice "All", sentence case like the Ledger', async () => {
