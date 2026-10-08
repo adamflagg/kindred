@@ -159,6 +159,18 @@ export const STATISTICS: ApiAidStatistics = {
       round3_awarded: 600,
       appeal_rate: 33.3,
     },
+    // the server always ends RPT-9 with its totals: tier null, no band, no fee (statistics.py tier_appeals)
+    {
+      tier: null,
+      income_from: null,
+      income_to: null,
+      round1_apps: 12,
+      round1_fee_pct: null,
+      appeals: 4,
+      round2_max_pct: null,
+      round3_awarded: 600,
+      appeal_rate: 33.3,
+    },
   ],
   outcomes: [
     {

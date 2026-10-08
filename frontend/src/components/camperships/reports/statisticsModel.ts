@@ -258,21 +258,45 @@ export function tierAppealsColumns(noteOf: NoteOf): ReportColumn[] {
 
 export function tierAppealsRows(stats: ApiAidStatistics): ReportRow[] {
   const allTables = stats.table === null
-  return stats.tier_appeals.map((row, index) => ({
-    key: `appeals-${row.tier === null ? 'none' : String(row.tier)}-${String(index)}`,
-    kind: 'body',
-    cells: [
-      textValue(row.tier === null ? 'No tier' : String(row.tier)),
-      moneyValue(row.income_from),
-      row.income_to === null && row.tier !== null ? textValue('and up') : moneyValue(row.income_to),
-      countValue(row.round1_apps),
-      feeCell(row.round1_fee_pct, allTables),
-      countValue(row.appeals),
-      feeCell(row.round2_max_pct, allTables),
-      moneyValue(row.round3_awarded),
-      pctValue(row.appeal_rate),
-    ],
-  }))
+  // The server always ends RPT-9 with its totals (tier null, no band, no fee: statistics.py
+  // tier_appeals); the row has no kind of its own, so its place is the contract.
+  const last = stats.tier_appeals.length - 1
+  return stats.tier_appeals.map((row, index): ReportRow => {
+    if (index === last) {
+      return {
+        key: 'total',
+        kind: 'total',
+        cells: [
+          textValue(tableLabel(stats)),
+          textValue(''),
+          textValue(''),
+          countValue(row.round1_apps),
+          textValue(''),
+          countValue(row.appeals),
+          textValue(''),
+          moneyValue(row.round3_awarded),
+          pctValue(row.appeal_rate),
+        ],
+      }
+    }
+    return {
+      key: `appeals-${row.tier === null ? 'none' : String(row.tier)}-${String(index)}`,
+      kind: 'body',
+      cells: [
+        textValue(row.tier === null ? 'No tier' : String(row.tier)),
+        moneyValue(row.income_from),
+        row.income_to === null && row.tier !== null
+          ? textValue('and up')
+          : moneyValue(row.income_to),
+        countValue(row.round1_apps),
+        feeCell(row.round1_fee_pct, allTables),
+        countValue(row.appeals),
+        feeCell(row.round2_max_pct, allTables),
+        moneyValue(row.round3_awarded),
+        pctValue(row.appeal_rate),
+      ],
+    }
+  })
 }
 
 /** RPT-23: the March committee's outcomes per pool, then the server's no-pool row and all pools. */
