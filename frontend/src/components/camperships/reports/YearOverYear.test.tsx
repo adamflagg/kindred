@@ -74,6 +74,17 @@ describe('YearOverYear (spec §9.7; S4-2)', () => {
     expect(committeeCalls()).toHaveLength(1)
   })
 
+  it('draws the phases switch as separate pills, the chosen one in forest', async () => {
+    renderView()
+    await screen.findByRole('table', { name: 'Round 1 phases, year over year (RPT-1)' })
+    const on = screen.getByRole('button', { name: '% of budget' })
+    const off = screen.getByRole('button', { name: 'share of the phases' })
+    expect(on.className).toContain('rounded-full')
+    expect(off.className).toContain('rounded-full')
+    expect(on.className).toContain('bg-forest-700')
+    expect(off.className).not.toContain('bg-forest-700')
+  })
+
   it('switches the phases to their share in the URL, without reading again', async () => {
     renderView()
     await screen.findByRole('table', { name: 'Round 1 phases, year over year (RPT-1)' })

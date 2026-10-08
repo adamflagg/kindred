@@ -102,6 +102,37 @@ describe('StatisticsTab (spec §9.2)', () => {
     expect(chips).toHaveLength(3)
   })
 
+  it('puts the chips below the reporting controls, as the mock orders them', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    const controls = screen.getByLabelText('Received through')
+    const chip = screen.getByRole('button', { name: 'Table A' })
+    expect(controls.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('draws the chips as separate rounded pills, the chosen one in forest', async () => {
+    renderTab('/aid/reports/statistics?table=camp')
+    await screen.findByRole('table', { name: 'By tier' })
+    const on = screen.getByRole('button', { name: 'R1' })
+    const off = screen.getByRole('button', { name: 'R2' })
+    expect(on.className).toContain('rounded-full')
+    expect(off.className).toContain('rounded-full')
+    expect(on.className).toContain('bg-forest-700')
+    expect(off.className).not.toContain('bg-forest-700')
+    expect(off.className).toContain('bg-card')
+  })
+
+  it("divides the band columns from the figures at the tier table's Apps", async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    expect(within(table).getByRole('columnheader', { name: /^Apps/ }).className).toContain(
+      'border-l'
+    )
+    expect(within(table).getByRole('columnheader', { name: 'Asked' }).className).not.toContain(
+      'border-l'
+    )
+  })
+
   it('keeps the chips in the URL and reads the table and round the user picked', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })

@@ -186,4 +186,39 @@ describe('ReportTable', () => {
     await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
     expect(screen.getByText("Couldn't copy here: use Download CSV.")).toBeInTheDocument()
   })
+  it("draws a count link as the mock's .lnk: primary, semibold, a dotted underline, no wrapping", () => {
+    renderTable({
+      rows: [
+        {
+          key: '00010',
+          kind: 'body',
+          cells: [textValue('00010'), countValue(4), moneyValue(1200)],
+          links: { 1: '/aid/requests?report=x' },
+        },
+      ],
+    })
+    const cls = screen.getByRole('link', { name: '4' }).className
+    for (const token of [
+      'text-primary',
+      'font-semibold',
+      'border-b',
+      'border-dotted',
+      'border-primary',
+      'whitespace-nowrap',
+    ]) {
+      expect(cls).toContain(token)
+    }
+  })
+
+  it('draws a divider before a column flagged for one, header and cells, and no other', () => {
+    renderTable({
+      columns: [COLUMNS[0]!, { key: 'campers', header: 'Campers', divider: 'before' }, COLUMNS[2]!],
+    })
+    expect(screen.getByRole('columnheader', { name: 'Campers' }).className).toContain('border-l')
+    expect(screen.getByText('9').closest('td')?.className).toContain('border-l')
+    expect(screen.getByRole('columnheader', { name: /Dollars/ }).className).not.toContain(
+      'border-l'
+    )
+    expect(screen.getByText('$1,200').closest('td')?.className).not.toContain('border-l')
+  })
 })

@@ -27,7 +27,7 @@ import type { LinkOf, NoteOf } from './statisticsModel'
 
 export function programColumns(noteOf: NoteOf): ReportColumn[] {
   const six = (group: string, asked: string): ReportColumn[] => [
-    { key: `${group}-apps`, header: 'Apps', group, note: noteOf('apps') },
+    { key: `${group}-apps`, header: 'Apps', group, note: noteOf('apps'), divider: 'before' },
     { key: `${group}-requested`, header: asked, group },
     { key: `${group}-awarded`, header: 'Awarded', group, note: noteOf('awarded') },
     { key: `${group}-avgRequest`, header: 'Avg request', group },
@@ -38,9 +38,9 @@ export function programColumns(noteOf: NoteOf): ReportColumn[] {
     { key: 'session', header: 'Session' },
     ...six('Round 1', 'Requested'),
     ...six('Round 2 (appeals)', 'Asked'),
-    { key: 'r3-apps', header: 'Apps', group: 'Round 3' },
+    { key: 'r3-apps', header: 'Apps', group: 'Round 3', divider: 'before' },
     { key: 'r3-awarded', header: 'Awarded', group: 'Round 3' },
-    { key: 'total', header: 'Total awarded' },
+    { key: 'total', header: 'Total awarded', divider: 'before' },
   ]
 }
 
