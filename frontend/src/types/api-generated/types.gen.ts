@@ -3740,9 +3740,9 @@ export type DevelopmentColumnOut = {
    */
   not_rebuilt?: Array<string>
   /**
-   * Asks Left Out
+   * Asks Capped
    */
-  asks_left_out?: number
+  asks_capped?: number
 }
 
 /**

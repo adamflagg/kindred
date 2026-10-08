@@ -27,9 +27,9 @@ from bunking.financial_aid.reports.development import (
     GroupFigures,
     Person,
     SourceLine,
+    capped_asks,
     development_column,
     gender_label,
-    impossible_asks,
     need,
     rebuilt_ages,
 )
@@ -520,29 +520,38 @@ def test_a_cancelled_request_still_counts_in_the_cancel_reasons_though_it_is_out
     assert camp.cancelled_by_reason == {"medical": 1}
 
 
-# --- an impossible ask is left out of demand (owner 10-03, queue 16 ii) ------------------------------------------
+# --- Rule M: an ask above its session's cost counts at the cost (owner 10-08, revised from 10-03) -----------------
 
 
-def test_an_ask_above_its_session_cost_is_left_out_of_need_never_capped() -> None:
-    """Owner 10-03: "for 2026+ Kindred requests, an ask above its session's cost is impossible"; impossible asks are
-    LEFT OUT of demand (not capped). Emma's Round 1 ask of 40,000 on a 4,000 session is a typo: her need is her
-    appeal's alone, 1,500 posted before it + its 1,000 ask."""
+def test_an_ask_above_its_session_cost_counts_at_the_cost() -> None:
+    """Rule M (owner 10-08): "if someone asks above the session cost just cap it at the session cost". Emma's Round 1
+    ask of 40,000 on a 4,000 session counts as 4,000; her appeal's 1,500 posted before it + its 1,000 ask is less, so
+    her need is 4,000."""
     typo = req("reqemma00000001", rnd(1, ask="40000", posted="1500"), rnd(2, ask="1000"), person=EMMA, cost="4000")
-    assert need(typo) == Decimal(2500)
-    assert impossible_asks(typo) == 1
+    assert need(typo) == Decimal(4000)
+    assert capped_asks(typo) == 1
 
 
-def test_an_ask_equal_to_the_cost_or_with_no_cost_known_is_kept() -> None:
-    """Only an ask ABOVE the cost is impossible; a request the season couldn't price (no cost) keeps every ask."""
+def test_each_ask_is_capped_on_its_own() -> None:
+    """The cap is per ask (the ruling's words: "an ask above its session's cost"): an appeal's 5,000 ask on a 4,000
+    session counts at 4,000 on top of the 1,500 posted before it."""
+    appeal = req("reqemma00000001", rnd(1, ask="2000", posted="1500"), rnd(2, ask="5000"), person=EMMA, cost="4000")
+    assert need(appeal) == Decimal(5500)
+    assert capped_asks(appeal) == 1
+
+
+def test_an_ask_equal_to_the_cost_or_with_no_cost_known_counts_as_typed() -> None:
+    """Only an ask ABOVE the cost is capped; a request the season couldn't price (no cost) counts every ask as typed
+    (Rule M: "A missing cost -> counted as typed")."""
     full = req("reqemma00000001", rnd(1, ask="4000"), person=EMMA, cost="4000")
     unpriced = req("reqemma00000002", rnd(1, ask="40000"), person=EMMA)
-    assert (need(full), impossible_asks(full)) == (Decimal(4000), 0)
-    assert (need(unpriced), impossible_asks(unpriced)) == (Decimal(40000), 0)
+    assert (need(full), capped_asks(full)) == (Decimal(4000), 0)
+    assert (need(unpriced), capped_asks(unpriced)) == (Decimal(40000), 0)
 
 
-def test_the_column_counts_the_asks_it_left_out_of_total_requests_and_need_met() -> None:
-    """The footnote's count (owner 10-03: "a footnote counts them"): per group and for the column. Liam's 2,000 ask
-    stays. % of need met moves with it: (1,500 + 0) ÷ (2,500 + 2,000)."""
+def test_the_column_counts_the_asks_it_capped_in_total_requests_and_need_met() -> None:
+    """The footnote's count ("N asks above their session's cost counted at the cost"): per group and for the column.
+    Emma counts 4,000, Liam's 2,000 stays. % of need met moves with it: (1,500 + 0) / (4,000 + 2,000)."""
     column = development_column(
         _inputs(
             requests=(
@@ -558,14 +567,14 @@ def test_the_column_counts_the_asks_it_left_out_of_total_requests_and_need_met()
         )
     )
     camp = _camp(column)
-    assert camp.total_requests == Decimal(4500)
-    assert camp.pct_need_met == Decimal("33.3")
-    assert (camp.asks_left_out, column.asks_left_out) == (1, 1)
+    assert camp.total_requests == Decimal(6000)
+    assert camp.pct_need_met == Decimal("25.0")
+    assert (camp.asks_capped, column.asks_capped) == (1, 1)
 
 
-def test_a_request_out_of_demand_never_counts_as_an_ask_left_out() -> None:
-    """The count is of asks left out of Total Requests: a cancelled request (29b) or a camper who didn't attend
-    (D92) was never in it, impossible ask or not."""
+def test_a_request_out_of_demand_never_counts_as_an_ask_capped() -> None:
+    """The count is of asks capped in Total Requests: a cancelled request (29b) or a camper who didn't attend
+    (D92) was never in it, ask above the cost or not."""
     column = development_column(
         _inputs(
             requests=(
@@ -574,4 +583,4 @@ def test_a_request_out_of_demand_never_counts_as_an_ask_left_out() -> None:
             )
         )
     )
-    assert column.asks_left_out == 0
+    assert column.asks_capped == 0

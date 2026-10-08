@@ -896,7 +896,7 @@ def _columns(
                         as_of=today,
                         basis_unconfirmed=False,
                         label=str(season),
-                        asks_left_out=natives[season].asks_left_out,
+                        asks_capped=natives[season].asks_capped,
                     ),
                     natives[season],
                 )
@@ -912,7 +912,7 @@ def _columns(
                             basis_unconfirmed=False,
                             label=f"{season} as of {as_of:%b} {as_of.day}",
                             not_rebuilt=list(DATED_NOT_REBUILT),
-                            asks_left_out=column.asks_left_out,
+                            asks_capped=column.asks_capped,
                         ),
                         column,
                     )

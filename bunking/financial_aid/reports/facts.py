@@ -98,8 +98,8 @@ class ReportRequest:
     # (D72), so it stays out of Apps, Asked, "# asks", r1_apps and every received count; only its money counts.
     counts_as_received: bool = True
     # The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override; None
-    # when nothing could price it: a request that isn't live, no rules, or a program with no price). Development leaves
-    # an ask above it out of demand (owner 10-03). The service fills it (financial_aid_reports_facts.session_cost).
+    # when nothing could price it: a request that isn't live, no rules, or a program with no price). Development counts
+    # an ask above it at the cost (Rule M). The service fills it (financial_aid_reports_facts.session_cost).
     cost: Decimal | None = None
 
     @property

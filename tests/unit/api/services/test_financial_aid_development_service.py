@@ -687,26 +687,27 @@ async def test_a_funders_incentive_and_need_based_money_stay_on_separate_lines()
     ]
 
 
-async def test_an_ask_above_its_sessions_cost_leaves_demand_and_the_column_counts_it() -> None:
-    """Owner 10-03 (queue 16 ii): a 2026+ request's ask above its session's cost (as priced, a staff cost override
-    included) is impossible: left out of Total Requests and % of need met, never capped, and counted on the column
-    for the footnote. Emma asks 4,000 for Session 2, which costs 2,000 (fixtures.fictional_rules); Liam's 2,000 stays."""
+async def test_an_ask_above_its_sessions_cost_counts_at_the_cost_and_the_column_counts_it() -> None:
+    """Rule M (owner 10-08, revised from 10-03): an ask above its session's cost (as priced, a staff cost override
+    included) counts AT the session's cost in Total Requests and % of need met, and the column counts it for the
+    footnote ("N asks above their session's cost counted at the cost"). Emma asks 4,000 for Session 2, which costs
+    2,000 (fixtures.fictional_rules), so she counts 2,000; Liam's 2,000 stays: 4,000."""
     out = await _service(_development()).development(YEAR)
-    assert _row(out, "total_requests", "camp_pool").values == [2000.0]
-    assert [(c.season, c.basis, c.asks_left_out) for c in out.columns] == [(2027, "P", 1)]
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]
+    assert [(c.season, c.basis, c.asks_capped) for c in out.columns] == [(2027, "P", 1)]
 
 
-async def test_a_season_with_no_impossible_ask_counts_none() -> None:
+async def test_a_season_with_no_ask_above_its_cost_caps_none() -> None:
     out = await _service(_development(), store=_asks_within_cost()).development(YEAR)
     assert _row(out, "total_requests", "camp_pool").values == [4000.0]
-    assert [c.asks_left_out for c in out.columns] == [0]
+    assert [c.asks_capped for c in out.columns] == [0]
 
 
-async def test_an_ask_above_its_sessions_cost_is_left_out_though_the_familys_income_is_missing() -> None:
+async def test_an_ask_above_its_sessions_cost_is_capped_though_the_familys_income_is_missing() -> None:
     """The session's cost doesn't depend on the family's income: a request the calculator stops on (no income figure
-    reported) still has its session's price, so its 4,000 ask on a 2,000 session is left out too (owner 10-03)."""
+    reported) still has its session's price, so its 4,000 ask on a 2,000 session counts at 2,000 too (Rule M)."""
     store = report_season()
     store.applications = [replace(a, answers={}) if a.household_cm_id == 1000001 else a for a in store.applications]
     out = await _service(_development(), store=store).development(YEAR)
-    assert _row(out, "total_requests", "camp_pool").values == [2000.0]
-    assert [c.asks_left_out for c in out.columns] == [1]
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]
+    assert [c.asks_capped for c in out.columns] == [1]

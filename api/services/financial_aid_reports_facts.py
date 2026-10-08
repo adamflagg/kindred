@@ -163,7 +163,7 @@ def _round(
 
 def session_cost(priced: PricedRequest | None, document: AidRules | None) -> Decimal | None:
     """The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override), for
-    the impossible-ask rule (owner 10-03, queue 16 ii). The calculator's own when it reached its cost step; else the
+    Rule M (an ask above it counts at the cost). The calculator's own when it reached its cost step; else the
     cost resolver's, since a session's price doesn't depend on the family's income (the calculator stops before cost
     when no income is reported). None when nothing could price it: a request that isn't live, or no rules."""
     if priced is None:
