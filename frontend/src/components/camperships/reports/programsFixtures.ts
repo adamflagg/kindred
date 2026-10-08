@@ -68,7 +68,13 @@ export const PROGRAMS: ApiAidPrograms = {
         row({
           session_cm_id: 1000103,
           session_name: 'Session 3',
-          round1: block({ apps: 1, requested: 2000, asks: 1 }),
+          round1: block({
+            apps: 1,
+            requested: 2000,
+            asks: 1,
+            average_request: 2000,
+            pct_awarded: 0,
+          }),
         }),
       ],
       subtotal: row({

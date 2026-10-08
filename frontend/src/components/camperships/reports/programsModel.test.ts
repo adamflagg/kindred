@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest'
 
 import { reportText } from '../kit/report'
 import { parseReportParam, reportParam, type ReportAddress } from '../requests/reportFilter'
-import { programColumns, programRows, programsCsvName, programsLinkParams } from './programsModel'
+import {
+  programColumns,
+  programRows,
+  programsCsvName,
+  programsHeading,
+  programsLinkParams,
+} from './programsModel'
 import { PROGRAMS } from './programsFixtures'
 
 const ALL = { kind: 'all' } as const
@@ -46,6 +52,43 @@ describe('Programs (RPT-11)', () => {
       '$0',
       '$2,100',
     ])
+  })
+
+  it("draws an unawarded session's server ratios: its ask average, a real 0% and no award average", () => {
+    const session = programRows(PROGRAMS, ALL, linkOf)[2]
+    expect(session?.cells.map(reportText).slice(0, 7)).toEqual([
+      'Session 3',
+      '1',
+      '$2,000',
+      '$0',
+      '$2,000',
+      '—',
+      '0.0%',
+    ])
+  })
+
+  it("draws the subtotal and total with the server's pooled ratios, not averages of its rows", () => {
+    const rows = programRows(PROGRAMS, ALL, linkOf)
+    expect(rows[3]?.cells.map(reportText).slice(0, 7)).toEqual([
+      'Pool A subtotal',
+      '3',
+      '$8,000',
+      '$1,500',
+      '$2,666.67',
+      '$1,500',
+      '18.8%',
+    ])
+    expect(rows[4]?.cells.map(reportText)[6]).toBe('18.8%')
+  })
+
+  it('heads the table by session, live without a past day, and names no request set when all', () => {
+    expect(programsHeading(PROGRAMS)).toMatchObject({
+      title: 'By session',
+      season: 2027,
+      live: true,
+      requestSet: null,
+    })
+    expect(programsHeading({ ...PROGRAMS, as_of: '2027-03-08' }).live).toBe(false)
   })
 
   it('heads the rounds as groups, so a copied header reads "Round 1 · Apps"', () => {
