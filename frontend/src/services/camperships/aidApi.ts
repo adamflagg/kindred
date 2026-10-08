@@ -31,7 +31,6 @@ import type {
   ApiAidPreviewIn,
   ApiAidReclassifyLineIn,
   ApiAidRemaining,
-  ApiAidToday,
   ApiAidToPlace,
   ApiAidToPlaceWriteOut,
   ApiAidRequestOut,
