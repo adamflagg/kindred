@@ -1,0 +1,246 @@
+/**
+ * Reports › Statistics, this season, through its real hooks (spec §9.2; RPT-10, 22, 9, 23; D80, D130,
+ * D138, D157; slice 4 J, K, L): the chips and the reporting controls in the URL, the tables as sent,
+ * the request-set and past-date lines, the count links, and a refusal shown in the server's words.
+ * Only `fetch` is faked.
+ */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, useLocation } from 'react-router'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
+
+import {
+  STATISTICS,
+  STATISTICS_ALL_TABLES,
+  STATISTICS_PAST,
+  STATISTICS_THROUGH,
+} from './statisticsFixtures'
+import { StatisticsTab } from './StatisticsTab'
+
+vi.mock('../../../lib/pocketbase', () => ({
+  pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
+}))
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+}))
+let granted: string[] = []
+vi.mock('../../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
+}))
+vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+
+const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
+const NOTES = {
+  surface: 'reports-statistics',
+  notes: [
+    { key: 'apps', n: 1, text: 'Apps: every received request.' },
+    { key: 'awarded', n: 3, text: 'Awarded: Posted.' },
+  ],
+}
+
+let statistics: (url: string) => Response
+let fetchSpy: MockInstance<typeof fetch>
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+const statisticsCalls = () =>
+  fetchSpy.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/statistics'))
+/** The Requests link a count carries: its address in `?report=`, the season after it (aidHref). */
+const requestsLink = (address: string) =>
+  `/aid/requests?${new URLSearchParams({ report: address, year: '2027' }).toString()}`
+
+beforeEach(() => {
+  granted = ['financial_aid.view']
+  statistics = () => json(STATISTICS)
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
+  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+    const text = String(url)
+    if (text.includes('/definitions')) return Promise.resolve(json(NOTES))
+    return Promise.resolve(statistics(text))
+  })
+})
+afterEach(() => {
+  fetchSpy.mockRestore()
+  vi.useRealTimers()
+})
+
+function Where() {
+  const { search } = useLocation()
+  return <div data-testid="where">{search}</div>
+}
+
+function renderTab(path = '/aid/reports/statistics') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <StatisticsTab view={VIEW} />
+        <Where />
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
+describe('StatisticsTab (spec §9.2)', () => {
+  it("draws the tier table and the server's total, with the cancelled applicants' line (D131)", async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    expect(within(table).getByText('$27,000')).toBeInTheDocument()
+    expect(within(table).getByText('Table A · Round 1')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Cancelled applicants \(counted in Apps too, and on their own line here\):/)
+    ).toBeInTheDocument()
+    expect(screen.getByText('Apps: every received request.')).toBeInTheDocument()
+  })
+
+  it("offers the rules' award tables as chips, with All award tables first (RPT-10)", async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    const chips = ['All award tables', 'Table A', 'Table B'].map((name) =>
+      screen.getByRole('button', { name })
+    )
+    expect(chips).toHaveLength(3)
+  })
+
+  it('keeps the chips in the URL and reads the table and round the user picked', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    await userEvent.click(screen.getByRole('button', { name: 'Table B' }))
+    await userEvent.click(screen.getByRole('button', { name: 'All rounds' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('?table=family&round=all')
+    await waitFor(() =>
+      expect(statisticsCalls().at(-1)).toBe(
+        '/api/financial-aid/reports/2027/statistics?table=family&round=all'
+      )
+    )
+  })
+
+  it('says "varies" for the fee % on All award tables', async () => {
+    statistics = () => json(STATISTICS_ALL_TABLES)
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    expect(within(table).getAllByText('varies')).toHaveLength(2)
+  })
+
+  it('labels every figure when a link carries a reporting control (D138)', async () => {
+    statistics = () => json(STATISTICS_THROUGH)
+    renderTab('/aid/reports/statistics?through=2027-02-01')
+    expect(
+      await screen.findByText(
+        /Every figure below counts only requests received through Feb 1, 2027/
+      )
+    ).toBeInTheDocument()
+    expect(statisticsCalls()[0]).toContain('received_through=2027-02-01')
+  })
+
+  it('says a past date never estimates (D154)', async () => {
+    statistics = () => json(STATISTICS_PAST)
+    renderTab()
+    expect(await screen.findByText(/never an estimate/)).toBeInTheDocument()
+  })
+
+  it('keeps what loaded when a refetch fails (owner ruling Group 5)', async () => {
+    let calls = 0
+    statistics = () => {
+      calls += 1
+      return calls === 1 ? json(STATISTICS) : json({ detail: 'boom' }, 500)
+    }
+    // The hook retries a dropped connection (`reportRetry`); no delay here, so the retries run at once.
+    const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/aid/reports/statistics']}>
+          <StatisticsTab view={VIEW} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    await screen.findByRole('table', { name: 'By tier' })
+    await client.invalidateQueries({ queryKey: ['financial-aid', 'reports'] })
+    await waitFor(() => expect(calls).toBeGreaterThan(1))
+    expect(screen.getByRole('table', { name: 'By tier' })).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to load/)).toBeNull()
+  })
+})
+
+describe('StatisticsTab: the reporting controls and the three tables (D129, D130, D138)', () => {
+  it('keeps the controls in the URL, off by default, and sends what they say (S4-3)', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'Aid recipients who cancelled (RPT-22)' })
+    expect(screen.getByRole('checkbox', { name: 'Include not yet offered' })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Include not yet offered' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('?decided=1&through=deadline')
+    await waitFor(() =>
+      expect(statisticsCalls().at(-1)).toBe(
+        '/api/financial-aid/reports/2027/statistics?round=1&basis=posted_and_decided&through_round1_deadline=true'
+      )
+    )
+    expect(screen.getByLabelText('Received through')).toBeDisabled()
+  })
+
+  it('draws recipients who cancelled, RPT-9 and RPT-23 from the same read', async () => {
+    renderTab()
+    expect(await screen.findByText('Withdrawn in the dashboard')).toBeInTheDocument()
+    expect(
+      screen.getByRole('table', { name: 'Round 1 and appeals by tier (RPT-9)' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('table', { name: 'March committee outcomes (RPT-23)' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('As of Apr 10, 2027 (live) · rules v3')).toBeInTheDocument()
+  })
+
+  it('keeps the controls after a refusal, so the user can turn the control off', async () => {
+    statistics = (url) =>
+      url.includes('through_round1_deadline')
+        ? json({ detail: 'The reporting controls work from 2027.' }, 422)
+        : json(STATISTICS)
+    renderTab('/aid/reports/statistics?through=deadline')
+    expect(await screen.findByText('The reporting controls work from 2027.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'R2' })).toBeInTheDocument()
+    expect(screen.getByText('Nothing to show for these choices.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
+    expect(await screen.findByText('Table A · Round 1')).toBeInTheDocument()
+    expect(screen.queryByText('The reporting controls work from 2027.')).toBeNull()
+  })
+})
+
+describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () => {
+  it("opens a tier's Apps in Requests on exactly that count's address", async () => {
+    renderTab('/aid/reports/statistics?table=camp')
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    expect(within(table).getAllByRole('link', { name: '12' })[0]).toHaveAttribute(
+      'href',
+      requestsLink('statistics?table=camp&round=1&part=tier&tier=1&count=apps')
+    )
+  })
+
+  it("opens RPT-23's Waiting for a response too, which no grid filter could hold before (#2974)", async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'March committee outcomes (RPT-23)' })
+    const [poolA] = within(table).getAllByRole('row').slice(1)
+    expect(within(poolA!).getByRole('link', { name: '1' })).toHaveAttribute(
+      'href',
+      requestsLink('statistics?round=1&part=outcome&outcome_row=pool&pool=pool_a&outcome=waiting')
+    )
+  })
+
+  it('keeps every count a link under a reporting control, carrying the control (the ids match the figure)', async () => {
+    statistics = () => json(STATISTICS_THROUGH)
+    renderTab('/aid/reports/statistics?through=2027-02-01')
+    const table = await screen.findByRole('table', { name: 'March committee outcomes (RPT-23)' })
+    expect(within(table).getAllByRole('link', { name: '9' })[0]).toHaveAttribute(
+      'href',
+      requestsLink(
+        'statistics?round=1&received_through=2027-02-01&part=outcome&outcome_row=pool&pool=pool_a&outcome=accepted'
+      )
+    )
+  })
+
+  it('opens nothing from RPT-9, and says so', async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'Round 1 and appeals by tier (RPT-9)' })
+    expect(within(table).queryAllByRole('link')).toHaveLength(0)
+    expect(screen.getByText(/This table's counts open nothing yet/)).toBeInTheDocument()
+  })
+})
