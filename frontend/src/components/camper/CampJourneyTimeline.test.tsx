@@ -98,7 +98,7 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     // the reader is already looking. Owner, 2026-08-18: "we also dont need the
     // 'family' tag in the journey, staff knows."
     const history: HistoricalRecord[] = [
-      { year: 2026, sessionName: 'Family Camp 2: Keshet LGBTQ Weekend', sessionType: 'family' },
+      { year: 2026, sessionName: 'Family Camp 2: Spring Weekend', sessionType: 'family' },
     ]
     render(
       <CampJourneyTimeline
@@ -163,7 +163,7 @@ describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
     const history: HistoricalRecord[] = [
       {
         year: 2024,
-        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionName: 'Family Camp 2: Spring Weekend',
         sessionType: 'family',
         bunkName: 'Cedar Lodge',
       },
@@ -180,7 +180,7 @@ describe('CampJourneyTimeline family-camp housing (kindred#2466)', () => {
 
   it('shows no housing segment for a family row with nothing to show (day group dropped, not replaced)', () => {
     const history: HistoricalRecord[] = [
-      { year: 2024, sessionName: 'Family Camp 2: Keshet Weekend', sessionType: 'family' },
+      { year: 2024, sessionName: 'Family Camp 2: Spring Weekend', sessionType: 'family' },
     ]
     render(
       <CampJourneyTimeline
@@ -387,7 +387,7 @@ describe('CampJourneyTimeline cabin provenance (kindred#2332 pattern)', () => {
     const history: HistoricalRecord[] = [
       {
         year: 2022,
-        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionName: 'Family Camp 2: Spring Weekend',
         sessionType: 'family',
         bunkName: 'Meadow House 1',
         bunkNameRecorded: 'Old Meadow 1',

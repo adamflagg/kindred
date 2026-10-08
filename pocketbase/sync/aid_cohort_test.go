@@ -70,7 +70,7 @@ func TestAidCohort_ApplicantsAndPostingsInSeasonsNAndNPlus1(t *testing.T) {
 	// in, and his season-N household (9310003) must still surface as the household of a
 	// cohort person (fixture no longer relies on this posting also naming the household).
 	aidPosting(t, app, year+1, 9300003, 0, aidCategoryFinancialAssistance)
-	aidPosting(t, app, year, 0, 9310004, aidCategoryJFAM)                        // household-only: in
+	aidPosting(t, app, year, 0, 9310004, aidCategoryFamilyIncentive)             // household-only: in
 	aidPosting(t, app, year-1, 9300005, 9310005, aidCategoryFinancialAssistance) // N-1: out
 	aidPosting(t, app, year, 9300006, 9310006, 22650)                            // tuition: out
 	aidApplication(t, app, year-1, 9300007, true)                                // wrong-year applicant: out
@@ -160,7 +160,7 @@ func TestHouseholdCustomFieldValuesSync_DailyPassAddsAidCohort(t *testing.T) {
 	pFC := cadenceAddPerson(t, app, 801, 701, year, hhFC)
 	cadenceAddAttendee(t, app, pFC, fc, "enrolled", 801, statusIDActiveEnrolled, year)
 	cadenceAddHousehold(t, app, 9310004, year)
-	aidPosting(t, app, year, 0, 9310004, aidCategoryJFAM)
+	aidPosting(t, app, year, 0, 9310004, aidCategoryFamilyIncentive)
 
 	s := NewHouseholdCustomFieldValuesSync(app, nil)
 	s.Scope = ScopeFamilyCamp

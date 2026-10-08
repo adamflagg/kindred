@@ -799,7 +799,7 @@ func TestGetSessionTypeFromGroupID(t *testing.T) {
 }
 
 // TestClassifySessionType_UnmappedGroupFallsThroughToNameRules covers issue #2114:
-// seven real 2021 sessions (six Family Camp weekends + one Family School) carry a
+// seven 2021 sessions (six Family Camp weekends + one Family School) carry a
 // CampMinder GroupID that resolves to none of the cases in getSessionTypeFromGroupID's
 // switch (group cm_id 3062, "Camp Sessions" - CampMinder's catch-all bucket, unmapped in
 // every year 2017-2026, not just 2021). Because groupID > 0 was true, the old code took
@@ -829,7 +829,7 @@ func TestClassifySessionType_UnmappedGroupFallsThroughToNameRules(t *testing.T) 
 		// were hidden as "other" before the fix.
 		{
 			name:     "2021 Family Camp 1 falls through to family",
-			session:  sessionInfo{cmID: 501, name: "2021 Family Camp 1: Keshet LGBTQ Weekend"},
+			session:  sessionInfo{cmID: 501, name: "2021 Family Camp 1: Spring Weekend"},
 			groupID:  groupUnmapped,
 			expected: sessionTypeFamily,
 		},
@@ -847,7 +847,7 @@ func TestClassifySessionType_UnmappedGroupFallsThroughToNameRules(t *testing.T) 
 		},
 		{
 			name:     "2021 Family Camp 4 falls through to family",
-			session:  sessionInfo{cmID: 504, name: "2021 Family Camp 4: Families of Color Weekend"},
+			session:  sessionInfo{cmID: 504, name: "2021 Family Camp 4: Autumn Weekend"},
 			groupID:  groupUnmapped,
 			expected: sessionTypeFamily,
 		},

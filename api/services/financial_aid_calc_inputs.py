@@ -18,7 +18,7 @@ Unknowns stay unknown (spec principle 5):
 
 The calculator's program key is the RULES program that claims the request's session
 (resolve_program), never intake's FA question: the rules name programs their own way
-(the 2026 document keys B*Mitzvah as "tbm" and splits the adult weekends). A session no
+(a season's document may key a program differently from intake's answer, or split one program in two). A session no
 program claims is blocked with a reason, never guessed.
 """
 

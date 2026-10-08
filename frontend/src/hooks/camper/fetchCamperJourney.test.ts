@@ -29,7 +29,7 @@ vi.mock('../../lib/pocketbase', () => ({
 // compile error here rather than a value this mapping silently loses.
 const FULL_ROW: Required<ApiCamperJourneyRow> = {
   year: 2024,
-  session_name: 'Family Camp 2: Keshet Weekend',
+  session_name: 'Family Camp 2: Spring Weekend',
   session_type: 'family',
   bunk_name: 'Meadow House 1',
   bunk_name_recorded: 'Old Meadow 1',
@@ -58,7 +58,7 @@ describe('fetchCamperJourney', () => {
     expect(rows).toEqual([
       {
         year: 2024,
-        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionName: 'Family Camp 2: Spring Weekend',
         sessionType: 'family',
         bunkName: 'Meadow House 1',
         bunkNameRecorded: 'Old Meadow 1',
@@ -86,7 +86,7 @@ describe('fetchCamperJourney', () => {
     )
     expect(rows[0]).toEqual({
       year: 2024,
-      sessionName: 'Family Camp 2: Keshet Weekend',
+      sessionName: 'Family Camp 2: Spring Weekend',
       sessionType: 'family',
     })
     expect(Object.keys(rows[0] ?? {})).not.toContain('bunkName')
@@ -139,7 +139,7 @@ describe('fetchCamperJourney', () => {
     expect(currentYearParentRows).toEqual([
       {
         year: 2026,
-        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionName: 'Family Camp 2: Spring Weekend',
         sessionType: 'family',
         bunkName: 'Meadow House 1',
         startDate: '2024-05-24 00:00:00.000Z',

@@ -446,8 +446,8 @@ func TestFormatRosterWorkbookTitle(t *testing.T) {
 	resetBrandingCache()
 	t.Setenv("IS_DOCKER", "true")
 
-	title := FormatRosterWorkbookTitle("Family Camp 2: Keshet LGBTQ Weekend", 2026)
-	expected := "Family Camp 2: Keshet LGBTQ Weekend 2026 Roster"
+	title := FormatRosterWorkbookTitle("Family Camp 2: Spring Weekend", 2026)
+	expected := "Family Camp 2: Spring Weekend 2026 Roster"
 	if title != expected {
 		t.Errorf("FormatRosterWorkbookTitle = %q, want %q", title, expected)
 	}

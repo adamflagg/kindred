@@ -37,7 +37,7 @@ function response(over: Partial<SessionAttributionConflicts> = {}): SessionAttri
           },
           {
             session_cm_id: 1309515,
-            session_name: 'Family Camp 2: Keshet',
+            session_name: 'Family Camp 2: Spring',
             verdict: 'free',
             occupants: [],
           },

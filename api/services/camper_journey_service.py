@@ -317,7 +317,7 @@ async def build_journey_feed(
     all_attendees = await repository.fetch_person_journey_attendees(person_cm_id, view_year)
 
     # (year, session) pairs -- CampMinder reuses session ids across years, so
-    # a bare session id would count three Keshet weekends as one.
+    # a bare session id would count three same-numbered weekends as one.
     def weekend_keys(session_type: str) -> set[tuple[int, int]]:
         keys: set[tuple[int, int]] = set()
         for a in all_attendees:

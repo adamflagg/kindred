@@ -19,7 +19,7 @@ const alignCenter = "CENTER"
 // age shape and an adult carrying no email.
 func sampleRoster() *Roster {
 	return &Roster{
-		SessionName: "Family Camp 2: Keshet LGBTQ Weekend",
+		SessionName: "Family Camp 2: Spring Weekend",
 		SessionCMID: 1309515,
 		Year:        2026,
 		Start:       time.Date(2026, time.August, 20, 7, 0, 0, 0, time.UTC),
@@ -53,7 +53,7 @@ func TestRosterSheetValues(t *testing.T) {
 	values := RosterSheetValues(sampleRoster())
 
 	want := [][]string{
-		{"Family Camp 2: Keshet LGBTQ Weekend 2026 Roster", "", "", "", ""},
+		{"Family Camp 2: Spring Weekend 2026 Roster", "", "", "", ""},
 		{"August 20–23, 2026", "", "", "", ""},
 		{"NAME", "ADULT / CAMPER", "AGE", "EMAIL", "CITY"},
 		// City appears only on the block's first row.

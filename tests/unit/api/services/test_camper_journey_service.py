@@ -380,7 +380,7 @@ class TestFamilyCampHousing:
     async def test_drops_the_day_group_entirely_when_no_household_housing_is_supplied(self, pb: FakePB) -> None:
         """C16: drops the day group entirely when no household housing is
         supplied."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         pb.lists["bunk_assignments"].return_value = [assignment(2024, 900, "Acorns (with parents)", "family")]
         out = await _feed(pb)
         assert out.rows[0].bunk_name is None
@@ -389,7 +389,7 @@ class TestFamilyCampHousing:
     async def test_shows_the_household_cabin_when_the_year_attributes_it_to_this_rows_session(self, pb: FakePB) -> None:
         """C17: shows the household cabin name when the year unambiguously
         attributes it to this row's session."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         pb.lists["bunk_assignments"].return_value = [assignment(2024, 900, "Acorns (with parents)", "family")]
         out = await _feed(pb, family_years=[family_housing_year()])
         assert_matches(out.rows[0], year=2024, bunk_name="Cedar Lodge")
@@ -399,11 +399,11 @@ class TestFamilyCampHousing:
         """C18: declines when the year attributes housing to a DIFFERENT
         weekend (ambiguous multi-weekend year)."""
         pb.lists["attendees"].return_value = [
-            attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2024, 900, "family", "Family Camp 2: Spring Weekend"),
             attendee(2024, 901, "family", "Family Camp 5"),
         ]
         out = await _feed(pb, family_years=[family_housing_year(housing_session_cm_id=900)])
-        assert_matches(by_name(out.rows, "Family Camp 2: Keshet Weekend"), bunk_name="Cedar Lodge")
+        assert_matches(by_name(out.rows, "Family Camp 2: Spring Weekend"), bunk_name="Cedar Lodge")
         assert_matches(by_name(out.rows, "Family Camp 5"), bunk_name=None)
 
     @pytest.mark.asyncio
@@ -411,21 +411,21 @@ class TestFamilyCampHousing:
         """C19: labels EVERY family weekend of a placed season whose cabin is
         not pinned to one weekend (owner ruling 2026-09-22 late)."""
         pb.lists["attendees"].return_value = [
-            attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2024, 900, "family", "Family Camp 2: Spring Weekend"),
             attendee(2024, 901, "family", "Family Camp 5"),
         ]
         out = await _feed(
             pb, family_years=[family_housing_year(housing_session_cm_id=None, cabin_name_raw="Old Cedar")]
         )
         assert_matches(
-            by_name(out.rows, "Family Camp 2: Keshet Weekend"), bunk_name="Cedar Lodge", bunk_name_recorded="Old Cedar"
+            by_name(out.rows, "Family Camp 2: Spring Weekend"), bunk_name="Cedar Lodge", bunk_name_recorded="Old Cedar"
         )
         assert_matches(by_name(out.rows, "Family Camp 5"), bunk_name="Cedar Lodge", bunk_name_recorded="Old Cedar")
 
     @pytest.mark.asyncio
     async def test_still_labels_nothing_for_an_unpinned_season_with_no_cabin(self, pb: FakePB) -> None:
         """C20: still labels nothing for an unpinned season with no cabin."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[family_housing_year(housing_session_cm_id=None, cabin_name="  ")])
         assert out.rows[0].bunk_name is None
 
@@ -439,7 +439,7 @@ class TestFamilyCampHousing:
     @pytest.mark.asyncio
     async def test_declines_when_the_year_is_not_placed(self, pb: FakePB) -> None:
         """C22: declines when the year is not placed."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[family_housing_year(housing="not_placed", cabin_name="")])
         assert out.rows[0].bunk_name is None
 
@@ -477,7 +477,7 @@ def live_household_year(**overrides: Any) -> HouseholdJourneyYear:
         "cabin_name_raw": "Cedar Lodge",
         "housing_session_cm_id": None,
         "sessions": [
-            household_session(900, "Family Camp 2: Keshet Weekend", "2026-05-23"),
+            household_session(900, "Family Camp 2: Spring Weekend", "2026-05-23"),
             household_session(901, "Family Camp 5", "2026-08-15"),
         ],
         "weekend_cabins": [
@@ -495,11 +495,11 @@ class TestPerWeekendCabins:
         """C24: shows each weekend's own live cabin, not the year's single
         label, when the weekends differ."""
         pb.lists["attendees"].return_value = [
-            attendee(2026, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2026, 900, "family", "Family Camp 2: Spring Weekend"),
             attendee(2026, 901, "family", "Family Camp 5"),
         ]
         out = await _feed(pb, year=2027, family_years=[live_household_year()])
-        assert_matches(by_name(out.rows, "Family Camp 2: Keshet Weekend"), bunk_name="Cedar Lodge")
+        assert_matches(by_name(out.rows, "Family Camp 2: Spring Weekend"), bunk_name="Cedar Lodge")
         assert_matches(by_name(out.rows, "Family Camp 5"), bunk_name="Meadow House 1")
 
     @pytest.mark.asyncio
@@ -507,7 +507,7 @@ class TestPerWeekendCabins:
         """C25: carries each weekend's OWN as-typed string as bunkNameRecorded,
         from its own weekend_cabins entry."""
         pb.lists["attendees"].return_value = [
-            attendee(2026, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2026, 900, "family", "Family Camp 2: Spring Weekend"),
             attendee(2026, 901, "family", "Family Camp 5"),
         ]
         out = await _feed(
@@ -523,7 +523,7 @@ class TestPerWeekendCabins:
             ],
         )
         assert_matches(
-            by_name(out.rows, "Family Camp 2: Keshet Weekend"), bunk_name="Cedar Lodge", bunk_name_recorded="Old Cedar"
+            by_name(out.rows, "Family Camp 2: Spring Weekend"), bunk_name="Cedar Lodge", bunk_name_recorded="Old Cedar"
         )
         assert_matches(by_name(out.rows, "Family Camp 5"), bunk_name="Meadow House 1", bunk_name_recorded=None)
 
@@ -534,31 +534,31 @@ class TestPerWeekendCabins:
         """C26: falls back to today's year-level rule when no per-weekend
         cabins are published."""
         pb.lists["attendees"].return_value = [
-            attendee(2026, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2026, 900, "family", "Family Camp 2: Spring Weekend"),
             attendee(2026, 901, "family", "Family Camp 5"),
         ]
         out = await _feed(pb, year=2027, family_years=[live_household_year(weekend_cabins=[])])
-        assert_matches(by_name(out.rows, "Family Camp 2: Keshet Weekend"), bunk_name="Cedar Lodge")
+        assert_matches(by_name(out.rows, "Family Camp 2: Spring Weekend"), bunk_name="Cedar Lodge")
         assert_matches(by_name(out.rows, "Family Camp 5"), bunk_name="Cedar Lodge")
 
     @pytest.mark.asyncio
     async def test_applies_the_same_per_weekend_override_to_a_parent_weekend(self, pb: FakePB) -> None:
         """C27: applies the same per-weekend override to a parent weekend."""
         out = await _feed(pb, year=2027, family_years=[live_household_year()], viewer_is_adult=True)
-        assert_matches(by_name(out.rows, "Family Camp 2: Keshet Weekend"), bunk_name="Cedar Lodge")
+        assert_matches(by_name(out.rows, "Family Camp 2: Spring Weekend"), bunk_name="Cedar Lodge")
         assert_matches(by_name(out.rows, "Family Camp 5"), bunk_name="Meadow House 1")
 
     @pytest.mark.asyncio
     async def test_leaves_2025_and_earlier_unaffected(self, pb: FakePB) -> None:
         """C28: leaves 2025 and earlier unaffected -- no weekend_cabins field
         to read."""
-        pb.lists["attendees"].return_value = [attendee(2025, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2025, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(
             pb,
             family_years=[
                 live_household_year(
                     year=2025,
-                    sessions=[household_session(900, "Family Camp 2: Keshet Weekend", "2025-05-24")],
+                    sessions=[household_session(900, "Family Camp 2: Spring Weekend", "2025-05-24")],
                     weekend_cabins=[],
                     housing_session_cm_id=900,
                 )
@@ -651,7 +651,7 @@ def household_year(**overrides: Any) -> HouseholdJourneyYear:
         "cabin_name": "Meadow House 1",
         "cabin_name_raw": "Old Meadow 1",
         "housing_session_cm_id": 900,
-        "sessions": [household_session(900, "Family Camp 2: Keshet Weekend", "2024-05-24")],
+        "sessions": [household_session(900, "Family Camp 2: Spring Weekend", "2024-05-24")],
     }
     fields.update(overrides)
     return HouseholdJourneyYear(**fields)
@@ -662,7 +662,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
     async def test_labels_a_childs_family_row_with_todays_registry_name(self, pb: FakePB) -> None:
         """C36: labels a child's family row with today's registry name, not
         the as-typed string (owner ruling 2026-09-22 evening)."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[household_year()])
         assert out.rows[0].bunk_name == "Meadow House 1"
 
@@ -676,7 +676,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
             out.rows[0],
             year=2024,
             session_type="family",
-            session_name="Family Camp 2: Keshet Weekend",
+            session_name="Family Camp 2: Spring Weekend",
             bunk_name="Meadow House 1",
         )
         assert out.family_weekends == 1
@@ -691,7 +691,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
     @pytest.mark.asyncio
     async def test_does_not_double_a_weekend_the_adult_attended_themself(self, pb: FakePB) -> None:
         """C39: does not double a weekend the adult attended themself."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[household_year()], viewer_is_adult=True)
         assert len(out.rows) == 1
         assert out.family_weekends == 1
@@ -713,7 +713,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
                 household_year(
                     housing_session_cm_id=None,
                     sessions=[
-                        household_session(900, "Family Camp 2: Keshet Weekend", "2024-05-24"),
+                        household_session(900, "Family Camp 2: Spring Weekend", "2024-05-24"),
                         household_session(901, "Family Camp 5", "2024-08-16"),
                     ],
                 )
@@ -743,7 +743,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
     async def test_carries_the_as_typed_string_when_it_differs_from_the_label(self, pb: FakePB) -> None:
         """C44: carries the as-typed string as bunkNameRecorded when it differs
         from the label."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[household_year()])
         assert_matches(out.rows[0], bunk_name="Meadow House 1", bunk_name_recorded="Old Meadow 1")
 
@@ -751,7 +751,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
     async def test_omits_the_recorded_string_when_the_as_typed_string_already_is_the_label(self, pb: FakePB) -> None:
         """C45: omits bunkNameRecorded when the as-typed string already IS the
         label."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[household_year(cabin_name="Cedar Lodge", cabin_name_raw="Cedar Lodge")])
         assert out.rows[0].bunk_name == "Cedar Lodge"
         assert out.rows[0].bunk_name_recorded is None
@@ -769,7 +769,7 @@ class TestFamilyCampTodaysNameAndAsAParent:
     ) -> None:
         """C47: never treats outer whitespace on the household record
         cabin_name_raw as a disagreement."""
-        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         out = await _feed(pb, family_years=[household_year(cabin_name="River F", cabin_name_raw="  River F  ")])
         assert out.rows[0].bunk_name_recorded is None
 
@@ -961,7 +961,7 @@ class TestCamperJourneyService:
     @pytest.mark.asyncio
     async def test_runs_with_no_family_housing_when_the_person_has_no_household(self, people_pb: FakePB) -> None:
         people_pb.lists["persons"].return_value = [person_row(YEAR, household_id=0)]
-        people_pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        people_pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         service, household_read, _ = _service(people_pb)
 
         result = await service.build_camper_journey(PERSON, YEAR)
@@ -972,7 +972,7 @@ class TestCamperJourneyService:
     @pytest.mark.asyncio
     async def test_labels_family_rows_from_the_household_journey(self, people_pb: FakePB) -> None:
         people_pb.lists["persons"].return_value = [person_row(YEAR, age=12.04)]
-        people_pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend")]
+        people_pb.lists["attendees"].return_value = [attendee(2024, 900, "family", "Family Camp 2: Spring Weekend")]
         household = HouseholdJourneyResponse(household_cm_id=555, years=[household_year()])
         service, _, _ = _service(people_pb, household=household)
 
@@ -1029,7 +1029,7 @@ class TestCamperJourneyService:
         people_pb.lists["attendees"].return_value = [
             attendee(2024, 1001, "adult", "Women's Weekend"),
             attendee(2025, 1001, "adult", "Women's Weekend"),
-            attendee(2023, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2023, 900, "family", "Family Camp 2: Spring Weekend"),
         ]
         service, _, _ = _service(people_pb)
 
@@ -1053,7 +1053,7 @@ class TestCamperJourneyService:
         and the rows rendered unlabeled rather than the journey erroring."""
         people_pb.lists["persons"].return_value = [person_row(YEAR)]
         people_pb.lists["attendees"].return_value = [
-            attendee(2024, 900, "family", "Family Camp 2: Keshet Weekend"),
+            attendee(2024, 900, "family", "Family Camp 2: Spring Weekend"),
             attendee(2024, 1001, "adult", "Women's Weekend"),
         ]
         service, _, _ = _service(people_pb, household=RuntimeError("boom"), housing=RuntimeError("boom"))

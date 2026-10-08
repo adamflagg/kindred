@@ -224,7 +224,7 @@ def test_at_go_live_another_grantors_unmapped_line_does_not_swallow_a_commitment
 
 
 def test_an_unmapped_incentive_line_never_fulfils_an_outside_commitment() -> None:
-    """FIX: only an outside-funded line is a fulfilment candidate. An unmapped INCENTIVE (JFAM)
+    """FIX: only an outside-funded line is a fulfilment candidate. An unmapped INCENTIVE
     line posted to the same camper must not swallow the outside commitment -- that would stop the
     commitment counting and drop the grant from grant_inputs_by_request entirely."""
     incentive = _line(9002, "400", person_cm_id=EMMA, source_key=OTHER, funder_type="incentive")
