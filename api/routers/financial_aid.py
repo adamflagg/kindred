@@ -117,6 +117,7 @@ from api.schemas.financial_aid_march_file import MarchFileOut
 from api.schemas.financial_aid_money_ledger import LedgerLevelOut, LedgerTotalOut, MoneyLedgerLinesOut, MoneyLedgerOut
 from api.schemas.financial_aid_reports import (
     CommitteeResponse,
+    DatedColumn,
     DevelopmentResponse,
     FundingSourceIn,
     FundingSourceOut,
@@ -2245,12 +2246,30 @@ def _development() -> FinancialAidDevelopmentService:
     )
 
 
-@router.get("/reports/{year}/development", response_model=DevelopmentResponse)
-async def get_report_development(year: _Year, user: AuthUser = _VIEW_OR_SUMMARY) -> DevelopmentResponse:
-    """Reports › Development (§9.4): development's lines by group, seasons from 2022 as columns (r as reported, P
-    Kindred's), all money (D87). Aggregates only: development's summary permission reads it (D65)."""
+def _dated_column(column: str | None) -> DatedColumn | None:
+    """`<season>:<YYYY-MM-DD>` (the Query pattern checked the shape) as a DatedColumn; a day that doesn't exist is
+    a 422, like any other malformed query."""
+    if column is None:
+        return None
+    season, day = column.split(":")
     try:
-        return await _development().development(year)
+        return DatedColumn(season=int(season), as_of=date.fromisoformat(day))
+    except ValueError as exc:  # pydantic's ValidationError is a ValueError too
+        raise HTTPException(status_code=422, detail=f"column={column!r} is not <season>:<YYYY-MM-DD>") from exc
+
+
+@router.get("/reports/{year}/development", response_model=DevelopmentResponse)
+async def get_report_development(
+    year: _Year,
+    column: Annotated[str | None, Query(pattern=r"^\d{4}:\d{4}-\d{2}-\d{2}$")] = None,
+    user: AuthUser = _VIEW_OR_SUMMARY,
+) -> DevelopmentResponse:
+    """Reports › Development (§9.4): development's lines by group, seasons from 2022 as columns (r as reported, P
+    Kindred's), all money (D87). Aggregates only: development's summary permission reads it (D65). `column`: one
+    dated column on demand (owner 10-08: "Show As Of a Date…", never saved), returned beside the others."""
+    dated = _dated_column(column)
+    try:
+        return await _development().development(year, column=dated)
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc
 

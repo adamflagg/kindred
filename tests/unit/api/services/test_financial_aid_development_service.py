@@ -4,6 +4,7 @@ decided, not posted. The clock is April 1 2027. Fictional only."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -601,7 +602,7 @@ async def test_number_of_awards_says_what_an_award_is_and_the_average_divides_by
     assert "session" in awards
     assert "counts as one" not in awards
     average = _row(out, "average_award", "camp_pool").definition
-    assert "Number of awards" in average
+    assert "Grants/Awards" in average  # owner ruling L (10-08): the row's new name
     assert "counts as one" not in average
 
 
@@ -711,3 +712,52 @@ async def test_an_ask_above_its_sessions_cost_is_capped_though_the_familys_incom
     out = await _service(_development(), store=store).development(YEAR)
     assert _row(out, "total_requests", "camp_pool").values == [4000.0]
     assert [c.asks_capped for c in out.columns] == [1]
+
+
+# --- owner 10-08: the Budget row (development-v2) and ruling L's "Grants/Awards" ---------------------------------
+
+BUDGET_LABEL = "Budget (this camp's, the first board-passed)"
+
+
+async def test_the_budget_row_reads_the_rules_budget_on_a_kindred_column() -> None:
+    """The mock's Budget row: this camp's own aid budget (D96), never the all-money total. A P column reads the
+    season's approved rules: each group its share of the total (the fictional rules: 500,000; Camp 80%)."""
+    out = await _service(_development()).development(YEAR)
+    camp = _row(out, "budget", "camp_pool")
+    assert (camp.label, camp.section, camp.unit, camp.values) == (BUDGET_LABEL, "money", "dollars", [400000.0])
+    assert _row(out, "budget", None).values == [500000.0]
+    assert out.rows[0].key == "budget"  # the first money line, as the mock draws it
+
+
+async def test_the_budget_row_reads_the_typed_budget_on_an_as_reported_column() -> None:
+    """An r column's budget is finance's typed budget for that season (the first one typed: the board-passed one);
+    finance's other typed figures still never reach development."""
+    history = FakeReportsStore()
+    history.seed(
+        ReportedFigure(
+            2026, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2026, 9, 29), Decimal(900000)
+        )
+    )
+    for pool, value, day in (("", "1111000", 10), ("camp_pool", "900000", 10), ("", "1200000", 20)):
+        history.seed(
+            ReportedFigure(2026, "finance", "budget", pool, 0, 0, "season_end", date(2026, 10, day), Decimal(value))
+        )
+    history.seed(ReportedFigure(2026, "finance", "awarded", "", 0, 0, "season_end", date(2026, 10, 10), Decimal(1)))
+    out = await _service(_development(), history).development(YEAR)
+    assert [(c.season, c.basis) for c in out.columns] == [(2026, "r"), (2027, "P")]
+    assert _row(out, "budget", None).values == [1111000.0, 500000.0]
+    assert _row(out, "budget", "camp_pool").values == [900000.0, 400000.0]
+
+
+async def test_the_awards_count_is_called_grants_and_awards() -> None:
+    """Owner ruling L (10-08): Development's any-aid count is "Grants/Awards" (Statistics' camp-only count stays
+    "Awards")."""
+    out = await _service(_development()).development(YEAR)
+    assert _row(out, "awards", "camp_pool").label == "Grants/Awards"
+
+
+async def test_no_row_definition_shows_an_internal_id() -> None:
+    """Owner 10-08 (visual true-up): no staff-visible internal ids (ruling numbers, report ids, plan items)."""
+    out = await _service(_development()).development(YEAR)
+    shown = [r.definition for r in out.rows if re.search(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b", r.definition)]
+    assert shown == []

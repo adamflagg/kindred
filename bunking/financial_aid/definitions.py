@@ -295,8 +295,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands "
             "today, on live requests (not cancelled, withdrawn or a pending duplicate). It is not the asked or requested total, which sums every "
             "app's ask, cancelled and closed ones included. A round paid wholly by an outside funder is never awarded, so its "
-            'ask is left out of the in-budget asks this divides by. With "include not yet offered" on, the awarded $ '
-            'is Posted + Decided, and the column reads "% of ask (posted + decided)".'
+            "ask is left out of the in-budget asks this divides by. The awarded $ is Posted only: money decided but not "
+            'yet offered shows in its own "Decided (not yet offered)" column and is never in this percentage.'
         ),
         spec="§5.6",
         rulings=("D80",),
@@ -383,9 +383,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests and the "
             "money of the rounds an outside funder pays in full, ÷ the "
             "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
-            "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. With "
-            '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
-            'grants (posted + decided)".'
+            "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
+            "The awarded $ is Posted only: money decided but not yet offered shows in its own "
+            '"Decided (not yet offered)" column and is never in this percentage.'
         ),
         spec="§9.2",
         rulings=("D80", "D116", "D132"),

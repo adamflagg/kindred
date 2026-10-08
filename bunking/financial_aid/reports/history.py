@@ -51,7 +51,7 @@ _DEV_ATS: Final[frozenset[At]] = frozenset({"pull", "season_end"})
 # pool, so a typed figure reaches the row that shows it.
 _DEVELOPMENT: Final[tuple[tuple[str, Unit, frozenset[Dimension], str], ...]] = (
     ("total_awards", "dollars", _POOL, "Total Awards Granted"),
-    ("awards", "count", _POOL, "Number of awards"),
+    ("awards", "count", _POOL, "Grants/Awards"),  # owner ruling L (10-08)
     ("total_requests", "dollars", _POOL, "Total Requests (demand)"),
     ("need_met", "percent", _POOL, "% of need met"),
     ("recipients", "count", _POOL, "Applications (campers and families who got money)"),

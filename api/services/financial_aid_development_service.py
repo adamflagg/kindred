@@ -77,6 +77,7 @@ from api.services.financial_aid_ledger_service import (
 from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.decisions.budget import allocations
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.development import (
@@ -116,16 +117,18 @@ TEEN_PROGRAM_TYPES: Final = frozenset({"scit", "tli"})  # §5.11: "TLI + SCIT st
 # Not camper programs development reports (queue "Known limits": B*Mitzvah is; Family School and "other" aren't).
 NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
 FAMILY_TYPES: Final = frozenset({"family", "adult"})
-FIRST_TIME_SUMMER: Final = "No Summer Camp or Quest session at camp in any earlier season from 2017 (the default; D99)"
-FIRST_TIME_FAMILY: Final = "The household's first weekend program: no earlier Family or Adult weekend session at camp since 2017 (the default; D99)"
+FIRST_TIME_SUMMER: Final = "No Summer Camp or Quest session at camp in any earlier season from 2017 (the default)"
+FIRST_TIME_FAMILY: Final = (
+    "The household's first weekend program: no earlier Family or Adult weekend session at camp since 2017 (the default)"
+)
 AWARDS_DEFINITION: Final = (
     "An award is a distinct attendee and session combination that gets any aid, the camp's or an outside funder's "
     "(a household per session or program in a families group). The camp's aid plus a grant on the same session is "
     "one award; two sessions are two; a cancelled registration is none"
 )
 AVERAGE_AWARD_DEFINITION: Final = (
-    "Total Awards Granted (the camp's aid plus outside grants) ÷ Number of awards, each a distinct attendee and "
-    "session with any aid (D158, item 32)"
+    "Total Awards Granted (the camp's aid plus outside grants) ÷ Grants/Awards, each a distinct attendee and "
+    "session with any aid"
 )
 # D158: development sees every cancel reason. "aid not enough" keeps its own line (declined_insufficient).
 _CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
@@ -135,6 +138,14 @@ _CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
 # A past read carries no CampMinder cancellations (3c-1), so a dated column can't count who declined or cancelled, for
 # any reason: those lines are null there and named, never a false zero.
 DATED_NOT_REBUILT: Final = ("declined_insufficient", *(key for key, _ in _CANCEL_ROWS))
+# Owner ruling L (10-08): Development's any-aid count (Statistics' camp-only count stays "Awards").
+GRANTS_AWARDS_LABEL: Final = "Grants/Awards"
+# The development-v2 mock's Budget row (owner 10-08): this camp's own aid budget, never the all-money total.
+BUDGET_LABEL: Final = "Budget (this camp's, the first board-passed)"
+BUDGET_DEFINITION: Final = (
+    "This camp's own aid budget as first passed by the board, never the all-money total. A season the dashboard "
+    "reads uses its approved budget, each group its share; an earlier season uses the budget finance typed"
+)
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
     "rebuild": (
@@ -314,11 +325,12 @@ class _RowSpec:
 
 
 _ROWS: Final[tuple[_RowSpec, ...]] = (
+    _RowSpec("budget", "money", BUDGET_LABEL, "dollars", True, None, "budget", BUDGET_DEFINITION),
     _RowSpec("total_awards", "money", "Total Awards Granted", "dollars", True, None, "total_awards"),
     _RowSpec("camp_awards", "money", "The camp's own awards", "dollars", True, None, None),
     _RowSpec("outside_awards", "money", "Grants from other funders", "dollars", True, None, None),
     _RowSpec("incentive_awards", "money", "of which incentive grants", "dollars", True, None, None),
-    _RowSpec("awards", "money", "Number of awards", "count", True, None, "awards", AWARDS_DEFINITION),
+    _RowSpec("awards", "money", GRANTS_AWARDS_LABEL, "count", True, None, "awards", AWARDS_DEFINITION),
     _RowSpec("average_award", "money", "Average award", "dollars", True, None, None, AVERAGE_AWARD_DEFINITION),
     _RowSpec("total_requests", "money", "Total Requests (demand)", "dollars", True, None, "total_requests"),
     _RowSpec("need_met", "money", "% of need met", "percent", True, frozenset({"summer"}), "need_met"),
@@ -485,17 +497,12 @@ class FinancialAidDevelopmentService:
 
     async def save_report_columns(self, columns: Sequence[DatedColumn], *, actor: str) -> ReportColumnsResponse:
         """Replace development's dated columns, with its aid_change_log row; nothing changed, nothing written. A
-        dated column needs dated decisions, so 2026 (reproduced, undated, D67) and earlier are refused."""
+        dated column needs dated decisions, so 2026 (reproduced, undated, D67) and earlier are refused. Unused since
+        owner 10-08 (columns on demand, never saved; wishlist F9 asks staff whether saved columns are needed)."""
         today = self._today()
         wanted = sorted({(c.season, c.as_of) for c in columns})
         for season, day in wanted:
-            if season < FIRST_TICKED_SEASON:
-                raise ReportsRefusedError(
-                    f"A dated column needs dated decisions: {season} has none (only {FIRST_TICKED_SEASON} on, D67)"
-                )
-            # Today is not past: development shows a column only once its day is.
-            if not season - 1 <= day.year <= season or day >= today:
-                raise ReportsRefusedError(f"{day} is not a past day of the {season} season")
+            _check_dated(season, day, today)
         stored = await self._development.report_columns(REPORT)
         if tuple(wanted) == stored.columns:
             return await self.report_columns()
@@ -759,7 +766,10 @@ class FinancialAidDevelopmentService:
             family_of=await self._development.family_keys(season.year),
             incentive_sources=frozenset(s.description_key for s in sources if s.incentive),
         )
-        return _Native(development_column(inputs), grouping_, attended)
+        built = development_column(inputs)
+        if document is not None:  # the Budget row: each group (a budget pool, D100) its share of the approved total
+            built = replace(built, budget=allocations(document))
+        return _Native(built, grouping_, attended)
 
     async def _rebuilt_ages(self, year: int, sources: Sequence[SourceRecord] = ()) -> dict[str, int] | None:
         """D158: the summer recipients of a season with no P column, by age, rebuilt from that season's ledger. None
@@ -791,12 +801,17 @@ class FinancialAidDevelopmentService:
             },
         )
 
-    async def development(self, year: int) -> DevelopmentResponse:
+    async def development(self, year: int, *, column: DatedColumn | None = None) -> DevelopmentResponse:
+        """The report, with `column` (one season as of a past day) on demand beside the others: owner 10-08, "Show
+        As Of a Date…", not saved and gone when staff leave. Saved columns are not read (the backend stays, unused)."""
         today = self._today()
+        if column is not None:
+            if column.season > year:
+                raise ReportsRefusedError(f"{column.season} is not a season of the {year} report")
+            _check_dated(column.season, column.as_of, today)
         sources = await self._development.sources()
         natives: dict[int, DevelopmentColumn] = {}
         dated: dict[tuple[int, date], DevelopmentColumn] = {}
-        saved = (await self.report_columns()).columns
         latest: Grouping | None = None
         for season_year in range(FIRST_REQUEST_SEASON, year + 1):
             season = await self._decisions.season(season_year)
@@ -806,21 +821,23 @@ class FinancialAidDevelopmentService:
                 continue  # 2026 before its decisions load (D67): as reported only
             native = await self._native(season, sources)
             natives[season_year], latest = native.column, native.grouping
-            for wanted in (c for c in saved if c.season == season_year and c.as_of < today):
-                past = await self._decisions.past_season(season_year, wanted.as_of, "campminder")
-                dated[(season_year, wanted.as_of)] = (
-                    await self._native(past, sources, as_of=wanted.as_of, register=season.register)
+            if column is not None and column.season == season_year:
+                past = await self._decisions.past_season(season_year, column.as_of, "campminder")
+                dated[(season_year, column.as_of)] = (
+                    await self._native(past, sources, as_of=column.as_of, register=season.register)
                 ).column
-        typed = [
-            s.figure
-            for s in await self._history.reported()
-            if s.figure.view == "development" and FIRST_DEVELOPMENT_SEASON <= s.figure.year <= year
+        reported = [
+            s.figure for s in await self._history.reported() if FIRST_DEVELOPMENT_SEASON <= s.figure.year <= year
         ]
+        typed = [f for f in reported if f.view == "development"]
+        # The Budget row's r figures: finance's typed budget (the first typed is the board-passed one, D96). Only a
+        # season development typed has an r column to carry it; finance's other figures never reach development.
+        budgets = sorted((f for f in reported if f.view == "finance" and f.metric == "budget"), key=lambda f: f.as_of)
         if latest is None:
             season = await self._decisions.season(year)
             document = season.rules.document if season.rules is not None else None
             latest = grouping(document, season.sessions.values())
-        columns = _columns(typed, natives, today, dated)
+        columns = _columns(typed, natives, today, dated, budgets)
         ages = {
             season: await self._rebuilt_ages(season, sources)
             for season in sorted({f.year for f in typed} - set(natives))
@@ -865,6 +882,7 @@ def _columns(
     natives: Mapping[int, DevelopmentColumn],
     today: date,
     dated: Mapping[tuple[int, date], DevelopmentColumn] | None = None,
+    budgets: Sequence[ReportedFigure] = (),
 ) -> list[tuple[DevelopmentColumnOut, ColumnData]]:
     """Every season from 2022 with anything to show: its typed column (one per as-of date), then its P column."""
     out: list[tuple[DevelopmentColumnOut, ColumnData]] = []
@@ -884,7 +902,7 @@ def _columns(
                             basis_unconfirmed=season <= LAST_UNCONFIRMED_SEASON,
                             label=f"{season} (as reported)",
                         ),
-                        figures,
+                        [*figures, *(b for b in budgets if b.year == season)],
                     )
                 )
         if season in natives:
@@ -920,6 +938,24 @@ def _columns(
     return out
 
 
+def _budget_value(column: DevelopmentColumn, scope: DevGroup | None) -> Decimal | None:
+    """A Kindred column's budget: the group's allocation, or (the total line) every group's; None with no rules."""
+    if not column.budget:
+        return None
+    return sum(column.budget.values(), ZERO) if scope is None else column.budget.get(scope.key)
+
+
+def _check_dated(season: int, day: date, today: date) -> None:
+    """A dated column needs dated decisions, so 2026 (reproduced, undated, D67) and earlier are refused; its day must
+    be a past day of its season (today is not past: development shows a column only once its day is)."""
+    if season < FIRST_TICKED_SEASON:
+        raise ReportsRefusedError(
+            f"A dated column needs dated decisions: {season} has none (only {FIRST_TICKED_SEASON} on)"
+        )
+    if not season - 1 <= day.year <= season or day >= today:
+        raise ReportsRefusedError(f"{day} is not a past day of the {season} season")
+
+
 def _typed_value(figures: Sequence[ReportedFigure], metric: str | None, pool: str) -> Decimal | None:
     if metric is None:
         return None
@@ -943,8 +979,11 @@ def _rows(
         for scope in scopes:
             values: list[float | None] = []
             for column, data in columns:
+                value: Decimal | int | None
                 if spec.key in column.not_rebuilt:
                     value = None
+                elif isinstance(data, DevelopmentColumn) and spec.key == "budget":
+                    value = _budget_value(data, scope)
                 elif isinstance(data, DevelopmentColumn):
                     if scope is None:
                         value = _total_value(spec.key, data)

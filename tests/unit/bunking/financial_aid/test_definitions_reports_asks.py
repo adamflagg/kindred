@@ -22,7 +22,10 @@ def test_percent_of_ask_including_grants_keeps_outside_funded_asks_in_its_denomi
     assert "outside-funded asks stay in its denominator" in text
     assert "in-budget" not in text
     assert "Round 1 and All rounds only" in text
-    assert '"% of ask incl. grants (posted + decided)"' in text
+    # Owner ruling K (10-08): two columns, Awarded = Posted only and "Decided (not yet offered)" beside it.
+    assert "(posted + decided)" not in text
+    assert "awarded $ is Posted only" in text
+    assert 'its own "Decided (not yet offered)" column' in text
 
 
 def test_round_2_max_percent_is_a_rules_value_not_an_outcome() -> None:

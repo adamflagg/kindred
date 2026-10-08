@@ -27062,7 +27062,12 @@ export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * Column
+     */
+    column?: string | null
+  }
   url: '/api/financial-aid/reports/{year}/development'
 }
 
