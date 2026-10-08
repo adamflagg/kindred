@@ -76,6 +76,7 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
+from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions.budget import allocations
 from bunking.financial_aid.errors import FinancialAidError
@@ -105,6 +106,7 @@ from bunking.financial_aid.reports.facts import ReportRequest, average
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.zips import HouseholdAddress, ZipRow, ZipTable, every_camper, with_aid
 from bunking.financial_aid.rules import AidRules, resolve_program
+from bunking.financial_aid.rules.schema import SectionName
 
 FIRST_DEVELOPMENT_SEASON: Final = 2022  # §9.4: columns are seasons from 2022
 FIRST_REQUEST_SEASON: Final = 2026
@@ -144,7 +146,8 @@ GRANTS_AWARDS_LABEL: Final = "Grants/Awards"
 BUDGET_LABEL: Final = "Budget (this camp's, the first board-passed)"
 BUDGET_DEFINITION: Final = (
     "This camp's own aid budget as first passed by the board, never the all-money total. A season the dashboard "
-    "reads uses its approved budget, each group its share; an earlier season uses the budget finance typed"
+    "reads uses the season's first approved budget, which doesn't move with later revisions, each group its share; "
+    "an as-reported season uses the budget finance typed"
 )
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
@@ -156,6 +159,12 @@ NOT_BUILT: Final[Mapping[str, str]] = {
 }
 Unit = Literal["dollars", "count", "percent"]
 Section = Literal["money", "counts", "appeals"]
+
+
+class DevelopmentRules(PricingRules, Protocol):
+    """The rules development reads: pricing's, plus the season's first approved budget (the Budget row, D96)."""
+
+    async def first_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None: ...
 
 
 class DevelopmentStore(Protocol):
@@ -463,7 +472,7 @@ class FinancialAidDevelopmentService:
     def __init__(
         self,
         store: DecisionsStore,
-        rules: PricingRules,
+        rules: DevelopmentRules,
         register: RegisterSource,
         development: DevelopmentStore,
         history: ReportsStore,
@@ -726,9 +735,10 @@ class FinancialAidDevelopmentService:
         *,
         as_of: date | None = None,
         register: Sequence[RegisterRow] | None = None,
+        budget: Mapping[str, Decimal] | None = None,
     ) -> _Native:
         """One P column: `season` priced now, or (a dated column) `season` as of the end of `as_of` (3c-1's past
-        read) with the live season's `register` cut to that day."""
+        read) with the live season's `register` cut to that day. `budget`: the Budget row's allocations by group."""
         # Development's money is all money (the camp's awards plus every live outside grant line) on campers who
         # attended (D29, ruled as built: R2b).
         document = season.rules.document if season.rules is not None else None
@@ -767,8 +777,8 @@ class FinancialAidDevelopmentService:
             incentive_sources=frozenset(s.description_key for s in sources if s.incentive),
         )
         built = development_column(inputs)
-        if document is not None:  # the Budget row: each group (a budget pool, D100) its share of the approved total
-            built = replace(built, budget=allocations(document))
+        if budget:  # the Budget row: each group (a budget pool, D100) its share of the first approved total
+            built = replace(built, budget=budget)
         return _Native(built, grouping_, attended)
 
     async def _rebuilt_ages(self, year: int, sources: Sequence[SourceRecord] = ()) -> dict[str, int] | None:
@@ -819,12 +829,16 @@ class FinancialAidDevelopmentService:
                 view.status == "posted" for priced in season.priced.values() for view in priced.rounds
             ):
                 continue  # 2026 before its decisions load (D67): as reported only
-            native = await self._native(season, sources)
+            # The Budget row (owner 10-08, D96): the season's FIRST approved budget, fixed when a later version is
+            # approved; a dated column shows it too (the board-passed figure, not the budget as of the day).
+            first = await self._rules.first_approved(season_year, ["budget"])
+            budget = allocations(first.document) if first is not None else None
+            native = await self._native(season, sources, budget=budget)
             natives[season_year], latest = native.column, native.grouping
             if column is not None and column.season == season_year:
                 past = await self._decisions.past_season(season_year, column.as_of, "campminder")
                 dated[(season_year, column.as_of)] = (
-                    await self._native(past, sources, as_of=column.as_of, register=season.register)
+                    await self._native(past, sources, as_of=column.as_of, register=season.register, budget=budget)
                 ).column
         reported = [
             s.figure for s in await self._history.reported() if FIRST_DEVELOPMENT_SEASON <= s.figure.year <= year

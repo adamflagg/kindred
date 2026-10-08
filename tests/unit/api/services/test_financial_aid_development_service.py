@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from api.schemas.financial_aid_reports import DatedColumn
 from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent
 from api.services.financial_aid_development_repository import GrantorRecord, PersonRecord, SourceRecord
 from api.services.financial_aid_development_service import (
@@ -73,13 +74,14 @@ def _service(
     store: FakeDecisionsStore | None = None,
     past_register: Sequence[RegisterRow] = (),
     rules: AidRules | None = None,
+    fake_rules: FakeRules | None = None,
 ) -> FinancialAidDevelopmentService:
     async def rows(year: int) -> Sequence[RegisterRow]:
         return list(register) if year == YEAR else list(past_register)
 
     return FinancialAidDevelopmentService(
         store or report_season(),
-        FakeRules(approved(rules or intake_rules())),
+        fake_rules or FakeRules(approved(rules or intake_rules())),
         rows,
         development,
         history or FakeReportsStore(),
@@ -727,6 +729,30 @@ async def test_the_budget_row_reads_the_rules_budget_on_a_kindred_column() -> No
     assert (camp.label, camp.section, camp.unit, camp.values) == (BUDGET_LABEL, "money", "dollars", [400000.0])
     assert _row(out, "budget", None).values == [500000.0]
     assert out.rows[0].key == "budget"  # the first money line, as the mock draws it
+
+
+async def test_the_budget_row_reads_the_seasons_first_approved_budget() -> None:
+    """Owner 10-08 (D96, "the first (board-passed) budget"): a P column shows the allocations of the season's FIRST
+    approved budget, which doesn't move when a later version with another budget is approved and prices the season.
+    A dated column shows the same figure: it is the board-passed budget, not the budget as of the day."""
+    fake = FakeRules(approved(with_lever(intake_rules(), "budget.total", "600000"), version=2))
+    fake.first = approved(intake_rules(), version=1)  # 500,000; Camp 80%
+    out = await _service(_development(), fake_rules=fake).development(
+        YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5))
+    )
+    assert [(c.basis, c.as_of) for c in out.columns] == [("P", date(2027, 4, 1)), ("P", date(2027, 3, 5))]
+    assert _row(out, "budget", None).values == [500000.0, 500000.0]
+    assert _row(out, "budget", "camp_pool").values == [400000.0, 400000.0]
+
+
+async def test_a_season_with_no_approved_budget_shows_none_on_its_kindred_column() -> None:
+    """No approved version carries a budget: the P column's Budget is blank, never a later draft's figure."""
+    fake = FakeRules(approved(intake_rules()))
+    fake.first = None
+    out = await _service(_development(), fake_rules=fake).development(YEAR)
+    assert _row(out, "budget", None).values == [None]
+    assert _row(out, "budget", "camp_pool").values == [None]
+    assert _row(out, "budget", "camp_pool").label == BUDGET_LABEL
 
 
 async def test_the_budget_row_reads_the_typed_budget_on_an_as_reported_column() -> None:
