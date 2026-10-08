@@ -248,9 +248,9 @@ describe('RulesTab for finance (D39)', () => {
 
   it("shows a section's changes in words and in amber", () => {
     renderAt('/aid/season/rules')
-    expect(screen.getByText(/Changed since v3: .*Tier 2 › Round 1 %: 60% → 55%/)).toHaveClass(
-      'text-amber-700'
-    )
+    const line = screen.getByText(/Tier 2 › Round 1 %: 60% → 55%/)
+    expect(line.closest('[data-testid="changed-since"]')).toHaveTextContent(/^Changed since v3:/)
+    expect(line.closest('[data-testid="changed-since"]')).toHaveClass('text-amber-700')
   })
 
   it('switches to the approved version, as the registrar sees it, in the URL', () => {

@@ -9,7 +9,8 @@ export interface FlowCell {
   readonly continued: boolean
 }
 
-export const MIN_COLUMN = { read: 250, edit: 330, editPerPerson: 420 } as const
+// editPerPerson leaves a long family-camp name ~230px beside the checkbox, group pick and two $ boxes.
+export const MIN_COLUMN = { read: 250, edit: 330, editPerPerson: 600 } as const
 const GAP = 28
 
 export function columnCount(width: number, minColumn: number): number {

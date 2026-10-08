@@ -319,9 +319,11 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
         ],
       },
     })
-    expect(
-      screen.getByText('Changed since v3: Summer › Tiers › Tier 2 › Round 1 %: 75% → 72%')
-    ).toBeInTheDocument()
+    const since = screen.getByTestId('changed-since')
+    expect(since).toHaveTextContent(/^Changed since v3:/)
+    expect(within(since).getByRole('listitem')).toHaveTextContent(
+      'Summer › Tiers › Tier 2 › Round 1 %: 75% → 72%'
+    )
   })
 
   it("a table editor takes the grid's place, and no header offers Edit… while it is open", () => {

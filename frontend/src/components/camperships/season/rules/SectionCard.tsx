@@ -15,6 +15,7 @@ import {
   CS_SMALL,
 } from '../../kit/csType'
 import { CARD_SPECS, type CardRow } from './rulesCards'
+import { ChangedSince } from './ChangedSince'
 import { CardRows, ReadOnlyStrip } from './CardRows'
 import { CardTables, type CellControl } from './CardTables'
 import {
@@ -72,13 +73,13 @@ export function SectionCardHead({
           <button
             type="button"
             data-testid={`card-meta-${section}`}
-            className={`${CS_SMALL} max-w-[40rem] min-w-0 text-left ${full ? 'whitespace-normal' : 'truncate'}`}
+            className={`${CS_SMALL} max-w-[40rem] min-w-0 cursor-pointer text-left ${full ? 'whitespace-normal' : 'truncate'}`}
             onClick={() => setFull(!full)}
           >
             {status.meta}
             {status.note !== null && (
               <>
-                {' · Approved by '}
+                {' · Notes: '}
                 <b className="text-foreground font-semibold">{status.note}</b>
               </>
             )}
@@ -149,11 +150,7 @@ export function CardBody({
   const spec = CARD_SPECS[section]
   return (
     <>
-      {changes.length > 0 && (
-        <p className={`${CS_AMBER_NOTE} mt-1`}>
-          {`Changed since v${String(approvedVersion ?? '')}: ${changes.map((c) => changeWords(c, names)).join(' · ')}`}
-        </p>
-      )}
+      <ChangedSince version={approvedVersion} lines={changes.map((c) => changeWords(c, names))} />
       {spec?.lead && (
         <p className={`${CS_SMALL} mt-1`}>
           {spec.lead}

@@ -59,7 +59,7 @@ const errorsOf = (draft: ApiAidRulesDraft, section: ApiAidRulesSection) =>
 const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message : String(caught))
 
 /**
- * Approve sections of the rules draft as one logged operation, with a note naming the approving body
+ * Approve sections of the rules draft as one logged operation, with the approver's notes
  * (spec §7.5; D39; the note's wording is free text, O-930-7). A section with validation errors can't be
  * ticked (and is never pre-ticked: the server refuses to approve one). Nothing is approved unseen
  * (Decision 17, owner ruling 2026-10-02):
@@ -330,16 +330,19 @@ export function ApproveForm({
       {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <label className={CS_FLABEL} htmlFor="approve-note">
-          Approved by
+          Notes
         </label>
         <input
           id="approve-note"
-          className={`${CS_INPUT} w-60`}
+          className={`${CS_INPUT} min-w-60 flex-1`}
           value={note}
           maxLength={2000}
           onChange={(event) => setNote(event.target.value)}
         />
-        <span className={CS_SMALL}>the body, and when: &ldquo;Finance, Apr 13 meeting&rdquo;</span>
+        <span className={CS_SMALL}>
+          what this approval is: &ldquo;Board approved Apr 13&rdquo;, &ldquo;Weekend prices
+          entered&rdquo;
+        </span>
         <span className="ml-auto flex items-center gap-2">
           <button
             type="button"

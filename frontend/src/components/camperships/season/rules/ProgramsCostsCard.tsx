@@ -4,11 +4,13 @@
  * The season's sessions and the lodging board's cancellations come in as props: `RulesTab` reads them (one place
  * for the hooks, one place the tests mock).
  */
+import { ArrowRight } from 'lucide-react'
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
 
 import type { CatalogSession } from '../../../../hooks/camperships/useAidSessionCatalog'
 import type { ApiAidGroup, ApiAidValidationIssue } from '../../../../types/api-types'
 import { CS_CARD, CS_META, CS_PILL, CS_SMALL } from '../../kit/csType'
+import { ChangedSince } from './ChangedSince'
 import { SectionCardHead } from './SectionCard'
 import { MIN_COLUMN } from './programsCostsFlow'
 import { ROW, flowItems, useBoxWidth } from './programsCostsLayout'
@@ -81,13 +83,11 @@ export function combinedStatus(
 
 function Fig({
   value,
-  was,
   amber,
   changed,
   wide,
 }: {
   value: string | null
-  was: string | null
   amber: boolean
   changed: boolean
   wide?: boolean
@@ -98,9 +98,6 @@ function Fig({
       <span className={box}>
         <span className="rounded-[3px] bg-amber-100/70 px-[3px] font-bold text-amber-700 dark:bg-amber-900/45 dark:text-amber-300">
           {priceWords(value)}
-        </span>
-        <span className={`${CS_META} ml-1 text-amber-700 dark:text-amber-300`}>
-          {`was ${priceWords(was)}`}
         </span>
       </span>
     )
@@ -116,37 +113,57 @@ function Fig({
   )
 }
 
+/** ‹old› → ‹new›, the new one bold: a changed price under its row, and a line of Changed since. */
+function OldToNew({ was, now }: { was: string; now: string }) {
+  return (
+    <>
+      {was} <ArrowRight className="inline size-3 align-[-1px]" />{' '}
+      <b className="font-semibold">{now}</b>
+    </>
+  )
+}
+
 function ReadRow({ row, was, amber }: { row: CardRow; was: CardRow | undefined; amber: boolean }) {
   const differs = (a: string | null, b: string | null | undefined) =>
     was !== undefined && a !== (b ?? null)
+  // Each changed price on its own line under the row (a family session has two), so the name keeps the row's width.
+  const moved: Array<{ label: string | null; was: string | null; now: string | null }> =
+    was === undefined
+      ? []
+      : row.kind === 'per_person'
+        ? [
+            { label: 'Standard', was: was.standard, now: row.standard },
+            { label: 'Infant', was: was.infant, now: row.infant },
+          ].filter((m) => m.was !== m.now)
+        : row.kind === 'typed' || row.tuition === was.tuition
+          ? []
+          : [{ label: null, was: was.tuition, now: row.tuition }]
   return (
-    <div data-testid={`pc-row-${String(row.session.cmId)}`} className={ROW}>
+    <div data-testid={`pc-row-${String(row.session.cmId)}`} className={`${ROW} flex-wrap gap-y-0`}>
       <RowName row={row} />
       {row.kind === 'per_person' ? (
         <>
           <Fig
             value={row.standard}
-            was={was?.standard ?? null}
             amber={amber}
             changed={differs(row.standard, was?.standard)}
             wide
           />
-          <Fig
-            value={row.infant}
-            was={was?.infant ?? null}
-            amber={amber}
-            changed={differs(row.infant, was?.infant)}
-            wide
-          />
+          <Fig value={row.infant} amber={amber} changed={differs(row.infant, was?.infant)} wide />
         </>
       ) : row.kind === 'typed' ? null : (
-        <Fig
-          value={row.tuition}
-          was={was?.tuition ?? null}
-          amber={amber}
-          changed={differs(row.tuition, was?.tuition)}
-        />
+        <Fig value={row.tuition} amber={amber} changed={differs(row.tuition, was?.tuition)} />
       )}
+      {moved.map((m) => (
+        <div
+          key={m.label ?? 'tuition'}
+          data-testid="pc-change"
+          className="basis-full pl-3 text-xs text-amber-700 tabular-nums dark:text-amber-300"
+        >
+          {m.label !== null && <span className="text-muted-foreground">{`${m.label} `}</span>}
+          <OldToNew was={priceWords(m.was)} now={priceWords(m.now)} />
+        </div>
+      ))}
     </div>
   )
 }
@@ -362,25 +379,22 @@ export function ProgramsCostsCard(p: ProgramsCostsCardProps) {
         p.editor
       ) : (
         <div ref={boxRef} className="mt-1">
-          {changes.length > 0 && (
-            <p className={CS_SMALL}>
-              {`Changed since v${String(p.approvedVersion ?? '')}: `}
-              {changes.map((c, i) => (
-                <Fragment key={`${c.lead}:${String(i)}`}>
-                  {i > 0 && ' · '}
-                  {c.was === null ? (
-                    <>
-                      {c.lead}: <b className="text-foreground font-semibold">{c.now}</b>
-                    </>
-                  ) : (
-                    <>
-                      {c.lead}: {c.was} → <b className="text-foreground font-semibold">{c.now}</b>
-                    </>
-                  )}
-                </Fragment>
-              ))}
-            </p>
-          )}
+          <ChangedSince
+            version={p.approvedVersion}
+            lines={changes
+              .filter((c) => c.price !== true)
+              .map((c) =>
+                c.was === null ? (
+                  <>
+                    {c.lead}: <b className="font-semibold">{c.now}</b>
+                  </>
+                ) : (
+                  <>
+                    {c.lead}: <OldToNew was={c.was} now={c.now} />
+                  </>
+                )
+              )}
+          />
           {view === null ? (
             <p className={`${CS_SMALL} mt-1`}>
               {p.sessionsError

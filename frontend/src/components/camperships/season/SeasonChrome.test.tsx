@@ -140,7 +140,7 @@ describe('SeasonChrome (spec §4)', () => {
   it('words the panel as the mock does, with Esc named and the checkbox named by its section alone', async () => {
     renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
-    expect(await screen.findByLabelText('Approved by')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Notes')).toBeInTheDocument()
     expect(screen.getByText('Esc cancels')).toBeInTheDocument()
   })
 

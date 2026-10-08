@@ -348,9 +348,9 @@ describe('changesSince (spec §5.2 D)', () => {
     draft.programs['not_aided']!.session_cm_ids = [1000901, 1000110]
     draft.cost.not_running_session_cm_ids = [1000101]
     expect(changesSince(approved, draft, GROUPS, CATALOG)).toEqual([
-      { lead: 'Session 2', was: '$6,695', now: '$6,895' },
-      { lead: 'Family Camp B standard', was: 'No price yet', now: '$425' },
-      { lead: 'Family Camp B infant', was: 'No price yet', now: '$600' },
+      { lead: 'Session 2', was: '$6,695', now: '$6,895', price: true },
+      { lead: 'Family Camp B standard', was: 'No price yet', now: '$425', price: true },
+      { lead: 'Family Camp B infant', was: 'No price yet', now: '$600', price: true },
       { lead: 'Winter Retreat', was: 'Camp', now: 'Not open to aid' },
       { lead: 'Session 2', was: null, now: 'not running' },
       { lead: 'Quest: Rivers', was: null, now: 'running again' },

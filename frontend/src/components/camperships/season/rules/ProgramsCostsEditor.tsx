@@ -26,7 +26,6 @@ import {
   kindFor,
   moneyText,
   pickTarget,
-  priceWords,
   type CardRow,
   type CardSection,
   type EditField,
@@ -89,11 +88,6 @@ function MoneyBox({
         disabled={disabled}
         onChange={(e) => onType(key, e.target.value, original)}
       />
-      {edits.has(key) && (
-        <span className={`${CS_SMALL} ml-1 text-amber-700 dark:text-amber-300`}>
-          {`was ${priceWords(stored)}`}
-        </span>
-      )}
     </span>
   )
 }
@@ -340,7 +334,7 @@ export function ProgramsCostsEditor({
               <span>{`· ${String(rows.filter((r) => !isOff(r)).length)} running`}</span>
               {g.agCount > 0 && <span>{`· ${agWords(g.agCount)}`}</span>}
             </div>
-            {perPerson && <FormulaLine cutoff={doc.cost.infant_age_cutoff_months} readOnlyTag />}
+            {perPerson && <FormulaLine cutoff={doc.cost.infant_age_cutoff_months} />}
             {items.length > 0 && (
               <Flow
                 items={items}

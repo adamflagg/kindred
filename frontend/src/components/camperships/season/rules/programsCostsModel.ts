@@ -373,6 +373,8 @@ export interface ChangeLine {
   readonly lead: string
   readonly was: string | null
   readonly now: string
+  /** A price: the card says it on the row itself, so Changed since lists only moves and Not running flips. */
+  readonly price?: true
 }
 
 /** A price as the changes line words it: "$6,695", or "No price yet" when none is stored. */
@@ -413,18 +415,25 @@ export function changesSince(
     const name = row.session.name
     if (old === undefined) continue
     if (old.tuition !== row.tuition)
-      lines.push({ lead: name, was: priceWords(old.tuition), now: priceWords(row.tuition) })
+      lines.push({
+        lead: name,
+        was: priceWords(old.tuition),
+        now: priceWords(row.tuition),
+        price: true,
+      })
     if (old.standard !== row.standard)
       lines.push({
         lead: `${name} standard`,
         was: priceWords(old.standard),
         now: priceWords(row.standard),
+        price: true,
       })
     if (old.infant !== row.infant)
       lines.push({
         lead: `${name} infant`,
         was: priceWords(old.infant),
         now: priceWords(row.infant),
+        price: true,
       })
   }
   for (const row of order) {

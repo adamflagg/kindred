@@ -58,21 +58,16 @@ export const PerPersonHead = ({ editing = false }: { editing?: boolean }) => (
   </div>
 )
 
-/** The per-person formula, once under a group's header (spec §5.2 E); in the editor it carries a muted "read-only". */
-export function FormulaLine({
-  cutoff,
-  readOnlyTag = false,
-}: {
-  cutoff: number | null | undefined
-  readOnlyTag?: boolean
-}) {
+/**
+ * The per-person formula, once under a group's header (spec §5.2 E). With no infant age set, intake keeps CampMinder's
+ * billing labels (`bunking/financial_aid/headcount.py`), so the line says that rather than a bare "not set".
+ */
+export function FormulaLine({ cutoff }: { cutoff: number | null | undefined }) {
   return (
     <p className={CS_SMALL}>
       Per person: everyone but infants pays the standard rate, infants the infant rate ·{' '}
       {cutoff == null ? (
-        <>
-          infant age <b className="text-foreground font-medium">not set</b>
-        </>
+        'who counts as an infant: as CampMinder bills them'
       ) : (
         <>
           infants are under{' '}
@@ -80,7 +75,6 @@ export function FormulaLine({
           session&apos;s first day
         </>
       )}
-      {readOnlyTag && <span className={`${CS_META} ml-1`}>read-only</span>}
     </p>
   )
 }

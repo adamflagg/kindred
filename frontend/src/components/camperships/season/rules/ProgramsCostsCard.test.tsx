@@ -145,20 +145,47 @@ describe('ProgramsCostsCard', () => {
     )
   })
 
-  it('says the per-person formula with the infant age not set', () => {
+  it('says, with no infant age set, that CampMinder’s billing decides who is an infant', () => {
     render(<ProgramsCostsCard {...props()} />)
     expect(screen.getByText(/everyone but infants pays the standard rate/)).toHaveTextContent(
-      'infant age not set'
+      'who counts as an infant: as CampMinder bills them'
     )
   })
 
-  it('lists the draft’s changes since the version in effect, and none for the registrar', () => {
+  it('puts each changed price on its own line under the row, old → new, with no "was" and no Changed since line', () => {
     const draft = pcDoc()
     draft.cost.tuition = { ...draft.cost.tuition, '1000101': '6895' }
+    draft.cost.family_rates = [
+      ...(draft.cost.family_rates ?? []),
+      { session_cm_id: 1000202, standard: '750', infant: '230' },
+    ]
+    render(<ProgramsCostsCard {...props({ draftDoc: draft })} />)
+    const family = within(screen.getByTestId('pc-row-1000202')).getAllByTestId('pc-change')
+    expect(family).toHaveLength(2)
+    expect(family[0]).toHaveTextContent('Standard No price yet $750')
+    expect(family[1]).toHaveTextContent('Infant No price yet $230')
+    expect(within(screen.getByTestId('pc-row-1000101')).getByTestId('pc-change')).toHaveTextContent(
+      '$6,695 $6,895'
+    )
+    expect(screen.queryByText(/^was /)).toBeNull()
+    expect(screen.queryByTestId('changed-since')).toBeNull()
+  })
+
+  it('lists a group move or a Not running flip under Changed since, one per line, and none for the registrar', () => {
+    const draft = pcDoc()
+    draft.cost.tuition = { ...draft.cost.tuition, '1000101': '6895' }
+    if (draft.programs['teen']) draft.programs['teen'].budget_pool = 'school_pool'
+    draft.cost.not_running_session_cm_ids = [1000106, 1000104]
     const { rerender } = render(<ProgramsCostsCard {...props({ draftDoc: draft })} />)
-    expect(screen.getByText(/Changed since v3:/)).toHaveTextContent('Session 2: $6,695 → $6,895')
+    const since = screen.getByTestId('changed-since')
+    expect(since).toHaveTextContent(/^Changed since v3:/)
+    const lines = within(since).getAllByRole('listitem')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toHaveTextContent('Winter Retreat: Camp School')
+    expect(lines[1]).toHaveTextContent('Starter Session: not running')
     rerender(<ProgramsCostsCard {...props({ draftDoc: draft, approved: null })} />)
-    expect(screen.queryByText(/Changed since/)).toBeNull()
+    expect(screen.queryByTestId('changed-since')).toBeNull()
+    expect(screen.queryByTestId('pc-change')).toBeNull()
   })
 
   it('combines the two sections’ statuses: Draft beats In effect beats Locked', () => {
@@ -310,6 +337,17 @@ describe('ProgramsCostsEditor', () => {
       'aria-invalid',
       'true'
     )
+  })
+
+  it('marks a typed box amber with no "was" beside it, and no "read-only" on the formula', async () => {
+    mockSave()
+    renderEditor()
+    const row = screen.getByTestId('pc-row-1000202')
+    await userEvent.type(within(row).getByLabelText('Standard'), '750')
+    await userEvent.type(within(row).getByLabelText('Infant'), '230')
+    expect(within(row).getByLabelText('Standard')).toHaveClass('border-amber-500')
+    expect(within(row).queryByText(/^was /)).toBeNull()
+    expect(screen.queryByText('read-only')).toBeNull()
   })
 
   it('disables a checked row’s boxes', async () => {
