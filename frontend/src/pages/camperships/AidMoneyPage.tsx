@@ -9,6 +9,8 @@ import {
   isMoneyTab,
   MONEY_TAB_PURPOSE,
 } from '../../components/camperships/money/moneyTabs'
+import { LedgerTab } from '../../components/camperships/money/LedgerTab'
+import { SourcesTab } from '../../components/camperships/money/SourcesTab'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
 import { REQUEST_VIEWS } from '../../components/camperships/requests/views'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -24,15 +26,6 @@ const LINK = 'text-primary font-medium hover:underline'
 
 /** The Requests views the ledger also feeds, worked where the request is (§8.1's table). */
 const ELSEWHERE = REQUEST_VIEWS.filter((v) => v.key === 'to_reverse' || v.key === 'not_reconciled')
-
-/** One tab not built yet in this part of slice 3: says so, and where its screen comes from. */
-function NotYet({ what }: { what: string }) {
-  return (
-    <div className="card-lodge text-muted-foreground p-6 text-sm">
-      {`Money › ${what} is built in a later part of slice 3.`}
-    </div>
-  )
-}
 
 /**
  * Money (spec §8.1; D58, D62; money-v2.html): Ledger · To place · Sources, each a URL-held tab (§3.6).
@@ -90,8 +83,8 @@ export default function AidMoneyPage() {
         </p>
       )}
       {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}
-      {slug === 'ledger' && <NotYet what="Ledger" />}
-      {slug === 'sources' && <NotYet what="Sources" />}
+      {slug === 'ledger' && <LedgerTab view={view} />}
+      {slug === 'sources' && <SourcesTab view={view} />}
     </div>
   )
 }
