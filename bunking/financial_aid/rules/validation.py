@@ -511,7 +511,7 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                     f"{path}.r1_table",
                     f"{label}: no Round 1 table: only the minimum award can apply in Round 1"
                     if rules.awards.minimum_without_table
-                    else f"{label}: no Round 1 table: every request in this program holds until finance names one",
+                    else f"{label}: no Round 1 table: every request in this program waits until finance names one",
                 )
         elif program.open_to_aid and program.equity_class is None:
             issues.warn(

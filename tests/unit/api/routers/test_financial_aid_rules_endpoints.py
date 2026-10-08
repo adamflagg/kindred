@@ -231,3 +231,34 @@ def test_the_whole_document_save_route_is_retired() -> None:
     response = _client().put("/api/financial-aid/rules/2031/versions/1", json=DOC_BODY)
     assert response.status_code == 404
     service.save.assert_not_called()
+
+
+def test_approve_passes_the_past_season_reason() -> None:
+    service = _stub()
+    _client().post(
+        "/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY | {"past_season_reason": "Late fix"}
+    )
+    assert service.approve_sections.await_args.kwargs["past_season_reason"] == "Late fix"
+
+
+def test_the_one_time_load_passes_the_past_season_reason() -> None:
+    service = _stub()
+    _client().post("/api/financial-aid/rules/2031/versions", json=DOC_BODY | {"past_season_reason": "As history"})
+    assert service.bootstrap.await_args.kwargs["past_season_reason"] == "As history"
+
+
+def test_start_from_last_year_passes_the_past_season_reason() -> None:
+    service = _stub()
+    response = _client().post(
+        "/api/financial-aid/rules/2032/start-from-last-year", json={"past_season_reason": "Back-fill"}
+    )
+    assert response.status_code == 201
+    assert service.start_from_last_year.await_args.kwargs["past_season_reason"] == "Back-fill"
+
+
+def test_start_from_last_year_without_a_body_passes_none() -> None:
+    """Regression guard. No body still answers 201, with no reason."""
+    service = _stub()
+    response = _client().post("/api/financial-aid/rules/2032/start-from-last-year")
+    assert response.status_code == 201
+    assert service.start_from_last_year.await_args.kwargs["past_season_reason"] is None

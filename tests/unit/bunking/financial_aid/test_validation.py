@@ -535,7 +535,7 @@ def test_a_programs_warning_names_the_program() -> None:
     ]
     held = with_lever(fictional_rules(), "awards.minimum_without_table", False)
     assert _messages(held, "no_round1_table")[0] == (
-        "Adult weekend: no Round 1 table: every request in this program holds until finance names one"
+        "Adult weekend: no Round 1 table: every request in this program waits until finance names one"
     )
 
 

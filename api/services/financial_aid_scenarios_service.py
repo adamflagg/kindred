@@ -47,6 +47,7 @@ from api.services.financial_aid_rules_service import (
     PromotionPreview,
     RulesDraft,
     RulesVersion,
+    SeasonYearUnknownError,
     YearMismatchError,
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, encode_snapshot, price_document
@@ -1073,6 +1074,14 @@ class FinancialAidScenariosService:
         """Each option's `promotable` and `blocked` words (§S11.3; disagreement 5). It previews on the workspace's
         own reads of the rules draft, the rules in effect and the locks, and reads each origin version once, so a
         workspace read stays a handful of reads however many options are kept (plan review, minor 3)."""
+        try:
+            done, _ = await self._rules.season_state(year)
+        except SeasonYearUnknownError as exc:
+            # Never fail the read: a sandbox write reloads the workspace after its commit, so a raise here would answer
+            # 503 for a write that landed. Unknown is never open, so nothing is promotable; `promote` still refuses.
+            return dict.fromkeys(options, (False, str(exc)))
+        if done:  # promote refuses a done season, reason or not (spec §11.2); say so before the click
+            return dict.fromkeys(options, (False, f"{year} is done: a sandbox never writes a done season"))
         origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
         out: dict[str, tuple[bool, str | None]] = {}
         for code, option in options.items():

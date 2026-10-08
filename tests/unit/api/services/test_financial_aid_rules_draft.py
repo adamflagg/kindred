@@ -1243,3 +1243,21 @@ async def test_promoted_via_reads_the_newest_of_two_promotions_into_one_draft() 
         2031, origin_version=1, document=second, base_version=2, acknowledged={}, actor="finance@example.com", via="B"
     )
     assert await service.promoted_via(2031, 2) == "B"
+
+
+@pytest.mark.asyncio
+async def test_the_reads_say_whether_the_season_is_done() -> None:
+    store = FakeStore()
+    await _approved_v1(store)
+
+    async def configured_year() -> int:
+        return 2032
+
+    service = FinancialAidRulesService(store, clock=lambda: AT, configured_year=configured_year)
+    draft, approved = await service.draft_view(2031), await service.approved_view(2031)
+    assert (draft.season_done, draft.configured_year) == (True, 2032)
+    assert (approved.season_done, approved.configured_year) == (True, 2032)
+    receipt = await service.approved_view(2031, version=1)  # a receipt's link: the `version` early return
+    assert (receipt.season_done, receipt.configured_year) == (True, 2032)
+    plain = await _service(store).approved_view(2031)
+    assert (plain.season_done, plain.configured_year) == (False, None)

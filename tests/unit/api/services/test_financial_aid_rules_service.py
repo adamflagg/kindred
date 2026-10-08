@@ -7,6 +7,7 @@ import dataclasses
 import json
 import time
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -26,12 +27,15 @@ from api.services.financial_aid_rules_service import (
     NotLatestVersionError,
     RulesHistoryIncompleteError,
     RulesNotFoundError,
+    SeasonDoneError,
+    SeasonYearUnknownError,
     SectionChangedError,
     VersionExistsError,
     YearMismatchError,
     _dump,
     _stored,
     _to_version,
+    configured_season_year,
     section_fingerprint,
 )
 from bunking.financial_aid.calculator import calculate
@@ -1351,3 +1355,190 @@ async def test_a_locked_section_saved_together_branches_a_new_version() -> None:
     programs["quest"]["session_cm_ids"] = []
     saved = await service.save_section_contents(2031, 1, {"programs": programs, "cost": cost}, actor=FINANCE)
     assert saved.branched_from == 1
+
+
+# --- done seasons (spec §11) ------------------------------------------------------------------
+
+
+def _done_service(store: FakeStore | None = None, configured: int = 2032) -> FinancialAidRulesService:
+    async def configured_year() -> int:
+        return configured
+
+    return FinancialAidRulesService(store or FakeStore(), clock=lambda: AT, configured_year=configured_year)
+
+
+AWARDS_150 = fictional_rules_json()["awards"] | {"minimum": "150"}
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_save_is_refused_without_a_reason() -> None:
+    store = FakeStore()
+    service = _done_service(store)
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)  # 2031 < 2032: done
+    with pytest.raises(SeasonDoneError) as caught:
+        await service.save_section(2031, 1, "awards", AWARDS_150, actor=FINANCE)
+    assert str(caught.value) == "2031 is done (the dashboard's season is 2032): Unlock it with a reason to correct it."
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_save_with_a_reason_lands_and_logs_it() -> None:
+    store = FakeStore()
+    service = _done_service(store)
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    saved = await service.save_section(
+        2031, 1, "awards", AWARDS_150, actor=FINANCE, past_season_reason="A typo in the minimum"
+    )
+    assert saved.version.document.awards.minimum == Decimal(150)
+    [row] = store.operations[-1]
+    assert row["reason"] == "Correcting a done season: A typo in the minimum"
+
+
+@pytest.mark.asyncio
+async def test_a_blank_reason_is_no_reason() -> None:
+    store = FakeStore()
+    service = _done_service(store)
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(SeasonDoneError):
+        await service.save_section(2031, 1, "awards", AWARDS_150, actor=FINANCE, past_season_reason="   ")
+
+
+@pytest.mark.asyncio
+async def test_the_configured_season_and_later_are_open() -> None:
+    store = FakeStore()
+    service = _done_service(store, configured=2031)
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    saved = await service.save_section(2031, 1, "awards", AWARDS_150, actor=FINANCE)
+    assert saved.version.document.awards.minimum == Decimal(150)
+
+
+@pytest.mark.asyncio
+async def test_without_a_configured_year_no_season_is_done() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    saved = await service.save_section(2031, 1, "awards", AWARDS_150, actor=FINANCE)
+    assert saved.version.document.awards.minimum == Decimal(150)
+    assert await service.season_state(2031) == (False, None)
+
+
+@pytest.mark.asyncio
+async def test_a_configured_year_that_cannot_be_read_never_lets_a_write_through() -> None:
+    """Review Focus 3: the service never treats an unreadable season as open."""
+
+    async def broken() -> int:
+        raise SeasonYearUnknownError("The dashboard's season couldn't be read")
+
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = FinancialAidRulesService(store, clock=lambda: AT, configured_year=broken)
+    before = len(store.operations)
+    with pytest.raises(SeasonYearUnknownError):
+        await service.save_section(2031, 1, "awards", AWARDS_150, actor=FINANCE, past_season_reason="fix")
+    assert len(store.operations) == before  # nothing was written
+
+
+@pytest.mark.asyncio
+async def test_the_configured_season_is_read_strictly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review Focus 3 (review minor 9): the sync status's year, else CAMPMINDER_SEASON_ID, else refused. Never the
+    calendar year, and never a swallowed failure (`current_season_year` does both, so it is not what A6 injects)."""
+    monkeypatch.delenv("CAMPMINDER_SEASON_ID", raising=False)
+    pb = MagicMock()
+    pb.send.return_value = {"_configured_year": 2027}
+    assert await configured_season_year(pb) == 2027
+    pb.send.return_value = {}
+    with pytest.raises(SeasonYearUnknownError):
+        await configured_season_year(pb)
+    pb.send.side_effect = RuntimeError("sync status unreadable")
+    with pytest.raises(SeasonYearUnknownError):
+        await configured_season_year(pb)
+    monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2026")
+    assert await configured_season_year(pb) == 2026
+
+
+@pytest.mark.asyncio
+async def test_the_two_section_save_is_guarded_too() -> None:
+    store = FakeStore()
+    service = _done_service(store)
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(SeasonDoneError):
+        await service.save_section_contents(2031, 1, {"awards": AWARDS_150}, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_approval_needs_a_reason_and_logs_it_after_the_note() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store)
+    with pytest.raises(SeasonDoneError):
+        await service.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Finance, Oct 7")
+    await service.approve_sections(
+        2031, 1, ["income"], actor=FINANCE, note="Finance, Oct 7", past_season_reason="Late fix"
+    )
+    [row] = store.operations[-1]
+    assert row["reason"] == "Finance, Oct 7 · correcting a done season: Late fix"
+    assert (await service.load(2031)).section_status["income"].note == "Finance, Oct 7"
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_approval_without_a_note_logs_the_reason_alone() -> None:
+    """The signature allows no note: the log row then reads as any other done-season write, never "None · ..."."""
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    await _done_service(store).approve_sections(
+        2031, 1, ["income"], actor=FINANCE, note=None, past_season_reason="Late fix"
+    )
+    [row] = store.operations[-1]
+    assert row["reason"] == "Correcting a done season: Late fix"
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_new_version_and_start_need_a_reason() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store, configured=2033)
+    with pytest.raises(SeasonDoneError):
+        await service.new_version(2031, 1, actor=FINANCE)
+    created = await service.new_version(2031, 1, actor=FINANCE, past_season_reason="Branch to fix")
+    assert created.version == 2
+    with pytest.raises(SeasonDoneError):
+        await service.start_from_last_year(2032, actor=FINANCE)
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE, past_season_reason="Back-fill 2032")
+    assert started.year == 2032
+
+
+@pytest.mark.asyncio
+async def test_the_one_time_load_of_a_done_season_needs_a_reason() -> None:
+    service = _done_service()
+    with pytest.raises(SeasonDoneError):
+        await service.bootstrap(fictional_rules(), actor=FINANCE)
+    created = await service.bootstrap(fictional_rules(), actor=FINANCE, past_season_reason="Loading 2031 as history")
+    assert created.version == 1
+
+
+@pytest.mark.asyncio
+async def test_a_sandbox_never_writes_a_done_season() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store)
+    with pytest.raises(SeasonDoneError) as caught:
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=with_lever(fictional_rules(), "awards.minimum", "150"),
+            base_version=1,
+            acknowledged={},
+            actor=FINANCE,
+            via="B2",
+        )
+    assert "a sandbox never writes a done season" in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_a_first_tick_still_locks_a_done_seasons_sections() -> None:
+    """Regression guard. `lock_writes` is not guarded: a done season may still post late money."""
+    store = FakeStore()
+    plain = _service(store)
+    await plain.create_version(fictional_rules(), actor=FINANCE)
+    await plain.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Finance")
+    writes, not_locked = await _done_service(store).lock_writes(2031, 1, ["income"])
+    assert len(writes) == 1
+    assert not_locked == []

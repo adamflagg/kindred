@@ -49,7 +49,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Callable, Collection, Mapping, Sequence
+import os
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -255,6 +256,46 @@ class BudgetTotalLockedError(SectionInvalidError):
     10-06: "budget does lock but only the total dollar number": refused (422). The program shares stay editable."""
 
 
+class SeasonDoneError(FinancialAidError, ValueError):
+    """A rules write to a season earlier than the configured one with no reason, or any sandbox promote to one, reason
+    or not (`sandbox=True`; spec §11.2). #2844 will replace the test with the season's own `closed` state."""
+
+    def __init__(self, year: int, configured: int, *, sandbox: bool = False) -> None:
+        self.year, self.configured = year, configured
+        tail = (
+            "a sandbox never writes a done season; correct it on Rules."
+            if sandbox
+            else "Unlock it with a reason to correct it."
+        )
+        super().__init__(f"{year} is done (the dashboard's season is {configured}): {tail}")
+
+
+class SeasonYearUnknownError(FinancialAidError, RuntimeError):
+    """The configured season couldn't be read (Review Focus 3): no `_configured_year` on the sync status and no
+    CAMPMINDER_SEASON_ID. A done season is never treated as open for want of its year, so the read or write is refused
+    (503) until it can be read."""
+
+
+async def configured_season_year(pb: Any) -> int:
+    """The dashboard's configured season, strictly (spec §11.1; review minor 9). The same sync status
+    `current_season_year` reads, but that one swallows every failure and guesses the calendar year, which would read a
+    done season as open after the switch. Here the env var is the only fallback, and anything else raises."""
+    try:
+        status = await asyncio.to_thread(pb.send, "/api/custom/sync/status", {"method": "GET"})
+        year = int((status or {}).get("_configured_year") or 0)
+    except Exception as exc:  # re-raised below as the one error the router maps
+        logger.warning(f"Camperships rules: sync status unreadable ({exc})")
+        year = 0
+    if year:
+        return year
+    season = os.environ.get("CAMPMINDER_SEASON_ID", "")
+    if season.isdigit():
+        return int(season)
+    raise SeasonYearUnknownError(
+        "The dashboard's season couldn't be read, so no rules change is accepted; try again shortly"
+    )
+
+
 @dataclass(frozen=True)
 class SectionSaveResult:
     """A section save: the version it landed on, that version's validation report, and the version it branched
@@ -288,6 +329,9 @@ class RulesDraft:
     budget_total_locked: bool = False
     # Spec §4.1: the season's groups (budget pools by label), from the draft document.
     groups: tuple[Group, ...] = ()
+    # Spec §11.1: the season is earlier than the configured one; the configured season (None: no reader).
+    season_done: bool = False
+    configured_year: int | None = None
 
 
 @dataclass(frozen=True)
@@ -309,9 +353,17 @@ class ApprovedRules:
     sections: tuple[ApprovedSection, ...]
     # Spec §4.1: the groups of the version pricing the season (or the one asked for); () when none.
     groups: tuple[Group, ...] = ()
+    season_done: bool = False  # spec §11.1, as on RulesDraft
+    configured_year: int | None = None
 
 
 _HELD: Final = ("approved", "locked")
+_DONE_PREFIX: Final = "Correcting a done season: "
+
+
+def _done_log(done: str | None) -> str | None:
+    """The log reason a done-season write carries (spec §11.2); None for an open season."""
+    return None if done is None else _DONE_PREFIX + done
 
 
 def _approved_section(version: RulesVersion | None, name: SectionName) -> ApprovedSection:
@@ -721,10 +773,31 @@ class FinancialAidRulesService:
         *,
         clock: Callable[[], datetime] | None = None,
         effects: ApprovalEffects | None = None,
+        configured_year: Callable[[], Awaitable[int]] | None = None,
     ) -> None:
         self._store = store
+        # Spec §11.1: None (intake's read-only service, internal routes, tests) means no season is ever done.
+        self._configured_year = configured_year
         self._effects = effects  # H3: only the approve route passes it; every other caller measures nothing
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+
+    async def season_state(self, year: int) -> tuple[bool, int | None]:
+        """(done, the configured season): done when `year` is earlier than the configured season (spec §11.1). The one
+        place that test lives, for #2844 to swap for the season's `closed` state."""
+        if self._configured_year is None:
+            return False, None
+        configured = await self._configured_year()
+        return year < configured, configured
+
+    async def _done_reason(self, year: int, past_season_reason: str | None) -> str | None:
+        """None for an open season; the stripped reason for a done one; refused (SeasonDoneError) without one."""
+        done, configured = await self.season_state(year)
+        if not done or configured is None:
+            return None
+        reason = (past_season_reason or "").strip()
+        if not reason:
+            raise SeasonDoneError(year, configured)
+        return reason
 
     async def load(self, year: int, version: int | None = None) -> RulesVersion:
         """One version, or the year's highest version when `version` is None."""
@@ -791,6 +864,7 @@ class FinancialAidRulesService:
         report = await self.validate_document(current.document)
         base = approved.document.model_dump() if approved is not None and approved.version != current.version else None
         now = current.document.model_dump()
+        season_done, configured_year = await self.season_state(year)
         sections = tuple(
             DraftSection(
                 section=name,
@@ -807,6 +881,8 @@ class FinancialAidRulesService:
             sections,
             budget_total_locked=await self._budget_total_locked(year),
             groups=tuple(season_groups(current.document)),
+            season_done=season_done,
+            configured_year=configured_year,
         )
 
     async def _budget_total_locked(self, year: int) -> bool:
@@ -832,6 +908,7 @@ class FinancialAidRulesService:
         version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
         [section])`). So editing quality checks or milestones in a draft never blanks the read.
         """
+        season_done, configured_year = await self.season_state(year)
         if version is not None:
             chosen = await self.load(year, version)
             if all(chosen.section_status[n].state not in _HELD for n in SECTION_NAMES):
@@ -844,6 +921,8 @@ class FinancialAidRulesService:
                 tuple(season_groups(chosen.document))
                 if all(chosen.section_status[n].state in _HELD for n in ("programs", "budget"))
                 else (),
+                season_done=season_done,
+                configured_year=configured_year,
             )
         versions = [_to_version(row) for row in await self._store.list_versions(year)]
 
@@ -862,6 +941,8 @@ class FinancialAidRulesService:
             pricing.version if pricing is not None else None,
             sections,
             tuple(season_groups(pricing.document)) if pricing is not None else (),
+            season_done=season_done,
+            configured_year=configured_year,
         )
 
     async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
@@ -912,20 +993,27 @@ class FinancialAidRulesService:
     async def validate(self, year: int, version: int) -> ValidationReport:
         return await self.validate_document((await self.load(year, version)).document)
 
-    async def create_version(self, document: AidRules, *, actor: str) -> RulesVersion:
+    async def create_version(
+        self, document: AidRules, *, actor: str, past_season_reason: str | None = None
+    ) -> RulesVersion:
+        done = await self._done_reason(document.year, past_season_reason)
+        return await self._create_first_or_next(document, actor=actor, done=done)
+
+    async def _create_first_or_next(self, document: AidRules, *, actor: str, done: str | None) -> RulesVersion:
         latest = await self._latest(document.year)
         version = (latest.version if latest is not None else 0) + 1
         body = _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
-        return await self._create(body, log_action="create", actor=actor, supersedes=latest)
+        return await self._create(body, log_action="create", actor=actor, supersedes=latest, reason=_done_log(done))
 
-    async def bootstrap(self, document: AidRules, *, actor: str) -> RulesVersion:
+    async def bootstrap(self, document: AidRules, *, actor: str, past_season_reason: str | None = None) -> RulesVersion:
         """Version 1 of a season that has no rules yet, from a whole document (loading 2026 as history).
         Refused when the season already has rules: a retried load must not make a second version, and
         every later change is a section editor's save over the latest version (owner ruling 2026-09-28; the
         whole-document PUT is retired, queue 23)."""
+        done = await self._done_reason(document.year, past_season_reason)
         if await self._store.list_versions(document.year):
             raise VersionExistsError(f"{document.year} already has aid rules; edit them in the section editor instead")
-        return await self.create_version(document, actor=actor)
+        return await self._create_first_or_next(document, actor=actor, done=done)
 
     async def save(
         self, year: int, version: int, document: AidRules, *, actor: str
@@ -1017,6 +1105,7 @@ class FinancialAidRulesService:
         *,
         actor: str,
         expected_fingerprint: str | None = None,
+        past_season_reason: str | None = None,
     ) -> SectionSaveResult:
         """One section editor's save: `content` (that section's JSON) merged into the rules draft this call loads,
         then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
@@ -1028,6 +1117,7 @@ class FinancialAidRulesService:
             {section: content},
             actor=actor,
             expected_fingerprints=None if expected_fingerprint is None else {section: expected_fingerprint},
+            past_season_reason=past_season_reason,
         )
 
     async def save_section_contents(
@@ -1038,6 +1128,7 @@ class FinancialAidRulesService:
         *,
         actor: str,
         expected_fingerprints: Mapping[SectionName, str] | None = None,
+        past_season_reason: str | None = None,
     ) -> SectionSaveResult:
         """Several sections' editors saved as ONE operation (spec §15.5: the Programs and costs card sends `programs`
         and `cost` together). Each section goes through the one-section steps, in section order, against the one
@@ -1045,6 +1136,7 @@ class FinancialAidRulesService:
         nothing. A section not named keeps its content and its approval."""
         if not contents:
             raise NoSectionsNamedError("Name at least one section to save")
+        done = await self._done_reason(year, past_season_reason)
         current = await self._rules_draft(year, base_version)
         if expected_fingerprints is not None:
             if set(expected_fingerprints) != set(contents):
@@ -1062,7 +1154,7 @@ class FinancialAidRulesService:
             refused = changed_fixed(section, current.document.model_dump()[section], candidate.model_dump()[section])
             if refused:
                 raise FixedSettingError(f"{refused[0]} is fixed and can't be changed here")
-        return await self._save_over(current, candidate, actor=actor, via=None)
+        return await self._save_over(current, candidate, actor=actor, via=None, reason=_done_log(done))
 
     async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
         current = await self.load(year)
@@ -1074,7 +1166,7 @@ class FinancialAidRulesService:
         return current
 
     async def _save_over(
-        self, current: RulesVersion, candidate: AidRules, *, actor: str, via: str | None
+        self, current: RulesVersion, candidate: AidRules, *, actor: str, via: str | None, reason: str | None = None
     ) -> SectionSaveResult:
         year = current.year
         context = await self._context(year)
@@ -1107,7 +1199,7 @@ class FinancialAidRulesService:
         if branch:
             number = await self._next_version(year)
             body = _body(year, number, candidate, status, parent_year=year, parent_version=current.version)
-            created = await self._create(body, log_action="save", actor=actor, supersedes=current)
+            created = await self._create(body, log_action="save", actor=actor, supersedes=current, reason=reason)
             return SectionSaveResult(created, after, current.version)
         write = AidWrite(
             collection=AID_RULES,
@@ -1120,7 +1212,7 @@ class FinancialAidRulesService:
             entity_id=_entity_id(year, current.version),
             expected_revision=current.revision,
         )
-        await self._store.commit([write], actor=actor)
+        await self._store.commit([write], actor=actor, reason=reason)
         return SectionSaveResult(await self.load(year, current.version), after, None)
 
     async def promotion_preview(self, year: int, *, origin_version: int, document: AidRules) -> PromotionPreview:
@@ -1186,6 +1278,9 @@ class FinancialAidRulesService:
         section named; nothing is written then."""
         if document.year != year:
             raise YearMismatchError(f"The document is for {document.year}, not {year}")
+        done, configured = await self.season_state(year)
+        if done and configured is not None:  # a sandbox never writes a done season, reason or not (spec §11.2)
+            raise SeasonDoneError(year, configured, sandbox=True)
         # One read of the rules draft for the preview, the tokens, the candidate and the write's revision
         # (Ruling 2026-10-01 (plan review)): a second read could see a save the confirmed preview never showed.
         # Not `_rules_draft`: a promotion was confirmed against a preview, so staff go back to the preview.
@@ -1241,6 +1336,7 @@ class FinancialAidRulesService:
         actor: str,
         note: str | None,
         fingerprints: Mapping[SectionName, str] | None = None,
+        past_season_reason: str | None = None,
     ) -> tuple[RulesVersion, ValidationReport]:
         """Approve `sections` as ONE operation: a log row per section, the note (naming the
         approving body, D39) as each row's reason. All or nothing: every approval is checked
@@ -1251,6 +1347,12 @@ class FinancialAidRulesService:
         named = list(dict.fromkeys(sections))
         if not named:
             raise NoSectionsNamedError("Name at least one section to approve")
+        done = await self._done_reason(year, past_season_reason)
+        # The section status keeps the plain note; only the log row names the correction.
+        if done is None:
+            logged = note
+        else:
+            logged = f"{note} · correcting a done season: {done}" if note else _done_log(done)
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
         if fingerprints is not None:
@@ -1265,9 +1367,9 @@ class FinancialAidRulesService:
         writes: list[AidWrite] = []
         for section in named:
             updated = approve(status, section, by=actor, at=at, note=note, report=report)
-            writes.append(_status_write(current, status, updated, section, log_action="approve", reason=note))
+            writes.append(_status_write(current, status, updated, section, log_action="approve", reason=logged))
             status = updated
-        result = await self._store.commit(writes, actor=actor, reason=note)
+        result = await self._store.commit(writes, actor=actor, reason=logged)
         if self._effects is not None and before is not None:
             await self._record_effect(
                 self._effects, year, current.version, before, actor=actor, operation_id=result.operation_id
@@ -1377,7 +1479,13 @@ class FinancialAidRulesService:
         return writes, sorted(not_locked, key=SECTION_NAMES.index)
 
     async def new_version(
-        self, year: int, from_version: int, *, actor: str, unlock: Collection[SectionName] = ()
+        self,
+        year: int,
+        from_version: int,
+        *,
+        actor: str,
+        unlock: Collection[SectionName] = (),
+        past_season_reason: str | None = None,
     ) -> RulesVersion:
         """Copy `from_version`'s document, approvals and locks into a new, latest version,
         lifting only the locks named in `unlock` (lifecycle.carry_forward).
@@ -1386,6 +1494,7 @@ class FinancialAidRulesService:
         version on purpose is the one write this module allows on a superseded
         version, and its result becomes the new latest.
         """
+        done = await self._done_reason(year, past_season_reason)
         # The latest FIRST, and it is the source when branching from it (Ruling 2026-10-01 (plan review)): a source
         # read before the latest could miss a save that landed between the two reads, while the guard, carrying
         # the later read's revision, let the stale copy through.
@@ -1401,9 +1510,13 @@ class FinancialAidRulesService:
             parent_year=year,
             parent_version=from_version,
         )
-        return await self._create(body, log_action="new_version", actor=actor, supersedes=latest)
+        return await self._create(
+            body, log_action="new_version", actor=actor, supersedes=latest, reason=_done_log(done)
+        )
 
-    async def start_from_last_year(self, year: int, *, actor: str) -> tuple[RulesVersion, ValidationReport]:
+    async def start_from_last_year(
+        self, year: int, *, actor: str, past_season_reason: str | None = None
+    ) -> tuple[RulesVersion, ValidationReport]:
         """Copy the previous season's latest version into an empty season, every section draft.
 
         Milestone dates are cleared: they belong to a season. Tuition and family-camp
@@ -1413,6 +1526,7 @@ class FinancialAidRulesService:
         year's rate. Approvals are not carried: a new season's rules go to the board again.
         Programs are written by equity class (§14.3).
         """
+        done = await self._done_reason(year, past_season_reason)
         if await self._store.list_versions(year):
             raise VersionExistsError(f"{year} already has aid rules; make a new version instead")
         prior = await self.load(year - 1)
@@ -1437,7 +1551,9 @@ class FinancialAidRulesService:
             }
         )
         body = _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
-        created = await self._create(body, log_action="start_from_last_year", actor=actor, supersedes=None)
+        created = await self._create(
+            body, log_action="start_from_last_year", actor=actor, supersedes=None, reason=_done_log(done)
+        )
         report = await self.validate_document(created.document)
         cleared = ValidationIssue(
             section="cost",
@@ -1452,7 +1568,13 @@ class FinancialAidRulesService:
         return created, ValidationReport(issues=[cleared, *report.issues])
 
     async def _create(
-        self, body: dict[str, Any], *, log_action: str, actor: str, supersedes: RulesVersion | None
+        self,
+        body: dict[str, Any],
+        *,
+        log_action: str,
+        actor: str,
+        supersedes: RulesVersion | None,
+        reason: str | None = None,
     ) -> RulesVersion:
         """Create a version. `supersedes` is the season's latest version as read, None for a season's first: the
         create guards it (G6), so a write still aimed at it as "the latest" (a save, an approval, a tick's lock)
@@ -1472,7 +1594,7 @@ class FinancialAidRulesService:
             if supersedes is not None
             else []
         )
-        await self._store.commit([write], actor=actor, guards=guards)
+        await self._store.commit([write], actor=actor, guards=guards, reason=reason)
         return await self.load(year, version)
 
     async def _latest(self, year: int) -> RulesVersion | None:
