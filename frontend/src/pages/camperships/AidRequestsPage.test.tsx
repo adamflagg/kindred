@@ -52,6 +52,19 @@ vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
     return null
   },
 }))
+// Slice 3's March file has its own tests (MarchFileButton.test.tsx); here, only where it shows.
+vi.mock('../../components/camperships/requests/useMarchFile', () => ({
+  useMarchFile: (year: number) => ({ year }),
+}))
+vi.mock('../../components/camperships/requests/MarchFileButton', () => ({
+  MarchFileItem: ({ march }: { march: { year: number } }) => (
+    <button type="button">{`March file ${String(march.year)}`}</button>
+  ),
+  MarchFileResult: ({ march }: { march: { year: number } }) => (
+    <p>{`March result ${String(march.year)}`}</p>
+  ),
+}))
+
 let operation: {
   data: ApiAidHistoryOperationDetail | undefined
   error: Error | null
@@ -1488,5 +1501,51 @@ describe('"Money to place" on a Not reconciled row (ruling C)', () => {
     expect(
       within(detail).getByRole('link', { name: 'Place It in Money › To Place ›' })
     ).toHaveAttribute('href', '/aid/money/to-place?household=1000001&year=2027')
+  })
+})
+
+describe('the March file in the Download CSV menu (slice 3 rework R1; variant A)', () => {
+  const marchItem = () => screen.queryByRole('button', { name: 'March file 2027' })
+  const caret = () => screen.queryByRole('button', { name: 'More downloads' })
+
+  it('puts a caret after Download CSV and the March item in its menu, on Needs an offer with R1 lit, for casework', async () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderAt('/aid/requests?view=needs-offer&round=1')
+    expect(marchItem()).toBeNull()
+    await userEvent.click(caret() as HTMLElement)
+    expect(marchItem()).not.toBeNull()
+    expect(within(toolbar()).queryByRole('button', { name: 'March file 2027' })).not.toBeNull()
+  })
+
+  it('is a plain Download CSV without the R1 chip, on another round, or on another view', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    const { unmount } = renderAt('/aid/requests?view=needs-offer')
+    expect(caret()).toBeNull()
+    unmount()
+    const second = renderAt('/aid/requests?view=needs-offer&round=2')
+    expect(caret()).toBeNull()
+    second.unmount()
+    renderAt('/aid/requests?round=1')
+    expect(caret()).toBeNull()
+  })
+
+  it('is a plain Download CSV without casework, and on a past date', () => {
+    granted = ['financial_aid.view']
+    const { unmount } = renderAt('/aid/requests?view=needs-offer&round=1')
+    expect(caret()).toBeNull()
+    unmount()
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    grid = { data: { ...LIVE, as_of: '2027-03-01' }, isLoading: false, error: null }
+    renderAt('/aid/requests?view=needs-offer&round=1&as_of=2027-03-01')
+    expect(caret()).toBeNull()
+  })
+
+  it('draws the result line under the toolbar only where the split control is', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    const { unmount } = renderAt('/aid/requests?view=needs-offer&round=1')
+    expect(screen.getByText('March result 2027')).toBeInTheDocument()
+    unmount()
+    renderAt('/aid/requests?view=needs-offer&round=2')
+    expect(screen.queryByText('March result 2027')).toBeNull()
   })
 })
