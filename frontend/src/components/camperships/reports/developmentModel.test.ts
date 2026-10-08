@@ -109,8 +109,8 @@ describe('the report', () => {
   })
 
   it('indents the sub-lines as the mock does (SUB_LINES)', () => {
-    expect(SUB_LINES.camp_awards).toBe(1)
-    expect(SUB_LINES.incentive_awards).toBe(2)
+    expect(SUB_LINES['camp_awards']).toBe(1)
+    expect(SUB_LINES['incentive_awards']).toBe(2)
     const rows = developmentRows(DEVELOPMENT)
     const indentOf = (label: string) => rows.find((r) => texts(r)[0] === label)?.indent
     expect(indentOf('Camp awards')).toBe(1)

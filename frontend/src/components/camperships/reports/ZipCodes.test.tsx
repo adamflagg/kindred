@@ -3,7 +3,7 @@
  * in the URL, highlighting the group served; both tables; a season with no aid table. Only `fetch` is faked.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
@@ -122,5 +122,26 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
       '00012'
     )
     expect(screen.getByText(/1 of 4 rows match/)).toBeInTheDocument()
+  })
+
+  it('puts the descriptions before the tables, and opens each with the most campers first', async () => {
+    renderZip()
+    const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
+    const words = screen.getByText(/campers enrolled in an aid-eligible session/)
+    expect(words.compareDocumentPosition(every) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const aid = screen.getByRole('table', { name: 'Campers who got aid · Pool A' })
+    const sameCampers = screen.getByText(/The same campers, attended and got money/)
+    expect(sameCampers.compareDocumentPosition(aid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const first = (table: HTMLElement) =>
+      within(within(table).getAllByRole('row')[1]!).getAllByRole('cell')[0]?.textContent
+    expect(first(every)).toBe('00012')
+    expect(first(aid)).toBe('00012')
+    expect(within(every).getByRole('columnheader', { name: /Campers/ })).toHaveTextContent('↓')
+  })
+
+  it('draws ZIPs in the monospace font', async () => {
+    renderZip()
+    const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
+    expect(within(every).getByText('00012').closest('td')?.className).toContain('font-mono')
   })
 })

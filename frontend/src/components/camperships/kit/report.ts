@@ -85,6 +85,8 @@ export interface ReportColumn {
   readonly tone?: 'decided' | undefined
   /** `before`: a line left of the column, between a table's words and its figures (the mock's `.bl`). */
   readonly divider?: 'before' | undefined
+  /** Body cells in the monospace font (ZIP codes, so the digits line up). */
+  readonly mono?: boolean | undefined
 }
 
 /**

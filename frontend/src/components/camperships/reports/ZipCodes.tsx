@@ -81,7 +81,8 @@ export function ZipCodes({ view }: { view: AidView }) {
                   find
                   sortable
                   urlPrefix="every_"
-                  footnote={zipScopeWords(data)}
+                  description={zipScopeWords(data)}
+                  defaultSort={{ key: 'campers', dir: 'desc' }}
                 />
                 {/* With no aid table, the server's own "Not built yet" line above says why. */}
                 {data.with_aid !== null && (
@@ -94,7 +95,8 @@ export function ZipCodes({ view }: { view: AidView }) {
                     find
                     sortable
                     urlPrefix="aid_"
-                    footnote="The same campers, attended and got money from any source: the camp's awards and every outside grant. A household-level grant lands on its household's ZIP."
+                    description="The same campers, attended and got money from any source: the camp's awards and every outside grant. A household-level grant lands on its household's ZIP."
+                    defaultSort={{ key: 'campers', dir: 'desc' }}
                   />
                 )}
               </div>
