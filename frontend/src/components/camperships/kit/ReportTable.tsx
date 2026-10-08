@@ -197,7 +197,14 @@ export function ReportTable({
             sort?.key === column.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
           }
           onSort={() => toggleSort(column.key)}
+          indicator={
+            <>
+              {column.note ? <DefRef n={column.note} /> : null}
+              {sort?.key === column.key ? (sort.dir === 'asc' ? '↑' : '↓') : null}
+            </>
+          }
           className={thClass}
+          style={column.width ? { width: column.width } : undefined}
         />
       )
     }

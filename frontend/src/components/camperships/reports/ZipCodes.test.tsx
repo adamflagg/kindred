@@ -84,6 +84,7 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     renderZip()
     await screen.findByRole('table', { name: 'Every camper · Pool A' })
     expect(screen.queryByRole('button', { name: 'Pool B' })).toBeNull()
+    expect(screen.queryByText('Group')).toBeNull()
   })
 
   it("says why there's no aid table before the season's decisions", async () => {
