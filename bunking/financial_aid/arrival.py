@@ -36,6 +36,7 @@ CurveSource = Literal["workbook", "received"]
 _SHARE: Final = Decimal("0.0001")
 _CENT: Final = Decimal("0.01")
 _WEEK: Final = Decimal(7)
+MIN_PROJECTION_SHARE: Final = Decimal("0.05")  # owner 10-07: below 5% of last year's applications, no projection
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,15 @@ class Projection:
     round1_and_2: Decimal
     remaining: Decimal | None  # Allocated (total) − (Round 1 + 2 + 3) ÷ the share
     pools: tuple[PoolProjection, ...]
+
+
+@dataclass(frozen=True)
+class TooEarly:
+    """What the screen says in place of a projection while under 5% of last year's applications had arrived."""
+
+    share: Decimal
+    through: date
+    basis_year: int
 
 
 def calendar_anchor(year: int) -> date:
@@ -155,6 +165,16 @@ def project(
             for pool in results.pools
         ),
     )
+
+
+def projection_or_too_early(
+    results: ScenarioResults, share: Decimal, *, through: date, basis_year: int, aligned_on: AlignedOn
+) -> Projection | TooEarly:
+    """Owner 10-07: under 5% of last year's applications in, dividing by the share is noise, so there is no projection
+    and the screen says it is too early."""
+    if share < MIN_PROJECTION_SHARE:
+        return TooEarly(share, through, basis_year)
+    return project(results, share, through=through, basis_year=basis_year, aligned_on=aligned_on)
 
 
 def points_json(curve: ArrivalCurve) -> list[dict[str, Any]]:

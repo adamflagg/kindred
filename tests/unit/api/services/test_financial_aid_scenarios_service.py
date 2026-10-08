@@ -1582,6 +1582,95 @@ async def test_a_stored_curve_projects_evaluate_and_the_draft() -> None:
     assert draft.projection.round1 == Decimal("5200.00")
 
 
+# Three percent of last season's applications in at every week from 60 before its deadline to 9 after.
+EARLY = ArrivalCurve(
+    YEAR - 1,
+    "application_deadline",
+    LAST_DEADLINE,
+    (CurvePoint(-60, Decimal("0.03")), CurvePoint(10, Decimal(1))),
+    400,
+    "workbook",
+)
+
+
+@pytest.mark.asyncio
+async def test_below_a_five_percent_share_evaluate_says_too_early_and_projects_nothing() -> None:
+    """Owner 10-07: under 5% of last year's applications in, there is no projection, only the share."""
+    world = await _projected_world(EARLY)
+    evaluation = await world.service.evaluate(YEAR, WITH_DEADLINE)
+    assert evaluation.projection is None
+    assert evaluation.too_early is not None
+    assert (evaluation.too_early.share, evaluation.too_early.basis_year, evaluation.too_early.through) == (
+        Decimal("0.0300"),
+        YEAR - 1,
+        date(YEAR, 3, 9),
+    )
+
+
+@pytest.mark.asyncio
+async def test_below_a_five_percent_share_the_draft_says_too_early() -> None:
+    world = await _projected_world(EARLY)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    assert draft is not None
+    assert draft.projection is None
+    assert draft.too_early is not None
+    assert draft.too_early.share == Decimal("0.0300")
+
+
+@pytest.mark.asyncio
+async def test_below_a_five_percent_share_every_compare_column_says_too_early() -> None:
+    world = await _projected_world(EARLY)
+    comparison = await world.service.compare(YEAR, FINANCE, [], rules=True)
+    assert comparison.columns
+    assert all(c.projection is None and c.too_early is not None for c in comparison.columns)
+
+
+# Last season's first application arrived 8 weeks after its deadline: at this season's read (5 weeks after), none had.
+NOT_YET = ArrivalCurve(
+    YEAR - 1,
+    "application_deadline",
+    LAST_DEADLINE,
+    (CurvePoint(8, Decimal("0.2")), CurvePoint(10, Decimal(1))),
+    400,
+    "workbook",
+)
+
+
+@pytest.mark.asyncio
+async def test_before_any_of_last_years_applications_had_arrived_it_says_too_early() -> None:
+    """A zero share is the earliest too-early point: the line says so (under 1%) rather than vanishing."""
+    world = await _projected_world(NOT_YET)
+    evaluation = await world.service.evaluate(YEAR, WITH_DEADLINE)
+    assert evaluation.projection is None
+    assert evaluation.too_early is not None
+    assert (evaluation.too_early.share, evaluation.too_early.through) == (Decimal(0), date(YEAR, 3, 9))
+
+
+@pytest.mark.asyncio
+async def test_a_curve_with_no_points_says_nothing() -> None:
+    """Regression guard: a stored curve with no weeks has no share to report, so no too-early line either."""
+    empty = ArrivalCurve(YEAR - 1, "application_deadline", LAST_DEADLINE, (), 400, "workbook")
+    world = await _projected_world(empty)
+    evaluation = await world.service.evaluate(YEAR, WITH_DEADLINE)
+    assert evaluation.projection is None
+    assert evaluation.too_early is None
+
+
+@pytest.mark.asyncio
+async def test_at_a_projecting_share_it_projects_and_is_not_too_early() -> None:
+    """Pin: the flat curve's 0.5 share projects on all three reads, with no too-early note."""
+    world = await _projected_world()
+    evaluation = await world.service.evaluate(YEAR, WITH_DEADLINE)
+    draft = (await world.service.workspace(YEAR, FINANCE)).draft
+    comparison = await world.service.compare(YEAR, FINANCE, [], rules=True)
+    assert draft is not None
+    assert evaluation.projection is not None
+    assert evaluation.too_early is None
+    assert draft.projection is not None
+    assert draft.too_early is None
+    assert all(c.projection is not None and c.too_early is None for c in comparison.columns)
+
+
 @pytest.mark.asyncio
 async def test_the_share_is_read_for_the_price_date_when_one_is_set() -> None:
     world = await _projected_world()

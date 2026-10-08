@@ -54,10 +54,11 @@ from api.services.financial_aid_scenarios_repository import OptionRecord, Snapsh
 from bunking.financial_aid.arrival import (
     ArrivalCurve,
     Projection,
+    TooEarly,
     calendar_anchor,
     camp_date_of,
     curve_from_dates,
-    project,
+    projection_or_too_early,
     share_by,
 )
 from bunking.financial_aid.change_diff import FieldChange, field_changes
@@ -221,6 +222,7 @@ class Evaluation:
     results: ScenarioResults
     report: ValidationReport
     projection: Projection | None = None
+    too_early: TooEarly | None = None
 
 
 @dataclass(frozen=True)
@@ -247,6 +249,7 @@ class Draft:
     source_document: AidRules | None = None  # what it is from, read now: the strip's starting point and "was"
     same_as: str | None = None  # a kept code whose document equals it, else "rules" when it is the rules in effect
     projection: Projection | None = None
+    too_early: TooEarly | None = None
     differs_in: tuple[SectionName, ...] = ()  # the sections whose content differs from the rules in effect (Task 67)
     # The rules version the draft was started on (A11); None for a row that recorded none (before the field).
     built_on_version: int | None = None
@@ -294,6 +297,7 @@ class CompareColumn:
     approved_at: datetime | None = None  # the newest approval among the pricing sections, for "rules"
     via: str | None = None  # the kept code "rules" was promoted from (promoted_via)
     projection: Projection | None = None
+    too_early: TooEarly | None = None
 
 
 @dataclass(frozen=True)
@@ -413,6 +417,11 @@ def _introduced(before: Sequence[ValidationIssue], after: Sequence[ValidationIss
     return [issue for issue in after if (issue.section, issue.code, issue.path) not in had]
 
 
+def _split(out: Projection | TooEarly | None) -> tuple[Projection | None, TooEarly | None]:
+    """A projector's answer as the two fields a read stores: the projection, or the too-early note, never both."""
+    return (out if isinstance(out, Projection) else None, out if isinstance(out, TooEarly) else None)
+
+
 def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
     return tuple(field_changes(old.model_dump(), new.model_dump()))
 
@@ -517,12 +526,13 @@ class FinancialAidScenariosService:
 
     async def _projector(
         self, year: int, meta: SnapshotMeta, chosen: RequestSet | None
-    ) -> Callable[[ScenarioResults], Projection | None]:
+    ) -> Callable[[ScenarioResults], Projection | TooEarly | None]:
         """The projection for one read (§S11.7), its curve and share resolved once: the Price ▾ date when one is set,
         else the held pile's day in camp time. A deadline-aligned curve needs this season's approved deadline: with
-        none there is no projection, never a silent switch to the calendar."""
+        none there is no projection, never a silent switch to the calendar. Below a 5% share (none in counts) it is the
+        too-early note instead."""
 
-        def none(results: ScenarioResults) -> Projection | None:
+        def none(results: ScenarioResults) -> Projection | TooEarly | None:
             return None
 
         try:
@@ -542,11 +552,20 @@ class FinancialAidScenariosService:
         else:
             anchor = calendar_anchor(year)
         share = share_by(curve, through, anchor)
-        if share is None:
+        if share is None and not curve.points:
             return none
+        if share is None:  # none of last year's had arrived by this point: the earliest too-early read, not a blank
+            early = TooEarly(Decimal(0), through, curve.year)
 
-        def projected(results: ScenarioResults) -> Projection | None:
-            return project(results, share, through=through, basis_year=curve.year, aligned_on=curve.aligned_on)
+            def too_early(results: ScenarioResults) -> Projection | TooEarly | None:
+                return early
+
+            return too_early
+
+        def projected(results: ScenarioResults) -> Projection | TooEarly | None:
+            return projection_or_too_early(
+                results, share, through=through, basis_year=curve.year, aligned_on=curve.aligned_on
+            )
 
         return projected
 
@@ -825,6 +844,7 @@ class FinancialAidScenariosService:
         meta = await self._store.latest_snapshot(year)
         results: ScenarioResults | None = None
         projection: Projection | None = None
+        too_early: TooEarly | None = None
         stored = row.results if row is not None and recorded is not None and meta is not None else None
         if meta is not None and row is not None and row.snapshot == meta.id and stored is not None:
             results = stored
@@ -834,7 +854,7 @@ class FinancialAidScenariosService:
             except SnapshotError:  # unreadable snapshot: the read still opens, so Update Applications stays reachable
                 results = None
         if results is not None and meta is not None:
-            projection = (await self._projector(year, meta, None))(results)
+            projection, too_early = _split((await self._projector(year, meta, None))(results))
         return Draft(
             trail_id=row.id if row is not None and recorded is not None else None,
             from_code=source.code,
@@ -847,6 +867,7 @@ class FinancialAidScenariosService:
             source_document=source.document,
             same_as=_same_as(document, options, effect),
             projection=projection,
+            too_early=too_early,
             differs_in=tuple(changed_sections(effect.document, document)),
             built_on_version=(row.built_on_version or None) if row is not None and recorded is not None else None,
         )
@@ -1106,8 +1127,14 @@ class FinancialAidScenariosService:
         chosen = await self._request_set(year, request_set)
         meta = await self._meta(year)
         priced = await (await self._pricer(meta, chosen))(moved)
-        projection = (await self._projector(year, meta, chosen))(priced.results)
-        return Evaluation(moved, priced.results, await self._rules.validate_document(moved), projection=projection)
+        projection, too_early = _split((await self._projector(year, meta, chosen))(priced.results))
+        return Evaluation(
+            moved,
+            priced.results,
+            await self._rules.validate_document(moved),
+            projection=projection,
+            too_early=too_early,
+        )
 
     async def save_draft(
         self, year: int, document: AidRules, actor: str, *, opened_version: int | None = None
@@ -1342,6 +1369,7 @@ class FinancialAidScenariosService:
 
         def column(code: str, label: str, document: AidRules, priced: Priced, **extra: Any) -> CompareColumn:
             up, down = (None, None) if code == "rules" else up_down(yardstick, priced.round1)
+            projection, too_early = _split(projector(priced.results))
             return CompareColumn(
                 code,
                 label,
@@ -1351,7 +1379,8 @@ class FinancialAidScenariosService:
                 up,
                 down,
                 committee=committee_view(priced.results, document),
-                projection=projector(priced.results),
+                projection=projection,
+                too_early=too_early,
                 **extra,
             )
 

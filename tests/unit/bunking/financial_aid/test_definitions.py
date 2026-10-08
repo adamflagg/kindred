@@ -237,6 +237,12 @@ def test_projected_says_where_weeks_count_from_and_which_season_first_uses_recei
     )
 
 
+def test_projected_says_there_is_no_projection_below_a_five_percent_share() -> None:
+    """Owner 10-07 (A10, "agree"): below 5% of last year's applications the line says it is too early instead."""
+    text = BY_KEY["scenario_projected"].text
+    assert "Below 5% of last year's applications there is no projection: the line says it is too early instead." in text
+
+
 def test_the_cost_note_says_an_ag_session_takes_its_parents_price() -> None:
     """A1 (spec §8): an AG session is priced at its parent session's list price."""
     cost = BY_KEY["cost"]

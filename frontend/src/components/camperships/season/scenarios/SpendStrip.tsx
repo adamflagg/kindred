@@ -136,7 +136,7 @@ export function SpendStrip({
   }
   const lead = stripLead(draft, from, postedStands)
   const pools = stripPools(draft, from, locked)
-  const projection = projectionWords(draft.projection, locked)
+  const projection = projectionWords(draft.projection, locked, draft.too_early)
   const toggle = (next: Exclude<Fold, null>) => setFold((was) => (was === next ? null : next))
   return (
     <div data-testid="spend-strip" className="bg-background sticky top-0 z-[25] pt-1">
