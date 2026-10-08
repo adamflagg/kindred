@@ -26,7 +26,7 @@ export interface JourneyRow {
   /** The session's display name. */
   session: string
   /**
-   * Which family weekend it was — a program name, the holiday. Rendered UNDER
+   * Which family weekend it was — its program, or the holiday. Rendered UNDER
    * the session name (owner ruling 2026-09-22, G2), never beside it.
    */
   subtitle: string | undefined

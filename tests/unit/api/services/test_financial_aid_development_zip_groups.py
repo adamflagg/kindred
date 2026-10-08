@@ -34,7 +34,7 @@ def _development(**change: Any) -> FakeDevelopmentStore:
         registrations=[
             went(EMMA, 1000001),  # summer
             went(LIAM, 1000002),  # summer, no aid
-            went(SIBLING, 1000001, BMITZVAH, session_type="bmitzvah"),  # Emma's household again, in the tbm group
+            went(SIBLING, 1000001, BMITZVAH, session_type="bmitzvah"),  # Emma's household again, in the B*Mitzvah group
             went(PARENT_A, 1000003, FAMILY_CAMP, session_type="family"),  # weekend
             went(PARENT_B, 1000004, ADULT_WEEKEND, session_type="adult"),  # weekend
         ],
@@ -134,14 +134,14 @@ async def test_a_group_leaves_out_an_attendee_of_only_a_session_no_open_program_
     service = _service(_development(), narrowed)
     weekend = await service.zip_codes(YEAR, "weekend_pool")
     assert sorted(_zips(weekend.every_camper)) == [(ZIP_B, 1, 1)]  # the family camp stays, the adult weekend goes
-    tbm = await service.zip_codes(YEAR, "bmitzvah_pool")
-    assert tbm.every_camper.rows == []
+    bmitzvah = await service.zip_codes(YEAR, "bmitzvah_pool")
+    assert bmitzvah.every_camper.rows == []
 
 
 async def test_all_counts_a_household_in_two_groups_once_and_its_dollars_once() -> None:
     out = await _service(_development()).zip_codes(YEAR, "all")
     assert (out.group, out.group_label) == ("all", "All groups")
-    # Emma (summer) and her sibling (tbm) share one household: two campers, ONE family, in their ZIP
+    # Emma (summer) and her sibling (B*Mitzvah) share one household: two campers, ONE family, in their ZIP
     assert sorted(_zips(out.every_camper)) == [(ZIP_A, 2, 1), (ZIP_B, 1, 1), (ZIP_C, 1, 1), (NO_ZIP, 1, 1)]
     assert out.every_camper.total.campers == 5
     assert out.every_camper.total.families == 4
