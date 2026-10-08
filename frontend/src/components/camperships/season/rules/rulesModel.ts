@@ -441,7 +441,8 @@ function own(map: Readonly<Record<string, string>>, key: string): string | undef
  * from a same-key program or pool (`keyLabel`), else its own words.
  */
 export const groupWords =
-  (groups: readonly ApiAidGroup[], names: Pick<RulesVocabulary, 'programs' | 'pools'>) => (key: string) =>
+  (groups: readonly ApiAidGroup[], names: Pick<RulesVocabulary, 'programs' | 'pools'>) =>
+  (key: string) =>
     groups.find((g) => g.equity_class === key)?.label ?? keyLabel(key, names)
 
 type KeyKind =
