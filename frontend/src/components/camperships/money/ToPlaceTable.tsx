@@ -1,63 +1,59 @@
 import { useMemo, type ReactNode } from 'react'
 
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
-import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
-import { Money } from '../kit/MoneyText'
+import { AidTable, type AidColumn } from '../kit/AidTable'
 import {
   groupWords,
   lineKey,
   lineSearch,
   reasonGrouping,
+  TO_PLACE_CSV_EXTRA,
   TO_PLACE_TEXT_COLUMNS,
-  unplacedCsv,
 } from './toPlaceColumns'
+import { lineWords, stillNotPlacedWords } from './toPlaceModel'
 
-/** The family cell: the name, and the CampMinder household id under it (D27: ids cost no column). */
-function familyCell(line: ApiAidToPlaceLine): ReactNode {
-  return (
-    <div>
-      <div className="font-medium">{line.family || '—'}</div>
-      <div className="text-muted-foreground text-xs">{line.household_cm_id}</div>
-    </div>
-  )
-}
-
+/** The family. No household id under it: the id is a tie-break only (owner, 10-05); the CSV keeps it. */
 const FAMILY: AidColumn<ApiAidToPlaceLine> = {
   key: 'family',
   header: 'Family',
-  width: 150,
+  width: 190,
   pinned: true,
   value: (line) => line.family,
-  render: familyCell,
+  render: (line) => <span className="font-medium">{line.family || '—'}</span>,
   searchable: true,
 }
 
-const NOT_PLACED: AidColumn<ApiAidToPlaceLine> = {
-  key: 'unplaced',
-  header: 'Not placed',
-  width: 110,
-  align: 'right',
-  value: (line) => line.unplaced,
-  render: (line) => <Money value={line.unplaced} />,
-  csv: unplacedCsv,
+/**
+ * The line as CampMinder holds it, and (ruling B, owner 10-06) "· $X still not placed" under it only
+ * where part of it already sits on a request. No "Not placed" column: the CSV keeps the figure.
+ */
+const LINE: AidColumn<ApiAidToPlaceLine> = {
+  key: 'line',
+  header: 'The line in CampMinder',
+  width: 300,
+  value: lineWords,
+  render: (line) => {
+    const still = stillNotPlacedWords(line)
+    return (
+      <>
+        {lineWords(line)}
+        {still !== null && <span className="text-muted-foreground block text-xs">{still}</span>}
+      </>
+    )
+  },
+  searchable: true,
 }
-
-/** The ids the screen draws inside other cells, so an exported row joins back to CampMinder. */
-const CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidToPlaceLine>> = [
-  { header: 'Household', value: (line) => String(line.household_cm_id) },
-  { header: 'Line', value: (line) => String(line.transaction_cm_id) },
-]
 
 const COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
   FAMILY,
-  NOT_PLACED,
+  LINE,
   ...TO_PLACE_TEXT_COLUMNS,
 ]
 
 /**
  * To place's open lines (§8.1): one table, grouped by the server's reasons, searchable, a CSV of what
- * is on screen. A click (or ↑/↓) highlights a line and opens its panel under it. No footer total:
- * the open total is the server's, shown above the table (Decision 5).
+ * is on screen. A click (or ↑/↓) highlights a line and opens its work under it. No footer total: the
+ * open total is the server's, shown above the table (P-5).
  */
 export function ToPlaceTable({
   data,
@@ -91,7 +87,7 @@ export function ToPlaceTable({
       selected={selected}
       onSelectedChange={onSelectedChange}
       onMatchingChange={onMatchingChange}
-      csvExtra={CSV_EXTRA}
+      csvExtra={TO_PLACE_CSV_EXTRA}
       emptyText="Nothing to place: every camp-aid line sits on a request."
     />
   )

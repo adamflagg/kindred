@@ -413,8 +413,9 @@ describe('Money › To place (§8.1)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const [header, firstRow] = content.split('\n')
-    expect(header).toMatch(/Household,Line$/)
-    expect(firstRow).toMatch(/1000001,3000001$/)
+    // Ruling B dropped the "Not placed" column; the CSV keeps the figure.
+    expect(header).toMatch(/Household,Line,Still not placed$/)
+    expect(firstRow).toMatch(/1000001,3000001,3620$/)
   })
 
   describe('scan residue (#2990)', () => {
@@ -493,5 +494,34 @@ describe('Money › To place (§8.1)', () => {
         await screen.findByText('✓ Garcia: already open; nothing changed.')
       ).toBeInTheDocument()
     })
+  })
+})
+
+describe('the table (owner rulings B and D, 10-06)', () => {
+  it('says "still not placed" under a partly placed line, and has no Not placed column', async () => {
+    const partly: ApiAidToPlace = {
+      ...TO_PLACE,
+      groups: TO_PLACE.groups.map((g) => ({
+        ...g,
+        lines: g.lines.map((l) =>
+          l.transaction_cm_id === CHEN_EXACT.transaction_cm_id ? { ...l, unplaced: 1000 } : l
+        ),
+      })),
+    }
+    reads = [partly]
+    renderTab()
+    expect(await screen.findByText('· $1,000 still not placed')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: /Not placed/ })).toBeNull()
+  })
+
+  it('puts what each request still lacks in the candidates column, and no id under the family', async () => {
+    renderTab()
+    expect(
+      await screen.findByText(
+        'Emma Johnson · Session 2 ($2,200 not yet in CampMinder), Samuel Johnson · Session 2 ($1,420 not yet in CampMinder)'
+      )
+    ).toBeInTheDocument()
+    // The household id is a tie-break only (rulings 10-05): never drawn under every family.
+    expect(screen.queryByText('1000003')).toBeNull()
   })
 })

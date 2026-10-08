@@ -1,12 +1,12 @@
 /**
  * To place's table (§8.1; §4.3; money-v2.html): its columns and grouping, as module-level constants
- * where they can be (AidTable's stability rule). Cells are cut off at the column edge; the panel
- * under the highlighted line shows everything in full (D31).
+ * where they can be (AidTable's stability rule). Cells are cut off at the column edge; the opened row
+ * under the highlighted line shows everything in full (D31; owner ruling A, 10-06).
  */
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
-import type { AidColumn, AidGrouping } from '../kit/AidTable'
+import type { AidColumn, AidCsvExtra, AidGrouping } from '../kit/AidTable'
 import { moneyCsv } from '../kit/money'
-import { candidateLabel, confirmSummary, lineWords, suggestionWords } from './toPlaceModel'
+import { candidateDetail, candidateLabel, confirmSummary, suggestionWords } from './toPlaceModel'
 
 export const lineKey = (line: ApiAidToPlaceLine) => String(line.transaction_cm_id)
 
@@ -18,23 +18,20 @@ export const lineSearch = (line: ApiAidToPlaceLine) => [
   ...line.candidates.map((c) => c.camper),
 ]
 
+/** The candidates in one cell: "Emma Johnson · Session 2 ($2,200 not yet in CampMinder), …". */
+export function candidatesCell(line: ApiAidToPlaceLine): string {
+  return line.candidates.length === 0
+    ? 'No application this season'
+    : line.candidates.map((c) => `${candidateLabel(c)} (${candidateDetail(c)})`).join(', ')
+}
+
 /** Columns with no cell renderer: the table writes each one's value as text (and in the CSV). */
 export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
   {
-    key: 'line',
-    header: 'The line in CampMinder',
-    width: 300,
-    value: lineWords,
-    searchable: true,
-  },
-  {
     key: 'candidates',
-    header: 'Requests it could belong to',
-    width: 240,
-    value: (line) =>
-      line.candidates.length === 0
-        ? 'No application this season'
-        : line.candidates.map(candidateLabel).join(', '),
+    header: 'Requests it could belong to · not yet in CampMinder',
+    width: 280,
+    value: candidatesCell,
   },
   {
     key: 'suggestion',
@@ -50,8 +47,15 @@ export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> 
   },
 ]
 
-/** The not-placed figure's CSV: plain and signed, cents only where they exist (§11). */
-export const unplacedCsv = (line: ApiAidToPlaceLine) => moneyCsv(line.unplaced)
+/**
+ * The ids the screen draws nowhere, and the part still not placed (ruling B dropped its column), so an
+ * exported row joins back to CampMinder and keeps every figure the read sent.
+ */
+export const TO_PLACE_CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidToPlaceLine>> = [
+  { header: 'Household', value: (line) => String(line.household_cm_id) },
+  { header: 'Line', value: (line) => String(line.transaction_cm_id) },
+  { header: 'Still not placed', value: (line) => moneyCsv(line.unplaced) },
+]
 
 /** Grouped by the server's reasons, in its words and order (§8.1: "grouped by reason"). */
 export function reasonGrouping(
@@ -61,6 +65,7 @@ export function reasonGrouping(
   return [
     {
       key: 'reason',
+      // A switch label, as the Requests grid's "Flat / By reason" (requests/RequestsGrid.tsx).
       label: 'By reason',
       groupOf: (line) => ({ id: line.reason, heading: labels.get(line.reason) ?? line.reason }),
     },
