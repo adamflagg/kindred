@@ -395,4 +395,87 @@ describe('Money › Sources (§8.1)', () => {
       )
     ).toBeInTheDocument()
   })
+
+  describe('typing during the pre-send re-check is what gets sent', () => {
+    /** Hold the next read whose URL starts with `prefix`; the returned function releases it. */
+    const holdReads = (prefix: string, body: unknown) => {
+      const normal = fetchSpy.getMockImplementation()
+      let release: (r: Response) => void = () => undefined
+      const held = new Promise<Response>((resolve) => {
+        release = resolve
+      })
+      fetchSpy.mockImplementation((url, init) =>
+        String(url).startsWith(prefix) && (init?.method ?? 'GET') === 'GET'
+          ? held
+          : (normal?.(url, init) as Promise<Response>)
+      )
+      return () => release(json(body))
+    }
+
+    it('Classify sends the note as it stands when the re-check lands', async () => {
+      renderTab()
+      await openRow('Grantor A grant')
+      await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Edit…' }))
+      const editor = await screen.findByTestId('classify-editor')
+      const note = within(editor).getByRole('textbox', { name: 'Note' })
+      await userEvent.type(note, 'First part')
+      const release = holdReads('/api/financial-aid/sources?', SOURCES_2027)
+      await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+      await userEvent.type(note, ' and more')
+      release()
+      await waitFor(() => expect(writes()).toHaveLength(1))
+      expect(JSON.parse(String(writes()[0]?.body))).toMatchObject({
+        note: 'First part and more',
+      })
+    })
+
+    it('Set a Group… sends the pick and note as they stand when the re-check lands', async () => {
+      renderTab()
+      await openRow('Grantor E grant 2027')
+      await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
+      const editor = await screen.findByTestId('group-editor')
+      await userEvent.selectOptions(
+        within(editor).getByRole('combobox', { name: 'Reporting group' }),
+        'Pool A'
+      )
+      const release = holdReads(
+        '/api/financial-aid/reports/2027/funding-sources',
+        FUNDING_SOURCES_2027
+      )
+      await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+      await userEvent.type(
+        within(editor).getByRole('textbox', { name: 'Note (optional)' }),
+        'Late note'
+      )
+      release()
+      await waitFor(() => expect(writes()).toHaveLength(1))
+      expect(JSON.parse(String(writes()[0]?.body))).toEqual({
+        group: 'pool_a',
+        incentive: false,
+        note: 'Late note',
+      })
+    })
+
+    it('Map a Grantor… sends the note as it stands when the re-check lands', async () => {
+      granted = ['financial_aid.view', 'financial_aid.grantors']
+      renderTab()
+      await openRow('Grantor E grant 2027')
+      await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Grantor…' }))
+      const field = await screen.findByTestId('grantor-field')
+      await within(field).findByRole('option', { name: 'Grantor E' })
+      await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
+      await userEvent.selectOptions(within(field).getByRole('combobox'), 'Grantor E')
+      const note = within(field).getByRole('textbox', { name: 'Note' })
+      await userEvent.type(note, 'New')
+      const release = holdReads('/api/financial-aid/sources?', SOURCES_2027)
+      await userEvent.click(within(field).getByRole('button', { name: 'Save' }))
+      await userEvent.type(note, ' for 2027')
+      release()
+      await waitFor(() => expect(writes()).toHaveLength(1))
+      expect(JSON.parse(String(writes()[0]?.body))).toEqual({
+        grantor_key: 'grantor_e',
+        note: 'New for 2027',
+      })
+    })
+  })
 })

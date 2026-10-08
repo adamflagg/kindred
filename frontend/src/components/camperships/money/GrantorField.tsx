@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { useAidGrantors } from '../../../hooks/camperships/useAidGrantors'
@@ -64,6 +64,12 @@ export function GrantorField({
     }
   }, [fresh, initial])
 
+  // The pick and note as they stand now: typing during the pre-send re-check is what gets sent.
+  const typedRef = useRef({ key, note })
+  useEffect(() => {
+    typedRef.current = { key, note }
+  }, [key, note])
+
   const all = grantors.data?.grantors ?? []
   const inUse = all.filter((g) => g.retired_at === '')
   // The grantor the description holds now, when it is retired: shown, disabled, never offered.
@@ -102,12 +108,17 @@ export function GrantorField({
       setProblem(movedWords(changed))
       return
     }
+    const sent = typedRef.current
+    if (sent.note.trim() === '') return
     try {
       await map.mutateAsync({
         sourceId: initial.id,
-        body: { grantor_key: key === NO_GRANTOR ? null : key, note: note.trim() },
+        body: {
+          grantor_key: sent.key === NO_GRANTOR ? null : sent.key,
+          note: sent.note.trim(),
+        },
       })
-      const name = inUse.find((g) => g.key === key)?.name
+      const name = inUse.find((g) => g.key === sent.key)?.name
       onDone(
         name === undefined
           ? `${initial.description}: no grantor now, with your note.`

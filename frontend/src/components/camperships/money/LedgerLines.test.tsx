@@ -30,15 +30,23 @@ const PAST: AidView = { year: 2027, asOf: { kind: 'past', date: '2027-05-01', ax
 const FILTERED = '/aid/money/ledger?as_of=2027-05-01&source=camp_fa&level=household'
 
 let lines: ApiAidLedgerLines = LEDGER_LINES
+let linesRead: 'ok' | 'fail' | 'pending' = 'ok'
 let fetchSpy: MockInstance<typeof fetch>
 const urls = () => fetchSpy.mock.calls.map(([url]) => String(url))
 
 beforeEach(() => {
   lines = LEDGER_LINES
+  linesRead = 'ok'
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-06-03T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const path = String(url)
+    if (path.includes('/ledger/lines') && linesRead === 'pending') {
+      return new Promise<Response>(() => undefined)
+    }
+    if (path.includes('/ledger/lines') && linesRead === 'fail') {
+      return Promise.resolve(new Response('{}', { status: 500 }))
+    }
     const body = path.includes('/rules/')
       ? RULES_2027
       : path.includes('/sources')
@@ -126,4 +134,16 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
     ).toBeInTheDocument()
     expect(urls()).toContain('/api/financial-aid/money/2027/ledger/lines?total=outside_grants')
   })
+
+  it.each(['fail', 'pending'] as const)(
+    'can still be closed while the lines read is %s',
+    async (state) => {
+      linesRead = state
+      renderAt('/aid/money/ledger?lines=in_campminder_net', { year: 2027, asOf: { kind: 'live' } })
+      const panel = await screen.findByTestId('ledger-lines')
+      await userEvent.click(await within(panel).findByRole('button', { name: 'Close' }))
+      expect(screen.queryByTestId('ledger-lines')).toBeNull()
+      expect(screen.getByTestId('where')).not.toHaveTextContent('lines=')
+    }
+  )
 })
