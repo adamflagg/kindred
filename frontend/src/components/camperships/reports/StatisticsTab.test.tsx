@@ -41,6 +41,7 @@ const NOTES = {
 }
 
 let statistics: (url: string) => Response
+let programs: unknown
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const statisticsCalls = () =>
@@ -52,6 +53,7 @@ const requestsLink = (address: string) =>
 beforeEach(() => {
   granted = ['financial_aid.view']
   statistics = () => json(STATISTICS)
+  programs = PROGRAMS
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
@@ -68,7 +70,7 @@ beforeEach(() => {
         )
       )
     }
-    if (text.includes('/programs')) return Promise.resolve(json(PROGRAMS))
+    if (text.includes('/programs')) return Promise.resolve(json(programs))
     return Promise.resolve(statistics(text))
   })
 })
@@ -348,6 +350,19 @@ describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
     const below = screen.getByRole('heading', { name: /^Aid recipients who cancelled/ })
     expect(programs.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(below.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('says the request set and the past-date rule once under Session, though both reads carry them', async () => {
+    statistics = () => json({ ...STATISTICS_THROUGH, not_rebuilt: STATISTICS_PAST.not_rebuilt })
+    programs = {
+      ...PROGRAMS,
+      request_set: STATISTICS_THROUGH.request_set,
+      not_rebuilt: STATISTICS_PAST.not_rebuilt,
+    }
+    renderTab('/aid/reports/statistics?rows=session&through=2027-02-01')
+    await screen.findByRole('table', { name: 'By session' })
+    expect(screen.getAllByText(/Every figure below counts only/)).toHaveLength(1)
+    expect(screen.getAllByText(/never an estimate/)).toHaveLength(1)
   })
 
   it('shows only the statistics notes under Income tier', async () => {

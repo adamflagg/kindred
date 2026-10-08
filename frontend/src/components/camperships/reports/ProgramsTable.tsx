@@ -15,7 +15,6 @@ import {
   programsHeading,
   programsLinkParams,
 } from './programsModel'
-import { notRebuiltWords, requestSetWords } from './statisticsModel'
 
 /**
  * The session table (spec §9.3; RPT-11; D129, D138; statistics-v2.html's session rows): one row per
@@ -45,12 +44,9 @@ export function ProgramsTable({ view, requestSet }: { view: AidView; requestSet:
         emptyMessage="Nothing to show for these choices."
       >
         {(data) => {
-          const setWords = requestSetWords(data)
-          const pastWords = notRebuiltWords(data)
+          // The request-set and past-date lines are Statistics' own, drawn once above this table.
           return (
             <div className="space-y-3">
-              {setWords !== null && <p className={AMBER_NOTE}>{setWords}</p>}
-              {pastWords !== null && <p className={AMBER_NOTE}>{pastWords}</p>}
               <ReportTable
                 heading={programsHeading(data)}
                 basisBadge="P"
