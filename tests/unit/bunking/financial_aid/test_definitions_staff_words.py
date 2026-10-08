@@ -14,7 +14,7 @@ from api.schemas.financial_aid import AidSourceUpdate, OverrideBulkLoad
 from api.schemas.financial_aid_grants import GrantorFields, PlaceGrantsIn
 from bunking.financial_aid.definitions import BY_KEY, DEFINITIONS
 
-INTERNAL = re.compile(r"\b(RPT-\d+|D\d{2,3}|O-\d+-\d+)\b|§|funder_type")
+INTERNAL = re.compile(r"\b(RPT-\d+|D\d{1,3}|O-\d+-\d+)\b|§|funder_type")
 
 _SOURCE: dict[str, Any] = {
     "source_name": "Regional grant",

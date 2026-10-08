@@ -115,3 +115,14 @@ def test_the_ledger_services_builders_send_the_label() -> None:
     assert (line.source_family, line.source_family_label) == ("camp_fa", "Camp financial aid")
     blank = posting_line(_posting(2, 1000001, -100.0, source_family=""), {})
     assert (blank.source_family, blank.source_family_label) == ("unclassified", "Not yet classified")
+
+
+def test_a_grant_line_with_a_blank_family_reads_not_yet_classified() -> None:
+    """A CampMinder grant line whose posting has no family reads "Not yet classified", as the posting line
+    and the money ledger do for the same posting; only a commitment row sends a blank family."""
+    from api.services.financial_aid_grants_service import _line
+    from tests.unit.api.services.test_financial_aid_grants_service import _posting as _grant_posting
+
+    line = _line(_grant_posting(9001, 500.0, source_family=""))
+    assert line.source_family == "unclassified"
+    assert source_family_label(line.source_family) == "Not yet classified"
