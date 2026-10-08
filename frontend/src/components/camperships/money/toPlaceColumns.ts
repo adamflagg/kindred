@@ -38,7 +38,7 @@ export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> 
   },
   {
     key: 'suggestion',
-    header: 'Kindred’s suggestion',
+    header: 'Suggestion and its evidence',
     flex: true,
     value: suggestionWords,
   },

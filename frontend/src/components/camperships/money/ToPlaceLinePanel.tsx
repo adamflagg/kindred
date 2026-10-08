@@ -11,17 +11,17 @@ import {
   candidateLabel,
   confirmBody,
   confirmLines,
-  isTickLine,
+  isMarkLine,
   evidenceWords,
   lineWords,
   placedWords,
   requestLabels,
   suggestionWords,
-  unplacedWords,
+  stillNotPlacedWords,
 } from './toPlaceModel'
 import { inStaffWords, refusalWords } from './refusal'
 import type { InFlightLines } from './useInFlightLines'
-import { PANEL_BLOCK, PANEL_LABEL, TICK_TEXT } from './toPlaceStyles'
+import { PANEL_BLOCK, PANEL_LABEL, MARK_TEXT } from './toPlaceStyles'
 
 export interface LinePanelAccess {
   /** `casework`: Confirm, Split, Place on another request, Leave (spec §3.2). */
@@ -34,7 +34,7 @@ type Mode = 'none' | 'leave'
 
 /**
  * The panel under a highlighted To place line (§8.1; money-v2.html): the line as CampMinder holds it,
- * the requests it could belong to with what each still lacks, Kindred's suggestion and its evidence,
+ * the requests it could belong to with what each still lacks, the suggestion and its evidence,
  * and what Confirm will tick before the click (§4.10). Confirm sends what it showed it would lock; if
  * the season moved, the server refuses and the panel shows the new preview, never a stuck state.
  */
@@ -62,7 +62,7 @@ export function ToPlaceLinePanel({
   const [error, setError] = useState<string | null>(null)
   const txn = line.transaction_cm_id
   const busy = inFlight.has(txn)
-  const unplaced = unplacedWords(line)
+  const still = stillNotPlacedWords(line)
   const body = confirmBody(line)
 
   const confirm = async () => {
@@ -95,7 +95,7 @@ export function ToPlaceLinePanel({
         <p className={PANEL_LABEL}>The line in CampMinder</p>
         <p>
           {lineWords(line)}
-          {unplaced !== null && <span className="text-muted-foreground"> · {unplaced}</span>}
+          {still !== null && <span className="text-muted-foreground"> {still}</span>}
         </p>
       </div>
       <div className={PANEL_BLOCK}>
@@ -114,7 +114,7 @@ export function ToPlaceLinePanel({
         )}
       </div>
       <div className={PANEL_BLOCK}>
-        <p className={PANEL_LABEL}>Kindred’s suggestion</p>
+        <p className={PANEL_LABEL}>Suggestion</p>
         <p>{suggestionWords(line)}</p>
         {evidenceWords(line) !== '' && (
           <p className="text-muted-foreground text-xs">{evidenceWords(line)}</p>
@@ -125,7 +125,7 @@ export function ToPlaceLinePanel({
           <p className={PANEL_LABEL}>What Confirm does</p>
           <ul>
             {confirmLines(line).map((words) => (
-              <li key={words} className={isTickLine(words) ? TICK_TEXT : undefined}>
+              <li key={words} className={isMarkLine(words) ? MARK_TEXT : undefined}>
                 {words}
               </li>
             ))}
@@ -151,20 +151,20 @@ export function ToPlaceLinePanel({
             disabled={busy}
             onClick={() => setMode('leave')}
           >
-            {line.reason === 'several' ? 'Leave at family level…' : 'Leave with a note…'}
+            {line.reason === 'several' ? 'Leave at Family Level…' : 'Leave With a Note…'}
           </button>
         )}
         <Link
           to={aidHref(`/aid/households/${String(line.household_cm_id)}`, view)}
           className="text-primary text-xs font-medium hover:underline"
         >
-          Open the household ›
+          Open the Household ›
         </Link>
       </div>
       {mode === 'leave' && (
         <ReasonForm
           label="Why"
-          submitLabel="Leave it"
+          submitLabel="Leave It"
           onCancel={() => setMode('none')}
           onSubmit={async (note) => {
             // The form shows a thrown message itself, so this one is not also sent up.

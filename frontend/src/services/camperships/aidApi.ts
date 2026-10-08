@@ -961,7 +961,7 @@ export function reopenAidLine(
   )
 }
 
-/** Reclassify a line as another aid source, with a reason (D104; `rules`). Tonight's ledger sync applies it. */
+/** Reclassify a line as another aid source, with a reason (D104; `rules`). The next ledger sync applies it. */
 export function reclassifyAidLine(
   fetchWithAuth: FetchWithAuth,
   year: number,

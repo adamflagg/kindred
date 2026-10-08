@@ -10,7 +10,7 @@ import { usePermissions } from '../usePermissions'
 
 /**
  * Money › To place's one read (spec §8.1; D21): the season's open lines by reason, the lines left at
- * family level and those reclassified, with Kindred's suggestions and what confirming each would
+ * family level and those reclassified, with the dashboard's suggestions and what confirming each would
  * tick. Live only (the route has no as-of). `householdCmId` scopes it to one household's D26 scope.
  * Inherits the app's cache defaults: every Camperships write refreshes it through
  * `invalidateAidMoneyQueries`, and a ledger sync through the 'financial-aid' prefix.

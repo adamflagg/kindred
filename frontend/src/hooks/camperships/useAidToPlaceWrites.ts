@@ -15,7 +15,7 @@ import { useAidWrite } from './useAidWrites'
 /**
  * Money › To place's writes (spec §8.1; SP11). Each refreshes on settle through
  * `invalidateAidMoneyQueries` (a placement ticks Posted, moving Remaining, Rounds & budget, the grid,
- * Today, the household pages, To place itself, and the Ledger, which reads Kindred's placements for
+ * Today, the household pages, To place itself, and the Ledger, which reads the dashboard's placements for
  * its level, D151). The base refresh carries all of it.
  */
 

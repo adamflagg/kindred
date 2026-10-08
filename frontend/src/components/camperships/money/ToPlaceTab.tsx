@@ -17,7 +17,7 @@ import { useInFlightLines } from './useInFlightLines'
 
 /**
  * Money › To place (spec §8.1; D12, D16, D58, D62, D151, D152; money-v2.html): camp-aid lines no
- * single request takes, grouped by reason, each with Kindred's suggestion, its evidence and what
+ * single request takes, grouped by reason, each with the suggestion, its evidence and what
  * Confirm will tick; the lines left at family level apart. Live only. Casework confirms and leaves;
  * `rules` reclassifies (PR 2).
  */

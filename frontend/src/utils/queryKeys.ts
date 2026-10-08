@@ -956,7 +956,7 @@ export interface AidRefresh {
  *   Confirm would tick (slice 3);
  * - Grants: a cancellation or a decided amount moves the Register's Cancelled, the round a grant
  *   offsets and Needs attention's waiting reasons (slice 3);
- * - the Ledger: its family rows, their lines and `/summary` read Kindred's placements and the priced
+ * - the Ledger: its family rows, their lines and `/summary` read the dashboard's placements and the priced
  *   season, so a payer share, a tick, a To place write or a grant placement can each move them
  *   (D26, D151).
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.

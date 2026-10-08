@@ -1,7 +1,9 @@
 /**
  * Money › To place's words and writes (spec §8.1; D12, D16, D58, D146, D151, D152; money-v2.html).
  * Pure: every figure is the server's (D21). The screen names, joins and labels; it never adds a
- * figure up, and what Confirm will tick is the server's own preview (`SuggestionOut.would_*`).
+ * figure up. What Confirm will mark posted is the server's own preview: the read's
+ * `SuggestionOut.would_*`, or the fresh `PlacePreviewOut` asked for when a line opens (P-4).
+ * Staff words (owner 10-05, 10-06): "the dashboard", never "Kindred"; Posted is checked, never ticked.
  */
 import type {
   ApiAidPlaceLineIn,
@@ -9,12 +11,22 @@ import type {
   ApiAidToPlace,
   ApiAidToPlaceCandidate,
   ApiAidToPlaceLine,
+  ApiAidToPlaceSuggestion,
 } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney, toCents } from '../kit/money'
 
 export type ToPlaceReason = ApiAidToPlaceLine['reason']
+
+/**
+ * What a placement would do, as the server works it out: the read's suggestion carries it, and so
+ * does the placement preview (`PlacePreviewOut` has the same four fields).
+ */
+export type PlacementWould = Pick<
+  ApiAidToPlaceSuggestion,
+  'would_tick' | 'would_lock' | 'would_leave' | 'would_not_tick'
+>
 
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`
 
@@ -41,11 +53,14 @@ export function lineWords(line: ApiAidToPlaceLine): string {
   return parts.join(' · ')
 }
 
-/** "$1,000 of it not placed" when a line is partly placed; null when none of it is. */
-export function unplacedWords(line: ApiAidToPlaceLine): string | null {
+/**
+ * Ruling B (owner 10-06): "· $1,000 still not placed" under the line only where part of it already
+ * sits on a request (the two differ to the cent); null when none of it is placed.
+ */
+export function stillNotPlacedWords(line: ApiAidToPlaceLine): string | null {
   return toCents(line.unplaced) === toCents(line.amount)
     ? null
-    : `${formatMoney(line.unplaced)} of it not placed`
+    : `· ${formatMoney(line.unplaced)} still not placed`
 }
 
 /** "Emma Johnson · Session 2"; a household's own request (person 0) is "Johnson household". */
@@ -80,7 +95,7 @@ export function allLines(data: ApiAidToPlace): ApiAidToPlaceLine[] {
   ]
 }
 
-/** Kindred's suggestion in words: "Place on Liam Garcia · Session 2", or the split it proposes. */
+/** The suggestion in words: "Place on Liam Garcia · Session 2", or the split it proposes. */
 export function suggestionWords(line: ApiAidToPlaceLine): string {
   const suggestion = line.suggestion
   if (suggestion === null) {
@@ -102,57 +117,65 @@ export function evidenceWords(line: ApiAidToPlaceLine): string {
   return (line.suggestion?.evidence ?? []).map((e) => e.text).join(' ')
 }
 
-/** What Confirm says when it ticks, withholds and leaves nothing (the mock's own words). */
-export const NOTHING_TICKED = 'Ticks nothing.'
+/** What Confirm says when it marks nothing posted, withholds nothing and leaves nothing. */
+export const NOTHING_MARKED = 'Marks nothing posted.'
 
-/** Whether a Confirm line is a tick (green): "Ticks nothing." is not one. */
-export const isTickLine = (words: string) => words.startsWith('Ticks ') && words !== NOTHING_TICKED
+const MARKS = 'Marks Posted: '
+
+/** Whether a "What Confirm does" line marks a round posted (drawn green): "Marks nothing posted." is not one. */
+export const isMarkLine = (words: string) => words.startsWith(MARKS)
 
 /**
- * What Confirm will do, before the click (§4.10: computed at the click, what you confirm is what's
- * written), from the server's preview of the very write it runs: the rounds it ticks and locks, the
- * rounds whose tick D152 withholds (placed, but ticked by hand), and those it leaves (D146: a round
- * it doesn't cover in full).
+ * What Confirm will do, before the click (§4.10: what you confirm is what's written), from the
+ * server's preview of the very write it runs: the rounds it marks posted and locks, the rounds whose
+ * check D152 withholds (placed, but marked posted by hand), and those it leaves (D146: a round it
+ * doesn't cover in full). `would` is the fresh preview when one has answered, else the read's.
  */
-export function confirmLines(line: ApiAidToPlaceLine): string[] {
-  const suggestion = line.suggestion
-  if (suggestion === null) return []
+export function confirmLines(
+  line: ApiAidToPlaceLine,
+  would: PlacementWould | null = line.suggestion
+): string[] {
+  if (line.suggestion === null || would === null) return []
   const labels = requestLabels([line])
-  const ticks = (suggestion.would_tick ?? []).map(
+  const marks = (would.would_tick ?? []).map(
     (t) =>
-      `Ticks ${labelOf(labels, t.request_id)} · Round ${String(t.round)} · ${formatMoney(t.amount)} locked`
+      `${MARKS}${labelOf(labels, t.request_id)} · Round ${String(t.round)} · ${formatMoney(t.amount)} locked`
   )
-  const withheld = (suggestion.would_not_tick ?? []).map(
-    (n) => `Places the money; doesn't tick ${labelOf(labels, n.request_id)}: ${n.why}`
+  const withheld = (would.would_not_tick ?? []).map(
+    (n) => `Places the money; doesn't mark ${labelOf(labels, n.request_id)} posted: ${n.why}`
   )
-  const left = (suggestion.would_leave ?? []).map(
+  const left = (would.would_leave ?? []).map(
     (l) => `Leaves ${labelOf(labels, l.request_id)} · Round ${String(l.round)}: ${l.why}`
   )
-  const all = [...ticks, ...withheld, ...left]
-  return all.length > 0 ? all : [NOTHING_TICKED]
+  const all = [...marks, ...withheld, ...left]
+  return all.length > 0 ? all : [NOTHING_MARKED]
 }
 
-/** The short form for the table's column: "Ticks 1 round · $780 locked", "Places; 1 to tick by hand". */
+/** The short form for the table's column: "Marks 1 round posted · $780 locked", "1 to mark posted by hand". */
 export function confirmSummary(line: ApiAidToPlaceLine): string {
   const suggestion = line.suggestion
   if (suggestion === null) return line.reason === 'no_request' ? 'Nothing to confirm' : '—'
-  const ticks = suggestion.would_tick ?? []
+  const marks = suggestion.would_tick ?? []
   const byHand = (suggestion.would_not_tick ?? []).length + (suggestion.would_leave ?? []).length
   const parts: string[] = []
-  if (ticks.length > 0) {
+  if (marks.length > 0) {
     parts.push(
-      `Ticks ${plural(ticks.length, 'round', 'rounds')} · ${formatMoney(suggestion.would_lock ?? 0)} locked`
+      `Marks ${plural(marks.length, 'round', 'rounds')} posted · ${formatMoney(suggestion.would_lock ?? 0)} locked`
     )
   }
-  if (byHand > 0) parts.push(`${String(byHand)} to tick by hand`)
-  return parts.length > 0 ? parts.join(' · ') : 'Ticks nothing'
+  if (byHand > 0) parts.push(`${String(byHand)} to mark posted by hand`)
+  return parts.length > 0 ? parts.join(' · ') : 'Marks nothing posted'
 }
 
 /**
  * Confirm's body: the suggestion's parts, and what it showed it would lock (`expected_locked`), so
- * the write refuses (422) if the season moved since the read rather than lock a different total.
+ * the write refuses (422) if the season moved since the preview rather than lock a different total.
+ * `would` is the preview the person saw: the fresh one when it answered (P-4), else the read's.
  */
-export function confirmBody(line: ApiAidToPlaceLine): ApiAidPlaceLineIn | null {
+export function confirmBody(
+  line: ApiAidToPlaceLine,
+  would: PlacementWould | null = line.suggestion
+): ApiAidPlaceLineIn | null {
   const suggestion = line.suggestion
   if (suggestion === null || suggestion.parts.length === 0) return null
   return {
@@ -161,50 +184,53 @@ export function confirmBody(line: ApiAidToPlaceLine): ApiAidPlaceLineIn | null {
       amount: exactAmount(p.amount),
     })),
     note: '',
-    expected_locked: exactAmount(suggestion.would_lock ?? 0),
+    expected_locked: exactAmount((would ?? suggestion).would_lock ?? 0),
   }
 }
 
-/** Whether the line can be worked: an open line (not left, not reclassified) of a ticked season. */
+/** Whether the line can be worked: an open line (not left, not reclassified). */
 export function isOpen(line: ApiAidToPlaceLine): boolean {
   return (line.left_note ?? '') === '' && (line.reclassified_to ?? '') === ''
 }
 
 /**
- * What a placement did, in words (§4.10: "the result lists exactly what was ticked"): the rounds it
- * ticked, those whose tick D152 withheld, those it left, and any rules sections it couldn't lock.
+ * What a placement did, in words (§4.10: "the result lists exactly what was marked posted"): the
+ * rounds it marked posted, those whose check D152 withheld, those it left, and any rules sections it
+ * couldn't lock. `familyOf` names the line's family (the household label, ruling D; Task 6).
  */
 export function placedWords(
   out: ApiAidPlaceOut,
   lines: readonly ApiAidToPlaceLine[],
-  labels: ReadonlyMap<string, string>
+  labels: ReadonlyMap<string, string>,
+  familyOf: (line: ApiAidToPlaceLine) => string = (line) => line.family
 ): string {
   const placed = new Set(out.placed)
   const which = lines.filter((l) => placed.has(l.transaction_cm_id))
+  const [first] = which
   const head =
-    which.length === 1 && which[0] !== undefined
-      ? `${which[0].family}: ${formatMoney(which[0].amount)} placed`
+    which.length === 1 && first !== undefined
+      ? `${familyOf(first)}: ${formatMoney(first.amount)} placed`
       : `${plural(out.placed.length, 'line', 'lines')} placed`
   const parts = [head]
   if (out.ticked.length > 0) {
-    const ticked = out.ticked.map(
+    const marked = out.ticked.map(
       (t) =>
         `${labelOf(labels, t.request_id)} Round ${String(t.round)} · ${formatMoney(t.amount)} locked`
     )
-    parts.push(`Ticked Posted: ${ticked.join(', ')}`)
+    parts.push(`Marked Posted: ${marked.join(', ')}`)
   } else {
-    parts.push('Nothing ticked')
+    parts.push('Nothing marked posted')
   }
-  const notTicked = out.not_ticked ?? []
-  if (notTicked.length > 0) {
-    const named = notTicked.map((n) => `${labelOf(labels, n.request_id)} (${n.why})`)
-    parts.push(`Not ticked, tick by hand: ${named.join(', ')}`)
+  const withheld = out.not_ticked ?? []
+  if (withheld.length > 0) {
+    const named = withheld.map((n) => `${labelOf(labels, n.request_id)} (${n.why})`)
+    parts.push(`Not marked posted: ${named.join(', ')}`)
   }
   if (out.left_to_tick.length > 0) {
     const named = out.left_to_tick.map(
       (l) => `${labelOf(labels, l.request_id)} Round ${String(l.round)} (${l.why})`
     )
-    parts.push(`Left unticked: ${named.join(', ')}`)
+    parts.push(`Left unchecked: ${named.join(', ')}`)
   }
   const sections = out.sections_not_locked ?? []
   if (sections.length > 0) {

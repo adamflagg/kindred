@@ -110,17 +110,17 @@ describe('Money › To place (§8.1)', () => {
     expect(within(panel).getByText('Emma Johnson · Session 2')).toBeInTheDocument()
     expect(within(panel).getByText('$2,200 not yet in CampMinder')).toBeInTheDocument()
     expect(
-      within(panel).getByText('Ticks Emma Johnson · Session 2 · Round 2 · $780 locked')
+      within(panel).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked')
     ).toBeInTheDocument()
   })
 
-  it('Confirm sends what it showed it would lock, and says what it ticked', async () => {
+  it('Confirm sends what it showed it would lock, and says what it marked posted', async () => {
     renderTab()
     const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(
       await screen.findByText(
-        '✓ Chen: $1,500 placed. Ticked Posted: Olivia Chen · Quest Round 2 · $1,500 locked.'
+        '✓ Chen: $1,500 placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500 locked.'
       )
     ).toBeInTheDocument()
     expect(writes()).toEqual([
@@ -172,7 +172,7 @@ describe('Money › To place (§8.1)', () => {
       await within(panel).findByText(/What this would lock changed since the page loaded/)
     ).toBeInTheDocument()
     expect(
-      within(panel).getByText('Ticks Olivia Chen · Quest · Round 2 · $1,400 locked')
+      within(panel).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400 locked')
     ).toBeInTheDocument()
     const confirm = within(panel).getByRole('button', { name: 'Confirm' })
     expect(confirm).toBeEnabled()
@@ -196,9 +196,9 @@ describe('Money › To place (§8.1)', () => {
     answers = [json(WROTE)]
     renderTab()
     const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
-    await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
     await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
-    await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
     expect(
       await screen.findByText('✓ Chen: left at family level with your note. Reopen needs a reason.')
     ).toBeInTheDocument()
@@ -241,9 +241,7 @@ describe('Money › To place (§8.1)', () => {
     reads = [TO_PLACE_SKIPPED]
     renderTab()
     expect(
-      await screen.findByText(
-        'Nothing to place: 2026 predates To place (the first ticked season is 2027).'
-      )
+      await screen.findByText('Nothing to place: 2026 predates To place, which starts in 2027.')
     ).toBeInTheDocument()
   })
 
@@ -304,9 +302,9 @@ describe('Money › To place (§8.1)', () => {
       answers = [json({ detail: 'line 3000003 is already on a request' }, 422)]
       renderTab()
       const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
       await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
       expect(
         await screen.findByText('Nothing was written: line 3000003 is already on a request')
       ).toBeInTheDocument()
@@ -339,7 +337,7 @@ describe('Money › To place (§8.1)', () => {
       const panel = await openLine(CHEN)
       await userEvent.dblClick(within(panel).getByRole('button', { name: 'Confirm' }))
       expect(await within(panel).findByRole('button', { name: 'Placing…' })).toBeDisabled()
-      expect(within(panel).getByRole('button', { name: 'Leave at family level…' })).toBeDisabled()
+      expect(within(panel).getByRole('button', { name: 'Leave at Family Level…' })).toBeDisabled()
       expect(writes()).toHaveLength(1)
       release(json(PLACED))
       expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
@@ -356,7 +354,7 @@ describe('Money › To place (§8.1)', () => {
       await userEvent.click(await screen.findByText(JOHNSON))
       const back = await openLine(CHEN)
       expect(within(back).getByRole('button', { name: 'Placing…' })).toBeDisabled()
-      expect(within(back).getByRole('button', { name: 'Leave at family level…' })).toBeDisabled()
+      expect(within(back).getByRole('button', { name: 'Leave at Family Level…' })).toBeDisabled()
       expect(writes()).toHaveLength(1)
       release(json(PLACED))
       expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
@@ -372,13 +370,13 @@ describe('Money › To place (§8.1)', () => {
     expect(screen.getByText('5 lines open · $6,920')).toBeInTheDocument()
   })
 
-  it('offers "Leave with a note…" on a line that is not a several-requests line', async () => {
+  it('offers "Leave With a Note…" on a line that is not a several-requests line', async () => {
     renderTab()
     const panel = await openLine('$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1')
-    expect(within(panel).getByRole('button', { name: 'Leave with a note…' })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Leave With a Note…' })).toBeInTheDocument()
   })
 
-  it('colours a tick line green, and "Ticks nothing." not at all (review m2)', async () => {
+  it('colours a Marks Posted line green, and "Marks nothing posted." not at all (review m2)', async () => {
     const none: ApiAidToPlace = {
       ...TO_PLACE,
       groups: TO_PLACE.groups.map((g) => ({
@@ -393,17 +391,20 @@ describe('Money › To place (§8.1)', () => {
     reads = [none]
     renderTab()
     const chen = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
-    expect(within(chen).getByText('Ticks nothing.').className).not.toMatch(/emerald/)
+    expect(within(chen).getByText('Marks nothing posted.').className).not.toMatch(/emerald/)
     const johnson = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
     expect(
-      within(johnson).getByText('Ticks Emma Johnson · Session 2 · Round 2 · $780 locked').className
+      within(johnson).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked')
+        .className
     ).toMatch(/emerald/)
   })
 
-  it('writes the same apostrophe in the column and in the panel (⚠1)', async () => {
+  it("heads the suggestion in the dashboard's words, never Kindred's (owner 10-05)", async () => {
     renderTab()
-    await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
-    expect(screen.getAllByText('Kindred’s suggestion')).toHaveLength(2)
+    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    expect(screen.getByText('Suggestion and its evidence')).toBeInTheDocument()
+    expect(within(panel).getByText('Suggestion')).toBeInTheDocument()
+    expect(screen.queryByText(/Kindred/)).toBeNull()
   })
 
   it('exports the household and the line id, so a row joins back to CampMinder (review m5)', async () => {
@@ -429,10 +430,10 @@ describe('Money › To place (§8.1)', () => {
       gate = new Promise(() => undefined)
       renderTab()
       const panel = await openLine(CHEN)
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
       await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
       await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
       expect(
         await screen.findByText(
           'Nothing was written: this line is still saving. Try again when it finishes.'
@@ -463,7 +464,7 @@ describe('Money › To place (§8.1)', () => {
       renderTab()
       const card = await screen.findByText(/predates To place/)
       expect(card.textContent).toBe(
-        'Nothing to place: 2026 predates To place (the first ticked season is 2027).'
+        'Nothing to place: 2026 predates To place, which starts in 2027.'
       )
     })
 
@@ -471,9 +472,9 @@ describe('Money › To place (§8.1)', () => {
       answers = [json(NOTHING_CHANGED)]
       renderTab()
       const panel = await openLine(CHEN)
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
       await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
       expect(
         await screen.findByText(
           '✓ Chen: already left at family level with this note; nothing changed.'

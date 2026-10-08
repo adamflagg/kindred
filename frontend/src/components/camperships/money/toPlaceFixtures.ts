@@ -43,7 +43,7 @@ const SAMUEL = candidate({
   not_yet_in_campminder: 1420,
 })
 
-/** Several requests: Kindred suggests a split, and it ticks Emma's Round 2. */
+/** Several requests: the dashboard suggests a split, and it marks Emma's Round 2 posted. */
 export const JOHNSON_SPLIT: ApiAidToPlaceLine = {
   transaction_cm_id: 3000001,
   household_cm_id: 1000001,
@@ -74,7 +74,7 @@ export const JOHNSON_SPLIT: ApiAidToPlaceLine = {
   },
 }
 
-/** Several requests, one suggestion whose tick D152 withholds: the price moved after the posting. */
+/** Several requests, one suggestion whose check D152 withholds: the price moved after the posting. */
 export const GARCIA_WITHHELD: ApiAidToPlaceLine = {
   transaction_cm_id: 3000002,
   household_cm_id: 1000002,
@@ -118,7 +118,7 @@ export const GARCIA_WITHHELD: ApiAidToPlaceLine = {
         round: 2,
         posted_on: '2027-04-03',
         reasons: ['income corrected Apr 20'],
-        why: "Round 2 was not ticked automatically: after CampMinder posted it on Apr 3, income corrected Apr 20. The nightly ledger sync leaves it too: tick it by hand. That locks the higher of its decided amount on Apr 3 (where Kindred can rebuild that day) and today's. Check it against what the family was offered first.",
+        why: "Round 2 wasn't marked posted automatically: after it was posted in CampMinder on Apr 3, income corrected Apr 20. Check it against what the family was offered, then click Mark Posted. That saves the higher of its amount on Apr 3 and today's.",
       },
     ],
   },
@@ -213,7 +213,7 @@ export const GARCIA_LEFT: ApiAidToPlaceLine = {
   left_note: 'A deposit credit keyed as aid',
 }
 
-/** Reclassified, waiting for tonight's ledger sync. */
+/** Reclassified, waiting for the next ledger sync. */
 export const SAM_RECLASSIFIED: ApiAidToPlaceLine = {
   ...SAM_NO_REQUEST,
   transaction_cm_id: 3000007,
@@ -264,5 +264,5 @@ export const TO_PLACE_SKIPPED: ApiAidToPlace = {
   open_count: 0,
   open_total: 0,
   groups: [],
-  skipped: '2026 predates To place (the first ticked season is 2027)',
+  skipped: '2026 predates To place, which starts in 2027',
 }

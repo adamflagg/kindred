@@ -18,17 +18,22 @@ import {
   confirmLines,
   confirmSummary,
   exactAmount,
+  isMarkLine,
   isOpen,
   lineWords,
+  NOTHING_MARKED,
   placedWords,
   requestLabels,
+  stillNotPlacedWords,
   suggestionWords,
   toPlaceCsvName,
-  unplacedWords,
 } from './toPlaceModel'
 
+// A withheld round's sentence in the server's frame (financial_aid_to_place.py `withheld_why`, owner
+// 10-03). The reason fragment ("income corrected Apr 20") is the fixture's own; the server words it
+// from `_TEXT` (e.g. "a correction was entered (Apr 20)"), so only the frame is the server's (R1-15).
 const GARCIA_WHY =
-  "Round 2 was not ticked automatically: after CampMinder posted it on Apr 3, income corrected Apr 20. The nightly ledger sync leaves it too: tick it by hand. That locks the higher of its decided amount on Apr 3 (where Kindred can rebuild that day) and today's. Check it against what the family was offered first."
+  "Round 2 wasn't marked posted automatically: after it was posted in CampMinder on Apr 3, income corrected Apr 20. Check it against what the family was offered, then click Mark Posted. That saves the higher of its amount on Apr 3 and today's."
 
 describe('the line and its candidates in words', () => {
   it('says what CampMinder holds, and who it was posted to', () => {
@@ -38,8 +43,15 @@ describe('the line and its candidates in words', () => {
     expect(lineWords(GARCIA_WITHHELD)).toBe(
       '$600 · Camp aid · Summer · posted to Liam Garcia · Apr 3'
     )
-    expect(unplacedWords(JOHNSON_SPLIT)).toBeNull()
-    expect(unplacedWords({ ...JOHNSON_SPLIT, unplaced: 1000 })).toBe('$1,000 of it not placed')
+  })
+
+  it('says "still not placed" only where part of the line is already on a request (ruling B)', () => {
+    expect(stillNotPlacedWords(JOHNSON_SPLIT)).toBeNull()
+    // To the cent: float noise is not a difference.
+    expect(stillNotPlacedWords({ ...JOHNSON_SPLIT, unplaced: 3619.999999 })).toBeNull()
+    expect(stillNotPlacedWords({ ...JOHNSON_SPLIT, unplaced: 1000 })).toBe(
+      '· $1,000 still not placed'
+    )
   })
 
   it('names each candidate, and what it still lacks as "not yet in CampMinder" (Group 3a Q1)', () => {
@@ -55,7 +67,7 @@ describe('the line and its candidates in words', () => {
   })
 })
 
-describe("Kindred's suggestion and what Confirm does (§4.10; D146, D152)", () => {
+describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
   it('words a single placement and a split from the server’s parts', () => {
     expect(suggestionWords(CHEN_EXACT)).toBe('Place on Olivia Chen · Quest')
     expect(suggestionWords(JOHNSON_SPLIT)).toBe(
@@ -64,19 +76,19 @@ describe("Kindred's suggestion and what Confirm does (§4.10; D146, D152)", () =
     expect(suggestionWords(SAM_NO_REQUEST)).toBe('Nothing to suggest: no request.')
   })
 
-  it('lists the ticks it locks, and the ticks D152 withholds, before the click', () => {
+  it('lists the rounds it marks posted, and those D152 withholds, before the click', () => {
     expect(confirmLines(JOHNSON_SPLIT)).toEqual([
-      'Ticks Emma Johnson · Session 2 · Round 2 · $780 locked',
+      'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked',
     ])
     expect(confirmLines(GARCIA_WITHHELD)).toEqual([
-      `Places the money; doesn't tick Liam Garcia · Session 2: ${GARCIA_WHY}`,
+      `Places the money; doesn't mark Liam Garcia · Session 2 posted: ${GARCIA_WHY}`,
     ])
-    expect(confirmSummary(JOHNSON_SPLIT)).toBe('Ticks 1 round · $780 locked')
-    expect(confirmSummary(GARCIA_WITHHELD)).toBe('1 to tick by hand')
+    expect(confirmSummary(JOHNSON_SPLIT)).toBe('Marks 1 round posted · $780 locked')
+    expect(confirmSummary(GARCIA_WITHHELD)).toBe('1 to mark posted by hand')
     expect(confirmSummary(SAM_NO_REQUEST)).toBe('Nothing to confirm')
   })
 
-  it('says it ticks nothing when no round is covered in full (D146)', () => {
+  it('says it marks nothing posted when no round is covered in full (D146)', () => {
     const none = {
       ...CHEN_EXACT,
       suggestion: CHEN_EXACT.suggestion && {
@@ -85,8 +97,32 @@ describe("Kindred's suggestion and what Confirm does (§4.10; D146, D152)", () =
         would_lock: 0,
       },
     }
-    expect(confirmLines(none)).toEqual(['Ticks nothing.'])
-    expect(confirmSummary(none)).toBe('Ticks nothing')
+    expect(confirmLines(none)).toEqual([NOTHING_MARKED])
+    expect(NOTHING_MARKED).toBe('Marks nothing posted.')
+    expect(confirmSummary(none)).toBe('Marks nothing posted')
+  })
+
+  it('tells a line that marks a round posted from one that marks nothing', () => {
+    expect(isMarkLine('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked')).toBe(true)
+    expect(isMarkLine(NOTHING_MARKED)).toBe(false)
+    expect(isMarkLine(`Places the money; doesn't mark Liam Garcia · Session 2 posted: x`)).toBe(
+      false
+    )
+  })
+
+  it('reads a fresh preview in place of the read’s when one is given (P-4)', () => {
+    const fresh = {
+      would_tick: [{ request_id: 'reqolivia000003', round: 2, amount: 1400 }],
+      would_lock: 1400,
+      would_leave: [],
+      would_not_tick: [],
+    }
+    expect(confirmLines(CHEN_EXACT, fresh)).toEqual([
+      'Marks Posted: Olivia Chen · Quest · Round 2 · $1,400 locked',
+    ])
+    expect(confirmBody(CHEN_EXACT, fresh)).toMatchObject({ expected_locked: '1400.00' })
+    // No suggestion: nothing to confirm, whatever a preview says.
+    expect(confirmLines(SAM_NO_REQUEST, fresh)).toEqual([])
   })
 
   it("sends the suggestion's parts and what it showed it would lock, exact to the cent", () => {
@@ -104,10 +140,10 @@ describe("Kindred's suggestion and what Confirm does (§4.10; D146, D152)", () =
   })
 })
 
-describe('what a placement did (§4.10: the result lists exactly what was ticked)', () => {
+describe('what a placement did (§4.10: the result lists exactly what was marked posted)', () => {
   const labels = requestLabels(allLines(TO_PLACE))
 
-  it('names the rounds ticked, and those to tick by hand', () => {
+  it('names the rounds marked posted, and those to mark posted by hand', () => {
     expect(
       placedWords(
         {
@@ -121,7 +157,7 @@ describe('what a placement did (§4.10: the result lists exactly what was ticked
         [JOHNSON_SPLIT],
         labels
       )
-    ).toBe('Johnson: $3,620 placed. Ticked Posted: Emma Johnson · Session 2 Round 2 · $780 locked.')
+    ).toBe('Johnson: $3,620 placed. Marked Posted: Emma Johnson · Session 2 Round 2 · $780 locked.')
     expect(
       placedWords(
         {
@@ -137,8 +173,25 @@ describe('what a placement did (§4.10: the result lists exactly what was ticked
         labels
       )
     ).toBe(
-      `2 lines placed. Nothing ticked. Not ticked, tick by hand: Liam Garcia · Session 2 (${GARCIA_WHY}). Rules not locked yet: award tables.`
+      `2 lines placed. Nothing marked posted. Not marked posted: Liam Garcia · Session 2 (${GARCIA_WHY}). Rules not locked yet: award tables.`
     )
+  })
+
+  it('names the family the way the caller asks (the household label, ruling D)', () => {
+    expect(
+      placedWords(
+        {
+          year: 2027,
+          operation_id: 'op0000000000004',
+          placed: [3000003],
+          ticked: [],
+          left_to_tick: [],
+        },
+        [CHEN_EXACT],
+        labels,
+        () => 'Mei & David Chen'
+      )
+    ).toBe('Mei & David Chen: $1,500 placed. Nothing marked posted.')
   })
 })
 
@@ -157,9 +210,11 @@ describe('open lines and the CSV name', () => {
   })
 })
 
-describe('the leave and left-to-tick lines say "by hand" once (review m3)', () => {
+describe('the leave and left lines say "by hand" once (review m3)', () => {
   const labels = requestLabels(allLines(TO_PLACE))
-  const WHY = 'Round 2 needs $1,500: tick it by hand if that is right'
+  // The server's words for a round a placement leaves (financial_aid_to_place_service.py).
+  const WHY =
+    'CampMinder holds $1,000 on this request; Round 2 needs $1,500: mark it posted by hand if that is right'
 
   it('words a round Confirm leaves with the round and the server’s own reason', () => {
     const line = {
@@ -174,7 +229,7 @@ describe('the leave and left-to-tick lines say "by hand" once (review m3)', () =
     expect(confirmLines(line)).toEqual([`Leaves Olivia Chen · Quest · Round 2: ${WHY}`])
   })
 
-  it('words a round left to tick without repeating "by hand"', () => {
+  it('words a round left unchecked without repeating "by hand"', () => {
     expect(
       placedWords(
         {
@@ -188,7 +243,7 @@ describe('the leave and left-to-tick lines say "by hand" once (review m3)', () =
         labels
       )
     ).toBe(
-      `Chen: $1,500 placed. Nothing ticked. Left unticked: Olivia Chen · Quest Round 2 (${WHY}).`
+      `Chen: $1,500 placed. Nothing marked posted. Left unchecked: Olivia Chen · Quest Round 2 (${WHY}).`
     )
   })
 })
