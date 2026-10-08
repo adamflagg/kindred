@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 
 import { Permission } from '../../constants/permissions'
 import { useAuth } from '../../contexts/AuthContext'
@@ -28,4 +29,24 @@ export function useAidSources({ enabled = true }: { readonly enabled?: boolean }
     queryFn: () => fetchAidSources(fetchWithAuth, year),
     enabled: enabled && year > 0 && !authLoading && allowed,
   })
+}
+
+/**
+ * A fresh read of the registry, past the cache (staleTime 0), for an editor to open on and to check
+ * just before it sends (Decision P-9: no source route takes a precondition). It refreshes the
+ * table's own cache entry as it goes.
+ */
+export function useFreshAidSources() {
+  const year = useYear()
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
+  return useCallback(
+    () =>
+      queryClient.fetchQuery({
+        queryKey: queryKeys.aidSources(year),
+        queryFn: () => fetchAidSources(fetchWithAuth, year),
+        staleTime: 0,
+      }),
+    [fetchWithAuth, queryClient, year]
+  )
 }

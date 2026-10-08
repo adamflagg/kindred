@@ -170,6 +170,21 @@ import type {
   ValidationIssue,
   ViewIn,
   WorkspaceOut,
+  AidSourceUpdate,
+  DevelopmentGroupOut,
+  FundingSourceIn,
+  FundingSourceOut,
+  FundingSourcesResponse,
+  GrantorDescription,
+  GrantorOut,
+  GrantorSeasonOut,
+  GrantorsResponse,
+  SourceChangeOut,
+  SourceGrantorIn,
+  SummaryCell,
+  SummaryResponse,
+  CampAidLevel,
+  ProgramSplit,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -411,3 +426,43 @@ export type ApiAidPlacePreview = PlacePreviewOut
  */
 export type ApiAidSources = AidSourcesResponse
 export type ApiAidSourceRow = AidSourceRow
+
+/**
+ * Money › Sources' writes (spec §8.1; D58, D105, D160): a classification (`rules`) and a
+ * description's grantor (`grantors`). Each mirrors its Python model (`AidSourceUpdate`,
+ * `SourceGrantorIn`). `source_family` is a server Literal that names funders: it is typed here and
+ * never spelled out in the app (Decision P-12).
+ */
+export type ApiAidSourceUpdate = AidSourceUpdate
+export type ApiAidSourceFamily = AidSourceUpdate['source_family']
+export type ApiAidFunderType = AidSourceUpdate['funder_type']
+export type ApiAidProgramFamily = NonNullable<AidSourceUpdate['implied_program_families']>[number]
+export type ApiAidSourceGrantorIn = SourceGrantorIn
+export type ApiAidSourceChange = SourceChangeOut
+
+/** The grantor directory (spec §8.2; D86, D143, D160). Mirrors Python `GrantorsResponse`. */
+export type ApiAidGrantors = GrantorsResponse
+export type ApiAidGrantor = GrantorOut
+export type ApiAidGrantorDescription = GrantorDescription
+export type ApiAidGrantorSeason = GrantorSeasonOut
+
+/**
+ * Funding sources (D88, D100, D159): each outside source's reporting group under a season's pools,
+ * and its write ("Set a Group…"). Mirrors Python `FundingSourcesResponse`, `FundingSourceOut`,
+ * `FundingSourceIn`, `DevelopmentGroupOut`.
+ */
+export type ApiAidFundingSources = FundingSourcesResponse
+export type ApiAidFundingSource = FundingSourceOut
+export type ApiAidFundingSourceIn = FundingSourceIn
+export type ApiAidDevelopmentGroup = DevelopmentGroupOut
+
+/** Posted totals by program and source family (inventory F10; `GET /summary`). Mirrors Python `SummaryResponse`. */
+export type ApiAidSummary = SummaryResponse
+export type ApiAidSummaryCell = SummaryCell
+/**
+ * F10's pivot (money-v2: Camp aid · Outside grants · Total per program) and the camp-aid shares
+ * under it, split by the posting's funder type on the server (PR A; owner 10-08, R3-2). Mirrors
+ * Python `ProgramSplit`, `CampAidLevel`.
+ */
+export type ApiAidProgramSplit = ProgramSplit
+export type ApiAidCampAidLevel = CampAidLevel

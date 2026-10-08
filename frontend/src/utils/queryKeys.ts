@@ -788,6 +788,14 @@ export const queryKeys = {
   aidPlacePreview: (year: number, transactionCmId: number, parts: string) =>
     ['financial-aid', 'to-place', year, 'preview', transactionCmId, parts] as const,
   aidSources: (year: number) => ['financial-aid', 'sources', 'registry', year] as const,
+  // part 2a: the grantor directory (retired or not; with a season's grants or not), Funding sources
+  // (under the sources prefix, so a `registry` refresh reaches it) and the posted totals (under
+  // the ledger prefix: placements and reclassifications move them).
+  aidGrantors: (includeRetired: boolean, year: number | null) =>
+    ['financial-aid', 'grantors', includeRetired ? 'all' : 'in-use', year ?? 'no-season'] as const,
+  aidFundingSources: (year: number) => ['financial-aid', 'sources', 'funding', year] as const,
+  aidSummary: (year: number, asOf: string | null) =>
+    ['financial-aid', 'ledger', year, 'summary', asOf ?? 'live'] as const,
 }
 
 /**

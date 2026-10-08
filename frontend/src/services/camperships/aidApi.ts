@@ -67,6 +67,14 @@ import type {
   ApiAidUseFormIn,
   ApiAidUseFormOut,
   ApiAidWriteOut,
+  ApiAidFundingSource,
+  ApiAidFundingSourceIn,
+  ApiAidFundingSources,
+  ApiAidGrantors,
+  ApiAidSourceGrantorIn,
+  ApiAidSourceRow,
+  ApiAidSourceUpdate,
+  ApiAidSummary,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
@@ -1011,4 +1019,98 @@ export async function fetchAidSources(
   const response = await fetchWithAuth(withQuery(`${BASE}/sources`, { year: String(year) }))
   if (!response.ok) throw await toApiError(response, 'Failed to load the sources', AidApiError)
   return (await response.json()) as ApiAidSources
+}
+
+/** Classify a description (`rules`; D58, D105): the whole classification and a note. A no-op writes nothing; a race is a 409. */
+export function classifyAidSource(
+  fetchWithAuth: FetchWithAuth,
+  sourceId: string,
+  body: ApiAidSourceUpdate
+): Promise<ApiAidSourceRow> {
+  return send<ApiAidSourceRow>(
+    fetchWithAuth,
+    'PATCH',
+    `${BASE}/sources/${sourceId}`,
+    body,
+    "Couldn't save the classification"
+  )
+}
+
+/** Map a description to a grantor, or unmap it with null (`grantors`; D160), with a note. A race is a 409. */
+export function mapAidSourceGrantor(
+  fetchWithAuth: FetchWithAuth,
+  sourceId: string,
+  body: ApiAidSourceGrantorIn
+): Promise<ApiAidSourceRow> {
+  return send<ApiAidSourceRow>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/sources/${sourceId}/grantor`,
+    body,
+    "Couldn't save the grantor"
+  )
+}
+
+/**
+ * The grantor directory (§8.2; D160), `view` or `grantors`. Retired grantors only when asked
+ * (pickers never offer one); `year` adds each grantor's grants and $ that season (`season`).
+ */
+export async function fetchAidGrantors(
+  fetchWithAuth: FetchWithAuth,
+  { includeRetired, year }: { readonly includeRetired: boolean; readonly year: number | null }
+): Promise<ApiAidGrantors> {
+  const params: Record<string, string> = {
+    ...(includeRetired ? { include_retired: 'true' } : {}),
+    ...(year === null ? {} : { year: String(year) }),
+  }
+  const response = await fetchWithAuth(withQuery(`${BASE}/grantors`, params))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the grantors', AidApiError)
+  return (await response.json()) as ApiAidGrantors
+}
+
+/** Funding sources (D100): each outside source's reporting group under `year`'s pools, and the pools. `view` or `summary`. */
+export async function fetchAidFundingSources(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidFundingSources> {
+  const response = await fetchWithAuth(`${BASE}/reports/${String(year)}/funding-sources`)
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the reporting groups', AidApiError)
+  return (await response.json()) as ApiAidFundingSources
+}
+
+/**
+ * Set a source's reporting group (one of `year`'s pools, or none with an explicit null; a body
+ * without `group` keeps it) and its incentive flag, with an optional note (D88, D100, D159).
+ * `funding_sources` or `rules`; the same route development's view writes.
+ */
+export function saveAidFundingSource(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  sourceId: string,
+  body: ApiAidFundingSourceIn
+): Promise<ApiAidFundingSource> {
+  return send<ApiAidFundingSource>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/reports/${String(year)}/funding-sources/${sourceId}`,
+    body,
+    "Couldn't save the reporting group"
+  )
+}
+
+/** What CampMinder posted this season by program and source family, live or by a past day (F10). `view`. */
+export async function fetchAidSummary(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  asOf: string | null
+): Promise<ApiAidSummary> {
+  const params: Record<string, string> = {
+    year: String(year),
+    ...(asOf === null ? {} : { as_of: asOf }),
+  }
+  const response = await fetchWithAuth(withQuery(`${BASE}/summary`, params))
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the posted totals', AidApiError)
+  return (await response.json()) as ApiAidSummary
 }
