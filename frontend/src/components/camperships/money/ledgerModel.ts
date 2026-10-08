@@ -52,6 +52,24 @@ export function programLabelsOf(summary: ApiAidSummary | undefined): Record<stri
 }
 
 /**
+ * The Ledger's Program filter choices (lead ruling 10-08): only the programs the summary has money
+ * under, in the pivot's order, the two no-program buckets left out (`?program=` takes families).
+ * A family with money and no label appears once as "Other program". None until the summary loads.
+ */
+export function programChoicesOf(
+  summary: ApiAidSummary | undefined,
+  names: Readonly<Record<string, string>> = {}
+): { value: string; label: string }[] {
+  if (!summary) return []
+  return pivotRows(summary, names)
+    .filter((row) => !BUCKETS_LAST.includes(row.program))
+    .map((row) => ({
+      value: row.program,
+      label: summaryProgramWords(row.program, row.program_label),
+    }))
+}
+
+/**
  * The pivot's rows in the rules' order (R3-10): the programs the rules name, as the rules list them;
  * then any other program, A to Z; then "Household level" and "Not placed" last.
  */

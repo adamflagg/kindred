@@ -6,6 +6,7 @@ import {
   footWords,
   hasUnclassified,
   pivotRows,
+  programChoicesOf,
   programLabelsOf,
   shareWords,
   splitWords,
@@ -90,6 +91,33 @@ describe('ledgerModel', () => {
       family_camp: 'Family Camp Weekends',
     })
     expect(programLabelsOf(undefined)).toEqual({})
+  })
+
+  it('offers only the programs the summary has money under, labelled, buckets left out', () => {
+    expect(programChoicesOf(SUMMARY, NAMES)).toEqual([
+      { value: 'summer', label: 'Summer Sessions' },
+      { value: 'family_camp', label: 'Family Camp Weekends' },
+    ])
+    expect(programChoicesOf(undefined)).toEqual([])
+  })
+
+  it("reads 'Other program' once for a program with money and no label", () => {
+    const quest = {
+      program: 'quest',
+      program_label: '',
+      camp_aid: 100,
+      outside_grants: 0,
+      unclassified: 0,
+      total: 100,
+      postings: 1,
+      households: 1,
+    }
+    const extra = { ...SUMMARY, by_program: [...(SUMMARY.by_program ?? []), quest] }
+    expect(programChoicesOf(extra, NAMES)).toEqual([
+      { value: 'summer', label: 'Summer Sessions' },
+      { value: 'family_camp', label: 'Family Camp Weekends' },
+      { value: 'quest', label: 'Other program' },
+    ])
   })
 
   it('names the CSV with the date it shows', () => {

@@ -18,6 +18,7 @@ import {
   pivotRows,
   splitWords,
   summaryCsvName,
+  programChoicesOf,
   programLabelsOf,
   summaryProgramWords,
 } from './ledgerModel'
@@ -77,10 +78,16 @@ export function LedgerTab({ view }: { view: AidView }) {
   const rows = useMemo(() => (data ? pivotRows(data, names) : []), [data, names])
   const columns = useMemo(() => (data ? pivotColumns(data) : []), [data])
   const programLabels = useMemo(() => programLabelsOf(data), [data])
+  const programChoices = useMemo(() => (data ? programChoicesOf(data, names) : []), [data, names])
 
   return (
     <div className="space-y-3">
-      <LedgerFamilies view={view} unclassified={data?.unclassified} programLabels={programLabels} />
+      <LedgerFamilies
+        view={view}
+        unclassified={data?.unclassified}
+        programLabels={programLabels}
+        programChoices={programChoices}
+      />
       <section className="space-y-2">
         {/* A div, not an h3: bare headings are styled outside the cascade layers (csType.ts). */}
         <div className={`flex flex-wrap items-baseline gap-2 ${CS_LABEL}`}>

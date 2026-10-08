@@ -48,19 +48,30 @@ afterEach(() => {
 })
 
 const LABELS = { summer: 'Session 2', quest: 'Quest' }
+const CHOICES = [
+  { value: 'summer', label: 'Session 2' },
+  { value: 'quest', label: 'Quest' },
+  { value: 'teen', label: 'Other program' },
+]
 
 function renderAt(
   path: string,
   view: AidView = LIVE,
   unclassified?: number,
-  programLabels: Readonly<Record<string, string>> = LABELS
+  programLabels: Readonly<Record<string, string>> = LABELS,
+  programChoices: readonly { value: string; label: string }[] = CHOICES
 ) {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter initialEntries={[path]}>
-        <LedgerFamilies view={view} unclassified={unclassified} programLabels={programLabels} />
+        <LedgerFamilies
+          view={view}
+          unclassified={unclassified}
+          programLabels={programLabels}
+          programChoices={programChoices}
+        />
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -165,16 +176,28 @@ describe('Money › Ledger family rows (P-22)', () => {
     ).toEqual(['all', 'camp fa', 'named fund', 'other outside', 'placeholder', 'unclassified'])
   })
 
-  it("labels the Program select's choices with the server's program_label, 'Other program' where it sent none", async () => {
+  // Lead ruling 10-08: only programs with money this season. The choices are what LedgerTab
+  // passes in (programChoicesOf); an unlabelled program with money reads 'Other program' once.
+  it("offers exactly the program choices it is given, 'Other program' once for an unlabelled one", async () => {
     renderAt('/aid/money/ledger')
     await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
     const program = screen.getByRole('combobox', { name: 'Program' })
     const words = within(program)
       .getAllByRole('option')
       .map((o) => o.textContent)
-    expect(words.slice(0, 3)).toEqual(['all', 'Session 2', 'Quest'])
-    expect(words.slice(3).every((w) => w === 'Other program')).toBe(true)
-    expect(words.join()).not.toMatch(/family_camp|Family camp|Bmitzvah|Teen/)
+    expect(words).toEqual(['all', 'Session 2', 'Quest', 'Other program'])
+    expect(words.join()).not.toMatch(/family_camp|Family camp|Bmitzvah/)
+  })
+
+  it('offers only "all" while no program choices have loaded', async () => {
+    renderAt('/aid/money/ledger', LIVE, undefined, {}, [])
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    const program = screen.getByRole('combobox', { name: 'Program' })
+    expect(
+      within(program)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['all'])
   })
 
   it('shows a stale or hand-edited ?source= and ?program= in its select, since that is what is sent', async () => {
