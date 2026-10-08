@@ -19,8 +19,9 @@ import { ReportTable } from '../kit/ReportTable'
 import { reportParam, type ReportAddress } from '../requests/reportFilter'
 import { requestSetParam } from '../season/scenarios/controlsModel'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
+import { ProgramsTable } from './ProgramsTable'
 import { ReportControls } from './ReportControls'
-import { ROUND_CHIPS, readStatisticsChoice } from './reportParams'
+import { ROUND_CHIPS, readStatisticsChoice, type StatisticsRows } from './reportParams'
 import {
   ALL_TABLES,
   asOfWords,
@@ -39,9 +40,14 @@ import {
   tierColumns,
   tierRows,
 } from './statisticsModel'
-import { useReportParam } from './useReportParam'
+import { useReportParam, useReportParams } from './useReportParam'
 
 const PATH = '/aid/reports/statistics'
+
+const ROWS_CHIPS: ReadonlyArray<{ readonly key: StatisticsRows; readonly label: string }> = [
+  { key: 'tier', label: 'Income tier' },
+  { key: 'session', label: 'Session' },
+]
 
 /**
  * Reports › Statistics, this season (spec §9.2, §9.7 RPT-4, 5, 9, 10, 22, 23; D80, D129–D131,
@@ -57,6 +63,8 @@ export function StatisticsTab({ view }: { view: AidView }) {
   const stats = useAidStatistics(choice)
   const { numberOf } = useAidDefinitions('reports-statistics')
   const setParam = useReportParam()
+  const setParams = useReportParams()
+  const bySession = choice.rows === 'session'
   const link = aidHref(PATH, view, statisticsLinkParams(choice))
   // A refusal (a control the season can't take) shows the server's sentence beside the controls.
   const refusal = stats.error !== null && hasStatus(stats.error, 422) ? stats.error.message : null
@@ -75,38 +83,65 @@ export function StatisticsTab({ view }: { view: AidView }) {
       <ReportControls
         requestSet={choice.requestSet}
         onRequestSet={onRequestSet}
-        decided={choice.decided}
-        onDecided={(next) => setParam('decided', next ? '1' : null)}
+        decided={bySession ? undefined : choice.decided}
+        onDecided={bySession ? undefined : (next) => setParam('decided', next ? '1' : null)}
         asOfWords={
           stats.data
             ? asOfWords(stats.data.figures_on, stats.data.as_of === null, stats.data.rules_version)
             : null
         }
       />
-      {refusal !== null && <p className={AMBER_NOTE}>{refusal}</p>}
+      {refusal !== null && !bySession && <p className={AMBER_NOTE}>{refusal}</p>}
       <div className={REPORT_FILTERS}>
-        <span className={REPORT_FILTER_LABEL}>Award table</span>
-        {[{ key: null, label: ALL_TABLES }, ...tables].map((t) => (
-          <button
-            key={t.key ?? 'all'}
-            type="button"
-            className={choice.table === t.key ? CHIP_ON : CHIP_OFF}
-            onClick={() => setParam('table', t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-        <span className={`${REPORT_FILTER_LABEL} ml-3`}>Round</span>
-        {ROUND_CHIPS.map((r) => (
+        <span className={REPORT_FILTER_LABEL}>Rows</span>
+        {ROWS_CHIPS.map((r) => (
           <button
             key={r.key}
             type="button"
-            className={choice.round === r.key ? CHIP_ON : CHIP_OFF}
-            onClick={() => setParam('round', r.key === '1' ? null : r.key)}
+            className={choice.rows === r.key ? CHIP_ON : CHIP_OFF}
+            // Session reads no table, round or basis: switching clears them, so a link never lies.
+            onClick={() =>
+              setParams(
+                r.key === 'session'
+                  ? { rows: 'session', table: null, round: null, decided: null }
+                  : { rows: null }
+              )
+            }
           >
             {r.label}
           </button>
         ))}
+        {bySession ? (
+          <span className={`${REPORT_NOTE} ml-3`}>
+            Rounds 1, 2 and 3 are columns in the session table
+          </span>
+        ) : (
+          <>
+            <span className="bg-border mx-1 h-4 w-px" />
+            <span className={REPORT_FILTER_LABEL}>Award table</span>
+            {[{ key: null, label: ALL_TABLES }, ...tables].map((t) => (
+              <button
+                key={t.key ?? 'all'}
+                type="button"
+                className={choice.table === t.key ? CHIP_ON : CHIP_OFF}
+                onClick={() => setParam('table', t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+            <span className={`${REPORT_FILTER_LABEL} ml-3`}>Round</span>
+            {ROUND_CHIPS.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                className={choice.round === r.key ? CHIP_ON : CHIP_OFF}
+                onClick={() => setParam('round', r.key === '1' ? null : r.key)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </>
+        )}
       </div>
       <QueryGuard
         isLoading={stats.isLoading}
@@ -122,15 +157,19 @@ export function StatisticsTab({ view }: { view: AidView }) {
             <div className="space-y-4">
               {setWords !== null && <p className={AMBER_NOTE}>{setWords}</p>}
               {pastWords !== null && <p className={AMBER_NOTE}>{pastWords}</p>}
-              <ReportTable
-                heading={statisticsHeading(data, 'By tier')}
-                basisBadge="P"
-                columns={tierColumns(data, numberOf)}
-                rows={tierRows(data, choice, linkOf)}
-                csvFilename={statisticsCsvName(view, choice, 'by-tier')}
-                link={link}
-                footnote="Each count opens the requests behind it in Requests."
-              />
+              {bySession ? (
+                <ProgramsTable view={view} requestSet={choice.requestSet} />
+              ) : (
+                <ReportTable
+                  heading={statisticsHeading(data, 'By tier')}
+                  basisBadge="P"
+                  columns={tierColumns(data, numberOf)}
+                  rows={tierRows(data, choice, linkOf)}
+                  csvFilename={statisticsCsvName(view, choice, 'by-tier')}
+                  link={link}
+                  footnote="Each count opens the requests behind it in Requests."
+                />
+              )}
               <p className={REPORT_NOTE}>
                 Cancelled applicants (counted in Apps too, and on their own line here):{' '}
                 {data.cancelled_applicants > 0 ? (
@@ -172,7 +211,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
           )
         }}
       </QueryGuard>
-      <AidDefinitionNotes surface="reports-statistics" />
+      <AidDefinitionNotes surface={bySession ? 'reports-programs' : 'reports-statistics'} />
     </div>
   )
 }

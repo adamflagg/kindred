@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
+import { PROGRAMS } from './programsFixtures'
 import {
   STATISTICS,
   STATISTICS_ALL_TABLES,
@@ -55,7 +56,19 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const text = String(url)
-    if (text.includes('/definitions')) return Promise.resolve(json(NOTES))
+    if (text.includes('/definitions')) {
+      return Promise.resolve(
+        json(
+          text.includes('reports-programs')
+            ? {
+                surface: 'reports-programs',
+                notes: [{ key: 'apps', n: 1, text: 'Programs note.' }],
+              }
+            : NOTES
+        )
+      )
+    }
+    if (text.includes('/programs')) return Promise.resolve(json(PROGRAMS))
     return Promise.resolve(statistics(text))
   })
 })
@@ -273,5 +286,81 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
     const table = await screen.findByRole('table', { name: 'Round 1 and appeals by tier (RPT-9)' })
     expect(within(table).queryAllByRole('link')).toHaveLength(0)
     expect(screen.getByText(/This table's counts open nothing yet/)).toBeInTheDocument()
+  })
+})
+
+describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
+  const chipLabels = () =>
+    Array.from(document.querySelectorAll('button.rounded-full')).map((b) => b.textContent)
+
+  it('puts Rows first, then Income tier and Session, before the award table and round chips', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(chipLabels()).toEqual([
+      'Income tier',
+      'Session',
+      'All award tables',
+      'Table A',
+      'Table B',
+      'R1',
+      'R2',
+      'R3',
+      'All rounds',
+    ])
+    const rows = screen.getByText('Rows')
+    expect(rows.compareDocumentPosition(screen.getByText('Award table'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
+  it('shows the session table instead of By tier, with the rounds note and no tier-only chips', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    expect(await screen.findByRole('table', { name: 'By session' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'By tier' })).toBeNull()
+    expect(
+      screen.getByText('Rounds 1, 2 and 3 are columns in the session table')
+    ).toBeInTheDocument()
+    expect(chipLabels()).toEqual(['Income tier', 'Session'])
+    expect(screen.queryByRole('checkbox', { name: 'Include not yet offered' })).toBeNull()
+  })
+
+  it('keeps the cancelled line, recipients who cancelled, RPT-9 and March outcomes under Session', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    await screen.findByRole('table', { name: 'By session' })
+    expect(screen.getByText(/Cancelled applicants \(counted in Apps too/)).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: /Aid recipients who cancelled/ })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: /Round 1 and appeals by tier/ })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: /March committee outcomes/ })).toBeInTheDocument()
+  })
+
+  it('clears table, round and decided when Session is chosen, and Income tier removes rows', async () => {
+    renderTab('/aid/reports/statistics?table=camp&round=2&decided=1&through=deadline')
+    await screen.findByRole('table', { name: 'By tier' })
+    await userEvent.click(screen.getByRole('button', { name: 'Session' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('?through=deadline&rows=session')
+    await userEvent.click(screen.getByRole('button', { name: 'Income tier' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('?through=deadline')
+    expect(screen.getByTestId('where')).not.toHaveTextContent('rows')
+  })
+
+  it('shows the programs definition notes under Session and the statistics ones under Income tier', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    expect(await screen.findByText('Programs note.')).toBeInTheDocument()
+    expect(screen.queryByText('Apps: every received request.')).toBeNull()
+  })
+
+  it('applies the reporting controls to the session table too (D138)', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    await screen.findByRole('table', { name: 'By session' })
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('through=deadline')
+    await waitFor(() =>
+      expect(
+        fetchSpy.mock.calls
+          .map(([u]) => String(u))
+          .filter((u) => u.includes('/programs'))
+          .at(-1)
+      ).toBe('/api/financial-aid/reports/2027/programs?through_round1_deadline=true')
+    )
   })
 })

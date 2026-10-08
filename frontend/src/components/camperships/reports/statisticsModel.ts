@@ -403,6 +403,7 @@ export function asOfWords(figuresOn: string, live: boolean, rulesVersion: number
 export function statisticsLinkParams(choice: StatisticsChoice): Record<string, string> {
   const through = requestSetParam(choice.requestSet)
   return {
+    ...(choice.rows === 'session' ? { rows: 'session' } : {}),
     ...(choice.table === null ? {} : { table: choice.table }),
     ...(choice.round === '1' ? {} : { round: choice.round }),
     ...(choice.decided ? { decided: '1' } : {}),

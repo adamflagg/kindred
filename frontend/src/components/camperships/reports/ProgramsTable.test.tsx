@@ -1,13 +1,19 @@
-/** Reports › Programs through its real hooks (spec §9.3; RPT-11; D138). Only `fetch` is faked. */
+/** Reports › Statistics by session (the programs table) through its real hooks (spec §9.3; RPT-11; D138). Only `fetch` is faked. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
+import type { AidRequestSet } from '../../../services/camperships/aidApi'
 import { PROGRAMS } from './programsFixtures'
-import { ProgramsTab } from './ProgramsTab'
+import { ProgramsTable } from './ProgramsTable'
 
+const downloadCsv = vi.fn<(content: string, name: string) => void>()
+vi.mock('../../../utils/csvExport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/csvExport')>()),
+  downloadCsv: (content: string, name: string) => downloadCsv(content, name),
+}))
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
@@ -48,19 +54,22 @@ function Where() {
   return <div data-testid="where">{search}</div>
 }
 
-function renderTab(path = '/aid/reports/programs') {
+function renderTab(
+  requestSet: AidRequestSet = { kind: 'all' },
+  path = '/aid/reports/statistics?rows=session'
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
-        <ProgramsTab view={VIEW} />
+        <ProgramsTable view={VIEW} requestSet={requestSet} />
         <Where />
       </MemoryRouter>
     </QueryClientProvider>
   )
 }
 
-describe('ProgramsTab (spec §9.3)', () => {
+describe('ProgramsTable (spec §9.3)', () => {
   it("draws sessions by pool with the server's subtotal and total", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By session' })
@@ -92,16 +101,24 @@ describe('ProgramsTab (spec §9.3)', () => {
     )
   })
 
-  it('applies the reporting controls through the URL (D138), with no decided basis', async () => {
-    renderTab()
+  it('has no controls of its own, and sends the request set it is given (D138)', async () => {
+    renderTab({ kind: 'deadline' })
     await screen.findByRole('table', { name: 'By session' })
-    expect(screen.queryByRole('checkbox', { name: 'Include not yet offered' })).toBeNull()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('?through=deadline')
+    expect(screen.queryByRole('checkbox')).toBeNull()
     await waitFor(() =>
       expect(programCalls().at(-1)).toBe(
         '/api/financial-aid/reports/2027/programs?through_round1_deadline=true'
       )
+    )
+  })
+
+  it('names Statistics by session as its link, carrying the request set', async () => {
+    renderTab({ kind: 'deadline' })
+    await screen.findByRole('table', { name: 'By session' })
+    await userEvent.click(screen.getByRole('button', { name: /Download CSV/ }))
+    const [content] = downloadCsv.mock.calls[0] ?? ['']
+    expect(content).toContain(
+      'Link,/aid/reports/statistics?rows=session&through=deadline&year=2027'
     )
   })
 })

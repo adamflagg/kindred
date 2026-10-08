@@ -19,8 +19,20 @@ describe('Statistics in the URL', () => {
       table: null,
       round: '1',
       decided: false,
+      rows: 'tier',
       requestSet: { kind: 'all' },
     })
+  })
+
+  it('reads Rows: session, and anything else as the income tier', () => {
+    expect(readStatisticsChoice(new URLSearchParams('rows=session')).rows).toBe('session')
+    expect(readStatisticsChoice(new URLSearchParams('rows=tier')).rows).toBe('tier')
+    expect(readStatisticsChoice(new URLSearchParams('rows=nonsense')).rows).toBe('tier')
+  })
+
+  it('never sends Rows to the read', () => {
+    const choice = readStatisticsChoice(new URLSearchParams('rows=session'))
+    expect(statisticsChoiceQuery(choice)).toEqual({ round: '1' })
   })
 
   it('reads the chips, the switch and one request-set control', () => {
@@ -31,6 +43,7 @@ describe('Statistics in the URL', () => {
       table: 'camp',
       round: 'all',
       decided: true,
+      rows: 'tier',
       requestSet: { kind: 'date', date: '2027-02-01' },
     })
   })

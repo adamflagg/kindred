@@ -144,7 +144,7 @@ export function programsHeading(programs: ApiAidPrograms): ReportHeading {
 
 export function programsLinkParams(requestSet: AidRequestSet): Record<string, string> {
   const through = requestSetParam(requestSet)
-  return through === null ? {} : { through }
+  return through === null ? { rows: 'session' } : { rows: 'session', through }
 }
 
 export function programsCsvName(view: AidView, requestSet: AidRequestSet): string {

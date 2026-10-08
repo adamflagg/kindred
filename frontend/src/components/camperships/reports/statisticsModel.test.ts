@@ -327,6 +327,12 @@ describe('the link and the file', () => {
     expect(statisticsLinkParams(readStatisticsChoice(new URLSearchParams('')))).toEqual({})
   })
 
+  it('keeps Rows: session in the link', () => {
+    expect(statisticsLinkParams(readStatisticsChoice(new URLSearchParams('rows=session')))).toEqual(
+      { rows: 'session' }
+    )
+  })
+
   it('names the file as D70 does, with the season and a past date', () => {
     expect(
       statisticsCsvName(

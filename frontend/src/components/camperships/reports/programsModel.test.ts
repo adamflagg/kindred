@@ -129,7 +129,11 @@ describe('Programs (RPT-11)', () => {
   })
 
   it('keeps the request set in the link and the file name', () => {
-    expect(programsLinkParams({ kind: 'deadline' })).toEqual({ through: 'deadline' })
+    expect(programsLinkParams({ kind: 'deadline' })).toEqual({
+      rows: 'session',
+      through: 'deadline',
+    })
+    expect(programsLinkParams({ kind: 'all' })).toEqual({ rows: 'session' })
     expect(programsCsvName({ year: 2027, asOf: { kind: 'live' } }, { kind: 'deadline' })).toBe(
       'camperships-reports-programs-through-deadline-2027.csv'
     )

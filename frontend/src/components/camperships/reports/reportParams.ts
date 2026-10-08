@@ -1,7 +1,7 @@
 /**
  * What Reports keep in the URL (§3.6; D15) and the query each read sends (spec §9.2, §9.3, §9.7).
  * Pure. Statistics: `?table=<award table key>` (none: All award tables, RPT-10), `?round=2|3|all`
- * (none: Round 1), `?decided=1` (Include not yet offered, D130; S4-3: off by default) and
+ * (none: Round 1), `?rows=session` (the session table, not the tier table), `?decided=1` (Include not yet offered, D130; S4-3: off by default) and
  * `?through=deadline|<date>` (the reporting controls, D138: the same parameter as Scenarios'
  * request sets, so one control reads one way everywhere). One parameter holds both controls, so a
  * link can never ask for both at once (the server refuses that with a 422).
@@ -31,11 +31,15 @@ export function parseRoundChip(raw: string | null): RoundChip {
   return raw === '2' || raw === '3' || raw === 'all' ? raw : '1'
 }
 
+/** Statistics' rows (owner Q7): one per income tier, or one per session (the programs table). */
+export type StatisticsRows = 'tier' | 'session'
+
 /** What a Statistics link asks for. */
 export interface StatisticsChoice {
   readonly table: string | null
   readonly round: RoundChip
   readonly decided: boolean
+  readonly rows: StatisticsRows
   readonly requestSet: AidRequestSet
 }
 
@@ -45,6 +49,7 @@ export function readStatisticsChoice(params: URLSearchParams): StatisticsChoice 
     table: table === null || table === '' ? null : table,
     round: parseRoundChip(params.get('round')),
     decided: params.get('decided') === '1',
+    rows: params.get('rows') === 'session' ? 'session' : 'tier',
     requestSet: parseRequestSet(params.get('through')),
   }
 }
