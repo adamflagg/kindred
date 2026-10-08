@@ -418,12 +418,17 @@ def _valid_tables[V: (R1Percent, TotalPercent)](
 
 
 def _class_words(rules: AidRules, key: str) -> str:
-    """An award table's or an equity class's staff-facing words (spec §9.2): the label of the group whose class it
-    is, else the key's words in sentence case, as the front end's keyWords. Never `.title()`: an acronym key would
-    read "Ffp". A12 adds the borrowed-label fallback here, between the two."""
+    """An award table's or an equity class's staff-facing words (spec §9.2; owner 10-07: generic, data-driven): the
+    label of the group whose class it is, else the label of the program, else the pool, with the same key (a key with
+    no label of its own borrows one), else the key's words in sentence case, as the front end's keyWords. Never
+    `.title()`: an acronym key would read "Ffp"."""
     group = group_of_class(rules, key)
     if group is not None:
         return group.label
+    program, pool = rules.programs.get(key), rules.budget.pools.get(key)
+    borrowed = program.label if program is not None else pool.label if pool is not None else None
+    if borrowed:
+        return borrowed
     words = key.replace("_", " ")
     return words[:1].upper() + words[1:]
 

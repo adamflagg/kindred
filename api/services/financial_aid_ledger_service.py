@@ -58,7 +58,7 @@ _HYPHEN = re.compile(r"\s*-\s*")
 _DASHES = str.maketrans({"–": "-", "—": "-", "−": "-"})  # en, em, minus
 
 # The funder types whose aid_postings lines are grants (D55): outside grants and funds, and
-# family incentives (JFAM). The camp's own aid is "camp"; an unclassified line is "unknown".
+# family incentives. The camp's own aid is "camp"; an unclassified line is "unknown".
 GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
 # Go's attribution level for money a staff placement put on a request: what a split line's placed dollars read as on
 # /summary (D151). Go never emits "decision" and a split's override places nothing, so Go infers a split line's level.
