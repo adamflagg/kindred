@@ -75,7 +75,7 @@ describe('ProgramsTab (spec §9.3)', () => {
     const heads = within(table).getAllByRole('columnheader')
     const divided = heads.filter((h) => h.className.includes('border-l')).map((h) => h.textContent)
     expect(divided).toHaveLength(4)
-    expect(divided.filter((t) => t?.startsWith('Apps'))).toHaveLength(3)
+    expect(divided.filter((t) => t.startsWith('Apps'))).toHaveLength(3)
     expect(divided).toContain('Total awarded')
   })
 

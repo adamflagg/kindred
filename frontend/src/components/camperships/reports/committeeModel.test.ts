@@ -168,7 +168,7 @@ describe('the other four tables', () => {
 })
 
 describe("Year over year's dividers, where statistics-v2.html draws them (.bl)", () => {
-  const divided = (columns: readonly { key: string; divider?: 'before' | undefined }[]) =>
+  const divided = (columns: ReadonlyArray<{ key: string; divider?: 'before' | undefined }>) =>
     columns.filter((c) => c.divider === 'before').map((c) => c.key)
 
   it('divides each phase and the total in RPT-1', () => {
