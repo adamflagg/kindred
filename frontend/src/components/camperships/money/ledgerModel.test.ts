@@ -6,6 +6,7 @@ import {
   footWords,
   hasUnclassified,
   pivotRows,
+  programLabelsOf,
   shareWords,
   splitWords,
   summaryCsvName,
@@ -66,11 +67,29 @@ describe('ledgerModel', () => {
     expect(splitWords(SUMMARY_PAST)).toMatch(/^A split placement still counts at household level/)
   })
 
-  it("names a program in the rules' words, and the server's no-program buckets", () => {
-    expect(summaryProgramWords('summer', NAMES)).toBe('Summer Sessions')
-    expect(summaryProgramWords('quest', NAMES)).toBe('Quest')
-    expect(summaryProgramWords('ambiguous', NAMES)).toBe('Household level')
-    expect(summaryProgramWords('unattributed', NAMES)).toBe('Not placed')
+  // Ruled test edit (coordinator 10-08, program_label): the server sends the season's label, so the
+  // words come from `program_label`, never from a key. These replace the rules-map expectations
+  // ('quest' -> 'Quest' spelled out from its key is now 'Other program').
+  it("names a program in the server's label, and the two no-program buckets when it sends none", () => {
+    expect(summaryProgramWords('summer', 'Summer Sessions')).toBe('Summer Sessions')
+    expect(summaryProgramWords('ambiguous', '')).toBe('Household level')
+    expect(summaryProgramWords('unattributed', '')).toBe('Not placed')
+    expect(summaryProgramWords('ambiguous', undefined)).toBe('Household level')
+    expect(summaryProgramWords('unattributed')).toBe('Not placed')
+  })
+
+  it('reads any other program without a label as "Other program", never its key', () => {
+    expect(summaryProgramWords('quest', '')).toBe('Other program')
+    expect(summaryProgramWords('quest', undefined)).toBe('Other program')
+    expect(summaryProgramWords('quest')).toBe('Other program')
+  })
+
+  it('collects the labels the summary sends, by program key, skipping empty ones', () => {
+    expect(programLabelsOf(SUMMARY)).toEqual({
+      summer: 'Summer Sessions',
+      family_camp: 'Family Camp Weekends',
+    })
+    expect(programLabelsOf(undefined)).toEqual({})
   })
 
   it('names the CSV with the date it shows', () => {

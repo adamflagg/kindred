@@ -1,6 +1,6 @@
 /** Money › Ledger's posted totals (F10; money-v2's pivot; R3-2), through the real hooks. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
@@ -25,9 +25,16 @@ vi.mock('../shell/AidDefinitionNotes', () => ({
 }))
 // The family rows have their own tests (LedgerFamilies.test.tsx, LedgerLines.test.tsx).
 vi.mock('./LedgerFamilies', () => ({
-  LedgerFamilies: ({ unclassified }: { unclassified?: number | null }) => (
+  LedgerFamilies: ({
+    unclassified,
+    programLabels,
+  }: {
+    unclassified?: number | null
+    programLabels?: Record<string, string>
+  }) => (
     <div>
       Family rows<span data-testid="unclassified-prop">{String(unclassified)}</span>
+      <span data-testid="labels-prop">{JSON.stringify(programLabels)}</span>
     </div>
   ),
 }))
@@ -102,6 +109,32 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     expect(await screen.findByRole('columnheader', { name: 'Unclassified' })).toBeInTheDocument()
     expect(within(rowOf('All programs')).getByText('$734,900')).toBeInTheDocument()
+  })
+
+  it("shows each pivot row's program_label, and the bucket words where the server sends none", async () => {
+    summary = {
+      ...SUMMARY,
+      by_program: [
+        ...(SUMMARY.by_program ?? []),
+        { ...(SUMMARY.by_program ?? [])[0]!, program: 'quest', program_label: 'Session 3' },
+        { ...(SUMMARY.by_program ?? [])[0]!, program: 'teen' },
+      ],
+    }
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findByText('Session 3')
+    expect(screen.getByText('Household level')).toBeInTheDocument()
+    expect(screen.getByText('Not placed')).toBeInTheDocument()
+    expect(screen.getByText('Other program')).toBeInTheDocument()
+    expect(screen.queryByText(/^Teen$|^Quest$/)).toBeNull()
+  })
+
+  it("hands the family rows the summary's labels by program", async () => {
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await waitFor(() => expect(screen.getByTestId('labels-prop')).toHaveTextContent('summer'))
+    expect(JSON.parse(screen.getByTestId('labels-prop').textContent ?? '')).toEqual({
+      summer: 'Summer Sessions',
+      family_camp: 'Family Camp Weekends',
+    })
   })
 
   it("hands the family rows the summary's unclassified figure, never a sum", async () => {

@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Link } from 'react-router'
 
 import { useAidLedgerLines } from '../../../hooks/camperships/useAidMoneyLedger'
-import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
 import type {
   ApiAidLedgerFamily,
   ApiAidLedgerLine,
@@ -19,7 +18,6 @@ import { familyLabel } from '../kit/familyLabel'
 import { formatMoney, moneyCsv } from '../kit/money'
 import { Money, ReversedAmount } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
-import { programLabel } from '../requests/programLabel'
 import {
   LEDGER_LEVEL_TONE,
   LEDGER_LEVEL_WORDS,
@@ -27,6 +25,7 @@ import {
   ledgerLinesCsvName,
   type LedgerFilters,
 } from './ledgerFamiliesModel'
+import { summaryProgramWords } from './ledgerModel'
 import { keyWords } from './sourcesModel'
 
 const lineKey = (line: ApiAidLedgerLine) => String(line.transaction_cm_id)
@@ -55,7 +54,6 @@ export function LedgerLines({
   onClose: () => void
 }) {
   const lines = useAidLedgerLines(total, filters)
-  const names = useAidProgramNames()
   const columns = useMemo((): ReadonlyArray<AidColumn<ApiAidLedgerLine>> => {
     // Ruling D on the lines card too (R3-3): the family row's label, else the line's family name.
     const labelOfLine = (l: ApiAidLedgerLine) =>
@@ -97,7 +95,7 @@ export function LedgerLines({
         key: 'program',
         header: 'Program',
         width: 140,
-        value: (l) => (l.program === '' ? '' : programLabel(names, l.program)),
+        value: (l) => (l.program === '' ? '' : summaryProgramWords(l.program, l.program_label)),
       },
       {
         key: 'amount',
@@ -133,7 +131,7 @@ export function LedgerLines({
           ),
       },
     ]
-  }, [names, view, familyOf])
+  }, [view, familyOf])
   const asOf = view.asOf.kind === 'past' ? view.asOf.date : null
 
   return (

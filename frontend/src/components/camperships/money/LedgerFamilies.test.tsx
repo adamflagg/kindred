@@ -47,13 +47,20 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function renderAt(path: string, view: AidView = LIVE, unclassified?: number) {
+const LABELS = { summer: 'Session 2', quest: 'Quest' }
+
+function renderAt(
+  path: string,
+  view: AidView = LIVE,
+  unclassified?: number,
+  programLabels: Readonly<Record<string, string>> = LABELS
+) {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter initialEntries={[path]}>
-        <LedgerFamilies view={view} unclassified={unclassified} />
+        <LedgerFamilies view={view} unclassified={unclassified} programLabels={programLabels} />
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -119,7 +126,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     )
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Program' }),
-      await screen.findByRole('option', { name: 'Summer Sessions' })
+      await screen.findByRole('option', { name: 'Session 2' })
     )
     await waitFor(() => expect(ledgerCalls().at(-1)).toContain('&program=summer&level=household'))
   })
@@ -158,6 +165,18 @@ describe('Money › Ledger family rows (P-22)', () => {
     ).toEqual(['all', 'camp fa', 'named fund', 'other outside', 'placeholder', 'unclassified'])
   })
 
+  it("labels the Program select's choices with the server's program_label, 'Other program' where it sent none", async () => {
+    renderAt('/aid/money/ledger')
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    const program = screen.getByRole('combobox', { name: 'Program' })
+    const words = within(program)
+      .getAllByRole('option')
+      .map((o) => o.textContent)
+    expect(words.slice(0, 3)).toEqual(['all', 'Session 2', 'Quest'])
+    expect(words.slice(3).every((w) => w === 'Other program')).toBe(true)
+    expect(words.join()).not.toMatch(/family_camp|Family camp|Bmitzvah|Teen/)
+  })
+
   it('shows a stale or hand-edited ?source= and ?program= in its select, since that is what is sent', async () => {
     renderAt('/aid/money/ledger?source=old_family&program=old_program')
     await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
@@ -167,7 +186,9 @@ describe('Money › Ledger family rows (P-22)', () => {
     const source = screen.getByRole('combobox', { name: 'Source' })
     const program = screen.getByRole('combobox', { name: 'Program' })
     expect(source).toHaveDisplayValue('old family')
-    expect(program).toHaveDisplayValue('Old program')
+    // Ruled test edit (coordinator 10-08, program_label): a program with no label reads
+    // 'Other program' (was 'Old program', the key spelled out).
+    expect(program).toHaveDisplayValue('Other program')
     // A value the select already offers is not listed twice.
     expect(within(source).getAllByRole('option', { name: 'camp fa' })).toHaveLength(1)
   })
