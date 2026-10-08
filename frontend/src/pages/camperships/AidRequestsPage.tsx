@@ -31,6 +31,12 @@ import {
   opWords,
 } from '../../components/camperships/requests/opFilter'
 import { programGroups } from '../../components/camperships/requests/programLabel'
+import {
+  bothIds,
+  reportLine,
+  reportParam,
+  reportRequestIds,
+} from '../../components/camperships/requests/reportFilter'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
 import {
   FIGURE_PARAMS,
@@ -67,6 +73,7 @@ import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidHistoryOperation } from '../../hooks/camperships/useAidHistory'
+import { useAidReportRequests } from '../../hooks/camperships/useAidReportRequests'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -93,6 +100,7 @@ export default function AidRequestsPage() {
     live: liveOnly,
     figure,
     op,
+    report,
     showIds,
     sort,
     group,
@@ -107,6 +115,14 @@ export default function AidRequestsPage() {
     () => (op === null ? null : (opRequestIds(opRead.data) ?? new Set<string>())),
     [op, opRead.data]
   )
+  // A Reports count's requests (slice 4 J): the same empty set while the ids read is out or failed.
+  const reportRead = useAidReportRequests(report)
+  const reportIds = useMemo(
+    () => (report === null ? null : (reportRequestIds(reportRead.data) ?? new Set<string>())),
+    [report, reportRead.data]
+  )
+  const ids = useMemo(() => bothIds(opIds, reportIds), [opIds, reportIds])
+  const reportFailed = reportRead.data === undefined && reportRead.error !== null
   // The line says the operation is being read, or failed, rather than "The 0 requests" (a 404 has its own words).
   const opFailed =
     opRead.data === undefined && opRead.error !== null && !hasStatus(opRead.error, 404)
@@ -143,8 +159,8 @@ export default function AidRequestsPage() {
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, live: liveOnly, figure, ids: opIds }),
-    [program, pool, round, liveOnly, figure, opIds]
+    (): GridFilters => ({ program, pool, round, live: liveOnly, figure, ids }),
+    [program, pool, round, liveOnly, figure, ids]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -361,8 +377,9 @@ export default function AidRequestsPage() {
       ...(liveOnly ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(op !== null ? { op } : {}),
+      ...(report !== null ? { report: reportParam(report) } : {}),
     }),
-    [program, pool, round, figure, liveOnly, showIds, op]
+    [program, pool, round, figure, liveOnly, showIds, op, report]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -382,11 +399,11 @@ export default function AidRequestsPage() {
   // The household page's walk reads the same pair: `from=<stage slug>` (or `all`) and the lens.
   const from = stage?.slug ?? 'all'
 
-  // `op` stays out of the household link: the queue walk's filters do not read it, so a link that
-  // carried it would walk every request and Back would drop it anyway.
+  // `op` and `report` stay out of the household link: the queue walk's filters do not read them, so
+  // a link that carried one would walk every request and Back would drop it anyway.
   const householdKeep = useMemo(
     (): Record<string, string> =>
-      Object.fromEntries(Object.entries(keep).filter(([k]) => k !== 'op')),
+      Object.fromEntries(Object.entries(keep).filter(([k]) => k !== 'op' && k !== 'report')),
     [keep]
   )
 
@@ -474,12 +491,42 @@ export default function AidRequestsPage() {
           {opFailed && (
             <>
               <button type="button" className={ACTION_LINK} onClick={() => void opRead.refetch()}>
-                Try again
+                Try Again
               </button>
               ·
             </>
           )}
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('op', null)}>
+            Show All
+          </button>
+        </p>
+      )}
+      {report !== null && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          {reportLine(
+            report.report,
+            reportRead.data,
+            reportFailed,
+            rows === undefined ? null : rowKeys
+          )}{' '}
+          ·
+          {reportFailed && (
+            <>
+              <button
+                type="button"
+                className={ACTION_LINK}
+                onClick={() => void reportRead.refetch()}
+              >
+                Try Again
+              </button>
+              ·
+            </>
+          )}
+          <button
+            type="button"
+            className={ACTION_LINK}
+            onClick={() => changeFilter('report', null)}
+          >
             Show All
           </button>
         </p>
