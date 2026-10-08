@@ -200,7 +200,10 @@ export function RegisterTab({ view }: { view: AidView }) {
           ) : r.is_reversed ? (
             <s className={CS_PMETA}>{standingWords(r)}</s>
           ) : (
-            <span className={MARK_TEXT}>{`✓ ${standingWords(r)}`}</span>
+            <div>
+              <span className={MARK_TEXT}>{`✓ ${standingWords(r)}`}</span>
+              {standingNote(r) !== '' && <div className={CS_PMETA}>{standingNote(r)}</div>}
+            </div>
           ),
       },
       {

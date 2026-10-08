@@ -144,6 +144,8 @@ describe('Grants › Register (§8.2)', () => {
     renderTab('/aid/grants/register?show=after-offer')
     expect(await screen.findByText('1 grant')).toBeInTheDocument()
     expect(screen.getByText('after the offer')).toBeInTheDocument()
+    // The late line's muted note under where it stands, as grants-v2.html draws it (R5-1).
+    expect(screen.getByText('after the offer · extra for the family')).toBeInTheDocument()
     expect(screen.getByText('no grantor yet')).toBeInTheDocument()
   })
 
