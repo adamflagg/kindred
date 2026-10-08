@@ -3739,6 +3739,10 @@ export type DevelopmentColumnOut = {
    * Not Rebuilt
    */
   not_rebuilt?: Array<string>
+  /**
+   * Requests Capped
+   */
+  requests_capped?: number
 }
 
 /**
@@ -27058,7 +27062,12 @@ export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * Column
+     */
+    column?: string | null
+  }
   url: '/api/financial-aid/reports/{year}/development'
 }
 

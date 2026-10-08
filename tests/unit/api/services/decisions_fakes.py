@@ -334,7 +334,7 @@ def approved(rules: AidRules | None = None, version: int = 1) -> RulesVersion:
 
 
 class FakeRules:
-    """latest_approved returns `version`; lock_writes returns one aid_rules update per section, except
+    """latest_approved returns `version` (first_approved `first`, `version` unless a test sets it); lock_writes returns one aid_rules update per section, except
     the ones listed in `not_locked`, which it reports as not locked (a rules validation error).
 
     Each lock_writes call reads the record at the next of `revision_reads` (then 0 once they run out) and
@@ -343,6 +343,7 @@ class FakeRules:
 
     def __init__(self, version: RulesVersion | None) -> None:
         self.version = version
+        self.first: RulesVersion | None = version  # first_approved's answer (the board-passed budget)
         self.as_of_version: RulesVersion | Exception | None = version
         self.as_of_calls: list[datetime] = []
         self.not_locked: list[SectionName] = []
@@ -351,6 +352,9 @@ class FakeRules:
 
     async def latest_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
         return self.version
+
+    async def first_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
+        return self.first
 
     async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
         self.as_of_calls.append(at)

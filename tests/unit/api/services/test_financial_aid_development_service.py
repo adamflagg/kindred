@@ -4,6 +4,7 @@ decided, not posted. The clock is April 1 2027. Fictional only."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -12,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from api.schemas.financial_aid_reports import DatedColumn
 from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent
 from api.services.financial_aid_development_repository import GrantorRecord, PersonRecord, SourceRecord
 from api.services.financial_aid_development_service import (
@@ -72,13 +74,14 @@ def _service(
     store: FakeDecisionsStore | None = None,
     past_register: Sequence[RegisterRow] = (),
     rules: AidRules | None = None,
+    fake_rules: FakeRules | None = None,
 ) -> FinancialAidDevelopmentService:
     async def rows(year: int) -> Sequence[RegisterRow]:
         return list(register) if year == YEAR else list(past_register)
 
     return FinancialAidDevelopmentService(
         store or report_season(),
-        FakeRules(approved(rules or intake_rules())),
+        fake_rules or FakeRules(approved(rules or intake_rules())),
         rows,
         development,
         history or FakeReportsStore(),
@@ -90,9 +93,18 @@ def _row(out: Any, key: str, group: str | None) -> Any:
     return next(r for r in out.rows if r.key == key and r.group == group)
 
 
+def _asks_within_cost() -> FakeDecisionsStore:
+    """report_season with Emma's ask at her session's 2,000 cost: no ask is impossible (owner 10-03)."""
+    store = report_season()
+    store.requests["reqemma00000001"] = replace(store.requests["reqemma00000001"], ask=2000.0)
+    return store
+
+
 async def test_the_season_column_is_all_money_on_campers_who_attended() -> None:
     """D87: the camp's awarded money plus every live outside grant; Liam's decided 1,100 is not money given out."""
-    out = await _service(_development(), register=[grant_row("reqemma00000001", "500")]).development(YEAR)
+    out = await _service(
+        _development(), register=[grant_row("reqemma00000001", "500")], store=_asks_within_cost()
+    ).development(YEAR)
     assert [(c.season, c.basis, c.basis_unconfirmed) for c in out.columns] == [(2027, "P", False)]
     assert [(g.key, g.kind) for g in out.groups] == [
         ("camp_pool", "summer"),
@@ -102,7 +114,7 @@ async def test_the_season_column_is_all_money_on_campers_who_attended() -> None:
     assert _row(out, "total_awards", "camp_pool").values == [2000.0]
     assert _row(out, "awards", "camp_pool").values == [1.0]  # item 32: Emma's aid and her grant are one award
     assert _row(out, "recipients", None).values == [1.0]
-    assert _row(out, "total_requests", "camp_pool").values == [6000.0]  # both attended, both asked
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]  # both attended, both asked
     assert [(s.name, s.who_paid, s.amount, s.awards) for s in out.sources] == [
         ("The camp's awards", "the camp", 1500.0, 1),
         ("Regional Camp Fund", "another funder", 500.0, 1),
@@ -592,7 +604,7 @@ async def test_number_of_awards_says_what_an_award_is_and_the_average_divides_by
     assert "session" in awards
     assert "counts as one" not in awards
     average = _row(out, "average_award", "camp_pool").definition
-    assert "Number of awards" in average
+    assert "Grants/Awards" in average  # owner ruling L (10-08): the row's new name
     assert "counts as one" not in average
 
 
@@ -676,3 +688,121 @@ async def test_a_funders_incentive_and_need_based_money_stay_on_separate_lines()
         ("Regional Camp Fund", False, 500.0),
         ("Regional Camp Fund", True, 250.0),
     ]
+
+
+async def test_a_request_above_its_sessions_cost_counts_at_the_cost_and_the_column_counts_it() -> None:
+    """Rule M (owner 10-08, per request): a request whose asks add up to more than its session's cost (as priced, a
+    staff cost override included) counts AT the cost in Total Requests and % of need met, and the column counts it for the
+    footnote ("N requests above their session's cost counted at the cost"). Emma asks 4,000 for Session 2, which costs
+    2,000 (fixtures.fictional_rules), so she counts 2,000; Liam's 2,000 stays: 4,000."""
+    out = await _service(_development()).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]
+    assert [(c.season, c.basis, c.requests_capped) for c in out.columns] == [(2027, "P", 1)]
+
+
+async def test_a_season_with_no_ask_above_its_cost_caps_none() -> None:
+    out = await _service(_development(), store=_asks_within_cost()).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]
+    assert [c.requests_capped for c in out.columns] == [0]
+
+
+async def test_an_ask_above_its_sessions_cost_is_capped_though_the_familys_income_is_missing() -> None:
+    """The session's cost doesn't depend on the family's income: a request the calculator stops on (no income figure
+    reported) still has its session's price, so its 4,000 ask on a 2,000 session counts at 2,000 too (Rule M)."""
+    store = report_season()
+    store.applications = [replace(a, answers={}) if a.household_cm_id == 1000001 else a for a in store.applications]
+    out = await _service(_development(), store=store).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]
+    assert [c.requests_capped for c in out.columns] == [1]
+
+
+# --- owner 10-08: the Budget row (development-v2) and ruling L's "Grants/Awards" ---------------------------------
+
+BUDGET_LABEL = "Budget (this camp's, the first board-passed)"
+
+
+def _budget_rows(out: Any) -> list[Any]:
+    return [r for r in out.rows if r.key == "budget"]
+
+
+async def test_the_budget_row_is_one_total_line_from_the_rules_on_a_kindred_column() -> None:
+    """The mock's Budget row, total only (owner 10-08): one line, this camp's own aid budget (D96), never the
+    all-money total and never split by group. A P column reads the season's approved rules: 500,000."""
+    out = await _service(_development()).development(YEAR)
+    [budget] = _budget_rows(out)
+    assert (budget.group, budget.label, budget.section, budget.unit) == (None, BUDGET_LABEL, "money", "dollars")
+    assert budget.values == [500000.0]
+    assert out.rows[0].key == "budget"  # the first money line, as the mock draws it
+
+
+async def test_the_budget_row_reads_the_seasons_first_approved_budget() -> None:
+    """Owner 10-08 (D96, "the first (board-passed) budget"): a P column shows the total of the season's FIRST
+    approved budget, which doesn't move when a later version with another budget is approved and prices the season.
+    A dated column shows the same figure: it is the board-passed budget, not the budget as of the day."""
+    fake = FakeRules(approved(with_lever(intake_rules(), "budget.total", "600000"), version=2))
+    fake.first = approved(with_lever(intake_rules(), "budget.total", "450000"), version=1)
+    out = await _service(_development(), fake_rules=fake).development(
+        YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5))
+    )
+    assert [(c.basis, c.as_of) for c in out.columns] == [("P", date(2027, 4, 1)), ("P", date(2027, 3, 5))]
+    assert [(r.group, r.values) for r in _budget_rows(out)] == [(None, [450000.0, 450000.0])]
+
+
+async def test_a_season_with_no_approved_budget_shows_none_on_its_kindred_column() -> None:
+    """No approved version carries a budget: the P column's Budget is blank, never a later draft's figure."""
+    fake = FakeRules(approved(intake_rules()))
+    fake.first = None
+    out = await _service(_development(), fake_rules=fake).development(YEAR)
+    assert [(r.group, r.values, r.label) for r in _budget_rows(out)] == [(None, [None], BUDGET_LABEL)]
+
+
+async def test_the_budget_row_reads_the_typed_budget_on_an_as_reported_column() -> None:
+    """An r column's budget is finance's typed total budget for that season (the first one typed: the board-passed
+    one); a pool's typed budget and finance's other typed figures never reach development."""
+    history = FakeReportsStore()
+    history.seed(
+        ReportedFigure(
+            2026, "development", "total_awards", "camp_pool", 0, 0, "season_end", date(2026, 9, 29), Decimal(900000)
+        )
+    )
+    for pool, value, day in (("", "1111000", 10), ("camp_pool", "900000", 10), ("", "1200000", 20)):
+        history.seed(
+            ReportedFigure(2026, "finance", "budget", pool, 0, 0, "season_end", date(2026, 10, day), Decimal(value))
+        )
+    history.seed(ReportedFigure(2026, "finance", "awarded", "", 0, 0, "season_end", date(2026, 10, 10), Decimal(1)))
+    out = await _service(_development(), history).development(YEAR)
+    assert [(c.season, c.basis) for c in out.columns] == [(2026, "r"), (2027, "P")]
+    assert [(r.group, r.values) for r in _budget_rows(out)] == [(None, [1111000.0, 500000.0])]
+
+
+async def test_the_awards_count_is_called_grants_and_awards() -> None:
+    """Owner ruling L (10-08): Development's any-aid count is "Grants/Awards" (Statistics' camp-only count stays
+    "Awards")."""
+    out = await _service(_development()).development(YEAR)
+    assert _row(out, "awards", "camp_pool").label == "Grants/Awards"
+
+
+async def test_no_row_definition_shows_an_internal_id() -> None:
+    """Owner 10-08 (visual true-up): no staff-visible internal ids (ruling numbers, report ids, plan items)."""
+    out = await _service(_development()).development(YEAR)
+    shown = [r.definition for r in out.rows if re.search(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b", r.definition)]
+    assert shown == []
+
+
+def _strings(value: Any) -> list[str]:
+    """Every string in a response, at any depth: what staff can be shown."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+async def test_no_string_in_the_report_shows_an_internal_id() -> None:
+    """Owner 10-08 (visual true-up): the named gaps (not_built), labels and notes carry no internal ids either."""
+    out = await _service(_development()).development(YEAR)
+    assert {n.figure for n in out.not_built} >= {"rebuild"}
+    shown = [s for s in _strings(out.model_dump()) if re.search(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b", s)]
+    assert shown == []

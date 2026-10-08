@@ -171,7 +171,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="in_campminder_net",
         term="In CampMinder (net)",
         text=(
-            "In CampMinder (net): the family's live CampMinder camp-aid lines this season (lines Money › Sources "
+            "In CampMinder (net): the family's live CampMinder camp-aid lines this season (lines Money › Funders "
             "classes as camp aid, after any reclassifying override), across the households in the page scope, "
             "net of reversals. Outside grants are a separate column and are not in it. It is not Posted."
         ),
@@ -295,8 +295,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands "
             "today, on live requests (not cancelled, withdrawn or a pending duplicate). It is not the asked or requested total, which sums every "
             "app's ask, cancelled and closed ones included. A round paid wholly by an outside funder is never awarded, so its "
-            'ask is left out of the in-budget asks this divides by. With "include not yet offered" on, the awarded $ '
-            'is Posted + Decided, and the column reads "% of ask (posted + decided)".'
+            "ask is left out of the in-budget asks this divides by. The awarded $ is Posted only: money decided but not "
+            'yet offered shows in its own "Decided (not yet offered)" column and is never in this percentage.'
         ),
         spec="§5.6",
         rulings=("D80",),
@@ -383,9 +383,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests and the "
             "money of the rounds an outside funder pays in full, ÷ the "
             "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
-            "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. With "
-            '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
-            'grants (posted + decided)".'
+            "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
+            "The awarded $ is Posted only: money decided but not yet offered shows in its own "
+            '"Decided (not yet offered)" column and is never in this percentage.'
         ),
         spec="§9.2",
         rulings=("D80", "D116", "D132"),
@@ -442,7 +442,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Need: {camp}'s awards in the rounds before the latest ask + the latest ask, never less than any earlier "
             "ask's own figure. Total Requests = Σ need of the live requests of campers who attended; a cancelled or closed request and outside grants are never in it. % "
-            "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need."
+            "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need. A request "
+            "whose asks add up to more than its session's cost is counted at the cost, and a footnote says how many "
+            "requests were counted at the cost."
         ),
         spec="§5.10",
         rulings=("D91",),
@@ -707,8 +709,8 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "season-scenarios": ("scenario_spend", "remaining", "scenario_projected", "scenario_below_the_line"),
     "money-ledger": ("in_campminder_net", "posted"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
-    "money-sources": ("source_facts", "reporting_group", "source_lines"),
-    "grants": ("grants", "expected_grant", "last_dollar", "household_level", "grantor_season"),
+    "money-sources": ("source_facts", "reporting_group", "source_lines", "grantor_season"),  # Money › Funders
+    "grants": ("grants", "expected_grant", "last_dollar", "household_level"),
     "reports-statistics": (
         "apps",
         "cancelled_applicants",

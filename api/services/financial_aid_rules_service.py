@@ -822,6 +822,16 @@ class FinancialAidRulesService:
                 return version
         return None
 
+    async def first_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
+        """The OLDEST version of `year` in which every section in `sections` is approved or locked, or None: the
+        season's first approved figures, which a later approved version doesn't move (development's Budget row
+        reads the first board-passed budget this way, D96, owner 10-08). latest_approved's rule, from the other end."""
+        for row in await self._store.list_versions(year):
+            version = _to_version(row)
+            if all(version.section_status[name].state in ("approved", "locked") for name in sections):
+                return version
+        return None
+
     async def sections_locked_anywhere(self, year: int) -> frozenset[SectionName]:
         """Every section some version of `year` holds locked (Scenarios addendum §S11.3). Any version, not just the
         latest: a branch lifts the locks in the version it writes (`carry_forward`), as `_budget_total_locked`

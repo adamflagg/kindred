@@ -315,6 +315,24 @@ def not_ticked_out(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[C
     )
 
 
+def not_ticked_outs(held: Sequence[tuple[int, LedgerTick, Sequence[ChangedReason]]]) -> list[NotTickedOut]:
+    """Every withheld round of one placement, in order, with the shared "after it was posted on <day>, <changes>"
+    explanation said ONCE per line: a split's parts withheld for the same changes (same posting day, same list) would otherwise
+    repeat it, whole, in "What Confirm does". The first such part keeps the full `withheld_why`; each later one says
+    only that its own round wasn't marked either, for the same changes (Money › To place, owner/coordinator 10-08).
+    Only an identical explanation on the same line folds (another line is another row on screen): a part withheld for other changes keeps its own."""
+    seen: set[tuple[int, date, tuple[str, ...]]] = set()
+    out: list[NotTickedOut] = []
+    for transaction_cm_id, tick, reasons in held:
+        item = not_ticked_out(transaction_cm_id, tick, reasons)
+        key = (transaction_cm_id, tick.posted_on, tuple(item.reasons))
+        if key in seen:
+            item.why = f"Round {tick.round} wasn't marked posted automatically either: the same changes as above."
+        seen.add(key)
+        out.append(item)
+    return out
+
+
 def _raced(exc: BatchRequestFailedError) -> bool:
     """Someone created the same row first (a unique index) or removed it first (404): a race, not a refusal."""
     return exc.status == 404 or any("unique" in message.lower() for message in exc.field_errors.values())
@@ -402,7 +420,7 @@ class ToPlaceService:
                 would_tick=_ticked_out(ticks),
                 would_lock=money(sum((t.amount for t in ticks), ZERO)),
                 would_leave=_left_out(outcome, season, ticks, held),
-                would_not_tick=[not_ticked_out(item.line.transaction_cm_id, t, reasons) for t, reasons in held],
+                would_not_tick=not_ticked_outs([(item.line.transaction_cm_id, t, reasons) for t, reasons in held]),
             )
 
         def line_out(item: ToPlaceItem, pending: str, note: str) -> ToPlaceLineOut:
@@ -623,7 +641,7 @@ class ToPlaceService:
         for row in rows:
             for part in row.parts:
                 first_line.setdefault(part.request_id, row.transaction_cm_id)
-        not_ticked = [not_ticked_out(first_line[tick.request_id], tick, reasons) for tick, reasons in held]
+        not_ticked = not_ticked_outs([(first_line[tick.request_id], tick, reasons) for tick, reasons in held])
         return _Plan(
             season=season,
             writes=tuple(writes),

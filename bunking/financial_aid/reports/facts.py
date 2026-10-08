@@ -97,6 +97,11 @@ class ReportRequest:
     # False only for a CONFIRMED duplicate holding a posted award (owner ruling, queue 4): it is not an application
     # (D72), so it stays out of Apps, Asked, "# asks", r1_apps and every received count; only its money counts.
     counts_as_received: bool = True
+    # The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override; None
+    # when nothing could price it: a request that isn't live, no rules, or a program with no price). Development counts
+    # a request whose asks add up to more at the cost (Rule M). The service fills it
+    # (financial_aid_reports_facts.session_cost).
+    cost: Decimal | None = None
 
     @property
     def live(self) -> bool:

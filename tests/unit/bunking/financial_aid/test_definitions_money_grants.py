@@ -21,8 +21,9 @@ def test_slice_3s_three_surfaces_number_their_notes_in_this_order() -> None:
         "placement_tick",
         "posted",
     )
-    assert SURFACES.get("money-sources") == ("source_facts", "reporting_group", "source_lines")
-    assert SURFACES.get("grants") == ("grants", "expected_grant", "last_dollar", "household_level", "grantor_season")
+    # Slice 3 (10-08): Money › Funders (Sources folded in) renders "Grants this season"; Money › Grants never did.
+    assert SURFACES.get("money-sources") == ("source_facts", "reporting_group", "source_lines", "grantor_season")
+    assert SURFACES.get("grants") == ("grants", "expected_grant", "last_dollar", "household_level")
 
 
 def test_not_yet_in_campminder_is_d151s_figure() -> None:
@@ -79,3 +80,10 @@ def test_expected_clears_on_a_line_or_an_open_commitment() -> None:
         "It clears itself when a line or an open commitment arrives (a reversed line counts: the application was answered)."
         in text
     )
+
+
+def test_in_campminder_net_names_money_funders_where_sources_were_folded_in() -> None:
+    """Owner Q2 (10-08): Money › Sources folded into Money › Funders; the note names the tab staff see."""
+    text = BY_KEY["in_campminder_net"].text
+    assert "Money › Funders" in text
+    assert "Money › Sources" not in text
