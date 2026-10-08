@@ -42,6 +42,26 @@ const toolbar = () => screen.getByLabelText('Search').closest('[data-aid-toolbar
 const caret = () => within(toolbar()).queryByRole('button', { name: 'More downloads' })
 
 describe('AidTable csvMenu', () => {
+  it('stays closed when the menu goes away and comes back (a view change), not reopening by itself', async () => {
+    const table = (withMenu: boolean) => (
+      <MemoryRouter>
+        <AidTable
+          rows={ROWS}
+          columns={COLUMNS}
+          rowKey={rowKey}
+          csvFilename="x.csv"
+          csvMenu={withMenu ? <button type="button">Menu Extra</button> : undefined}
+        />
+      </MemoryRouter>
+    )
+    const { rerender } = render(table(true))
+    await userEvent.click(caret()!)
+    expect(screen.getByText('Menu Extra')).toBeInTheDocument()
+    rerender(table(false))
+    rerender(table(true))
+    expect(screen.queryByText('Menu Extra')).toBeNull()
+  })
+
   it('draws a plain Download CSV, no caret, without one', () => {
     renderTable(false)
     expect(within(toolbar()).getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()

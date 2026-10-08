@@ -485,6 +485,9 @@ export function AidTable<Row>({
   // The CSV split button's menu: Esc and a press outside it close it.
   const csvMenuRef = useRef<HTMLDivElement>(null)
   const [csvMenuOpen, setCsvMenuOpen] = useState(false)
+  const hasCsvMenu = csvMenu !== undefined
+  // The menu going away (a view change) closes it, so it never reopens by itself when it returns.
+  if (!hasCsvMenu && csvMenuOpen) setCsvMenuOpen(false)
   useEffect(() => {
     if (!csvMenuOpen) return
     const onKey = (event: KeyboardEvent) => {
