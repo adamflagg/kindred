@@ -36,6 +36,11 @@ export interface SeasonChrome {
   readonly closeUnlock: () => void
   readonly unlock: (reason: string) => void
   readonly lockAgain: () => void
+  /**
+   * Counts each Lock Again: an open editor closes when it moves (coordinator ruling: Lock Again is deliberate). The
+   * 30 minutes running out moves nothing, so the typing survives an Unlock… again.
+   */
+  readonly relocks: number
   /** The reason while unlocked, else null: every rules write sends it as `past_season_reason`. */
   readonly pastSeasonReason: string | null
 }
@@ -63,6 +68,7 @@ const NONE: SeasonChrome = {
   closeUnlock: () => undefined,
   unlock: () => undefined,
   lockAgain: () => undefined,
+  relocks: 0,
   pastSeasonReason: null,
 }
 

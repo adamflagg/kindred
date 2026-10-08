@@ -606,6 +606,24 @@ describe('a done season on Rules (spec §11.3)', () => {
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
   })
 
+  // Coordinator ruling: Lock Again (a deliberate click) closes an open editor; its Save would only meet a refusal.
+  it('Lock Again closes an open editor', async () => {
+    granted = FINANCE
+    draft = {
+      data: { ...rulesDraft(), season_done: true, configured_year: 2028 },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock…' }))
+    await userEvent.type(screen.getByLabelText('Why correct a done season?'), 'Late fix')
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Edit…' })[0] as HTMLElement)
+    expect(screen.getByText('Save or cancel the edit first.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Lock Again' }))
+    expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
+  })
+
   it('says "Done season" in the lead line, for finance and the registrar both', () => {
     granted = FINANCE
     draft = {

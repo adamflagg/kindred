@@ -81,7 +81,7 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
   const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
   const draft = useAidRulesDraft({ enabled: finance })
   const live = view.asOf.kind !== 'past'
-  const { approving, locked } = useSeasonChrome()
+  const { approving, locked, relocks } = useSeasonChrome()
   // Edit Plan… waits while the Approve panel is open, as Rules' Edit… does ("Approve or cancel first.").
   const canPlan =
     finance &&
@@ -92,6 +92,13 @@ function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidVie
     !locked
   const [editing, setEditing] = useState(false)
   const [typed, setTyped] = useState<TypedPlan | null>(null)
+  // Lock Again closes Edit Plan… (its Save would only meet the server's refusal); expiry leaves it open.
+  const [seenRelocks, setSeenRelocks] = useState(relocks)
+  if (seenRelocks !== relocks) {
+    setSeenRelocks(relocks)
+    setEditing(false)
+    setTyped(null)
+  }
   // The editor lives in the Budget card, which a one-pool page and a past date do not show: arriving at either closes
   // the plan, or the pool cards would keep previewing typing nobody can see, save or cancel. Keyed on the arrival, not
   // on the state, so the nudge's own step from a one-pool page to All pools keeps the editor it opens.

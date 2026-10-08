@@ -71,6 +71,7 @@ export function SeasonChromeProvider({
     return () => clearTimeout(timer)
   }, [unlockedRaw])
   const [unlockingFor, setUnlockingFor] = useState<number | null>(null)
+  const [relocks, setRelocks] = useState(0)
   const locked = unreadable !== null || (done && unlocked === null)
   const [noticeFor, setNoticeFor] = useState<{ year: number; text: string } | null>(null)
   const [approvingFor, setApprovingFor] = useState<number | null>(null)
@@ -113,7 +114,13 @@ export function SeasonChromeProvider({
         setUnlockedRaw({ year, reason, at: Date.now() })
         setUnlockingFor(null)
       },
-      lockAgain: () => setUnlockedRaw(null),
+      // Lock Again closes the Approve panel here and every editor through `relocks`; expiry closes neither.
+      lockAgain: () => {
+        setUnlockedRaw(null)
+        setApprovingFor(null)
+        setRelocks((n) => n + 1)
+      },
+      relocks,
       pastSeasonReason: unlocked?.reason ?? null,
     }),
     [
@@ -129,6 +136,7 @@ export function SeasonChromeProvider({
       unreadable,
       unlocked,
       unlockingFor,
+      relocks,
     ]
   )
   return <SeasonChromeContext.Provider value={value}>{children}</SeasonChromeContext.Provider>

@@ -66,6 +66,7 @@ const DONE_FIELDS = {
   unlock: () => undefined,
   lockAgain: () => undefined,
   pastSeasonReason: null,
+  relocks: 0,
 }
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
@@ -237,6 +238,43 @@ describe('Rounds & budget (spec §5)', () => {
       </MemoryRouter>
     )
     expect(screen.queryByRole('button', { name: 'Edit Plan…' })).toBeNull()
+  })
+
+  // Coordinator ruling: Lock Again closes Edit Plan…; the chrome counts each Lock Again in `relocks`.
+  it('closes Edit Plan… when Lock Again counts a relock', async () => {
+    granted = FINANCE
+    const chromeAt = (relocks: number) => (
+      <MemoryRouter initialEntries={['/aid/season/rounds-budget']}>
+        <SeasonChromeContext.Provider
+          value={{
+            notice: null,
+            setNotice: () => undefined,
+            approving: false,
+            canApprove: false,
+            editing: false,
+            setEditing: () => undefined,
+            setApproveBusy: () => undefined,
+            openApprove: () => undefined,
+            closeApprove: () => undefined,
+            section: 'budget',
+            ...DONE_FIELDS,
+            done: true,
+            unlocked: { year: 2027, reason: 'Late fix', at: 0 },
+            pastSeasonReason: 'Late fix',
+            relocks,
+          }}
+        >
+          <RoundsBudgetTab />
+        </SeasonChromeContext.Provider>
+      </MemoryRouter>
+    )
+    const view = render(chromeAt(0))
+    await userEvent.click(
+      within(screen.getByTestId('budget-card')).getByRole('button', { name: 'Edit Plan…' })
+    )
+    expect(screen.getByLabelText('Total')).toBeInTheDocument()
+    view.rerender(chromeAt(1))
+    expect(screen.queryByLabelText('Total')).toBeNull()
   })
 
   // Scan of #3042: the editor lives in the Budget card, which a one-pool page or a past date does not show; leaving

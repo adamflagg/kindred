@@ -336,6 +336,28 @@ describe('SeasonChrome: a done season (spec §11.3)', () => {
     expect([chrome().locked, chrome().pastSeasonReason]).toEqual([true, null])
   })
 
+  // Coordinator ruling: Lock Again is a deliberate click, so it closes the Approve panel and tells every editor to
+  // close (`relocks`); the 30 minutes running out leaves them open, so staff can Unlock… again and Save the typing.
+  it('Lock Again closes the Approve panel and counts a relock', () => {
+    const { chrome } = renderProbe({ seasonDone: true })
+    act(() => chrome().unlock('Late fix'))
+    act(() => chrome().openApprove())
+    expect([chrome().approving, chrome().relocks]).toEqual([true, 0])
+    act(() => chrome().lockAgain())
+    expect([chrome().approving, chrome().relocks]).toEqual([false, 1])
+  })
+
+  it('the 30 minutes running out leaves the Approve panel open and counts no relock', () => {
+    vi.useFakeTimers()
+    const { chrome } = renderProbe({ seasonDone: true })
+    act(() => chrome().unlock('Late fix'))
+    act(() => chrome().openApprove())
+    act(() => {
+      vi.advanceTimersByTime(30 * 60 * 1000)
+    })
+    expect([chrome().locked, chrome().approving, chrome().relocks]).toEqual([true, true, 0])
+  })
+
   it('Approve… waits on a locked season', () => {
     const { chrome } = renderProbe({ seasonDone: true })
     expect(chrome().canApprove).toBe(false)

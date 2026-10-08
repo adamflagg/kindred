@@ -757,6 +757,12 @@ export function RulesTab() {
   const setNotice = chrome.setNotice
   // The card being edited lives here so it survives the switch from the version in effect to the draft.
   const [editing, setEditing] = useState<ApiAidRulesSection | null>(null)
+  // Lock Again closes the open editor (its Save would only meet the server's refusal); expiry leaves it open.
+  const [seenRelocks, setSeenRelocks] = useState(chrome.relocks)
+  if (seenRelocks !== chrome.relocks) {
+    setSeenRelocks(chrome.relocks)
+    setEditing(null)
+  }
   // Approve… waits while any card editor (the tiers editor too) is open: it would approve the draft without the typing.
   const setChromeEditing = chrome.setEditing
   const isEditing = editing !== null

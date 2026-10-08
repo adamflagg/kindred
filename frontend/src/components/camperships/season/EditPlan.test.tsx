@@ -41,6 +41,7 @@ const CHROME: SeasonChrome = {
   unlock: () => undefined,
   lockAgain: () => undefined,
   pastSeasonReason: null,
+  relocks: 0,
 }
 type SectionStatus = ApiAidRulesDraft['sections'][number]['status']
 
