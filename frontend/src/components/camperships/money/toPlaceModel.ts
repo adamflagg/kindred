@@ -8,6 +8,7 @@
 import type {
   ApiAidPlaceLineIn,
   ApiAidPlaceOut,
+  ApiAidSourceRow,
   ApiAidToPlace,
   ApiAidToPlaceCandidate,
   ApiAidToPlaceLine,
@@ -295,3 +296,27 @@ export function placeChoices(line: ApiAidToPlaceLine): {
 
 /** Whether the suggestion is itself a split: Confirm then reads "Confirm Split" (money-v2.html; review item 6). */
 export const suggestsSplit = (line: ApiAidToPlaceLine) => (line.suggestion?.parts.length ?? 0) > 1
+
+/**
+ * Where Reclassify may send a line (D104; P-7; the to-place service refuses anything else): a
+ * classified aid source, never the description the line already carries (the line names its
+ * description, not its key, so the two are matched by description). By description, A to Z.
+ */
+export function reclassifyTargets(
+  sources: readonly ApiAidSourceRow[],
+  line: ApiAidToPlaceLine
+): ApiAidSourceRow[] {
+  return sources
+    .filter(
+      (s) =>
+        s.classified_by !== 'unclassified' && s.counts_as_aid && s.description !== line.description
+    )
+    .sort((a, b) => a.description.localeCompare(b.description))
+}
+
+/** A target as the picker shows it: "Grantor C full-ride program (outside)" (D88's who paid). */
+export function targetWords(source: ApiAidSourceRow): string {
+  if (source.who_paid === 'the camp') return `${source.description} (camp aid)`
+  if (source.who_paid === 'another funder') return `${source.description} (outside)`
+  return source.description
+}

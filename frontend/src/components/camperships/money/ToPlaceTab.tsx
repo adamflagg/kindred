@@ -10,6 +10,7 @@ import type { AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { LeftLines } from './LeftLines'
+import { ReclassifiedLines } from './ReclassifiedLines'
 import { ToPlaceOpenRow, type LineAccess } from './ToPlaceOpenRow'
 import { ToPlaceTable } from './ToPlaceTable'
 import { toPlaceCsvName } from './toPlaceModel'
@@ -105,6 +106,10 @@ export function ToPlaceTab({ view }: { view: AidView }) {
                 canWork={access.casework}
                 onDone={onDone}
                 onRefused={onRefused}
+              />
+              <ReclassifiedLines
+                lines={data.reclassified ?? []}
+                total={data.reclassified_total ?? 0}
               />
             </div>
           )

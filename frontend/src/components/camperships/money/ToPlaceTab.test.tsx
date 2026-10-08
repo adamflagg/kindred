@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import type { ApiAidToPlace } from '../../../types/api-types'
 import { ToPlaceTab } from './ToPlaceTab'
-import { CHEN_EXACT, TO_PLACE, TO_PLACE_SKIPPED } from './toPlaceFixtures'
+import { SOURCES } from './sourcesFixtures'
+import { CHEN_EXACT, SAM_RECLASSIFIED, TO_PLACE, TO_PLACE_SKIPPED } from './toPlaceFixtures'
 
 const downloadSpy = vi.fn()
 vi.mock('../../../utils/csvExport', async (importActual) => ({
@@ -104,6 +105,8 @@ beforeEach(() => {
           })
         )
       }
+      // Reclassify's targets (part 1b): the sources registry.
+      if (path.includes('/sources')) return Promise.resolve(json(SOURCES))
       if (failReads) return Promise.resolve(json({ detail: 'Server error' }, 500))
       // Each read takes the next answer; the last one repeats.
       const next = reads.length > 1 ? reads.shift() : reads[0]
@@ -977,5 +980,114 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     expect(within(row).queryByTestId('place-editor')).toBeNull()
     expect(within(row).getByRole('button', { name: 'Leave at Family Level…' })).toBeInTheDocument()
     expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+  })
+})
+
+describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () => {
+  const SAM = '$900 · Camp aid · Summer · posted to Riley Sam · Apr 18'
+  const SAMUEL = '$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1'
+  const FINANCE = [...REGISTRAR, 'financial_aid.rules']
+
+  it('shows the registrar Reclassify… (finance), off: it is `rules` (money-v2.html; R1-8b)', async () => {
+    renderTab()
+    const row = await openLine(SAM)
+    expect(within(row).queryByRole('button', { name: 'Reclassify…' })).toBeNull()
+    expect(within(row).getByRole('button', { name: 'Reclassify… (finance)' })).toBeDisabled()
+  })
+
+  it('shows view-only staff no Reclassify at all', async () => {
+    granted = ['financial_aid.view']
+    renderTab()
+    const row = await openLine(SAM)
+    expect(within(row).queryByRole('button', { name: /Reclassify/ })).toBeNull()
+  })
+
+  it('offers finance Reclassify on a no-request or program-mismatch line, never a several-requests one', async () => {
+    granted = FINANCE
+    renderTab()
+    expect(
+      within(await openLine(SAM)).getByRole('button', { name: 'Reclassify…' })
+    ).toBeInTheDocument()
+    expect(
+      within(await openLine(SAMUEL)).getByRole('button', { name: 'Reclassify…' })
+    ).toBeInTheDocument()
+    const johnson = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    expect(within(johnson).queryByRole('button', { name: 'Reclassify…' })).toBeNull()
+  })
+
+  it('sends the target and the reason, and says the next ledger sync applies it', async () => {
+    granted = FINANCE
+    answers = [json({ ...WROTE, transaction_cm_id: 3000004 })]
+    renderTab()
+    const row = await openLine(SAM)
+    await userEvent.click(within(row).getByRole('button', { name: 'Reclassify…' }))
+    const editor = within(row).getByTestId('reclassify-editor')
+    await within(editor).findByRole('option', { name: 'Grantor C full-ride program (outside)' })
+    // The line's own description and the unclassified one are not offered.
+    expect(within(editor).queryByRole('option', { name: /^Camp aid · Summer/ })).toBeNull()
+    expect(within(editor).queryByRole('option', { name: /Returning-family bonus/ })).toBeNull()
+    expect(within(editor).getByRole('button', { name: 'Reclassify' })).toBeDisabled()
+    await userEvent.selectOptions(
+      within(editor).getByRole('combobox'),
+      'Grantor C full-ride program (outside)'
+    )
+    await userEvent.type(within(editor).getByRole('textbox'), 'An outside full-ride line')
+    await userEvent.click(within(editor).getByRole('button', { name: 'Reclassify' }))
+    expect(
+      await screen.findByText(
+        '✓ Sam: reclassified as Grantor C full-ride program. The next ledger sync applies it; until then the line is listed apart.'
+      )
+    ).toBeInTheDocument()
+    expect(writes()).toEqual([
+      {
+        url: '/api/financial-aid/money/2027/to-place/3000004/reclassify',
+        method: 'POST',
+        body: JSON.stringify({
+          source_key: 'keygrantorc0004',
+          reason: 'An outside full-ride line',
+        }),
+      },
+    ])
+    expect(calls().some((c) => c.url === '/api/financial-aid/sources?year=2027')).toBe(true)
+  })
+
+  it('shows a refusal in staff words, at the editor and the tab', async () => {
+    granted = FINANCE
+    answers = [json({ detail: "source 'keygrantorc0004' is not classified as aid" }, 422)]
+    renderTab()
+    const row = await openLine(SAM)
+    await userEvent.click(within(row).getByRole('button', { name: 'Reclassify…' }))
+    const editor = within(row).getByTestId('reclassify-editor')
+    await within(editor).findByRole('option', { name: 'Grantor C full-ride program (outside)' })
+    await userEvent.selectOptions(
+      within(editor).getByRole('combobox'),
+      'Grantor C full-ride program (outside)'
+    )
+    await userEvent.type(within(editor).getByRole('textbox'), 'An outside full-ride line')
+    await userEvent.click(within(editor).getByRole('button', { name: 'Reclassify' }))
+    expect(
+      await within(editor).findByText(
+        "Nothing was written: source 'keygrantorc0004' is not classified as aid"
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByText("Nothing was written: source 'keygrantorc0004' is not classified as aid")
+    ).toHaveLength(2)
+  })
+
+  it('lists reclassified lines apart, with where they go and the server’s total', async () => {
+    reads = [{ ...TO_PLACE, reclassified: [SAM_RECLASSIFIED], reclassified_total: 450 }]
+    renderTab()
+    const apart = await screen.findByTestId('reclassified-lines')
+    expect(
+      within(apart).getByText(/^Reclassified, waiting for the next ledger sync/)
+    ).toBeInTheDocument()
+    expect(
+      within(apart).getByText(
+        "1 · $450 · not counted as open; can't be placed or left until the sync applies it"
+      )
+    ).toBeInTheDocument()
+    expect(within(apart).getByText('→ Grantor C full-ride program')).toBeInTheDocument()
+    expect(screen.queryByText(/tonight/)).toBeNull()
   })
 })

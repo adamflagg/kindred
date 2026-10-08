@@ -10,6 +10,7 @@ import {
   SAMUEL_MISMATCH,
   TO_PLACE,
 } from './toPlaceFixtures'
+import { CAMP_QUEST, GRANTOR_C_FULL_RIDE, SOURCES, UNCLASSIFIED } from './sourcesFixtures'
 import {
   allLines,
   candidateDetail,
@@ -24,10 +25,12 @@ import {
   NOTHING_MARKED,
   placeChoices,
   placedWords,
+  reclassifyTargets,
   requestLabels,
   stillNotPlacedWords,
   suggestionWords,
   suggestsSplit,
+  targetWords,
   toPlaceCsvName,
   wouldLines,
 } from './toPlaceModel'
@@ -291,5 +294,29 @@ describe('the other ways to place a line (§8.1; D12; part 1b)', () => {
         would_not_tick: [],
       })
     ).toEqual([NOTHING_MARKED])
+  })
+})
+
+describe('Reclassify targets (D104; P-7)', () => {
+  it('offers classified aid sources only, never the line’s own description, A to Z', () => {
+    expect(reclassifyTargets(SOURCES.sources, SAM_NO_REQUEST).map((t) => t.description)).toEqual([
+      'Camp aid · Quest',
+      'Grantor A grant',
+      'Grantor C full-ride program',
+      'Grantor E grant 2027',
+    ])
+    // The mismatch line is "Camp aid · Quest": Summer is a target there, Quest is not.
+    expect(reclassifyTargets(SOURCES.sources, SAMUEL_MISMATCH).map((t) => t.description)).toContain(
+      'Camp aid · Summer'
+    )
+    expect(
+      reclassifyTargets(SOURCES.sources, SAMUEL_MISMATCH).map((t) => t.description)
+    ).not.toContain('Camp aid · Quest')
+  })
+
+  it('says who paid beside each target (D88)', () => {
+    expect(targetWords(GRANTOR_C_FULL_RIDE)).toBe('Grantor C full-ride program (outside)')
+    expect(targetWords(CAMP_QUEST)).toBe('Camp aid · Quest (camp aid)')
+    expect(targetWords(UNCLASSIFIED)).toBe('Returning-family bonus 2027')
   })
 })

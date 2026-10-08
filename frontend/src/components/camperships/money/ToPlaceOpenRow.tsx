@@ -19,6 +19,7 @@ import {
   CS_PMETA,
 } from '../kit/csType'
 import { PlaceEditor } from './PlaceEditor'
+import { ReclassifyEditor } from './ReclassifyEditor'
 import { inStaffWords, previewRefusalWords, refusalWords } from './refusal'
 import {
   candidateDetail,
@@ -46,7 +47,7 @@ export interface LineAccess {
   readonly rules: boolean
 }
 
-type Mode = 'none' | 'leave' | 'split' | 'another'
+type Mode = 'none' | 'leave' | 'split' | 'another' | 'reclassify'
 
 /** Three panels side by side, divided by the grid's dashed amber rule (RequestDetailLine's grammar). */
 const THREE_PANELS =
@@ -232,6 +233,25 @@ export function ToPlaceOpenRow({
               Place on Another Request…
             </button>
           )}
+          {access.rules && mode === 'none' && line.reason !== 'several' && (
+            // P-7 (old Decision 7): finance, on a line no request explains or whose description
+            // names another program; a several-requests line is placed, not reclassified.
+            <button
+              type="button"
+              className={CS_BTN2}
+              disabled={busy}
+              onClick={() => setMode('reclassify')}
+            >
+              Reclassify…
+            </button>
+          )}
+          {!access.rules && access.casework && mode === 'none' && line.reason !== 'several' && (
+            // money-v2.html draws it for the registrar, off, naming who can (R1-8b, coordinator
+            // 10-08: follow the mock).
+            <button type="button" className={CS_BTN2} disabled>
+              Reclassify… (finance)
+            </button>
+          )}
           {access.casework && mode === 'none' && (
             <button
               type="button"
@@ -257,6 +277,18 @@ export function ToPlaceOpenRow({
               line={line}
               year={year}
               mode={mode}
+              inFlight={inFlight}
+              onCancel={() => setMode('none')}
+              onDone={finish}
+              onRefused={onRefused}
+            />
+          </div>
+        )}
+        {mode === 'reclassify' && (
+          <div data-aid-editor="">
+            <ReclassifyEditor
+              line={line}
+              year={year}
               inFlight={inFlight}
               onCancel={() => setMode('none')}
               onDone={finish}
