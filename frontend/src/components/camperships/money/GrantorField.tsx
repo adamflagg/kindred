@@ -169,15 +169,15 @@ export function GrantorField({
           {`${retired.name} is retired: pick a grantor in use, or `}
           <Link
             className={CS_LINK}
-            to={aidHref('/aid/grants/grantors', view, { grantor: retired.key })}
+            to={aidHref('/aid/money/funders', view, { funder: retired.key })}
           >
-            Unretire It in Grants › Grantors
+            Unretire It in Money › Funders
           </Link>
         </p>
       )}
       <p className={CS_PMETA}>
-        The grantor&apos;s terms (full coverage, canteen, pays after camp aid) are set in Grants ›
-        Grantors.
+        The funder&apos;s terms (full coverage, canteen, pays after camp aid) are set in Money ›
+        Funders.
       </p>
       {problem !== null && <p className={CS_AMBER_NOTE}>{problem}</p>}
       <div className="flex flex-wrap gap-2">

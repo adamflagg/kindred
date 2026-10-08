@@ -11,6 +11,7 @@ import { CS_BTN2, CS_LINK, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit
 import { ClassifyEditor } from './ClassifyEditor'
 import { GrantorField } from './GrantorField'
 import { GroupEditor } from './GroupEditor'
+import { sourceFamilyWords } from './fundersModel'
 import {
   canNameGrantor,
   funderWords,
@@ -29,8 +30,10 @@ const RIGHT_PANEL = 'flex min-w-0 flex-col gap-2 pl-4'
 type Mode = 'none' | 'classify' | 'group' | 'grantor'
 
 export interface SourceAccess {
-  /** `rules`: Classify… / Edit… and Set a Group…. */
+  /** `rules`: Classify… / Edit…. */
   readonly rules: boolean
+  /** `rules` or `funding_sources`: Set a Group… (the reporting group and the incentive flag). */
+  readonly group: boolean
   /** `grantors`: the description's grantor. */
   readonly grantors: boolean
 }
@@ -73,13 +76,13 @@ export function SourceOpenRow({
   const unclassified = isUnclassified(row)
   const programs = programWords(row.implied_program_families, names)
   const change = lastChangeWords(row.last_change)
-  const canGroup = access.rules && funding !== undefined && funding.editable !== false
+  const canGroup = access.group && funding !== undefined && funding.editable !== false
   const canGrantor = access.grantors && canNameGrantor(row)
   // Anyone who may change something gets the right panel (the test pins it for a grantors-only
   // person on a camp-aid row: an empty "What you can change", no buttons); read-only sees the left alone.
   // R3-12: draw the right panel only when it holds something: an action this person may take, or
   // the "classify it first" line. A grantors-only person on a camp row sees the left panel alone.
-  const editing = access.rules || canGrantor || (access.grantors && unclassified)
+  const editing = access.rules || canGroup || canGrantor || (access.grantors && unclassified)
 
   const left = (
     <div data-panel="source" className={editing ? LEFT_PANEL : 'flex min-w-0 flex-col gap-1'}>
@@ -87,17 +90,17 @@ export function SourceOpenRow({
       <p>
         {unclassified
           ? 'Unclassified: new from the ledger sync. It counts as an outside grant until it is classified.'
-          : `${funderWords(row.funder_type) || keyWords(row.funder_type)} · source family ${keyWords(row.source_family)}`}
+          : `${funderWords(row.funder_type) || keyWords(row.funder_type)} · source family ${sourceFamilyWords(row)}`}
       </p>
       <p className={CS_PMETA}>
         {programs === '' ? 'It names no program.' : `Programs it funds: ${programs}`}
       </p>
       {row.grantor_key !== '' && (
         <p className={CS_PMETA}>
-          {'Grantor: '}
+          {'Funder: '}
           <Link
             className={CS_LINK}
-            to={aidHref('/aid/grants/grantors', view, { grantor: row.grantor_key })}
+            to={aidHref('/aid/money/funders', view, { funder: row.grantor_key })}
           >
             {grantorWords(row)}
           </Link>

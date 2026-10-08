@@ -1,25 +1,22 @@
 import { Landmark } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
 import { GRANTS_LIVE_ONLY } from '../../components/camperships/grants/grantsTabs'
-import { GrantorsDirectory } from '../../components/camperships/grants/GrantorsDirectory'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
 import { householdParam, MONEY_TAB_ALIASES } from '../../components/camperships/money/moneyTabs'
 import { LedgerTab } from '../../components/camperships/money/LedgerTab'
-import { SourcesTab } from '../../components/camperships/money/SourcesTab'
+import { FundersTab } from '../../components/camperships/money/FundersTab'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
-import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
-import type { ApiAidGrantorDescription } from '../../types/api-types'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
 const MONEY = aidSection('money')
@@ -28,7 +25,7 @@ const MONEY = aidSection('money')
  * Money (spec §8.1, §8.2; D58, D62; owner 10-08): Ledger · To place · Grants · Funders, each a URL-held
  * tab (§3.6). It opens on the first tab the user may see: the Ledger, or Funders for development.
  * Only the Ledger's posted totals can show a past date; the other tabs show today and say so when
- * the link carries a date. Funders is Sources with the Grantors directory under it until M3.
+ * the link carries a date. Funders is the sources and the grantors in one table, grouped by who pays.
  */
 export default function AidMoneyPage() {
   const { tab } = useParams()
@@ -41,13 +38,6 @@ export default function AidMoneyPage() {
   const year = useYear()
   const asOf = useAidAsOf()
   const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
-  // P-19: a description opens its Funders row, for a `view` holder only; development (grantors,
-  // no view) sees the descriptions as plain text.
-  const canView = hasPermission(Permission.FINANCIAL_AID_VIEW)
-  const sourcesHref = useCallback(
-    (d: ApiAidGrantorDescription) => aidHref('/aid/money/funders', view, { row: d.source_id }),
-    [view]
-  )
   // The old Sources tab is Funders now; links keep their `?row=`.
   const alias = tab === undefined ? undefined : MONEY_TAB_ALIASES[tab]
   if (alias !== undefined) return <Navigate to={`${MONEY.path}/${alias}${search}`} replace />
@@ -84,12 +74,7 @@ export default function AidMoneyPage() {
           <AidDefinitionNotes surface="grants" />
         </>
       )}
-      {slug === 'funders' && (
-        <>
-          <SourcesTab view={view} />
-          <GrantorsDirectory view={view} descriptionHref={canView ? sourcesHref : undefined} />
-        </>
-      )}
+      {slug === 'funders' && <FundersTab view={view} />}
     </div>
   )
 }

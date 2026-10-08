@@ -26,12 +26,8 @@ vi.mock('../../components/camperships/money/ToPlaceTab', () => ({
 vi.mock('../../components/camperships/money/LedgerTab', () => ({
   LedgerTab: () => <div>Ledger body</div>,
 }))
-// Until M3 builds Funders, the funders slug shows Sources with the Grantors directory under it.
-vi.mock('../../components/camperships/money/SourcesTab', () => ({
-  SourcesTab: () => <div>Sources body</div>,
-}))
-vi.mock('../../components/camperships/grants/GrantorsDirectory', () => ({
-  GrantorsDirectory: () => <div>Grantors body</div>,
+vi.mock('../../components/camperships/money/FundersTab', () => ({
+  FundersTab: () => <div>Funders body</div>,
 }))
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
@@ -86,7 +82,7 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     granted = DEVELOPMENT
     renderAt('/aid/money')
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/money/funders?year=2027')
-    expect(screen.getByText('Sources body')).toBeInTheDocument()
+    expect(screen.getByText('Funders body')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Funders' })).toBeInTheDocument()
     for (const name of ['Ledger', 'To place', 'Grants']) {
       expect(screen.queryByRole('link', { name })).toBeNull()
@@ -147,10 +143,9 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     expect(screen.queryByText(/has no past date/)).toBeNull()
   })
 
-  it('mounts Sources with the Grantors directory under it on the Funders tab (until M3)', () => {
+  it('mounts the Funders tab', () => {
     renderAt('/aid/money/funders')
-    expect(screen.getByText('Sources body')).toBeInTheDocument()
-    expect(screen.getByText('Grantors body')).toBeInTheDocument()
+    expect(screen.getByText('Funders body')).toBeInTheDocument()
   })
 
   it('aliases the old sources tab to funders, keeping the query string', () => {

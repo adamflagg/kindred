@@ -230,7 +230,7 @@ export function dropsGrantor(row: ApiAidSourceRow, draft: ClassifyDraft): boolea
 }
 
 export const DROPS_GRANTOR_WARNING =
-  'Saving this drops its grantor: only an outside grant or incentive names one (Grants › Grantors keeps the grantor).'
+  'Saving this drops its grantor: only an outside grant or incentive names one (Money › Funders keeps the funder).'
 
 /** "Set a Group…"'s choice: a pool key, no group, or (a source over several pools) keep them. */
 export const KEEP_GROUPS = 'keep'
