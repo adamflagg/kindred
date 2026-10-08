@@ -1,5 +1,5 @@
 import { HandCoins } from 'lucide-react'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Navigate, useParams } from 'react-router'
 
 import {
@@ -7,6 +7,7 @@ import {
   GRANTS_TAB_PURPOSE,
   isGrantsTab,
 } from '../../components/camperships/grants/grantsTabs'
+import { GrantorsDirectory } from '../../components/camperships/grants/GrantorsDirectory'
 import { ExpectedTab } from '../../components/camperships/grants/ExpectedTab'
 import { NeedsAttentionTab } from '../../components/camperships/grants/NeedsAttentionTab'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
@@ -16,21 +17,14 @@ import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefini
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
+import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
+import type { ApiAidGrantorDescription } from '../../types/api-types'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
 const GRANTS = aidSection('grants')
-
-/** A tab built by a later slice 3 PR: one line until then. */
-function NotYet({ what }: { what: string }) {
-  return (
-    <div className="card-lodge text-muted-foreground p-6 text-sm">
-      {`Grants › ${what} is built in a later part of slice 3.`}
-    </div>
-  )
-}
 
 /**
  * Grants (spec §8.2; D55–D57, D126, D142, D160; grants-v2.html): Register · Needs attention ·
@@ -44,9 +38,18 @@ export default function AidGrantsPage() {
   const year = useYear()
   const asOf = useAidAsOf()
   const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
+  // P-19: a description opens its Money › Sources row, for a `view` holder only (Money needs view);
+  // development (grantors, no view) sees the descriptions as plain text.
+  const canView = hasPermission(Permission.FINANCIAL_AID_VIEW)
+  const sourcesHref = useCallback(
+    (d: ApiAidGrantorDescription) => aidHref('/aid/money/sources', view, { row: d.source_id }),
+    [view]
+  )
   const resolved = resolveAidTab(GRANTS, tab, { hasPermission })
   if (resolved.kind === 'denied') return <PermissionDeniedPage />
   if (resolved.kind === 'first') {
+    // The first tab this user may see: the Register for view holders, Grantors for development
+    // (owner 10-06, rulings:676).
     return <Navigate to={aidHref(`${GRANTS.path}/${resolved.tab.slug}`, view)} replace />
   }
   const slug = resolved.tab?.slug ?? 'register'
@@ -65,7 +68,9 @@ export default function AidGrantsPage() {
       {slug === 'register' && <RegisterTab view={view} />}
       {slug === 'needs-attention' && <NeedsAttentionTab view={view} />}
       {slug === 'expected' && <ExpectedTab view={view} />}
-      {slug === 'grantors' && <NotYet what="Grantors" />}
+      {slug === 'grantors' && (
+        <GrantorsDirectory view={view} descriptionHref={canView ? sourcesHref : undefined} />
+      )}
       <AidDefinitionNotes surface="grants" />
     </div>
   )
