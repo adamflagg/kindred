@@ -142,6 +142,7 @@ import type {
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
+  StartFromLastYearIn,
   TrailPageOut,
   TrailRowOut,
   UnpostIn,
@@ -360,4 +361,5 @@ export type ApiAidLeverEffect = LeverEffectOut
 export type ApiAidSectionSaveIn = SectionSaveIn
 export type ApiAidSectionsSaveIn = SectionsSaveIn
 export type ApiAidRulesApproveIn = RulesApproveIn
+export type ApiAidStartFromLastYearIn = StartFromLastYearIn
 export type ApiAidRulesVersion = RulesVersionOut

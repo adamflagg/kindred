@@ -22,6 +22,8 @@ from api.services.financial_aid_rules_service import (
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
+    SeasonDoneError,
+    SeasonYearUnknownError,
     SectionChangedError,
     SectionInvalidError,
     SectionSaveResult,
@@ -294,3 +296,61 @@ def test_a_stale_section_in_a_two_section_save_is_409_naming_it() -> None:
     service.save_section_contents = AsyncMock(side_effect=SectionChangedError(["cost"]))
     response = _client().put("/api/financial-aid/rules/2031/sections", json=SECTIONS_BODY)
     assert (response.status_code, response.json()["detail"]["sections"]) == (409, ["cost"])
+
+
+def test_a_section_save_passes_the_past_season_reason() -> None:
+    service = _stub()
+    _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY | {"past_season_reason": "Late fix"})
+    assert service.save_section.await_args.kwargs["past_season_reason"] == "Late fix"
+
+
+def test_the_two_section_save_passes_the_past_season_reason() -> None:
+    service = _stub()
+    _client().put("/api/financial-aid/rules/2031/sections", json=SECTIONS_BODY | {"past_season_reason": "Late fix"})
+    assert service.save_section_contents.await_args.kwargs["past_season_reason"] == "Late fix"
+
+
+def test_a_blank_past_season_reason_is_422() -> None:
+    _stub()
+    response = _client().put(
+        "/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY | {"past_season_reason": "  "}
+    )
+    assert response.status_code == 422
+
+
+def test_a_done_season_is_409_with_the_servers_words() -> None:
+    service = _stub()
+    service.save_section = AsyncMock(side_effect=SeasonDoneError(2031, 2032))
+    response = _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY)
+    assert (response.status_code, response.json()["detail"]) == (
+        409,
+        "2031 is done (the dashboard's season is 2032): Unlock it with a reason to correct it.",
+    )
+
+
+def test_the_reads_carry_season_done() -> None:
+    service = _stub()
+    service.draft_view = AsyncMock(return_value=replace(DRAFT, season_done=True, configured_year=2032))
+    service.approved_view = AsyncMock(return_value=replace(APPROVED, season_done=True, configured_year=2032))
+    draft = _client().get("/api/financial-aid/rules/2031/draft").json()
+    assert (draft["season_done"], draft["configured_year"]) == (True, 2032)
+    approved = _client().get("/api/financial-aid/rules/2031/approved").json()
+    assert (approved["season_done"], approved["configured_year"]) == (True, 2032)
+
+
+def test_an_unreadable_season_is_503_never_a_write() -> None:
+    """Review Focus 3: the strict reader's error reaches the screen as 503 with its words."""
+    service = _stub()
+    service.save_section = AsyncMock(side_effect=SeasonYearUnknownError("The dashboard's season couldn't be read"))
+    response = _client().put(
+        "/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY | {"past_season_reason": "fix"}
+    )
+    assert (response.status_code, response.json()["detail"]) == (503, "The dashboard's season couldn't be read")
+
+
+def test_the_new_version_route_passes_the_past_season_reason() -> None:
+    service = _stub()
+    _client().post(
+        "/api/financial-aid/rules/2031/versions/2/new-version", json={"unlock": [], "past_season_reason": "Branch"}
+    )
+    assert service.new_version.await_args.kwargs["past_season_reason"] == "Branch"

@@ -721,6 +721,14 @@ export type ApprovedRulesOut = {
    * Groups
    */
   groups?: Array<GroupOut>
+  /**
+   * Season Done
+   */
+  season_done?: boolean
+  /**
+   * Configured Year
+   */
+  configured_year?: number | null
 }
 
 /**
@@ -9167,6 +9175,10 @@ export type NewVersionIn = {
     | 'quality_checks'
     | 'milestones'
   >
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
 }
 
 /**
@@ -14822,6 +14834,10 @@ export type RulesApproveIn = {
   fingerprints: {
     [key: string]: string
   }
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
 }
 
 /**
@@ -14829,6 +14845,10 @@ export type RulesApproveIn = {
  */
 export type RulesDocumentIn = {
   document: AidRulesInput
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
 }
 
 /**
@@ -14875,6 +14895,14 @@ export type RulesDraftOut = {
    * Groups
    */
   groups?: Array<GroupOut>
+  /**
+   * Season Done
+   */
+  season_done?: boolean
+  /**
+   * Configured Year
+   */
+  configured_year?: number | null
 }
 
 /**
@@ -15317,6 +15345,10 @@ export type SectionSaveIn = {
    * Expected Fingerprint
    */
   expected_fingerprint: string
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
 }
 
 /**
@@ -15381,6 +15413,10 @@ export type SectionsSaveIn = {
   expected_fingerprints: {
     [key: string]: string
   }
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
 }
 
 /**
@@ -16500,6 +16536,16 @@ export type StaleStaffLink = {
    * Family Key
    */
   family_key: string
+}
+
+/**
+ * StartFromLastYearIn
+ */
+export type StartFromLastYearIn = {
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
 }
 
 /**
@@ -24231,7 +24277,10 @@ export type CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponse =
   CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponses[keyof CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponses]
 
 export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostData = {
-  body?: never
+  /**
+   * Body
+   */
+  body?: StartFromLastYearIn | null
   path: {
     /**
      * Year

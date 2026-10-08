@@ -17,11 +17,15 @@ from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.rules.lifecycle import SectionState, SectionStatus
 
+_PastReason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+
 
 class RulesDocumentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document: AidRules
+    # A done season (spec §11.2) is unlocked with a reason, logged on the write.
+    past_season_reason: _PastReason | None = None
 
 
 class RulesApproveIn(BaseModel):
@@ -32,6 +36,8 @@ class RulesApproveIn(BaseModel):
     note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
     # Each ticked section's fingerprint as the approver saw it (the Rules tab's draft read): a section saved since is a 409.
     fingerprints: dict[SectionName, str]
+    # A done season (spec §11.2) is unlocked with a reason, logged on the write.
+    past_season_reason: _PastReason | None = None
 
     @model_validator(mode="after")
     def _fingerprints_match_sections(self) -> RulesApproveIn:
@@ -61,6 +67,8 @@ class SectionSaveIn(BaseModel):
     content: dict[str, Any]
     # The section's fingerprint as the editor opened it (DraftSectionOut.fingerprint): saved since is a 409.
     expected_fingerprint: str = Field(min_length=1)
+    # A done season (spec §11.2) is unlocked with a reason, logged on the write.
+    past_season_reason: _PastReason | None = None
 
 
 class SectionsSaveIn(BaseModel):
@@ -72,6 +80,8 @@ class SectionsSaveIn(BaseModel):
     contents: dict[SectionName, dict[str, Any]] = Field(min_length=1)
     # Each section's fingerprint as the editor opened it: a section saved since is a 409 naming it.
     expected_fingerprints: dict[SectionName, str]
+    # A done season (spec §11.2) is unlocked with a reason, logged on the write.
+    past_season_reason: _PastReason | None = None
 
     @model_validator(mode="after")
     def _fingerprints_match_contents(self) -> SectionsSaveIn:
@@ -85,6 +95,15 @@ class NewVersionIn(BaseModel):
 
     # Locked sections the new version lifts; every other lock is kept (spec §7.5).
     unlock: list[SectionName] = Field(default_factory=list)
+    # A done season (spec §11.2) is unlocked with a reason, logged on the write.
+    past_season_reason: _PastReason | None = None
+
+
+class StartFromLastYearIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # A done season (spec §11.2) is unlocked with a reason, logged on the write.
+    past_season_reason: _PastReason | None = None
 
 
 class FieldChangeOut(BaseModel):
@@ -133,6 +152,10 @@ class RulesDraftOut(BaseModel):
     branched_from: int | None = None  # a save that made this version from the one it names
     budget_total_locked: bool = False  # owner 10-06 (b): Round 1 has posted; the total is read-only, the shares edit
     groups: list[GroupOut] = Field(default_factory=list)
+    # Spec §11.1: the season is earlier than the configured one. `configured_year` is None when the service has no
+    # reader for it; the screen only reads it when `season_done` is true.
+    season_done: bool = False
+    configured_year: int | None = None
 
 
 class ApprovedSectionOut(BaseModel):
@@ -153,3 +176,5 @@ class ApprovedRulesOut(BaseModel):
     version: int | None  # the version pricing the season (or the `version` asked for); None while none prices
     sections: list[ApprovedSectionOut]
     groups: list[GroupOut] = Field(default_factory=list)
+    season_done: bool = False  # spec §11.1, as on RulesDraftOut
+    configured_year: int | None = None

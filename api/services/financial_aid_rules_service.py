@@ -329,6 +329,9 @@ class RulesDraft:
     budget_total_locked: bool = False
     # Spec §4.1: the season's groups (budget pools by label), from the draft document.
     groups: tuple[Group, ...] = ()
+    # Spec §11.1: the season is earlier than the configured one; the configured season (None: no reader).
+    season_done: bool = False
+    configured_year: int | None = None
 
 
 @dataclass(frozen=True)
@@ -350,6 +353,8 @@ class ApprovedRules:
     sections: tuple[ApprovedSection, ...]
     # Spec §4.1: the groups of the version pricing the season (or the one asked for); () when none.
     groups: tuple[Group, ...] = ()
+    season_done: bool = False  # spec §11.1, as on RulesDraft
+    configured_year: int | None = None
 
 
 _HELD: Final = ("approved", "locked")
@@ -859,6 +864,7 @@ class FinancialAidRulesService:
         report = await self.validate_document(current.document)
         base = approved.document.model_dump() if approved is not None and approved.version != current.version else None
         now = current.document.model_dump()
+        season_done, configured_year = await self.season_state(year)
         sections = tuple(
             DraftSection(
                 section=name,
@@ -875,6 +881,8 @@ class FinancialAidRulesService:
             sections,
             budget_total_locked=await self._budget_total_locked(year),
             groups=tuple(season_groups(current.document)),
+            season_done=season_done,
+            configured_year=configured_year,
         )
 
     async def _budget_total_locked(self, year: int) -> bool:
@@ -900,6 +908,7 @@ class FinancialAidRulesService:
         version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
         [section])`). So editing quality checks or milestones in a draft never blanks the read.
         """
+        season_done, configured_year = await self.season_state(year)
         if version is not None:
             chosen = await self.load(year, version)
             if all(chosen.section_status[n].state not in _HELD for n in SECTION_NAMES):
@@ -912,6 +921,8 @@ class FinancialAidRulesService:
                 tuple(season_groups(chosen.document))
                 if all(chosen.section_status[n].state in _HELD for n in ("programs", "budget"))
                 else (),
+                season_done=season_done,
+                configured_year=configured_year,
             )
         versions = [_to_version(row) for row in await self._store.list_versions(year)]
 
@@ -930,6 +941,8 @@ class FinancialAidRulesService:
             pricing.version if pricing is not None else None,
             sections,
             tuple(season_groups(pricing.document)) if pricing is not None else (),
+            season_done=season_done,
+            configured_year=configured_year,
         )
 
     async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:

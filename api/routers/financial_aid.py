@@ -144,6 +144,7 @@ from api.schemas.financial_aid_rules import (
     RulesVersionOut,
     SectionSaveIn,
     SectionsSaveIn,
+    StartFromLastYearIn,
     field_change_out,
 )
 from api.schemas.financial_aid_scenarios import (
@@ -269,8 +270,11 @@ from api.services.financial_aid_rules_service import (
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
+    SeasonDoneError,
+    SeasonYearUnknownError,
     SectionChangedError,
     VersionExistsError,
+    configured_season_year,
 )
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
 from api.services.financial_aid_scenarios_repository import (
@@ -382,7 +386,9 @@ def _http(exc: Exception) -> HTTPException:
 
 
 def _rules() -> FinancialAidRulesService:
-    return FinancialAidRulesService(AidRulesRepository(pb))
+    # The strict reader, never `current_season_year`: that one guesses the calendar year, which would read a done
+    # season as open (spec §11.1). An unreadable season is a 503 on every read and write.
+    return FinancialAidRulesService(AidRulesRepository(pb), configured_year=lambda: configured_season_year(pb))
 
 
 def _rules_http(exc: FinancialAidError) -> HTTPException:
@@ -390,9 +396,12 @@ def _rules_http(exc: FinancialAidError) -> HTTPException:
         return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, RulesNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, SeasonYearUnknownError):
+        return HTTPException(status_code=503, detail=str(exc))
     if isinstance(
         exc,
         (
+            SeasonDoneError,
             VersionExistsError,
             NotLatestVersionError,
             PricingVersionInUseError,
@@ -433,6 +442,8 @@ def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesD
         report=draft.report,
         branched_from=branched_from,
         budget_total_locked=draft.budget_total_locked,
+        season_done=draft.season_done,
+        configured_year=draft.configured_year,
         groups=[GroupOut(pool=g.pool, label=g.label, equity_class=g.equity_class) for g in draft.groups],
         sections=[
             DraftSectionOut(
@@ -452,6 +463,8 @@ def _approved_out(rules: ApprovedRules) -> ApprovedRulesOut:
     return ApprovedRulesOut(
         year=rules.year,
         version=rules.version,
+        season_done=rules.season_done,
+        configured_year=rules.configured_year,
         groups=[GroupOut(pool=g.pool, label=g.label, equity_class=g.equity_class) for g in rules.groups],
         sections=[
             ApprovedSectionOut(
@@ -801,17 +814,21 @@ async def create_aid_rules_version(year: _Year, body: RulesDocumentIn, user: Aut
     _same_year(year, body.document)
     service = _rules()
     try:
-        created = await service.bootstrap(body.document, actor=user.email)
+        created = await service.bootstrap(body.document, actor=user.email, past_season_reason=body.past_season_reason)
         return _rules_out(created, await service.validate_document(created.document))
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
 
 
 @router.post("/rules/{year}/start-from-last-year", response_model=RulesVersionOut, status_code=201)
-async def start_aid_rules_from_last_year(year: _Year, user: AuthUser = _RULES) -> RulesVersionOut:
+async def start_aid_rules_from_last_year(
+    year: _Year, body: StartFromLastYearIn | None = None, user: AuthUser = _RULES
+) -> RulesVersionOut:
     """Version 1 of an empty season, copied from last season's latest (prices and dates cleared)."""
     try:
-        created, report = await _rules().start_from_last_year(year, actor=user.email)
+        created, report = await _rules().start_from_last_year(
+            year, actor=user.email, past_season_reason=body.past_season_reason if body else None
+        )
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
     return _rules_out(created, report)
@@ -824,7 +841,13 @@ async def approve_aid_rules_sections(
     """Approve sections as one logged operation; the note names the approving body (D39)."""
     try:
         approved, report = await _rules_approving().approve_sections(
-            year, version, body.sections, actor=user.email, note=body.note, fingerprints=body.fingerprints
+            year,
+            version,
+            body.sections,
+            actor=user.email,
+            note=body.note,
+            fingerprints=body.fingerprints,
+            past_season_reason=body.past_season_reason,
         )
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
@@ -856,6 +879,7 @@ async def save_aid_rules_section(
             body.content,
             actor=user.email,
             expected_fingerprint=body.expected_fingerprint,
+            past_season_reason=body.past_season_reason,
         )
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
     except FinancialAidError as exc:
@@ -869,7 +893,12 @@ async def save_aid_rules_sections(year: _Year, body: SectionsSaveIn, user: AuthU
     service = _rules()
     try:
         saved = await service.save_section_contents(
-            year, body.base_version, body.contents, actor=user.email, expected_fingerprints=body.expected_fingerprints
+            year,
+            body.base_version,
+            body.contents,
+            actor=user.email,
+            expected_fingerprints=body.expected_fingerprints,
+            past_season_reason=body.past_season_reason,
         )
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
     except FinancialAidError as exc:
@@ -883,7 +912,9 @@ async def start_aid_rules_version(
     """A new version copied from `version`, keeping every approval and every lock except those in `unlock`."""
     service = _rules()
     try:
-        created = await service.new_version(year, version, actor=user.email, unlock=body.unlock)
+        created = await service.new_version(
+            year, version, actor=user.email, unlock=body.unlock, past_season_reason=body.past_season_reason
+        )
         return _rules_out(created, await service.validate_document(created.document))
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
@@ -1025,7 +1056,11 @@ def _rules_approving() -> FinancialAidRulesService:
         )
         return await service.season(year)
 
-    return FinancialAidRulesService(AidRulesRepository(pb), effects=SeasonApprovalEffects(_rules(), season_on))
+    return FinancialAidRulesService(
+        AidRulesRepository(pb),
+        effects=SeasonApprovalEffects(_rules(), season_on),
+        configured_year=lambda: configured_season_year(pb),
+    )
 
 
 def _decisions_http(exc: FinancialAidError) -> HTTPException:
@@ -1197,11 +1232,20 @@ def _scenarios_http(exc: FinancialAidError) -> HTTPException:
         return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, (ScenarioNotFoundError, RulesNotFoundError, SnapshotMissingError)):
         return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, SeasonYearUnknownError):
+        return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, ReplacementNotAcknowledgedError):
         return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(
         exc,
-        (ScenarioConflictError, OptionCodeTakenError, NotLatestVersionError, VersionExistsError, AidWriteConflictError),
+        (
+            ScenarioConflictError,
+            OptionCodeTakenError,
+            NotLatestVersionError,
+            VersionExistsError,
+            AidWriteConflictError,
+            SeasonDoneError,
+        ),
     ):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
