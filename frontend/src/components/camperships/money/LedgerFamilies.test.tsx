@@ -59,7 +59,7 @@ function renderAt(
   view: AidView = LIVE,
   unclassified?: number,
   programLabels: Readonly<Record<string, string>> = LABELS,
-  programChoices: readonly { value: string; label: string }[] = CHOICES
+  programChoices: ReadonlyArray<{ value: string; label: string }> = CHOICES
 ) {
   return render(
     <QueryClientProvider

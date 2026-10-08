@@ -60,7 +60,7 @@ export function LedgerFamilies({
   /** The program words the summary sends, by key (`program_label`); a key with none reads "Other program". */
   programLabels?: Readonly<Record<string, string>>
   /** The programs with money this season, labelled (`programChoicesOf`); none until the summary loads. */
-  programChoices?: readonly { value: string; label: string }[]
+  programChoices?: ReadonlyArray<{ value: string; label: string }>
   /** The season's unclassified money from `GET /summary` (same as-of); absent until it loads. */
   unclassified?: number | null | undefined
 }) {
