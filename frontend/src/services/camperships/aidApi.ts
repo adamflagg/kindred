@@ -74,6 +74,9 @@ import type {
   ApiAidSourceGrantorIn,
   ApiAidSourceRow,
   ApiAidSourceUpdate,
+  ApiAidLedgerLines,
+  ApiAidLedgerTotal,
+  ApiAidMoneyLedger,
   ApiAidSummary,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
@@ -1113,4 +1116,32 @@ export async function fetchAidSummary(
   if (!response.ok)
     throw await toApiError(response, 'Failed to load the posted totals', AidApiError)
   return (await response.json()) as ApiAidSummary
+}
+
+/** Money › Ledger's family rows (§8.1; D26, D151): one row per family, live or a past day, filtered by the server. `view`. */
+export async function fetchAidMoneyLedger(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidMoneyLedger> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/money/${String(year)}/ledger`, { ...params })
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the Ledger', AidApiError)
+  return (await response.json()) as ApiAidMoneyLedger
+}
+
+/** The lines behind one of the Ledger's two totals, under the same filters and day (owner ruling F). `view`. */
+export async function fetchAidLedgerLines(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  total: ApiAidLedgerTotal,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidLedgerLines> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/money/${String(year)}/ledger/lines`, { total, ...params })
+  )
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the lines behind the total', AidApiError)
+  return (await response.json()) as ApiAidLedgerLines
 }

@@ -11,6 +11,7 @@ import { formatLongDate } from '../kit/dates'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
+import { LedgerFamilies } from './LedgerFamilies'
 import {
   footWords,
   hasUnclassified,
@@ -64,10 +65,10 @@ function pivotColumns(
 }
 
 /**
- * Money › Ledger (spec §8.1; D58, D151; P-11 as amended by R3-2). Its family rows come in the next
- * part of slice 3 (part 2b); this part carries finance's posted totals (F10), folding, as money-v2
- * draws them: camp aid, outside grants and the total per program, the season's figures in the
- * footer, and the camp-aid shares under it, all from `GET /summary`, live or by the page's past day.
+ * Money › Ledger (spec §8.1; D58, D151; P-11, P-22, ruling F): one row per family whose totals open
+ * their lines (`LedgerFamilies`), and under it finance's posted totals (F10), folding, as money-v2
+ * draws them: camp aid, outside grants and the total per program, from `GET /summary`, live or by
+ * the page's past day.
  */
 export function LedgerTab({ view }: { view: AidView }) {
   const summary = useAidSummary()
@@ -80,10 +81,7 @@ export function LedgerTab({ view }: { view: AidView }) {
 
   return (
     <div className="space-y-3">
-      <p className={CS_PMETA}>
-        One row per family comes in the next update of this tab. Until then, each family&apos;s
-        postings are on its household page.
-      </p>
+      <LedgerFamilies view={view} />
       <section className="space-y-2">
         {/* A div, not an h3: bare headings are styled outside the cascade layers (csType.ts). */}
         <div className={`flex flex-wrap items-baseline gap-2 ${CS_LABEL}`}>

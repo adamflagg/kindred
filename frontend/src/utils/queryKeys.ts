@@ -796,6 +796,12 @@ export const queryKeys = {
   aidFundingSources: (year: number) => ['financial-aid', 'sources', 'funding', year] as const,
   aidSummary: (year: number, asOf: string | null) =>
     ['financial-aid', 'ledger', year, 'summary', asOf ?? 'live'] as const,
+  // part 2b: the Ledger's family rows and the lines behind a total, keyed by the query they send
+  // (filters and day), under the ledger prefix: every Camperships write refreshes them.
+  aidMoneyLedger: (year: number, query: string) =>
+    ['financial-aid', 'ledger', year, 'families', query] as const,
+  aidLedgerLines: (year: number, total: string, query: string) =>
+    ['financial-aid', 'ledger', year, 'lines', total, query] as const,
 }
 
 /**

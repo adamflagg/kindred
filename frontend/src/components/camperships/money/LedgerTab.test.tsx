@@ -23,6 +23,8 @@ vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: ({ surface }: { surface: string }) => <p>{`Notes for ${surface}`}</p>,
 }))
+// The family rows have their own tests (LedgerFamilies.test.tsx, LedgerLines.test.tsx).
+vi.mock('./LedgerFamilies', () => ({ LedgerFamilies: () => <div>Family rows</div> }))
 
 let summary: ApiAidSummary = SUMMARY
 let fetchSpy: MockInstance<typeof fetch>
@@ -59,9 +61,9 @@ const rowOf = (words: string) => {
 }
 
 describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
-  it("draws camp aid, outside grants and the total per program, in the rules' words and order", async () => {
+  it("shows the family rows, then camp aid, outside grants and the total per program, in the rules' words and order", async () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
-    expect(screen.getByText(/One row per family comes in the next update/)).toBeInTheDocument()
+    expect(screen.getByText('Family rows')).toBeInTheDocument()
     await screen.findAllByText('Summer Sessions')
     for (const header of ['Program', 'Camp aid (net)', 'Outside grants', 'Total']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument()

@@ -183,6 +183,10 @@ import type {
   SourceGrantorIn,
   SummaryCell,
   SummaryResponse,
+  LedgerFamilyOut,
+  LedgerLineOut,
+  MoneyLedgerLinesOut,
+  MoneyLedgerOut,
   CampAidLevel,
   ProgramSplit,
 } from './api-generated'
@@ -466,3 +470,15 @@ export type ApiAidSummaryCell = SummaryCell
  */
 export type ApiAidProgramSplit = ProgramSplit
 export type ApiAidCampAidLevel = CampAidLevel
+
+/**
+ * Money › Ledger's family rows and the lines behind its two totals (spec §8.1; D26, D97, D151;
+ * owner ruling F). Mirrors Python `MoneyLedgerOut`, `LedgerFamilyOut`, `MoneyLedgerLinesOut`,
+ * `LedgerLineOut`. `level` is the dashboard's own placement level (`LedgerLevelOut`).
+ */
+export type ApiAidMoneyLedger = MoneyLedgerOut
+export type ApiAidLedgerFamily = LedgerFamilyOut
+export type ApiAidLedgerLevel = NonNullable<LedgerFamilyOut['level']>
+export type ApiAidLedgerLines = MoneyLedgerLinesOut
+export type ApiAidLedgerLine = LedgerLineOut
+export type ApiAidLedgerTotal = MoneyLedgerLinesOut['total']
