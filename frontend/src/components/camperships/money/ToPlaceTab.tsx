@@ -9,7 +9,7 @@ import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
 import { LeftLines } from './LeftLines'
-import { ToPlaceLinePanel, type LinePanelAccess } from './ToPlaceLinePanel'
+import { ToPlaceOpenRow, type LineAccess } from './ToPlaceOpenRow'
 import { ToPlaceTable } from './ToPlaceTable'
 import { toPlaceCsvName } from './toPlaceModel'
 import { DONE_NOTE } from './toPlaceStyles'
@@ -18,20 +18,20 @@ import { useInFlightLines } from './useInFlightLines'
 /**
  * Money › To place (spec §8.1; D12, D16, D58, D62, D151, D152; money-v2.html): camp-aid lines no
  * single request takes, grouped by reason, each with the suggestion, its evidence and what
- * Confirm will tick; the lines left at family level apart. Live only. Casework confirms and leaves;
+ * Confirm will mark posted; the lines left at family level apart. Live only. Casework confirms and leaves;
  * `rules` reclassifies (PR 2).
  */
 export function ToPlaceTab({ view }: { view: AidView }) {
   const toPlace = useAidToPlace()
   const { hasPermission } = usePermissions()
   const access = useMemo(
-    (): LinePanelAccess => ({
+    (): LineAccess => ({
       casework: hasPermission(Permission.FINANCIAL_AID_CASEWORK),
       rules: hasPermission(Permission.FINANCIAL_AID_RULES),
     }),
     [hasPermission]
   )
-  // The outcome of the last write lives here, not in a panel: a refusal that drops its line from the
+  // The outcome of the last write lives here, not in the opened row: a refusal that drops its line from the
   // table would otherwise unmount the only place it was shown (review I1).
   const [note, setNote] = useState<{
     tone: 'done' | 'refused'
@@ -49,9 +49,9 @@ export function ToPlaceTab({ view }: { view: AidView }) {
   const inFlight = useInFlightLines()
   // Another season is another page: its last write's note is not shown (no reset effect needed).
   const shown = note !== null && note.year === view.year ? note : null
-  const renderPanel = useCallback(
+  const renderRow = useCallback(
     (line: ApiAidToPlaceLine) => (
-      <ToPlaceLinePanel
+      <ToPlaceOpenRow
         key={line.transaction_cm_id}
         line={line}
         year={view.year}
@@ -93,7 +93,7 @@ export function ToPlaceTab({ view }: { view: AidView }) {
             <ToPlaceTable
               data={data}
               csvFilename={toPlaceCsvName(data.year, null)}
-              renderPanel={renderPanel}
+              renderRow={renderRow}
             />
             <LeftLines
               lines={data.left ?? []}

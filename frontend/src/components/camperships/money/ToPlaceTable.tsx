@@ -52,20 +52,21 @@ const COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
 
 /**
  * To place's open lines (§8.1): one table, grouped by the server's reasons, searchable, a CSV of what
- * is on screen. A click (or ↑/↓) highlights a line and opens its work under it. No footer total: the
- * open total is the server's, shown above the table (P-5).
+ * is on screen. A click (or ↑/↓) highlights a line and opens it in three panels under it, the
+ * Requests grid's opened row (owner ruling A); Esc closes it. No footer total: the open total is the
+ * server's, shown above the table (P-5).
  */
 export function ToPlaceTable({
   data,
   csvFilename,
-  renderPanel,
+  renderRow,
   selected,
   onSelectedChange,
   onMatchingChange,
 }: {
   data: ApiAidToPlace
   csvFilename: string
-  renderPanel: (line: ApiAidToPlaceLine) => ReactNode
+  renderRow: (line: ApiAidToPlaceLine) => ReactNode
   selected?: ReadonlySet<string> | undefined
   onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
   onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
@@ -82,7 +83,7 @@ export function ToPlaceTable({
       defaultGrouping="reason"
       csvFilename={csvFilename}
       groupCount={groupWords}
-      renderBelowHighlighted={(line) => renderPanel(line)}
+      renderDetail={(line) => renderRow(line)}
       arrowKeys
       selected={selected}
       onSelectedChange={onSelectedChange}

@@ -91,7 +91,7 @@ function renderTab() {
 
 const openLine = async (words: string) => {
   await userEvent.click(await screen.findByText(words))
-  return screen.findByTestId('to-place-panel')
+  return screen.findByTestId('to-place-row')
 }
 
 describe('Money › To place (§8.1)', () => {
@@ -523,5 +523,33 @@ describe('the table (owner rulings B and D, 10-06)', () => {
     ).toBeInTheDocument()
     // The household id is a tie-break only (rulings 10-05): never drawn under every family.
     expect(screen.queryByText('1000003')).toBeNull()
+  })
+})
+
+describe('a line opens in three panels, the grid’s opened row (owner ruling A, 10-06)', () => {
+  it('puts the line and its evidence left, the requests in the middle, Confirm right', async () => {
+    renderTab()
+    const row = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    const panel = (name: string) => {
+      const found = row.querySelector(`[data-panel="${name}"]`)
+      if (!(found instanceof HTMLElement)) throw new Error(`no ${name} panel`)
+      return within(found)
+    }
+    expect(
+      panel('line').getByText('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    ).toBeInTheDocument()
+    expect(panel('line').getByText(/The line equals the two requests/)).toBeInTheDocument()
+    expect(panel('candidates').getByText('$2,200 not yet in CampMinder')).toBeInTheDocument()
+    expect(panel('confirm').getByText('What Confirm does')).toBeInTheDocument()
+    expect(panel('confirm').getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    // The opened row is AidTable's detail line, not the old editor row (#2990's).
+    expect(row.closest('[data-aid-detail]')).not.toBeNull()
+  })
+
+  it('Esc closes the opened line', async () => {
+    renderTab()
+    await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByTestId('to-place-row')).toBeNull()
   })
 })
