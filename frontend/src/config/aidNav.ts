@@ -13,10 +13,21 @@ export interface AidAccess {
   readonly anyOf: readonly PermissionValue[]
 }
 
+/**
+ * A view inside a tab (§3.6; slice 4): the URL's third segment, `/aid/reports/:tab/:view`. The
+ * first view is the tab's own page and has no segment of its own.
+ */
+export interface AidTabView {
+  readonly slug: string
+  readonly label: string
+  readonly access: AidAccess
+}
+
 export interface AidTab {
   readonly slug: string
   readonly label: string
   readonly access: AidAccess
+  readonly views?: readonly AidTabView[] | undefined
 }
 
 export interface AidSection {
@@ -94,12 +105,30 @@ export const AID_SECTIONS: readonly AidSection[] = [
     path: '/aid/reports',
     access: OPEN,
     tabs: [
-      { slug: 'statistics', label: 'Statistics', access: VIEW },
+      {
+        slug: 'statistics',
+        label: 'Statistics',
+        access: VIEW,
+        // S4-2: the committee's year-over-year tables are Statistics' second view (D64 keeps three tabs).
+        views: [
+          { slug: 'this-season', label: 'This season', access: VIEW },
+          { slug: 'year-over-year', label: 'Year over year', access: VIEW },
+        ],
+      },
       { slug: 'programs', label: 'Programs', access: VIEW },
-      // D65: a summary-only user sees only this tab, and lands on it. Its ZIP codes screen (D90)
-      // and Funding sources list (D100) are views inside it, built in slice 4 with their mocks
-      // (Ruling 2026-10-01 (plan review): named, not dropped).
-      { slug: 'development', label: 'Development', access: OPEN },
+      {
+        slug: 'development',
+        label: 'Development',
+        // D65: a summary-only user sees only this tab, and lands on it.
+        access: OPEN,
+        // The report and its ZIP codes screen (D90), each a view inside the tab. Funding sources (D100)
+        // and the read-only Grantors view are HELD by the owner (10-08): a view joins this list when
+        // its screen is built, so the nav never offers one that isn't.
+        views: [
+          { slug: 'report', label: 'Report', access: OPEN },
+          { slug: 'zip', label: 'ZIP codes', access: OPEN },
+        ],
+      },
     ],
     builtIn: 'slice 4 (before the February committee meeting)',
   },
@@ -146,6 +175,36 @@ export function resolveAidTab(
   }
   if (current !== undefined && !tabs.includes(current)) return { kind: 'denied' }
   return { kind: 'show', tab: current, tabs }
+}
+
+/**
+ * What a tab shows for the URL's `:view` (§3.6; slice 4 Decision 1): no view, or the first view's
+ * slug, is the tab's own page; an unknown view goes back to the tab; a known view this user may not
+ * see is refused, never redirected away (D76's rule, as for tabs).
+ */
+export type AidViewResolution =
+  | { readonly kind: 'show'; readonly view: AidTabView | undefined; readonly views: AidTabView[] }
+  | { readonly kind: 'tab' }
+  | { readonly kind: 'denied' }
+
+export function resolveAidView(
+  tab: AidTab,
+  slug: string | undefined,
+  can: PermissionCheck
+): AidViewResolution {
+  const views = (tab.views ?? []).filter((v) => canAccess(v.access, can))
+  if (slug === undefined) return { kind: 'show', view: views[0], views }
+  const current = (tab.views ?? []).find((v) => v.slug === slug)
+  if (current === undefined) return { kind: 'tab' }
+  if (!views.includes(current)) return { kind: 'denied' }
+  return { kind: 'show', view: current, views }
+}
+
+/** A view's path: the tab's own for its first view, else the tab's path and the view's slug. */
+export function aidViewPath(section: AidSection, tab: AidTab, view: AidTabView): string {
+  const first = tab.views?.[0]
+  const base = `${section.path}/${tab.slug}`
+  return first === undefined || first.slug === view.slug ? base : `${base}/${view.slug}`
 }
 
 /** Where `/aid` lands: Today for view holders; Reports › Development for summary-only (D65). */
