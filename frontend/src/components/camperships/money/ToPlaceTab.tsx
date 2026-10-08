@@ -94,6 +94,7 @@ export function ToPlaceTab({ view }: { view: AidView }) {
               </p>
               <ToPlaceTable
                 data={data}
+                view={view}
                 csvFilename={toPlaceCsvName(data.year, null)}
                 renderRow={renderRow}
               />

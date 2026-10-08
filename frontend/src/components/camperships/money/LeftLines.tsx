@@ -3,11 +3,12 @@ import { useState } from 'react'
 import { useAidReopenLine } from '../../../hooks/camperships/useAidToPlaceWrites'
 import type { ApiAidToPlaceLine } from '../../../types/api-types'
 import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
+import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { ReasonForm } from '../household/ReasonForm'
 import { TABLE, TD } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { inStaffWords } from './refusal'
-import { lineWords } from './toPlaceModel'
+import { lineFamily, lineWords } from './toPlaceModel'
 import { SIDE_CARD } from './toPlaceStyles'
 
 /**
@@ -45,7 +46,9 @@ export function LeftLines({
           <tbody>
             {lines.map((line) => (
               <tr key={line.transaction_cm_id}>
-                <td className={`${TD} w-36 font-medium whitespace-nowrap`}>{line.family}</td>
+                <td className={`${TD} w-44 whitespace-nowrap`}>
+                  <HouseholdLabelText label={lineFamily(line)} className="font-medium" />
+                </td>
                 <td className={`${TD} whitespace-normal`}>
                   {lineWords(line)}
                   <div className="text-muted-foreground text-xs">Left: {line.left_note}</div>
@@ -73,8 +76,8 @@ export function LeftLines({
                           setReopening(null)
                           onDone(
                             written === 0
-                              ? `${line.family}: already open; nothing changed.`
-                              : `${line.family}: reopened; the line is open again.`
+                              ? `${lineFamily(line).text}: already open; nothing changed.`
+                              : `${lineFamily(line).text}: reopened; the line is open again.`
                           )
                         }}
                       />

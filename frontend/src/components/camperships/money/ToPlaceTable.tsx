@@ -1,7 +1,12 @@
 import { useMemo, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
+import { HouseholdLabelText } from '../household/HouseholdLabel'
+import { labelWords } from '../household/householdModel'
 import { AidTable, type AidColumn } from '../kit/AidTable'
+import { aidHref, type AidView } from '../kit/asOf'
+import { CS_LINK } from '../kit/csType'
 import {
   groupWords,
   lineKey,
@@ -10,17 +15,29 @@ import {
   TO_PLACE_CSV_EXTRA,
   TO_PLACE_TEXT_COLUMNS,
 } from './toPlaceColumns'
-import { lineWords, stillNotPlacedWords } from './toPlaceModel'
+import { lineFamily, lineWords, stillNotPlacedWords } from './toPlaceModel'
 
-/** The family. No household id under it: the id is a tie-break only (owner, 10-05); the CSV keeps it. */
-const FAMILY: AidColumn<ApiAidToPlaceLine> = {
-  key: 'family',
-  header: 'Family',
-  width: 190,
-  pinned: true,
-  value: (line) => line.family,
-  render: (line) => <span className="font-medium">{line.family || '—'}</span>,
-  searchable: true,
+/**
+ * The family as the household card names it (ruling D): the label, a muted tie-break on a
+ * collision, as a link to the household page (money-v2.html; R1-8c).
+ */
+function familyColumn(view: AidView): AidColumn<ApiAidToPlaceLine> {
+  return {
+    key: 'family',
+    header: 'Family',
+    width: 190,
+    pinned: true,
+    value: (line) => labelWords(lineFamily(line)),
+    render: (line) => (
+      <Link
+        to={aidHref(`/aid/households/${String(line.household_cm_id)}`, view)}
+        className={`${CS_LINK} font-medium`}
+      >
+        <HouseholdLabelText label={lineFamily(line)} />
+      </Link>
+    ),
+    searchable: true,
+  }
 }
 
 /**
@@ -44,12 +61,6 @@ const LINE: AidColumn<ApiAidToPlaceLine> = {
   searchable: true,
 }
 
-const COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
-  FAMILY,
-  LINE,
-  ...TO_PLACE_TEXT_COLUMNS,
-]
-
 /**
  * To place's open lines (§8.1): one table, grouped by the server's reasons, searchable, a CSV of what
  * is on screen. A click (or ↑/↓) highlights a line and opens it in three panels under it, the
@@ -58,6 +69,7 @@ const COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
  */
 export function ToPlaceTable({
   data,
+  view,
   csvFilename,
   renderRow,
   selected,
@@ -65,6 +77,7 @@ export function ToPlaceTable({
   onMatchingChange,
 }: {
   data: ApiAidToPlace
+  view: AidView
   csvFilename: string
   renderRow: (line: ApiAidToPlaceLine) => ReactNode
   selected?: ReadonlySet<string> | undefined
@@ -72,11 +85,12 @@ export function ToPlaceTable({
   onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
 }) {
   const rows = useMemo(() => data.groups.flatMap((g) => g.lines), [data.groups])
+  const columns = useMemo(() => [familyColumn(view), LINE, ...TO_PLACE_TEXT_COLUMNS], [view])
   const groupings = useMemo(() => reasonGrouping(data.groups), [data.groups])
   return (
     <AidTable
       rows={rows}
-      columns={COLUMNS}
+      columns={columns}
       rowKey={lineKey}
       searchExtra={lineSearch}
       groupings={groupings}

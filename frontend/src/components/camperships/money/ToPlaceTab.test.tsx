@@ -702,3 +702,46 @@ describe('the notes at the foot (ruling I: the owner reads them in place)', () =
     expect(calls().some((c) => c.url.includes('/definitions?surface=money-to-place'))).toBe(true)
   })
 })
+
+describe('the family as the household card names it (owner ruling D, 10-06; #3080)', () => {
+  // Two Johnson lines, labelled by the server; a collision on the label brings its muted tie-break.
+  const labelled: ApiAidToPlace = {
+    ...TO_PLACE,
+    groups: TO_PLACE.groups.map((g) => ({
+      ...g,
+      lines: g.lines.map((l) =>
+        l.household_cm_id === 1000001
+          ? { ...l, household_label: 'Pat & Sam Johnson', household_label_tiebreak: '#1000001' }
+          : l.transaction_cm_id === CHEN_EXACT.transaction_cm_id
+            ? { ...l, household_label: 'Mei & David Chen', household_label_tiebreak: '' }
+            : l
+      ),
+    })),
+  }
+
+  it('shows the label, the tie-break muted, and no household id otherwise', async () => {
+    reads = [labelled]
+    renderTab()
+    expect((await screen.findAllByText('Pat & Sam Johnson')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('#1000001')[0]?.className).toMatch(/muted/)
+    expect(screen.getByText('Mei & David Chen')).toBeInTheDocument()
+    // A line with no label keeps its family name, and no id is drawn under any name.
+    expect(screen.getAllByText('Garcia').length).toBeGreaterThan(0)
+    expect(screen.queryByText('1000002')).toBeNull()
+  })
+
+  it('draws the family as a link to its household page, as money-v2.html does (R1-8c)', async () => {
+    reads = [labelled]
+    renderTab()
+    const [link] = await screen.findAllByRole('link', { name: 'Mei & David Chen' })
+    expect(link?.getAttribute('href')).toMatch(/^\/aid\/households\/1000003\b/)
+  })
+
+  it('names the family by its label in the result line', async () => {
+    reads = [labelled]
+    renderTab()
+    const row = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    await userEvent.click(within(row).getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByText(/^✓ Mei & David Chen: \$1,500 placed/)).toBeInTheDocument()
+  })
+})

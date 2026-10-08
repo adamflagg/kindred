@@ -13,8 +13,10 @@ import type {
   ApiAidToPlaceLine,
   ApiAidToPlaceSuggestion,
 } from '../../../types/api-types'
+import type { HouseholdLabel } from '../household/householdModel'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
+import { familyLabel } from '../kit/familyLabel'
 import { formatMoney, toCents } from '../kit/money'
 
 export type ToPlaceReason = ApiAidToPlaceLine['reason']
@@ -33,6 +35,18 @@ const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1
 /** A money figure as the server's Decimal reads it: exact to the cent, no float noise ("780.00"). */
 export function exactAmount(value: number): string {
   return (toCents(value) / 100).toFixed(2)
+}
+
+/**
+ * The line's family as the household page names it (ruling D; #3080): `household_label` with its
+ * muted `household_label_tiebreak`, else the old `family` name. (Not `label`: on the group, that is
+ * the reason's label.)
+ */
+export function lineFamily(line: ApiAidToPlaceLine): HouseholdLabel {
+  return familyLabel(
+    { label: line.household_label, label_tiebreak: line.household_label_tiebreak },
+    line.family
+  )
 }
 
 /** Who CampMinder posted the line to: a person, or the household (person 0). */

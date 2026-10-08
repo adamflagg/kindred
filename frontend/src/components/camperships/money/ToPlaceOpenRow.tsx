@@ -26,6 +26,7 @@ import {
   confirmLines,
   evidenceWords,
   isMarkLine,
+  lineFamily,
   lineWords,
   placedWords,
   requestLabels,
@@ -94,6 +95,7 @@ export function ToPlaceOpenRow({
   const busy = inFlight.has(txn)
   const still = stillNotPlacedWords(line)
   const evidence = evidenceWords(line)
+  const family = lineFamily(line).text
   // R1-2: ask only once the line has stayed open a moment. ↑/↓ opens each row it passes, and every
   // preview is a season read; a line passed over asks nothing. (Keyed by the line, so no reset.)
   const [settledOn, setSettledOn] = useState<number | null>(null)
@@ -119,7 +121,7 @@ export function ToPlaceOpenRow({
     setError(null)
     try {
       const out = await place.mutateAsync({ year, transactionCmId: txn, body })
-      onDone(placedWords(out, [line], requestLabels([line])))
+      onDone(placedWords(out, [line], requestLabels([line]), () => family))
     } catch (caught) {
       // The reads (and this preview) refreshed before this rejection: "What Confirm does" already
       // shows the new answer, so Confirm stays on and confirms what it now shows.
@@ -242,8 +244,8 @@ export function ToPlaceOpenRow({
                 }
                 onDone(
                   written === 0
-                    ? `${line.family}: already left at family level with this note; nothing changed.`
-                    : `${line.family}: left at family level with your note. Reopen needs a reason.`
+                    ? `${family}: already left at family level with this note; nothing changed.`
+                    : `${family}: left at family level with your note. Reopen needs a reason.`
                 )
               }}
             />
