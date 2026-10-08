@@ -34,6 +34,8 @@ import type {
   AidPostingLine,
   AidRulesInput,
   AidRulesOutput,
+  AidSourceRow,
+  AidSourcesResponse,
   AnswerOut,
   ApplicationDetailResponse,
   ApprovedRulesOut,
@@ -46,6 +48,7 @@ import type {
   CamperJourneyRow,
   CancellationIn,
   CancellationOut,
+  CandidateOut,
   CellOut,
   CommitteeOut,
   CompareColumnOut,
@@ -95,14 +98,22 @@ import type {
   JumpIndexResponse,
   KeepIn,
   LastSeasonOut,
+  LeaveLineIn,
+  LeftToTickOut,
   LeverEffectOut,
   LoadIn,
   MakeRulesDraftIn,
   ManualHoldIn,
+  NotTickedOut,
   OptionOut,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
+  PlaceLineIn,
+  PlaceLinesIn,
+  PlaceOut,
+  PlacePreviewIn,
+  PlacePreviewOut,
   PostedIn,
   PreviewIn,
   ProgramProfile,
@@ -113,6 +124,7 @@ import type {
   PromotionSectionOut,
   ReceiptOut,
   PoolBudgetOut,
+  ReclassifyLineIn,
   RemainingResponse,
   RenameIn,
   ResultsOut,
@@ -124,6 +136,12 @@ import type {
   SnapshotOut,
   TierRowOut,
   TierCompareOut,
+  SuggestionOut,
+  TickedOut,
+  ToPlaceGroupOut,
+  ToPlaceLineOut,
+  ToPlaceResponse,
+  ToPlaceWriteOut,
   RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
@@ -363,3 +381,33 @@ export type ApiAidSectionsSaveIn = SectionsSaveIn
 export type ApiAidRulesApproveIn = RulesApproveIn
 export type ApiAidStartFromLastYearIn = StartFromLastYearIn
 export type ApiAidRulesVersion = RulesVersionOut
+
+/** Money › To place (spec §8.1; SP11; D12, D58, D151, D152). Mirrors Python `ToPlaceResponse` and its parts. */
+export type ApiAidToPlace = ToPlaceResponse
+export type ApiAidToPlaceGroup = ToPlaceGroupOut
+export type ApiAidToPlaceLine = ToPlaceLineOut
+export type ApiAidToPlaceCandidate = CandidateOut
+export type ApiAidToPlaceSuggestion = SuggestionOut
+/** A round a placement ticked, left for a person, or withheld its tick on (D152). */
+export type ApiAidTicked = TickedOut
+export type ApiAidLeftToTick = LeftToTickOut
+export type ApiAidNotTicked = NotTickedOut
+/** To place's writes. Each mirrors its Python model. */
+export type ApiAidPlaceLineIn = PlaceLineIn
+export type ApiAidPlaceLinesIn = PlaceLinesIn
+export type ApiAidPlaceOut = PlaceOut
+export type ApiAidLeaveLineIn = LeaveLineIn
+export type ApiAidReclassifyLineIn = ReclassifyLineIn
+export type ApiAidToPlaceWriteOut = ToPlaceWriteOut
+
+/** What placing typed parts would do, before anything is written (slice 3 ask 8, #2975). Mirrors Python `PlacePreviewIn`/`PlacePreviewOut`. */
+export type ApiAidPlacePreviewIn = PlacePreviewIn
+export type ApiAidPlacePreview = PlacePreviewOut
+
+/**
+ * Money › Sources: the CampMinder description registry (spec §8.1; D58, D88, D100, D105). Mirrors
+ * Python `AidSourcesResponse`/`AidSourceRow`; `GET /sources?year=` adds each row's lines and $ this
+ * season. `source_family` is a plain string here; the write's Literal names funders (P-12).
+ */
+export type ApiAidSources = AidSourcesResponse
+export type ApiAidSourceRow = AidSourceRow

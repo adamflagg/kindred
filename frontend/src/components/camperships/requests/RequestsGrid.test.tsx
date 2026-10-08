@@ -52,6 +52,8 @@ function Grid({
       href: (row: ApiAidGridRow) =>
         `/aid/households/${String(row.household_cm_id)}?from=${view.slug}&year=2027`,
       open,
+      toPlace: (row: ApiAidGridRow) =>
+        `/aid/money/to-place?household=${String(row.household_cm_id)}&year=2027`,
     }),
     [view.slug]
   )
@@ -1042,6 +1044,22 @@ describe("the detail line's Mark Posted (#2996)", () => {
     rerender(<Grid slug="not-reconciled" rows={[at(1420)]} onMarkPosted={onMarkPosted} />)
     expect(detail().getByRole('button', { name: 'Mark Posted · locks $1,420' })).toBeInTheDocument()
     expect(detail().queryByText(/The decided amount moved\./)).toBeNull()
+  })
+
+  // Owner ruling C (10-06): "Money to place" steps to To place, filtered to the family.
+  it('steps "Money to place" to To place for the family, opened as the household link is', async () => {
+    render(<Grid slug="not-reconciled" rows={[refused(false)]} />)
+    await openRow()
+    const link = detail().getByRole('link', { name: 'Place It in Money › To Place ›' })
+    expect(link).toHaveAttribute('href', '/aid/money/to-place?household=1000001&year=2027')
+    const moves = highlights.length
+    await userEvent.click(link)
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqrefused00001' }),
+      '/aid/money/to-place?household=1000001&year=2027'
+    )
+    // The click is the link's, not the row's: no highlight moves.
+    expect(highlights).toHaveLength(moves)
   })
 
   it('offers no Mark Posted where the server says a hand tick is not the way, or to a viewer who cannot tick', async () => {

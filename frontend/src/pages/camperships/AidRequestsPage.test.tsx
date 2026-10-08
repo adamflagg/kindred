@@ -1463,3 +1463,30 @@ describe('Mark Posted on a Not reconciled row (#2996)', () => {
     })
   })
 })
+
+// Owner ruling C (10-06): the grid's "Money to place" opens To place, filtered to the family.
+describe('"Money to place" on a Not reconciled row (ruling C)', () => {
+  it('links to To place for the family, keeping the season', async () => {
+    const money = {
+      ...gridRow({ request_id: 'reqmoney0000001' }),
+      unticked: [
+        {
+          round: 1,
+          code: 'family_level' as const,
+          label: 'Money to place',
+          message: 'A sentence from the server.',
+          mark_posted: false,
+        },
+      ],
+      queues: ['not_reconciled' as const],
+    }
+    grid = { data: { ...LIVE, rows: [money] }, isLoading: false, error: null }
+    renderAt('/aid/requests?view=not-reconciled')
+    const row = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getAllByRole('cell')[2] as HTMLElement)
+    const detail = document.querySelector('[data-aid-detail]') as HTMLElement
+    expect(
+      within(detail).getByRole('link', { name: 'Place It in Money › To Place ›' })
+    ).toHaveAttribute('href', '/aid/money/to-place?household=1000001&year=2027')
+  })
+})

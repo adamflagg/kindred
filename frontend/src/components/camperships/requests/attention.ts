@@ -98,12 +98,24 @@ export type NextStep =
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'tick'; readonly label: string }
   | { readonly kind: 'markPosted'; readonly label: string; readonly round: number }
+  | { readonly kind: 'toPlace'; readonly label: string }
 
 const toRequest = (label: string): NextStep => ({ kind: 'link', label, at: 'request' })
 const say = (text: string): NextStep => ({ kind: 'text', text })
 
 /** The mock's fallback, and the step for a row that needs nothing. */
 export const OPEN_REQUEST = toRequest('Open the Request')
+
+/**
+ * Owner ruling C (10-06): "'Place It in Money › To Place ›' on the grid pill and the household
+ * page". The step of a Not reconciled row whose `unticked[]` entry is family-level money (`code`
+ * `family_level`, "Money to place"): CampMinder holds money for the family that no request
+ * explains, and it is attached in Money › To place, filtered to the family (`?household=`).
+ */
+export const TO_PLACE_STEP = {
+  kind: 'toPlace',
+  label: 'Place It in Money › To Place',
+} as const satisfies NextStep
 
 export interface GridAttention {
   readonly item: AttentionItem
@@ -117,7 +129,8 @@ export interface GridAttention {
   readonly queue: ApiAidQueue | null
   /**
    * Its next step for the detail line. The hand "Mark Posted" is a `markPosted` step on a Not
-   * reconciled row whose `unticked[]` entry says `mark_posted`; other unticked entries have no step.
+   * reconciled row whose `unticked[]` entry says `mark_posted`; family-level money ("Money to
+   * place") is `TO_PLACE_STEP` (ruling C); other unticked entries have no step.
    */
   readonly next: NextStep | null
 }
@@ -307,14 +320,19 @@ export function attentionItems(
   if (reconcile !== null) items.push(reconcile)
   // #2996 direction (b): CampMinder holds money for a round the overnight tick refused. Why, as the
   // server says it: the pill (`label`) and a whole sentence (`message`). Where the server says a hand
-  // tick is the way through (`mark_posted`), the step is Mark Posted on that round (owner, title case).
+  // tick is the way through (`mark_posted`), the step is Mark Posted on that round (owner, title case);
+  // family-level money is placed in Money › To place, the family's lines (ruling C).
   for (const money of row.unticked ?? []) {
     items.push(
       note(
         money.label,
         money.message,
         'not_reconciled',
-        money.mark_posted ? { kind: 'markPosted', label: 'Mark Posted', round: money.round } : null
+        money.mark_posted
+          ? { kind: 'markPosted', label: 'Mark Posted', round: money.round }
+          : money.code === 'family_level'
+            ? TO_PLACE_STEP
+            : null
       )
     )
   }

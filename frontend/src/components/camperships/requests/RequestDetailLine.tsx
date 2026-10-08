@@ -134,6 +134,17 @@ function stepOf(
     )
   }
   if (next.kind === 'text') return <span className={MUTED}>{next.text}</span>
+  if (next.kind === 'toPlace') {
+    // Ruling C: To place for this family, opened as the household link is (saved first; Back
+    // returns here). A surface that gives no To place link draws nothing.
+    const to = links.toPlace?.(row)
+    if (to === undefined) return null
+    return (
+      <HouseholdLink row={row} links={links} className={LINK} to={to}>
+        {next.label} ›
+      </HouseholdLink>
+    )
+  }
   // The row's own Accepted tick, the same one its Tick column does (no new write path); nothing
   // when the viewer can't tick or the server would refuse it (cancelled in Kindred, review M3).
   if (onTick === undefined || acceptedTarget(row) === null) return null
