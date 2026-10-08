@@ -8,10 +8,12 @@ import {
   datedSeasons,
   datedWords,
   dayBefore,
+  developmentColumns,
   developmentRows,
   notBuiltLines,
   notRebuiltColumnWords,
   rebuildReason,
+  SUB_LINES,
   sourceRows,
   unconfirmedWords,
   withColumn,
@@ -22,35 +24,100 @@ const texts = (row: { cells: ReadonlyArray<Parameters<typeof reportText>[0]> } |
   (row?.cells ?? []).map(reportText)
 
 describe('the report', () => {
-  it('groups the lines Money · Counts · Appeals and cancellations, in the server’s order', () => {
+  it('groups the lines Money · Counts · Appeals and cancellations, one row per line', () => {
     expect(developmentRows(DEVELOPMENT).map((r) => [r.kind, texts(r)[0]])).toEqual([
       ['heading', 'Money'],
       ['body', 'Total Awards Granted'],
-      ['body', 'Total Awards Granted'],
-      ['body', '% of need met'],
+      ['body', 'Pool A'],
+      ['body', 'Pool B'],
+      ['body', 'Camp awards'],
+      ['body', 'Incentive awards'],
+      ['body', '% of need met, Pool A'],
       ['heading', 'Counts'],
-      ['body', 'First-time'],
+      ['body', 'Recipients'],
+      ['body', 'Pool A'],
+      ['body', 'Pool B'],
+      ['body', 'First-time, Pool A'],
+      ['body', 'First-time, Pool B'],
+      ['body', 'Gender, campers who got money: girl, Pool A'],
       ['heading', 'Appeals and cancellations'],
       ['body', 'Declined enrollment for insufficient aid'],
+      ['body', 'Cancelled after an award'],
     ])
   })
 
-  it("names each line's group from the read, and every group as such (⚠ Decision 15)", () => {
-    const [, poolA, every] = developmentRows(DEVELOPMENT)
-    expect(texts(poolA).slice(0, 3)).toEqual(['Total Awards Granted', 'Pool A', '$800,000'])
-    expect(texts(every).slice(0, 2)).toEqual(['Total Awards Granted', 'Every group'])
+  it('has no Group column: the header is Line and the season columns', () => {
+    expect(developmentColumns(DEVELOPMENT).map((c) => c.header)).toEqual([
+      'Line',
+      ...DEVELOPMENT.columns.map(columnHeader),
+    ])
   })
 
-  it('draws each unit as the kit does, and "—" where a basis has nothing (D74)', () => {
+  it('draws a line with an every-group row once, with its definition once and that row’s figures', () => {
     const rows = developmentRows(DEVELOPMENT)
-    expect(texts(rows[3])).toEqual(['% of need met', 'Pool A', '—', '76.5%', '61.2%', '54.0%'])
-    expect(texts(rows[7]).slice(2)).toEqual(['0', '0', '3', '—'])
+    expect(texts(rows[1])).toEqual([
+      'Total Awards Granted',
+      '$900,000',
+      '$930,000',
+      '$2,500',
+      '$1,800',
+    ])
+    expect(rows[1]?.note).toBe('Every award, the camp’s and outside grants')
+    expect(rows.filter((r) => texts(r)[0] === 'Recipients')).toHaveLength(1)
+    expect(rows[8]?.note).toBe('People with an award this season')
+    expect(rows[9]?.note).toBeUndefined()
+    expect(rows[10]?.note).toBeUndefined()
   })
 
-  it("keeps each line's own definition under it (D99)", () => {
-    expect(developmentRows(DEVELOPMENT)[5]?.note).toBe(
-      'No summer session at camp in any earlier season from 2017'
-    )
+  it('draws Total Awards Granted and Recipients by group, indented under them, labelled by group', () => {
+    const rows = developmentRows(DEVELOPMENT)
+    expect(rows.slice(2, 4).map((r) => [texts(r)[0], r.indent, texts(r)[1]])).toEqual([
+      ['Pool A', 1, '$800,000'],
+      ['Pool B', 1, '$100,000'],
+    ])
+    expect(rows.slice(9, 11).map((r) => [texts(r)[0], r.indent, texts(r)[1]])).toEqual([
+      ['Pool A', 1, '10'],
+      ['Pool B', 1, '4'],
+    ])
+  })
+
+  it('draws no group rows under any other line (Camp awards)', () => {
+    const labels = developmentRows(DEVELOPMENT).map((r) => texts(r)[0])
+    expect(labels.filter((l) => l === 'Camp awards')).toHaveLength(1)
+    expect(labels.indexOf('Camp awards') + 1).toBe(labels.indexOf('Incentive awards'))
+  })
+
+  it('reads a kind-limited line "label, Pool A", keeping each distinct definition once', () => {
+    const rows = developmentRows(DEVELOPMENT)
+    expect(texts(rows[6])).toEqual(['% of need met, Pool A', '—', '76.5%', '61.2%', '54.0%'])
+    expect(rows[6]?.note).toBeUndefined()
+    expect(rows[11]?.note).toBe('No summer session at camp in any earlier season from 2017')
+    expect(rows[12]?.note).toBe('No family camp in any earlier season')
+  })
+
+  it('never repeats a definition verbatim on consecutive rows of a kind-limited line', () => {
+    const same = {
+      ...DEVELOPMENT,
+      rows: DEVELOPMENT.rows.map((r) =>
+        r.key === 'first_time' ? { ...r, definition: 'Same words' } : r
+      ),
+    }
+    const notes = developmentRows(same)
+      .filter((r) => texts(r)[0]?.startsWith('First-time'))
+      .map((r) => r.note)
+    expect(notes).toEqual(['Same words', undefined])
+  })
+
+  it('indents the sub-lines as the mock does (SUB_LINES)', () => {
+    expect(SUB_LINES.camp_awards).toBe(1)
+    expect(SUB_LINES.incentive_awards).toBe(2)
+    const rows = developmentRows(DEVELOPMENT)
+    const indentOf = (label: string) => rows.find((r) => texts(r)[0] === label)?.indent
+    expect(indentOf('Camp awards')).toBe(1)
+    expect(indentOf('Incentive awards')).toBe(2)
+    expect(indentOf('Cancelled after an award')).toBe(1)
+    expect(indentOf('Total Awards Granted')).toBe(0)
+    expect(indentOf('Gender, campers who got money: girl, Pool A')).toBe(1)
   })
 
   it('prints each column’s basis, and marks a contested one (O-930-1)', () => {
