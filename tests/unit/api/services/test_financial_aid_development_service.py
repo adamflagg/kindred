@@ -90,9 +90,18 @@ def _row(out: Any, key: str, group: str | None) -> Any:
     return next(r for r in out.rows if r.key == key and r.group == group)
 
 
+def _asks_within_cost() -> FakeDecisionsStore:
+    """report_season with Emma's ask at her session's 2,000 cost: no ask is impossible (owner 10-03)."""
+    store = report_season()
+    store.requests["reqemma00000001"] = replace(store.requests["reqemma00000001"], ask=2000.0)
+    return store
+
+
 async def test_the_season_column_is_all_money_on_campers_who_attended() -> None:
     """D87: the camp's awarded money plus every live outside grant; Liam's decided 1,100 is not money given out."""
-    out = await _service(_development(), register=[grant_row("reqemma00000001", "500")]).development(YEAR)
+    out = await _service(
+        _development(), register=[grant_row("reqemma00000001", "500")], store=_asks_within_cost()
+    ).development(YEAR)
     assert [(c.season, c.basis, c.basis_unconfirmed) for c in out.columns] == [(2027, "P", False)]
     assert [(g.key, g.kind) for g in out.groups] == [
         ("camp_pool", "summer"),
@@ -102,7 +111,7 @@ async def test_the_season_column_is_all_money_on_campers_who_attended() -> None:
     assert _row(out, "total_awards", "camp_pool").values == [2000.0]
     assert _row(out, "awards", "camp_pool").values == [1.0]  # item 32: Emma's aid and her grant are one award
     assert _row(out, "recipients", None).values == [1.0]
-    assert _row(out, "total_requests", "camp_pool").values == [6000.0]  # both attended, both asked
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]  # both attended, both asked
     assert [(s.name, s.who_paid, s.amount, s.awards) for s in out.sources] == [
         ("The camp's awards", "the camp", 1500.0, 1),
         ("Regional Camp Fund", "another funder", 500.0, 1),
@@ -676,3 +685,28 @@ async def test_a_funders_incentive_and_need_based_money_stay_on_separate_lines()
         ("Regional Camp Fund", False, 500.0),
         ("Regional Camp Fund", True, 250.0),
     ]
+
+
+async def test_an_ask_above_its_sessions_cost_leaves_demand_and_the_column_counts_it() -> None:
+    """Owner 10-03 (queue 16 ii): a 2026+ request's ask above its session's cost (as priced, a staff cost override
+    included) is impossible: left out of Total Requests and % of need met, never capped, and counted on the column
+    for the footnote. Emma asks 4,000 for Session 2, which costs 2,000 (fixtures.fictional_rules); Liam's 2,000 stays."""
+    out = await _service(_development()).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values == [2000.0]
+    assert [(c.season, c.basis, c.asks_left_out) for c in out.columns] == [(2027, "P", 1)]
+
+
+async def test_a_season_with_no_impossible_ask_counts_none() -> None:
+    out = await _service(_development(), store=_asks_within_cost()).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values == [4000.0]
+    assert [c.asks_left_out for c in out.columns] == [0]
+
+
+async def test_an_ask_above_its_sessions_cost_is_left_out_though_the_familys_income_is_missing() -> None:
+    """The session's cost doesn't depend on the family's income: a request the calculator stops on (no income figure
+    reported) still has its session's price, so its 4,000 ask on a 2,000 session is left out too (owner 10-03)."""
+    store = report_season()
+    store.applications = [replace(a, answers={}) if a.household_cm_id == 1000001 else a for a in store.applications]
+    out = await _service(_development(), store=store).development(YEAR)
+    assert _row(out, "total_requests", "camp_pool").values == [2000.0]
+    assert [c.asks_left_out for c in out.columns] == [1]

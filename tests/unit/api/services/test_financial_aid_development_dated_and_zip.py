@@ -89,8 +89,11 @@ async def test_a_dated_column_leaves_out_campers_registered_after_its_day() -> N
         columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 2, 1)),)),
         registrations=[went(EMMA, 1000001, registered_on=date(2027, 2, 15)), went(LIAM, 1000002)],
     )
-    out = await _service(development).development(YEAR)
-    assert _values(out, "total_requests") == [6000.0, 2000.0]  # Emma registered on Feb 15, after Feb 1
+    # Emma's ask at her session's 2,000 cost, so no ask is impossible (owner 10-03) and only the day differs
+    store = report_season()
+    store.requests["reqemma00000001"] = replace(store.requests["reqemma00000001"], ask=2000.0)
+    out = await _service(development, store).development(YEAR)
+    assert _values(out, "total_requests") == [4000.0, 2000.0]  # Emma registered on Feb 15, after Feb 1
 
 
 async def test_a_camper_cancelled_after_the_day_still_counts_on_it() -> None:

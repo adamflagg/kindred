@@ -49,6 +49,7 @@ from api.services.financial_aid_intake_types import (
     CorrectionRecord,
     RequestRecord,
 )
+from bunking.financial_aid.calculator import resolve_cost
 from bunking.financial_aid.decisions import PricedRequest, RoundState, RoundView, round_exists
 from bunking.financial_aid.decisions.budget import counted_part
 from bunking.financial_aid.money import ZERO
@@ -160,6 +161,20 @@ def _round(
     )
 
 
+def session_cost(priced: PricedRequest | None, document: AidRules | None) -> Decimal | None:
+    """The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override), for
+    the impossible-ask rule (owner 10-03, queue 16 ii). The calculator's own when it reached its cost step; else the
+    cost resolver's, since a session's price doesn't depend on the family's income (the calculator stops before cost
+    when no income is reported). None when nothing could price it: a request that isn't live, or no rules."""
+    if priced is None:
+        return None
+    if priced.result is not None and priced.result.cost is not None:
+        return priced.result.cost
+    if priced.inputs is not None and document is not None:
+        return resolve_cost(priced.inputs, document).amount
+    return None
+
+
 def report_requests(
     season: Season,
     *,
@@ -235,6 +250,7 @@ def report_requests(
                 rounds=tuple(rounds),
                 grants=grants.get(request_id, ZERO),
                 counts_as_received=not is_duplicate,
+                cost=session_cost(priced, document),
             )
         )
     return tuple(out)

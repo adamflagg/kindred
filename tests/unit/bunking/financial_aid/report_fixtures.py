@@ -55,6 +55,7 @@ def req(
     reason: str | None = None,
     received_at: datetime | None = datetime(2027, 1, 10, 18, 0, tzinfo=UTC),
     grants: str = "0",
+    cost: str | None = None,
 ) -> ReportRequest:
     return ReportRequest(
         request_id=request_id,
@@ -70,4 +71,5 @@ def req(
         received_at=received_at,
         rounds=rounds or (rnd(1),),
         grants=Decimal(grants),
+        cost=Decimal(cost) if cost is not None else None,
     )

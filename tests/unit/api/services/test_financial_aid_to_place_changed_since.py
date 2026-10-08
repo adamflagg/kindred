@@ -15,7 +15,13 @@ from typing import Any
 
 import pytest
 
-from api.schemas.financial_aid_to_place import PlaceLineIn, PlaceLinesIn, PlaceLinesRow, PlacePartIn
+from api.schemas.financial_aid_to_place import (
+    PlaceLineIn,
+    PlaceLinesIn,
+    PlaceLinesRow,
+    PlacePartIn,
+    PlacePreviewIn,
+)
 from api.services.financial_aid_decisions_service import (
     DecisionRefusedError,
     FinancialAidDecisionsService,
@@ -737,3 +743,69 @@ async def test_a_custom_value_sync_removal_refuses_only_where_the_rules_weigh_a_
     assert changed_since(season, family_tick, _since(removals=removals)) == ()
     attendees = (SyncRemoval("attendees", AFTER),)
     assert _codes(changed_since(season, family_tick, _since(removals=attendees))) == ["removed_by_sync"]
+
+
+# --- a split with several withheld parts: the shared explanation is said once ---------------------------------
+
+
+SIBLING = "reqliam00000001"  # Emma's brother, same household and application
+
+
+def _split_store() -> FakeToPlaceStore:
+    """One 3,000 line posted Mar 8, to split 1,500 / 1,500 over Emma's and her brother's requests; a correction entered Mar 9 sits on
+    her application, so BOTH parts' rounds are withheld for the same reason."""
+    store = FakeToPlaceStore()
+    seed_request(store, EMMA)
+    seed_request(store, SIBLING, person=1000012)  # Emma's brother: same application
+    seed_line(store, 9001, "3000", person=0, posted=MAR8)
+    _correction(store)
+    return store
+
+
+SPLIT = _place((EMMA, "1500"), (SIBLING, "1500"))
+
+
+def _split_would_not_tick_whys(rows: Sequence[Any]) -> list[tuple[str, str]]:
+    return [(n.request_id, n.why) for n in rows]
+
+
+@pytest.mark.asyncio
+async def test_a_split_with_two_withheld_parts_says_the_changed_since_list_once() -> None:
+    """The Money › To place wall of text: two parts withheld for the same changes repeated the whole "after it was
+    posted in CampMinder on Mar 8, a correction was entered (Mar 9)..." sentence once per part. The first part carries
+    the shared explanation; the other says only that its round wasn't marked either, for the same changes."""
+    service = to_place_service(_split_store())
+    preview = await service.preview(YEAR, 9001, PlacePreviewIn(parts=SPLIT.parts), ACTOR)
+    whys = _split_would_not_tick_whys(preview.would_not_tick)
+    assert [r for r, _ in whys] == [EMMA, SIBLING]
+    first, second = (w for _, w in whys)
+    assert first == NOT_TICKED_WHY
+    assert second == "Round 1 wasn't marked posted automatically either: the same changes as above."
+    assert sum(w.count("a correction was entered") for _, w in whys) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_split_previews_and_the_write_word_the_withheld_parts_alike() -> None:
+    """Preview = write (§4.10): the confirmation names the same parts with the same words."""
+    service = to_place_service(_split_store())
+    preview = await service.preview(YEAR, 9001, PlacePreviewIn(parts=SPLIT.parts), ACTOR)
+    placed = await service.place(YEAR, 9001, SPLIT, ACTOR)
+    assert _split_would_not_tick_whys(placed.not_ticked) == _split_would_not_tick_whys(preview.would_not_tick)
+    assert len(placed.not_ticked) == 2
+
+
+@pytest.mark.asyncio
+async def test_two_withheld_parts_for_different_changes_each_keep_their_own_explanation() -> None:
+    """Only an IDENTICAL explanation (same posting day, same changed-since list) is folded: a part withheld for other
+    reasons keeps its whole sentence."""
+    from api.services.financial_aid_to_place_service import not_ticked_outs
+
+    other = replace(TICK, request_id=SIBLING)
+    a, b = (
+        (ChangedReason("correction", "a correction was entered (Mar 9)"),),
+        (ChangedReason("grant", "a grant was recorded (Mar 9)"),),
+    )
+    out = not_ticked_outs([(9001, TICK, a), (9001, other, b)])
+    assert out[0].why.startswith("Round 1 wasn't marked posted automatically: after it was posted")
+    assert out[1].why.startswith("Round 1 wasn't marked posted automatically: after it was posted")
+    assert "grant was recorded" in out[1].why

@@ -442,7 +442,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Need: {camp}'s awards in the rounds before the latest ask + the latest ask, never less than any earlier "
             "ask's own figure. Total Requests = Σ need of the live requests of campers who attended; a cancelled or closed request and outside grants are never in it. % "
-            "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need."
+            "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need. An ask above "
+            "its session's cost can't be right, so it is left out of need (never capped), and the report counts how "
+            "many."
         ),
         spec="§5.10",
         rulings=("D91",),

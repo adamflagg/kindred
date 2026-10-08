@@ -891,7 +891,12 @@ def _columns(
             out.append(
                 (
                     DevelopmentColumnOut(
-                        season=season, basis="P", as_of=today, basis_unconfirmed=False, label=str(season)
+                        season=season,
+                        basis="P",
+                        as_of=today,
+                        basis_unconfirmed=False,
+                        label=str(season),
+                        asks_left_out=natives[season].asks_left_out,
                     ),
                     natives[season],
                 )
@@ -907,6 +912,7 @@ def _columns(
                             basis_unconfirmed=False,
                             label=f"{season} as of {as_of:%b} {as_of.day}",
                             not_rebuilt=list(DATED_NOT_REBUILT),
+                            asks_left_out=column.asks_left_out,
                         ),
                         column,
                     )

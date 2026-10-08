@@ -76,3 +76,10 @@ def test_total_requests_counts_only_live_requests_of_campers_who_attended() -> N
     text = BY_KEY["need"].text
     assert "live requests of campers who attended" in text
     assert "cancelled or closed request" in text
+
+
+def test_need_says_an_ask_above_its_sessions_cost_is_left_out() -> None:
+    """Owner 10-03 (queue 16 ii): the note says what demand leaves out, and that the report counts it."""
+    text = BY_KEY["need"].text
+    assert "above its session's cost" in text
+    assert "left out" in text

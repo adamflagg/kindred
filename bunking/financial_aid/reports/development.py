@@ -49,7 +49,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.reports.facts import ReportRequest, average
+from bunking.financial_aid.reports.facts import ReportRequest, RoundFacts, average
 from bunking.financial_aid.scenarios.committee import pct
 
 GroupKind = Literal["summer", "families", "campers"]
@@ -159,6 +159,7 @@ class GroupFigures:
     incentive_awards: Decimal = ZERO  # the incentive-flagged sources' money (D88's detail line)
     teen_programs: int | None = None  # the summer group only: recipients at a TLI or SCIT session
     cancelled_by_reason: Mapping[str, int] = field(default_factory=dict)  # D158: every cancelled aid request, by reason
+    asks_left_out: int = 0  # owner 10-03: impossible asks left out of total_requests and pct_need_met
     # Internal, for the ZIP read only: NEVER copied into a response (D66, D90: no family's row, ever).
     money_by_recipient: Mapping[int, Decimal] = field(default_factory=dict)  # camper (or household) -> all money
     household_level_by_household: Mapping[int, Decimal] = field(default_factory=dict)
@@ -191,6 +192,7 @@ class DevelopmentColumn:
     shared_campers: int
     by_source: tuple[SourceLine, ...]
     not_in_group: NotInGroup = NotInGroup(ZERO, ZERO, 0, 0)
+    asks_left_out: int = 0  # owner 10-03: the groups' impossible asks, left out of Total Requests
 
 
 def gender_label(name: str, write_in: str) -> str:
@@ -241,15 +243,27 @@ def rebuilt_ages(
     return dict(ages)
 
 
+def impossible(request: ReportRequest, facts: RoundFacts) -> bool:
+    """Owner 10-03 (queue 16 ii): "for 2026+ Kindred requests, an ask above its session's cost is impossible". Each
+    round's own ask against the request's priced cost; a request with no cost known keeps every ask."""
+    return request.cost is not None and facts.ask is not None and facts.ask > request.cost
+
+
+def impossible_asks(request: ReportRequest) -> int:
+    """How many of the request's asks are impossible: the footnote's count (owner 10-03: "a footnote counts them")."""
+    return sum(1 for facts in request.rounds if impossible(request, facts))
+
+
 def need(request: ReportRequest) -> Decimal:
-    """§5.10: the camp's awards in the rounds before an ask + that ask, at its highest over the asked rounds."""
+    """§5.10: the camp's awards in the rounds before an ask + that ask, at its highest over the asked rounds. An
+    impossible ask is LEFT OUT, never capped (owner 10-03): its round's posted money still counts as awarded before."""
     best = ZERO
     awarded_before = ZERO
     for n in (1, 2, 3):
         facts = request.round(n)
         if facts is None:
             continue
-        if facts.ask is not None:
+        if facts.ask is not None and not impossible(request, facts):
             best = max(best, awarded_before + facts.ask)
         awarded_before += facts.posted or ZERO
     return best
@@ -298,6 +312,7 @@ class _Tally:
     declined: int = 0
     incentive: Decimal = ZERO
     cancelled: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    left_out: int = 0
 
 
 def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
@@ -368,6 +383,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         money = request.awarded()
         tally.requests += need(request)
         tally.camper_need[whom] += need(request)
+        tally.left_out += impossible_asks(request)
         if money > 0:
             tally.camp += money
             tally.camp_count += 1
@@ -445,6 +461,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             for (source_key, group), (amount, count) in sorted(by_source.items(), key=lambda kv: (kv[0][1], kv[0][0]))
         ),
         not_in_group=not_in_group,
+        asks_left_out=sum(f.asks_left_out for f in figures),
     )
 
 
@@ -475,6 +492,7 @@ def _figures(
         appeals=Appeals(tally.submitted, tally.in_full, tally.in_part, tally.declined),
         incentive_awards=tally.incentive,
         cancelled_by_reason=dict(tally.cancelled),
+        asks_left_out=tally.left_out,
         money_by_recipient={k: v for k, v in tally.camper_money.items() if v > 0},
         household_level_by_household=dict(tally.household_money),
     )

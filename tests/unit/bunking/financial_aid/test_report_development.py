@@ -29,6 +29,7 @@ from bunking.financial_aid.reports.development import (
     SourceLine,
     development_column,
     gender_label,
+    impossible_asks,
     need,
     rebuilt_ages,
 )
@@ -517,3 +518,60 @@ def test_a_request_that_is_not_live_is_not_counted_because_the_camper_attended_a
 def test_a_cancelled_request_still_counts_in_the_cancel_reasons_though_it_is_out_of_the_need() -> None:
     camp = _camp(_emma_with_a_second_request("cancelled", "medical"))
     assert camp.cancelled_by_reason == {"medical": 1}
+
+
+# --- an impossible ask is left out of demand (owner 10-03, queue 16 ii) ------------------------------------------
+
+
+def test_an_ask_above_its_session_cost_is_left_out_of_need_never_capped() -> None:
+    """Owner 10-03: "for 2026+ Kindred requests, an ask above its session's cost is impossible"; impossible asks are
+    LEFT OUT of demand (not capped). Emma's Round 1 ask of 40,000 on a 4,000 session is a typo: her need is her
+    appeal's alone, 1,500 posted before it + its 1,000 ask."""
+    typo = req("reqemma00000001", rnd(1, ask="40000", posted="1500"), rnd(2, ask="1000"), person=EMMA, cost="4000")
+    assert need(typo) == Decimal(2500)
+    assert impossible_asks(typo) == 1
+
+
+def test_an_ask_equal_to_the_cost_or_with_no_cost_known_is_kept() -> None:
+    """Only an ask ABOVE the cost is impossible; a request the season couldn't price (no cost) keeps every ask."""
+    full = req("reqemma00000001", rnd(1, ask="4000"), person=EMMA, cost="4000")
+    unpriced = req("reqemma00000002", rnd(1, ask="40000"), person=EMMA)
+    assert (need(full), impossible_asks(full)) == (Decimal(4000), 0)
+    assert (need(unpriced), impossible_asks(unpriced)) == (Decimal(40000), 0)
+
+
+def test_the_column_counts_the_asks_it_left_out_of_total_requests_and_need_met() -> None:
+    """The footnote's count (owner 10-03: "a footnote counts them"): per group and for the column. Liam's 2,000 ask
+    stays. % of need met moves with it: (1,500 + 0) ÷ (2,500 + 2,000)."""
+    column = development_column(
+        _inputs(
+            requests=(
+                req(
+                    "reqemma00000001",
+                    rnd(1, ask="40000", posted="1500"),
+                    rnd(2, ask="1000"),
+                    person=EMMA,
+                    cost="4000",
+                ),
+                req("reqliam00000001", rnd(1, ask="2000"), person=LIAM, household=1000002, cost="4000"),
+            )
+        )
+    )
+    camp = _camp(column)
+    assert camp.total_requests == Decimal(4500)
+    assert camp.pct_need_met == Decimal("33.3")
+    assert (camp.asks_left_out, column.asks_left_out) == (1, 1)
+
+
+def test_a_request_out_of_demand_never_counts_as_an_ask_left_out() -> None:
+    """The count is of asks left out of Total Requests: a cancelled request (29b) or a camper who didn't attend
+    (D92) was never in it, impossible ask or not."""
+    column = development_column(
+        _inputs(
+            requests=(
+                req("reqemma00000001", rnd(1, ask="40000"), person=EMMA, cost="4000", standing="cancelled"),
+                req("reqsamuel000001", rnd(1, ask="40000"), person=SAMUEL, household=1000003, cost="4000"),
+            )
+        )
+    )
+    assert column.asks_left_out == 0
