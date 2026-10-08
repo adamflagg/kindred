@@ -14,6 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from api.schemas.financial_aid_grants import (
+    CamperSuggestionOut,
     CommitmentIn,
     GrantorCreate,
     GrantorRetireIn,
@@ -1318,3 +1319,76 @@ async def test_a_grants_refusal_that_is_no_race_is_not_dressed_as_one() -> None:
     _refuse(400, {"name": "Cannot be blank."})
     with pytest.raises(BatchRequestFailedError):
         await service.create_grantor(_create(), ACTOR)
+
+
+# The Register names a row's program by the season's rules label (programs.<key>.label), never the key: the same
+# loader the summary and the Ledger use. "" for a key the rules don't name, a row with no program, or no loader.
+def _with_program_labels(repo: MagicMock, labels: dict[str, str]) -> tuple[GrantsService, AsyncMock]:
+    patch(f"{SERVICE}.current_season_year", AsyncMock(return_value=2031)).start()
+    loader = AsyncMock(return_value=labels)
+    return GrantsService(repo, program_labels=loader), loader
+
+
+@pytest.mark.asyncio
+async def test_each_register_row_carries_its_programs_rules_label() -> None:
+    placed = _posting(9002, 300, person_cm_id=1001)
+    other = _posting(9003, 200, person_cm_id=1002, attributed_person_cm_id=1002, attributed_session_cm_id=1000201)
+    repo = _read_repo(postings=[_posting(9001, 500), placed, other])
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_attendee(1001, 1000101), _attendee(1002, 1000201, session_type="quest")]
+    )
+    service, loader = _with_program_labels(repo, {"summer": "Summer Camp", "quest": "Quest Week"})
+    out = await service.read(2031)
+    assert {g.transaction_cm_id: (g.program_family, g.program_label) for g in out.grants} == {
+        9001: ("", ""),  # nobody placed yet: no program, no label
+        9002: ("summer", "Summer Camp"),
+        9003: ("quest", "Quest Week"),
+    }
+    # The copies needs a camper shows read the same, and so does its suggestion.
+    (need,) = out.needs_camper
+    assert need.grant.transaction_cm_id == 9001
+    assert need.suggestion is not None
+    assert (need.suggestion.program_family, need.suggestion.program_label) == ("summer", "Summer Camp")
+    loader.assert_awaited_once_with(2031)
+
+
+@pytest.mark.asyncio
+async def test_a_program_the_rules_dont_name_reads_an_empty_label() -> None:
+    repo = _read_repo(postings=[_posting(9001, 500, person_cm_id=1001)])
+    service, _ = _with_program_labels(repo, {"quest": "Quest Week"})
+    (row,) = (await service.read(2031)).grants
+    assert (row.program_family, row.program_label) == ("summer", "")
+
+
+@pytest.mark.asyncio
+async def test_a_grants_read_without_the_program_label_loader_names_no_label() -> None:
+    """Today and the household page read the register for its figures and pay for no rules read."""
+    service, _ = _service(_read_repo())
+    out = await service.read(2031)
+    assert [g.program_label for g in out.grants] == [""]
+
+
+def test_a_register_rows_program_label_defaults_to_empty() -> None:
+    assert GrantRowOut.model_fields["program_label"].default == ""
+    assert CamperSuggestionOut.model_fields["program_label"].default == ""
+
+
+def test_the_grants_route_reads_labels_from_the_same_approved_rules_as_the_summary() -> None:
+    from api.routers import financial_aid as router
+
+    with patch.object(router, "GrantsService") as service:
+        router._grants()
+    assert service.call_args.kwargs["program_labels"] is router._program_labels
+
+
+@pytest.mark.asyncio
+async def test_the_household_pages_grant_rows_read_program_labels_from_the_same_rules() -> None:
+    """HouseholdGrantRowOut inherits program_label, so the page's service must load it, not leave it blank."""
+    from api.routers import financial_aid as router
+
+    page = MagicMock()
+    page.read = AsyncMock(return_value="read")
+    with patch.object(router, "GrantsService") as grants, patch.object(router, "HouseholdPageService") as service:
+        service.return_value = page
+        await router.get_household_page(2031, 100)
+    assert grants.call_args.kwargs["program_labels"] is router._program_labels

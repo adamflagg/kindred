@@ -503,7 +503,7 @@ def _household_labels() -> HouseholdLabeler:
 
 
 def _grants() -> GrantsService:
-    return GrantsService(GrantsRepository(pb), labels=_household_labels())
+    return GrantsService(GrantsRepository(pb), labels=_household_labels(), program_labels=_program_labels)
 
 
 def _grants_register() -> GrantsRegisterService:
@@ -1862,7 +1862,7 @@ async def get_household_page(
     service = HouseholdPageService(
         store=FinancialAidDecisionsRepository(pb),
         pricing=_rules(),
-        grants=GrantsService(GrantsRepository(pb)),
+        grants=GrantsService(GrantsRepository(pb), program_labels=_program_labels),
         casework=_casework(),
         ledger=FinancialAidRepository(pb),
         history=EntityLogReads(pb),

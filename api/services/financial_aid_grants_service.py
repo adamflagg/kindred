@@ -76,6 +76,7 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     person_display_name,
 )
+from api.services.financial_aid_program_labels import ProgramLabelLoader
 from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import (
@@ -345,12 +346,15 @@ class GrantsService:
         *,
         clock: Callable[[], datetime] | None = None,
         labels: HouseholdLabeler | None = None,
+        program_labels: ProgramLabelLoader | None = None,
     ) -> None:
         self.repo = repo
         self._clock = clock or (lambda: datetime.now(UTC))
         # GET /grants/{year} names each row's family as the household page does (ruling D, owner 10-06). None: the
         # read names no label (Today and the household page read the register for its figures).
         self._labels = labels
+        # The season's approved-rules label per program key, the loader the summary and the Ledger use. None: no labels.
+        self._program_labels = program_labels
 
     def _today(self) -> date:
         """Today in camp time (a commitment's days waiting; spec §6.2's camp-time dates)."""
@@ -676,6 +680,8 @@ class GrantsService:
 
         labels = await self._labels(year, {r.household_cm_id for r in rows}) if self._labels is not None else {}
 
+        program_names = await self._program_labels(year) if self._program_labels is not None else {}
+
         commitments = {c.id: c for c in inputs.commitments}
 
         def row_out(row: RegisterRow) -> GrantRowOut:
@@ -694,6 +700,7 @@ class GrantsService:
                 session_cm_id=row.session_cm_id,
                 session_name=session_names.get(row.session_cm_id, ""),
                 program_family=row.program_family,
+                program_label=program_names.get(row.program_family, ""),
                 grantor_key=row.grantor_key,
                 grantor_name=grantor_names.get(row.grantor_key, ""),
                 description=str(source.description or "") if source is not None else "",
@@ -736,6 +743,7 @@ class GrantsService:
                             camper_name=name_of(n.suggestion.person_cm_id),
                             session_cm_id=n.suggestion.session_cm_id,
                             program_family=n.suggestion.program_family,
+                            program_label=program_names.get(n.suggestion.program_family, ""),
                             basis=n.suggestion.basis,
                             method=n.suggestion.method,
                             commitment_id=n.suggestion.commitment_id,

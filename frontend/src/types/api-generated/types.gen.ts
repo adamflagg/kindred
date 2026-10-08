@@ -1911,6 +1911,10 @@ export type CamperSuggestionOut = {
    */
   program_family: string
   /**
+   * Program Label
+   */
+  program_label?: string
+  /**
    * Basis
    */
   basis: 'commitment' | 'attribution'
@@ -5598,6 +5602,10 @@ export type GrantRowOut = {
    */
   program_family: string
   /**
+   * Program Label
+   */
+  program_label?: string
+  /**
    * Grantor Key
    */
   grantor_key: string
@@ -6761,6 +6769,10 @@ export type HouseholdGrantRowOut = {
    * Program Family
    */
   program_family: string
+  /**
+   * Program Label
+   */
+  program_label?: string
   /**
    * Grantor Key
    */
