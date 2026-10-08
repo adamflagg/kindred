@@ -189,8 +189,9 @@ class FinancialAidRepository:
 
     async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]:
         """These households' columns, named. `adults` adds aid_adults (the adults CampMinder names for an aid
-        household, hidden from every reader but the service's superuser): the household page asks for it, and no other
-        read may (tests/unit/api/services/test_aid_adults_guards.py)."""
+        household, hidden from every reader but the service's superuser): the household page asks for it, for its cards
+        and for the labels its helper names families by on To place, the Ledger and the Grants Register (ruling D), and
+        no other read may (tests/unit/api/services/test_aid_adults_guards.py)."""
         fields = f"{HOUSEHOLD_COLUMNS},aid_adults" if adults else HOUSEHOLD_COLUMNS
         return await self._by_ids(HOUSEHOLDS, f"year = {int(year)}", "cm_id", cm_ids, {"fields": fields})
 

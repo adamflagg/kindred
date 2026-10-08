@@ -5,7 +5,7 @@ decisions service reads placements and splits from that table. Fictional only (t
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -15,6 +15,7 @@ import httpx
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOSITIONS
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import Placement, RegisterRow
+from api.services.financial_aid_household_page import HouseholdLabel, label_tiebreaks
 from api.services.financial_aid_money_ledger import LedgerLine
 from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_reconciliation import CampLine, override_split
@@ -257,18 +258,41 @@ def seed_grant_line(
     return line
 
 
-def to_place_service(store: FakeToPlaceStore, rules: FakeRules | None = None) -> ToPlaceService:
+class FakeLabels:
+    """The household page's label helper (household_labels) as a read takes it, `labels(year, households)`: each
+    household reads as `names` says ("Adults <id>" otherwise), with the page's real tie-break over the households asked
+    for together and no city. `calls` records each call's households."""
+
+    def __init__(self, names: Mapping[int, str] | None = None) -> None:
+        self.names = dict(names or {})
+        self.calls: list[frozenset[int]] = []
+
+    async def __call__(self, year: int, households: Collection[int]) -> dict[int, HouseholdLabel]:
+        asked = frozenset(households)
+        self.calls.append(asked)
+        read = {h: self.names.get(h, f"Adults {h}") for h in asked}
+        ties = label_tiebreaks({h: (read[h], "") for h in asked})
+        return {h: HouseholdLabel(read[h], ties[h]) for h in asked}
+
+
+def to_place_service(
+    store: FakeToPlaceStore, rules: FakeRules | None = None, *, labels: FakeLabels | None = None
+) -> ToPlaceService:
     """The To place service over `store`, its decisions service pricing with every section approved, today Mar 9."""
 
     async def no_grants(year: int) -> Sequence[RegisterRow]:
         return []
 
     decisions = FinancialAidDecisionsService(store, rules or FakeRules(approved()), no_grants, clock=lambda: T0)
-    return ToPlaceService(decisions, store, clock=lambda: T0)
+    return ToPlaceService(decisions, store, labels=labels or FakeLabels(), clock=lambda: T0)
 
 
 def money_ledger_service(
-    store: FakeToPlaceStore, *, clock: datetime = T0, register: Sequence[RegisterRow] = ()
+    store: FakeToPlaceStore,
+    *,
+    clock: datetime = T0,
+    register: Sequence[RegisterRow] = (),
+    labels: FakeLabels | None = None,
 ) -> MoneyLedgerService:
     """Money > Ledger's reads over `store`, pricing with every section approved; today is `clock` (Mar 9 by default)."""
 
@@ -276,7 +300,7 @@ def money_ledger_service(
         return register
 
     decisions = FinancialAidDecisionsService(store, FakeRules(approved()), rows, clock=lambda: clock)
-    return MoneyLedgerService(decisions, store, clock=lambda: clock)
+    return MoneyLedgerService(decisions, store, labels=labels or FakeLabels(), clock=lambda: clock)
 
 
 def one_line(amount: str = "1500") -> FakeToPlaceStore:

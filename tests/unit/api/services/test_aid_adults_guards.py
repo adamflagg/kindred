@@ -91,7 +91,7 @@ ALLOWED = {
     "scripts/setup/synthetic/anonymizer.py",  # the synthetic DB fakes it
     "scripts/setup/synthetic/scan_leaks.py",  # and the leak scan denylists its real names
     "api/services/financial_aid_repository.py",  # its one Python read (fetch_households(adults=True))
-    "api/services/financial_aid_household_page.py",  # its one consumer, the Camperships household page
+    "api/services/financial_aid_household_page.py",  # its one consumer: the household page, and its label helper
     "frontend/src/types/pocketbase-types.ts",  # generated from the schema
 }
 SCANNED = ("api", "bunking", "scripts", "pocketbase", "frontend/src", "docker")

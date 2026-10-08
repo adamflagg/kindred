@@ -12,7 +12,7 @@ import asyncio
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from api.schemas.financial_aid_decisions import AsOfAxis
 from api.schemas.financial_aid_money_ledger import (
@@ -42,6 +42,9 @@ from api.services.financial_aid_money_ledger import (
 from api.services.financial_aid_reconciliation import SeasonLedger, camp_date
 from api.services.financial_aid_to_place import LeftLine, SourceRow
 from bunking.financial_aid.money import ZERO
+
+if TYPE_CHECKING:
+    from api.services.financial_aid_household_page import HouseholdLabeler
 
 
 class MoneyLedgerStore(Protocol):
@@ -77,10 +80,12 @@ class MoneyLedgerService:
         decisions: FinancialAidDecisionsService,
         store: MoneyLedgerStore,
         *,
+        labels: HouseholdLabeler,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._decisions = decisions
         self._store = store
+        self._labels = labels  # names each family row as the household page does (ruling D, owner 10-06)
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
     def _today(self) -> date:
@@ -130,11 +135,19 @@ class MoneyLedgerService:
         """One row per family (D26), its two columns and its level (D151); the footer is the rows' sums."""
         read = await self._read(year, as_of, axis, filters)
         totals = family_totals(read.pieces)
+        labels = await self._labels(year, {t.family[0] for t in totals})  # the rows' households
+
+        def named(household: int) -> tuple[str, str]:
+            found = labels.get(household)
+            return (found.label, found.tiebreak) if found is not None else ("", "")
+
         rows = [
             LedgerFamilyOut(
                 household_cm_id=t.family[0],
                 family_households=list(t.family),
                 display_name=_name(read.families, t.family[0]),
+                label=named(t.family[0])[0],
+                label_tiebreak=named(t.family[0])[1],
                 campers=_people(read.persons, t.person_cm_ids),
                 in_campminder_net=money(t.in_campminder_net),
                 outside_grants=money(t.outside_grants),

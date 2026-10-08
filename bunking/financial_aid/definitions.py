@@ -580,7 +580,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "Placing checks Posted: placing a line checks Posted on the rounds the placed money covers in full, oldest "
             "first, at their decided amounts as of the posting date. If anything that prices the request was "
             "recorded since that posting, the money is still placed but Posted is not checked automatically, and the "
-            "registrar checks it by hand. It never reads awaiting tonight's sync: the money is already in CampMinder."
+            "registrar checks it by hand. It never reads pending: the money is already in CampMinder."
         ),
         spec="§5.1",
         rulings=("D81", "D146", "D151", "D152"),

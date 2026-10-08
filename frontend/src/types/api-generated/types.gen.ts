@@ -5636,6 +5636,14 @@ export type GrantRowOut = {
    * Commitment Note
    */
   commitment_note?: string
+  /**
+   * Label
+   */
+  label?: string
+  /**
+   * Label Tiebreak
+   */
+  label_tiebreak?: string
 }
 
 /**
@@ -6792,6 +6800,14 @@ export type HouseholdGrantRowOut = {
    * Commitment Note
    */
   commitment_note?: string
+  /**
+   * Label
+   */
+  label?: string
+  /**
+   * Label Tiebreak
+   */
+  label_tiebreak?: string
   /**
    * In Band
    *
@@ -8366,6 +8382,14 @@ export type LedgerFamilyOut = {
    * Level
    */
   level: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
+  /**
+   * Label
+   */
+  label?: string
+  /**
+   * Label Tiebreak
+   */
+  label_tiebreak?: string
 }
 
 /**
@@ -17420,7 +17444,9 @@ export type ToPlaceGroupOut = {
  *
  * One camp-aid line no single request takes. `unplaced` is the part of `amount` still at family level.
  * `left_note` is set while it is left at family level (D58); `reclassified_to` while a reclassification
- * (D104) waits for the next ledger sync.
+ * (D104) waits for the next ledger sync. `household_label` names the line's family as the household page's card
+ * does, and `household_label_tiebreak` is "" unless another household in this response reads the same (ruling D,
+ * owner 10-06; the group's `label` is its reason's).
  */
 export type ToPlaceLineOut = {
   /**
@@ -17476,6 +17502,14 @@ export type ToPlaceLineOut = {
    * Reclassified To
    */
   reclassified_to?: string
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Household Label Tiebreak
+   */
+  household_label_tiebreak?: string
 }
 
 /**

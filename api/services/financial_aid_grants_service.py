@@ -20,7 +20,7 @@ from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_GRANTORS, AID_GRANTS
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
@@ -86,6 +86,9 @@ from bunking.financial_aid.change_log import (
     race_conflict,
 )
 from bunking.pocketbase_batch import BatchRequestFailedError
+
+if TYPE_CHECKING:
+    from api.services.financial_aid_household_page import HouseholdLabeler
 
 GRANTOR_FIELDS = (
     "name",
@@ -336,9 +339,18 @@ class _Loaded:
 
 
 class GrantsService:
-    def __init__(self, repo: GrantsRepository, *, clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        repo: GrantsRepository,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        labels: HouseholdLabeler | None = None,
+    ) -> None:
         self.repo = repo
         self._clock = clock or (lambda: datetime.now(UTC))
+        # GET /grants/{year} names each row's family as the household page does (ruling D, owner 10-06). None: the
+        # read names no label (Today and the household page read the register for its figures).
+        self._labels = labels
 
     def _today(self) -> date:
         """Today in camp time (a commitment's days waiting; spec §6.2's camp-time dates)."""
@@ -662,11 +674,14 @@ class GrantsService:
         def family_of(cm: int) -> str:
             return household_display_name(household_names.get(cm), cm)
 
+        labels = await self._labels(year, {r.household_cm_id for r in rows}) if self._labels is not None else {}
+
         commitments = {c.id: c for c in inputs.commitments}
 
         def row_out(row: RegisterRow) -> GrantRowOut:
             source = descriptions.get(row.source_key)
             commitment = commitments.get(row.commitment_id)
+            named = labels.get(row.household_cm_id)
             return GrantRowOut(
                 kind=row.kind,
                 transaction_cm_id=row.transaction_cm_id,
@@ -694,6 +709,8 @@ class GrantsService:
                 requests=[RequestShareOut(request_id=s.request_id, amount=money(s.amount)) for s in row.requests],
                 committed_on=commitment.committed_on.isoformat() if commitment is not None else "",
                 commitment_note=commitment.note if commitment is not None else "",
+                label=named.label if named is not None else "",
+                label_tiebreak=named.tiebreak if named is not None else "",
             )
 
         grants = sorted(

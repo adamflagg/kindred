@@ -7,10 +7,11 @@ from datetime import date
 
 import pytest
 
-from api.services.financial_aid_to_place import MISMATCH_FLAG, LineDetail
+from api.schemas.financial_aid_to_place import ToPlaceLineOut
+from api.services.financial_aid_to_place import MISMATCH_FLAG, LeftLine, LineDetail
 from tests.unit.api.services.decisions_fakes import seed_line
 from tests.unit.api.services.financial_aid_fakes import YEAR
-from tests.unit.api.services.to_place_fakes import EMMA, MAR8, one_line, to_place_service
+from tests.unit.api.services.to_place_fakes import EMMA, MAR8, FakeLabels, one_line, to_place_service
 
 # --- the read ------------------------------------------------------------------------------------
 
@@ -82,3 +83,46 @@ def test_candidate_figure_is_called_not_yet_in_campminder():
     description = CandidateOut.__doc__ or ""
     assert "not yet in CampMinder" in description
     assert "still due" not in description.lower()
+
+
+# --- naming the family (ruling D, owner 10-06) ----------------------------------------------------
+# To place names a line's family by the household card's label, from the household page's own helper: the adults'
+# names, else the mailing title, with a tie-break only where two households in the same response read the same.
+
+BECKERS = "Liam & Olivia Becker"
+
+
+@pytest.mark.asyncio
+async def test_each_line_names_its_family_by_the_household_pages_label() -> None:
+    store = one_line()
+    seed_line(store, 9002, "700", household=1000009, person=0, posted=MAR8)  # no request behind it
+    seed_line(store, 9003, "300", household=1000007, person=0, posted=MAR8)  # left at family level
+    store.left[9003] = LeftLine("dis000000009003", 9003, "The family pays it down")
+    labels = FakeLabels({1000001: BECKERS, 1000009: BECKERS})
+    out = await to_place_service(store, labels=labels).read(YEAR)
+    lines = {ln.transaction_cm_id: ln for ln in [*(ln for g in out.groups for ln in g.lines), *out.left]}
+    assert {t: (ln.household_label, ln.household_label_tiebreak) for t, ln in lines.items()} == {
+        9001: (BECKERS, "#1000001"),
+        9002: (BECKERS, "#1000009"),
+        9003: ("Adults 1000007", ""),
+    }
+    assert lines[9001].family == "Family 1000001"  # the old name stays as it was
+    assert labels.calls == [frozenset({1000001, 1000007, 1000009})]  # one call: the response's households
+    assert out.groups[0].label == "Several requests could take this"  # the group's own label is the reason's
+
+
+@pytest.mark.asyncio
+async def test_a_household_pages_to_place_breaks_ties_only_among_its_own_lines() -> None:
+    store = one_line()
+    seed_line(store, 9002, "700", household=1000009, person=0, posted=MAR8)
+    labels = FakeLabels({1000001: BECKERS, 1000009: BECKERS})
+    out = await to_place_service(store, labels=labels).read(YEAR, household_cm_id=1000001)
+    (line,) = [ln for g in out.groups for ln in g.lines]
+    assert (line.household_label, line.household_label_tiebreak) == (BECKERS, "")
+    assert labels.calls == [frozenset({1000001})]
+
+
+def test_a_lines_household_label_defaults_to_empty() -> None:
+    """A field the frontend's exhaustive fixtures don't name yet must not be required."""
+    assert ToPlaceLineOut.model_fields["household_label"].default == ""
+    assert ToPlaceLineOut.model_fields["household_label_tiebreak"].default == ""

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -532,6 +532,74 @@ class _Naming:
     tiebreak: str
 
 
+def household_adult_pairs(household: Any | None, people: Iterable[Any], *, members: bool) -> list[tuple[str, str]]:
+    """Card and link alike: the adults CampMinder names for the household (its relatives, by principal role);
+    without them, the parent names `people` give: the page's campers in it, or, with `members` (no camper of it on the
+    page), its own members, their adults by name first."""
+    if aid := _aid_adults(household):
+        return [_aid_adult_pair(a) for a in aid]
+    return _adult_pairs(people, members=members)
+
+
+def name_households(
+    pairs: Mapping[int, Sequence[tuple[str, str]]], row_of: Callable[[int], Any | None]
+) -> dict[int, _Naming]:
+    """How each household in `pairs` (its adults, household_adult_pairs) is named: its adults' names, else its mailing
+    title (household_display_name), with a tie-breaker only where two of them would read the same (owner, 2026-10-05).
+    `row_of` gives a household's row. The household page names its households here, and so does every read that names
+    a family as the page does (household_labels)."""
+    labels = {h: adults_label(pairs[h]) or household_display_name(row_of(h), h) for h in pairs}
+    ties = label_tiebreaks({h: (labels[h], _city(row_of(h))) for h in pairs})
+    return {
+        h: _Naming(
+            adults=[_joined(p) for p in pairs[h]],
+            adults_by_role=[_aid_adult_out(a) for a in _aid_adults(row_of(h))],
+            label=labels[h],
+            tiebreak=ties[h],
+        )
+        for h in pairs
+    }
+
+
+@dataclass(frozen=True)
+class HouseholdLabel:
+    """A household as the household page's card names it (`label`), and its muted tie-breaker (`tiebreak`)."""
+
+    label: str
+    tiebreak: str
+
+
+# A read's way to name families as the household page does: `labels(year, households)`, the routes' household_labels
+# over the repository. Ruling D (owner 10-06): To place, the Ledger and the Grants Register take it.
+HouseholdLabeler = Callable[[int, Collection[int]], Awaitable[Mapping[int, HouseholdLabel]]]
+
+
+class HouseholdLabelReads(Protocol):
+    async def fetch_households(self, year: int, cm_ids: Collection[int], *, adults: bool = False) -> list[Any]: ...
+
+    async def fetch_household_members(self, year: int, household_ids: Collection[int]) -> list[Any]: ...
+
+
+async def household_labels(
+    reads: HouseholdLabelReads, year: int, household_cm_ids: Collection[int]
+) -> dict[int, HouseholdLabel]:
+    """Ruling D (owner 10-06): each household's label as the household page names it, for a read that names families
+    off the page (To place, the Ledger, the Grants Register). Each is named as the page names a household with no
+    camper on it: the adults CampMinder names for it, else its own members' adults, else its mailing title. The
+    tie-break is scoped to `household_cm_ids`, the households the read's response names. No household (0) is named
+    nothing; members are read only for households CampMinder names no adults for."""
+    wanted = sorted({int(h) for h in household_cm_ids if int(h) > 0})
+    if not wanted:
+        return {}
+    rows = {int(r.cm_id): r for r in await reads.fetch_households(year, wanted, adults=True)}
+    unnamed = [h for h in wanted if not _aid_adults(rows.get(h))]
+    people: defaultdict[int, list[Any]] = defaultdict(list)
+    for person in await reads.fetch_household_members(year, unnamed) if unnamed else []:
+        people[_household_of(person)].append(person)
+    naming = name_households({h: household_adult_pairs(rows.get(h), people[h], members=True) for h in wanted}, rows.get)
+    return {h: HouseholdLabel(n.label, n.tiebreak) for h, n in naming.items()}
+
+
 def _link_row(link: Any, household: Any | None, naming: _Naming) -> HouseholdPageLinkOut:
     """The link, and its household named as a card names it: `naming` is its card's (`HouseholdPageService.read`'s
     `naming`)."""
@@ -738,30 +806,14 @@ class HouseholdPageService:
             source = campers_in(h) or [p for p in household_people(h) if _is_adult(p)]
             return [str(getattr(p, "last_name", "") or "") for p in _oldest_first(source)]
 
-        def adult_pairs(h: int) -> list[tuple[str, str]]:
-            """Card and link alike: the adults CampMinder names for the household (its relatives, by principal role);
-            without them, the campers' parent names, or, with no camper on the page, the members' adults by name and
-            then their parent names."""
-            if aid := _aid_adults(row_of(h)):
-                return [_aid_adult_pair(a) for a in aid]
-            return _adult_pairs(household_people(h), members=not campers_in(h))
-
         # Every household the page names, on a card, a link row or a duplicate waiting, and how: its adults' names, else
         # its mailing title (household_display_name), with a tie-breaker only where two would read the same (owner,
         # 2026-10-05).
         named = sorted(set(scope.households) | {int(ln.household_cm_id) for ln in family_links} | twin_households)
-        pairs = {h: adult_pairs(h) for h in named}
-        labels = {h: adults_label(pairs[h]) or household_display_name(row_of(h), h) for h in named}
-        ties = label_tiebreaks({h: (labels[h], _city(row_of(h))) for h in named})
-        naming = {
-            h: _Naming(
-                adults=[_joined(p) for p in pairs[h]],
-                adults_by_role=[_aid_adult_out(a) for a in _aid_adults(row_of(h))],
-                label=labels[h],
-                tiebreak=ties[h],
-            )
-            for h in named
-        }
+        naming = name_households(
+            {h: household_adult_pairs(row_of(h), household_people(h), members=not campers_in(h)) for h in named},
+            row_of,
+        )
 
         accepted = accepted_index(dispositions)
         rules_version = season.rules.version if season.rules is not None else None

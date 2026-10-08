@@ -40,6 +40,7 @@ financial_aid.view or .summary: aggregates only, D65).
 
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
+from functools import partial
 from typing import Annotated, Final, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
@@ -233,7 +234,12 @@ from api.services.financial_aid_grants_service import (
     GrantorStateError,
     GrantsService,
 )
-from api.services.financial_aid_household_page import HouseholdNotFoundError, HouseholdPageService
+from api.services.financial_aid_household_page import (
+    HouseholdLabeler,
+    HouseholdNotFoundError,
+    HouseholdPageService,
+    household_labels,
+)
 from api.services.financial_aid_household_search import HouseholdSearchRepository, HouseholdSearchService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
@@ -482,8 +488,14 @@ def _approved_out(rules: ApprovedRules) -> ApprovedRulesOut:
     )
 
 
+def _household_labels() -> HouseholdLabeler:
+    """Ruling D (owner 10-06): To place, the Ledger and the Grants Register name a family as the household page does,
+    from the page's own helper."""
+    return partial(household_labels, FinancialAidRepository(pb))
+
+
 def _grants() -> GrantsService:
-    return GrantsService(GrantsRepository(pb))
+    return GrantsService(GrantsRepository(pb), labels=_household_labels())
 
 
 def _grants_register() -> GrantsRegisterService:
@@ -1871,7 +1883,7 @@ _TransactionId = Annotated[int, Path(ge=1)]
 
 
 def _to_place() -> ToPlaceService:
-    return ToPlaceService(_decisions(), FinancialAidDecisionsRepository(pb))
+    return ToPlaceService(_decisions(), FinancialAidDecisionsRepository(pb), labels=_household_labels())
 
 
 @router.get("/money/{year}/to-place", response_model=ToPlaceResponse)
@@ -1955,7 +1967,7 @@ async def reclassify_line(
 
 
 def _money_ledger() -> MoneyLedgerService:
-    return MoneyLedgerService(_decisions(), FinancialAidDecisionsRepository(pb))
+    return MoneyLedgerService(_decisions(), FinancialAidDecisionsRepository(pb), labels=_household_labels())
 
 
 @router.get("/money/{year}/ledger", response_model=MoneyLedgerOut)
