@@ -39,9 +39,7 @@ MANUAL_HOLD: Final = "manual_hold"
 # released either. duplicate_survivor_withdrawn is releasable on purpose: its only resolution is a
 # person checking the old request's shares and decisions.
 UNRELEASABLE: Final[Mapping[str, str]] = {
-    "award_above_cost": (
-        "aid plus outside grants is never above cost (main spec §2 item 19): correct the cost, the grants or the amount"
-    ),
+    "award_above_cost": ("aid plus outside grants is never above cost: correct the cost, the grants or the amount"),
     "household_income_conflict": "enter the income figure to use as a correction, and it clears",
     "payer_shares_incomplete": "set the payer shares to add up to 100%, and it clears",
     "awaiting_approved_rules": "it clears when finance approves the season's rules and intake runs",

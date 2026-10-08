@@ -91,3 +91,42 @@ def test_sources_and_grantor_refusals_name_no_field_or_key(build: Callable[[], o
         build()
     for msg in _messages(exc):
         assert SNAKE_KEY.search(msg) is None, msg
+
+
+# --- the scan's residue R1: staff strings outside the definitions (owner 10-08: no staff-visible internal ids) ---
+
+STAFF_INTERNAL = re.compile(r"\b(RPT-\d+|D\d{1,3}|O-\d+-\d+|item \d+)\b|§")
+
+
+def _refusal_messages(path: str, error: str) -> list[str]:
+    """Every string literal passed to `error(...)` in `path` (an f-string's literal parts joined)."""
+    import ast
+    from pathlib import Path
+
+    found: list[str] = []
+    for node in ast.walk(ast.parse(Path(path).read_text())):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == error and node.args:
+            found.append(
+                "".join(
+                    n.value for n in ast.walk(node.args[0]) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                )
+            )
+    return found
+
+
+def test_the_reports_gaps_and_refusals_carry_no_internal_id() -> None:
+    from api.services.financial_aid_reports_service import NOT_BUILT
+
+    shown = [
+        *NOT_BUILT.values(),
+        *_refusal_messages("api/services/financial_aid_reports_service.py", "ReportsRefusedError"),
+    ]
+    assert [text for text in shown if STAFF_INTERNAL.search(text)] == []
+
+
+def test_an_unreleasable_holds_words_carry_no_internal_id_and_the_refusal_no_code() -> None:
+    from bunking.financial_aid.decisions.holds import UNRELEASABLE
+
+    assert [why for why in UNRELEASABLE.values() if STAFF_INTERNAL.search(why)] == []
+    refusals = _refusal_messages("api/services/financial_aid_decisions_service.py", "DecisionRefusedError")
+    assert [text for text in refusals if "hold can't be released" in text and "' hold" in text] == []

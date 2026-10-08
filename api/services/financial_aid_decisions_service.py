@@ -3064,7 +3064,7 @@ class FinancialAidDecisionsService:
         if body.released:
             why = UNRELEASABLE.get(body.code)
             if why is not None:
-                raise DecisionRefusedError(f"The '{body.code}' hold can't be released: {why}")
+                raise DecisionRefusedError(f"This hold can't be released: {why}")
             if body.code in NEVER_A_HOLD:
                 raise DecisionRefusedError(
                     f"'{body.code}' is never a hold: either the request can't be priced (fix that instead) "
