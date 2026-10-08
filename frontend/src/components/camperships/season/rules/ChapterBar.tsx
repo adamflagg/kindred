@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type { ApiAidRulesDraft } from '../../../../types/api-types'
@@ -7,19 +8,22 @@ import { CHAPTERS, chapterMarks } from './rulesLayout'
 /**
  * The chapter bar (spec §6.2 A; rules-v3 "Fix 1"): sticky, two strips (Awards | Setup) on ONE line, 50px tall at 1440
  * and 1100 in every state. It never wraps: past the width it scrolls sideways with no scrollbar (the mock's `.chapbar`).
- * A chip's marks: an amber dot for a draft section, a count of its issues.
+ * A chip's marks: an amber dot for a draft section, a count of its issues. `children` (the draft / in-effect switch and
+ * Open All / Close All) sit at the line's right end.
  */
 export function ChapterBar({
   draft,
   inView,
   budgetHref,
   onJump,
+  children,
 }: {
   /** The draft read, for the marks; null on the version in effect, a receipt or the registrar's view. */
   draft: ApiAidRulesDraft | null
   inView: number | null
   budgetHref: string
   onJump: (n: number) => void
+  children?: ReactNode
 }) {
   return (
     <nav
@@ -61,6 +65,8 @@ export function ChapterBar({
           )}
         </div>
       ))}
+      {/* It shrinks before the strips do: its sentence truncates, the switch and the folds stay. */}
+      {children !== undefined && <div className="ml-auto min-w-0 flex-1">{children}</div>}
     </nav>
   )
 }

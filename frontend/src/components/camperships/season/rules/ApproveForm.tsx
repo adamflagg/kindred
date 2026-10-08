@@ -339,10 +339,7 @@ export function ApproveForm({
           maxLength={2000}
           onChange={(event) => setNote(event.target.value)}
         />
-        <span className={CS_SMALL}>
-          what this approval is: &ldquo;Board approved Apr 13&rdquo;, &ldquo;Weekend prices
-          entered&rdquo;
-        </span>
+        <span className={CS_SMALL}>e.g. &ldquo;Board approved Apr 13&rdquo;</span>
         <span className="ml-auto flex items-center gap-2">
           <button
             type="button"

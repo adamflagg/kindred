@@ -350,6 +350,35 @@ describe('ProgramsCostsEditor', () => {
     expect(screen.queryByText('read-only')).toBeNull()
   })
 
+  it('stacks a family session’s Standard and Infant boxes one per line, under its name', () => {
+    mockSave()
+    renderEditor()
+    const row = screen.getByTestId('pc-row-1000202')
+    const standard = within(row).getByTestId('pc-price-s')
+    const infant = within(row).getByTestId('pc-price-i')
+    expect(standard).toHaveTextContent(/^Standard/)
+    expect(infant).toHaveTextContent(/^Infant/)
+    expect(within(standard).getByLabelText('Standard')).toBeInTheDocument()
+    expect(within(infant).getByLabelText('Infant')).toBeInTheDocument()
+  })
+
+  it('says a typed price as ‹old› → box: nothing before it until it changes', async () => {
+    mockSave()
+    renderEditor()
+    const standard = within(screen.getByTestId('pc-row-1000202')).getByTestId('pc-price-s')
+    expect(standard).not.toHaveTextContent('No price yet')
+    await userEvent.type(within(standard).getByLabelText('Standard'), '750')
+    expect(within(standard).getByTestId('pc-old')).toHaveTextContent('No price yet')
+    expect(within(standard).getByTestId('pc-old').querySelector('svg')).not.toBeNull()
+    const tuition = within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')
+    await userEvent.clear(tuition)
+    await userEvent.type(tuition, '6895')
+    expect(within(screen.getByTestId('pc-row-1000101')).getByTestId('pc-old')).toHaveTextContent(
+      '$6,695'
+    )
+    expect(screen.queryByText(/^was /)).toBeNull()
+  })
+
   it('disables a checked row’s boxes', async () => {
     mockSave()
     renderEditor()

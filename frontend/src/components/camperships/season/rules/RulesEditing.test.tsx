@@ -172,7 +172,9 @@ describe('editing a section (D39; Decisions 14–16)', () => {
         },
       },
     })
-    expect(screen.getByTestId('rules-notice')).toHaveTextContent('Saved to the rules draft v4.')
+    // No "Saved to the rules draft" line to dismiss: the switch above already names the draft.
+    await waitFor(() => expect(screen.queryByTestId('section-editor')).toBeNull())
+    expect(screen.queryByTestId('rules-notice')).toBeNull()
   })
 
   it('says a fraction’s "was" as the percent its box and the read view show, never the stored 0.5', async () => {
@@ -210,15 +212,14 @@ describe('editing a section (D39; Decisions 14–16)', () => {
     expect(screen.queryByText(/is not a valid section/)).toBeNull()
   })
 
-  it('says a save landed in a new version when it would have changed approved rules in use', async () => {
+  it('says nothing after a save that landed in a new version: the switch names it', async () => {
     outcome = { kind: 'ok', value: { ...rulesDraft(), version: 5, branched_from: 4 } }
     renderAt('/aid/season/rules?section=awards')
     await editCard('awards')
     await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(await screen.findByTestId('rules-notice')).toHaveTextContent(
-      'Saved as a new version, v5: the approved rules in use stay as they are until it is approved.'
-    )
+    await waitFor(() => expect(screen.queryByTestId('section-editor')).toBeNull())
+    expect(screen.queryByTestId('rules-notice')).toBeNull()
   })
 
   it("won't send a box it can't read, and says why in the box's own words", async () => {
@@ -919,13 +920,14 @@ describe('round 3: what belongs to a season stays with it', () => {
   })
 
   it('drops the notice when the season changes', async () => {
-    const view = renderAt('/aid/season/rules?section=awards')
-    await editCard('awards')
-    await userEvent.type(await screen.findByRole('textbox', { name: 'Minimum award' }), '5')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    // A save says nothing now (owner 10-08); starting a season from last year's still does.
+    draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
+    outcome = { kind: 'ok', value: { ...rulesDraft(), report: { valid: true, issues: [] } } }
+    const view = renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's Rules" }))
     expect(await screen.findByTestId('rules-notice')).toBeInTheDocument()
     year = 2028
-    view.rerender(treeAt('/aid/season/rules?section=awards'))
+    view.rerender(treeAt('/aid/season/rules'))
     expect(screen.queryByTestId('rules-notice')).toBeNull()
   })
 

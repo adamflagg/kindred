@@ -48,13 +48,18 @@ export function Flow({
   )
 }
 
+/** The Per person run's head: the read view's Standard and Infant columns; the editor labels each box on its line. */
 export const PerPersonHead = ({ editing = false }: { editing?: boolean }) => (
   <div
     className={`${CS_META} flex justify-end gap-2 border-b border-[color-mix(in_oklab,var(--border)_55%,transparent)] font-semibold`}
   >
     <span className="mr-auto font-normal">Per person</span>
-    <span className={`${editing ? 'min-w-[104px]' : 'min-w-16'} text-right`}>Standard</span>
-    <span className={`${editing ? 'min-w-[104px]' : 'min-w-16'} text-right`}>Infant</span>
+    {!editing && (
+      <>
+        <span className="min-w-16 text-right">Standard</span>
+        <span className="min-w-16 text-right">Infant</span>
+      </>
+    )}
   </div>
 )
 

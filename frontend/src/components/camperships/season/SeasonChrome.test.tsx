@@ -141,6 +141,7 @@ describe('SeasonChrome (spec §4)', () => {
     renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
     expect(await screen.findByLabelText('Notes')).toBeInTheDocument()
+    expect(screen.getByText(/^e\.g\. “Board approved Apr 13”/)).toBeInTheDocument()
     expect(screen.getByText('Esc cancels')).toBeInTheDocument()
   })
 
