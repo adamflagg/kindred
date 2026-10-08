@@ -19,6 +19,9 @@ vi.mock('../../components/camperships/grants/RegisterTab', () => ({
 vi.mock('../../components/camperships/grants/NeedsAttentionTab', () => ({
   NeedsAttentionTab: () => <div>Needs attention body</div>,
 }))
+vi.mock('../../components/camperships/grants/ExpectedTab', () => ({
+  ExpectedTab: () => <div>Expected body</div>,
+}))
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: ({ surface }: { surface: string }) => <div>{`Notes: ${surface}`}</div>,
 }))
@@ -86,5 +89,10 @@ describe('AidGrantsPage (spec §8.2)', () => {
   it('shows Needs attention on its tab', () => {
     renderAt('/aid/grants/needs-attention')
     expect(screen.getByText('Needs attention body')).toBeInTheDocument()
+  })
+
+  it('shows Expected on its tab', () => {
+    renderAt('/aid/grants/expected')
+    expect(screen.getByText('Expected body')).toBeInTheDocument()
   })
 })

@@ -518,6 +518,16 @@ export function expectedWords(expected: ApiAidExpected): string {
   return [EXPECTED_WORDS[expected.kind], ...expected.camper_names].join(' · ')
 }
 
+/**
+ * What the aid form says the family is applying to (D56; P-25), for Grants › Expected: the one grantor
+ * carrying the kind when the server names it (`display_name`), else the generic words. The household
+ * page's chip (`expectedWords`) is unchanged.
+ */
+export function expectedKindWords(expected: ApiAidExpected): string {
+  const named = expected.display_name ?? ''
+  return named === '' ? EXPECTED_WORDS[expected.kind] : `Expected: ${named}`
+}
+
 export interface CsvTable {
   readonly headers: string[]
   readonly rows: string[][]
