@@ -79,24 +79,18 @@ export function DevelopmentReport({ view }: { view: AidView }) {
                 csvFilename={developmentCsvName(view, 'report')}
                 link={link}
                 footnote={
-                  <ol className="list-decimal space-y-0.5 pl-5">
-                    <li>
+                  // Plain lines, not a numbered list: the definition notes below are the numbered one.
+                  <div className="space-y-0.5">
+                    <p>
                       Every outside source is listed by name with its facts: who paid, incentive or
                       need-based, and its group.
-                    </li>
-                    <li>
+                    </p>
+                    <p>
                       r = as reported, typed once, read only. P = the dashboard&apos;s decisions, as
                       of any date; the dashboard computes every %.
-                    </li>
-                    <li>
-                      No family is ever named on this report; rows are quantities and dollars.
-                    </li>
-                    <li>
-                      Each line is the server&apos;s own figure over every group, money in no group
-                      included; the groups under a line are never added up to make it (Money in no
-                      group is its own line).
-                    </li>
-                  </ol>
+                    </p>
+                    <p>No family is ever named on this report; rows are quantities and dollars.</p>
+                  </div>
                 }
               />
             </div>

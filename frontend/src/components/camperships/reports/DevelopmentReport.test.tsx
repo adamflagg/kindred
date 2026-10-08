@@ -158,15 +158,13 @@ describe('the footnotes (D4)', () => {
   })
 })
 
-describe('the footnote', () => {
-  it('says each line is the server’s own figure and the groups under it are never added up', async () => {
+describe('the footnote lines', () => {
+  it('are plain lines, not a numbered list beside the numbered definition notes, and only the mock’s three', async () => {
     renderReport()
-    await screen.findByRole('table', { name: 'Development report' })
-    expect(
-      screen.getByText(
-        /Each line is the server's own figure over every group, money in no group included; the groups under a line are never added up to make it \(Money in no group is its own line\)\./
-      )
-    ).toBeInTheDocument()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    const card = table.closest('section') ?? document.body
+    expect(card.querySelector('ol')).toBeNull()
+    expect(screen.queryByText(/Each line is the server's own figure/)).toBeNull()
   })
 })
 
