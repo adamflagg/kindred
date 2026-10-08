@@ -18,6 +18,7 @@ import {
   CS_PANEL_RULE,
   CS_PMETA,
 } from '../kit/csType'
+import { PlaceEditor } from './PlaceEditor'
 import { inStaffWords, previewRefusalWords, refusalWords } from './refusal'
 import {
   candidateDetail,
@@ -28,22 +29,24 @@ import {
   isMarkLine,
   lineFamily,
   lineWords,
+  placeChoices,
   placedWords,
   requestLabels,
   stillNotPlacedWords,
   suggestionWords,
+  suggestsSplit,
 } from './toPlaceModel'
 import { MARK_TEXT } from './toPlaceStyles'
 import type { InFlightLines } from './useInFlightLines'
 
 export interface LineAccess {
-  /** `casework`: Confirm, Leave (and in part 1b Split, Place on Another Request) (spec §3.2). */
+  /** `casework`: Confirm, Split…, Place on Another Request…, Leave (spec §3.2). */
   readonly casework: boolean
   /** `rules`: Reclassify (D104; part 1b). */
   readonly rules: boolean
 }
 
-type Mode = 'none' | 'leave'
+type Mode = 'none' | 'leave' | 'split' | 'another'
 
 /** Three panels side by side, divided by the grid's dashed amber rule (RequestDetailLine's grammar). */
 const THREE_PANELS =
@@ -96,6 +99,15 @@ export function ToPlaceOpenRow({
   const still = stillNotPlacedWords(line)
   const evidence = evidenceWords(line)
   const family = lineFamily(line).text
+  const choices = placeChoices(line)
+  // money-v2.html (review item 6): a split suggestion is confirmed as "Confirm Split" and edited
+  // from "Edit the Split…"; any other line with two candidates offers "Split…".
+  const splits = suggestsSplit(line)
+  // A write from an editor finished: close the editor, and say what it did at the tab.
+  const finish = (words: string) => {
+    setMode('none')
+    onDone(words)
+  }
   // R1-2: ask only once the line has stayed open a moment. ↑/↓ opens each row it passes, and every
   // preview is a season read; a line passed over asks nothing. (Keyed by the line, so no reset.)
   const [settledOn, setSettledOn] = useState<number | null>(null)
@@ -197,7 +209,27 @@ export function ToPlaceOpenRow({
               disabled={place.isPending || busy}
               onClick={() => void confirm()}
             >
-              {place.isPending || busy ? 'Placing…' : 'Confirm'}
+              {place.isPending || busy ? 'Placing…' : splits ? 'Confirm Split' : 'Confirm'}
+            </button>
+          )}
+          {access.casework && mode === 'none' && choices.split && (
+            <button
+              type="button"
+              className={CS_BTN2}
+              disabled={busy}
+              onClick={() => setMode('split')}
+            >
+              {splits ? 'Edit the Split…' : 'Split…'}
+            </button>
+          )}
+          {access.casework && mode === 'none' && choices.another && (
+            <button
+              type="button"
+              className={CS_BTN2}
+              disabled={busy}
+              onClick={() => setMode('another')}
+            >
+              Place on Another Request…
             </button>
           )}
           {access.casework && mode === 'none' && (
@@ -217,6 +249,21 @@ export function ToPlaceOpenRow({
             Open the Household ›
           </Link>
         </div>
+        {(mode === 'split' || mode === 'another') && (
+          // The editor's own keys (Enter, Esc, ↑/↓ in its fields) stay its own: AidTable stands aside.
+          <div data-aid-editor="">
+            <PlaceEditor
+              key={mode}
+              line={line}
+              year={year}
+              mode={mode}
+              inFlight={inFlight}
+              onCancel={() => setMode('none')}
+              onDone={finish}
+              onRefused={onRefused}
+            />
+          </div>
+        )}
         {mode === 'leave' && (
           // The form's own keys (Enter, Esc) stay its own: AidTable stands aside inside it.
           <div data-aid-editor="">

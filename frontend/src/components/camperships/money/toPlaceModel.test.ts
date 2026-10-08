@@ -22,11 +22,14 @@ import {
   isOpen,
   lineWords,
   NOTHING_MARKED,
+  placeChoices,
   placedWords,
   requestLabels,
   stillNotPlacedWords,
   suggestionWords,
+  suggestsSplit,
   toPlaceCsvName,
+  wouldLines,
 } from './toPlaceModel'
 
 // A withheld round's sentence in the server's frame (financial_aid_to_place.py `withheld_why`, owner
@@ -245,5 +248,48 @@ describe('the leave and left lines say "by hand" once (review m3)', () => {
     ).toBe(
       `Chen: $1,500 placed. Nothing marked posted. Left unchecked: Olivia Chen · Quest Round 2 (${WHY}).`
     )
+  })
+})
+
+describe('the other ways to place a line (§8.1; D12; part 1b)', () => {
+  it('offers Split… with two candidates, and another request when one is left unsuggested', () => {
+    expect(placeChoices(JOHNSON_SPLIT)).toEqual({ split: true, another: false })
+    expect(placeChoices(GARCIA_WITHHELD)).toEqual({ split: true, another: true })
+    expect(placeChoices(CHEN_EXACT)).toEqual({ split: false, another: false })
+    // money-v2.html draws "Place on another request…" on the program-mismatch line (R1-8a).
+    expect(placeChoices(SAMUEL_MISMATCH)).toEqual({ split: false, another: true })
+    expect(placeChoices(SAM_NO_REQUEST)).toEqual({ split: false, another: false })
+    // No suggestion at all: every candidate is "another request".
+    expect(placeChoices({ ...GARCIA_WITHHELD, suggestion: null })).toEqual({
+      split: true,
+      another: true,
+    })
+  })
+
+  it('tells a split suggestion from a single one (Confirm Split, review item 6)', () => {
+    expect(suggestsSplit(JOHNSON_SPLIT)).toBe(true)
+    expect(suggestsSplit(CHEN_EXACT)).toBe(false)
+    expect(suggestsSplit(SAM_NO_REQUEST)).toBe(false)
+  })
+
+  it('words what typed parts would do even on a line with no suggestion (P-4 for Split…)', () => {
+    const would = {
+      would_tick: [{ request_id: 'reqliamquest005', round: 1, amount: 600 }],
+      would_lock: 600,
+      would_leave: [],
+      would_not_tick: [],
+    }
+    expect(wouldLines({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([
+      'Marks Posted: Liam Garcia · Quest · Round 1 · $600 locked',
+    ])
+    expect(confirmLines({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([])
+    expect(
+      wouldLines(JOHNSON_SPLIT, {
+        would_tick: [],
+        would_lock: 0,
+        would_leave: [],
+        would_not_tick: [],
+      })
+    ).toEqual([NOTHING_MARKED])
   })
 })

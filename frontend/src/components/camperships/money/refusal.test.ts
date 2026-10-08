@@ -61,4 +61,17 @@ describe('previewRefusalWords (P-4)', () => {
     expect(previewRefusalWords(refused(500, 'Server error'))).toBeNull()
     expect(previewRefusalWords(null)).toBeNull()
   })
+
+  it("leads with what can't be done: Confirm's words, or the typed placement's", () => {
+    const refused = new AidWriteError('request reqsamuel000002 is cancelled', 422)
+    expect(previewRefusalWords(refused)).toBe(
+      "Confirm can't place this as suggested now: request reqsamuel000002 is cancelled"
+    )
+    expect(previewRefusalWords(refused, "This can't be placed as typed")).toBe(
+      "This can't be placed as typed: request reqsamuel000002 is cancelled"
+    )
+    // A fault is not a refusal: nothing to say, the caller keeps what it has.
+    expect(previewRefusalWords(new AidWriteError('Server error', 500))).toBeNull()
+    expect(previewRefusalWords(null)).toBeNull()
+  })
 })

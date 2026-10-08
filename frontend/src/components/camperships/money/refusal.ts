@@ -54,8 +54,12 @@ export async function inStaffWords<T>(write: Promise<T>): Promise<T> {
  * dropped connection, a 5xx): then the read's own preview stands and Confirm stays, since the write
  * checks `expected_locked` itself. A 4xx means the write would be refused the same way.
  */
-export function previewRefusalWords(error: unknown): string | null {
+export function previewRefusalWords(
+  error: unknown,
+  /** What can't be done, first: Confirm's by default; the Split… editor's "This can't be placed as typed" (part 1b). */
+  lead = "Confirm can't place this as suggested now"
+): string | null {
   if (error === null || error === undefined || !wroteNothing(statusOf(error))) return null
   const detail = error instanceof Error ? error.message : ''
-  return `Confirm can't place this as suggested now: ${detail}`
+  return `${lead}: ${detail}`
 }

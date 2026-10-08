@@ -140,16 +140,13 @@ const MARKS = 'Marks Posted: '
 export const isMarkLine = (words: string) => words.startsWith(MARKS)
 
 /**
- * What Confirm will do, before the click (§4.10: what you confirm is what's written), from the
- * server's preview of the very write it runs: the rounds it marks posted and locks, the rounds whose
- * check D152 withholds (placed, but marked posted by hand), and those it leaves (D146: a round it
- * doesn't cover in full). `would` is the fresh preview when one has answered, else the read's.
+ * What placing would do, in words, from the server's own answer to the very write (the read's
+ * suggestion, or a fresh `PlacePreviewOut` for the parts asked): the rounds it marks posted and
+ * locks, the rounds whose check D152 withholds (placed, but marked posted by hand), and those it
+ * leaves (D146: a round it doesn't cover in full). Split… and Place on Another Request… show it for
+ * the parts typed (part 1b), on any line with candidates, suggested or not.
  */
-export function confirmLines(
-  line: ApiAidToPlaceLine,
-  would: PlacementWould | null = line.suggestion
-): string[] {
-  if (line.suggestion === null || would === null) return []
+export function wouldLines(line: ApiAidToPlaceLine, would: PlacementWould): string[] {
   const labels = requestLabels([line])
   const marks = (would.would_tick ?? []).map(
     (t) =>
@@ -163,6 +160,19 @@ export function confirmLines(
   )
   const all = [...marks, ...withheld, ...left]
   return all.length > 0 ? all : [NOTHING_MARKED]
+}
+
+/**
+ * What Confirm will do, before the click (§4.10: what you confirm is what's written), from the
+ * server's preview of the very write it runs (`wouldLines`). `would` is the fresh preview when one
+ * has answered, else the read's. A line with no suggestion has nothing to confirm.
+ */
+export function confirmLines(
+  line: ApiAidToPlaceLine,
+  would: PlacementWould | null = line.suggestion
+): string[] {
+  if (line.suggestion === null || would === null) return []
+  return wouldLines(line, would)
 }
 
 /** The short form for the table's column: "Marks 1 round posted · $780 locked", "1 to mark posted by hand". */
@@ -262,3 +272,26 @@ export function toPlaceCsvName(year: number, householdCmId: number | null): stri
     season: year,
   })
 }
+
+/**
+ * The other ways to place a line (§8.1; D12; money-v2.html): Split… needs two candidates (on a
+ * line whose suggestion is itself a split, the button reads "Edit the Split…"); Place on Another
+ * Request… needs a candidate the suggestion didn't pick, and is always offered on a program
+ * mismatch, as the mock draws it (R1-8a, coordinator 10-08: follow money-v2): there the person
+ * places the line on the request they judge right, beside its evidence.
+ */
+export function placeChoices(line: ApiAidToPlaceLine): {
+  readonly split: boolean
+  readonly another: boolean
+} {
+  const suggested = new Set((line.suggestion?.parts ?? []).map((p) => p.request_id))
+  return {
+    split: line.candidates.length >= 2,
+    another:
+      (line.reason === 'program_mismatch' && line.candidates.length > 0) ||
+      line.candidates.some((c) => !suggested.has(c.request_id)),
+  }
+}
+
+/** Whether the suggestion is itself a split: Confirm then reads "Confirm Split" (money-v2.html; review item 6). */
+export const suggestsSplit = (line: ApiAidToPlaceLine) => (line.suggestion?.parts.length ?? 0) > 1

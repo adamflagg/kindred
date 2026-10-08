@@ -332,7 +332,7 @@ describe('Money › To place (§8.1)', () => {
       const johnson = await openLine(
         '$3,620 · Camp aid · Summer · posted to the household · May 14'
       )
-      await userEvent.click(within(johnson).getByRole('button', { name: 'Confirm' }))
+      await userEvent.click(within(johnson).getByRole('button', { name: 'Confirm Split' }))
       expect(
         (await screen.findAllByText(/Someone else changed this while you looked/)).length
       ).toBeGreaterThan(0)
@@ -582,7 +582,7 @@ describe('a line opens in three panels, the grid’s opened row (owner ruling A,
     expect(panel('line').getByText(/The line equals the two requests/)).toBeInTheDocument()
     expect(panel('candidates').getByText('$2,200 not yet in CampMinder')).toBeInTheDocument()
     expect(panel('confirm').getByText('What Confirm does')).toBeInTheDocument()
-    expect(panel('confirm').getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    expect(panel('confirm').getByRole('button', { name: 'Confirm Split' })).toBeInTheDocument()
     // The opened row is AidTable's detail line, not the old editor row (#2990's).
     expect(row.closest('[data-aid-detail]')).not.toBeNull()
   })
@@ -742,5 +742,240 @@ describe('the family as the household card names it (owner ruling D, 10-06; #308
     const row = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
     await userEvent.click(within(row).getByRole('button', { name: 'Confirm' }))
     expect(await screen.findByText(/^✓ Mei & David Chen: \$1,500 placed/)).toBeInTheDocument()
+  })
+})
+
+describe('Split… and Place on Another Request… preview what they place (§8.1; D12; P-4, review item 19)', () => {
+  const JOHNSON = '$3,620 · Camp aid · Summer · posted to the household · May 14'
+  const GARCIA = '$600 · Camp aid · Summer · posted to Liam Garcia · Apr 3'
+  const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
+  const SAM = '$900 · Camp aid · Summer · posted to Riley Sam · Apr 18'
+  /** A preview that marks nothing posted and locks nothing, whatever the parts. */
+  const marksNothing = (txn: number) =>
+    json({
+      year: 2027,
+      transaction_cm_id: txn,
+      parts: [],
+      would_tick: [],
+      would_lock: 0,
+      would_leave: [],
+      would_not_tick: [],
+    })
+  /** The parts a preview call asked for. */
+  const parts = (call: { body: BodyInit | null | undefined } | undefined) =>
+    (JSON.parse(String(call?.body)) as { parts: unknown[] }).parts
+
+  it('names the buttons as the mock does: Confirm Split and Edit the Split… on a split suggestion (review item 6)', async () => {
+    renderTab()
+    const johnson = await openLine(JOHNSON)
+    expect(within(johnson).getByRole('button', { name: 'Confirm Split' })).toBeInTheDocument()
+    expect(within(johnson).getByRole('button', { name: 'Edit the Split…' })).toBeInTheDocument()
+    // Both candidates are in the suggestion: no other request to place it on.
+    expect(within(johnson).queryByRole('button', { name: 'Place on Another Request…' })).toBeNull()
+    const garcia = await openLine(GARCIA)
+    expect(within(garcia).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    expect(within(garcia).getByRole('button', { name: 'Split…' })).toBeInTheDocument()
+    expect(
+      within(garcia).getByRole('button', { name: 'Place on Another Request…' })
+    ).toBeInTheDocument()
+    const chen = await openLine(CHEN)
+    expect(within(chen).queryByRole('button', { name: 'Split…' })).toBeNull()
+    expect(within(chen).queryByRole('button', { name: 'Place on Another Request…' })).toBeNull()
+    const sam = await openLine(SAM)
+    expect(within(sam).queryByRole('button', { name: /Split|Another/ })).toBeNull()
+    // The program-mismatch line offers it, as money-v2.html draws it (R1-8a).
+    const samuel = await openLine('$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1')
+    expect(
+      within(samuel).getByRole('button', { name: 'Place on Another Request…' })
+    ).toBeInTheDocument()
+  })
+
+  it('opens on the suggestion, asks the preview for exactly the parts typed, and places what it showed', async () => {
+    renderTab()
+    const row = await openLine(JOHNSON)
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
+    const editor = within(row).getByTestId('place-editor')
+    expect(within(editor).getByText('Parts add to $3,620 of $3,620 ✓')).toBeInTheDocument()
+    expect(
+      await within(editor).findByText(
+        'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked'
+      )
+    ).toBeInTheDocument()
+    previewAnswer = marksNothing
+    const emma = within(editor).getByRole('textbox', { name: 'Part for Emma Johnson · Session 2' })
+    const samuel = within(editor).getByRole('textbox', {
+      name: 'Part for Samuel Johnson · Session 2',
+    })
+    await userEvent.clear(emma)
+    await userEvent.type(emma, '2000')
+    expect(
+      within(editor).getByText('Parts add to $3,420 of $3,620 · must equal the line')
+    ).toBeInTheDocument()
+    expect(within(editor).getByRole('button', { name: 'Place the Split' })).toBeDisabled()
+    await userEvent.clear(samuel)
+    await userEvent.type(samuel, '1620')
+    expect(await within(editor).findByText('Marks nothing posted.')).toBeInTheDocument()
+    // Only sums that equal the line were asked, and the last ask is the parts on screen.
+    expect(parts(previews().at(-1))).toEqual([
+      { request_id: 'reqemma00000001', amount: '2000.00' },
+      { request_id: 'reqsamuel000002', amount: '1620.00' },
+    ])
+    answers = [json({ ...PLACED, placed: [3000001], ticked: [] })]
+    await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
+    expect(
+      await screen.findByText('✓ Johnson: $3,620 placed. Nothing marked posted.')
+    ).toBeInTheDocument()
+    expect(writes()).toEqual([
+      {
+        url: '/api/financial-aid/money/2027/to-place/3000001/place',
+        method: 'POST',
+        body: JSON.stringify({
+          parts: [
+            { request_id: 'reqemma00000001', amount: '2000.00' },
+            { request_id: 'reqsamuel000002', amount: '1620.00' },
+          ],
+          note: '',
+          expected_locked: '0.00',
+        }),
+      },
+    ])
+  })
+
+  it('keeps Place the Split off until the preview has answered for the parts now typed', async () => {
+    renderTab()
+    const row = await openLine(JOHNSON)
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
+    const editor = within(row).getByTestId('place-editor')
+    const button = within(editor).getByRole('button', { name: 'Place the Split' })
+    await waitFor(() => expect(button).toBeEnabled())
+    const emma = within(editor).getByRole('textbox', { name: 'Part for Emma Johnson · Session 2' })
+    const samuel = within(editor).getByRole('textbox', {
+      name: 'Part for Samuel Johnson · Session 2',
+    })
+    await userEvent.clear(samuel)
+    await userEvent.type(samuel, '1320')
+    await userEvent.clear(emma)
+    await userEvent.type(emma, '2300')
+    // The sum is right again, but the preview speaks for $2,200 / $1,420, not these parts.
+    expect(within(editor).getByText('Parts add to $3,620 of $3,620 ✓')).toBeInTheDocument()
+    expect(button).toBeDisabled()
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(parts(previews().at(-1))).toEqual([
+      { request_id: 'reqemma00000001', amount: '2300.00' },
+      { request_id: 'reqsamuel000002', amount: '1320.00' },
+    ])
+  })
+
+  it('a refused preview says why in the editor and offers no place', async () => {
+    renderTab()
+    const row = await openLine(JOHNSON)
+    previewAnswer = () => json({ detail: 'request reqsamuel000002 is cancelled' }, 422)
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
+    const editor = within(row).getByTestId('place-editor')
+    expect(
+      await within(editor).findByText(
+        "This can't be placed as typed: request reqsamuel000002 is cancelled"
+      )
+    ).toBeInTheDocument()
+    expect(within(editor).getByRole('button', { name: 'Place the Split' })).toBeDisabled()
+  })
+
+  it('a preview that fails can be asked again', async () => {
+    renderTab()
+    const row = await openLine(JOHNSON)
+    previewAnswer = () => json({ detail: 'Server error' }, 500)
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
+    const editor = within(row).getByTestId('place-editor')
+    expect(
+      await within(editor).findByText(/^Couldn't work out what placing this does/)
+    ).toBeInTheDocument()
+    expect(within(editor).getByRole('button', { name: 'Place the Split' })).toBeDisabled()
+    previewAnswer = null
+    await userEvent.click(within(editor).getByRole('button', { name: 'Try Again' }))
+    await waitFor(() =>
+      expect(within(editor).getByRole('button', { name: 'Place the Split' })).toBeEnabled()
+    )
+  })
+
+  it('after "this now locks…", shows the new answer and places at its lock', async () => {
+    let lock = 0
+    previewAnswer = (txn) =>
+      json({
+        year: 2027,
+        transaction_cm_id: txn,
+        parts: [],
+        would_tick: lock > 0 ? [{ request_id: 'reqemma00000001', round: 2, amount: lock }] : [],
+        would_lock: lock,
+        would_leave: [],
+        would_not_tick: [],
+      })
+    answers = [
+      json({ detail: 'this now locks $780, not the $0 you confirmed: reload To place' }, 422),
+      json({ ...PLACED, placed: [3000001], ticked: [] }),
+    ]
+    renderTab()
+    const row = await openLine(JOHNSON)
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
+    const editor = within(row).getByTestId('place-editor')
+    expect(await within(editor).findByText('Marks nothing posted.')).toBeInTheDocument()
+    // The season moves between the preview and the click.
+    lock = 780
+    await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
+    expect(
+      await within(editor).findByText(/What this would lock changed since the page loaded/)
+    ).toBeInTheDocument()
+    expect(
+      await within(editor).findByText(
+        'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked'
+      )
+    ).toBeInTheDocument()
+    await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
+    await waitFor(() => expect(writes()).toHaveLength(2))
+    expect(JSON.parse(String(writes()[1]?.body))).toMatchObject({ expected_locked: '780.00' })
+  })
+
+  it('Place on Another Request… puts the whole line on the request picked, at the lock its preview showed', async () => {
+    previewAnswer = (txn) =>
+      json({
+        year: 2027,
+        transaction_cm_id: txn,
+        parts: [{ request_id: 'reqliamquest005', amount: 600 }],
+        would_tick: [{ request_id: 'reqliamquest005', round: 1, amount: 600 }],
+        would_lock: 600,
+        would_leave: [],
+        would_not_tick: [],
+      })
+    renderTab()
+    const row = await openLine(GARCIA)
+    await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
+    const editor = within(row).getByTestId('place-editor')
+    expect(within(editor).getByRole('button', { name: 'Place It' })).toBeDisabled()
+    await userEvent.click(within(editor).getByRole('radio', { name: 'Liam Garcia · Quest' }))
+    expect(
+      await within(editor).findByText('Marks Posted: Liam Garcia · Quest · Round 1 · $600 locked')
+    ).toBeInTheDocument()
+    expect(parts(previews().at(-1))).toEqual([{ request_id: 'reqliamquest005', amount: '600.00' }])
+    await userEvent.click(within(editor).getByRole('button', { name: 'Place It' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({
+      parts: [{ request_id: 'reqliamquest005', amount: '600.00' }],
+      note: '',
+      expected_locked: '600.00',
+    })
+  })
+
+  it('Back closes the editor and brings the buttons back', async () => {
+    renderTab()
+    const row = await openLine(GARCIA)
+    expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    await userEvent.click(within(row).getByRole('button', { name: 'Split…' }))
+    expect(within(row).getByTestId('place-editor')).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Leave at Family Level…' })).toBeNull()
+    // R1-12: with the editor open, only its own button places; Confirm would send the suggestion.
+    expect(within(row).queryByRole('button', { name: 'Confirm' })).toBeNull()
+    await userEvent.click(within(row).getByRole('button', { name: 'Back' }))
+    expect(within(row).queryByTestId('place-editor')).toBeNull()
+    expect(within(row).getByRole('button', { name: 'Leave at Family Level…' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
   })
 })
