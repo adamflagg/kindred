@@ -16,6 +16,9 @@ vi.mock('../PermissionDeniedPage', () => ({
 vi.mock('../../components/camperships/grants/RegisterTab', () => ({
   RegisterTab: () => <div>Register body</div>,
 }))
+vi.mock('../../components/camperships/grants/NeedsAttentionTab', () => ({
+  NeedsAttentionTab: () => <div>Needs attention body</div>,
+}))
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: ({ surface }: { surface: string }) => <div>{`Notes: ${surface}`}</div>,
 }))
@@ -78,5 +81,10 @@ describe('AidGrantsPage (spec §8.2)', () => {
     expect(
       screen.getByText('Grant lines that need a person: pick the camper or fix the setup.')
     ).toBeInTheDocument()
+  })
+
+  it('shows Needs attention on its tab', () => {
+    renderAt('/aid/grants/needs-attention')
+    expect(screen.getByText('Needs attention body')).toBeInTheDocument()
   })
 })

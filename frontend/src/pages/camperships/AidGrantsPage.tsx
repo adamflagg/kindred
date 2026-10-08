@@ -7,6 +7,7 @@ import {
   GRANTS_TAB_PURPOSE,
   isGrantsTab,
 } from '../../components/camperships/grants/grantsTabs'
+import { NeedsAttentionTab } from '../../components/camperships/grants/NeedsAttentionTab'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { CS_SMALL } from '../../components/camperships/kit/csType'
@@ -61,7 +62,7 @@ export default function AidGrantsPage() {
       {isGrantsTab(slug) && <p className={CS_SMALL}>{GRANTS_TAB_PURPOSE[slug]}</p>}
       {asOf.kind === 'past' && <p className="text-muted-foreground text-sm">{GRANTS_LIVE_ONLY}</p>}
       {slug === 'register' && <RegisterTab view={view} />}
-      {slug === 'needs-attention' && <NotYet what="Needs attention" />}
+      {slug === 'needs-attention' && <NeedsAttentionTab view={view} />}
       {slug === 'expected' && <NotYet what="Expected" />}
       {slug === 'grantors' && <NotYet what="Grantors" />}
       <AidDefinitionNotes surface="grants" />
