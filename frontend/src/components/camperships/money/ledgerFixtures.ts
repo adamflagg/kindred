@@ -3,7 +3,12 @@
  * approved-rules read whose programs name themselves differently from their keys, so a test can
  * tell the rules' words from a key spelled out.
  */
-import type { ApiAidApprovedRules, ApiAidSummary } from '../../../types/api-types'
+import type {
+  ApiAidApprovedRules,
+  ApiAidLedgerLines,
+  ApiAidMoneyLedger,
+  ApiAidSummary,
+} from '../../../types/api-types'
 import { APPROVED_RULES_2026 } from '../requests/approvedRulesFixtures'
 
 export const SUMMARY: ApiAidSummary = {
@@ -121,4 +126,111 @@ export const RULES_2027: ApiAidApprovedRules = {
             },
           },
         ],
+}
+/**
+ * Money › Ledger's family read (part 2b), invented: names from tests/CLAUDE.md, ids from 1000001. The
+ * server's totals are NOT the rows' sum (the other families aren't drawn), so a test can tell a
+ * figure read from one added up.
+ */
+export const LEDGER: ApiAidMoneyLedger = {
+  year: 2027,
+  as_of: null,
+  as_of_axis: null,
+  rows: [
+    {
+      household_cm_id: 1000001,
+      family_households: [1000001],
+      display_name: 'Johnson',
+      label: 'Pat Johnson',
+      label_tiebreak: 'Riverside, CA',
+      campers: ['Emma Johnson', 'Samuel Johnson'],
+      in_campminder_net: 3920,
+      outside_grants: 250,
+      lines: 6,
+      reversed_lines: 2,
+      level: 'household',
+    },
+    {
+      household_cm_id: 1000002,
+      family_households: [1000002],
+      display_name: 'Garcia',
+      label: 'Liam & Olivia Garcia',
+      label_tiebreak: '',
+      campers: ['Liam Garcia'],
+      in_campminder_net: 1820,
+      outside_grants: 1000,
+      lines: 4,
+      reversed_lines: 0,
+      level: 'left',
+    },
+    {
+      household_cm_id: 1000003,
+      family_households: [1000003],
+      display_name: 'Chen',
+      label: '',
+      label_tiebreak: '',
+      campers: ['Olivia Chen'],
+      in_campminder_net: 3100,
+      outside_grants: 0,
+      lines: 3,
+      reversed_lines: 1,
+      level: null,
+    },
+    {
+      household_cm_id: 1000004,
+      family_households: [1000004],
+      display_name: 'Sam',
+      label: 'Pat Johnson',
+      label_tiebreak: 'Lakeside, CA',
+      campers: ['Riley Sam'],
+      in_campminder_net: 900,
+      outside_grants: 0,
+      lines: 1,
+      reversed_lines: 0,
+      level: 'no_request',
+    },
+  ],
+  in_campminder_net: 615460,
+  outside_grants: 141450,
+}
+
+/** The lines behind In CampMinder (net), as `GET …/ledger/lines?total=in_campminder_net` sends them. */
+export const LEDGER_LINES: ApiAidLedgerLines = {
+  year: 2027,
+  as_of: null,
+  as_of_axis: null,
+  total: 'in_campminder_net',
+  amount: 615460,
+  lines: [
+    {
+      transaction_cm_id: 3000001,
+      household_cm_id: 1000001,
+      family_household_cm_id: 1000001,
+      family_name: 'Johnson',
+      camper: '',
+      description: 'Camp aid · Summer',
+      source_family: 'camp_fa',
+      program: 'summer',
+      amount: 3620,
+      posted_on: '2027-05-14',
+      is_reversed: false,
+      reversed_on: null,
+      level: 'household',
+    },
+    {
+      transaction_cm_id: 3000002,
+      household_cm_id: 1000001,
+      family_household_cm_id: 1000001,
+      family_name: 'Johnson',
+      camper: 'Emma Johnson',
+      description: 'Camp aid · Summer',
+      source_family: 'camp_fa',
+      program: 'summer',
+      amount: 1420,
+      posted_on: '2027-03-01',
+      is_reversed: true,
+      reversed_on: '2027-03-09',
+      level: null,
+    },
+  ],
 }
