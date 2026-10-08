@@ -143,6 +143,7 @@ from api.schemas.financial_aid_rules import (
     RulesDraftOut,
     RulesVersionOut,
     SectionSaveIn,
+    SectionsSaveIn,
     field_change_out,
 )
 from api.schemas.financial_aid_scenarios import (
@@ -855,6 +856,20 @@ async def save_aid_rules_section(
             body.content,
             actor=user.email,
             expected_fingerprint=body.expected_fingerprint,
+        )
+        return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.put("/rules/{year}/sections", response_model=RulesDraftOut)
+async def save_aid_rules_sections(year: _Year, body: SectionsSaveIn, user: AuthUser = _RULES) -> RulesDraftOut:
+    """Several sections saved as one operation (spec §15.6): the Programs and costs card's Save. Lands in a new version
+    rather than overwrite approved rules in use; 409 when the rules draft or a named section moved on."""
+    service = _rules()
+    try:
+        saved = await service.save_section_contents(
+            year, body.base_version, body.contents, actor=user.email, expected_fingerprints=body.expected_fingerprints
         )
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
     except FinancialAidError as exc:

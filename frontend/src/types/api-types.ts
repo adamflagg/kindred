@@ -135,6 +135,7 @@ import type {
   GroupOut,
   RulesVersionOut,
   SectionSaveIn,
+  SectionsSaveIn,
   SectionStatus,
   SessionResolve,
   ShareLineOut,
@@ -357,5 +358,6 @@ export type ApiAidLeverEffect = LeverEffectOut
  * with 409 when the section moved since it was read (Decisions 16-17; owner ruling 2026-10-02).
  */
 export type ApiAidSectionSaveIn = SectionSaveIn
+export type ApiAidSectionsSaveIn = SectionsSaveIn
 export type ApiAidRulesApproveIn = RulesApproveIn
 export type ApiAidRulesVersion = RulesVersionOut

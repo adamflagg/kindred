@@ -179,11 +179,11 @@ class SectionChangedError(FinancialAidError, ValueError):
 
 
 class FingerprintsMismatchError(FinancialAidError, ValueError):
-    """An approval's fingerprints do not name exactly the sections being approved."""
+    """An approval's or a several-sections save's fingerprints do not name exactly the sections it names."""
 
 
 class NoSectionsNamedError(FinancialAidError, ValueError):
-    """An approval must name at least one section."""
+    """An approval, or a several-sections save, must name at least one section."""
 
 
 class PricingVersionInUseError(FinancialAidError, ValueError):
@@ -1011,17 +1011,46 @@ class FinancialAidRulesService:
         then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
         earlier, means a save that landed in between is never silently reverted. `expected_fingerprint` (the router
         always sends it) is the section's fingerprint as the editor opened it: a section saved since is refused."""
+        return await self.save_section_contents(
+            year,
+            base_version,
+            {section: content},
+            actor=actor,
+            expected_fingerprints=None if expected_fingerprint is None else {section: expected_fingerprint},
+        )
+
+    async def save_section_contents(
+        self,
+        year: int,
+        base_version: int,
+        contents: Mapping[SectionName, Mapping[str, Any]],
+        *,
+        actor: str,
+        expected_fingerprints: Mapping[SectionName, str] | None = None,
+    ) -> SectionSaveResult:
+        """Several sections' editors saved as ONE operation (spec §15.5: the Programs and costs card sends `programs`
+        and `cost` together). Each section goes through the one-section steps, in section order, against the one
+        read of the rules draft; then one `_save_over`, so one log row records both and a refused section writes
+        nothing. A section not named keeps its content and its approval."""
+        if not contents:
+            raise NoSectionsNamedError("Name at least one section to save")
         current = await self._rules_draft(year, base_version)
-        if expected_fingerprint is not None:
-            _assert_unchanged(current, {section: expected_fingerprint})
-        if section == "programs":
-            content = _keep_legacy_routing(current.document, content)
-        candidate = parse_section(current.document, section, _with_derived(section, content))
-        if section == "tiers":
-            candidate = _trim_tables(current.document, candidate)
-        refused = changed_fixed(section, current.document.model_dump()[section], candidate.model_dump()[section])
-        if refused:
-            raise FixedSettingError(f"{refused[0]} is fixed and can't be changed here")
+        if expected_fingerprints is not None:
+            if set(expected_fingerprints) != set(contents):
+                raise FingerprintsMismatchError("expected_fingerprints must name exactly the sections being saved")
+            _assert_unchanged(current, expected_fingerprints)
+        candidate = current.document
+        for section in (name for name in SECTION_NAMES if name in contents):
+            content: Mapping[str, Any] = contents[section]
+            if section == "programs":
+                content = _keep_legacy_routing(current.document, content)
+            before = candidate
+            candidate = parse_section(candidate, section, _with_derived(section, content))
+            if section == "tiers":
+                candidate = _trim_tables(before, candidate)
+            refused = changed_fixed(section, current.document.model_dump()[section], candidate.model_dump()[section])
+            if refused:
+                raise FixedSettingError(f"{refused[0]} is fixed and can't be changed here")
         return await self._save_over(current, candidate, actor=actor, via=None)
 
     async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:

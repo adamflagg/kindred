@@ -1072,6 +1072,18 @@ async def test_after_round_one_posts_a_total_change_is_refused_in_the_lock_words
 
 
 @pytest.mark.asyncio
+async def test_after_round_one_posts_a_total_change_is_refused_through_the_contents_save_too() -> None:
+    """The budget-total lock lives in `_save_over`, so the several-sections path must still hit it."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.save_section_contents(2031, 1, {"budget": _budget(total="520000")}, actor=FINANCE)
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
 async def test_the_total_stays_locked_when_a_later_save_lifts_round_ones_lock_in_a_new_version() -> None:
     """Editing the locked income section branches v2 with income back in draft (the lock lifted there only). The total a
     posted round read must still not move on v2, so the lock is found on any version of the season."""
