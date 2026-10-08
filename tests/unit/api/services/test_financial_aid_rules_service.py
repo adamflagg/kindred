@@ -27,9 +27,9 @@ from api.services.financial_aid_rules_service import (
     NotLatestVersionError,
     RulesHistoryIncompleteError,
     RulesNotFoundError,
-    SectionChangedError,
     SeasonDoneError,
     SeasonYearUnknownError,
+    SectionChangedError,
     VersionExistsError,
     YearMismatchError,
     _dump,
@@ -1461,3 +1461,72 @@ async def test_the_two_section_save_is_guarded_too() -> None:
     await _service(store).create_version(fictional_rules(), actor=FINANCE)
     with pytest.raises(SeasonDoneError):
         await service.save_section_contents(2031, 1, {"awards": AWARDS_150}, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_approval_needs_a_reason_and_logs_it_after_the_note() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store)
+    with pytest.raises(SeasonDoneError):
+        await service.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Finance, Oct 7")
+    await service.approve_sections(
+        2031, 1, ["income"], actor=FINANCE, note="Finance, Oct 7", past_season_reason="Late fix"
+    )
+    [row] = store.operations[-1]
+    assert row["reason"] == "Finance, Oct 7 · correcting a done season: Late fix"
+    assert (await service.load(2031)).section_status["income"].note == "Finance, Oct 7"
+
+
+@pytest.mark.asyncio
+async def test_a_done_seasons_new_version_and_start_need_a_reason() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store, configured=2033)
+    with pytest.raises(SeasonDoneError):
+        await service.new_version(2031, 1, actor=FINANCE)
+    created = await service.new_version(2031, 1, actor=FINANCE, past_season_reason="Branch to fix")
+    assert created.version == 2
+    with pytest.raises(SeasonDoneError):
+        await service.start_from_last_year(2032, actor=FINANCE)
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE, past_season_reason="Back-fill 2032")
+    assert started.year == 2032
+
+
+@pytest.mark.asyncio
+async def test_the_one_time_load_of_a_done_season_needs_a_reason() -> None:
+    service = _done_service()
+    with pytest.raises(SeasonDoneError):
+        await service.bootstrap(fictional_rules(), actor=FINANCE)
+    created = await service.bootstrap(fictional_rules(), actor=FINANCE, past_season_reason="Loading 2031 as history")
+    assert created.version == 1
+
+
+@pytest.mark.asyncio
+async def test_a_sandbox_never_writes_a_done_season() -> None:
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    service = _done_service(store)
+    with pytest.raises(SeasonDoneError) as caught:
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=with_lever(fictional_rules(), "awards.minimum", "150"),
+            base_version=1,
+            acknowledged={},
+            actor=FINANCE,
+            via="B2",
+        )
+    assert "a sandbox never writes a done season" in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_a_first_tick_still_locks_a_done_seasons_sections() -> None:
+    """Regression guard. `lock_writes` is not guarded: a done season may still post late money."""
+    store = FakeStore()
+    plain = _service(store)
+    await plain.create_version(fictional_rules(), actor=FINANCE)
+    await plain.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Finance")
+    writes, not_locked = await _done_service(store).lock_writes(2031, 1, ["income"])
+    assert len(writes) == 1
+    assert not_locked == []
