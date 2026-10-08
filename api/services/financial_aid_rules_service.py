@@ -257,8 +257,8 @@ class BudgetTotalLockedError(SectionInvalidError):
 
 
 class SeasonDoneError(FinancialAidError, ValueError):
-    """A rules write to a season earlier than the configured one, with no reason (spec §11.2). #2844 will replace the
-    test with the season's own `closed` state."""
+    """A rules write to a season earlier than the configured one with no reason, or any sandbox promote to one, reason
+    or not (`sandbox=True`; spec §11.2). #2844 will replace the test with the season's own `closed` state."""
 
     def __init__(self, year: int, configured: int, *, sandbox: bool = False) -> None:
         self.year, self.configured = year, configured

@@ -387,7 +387,7 @@ def _http(exc: Exception) -> HTTPException:
 
 def _rules() -> FinancialAidRulesService:
     # The strict reader, never `current_season_year`: that one guesses the calendar year, which would read a done
-    # season as open (spec §11.1). An unreadable season is a 503 on every read and write.
+    # season as open (spec §11.1). An unreadable season is a 503 on the draft and approved reads and every guarded write.
     return FinancialAidRulesService(AidRulesRepository(pb), configured_year=lambda: configured_season_year(pb))
 
 

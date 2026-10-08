@@ -36,6 +36,7 @@ from api.services.financial_aid_rules_service import (
     NotLatestVersionError,
     ReplacementNotAcknowledgedError,
     RulesVersion,
+    SeasonYearUnknownError,
 )
 from api.services.financial_aid_scenario_pricing import (
     PricedSeason,
@@ -1436,6 +1437,20 @@ async def test_a_done_seasons_options_cannot_be_promoted() -> None:
     assert {(o.promotable, o.blocked) for o in options} == {
         (False, f"{YEAR} is done: a sandbox never writes a done season")
     }
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_season_never_fails_a_sandbox_write() -> None:
+    """A sandbox write reloads the workspace after its commit, so a season that can't be read must not fail that
+    read: the write landed, and a 503 would send staff to retry it. Every option stays unpromotable, in the
+    strict reader's words (never treated as open); `promote` itself still refuses."""
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    unreadable = SeasonYearUnknownError("The dashboard's season couldn't be read")
+    world.rules.season_state = AsyncMock(side_effect=unreadable)  # type: ignore[method-assign]
+    options = (await world.service.start_from_rules(YEAR, FINANCE)).options
+    assert options
+    assert {(o.promotable, o.blocked) for o in options} == {(False, "The dashboard's season couldn't be read")}
 
 
 @pytest.mark.asyncio
