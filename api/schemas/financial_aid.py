@@ -131,6 +131,35 @@ class SummaryCell(BaseModel):
     households: int
 
 
+class ProgramSplit(BaseModel):
+    """F10's pivot row (money-v2 "Posted in CampMinder by program and source"; owner 10-08, R3-2): one program's
+    posted aid by who paid, from the posting's funder type after any reclassification (D97). camp_aid: funder type
+    camp (net); outside_grants: outside and incentive (D55); unclassified: a source nobody classified yet.
+    total = the three. program is program_bucket's key (a program family, "ambiguous" or "unattributed")."""
+
+    program: str
+    camp_aid: float
+    outside_grants: float
+    unclassified: float
+    total: float
+    postings: int
+    households: int
+
+
+# How far camp aid was placed, for the mock's shares line: placed = override, decision, session, person;
+# household = program_family, ambiguous; not_placed = none (and any level Go adds later).
+CampAidGroup = Literal["placed", "household", "not_placed"]
+
+
+class CampAidLevel(BaseModel):
+    """One share of camp aid (money-v2: "each share of camp aid"). share = amount / camp_aid, half-up to 4
+    places; 0 when the season has no camp aid."""
+
+    group: CampAidGroup
+    amount: float
+    share: float
+
+
 class SummaryResponse(BaseModel):
     """Unsuppressed, finance-facing. as_of None means live now; otherwise money
     live at the end of that day in camp time. undated_postings were left out of
@@ -147,6 +176,14 @@ class SummaryResponse(BaseModel):
     by_level_basis: Literal["placements", "attribution"] = "attribution"
     cells: list[SummaryCell]
     undated_postings: int = 0
+    # F10 as money-v2 draws it (owner 10-08, R3-2): per program by who paid, the season's three figures (the
+    # pivot's footer; they add up to total_aid), and camp aid's shares by how far it was placed. Defaults keep
+    # every older reader whole.
+    by_program: list[ProgramSplit] = Field(default_factory=list)
+    camp_aid: float = 0.0
+    outside_grants: float = 0.0
+    unclassified: float = 0.0
+    camp_aid_levels: list[CampAidLevel] = Field(default_factory=list)
 
 
 class NetAidTotal(BaseModel):

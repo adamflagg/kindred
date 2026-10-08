@@ -1690,6 +1690,27 @@ export type BunkingRequestVersion = {
 }
 
 /**
+ * CampAidLevel
+ *
+ * One share of camp aid (money-v2: "each share of camp aid"). share = amount / camp_aid, half-up to 4
+ * places; 0 when the season has no camp aid.
+ */
+export type CampAidLevel = {
+  /**
+   * Group
+   */
+  group: 'placed' | 'household' | 'not_placed'
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Share
+   */
+  share: number
+}
+
+/**
  * CamperCandidateOut
  */
 export type CamperCandidateOut = {
@@ -12041,6 +12062,45 @@ export type ProgramRowOut = {
 }
 
 /**
+ * ProgramSplit
+ *
+ * F10's pivot row (money-v2 "Posted in CampMinder by program and source"; owner 10-08, R3-2): one program's
+ * posted aid by who paid, from the posting's funder type after any reclassification (D97). camp_aid: funder type
+ * camp (net); outside_grants: outside and incentive (D55); unclassified: a source nobody classified yet.
+ * total = the three. program is program_bucket's key (a program family, "ambiguous" or "unattributed").
+ */
+export type ProgramSplit = {
+  /**
+   * Program
+   */
+  program: string
+  /**
+   * Camp Aid
+   */
+  camp_aid: number
+  /**
+   * Outside Grants
+   */
+  outside_grants: number
+  /**
+   * Unclassified
+   */
+  unclassified: number
+  /**
+   * Total
+   */
+  total: number
+  /**
+   * Postings
+   */
+  postings: number
+  /**
+   * Households
+   */
+  households: number
+}
+
+/**
  * ProgramsResponse
  */
 export type ProgramsResponse = {
@@ -16973,6 +17033,26 @@ export type SummaryResponse = {
    * Undated Postings
    */
   undated_postings?: number
+  /**
+   * By Program
+   */
+  by_program?: Array<ProgramSplit>
+  /**
+   * Camp Aid
+   */
+  camp_aid?: number
+  /**
+   * Outside Grants
+   */
+  outside_grants?: number
+  /**
+   * Unclassified
+   */
+  unclassified?: number
+  /**
+   * Camp Aid Levels
+   */
+  camp_aid_levels?: Array<CampAidLevel>
 }
 
 /**

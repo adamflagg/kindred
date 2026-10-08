@@ -271,36 +271,38 @@ async def test_household_detail_is_404_without_ledger_rows() -> None:
 # --- summary and as-of ---------------------------------------------------------
 
 
+def _five_postings() -> list[SimpleNamespace]:
+    return [
+        _posting(9001, 100, -700.0),
+        _posting(9002, 200, -300.0, attribution_level="ambiguous", program_family=""),
+        _grant(9003, 300, -50.0, attribution_level="none", program_family=""),
+        _posting(
+            9004,
+            300,
+            -25.0,
+            source_key="unknown grant",
+            effective_source_key="unknown grant",
+            source_family="unclassified",
+            funder_type="unknown",
+            counts_toward_budget=False,
+            attribution_level="none",
+            program_family="",
+        ),
+        _posting(
+            9005,
+            400,
+            -600.0,
+            effective_source_key=OUTSIDE,
+            source_family="other_outside",
+            funder_type="outside",
+            counts_toward_budget=False,
+        ),  # reclassified outside by an override
+    ]
+
+
 @pytest.mark.asyncio
 async def test_summary_cells_levels_and_the_budget_honour_the_posting_classification() -> None:
-    repo = _repo(
-        fetch_postings=[
-            _posting(9001, 100, -700.0),
-            _posting(9002, 200, -300.0, attribution_level="ambiguous", program_family=""),
-            _grant(9003, 300, -50.0, attribution_level="none", program_family=""),
-            _posting(
-                9004,
-                300,
-                -25.0,
-                source_key="unknown grant",
-                effective_source_key="unknown grant",
-                source_family="unclassified",
-                funder_type="unknown",
-                counts_toward_budget=False,
-                attribution_level="none",
-                program_family="",
-            ),
-            _posting(
-                9005,
-                400,
-                -600.0,
-                effective_source_key=OUTSIDE,
-                source_family="other_outside",
-                funder_type="outside",
-                counts_toward_budget=False,
-            ),  # reclassified outside by an override
-        ],
-    )
+    repo = _repo(fetch_postings=_five_postings())
     got = await FinancialAidLedgerService(repo).summary(2026)
 
     assert (got.total_aid, got.counts_toward_budget, got.as_of, got.basis) == (1675.0, 1000.0, None, "posted")
@@ -311,6 +313,47 @@ async def test_summary_cells_levels_and_the_budget_honour_the_posting_classifica
         ("summer", "other_outside", 600.0, 1),
         ("unattributed", "other_outside", 50.0, 1),
         ("unattributed", "unclassified", 25.0, 1),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_summary_splits_each_program_by_who_paid() -> None:
+    """F10 as money-v2 draws it (owner 10-08, R3-2): per program, camp aid (funder type camp, after any
+    reclassification), outside grants (outside and incentive) and anything unclassified; the footer's three
+    season figures add up to total_aid."""
+    incentive = _grant(9006, 500, -10.0, funder_type="incentive")  # an incentive is an outside grant (D55)
+    got = await FinancialAidLedgerService(_repo(fetch_postings=[*_five_postings(), incentive])).summary(2026)
+    assert [
+        (r.program, r.camp_aid, r.outside_grants, r.unclassified, r.total, r.postings, r.households)
+        for r in got.by_program
+    ] == [
+        ("ambiguous", 300.0, 0.0, 0.0, 300.0, 1, 1),
+        ("summer", 700.0, 610.0, 0.0, 1310.0, 3, 3),  # 9005 was reclassified outside: it is outside here
+        ("unattributed", 0.0, 50.0, 25.0, 75.0, 2, 1),
+    ]
+    assert (got.camp_aid, got.outside_grants, got.unclassified) == (1000.0, 660.0, 25.0)
+    assert got.camp_aid + got.outside_grants + got.unclassified == got.total_aid == 1685.0
+
+
+@pytest.mark.asyncio
+async def test_summary_camp_aid_levels_are_shares_of_camp_aid_only() -> None:
+    """The mock's line: placed / at household level / not placed, each a share of camp aid. The outside grant at
+    level none (9003) is not in "not placed"."""
+    got = await FinancialAidLedgerService(_repo(fetch_postings=_five_postings())).summary(2026)
+    assert [(lvl.group, lvl.amount, lvl.share) for lvl in got.camp_aid_levels] == [
+        ("placed", 700.0, 0.7),
+        ("household", 300.0, 0.3),
+        ("not_placed", 0.0, 0.0),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_season_with_no_camp_aid_has_zero_shares() -> None:
+    got = await FinancialAidLedgerService(_repo(fetch_postings=[_grant(9003, 300, -50.0)])).summary(2026)
+    assert [(lvl.group, lvl.share) for lvl in got.camp_aid_levels] == [
+        ("placed", 0.0),
+        ("household", 0.0),
+        ("not_placed", 0.0),
     ]
 
 

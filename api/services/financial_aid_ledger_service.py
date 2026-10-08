@@ -31,6 +31,8 @@ from api.schemas.financial_aid import (
     AidPostingLine,
     AidSourceRow,
     AidSourcesResponse,
+    CampAidGroup,
+    CampAidLevel,
     DanglingDisposition,
     DataQualityResponse,
     FaRequested,
@@ -39,6 +41,7 @@ from api.schemas.financial_aid import (
     NetAidTotal,
     NetTotalsResponse,
     OrphanReversal,
+    ProgramSplit,
     SessionMismatch,
     SourceChangeOut,
     StaleStaffLink,
@@ -63,6 +66,26 @@ GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
 # Go's attribution level for money a staff placement put on a request: what a split line's placed dollars read as on
 # /summary (D151). Go never emits "decision" and a split's override places nothing, so Go infers a split line's level.
 PLACED_BY_STAFF: Final = "override"
+
+# F10's camp-aid shares (R3-2): which share each attribution level counts in. Anything else ("none", or a
+# level Go adds later) is not placed.
+_CAMP_AID_GROUP: Final[Mapping[str, CampAidGroup]] = {
+    "override": "placed",
+    "decision": "placed",
+    "session": "placed",
+    "person": "placed",
+    "program_family": "household",
+    "ambiguous": "household",
+}
+_CAMP_AID_ORDER: Final[tuple[CampAidGroup, ...]] = ("placed", "household", "not_placed")
+_SHARE = Decimal("0.0001")
+
+
+def _who_paid_bucket(funder_type: str) -> str:
+    """F10's columns: camp aid, outside grants (outside and incentive, D55), or a source nobody classified."""
+    if funder_type == "camp":
+        return "camp"
+    return "outside" if funder_type in GRANT_FUNDER_TYPES else "unclassified"
 
 
 def needs_group(source: Any) -> bool:
@@ -403,12 +426,19 @@ class FinancialAidLedgerService:
         """F10: posted totals by program × source family (§8.1). `split_placed` (a live read from the first ticked
         season) is Kindred's placement of each split camp-aid line (D151): its placed dollars count at "override", as
         a whole-line staff placement does, never at the level Go's attribution leaves a split line at. Without it the
-        levels are Go's. No total and no cell moves either way."""
+        levels are Go's. No total and no cell moves either way. Also F10's split by who paid (R3-2): `by_program`, the
+        season's three figures, and camp aid's shares by how far it was placed (a split line's placed dollars count as
+        placed, D151)."""
         postings, undated = await self._counted(year, as_of)
         amounts: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
         counts: Counter[tuple[str, str]] = Counter()
         households: dict[tuple[str, str], set[int]] = defaultdict(set)
         by_level: dict[str, Decimal] = defaultdict(Decimal)
+        split: dict[str, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        split_postings: Counter[str] = Counter()
+        split_households: dict[str, set[int]] = defaultdict(set)
+        season: dict[str, Decimal] = defaultdict(Decimal)
+        camp_levels: dict[str, Decimal] = defaultdict(Decimal)
         total = budget = _ZERO
         for p in postings:
             dollars = aid_dollars(p.amount)
@@ -416,6 +446,11 @@ class FinancialAidLedgerService:
             amounts[key] += dollars
             counts[key] += 1
             households[key].add(int(p.household_cm_id or 0))
+            who = _who_paid_bucket(str(p.funder_type))
+            split[key[0]][who] += dollars
+            split_postings[key[0]] += 1
+            split_households[key[0]].add(int(p.household_cm_id or 0))
+            season[who] += dollars
             placed = _ZERO
             if split_placed is not None and str(p.funder_type) == "camp":
                 placed = min(split_placed.get(int(p.transaction_cm_id), _ZERO), dollars)
@@ -423,6 +458,11 @@ class FinancialAidLedgerService:
                 by_level[PLACED_BY_STAFF] += placed
             if dollars != placed or not placed:
                 by_level[str(p.attribution_level)] += dollars - placed
+            if who == "camp":
+                if placed:
+                    camp_levels["placed"] += placed
+                if dollars != placed or not placed:
+                    camp_levels[_CAMP_AID_GROUP.get(str(p.attribution_level), "not_placed")] += dollars - placed
             total += dollars
             if p.counts_toward_budget:
                 budget += dollars
@@ -436,6 +476,27 @@ class FinancialAidLedgerService:
             )
             for k in sorted(amounts)
         ]
+        by_program = [
+            ProgramSplit(
+                program=program,
+                camp_aid=money(split[program]["camp"]),
+                outside_grants=money(split[program]["outside"]),
+                unclassified=money(split[program]["unclassified"]),
+                total=money(sum(split[program].values(), _ZERO)),
+                postings=split_postings[program],
+                households=len(split_households[program]),
+            )
+            for program in sorted(split)
+        ]
+        camp = season["camp"]
+        camp_aid_levels = [
+            CampAidLevel(
+                group=group,
+                amount=money(camp_levels[group]),
+                share=float((camp_levels[group] / camp).quantize(_SHARE, rounding=ROUND_HALF_UP)) if camp > 0 else 0.0,
+            )
+            for group in _CAMP_AID_ORDER
+        ]
         return SummaryResponse(
             year=year,
             as_of=as_of.isoformat() if as_of else None,
@@ -445,6 +506,11 @@ class FinancialAidLedgerService:
             by_level_basis="placements" if split_placed is not None else "attribution",
             cells=cells,
             undated_postings=undated,
+            by_program=by_program,
+            camp_aid=money(camp),
+            outside_grants=money(season["outside"]),
+            unclassified=money(season["unclassified"]),
+            camp_aid_levels=camp_aid_levels,
         )
 
     async def net_totals(self, year: int, as_of: date | None = None) -> NetTotalsResponse:
