@@ -684,7 +684,7 @@ function App() {
                               }
                             />
                             <Route
-                              path="reports/:tab?/:view?"
+                              path="reports/:tab?"
                               element={
                                 <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
                                   <ErrorBoundary>

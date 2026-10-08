@@ -43,7 +43,7 @@ function Where() {
   return <div data-testid="where">{search}</div>
 }
 
-function renderView(path = '/aid/reports/statistics/year-over-year') {
+function renderView(path = '/aid/reports/year-over-year') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>

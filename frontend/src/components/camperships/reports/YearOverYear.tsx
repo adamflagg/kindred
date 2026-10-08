@@ -30,7 +30,7 @@ import {
 import { ReportControls } from './ReportControls'
 import { useReportParam } from './useReportParam'
 
-const PATH = '/aid/reports/statistics/year-over-year'
+const PATH = '/aid/reports/year-over-year'
 
 /**
  * Statistics › Year over year (spec §9.7 RPT-1, 2, 6, 7, 8, 13, 24; S4-2; statistics-v2.html): the

@@ -1,6 +1,6 @@
 /**
- * Reports' page (spec §9.1; D64, D65; slice 4 Decision 1): its URL-held tabs and views, where a bare
- * link lands for each role, and the as-of. The bodies are mocked: each has its own tests.
+ * Reports' page (spec §9.1; D64, D65; owner Q7): four flat URL-held tabs and no views bar, where a
+ * bare link lands for each role, and the as-of. The bodies are mocked: each has its own tests.
  */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
@@ -16,9 +16,6 @@ vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denied</div> }))
 vi.mock('../../components/camperships/reports/StatisticsTab', () => ({
   StatisticsTab: () => <div>Statistics body</div>,
-}))
-vi.mock('../../components/camperships/reports/ProgramsTab', () => ({
-  ProgramsTab: () => <div>Programs body</div>,
 }))
 vi.mock('../../components/camperships/reports/YearOverYear', () => ({
   YearOverYear: () => <div>Year over year body</div>,
@@ -40,7 +37,7 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/aid/reports/:tab?/:view?" element={<AidReportsPage />} />
+        <Route path="/aid/reports/:tab?" element={<AidReportsPage />} />
       </Routes>
       <Where />
     </MemoryRouter>
@@ -68,55 +65,53 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/reports/development?year=2027')
   })
 
-  it('refuses Statistics and Programs to a summary-only user, never redirecting them away (D65, D76)', () => {
+  it('refuses Statistics and Year over year to a summary-only user, never redirecting them away', () => {
     granted = DEVELOPMENT
     renderAt('/aid/reports/statistics')
     expect(screen.getByText('Permission denied')).toBeInTheDocument()
     expect(screen.queryByText('Statistics body')).toBeNull()
-    renderAt('/aid/reports/statistics/year-over-year')
+    renderAt('/aid/reports/year-over-year')
     expect(screen.getAllByText('Permission denied')).toHaveLength(2)
   })
 
-  it("shows the three tabs, Statistics' two views and its body (S4-2)", () => {
+  it('shows the three tabs and the Statistics body, with no views bar', () => {
     renderAt('/aid/reports/statistics')
-    for (const name of ['Statistics', 'Programs', 'Development']) {
+    for (const name of ['Statistics', 'Year over year', 'Development']) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument()
     }
-    expect(screen.getByRole('link', { name: 'This season' })).toHaveAttribute(
-      'href',
-      '/aid/reports/statistics?year=2027'
-    )
-    expect(screen.getByRole('link', { name: 'Year over year' })).toHaveAttribute(
-      'href',
-      '/aid/reports/statistics/year-over-year?year=2027'
-    )
+    expect(screen.queryByRole('link', { name: 'Programs' })).toBeNull()
     expect(screen.getByText('Statistics body')).toBeInTheDocument()
   })
 
-  it("shows Year over year as Statistics' second view, and Programs on its tab", () => {
-    renderAt('/aid/reports/statistics/year-over-year')
-    expect(screen.getByText('Year over year body')).toBeInTheDocument()
-    renderAt('/aid/reports/programs')
-    expect(screen.getByText('Programs body')).toBeInTheDocument()
-  })
-
-  it('gives development the report and ZIP codes, and no held view (owner 10-08)', () => {
-    granted = DEVELOPMENT
-    renderAt('/aid/reports/development')
-    for (const name of ['Report', 'ZIP codes']) {
-      expect(screen.getByRole('link', { name })).toBeInTheDocument()
+  it('has no views bar on any tab', () => {
+    for (const path of ['statistics', 'year-over-year', 'development']) {
+      const { unmount } = renderAt(`/aid/reports/${path}`)
+      expect(screen.queryByRole('link', { name: 'This season' })).toBeNull()
+      expect(screen.queryByRole('link', { name: 'Report' })).toBeNull()
+      unmount()
     }
-    expect(screen.queryByRole('link', { name: 'Funding sources' })).toBeNull()
-    expect(screen.queryByRole('link', { name: 'Grantors' })).toBeNull()
   })
 
-  it('sends an unknown or held view back to its tab', () => {
-    renderAt('/aid/reports/statistics/nonsense')
+  it('renders Year over year on its own tab', () => {
+    renderAt('/aid/reports/year-over-year')
+    expect(screen.getByText('Year over year body')).toBeInTheDocument()
+    expect(screen.queryByText('Statistics body')).toBeNull()
+  })
+
+  it('redirects the old Programs link to Statistics by session, keeping the season and as-of', () => {
+    renderAt('/aid/reports/programs?year=2027&as_of=2027-03-08')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/reports/statistics?year=2027&as_of=2027-03-08&rows=session'
+    )
+  })
+
+  it('sends an unknown tab to the first tab', () => {
+    renderAt('/aid/reports/nonsense')
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/reports/statistics?year=2027')
   })
 
-  it('says a live-only view shows today when the link carries a past date', () => {
-    renderAt('/aid/reports/statistics/year-over-year?as_of=2027-03-08')
+  it('says a live-only tab shows today when the link carries a past date', () => {
+    renderAt('/aid/reports/year-over-year?as_of=2027-03-08')
     expect(screen.getByText('This view shows today: it has no past date.')).toBeInTheDocument()
     renderAt('/aid/reports/statistics?as_of=2027-03-08')
     expect(screen.getAllByText('This view shows today: it has no past date.')).toHaveLength(1)

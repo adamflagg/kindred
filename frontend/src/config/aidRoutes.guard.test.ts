@@ -18,7 +18,7 @@ const ROUTES: Record<string, Guard> = {
   'grants/:tab?': 'view',
   'money/:tab?': 'view',
   'season/:tab?': 'view',
-  'reports/:tab?/:view?': 'open',
+  'reports/:tab?': 'open',
   'households/:householdCmId': 'view',
 }
 
