@@ -133,7 +133,7 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
   it("hands the family rows the summary's labels by program", async () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     await waitFor(() => expect(screen.getByTestId('labels-prop')).toHaveTextContent('summer'))
-    expect(JSON.parse(screen.getByTestId('labels-prop').textContent as string)).toEqual({
+    expect(JSON.parse(screen.getByTestId('labels-prop').textContent)).toEqual({
       summer: 'Summer Sessions',
       family_camp: 'Family Camp Weekends',
     })
