@@ -18,7 +18,7 @@ import type { NoteOf } from './statisticsModel'
 
 export function zipColumns(withDollars: boolean, noteOf: NoteOf): ReportColumn[] {
   return [
-    { key: 'zip', header: 'ZIP' },
+    { key: 'zip', header: 'ZIP', mono: true },
     { key: 'campers', header: 'Campers', note: noteOf('zip_who_counts') },
     { key: 'families', header: 'Families' },
     ...(withDollars ? [{ key: 'dollars', header: 'Dollars' }] : []),
@@ -57,7 +57,7 @@ export function zipHeading(zip: ApiAidZip, title: string): ReportHeading {
   }
 }
 
-/** The line under the every-camper table: who it counts, and the group when the read names one. */
+/** The line under the every-camper table's title: who it counts, and the group when the read names one. */
 export function zipScopeWords(zip: ApiAidZip): string {
   return zip.group_label === ''
     ? "Campers enrolled in an aid-eligible session, by their household's billing ZIP."

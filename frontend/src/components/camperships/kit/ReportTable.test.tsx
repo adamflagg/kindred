@@ -265,4 +265,65 @@ describe('ReportTable', () => {
     expect(h.className).toContain(CS_CARD_HEADING)
     expect(h.className).not.toContain('font-display')
   })
+
+  describe('the mock layout (description, one toolbar, default sort, mono)', () => {
+    it('draws the description right under the title, above the toolbar and the table', () => {
+      renderTable({ find: true, description: 'Who it counts.' })
+      const words = screen.getByText('Who it counts.')
+      const title = screen.getByRole('heading', { name: 'Every camper' })
+      const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
+      const table = screen.getByRole('table', { name: 'Every camper' })
+      expect(title.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(words.compareDocumentPosition(find) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(words.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('keeps the find box, Copy and Download CSV in one toolbar row, in that order, apart from the title', () => {
+      renderTable({ find: true })
+      const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
+      const copy = screen.getByRole('button', { name: /Copy/ })
+      const csv = screen.getByRole('button', { name: /Download CSV/ })
+      const bar = find.closest('div')
+      expect(bar).not.toBeNull()
+      expect(bar?.contains(copy)).toBe(true)
+      expect(bar?.contains(csv)).toBe(true)
+      expect(bar?.contains(screen.getByRole('heading', { name: 'Every camper' }))).toBe(false)
+      expect(find.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(copy.compareDocumentPosition(csv) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('opens sorted by defaultSort with the end row and totals last, and the arrow shows', () => {
+      renderTable({ sortable: true, defaultSort: { key: 'campers', dir: 'desc' } })
+      expect(bodyTexts()).toEqual(['00012', '00010', 'Outside the US', 'All · 2 ZIPs'])
+      expect(screen.getByRole('columnheader', { name: /Campers/ })).toHaveTextContent('↓')
+    })
+
+    it('lets the URL sort win over defaultSort', () => {
+      renderTable(
+        { sortable: true, defaultSort: { key: 'campers', dir: 'desc' } },
+        '/?sort=campers'
+      )
+      expect(bodyTexts()).toEqual(['00010', '00012', 'Outside the US', 'All · 2 ZIPs'])
+    })
+
+    it('draws a mono column in the monospace font, body cells only', () => {
+      renderTable({
+        columns: [{ key: 'zip', header: 'ZIP', mono: true }, COLUMNS[1]!, COLUMNS[2]!],
+      })
+      expect(screen.getByText('00010').closest('td')?.className).toContain('font-mono')
+      expect(screen.getByText('9').closest('td')?.className).not.toContain('font-mono')
+    })
+
+    it('draws a table without the new props as before: no description, defaults unsorted', () => {
+      renderTable({ sortable: true })
+      expect(bodyTexts()).toEqual(['00010', '00012', 'Outside the US', 'All · 2 ZIPs'])
+      expect(screen.getByText('00010').closest('td')?.className).not.toContain('font-mono')
+    })
+
+    it('right-aligns a sortable number header over its numbers', () => {
+      renderTable({ sortable: true })
+      expect(screen.getByRole('button', { name: 'Campers' }).className).toContain('justify-end')
+      expect(screen.getByRole('button', { name: 'ZIP' }).className).not.toContain('justify-end')
+    })
+  })
 })

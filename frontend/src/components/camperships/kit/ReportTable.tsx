@@ -55,6 +55,10 @@ interface ReportTableProps {
   readonly sortable?: boolean | undefined
   readonly urlPrefix?: string | undefined
   readonly emptyText?: string | undefined
+  /** Words right under the title, above the toolbar (the mock's table description). */
+  readonly description?: ReactNode | undefined
+  /** The sort while the URL carries none (the URL wins; a header click toggles from it). */
+  readonly defaultSort?: { readonly key: string; readonly dir: 'asc' | 'desc' } | undefined
   /** Words under the table. */
   readonly footnote?: ReactNode | undefined
 }
@@ -86,14 +90,15 @@ function figureContent(cell: ReportValue, href: string | undefined): ReactNode {
 }
 
 /** A cell's class: its column's alignment or tone, then the column's divider if it has one. */
-function cellClass(column: ReportColumn | undefined, index: number): string {
+function cellClass(column: ReportColumn | undefined, index: number, kind: string): string {
   const base =
     index === 0 || column?.align === 'left'
       ? TD_LABEL
       : column?.tone === 'decided'
         ? TD_DECIDED
         : TD_NUMBER
-  return column?.divider === 'before' ? `${base} ${DIVIDER_BEFORE}` : base
+  const mono = column?.mono && kind === 'body' ? `${base} font-mono tabular-nums` : base
+  return column?.divider === 'before' ? `${mono} ${DIVIDER_BEFORE}` : mono
 }
 
 function indentStyle(indent: number | undefined) {
@@ -133,9 +138,11 @@ export function ReportTable({
   urlPrefix = '',
   emptyText = 'Nothing to show.',
   footnote,
+  description,
+  defaultSort,
 }: ReportTableProps) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
-  const { sort, toggleSort } = useAidTableUrl(columnKeys, [], urlPrefix)
+  const { sort, toggleSort } = useAidTableUrl(columnKeys, [], urlPrefix, undefined, defaultSort)
   const [query, setQuery] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
 
@@ -204,6 +211,7 @@ export function ReportTable({
             </>
           }
           className={thClass}
+          buttonClassName={numeric || column.tone === 'decided' ? 'justify-end' : ''}
           style={column.width ? { width: column.width } : undefined}
         />
       )
@@ -220,6 +228,17 @@ export function ReportTable({
     )
   }
 
+  const actions = (
+    <span className={find ? 'flex gap-2' : 'ml-auto flex gap-2'}>
+      <button type="button" className={BUTTON_SECONDARY} onClick={() => void copy()}>
+        <Copy className="h-3.5 w-3.5" /> Copy
+      </button>
+      <button type="button" className={BUTTON_SECONDARY} onClick={download}>
+        <Download className="h-3.5 w-3.5" /> Download CSV
+      </button>
+    </span>
+  )
+
   return (
     <section className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -227,7 +246,11 @@ export function ReportTable({
           {heading.title}
           {basisBadge ? <span className={BASIS_BADGE}>{basisBadge}</span> : null}
         </h2>
-        {find && (
+        {!find && actions}
+      </div>
+      {description !== undefined && <div className={REPORT_NOTE}>{description}</div>}
+      {find && (
+        <div className="flex flex-wrap items-center gap-2">
           <label className="relative">
             <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
             <input
@@ -239,16 +262,9 @@ export function ReportTable({
               className={`${SEARCH_INPUT} pl-7`}
             />
           </label>
-        )}
-        <span className="ml-auto flex gap-2">
-          <button type="button" className={BUTTON_SECONDARY} onClick={() => void copy()}>
-            <Copy className="h-3.5 w-3.5" /> Copy
-          </button>
-          <button type="button" className={BUTTON_SECONDARY} onClick={download}>
-            <Download className="h-3.5 w-3.5" /> Download CSV
-          </button>
-        </span>
-      </div>
+          {actions}
+        </div>
+      )}
       {copied !== null && <p className={REPORT_NOTE}>{copied}</p>}
       <div className={TABLE_CARD}>
         {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}
@@ -313,7 +329,7 @@ export function ReportTable({
                   {row.cells.map((cell, index) => (
                     <td
                       key={columns[index]?.key ?? index}
-                      className={cellClass(columns[index], index)}
+                      className={cellClass(columns[index], index, row.kind)}
                       style={index === 0 ? indentStyle(row.indent) : undefined}
                     >
                       {cellContent(cell, row.links?.[index])}
