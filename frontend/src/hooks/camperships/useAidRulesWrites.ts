@@ -5,6 +5,7 @@ import { useSeasonChrome } from '../../components/camperships/season/seasonChrom
 
 import {
   approveAidRules,
+  discardAidRulesDraft,
   fetchAidRulesDraft,
   saveAidRulesSection,
   saveAidRulesSections,
@@ -12,6 +13,7 @@ import {
 } from '../../services/camperships/aidApi'
 import type { FetchWithAuth } from '../../services/lodgingApi'
 import type {
+  ApiAidDiscardDraftIn,
   ApiAidRulesApproveIn,
   ApiAidRulesDraft,
   ApiAidRulesSection,
@@ -91,6 +93,15 @@ export function useAidStartRulesFromLastYear() {
   return useRulesWrite(
     (fetchWithAuth, year, _vars: undefined, reason) =>
       startAidRulesFromLastYear(fetchWithAuth, year, reason),
+    false
+  )
+}
+
+/** Throw the rules draft away (owner 2026-10-08): back to the version in effect, which prices as before. */
+export function useAidDiscardRulesDraft() {
+  return useRulesWrite(
+    (fetchWithAuth, year, body: ApiAidDiscardDraftIn, reason) =>
+      discardAidRulesDraft(fetchWithAuth, year, body, reason),
     false
   )
 }

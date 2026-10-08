@@ -76,6 +76,7 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
   useAidSaveRulesSections: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useAidApproveRules: () => fakeWrite('approve'),
   useAidStartRulesFromLastYear: () => fakeWrite('start'),
+  useAidDiscardRulesDraft: () => fakeWrite('discard'),
   useFreshAidRulesDraft: () => freshRead,
 }))
 
@@ -1218,5 +1219,53 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
     expect(saved().body.content).toMatchObject({
       tables: { general: { tiers: { '1': { total_pct: '97' } } } },
     })
+  })
+})
+
+describe('discarding the rules draft (owner 2026-10-08)', () => {
+  const bar = () => screen.getByTestId('chapter-bar')
+
+  it('offers Discard draft beside the switch, and asks once more before sending the version shown', async () => {
+    renderAt('/aid/season/rules')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard draft' }))
+    expect(calls).toHaveLength(0)
+    expect(screen.getByText('Discard draft v4? Its changes since v3 are lost.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(calls).toEqual([{ hook: 'discard', vars: { base_version: 4 } }])
+  })
+
+  it('Keep closes the question and sends nothing', async () => {
+    renderAt('/aid/season/rules')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard draft' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(screen.queryByText(/Its changes since v3 are lost/)).toBeNull()
+    expect(within(bar()).getByRole('button', { name: 'Discard draft' })).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('says a refusal in the server’s words', async () => {
+    outcome = {
+      kind: 'refused',
+      status: 409,
+      message:
+        'The rules draft holds an approval made since it was started (Appeal caps), so it can’t be discarded',
+    }
+    renderAt('/aid/season/rules')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard draft' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(
+      await screen.findByText(/holds an approval made since it was started \(Appeal caps\)/)
+    ).toBeInTheDocument()
+  })
+
+  it('offers nothing when the draft is the version in effect, or while a card is edited', async () => {
+    draft = { data: { ...rulesDraft(), approved_version: 4 }, isLoading: false, error: null }
+    const view = renderAt('/aid/season/rules')
+    expect(within(bar()).queryByRole('button', { name: 'Discard draft' })).toBeNull()
+    view.unmount()
+    draft = { data: rulesDraft(), isLoading: false, error: null }
+    renderAt('/aid/season/rules?section=awards')
+    await editCard('awards')
+    expect(within(bar()).queryByRole('button', { name: 'Discard draft' })).toBeNull()
   })
 })

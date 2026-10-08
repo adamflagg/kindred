@@ -13,6 +13,7 @@ import type {
   ApiAidCorrectionIn,
   ApiAidCorrectionOut,
   ApiAidDefinitions,
+  ApiAidDiscardDraftIn,
   ApiAidDuplicateIn,
   ApiAidGrid,
   ApiAidCostOverrideIn,
@@ -868,6 +869,26 @@ export function approveAidRules(
     `${BASE}/rules/${String(year)}/versions/${String(version)}/approve`,
     withReason(body, pastSeasonReason),
     "Couldn't approve the sections"
+  )
+}
+
+/**
+ * Throw the rules draft away (owner 2026-10-08): every version newer than the one in effect is marked discarded, and
+ * the answer is the draft read, back on the version in effect. 409 when the draft moved on since `base_version`, holds
+ * an approval made since it started, or there is nothing to go back to.
+ */
+export function discardAidRulesDraft(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidDiscardDraftIn,
+  pastSeasonReason: string | null = null
+): Promise<ApiAidRulesDraft> {
+  return send<ApiAidRulesDraft>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/rules/${String(year)}/draft/discard`,
+    withReason(body, pastSeasonReason),
+    "Couldn't discard the rules draft"
   )
 }
 

@@ -37,6 +37,7 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => {
     useAidSaveRulesSection: idle,
     useAidApproveRules: idle,
     useAidStartRulesFromLastYear: idle,
+    useAidDiscardRulesDraft: idle,
     useFreshAidRulesDraft: () => () => new Promise(() => undefined),
   }
 })

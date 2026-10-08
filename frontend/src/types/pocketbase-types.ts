@@ -763,6 +763,7 @@ export type AidRequestsRecord<Tequity = unknown, Tflags = unknown> = {
 
 export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   created: IsoAutoDateString
+  discarded?: boolean
   document?: null | Tdocument
   id: string
   parent_version?: number
