@@ -76,3 +76,15 @@ def test_total_requests_counts_only_live_requests_of_campers_who_attended() -> N
     text = BY_KEY["need"].text
     assert "live requests of campers who attended" in text
     assert "cancelled or closed request" in text
+
+
+def test_need_says_a_request_above_its_sessions_cost_counts_at_the_cost() -> None:
+    """Rule M (owner 10-08, per request): the note says such a request counts at the cost, in the ruling's words, and
+    that a footnote counts how many requests; never the old "left out" wording."""
+    text = BY_KEY["need"].text
+    assert (
+        "A request whose asks add up to more than its session's cost is counted at the cost, and a footnote says how "
+        "many requests were counted at the cost." in text
+    )
+    assert "left out" not in text
+    assert "never capped" not in text

@@ -29,6 +29,7 @@ from bunking.financial_aid.reports.development import (
     SourceLine,
     development_column,
     gender_label,
+    is_capped,
     need,
     rebuilt_ages,
 )
@@ -517,3 +518,96 @@ def test_a_request_that_is_not_live_is_not_counted_because_the_camper_attended_a
 def test_a_cancelled_request_still_counts_in_the_cancel_reasons_though_it_is_out_of_the_need() -> None:
     camp = _camp(_emma_with_a_second_request("cancelled", "medical"))
     assert camp.cancelled_by_reason == {"medical": 1}
+
+
+# --- Rule M: a request's asks count at most its session's cost (owner 10-08, per request) --------------------------
+
+
+def test_a_request_above_its_session_cost_counts_at_the_cost() -> None:
+    """Rule M (owner 10-08): "if someone asks above the session cost just cap it at the session cost". Emma's Round 1
+    ask of 40,000 on a 4,000 session makes her need 40,000 uncapped; it counts as 4,000."""
+    typo = req("reqemma00000001", rnd(1, ask="40000", posted="1500"), rnd(2, ask="1000"), person=EMMA, cost="4000")
+    assert need(typo) == Decimal(4000)
+    assert is_capped(typo)
+
+
+def test_the_cap_is_on_the_whole_request() -> None:
+    """The cap is per REQUEST (owner 10-08): its asks together count at most its session's cost. The 1,500 posted
+    before an appeal's 5,000 ask makes 6,500 uncapped; on a 4,000 session it counts 4,000, not 1,500 + 4,000."""
+    appeal = req("reqemma00000001", rnd(1, ask="2000", posted="1500"), rnd(2, ask="5000"), person=EMMA, cost="4000")
+    assert need(appeal) == Decimal(4000)
+    assert is_capped(appeal)
+
+
+def test_asks_each_within_the_cost_are_capped_when_they_add_up_to_more() -> None:
+    """The owner's example: a 3,000 Round 1 (posted 3,000) plus a 1,000 appeal on a 3,500 session counts 3,500 in
+    total, though neither ask alone is above the cost."""
+    appeal = req("reqemma00000001", rnd(1, ask="3000", posted="3000"), rnd(2, ask="1000"), person=EMMA, cost="3500")
+    assert need(appeal) == Decimal(3500)
+    assert is_capped(appeal)
+
+
+def test_a_need_equal_to_the_cost_or_with_no_cost_known_counts_as_typed() -> None:
+    """Only a need ABOVE the cost is capped; a request the season couldn't price (no cost) counts as typed (Rule M:
+    "A missing cost -> counted as typed")."""
+    full = req("reqemma00000001", rnd(1, ask="3000", posted="3000"), rnd(2, ask="1000"), person=EMMA, cost="4000")
+    unpriced = req("reqemma00000002", rnd(1, ask="40000"), person=EMMA)
+    assert (need(full), is_capped(full)) == (Decimal(4000), False)
+    assert (need(unpriced), is_capped(unpriced)) == (Decimal(40000), False)
+
+
+def test_the_column_counts_the_requests_it_capped_in_total_requests_and_need_met() -> None:
+    """The footnote's count ("N requests above their session's cost counted at the cost"): per group and for the
+    column.
+    Emma counts 4,000, Liam's 2,000 stays. % of need met moves with it: (1,500 + 0) / (4,000 + 2,000)."""
+    column = development_column(
+        _inputs(
+            requests=(
+                req(
+                    "reqemma00000001",
+                    rnd(1, ask="40000", posted="1500"),
+                    rnd(2, ask="1000"),
+                    person=EMMA,
+                    cost="4000",
+                ),
+                req("reqliam00000001", rnd(1, ask="2000"), person=LIAM, household=1000002, cost="4000"),
+            )
+        )
+    )
+    camp = _camp(column)
+    assert camp.total_requests == Decimal(6000)
+    assert camp.pct_need_met == Decimal("25.0")
+    assert (camp.requests_capped, column.requests_capped) == (1, 1)
+
+
+def test_a_request_out_of_demand_never_counts_as_capped() -> None:
+    """The count is of requests capped in Total Requests: a cancelled request (29b) or a camper who didn't attend
+    (D92) was never in it, above the cost or not."""
+    column = development_column(
+        _inputs(
+            requests=(
+                req("reqemma00000001", rnd(1, ask="40000"), person=EMMA, cost="4000", standing="cancelled"),
+                req("reqsamuel000001", rnd(1, ask="40000"), person=SAMUEL, household=1000003, cost="4000"),
+            )
+        )
+    )
+    assert column.requests_capped == 0
+
+
+def test_a_request_with_two_asks_above_its_cost_counts_once() -> None:
+    """The footnote counts REQUESTS (owner 10-08): two asks above the cost on one request are one request capped."""
+    column = development_column(
+        _inputs(
+            requests=(
+                req(
+                    "reqemma00000001",
+                    rnd(1, ask="40000", posted="1500"),
+                    rnd(2, ask="50000"),
+                    person=EMMA,
+                    cost="4000",
+                ),
+            )
+        )
+    )
+    assert _camp(column).total_requests == Decimal(4000)
+    assert column.requests_capped == 1

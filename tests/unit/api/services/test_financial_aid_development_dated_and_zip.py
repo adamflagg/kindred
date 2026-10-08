@@ -4,6 +4,7 @@ grant of 500 on her, posted February 10. The clock is April 1 2027. Fictional on
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -63,8 +64,8 @@ def _values(out: Any, key: str, group: str | None = "camp_pool") -> list[float |
 
 async def test_a_dated_column_reads_the_season_as_it_stood_that_day() -> None:
     """§9.4: "a query over dated records, never a frozen copy". On March 5 only the February grant was money."""
-    development = _development(columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 3, 5)),)))
-    out = await _service(development).development(YEAR)
+    development = _development()
+    out = await _service(development).development(YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5)))
     assert [(c.season, c.basis, c.as_of, c.label) for c in out.columns] == [
         (YEAR, "P", date(2027, 4, 1), "2027"),
         (YEAR, "P", date(2027, 3, 5), "2027 as of Mar 5"),
@@ -75,8 +76,8 @@ async def test_a_dated_column_reads_the_season_as_it_stood_that_day() -> None:
 async def test_a_dated_column_names_the_declined_line_it_cannot_rebuild_and_leaves_it_null() -> None:
     """Plan review Minor 5: a past read has no CampMinder cancellations, so "declined for insufficient aid" would
     read 0 on a dated column; it is null there and named, never a false zero."""
-    development = _development(columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 3, 5)),)))
-    out = await _service(development).development(YEAR)
+    development = _development()
+    out = await _service(development).development(YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5)))
     assert out.columns[0].not_rebuilt == []
     assert out.columns[1].not_rebuilt[0] == "declined_insufficient"
     assert _values(out, "declined_insufficient")[1] is None
@@ -86,21 +87,52 @@ async def test_a_dated_column_names_the_declined_line_it_cannot_rebuild_and_leav
 
 async def test_a_dated_column_leaves_out_campers_registered_after_its_day() -> None:
     development = _development(
-        columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 2, 1)),)),
         registrations=[went(EMMA, 1000001, registered_on=date(2027, 2, 15)), went(LIAM, 1000002)],
     )
-    out = await _service(development).development(YEAR)
-    assert _values(out, "total_requests") == [6000.0, 2000.0]  # Emma registered on Feb 15, after Feb 1
+    # Emma's ask at her session's 2,000 cost, so no ask is capped (Rule M) and only the day differs
+    store = report_season()
+    store.requests["reqemma00000001"] = replace(store.requests["reqemma00000001"], ask=2000.0)
+    feb_1 = DatedColumn(season=YEAR, as_of=date(2027, 2, 1))
+    out = await _service(development, store).development(YEAR, column=feb_1)
+    assert _values(out, "total_requests") == [4000.0, 2000.0]  # Emma registered on Feb 15, after Feb 1
 
 
 async def test_a_camper_cancelled_after_the_day_still_counts_on_it() -> None:
     development = _development(
-        columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 3, 20)),)),
         registrations=[went(EMMA, 1000001, status=32, changed_on=date(2027, 3, 25)), went(LIAM, 1000002)],
     )
-    out = await _service(development).development(YEAR)
+    out = await _service(development).development(YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 20)))
     assert _values(out, "recipients")[1] == 1.0  # attended on March 20; cancelled on March 25
     assert _values(out, "recipients")[0] == 0.0  # not today
+
+
+async def test_a_dated_column_on_demand_saves_nothing() -> None:
+    """Owner 10-08: dated columns ON DEMAND, not saved ("not saved · gone when you leave"). The read writes nothing."""
+    development = _development()
+    await _service(development).development(YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5)))
+    assert development.operations == []
+
+
+async def test_a_saved_column_no_longer_reaches_the_read() -> None:
+    """Owner 10-08: the saved-column backend stays in place, unused; the read shows only the column asked for."""
+    development = _development(columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 3, 5)),)))
+    out = await _service(development).development(YEAR)
+    assert [(c.basis, c.as_of) for c in out.columns] == [("P", date(2027, 4, 1))]
+
+
+@pytest.mark.parametrize(
+    ("column", "says"),
+    [
+        (DatedColumn(season=2026, as_of=date(2026, 4, 12)), "needs dated decisions"),
+        (DatedColumn(season=YEAR, as_of=date(2027, 4, 1)), "not a past day"),  # today: not past yet
+        (DatedColumn(season=YEAR, as_of=date(2025, 5, 1)), "not a past day"),
+        (DatedColumn(season=YEAR + 1, as_of=date(2027, 3, 5)), "not a season of"),  # after the report's season
+    ],
+)
+async def test_a_column_on_demand_kindred_cannot_date_is_refused(column: DatedColumn, says: str) -> None:
+    """D67 and the report's own seasons: the same refusals a saved column had, plus a season the report lacks."""
+    with pytest.raises(ReportsRefusedError, match=says):
+        await _service(_development()).development(YEAR, column=column)
 
 
 async def test_saving_columns_writes_once_and_a_repeat_writes_nothing() -> None:
@@ -158,11 +190,11 @@ async def test_a_grant_reversed_after_the_day_still_counts_on_it() -> None:
     async def rows(year: int) -> Sequence[RegisterRow]:
         return [reversed_later] if year == YEAR else []
 
-    development = _development(columns=StoredColumns("rdf000000000001", ((YEAR, date(2027, 3, 15)),)))
+    development = _development()
     service = FinancialAidDevelopmentService(
         report_season(), FakeRules(approved(intake_rules())), rows, development, FakeReportsStore(), clock=lambda: NOW
     )
-    out = await service.development(YEAR)
+    out = await service.development(YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 15)))
     assert _values(out, "outside_awards") == [0.0, 500.0]  # reversed today; live on March 15
 
 
@@ -193,3 +225,28 @@ async def test_the_zip_tables_do_not_count_a_camper_who_cancelled() -> None:
     development = _development(registrations=[went(EMMA, 1000001, status=32), went(LIAM, 1000002)])
     out = await _service(development).zip_codes(YEAR)
     assert out.every_camper.total.campers == 1
+
+
+_INTERNAL_ID = re.compile(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b")
+
+
+async def test_the_zip_tables_name_the_aid_table_gap_without_an_internal_id() -> None:
+    """Owner 10-08 (visual true-up): the waiting aid table's reason is staff text, so no ruling number."""
+    development = _development(registrations=[went(EMMA, 1000001, year=2026)])
+    out = await _service(development, FakeDecisionsStore()).zip_codes(2026)
+    assert [n.reason for n in out.not_built if _INTERNAL_ID.search(n.reason)] == []
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        DatedColumn(season=2026, as_of=date(2026, 4, 12)),
+        DatedColumn(season=YEAR, as_of=date(2027, 4, 1)),
+        DatedColumn(season=YEAR + 1, as_of=date(2027, 3, 5)),
+    ],
+)
+async def test_a_refused_column_says_why_without_an_internal_id(column: DatedColumn) -> None:
+    """Pin. Owner 10-08 (visual true-up): a refusal is the sentence staff read (amber), so no ruling number."""
+    with pytest.raises(ReportsRefusedError) as refused:
+        await _service(_development()).development(YEAR, column=column)
+    assert not _INTERNAL_ID.search(str(refused.value))

@@ -1261,3 +1261,40 @@ async def test_the_reads_say_whether_the_season_is_done() -> None:
     assert (receipt.season_done, receipt.configured_year) == (True, 2032)
     plain = await _service(store).approved_view(2031)
     assert (plain.season_done, plain.configured_year) == (False, None)
+
+
+# --- first_approved: the board-passed budget (D96, owner 10-08) ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_first_approved_is_the_oldest_version_with_the_sections_approved() -> None:
+    """Owner 10-08 (development's Budget row): the season's first approved budget stays fixed when a later version
+    with another budget is approved; latest_approved moves, first_approved doesn't."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    await service.approve_sections(2031, saved.version.version, ["budget"], actor=FINANCE, note="Board, Mar 1")
+    first = await service.first_approved(2031, ["budget"])
+    latest = await service.latest_approved(2031, ["budget"])
+    assert first is not None
+    assert latest is not None
+    assert (first.version, first.document.budget.total) == (1, Decimal(500000))
+    assert (latest.version, latest.document.budget.total) == (2, Decimal(520000))
+
+
+@pytest.mark.asyncio
+async def test_first_approved_skips_a_version_whose_sections_were_never_approved() -> None:
+    """A version whose budget is still a draft is not the first approved one; with none approved there is none."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    assert await service.first_approved(2031, ["budget"]) is None
+    others = [name for name in SECTION_NAMES if name != "budget"]
+    await service.approve_sections(2031, 1, others, actor=FINANCE, note="Board, Jan 8")  # budget stays draft
+    saved = await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    assert (saved.branched_from, saved.version.version) == (1, 2)  # an approved section edited: it branches
+    await service.approve_sections(2031, 2, ["awards", "budget"], actor=FINANCE, note="Board, Feb 1")
+    assert (await service.load(2031, 1)).section_status["budget"].state == "draft"
+    first = await service.first_approved(2031, ["budget"])
+    assert first is not None
+    assert first.version == 2

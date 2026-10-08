@@ -6,6 +6,7 @@ aggregates only, never a field that could name or identify a family, a camper or
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any, get_args
 from unittest.mock import AsyncMock, patch
 
@@ -13,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from api.schemas.financial_aid_reports import DevelopmentResponse
+from api.schemas.financial_aid_reports import DatedColumn, DevelopmentResponse
 from api.services.financial_aid_reports_service import ReportsRefusedError
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import PERSONA_DEVELOPMENT, PERSONAS, persona_client
@@ -22,6 +23,7 @@ URL = "/api/financial-aid/reports/2027/development"
 # A family-level field: an id, a name, a household, a person, a camper or a request (D66: "no names, no ids").
 # Counts ("campers", "families") and a ZIP (D90) are aggregates, not identities.
 FAMILY_LEVEL = re.compile(r"household|person|camper_|request|family_name|_cm_id|\bid\b|email|address|postal|birth")
+ALLOWED = {"requests_capped"}  # an aggregate count (Rule M), never a request's identity
 
 
 def _client(persona: str) -> TestClient:
@@ -69,7 +71,7 @@ def test_developments_response_carries_no_family_level_field() -> None:
         f"{model.__name__}.{name}"
         for model in walk_models(DevelopmentResponse, set())
         for name in model.model_fields
-        if FAMILY_LEVEL.search(name)
+        if FAMILY_LEVEL.search(name) and name not in ALLOWED
     ]
     assert offenders == []
 
@@ -85,3 +87,24 @@ def test_a_summary_only_user_reaches_no_other_report() -> None:
         "/api/financial-aid/reports/reported-history",
     ):
         assert client.get(url).status_code == 403, url
+
+
+def test_a_dated_column_on_demand_reaches_the_service_as_season_and_day() -> None:
+    """Owner 10-08: one on-demand column per request, `?column=<season>:<YYYY-MM-DD>`; none means none."""
+    service = patch("api.routers.financial_aid.FinancialAidDevelopmentService").start().return_value
+    service.development = AsyncMock(side_effect=ReportsRefusedError("stub"))
+    client = _client(PERSONA_DEVELOPMENT)
+    client.get(URL)
+    service.development.assert_awaited_with(2027, column=None)
+    client.get(f"{URL}?column=2027:2027-03-05")
+    service.development.assert_awaited_with(2027, column=DatedColumn(season=2027, as_of=date(2027, 3, 5)))
+
+
+@pytest.mark.parametrize(
+    "column", ["2027", "2027-03-05", "27:2027-03-05", "2027:2027-3-5", "2027:20270305", "2027:2027-02-30"]
+)
+def test_a_malformed_dated_column_is_refused_before_the_service(column: str) -> None:
+    service = patch("api.routers.financial_aid.FinancialAidDevelopmentService").start().return_value
+    service.development = AsyncMock(side_effect=ReportsRefusedError("stub"))
+    assert _client(PERSONA_DEVELOPMENT).get(f"{URL}?column={column}").status_code == 422
+    service.development.assert_not_awaited()
