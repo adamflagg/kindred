@@ -162,6 +162,17 @@ describe('ReportTable', () => {
     expect(writeText.mock.calls[0]?.[0]).toContain('00010\t4\t$1,200')
   })
 
+  it("keeps a column's note marker and width when the table sorts (ZIP codes' Campers note)", () => {
+    renderTable({
+      sortable: true,
+      columns: [...COLUMNS.slice(0, 2), { key: 'dollars', header: 'Dollars', note: 1, width: 120 }],
+    })
+    const th = screen.getByRole('columnheader', { name: /Dollars/ })
+    expect(th.querySelector('sup')?.textContent).toBe('1')
+    expect(th.style.width).toBe('120px')
+    expect(screen.getByRole('button', { name: 'Dollars' })).toBeInTheDocument()
+  })
+
   it('tints a decided column amber, its header and every cell (slice 4 K; D130)', () => {
     renderTable({
       columns: [...COLUMNS.slice(0, 2), { key: 'dollars', header: 'Dollars', tone: 'decided' }],
