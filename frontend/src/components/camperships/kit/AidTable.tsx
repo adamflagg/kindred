@@ -680,6 +680,13 @@ export function AidTable<Row>({
       </div>
     ) : null
 
+  // The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant).
+  const csvButton = (
+    <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
+      <Download className="h-4 w-4" />
+      Download CSV
+    </button>
+  )
   return (
     <div className="space-y-2">
       <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
@@ -698,12 +705,16 @@ export function AidTable<Row>({
           />
         </div>
         {toolbarAfterGrouping === undefined && groupingSwitch}
-        {/* The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant). */}
-        <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
-          <Download className="h-4 w-4" />
-          Download CSV
-        </button>
-        {toolbarTrail}
+        {toolbarTrail === undefined ? (
+          csvButton
+        ) : (
+          // With a trail, the pair wraps as one, right-aligned, its notes under it (basis-full):
+          // alone, the trail fell to the left of the next line when the line ran out (1440px).
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            {csvButton}
+            {toolbarTrail}
+          </div>
+        )}
       </div>
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
