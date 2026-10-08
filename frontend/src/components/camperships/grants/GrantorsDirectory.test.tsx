@@ -280,6 +280,40 @@ describe('the grantor directory (§8.2; D160; P-19)', () => {
     })
   })
 
+  it("⚠ typing that starts before the open read lands still takes the other person's change in fields it left alone (R3-1)", async () => {
+    const renamed: ApiAidGrantors = {
+      grantors: GRANTORS_ALL.grantors.map((g) =>
+        g.key === 'grantor_a' ? { ...g, name: 'Grantor A Fund' } : g
+      ),
+    }
+    renderDirectory('/aid/grants/grantors?grantor=grantor_a')
+    const panel = await screen.findByTestId('grantor-panel')
+    // Hold the form's open read until the person has typed.
+    let release: (response: Response) => void = () => undefined
+    const held = new Promise<Response>((resolve) => {
+      release = resolve
+    })
+    fetchSpy.mockImplementation((input, init) => {
+      if ((init?.method ?? 'GET') !== 'GET') return Promise.resolve(json(GRANTOR_A))
+      if (String(input).startsWith('/api/financial-aid/grantors')) {
+        // The first read after the click is held; any later read answers at once.
+        fetchSpy.mockImplementation((_i, _init) => Promise.resolve(json(renamed)))
+        return held
+      }
+      return Promise.resolve(json(DEFINITIONS))
+    })
+    await userEvent.click(within(panel).getByRole('button', { name: 'Edit…' }))
+    const form = within(panel).getByTestId('grantor-form')
+    await userEvent.type(within(form).getByRole('textbox', { name: 'Note' }), 'New contact')
+    release(json(renamed))
+    await waitFor(() =>
+      expect(within(form).getByRole('textbox', { name: 'Name' })).toHaveValue('Grantor A Fund')
+    )
+    expect(within(form).getByRole('textbox', { name: 'Note' })).toHaveValue('New contact')
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+  })
+
   it('keeps Retire… off while a description maps to the grantor, and says why', async () => {
     renderDirectory('/aid/grants/grantors?grantor=grantor_a')
     const panel = await screen.findByTestId('grantor-panel')

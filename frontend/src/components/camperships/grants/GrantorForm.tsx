@@ -70,7 +70,7 @@ export function GrantorForm({
   const read = initial === undefined ? readCreate(draft) : readSave(draft)
   const busy = create.isPending || save.isPending
 
-  // An edit opens on the latest (P-9); typing that started first is never overwritten.
+  // An edit opens on the latest (P-9); typing that started first is never overwritten, and the rest follows the latest.
   useEffect(() => {
     if (initial === undefined) return
     let live = true
@@ -79,7 +79,12 @@ export function GrantorForm({
         const latest = data.grantors.find((g) => g.key === initial.key)
         if (!live || latest === undefined) return
         setOpened(latest)
-        if (!typed.current) setDraft(draftOfGrantor(latest))
+        // Typing that started first stays; every field it left alone takes the latest (R3-1).
+        setDraft((current) =>
+          typed.current
+            ? rebase(draftOfGrantor(initial), draftOfGrantor(latest), current)
+            : draftOfGrantor(latest)
+        )
       })
       .catch(() => {
         // A read failed: nothing was written, so it is said as a read (R3-13), never "can't tell".
