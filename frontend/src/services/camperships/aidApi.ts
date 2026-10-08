@@ -67,6 +67,10 @@ import type {
   ApiAidUseFormIn,
   ApiAidUseFormOut,
   ApiAidWriteOut,
+  ApiAidCommitteeReport,
+  ApiAidPrograms,
+  ApiAidReportRequestIds,
+  ApiAidStatistics,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
@@ -1011,4 +1015,82 @@ export async function fetchAidSources(
   const response = await fetchWithAuth(withQuery(`${BASE}/sources`, { year: String(year) }))
   if (!response.ok) throw await toApiError(response, 'Failed to load the sources', AidApiError)
   return (await response.json()) as ApiAidSources
+}
+
+// --- Reports (slice 4; spec §9) -----------------------------------------------------------------
+
+/**
+ * One Reports read (spec §9; D21): a GET with its query. A refusal keeps its status and the server's
+ * sentence (a 422 names a control the season can't take), so the page can show it beside the control.
+ */
+async function fetchAidReport<T>(
+  fetchWithAuth: FetchWithAuth,
+  path: string,
+  params: Readonly<Record<string, string>>,
+  fallback: string
+): Promise<T> {
+  const response = await fetchWithAuth(withQuery(`${BASE}/reports/${path}`, { ...params }))
+  if (!response.ok) throw await toApiError(response, fallback, AidApiError)
+  return (await response.json()) as T
+}
+
+/** Reports › Statistics (§9.2): one award table × round, the reporting controls and the as-of in `params`. `view`. */
+export function fetchAidStatistics(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidStatistics> {
+  return fetchAidReport<ApiAidStatistics>(
+    fetchWithAuth,
+    `${String(year)}/statistics`,
+    params,
+    'Failed to load Statistics'
+  )
+}
+
+/** Reports › Programs (§9.3, RPT-11): sessions by pool, the request set and the as-of in `params`. `view`. */
+export function fetchAidPrograms(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidPrograms> {
+  return fetchAidReport<ApiAidPrograms>(
+    fetchWithAuth,
+    `${String(year)}/programs`,
+    params,
+    'Failed to load Programs'
+  )
+}
+
+/** The committee's year-over-year tables (§9.7), seasons 2022 → `year`; live only. `view`. */
+export function fetchAidCommitteeReport(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidCommitteeReport> {
+  return fetchAidReport<ApiAidCommitteeReport>(
+    fetchWithAuth,
+    `${String(year)}/committee`,
+    params,
+    "Failed to load the committee's tables"
+  )
+}
+
+/**
+ * The requests behind one Statistics or Programs count (D20; #2974): `GET /reports/{year}/{report}/requests`
+ * with the count's address (the same chips, basis and reporting control as its read) and the grid's as-of.
+ * `view` only: development's summary never sees a request (D65).
+ */
+export function fetchAidReportRequests(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  report: 'statistics' | 'programs',
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidReportRequestIds> {
+  return fetchAidReport<ApiAidReportRequestIds>(
+    fetchWithAuth,
+    `${String(year)}/${report}/requests`,
+    params,
+    "Couldn't read the requests behind that count"
+  )
 }

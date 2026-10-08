@@ -788,7 +788,21 @@ export const queryKeys = {
   aidPlacePreview: (year: number, transactionCmId: number, parts: string) =>
     ['financial-aid', 'to-place', year, 'preview', transactionCmId, parts] as const,
   aidSources: (year: number) => ['financial-aid', 'sources', 'registry', year] as const,
+  // Reports (slice 4): every report read sits under one prefix, so every money write refreshes them.
+  aidReportsPrefix: () => ['financial-aid', 'reports'] as const,
+  /** One report read: its season, which report, and the exact query it sends (controls and as-of). */
+  aidReport: (year: number, report: AidReportKey, params: Readonly<Record<string, string>>) =>
+    ['financial-aid', 'reports', year, report, params] as const,
+  /** The requests behind one Reports count, as the Requests grid reads them (D20; slice 4 J). */
+  aidReportRequests: (
+    year: number,
+    report: 'statistics' | 'programs',
+    params: Readonly<Record<string, string>>
+  ) => ['financial-aid', 'reports', year, 'requests', report, params] as const,
 }
+
+/** The Reports reads that are per season (slice 4). */
+export type AidReportKey = 'statistics' | 'programs' | 'committee' | 'development' | 'zip'
 
 /**
  * Invalidate every React Query key consumed by request-derived UI
@@ -962,6 +976,8 @@ export interface AidRefresh {
  * - the Ledger: its family rows, their lines and `/summary` read the dashboard's placements and the priced
  *   season, so a payer share, a tick, a To place write or a grant placement can each move them
  *   (D26, D151).
+ * - Reports: Statistics, Programs, the committee's tables, Development, its ZIP codes and the
+ *   requests behind a count read the priced season and the ledger (slice 4).
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
  * A write to the sources registry or the grantor directory passes `registry`.
  * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
@@ -991,6 +1007,9 @@ export function invalidateAidMoneyQueries(
     { queryKey: queryKeys.aidToPlacePrefix() },
     { queryKey: queryKeys.aidGrantsPrefix() },
     { queryKey: queryKeys.aidLedgerPrefix() },
+    // Reports read the priced season and the ledger (slice 4): Statistics, Programs, the committee's
+    // tables, Development, ZIP codes and the requests behind a count all sit under one prefix.
+    { queryKey: queryKeys.aidReportsPrefix() },
     ...(options.jumpIndex === true ? [{ queryKey: queryKeys.aidJumpIndexPrefix() }] : []),
     ...(options.registry === true
       ? [{ queryKey: queryKeys.aidSourcesPrefix() }, { queryKey: queryKeys.aidGrantorsPrefix() }]
