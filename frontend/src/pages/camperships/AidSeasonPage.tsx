@@ -20,6 +20,8 @@ import {
   ApprovePanel,
   SeasonChromeProvider,
   SeasonNotice,
+  UnlockButton,
+  UnlockPanel,
 } from '../../components/camperships/season/SeasonChrome'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
@@ -95,6 +97,7 @@ export default function AidSeasonPage() {
         </span>
       )}
       <ApproveButton />
+      <UnlockButton />
       {onRounds && <RoundsBudgetCsv />}
     </>
   )
@@ -116,6 +119,7 @@ export default function AidSeasonPage() {
         </div>
         {/* Rules puts the panel and the notice under its own lead line (spec §6.2 B). */}
         {!onRules && <ApprovePanel />}
+        {!onRules && <UnlockPanel />}
         {!onRules && <SeasonNotice />}
         {onRounds && <RoundsBudgetTab />}
         {slug === 'history' && <HistoryTab />}

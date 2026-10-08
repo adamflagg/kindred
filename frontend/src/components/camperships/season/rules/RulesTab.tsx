@@ -29,7 +29,7 @@ import { aidHref } from '../../kit/asOf'
 import { CS_BTN, CS_LINK, CS_META, CS_SMALL } from '../../kit/csType'
 import { DefinitionNotes } from '../../kit/DefinitionNotes'
 import { SEASON_CARD } from '../seasonStyles'
-import { ApprovePanel, SeasonNotice } from '../SeasonChrome'
+import { ApprovePanel, SeasonNotice, UnlockPanel } from '../SeasonChrome'
 import { useSeasonChrome } from '../seasonChrome'
 import { BudgetPointer } from './BudgetPointer'
 import { Chapter } from './Chapter'
@@ -320,7 +320,8 @@ function ChaptersBody({
     sessions
   )
   const live = asOf.kind === 'live'
-  const canEdit = finance && live && !receipt && !chrome.approving && editing === null
+  const canEdit =
+    finance && live && !receipt && !chrome.approving && !chrome.locked && editing === null
 
   // Open: the link's list, else the chapters holding a draft section or an issue; a named section's chapter, and the
   // chapter being edited, stay open.
@@ -672,6 +673,7 @@ function ChaptersBody({
         onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
       />
       <ApprovePanel />
+      <UnlockPanel />
       <SeasonNotice />
       <div className="space-y-3">
         {(['Awards', 'Setup'] as const).map((group) => (
@@ -755,6 +757,12 @@ export function RulesTab() {
   const setNotice = chrome.setNotice
   // The card being edited lives here so it survives the switch from the version in effect to the draft.
   const [editing, setEditing] = useState<ApiAidRulesSection | null>(null)
+  // Lock Again closes the open editor (its Save would only meet the server's refusal); expiry leaves it open.
+  const [seenRelocks, setSeenRelocks] = useState(chrome.relocks)
+  if (seenRelocks !== chrome.relocks) {
+    setSeenRelocks(chrome.relocks)
+    setEditing(null)
+  }
   // Approve… waits while any card editor (the tiers editor too) is open: it would approve the draft without the typing.
   const setChromeEditing = chrome.setEditing
   const isEditing = editing !== null
@@ -766,6 +774,7 @@ export function RulesTab() {
   const chrome_ = (
     <>
       <ApprovePanel />
+      <UnlockPanel />
       <SeasonNotice />
     </>
   )

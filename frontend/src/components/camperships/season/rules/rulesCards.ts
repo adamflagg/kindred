@@ -148,7 +148,7 @@ export const CARD_SPECS: Readonly<Partial<Record<ApiAidRulesSection, CardSpec>>>
     ],
   },
   quality_checks: {
-    lead: 'A check that holds stops the request until staff look; a warning only informs. The list of checks is read-only.',
+    lead: 'A check set to Hold puts the request on hold until staff look; one set to Warning only informs. The list of checks is read-only.',
     groups: [],
     readOnly: [],
   },

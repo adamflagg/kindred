@@ -31,6 +31,17 @@ const CHROME: SeasonChrome = {
   openApprove: () => undefined,
   closeApprove: () => undefined,
   section: 'budget',
+  done: false,
+  locked: false,
+  unreadable: null,
+  unlocked: null,
+  unlocking: false,
+  openUnlock: () => undefined,
+  closeUnlock: () => undefined,
+  unlock: () => undefined,
+  lockAgain: () => undefined,
+  pastSeasonReason: null,
+  relocks: 0,
 }
 type SectionStatus = ApiAidRulesDraft['sections'][number]['status']
 
