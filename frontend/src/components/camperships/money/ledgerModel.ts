@@ -59,7 +59,7 @@ export function programLabelsOf(summary: ApiAidSummary | undefined): Record<stri
 export function programChoicesOf(
   summary: ApiAidSummary | undefined,
   names: Readonly<Record<string, string>> = {}
-): { value: string; label: string }[] {
+): Array<{ value: string; label: string }> {
   if (!summary) return []
   return pivotRows(summary, names)
     .filter((row) => !BUCKETS_LAST.includes(row.program))
