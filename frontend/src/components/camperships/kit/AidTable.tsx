@@ -711,7 +711,7 @@ export function AidTable<Row>({
         Download CSV
       </button>
     ) : (
-      <div ref={csvMenuRef} className="relative ml-auto inline-flex">
+      <div ref={csvMenuRef} className="relative z-50 ml-auto inline-flex">
         <button type="button" className={`${BUTTON_SECONDARY} rounded-r-none`} onClick={download}>
           <Download className="h-4 w-4" />
           Download CSV
@@ -728,7 +728,7 @@ export function AidTable<Row>({
           <div
             data-testid="csv-menu"
             onClick={() => setCsvMenuOpen(false)}
-            className="border-border bg-card text-card-foreground absolute top-full right-0 z-30 mt-1.5 min-w-72 rounded-lg border p-1.5 shadow-lg"
+            className="border-border bg-card text-card-foreground absolute top-full right-0 z-50 mt-1.5 min-w-72 rounded-lg border p-1.5 shadow-lg"
           >
             <button
               type="button"

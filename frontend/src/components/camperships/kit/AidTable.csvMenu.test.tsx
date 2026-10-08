@@ -66,6 +66,14 @@ describe('AidTable csvMenu', () => {
     expect(within(menu).getByText('Menu Extra')).toBeInTheDocument()
   })
 
+  it('sits above the sticky table headers (they are z-40): the control and the menu are z-50', async () => {
+    renderTable(true)
+    const caret = screen.getByRole('button', { name: 'More downloads' })
+    expect(caret.parentElement).toHaveClass('z-50')
+    await userEvent.click(caret)
+    expect(screen.getByTestId('csv-menu')).toHaveClass('z-50')
+  })
+
   it('closes on Escape and on an outside click, not on a click inside', async () => {
     renderTable(true)
     await userEvent.click(caret() as HTMLElement)
