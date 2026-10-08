@@ -492,9 +492,10 @@ def _stored_budget_total(row: Any) -> Decimal:
     """The budget total as stored on a version row; 0 for anything unreadable, so the draft read never fails."""
     budget = (_json_object(row, "document") or {}).get("budget")
     try:
-        return Decimal(str(budget.get("total", 0))) if isinstance(budget, dict) else Decimal(0)
+        total = Decimal(str(budget.get("total", 0))) if isinstance(budget, dict) else Decimal(0)
     except InvalidOperation:
         return Decimal(0)
+    return total if total.is_finite() else Decimal(0)
 
 
 def _protected(current: RulesVersion, parent: RulesVersion | None, section: SectionName, *, in_use: bool) -> bool:
@@ -1438,6 +1439,15 @@ class FinancialAidRulesService:
             )
         return await self.load(year, current.version), report
 
+    async def _approved_budget_with_total(self, year: int) -> RulesVersion | None:
+        """The newest version with an approved budget and a total above zero: the same test the pre-lock uses, so the
+        guard and the lock cannot name different versions."""
+        for row in reversed(await self._store.list_versions(year)):
+            version = _to_version(row)
+            if version.section_status["budget"].state in _HELD and version.document.budget.total > 0:
+                return version
+        return None
+
     async def _assert_total_unmoved_once_locked(self, year: int, document: AidRules) -> None:
         """Owner 10-08, the one guard for every route a total could take once it is locked: approving any section of
         a draft (it may complete the sections that make the draft the pricing version) and branching a new version. A
@@ -1446,7 +1456,7 @@ class FinancialAidRulesService:
         version pricing the season, and with neither there is nothing to protect."""
         if not await self._budget_total_locked(year):
             return
-        reference = await self.latest_approved(year, _BUDGET_ONLY) or await self.latest_approved(year, PRICING_SECTIONS)
+        reference = await self._approved_budget_with_total(year) or await self.latest_approved(year, PRICING_SECTIONS)
         if reference is not None and Decimal(document.budget.total) != Decimal(reference.document.budget.total):
             raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
 
