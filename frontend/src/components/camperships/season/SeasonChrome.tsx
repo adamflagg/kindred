@@ -50,13 +50,14 @@ export function SeasonChromeProvider({
   const read = finance ? draft : approved
   const done = read.data?.season_done === true
   // A 503: the server couldn't read the dashboard's season, so it treats no season as open. Neither does the screen.
-  const unreadable = hasStatus(read.error, 503) && !read.data ? read.error.message : null
+  const unreadable =
+    read.error !== null && hasStatus(read.error, 503) && !read.data ? read.error.message : null
   const [unlockedRaw, setUnlockedRaw] = useState<SeasonChrome['unlocked']>(null)
   // The unlock ends on a change of year and 30 minutes after it began, checked on every render as well as by timer.
+  // eslint-disable-next-line react-hooks/purity -- the clock is the point: an expired unlock must not outlive a late timer
+  const expired = unlockedRaw !== null && Date.now() - unlockedRaw.at >= UNLOCK_MS
   const unlocked =
-    unlockedRaw !== null && unlockedRaw.year === year && Date.now() - unlockedRaw.at < UNLOCK_MS
-      ? unlockedRaw
-      : null
+    unlockedRaw !== null && unlockedRaw.year === year && !expired ? unlockedRaw : null
   useEffect(() => {
     if (unlockedRaw === null) return
     const timer = setTimeout(

@@ -271,7 +271,11 @@ describe("a done season's reason rides every rules write (spec §11.3)", () => {
     const { result } = renderHook(() => useAidApproveRules(), {
       wrapper: unlockedWrapper('Late fix'),
     })
-    const body = { note: 'Finance', ...approvePrecondition(rulesDraft(), ['awards']) }
+    const body = {
+      sections: ['awards' as const],
+      note: 'Finance',
+      ...approvePrecondition(rulesDraft(), ['awards']),
+    }
     await act(() => result.current.mutateAsync({ version: 4, body }))
     expect(sent().body).toEqual({ ...body, past_season_reason: 'Late fix' })
   })
