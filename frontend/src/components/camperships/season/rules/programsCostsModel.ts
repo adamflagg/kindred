@@ -377,7 +377,7 @@ export interface ChangeLine {
   readonly price?: true
 }
 
-/** A price as the changes line words it: "$6,695", or "No price yet" when none is stored. */
+/** A price as a change words it, old → new: "$6,695", or "No price yet" when none is stored. */
 export const priceWords = (value: string | null) =>
   value === null ? 'No price yet' : `$${moneyText(value)}`
 
@@ -389,7 +389,8 @@ export const agWords = (n: number) =>
 
 const NOT_OPEN_WORDS = 'Not open to aid'
 
-/** What changed since the approved rules, in session words (spec §5.2 D): prices, then groups, then Not running. */
+/** What changed since the approved rules, in session words (spec §5.2 D): prices, then groups, then Not running.
+ * Price lines carry `price: true`: the card draws them under their rows, and Changed since lists only the rest. */
 export function changesSince(
   approved: ProgramsCostsDoc,
   draft: ProgramsCostsDoc,

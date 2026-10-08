@@ -2,7 +2,7 @@
 (sub-project 5; spec 9.1-9.2).
 
 `build(year)` reads the FA mirror, sessions, registrations, billing,
-the season's rules (for the infant cutoff) and what aid_* already holds; plans
+the season's approved rules (a session's program) and what aid_* already holds; plans
 (financial_aid_intake_plan); and commits the plan as ONE operation through
 sub-project 4a's commit_aid_writes (spec 14.4): each write and its
 aid_change_log row in one batch, every row under the run's operation_id, actor

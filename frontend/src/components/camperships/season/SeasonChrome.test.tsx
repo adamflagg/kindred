@@ -224,7 +224,7 @@ describe('SeasonChrome (spec §4)', () => {
     expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
   })
 
-  // Slice 2: leaving Rules closed approve mode; the rebuilt form would lose its ticks and "Approved by" text.
+  // Slice 2: leaving Rules closed approve mode; the rebuilt form would lose its ticks and its Notes text.
   it('closes an open panel when the Season tab changes', async () => {
     const view = renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
