@@ -115,3 +115,11 @@ it("derives a named award's row note from its kind, in generic words (spec §6.2
     ['top', false],
   ])
 })
+
+describe('the quality checks lead (owner word ruling: "on hold", never "holds")', () => {
+  it("uses the checks table's own severity words, Hold and Warning", () => {
+    expect(CARD_SPECS.quality_checks!.lead).toBe(
+      'A check set to Hold puts the request on hold until staff look; one set to Warning only informs. The list of checks is read-only.'
+    )
+  })
+})
