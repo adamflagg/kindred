@@ -47,13 +47,13 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function renderAt(path: string, view: AidView = LIVE) {
+function renderAt(path: string, view: AidView = LIVE, unclassified?: number) {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter initialEntries={[path]}>
-        <LedgerFamilies view={view} />
+        <LedgerFamilies view={view} unclassified={unclassified} />
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -196,5 +196,27 @@ describe('Money › Ledger family rows (P-22)', () => {
     await waitFor(() => {
       for (const b of totals()) expect(b).toBeEnabled()
     })
+  })
+})
+
+describe('Money › Ledger footer note on unclassified money', () => {
+  it('notes the summary figure after Outside grants, and a filter drops the amount', async () => {
+    const { unmount } = renderAt('/aid/money/ledger', LIVE, 300)
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    expect(screen.getByTestId('ledger-totals')).toHaveTextContent(
+      'Outside grants $141,450 includes $300 not yet classified'
+    )
+    unmount()
+    renderAt('/aid/money/ledger?source=other_outside', LIVE, 300)
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    const totals = screen.getByTestId('ledger-totals')
+    expect(totals).toHaveTextContent('may include money not yet classified')
+    expect(totals).not.toHaveTextContent('$300')
+  })
+
+  it('says nothing when the season has none', async () => {
+    renderAt('/aid/money/ledger', LIVE, 0)
+    await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+    expect(screen.getByTestId('ledger-totals')).not.toHaveTextContent('classified')
   })
 })

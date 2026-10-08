@@ -119,6 +119,14 @@ describe('AidMoneyPage (spec §8.1; D62)', () => {
   })
 })
 
+describe('the Money band subtitle (coordinator 2026-10-08)', () => {
+  it.each(['ledger', 'to-place', 'sources'])('is neutral on the %s tab', (slug) => {
+    renderAt(`/aid/money/${slug}`)
+    expect(screen.getByText(/^Season 2027 · what CampMinder posted(?! that)/)).toBeInTheDocument()
+    expect(screen.queryByText(/that no request explains/)).toBeNull()
+  })
+})
+
 describe("one family's To place (P-8; ruling C)", () => {
   it('hands To place the household in `?household=`, and every family without one', () => {
     renderAt('/aid/money/to-place?household=1000001&year=2027')

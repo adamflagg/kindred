@@ -10,6 +10,7 @@ import type {
 } from '../../../types/api-types'
 import { asOfQuery, type AidAsOf } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
+import { formatMoney } from '../kit/money'
 import type { PillTone } from '../kit/kitStyles'
 
 /**
@@ -126,4 +127,20 @@ export function ledgerLinesCsvName(
     season: year,
     asOf,
   })
+}
+
+/**
+ * The family footer's note on money not yet classified (coordinator ruling 2026-10-08). The family
+ * read counts an unclassified line as an outside grant until it is classified, while `GET /summary`
+ * splits it out; the summary is season-wide, so under any filter the note names no amount. The
+ * figure is the summary's, never summed here.
+ */
+export function unclassifiedNote(
+  unclassified: number | null | undefined,
+  filtered: boolean
+): string | null {
+  if (!unclassified || unclassified <= 0) return null
+  return filtered
+    ? 'may include money not yet classified'
+    : `includes ${formatMoney(unclassified)} not yet classified`
 }
