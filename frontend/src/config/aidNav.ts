@@ -7,7 +7,7 @@
 import { Permission, type PermissionValue } from '../constants/permissions'
 import { CAMPERSHIPS_OPEN_PERMISSIONS, type PermissionCheck } from './programAccess'
 
-export type AidSectionKey = 'today' | 'requests' | 'grants' | 'money' | 'season' | 'reports'
+export type AidSectionKey = 'today' | 'requests' | 'money' | 'season' | 'reports'
 
 export interface AidAccess {
   readonly anyOf: readonly PermissionValue[]
@@ -32,15 +32,17 @@ const VIEW: AidAccess = { anyOf: [Permission.FINANCIAL_AID_VIEW] }
 const RULES: AidAccess = { anyOf: [Permission.FINANCIAL_AID_RULES] }
 const OPEN: AidAccess = { anyOf: CAMPERSHIPS_OPEN_PERMISSIONS }
 /**
- * Owner 10-06 (rulings:676, amending S3-4 B): finance AND development add, edit and retire grantors
- * inside Grants › Grantors. Development holds `grantors` and `summary` but not `view`, so Grants opens
- * for either, and its one tab for them is Grantors; the other three stay `view`.
+ * Owner 10-06 (rulings:676, amending S3-4 B): finance AND development add, edit and retire grantors.
+ * Grants folded into Money on 10-08, so they do it in Money › Funders. Development holds `grantors` and
+ * `summary` but not `view`, so Money opens for either, and its one tab for them is Funders; the other
+ * three stay `view`. (GET /sources is view-or-grantors on the server, so a `funding_sources`-only user
+ * would be refused: Funders stays VIEW_OR_GRANTORS.)
  */
-export const GRANTS_OPEN_PERMISSIONS = [
+export const MONEY_OPEN_PERMISSIONS = [
   Permission.FINANCIAL_AID_VIEW,
   Permission.FINANCIAL_AID_GRANTORS,
 ] as const
-const VIEW_OR_GRANTORS: AidAccess = { anyOf: GRANTS_OPEN_PERMISSIONS }
+const VIEW_OR_GRANTORS: AidAccess = { anyOf: MONEY_OPEN_PERMISSIONS }
 
 export const AID_SECTIONS: readonly AidSection[] = [
   {
@@ -60,27 +62,15 @@ export const AID_SECTIONS: readonly AidSection[] = [
     builtIn: 'slice 1 (December)',
   },
   {
-    key: 'grants',
-    label: 'Grants',
-    path: '/aid/grants',
-    access: VIEW_OR_GRANTORS,
-    tabs: [
-      { slug: 'register', label: 'Register', access: VIEW },
-      { slug: 'needs-attention', label: 'Needs attention', access: VIEW },
-      { slug: 'expected', label: 'Expected', access: VIEW },
-      { slug: 'grantors', label: 'Grantors', access: VIEW_OR_GRANTORS },
-    ],
-    builtIn: 'slice 3 (Register and "needs a camper" by February)',
-  },
-  {
     key: 'money',
     label: 'Money',
     path: '/aid/money',
-    access: VIEW,
+    access: VIEW_OR_GRANTORS,
     tabs: [
       { slug: 'ledger', label: 'Ledger', access: VIEW },
       { slug: 'to-place', label: 'To place', access: VIEW },
-      { slug: 'sources', label: 'Sources', access: VIEW },
+      { slug: 'grants', label: 'Grants', access: VIEW },
+      { slug: 'funders', label: 'Funders', access: VIEW_OR_GRANTORS },
     ],
     builtIn: 'slice 3 (March)',
   },

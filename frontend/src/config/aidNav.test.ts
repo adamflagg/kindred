@@ -28,19 +28,12 @@ const ADMIN = { hasPermission: () => true }
 const labels = (xs: ReadonlyArray<{ label: string }>) => xs.map((x) => x.label)
 
 describe('the nav (D7 as amended by D64, D65)', () => {
-  it('is Today · Requests · Grants · Money · Season · Reports, in that order', () => {
-    expect(labels(AID_SECTIONS)).toEqual([
-      'Today',
-      'Requests',
-      'Grants',
-      'Money',
-      'Season',
-      'Reports',
-    ])
+  it('is Today · Requests · Money · Season · Reports, in that order (Grants folded into Money, 10-08)', () => {
+    expect(labels(AID_SECTIONS)).toEqual(['Today', 'Requests', 'Money', 'Season', 'Reports'])
   })
 
   it('shows the registrar every link', () => {
-    expect(labels(visibleSections(REGISTRAR))).toHaveLength(6)
+    expect(labels(visibleSections(REGISTRAR))).toHaveLength(5)
   })
 
   it('shows a summary-only user Reports alone (D65)', () => {
@@ -48,7 +41,7 @@ describe('the nav (D7 as amended by D64, D65)', () => {
   })
 
   it('shows an admin everything', () => {
-    expect(labels(visibleSections(ADMIN))).toHaveLength(6)
+    expect(labels(visibleSections(ADMIN))).toHaveLength(5)
   })
 })
 
@@ -65,14 +58,14 @@ describe('the tabs (URL-held, §3.6)', () => {
     ])
   })
 
-  it("names Grants' tabs (D55, D56) and Money's (D62)", () => {
-    expect(labels(aidSection('grants').tabs)).toEqual([
-      'Register',
-      'Needs attention',
-      'Expected',
-      'Grantors',
+  it("names Money's tabs: Ledger · To place · Grants · Funders (owner 10-08)", () => {
+    expect(labels(aidSection('money').tabs)).toEqual(['Ledger', 'To place', 'Grants', 'Funders'])
+    expect(aidSection('money').tabs.map((t) => t.slug)).toEqual([
+      'ledger',
+      'to-place',
+      'grants',
+      'funders',
     ])
-    expect(labels(aidSection('money').tabs)).toEqual(['Ledger', 'To place', 'Sources'])
   })
 
   it('opens Reports on Statistics for view holders, and on Development alone for summary-only (D64, D65)', () => {
@@ -126,48 +119,55 @@ describe('resolveAidTab (§3.6; D76)', () => {
   })
 })
 
-describe('Grants for development (owner 10-06, rulings:676: finance and development edit grantors in Grants)', () => {
+describe('Money for development (owner 10-06, rulings:676; folded into Money 10-08)', () => {
   // main spec §14.2's development role: summary, funding_sources and grantors; no view.
   const DEVELOPMENT_GRANTORS = holding(
     'financial_aid.summary',
     'financial_aid.funding_sources',
     'financial_aid.grantors'
   )
-  const grants = aidSection('grants')
+  const money = aidSection('money')
 
-  it('shows development Grants beside Reports, and only its Grantors tab', () => {
-    expect(labels(visibleSections(DEVELOPMENT_GRANTORS))).toEqual(['Grants', 'Reports'])
-    expect(labels(visibleTabs(grants, DEVELOPMENT_GRANTORS))).toEqual(['Grantors'])
+  it('shows development Money beside Reports, and only its Funders tab', () => {
+    expect(labels(visibleSections(DEVELOPMENT_GRANTORS))).toEqual(['Money', 'Reports'])
+    expect(labels(visibleTabs(money, DEVELOPMENT_GRANTORS))).toEqual(['Funders'])
   })
 
-  it('opens a bare Grants on Grantors for development, and refuses the other three tabs', () => {
-    expect(resolveAidTab(grants, undefined, DEVELOPMENT_GRANTORS)).toMatchObject({
+  it('opens a bare Money on Funders for development, and refuses the other three tabs', () => {
+    expect(resolveAidTab(money, undefined, DEVELOPMENT_GRANTORS)).toMatchObject({
       kind: 'first',
-      tab: { slug: 'grantors' },
+      tab: { slug: 'funders' },
     })
-    for (const slug of ['register', 'needs-attention', 'expected']) {
-      expect(resolveAidTab(grants, slug, DEVELOPMENT_GRANTORS)).toEqual({ kind: 'denied' })
+    for (const slug of ['ledger', 'to-place', 'grants']) {
+      expect(resolveAidTab(money, slug, DEVELOPMENT_GRANTORS)).toEqual({ kind: 'denied' })
     }
-    expect(resolveAidTab(grants, 'grantors', DEVELOPMENT_GRANTORS)).toMatchObject({
+    expect(resolveAidTab(money, 'funders', DEVELOPMENT_GRANTORS)).toMatchObject({
       kind: 'show',
-      tab: { slug: 'grantors' },
+      tab: { slug: 'funders' },
     })
   })
 
-  it('keeps the Register first for view holders, every tab theirs', () => {
-    expect(resolveAidTab(grants, undefined, REGISTRAR)).toMatchObject({
+  it('opens a bare Money on the Ledger for view holders, every tab theirs (not To place)', () => {
+    expect(resolveAidTab(money, undefined, REGISTRAR)).toMatchObject({
       kind: 'first',
-      tab: { slug: 'register' },
+      tab: { slug: 'ledger' },
     })
-    expect(labels(visibleTabs(grants, REGISTRAR))).toEqual([
-      'Register',
-      'Needs attention',
-      'Expected',
-      'Grantors',
+    expect(labels(visibleTabs(money, REGISTRAR))).toEqual([
+      'Ledger',
+      'To place',
+      'Grants',
+      'Funders',
     ])
   })
 
-  it('still sends development home to Reports › Development, and a summary-only user sees no Grants', () => {
+  it('has no Grants section any more, and a funding_sources-only user gets no Money (GET /sources would 403)', () => {
+    expect(() => aidSection('grants' as never)).toThrow()
+    expect(
+      labels(visibleSections(holding('financial_aid.summary', 'financial_aid.funding_sources')))
+    ).toEqual(['Reports'])
+  })
+
+  it('still sends development home to Reports › Development, and a summary-only user sees no Money', () => {
     expect(aidHomePath(DEVELOPMENT_GRANTORS)).toBe('/aid/reports/development')
     expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Reports'])
   })

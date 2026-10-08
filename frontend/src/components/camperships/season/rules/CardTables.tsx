@@ -165,7 +165,7 @@ function NamedAwardsTable({ content, names, control, grantsHref }: TablesProps) 
                 )}
                 {row.managedInGrants && grantsHref !== undefined && (
                   <Link to={grantsHref} className={`${CS_SMALL} ${CS_LINK} block font-normal`}>
-                    Managed in Grants ›
+                    Funder&apos;s terms in Money › Funders ›
                   </Link>
                 )}
               </td>

@@ -16,7 +16,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
 import { Permission } from './constants/permissions'
-import { GRANTS_OPEN_PERMISSIONS } from './config/aidNav'
+import { MONEY_OPEN_PERMISSIONS } from './config/aidNav'
 import { CAMPERSHIPS_OPEN_PERMISSIONS } from './config/programAccess'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './contexts/AuthContext'
@@ -68,7 +68,7 @@ const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage')
 const AidSeasonPage = lazy(() => import('./pages/camperships/AidSeasonPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
 const AidMoneyPage = lazy(() => import('./pages/camperships/AidMoneyPage'))
-const AidGrantsPage = lazy(() => import('./pages/camperships/AidGrantsPage'))
+const AidGrantsRedirect = lazy(() => import('./pages/camperships/AidGrantsRedirect'))
 const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
 const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -648,22 +648,20 @@ function App() {
                                 </RequirePermission>
                               }
                             />
+                            {/* Old Grants links (folded into Money, 10-08): no guard of its own; the Money
+                                route it lands on is the guarded one. */}
                             <Route
-                              path="grants/:tab?"
+                              path="grants/*"
                               element={
-                                <RequirePermission anyOf={[...GRANTS_OPEN_PERMISSIONS]}>
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <AidGrantsPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </RequirePermission>
+                                <Suspense fallback={<PageSkeleton />}>
+                                  <AidGrantsRedirect />
+                                </Suspense>
                               }
                             />
                             <Route
                               path="money/:tab?"
                               element={
-                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                <RequirePermission anyOf={[...MONEY_OPEN_PERMISSIONS]}>
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidMoneyPage />

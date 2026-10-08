@@ -309,7 +309,7 @@ function ChaptersBody({
   const [tiersContent, setTiersContent] = useState<Record<string, unknown> | null>(null)
   const sectionParam = params.get('section')
   const budgetHref = aidHref('/aid/season/rounds-budget', { year, asOf })
-  const grantsHref = aidHref('/aid/grants/grantors', { year, asOf })
+  const grantsHref = aidHref('/aid/money/funders', { year, asOf })
 
   const contents = new Map(shown.map((s) => [s.section, s.content]))
   // The groups the server derived from the pools (A3): the draft's, or the version in effect's.

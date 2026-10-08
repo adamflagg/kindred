@@ -407,7 +407,7 @@ export function equityRows(
 /**
  * The words under a named award's name (spec §6.2 E.4). DecisionType carries no note, and a real award's or funder's
  * name may not live in code (Global Constraints), so the note comes from the kind, in generic words. Outside grants
- * come off too (owner 10-06); the fund itself is managed in Grants › Grantors, so this row only reads.
+ * come off too (owner 10-06); the fund's terms live in Money › Funders, so this row has no edit control and only links there.
  */
 export function namedAwardNote(kind: string): string | null {
   return kind === 'full_cost_after_aid'
@@ -427,7 +427,7 @@ export interface NamedAwardRow {
   readonly extra: string | null
   readonly allowsAppeal: boolean
   readonly counts: boolean
-  /** Owner 10-06 (c): a named fund is managed in Grants › Grantors (slice 3); its row only reads and links there. */
+  /** Owner 10-06 (c): a named fund's terms live in Money › Funders; its row has no edit control and links there. */
   readonly managedInGrants: boolean
 }
 

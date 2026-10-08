@@ -9,14 +9,15 @@ import { describe, expect, it } from 'vitest'
 
 const appSource = readFileSync(resolve(__dirname, '../App.tsx'), 'utf-8')
 
-type Guard = 'view' | 'open' | 'viewOrGrantors'
+type Guard = 'view' | 'open' | 'viewOrGrantors' | 'redirect'
 
 // The route (relative to /aid) and the guard its surface demands (config/aidNav.ts).
 const ROUTES: Record<string, Guard> = {
   index: 'open',
   requests: 'view',
-  'grants/:tab?': 'viewOrGrantors',
-  'money/:tab?': 'view',
+  // Old /aid/grants/* links: a redirect with no guard of its own; the Money route it lands on guards.
+  'grants/*': 'redirect',
+  'money/:tab?': 'viewOrGrantors',
   'season/:tab?': 'view',
   'reports/:tab?': 'open',
   'households/:householdCmId': 'view',
@@ -25,7 +26,8 @@ const ROUTES: Record<string, Guard> = {
 const GUARD_TEXT: Record<Guard, string> = {
   view: 'permission={Permission.FINANCIAL_AID_VIEW}',
   open: 'anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}',
-  viewOrGrantors: 'anyOf={[...GRANTS_OPEN_PERMISSIONS]}',
+  viewOrGrantors: 'anyOf={[...MONEY_OPEN_PERMISSIONS]}',
+  redirect: '<AidGrantsRedirect />',
 }
 
 function aidBlock(): string {
@@ -57,12 +59,21 @@ describe('Camperships routes in App.tsx', () => {
     )
   })
 
-  it.each(Object.entries(ROUTES))('guards %s with %s, outermost', (route, guard) => {
-    const chunk = routeChunk(block, route)
-    // The guard is the route's element, then ErrorBoundary, then Suspense: never inside either.
-    const nesting = /element=\{\s*<RequirePermission[^>]*>\s*<ErrorBoundary>\s*<Suspense/
-    expect(chunk).toMatch(nesting)
-    expect(chunk.match(/element=\{\s*<(\w+)/)?.[1]).toBe('RequirePermission')
-    expect(chunk).toContain(GUARD_TEXT[guard])
+  it('redirects the old Grants URLs without a guard of their own, to a guarded Money route', () => {
+    const chunk = routeChunk(block, 'grants/*')
+    expect(chunk).toContain('<AidGrantsRedirect />')
+    expect(chunk).not.toContain('RequirePermission')
   })
+
+  it.each(Object.entries(ROUTES).filter(([, g]) => g !== 'redirect'))(
+    'guards %s with %s, outermost',
+    (route, guard) => {
+      const chunk = routeChunk(block, route)
+      // The guard is the route's element, then ErrorBoundary, then Suspense: never inside either.
+      const nesting = /element=\{\s*<RequirePermission[^>]*>\s*<ErrorBoundary>\s*<Suspense/
+      expect(chunk).toMatch(nesting)
+      expect(chunk.match(/element=\{\s*<(\w+)/)?.[1]).toBe('RequirePermission')
+      expect(chunk).toContain(GUARD_TEXT[guard])
+    }
+  )
 })
