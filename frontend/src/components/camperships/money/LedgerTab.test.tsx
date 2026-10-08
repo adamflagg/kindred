@@ -112,12 +112,14 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
   })
 
   it("shows each pivot row's program_label, and the bucket words where the server sends none", async () => {
+    const BASE_ROW = SUMMARY.by_program?.[0]
+    if (BASE_ROW === undefined) throw new Error('fixture')
     summary = {
       ...SUMMARY,
       by_program: [
         ...(SUMMARY.by_program ?? []),
-        { ...(SUMMARY.by_program ?? [])[0]!, program: 'quest', program_label: 'Session 3' },
-        { ...(SUMMARY.by_program ?? [])[0]!, program: 'teen' },
+        { ...BASE_ROW, program: 'quest', program_label: 'Session 3' },
+        { ...BASE_ROW, program: 'teen' },
       ],
     }
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
@@ -131,7 +133,7 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
   it("hands the family rows the summary's labels by program", async () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     await waitFor(() => expect(screen.getByTestId('labels-prop')).toHaveTextContent('summer'))
-    expect(JSON.parse(screen.getByTestId('labels-prop').textContent ?? '')).toEqual({
+    expect(JSON.parse(screen.getByTestId('labels-prop').textContent as string)).toEqual({
       summer: 'Summer Sessions',
       family_camp: 'Family Camp Weekends',
     })
