@@ -801,6 +801,8 @@ export const queryKeys = {
     report: 'statistics' | 'programs',
     params: Readonly<Record<string, string>>
   ) => ['financial-aid', 'reports', year, 'requests', report, params] as const,
+  /** Development's saved dated columns: one list per report, not per season (D68). */
+  aidReportColumns: () => ['financial-aid', 'reports', 'columns', 'development'] as const,
 }
 
 /** The Reports reads that are per season (slice 4). */

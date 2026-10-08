@@ -194,6 +194,18 @@ import type {
   StatisticsResponse,
   StatisticsRowOut,
   TierAppealsRowOut,
+  DatedColumn,
+  DevelopmentColumnOut,
+  DevelopmentGroupOut,
+  DevelopmentResponse,
+  DevelopmentRowOut,
+  DevelopmentSourceOut,
+  ReportColumnsIn,
+  ReportColumnsResponse,
+  ZipGroupOut,
+  ZipResponse,
+  ZipRowOut,
+  ZipTableOut,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -482,3 +494,27 @@ export type ApiAidAppealsRow = AppealsRowOut
 export type ApiAidRound1PctRow = Round1PctRowOut
 /** A figure Reports doesn't build yet, and what it waits on; never names a request (D65). Mirrors Python `NotBuiltOut`. */
 export type ApiAidNotBuilt = NotBuiltOut
+
+/**
+ * Reports › Development (spec §9.4; D65, D66, D87–D94, D96, D99, D158): development's lines by
+ * group, seasons as columns, row-major. Aggregates only: no field names a family. Mirrors Python
+ * `DevelopmentResponse` and its parts.
+ */
+export type ApiAidDevelopment = DevelopmentResponse
+export type ApiAidDevelopmentGroup = DevelopmentGroupOut
+export type ApiAidDevelopmentColumn = DevelopmentColumnOut
+export type ApiAidDevelopmentRow = DevelopmentRowOut
+export type ApiAidDevelopmentSource = DevelopmentSourceOut
+/** Development's saved dated columns ("+ Add a Dated Column", §9.4; D68). Mirror Python's models. */
+export type ApiAidDatedColumn = DatedColumn
+export type ApiAidReportColumnsIn = ReportColumnsIn
+export type ApiAidReportColumns = ReportColumnsResponse
+
+/**
+ * Reports › Development › ZIP codes (spec §9.4; D90; owner ruling C): every camper and every camper
+ * who got aid, by the household's billing ZIP, for one group. Mirrors Python `ZipResponse` and its parts.
+ */
+export type ApiAidZip = ZipResponse
+export type ApiAidZipTable = ZipTableOut
+export type ApiAidZipRow = ZipRowOut
+export type ApiAidZipGroup = ZipGroupOut
