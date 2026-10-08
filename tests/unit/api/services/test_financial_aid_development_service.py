@@ -688,20 +688,20 @@ async def test_a_funders_incentive_and_need_based_money_stay_on_separate_lines()
     ]
 
 
-async def test_an_ask_above_its_sessions_cost_counts_at_the_cost_and_the_column_counts_it() -> None:
-    """Rule M (owner 10-08, revised from 10-03): an ask above its session's cost (as priced, a staff cost override
-    included) counts AT the session's cost in Total Requests and % of need met, and the column counts it for the
-    footnote ("N asks above their session's cost counted at the cost"). Emma asks 4,000 for Session 2, which costs
+async def test_a_request_above_its_sessions_cost_counts_at_the_cost_and_the_column_counts_it() -> None:
+    """Rule M (owner 10-08, per request): a request whose asks add up to more than its session's cost (as priced, a
+    staff cost override included) counts AT the cost in Total Requests and % of need met, and the column counts it for the
+    footnote ("N requests above their session's cost counted at the cost"). Emma asks 4,000 for Session 2, which costs
     2,000 (fixtures.fictional_rules), so she counts 2,000; Liam's 2,000 stays: 4,000."""
     out = await _service(_development()).development(YEAR)
     assert _row(out, "total_requests", "camp_pool").values == [4000.0]
-    assert [(c.season, c.basis, c.asks_capped) for c in out.columns] == [(2027, "P", 1)]
+    assert [(c.season, c.basis, c.requests_capped) for c in out.columns] == [(2027, "P", 1)]
 
 
 async def test_a_season_with_no_ask_above_its_cost_caps_none() -> None:
     out = await _service(_development(), store=_asks_within_cost()).development(YEAR)
     assert _row(out, "total_requests", "camp_pool").values == [4000.0]
-    assert [c.asks_capped for c in out.columns] == [0]
+    assert [c.requests_capped for c in out.columns] == [0]
 
 
 async def test_an_ask_above_its_sessions_cost_is_capped_though_the_familys_income_is_missing() -> None:
@@ -711,7 +711,7 @@ async def test_an_ask_above_its_sessions_cost_is_capped_though_the_familys_incom
     store.applications = [replace(a, answers={}) if a.household_cm_id == 1000001 else a for a in store.applications]
     out = await _service(_development(), store=store).development(YEAR)
     assert _row(out, "total_requests", "camp_pool").values == [4000.0]
-    assert [c.asks_capped for c in out.columns] == [1]
+    assert [c.requests_capped for c in out.columns] == [1]
 
 
 # --- owner 10-08: the Budget row (development-v2) and ruling L's "Grants/Awards" ---------------------------------

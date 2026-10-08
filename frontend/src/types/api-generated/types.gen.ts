@@ -3740,9 +3740,9 @@ export type DevelopmentColumnOut = {
    */
   not_rebuilt?: Array<string>
   /**
-   * Asks Capped
+   * Requests Capped
    */
-  asks_capped?: number
+  requests_capped?: number
 }
 
 /**

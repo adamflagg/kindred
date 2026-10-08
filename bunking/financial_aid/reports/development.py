@@ -16,8 +16,8 @@ reporting groups). The service resolves every input to a group first; this modul
                   eligible camper) counts in the money and the families, never in a camper cut; the report says how
                   much and how many (`household_level`).
   need (§5.10)    per request: the highest of (the camp's awards in the rounds before an ask + that ask), over its
-                  asked rounds, so every ask is a floor; an ask above the request's priced session cost counts AT
-                  the cost (Rule M, owner 10-08; no cost known: as typed). Total Requests = Σ need over attended
+                  asked rounds, so every ask is a floor; at most the request's priced session cost (Rule M, owner
+                  10-08, per request; no cost known: as typed). Total Requests = Σ need over attended
                   requests. % of need met (the summer group only) = Σ per camper min(all money the camper got, the
                   camper's need) ÷ Σ need.
   teens (D103)    the summer group's recipients aged 13–17 on the first day of their first session in the group;
@@ -50,7 +50,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.reports.facts import ReportRequest, RoundFacts, average
+from bunking.financial_aid.reports.facts import ReportRequest, average
 from bunking.financial_aid.scenarios.committee import pct
 
 GroupKind = Literal["summer", "families", "campers"]
@@ -160,7 +160,7 @@ class GroupFigures:
     incentive_awards: Decimal = ZERO  # the incentive-flagged sources' money (D88's detail line)
     teen_programs: int | None = None  # the summer group only: recipients at a TLI or SCIT session
     cancelled_by_reason: Mapping[str, int] = field(default_factory=dict)  # D158: every cancelled aid request, by reason
-    asks_capped: int = 0  # Rule M: asks above their session's cost, counted at the cost in total_requests
+    requests_capped: int = 0  # Rule M: requests above their session's cost, counted at the cost in total_requests
     # Internal, for the ZIP read only: NEVER copied into a response (D66, D90: no family's row, ever).
     money_by_recipient: Mapping[int, Decimal] = field(default_factory=dict)  # camper (or household) -> all money
     household_level_by_household: Mapping[int, Decimal] = field(default_factory=dict)
@@ -193,7 +193,7 @@ class DevelopmentColumn:
     shared_campers: int
     by_source: tuple[SourceLine, ...]
     not_in_group: NotInGroup = NotInGroup(ZERO, ZERO, 0, 0)
-    asks_capped: int = 0  # Rule M: the groups' asks counted at their session's cost in Total Requests
+    requests_capped: int = 0  # Rule M: the groups' requests counted at their session's cost in Total Requests
     budget: Mapping[str, Decimal] = field(default_factory=dict)  # group (budget pool) -> its allocation; the service's
 
 
@@ -245,21 +245,8 @@ def rebuilt_ages(
     return dict(ages)
 
 
-def above_cost(request: ReportRequest, facts: RoundFacts) -> bool:
-    """Rule M (owner 10-08, revised from 10-03): each round's own ask against the request's priced cost. A request
-    with no cost known keeps every ask as typed."""
-    return request.cost is not None and facts.ask is not None and facts.ask > request.cost
-
-
-def capped_asks(request: ReportRequest) -> int:
-    """How many of the request's asks count at the cost: the footnote's count ("N asks above their session's cost
-    counted at the cost")."""
-    return sum(1 for facts in request.rounds if above_cost(request, facts))
-
-
-def need(request: ReportRequest) -> Decimal:
-    """§5.10: the camp's awards in the rounds before an ask + that ask, at its highest over the asked rounds. An ask
-    above its session's cost counts AT the cost (Rule M, owner 10-08: "cap it at the session cost"), per ask."""
+def _uncapped_need(request: ReportRequest) -> Decimal:
+    """§5.10: the camp's awards in the rounds before an ask + that ask, at its highest over the asked rounds."""
     best = ZERO
     awarded_before = ZERO
     for n in (1, 2, 3):
@@ -267,10 +254,23 @@ def need(request: ReportRequest) -> Decimal:
         if facts is None:
             continue
         if facts.ask is not None:
-            ask = facts.ask if request.cost is None else min(facts.ask, request.cost)
-            best = max(best, awarded_before + ask)
+            best = max(best, awarded_before + facts.ask)
         awarded_before += facts.posted or ZERO
     return best
+
+
+def is_capped(request: ReportRequest) -> bool:
+    """Rule M (owner 10-08, per request): the request's asks add up to more than its priced session cost. A request
+    with no cost known is never capped (counted as typed). The footnote counts these: "N requests above their
+    session's cost counted at the cost"."""
+    return request.cost is not None and _uncapped_need(request) > request.cost
+
+
+def need(request: ReportRequest) -> Decimal:
+    """§5.10's need, at most the request's session cost (Rule M, owner 10-08: "cap it at the session cost", per
+    request: its asks together count at most the cost). No cost known: as typed."""
+    uncapped = _uncapped_need(request)
+    return uncapped if request.cost is None else min(uncapped, request.cost)
 
 
 @dataclass
@@ -316,7 +316,7 @@ class _Tally:
     declined: int = 0
     incentive: Decimal = ZERO
     cancelled: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    capped: int = 0
+    requests_capped: int = 0
 
 
 def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
@@ -387,7 +387,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         money = request.awarded()
         tally.requests += need(request)
         tally.camper_need[whom] += need(request)
-        tally.capped += capped_asks(request)
+        tally.requests_capped += int(is_capped(request))
         if money > 0:
             tally.camp += money
             tally.camp_count += 1
@@ -465,7 +465,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             for (source_key, group), (amount, count) in sorted(by_source.items(), key=lambda kv: (kv[0][1], kv[0][0]))
         ),
         not_in_group=not_in_group,
-        asks_capped=sum(f.asks_capped for f in figures),
+        requests_capped=sum(f.requests_capped for f in figures),
     )
 
 
@@ -496,7 +496,7 @@ def _figures(
         appeals=Appeals(tally.submitted, tally.in_full, tally.in_part, tally.declined),
         incentive_awards=tally.incentive,
         cancelled_by_reason=dict(tally.cancelled),
-        asks_capped=tally.capped,
+        requests_capped=tally.requests_capped,
         money_by_recipient={k: v for k, v in tally.camper_money.items() if v > 0},
         household_level_by_household=dict(tally.household_money),
     )

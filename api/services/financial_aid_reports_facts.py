@@ -163,9 +163,10 @@ def _round(
 
 def session_cost(priced: PricedRequest | None, document: AidRules | None) -> Decimal | None:
     """The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override), for
-    Rule M (an ask above it counts at the cost). The calculator's own when it reached its cost step; else the
-    cost resolver's, since a session's price doesn't depend on the family's income (the calculator stops before cost
-    when no income is reported). None when nothing could price it: a request that isn't live, or no rules."""
+    Rule M (a request whose asks add up to more counts at the cost). The calculator's own when it reached its cost
+    step; else the cost resolver's, since a session's price doesn't depend on the family's income (the calculator
+    stops before cost when no income is reported). None when nothing could price it: a request that isn't live, or no
+    rules."""
     if priced is None:
         return None
     if priced.result is not None and priced.result.cost is not None:

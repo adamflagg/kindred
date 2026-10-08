@@ -358,9 +358,9 @@ class DevelopmentColumnOut(BaseModel):
     basis_unconfirmed: bool  # D96's premise is contested (O-930-1): a 2022–2025 column is noted
     label: str  # "2026 (as reported)", "2027"
     not_rebuilt: list[str] = []  # a dated column's row keys a past read can't rebuild: their cells are null
-    # Rule M (owner 10-08, revised from 10-03): a P column's asks above their session's cost, counted AT the cost in
-    # Total Requests and % of need met; 0 on an r column (typed figures: the dashboard computed no demand there)
-    asks_capped: int = 0
+    # Rule M (owner 10-08, per request): a P column's requests whose asks add up to more than their session's cost,
+    # counted AT the cost in Total Requests and % of need met; 0 on an r column (typed: no demand computed there)
+    requests_capped: int = 0
 
 
 class DevelopmentRowOut(BaseModel):

@@ -99,7 +99,8 @@ class ReportRequest:
     counts_as_received: bool = True
     # The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override; None
     # when nothing could price it: a request that isn't live, no rules, or a program with no price). Development counts
-    # an ask above it at the cost (Rule M). The service fills it (financial_aid_reports_facts.session_cost).
+    # a request whose asks add up to more at the cost (Rule M). The service fills it
+    # (financial_aid_reports_facts.session_cost).
     cost: Decimal | None = None
 
     @property

@@ -23,6 +23,7 @@ URL = "/api/financial-aid/reports/2027/development"
 # A family-level field: an id, a name, a household, a person, a camper or a request (D66: "no names, no ids").
 # Counts ("campers", "families") and a ZIP (D90) are aggregates, not identities.
 FAMILY_LEVEL = re.compile(r"household|person|camper_|request|family_name|_cm_id|\bid\b|email|address|postal|birth")
+ALLOWED = {"requests_capped"}  # an aggregate count (Rule M), never a request's identity
 
 
 def _client(persona: str) -> TestClient:
@@ -70,7 +71,7 @@ def test_developments_response_carries_no_family_level_field() -> None:
         f"{model.__name__}.{name}"
         for model in walk_models(DevelopmentResponse, set())
         for name in model.model_fields
-        if FAMILY_LEVEL.search(name)
+        if FAMILY_LEVEL.search(name) and name not in ALLOWED
     ]
     assert offenders == []
 
