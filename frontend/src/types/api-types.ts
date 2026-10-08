@@ -34,6 +34,8 @@ import type {
   AidPostingLine,
   AidRulesInput,
   AidRulesOutput,
+  AidSourceRow,
+  AidSourcesResponse,
   AnswerOut,
   ApplicationDetailResponse,
   ApprovedRulesOut,
@@ -401,3 +403,11 @@ export type ApiAidToPlaceWriteOut = ToPlaceWriteOut
 /** What placing typed parts would do, before anything is written (slice 3 ask 8, #2975). Mirrors Python `PlacePreviewIn`/`PlacePreviewOut`. */
 export type ApiAidPlacePreviewIn = PlacePreviewIn
 export type ApiAidPlacePreview = PlacePreviewOut
+
+/**
+ * Money › Sources: the CampMinder description registry (spec §8.1; D58, D88, D100, D105). Mirrors
+ * Python `AidSourcesResponse`/`AidSourceRow`; `GET /sources?year=` adds each row's lines and $ this
+ * season. `source_family` is a plain string here; the write's Literal names funders (P-12).
+ */
+export type ApiAidSources = AidSourcesResponse
+export type ApiAidSourceRow = AidSourceRow

@@ -36,6 +36,7 @@ import type {
   ApiAidToPlace,
   ApiAidToPlaceWriteOut,
   ApiAidRequestOut,
+  ApiAidSources,
   ApiAidHistoryOperationDetail,
   ApiAidHistoryPage,
   ApiAidMakeRulesDraftIn,
@@ -997,4 +998,17 @@ export function previewAidPlacement(
     body,
     "Couldn't work out what placing this would do"
   )
+}
+
+/**
+ * The CampMinder description registry (spec §8.1; D58, D100): every description, classified or not,
+ * with this season's lines and $ (`?year=`). `view` or `grantors` (router `_VIEW_OR_GRANTORS`).
+ */
+export async function fetchAidSources(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidSources> {
+  const response = await fetchWithAuth(withQuery(`${BASE}/sources`, { year: String(year) }))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the sources', AidApiError)
+  return (await response.json()) as ApiAidSources
 }
