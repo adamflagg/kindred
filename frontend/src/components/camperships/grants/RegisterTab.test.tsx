@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import type { ApiAidGrantors, ApiAidGrants } from '../../../types/api-types'
 import { GRID_ROWS } from '../requests/gridFixtures'
-import { GRANTS, RILEY_COMMITMENT } from './grantsFixtures'
+import { GRANTS, NEVER_APPLIED_HOUSEHOLD, RILEY_COMMITMENT } from './grantsFixtures'
 import { RegisterTab } from './RegisterTab'
 
 vi.mock('../../../lib/pocketbase', () => ({
@@ -56,10 +56,13 @@ const GRANTORS: ApiAidGrantors = {
 }
 /** The stored-fields reads (`?offsets=false`) in order: the edit's open, then its check before sending. */
 let storedReads: ApiAidGrants[] = []
+/** What the live read serves. */
+let served: ApiAidGrants = GRANTS
 
 beforeEach(() => {
   granted = REGISTRAR
   storedReads = []
+  served = GRANTS
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-20T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
@@ -69,7 +72,7 @@ beforeEach(() => {
       const next = storedReads.length > 1 ? storedReads.shift() : storedReads[0]
       return Promise.resolve(json(next ?? GRANTS))
     }
-    if (path.startsWith('/api/financial-aid/grants/2027')) return Promise.resolve(json(GRANTS))
+    if (path.startsWith('/api/financial-aid/grants/2027')) return Promise.resolve(json(served))
     if (path.startsWith('/api/financial-aid/grantors')) return Promise.resolve(json(GRANTORS))
     if (path.startsWith('/api/financial-aid/decisions/2027/grid')) {
       return Promise.resolve(
@@ -339,5 +342,49 @@ describe('Grants › Register (§8.2)', () => {
     const actions = document.querySelector('[data-panel="actions"]') as HTMLElement
     expect(within(actions).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Record a Commitment…' })).toBeNull()
+  })
+
+  it("⚠ counts a never-applied household's household-level line in the total and the footer", async () => {
+    served = { ...GRANTS, grants: [...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD] }
+    renderTab()
+    // 10,200 counted by the server + 900 the dashboard counts for the family that never applied.
+    expect(await screen.findByText('9 grants · 3 not counted')).toBeInTheDocument()
+    expect(screen.getByText('$11,100')).toBeInTheDocument()
+  })
+
+  it('puts "Aid request it offsets" just before Amount, and names the program from program_label', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent.replace(/[^A-Za-z ]/g, '').trim())
+    expect(headers.indexOf('Aid request it offsets')).toBe(headers.indexOf('Amount') - 1)
+    expect(screen.getAllByText('Summer Camp').length).toBeGreaterThan(0)
+    expect(screen.getByText('Not placed')).toBeInTheDocument()
+  })
+
+  it('links a waiting line to Money › To place for its household', async () => {
+    renderTab('/aid/money/grants?row=t4000002')
+    const link = await screen.findByRole('link', { name: 'Money › To place ›' })
+    expect(link).toHaveAttribute('href', '/aid/money/to-place?household=1000002&year=2027')
+    expect(screen.queryByText(/Needs attention/)).toBeNull()
+  })
+
+  it('links a description to its funder, or to its unmapped source row', async () => {
+    renderTab('/aid/money/grants?row=t4000001')
+    const mapped = await screen.findByRole('link', { name: 'Grantor A grant' })
+    expect(mapped).toHaveAttribute('href', '/aid/money/funders?funder=grantor_a&year=2027')
+  })
+
+  it('links an unmapped description to its source row', async () => {
+    renderTab('/aid/money/grants?row=t4000007')
+    const unmapped = await screen.findByRole('link', { name: 'Grantor E grant 2027' })
+    expect(unmapped).toHaveAttribute('href', '/aid/money/funders?row=srcgrantore0005&year=2027')
+  })
+
+  it('draws no definition notes itself: the page draws them once', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    expect(screen.queryByText(/Grants this season/)).toBeNull()
   })
 })

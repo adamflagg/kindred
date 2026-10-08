@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../constants/permissions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
-import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
@@ -28,7 +27,6 @@ import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
 import { DONE_NOTE, MARK_TEXT } from '../money/toPlaceStyles'
-import { programLabel } from '../requests/programLabel'
 import { CommitmentForm } from './CommitmentForm'
 import { CommitmentRow } from './CommitmentRow'
 import { RegisterOpenRow } from './RegisterOpenRow'
@@ -45,12 +43,14 @@ import {
 import {
   basisWords,
   camperWords,
-  countedTotal,
+  countsInTotal,
+  programWords,
+  registerTotal,
   footerWords,
   grantKey,
   needsCamperIds,
   offsetWords,
-  REGISTER_FOOTNOTE,
+  REGISTER_TOTAL_NOTE,
   registerFamily,
   standingCsv,
   standingNote,
@@ -67,6 +67,7 @@ const registerSearch = (row: ApiAidGrantRow) => [
 const REGISTER_CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidGrantRow>> = [
   { header: 'Household id', value: (r) => String(r.household_cm_id) },
 ]
+const NO_UNMAPPED: ReadonlyArray<{ source_id: string; description: string }> = []
 type FilterKey = 'show' | 'grantor' | 'program' | 'row'
 
 /**
@@ -77,7 +78,6 @@ type FilterKey = 'show' | 'grantor' | 'program' | 'row'
  */
 export function RegisterTab({ view }: { view: AidView }) {
   const grants = useAidGrants()
-  const names = useAidProgramNames()
   const { hasPermission } = usePermissions()
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
   const [params, setParams] = useSearchParams()
@@ -110,6 +110,7 @@ export function RegisterTab({ view }: { view: AidView }) {
   const onHighlight = useCallback((key: string | null) => setParam('row', key), [setParam])
   // The lines that need a camper, from the same read: the row alone can't say.
   const needsCamper = useMemo(() => needsCamperIds(grants.data?.needs_camper ?? []), [grants.data])
+  const unmapped = grants.data?.unmapped ?? NO_UNMAPPED
 
   const columns = useMemo(
     (): ReadonlyArray<AidColumn<ApiAidGrantRow>> => [
@@ -154,19 +155,35 @@ export function RegisterTab({ view }: { view: AidView }) {
         width: 160,
         value: (r) => (r.grantor_key === '' ? 'no grantor yet' : r.grantor_name),
         render: (r) =>
-          r.grantor_key === '' ? <span className={CS_PMETA}>no grantor yet</span> : r.grantor_name,
+          r.grantor_key === '' ? (
+            <span className={CS_PMETA}>no grantor yet</span>
+          ) : (
+            <Link
+              className={CS_LINK}
+              to={aidHref('/aid/money/funders', view, { funder: r.grantor_key })}
+            >
+              {r.grantor_name}
+            </Link>
+          ),
         searchable: true,
       },
       {
         key: 'program',
         header: 'Program',
         width: 130,
-        value: (r) =>
-          r.session_name !== ''
-            ? r.session_name
-            : r.program_family === ''
-              ? '—'
-              : programLabel(names, r.program_family),
+        value: (r) => programWords(r, needsCamper),
+      },
+      {
+        key: 'offsets',
+        header: 'Aid request it offsets',
+        width: 220,
+        value: (r) => offsetWords(r, needsCamper),
+        render: (r) =>
+          r.counts && r.requests.length > 0 ? (
+            offsetWords(r, needsCamper)
+          ) : (
+            <span className={CS_PMETA}>{offsetWords(r, needsCamper)}</span>
+          ),
       },
       {
         key: 'amount',
@@ -184,7 +201,7 @@ export function RegisterTab({ view }: { view: AidView }) {
           ),
         csv: (r) => moneyCsv(r.amount),
         // ⚠ P-15: only the rows the server counts.
-        total: countedTotal,
+        total: (rows) => registerTotal(rows, needsCamper),
       },
       {
         key: 'standing',
@@ -217,23 +234,12 @@ export function RegisterTab({ view }: { view: AidView }) {
         key: 'counted',
         header: 'Counted',
         width: 110,
-        value: (r) => (r.counts ? 'counted' : 'not counted'),
-        render: (r) => (r.counts ? '' : <StatusPill tone="muted">not counted</StatusPill>),
-      },
-      {
-        key: 'offsets',
-        header: 'Aid request it offsets',
-        flex: true,
-        value: (r) => offsetWords(r, needsCamper),
+        value: (r) => (countsInTotal(r, needsCamper) ? 'counted' : 'not counted'),
         render: (r) =>
-          r.counts && r.requests.length > 0 ? (
-            offsetWords(r, needsCamper)
-          ) : (
-            <span className={CS_PMETA}>{offsetWords(r, needsCamper)}</span>
-          ),
+          countsInTotal(r, needsCamper) ? '' : <StatusPill tone="muted">not counted</StatusPill>,
       },
     ],
-    [view, needsCamper, names]
+    [view, needsCamper]
   )
 
   // Keyed by row: a form's typing belongs to its row, and a refetch never resets it.
@@ -249,9 +255,15 @@ export function RegisterTab({ view }: { view: AidView }) {
           onDone={done}
         />
       ) : (
-        <RegisterOpenRow key={grantKey(row)} row={row} view={view} needsCamper={needsCamper} />
+        <RegisterOpenRow
+          key={grantKey(row)}
+          row={row}
+          view={view}
+          needsCamper={needsCamper}
+          unmapped={unmapped}
+        />
       ),
-    [view, needsCamper, canWork, done]
+    [view, needsCamper, canWork, done, unmapped]
   )
 
   return (
@@ -315,7 +327,7 @@ export function RegisterTab({ view }: { view: AidView }) {
                   onChange={(event) => setParam('program', event.target.value || null)}
                 >
                   <option value="">all</option>
-                  {programChoices(data.grants, names).map((p) => (
+                  {programChoices(data.grants).map((p) => (
                     <option key={p.value} value={p.value}>
                       {p.label}
                     </option>
@@ -344,13 +356,13 @@ export function RegisterTab({ view }: { view: AidView }) {
               csvExtra={REGISTER_CSV_EXTRA}
               highlighted={highlighted}
               onHighlight={onHighlight}
-              footerLabel={footerWords}
+              footerLabel={(shownRows) => footerWords(shownRows, needsCamper)}
               renderDetail={renderDetail}
               searchPlaceholder="Camper, family, grantor"
               arrowKeys
               emptyText="No grants match."
             />
-            <p className={CS_SMALL}>{REGISTER_FOOTNOTE}</p>
+            <p className={CS_SMALL}>{REGISTER_TOTAL_NOTE}</p>
           </div>
         )
       }}

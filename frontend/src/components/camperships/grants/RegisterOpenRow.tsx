@@ -6,7 +6,7 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { CS_LINK, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit/csType'
 import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
-import { basisWords, didntApply, shareWords, standingCsv } from './registerModel'
+import { basisWords, didntApply, funderLink, shareWords, standingCsv } from './registerModel'
 
 /** The opened row's three panels (To place's `ToPlaceOpenRow` grammar, owner ruling A). */
 const THREE_PANELS =
@@ -15,8 +15,14 @@ const PANEL = `flex min-w-0 flex-col gap-1 border-r pr-4 ${CS_PANEL_RULE}`
 const MIDDLE = `flex min-w-0 flex-col gap-1 border-r px-4 ${CS_PANEL_RULE}`
 const LAST = 'flex min-w-0 flex-col gap-1.5 pl-4'
 
+const NO_UNMAPPED: ReadonlyArray<{ source_id: string; description: string }> = []
+
 /** Why a row offsets no request, in a sentence (the cell's short words, said in full). */
-function noShareWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+function noShareWords(
+  row: ApiAidGrantRow,
+  needsCamper: ReadonlySet<number>,
+  view: AidView
+): ReactNode {
   if (didntApply(row, needsCamper)) {
     return 'The family has no aid request this season: the grant counts, and offsets nothing.'
   }
@@ -25,7 +31,17 @@ function noShareWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): st
     return 'The camper cancelled: it offsets nothing while the enrollment stays cancelled.'
   }
   if (needsCamper.has(row.transaction_cm_id)) {
-    return 'It needs its camper first: Grants › Needs attention places it.'
+    return (
+      <>
+        It needs its camper first: place it in{' '}
+        <Link
+          className={CS_LINK}
+          to={aidHref('/aid/money/to-place', view, { household: String(row.household_cm_id) })}
+        >
+          Money › To place ›
+        </Link>
+      </>
+    )
   }
   return 'It offsets nothing.'
 }
@@ -41,16 +57,22 @@ export function RegisterOpenRow({
   row,
   view,
   needsCamper,
+  unmapped = NO_UNMAPPED,
   actions,
   editor,
 }: {
   row: ApiAidGrantRow
   view: AidView
   needsCamper: ReadonlySet<number>
+  /** The read's unmapped descriptions: where a grantor-less line's description lives in Funders. */
+  unmapped?: ReadonlyArray<{ source_id: string; description: string }>
   actions?: ReactNode
   editor?: ReactNode
 }) {
   const basis = basisWords(row, needsCamper)
+  const funder = funderLink(row, unmapped)
+  const funderTo =
+    funder === null ? null : aidHref('/aid/money/funders', view, { [funder.param]: funder.value })
   return (
     <div className="space-y-2">
       <div className={THREE_PANELS}>
@@ -61,7 +83,18 @@ export function RegisterOpenRow({
           <div>
             <Money value={row.amount} /> ·{' '}
             {row.grantor_name === '' ? 'no grantor yet' : row.grantor_name}
-            {row.description !== '' && <span className={CS_PMETA}>{` · ${row.description}`}</span>}
+            {row.description !== '' && (
+              <span className={CS_PMETA}>
+                {' · '}
+                {funderTo === null ? (
+                  row.description
+                ) : (
+                  <Link className={CS_LINK} to={funderTo}>
+                    {row.description}
+                  </Link>
+                )}
+              </span>
+            )}
           </div>
           <div className={CS_PMETA}>{standingCsv(row)}</div>
           {basis !== '' && <div className={CS_PMETA}>{basis}</div>}
@@ -80,7 +113,7 @@ export function RegisterOpenRow({
         <div className={MIDDLE} data-panel="offsets">
           <div className={CS_PANEL_HEAD}>Aid request it offsets</div>
           {row.requests.length === 0 ? (
-            <div className={CS_PMETA}>{noShareWords(row, needsCamper)}</div>
+            <div className={CS_PMETA}>{noShareWords(row, needsCamper, view)}</div>
           ) : (
             row.requests.map((share) => (
               <div key={share.request_id}>

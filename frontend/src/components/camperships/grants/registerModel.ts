@@ -154,26 +154,66 @@ export function offsetWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number
 }
 
 /**
- * ⚠ The Register's total (P-15, review §3 B): the amounts of the rows on screen the server counts.
- * A reversed line, a line still waiting for its camper and a commitment whose camper cancelled are
- * shown and left out; a posted grant for a cancelled camper counts until CampMinder reverses it.
- * In whole cents. The server sends no Register total.
+ * ⚠ Number meaning (owner, spec §8.2): what the Register's total counts. A row the server counts, OR a
+ * "didn't apply" row: a never-applied household's household-level line is the grant the family
+ * received, so it counts though the server has no camper to put it on. A reversed line, a line still
+ * waiting for its camper (its household applied) and a commitment whose camper cancelled are shown and
+ * left out; a posted grant for a cancelled camper counts until CampMinder reverses it.
  */
-export function countedTotal(rows: readonly ApiAidGrantRow[]): number {
-  return rows.reduce((cents, row) => cents + (row.counts ? toCents(row.amount) : 0), 0) / 100
+export const countsInTotal = (row: ApiAidGrantRow, needsCamper: ReadonlySet<number>) =>
+  row.counts || didntApply(row, needsCamper)
+
+/** ⚠ The Register's total (P-15; spec §8.2), in whole cents. The server sends no Register total. */
+export function registerTotal(
+  rows: readonly ApiAidGrantRow[],
+  needsCamper: ReadonlySet<number>
+): number {
+  return (
+    rows.reduce(
+      (cents, row) => cents + (countsInTotal(row, needsCamper) ? toCents(row.amount) : 0),
+      0
+    ) / 100
+  )
 }
 
-/** "8 grants · 3 not counted" for the footer: counts, never money. */
-export function footerWords(rows: readonly ApiAidGrantRow[]): string {
-  const notCounted = rows.filter((r) => !r.counts).length
+/** "9 grants · 3 not counted" for the footer: counts, never money. "Didn't apply" rows count. */
+export function footerWords(
+  rows: readonly ApiAidGrantRow[],
+  needsCamper: ReadonlySet<number>
+): string {
+  const notCounted = rows.filter((r) => !countsInTotal(r, needsCamper)).length
   const grants = `${String(rows.length)} ${rows.length === 1 ? 'grant' : 'grants'}`
   return notCounted === 0 ? grants : `${grants} · ${String(notCounted)} not counted`
 }
 
 /**
- * The sentence under the table: review item 9's words, plus the fourth row the server leaves out of
- * the total (R5-2: a household-level line of a family that didn't apply). ⚠ Number meaning: the
- * owner confirms this before Grants merges (the PR's "Needs the owner" list).
+ * The sentence under the table. ⚠ Number meaning (owner, spec §8.2): a household-level line of a
+ * family that didn't apply counts; the owner confirms this before Money merges.
  */
-export const REGISTER_FOOTNOTE =
-  "A reversed line, a line waiting for its camper, a household-level line of a family that didn't apply and a commitment whose camper cancelled show but stay out of the total; a posted grant counts until CampMinder reverses it. Outside grants are outside the camp's budget: never in Remaining."
+export const REGISTER_TOTAL_NOTE =
+  "A reversed line, a line waiting for its camper and a commitment whose camper cancelled show but stay out of the total; a posted grant counts until CampMinder reverses it, and so does a household-level line of a family that didn't apply and stays at household level. Outside grants are outside the camp's budget: never in Remaining."
+
+const OTHER_PROGRAM = 'Other program'
+
+/**
+ * The Program column (#3090, with #3085's fallbacks as in money/ledgerModel): the server's
+ * `program_label`; with none, a line waiting for its camper reads "Not placed", a line with no
+ * program that stays at household level "Household level", else "Other program". Never a key.
+ */
+export function programWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+  if (row.program_label !== undefined && row.program_label !== '') return row.program_label
+  if (row.program_family !== '') return OTHER_PROGRAM
+  return row.kind === 'ledger' && needsCamper.has(row.transaction_cm_id)
+    ? 'Not placed'
+    : 'Household level'
+}
+
+/** Where a row's description or grantor lives in Funders: `?funder=<key>` or `?row=<source_id>`. */
+export function funderLink(
+  row: ApiAidGrantRow,
+  unmapped: ReadonlyArray<{ source_id: string; description: string }>
+): { param: 'funder' | 'row'; value: string } | null {
+  if (row.grantor_key !== '') return { param: 'funder', value: row.grantor_key }
+  const source = unmapped.find((u) => u.description === row.description)
+  return source === undefined ? null : { param: 'row', value: source.source_id }
+}

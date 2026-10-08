@@ -17,7 +17,11 @@ import {
 import {
   basisWords,
   camperWords,
-  countedTotal,
+  registerTotal,
+  countsInTotal,
+  programWords,
+  funderLink,
+  REGISTER_TOTAL_NOTE,
   didntApply,
   footerWords,
   grantKey,
@@ -94,7 +98,8 @@ describe('the aid request it offsets (#2975: requests[].offsets/round/round_amou
     expect(didntApply(NEVER_APPLIED_HOUSEHOLD, NEEDS)).toBe(true)
     expect(offsetWords(NEVER_APPLIED_HOUSEHOLD, NEEDS)).toBe("didn't apply")
     expect(basisWords(NEVER_APPLIED_HOUSEHOLD, NEEDS)).toBe('stays at household level')
-    expect(countedTotal([NEVER_APPLIED_HOUSEHOLD])).toBe(0)
+    // Ruled edit (owner, spec §8.2): a never-applied household's line now counts.
+    expect(registerTotal([NEVER_APPLIED_HOUSEHOLD], NEEDS)).toBe(900)
     expect(
       [GARCIA_HOUSEHOLD, OLIVIA_REVERSED, SAMUEL_CANCELLED].some((row) => didntApply(row, NEEDS))
     ).toBe(false)
@@ -122,21 +127,74 @@ describe('the aid request it offsets (#2975: requests[].offsets/round/round_amou
 
 describe('the total and the footer (⚠ P-15, review item 9)', () => {
   it('⚠ totals only the rows the server counts, and says how many it leaves out', () => {
-    expect(countedTotal(GRANTS.grants)).toBe(10200)
+    expect(registerTotal(GRANTS.grants, NEEDS)).toBe(10200)
     // Out: a reversed line, a cancelled camper's commitment, a line waiting for its camper.
-    expect(countedTotal([OLIVIA_REVERSED, SAMUEL_CANCELLED, GARCIA_HOUSEHOLD])).toBe(0)
+    expect(registerTotal([OLIVIA_REVERSED, SAMUEL_CANCELLED, GARCIA_HOUSEHOLD], NEEDS)).toBe(0)
     // In: a posted grant for a cancelled camper, until CampMinder reverses it.
-    expect(countedTotal([SAMUEL_POSTED_CANCELLED])).toBe(1500)
-    expect(footerWords(GRANTS.grants)).toBe('8 grants · 3 not counted')
-    expect(footerWords([EMMA_GRANT])).toBe('1 grant')
+    expect(registerTotal([SAMUEL_POSTED_CANCELLED], NEEDS)).toBe(1500)
+    expect(footerWords(GRANTS.grants, NEEDS)).toBe('8 grants · 3 not counted')
+    expect(footerWords([EMMA_GRANT], NEEDS)).toBe('1 grant')
   })
 
   it('adds cents exactly', () => {
     expect(
-      countedTotal([
-        grantRow({ transaction_cm_id: 1, amount: 0.1 }),
-        grantRow({ transaction_cm_id: 2, amount: 0.2 }),
-      ])
+      registerTotal(
+        [
+          grantRow({ transaction_cm_id: 1, amount: 0.1 }),
+          grantRow({ transaction_cm_id: 2, amount: 0.2 }),
+        ],
+        NEEDS
+      )
     ).toBe(0.3)
+  })
+})
+
+describe("⚠ the Register total counts a never-applied household's lines (owner, spec §8.2)", () => {
+  it('counts a household-level line of a family that never applied, though the server does not', () => {
+    expect(NEVER_APPLIED_HOUSEHOLD.counts).toBe(false)
+    expect(countsInTotal(NEVER_APPLIED_HOUSEHOLD, NEEDS)).toBe(true)
+    expect(registerTotal([...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD], NEEDS)).toBe(11100)
+  })
+
+  it('still leaves out a waiting line, a reversed line and a cancelled commitment', () => {
+    for (const row of [GARCIA_HOUSEHOLD, OLIVIA_REVERSED, SAMUEL_CANCELLED]) {
+      expect(countsInTotal(row, NEEDS)).toBe(false)
+    }
+  })
+
+  it('footer: "not counted" excludes the didn\'t-apply rows', () => {
+    expect(footerWords([...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD], NEEDS)).toBe(
+      '9 grants · 3 not counted'
+    )
+  })
+
+  it('the note says a household-level line of a family that did not apply counts', () => {
+    expect(REGISTER_TOTAL_NOTE).toMatch(
+      /so does a household-level line of a family that didn.t apply/
+    )
+  })
+})
+
+describe('the Program column (program_label, #3090; #3085 fallbacks)', () => {
+  it("uses the server's label", () => {
+    expect(programWords(EMMA_GRANT, NEEDS)).toBe('Summer Camp')
+  })
+  it('falls back to Household level, Not placed, Other program; never a key', () => {
+    expect(programWords(NEVER_APPLIED_HOUSEHOLD, NEEDS)).toBe('Household level')
+    expect(programWords(GARCIA_HOUSEHOLD, NEEDS)).toBe('Not placed')
+    expect(programWords({ ...EMMA_GRANT, program_label: '', program_family: 'quest' }, NEEDS)).toBe(
+      'Other program'
+    )
+  })
+})
+
+describe('where a Register row links in Funders', () => {
+  it('a mapped grantor by its key; an unmapped description by its source id', () => {
+    expect(funderLink(EMMA_GRANT, GRANTS.unmapped)).toEqual({ param: 'funder', value: 'grantor_a' })
+    expect(funderLink(OLIVIA_AFTER_OFFER, GRANTS.unmapped)).toEqual({
+      param: 'row',
+      value: 'srcgrantore0005',
+    })
+    expect(funderLink({ ...OLIVIA_AFTER_OFFER, description: 'zzz' }, GRANTS.unmapped)).toBeNull()
   })
 })

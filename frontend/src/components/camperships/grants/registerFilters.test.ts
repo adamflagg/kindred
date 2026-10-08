@@ -64,14 +64,19 @@ describe('the Register filters', () => {
       'Grantor D',
       'No grantor yet',
     ])
-    expect(programChoices(GRANTS.grants, { summer: 'Summer Camp' })).toEqual([
-      { value: 'summer', label: 'Summer Camp' },
-    ])
+    expect(programChoices(GRANTS.grants)).toEqual([{ value: 'summer', label: 'Summer Camp' }])
   })
 
   it('names the file as D70 does', () => {
     expect(registerCsvName(2027, read('show=cancelled&grantor=grantor_b'))).toBe(
       'camperships-grants-register-cancelled-grantor-b-2027.csv'
     )
+  })
+})
+
+describe('the Program filter (program_label, #3090)', () => {
+  it('offers the label the rows send, and "Other program" for a family with none', () => {
+    const quest = { ...GRANTS.grants[0]!, program_family: 'quest', program_label: '' }
+    expect(programChoices([quest])).toEqual([{ value: 'quest', label: 'Other program' }])
   })
 })

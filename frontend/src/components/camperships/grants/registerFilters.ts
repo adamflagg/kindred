@@ -6,8 +6,9 @@
  */
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
-import { programLabel } from '../requests/programLabel'
 import { didntApply, isAfterOffer, isHouseholdLevel } from './registerModel'
+
+const OTHER_PROGRAM = 'Other program'
 
 export type RegisterShow =
   'all' | 'committed' | 'household' | 'didnt-apply' | 'cancelled' | 'after-offer'
@@ -119,14 +120,18 @@ export function grantorChoices(rows: readonly ApiAidGrantRow[]): FilterChoice[] 
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
-/** The programs on the Register, in the rules' words (D31); a row with no program offers none. */
-export function programChoices(
-  rows: readonly ApiAidGrantRow[],
-  names: Readonly<Record<string, string>>
-): FilterChoice[] {
-  const keys = new Set(rows.map((r) => r.program_family).filter((key) => key !== ''))
-  return [...keys]
-    .map((value) => ({ value, label: programLabel(names, value) }))
+/** The programs on the Register, by the server's `program_label` ("Other program" when it sends none). */
+export function programChoices(rows: readonly ApiAidGrantRow[]): FilterChoice[] {
+  const labels = new Map<string, string>()
+  for (const row of rows) {
+    if (row.program_family === '') continue
+    const label = row.program_label ?? ''
+    if (label !== '' || !labels.has(row.program_family)) {
+      labels.set(row.program_family, label === '' ? OTHER_PROGRAM : label)
+    }
+  }
+  return [...labels]
+    .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
