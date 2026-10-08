@@ -50,6 +50,7 @@ class LedgerLineOut(BaseModel):
     description: str  # CampMinder's description, after any reclassification
     source_family: str
     program: str  # its request's program when Kindred placed it; else CampMinder's attribution; "" for none
+    program_label: str = ""  # the season's rules label for that program; "" for none or one the rules don't name
     amount: float  # the part of the line in this total (every part of a split line that passes the filters)
     posted_on: date | None  # camp time
     is_reversed: bool  # reversed by the read's day: shown struck through, left out of `amount` (D54, D74)

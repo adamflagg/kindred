@@ -253,6 +253,7 @@ from api.services.financial_aid_march_file import MarchFileService
 from api.services.financial_aid_money_ledger import LedgerFilters
 from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_payer_shares import ShareSpec
+from api.services.financial_aid_program_labels import program_labels
 from api.services.financial_aid_reconciliation import split_placed
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
@@ -377,8 +378,16 @@ def _raise_http(exc: Exception) -> NoReturn:
 _ERRORS = (CaseworkNotFoundError, DuplicateRequestError, CaseworkValidationError, CorrectionError)
 
 
+async def _program_labels(year: int) -> dict[str, str]:
+    """The season's rules label for each program key (a posting's program family). A season with no rules has none."""
+    try:
+        return program_labels((await _rules().load(year)).document)
+    except RulesNotFoundError:
+        return {}
+
+
 def _ledger() -> FinancialAidLedgerService:
-    return FinancialAidLedgerService(FinancialAidRepository(pb))
+    return FinancialAidLedgerService(FinancialAidRepository(pb), program_labels=_program_labels)
 
 
 def _writes() -> FinancialAidWriteService:

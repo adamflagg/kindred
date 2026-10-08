@@ -8450,6 +8450,10 @@ export type LedgerLineOut = {
    */
   program: string
   /**
+   * Program Label
+   */
+  program_label?: string
+  /**
    * Amount
    */
   amount: number
@@ -12074,6 +12078,10 @@ export type ProgramSplit = {
    * Program
    */
   program: string
+  /**
+   * Program Label
+   */
+  program_label?: string
   /**
    * Camp Aid
    */
@@ -16969,6 +16977,10 @@ export type SummaryCell = {
    * Program
    */
   program: string
+  /**
+   * Program Label
+   */
+  program_label?: string
   /**
    * Source Family
    */

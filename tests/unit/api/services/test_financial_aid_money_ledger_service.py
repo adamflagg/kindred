@@ -99,6 +99,16 @@ async def test_a_season_before_the_first_ticked_one_shows_no_level_anywhere(monk
 
 
 @pytest.mark.asyncio
+async def test_each_line_carries_its_programs_label_from_the_seasons_rules() -> None:
+    """`program` is a key (a program family); `program_label` is the rules' own word for it (fictional_rules)."""
+    lines = await money_ledger_service(_families()).lines(YEAR, "in_campminder_net")
+    pairs = {(ln.program, ln.program_label) for ln in lines.lines}
+    assert pairs  # the season has lines
+    assert all(label for program, label in pairs if program)  # every program the rules name reads as words
+    assert ("summer", "Summer") in pairs
+
+
+@pytest.mark.asyncio
 async def test_a_split_in_full_takes_the_household_level_off_the_row() -> None:
     """D151 (owner, Group 3a Q3): the Ledger reads placements, so a split line is not "household level"."""
     store = _families()

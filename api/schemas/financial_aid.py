@@ -125,6 +125,7 @@ class HouseholdDetailResponse(BaseModel):
 
 class SummaryCell(BaseModel):
     program: str
+    program_label: str = ""  # the season's rules label for the program family; "" for a bucket the rules don't name
     source_family: str
     amount: float
     postings: int
@@ -138,6 +139,9 @@ class ProgramSplit(BaseModel):
     total = the three. program is program_bucket's key (a program family, "ambiguous" or "unattributed")."""
 
     program: str
+    # The season's rules label for that program family (programs.<key>.label), for screens to show instead of the key.
+    # "" for "ambiguous" and "unattributed" (no rules label exists) or when the season has no rules.
+    program_label: str = ""
     camp_aid: float
     outside_grants: float
     unclassified: float
