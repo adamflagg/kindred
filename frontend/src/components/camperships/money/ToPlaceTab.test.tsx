@@ -469,19 +469,18 @@ describe('Money › To place (§8.1)', () => {
       operation_id: '',
     }
 
-    it('A: a Leave submitted while its line is saving says so and sends nothing', async () => {
+    // Lead-ruled edit (R1-12: Confirm hides while an editor is open, so the old sequence,
+    // Confirm pressed inside an open Leave form, can no longer be reached). Same intent:
+    // while the line is saving, Leave can't be started and nothing is sent.
+    it('A: Leave can’t be started while its line is saving, and sends nothing', async () => {
       gate = new Promise(() => undefined)
       renderTab()
       const panel = await openLine(CHEN)
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
-      await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
       await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
-      await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
-      expect(
-        await screen.findByText(
-          'Nothing was written: this line is still saving. Try again when it finishes.'
-        )
-      ).toBeInTheDocument()
+      const leave = within(panel).getByRole('button', { name: 'Leave at Family Level…' })
+      expect(leave).toBeDisabled()
+      await userEvent.click(leave)
+      expect(within(panel).queryByRole('button', { name: 'Leave It' })).toBeNull()
       expect(writes().filter((w) => w.url.endsWith('/leave'))).toHaveLength(0)
     })
 
