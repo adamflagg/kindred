@@ -121,7 +121,9 @@ const CSV_EXTRA_WITH_R3: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
 /** The muted second line under an amount: "outside" or "$1,224 outside" (spec §12.2, knob 1 a). */
 function OutsideTag({ cell }: { cell: CellOutside | null }) {
   return cell ? (
-    <span className="text-muted-foreground block text-xs">{outsideTagWords(cell)}</span>
+    <span className="text-muted-foreground block text-xs whitespace-normal">
+      {outsideTagWords(cell)}
+    </span>
   ) : null
 }
 
@@ -248,7 +250,7 @@ function renderFor(
 function outsideFooterNote(rows: readonly ApiAidGridRow[]): ReactNode {
   const outside = listOutside(rows)
   return outside > 0 ? (
-    <span className="text-muted-foreground text-xs font-normal">{`${formatMoney(outside)} outside the budget`}</span>
+    <span className="text-muted-foreground block text-xs font-normal whitespace-normal">{`${formatMoney(outside)} outside the budget`}</span>
   ) : null
 }
 

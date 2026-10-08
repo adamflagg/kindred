@@ -1257,6 +1257,19 @@ describe('money paid outside the budget', () => {
     }
   })
 
+  // requests-outside-v1 keeps the money columns' widths and lets "$1,224 outside" and the footer
+  // note wrap inside their cells (+32 px for the part-outside row); the cells are nowrap, so without
+  // this the words clip ("$1,224 outs").
+  it('wraps the tag and the footer note inside their cells rather than clipping them', () => {
+    render(<Grid rows={[split, whole]} />)
+    expect(within(cellOf('Avery Testcamper', 'R1')).getByText('$1,224 outside')).toHaveClass(
+      'whitespace-normal'
+    )
+    const note = screen.getByText('$4,899 outside the budget')
+    expect(note).toHaveClass('block')
+    expect(note).toHaveClass('whitespace-normal')
+  })
+
   it('leaves a row with no outside money untagged', () => {
     render(<Grid rows={[split, ROW_LIAM]} />)
     expect(within(rowOf('Liam Garcia')).queryByText(/outside/)).toBeNull()
