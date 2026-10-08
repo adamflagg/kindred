@@ -80,9 +80,16 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(screen.getAllByText('Permission denied')).toHaveLength(2)
   })
 
-  it('shows the three tabs and the Statistics body, with no views bar', () => {
+  it('shows the four tabs in order and the Statistics body, with no views bar', () => {
     renderAt('/aid/reports/statistics')
-    for (const name of ['Statistics', 'Year over year', 'Development']) {
+    const names = ['Statistics', 'Year over year', 'Development', 'ZIP codes']
+    const links = names.map((name) => screen.getByRole('link', { name }))
+    for (let i = 1; i < links.length; i += 1) {
+      expect(
+        links[i - 1]!.compareDocumentPosition(links[i]!) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    }
+    for (const name of names) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument()
     }
     expect(screen.queryByRole('link', { name: 'Programs' })).toBeNull()
@@ -90,7 +97,7 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
   })
 
   it('has no views bar on any tab', () => {
-    for (const path of ['statistics', 'year-over-year', 'development']) {
+    for (const path of ['statistics', 'year-over-year', 'development', 'zip-codes']) {
       const { unmount } = renderAt(`/aid/reports/${path}`)
       expect(screen.queryByRole('link', { name: 'This season' })).toBeNull()
       expect(screen.queryByRole('link', { name: 'Report' })).toBeNull()
@@ -124,6 +131,33 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(
       screen.getByText(/^Aid by season, for grant writing: numbers and quantities, never a family/)
     ).toBeInTheDocument()
+  })
+
+  it('gives a summary-only user Development and ZIP codes, nothing else (D65, D90)', () => {
+    granted = DEVELOPMENT
+    renderAt('/aid/reports/zip-codes')
+    expect(screen.getByText('ZIP codes body')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Development' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'ZIP codes' })).toBeInTheDocument()
+    for (const name of ['Statistics', 'Year over year']) {
+      expect(screen.queryByRole('link', { name })).toBeNull()
+    }
+  })
+
+  it('names the ZIP codes band under the Development report title', () => {
+    renderAt('/aid/reports/zip-codes')
+    expect(screen.getByText('Development report')).toBeInTheDocument()
+    expect(
+      screen.getByText(/^Where 2027 campers live, by ZIP: counts and dollars, never a family/)
+    ).toBeInTheDocument()
+  })
+
+  it('says Development and ZIP codes show today when the link carries a past date', () => {
+    for (const path of ['development', 'zip-codes']) {
+      const { unmount } = renderAt(`/aid/reports/${path}?as_of=2027-03-08`)
+      expect(screen.getByText(/has no past date/)).toBeInTheDocument()
+      unmount()
+    }
   })
 
   it('sends an unknown tab to the first tab', () => {

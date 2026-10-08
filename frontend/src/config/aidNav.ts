@@ -96,9 +96,10 @@ export const AID_SECTIONS: readonly AidSection[] = [
     tabs: [
       { slug: 'statistics', label: 'Statistics', access: VIEW },
       { slug: 'year-over-year', label: 'Year over year', access: VIEW },
-      // D65: a summary-only user sees only this tab, and lands on it. Funding sources (D100) and the
-      // read-only Grantors view are HELD by the owner (10-08): a tab joins this list when built.
+      // D65: a summary-only user sees Development and ZIP codes, and lands on Development. Funding
+      // sources lives in Money › Funders now, and Reports has no Grantors view (owner Q2, Q3, Q7).
       { slug: 'development', label: 'Development', access: OPEN },
+      { slug: 'zip-codes', label: 'ZIP codes', access: OPEN },
     ],
     builtIn: 'slice 4 (before the February committee meeting)',
   },

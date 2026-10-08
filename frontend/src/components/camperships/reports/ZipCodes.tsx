@@ -13,10 +13,10 @@ import { ReportTable } from '../kit/ReportTable'
 import { useReportParam } from './useReportParam'
 import { zipColumns, zipCsvName, zipGroups, zipHeading, zipRows, zipScopeWords } from './zipModel'
 
-const PATH = '/aid/reports/development/zip'
+const PATH = '/aid/reports/zip-codes'
 
 /**
- * Reports › Development › ZIP codes (spec §9.4; D66, D90; zip-codes.html; owner ruling C): one
+ * Reports › ZIP codes (spec §9.4; D66, D90; zip-codes.html; owner ruling C): one
  * season, one group (the chip, `?group=`, from the read's own list; none asks for the server's
  * default, the summer group), two tables: every camper, and campers who got aid with all their
  * money. Each has a totals row, a find box, a sort, Copy and CSV. No family, no drill-down. Live only.
@@ -102,7 +102,7 @@ export function ZipCodes({ view }: { view: AidView }) {
               </div>
               <p className={REPORT_NOTE}>
                 Small groups show as they are, a ZIP with one family included: a row is a ZIP, never
-                a family (D66, D90).
+                a family.
               </p>
             </div>
           )

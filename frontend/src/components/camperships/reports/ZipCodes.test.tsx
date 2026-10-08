@@ -22,6 +22,11 @@ vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.summary' }),
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+const downloadCsv = vi.fn<(content: string, name: string) => void>()
+vi.mock('../../../utils/csvExport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/csvExport')>()),
+  downloadCsv: (content: string, name: string) => downloadCsv(content, name),
+}))
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 let answer: (url: string) => ApiAidZip
@@ -45,7 +50,7 @@ function Where() {
   return <div data-testid="where">{search}</div>
 }
 
-function renderZip(path = '/aid/reports/development/zip') {
+function renderZip(path = '/aid/reports/zip-codes') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
@@ -106,7 +111,7 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
           : json(ZIP)
       )
     })
-    renderZip('/aid/reports/development/zip?group=nonsense')
+    renderZip('/aid/reports/zip-codes?group=nonsense')
     expect(await screen.findByText(/is not one of this season's groups/)).toBeInTheDocument()
     expect(zipCalls()).toHaveLength(1) // a refusal is never retried
     await userEvent.click(screen.getByRole('button', { name: 'Show the Default Group' }))
@@ -143,5 +148,14 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     renderZip()
     const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
     expect(within(every).getByText('00012').closest('td')?.className).toContain('font-mono')
+  })
+
+  it('is its own Reports tab: the CSV links /aid/reports/zip-codes, and no internal id shows', async () => {
+    renderZip()
+    await screen.findByRole('table', { name: 'Every camper · Pool A' })
+    expect(document.body.textContent).not.toMatch(/\bD\d{2,3}\b|RPT-\d|O-930/)
+    await userEvent.click(screen.getAllByRole('button', { name: /Download CSV/ })[0]!)
+    expect(downloadCsv.mock.calls[0]?.[0]).toContain('/aid/reports/zip-codes')
+    expect(downloadCsv.mock.calls[0]?.[0]).not.toContain('/development/zip')
   })
 })
