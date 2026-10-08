@@ -212,6 +212,25 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
     expect(row?.links).toBeUndefined()
   })
 
+  it('draws RPT-9\'s last row as the server\'s totals, never a second "No tier" row', () => {
+    const rows = tierAppealsRows(STATISTICS)
+    const total = rows.at(-1)
+    expect(total?.kind).toBe('total')
+    // the chip's table, as the tier table's totals row names it
+    expect(texts(total?.cells ?? [])).toEqual([
+      'Table A',
+      '',
+      '',
+      '12',
+      '',
+      '4',
+      '',
+      '$600',
+      '33.3%',
+    ])
+    expect(rows.filter((r) => r.kind === 'body')).toHaveLength(1)
+  })
+
   it("marks the headline by the server's kind, never by its place, and links every outcome (#2972)", () => {
     const NO_POOL = {
       ...STATISTICS,
