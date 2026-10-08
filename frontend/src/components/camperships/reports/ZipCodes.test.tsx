@@ -114,7 +114,7 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     renderZip('/aid/reports/zip-codes?group=nonsense')
     expect(await screen.findByText(/is not one of this season's groups/)).toBeInTheDocument()
     expect(zipCalls()).toHaveLength(1) // a refusal is never retried
-    await userEvent.click(screen.getByRole('button', { name: 'Show the Default Group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show the default group' }))
     expect(screen.getByTestId('where').textContent).toBe('')
     expect(await screen.findByRole('table', { name: 'Every camper · Pool A' })).toBeInTheDocument()
   })

@@ -53,7 +53,7 @@ export function zipHeading(zip: ApiAidZip, title: string): ReportHeading {
     season: zip.year,
     figuresOn: zip.figures_on,
     live: true,
-    basis: 'P (awarded = Posted) plus every outside grant: all money (D87)',
+    basis: 'P (awarded = Posted) plus every outside grant: all money',
   }
 }
 

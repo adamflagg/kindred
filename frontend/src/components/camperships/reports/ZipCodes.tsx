@@ -35,7 +35,7 @@ export function ZipCodes({ view }: { view: AidView }) {
         <p className={AMBER_NOTE}>
           {`${refusal} `}
           <button type="button" className="underline" onClick={() => setParam('group', null)}>
-            Show the Default Group
+            Show the default group
           </button>
         </p>
       )}

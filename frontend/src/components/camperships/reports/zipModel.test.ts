@@ -1,7 +1,7 @@
 /** ZIP codes' tables in words (spec §9.4; D90; owner ruling C). */
 import { describe, expect, it } from 'vitest'
 
-import { reportText } from '../kit/report'
+import { headingLines, reportText } from '../kit/report'
 import { ZIP } from './zipFixtures'
 import { zipColumns, zipCsvName, zipGroups, zipHeading, zipRows, zipScopeWords } from './zipModel'
 
@@ -44,6 +44,12 @@ describe('ZIP codes', () => {
     expect(zipScopeWords(noGroup)).toBe(
       "Campers enrolled in an aid-eligible session, by their household's billing ZIP."
     )
+  })
+
+  it('prints no internal id in the heading lines Copy and the CSV carry', () => {
+    const lines = headingLines(zipHeading(ZIP, 'Every camper')).join('\n')
+    expect(lines).not.toMatch(/\bD\d{2,3}\b|RPT-|O-930/)
+    expect(lines).toContain('Basis: P (awarded = Posted) plus every outside grant: all money')
   })
 
   it('names the file with the group', () => {
