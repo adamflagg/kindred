@@ -29,7 +29,7 @@ import {
 } from './ledgerFamiliesModel'
 import { summaryProgramWords } from './ledgerModel'
 import { LedgerLines } from './LedgerLines'
-import { keyWords, PROGRAM_FAMILIES } from './sourcesModel'
+import { keyWords } from './sourcesModel'
 
 type LedgerParam = 'source' | 'program' | 'level' | 'lines'
 
@@ -54,10 +54,13 @@ export function LedgerFamilies({
   view,
   unclassified,
   programLabels = {},
+  programChoices = [],
 }: {
   view: AidView
   /** The program words the summary sends, by key (`program_label`); a key with none reads "Other program". */
   programLabels?: Readonly<Record<string, string>>
+  /** The programs with money this season, labelled (`programChoicesOf`); none until the summary loads. */
+  programChoices?: readonly { value: string; label: string }[]
   /** The season's unclassified money from `GET /summary` (same as-of); absent until it loads. */
   unclassified?: number | null | undefined
 }) {
@@ -193,13 +196,8 @@ export function LedgerFamilies({
         'program',
         'Program',
         filters.program,
-        withSentValue(
-          PROGRAM_FAMILIES.map((p) => ({
-            value: p,
-            label: summaryProgramWords(p, programLabels[p]),
-          })),
-          filters.program,
-          (key) => summaryProgramWords(key, programLabels[key])
+        withSentValue([...programChoices], filters.program, (key) =>
+          summaryProgramWords(key, programLabels[key])
         )
       )}
       {select(
