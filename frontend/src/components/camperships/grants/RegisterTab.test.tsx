@@ -383,10 +383,10 @@ describe('Grants › Register (§8.2)', () => {
     const cols = Array.from(document.querySelectorAll('table colgroup col')) as HTMLElement[]
     const offset = cols.length - headers.length
     const standing = cols[headers.findIndex((h) => h.startsWith('Where it stands')) + offset]
-    expect(parseFloat(standing.style.width)).toBeGreaterThanOrEqual(228)
+    expect(parseFloat(standing?.style.width ?? '0')).toBeGreaterThanOrEqual(228)
     // and "Counted" for the whole "Not counted" pill (cut off at 100px once the table filled its card).
     const counted = cols[headers.findIndex((h) => h.startsWith('Counted')) + offset]
-    expect(parseFloat(counted.style.width)).toBeGreaterThanOrEqual(110)
+    expect(parseFloat(counted?.style.width ?? '0')).toBeGreaterThanOrEqual(110)
   })
 
   it('words the Grantor and Program filters\' no-filter choice "All", sentence case like the Ledger', async () => {
