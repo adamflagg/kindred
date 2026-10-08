@@ -24,6 +24,8 @@ import {
   type ReportValue,
 } from '../kit/report'
 
+const BUDGET_KEY = 'budget'
+
 export const SECTION_WORDS: Readonly<Record<ApiAidDevelopmentRow['section'], string>> = {
   money: 'Money',
   counts: 'Counts',
@@ -105,7 +107,11 @@ export function developmentRows(dev: ApiAidDevelopment): ReportRow[] {
   // Each section once, in SECTION_WORDS' order (the mock's), its lines in the server's order: the read
   // sends a few lines after a later section's (household-level dollars, the gender rows).
   const order = Object.keys(SECTION_WORDS)
-  const sent = [...dev.rows].sort((a, b) => order.indexOf(a.section) - order.indexOf(b.section))
+  // The Budget line (API proposal 2) leads Money, wherever the server sends it.
+  const lead = (row: ApiAidDevelopmentRow) => (row.key === BUDGET_KEY ? 0 : 1)
+  const sent = [...dev.rows].sort(
+    (a, b) => order.indexOf(a.section) - order.indexOf(b.section) || lead(a) - lead(b)
+  )
   let section: string | null = null
   let start = 0
   while (start < sent.length) {

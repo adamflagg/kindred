@@ -10,7 +10,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { campToday } from '../kit/dates'
-import { DEVELOPMENT, DEVELOPMENT_LIVE } from './developmentFixtures'
+import { BUDGET_ROW, DEVELOPMENT, DEVELOPMENT_LIVE } from './developmentFixtures'
 import { dayBefore } from './developmentModel'
 import { DevelopmentReport } from './DevelopmentReport'
 
@@ -27,6 +27,7 @@ vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 let columnAnswer: () => Response
+let liveAnswer: () => Response
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
@@ -34,11 +35,12 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-06-03T18:00:00Z'))
   columnAnswer = () => json(DEVELOPMENT)
+  liveAnswer = () => json(DEVELOPMENT_LIVE)
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const text = String(url)
     if (text.includes('/definitions')) return Promise.resolve(json({ surface: 'x', notes: [] }))
     if (text.includes('column=')) return Promise.resolve(columnAnswer())
-    return Promise.resolve(json(DEVELOPMENT_LIVE))
+    return Promise.resolve(liveAnswer())
   })
 })
 afterEach(() => {
@@ -82,6 +84,26 @@ describe('DevelopmentReport (spec §9.4)', () => {
     await screen.findByRole('table', { name: 'Development report' })
     expect(screen.getByRole('checkbox', { name: /Show the dashboard's rebuild/ })).toBeDisabled()
     expect(screen.getByText(/waits on the 2017–2024 ledger backfill/)).toBeInTheDocument()
+  })
+})
+
+describe('the Budget row (D2)', () => {
+  it('is the first line of Money, in dollars for every column', async () => {
+    liveAnswer = () => json({ ...DEVELOPMENT_LIVE, rows: [...DEVELOPMENT_LIVE.rows, BUDGET_ROW] })
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    const rows = within(table).getAllByRole('row')
+    // header row, then the Money heading, then Budget
+    expect(rows[1]).toHaveTextContent('Money')
+    expect(rows[2]).toHaveTextContent('Budget')
+    expect(rows[2]).toHaveTextContent('$1,000,000')
+    expect(rows[2]).toHaveTextContent('$1,200,000')
+  })
+
+  it('draws no Budget line, and no placeholder for it, when the read has none', async () => {
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    expect(within(table).queryByText(/Budget/)).not.toBeInTheDocument()
   })
 })
 

@@ -196,3 +196,11 @@ export const DEVELOPMENT_LIVE: ApiAidDevelopment = {
   columns: DEVELOPMENT.columns.slice(0, 3),
   rows: DEVELOPMENT.rows.map((r) => ({ ...r, values: r.values.slice(0, 3) })),
 }
+
+/** The budget row the Development read sends beside the money lines (API proposal 2): dollars, no group. */
+export const BUDGET_ROW: ApiAidDevelopmentRow = row({
+  key: 'budget',
+  label: 'Budget',
+  group: null,
+  values: [1000000, 1050000, 1200000],
+})

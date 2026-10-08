@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { reportText } from '../kit/report'
-import { DEVELOPMENT } from './developmentFixtures'
+import { BUDGET_ROW, DEVELOPMENT, DEVELOPMENT_LIVE } from './developmentFixtures'
 import {
   columnHeader,
   datedSeasons,
@@ -166,6 +166,24 @@ describe('the report', () => {
       ["The camp's awards", 'the camp', 'need-based', 'Pool A', '$1,500', '1'],
       ['Grantor A', 'another funder', 'incentive', 'Pool A', '$500', '1'],
     ])
+  })
+})
+
+describe('the Budget row (D2)', () => {
+  it('draws first in Money, whatever place the server sends it, its label and dollars as sent', () => {
+    const late = { ...DEVELOPMENT_LIVE, rows: [...DEVELOPMENT_LIVE.rows, BUDGET_ROW] }
+    const rows = developmentRows(late)
+    expect(rows[0]?.kind).toBe('heading')
+    expect(texts(rows[0])).toEqual(['Money'])
+    expect(texts(rows[1])).toEqual(['Budget', '$1,000,000', '$1,050,000', '$1,200,000'])
+    expect(rows[1]?.indent).toBe(0)
+    expect(rows.filter((r) => texts(r)[0] === 'Budget')).toHaveLength(1)
+    expect(texts(rows[2])[0]).toBe('Total Awards Granted')
+  })
+
+  it('draws nothing, no placeholder, when the read sends no budget', () => {
+    expect(developmentRows(DEVELOPMENT_LIVE).map((r) => texts(r)[0])).not.toContain('Budget')
+    expect(texts(developmentRows(DEVELOPMENT_LIVE)[1])[0]).toBe('Total Awards Granted')
   })
 })
 
