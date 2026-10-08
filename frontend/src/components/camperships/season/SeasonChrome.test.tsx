@@ -328,6 +328,14 @@ describe('SeasonChrome: a done season (spec §11.3)', () => {
     expect([chrome().locked, chrome().pastSeasonReason]).toEqual([true, null])
   })
 
+  it('a change of year ends it for good: coming back to the year finds it locked', () => {
+    const { chrome, setYear } = renderProbe({ seasonDone: true, year: 2027 })
+    act(() => chrome().unlock('Late fix'))
+    setYear(2026)
+    setYear(2027)
+    expect([chrome().locked, chrome().pastSeasonReason]).toEqual([true, null])
+  })
+
   it('Approve… waits on a locked season', () => {
     const { chrome } = renderProbe({ seasonDone: true })
     expect(chrome().canApprove).toBe(false)
@@ -412,6 +420,26 @@ describe('Unlock… on a done season (spec §11.3)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Lock Again' }))
     expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Unlock…' })).toBeInTheDocument()
+  })
+
+  it("a reason typed for one year is not carried to another year's panel", async () => {
+    const tree = () => (
+      <MemoryRouter initialEntries={['/aid/season/rules']}>
+        <SeasonChromeProvider section="budget" tab="rules">
+          <ApproveButton />
+          <UnlockButton />
+          <UnlockPanel />
+        </SeasonChromeProvider>
+      </MemoryRouter>
+    )
+    const view = renderUnlock()
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock…' }))
+    await userEvent.type(screen.getByLabelText('Why correct a done season?'), 'Late fix')
+    yearNow = 2026
+    view.rerender(tree())
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock…' }))
+    expect(screen.getByText('Unlock 2026')).toBeInTheDocument()
+    expect(screen.getByLabelText('Why correct a done season?')).toHaveValue('')
   })
 
   it('truncates a long reason in the pill, and a click opens the whole of it', async () => {

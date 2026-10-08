@@ -45,8 +45,9 @@ export function SeasonChromeProvider({
   const { hasPermission } = usePermissions()
   const finance = hasPermission(Permission.FINANCIAL_AID_RULES)
   const draft = useAidRulesDraft({ enabled: finance })
-  // Finance reads `season_done` off the draft; everyone else off the approved rules (spec §11.3). A done season
-  // usually has no draft left (finance's draft read is a 404), so finance falls back to the approved rules too.
+  // Finance reads `season_done` off the draft; everyone else off the approved rules (spec §11.3). Finance falls back to
+  // the approved read when its draft read fails. (A 404 draft means the year has no rules at all, so the approved read
+  // 404s too and neither can say the season is done.)
   const approved = useAidApprovedRules(null)
   const read = finance ? draft : approved
   const done = (read.data?.season_done ?? approved.data?.season_done) === true
@@ -59,6 +60,8 @@ export function SeasonChromeProvider({
   const expired = unlockedRaw !== null && Date.now() - unlockedRaw.at >= UNLOCK_MS
   const unlocked =
     unlockedRaw !== null && unlockedRaw.year === year && !expired ? unlockedRaw : null
+  // A change of year ends it for good: coming back to the year within the 30 minutes finds it locked.
+  if (unlockedRaw !== null && unlockedRaw.year !== year) setUnlockedRaw(null)
   useEffect(() => {
     if (unlockedRaw === null) return
     const timer = setTimeout(
@@ -191,11 +194,16 @@ export function UnlockButton() {
 
 /** The Unlock panel, in the Approve panel's place (spec §11.3): one required reason, Back · Unlock. */
 export function UnlockPanel() {
+  const { unlocking } = useSeasonChrome()
+  // Mounted only while open, as the Approve panel's form is: each opening (and each year) starts with an empty reason.
+  return unlocking ? <UnlockForm /> : null
+}
+
+function UnlockForm() {
   const year = useYear()
-  const { unlocking, closeUnlock, unlock } = useSeasonChrome()
+  const { closeUnlock, unlock } = useSeasonChrome()
   const [reason, setReason] = useState('')
   const [missing, setMissing] = useState(false)
-  if (!unlocking) return null
   return (
     <div className={`${CS_CARD} space-y-2`} data-testid="unlock-panel">
       <h3 className={CS_CARD_HEADING}>{`Unlock ${String(year)}`}</h3>
