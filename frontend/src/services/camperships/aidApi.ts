@@ -69,6 +69,10 @@ import type {
   ApiAidWriteOut,
   ApiAidCommitteeReport,
   ApiAidPrograms,
+  ApiAidDevelopment,
+  ApiAidReportColumns,
+  ApiAidReportColumnsIn,
+  ApiAidZip,
   ApiAidReportRequestIds,
   ApiAidStatistics,
 } from '../../types/api-types'
@@ -1092,5 +1096,62 @@ export function fetchAidReportRequests(
     `${String(year)}/${report}/requests`,
     params,
     "Couldn't read the requests behind that count"
+  )
+}
+
+/** Reports › Development (§9.4): every line by group, seasons from 2022 as columns. `view` or `summary` (D65). */
+export function fetchAidDevelopment(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidDevelopment> {
+  return fetchAidReport<ApiAidDevelopment>(
+    fetchWithAuth,
+    `${String(year)}/development`,
+    {},
+    'Failed to load the Development report'
+  )
+}
+
+/** Development's saved dated columns: one shared list per report (D68). `view` or `summary`. */
+export function fetchAidReportColumns(fetchWithAuth: FetchWithAuth): Promise<ApiAidReportColumns> {
+  return fetchAidReport<ApiAidReportColumns>(
+    fetchWithAuth,
+    'development/columns',
+    {},
+    'Failed to load the dated columns'
+  )
+}
+
+/**
+ * Replace development's dated columns (the whole list). `view` or `summary`; 422 for a season before
+ * 2027 or a day not yet past (the server's sentence).
+ */
+export function saveAidReportColumns(
+  fetchWithAuth: FetchWithAuth,
+  body: ApiAidReportColumnsIn
+): Promise<ApiAidReportColumns> {
+  return send<ApiAidReportColumns>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/reports/development/columns`,
+    body,
+    "Couldn't save the dated columns"
+  )
+}
+
+/**
+ * ZIP codes (§9.4, D90; owner ruling C): `group` is a pool key of the season's rules or `all`;
+ * omitted, the server serves the summer group. An unknown group is a 422. `view` or `summary`.
+ */
+export function fetchAidZip(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidZip> {
+  return fetchAidReport<ApiAidZip>(
+    fetchWithAuth,
+    `${String(year)}/development/zip`,
+    params,
+    'Failed to load the ZIP codes'
   )
 }
