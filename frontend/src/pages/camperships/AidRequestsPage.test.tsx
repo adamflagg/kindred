@@ -52,6 +52,13 @@ vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
     return null
   },
 }))
+// Slice 3's March file has its own tests (MarchFileButton.test.tsx); here, only where it shows.
+vi.mock('../../components/camperships/requests/MarchFileButton', () => ({
+  MarchFileButton: ({ year }: { year: number }) => (
+    <button type="button">{`March file ${String(year)}`}</button>
+  ),
+}))
+
 let operation: {
   data: ApiAidHistoryOperationDetail | undefined
   error: Error | null
@@ -1488,5 +1495,40 @@ describe('"Money to place" on a Not reconciled row (ruling C)', () => {
     expect(
       within(detail).getByRole('link', { name: 'Place It in Money › To Place ›' })
     ).toHaveAttribute('href', '/aid/money/to-place?household=1000001&year=2027')
+  })
+})
+
+describe('the March file beside Download CSV (slice 3 PR 4; P-21; review item 28)', () => {
+  const marchButton = () => screen.queryByRole('button', { name: 'March file 2027' })
+
+  it('sits in the grid toolbar, right after Download CSV, on Needs an offer with R1 lit, for casework', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderAt('/aid/requests?view=needs-offer&round=1')
+    const buttons = within(toolbar()).getAllByRole('button')
+    const csv = buttons.findIndex((b) => b.textContent === 'Download CSV')
+    expect(buttons[csv + 1]).toHaveTextContent('March file 2027')
+  })
+
+  it('stays off without the R1 chip, on another round, or on another view', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    const { unmount } = renderAt('/aid/requests?view=needs-offer')
+    expect(marchButton()).toBeNull()
+    unmount()
+    const second = renderAt('/aid/requests?view=needs-offer&round=2')
+    expect(marchButton()).toBeNull()
+    second.unmount()
+    renderAt('/aid/requests?round=1')
+    expect(marchButton()).toBeNull()
+  })
+
+  it('stays off without casework, and on a past date', () => {
+    granted = ['financial_aid.view']
+    const { unmount } = renderAt('/aid/requests?view=needs-offer&round=1')
+    expect(marchButton()).toBeNull()
+    unmount()
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    grid = { data: { ...LIVE, as_of: '2027-03-01' }, isLoading: false, error: null }
+    renderAt('/aid/requests?view=needs-offer&round=1&as_of=2027-03-01')
+    expect(marchButton()).toBeNull()
   })
 })

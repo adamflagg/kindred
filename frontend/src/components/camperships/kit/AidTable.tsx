@@ -173,6 +173,12 @@ export interface AidTableProps<Row> {
    * (grid follow-up)). Without them the line is lead · search · switch · Download CSV.
    */
   readonly toolbarAfterGrouping?: ReactNode
+  /**
+   * Controls drawn right after Download CSV, at the toolbar line's right end with it (the March file
+   * beside the Requests grid's CSV: slice 3 review item 28). A child that should sit on a line of its
+   * own under the toolbar (a note) takes `basis-full`.
+   */
+  readonly toolbarTrail?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
   readonly searchPlaceholder?: string | undefined
   readonly searchIcon?: LucideIcon | undefined
@@ -255,6 +261,7 @@ export function AidTable<Row>({
   arrowKeys = false,
   toolbarLead,
   toolbarAfterGrouping,
+  toolbarTrail,
   searchPlaceholder = 'Search names or CM IDs',
   searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
@@ -696,6 +703,7 @@ export function AidTable<Row>({
           <Download className="h-4 w-4" />
           Download CSV
         </button>
+        {toolbarTrail}
       </div>
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>

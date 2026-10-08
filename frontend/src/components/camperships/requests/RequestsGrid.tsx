@@ -69,6 +69,8 @@ interface RequestsGridProps {
    * 10-04 late (grid follow-up): Program · Round · Flat / By reason · Show IDs · filter · CSV).
    */
   readonly filtersAfterGrouping?: ReactNode
+  /** Drawn right after Download CSV on the toolbar line (the March file on Needs an offer, R1). */
+  readonly toolbarTrail?: ReactNode
   /** The page's save-first way out (the walk's `leave`): folding the opened row's group goes through it. */
   readonly onLeave?: ((go: () => void) => void) | undefined
   /** What a fold belongs to (the page's lens and view); a change opens every group. Default: the view. */
@@ -309,6 +311,7 @@ export function RequestsGrid({
   links,
   filters,
   filtersAfterGrouping,
+  toolbarTrail,
   onLeave,
   foldScope,
   renderEditor,
@@ -364,6 +367,7 @@ export function RequestsGrid({
       }
       toolbarLead={filters}
       toolbarAfterGrouping={filtersAfterGrouping}
+      toolbarTrail={toolbarTrail}
       onLeave={onLeave}
       // Lead ruling (scan of #3005): a fold in one view never shows up folded in another.
       foldScope={foldScope ?? view.key}

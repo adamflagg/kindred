@@ -14,6 +14,7 @@ import { BulkBar, type TickResult } from '../../components/camperships/requests/
 import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
 import { GridFiltersBar, ShowIdsToggle } from '../../components/camperships/requests/GridFiltersBar'
+import { MarchFileButton } from '../../components/camperships/requests/MarchFileButton'
 import {
   RequestsGrid,
   type HouseholdLinks,
@@ -574,6 +575,13 @@ export default function AidRequestsPage() {
               links={links}
               filters={filtersBar}
               filtersAfterGrouping={idsToggle}
+              toolbarTrail={
+                // P-21, review item 28: beside Download CSV on Needs an offer with R1 lit, for
+                // casework on a live read (`canWork`): a past date never offers the file.
+                view.key === 'needs_offer' && round === 1 && canWork ? (
+                  <MarchFileButton year={year} />
+                ) : undefined
+              }
               onLeave={leaveForFold}
               foldScope={`${lens}/${view.key}`}
               selected={canWork ? selected : undefined}

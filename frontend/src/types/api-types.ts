@@ -101,6 +101,8 @@ import type {
   LeaveLineIn,
   LeftToTickOut,
   LeverEffectOut,
+  MarchFileOut,
+  MarchFileRowOut,
   LoadIn,
   MakeRulesDraftIn,
   ManualHoldIn,
@@ -411,3 +413,10 @@ export type ApiAidPlacePreview = PlacePreviewOut
  */
 export type ApiAidSources = AidSourcesResponse
 export type ApiAidSourceRow = AidSourceRow
+
+/**
+ * The March file's rows (spec §8.3; D73; S3-7): one per payer share of each Round 1 offer, and how many
+ * Round 1 offers of $0 it left out (owner ruling E, 10-06). Mirrors Python `MarchFileOut`, `MarchFileRowOut`.
+ */
+export type ApiAidMarchFile = MarchFileOut
+export type ApiAidMarchFileRow = MarchFileRowOut

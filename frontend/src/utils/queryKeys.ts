@@ -788,6 +788,8 @@ export const queryKeys = {
   aidPlacePreview: (year: number, transactionCmId: number, parts: string) =>
     ['financial-aid', 'to-place', year, 'preview', transactionCmId, parts] as const,
   aidSources: (year: number) => ['financial-aid', 'sources', 'registry', year] as const,
+  // Read at the click only (staleTime 0), never a standing query: the March file (spec §8.3).
+  aidMarchFile: (year: number) => ['financial-aid', 'march-file', year] as const,
 }
 
 /**
