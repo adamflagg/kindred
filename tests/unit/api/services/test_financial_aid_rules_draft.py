@@ -1363,8 +1363,10 @@ async def test_first_approved_is_the_oldest_version_with_the_sections_approved()
     with another budget is approved; latest_approved moves, first_approved doesn't."""
     store = FakeStore()
     service = await _approved_v1(store)
-    saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
-    await service.approve_sections(2031, saved.version.version, ["budget"], actor=FINANCE, note="Board, Mar 1")
+    # No save can write another total once the budget is approved (the pre-lock), so the later version is stored
+    # directly, as a legacy version would be: approvals carried from v1, its own total 520000.
+    await service.new_version(2031, 1, actor=FINANCE)
+    _legacy_total(store, 2, "520000")
     first = await service.first_approved(2031, ["budget"])
     latest = await service.latest_approved(2031, ["budget"])
     assert first is not None
