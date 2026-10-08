@@ -231,6 +231,14 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
     expect(rows.filter((r) => r.kind === 'body')).toHaveLength(1)
   })
 
+  it('keeps a real "No tier" row a body row; only the last row is the totals', () => {
+    const [tier, total] = STATISTICS.tier_appeals
+    const noTier = { ...tier!, tier: null, income_from: null, income_to: null }
+    const rows = tierAppealsRows({ ...STATISTICS, tier_appeals: [tier!, noTier, total!] })
+    expect(rows.map((r) => r.kind)).toEqual(['body', 'body', 'total'])
+    expect(reportText(rows[1]!.cells[0]!)).toBe('No tier')
+  })
+
   it("marks the headline by the server's kind, never by its place, and links every outcome (#2972)", () => {
     const NO_POOL = {
       ...STATISTICS,
