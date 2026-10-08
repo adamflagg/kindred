@@ -24,7 +24,13 @@ vi.mock('../shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: ({ surface }: { surface: string }) => <p>{`Notes for ${surface}`}</p>,
 }))
 // The family rows have their own tests (LedgerFamilies.test.tsx, LedgerLines.test.tsx).
-vi.mock('./LedgerFamilies', () => ({ LedgerFamilies: () => <div>Family rows</div> }))
+vi.mock('./LedgerFamilies', () => ({
+  LedgerFamilies: ({ unclassified }: { unclassified?: number | null }) => (
+    <div>
+      Family rows<span data-testid="unclassified-prop">{String(unclassified)}</span>
+    </div>
+  ),
+}))
 
 let summary: ApiAidSummary = SUMMARY
 let fetchSpy: MockInstance<typeof fetch>
@@ -96,6 +102,13 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     expect(await screen.findByRole('columnheader', { name: 'Unclassified' })).toBeInTheDocument()
     expect(within(rowOf('All programs')).getByText('$734,900')).toBeInTheDocument()
+  })
+
+  it("hands the family rows the summary's unclassified figure, never a sum", async () => {
+    summary = SUMMARY_UNCLASSIFIED
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findByRole('columnheader', { name: 'Unclassified' })
+    expect(screen.getByTestId('unclassified-prop')).toHaveTextContent('400')
   })
 
   it('on a past day: says the day, the split line and the axis note; folds', async () => {
