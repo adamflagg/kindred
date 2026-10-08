@@ -10,4 +10,4 @@ def test_funding_sources_show_the_three_facts_note() -> None:
     note = BY_KEY["source_facts"]
     assert (note.term, note.spec) == ("Three facts", "§5.7")
     assert "who paid" in note.text
-    assert "never funder_type" in note.text
+    assert "a flag set on each source" in note.text

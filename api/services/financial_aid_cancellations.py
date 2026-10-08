@@ -82,7 +82,7 @@ def parse_reason(value: Any) -> CancelReason | None:
     for reason in CANCEL_REASONS:
         if reason == text:
             return reason
-    raise ValueError(f"{text!r} is not one of D141's cancel reasons")
+    raise ValueError(f"{text!r} is not one of the cancel reasons")
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from api.schemas.financial_aid_decisions import AsOfAxis
+from api.schemas.source_family_labels import SourceFamilyLabelled
 
 LedgerLevelOut = Literal["household", "left", "no_request", "program_mismatch"]
 LedgerTotalOut = Literal["in_campminder_net", "outside_grants"]
@@ -41,7 +42,7 @@ class MoneyLedgerOut(BaseModel):
     outside_grants: float  # the rows' sum
 
 
-class LedgerLineOut(BaseModel):
+class LedgerLineOut(SourceFamilyLabelled):
     transaction_cm_id: int
     household_cm_id: int  # the household CampMinder posted it to
     family_household_cm_id: int  # the family row it sits in (that row's household_cm_id)

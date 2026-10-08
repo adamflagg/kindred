@@ -212,7 +212,7 @@ def _line(p: Any) -> GrantLine:
         person_cm_id=int(p.person_cm_id or 0),
         amount=aid_dollars(p.amount),
         source_key=str(p.effective_source_key or p.source_key),
-        source_family=str(p.source_family or ""),
+        source_family=str(p.source_family or "unclassified"),
         funder_type=str(p.funder_type or ""),
         post_date=str(p.post_date or ""),
         is_reversed=bool(p.is_reversed),
