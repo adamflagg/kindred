@@ -23,6 +23,12 @@ vi.mock('../../components/camperships/reports/ProgramsTab', () => ({
 vi.mock('../../components/camperships/reports/YearOverYear', () => ({
   YearOverYear: () => <div>Year over year body</div>,
 }))
+vi.mock('../../components/camperships/reports/DevelopmentReport', () => ({
+  DevelopmentReport: () => <div>Development report body</div>,
+}))
+vi.mock('../../components/camperships/reports/ZipCodes', () => ({
+  ZipCodes: () => <div>ZIP codes body</div>,
+}))
 
 const FINANCE = ['financial_aid.view', 'financial_aid.casework', 'financial_aid.rules']
 const DEVELOPMENT = [
@@ -108,6 +114,14 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     }
     expect(screen.queryByRole('link', { name: 'Funding sources' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Grantors' })).toBeNull()
+  })
+
+  it('shows development the report on its own page, and ZIP codes as a view (D90)', () => {
+    granted = DEVELOPMENT
+    renderAt('/aid/reports/development')
+    expect(screen.getByText('Development report body')).toBeInTheDocument()
+    renderAt('/aid/reports/development/zip')
+    expect(screen.getByText('ZIP codes body')).toBeInTheDocument()
   })
 
   it('sends an unknown or held view back to its tab', () => {

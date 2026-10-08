@@ -3,10 +3,12 @@ import { useMemo } from 'react'
 import { Navigate, useParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
+import { DevelopmentReport } from '../../components/camperships/reports/DevelopmentReport'
 import { ProgramsTab } from '../../components/camperships/reports/ProgramsTab'
 import { ReportViewNav } from '../../components/camperships/reports/ReportViewNav'
 import { StatisticsTab } from '../../components/camperships/reports/StatisticsTab'
 import { YearOverYear } from '../../components/camperships/reports/YearOverYear'
+import { ZipCodes } from '../../components/camperships/reports/ZipCodes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab, resolveAidView } from '../../config/aidNav'
@@ -19,15 +21,6 @@ const REPORTS = aidSection('reports')
 
 /** The views a past date can't reach: each reads today only (their reads take no as-of). */
 const LIVE_ONLY = new Set(['year-over-year', 'report', 'zip'])
-
-/** Development's views before slice 4's second PR lands: one honest line, as AidSectionPage says it. */
-function NotYet({ what }: { what: string }) {
-  return (
-    <div className="card-lodge text-muted-foreground p-6 text-sm">
-      Reports › {what} is built in the next part of slice 4.
-    </div>
-  )
-}
 
 /**
  * Reports (spec §9; D63–D70; statistics-v2.html, development-v2.html, zip-codes.html): Statistics ·
@@ -83,8 +76,8 @@ export default function AidReportsPage() {
       {at === 'this-season' && <StatisticsTab view={view} />}
       {at === 'year-over-year' && <YearOverYear view={view} />}
       {at === 'programs' && <ProgramsTab view={view} />}
-      {at === 'report' && <NotYet what="Development" />}
-      {at === 'zip' && <NotYet what="Development › ZIP codes" />}
+      {at === 'report' && <DevelopmentReport view={view} />}
+      {at === 'zip' && <ZipCodes view={view} />}
     </div>
   )
 }
