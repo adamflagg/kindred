@@ -107,7 +107,7 @@ GROUP_LABELS: Final[dict[Reason, str]] = {
     "program_mismatch": "The description names a program this camper isn't in",
 }
 
-PENDING_RECLASS: Final = "its reclassification waits for tonight's ledger sync"
+PENDING_RECLASS: Final = "its reclassification waits for the next ledger sync"
 
 
 class ToPlaceStore(Protocol):

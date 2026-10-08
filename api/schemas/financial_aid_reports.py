@@ -396,7 +396,7 @@ class DevelopmentResponse(BaseModel):
 # --- Funding sources (§9.4, D88, D100; Part C) --------------------------------------------------------------------
 
 
-GROUP_CHANGE_WARNING: Final = "Changing this re-places household-level lines on tonight's sync."  # D43, D159
+GROUP_CHANGE_WARNING: Final = "Changing this re-places household-level lines on the next ledger sync."  # D43, D159
 
 
 class FundingSourceOut(BaseModel):
@@ -407,7 +407,7 @@ class FundingSourceOut(BaseModel):
     name: str
     funder_type: Literal["outside", "incentive", "camp", "unknown"]
     editable: bool = True  # False: the camp's own aid or an unclassified source (D159, N3: listed read-only)
-    families_changed: bool = False  # a save's answer: the families changed, so tonight's sync re-places (D43)
+    families_changed: bool = False  # a save's answer: the families changed, so the next ledger sync re-places (D43)
     incentive: bool
     group: str | None  # the season's pool its program families fund; None: none set, or several
     group_label: str
