@@ -364,4 +364,11 @@ describe('the tier grid names its columns by group (spec §9.2, open item 5)', (
     render(<TierGridTable {...tableProps} label={groupWords([], NAMES)} />)
     expect(screen.getByRole('columnheader', { name: /Summer/ })).toBeInTheDocument()
   })
+
+  it('borrows a same-key program label for a class no group pairs with (F7 under F2)', () => {
+    const names = { ...NAMES, programs: { summer: 'Camp' }, pools: { summer: 'Weekends' } }
+    render(<TierGridTable {...tableProps} label={groupWords([], names)} />)
+    expect(screen.getByRole('columnheader', { name: /Camp/ })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: /Summer/ })).not.toBeInTheDocument()
+  })
 })
