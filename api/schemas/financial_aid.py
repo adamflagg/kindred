@@ -338,9 +338,9 @@ class AidSourceUpdate(BaseModel):
     @model_validator(mode="after")
     def _budget(self) -> AidSourceUpdate:
         if self.counts_toward_budget and self.source_family != "camp_fa":
-            raise ValueError("only the camp's own aid (camp_fa) may count toward the budget")
+            raise ValueError("only the camp's own financial aid may count toward the budget")
         if self.counts_toward_budget and not self.counts_as_aid:
-            raise ValueError("counts_toward_budget requires counts_as_aid")
+            raise ValueError("a source that counts toward the budget must also count as aid")
         return self
 
 
@@ -413,7 +413,7 @@ class OverrideBulkLoad(BaseModel):
     def _unique_transactions(self) -> OverrideBulkLoad:
         ids = [r.transaction_cm_id for r in self.rows]
         if len(ids) != len(set(ids)):
-            raise ValueError("each transaction_cm_id may appear once per load")
+            raise ValueError("each CampMinder line may appear once per load")
         return self
 
 

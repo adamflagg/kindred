@@ -45,13 +45,13 @@ class GrantorFields(BaseModel):
     @model_validator(mode="after")
     def _canteen_needs_full_coverage(self) -> GrantorFields:
         if self.covers_canteen != "unknown" and not self.full_coverage:
-            raise ValueError("covers_canteen is recorded only for a full-coverage grantor")
+            raise ValueError("whether it covers canteen is recorded only for a full-coverage grantor")
         return self
 
     @model_validator(mode="after")
     def _pays_after_needs_full_coverage(self) -> GrantorFields:
         if self.pays_after_camp_aid and not self.full_coverage:
-            raise ValueError("pays_after_camp_aid is recorded only for a full-coverage grantor")
+            raise ValueError("paying after camp aid is recorded only for a full-coverage grantor")
         return self
 
 
@@ -278,7 +278,7 @@ class PlaceGrantsIn(BaseModel):
     def _each_line_once(self) -> PlaceGrantsIn:
         ids = [p.transaction_cm_id for p in self.placements]
         if len(ids) != len(set(ids)):
-            raise ValueError("each transaction_cm_id may appear once per placement")
+            raise ValueError("each CampMinder line may appear once per placement")
         return self
 
 
