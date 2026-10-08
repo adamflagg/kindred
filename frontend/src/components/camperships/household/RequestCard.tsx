@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { ExternalLink } from 'lucide-react'
@@ -10,6 +11,8 @@ import type { AidView } from '../kit/asOf'
 import { Money } from '../kit/MoneyText'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { ConfirmationState, HouseholdChip, StatusPill } from '../kit/Pills'
+import { toPlaceHref } from '../money/moneyTabs'
+import { TO_PLACE_STEP } from '../requests/attention'
 import { requestStage } from '../requests/stage'
 import { DecisionPanel } from './DecisionPanel'
 import {
@@ -29,7 +32,7 @@ import {
 } from './householdModel'
 import { HouseholdLabelText } from './HouseholdLabel'
 import { staffNames, whoWords } from './historyWords'
-import { HH_AMBER_NOTE, HH_CARD, HH_LINK_CM, HH_NOTE } from './householdStyles'
+import { HH_AMBER_NOTE, HH_CARD, HH_LINK, HH_LINK_CM, HH_NOTE } from './householdStyles'
 import { ReceiptDetailsButton, ReceiptVersions } from './ReceiptVersions'
 import { useReceiptDetails } from './useReceiptDetails'
 
@@ -291,6 +294,12 @@ export function RequestCard({
         >
           <AttentionChip item={{ level: 'note', pill: money.label, fact: money.message }} />
           <span>{money.message}</span>
+          {/* Ruling C (owner 10-06): family-level money is attached in To place, this family's lines. */}
+          {money.code === 'family_level' && (
+            <Link to={toPlaceHref(view, row.household_cm_id)} className={HH_LINK}>
+              {`${TO_PLACE_STEP.label} ›`}
+            </Link>
+          )}
         </p>
       ))}
       {lines.length > 0 && (

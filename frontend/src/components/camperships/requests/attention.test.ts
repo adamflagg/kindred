@@ -6,6 +6,7 @@ import {
   codeWords,
   daysBetween,
   OPEN_REQUEST,
+  TO_PLACE_STEP,
   waitingSince,
 } from './attention'
 import {
@@ -534,6 +535,25 @@ describe('Not reconciled: money with no Posted tick (#2996)', () => {
       ],
       queues: ['not_reconciled'],
     })
-    expect(attentionFor(toPlace, 'not_reconciled', TODAY)?.next).toBeNull()
+    expect(attentionFor(toPlace, 'not_reconciled', TODAY)?.next).toEqual(TO_PLACE_STEP)
+  })
+})
+
+// Owner ruling C (10-06): "'Place It in Money › To Place ›' on the grid pill and the household page".
+describe('Not reconciled: family-level money goes to To place (ruling C)', () => {
+  const money = (code: 'family_level' | 'decided_zero') =>
+    gridRow({
+      unticked: [
+        { round: 1, code, label: 'Money to place', message: 'A sentence.', mark_posted: false },
+      ],
+      queues: ['not_reconciled'],
+    })
+
+  it('steps "Money to place" to To place, in title case, and no other unchecked money', () => {
+    expect(TO_PLACE_STEP).toEqual({ kind: 'toPlace', label: 'Place It in Money › To Place' })
+    expect(attentionFor(money('family_level'), 'not_reconciled', TODAY)?.next).toEqual(
+      TO_PLACE_STEP
+    )
+    expect(attentionFor(money('decided_zero'), 'not_reconciled', TODAY)?.next).toBeNull()
   })
 })

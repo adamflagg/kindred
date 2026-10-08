@@ -9,6 +9,7 @@ import type { AidRowNav } from '../../components/camperships/kit/AidTable'
 import { campToday } from '../../components/camperships/kit/dates'
 import type { EditorSave } from '../../components/camperships/kit/RequestEditor'
 import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
+import { toPlaceHref } from '../../components/camperships/money/moneyTabs'
 import { BulkBar, type TickResult } from '../../components/camperships/requests/BulkBar'
 import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
@@ -391,6 +392,8 @@ export default function AidRequestsPage() {
           ...(sort !== null ? { sort } : {}),
           ...(group !== null ? { group } : {}),
         }),
+      // Ruling C: "Money to place" opens To place, filtered to the family (`?household=`).
+      toPlace: (r: ApiAidGridRow) => toPlaceHref(viewState, r.household_cm_id),
       open: (r: ApiAidGridRow, href: string) => {
         // Back lands on this row (§3.5). With the editor open, what is typed is saved first, and
         // every save in flight has landed (Decision 4; C1). The walk highlights the row through

@@ -556,6 +556,38 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
       expect(pill.closest('p')).toHaveTextContent(`Short in CM${message}`)
     })
 
+    // Owner ruling C (10-06): "Money to place" links to To place, filtered to the family.
+    it('links "Money to place" to To place for the family, and no other unchecked money', () => {
+      const message = 'CampMinder holds $500 for the family that no request explains.'
+      const { unmount } = renderCard(
+        householdRequest({
+          ...ROW_EMMA,
+          unticked: [
+            {
+              round: 1,
+              code: 'family_level',
+              message,
+              mark_posted: false,
+              label: 'Money to place',
+            },
+          ],
+        })
+      )
+      const link = screen.getByRole('link', { name: 'Place It in Money › To Place ›' })
+      expect(link).toHaveAttribute('href', '/aid/money/to-place?household=1000001&year=2027')
+      expect(link.closest('p')).toHaveTextContent(`Money to place${message}`)
+      unmount()
+      renderCard(
+        householdRequest({
+          ...ROW_EMMA,
+          unticked: [
+            { round: 1, code: 'short_posting', message, mark_posted: true, label: 'Short in CM' },
+          ],
+        })
+      )
+      expect(screen.queryByRole('link', { name: /To Place/ })).toBeNull()
+    })
+
     // D12, D13: the mock's share-table header and money-line separator.
     it('heads the share table "Confirmation", and separates Decided and Posted with a "·"', () => {
       const { unmount } = renderCard(PAGE.requests[1])
