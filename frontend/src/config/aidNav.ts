@@ -31,6 +31,16 @@ export interface AidSection {
 const VIEW: AidAccess = { anyOf: [Permission.FINANCIAL_AID_VIEW] }
 const RULES: AidAccess = { anyOf: [Permission.FINANCIAL_AID_RULES] }
 const OPEN: AidAccess = { anyOf: CAMPERSHIPS_OPEN_PERMISSIONS }
+/**
+ * Owner 10-06 (rulings:676, amending S3-4 B): finance AND development add, edit and retire grantors
+ * inside Grants › Grantors. Development holds `grantors` and `summary` but not `view`, so Grants opens
+ * for either, and its one tab for them is Grantors; the other three stay `view`.
+ */
+export const GRANTS_OPEN_PERMISSIONS = [
+  Permission.FINANCIAL_AID_VIEW,
+  Permission.FINANCIAL_AID_GRANTORS,
+] as const
+const VIEW_OR_GRANTORS: AidAccess = { anyOf: GRANTS_OPEN_PERMISSIONS }
 
 export const AID_SECTIONS: readonly AidSection[] = [
   {
@@ -53,12 +63,12 @@ export const AID_SECTIONS: readonly AidSection[] = [
     key: 'grants',
     label: 'Grants',
     path: '/aid/grants',
-    access: VIEW,
+    access: VIEW_OR_GRANTORS,
     tabs: [
       { slug: 'register', label: 'Register', access: VIEW },
       { slug: 'needs-attention', label: 'Needs attention', access: VIEW },
       { slug: 'expected', label: 'Expected', access: VIEW },
-      { slug: 'grantors', label: 'Grantors', access: VIEW },
+      { slug: 'grantors', label: 'Grantors', access: VIEW_OR_GRANTORS },
     ],
     builtIn: 'slice 3 (Register and "needs a camper" by February)',
   },

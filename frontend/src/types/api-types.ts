@@ -175,8 +175,11 @@ import type {
   FundingSourceIn,
   FundingSourceOut,
   FundingSourcesResponse,
+  GrantorCreate,
   GrantorDescription,
   GrantorOut,
+  GrantorRetireIn,
+  GrantorSave,
   GrantorSeasonOut,
   GrantorsResponse,
   SourceChangeOut,
@@ -515,3 +518,8 @@ export type ApiAidPlaceGrantsOut = PlaceGrantsOut
 export type ApiAidCommitmentIn = CommitmentIn
 export type ApiAidCommitment = CommitmentOut
 export type ApiAidWithdrawIn = WithdrawIn
+
+/** Grants › Grantors' writes (`grantors`; D160; owner 10-06, rulings:676). Each mirrors its Python model. */
+export type ApiAidGrantorCreate = GrantorCreate
+export type ApiAidGrantorSave = GrantorSave
+export type ApiAidGrantorRetireIn = GrantorRetireIn

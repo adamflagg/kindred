@@ -9,13 +9,13 @@ import { describe, expect, it } from 'vitest'
 
 const appSource = readFileSync(resolve(__dirname, '../App.tsx'), 'utf-8')
 
-type Guard = 'view' | 'open'
+type Guard = 'view' | 'open' | 'viewOrGrantors'
 
 // The route (relative to /aid) and the guard its surface demands (config/aidNav.ts).
 const ROUTES: Record<string, Guard> = {
   index: 'open',
   requests: 'view',
-  'grants/:tab?': 'view',
+  'grants/:tab?': 'viewOrGrantors',
   'money/:tab?': 'view',
   'season/:tab?': 'view',
   'reports/:tab?': 'open',
@@ -25,6 +25,7 @@ const ROUTES: Record<string, Guard> = {
 const GUARD_TEXT: Record<Guard, string> = {
   view: 'permission={Permission.FINANCIAL_AID_VIEW}',
   open: 'anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}',
+  viewOrGrantors: 'anyOf={[...GRANTS_OPEN_PERMISSIONS]}',
 }
 
 function aidBlock(): string {

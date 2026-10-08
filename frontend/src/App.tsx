@@ -16,6 +16,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
 import { Permission } from './constants/permissions'
+import { GRANTS_OPEN_PERMISSIONS } from './config/aidNav'
 import { CAMPERSHIPS_OPEN_PERMISSIONS } from './config/programAccess'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './contexts/AuthContext'
@@ -650,7 +651,7 @@ function App() {
                             <Route
                               path="grants/:tab?"
                               element={
-                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                <RequirePermission anyOf={[...GRANTS_OPEN_PERMISSIONS]}>
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidGrantsPage />

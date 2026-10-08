@@ -70,6 +70,10 @@ import type {
   ApiAidFundingSource,
   ApiAidFundingSourceIn,
   ApiAidFundingSources,
+  ApiAidGrantor,
+  ApiAidGrantorCreate,
+  ApiAidGrantorRetireIn,
+  ApiAidGrantorSave,
   ApiAidGrantors,
   ApiAidSourceGrantorIn,
   ApiAidSourceRow,
@@ -1227,5 +1231,64 @@ export function withdrawAidCommitment(
     `${BASE}/grants/${String(year)}/commitments/${commitmentId}/withdraw`,
     body,
     "Couldn't withdraw the commitment"
+  )
+}
+
+/** Create a grantor (`grantors`; D160), with a note. 409 when the key is taken (or retired). */
+export function createAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  body: ApiAidGrantorCreate
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grantors`,
+    body,
+    "Couldn't create the grantor"
+  )
+}
+
+/** Save a grantor whole, with a note (the route replaces the record; the key never changes). */
+export function saveAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  key: string,
+  body: ApiAidGrantorSave
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/grantors/${key}`,
+    body,
+    "Couldn't save the grantor"
+  )
+}
+
+/** Retire a grantor, with a reason. 409 while a description maps to it or an open grant names it. */
+export function retireAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  key: string,
+  body: ApiAidGrantorRetireIn
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grantors/${key}/retire`,
+    body,
+    "Couldn't retire the grantor"
+  )
+}
+
+/** Unretire a grantor, with a reason. 409 when it isn't retired. */
+export function unretireAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  key: string,
+  body: ApiAidGrantorRetireIn
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grantors/${key}/unretire`,
+    body,
+    "Couldn't unretire the grantor"
   )
 }

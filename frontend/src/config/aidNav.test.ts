@@ -125,3 +125,50 @@ describe('resolveAidTab (§3.6; D76)', () => {
     }
   })
 })
+
+describe('Grants for development (owner 10-06, rulings:676: finance and development edit grantors in Grants)', () => {
+  // main spec §14.2's development role: summary, funding_sources and grantors; no view.
+  const DEVELOPMENT_GRANTORS = holding(
+    'financial_aid.summary',
+    'financial_aid.funding_sources',
+    'financial_aid.grantors'
+  )
+  const grants = aidSection('grants')
+
+  it('shows development Grants beside Reports, and only its Grantors tab', () => {
+    expect(labels(visibleSections(DEVELOPMENT_GRANTORS))).toEqual(['Grants', 'Reports'])
+    expect(labels(visibleTabs(grants, DEVELOPMENT_GRANTORS))).toEqual(['Grantors'])
+  })
+
+  it('opens a bare Grants on Grantors for development, and refuses the other three tabs', () => {
+    expect(resolveAidTab(grants, undefined, DEVELOPMENT_GRANTORS)).toMatchObject({
+      kind: 'first',
+      tab: { slug: 'grantors' },
+    })
+    for (const slug of ['register', 'needs-attention', 'expected']) {
+      expect(resolveAidTab(grants, slug, DEVELOPMENT_GRANTORS)).toEqual({ kind: 'denied' })
+    }
+    expect(resolveAidTab(grants, 'grantors', DEVELOPMENT_GRANTORS)).toMatchObject({
+      kind: 'show',
+      tab: { slug: 'grantors' },
+    })
+  })
+
+  it('keeps the Register first for view holders, every tab theirs', () => {
+    expect(resolveAidTab(grants, undefined, REGISTRAR)).toMatchObject({
+      kind: 'first',
+      tab: { slug: 'register' },
+    })
+    expect(labels(visibleTabs(grants, REGISTRAR))).toEqual([
+      'Register',
+      'Needs attention',
+      'Expected',
+      'Grantors',
+    ])
+  })
+
+  it('still sends development home to Reports › Development, and a summary-only user sees no Grants', () => {
+    expect(aidHomePath(DEVELOPMENT_GRANTORS)).toBe('/aid/reports/development')
+    expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Reports'])
+  })
+})
