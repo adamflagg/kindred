@@ -69,6 +69,18 @@ describe('AidMoneyPage (spec §8.1; D62)', () => {
     )
   })
 
+  it("says what each tab is for, in the mock's words (P-1)", () => {
+    renderAt('/aid/money/to-place')
+    expect(
+      screen.getByText(
+        'CampMinder aid lines that no single request explains. Attach each one to the right request.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/^Also raised by the ledger, worked where the request is:/)
+    ).toBeInTheDocument()
+  })
+
   it('says To place shows today when the link carries a past date, and keeps the pill', () => {
     renderAt('/aid/money/to-place?as_of=2027-05-01')
     expect(

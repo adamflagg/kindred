@@ -8,6 +8,7 @@ import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { formatMoney } from '../kit/money'
+import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { LeftLines } from './LeftLines'
 import { ToPlaceOpenRow, type LineAccess } from './ToPlaceOpenRow'
 import { ToPlaceTable } from './ToPlaceTable'
@@ -66,46 +67,50 @@ export function ToPlaceTab({ view }: { view: AidView }) {
   )
 
   return (
-    <QueryGuard
-      isLoading={toPlace.isLoading}
-      // Owner ruling Group 5: a failed background refetch keeps what loaded.
-      error={toPlace.data ? null : toPlace.error}
-      data={toPlace.data}
-      label="To place"
-    >
-      {(data) =>
-        data.skipped ? (
-          <div className="card-lodge text-muted-foreground p-6 text-sm">
-            Nothing to place: {data.skipped}.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {shown?.tone === 'done' && <p className={DONE_NOTE}>✓ {shown.words}</p>}
-            {shown?.tone === 'refused' && <p className={AMBER_NOTE}>{shown.words}</p>}
-            <p className="text-sm">
-              <span className="font-medium">
-                {`${String(data.open_count)} ${data.open_count === 1 ? 'line' : 'lines'} open · ${formatMoney(data.open_total)}`}
-              </span>{' '}
-              <span className="text-muted-foreground text-xs">
-                Click a line to see what it could belong to and what Confirm does.
-              </span>
-            </p>
-            <ToPlaceTable
-              data={data}
-              csvFilename={toPlaceCsvName(data.year, null)}
-              renderRow={renderRow}
-            />
-            <LeftLines
-              lines={data.left ?? []}
-              total={data.left_total ?? 0}
-              year={data.year}
-              canWork={access.casework}
-              onDone={onDone}
-              onRefused={onRefused}
-            />
-          </div>
-        )
-      }
-    </QueryGuard>
+    <div className="space-y-3">
+      <QueryGuard
+        isLoading={toPlace.isLoading}
+        // Owner ruling Group 5: a failed background refetch keeps what loaded.
+        error={toPlace.data ? null : toPlace.error}
+        data={toPlace.data}
+        label="To place"
+      >
+        {(data) =>
+          data.skipped ? (
+            <div className="card-lodge text-muted-foreground p-6 text-sm">
+              Nothing to place: {data.skipped}.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {shown?.tone === 'done' && <p className={DONE_NOTE}>✓ {shown.words}</p>}
+              {shown?.tone === 'refused' && <p className={AMBER_NOTE}>{shown.words}</p>}
+              <p className="text-sm">
+                <span className="font-medium">
+                  {`${String(data.open_count)} ${data.open_count === 1 ? 'line' : 'lines'} open · ${formatMoney(data.open_total)}`}
+                </span>{' '}
+                <span className="text-muted-foreground text-xs">
+                  Click a line to see what it could belong to and what Confirm does.
+                </span>
+              </p>
+              <ToPlaceTable
+                data={data}
+                csvFilename={toPlaceCsvName(data.year, null)}
+                renderRow={renderRow}
+              />
+              <LeftLines
+                lines={data.left ?? []}
+                total={data.left_total ?? 0}
+                year={data.year}
+                canWork={access.casework}
+                onDone={onDone}
+                onRefused={onRefused}
+              />
+            </div>
+          )
+        }
+      </QueryGuard>
+      {/* Ruling I: the server's notes, shown so the owner reads them in place (no text changed here). */}
+      <AidDefinitionNotes surface="money-to-place" />
+    </div>
   )
 }

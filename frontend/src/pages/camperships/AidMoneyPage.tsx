@@ -4,6 +4,7 @@ import { Link, Navigate, useParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
+import { isMoneyTab, MONEY_TAB_PURPOSE } from '../../components/camperships/money/moneyTabs'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
 import { REQUEST_VIEWS } from '../../components/camperships/requests/views'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -59,8 +60,9 @@ export default function AidMoneyPage() {
         asOf={asOf}
       />
       <AidTabNav section={MONEY} tabs={resolved.tabs} view={view} />
+      {isMoneyTab(slug) && <p className="text-sm">{MONEY_TAB_PURPOSE[slug]}</p>}
       <p className="text-muted-foreground text-xs">
-        Also from the ledger, worked where the request is:{' '}
+        Also raised by the ledger, worked where the request is:{' '}
         {ELSEWHERE.map((v, i) => (
           <span key={v.key}>
             {i > 0 && ' · '}

@@ -95,6 +95,15 @@ beforeEach(() => {
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
     const path = String(url)
     if ((init?.method ?? 'GET') === 'GET') {
+      // The tab's definition notes (ruling I): one note, so the foot shows it.
+      if (path.includes('/definitions')) {
+        return Promise.resolve(
+          json({
+            surface: 'money-to-place',
+            notes: [{ key: 'posted', n: 1, text: 'Posted: the round’s Posted checkbox…' }],
+          })
+        )
+      }
       if (failReads) return Promise.resolve(json({ detail: 'Server error' }, 500))
       // Each read takes the next answer; the last one repeats.
       const next = reads.length > 1 ? reads.shift() : reads[0]
@@ -683,5 +692,13 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
     // Past the settle time, so a call would have been made by now.
     await new Promise((resolve) => setTimeout(resolve, 400))
     expect(previews()).toHaveLength(0)
+  })
+})
+
+describe('the notes at the foot (ruling I: the owner reads them in place)', () => {
+  it("reads the server's money-to-place notes", async () => {
+    renderTab()
+    expect(await screen.findByText(/Posted: the round’s Posted checkbox/)).toBeInTheDocument()
+    expect(calls().some((c) => c.url.includes('/definitions?surface=money-to-place'))).toBe(true)
   })
 })
