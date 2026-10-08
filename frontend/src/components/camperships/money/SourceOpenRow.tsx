@@ -77,7 +77,9 @@ export function SourceOpenRow({
   const canGrantor = access.grantors && canNameGrantor(row)
   // Anyone who may change something gets the right panel (the test pins it for a grantors-only
   // person on a camp-aid row: an empty "What you can change", no buttons); read-only sees the left alone.
-  const editing = access.rules || access.grantors
+  // R3-12: draw the right panel only when it holds something: an action this person may take, or
+  // the "classify it first" line. A grantors-only person on a camp row sees the left panel alone.
+  const editing = access.rules || canGrantor || (access.grantors && unclassified)
 
   const left = (
     <div data-panel="source" className={editing ? LEFT_PANEL : 'flex min-w-0 flex-col gap-1'}>

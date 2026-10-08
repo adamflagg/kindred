@@ -369,6 +369,7 @@ describe('Money › Sources (§8.1)', () => {
     )
     const field = await screen.findByTestId('grantor-field')
     expect(await within(field).findByRole('option', { name: 'Grantor F (retired)' })).toBeDisabled()
+    expect(within(field).queryByRole('option', { name: 'Grantor F' })).toBeNull()
     await waitFor(() => expect(within(field).getByRole('combobox')).toHaveValue('grantor_f'))
     expect(
       within(field).getByText('Grantor F is retired: pick a grantor in use, or', { exact: false })
@@ -384,7 +385,9 @@ describe('Money › Sources (§8.1)', () => {
     granted = ['financial_aid.view', 'financial_aid.grantors']
     renderTab()
     await openRow('Camp aid · Summer')
-    expect(within(panel('edit')).queryByRole('button')).toBeNull()
+    // Ruled test edit (R3-12, applied after this test was written): a grantors-only person on a
+    // camp-aid row gets no right panel at all, so there is no button to offer.
+    expect(document.querySelector('[data-panel="edit"]')).toBeNull()
     await openRow('Returning-family bonus 2027')
     expect(
       within(panel('edit')).getByText(
