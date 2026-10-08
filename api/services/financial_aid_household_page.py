@@ -563,7 +563,8 @@ def name_households(
 
 @dataclass(frozen=True)
 class HouseholdLabel:
-    """A household as the household page's card names it (`label`), and its muted tie-breaker (`tiebreak`)."""
+    """A household named as the household page names one with no camper on it (`label`), and its muted tie-breaker
+    (`tiebreak`). That is its card's label unless the page has a camper of it and CampMinder names it no adults."""
 
     label: str
     tiebreak: str

@@ -26,8 +26,8 @@ class LedgerFamilyOut(BaseModel):
     # Where a live camp-aid line isn't on a request (D151). None: none waits off a request (every camp-aid line is on
     # one, or it has only outside or reversed lines), or a season before FIRST_TICKED_SEASON (no levels at all).
     level: LedgerLevelOut | None
-    # Ruling D (owner 10-06): the family as the household page's card names its household (household_cm_id), and its
-    # muted tie-breaker: "" unless another row of this response reads the same.
+    # Ruling D (owner 10-06): the family as the household page names its household (household_cm_id; household_labels:
+    # as a household with no camper on the page), and its muted tie-breaker: "" unless another row here reads the same.
     label: str = ""
     label_tiebreak: str = ""
 

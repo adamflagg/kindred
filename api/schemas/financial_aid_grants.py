@@ -176,8 +176,8 @@ class GrantRowOut(BaseModel):
     # which is not a commitment, even one that fulfils a commitment.
     committed_on: str = ""
     commitment_note: str = ""
-    # Ruling D (owner 10-06): on GET /grants/{year}, the family as the household page's card names its household, and
-    # its muted tie-breaker ("" unless another household in the read reads the same). "" on reads that don't name
+    # Ruling D (owner 10-06): on GET /grants/{year}, the family as the household page names its household
+    # (household_labels: as a household with no camper on the page), and its muted tie-breaker ("" unless another household in the read reads the same). "" on reads that don't name
     # families so (Today, the household page) and on a row with no household.
     label: str = ""
     label_tiebreak: str = ""
