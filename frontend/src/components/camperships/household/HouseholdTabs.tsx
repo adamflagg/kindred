@@ -20,6 +20,7 @@ import {
   LinksPanel,
   type CorrectRender,
   type FormStripRender,
+  type HouseholdGrantForms,
 } from './HouseholdSections'
 import { HH_BUTTON, HH_CARD } from './householdStyles'
 import { grantsTabMeta, incomeTabMeta, openFlagCount } from './incomeModel'
@@ -65,6 +66,8 @@ export function HouseholdTabs(props: {
   page: ApiAidHouseholdPage
   correct?: CorrectRender | undefined
   formStrip?: FormStripRender | undefined
+  /** The Grants tab's two grant buttons, for casework (rulings:340). */
+  grantForms?: HouseholdGrantForms | undefined
   programNames: Readonly<Record<string, string>>
   hash: string
 }) {
@@ -76,12 +79,15 @@ function Tabs({
   page,
   correct,
   formStrip,
+  grantForms,
   programNames,
   hash,
 }: {
   page: ApiAidHouseholdPage
   correct?: CorrectRender | undefined
   formStrip?: FormStripRender | undefined
+  /** The Grants tab's two grant buttons, for casework (rulings:340). */
+  grantForms?: HouseholdGrantForms | undefined
   programNames: Readonly<Record<string, string>>
   hash: string
 }) {
@@ -206,7 +212,9 @@ function Tabs({
       {open !== null && (
         <div data-testid="tab-panel" className="border-border mt-2.5 border-t pt-2">
           {open === 'income' && <IncomePanel page={page} correct={correct} formStrip={formStrip} />}
-          {open === 'grants' && <GrantsPostingsPanel page={page} programNames={programNames} />}
+          {open === 'grants' && (
+            <GrantsPostingsPanel page={page} programNames={programNames} grantForms={grantForms} />
+          )}
           {open === 'links' && <LinksPanel page={page} />}
           {open === 'history' && <HistoryPanel page={page} />}
         </div>
