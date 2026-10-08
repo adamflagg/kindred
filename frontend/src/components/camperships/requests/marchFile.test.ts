@@ -7,6 +7,7 @@ import {
   MARCH_HEADERS,
   marchFileName,
   marchFileRows,
+  marchFileResultLine,
   marchFileWords,
   zeroLeftOutWords,
 } from './marchFile'
@@ -91,5 +92,14 @@ describe('the March file', () => {
     )
     expect(zeroLeftOutWords({ ...FILE, zero_left_out: 0 })).toBeNull()
     expect(zeroLeftOutWords({ year: 2027, rows: [] })).toBeNull()
+  })
+
+  it('words the result line: the $0 count when some were left out, else rows and requests', () => {
+    expect(marchFileResultLine(FILE)).toBe(
+      "✓ March File downloaded. 3 Round 1 offers of $0 aren't in the file; they stay in Needs an offer, for a letter and Mark Posted by hand."
+    )
+    expect(marchFileResultLine({ ...FILE, zero_left_out: 0 })).toBe(
+      '✓ March File downloaded: 4 rows · 3 requests.'
+    )
   })
 })

@@ -57,6 +57,17 @@ export function zeroLeftOutWords(file: ApiAidMarchFile): string | null {
     : `${String(n)} Round 1 offers of $0 aren't in the file; they stay in Needs an offer, for a letter and Mark Posted by hand.`
 }
 
-/** P-21: what the file holds, under the button. */
-export const MARCH_FILE_NOTE =
-  'One row per payer share at its Round 1 amount, for every Round 1 offer this season, whatever the filters show. A Family Camp row names the oldest child attending. A Round 1 CampMinder already holds money for is left out, so nothing posts twice. A Round 1 offer of $0 is left out: it needs a letter, not a posting. It changes nothing in the dashboard; a file sent twice double-posts.'
+/** The menu item's hint (P-21): what the file covers, and the one warning. The rest lives in the spec. */
+export const MARCH_FILE_HINT =
+  'Every Round 1 offer, not only this list · send it once; twice double-posts'
+
+/**
+ * The result line after a download (owner, 10-08: the count shows when clicked): the $0 count and where
+ * those offers stay when some were left out; otherwise what the file holds, for checking against the screen.
+ */
+export function marchFileResultLine(file: ApiAidMarchFile): string {
+  const zero = zeroLeftOutWords(file)
+  return zero === null
+    ? `✓ March File downloaded: ${marchFileWords(file)}.`
+    : `✓ March File downloaded. ${zero}`
+}

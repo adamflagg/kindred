@@ -1,4 +1,4 @@
-import { Download, Search, type LucideIcon } from 'lucide-react'
+import { ChevronDown, Download, Search, type LucideIcon } from 'lucide-react'
 import {
   Fragment,
   useCallback,
@@ -174,11 +174,13 @@ export interface AidTableProps<Row> {
    */
   readonly toolbarAfterGrouping?: ReactNode
   /**
-   * Controls drawn right after Download CSV, at the toolbar line's right end with it (the March file
-   * beside the Requests grid's CSV: slice 3 review item 28). A child that should sit on a line of its
-   * own under the toolbar (a note) takes `basis-full`.
+   * Extra items for Download CSV's menu (slice 3 rework R1: the March file). When set, Download CSV becomes
+   * a split button: the main part downloads as ever, the caret opens a menu holding Download CSV (hint "This
+   * list, as filtered"), a rule, then these. Esc and an outside click close it; a click inside closes it.
    */
-  readonly toolbarTrail?: ReactNode
+  readonly csvMenu?: ReactNode
+  /** A status line drawn under the toolbar (the March file's result); nothing is drawn when undefined. */
+  readonly toolbarStatus?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
   readonly searchPlaceholder?: string | undefined
   readonly searchIcon?: LucideIcon | undefined
@@ -261,7 +263,8 @@ export function AidTable<Row>({
   arrowKeys = false,
   toolbarLead,
   toolbarAfterGrouping,
-  toolbarTrail,
+  csvMenu,
+  toolbarStatus,
   searchPlaceholder = 'Search names or CM IDs',
   searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
@@ -478,6 +481,25 @@ export function AidTable<Row>({
   // resize and when anything above it changes height; the held header and totals' heights become
   // the rows' scroll margin, so a row moved into view is never left under them.
   const boxRef = useRef<HTMLDivElement>(null)
+
+  // The CSV split button's menu: Esc and a press outside it close it.
+  const csvMenuRef = useRef<HTMLDivElement>(null)
+  const [csvMenuOpen, setCsvMenuOpen] = useState(false)
+  useEffect(() => {
+    if (!csvMenuOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCsvMenuOpen(false)
+    }
+    const onPress = (event: MouseEvent) => {
+      if (!csvMenuRef.current?.contains(event.target as Node)) setCsvMenuOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onPress)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onPress)
+    }
+  }, [csvMenuOpen])
   const headRef = useRef<HTMLTableSectionElement>(null)
   const footRef = useRef<HTMLTableSectionElement>(null)
   const [margins, setMargins] = useState({ top: 0, bottom: 0 })
@@ -680,13 +702,53 @@ export function AidTable<Row>({
       </div>
     ) : null
 
-  // The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant).
-  const csvButton = (
-    <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
-      <Download className="h-4 w-4" />
-      Download CSV
-    </button>
-  )
+  // The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant); with
+  // `csvMenu`, a split button whose caret opens the menu (slice 3 rework R1, variant A).
+  const csvButton =
+    csvMenu === undefined ? (
+      <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
+        <Download className="h-4 w-4" />
+        Download CSV
+      </button>
+    ) : (
+      <div ref={csvMenuRef} className="relative ml-auto inline-flex">
+        <button type="button" className={`${BUTTON_SECONDARY} rounded-r-none`} onClick={download}>
+          <Download className="h-4 w-4" />
+          Download CSV
+        </button>
+        <button
+          type="button"
+          aria-label="More downloads"
+          className={`${BUTTON_SECONDARY} -ml-px rounded-l-none px-2 ${csvMenuOpen ? 'bg-muted/70' : ''}`}
+          onClick={() => setCsvMenuOpen((open) => !open)}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+        {csvMenuOpen && (
+          <div
+            data-testid="csv-menu"
+            onClick={() => setCsvMenuOpen(false)}
+            className="border-border bg-card text-card-foreground absolute top-full right-0 z-30 mt-1.5 min-w-72 rounded-lg border p-1.5 shadow-lg"
+          >
+            <button
+              type="button"
+              onClick={download}
+              className="hover:bg-muted/60 block w-full rounded-md px-2.5 py-1.5 text-left"
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Download className="text-muted-foreground h-4 w-4" />
+                Download CSV
+              </span>
+              <span className="text-muted-foreground mt-0.5 ml-6 block text-xs">
+                This list, as filtered
+              </span>
+            </button>
+            <hr className="border-border mx-1.5 my-1" />
+            {csvMenu}
+          </div>
+        )}
+      </div>
+    )
   return (
     <div className="space-y-2">
       <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
@@ -705,17 +767,9 @@ export function AidTable<Row>({
           />
         </div>
         {toolbarAfterGrouping === undefined && groupingSwitch}
-        {toolbarTrail === undefined ? (
-          csvButton
-        ) : (
-          // With a trail, the pair wraps as one, right-aligned, its notes under it (basis-full):
-          // alone, the trail fell to the left of the next line when the line ran out (1440px).
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-            {csvButton}
-            {toolbarTrail}
-          </div>
-        )}
+        {csvButton}
       </div>
+      {toolbarStatus}
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
         <table className={TABLE} style={{ minWidth }}>

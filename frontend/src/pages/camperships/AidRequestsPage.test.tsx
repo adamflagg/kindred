@@ -53,9 +53,15 @@ vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   },
 }))
 // Slice 3's March file has its own tests (MarchFileButton.test.tsx); here, only where it shows.
+vi.mock('../../components/camperships/requests/useMarchFile', () => ({
+  useMarchFile: (year: number) => ({ year }),
+}))
 vi.mock('../../components/camperships/requests/MarchFileButton', () => ({
-  MarchFileButton: ({ year }: { year: number }) => (
-    <button type="button">{`March file ${String(year)}`}</button>
+  MarchFileItem: ({ march }: { march: { year: number } }) => (
+    <button type="button">{`March file ${String(march.year)}`}</button>
+  ),
+  MarchFileResult: ({ march }: { march: { year: number } }) => (
+    <p>{`March result ${String(march.year)}`}</p>
   ),
 }))
 
@@ -1498,37 +1504,48 @@ describe('"Money to place" on a Not reconciled row (ruling C)', () => {
   })
 })
 
-describe('the March file beside Download CSV (slice 3 PR 4; P-21; review item 28)', () => {
-  const marchButton = () => screen.queryByRole('button', { name: 'March file 2027' })
+describe('the March file in the Download CSV menu (slice 3 rework R1; variant A)', () => {
+  const marchItem = () => screen.queryByRole('button', { name: 'March file 2027' })
+  const caret = () => screen.queryByRole('button', { name: 'More downloads' })
 
-  it('sits in the grid toolbar, right after Download CSV, on Needs an offer with R1 lit, for casework', () => {
+  it('puts a caret after Download CSV and the March item in its menu, on Needs an offer with R1 lit, for casework', async () => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     renderAt('/aid/requests?view=needs-offer&round=1')
-    const buttons = within(toolbar()).getAllByRole('button')
-    const csv = buttons.findIndex((b) => b.textContent === 'Download CSV')
-    expect(buttons[csv + 1]).toHaveTextContent('March file 2027')
+    expect(marchItem()).toBeNull()
+    await userEvent.click(caret() as HTMLElement)
+    expect(marchItem()).not.toBeNull()
+    expect(within(toolbar()).queryByRole('button', { name: 'March file 2027' })).not.toBeNull()
   })
 
-  it('stays off without the R1 chip, on another round, or on another view', () => {
+  it('is a plain Download CSV without the R1 chip, on another round, or on another view', () => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     const { unmount } = renderAt('/aid/requests?view=needs-offer')
-    expect(marchButton()).toBeNull()
+    expect(caret()).toBeNull()
     unmount()
     const second = renderAt('/aid/requests?view=needs-offer&round=2')
-    expect(marchButton()).toBeNull()
+    expect(caret()).toBeNull()
     second.unmount()
     renderAt('/aid/requests?round=1')
-    expect(marchButton()).toBeNull()
+    expect(caret()).toBeNull()
   })
 
-  it('stays off without casework, and on a past date', () => {
+  it('is a plain Download CSV without casework, and on a past date', () => {
     granted = ['financial_aid.view']
     const { unmount } = renderAt('/aid/requests?view=needs-offer&round=1')
-    expect(marchButton()).toBeNull()
+    expect(caret()).toBeNull()
     unmount()
     granted = ['financial_aid.view', 'financial_aid.casework']
     grid = { data: { ...LIVE, as_of: '2027-03-01' }, isLoading: false, error: null }
     renderAt('/aid/requests?view=needs-offer&round=1&as_of=2027-03-01')
-    expect(marchButton()).toBeNull()
+    expect(caret()).toBeNull()
+  })
+
+  it('draws the result line under the toolbar only where the split control is', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    const { unmount } = renderAt('/aid/requests?view=needs-offer&round=1')
+    expect(screen.getByText('March result 2027')).toBeInTheDocument()
+    unmount()
+    renderAt('/aid/requests?view=needs-offer&round=2')
+    expect(screen.queryByText('March result 2027')).toBeNull()
   })
 })
