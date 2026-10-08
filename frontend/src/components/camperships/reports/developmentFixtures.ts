@@ -7,7 +7,6 @@ import type {
   ApiAidDevelopment,
   ApiAidDevelopmentColumn,
   ApiAidDevelopmentRow,
-  ApiAidReportColumns,
 } from '../../../types/api-types'
 
 const column = (over: Partial<ApiAidDevelopmentColumn>): ApiAidDevelopmentColumn => ({
@@ -191,7 +190,9 @@ export const DEVELOPMENT: ApiAidDevelopment = {
   ],
 }
 
-export const COLUMNS_SAVED: ApiAidReportColumns = {
-  report: 'development',
-  columns: [{ season: 2027, as_of: '2027-03-09' }],
+/** The live read: no on-demand column, so the first three columns only (the fourth is `?column=`'s). */
+export const DEVELOPMENT_LIVE: ApiAidDevelopment = {
+  ...DEVELOPMENT,
+  columns: DEVELOPMENT.columns.slice(0, 3),
+  rows: DEVELOPMENT.rows.map((r) => ({ ...r, values: r.values.slice(0, 3) })),
 }

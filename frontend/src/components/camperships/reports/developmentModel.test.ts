@@ -16,8 +16,7 @@ import {
   SUB_LINES,
   sourceRows,
   unconfirmedWords,
-  withColumn,
-  withoutColumn,
+  columnParam,
 } from './developmentModel'
 
 const texts = (row: { cells: ReadonlyArray<Parameters<typeof reportText>[0]> } | undefined) =>
@@ -170,14 +169,24 @@ describe('the report', () => {
   })
 })
 
-describe('the dated columns (Decision 17)', () => {
-  const MARCH = { season: 2027, as_of: '2027-03-09' }
-  const APRIL = { season: 2027, as_of: '2027-04-12' }
+describe('the on-demand column (D1)', () => {
+  const MARCH = { season: 2027, day: '2027-03-09' }
 
-  it("adds to the list as it stands, keeping a colleague's column, and never twice", () => {
-    expect(withColumn([MARCH], APRIL)).toEqual([MARCH, APRIL])
-    expect(withColumn([MARCH], { ...MARCH })).toEqual([MARCH])
-    expect(withoutColumn([MARCH, APRIL], { ...MARCH })).toEqual([APRIL])
+  it('is addressed as <season>:<day>', () => {
+    expect(columnParam(MARCH)).toBe('2027:2027-03-09')
+  })
+
+  it('tags only the column that matches the one asked for, as not saved', () => {
+    const tag = ' · not saved · gone when you leave'
+    const headers = developmentColumns(DEVELOPMENT, MARCH).map((c) => c.header)
+    expect(headers[4]).toBe(`2027 as of Mar 9 · P${tag}`)
+    expect(headers.filter((h) => h.includes('not saved'))).toHaveLength(1)
+    expect(developmentColumns(DEVELOPMENT).some((c) => c.header.includes('not saved'))).toBe(false)
+    expect(
+      developmentColumns(DEVELOPMENT, { season: 2027, day: '2027-04-12' }).some((c) =>
+        c.header.includes('not saved')
+      )
+    ).toBe(false)
   })
 
   it("offers the report's own P seasons from 2027, newest first (D67)", () => {

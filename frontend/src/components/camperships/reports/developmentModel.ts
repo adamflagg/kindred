@@ -5,7 +5,6 @@
  * columns. Pure; every figure is the server's (D21), and no row is a family (D66).
  */
 import type {
-  ApiAidDatedColumn,
   ApiAidDevelopment,
   ApiAidDevelopmentColumn,
   ApiAidDevelopmentRow,
@@ -36,10 +35,31 @@ export function columnHeader(column: ApiAidDevelopmentColumn): string {
   return `${column.label} · ${column.basis}${column.basis_unconfirmed ? ' · basis unconfirmed' : ''}`
 }
 
-export function developmentColumns(dev: ApiAidDevelopment): ReportColumn[] {
+/** The one on-demand column staff asked for: a season as of a past day (component state only). */
+export interface AsOfPick {
+  readonly season: number
+  readonly day: string
+}
+
+/** The read's `?column=` address: `<season>:<YYYY-MM-DD>`. */
+export const columnParam = (pick: AsOfPick): string => `${String(pick.season)}:${pick.day}`
+
+export const NOT_SAVED_TAG = 'not saved · gone when you leave'
+
+/** The columns; the one asked for as of a day carries the tag, since nothing keeps it. */
+export function developmentColumns(
+  dev: ApiAidDevelopment,
+  shown?: AsOfPick | null
+): ReportColumn[] {
   return [
     { key: 'line', header: 'Line' },
-    ...dev.columns.map((c, index) => ({ key: `column-${String(index)}`, header: columnHeader(c) })),
+    ...dev.columns.map((c, index) => ({
+      key: `column-${String(index)}`,
+      header:
+        shown && c.season === shown.season && c.as_of === shown.day
+          ? `${columnHeader(c)} · ${NOT_SAVED_TAG}`
+          : columnHeader(c),
+    })),
   ]
 }
 
@@ -217,29 +237,11 @@ export function developmentCsvName(view: AidView, table: string): string {
   return aidCsvFilename({ surface: 'reports', view: `development-${table}`, season: view.year })
 }
 
-// --- Dated columns (§9.4 "+ Add a dated column"; D68; Decision 17) ---------------------------
-
-export const sameColumn = (a: ApiAidDatedColumn, b: ApiAidDatedColumn) =>
-  a.season === b.season && a.as_of === b.as_of
-
-/** The list with one more column, unless it is already there. */
-export function withColumn(
-  list: readonly ApiAidDatedColumn[],
-  column: ApiAidDatedColumn
-): ApiAidDatedColumn[] {
-  return list.some((c) => sameColumn(c, column)) ? [...list] : [...list, column]
-}
-
-export function withoutColumn(
-  list: readonly ApiAidDatedColumn[],
-  column: ApiAidDatedColumn
-): ApiAidDatedColumn[] {
-  return list.filter((c) => !sameColumn(c, column))
-}
+// --- The on-demand as-of column (Show As Of a Date…; D68, reworked: not saved) ---------------------------
 
 /** "2027 as of Mar 9, 2027". */
-export function datedWords(column: ApiAidDatedColumn): string {
-  return `${String(column.season)} as of ${formatLongDate(column.as_of)}`
+export function datedWords(column: AsOfPick): string {
+  return `${String(column.season)} as of ${formatLongDate(column.day)}`
 }
 
 /** The first season the dashboard keeps dated records for (D67): the server refuses an earlier one. */

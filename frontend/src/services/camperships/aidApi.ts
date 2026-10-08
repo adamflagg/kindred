@@ -71,8 +71,6 @@ import type {
   ApiAidCommitteeReport,
   ApiAidPrograms,
   ApiAidDevelopment,
-  ApiAidReportColumns,
-  ApiAidReportColumnsIn,
   ApiAidZip,
   ApiAidReportRequestIds,
   ApiAidStatistics,
@@ -1113,43 +1111,21 @@ export function fetchAidReportRequests(
   )
 }
 
-/** Reports › Development (§9.4): every line by group, seasons from 2022 as columns. `view` or `summary` (D65). */
+/**
+ * Reports › Development (§9.4): every line by group, seasons from 2022 as columns. `view` or `summary` (D65).
+ * `column` asks for one on-demand dated column, `<season>:<YYYY-MM-DD>`, returned among `columns`;
+ * the server saves nothing.
+ */
 export function fetchAidDevelopment(
   fetchWithAuth: FetchWithAuth,
-  year: number
+  year: number,
+  column?: string
 ): Promise<ApiAidDevelopment> {
   return fetchAidReport<ApiAidDevelopment>(
     fetchWithAuth,
     `${String(year)}/development`,
-    {},
+    column === undefined ? {} : { column },
     'Failed to load the Development report'
-  )
-}
-
-/** Development's saved dated columns: one shared list per report (D68). `view` or `summary`. */
-export function fetchAidReportColumns(fetchWithAuth: FetchWithAuth): Promise<ApiAidReportColumns> {
-  return fetchAidReport<ApiAidReportColumns>(
-    fetchWithAuth,
-    'development/columns',
-    {},
-    'Failed to load the dated columns'
-  )
-}
-
-/**
- * Replace development's dated columns (the whole list). `view` or `summary`; 422 for a season before
- * 2027 or a day not yet past (the server's sentence).
- */
-export function saveAidReportColumns(
-  fetchWithAuth: FetchWithAuth,
-  body: ApiAidReportColumnsIn
-): Promise<ApiAidReportColumns> {
-  return send<ApiAidReportColumns>(
-    fetchWithAuth,
-    'PUT',
-    `${BASE}/reports/development/columns`,
-    body,
-    "Couldn't save the dated columns"
   )
 }
 

@@ -194,14 +194,11 @@ import type {
   StatisticsResponse,
   StatisticsRowOut,
   TierAppealsRowOut,
-  DatedColumn,
   DevelopmentColumnOut,
   DevelopmentGroupOut,
   DevelopmentResponse,
   DevelopmentRowOut,
   DevelopmentSourceOut,
-  ReportColumnsIn,
-  ReportColumnsResponse,
   ZipGroupOut,
   ZipResponse,
   ZipRowOut,
@@ -506,9 +503,6 @@ export type ApiAidDevelopmentColumn = DevelopmentColumnOut
 export type ApiAidDevelopmentRow = DevelopmentRowOut
 export type ApiAidDevelopmentSource = DevelopmentSourceOut
 /** Development's saved dated columns ("+ Add a Dated Column", §9.4; D68). Mirror Python's models. */
-export type ApiAidDatedColumn = DatedColumn
-export type ApiAidReportColumnsIn = ReportColumnsIn
-export type ApiAidReportColumns = ReportColumnsResponse
 
 /**
  * Reports › Development › ZIP codes (spec §9.4; D90; owner ruling C): every camper and every camper

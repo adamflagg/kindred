@@ -1,17 +1,16 @@
 /**
  * Reports › Development › Report through its real hooks (spec §9.4; D65, D68; S4-4; Decisions 16, 17):
- * the table, the rebuild switch's reason, the basis note, and the dated columns' add and remove on
- * a fresh read. Only `fetch` is faked.
+ * the table, the rebuild switch's reason, the basis note, and the on-demand as-of column (not saved,
+ * component state only). Only `fetch` is faked.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import type { ApiAidReportColumns } from '../../../types/api-types'
 import { campToday } from '../kit/dates'
-import { COLUMNS_SAVED, DEVELOPMENT } from './developmentFixtures'
+import { DEVELOPMENT, DEVELOPMENT_LIVE } from './developmentFixtures'
 import { dayBefore } from './developmentModel'
 import { DevelopmentReport } from './DevelopmentReport'
 
@@ -27,25 +26,19 @@ vi.mock('../../../hooks/usePermissions', () => ({
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
-let columnReads: ApiAidReportColumns[] = []
-let putAnswer: () => Response
+let columnAnswer: () => Response
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-06-03T18:00:00Z'))
-  columnReads = [COLUMNS_SAVED]
-  putAnswer = () => json(COLUMNS_SAVED)
-  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+  columnAnswer = () => json(DEVELOPMENT)
+  fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const text = String(url)
-    if (init?.method === 'PUT') return Promise.resolve(putAnswer())
     if (text.includes('/definitions')) return Promise.resolve(json({ surface: 'x', notes: [] }))
-    if (text.includes('/columns')) {
-      const next = columnReads.length > 1 ? columnReads.shift() : columnReads[0]
-      return Promise.resolve(json(next ?? COLUMNS_SAVED))
-    }
-    return Promise.resolve(json(DEVELOPMENT))
+    if (text.includes('column=')) return Promise.resolve(columnAnswer())
+    return Promise.resolve(json(DEVELOPMENT_LIVE))
   })
 })
 afterEach(() => {
@@ -53,12 +46,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+function Where() {
+  const location = useLocation()
+  return <output data-testid="where">{`${location.pathname}${location.search}`}</output>
+}
+
 function renderReport() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/aid/reports/development']}>
         <DevelopmentReport view={VIEW} />
+        <Where />
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -98,54 +97,75 @@ describe('the footnote', () => {
   })
 })
 
-describe('DatedColumns: saved for everyone, on a fresh read (D68; Decision 17)', () => {
-  const APRIL = { season: 2027, as_of: '2027-04-12' }
-  const puts = () =>
-    fetchSpy.mock.calls
-      .filter(([, init]) => init?.method === 'PUT')
-      .map(([, init]) => JSON.parse(init?.body as string) as unknown)
+describe('Show As Of a Date…: one on-demand column, not saved (D1)', () => {
+  const MARCH = '2027-03-09'
+  const calls = () => fetchSpy.mock.calls.map(([url, init]) => [String(url), init?.method ?? 'GET'])
 
-  it("adds a dated column to the list as it now stands, keeping a colleague's (Decision 17)", async () => {
-    const colleague = { season: 2027, as_of: '2027-05-01' }
-    columnReads = [
-      COLUMNS_SAVED,
-      { report: 'development', columns: [...COLUMNS_SAVED.columns, colleague] },
-    ]
-    renderReport()
-    await screen.findByText('2027 as of Mar 9, 2027')
-    await userEvent.click(screen.getByRole('button', { name: '+ Add a Dated Column' }))
-    fireEvent.change(screen.getByLabelText('As of'), { target: { value: APRIL.as_of } })
-    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
-    await waitFor(() =>
-      expect(puts()).toEqual([{ columns: [...COLUMNS_SAVED.columns, colleague, APRIL] }])
-    )
-    expect(await screen.findByText(/2027 as of Apr 12, 2027: added/)).toBeInTheDocument()
-  })
+  async function show(day = MARCH) {
+    await screen.findByRole('table', { name: 'Development report' })
+    await userEvent.click(screen.getByRole('button', { name: 'Show As Of a Date…' }))
+    fireEvent.change(screen.getByLabelText('As of'), { target: { value: day } })
+    await userEvent.click(screen.getByRole('button', { name: 'Show' }))
+  }
 
-  it("shows the server's refusal and keeps the typing", async () => {
-    putAnswer = () => json({ detail: 'A dated column needs a day already past' }, 422)
+  it('opens Season and a date that stops at yesterday (camp time), with Show off until a day is picked', async () => {
     renderReport()
-    await screen.findByText('2027 as of Mar 9, 2027')
-    await userEvent.click(screen.getByRole('button', { name: '+ Add a Dated Column' }))
-    fireEvent.change(screen.getByLabelText('As of'), { target: { value: APRIL.as_of } })
-    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await screen.findByRole('table', { name: 'Development report' })
+    await userEvent.click(screen.getByRole('button', { name: 'Show As Of a Date…' }))
+    const season = screen.getByLabelText('Season')
     expect(
-      await screen.findByText(/Nothing was written: A dated column needs a day already past/)
-    ).toBeInTheDocument()
-    expect(screen.getByLabelText('As of')).toHaveValue(APRIL.as_of)
-  })
-
-  it('offers a past day only: the date box stops at yesterday, camp time (#2967 refuses today)', async () => {
-    renderReport()
-    await screen.findByText('2027 as of Mar 9, 2027')
-    await userEvent.click(screen.getByRole('button', { name: '+ Add a Dated Column' }))
+      within(season)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['2027'])
     expect(screen.getByLabelText('As of')).toHaveAttribute('max', dayBefore(campToday()))
+    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled()
   })
 
-  it('removes a dated column from the list as it now stands', async () => {
+  it('refetches with the column and tags that column “not saved · gone when you leave”', async () => {
     renderReport()
-    await screen.findByText('2027 as of Mar 9, 2027')
+    await show()
+    expect(
+      await screen.findByRole('columnheader', {
+        name: /2027 as of Mar 9 · P · not saved · gone when you leave/,
+      })
+    ).toBeInTheDocument()
+    expect(calls().some(([url]) => url?.includes('column=2027%3A2027-03-09'))).toBe(true)
+    expect(
+      screen.getAllByRole('columnheader').filter((h) => /not saved/.test(h.textContent ?? ''))
+    ).toHaveLength(1)
+  })
+
+  it('Remove drops the column, saves nothing, and puts nothing in the URL', async () => {
+    renderReport()
+    await show()
+    await screen.findByRole('columnheader', { name: /not saved/ })
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/aid\/reports\/development$/)
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
-    await waitFor(() => expect(puts()).toEqual([{ columns: [] }]))
+    await waitFor(() =>
+      expect(screen.queryByRole('columnheader', { name: /not saved/ })).not.toBeInTheDocument()
+    )
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/aid\/reports\/development$/)
+    expect(calls().filter(([, method]) => method !== 'GET')).toEqual([])
+    expect(calls().some(([url]) => url?.includes('/columns'))).toBe(false)
+  })
+
+  it('is gone when the page is left: a fresh mount shows no column', async () => {
+    const first = renderReport()
+    await show()
+    await screen.findByRole('columnheader', { name: /not saved/ })
+    first.unmount()
+    renderReport()
+    await screen.findByRole('table', { name: 'Development report' })
+    expect(screen.queryByRole('columnheader', { name: /not saved/ })).not.toBeInTheDocument()
+  })
+
+  it("shows the server's refusal sentence, in amber, and keeps the typing", async () => {
+    columnAnswer = () => json({ detail: 'A dated column needs a day already past' }, 422)
+    renderReport()
+    await show('2027-06-02')
+    const note = await screen.findByText(/A dated column needs a day already past/)
+    expect(note).toHaveClass('text-amber-700')
+    expect(screen.getByLabelText('As of')).toHaveValue('2027-06-02')
   })
 })
