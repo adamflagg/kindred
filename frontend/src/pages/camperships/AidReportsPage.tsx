@@ -3,8 +3,10 @@ import { useMemo } from 'react'
 import { Navigate, useParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
+import { DevelopmentReport } from '../../components/camperships/reports/DevelopmentReport'
 import { StatisticsTab } from '../../components/camperships/reports/StatisticsTab'
 import { YearOverYear } from '../../components/camperships/reports/YearOverYear'
+import { ZipCodes } from '../../components/camperships/reports/ZipCodes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
@@ -17,15 +19,6 @@ const REPORTS = aidSection('reports')
 
 /** The tabs a past date can't reach: each reads today only (their reads take no as-of). */
 const LIVE_ONLY = new Set(['year-over-year'])
-
-/** Development before slice 4's second PR lands: one honest line, as AidSectionPage says it. */
-function NotYet() {
-  return (
-    <div className="card-lodge text-muted-foreground p-6 text-sm">
-      Reports › Development is built in the next part of slice 4.
-    </div>
-  )
-}
 
 /** The old Programs link: it is Statistics by session now (season and as-of kept). */
 const PROGRAMS_SLUG = 'programs'
@@ -72,7 +65,8 @@ export default function AidReportsPage() {
       )}
       {at === 'statistics' && <StatisticsTab view={view} />}
       {at === 'year-over-year' && <YearOverYear view={view} />}
-      {at === 'development' && <NotYet />}
+      {at === 'development' && <DevelopmentReport view={view} />}
+      {at === 'zip-codes' && <ZipCodes view={view} />}
     </div>
   )
 }

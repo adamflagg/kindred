@@ -20,6 +20,12 @@ vi.mock('../../components/camperships/reports/StatisticsTab', () => ({
 vi.mock('../../components/camperships/reports/YearOverYear', () => ({
   YearOverYear: () => <div>Year over year body</div>,
 }))
+vi.mock('../../components/camperships/reports/DevelopmentReport', () => ({
+  DevelopmentReport: () => <div>Development report body</div>,
+}))
+vi.mock('../../components/camperships/reports/ZipCodes', () => ({
+  ZipCodes: () => <div>ZIP codes body</div>,
+}))
 
 const FINANCE = ['financial_aid.view', 'financial_aid.casework', 'financial_aid.rules']
 const DEVELOPMENT = [
@@ -103,6 +109,12 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/aid/reports/statistics?year=2027&as_of=2027-03-08&rows=session'
     )
+  })
+
+  it('shows development the report on its own tab (D65)', () => {
+    granted = DEVELOPMENT
+    renderAt('/aid/reports/development')
+    expect(screen.getByText('Development report body')).toBeInTheDocument()
   })
 
   it('sends an unknown tab to the first tab', () => {
