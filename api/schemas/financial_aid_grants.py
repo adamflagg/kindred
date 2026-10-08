@@ -13,6 +13,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
+from api.schemas.source_family_labels import SourceFamilyLabelled
+
 GrantorKey = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60, pattern=r"^[a-z][a-z0-9_]*$")
 ]
@@ -70,7 +72,7 @@ class GrantorRetireIn(BaseModel):
     reason: _Note
 
 
-class GrantorDescription(BaseModel):
+class GrantorDescription(SourceFamilyLabelled):
     """One CampMinder description mapped to the grantor, read from aid_sources (D58)."""
 
     source_id: str
@@ -137,7 +139,7 @@ class RequestShareOut(BaseModel):
     round_amount: float | None = None
 
 
-class GrantRowOut(BaseModel):
+class GrantRowOut(SourceFamilyLabelled):
     """One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
     posted. person_cm_id 0 = needs a camper, except camper_basis "household": a household
     program's grant (Family Camp), which needs none; and a line in a household that never applied,

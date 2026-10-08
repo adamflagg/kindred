@@ -554,7 +554,7 @@ class CostOverrideIn(BaseModel):
     @model_validator(mode="after")
     def _code_with_amount(self) -> CostOverrideIn:
         if self.amount is not None and self.reason_code is None:
-            raise ValueError("a cost override needs its reason code (D22)")
+            raise ValueError("a cost override needs its reason code")
         if self.amount is None and self.reason_code is not None:
             raise ValueError("clearing a cost override takes no reason code")
         return self
@@ -580,7 +580,7 @@ class CancellationIn(BaseModel):
     @model_validator(mode="after")
     def _d141(self) -> CancellationIn:
         if self.cancelled and self.reason is None:
-            raise ValueError("a cancellation needs its reason (D141)")
+            raise ValueError("a cancellation needs its reason")
         if self.cancelled and self.reason == "another_reason" and not self.note:
             raise ValueError('"another reason" needs a note')
         if not self.cancelled and self.reason is not None:

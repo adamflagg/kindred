@@ -16,6 +16,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from api.schemas.source_family_labels import SourceFamilyLabelled
+
 ProgramFamily = Literal["summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend", "family_school", "other"]
 # A posting's reporting bucket: its program family, or "ambiguous" (placed on a
 # household or person spanning families), or "unattributed" (no enrollment).
@@ -65,7 +67,7 @@ WhoPaid = Literal["the camp", "another funder"]
 OverrideSource = Literal["sheet_2026_match", "staff"]
 
 
-class AidPostingLine(BaseModel):
+class AidPostingLine(SourceFamilyLabelled):
     """One aid_postings row. source_key is the posting's own description;
     effective_source_key, source_family, funder_type and counts_toward_budget are
     after any per-posting reclassification. A reversed row is history: is_reversed
@@ -123,7 +125,7 @@ class HouseholdDetailResponse(BaseModel):
     fa_requested: FaRequested
 
 
-class SummaryCell(BaseModel):
+class SummaryCell(SourceFamilyLabelled):
     program: str
     program_label: str = ""  # the season's rules label for the program family; "" for a bucket the rules don't name
     source_family: str
@@ -190,7 +192,7 @@ class SummaryResponse(BaseModel):
     camp_aid_levels: list[CampAidLevel] = Field(default_factory=list)
 
 
-class NetAidTotal(BaseModel):
+class NetAidTotal(SourceFamilyLabelled):
     """Net aid dollars for one group of postings, for sub-project 11's
     reconciliation and for as-of reads. posting_household_cm_id is the household
     the postings were posted to (a payer share is checked against its own
@@ -288,7 +290,7 @@ class SourceChangeOut(BaseModel):
     note: str  # the reason logged with it
 
 
-class AidSourceRow(BaseModel):
+class AidSourceRow(SourceFamilyLabelled):
     id: str
     description_key: str
     description: str
