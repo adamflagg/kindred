@@ -63,6 +63,7 @@ const ManageRegistrationPage = lazy(() =>
 )
 const AidHome = lazy(() => import('./pages/camperships/AidHome'))
 const AidSectionPage = lazy(() => import('./pages/camperships/AidSectionPage'))
+const AidReportsPage = lazy(() => import('./pages/camperships/AidReportsPage'))
 const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage'))
 const AidSeasonPage = lazy(() => import('./pages/camperships/AidSeasonPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
@@ -683,12 +684,12 @@ function App() {
                               }
                             />
                             <Route
-                              path="reports/:tab?"
+                              path="reports/:tab?/:view?"
                               element={
                                 <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
-                                      <AidSectionPage section="reports" />
+                                      <AidReportsPage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 </RequirePermission>

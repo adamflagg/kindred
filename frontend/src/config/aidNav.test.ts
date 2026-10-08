@@ -9,9 +9,12 @@ import {
   AID_SECTIONS,
   aidHomePath,
   aidSection,
+  aidViewPath,
   resolveAidTab,
+  resolveAidView,
   visibleSections,
   visibleTabs,
+  type AidTab,
 } from './aidNav'
 
 const holding = (...granted: string[]) => ({ hasPermission: (p: string) => granted.includes(p) })
@@ -123,5 +126,58 @@ describe('resolveAidTab (§3.6; D76)', () => {
       expect(shown.tab?.slug).toBe('rules')
       expect(labels(shown.tabs)).toEqual(['Rounds & budget', 'Rules', 'History'])
     }
+  })
+})
+
+describe("Reports' views (§3.6; S4-2; slice 4 Decision 1)", () => {
+  const reports = aidSection('reports')
+  const tab = (slug: string): AidTab => {
+    const found = reports.tabs.find((t) => t.slug === slug)
+    if (found === undefined) throw new Error(slug)
+    return found
+  }
+
+  it('gives Statistics This season and Year over year, and Development its report and ZIP codes', () => {
+    expect(labels(tab('statistics').views ?? [])).toEqual(['This season', 'Year over year'])
+    expect(labels(tab('development').views ?? [])).toEqual(['Report', 'ZIP codes'])
+  })
+
+  it('offers no held view: Funding sources and Grantors wait for the owner (10-08)', () => {
+    const slugs = (tab('development').views ?? []).map((v) => v.slug)
+    expect(slugs).not.toContain('funding-sources')
+    expect(slugs).not.toContain('grantors')
+    expect(resolveAidView(tab('development'), 'funding-sources', DEVELOPMENT)).toEqual({
+      kind: 'tab',
+    })
+  })
+
+  it("opens a tab's own page on no view, and on its first view's slug", () => {
+    const bare = resolveAidView(tab('statistics'), undefined, REGISTRAR)
+    expect(bare.kind === 'show' && bare.view?.slug).toBe('this-season')
+    const named = resolveAidView(tab('statistics'), 'this-season', REGISTRAR)
+    expect(named.kind === 'show' && named.view?.slug).toBe('this-season')
+  })
+
+  it('sends an unknown view back to its tab', () => {
+    expect(resolveAidView(tab('development'), 'nonsense', DEVELOPMENT)).toEqual({ kind: 'tab' })
+  })
+
+  it('refuses a known view the user may not see, never redirecting them away (D76)', () => {
+    expect(resolveAidView(tab('statistics'), 'year-over-year', DEVELOPMENT)).toEqual({
+      kind: 'denied',
+    })
+  })
+
+  it("shows a summary-only user Development's two views (D65)", () => {
+    const shown = resolveAidView(tab('development'), 'zip', DEVELOPMENT)
+    expect(shown.kind === 'show' && labels(shown.views)).toEqual(['Report', 'ZIP codes'])
+  })
+
+  it("keeps a tab's first view on the tab's own path", () => {
+    const development = tab('development')
+    const [report, zip] = development.views ?? []
+    if (report === undefined || zip === undefined) throw new Error('views')
+    expect(aidViewPath(reports, development, report)).toBe('/aid/reports/development')
+    expect(aidViewPath(reports, development, zip)).toBe('/aid/reports/development/zip')
   })
 })
