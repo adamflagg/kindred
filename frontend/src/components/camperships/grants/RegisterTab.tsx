@@ -1,14 +1,17 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
+import { Permission } from '../../../constants/permissions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
 import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
+import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
 import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
 import {
+  CS_BTN,
   CS_CHIP,
   CS_CHIP_COUNT,
   CS_CHIP_INK,
@@ -24,8 +27,10 @@ import {
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
-import { MARK_TEXT } from '../money/toPlaceStyles'
+import { DONE_NOTE, MARK_TEXT } from '../money/toPlaceStyles'
 import { programLabel } from '../requests/programLabel'
+import { CommitmentForm } from './CommitmentForm'
+import { CommitmentRow } from './CommitmentRow'
 import { RegisterOpenRow } from './RegisterOpenRow'
 import {
   filterRegister,
@@ -73,9 +78,22 @@ type FilterKey = 'show' | 'grantor' | 'program' | 'row'
 export function RegisterTab({ view }: { view: AidView }) {
   const grants = useAidGrants()
   const names = useAidProgramNames()
+  const { hasPermission } = usePermissions()
+  const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
   const [params, setParams] = useSearchParams()
   const filters = readRegisterFilters(params)
   const highlighted = params.get('row')
+  const [recording, setRecording] = useState(false)
+  // The last write's words, until the next (P-26); another season is another page (#2990 F).
+  const [note, setNote] = useState<{ words: string; year: number } | null>(null)
+  const shown = note !== null && note.year === view.year ? note : null
+  const done = useCallback(
+    (words: string) => {
+      setRecording(false)
+      setNote({ words, year: view.year })
+    },
+    [view.year]
+  )
   const setParam = useCallback(
     (name: FilterKey, value: string | null) =>
       setParams(
@@ -215,11 +233,22 @@ export function RegisterTab({ view }: { view: AidView }) {
     [view, needsCamper, names]
   )
 
+  // Keyed by row: a form's typing belongs to its row, and a refetch never resets it.
   const renderDetail = useCallback(
-    (row: ApiAidGrantRow) => (
-      <RegisterOpenRow key={grantKey(row)} row={row} view={view} needsCamper={needsCamper} />
-    ),
-    [view, needsCamper]
+    (row: ApiAidGrantRow) =>
+      row.kind === 'commitment' && canWork ? (
+        <CommitmentRow
+          key={grantKey(row)}
+          row={row}
+          year={view.year}
+          view={view}
+          needsCamper={needsCamper}
+          onDone={done}
+        />
+      ) : (
+        <RegisterOpenRow key={grantKey(row)} row={row} view={view} needsCamper={needsCamper} />
+      ),
+    [view, needsCamper, canWork, done]
   )
 
   return (
@@ -248,6 +277,7 @@ export function RegisterTab({ view }: { view: AidView }) {
         const [all, ...rest] = REGISTER_SHOWS
         return (
           <div className="space-y-3">
+            {shown !== null && <p className={DONE_NOTE}>✓ {shown.words}</p>}
             <div className={CS_STRIP} data-testid="register-chips">
               {all !== undefined && (
                 <div className={CS_STRIP_LENSES}>{chip(all.value, all.label)}</div>
@@ -289,7 +319,19 @@ export function RegisterTab({ view }: { view: AidView }) {
                   ))}
                 </select>
               </label>
+              {canWork && !recording && (
+                <button
+                  type="button"
+                  className={`${CS_BTN} ml-auto`}
+                  onClick={() => setRecording(true)}
+                >
+                  Record a Commitment…
+                </button>
+              )}
             </div>
+            {recording && (
+              <CommitmentForm year={data.year} onCancel={() => setRecording(false)} onDone={done} />
+            )}
             <AidTable
               rows={rows}
               columns={columns}
