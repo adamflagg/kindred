@@ -20,7 +20,14 @@ export const SUMMARY: ApiAidSummary = {
   by_level: { decision: 640180, override: 12400, ambiguous: 9800, novel_level: 100 },
   by_level_basis: 'placements',
   cells: [
-    { program: 'summer', source_family: 'camp_fa', amount: 541200, postings: 612, households: 301 },
+    {
+      program: 'summer',
+      program_label: 'Summer Sessions',
+      source_family: 'camp_fa',
+      amount: 541200,
+      postings: 612,
+      households: 301,
+    },
     {
       program: 'summer',
       source_family: 'other_outside',
@@ -43,6 +50,7 @@ export const SUMMARY: ApiAidSummary = {
   by_program: [
     {
       program: 'ambiguous',
+      program_label: '',
       camp_aid: 9800,
       outside_grants: 0,
       unclassified: 0,
@@ -52,6 +60,7 @@ export const SUMMARY: ApiAidSummary = {
     },
     {
       program: 'family_camp',
+      program_label: 'Family Camp Weekends',
       camp_aid: 48500,
       outside_grants: 16300,
       unclassified: 0,
@@ -61,6 +70,7 @@ export const SUMMARY: ApiAidSummary = {
     },
     {
       program: 'summer',
+      program_label: 'Summer Sessions',
       camp_aid: 541200,
       outside_grants: 98400,
       unclassified: 0,
@@ -70,6 +80,7 @@ export const SUMMARY: ApiAidSummary = {
     },
     {
       program: 'unattributed',
+      program_label: '',
       camp_aid: 0,
       outside_grants: 20300,
       unclassified: 0,
@@ -211,6 +222,7 @@ export const LEDGER_LINES: ApiAidLedgerLines = {
       description: 'Camp aid · Summer',
       source_family: 'camp_fa',
       program: 'summer',
+      program_label: 'Summer Sessions',
       amount: 3620,
       posted_on: '2027-05-14',
       is_reversed: false,
@@ -226,6 +238,7 @@ export const LEDGER_LINES: ApiAidLedgerLines = {
       description: 'Camp aid · Summer',
       source_family: 'camp_fa',
       program: 'summer',
+      program_label: 'Summer Sessions',
       amount: 1420,
       posted_on: '2027-03-01',
       is_reversed: true,

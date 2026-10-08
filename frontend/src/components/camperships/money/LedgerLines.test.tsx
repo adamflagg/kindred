@@ -108,6 +108,23 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
     expect(new Headers(call?.[1]?.headers).get('Authorization')).toBe('Bearer test-jwt')
   })
 
+  it("shows each line's program_label, not the rules' words or a key, and 'Other program' with none", async () => {
+    const [first, second] = LEDGER_LINES.lines
+    if (first === undefined || second === undefined) throw new Error('fixture')
+    lines = {
+      ...LEDGER_LINES,
+      lines: [
+        { ...first, program: 'summer', program_label: 'Session 2' },
+        { ...second, program: 'quest', program_label: '' },
+      ],
+    }
+    renderAt('/aid/money/ledger?lines=in_campminder_net', { year: 2027, asOf: { kind: 'live' } })
+    const panel = await screen.findByTestId('ledger-lines')
+    expect(await within(panel).findByText('Session 2')).toBeInTheDocument()
+    expect(within(panel).getByText('Other program')).toBeInTheDocument()
+    expect(within(panel).queryByText(/Summer Sessions|^Quest$/)).toBeNull()
+  })
+
   it('shows each line, a reversed one struck with its date, and closes', async () => {
     renderAt('/aid/money/ledger?lines=in_campminder_net', { year: 2027, asOf: { kind: 'live' } })
     const panel = await screen.findByTestId('ledger-lines')

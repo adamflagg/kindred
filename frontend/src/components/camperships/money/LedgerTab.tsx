@@ -18,6 +18,7 @@ import {
   pivotRows,
   splitWords,
   summaryCsvName,
+  programLabelsOf,
   summaryProgramWords,
 } from './ledgerModel'
 
@@ -42,17 +43,14 @@ function moneyColumn(
   }
 }
 
-function pivotColumns(
-  data: ApiAidSummary,
-  names: Readonly<Record<string, string>>
-): ReadonlyArray<AidColumn<ApiAidProgramSplit>> {
+function pivotColumns(data: ApiAidSummary): ReadonlyArray<AidColumn<ApiAidProgramSplit>> {
   return [
     {
       key: 'program',
       header: 'Program',
       width: 200,
       pinned: true,
-      value: (r) => summaryProgramWords(r.program, names),
+      value: (r) => summaryProgramWords(r.program, r.program_label),
       searchable: true,
     },
     moneyColumn('camp', 'Camp aid (net)', (r) => r.camp_aid, data.camp_aid ?? 0),
@@ -77,11 +75,12 @@ export function LedgerTab({ view }: { view: AidView }) {
   const past = view.asOf.kind === 'past' ? view.asOf : null
   const data = summary.data
   const rows = useMemo(() => (data ? pivotRows(data, names) : []), [data, names])
-  const columns = useMemo(() => (data ? pivotColumns(data, names) : []), [data, names])
+  const columns = useMemo(() => (data ? pivotColumns(data) : []), [data])
+  const programLabels = useMemo(() => programLabelsOf(data), [data])
 
   return (
     <div className="space-y-3">
-      <LedgerFamilies view={view} unclassified={data?.unclassified} />
+      <LedgerFamilies view={view} unclassified={data?.unclassified} programLabels={programLabels} />
       <section className="space-y-2">
         {/* A div, not an h3: bare headings are styled outside the cascade layers (csType.ts). */}
         <div className={`flex flex-wrap items-baseline gap-2 ${CS_LABEL}`}>

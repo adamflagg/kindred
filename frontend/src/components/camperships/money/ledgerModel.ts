@@ -7,7 +7,6 @@
 import type { ApiAidProgramSplit, ApiAidSummary } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { formatMoney } from '../kit/money'
-import { programLabel } from '../requests/programLabel'
 
 /** The two program buckets the server uses for money no program owns (`program_bucket`). */
 const NO_PROGRAM_WORDS: Readonly<Record<string, string>> = {
@@ -27,9 +26,29 @@ const SHARE_WORDS = {
   not_placed: 'not placed',
 } as const satisfies Record<NonNullable<ApiAidSummary['camp_aid_levels']>[number]['group'], string>
 
-/** A program in words: the rules' label, or the server's no-program bucket. */
-export function summaryProgramWords(program: string, names: Readonly<Record<string, string>>) {
-  return NO_PROGRAM_WORDS[program] ?? programLabel(names, program)
+/** Words for a program the server sent no label for and that is not one of the two buckets. */
+const OTHER_PROGRAM_WORDS = 'Other program'
+
+/**
+ * A program in words (coordinator 10-08): the server's `program_label` (the season's approved
+ * rules' label); with none, the two buckets keep their words and any other key reads "Other
+ * program". Never a key spelled out.
+ */
+export function summaryProgramWords(program: string, label?: string | null): string {
+  if (label !== undefined && label !== null && label !== '') return label
+  return NO_PROGRAM_WORDS[program] ?? OTHER_PROGRAM_WORDS
+}
+
+/** The labels the summary sends, by program key (empty labels skipped). */
+export function programLabelsOf(summary: ApiAidSummary | undefined): Record<string, string> {
+  const labels: Record<string, string> = {}
+  const rows = [...(summary?.by_program ?? []), ...(summary?.cells ?? [])]
+  for (const row of rows) {
+    if (row.program_label !== undefined && row.program_label !== '') {
+      labels[row.program] ??= row.program_label
+    }
+  }
+  return labels
 }
 
 /**

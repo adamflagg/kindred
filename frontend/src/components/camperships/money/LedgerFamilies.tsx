@@ -2,7 +2,6 @@ import { Fragment, useCallback, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { useAidMoneyLedger } from '../../../hooks/camperships/useAidMoneyLedger'
-import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
 import { useAidSources } from '../../../hooks/camperships/useAidSources'
 import type { ApiAidLedgerFamily, ApiAidLedgerTotal } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
@@ -15,7 +14,6 @@ import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
-import { programLabel } from '../requests/programLabel'
 import {
   LEDGER_LEVEL_TONE,
   LEDGER_LEVEL_WORDS,
@@ -29,6 +27,7 @@ import {
   unclassifiedNote,
   withSentValue,
 } from './ledgerFamiliesModel'
+import { summaryProgramWords } from './ledgerModel'
 import { LedgerLines } from './LedgerLines'
 import { keyWords, PROGRAM_FAMILIES } from './sourcesModel'
 
@@ -54,8 +53,11 @@ const TOTALS: readonly ApiAidLedgerTotal[] = ['in_campminder_net', 'outside_gran
 export function LedgerFamilies({
   view,
   unclassified,
+  programLabels = {},
 }: {
   view: AidView
+  /** The program words the summary sends, by key (`program_label`); a key with none reads "Other program". */
+  programLabels?: Readonly<Record<string, string>>
   /** The season's unclassified money from `GET /summary` (same as-of); absent until it loads. */
   unclassified?: number | null | undefined
 }) {
@@ -64,7 +66,6 @@ export function LedgerFamilies({
   const openTotal = parseLinesTotal(params.get('lines'))
   const ledger = useAidMoneyLedger(filters)
   const sources = useAidSources()
-  const names = useAidProgramNames()
   const setParam = useCallback(
     (name: LedgerParam, value: string | null) =>
       setParams(
@@ -193,9 +194,12 @@ export function LedgerFamilies({
         'Program',
         filters.program,
         withSentValue(
-          PROGRAM_FAMILIES.map((p) => ({ value: p, label: programLabel(names, p) })),
+          PROGRAM_FAMILIES.map((p) => ({
+            value: p,
+            label: summaryProgramWords(p, programLabels[p]),
+          })),
           filters.program,
-          (key) => programLabel(names, key)
+          (key) => summaryProgramWords(key, programLabels[key])
         )
       )}
       {select(
