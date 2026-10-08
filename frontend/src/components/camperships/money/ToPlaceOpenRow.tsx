@@ -20,6 +20,7 @@ import {
 } from '../kit/csType'
 import { PlaceEditor } from './PlaceEditor'
 import { ReclassifyEditor } from './ReclassifyEditor'
+import { toPlaceHref } from './moneyTabs'
 import { inStaffWords, previewRefusalWords, refusalWords } from './refusal'
 import {
   candidateDetail,
@@ -77,6 +78,7 @@ export function ToPlaceOpenRow({
   line,
   year,
   view,
+  scope = null,
   access,
   inFlight,
   onDone,
@@ -85,6 +87,8 @@ export function ToPlaceOpenRow({
   line: ApiAidToPlaceLine
   year: number
   view: AidView
+  /** The tab's one-family scope (`?household=`, P-8); null shows every family. */
+  scope?: number | null | undefined
   access: LineAccess
   inFlight: InFlightLines
   onDone: (words: string) => void
@@ -268,6 +272,11 @@ export function ToPlaceOpenRow({
           >
             Open the Household ›
           </Link>
+          {scope === null && (
+            <Link to={toPlaceHref(view, line.household_cm_id)} className={`${CS_LINK} text-xs`}>
+              Only This Family ›
+            </Link>
+          )}
         </div>
         {(mode === 'split' || mode === 'another') && (
           // The editor's own keys (Enter, Esc, ↑/↓ in its fields) stay its own: AidTable stands aside.

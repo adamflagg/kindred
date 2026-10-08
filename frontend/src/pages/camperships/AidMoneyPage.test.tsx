@@ -14,8 +14,13 @@ vi.mock('../../hooks/usePermissions', () => ({
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denied</div> }))
+// What the page hands To place: its scope (`?household=`, P-8).
+const toPlaceProps = vi.fn()
 vi.mock('../../components/camperships/money/ToPlaceTab', () => ({
-  ToPlaceTab: () => <div>To place body</div>,
+  ToPlaceTab: (props: unknown) => {
+    toPlaceProps(props)
+    return <div>To place body</div>
+  },
 }))
 
 function Where() {
@@ -94,5 +99,17 @@ describe('AidMoneyPage (spec §8.1; D62)', () => {
     expect(
       screen.getByText('Money › Sources is built in a later part of slice 3.')
     ).toBeInTheDocument()
+  })
+})
+
+describe("one family's To place (P-8; ruling C)", () => {
+  it('hands To place the household in `?household=`, and every family without one', () => {
+    renderAt('/aid/money/to-place?household=1000001&year=2027')
+    expect(toPlaceProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ householdCmId: 1000001 })
+    )
+    toPlaceProps.mockClear()
+    renderAt('/aid/money/to-place?household=junk')
+    expect(toPlaceProps).toHaveBeenLastCalledWith(expect.objectContaining({ householdCmId: null }))
   })
 })

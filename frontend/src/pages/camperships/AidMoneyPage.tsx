@@ -1,10 +1,14 @@
 import { Landmark } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, Navigate, useParams } from 'react-router'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
-import { isMoneyTab, MONEY_TAB_PURPOSE } from '../../components/camperships/money/moneyTabs'
+import {
+  householdParam,
+  isMoneyTab,
+  MONEY_TAB_PURPOSE,
+} from '../../components/camperships/money/moneyTabs'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
 import { REQUEST_VIEWS } from '../../components/camperships/requests/views'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -38,6 +42,10 @@ function NotYet({ what }: { what: string }) {
  */
 export default function AidMoneyPage() {
   const { tab } = useParams()
+  const [params] = useSearchParams()
+  // `?household=<cm_id>`: To place scoped to one family (D26; P-8), from a line's "Only This
+  // Family ›" or the grid's and household page's "Place It in Money › To Place ›" (ruling C).
+  const householdCmId = householdParam(params.get('household'))
   const { hasPermission } = usePermissions()
   const year = useYear()
   const asOf = useAidAsOf()
@@ -81,7 +89,7 @@ export default function AidMoneyPage() {
           {`This tab shows today. Money › Ledger can show ${formatLongDate(asOf.date)}.`}
         </p>
       )}
-      {slug === 'to-place' && <ToPlaceTab view={view} />}
+      {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}
       {slug === 'ledger' && <NotYet what="Ledger" />}
       {slug === 'sources' && <NotYet what="Sources" />}
     </div>

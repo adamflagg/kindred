@@ -266,3 +266,59 @@ export const TO_PLACE_SKIPPED: ApiAidToPlace = {
   groups: [],
   skipped: '2026 predates To place, which starts in 2027',
 }
+
+export const RILEY_REQ = 'reqriley0000006'
+
+/** A second exact single match, in another household: the bulk tests check two (P-6). */
+export const RILEY_EXACT: ApiAidToPlaceLine = {
+  transaction_cm_id: 3000008,
+  household_cm_id: 1000004,
+  family: 'Sam',
+  person_cm_id: 0,
+  person: '',
+  amount: 300,
+  unplaced: 300,
+  posted_on: '2027-05-22',
+  description: 'Camp aid · Summer',
+  reason: 'several',
+  candidates: [
+    candidate({
+      request_id: RILEY_REQ,
+      camper: 'Riley Sam',
+      person_cm_id: 2000004,
+      household_cm_id: 1000004,
+      family: 'Sam',
+      session_cm_id: 1000103,
+      session: 'Session 3',
+      not_yet_in_campminder: 300,
+    }),
+  ],
+  suggestion: {
+    parts: [{ request_id: RILEY_REQ, amount: 300 }],
+    evidence: [
+      { kind: 'amount', text: 'Exact amount: Riley’s $300 not yet in CampMinder.' },
+      { kind: 'only_request', text: 'The family’s one live request.' },
+    ],
+    would_tick: [{ request_id: RILEY_REQ, round: 1, amount: 300 }],
+    would_lock: 300,
+    would_leave: [],
+    would_not_tick: [],
+  },
+}
+
+/** `TO_PLACE` with Riley's line in the "several" group, its count and totals as the server sends them. */
+export const TO_PLACE_WITH_RILEY: ApiAidToPlace = {
+  ...TO_PLACE,
+  open_count: TO_PLACE.open_count + 1,
+  open_total: TO_PLACE.open_total + RILEY_EXACT.amount,
+  groups: TO_PLACE.groups.map((g) =>
+    g.reason === 'several'
+      ? {
+          ...g,
+          count: g.count + 1,
+          total: g.total + RILEY_EXACT.amount,
+          lines: [...g.lines, RILEY_EXACT],
+        }
+      : g
+  ),
+}

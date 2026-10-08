@@ -12,7 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type { ApiAidToPlace } from '../../../types/api-types'
 import { ToPlaceTab } from './ToPlaceTab'
 import { SOURCES } from './sourcesFixtures'
-import { CHEN_EXACT, SAM_RECLASSIFIED, TO_PLACE, TO_PLACE_SKIPPED } from './toPlaceFixtures'
+import {
+  CHEN_EXACT,
+  RILEY_EXACT,
+  SAM_RECLASSIFIED,
+  TO_PLACE,
+  TO_PLACE_SKIPPED,
+  TO_PLACE_WITH_RILEY,
+} from './toPlaceFixtures'
 
 const downloadSpy = vi.fn()
 vi.mock('../../../utils/csvExport', async (importActual) => ({
@@ -123,12 +130,12 @@ beforeEach(() => {
 })
 afterEach(() => fetchSpy.mockRestore())
 
-function renderTab() {
+function renderTab(householdCmId: number | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ToPlaceTab view={VIEW} />
+        <ToPlaceTab view={VIEW} householdCmId={householdCmId} />
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -1089,5 +1096,136 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
     ).toBeInTheDocument()
     expect(within(apart).getByText('→ Grantor C full-ride program')).toBeInTheDocument()
     expect(screen.queryByText(/tonight/)).toBeNull()
+  })
+})
+
+describe('one family’s To place (D26; P-8)', () => {
+  it("reads one family's scope, and links back to every family", async () => {
+    renderTab(1000001)
+    expect(await screen.findByRole('link', { name: 'All Families ›' })).toHaveAttribute(
+      'href',
+      '/aid/money/to-place?year=2027'
+    )
+    const reads = calls().filter((c) => c.method === 'GET' && c.url.includes('/to-place'))
+    expect(reads[0]?.url).toBe('/api/financial-aid/money/2027/to-place?household_cm_id=1000001')
+    // R1-10: open a line in the family's scope, so the check isn't vacuous: no "Only This Family ›".
+    const row = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    expect(within(row).getByRole('link', { name: 'Open the Household ›' })).toBeInTheDocument()
+    expect(within(row).queryByRole('link', { name: 'Only This Family ›' })).toBeNull()
+  })
+
+  it('opens a line with "Only This Family ›" to its household’s scope', async () => {
+    renderTab()
+    const row = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    expect(within(row).getByRole('link', { name: 'Only This Family ›' })).toHaveAttribute(
+      'href',
+      '/aid/money/to-place?household=1000001&year=2027'
+    )
+    expect(screen.queryByRole('link', { name: 'All Families ›' })).toBeNull()
+  })
+})
+
+describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)', () => {
+  const rowOf = (words: string) => {
+    const row = screen.getByText(words).closest('tr')
+    if (row === null) throw new Error(`no row for ${words}`)
+    return row
+  }
+  const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
+  const JOHNSON = '$3,620 · Camp aid · Summer · posted to the household · May 14'
+
+  it('one button checks every exact single match and opens the dialog; a program mismatch is never one', async () => {
+    reads = [TO_PLACE_WITH_RILEY]
+    renderTab()
+    // Chen's and Riley's lines; Samuel's program mismatch has one candidate and an exact amount,
+    // but is a judgement call (plan review I3).
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Confirm the 2 Exact Single Matches…' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/^2 lines · 2 households · \$1,800 locked/)).toBeInTheDocument()
+    expect(within(dialog).getByText('estimate')).toBeInTheDocument()
+    answers = [json({ ...PLACED, placed: [3000003, RILEY_EXACT.transaction_cm_id] })]
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 2' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]?.url).toBe('/api/financial-aid/money/2027/to-place/place')
+    const body = JSON.parse(String(writes()[0]?.body)) as Record<string, unknown>
+    expect(body['lines']).toEqual([
+      { transaction_cm_id: 3000003, parts: [{ request_id: 'reqolivia000003', amount: '1500.00' }] },
+      { transaction_cm_id: 3000008, parts: [{ request_id: 'reqriley0000006', amount: '300.00' }] },
+    ])
+    expect(body).not.toHaveProperty('expected_locked')
+    expect(
+      await screen.findByText(
+        '✓ 2 lines placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500 locked.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps checks through a search, marks the hidden ones, and leaves out a split by name', async () => {
+    reads = [TO_PLACE_WITH_RILEY]
+    renderTab()
+    await screen.findByText(CHEN)
+    await userEvent.click(within(rowOf(CHEN)).getByRole('checkbox', { name: 'Select' }))
+    await userEvent.click(within(rowOf(JOHNSON)).getByRole('checkbox', { name: 'Select' }))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Olivia')
+    expect(await screen.findByText('2 selected · 1 hidden by the search')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm the Selected…' }))
+    const dialog = await screen.findByRole('dialog')
+    // One line: its own preview is exact, so no estimate pill (plan review m6).
+    expect(within(dialog).getByText(/^1 line · 1 household · \$1,500 locked/)).toBeInTheDocument()
+    expect(within(dialog).queryByText('estimate')).toBeNull()
+    expect(
+      within(dialog).getByText('Left out, confirm one at a time: Johnson (a split).')
+    ).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Back' }))
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Search' }))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Johnson')
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirm the Selected…' }))
+    expect(
+      within(await screen.findByRole('dialog')).getByText(/\(hidden by the search\)/)
+    ).toBeInTheDocument()
+  })
+
+  it('after a refusal, Confirm sends what is still open and names what dropped out (plan review I4)', async () => {
+    // Someone else placed Riley's line meanwhile: the bulk is refused all or nothing, the reads
+    // refresh before the error shows, and the dialog's plan is the current read's, not the click's.
+    reads = [TO_PLACE_WITH_RILEY, TO_PLACE]
+    answers = [json({ detail: 'line 3000008: line 3000008 is already on a request' }, 422)]
+    renderTab()
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Confirm the 2 Exact Single Matches…' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 2' }))
+    expect(
+      await within(dialog).findByText(
+        'Nothing was written: line 3000008: line 3000008 is already on a request'
+      )
+    ).toBeInTheDocument()
+    expect(
+      await within(dialog).findByText('1 line is no longer open and was left out.')
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByText('estimate')).toBeNull()
+    answers = [json(PLACED)]
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 1' }))
+    await waitFor(() => expect(writes()).toHaveLength(2))
+    const second = JSON.parse(String(writes()[1]?.body)) as {
+      lines: Array<{ transaction_cm_id: number }>
+      expected_locked?: string
+    }
+    expect(second.lines.map((l) => l.transaction_cm_id)).toEqual([3000003])
+    expect(second.expected_locked).toBe('1500.00')
+  })
+
+  it('offers view-only staff no checks and no bulk', async () => {
+    granted = ['financial_aid.view']
+    reads = [TO_PLACE_WITH_RILEY]
+    renderTab()
+    await screen.findByText(CHEN)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Exact Single/ })).toBeNull()
   })
 })
