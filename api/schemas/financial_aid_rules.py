@@ -160,7 +160,9 @@ class RulesDraftOut(BaseModel):
     sections: list[DraftSectionOut]
     report: ValidationReport
     branched_from: int | None = None  # a save that made this version from the one it names
-    budget_total_locked: bool = False  # owner 10-06 (b): Round 1 has posted; the total is read-only, the shares edit
+    budget_total_locked: bool = (
+        False  # owner 10-08: the budget was approved (or Round 1 posted); the total is read-only, the shares edit
+    )
     groups: list[GroupOut] = Field(default_factory=list)
     # Spec §11.1: the season is earlier than the configured one. `configured_year` is None when the service has no
     # reader for it; the screen only reads it when `season_done` is true.

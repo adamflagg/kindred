@@ -14,8 +14,7 @@ import { planContent, planIssues, splitWords, type PlanPool, type TypedPlan } fr
 
 const CONFLICT =
   'Someone else changed the rules draft since you opened this section. Nothing was saved; your typing is kept.'
-const LOCKED =
-  'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
+const LOCKED = 'Locked: the first approved budget stands all season. The program shares still edit.'
 
 /**
  * Edit Plan… (spec §5.2 B): the budget's total and program split, inline in the Budget card. Every card previews the
@@ -62,7 +61,7 @@ export function EditPlan({
       : issue
   )
   const split = splitWords(typed, pools)
-  // Owner 10-06 (b): a posted round locks the TOTAL only; the shares stay editable all season. The server's flag, not
+  // Owner 10-08: the first approved budget (or a posted round, 10-06 (b)) locks the TOTAL only; the shares stay editable all season. The server's flag, not
   // the section's state: a shares save lifts the section's lock in the version it writes, and the total stays locked.
   const totalLocked = draft.budget_total_locked === true
   const onSave = () => {

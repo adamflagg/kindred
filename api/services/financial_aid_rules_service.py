@@ -263,8 +263,9 @@ class SectionInvalidError(FinancialAidError, ValueError):
 
 
 BUDGET_TOTAL_LOCKED: Final = (
-    "The total is locked: a posted round read it. Posted amounts stand; the program split can still change."
+    "The total is locked: the first approved budget stands all season. The program split can still change."
 )
+BUDGET_TOTAL_MISSING: Final = "Type the season's budget total before approving: it locks once approved."
 
 
 class FixedSettingError(SectionInvalidError):
@@ -272,8 +273,13 @@ class FixedSettingError(SectionInvalidError):
 
 
 class BudgetTotalLockedError(SectionInvalidError):
-    """A save that changes the season budget's total once Round 1 has posted (a Round 1 section is locked), owner
-    10-06: "budget does lock but only the total dollar number": refused (422). The program shares stay editable."""
+    """A save that changes the season budget's total once the budget has been approved (or Round 1 has posted), owner
+    10-08: the first approved budget stands all season: refused (422). The program shares stay editable."""
+
+
+class BudgetTotalMissingError(SectionInvalidError):
+    """Approving the budget section with no total (empty or zero): refused (422), owner 10-08, because the approval
+    locks the total."""
 
 
 class SeasonDoneError(FinancialAidError, ValueError):
@@ -378,6 +384,7 @@ class ApprovedRules:
 
 
 _HELD: Final = ("approved", "locked")
+_BUDGET_ONLY: Final[tuple[SectionName, ...]] = ("budget",)
 _DONE_PREFIX: Final = "Correcting a done season: "
 
 
@@ -927,16 +934,17 @@ class FinancialAidRulesService:
         )
 
     async def _budget_total_locked(self, year: int) -> bool:
-        """Owner 10-06 (b): the budget TOTAL locks once Round 1 has posted, i.e. any Round 1 section is locked; the
-        program shares never do. The budget section itself is not locked by a tick (D119), so this never reads it. Any
-        version counts, not just the latest: a save on a locked section lifts that lock in the version it writes
-        (`carry_forward`), and the total a posted round read must stay put there."""
+        """Owner 10-08: the budget TOTAL locks once ANY version of the season has had its budget section approved (the
+        first rules approval, around October), and Round 1 posting still locks it too (owner 10-06 (b): any Round 1
+        section locked). The program shares never lock. Any version counts, not just the latest: a save on the budget
+        branches rather than overwriting the newest approved copy (`_protected`), and a branch lifts the locks in the
+        version it writes (`carry_forward`), so the approval is always kept on some version."""
         rows = await self._store.list_versions(year)
         round_one = ROUND_SECTIONS[1]
         for row in rows:
             # The stored statuses alone: a document the current schema rejects must not fail the draft read.
             status = status_from_json(_json_object(row, "section_status"))
-            if any(status[name].state == "locked" for name in round_one):
+            if status["budget"].state in _HELD or any(status[name].state == "locked" for name in round_one):
                 return True
         return False
 
@@ -1401,6 +1409,8 @@ class FinancialAidRulesService:
             if set(fingerprints) != set(named):
                 raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
             _assert_unchanged(current, fingerprints)
+        if "budget" in named and current.document.budget.total <= 0:
+            raise BudgetTotalMissingError(BUDGET_TOTAL_MISSING)
         await self._assert_total_unmoved_once_locked(year, current.document)
         before = await self._pricing_version_safely(year) if self._effects is not None else None
         report = await self.validate_document(current.document)
@@ -1419,14 +1429,15 @@ class FinancialAidRulesService:
         return await self.load(year, current.version), report
 
     async def _assert_total_unmoved_once_locked(self, year: int, document: AidRules) -> None:
-        """Owner 10-06 (b), the one guard for every route a total could take after Round 1 posts: approving any
-        section of a draft (it may complete the sections that make the draft the pricing version) and branching a new
-        version. A document whose budget total differs from the version pricing the season is refused. With no
-        pricing version there is nothing to protect."""
+        """Owner 10-08, the one guard for every route a total could take once it is locked: approving any section of
+        a draft (it may complete the sections that make the draft the pricing version) and branching a new version. A
+        document whose budget total differs from the latest approved budget's, which under the lock is the first
+        approved total, is refused. Without an approved budget (a lock from Round 1 alone) it compares against the
+        version pricing the season, and with neither there is nothing to protect."""
         if not await self._budget_total_locked(year):
             return
-        pricing = await self.latest_approved(year, PRICING_SECTIONS)
-        if pricing is not None and Decimal(document.budget.total) != Decimal(pricing.document.budget.total):
+        reference = await self.latest_approved(year, _BUDGET_ONLY) or await self.latest_approved(year, PRICING_SECTIONS)
+        if reference is not None and Decimal(document.budget.total) != Decimal(reference.document.budget.total):
             raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
 
     async def _pricing_version(self, year: int) -> int:

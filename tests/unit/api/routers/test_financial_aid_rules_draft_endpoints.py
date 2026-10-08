@@ -14,10 +14,12 @@ from fastapi.testclient import TestClient
 
 from api.services.financial_aid_rules_service import (
     BUDGET_TOTAL_LOCKED,
+    BUDGET_TOTAL_MISSING,
     ApprovedRules,
     ApprovedSection,
     BudgetTotalLockedError,
     DraftApprovedError,
+    BudgetTotalMissingError,
     DraftSection,
     NoDraftToDiscardError,
     NotLatestVersionError,
@@ -257,6 +259,14 @@ def test_approving_a_locked_budget_total_is_422_in_the_lock_words() -> None:
     body = {"sections": ["budget"], "note": "Board, Mar 1", "fingerprints": {"budget": "abc"}}
     response = _client().post("/api/financial-aid/rules/2031/versions/2/approve", json=body)
     assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)
+
+
+def test_approving_the_budget_without_a_total_is_422_in_the_missing_words() -> None:
+    service = _stub()
+    service.approve_sections = AsyncMock(side_effect=BudgetTotalMissingError(BUDGET_TOTAL_MISSING))
+    body = {"sections": ["budget"], "note": "Board, Oct 8", "fingerprints": {"budget": "abc"}}
+    response = _client().post("/api/financial-aid/rules/2031/versions/2/approve", json=body)
+    assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_MISSING)
 
 
 def test_a_two_section_save_passes_both_contents_and_fingerprints() -> None:
