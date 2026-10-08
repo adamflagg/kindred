@@ -1379,3 +1379,16 @@ def test_the_grants_route_reads_labels_from_the_same_approved_rules_as_the_summa
     with patch.object(router, "GrantsService") as service:
         router._grants()
     assert service.call_args.kwargs["program_labels"] is router._program_labels
+
+
+@pytest.mark.asyncio
+async def test_the_household_pages_grant_rows_read_program_labels_from_the_same_rules() -> None:
+    """HouseholdGrantRowOut inherits program_label, so the page's service must load it, not leave it blank."""
+    from api.routers import financial_aid as router
+
+    page = MagicMock()
+    page.read = AsyncMock(return_value="read")
+    with patch.object(router, "GrantsService") as grants, patch.object(router, "HouseholdPageService") as service:
+        service.return_value = page
+        await router.get_household_page(2031, 100)
+    assert grants.call_args.kwargs["program_labels"] is router._program_labels
