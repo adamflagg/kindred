@@ -82,15 +82,54 @@ def test_only_a_round_1_that_still_needs_its_offer_is_sent() -> None:
     assert [s.request_id for s in march_shares(store.requests, priced_by_id, _shares(store))] == [EMMA]
 
 
-def test_a_zero_round_1_is_a_zero_row() -> None:
-    """Owner question 2 (default): $0 is a real zero (D74) and still needs its offer, so it is a $0 row."""
+def test_a_zero_round_1_writes_no_row_and_is_counted() -> None:
+    """Owner ruling E (10-06): a $0 Round 1 leaves the file (CampMinder has nothing to post; the family needs a
+    letter, not a posting). It is counted, by request, so the button can say how many it left out."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    priced_by_id = {
+        EMMA: priced(EMMA, 1000001, view(1, "needs_offer", decided="0")),
+        LIAM: priced(LIAM, 1000002, view(1, "needs_offer", decided="1200")),
+    }
+    zero: list[str] = []
+    found = march_shares(store.requests, priced_by_id, _shares(store), zero_left_out=zero)
+    assert [(s.request_id, s.amount) for s in found] == [(LIAM, Decimal(1200))]
+    assert zero == [EMMA]
+
+
+def test_a_zero_round_1_split_between_payers_is_left_out_and_counted_once() -> None:
+    """The count is of requests, not payer shares: a $0 offer split 60/40 is one Round 1 offer of $0."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _split_emma(store)
+    priced_by_id = {EMMA: priced(EMMA, 1000001, view(1, "needs_offer", decided="0"))}
+    zero: list[str] = []
+    assert march_shares(store.requests, priced_by_id, _shares(store), zero_left_out=zero) == []
+    assert zero == [EMMA]
+
+
+def test_a_zero_round_1_campminder_already_holds_is_not_counted() -> None:
+    """D162 leaves it out first (CampMinder holds its Round 1, so tonight's check posts it): it needs no letter
+    and no hand Mark Posted, so it isn't one of the $0 offers the button names."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     priced_by_id = {EMMA: priced(EMMA, 1000001, view(1, "needs_offer", decided="0"))}
-    rows = march_rows(march_shares(store.requests, priced_by_id, _shares(store)), {1000011: ("Emma", "Johnson")})
-    assert [(r.camper_first, r.camper_last, r.total_award, r.primary_childhood_id, r.personal_id) for r in rows] == [
-        ("Emma", "Johnson", 0.0, 1000001, 1000011),
-    ]
+    zero: list[str] = []
+    found = march_shares(store.requests, priced_by_id, _shares(store), in_campminder={(EMMA, 1)}, zero_left_out=zero)
+    assert found == []
+    assert zero == []
+
+
+def test_a_round_1_of_cents_is_not_a_zero() -> None:
+    """Only a decided amount of exactly $0 is left out; 50 cents is a real offer and a real row."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    priced_by_id = {EMMA: priced(EMMA, 1000001, view(1, "needs_offer", decided="0.50"))}
+    zero: list[str] = []
+    found = march_shares(store.requests, priced_by_id, _shares(store), zero_left_out=zero)
+    assert [s.request_id for s in found] == [EMMA]
+    assert zero == []
 
 
 def test_a_household_request_is_a_row_with_no_camper_and_no_personal_id() -> None:
@@ -178,6 +217,38 @@ async def test_the_read_sends_each_share_of_every_round_1_offer_with_campminders
         (EMMA, "Emma", "Johnson", 900.0, 1000001, 1000011),
         (EMMA, "Emma", "Johnson", 600.0, 1000004, 1000011),
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_read_counts_the_zero_round_1s_it_left_out() -> None:
+    """Ruling E through the read: no $0 row in `rows`, and `zero_left_out` says how many requests it left out."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    seed_request(store, OLIVIA, household=1000003, person=1000031)
+    store.camper_names = {1000011: ("Emma", "Johnson"), 1000021: ("Liam", "Garcia"), 1000031: ("Olivia", "Chen")}
+    priced_by_id = {
+        EMMA: priced(EMMA, 1000001, view(1, "needs_offer", decided="0")),
+        LIAM: priced(LIAM, 1000002, view(1, "needs_offer", decided="1200")),
+        OLIVIA: priced(OLIVIA, 1000003, view(1, "needs_offer", decided="0")),
+    }
+
+    async def season(year: int) -> SimpleNamespace:
+        return _season(store, priced_by_id)
+
+    service = SimpleNamespace(season=season, with_unticked=_as_is)
+    out = await MarchFileService(cast("FinancialAidDecisionsService", service), store).read(YEAR)
+    assert [(r.request_id, r.total_award) for r in out.rows] == [(LIAM, 1200.0)]
+    assert out.zero_left_out == 2
+
+
+@pytest.mark.asyncio
+async def test_a_file_with_no_zero_round_1_counts_none() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.camper_names = {1000011: ("Emma", "Johnson")}
+    out = await MarchFileService(_service(store), store).read(YEAR)
+    assert out.zero_left_out == 0
 
 
 # --- a Family Camp row names the oldest child attending (owner ruling A3 (a), 2026-10-02) ---------

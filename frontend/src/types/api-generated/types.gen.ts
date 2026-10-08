@@ -8813,6 +8813,10 @@ export type MarchFileOut = {
    * Rows
    */
   rows: Array<MarchFileRowOut>
+  /**
+   * Zero Left Out
+   */
+  zero_left_out?: number
 }
 
 /**
