@@ -5,8 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import type { ApiAidSummary } from '../../../types/api-types'
+import type { ApiAidBudget, ApiAidSummary } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
+import { BUDGET } from '../season/budgetFixtures'
+import { TO_PLACE } from './toPlaceFixtures'
 import { LedgerTab } from './LedgerTab'
 import { RULES_2027, SUMMARY, SUMMARY_PAST, SUMMARY_UNCLASSIFIED } from './ledgerFixtures'
 
@@ -21,7 +23,14 @@ vi.mock('../../../hooks/usePermissions', () => ({
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../shell/AidDefinitionNotes', () => ({
-  AidDefinitionNotes: ({ surface }: { surface: string }) => <p>{`Notes for ${surface}`}</p>,
+  AidDefinitionNotes: ({ surface, extra = [] }: { surface: string; extra?: readonly string[] }) => (
+    <div>
+      <p>{`Notes for ${surface}`}</p>
+      {extra.map((text) => (
+        <p key={text}>{text}</p>
+      ))}
+    </div>
+  ),
 }))
 // The family rows have their own tests (LedgerFamilies.test.tsx, LedgerLines.test.tsx).
 vi.mock('./LedgerFamilies', () => ({
@@ -40,14 +49,29 @@ vi.mock('./LedgerFamilies', () => ({
 }))
 
 let summary: ApiAidSummary = SUMMARY
+const budgetPosting = (posted: number): ApiAidBudget => ({
+  ...BUDGET,
+  total: { ...BUDGET.total, total: { ...BUDGET.total.total, posted } },
+})
+let budget: ApiAidBudget = budgetPosting(SUMMARY.counts_toward_budget)
+let budgetStatus = 200
 let fetchSpy: MockInstance<typeof fetch>
 
 beforeEach(() => {
   summary = SUMMARY
+  budget = budgetPosting(SUMMARY.counts_toward_budget)
+  budgetStatus = 200
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-06-03T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
-    const body = String(url).includes('/rules/') ? RULES_2027 : summary
+    const u = String(url)
+    if (u.includes('/budget')) {
+      return Promise.resolve(new Response(JSON.stringify(budget), { status: budgetStatus }))
+    }
+    if (u.includes('/to-place')) {
+      return Promise.resolve(new Response(JSON.stringify(TO_PLACE), { status: 200 }))
+    }
+    const body = u.includes('/rules/') ? RULES_2027 : summary
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
   })
 })
@@ -93,11 +117,14 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     }
     expect(
       screen.getByText(
-        'Counts toward the budget: $612,540 · placed on a request: 91% · at household level: 7% · not placed: 2% (each share of camp aid). Undated postings: 0.'
+        'Counts toward the budget: $612,540 · placed on a camper or request: 91% · at household level: 7% · not placed: 2% (each share of camp aid). Undated postings: 0.'
       )
     ).toBeInTheDocument()
     expect(screen.queryByText(/A split placement still counts/)).toBeNull()
     expect(screen.getByText('Notes for money-ledger')).toBeInTheDocument()
+    expect(
+      screen.getByText(/^The tie-out line: camp aid in CampMinder that counts toward the budget/)
+    ).toBeInTheDocument()
     // The footer is the season's, from the server: a search narrows the rows, never the footer.
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Summer')
     expect(screen.queryByText('Family Camp Weekends')).toBeNull()
@@ -160,5 +187,57 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       screen.getByRole('button', { name: /Posted in CampMinder by program and source/ })
     )
     expect(screen.queryByText('$541,200')).toBeNull()
+  })
+
+  describe('the tie-out line', () => {
+    const live: AidView = { year: 2027, asOf: { kind: 'live' } }
+
+    it('shows a check and a link to Rounds & budget when the figures match', async () => {
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      expect(line).toHaveTextContent(
+        'Camp aid posted $612,540 · matches Season › Rounds & budget Posted $612,540 ✓'
+      )
+      const link = within(line).getByRole('link', { name: /Rounds & budget/ })
+      expect(link.getAttribute('href')).toMatch(/^\/aid\/season\/rounds-budget/)
+      // It sits after the family rows and before the folding table.
+      const html = document.body.innerHTML
+      expect(html.indexOf('Family rows')).toBeLessThan(html.indexOf('data-testid="tie-out"'))
+      expect(html.indexOf('data-testid="tie-out"')).toBeLessThan(
+        html.indexOf('Posted in CampMinder by program and source')
+      )
+    })
+
+    it('shows the gap and To place with its open count when the figures differ', async () => {
+      budget = budgetPosting(600000)
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      await waitFor(() =>
+        expect(line).toHaveTextContent(
+          `Camp aid posted $612,540 · Season › Rounds & budget Posted $600,000 · $12,540 apart · see To place (${String(TO_PLACE.open_count)} lines)`
+        )
+      )
+      expect(line).not.toHaveTextContent('✓')
+      const link = within(line).getByRole('link', { name: /see To place/ })
+      expect(link.getAttribute('href')).toMatch(/^\/aid\/money\/to-place/)
+    })
+
+    it('shows nothing while the budget is loading, and nothing when it fails', async () => {
+      budgetStatus = 500
+      renderTab('/aid/money/ledger', live)
+      await screen.findAllByText('Summer Sessions')
+      await waitFor(() =>
+        expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('/budget'))).toBe(true)
+      )
+      expect(screen.queryByTestId('tie-out')).toBeNull()
+    })
+
+    it('reads the budget with the signed-in token', async () => {
+      renderTab('/aid/money/ledger', live)
+      await screen.findByTestId('tie-out')
+      const call = fetchSpy.mock.calls.find(([u]) => String(u).includes('/budget'))
+      const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers)
+      expect(headers.get('Authorization')).toBe('Bearer test-jwt')
+    })
   })
 })

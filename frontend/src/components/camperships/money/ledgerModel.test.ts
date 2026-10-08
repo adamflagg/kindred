@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { SUMMARY, SUMMARY_PAST, SUMMARY_UNCLASSIFIED } from './ledgerFixtures'
+import { BUDGET } from '../season/budgetFixtures'
 import {
   footWords,
   hasUnclassified,
@@ -10,6 +11,8 @@ import {
   programLabelsOf,
   shareWords,
   splitWords,
+  tieOut,
+  tieOutWords,
   summaryCsvName,
   summaryProgramWords,
 } from './ledgerModel'
@@ -46,14 +49,14 @@ describe('ledgerModel', () => {
 
   it('says the camp-aid shares in the mock’s words, from the server, never summed here', () => {
     expect(shareWords(SUMMARY)).toBe(
-      'placed on a request: 91% · at household level: 7% · not placed: 2% (each share of camp aid)'
+      'placed on a camper or request: 91% · at household level: 7% · not placed: 2% (each share of camp aid)'
     )
     expect(shareWords({ ...SUMMARY, camp_aid_levels: [] })).toBe('')
   })
 
   it('writes the mock’s foot line: the budget figure, the shares, the undated lines', () => {
     expect(footWords(SUMMARY)).toBe(
-      'Counts toward the budget: $612,540 · placed on a request: 91% · at household level: 7% · not placed: 2% (each share of camp aid). Undated postings: 0.'
+      'Counts toward the budget: $612,540 · placed on a camper or request: 91% · at household level: 7% · not placed: 2% (each share of camp aid). Undated postings: 0.'
     )
     expect(footWords(SUMMARY_PAST)).toMatch(/Undated postings: 2\.$/)
   })
@@ -124,5 +127,54 @@ describe('ledgerModel', () => {
     expect(summaryCsvName(2027, '2027-05-01')).toBe(
       'camperships-money-ledger-posted-by-program-and-source-2027-as-of-2027-05-01.csv'
     )
+  })
+})
+
+describe('tieOut: camp aid counting toward the budget against Rounds & budget Posted, in cents', () => {
+  const budgetWith = (posted: number) => ({
+    ...BUDGET,
+    total: { ...BUDGET.total, total: { ...BUDGET.total.total, posted } },
+  })
+
+  it('matches when both figures are the same to the cent', () => {
+    const t = tieOut(SUMMARY, budgetWith(612540))
+    expect(t).toEqual({ kind: 'match', camp: 612540, posted: 612540, apart: 0 })
+  })
+
+  it('is apart by the absolute difference, whichever side is larger', () => {
+    expect(tieOut(SUMMARY, budgetWith(612000.5))).toEqual({
+      kind: 'apart',
+      camp: 612540,
+      posted: 612000.5,
+      apart: 539.5,
+    })
+    expect(tieOut(SUMMARY, budgetWith(613000)).apart).toBe(460)
+  })
+
+  it('compares counts_toward_budget, never camp_aid', () => {
+    const t = tieOut({ ...SUMMARY, camp_aid: 1, counts_toward_budget: 500 }, budgetWith(500))
+    expect(t.kind).toBe('match')
+  })
+
+  it('does not trip on float noise below a cent', () => {
+    expect(tieOut({ ...SUMMARY, counts_toward_budget: 0.1 + 0.2 }, budgetWith(0.3)).kind).toBe(
+      'match'
+    )
+  })
+})
+
+describe('tieOutWords', () => {
+  it('words a match', () => {
+    expect(tieOutWords({ kind: 'match', camp: 652100, posted: 652100, apart: 0 }, null)).toBe(
+      'Camp aid posted $652,100 · matches Season › Rounds & budget Posted $652,100'
+    )
+  })
+  it('words a gap, with the To place count when known', () => {
+    const t = { kind: 'apart', camp: 652100, posted: 640000, apart: 12100 } as const
+    expect(tieOutWords(t, 4)).toBe(
+      'Camp aid posted $652,100 · Season › Rounds & budget Posted $640,000 · $12,100 apart · see To place (4 lines)'
+    )
+    expect(tieOutWords(t, 1)).toMatch(/see To place \(1 line\)$/)
+    expect(tieOutWords(t, null)).toMatch(/\$12,100 apart · see To place$/)
   })
 })

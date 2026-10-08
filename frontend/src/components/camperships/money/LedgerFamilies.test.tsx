@@ -173,7 +173,7 @@ describe('Money › Ledger family rows (P-22)', () => {
       within(source)
         .getAllByRole('option')
         .map((o) => o.textContent)
-    ).toEqual(['all', 'camp fa', 'named fund', 'other outside', 'placeholder', 'unclassified'])
+    ).toEqual(['All', 'camp fa', 'named fund', 'other outside', 'placeholder', 'unclassified'])
   })
 
   // Lead ruling 10-08: only programs with money this season. The choices are what LedgerTab
@@ -185,11 +185,11 @@ describe('Money › Ledger family rows (P-22)', () => {
     const words = within(program)
       .getAllByRole('option')
       .map((o) => o.textContent)
-    expect(words).toEqual(['all', 'Session 2', 'Quest', 'Other program'])
+    expect(words).toEqual(['All', 'Session 2', 'Quest', 'Other program'])
     expect(words.join()).not.toMatch(/family_camp|Family camp|Bmitzvah/)
   })
 
-  it('offers only "all" while no program choices have loaded', async () => {
+  it('offers only "All" while no program choices have loaded', async () => {
     renderAt('/aid/money/ledger', LIVE, undefined, {}, [])
     await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
     const program = screen.getByRole('combobox', { name: 'Program' })
@@ -197,7 +197,7 @@ describe('Money › Ledger family rows (P-22)', () => {
       within(program)
         .getAllByRole('option')
         .map((o) => o.textContent)
-    ).toEqual(['all'])
+    ).toEqual(['All'])
   })
 
   it('shows a stale or hand-edited ?source= and ?program= in its select, since that is what is sent', async () => {

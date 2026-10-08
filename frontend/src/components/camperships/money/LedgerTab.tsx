@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router'
 
 import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
+import { useAidBudget } from '../../../hooks/camperships/useAidBudget'
 import { useAidSummary } from '../../../hooks/camperships/useAidSummary'
+import { useAidToPlace } from '../../../hooks/camperships/useAidToPlace'
 import type { ApiAidProgramSplit, ApiAidSummary } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
-import type { AidView } from '../kit/asOf'
+import { aidHref, type AidView } from '../kit/asOf'
 import { AidTable, type AidColumn } from '../kit/AidTable'
 import { CS_LABEL, CS_PMETA } from '../kit/csType'
 import { formatLongDate } from '../kit/dates'
@@ -21,7 +24,14 @@ import {
   programChoicesOf,
   programLabelsOf,
   summaryProgramWords,
+  tieOut,
+  tieOutWords,
+  type TieOut,
 } from './ledgerModel'
+
+/** The footnote that explains the tie-out line, numbered after the registry's notes. */
+const TIE_OUT_NOTE =
+  'The tie-out line: camp aid in CampMinder that counts toward the budget, against Season › Rounds & budget Posted, every pool together. When they differ, the difference is camp aid waiting in To place, or a round checked since the last sync.'
 
 /** A money column whose footer is the server's season figure, never a sum of the rows shown. */
 function moneyColumn(
@@ -64,6 +74,47 @@ function pivotColumns(data: ApiAidSummary): ReadonlyArray<AidColumn<ApiAidProgra
 }
 
 /**
+ * The one line that ties the Ledger to Season › Rounds & budget (owner 10-08, Q6): a check when camp
+ * aid counting toward the budget equals Posted, an amber box with the gap when it does not.
+ */
+function TieOutLine({
+  view,
+  verdict,
+  openCount,
+}: {
+  view: AidView
+  verdict: TieOut
+  openCount: number | null
+}) {
+  const words = tieOutWords(verdict, openCount)
+  if (verdict.kind === 'match') {
+    return (
+      <p
+        data-testid="tie-out"
+        className="inline-block rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+      >
+        <Link to={aidHref('/aid/season/rounds-budget', view)} className="hover:underline">
+          {words}
+        </Link>{' '}
+        ✓
+      </p>
+    )
+  }
+  const [before, after] = words.split(' · see To place')
+  return (
+    <p
+      data-testid="tie-out"
+      className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+    >
+      {before} ·{' '}
+      <Link to={aidHref('/aid/money/to-place', view)} className="font-medium underline">
+        see To place{after}
+      </Link>
+    </p>
+  )
+}
+
+/**
  * Money › Ledger (spec §8.1; D58, D151; P-11, P-22, ruling F): one row per family whose totals open
  * their lines (`LedgerFamilies`), and under it finance's posted totals (F10), folding, as money-v2
  * draws them: camp aid, outside grants and the total per program, from `GET /summary`, live or by
@@ -72,6 +123,8 @@ function pivotColumns(data: ApiAidSummary): ReadonlyArray<AidColumn<ApiAidProgra
 export function LedgerTab({ view }: { view: AidView }) {
   const summary = useAidSummary()
   const names = useAidProgramNames()
+  const budget = useAidBudget()
+  const toPlace = useAidToPlace(null)
   const [open, setOpen] = useState(true)
   const past = view.asOf.kind === 'past' ? view.asOf : null
   const data = summary.data
@@ -88,6 +141,13 @@ export function LedgerTab({ view }: { view: AidView }) {
         programLabels={programLabels}
         programChoices={programChoices}
       />
+      {data && budget.data && (
+        <TieOutLine
+          view={view}
+          verdict={tieOut(data, budget.data)}
+          openCount={toPlace.data?.open_count ?? null}
+        />
+      )}
       <section className="space-y-2">
         {/* A div, not an h3: bare headings are styled outside the cascade layers (csType.ts). */}
         <div className={`flex flex-wrap items-baseline gap-2 ${CS_LABEL}`}>
@@ -135,7 +195,7 @@ export function LedgerTab({ view }: { view: AidView }) {
           </QueryGuard>
         )}
       </section>
-      <AidDefinitionNotes surface="money-ledger" />
+      <AidDefinitionNotes surface="money-ledger" extra={[TIE_OUT_NOTE]} />
     </div>
   )
 }

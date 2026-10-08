@@ -171,7 +171,7 @@ export function LedgerFamilies({
         value={value ?? ''}
         onChange={(event) => setParam(name, event.target.value)}
       >
-        <option value="">all</option>
+        <option value="">All</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

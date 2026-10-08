@@ -4,7 +4,7 @@
  * `GET /summary`'s `by_program` sends them (PR A splits by the posting's funder type on the server),
  * and the mock's line of camp-aid shares. Pure: nothing is added up here (D21).
  */
-import type { ApiAidProgramSplit, ApiAidSummary } from '../../../types/api-types'
+import type { ApiAidBudget, ApiAidProgramSplit, ApiAidSummary } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { formatMoney } from '../kit/money'
 
@@ -21,7 +21,7 @@ const BUCKETS_LAST = ['ambiguous', 'unattributed']
  * person; `household` = program_family, ambiguous; `not_placed` = none (PR A, Task A3).
  */
 const SHARE_WORDS = {
-  placed: 'placed on a request',
+  placed: 'placed on a camper or request',
   household: 'at household level',
   not_placed: 'not placed',
 } as const satisfies Record<NonNullable<ApiAidSummary['camp_aid_levels']>[number]['group'], string>
@@ -124,4 +124,35 @@ export function summaryCsvName(year: number, asOf: string | null): string {
     season: year,
     asOf,
   })
+}
+
+export interface TieOut {
+  readonly kind: 'match' | 'apart'
+  /** Camp aid in CampMinder that counts toward the budget (`counts_toward_budget`, never camp_aid). */
+  readonly camp: number
+  /** Season › Rounds & budget Posted, every pool (`total.posted`). */
+  readonly posted: number
+  /** The absolute gap, in dollars; 0 on a match. */
+  readonly apart: number
+}
+
+const toCents = (dollars: number) => Math.round(dollars * 100)
+
+/** The tie-out line's verdict: the two figures, compared in cents so float noise never shows a gap. */
+export function tieOut(summary: ApiAidSummary, budget: ApiAidBudget): TieOut {
+  const camp = summary.counts_toward_budget
+  const posted = budget.total.total.posted ?? 0
+  const gap = Math.abs(toCents(camp) - toCents(posted))
+  return { kind: gap === 0 ? 'match' : 'apart', camp, posted, apart: gap / 100 }
+}
+
+/** The tie-out line in words (the check mark is drawn beside a match, not spelled here). */
+export function tieOutWords(t: TieOut, openCount: number | null): string {
+  const camp = `Camp aid posted ${formatMoney(t.camp)}`
+  if (t.kind === 'match') {
+    return `${camp} · matches Season › Rounds & budget Posted ${formatMoney(t.posted)}`
+  }
+  const lines =
+    openCount === null ? '' : ` (${String(openCount)} ${openCount === 1 ? 'line' : 'lines'})`
+  return `${camp} · Season › Rounds & budget Posted ${formatMoney(t.posted)} · ${formatMoney(t.apart)} apart · see To place${lines}`
 }
