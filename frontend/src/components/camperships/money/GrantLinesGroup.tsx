@@ -3,11 +3,12 @@ import { Link } from 'react-router'
 
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
 import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
+import { useAidSessionNames } from '../../../hooks/camperships/useAidSessionNames'
 import type { ApiAidNeedsCamper } from '../../../types/api-types'
 import { BulkGrantDialog } from '../grants/BulkGrantDialog'
 import { NeedsCamperPanel } from '../grants/NeedsCamperPanel'
 import { grantLineWords, grantPlan, needsKey, singleSuggestion } from '../grants/needsModel'
-import { suggestedWords } from '../grants/placeModel'
+import { suggestionCell } from '../grants/placeModel'
 import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { AidTable, type AidColumn } from '../kit/AidTable'
 import { aidHref, type AidView } from '../kit/asOf'
@@ -38,6 +39,7 @@ function GrantLinesBody({
   onDone: (words: string) => void
 }) {
   const names = useAidProgramNames()
+  const sessions = useAidSessionNames(year)
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
   const [matching, setMatching] = useState<ReadonlySet<string> | null>(null)
   // The keys ticked at the click while the dialog is open; the plan is derived from the read below.
@@ -91,7 +93,7 @@ function GrantLinesBody({
         key: 'suggested',
         header: "The dashboard's suggestion",
         flex: true,
-        value: (n) => suggestedWords(n, names),
+        value: (n) => suggestionCell(n, sessions),
         searchable: true,
       },
       {
@@ -103,7 +105,7 @@ function GrantLinesBody({
         render: (n) => formatMoney(n.grant.amount),
       },
     ],
-    [view, names]
+    [view, sessions]
   )
   const renderDetail = useCallback(
     (need: ApiAidNeedsCamper) => (
@@ -179,6 +181,7 @@ function GrantLinesBody({
         rowKey={needsKey}
         searchExtra={needsSearch}
         csvFilename={`camperships-money-to-place-grants-${String(year)}.csv`}
+        hideToolbar
         urlPrefix="needs_"
         renderDetail={renderDetail}
         arrowKeys

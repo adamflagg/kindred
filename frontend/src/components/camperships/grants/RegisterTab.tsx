@@ -26,6 +26,7 @@ import {
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
+import { sentenceCase } from '../kit/words'
 import { DONE_NOTE, MARK_TEXT } from '../money/toPlaceStyles'
 import { CommitmentForm } from './CommitmentForm'
 import { CommitmentRow } from './CommitmentRow'
@@ -117,7 +118,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'camper',
         header: 'Camper',
-        width: 180,
+        width: 150,
         pinned: true,
         value: camperWords,
         render: (r) => (
@@ -125,7 +126,7 @@ export function RegisterTab({ view }: { view: AidView }) {
             {r.person_cm_id > 0 || r.camper_basis === 'household' ? (
               camperWords(r)
             ) : (
-              <StatusPill tone="amber">household level</StatusPill>
+              <StatusPill tone="amber">Household level</StatusPill>
             )}
             {basisWords(r, needsCamper) !== '' && (
               <div className={CS_PMETA}>{basisWords(r, needsCamper)}</div>
@@ -137,7 +138,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'family',
         header: 'Family',
-        width: 170,
+        width: 130,
         value: (r) => registerFamily(r).text,
         render: (r) => (
           <Link
@@ -152,7 +153,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'grantor',
         header: 'Grantor',
-        width: 160,
+        width: 140,
         value: (r) => (r.grantor_key === '' ? 'no grantor yet' : r.grantor_name),
         render: (r) =>
           r.grantor_key === '' ? (
@@ -170,13 +171,13 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'program',
         header: 'Program',
-        width: 130,
+        width: 110,
         value: (r) => programWords(r, needsCamper),
       },
       {
         key: 'offsets',
         header: 'Aid request it offsets',
-        width: 220,
+        width: 180,
         value: (r) => offsetWords(r, needsCamper),
         render: (r) =>
           r.counts && r.requests.length > 0 ? (
@@ -188,7 +189,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'amount',
         header: 'Amount',
-        width: 110,
+        width: 90,
         align: 'right',
         value: (r) => r.amount,
         render: (r) =>
@@ -206,12 +207,12 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'standing',
         header: 'Where it stands',
-        width: 250,
+        width: 210,
         value: standingCsv,
         render: (r) =>
           r.kind === 'commitment' ? (
             <div>
-              <StatusPill tone="amber">{standingWords(r)}</StatusPill>
+              <StatusPill tone="amber">{sentenceCase(standingWords(r))}</StatusPill>
               <div className={CS_PMETA}>{standingNote(r)}</div>
             </div>
           ) : r.is_reversed ? (
@@ -226,17 +227,17 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'cancelled',
         header: 'Cancelled',
-        width: 100,
+        width: 90,
         value: (r) => (r.cancelled ? 'cancelled' : ''),
-        render: (r) => (r.cancelled ? <StatusPill tone="stone">cancelled</StatusPill> : ''),
+        render: (r) => (r.cancelled ? <StatusPill tone="stone">Cancelled</StatusPill> : ''),
       },
       {
         key: 'counted',
         header: 'Counted',
-        width: 110,
+        width: 100,
         value: (r) => (countsInTotal(r, needsCamper) ? 'counted' : 'not counted'),
         render: (r) =>
-          countsInTotal(r, needsCamper) ? '' : <StatusPill tone="muted">not counted</StatusPill>,
+          countsInTotal(r, needsCamper) ? '' : <StatusPill tone="muted">Not counted</StatusPill>,
       },
     ],
     [view, needsCamper]
@@ -310,7 +311,7 @@ export function RegisterTab({ view }: { view: AidView }) {
                   value={filters.grantor ?? ''}
                   onChange={(event) => setParam('grantor', event.target.value || null)}
                 >
-                  <option value="">all</option>
+                  <option value="">All</option>
                   {grantorChoices(data.grants).map((g) => (
                     <option key={g.value} value={g.value}>
                       {g.label}
@@ -326,7 +327,7 @@ export function RegisterTab({ view }: { view: AidView }) {
                   value={filters.program ?? ''}
                   onChange={(event) => setParam('program', event.target.value || null)}
                 >
-                  <option value="">all</option>
+                  <option value="">All</option>
                   {programChoices(data.grants).map((p) => (
                     <option key={p.value} value={p.value}>
                       {p.label}

@@ -125,13 +125,29 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
     expect(within(panel).queryByText(/Summer Sessions|^Quest$/)).toBeNull()
   })
 
+  it("shows each line's source_family_label in the Source family column, never a key", async () => {
+    const [first, second] = LEDGER_LINES.lines
+    if (first === undefined || second === undefined) throw new Error('fixture')
+    lines = {
+      ...LEDGER_LINES,
+      lines: [
+        { ...first, source_family_label: 'Camp financial aid' },
+        { ...second, source_family_label: '' },
+      ],
+    }
+    renderAt('/aid/money/ledger?lines=in_campminder_net', { year: 2027, asOf: { kind: 'live' } })
+    const panel = await screen.findByTestId('ledger-lines')
+    expect(await within(panel).findByText('Camp financial aid')).toBeInTheDocument()
+    expect(within(panel).getByText('camp fa')).toBeInTheDocument()
+  })
+
   it('shows each line, a reversed one struck with its date, and closes', async () => {
     renderAt('/aid/money/ledger?lines=in_campminder_net', { year: 2027, asOf: { kind: 'live' } })
     const panel = await screen.findByTestId('ledger-lines')
     expect(await within(panel).findByText('reversed Mar 9')).toBeInTheDocument()
     expect(within(panel).getByText('$1,420').tagName).toBe('S')
     expect(within(panel).getAllByText('Summer Sessions')).toHaveLength(2)
-    expect(within(panel).getByText('household level')).toBeInTheDocument()
+    expect(within(panel).getByText('Household level')).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
     // R3-3: each line's family is named as its Ledger row names it, tie-break muted, and links to
     // that family's household (R3-14), not the posting household.

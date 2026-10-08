@@ -15,7 +15,13 @@ import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
 import { GrantLinesGroup } from './GrantLinesGroup'
 
 vi.mock('../../../lib/pocketbase', () => ({
-  pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
+  pb: {
+    authStore: { token: 'test-jwt', clear: vi.fn() },
+    // The session names (useAidSessionNames): the fixture suggestion's session is 1000102.
+    collection: () => ({
+      getFullList: () => Promise.resolve([{ cm_id: 1000102, name: 'Session 2' }]),
+    }),
+  },
 }))
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
@@ -156,14 +162,16 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     ).toBeInTheDocument()
   })
 
-  it('draws the family, the line, and the dashboard’s suggestion with the program label', async () => {
+  it('draws the family, the line, and the dashboard’s suggestion with the session', async () => {
     renderGroup()
     expect(await screen.findByText(GARCIA_LINE)).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: /The line in CampMinder/ })).toBeInTheDocument()
     expect(
       screen.getByRole('columnheader', { name: /The dashboard.s suggestion/ })
     ).toBeInTheDocument()
-    expect(screen.getByText('Liam Garcia (Summer)')).toBeInTheDocument()
+    // Ruled edit (M6 item 5): camper · session name (mock Q4), no program label in this cell.
+    expect(await screen.findByText('Liam Garcia · Session 2')).toBeInTheDocument()
+    expect(screen.queryByText('Liam Garcia (Summer)')).toBeNull()
   })
 
   it('draws nothing when no grant line needs a camper', async () => {
@@ -292,14 +300,16 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(JSON.parse(String(writes()[0]?.body)).placements).toHaveLength(1)
   })
 
-  it('bulk: rows checked by hand stay checked across a search, and a line that is not single is left out by name', async () => {
+  it('bulk: rows checked by hand are confirmed together, and a line that is not single is left out by name', async () => {
     read = TWO
     renderGroup()
     const boxes = await screen.findAllByRole('checkbox', { name: 'Select' })
     await userEvent.click(boxes[0] as HTMLElement)
     await userEvent.click(boxes[1] as HTMLElement)
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Garcia')
-    expect(screen.getByText('2 selected · 1 hidden by the search')).toBeInTheDocument()
+    // Ruled edit (M6 item 4): the grant group has no search of its own, so nothing is ever hidden by one.
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    expect(screen.queryByRole('searchbox', { name: 'Search' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm the Selected…' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/Left out, confirm one at a time: Chen/)).toBeInTheDocument()

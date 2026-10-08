@@ -8,6 +8,7 @@ import {
   placementFor,
   stillNeedsCamper,
   suggestedWords,
+  suggestionCell,
 } from './placeModel'
 
 const [GARCIA] = GRANTS.needs_camper
@@ -38,6 +39,17 @@ describe('placeModel', () => {
     }
     expect(suggestedWords(labelled, {})).toBe('Liam Garcia (Summer Camp 2)')
     expect(suggestedWords(labelled, { summer: 'Other name' })).toBe('Liam Garcia (Summer Camp 2)')
+  })
+
+  it('words the To place suggestion cell as camper · session, with no program label', () => {
+    if (GARCIA?.suggestion == null) throw new Error('fixture')
+    const sessions = new Map([[GARCIA.suggestion.session_cm_id, 'Session 2']])
+    expect(suggestionCell(GARCIA, sessions)).toBe('Liam Garcia · Session 2')
+    expect(suggestionCell(GARCIA, new Map())).toBe('Liam Garcia')
+    expect(suggestionCell(GARCIA, undefined)).toBe('Liam Garcia')
+    expect(suggestionCell({ ...GARCIA, suggestion: null }, sessions)).toBe(
+      'No suggestion: pick the camper'
+    )
   })
 
   it("sends the suggestion's session with the suggested camper, and none with another (P-17)", () => {

@@ -18,6 +18,7 @@ import { familyLabel } from '../kit/familyLabel'
 import { formatMoney, moneyCsv } from '../kit/money'
 import { Money, ReversedAmount } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
+import { sentenceCase } from '../kit/words'
 import {
   LEDGER_LEVEL_TONE,
   LEDGER_LEVEL_WORDS,
@@ -26,7 +27,7 @@ import {
   type LedgerFilters,
 } from './ledgerFamiliesModel'
 import { summaryProgramWords } from './ledgerModel'
-import { keyWords } from './sourcesModel'
+import { familyWordsOf } from './sourcesModel'
 
 const lineKey = (line: ApiAidLedgerLine) => String(line.transaction_cm_id)
 /** ", 1 reversed (struck, not counted)": the amount adds live lines only (`lines()`, R3-14). */
@@ -89,7 +90,7 @@ export function LedgerLines({
         key: 'source',
         header: 'Source family',
         width: 140,
-        value: (l) => keyWords(l.source_family),
+        value: (l) => familyWordsOf(l),
       },
       {
         key: 'program',
@@ -127,7 +128,9 @@ export function LedgerLines({
           l.level === null ? (
             ''
           ) : (
-            <StatusPill tone={LEDGER_LEVEL_TONE[l.level]}>{LEDGER_LEVEL_WORDS[l.level]}</StatusPill>
+            <StatusPill tone={LEDGER_LEVEL_TONE[l.level]}>
+              {sentenceCase(LEDGER_LEVEL_WORDS[l.level])}
+            </StatusPill>
           ),
       },
     ]

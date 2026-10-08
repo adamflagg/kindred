@@ -22,6 +22,33 @@ import { programLabel } from '../requests/programLabel'
 /** "other_outside" → "other outside": a server key in words, never a hardcoded name. */
 export const keyWords = (key: string) => key.replaceAll('_', ' ')
 
+/**
+ * A source family in staff words: the server's `source_family_label`, and the key in words only
+ * when the label is empty or missing. Every Money surface that shows a family goes through this.
+ */
+export function familyWordsOf(row: {
+  readonly source_family: string
+  readonly source_family_label?: string | null
+}): string {
+  const label = row.source_family_label
+  return typeof label === 'string' && label !== '' ? label : keyWords(row.source_family)
+}
+
+/** The registry's source families as select choices: the key is the value, the server's label the words. */
+export function familyChoices(
+  rows: readonly ApiAidSourceRow[]
+): Array<{ value: string; label: string }> {
+  const byKey = new Map<string, string>()
+  for (const r of rows) {
+    if (r.source_family !== '' && !byKey.has(r.source_family)) {
+      byKey.set(r.source_family, familyWordsOf(r))
+    }
+  }
+  return [...byKey.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([value, label]) => ({ value, label }))
+}
+
 /** The funder type in words (the classify editor's choice). `satisfies`: a new type fails tsc here. */
 export const FUNDER_LABELS = {
   camp: 'Camp aid',

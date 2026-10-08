@@ -106,10 +106,10 @@ describe('Money › Ledger family rows (P-22)', () => {
   it("shows the level only where the money isn't on a request, the lines with reversals, and the server's totals", async () => {
     renderAt('/aid/money/ledger')
     await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
-    expect(within(rowOf(1000001)).getByText('household level')).toBeInTheDocument()
+    expect(within(rowOf(1000001)).getByText('Household level')).toBeInTheDocument()
     expect(within(rowOf(1000001)).getByText('6 · 2 reversed')).toBeInTheDocument()
-    expect(within(rowOf(1000002)).getByText('left at family level')).toBeInTheDocument()
-    expect(within(rowOf(1000004)).getByText('no request')).toBeInTheDocument()
+    expect(within(rowOf(1000002)).getByText('Left at family level')).toBeInTheDocument()
+    expect(within(rowOf(1000004)).getByText('No request')).toBeInTheDocument()
     expect(within(rowOf(1000003)).queryByText(/level|request|mismatch/)).toBeNull()
     // The server's totals, never the four rows' sum ($9,740 · $1,250).
     expect(screen.getByTestId('ledger-totals')).toHaveTextContent(
@@ -174,6 +174,29 @@ describe('Money › Ledger family rows (P-22)', () => {
         .getAllByRole('option')
         .map((o) => o.textContent)
     ).toEqual(['All', 'camp fa', 'named fund', 'other outside', 'placeholder', 'unclassified'])
+  })
+
+  it("labels the Source choices with the server's source_family_label, never the key", async () => {
+    const labelled = {
+      ...SOURCES_2027,
+      sources: SOURCES_2027.sources.map((r) => ({
+        ...r,
+        source_family_label: `Label of ${r.source_family}`,
+      })),
+    }
+    fetchSpy.mockImplementation((url) => {
+      const path = String(url)
+      const body = path.includes('/rules/')
+        ? RULES_2027
+        : path.includes('/sources')
+          ? labelled
+          : LEDGER
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+    })
+    renderAt('/aid/money/ledger')
+    const source = await screen.findByRole('combobox', { name: 'Source' })
+    await within(source).findByRole('option', { name: 'Label of camp_fa' })
+    expect(within(source).queryByRole('option', { name: 'camp fa' })).toBeNull()
   })
 
   // Lead ruling 10-08: only programs with money this season. The choices are what LedgerTab

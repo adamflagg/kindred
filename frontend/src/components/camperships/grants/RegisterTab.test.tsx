@@ -117,9 +117,9 @@ describe('Grants › Register (§8.2)', () => {
     expect(screen.getByText('R1 $1,420')).toBeInTheDocument()
     expect(screen.getByText('after the offer')).toBeInTheDocument()
     expect(screen.getByText("didn't apply")).toBeInTheDocument()
-    expect(screen.getAllByText('committed · not yet in CampMinder')).toHaveLength(2)
+    expect(screen.getAllByText('Committed · not yet in CampMinder')).toHaveLength(2)
     expect(screen.getByText('in CampMinder · Mar 12 · reversed Apr 1')).toBeInTheDocument()
-    expect(screen.getAllByText('not counted')).toHaveLength(3)
+    expect(screen.getAllByText('Not counted')).toHaveLength(3)
   })
 
   it("names the family by the household card's label, linking to the household (ruling D)", async () => {
@@ -361,6 +361,28 @@ describe('Grants › Register (§8.2)', () => {
     expect(headers.indexOf('Aid request it offsets')).toBe(headers.indexOf('Amount') - 1)
     expect(screen.getAllByText('Summer Camp').length).toBeGreaterThan(0)
     expect(screen.getByText('Not placed')).toBeInTheDocument()
+  })
+
+  it('fits a 1440 screen: the columns sum to no more than the ~1216px content width', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    const cols = Array.from(document.querySelectorAll('table colgroup col'))
+    expect(cols.length).toBeGreaterThanOrEqual(9)
+    const total = cols.reduce(
+      (sum, c) => sum + (parseFloat((c as HTMLElement).style.width) || 0),
+      0
+    )
+    expect(total).toBeGreaterThan(0)
+    expect(total).toBeLessThanOrEqual(1216)
+  })
+
+  it('words the Grantor and Program filters\' no-filter choice "All", sentence case like the Ledger', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    for (const name of ['Grantor', 'Program']) {
+      const select = screen.getByRole('combobox', { name })
+      expect(within(select).getAllByRole('option')[0]).toHaveTextContent(/^All$/)
+    }
   })
 
   it('links a waiting line to Money › To place for its household', async () => {

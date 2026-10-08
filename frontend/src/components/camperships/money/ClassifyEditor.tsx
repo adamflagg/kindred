@@ -19,7 +19,7 @@ import {
   DROPS_GRANTOR_WARNING,
   familyOptions,
   funderWords,
-  keyWords,
+  familyWordsOf,
   OFFERED_FUNDERS,
   PROGRAM_FAMILIES,
   programsChanged,
@@ -149,7 +149,7 @@ export function ClassifyEditor({
             <option value="">— pick —</option>
             {families.map((f) => (
               <option key={f} value={f}>
-                {keyWords(f)}
+                {familyWordsOf(rows.find((r) => r.source_family === f) ?? { source_family: f })}
               </option>
             ))}
           </select>

@@ -7,7 +7,7 @@
 import type { ApiAidGrantor, ApiAidSourceRow } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
 import { CANTEEN_WORDS, isRetired, seasonAmount, seasonCount } from '../grants/grantorModel'
-import { isUnclassified, keyWords } from './sourcesModel'
+import { familyWordsOf, isUnclassified } from './sourcesModel'
 
 export type FundersShow = 'all' | 'needs-group' | 'no-funder'
 
@@ -201,15 +201,9 @@ export const noFunderWords = (n: number, canClassify: boolean) =>
 
 export const yesNo = (value: boolean) => (value ? 'yes' : 'no')
 
-/**
- * The source family in words: the server's `source_family_label` when the row carries one (the
- * back end adds it; it is not in the generated types yet, so it is read defensively), else the
- * family key in words. An unclassified row has none: its pill says so.
- */
+/** The source family in words: the server's label, never the key. An unclassified row has none. */
 export function sourceFamilyWords(row: ApiAidSourceRow): string {
-  if (isUnclassified(row)) return ''
-  const label = (row as { readonly source_family_label?: unknown }).source_family_label
-  return typeof label === 'string' && label !== '' ? label : keyWords(row.source_family)
+  return isUnclassified(row) ? '' : familyWordsOf(row)
 }
 
 /**

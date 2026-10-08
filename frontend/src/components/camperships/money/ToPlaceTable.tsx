@@ -13,6 +13,8 @@ import {
   lineSearch,
   reasonGrouping,
   TO_PLACE_CSV_EXTRA,
+  TO_PLACE_FAMILY_WIDTH,
+  TO_PLACE_LINE_WIDTH,
   TO_PLACE_TEXT_COLUMNS,
 } from './toPlaceColumns'
 import { lineFamily, lineWords, stillNotPlacedWords } from './toPlaceModel'
@@ -25,7 +27,7 @@ function familyColumn(view: AidView): AidColumn<ApiAidToPlaceLine> {
   return {
     key: 'family',
     header: 'Family',
-    width: 190,
+    width: TO_PLACE_FAMILY_WIDTH,
     pinned: true,
     value: (line) => labelWords(lineFamily(line)),
     render: (line) => (
@@ -47,7 +49,7 @@ function familyColumn(view: AidView): AidColumn<ApiAidToPlaceLine> {
 const LINE: AidColumn<ApiAidToPlaceLine> = {
   key: 'line',
   header: 'The line in CampMinder',
-  width: 300,
+  width: TO_PLACE_LINE_WIDTH,
   value: lineWords,
   render: (line) => {
     const still = stillNotPlacedWords(line)

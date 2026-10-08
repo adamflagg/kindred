@@ -3,11 +3,7 @@
  * owner ruling F; money-v2.html Ledger). Pure. Every figure is the server's; the filters and the
  * day go to the server, and the lines read gets exactly the family read's.
  */
-import type {
-  ApiAidLedgerLevel,
-  ApiAidLedgerTotal,
-  ApiAidSourceRow,
-} from '../../../types/api-types'
+import type { ApiAidLedgerLevel, ApiAidLedgerTotal } from '../../../types/api-types'
 import { asOfQuery, type AidAsOf } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
 import { formatMoney } from '../kit/money'
@@ -75,11 +71,6 @@ export function ledgerParams(filters: LedgerFilters, asOf: AidAsOf): Record<stri
     ...(filters.program === null ? {} : { program: filters.program }),
     ...(filters.level === null ? {} : { level: filters.level }),
   }
-}
-
-/** The Source filter's choices: the source families the registry holds, never "" (P-22). */
-export function sourceFamilyOptions(rows: readonly ApiAidSourceRow[]): string[] {
-  return [...new Set(rows.map((r) => r.source_family))].filter((f) => f !== '').sort()
 }
 
 /**

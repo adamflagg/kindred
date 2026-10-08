@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import type { ApiAidGrants, ApiAidToPlace } from '../../../types/api-types'
 import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
+import { CS_LABEL } from '../kit/csType'
 import { ToPlaceTab } from './ToPlaceTab'
 import { SOURCES } from './sourcesFixtures'
 import {
@@ -279,6 +280,14 @@ describe('Money › To place (§8.1)', () => {
         body: JSON.stringify({ note: 'Waiting on CampMinder' }),
       },
     ])
+  })
+
+  it('heads "Left at family level" with the kit section label, not a display-serif heading', async () => {
+    renderTab()
+    const left = await screen.findByTestId('left-lines')
+    const heading = within(left).getByText('Left at family level')
+    expect(heading.tagName).not.toBe('H3')
+    expect(heading.className).toBe(CS_LABEL)
   })
 
   it('reopens a left line with a reason', async () => {
@@ -1162,7 +1171,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     )
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/^2 lines · 2 households · \$1,800 locked/)).toBeInTheDocument()
-    expect(within(dialog).getByText('estimate')).toBeInTheDocument()
+    expect(within(dialog).getByText('Estimate')).toBeInTheDocument()
     answers = [json({ ...PLACED, placed: [3000003, RILEY_EXACT.transaction_cm_id] })]
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 2' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
@@ -1194,7 +1203,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     const dialog = await screen.findByRole('dialog')
     // One line: its own preview is exact, so no estimate pill (plan review m6).
     expect(within(dialog).getByText(/^1 line · 1 household · \$1,500 locked/)).toBeInTheDocument()
-    expect(within(dialog).queryByText('estimate')).toBeNull()
+    expect(within(dialog).queryByText('Estimate')).toBeNull()
     expect(
       within(dialog).getByText('Left out, confirm one at a time: Johnson (a split).')
     ).toBeInTheDocument()

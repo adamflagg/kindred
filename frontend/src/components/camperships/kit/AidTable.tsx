@@ -179,6 +179,8 @@ export interface AidTableProps<Row> {
    * list, as filtered"), a rule, then these. Esc and an outside click close it; a click inside closes it.
    */
   readonly csvMenu?: ReactNode
+  /** True: no toolbar at all (no search, switch or Download CSV), for a table whose page owns them. Default false. */
+  readonly hideToolbar?: boolean | undefined
   /** A status line drawn under the toolbar (the March file's result); nothing is drawn when undefined. */
   readonly toolbarStatus?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
@@ -282,6 +284,7 @@ export function AidTable<Row>({
   toolbarAfterGrouping,
   csvMenu,
   toolbarStatus,
+  hideToolbar = false,
   searchPlaceholder = 'Search names or CM IDs',
   searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
@@ -773,24 +776,26 @@ export function AidTable<Row>({
     )
   return (
     <div className="space-y-2">
-      <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        {toolbarLead}
-        {toolbarAfterGrouping !== undefined && groupingSwitch}
-        {toolbarAfterGrouping}
-        <div className="relative w-64">
-          <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-          <input
-            type="search"
-            aria-label="Search"
-            placeholder={searchPlaceholder}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className={AID_SEARCH_INPUT}
-          />
+      {!hideToolbar && (
+        <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          {toolbarLead}
+          {toolbarAfterGrouping !== undefined && groupingSwitch}
+          {toolbarAfterGrouping}
+          <div className="relative w-64">
+            <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+            <input
+              type="search"
+              aria-label="Search"
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className={AID_SEARCH_INPUT}
+            />
+          </div>
+          {toolbarAfterGrouping === undefined && groupingSwitch}
+          {csvButton}
         </div>
-        {toolbarAfterGrouping === undefined && groupingSwitch}
-        {csvButton}
-      </div>
+      )}
       {toolbarStatus}
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>

@@ -15,6 +15,8 @@ import {
   draftFrom,
   dropsGrantor,
   familyOptions,
+  familyWordsOf,
+  familyChoices,
   funderWords,
   grantorWords,
   groupBody,
@@ -216,5 +218,33 @@ describe('Set a Group… (P-14; D159)', () => {
     expect(groupChanged(FUNDED_A, groupDraftFrom(FUNDED_A))).toBe(false)
     expect(groupChanged(FUNDED_A, { ...groupDraftFrom(FUNDED_A), group: NO_GROUP })).toBe(true)
     expect(groupChanged(NEEDS_E, { ...groupDraftFrom(NEEDS_E), group: 'pool_a' })).toBe(true)
+  })
+})
+
+describe('source family words (server label first)', () => {
+  it('reads source_family_label, falling back to the key in words only when it is empty', () => {
+    expect(
+      familyWordsOf({ source_family: 'camp_fa', source_family_label: 'Camp financial aid' })
+    ).toBe('Camp financial aid')
+    expect(familyWordsOf({ source_family: 'camp_fa', source_family_label: '' })).toBe('camp fa')
+    expect(familyWordsOf({ source_family: 'camp_fa' })).toBe('camp fa')
+  })
+
+  it('offers the registry families as value + label, sorted by key, labelled by the server', () => {
+    const [base] = SOURCES_2027.sources
+    if (base === undefined) throw new Error('fixture')
+    const rows = [
+      {
+        ...base,
+        source_family: 'other_outside',
+        source_family_label: 'Outside grants',
+      },
+      { ...base, source_family: 'camp_fa', source_family_label: 'Camp aid' },
+      { ...base, source_family: 'camp_fa', source_family_label: 'Camp aid' },
+    ]
+    expect(familyChoices(rows)).toEqual([
+      { value: 'camp_fa', label: 'Camp aid' },
+      { value: 'other_outside', label: 'Outside grants' },
+    ])
   })
 })

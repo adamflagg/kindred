@@ -14,6 +14,10 @@ import {
   suggestionWords,
 } from './toPlaceModel'
 
+/** Pinned widths (ToPlaceTable's two cell-drawn columns); with the text columns, the table fits 1440. */
+export const TO_PLACE_FAMILY_WIDTH = 170
+export const TO_PLACE_LINE_WIDTH = 270
+
 export const lineKey = (line: ApiAidToPlaceLine) => String(line.transaction_cm_id)
 
 /** Search reaches the household id, the person on the line and every candidate camper (§4.3). */
@@ -36,7 +40,7 @@ export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> 
   {
     key: 'candidates',
     header: 'Requests it could belong to · not yet in CampMinder',
-    width: 280,
+    width: 260,
     value: candidatesCell,
   },
   {
@@ -48,7 +52,7 @@ export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> 
   {
     key: 'confirm',
     header: 'What Confirm does',
-    width: 220,
+    width: 210,
     value: confirmSummary,
   },
 ]

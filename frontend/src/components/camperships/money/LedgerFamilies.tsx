@@ -14,6 +14,7 @@ import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { StatusPill } from '../kit/Pills'
+import { sentenceCase } from '../kit/words'
 import {
   LEDGER_LEVEL_TONE,
   LEDGER_LEVEL_WORDS,
@@ -23,13 +24,12 @@ import {
   linesWords,
   parseLedgerFilters,
   parseLinesTotal,
-  sourceFamilyOptions,
   unclassifiedNote,
   withSentValue,
 } from './ledgerFamiliesModel'
 import { summaryProgramWords } from './ledgerModel'
 import { LedgerLines } from './LedgerLines'
-import { keyWords } from './sourcesModel'
+import { familyChoices, familyWordsOf } from './sourcesModel'
 
 type LedgerParam = 'source' | 'program' | 'level' | 'lines'
 
@@ -82,10 +82,7 @@ export function LedgerFamilies({
       ),
     [setParams]
   )
-  const sourceOptions = useMemo(
-    () => sourceFamilyOptions(sources.data?.sources ?? []),
-    [sources.data]
-  )
+  const sourceOptions = useMemo(() => familyChoices(sources.data?.sources ?? []), [sources.data])
   // R3-3: the lines card names each line's family by its row here (no label on the lines read).
   const byFamily = useMemo(
     () => new Map((ledger.data?.rows ?? []).map((r) => [r.household_cm_id, r] as const)),
@@ -151,7 +148,9 @@ export function LedgerFamilies({
           r.level === null ? (
             ''
           ) : (
-            <StatusPill tone={LEDGER_LEVEL_TONE[r.level]}>{LEDGER_LEVEL_WORDS[r.level]}</StatusPill>
+            <StatusPill tone={LEDGER_LEVEL_TONE[r.level]}>
+              {sentenceCase(LEDGER_LEVEL_WORDS[r.level])}
+            </StatusPill>
           ),
       },
     ],
@@ -186,11 +185,7 @@ export function LedgerFamilies({
         'source',
         'Source',
         filters.source,
-        withSentValue(
-          sourceOptions.map((s) => ({ value: s, label: keyWords(s) })),
-          filters.source,
-          keyWords
-        )
+        withSentValue(sourceOptions, filters.source, (key) => familyWordsOf({ source_family: key }))
       )}
       {select(
         'program',

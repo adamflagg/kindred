@@ -96,7 +96,7 @@ export function BulkPlaceDialog({
           {plan.lines.length === 0
             ? 'Nothing to confirm together'
             : `${plural(plan.lines.length, 'line', 'lines')} · ${plural(plan.households, 'household', 'households')} · ${formatMoney(estimateLocked(plan))} locked `}
-          {several && <StatusPill tone="amber">estimate</StatusPill>}
+          {several && <StatusPill tone="amber">Estimate</StatusPill>}
         </p>
         <p className="text-muted-foreground text-xs">
           {several

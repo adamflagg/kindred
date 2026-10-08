@@ -54,6 +54,20 @@ export function suggestedWords(
 }
 
 /**
+ * To place's suggestion cell (mock Q4): "Emma Haddad · Session 2", the suggested camper and the
+ * session's name; just the camper when the suggestion has no session or its name isn't loaded.
+ */
+export function suggestionCell(
+  need: ApiAidNeedsCamper,
+  sessions: ReadonlyMap<number, string> | undefined
+): string {
+  const s = need.suggestion
+  if (s === null) return 'No suggestion: pick the camper'
+  const session = s.session_cm_id > 0 ? sessions?.get(s.session_cm_id) : undefined
+  return session === undefined || session === '' ? s.camper_name : `${s.camper_name} · ${session}`
+}
+
+/**
  * The line placed on a camper: the suggestion's session goes with the suggested camper; any other
  * camper is placed with no session and the server finds it (P-17).
  */
