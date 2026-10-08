@@ -431,6 +431,13 @@ jobs:
           echo "::error file=pocketbase/go.mod::no parseable 'go X.Y' line (got '$go_minor')"
           exit 1
         fi
+        # TEMPORARY (owner 2026-10-08): go1.27.1 carries GO-2026-6611/6612/6613/6617
+        # (net/http, http2), fixed in go1.27.2, but actions/go-versions' manifest,
+        # which check-latest reads, doesn't list 1.27.2 yet. An exact version not
+        # in the manifest makes setup-go download it from go.dev. Delete these
+        # lines once the manifest lists 1.27.2:
+        #   curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep '"1.27.2"'
+        if [[ "$go_minor" == "1.27" ]]; then go_minor=1.27.2; fi
         echo "go_minor=$go_minor" >> "$GITHUB_OUTPUT"
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
