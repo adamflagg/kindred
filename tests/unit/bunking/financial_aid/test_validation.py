@@ -1125,6 +1125,13 @@ def test_an_id_that_isnt_a_session_this_season_warns() -> None:
     assert issue.message == "1000888 is marked not running but isn't a session in 2031"
 
 
+def test_several_ids_that_arent_sessions_this_season_read_in_the_plural() -> None:
+    """CodeRabbit on #3073: two unknown ids "are marked … aren't sessions", never "is marked … isn't a session"."""
+    rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000888, 1000889])
+    issue = next(i for i in validate_rules(rules, _context()).warnings if i.code == "not_running_unknown_session")
+    assert issue.message == "1000888, 1000889 are marked not running but aren't sessions in 2031"
+
+
 def test_without_a_context_no_id_is_judged_unknown() -> None:
     """Pin. Passes before A2: with no context there is nothing to judge an id against."""
     rules = with_lever(fictional_rules(), "cost.not_running_session_cm_ids", [1000888])

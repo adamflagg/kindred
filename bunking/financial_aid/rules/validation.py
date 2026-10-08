@@ -716,7 +716,13 @@ def _check_cost(rules: AidRules, context: ValidationContext | None, issues: _Iss
                 "cost",
                 "not_running_unknown_session",
                 "cost.not_running_session_cm_ids",
-                f"{', '.join(str(s) for s in unknown)} is marked not running but isn't a session in {rules.year}",
+                f"{', '.join(str(s) for s in unknown)} "
+                + (
+                    "is marked not running but isn't a session"
+                    if len(unknown) == 1
+                    else "are marked not running but aren't sessions"
+                )
+                + f" in {rules.year}",
                 unknown,
             )
 
