@@ -80,6 +80,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'to-place'],
       ['financial-aid', 'grants'],
       ['financial-aid', 'ledger'],
+      ['financial-aid', 'reports'],
     ])
   })
 
@@ -99,6 +100,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'to-place'],
       ['financial-aid', 'grants'],
       ['financial-aid', 'ledger'],
+      ['financial-aid', 'reports'],
       ['financial-aid', 'jump-index'],
     ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
@@ -369,5 +371,23 @@ describe('slice 3: what a Money or Grants write moves (spec §10; the invalidati
   it('keeps To place apart per season and per household scope (D26)', () => {
     expect(queryKeys.aidToPlace(2027, null).slice(0, 2)).toEqual(queryKeys.aidToPlacePrefix())
     expect(queryKeys.aidToPlace(2027, null)).not.toEqual(queryKeys.aidToPlace(2027, 1000001))
+  })
+})
+
+describe("slice 4: Reports refresh with every money write (the Reports back end's invalidation table)", () => {
+  it('keeps each report read under the reports prefix, apart per season, report and query', () => {
+    const live = queryKeys.aidReport(2027, 'statistics', { round: '1' })
+    expect(live.slice(0, 2)).toEqual(queryKeys.aidReportsPrefix())
+    expect(live).not.toEqual(queryKeys.aidReport(2027, 'statistics', { round: '2' }))
+    expect(live).not.toEqual(queryKeys.aidReport(2026, 'statistics', { round: '1' }))
+    expect(live).not.toEqual(queryKeys.aidReport(2027, 'programs', { round: '1' }))
+  })
+
+  it("keeps the requests behind a count under the same prefix, so a write refreshes the grid's filter", () => {
+    const ids = queryKeys.aidReportRequests(2027, 'statistics', { part: 'tier', tier: '1' })
+    expect(ids.slice(0, 2)).toEqual(queryKeys.aidReportsPrefix())
+    expect(ids).not.toEqual(
+      queryKeys.aidReportRequests(2027, 'programs', { part: 'tier', tier: '1' })
+    )
   })
 })
