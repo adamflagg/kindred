@@ -60,7 +60,7 @@ export function developmentColumns(
     ...dev.columns.map((c, index) => ({
       key: `column-${String(index)}`,
       header:
-        shown && c.season === shown.season && c.as_of === shown.day
+        shown?.season === c.season && c.as_of === shown.day
           ? `${columnHeader(c)} · ${NOT_SAVED_TAG}`
           : columnHeader(c),
     })),

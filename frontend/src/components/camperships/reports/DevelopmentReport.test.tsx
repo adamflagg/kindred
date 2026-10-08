@@ -205,7 +205,7 @@ describe('Show As Of a Date…: one on-demand column, not saved (D1)', () => {
     ).toBeInTheDocument()
     expect(calls().some(([url]) => url?.includes('column=2027%3A2027-03-09'))).toBe(true)
     expect(
-      screen.getAllByRole('columnheader').filter((h) => /not saved/.test(h.textContent ?? ''))
+      screen.getAllByRole('columnheader').filter((h) => h.textContent.includes('not saved'))
     ).toHaveLength(1)
   })
 

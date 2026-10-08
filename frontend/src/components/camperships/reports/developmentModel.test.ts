@@ -219,7 +219,7 @@ describe('the grantor lines (D3)', () => {
         figuresOn: '2027-06-03',
         live: true,
         basis: 'mixed',
-      } as never,
+      },
       developmentColumns(DEVELOPMENT_GRANTORS),
       rows,
       '/x'
