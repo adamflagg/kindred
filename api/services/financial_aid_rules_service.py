@@ -1349,7 +1349,10 @@ class FinancialAidRulesService:
             raise NoSectionsNamedError("Name at least one section to approve")
         done = await self._done_reason(year, past_season_reason)
         # The section status keeps the plain note; only the log row names the correction.
-        logged = note if done is None else f"{note} · correcting a done season: {done}"
+        if done is None:
+            logged = note
+        else:
+            logged = f"{note} · correcting a done season: {done}" if note else _done_log(done)
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
         if fingerprints is not None:

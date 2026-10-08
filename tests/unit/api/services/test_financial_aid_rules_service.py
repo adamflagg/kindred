@@ -1479,6 +1479,18 @@ async def test_a_done_seasons_approval_needs_a_reason_and_logs_it_after_the_note
 
 
 @pytest.mark.asyncio
+async def test_a_done_seasons_approval_without_a_note_logs_the_reason_alone() -> None:
+    """The signature allows no note: the log row then reads as any other done-season write, never "None · ..."."""
+    store = FakeStore()
+    await _service(store).create_version(fictional_rules(), actor=FINANCE)
+    await _done_service(store).approve_sections(
+        2031, 1, ["income"], actor=FINANCE, note=None, past_season_reason="Late fix"
+    )
+    [row] = store.operations[-1]
+    assert row["reason"] == "Correcting a done season: Late fix"
+
+
+@pytest.mark.asyncio
 async def test_a_done_seasons_new_version_and_start_need_a_reason() -> None:
     store = FakeStore()
     await _service(store).create_version(fictional_rules(), actor=FINANCE)
