@@ -81,6 +81,27 @@ async def test_the_next_save_after_a_discard_takes_a_new_number() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_new_version_after_a_discard_takes_a_new_number() -> None:
+    """`new_version` numbers from every version, discarded ones too: numbering from the version in effect would
+    reuse the discarded draft's number, which the unique index on (year, version) refuses every time."""
+    store = FakeStore()
+    service = await _draft_v2(store)
+    await service.discard_draft(2031, 2, actor=FINANCE)
+    created = await service.new_version(2031, 1, actor=FINANCE)
+    assert created.version == 3
+    assert (await service.load(2031)).version == 3
+
+
+@pytest.mark.asyncio
+async def test_a_whole_document_version_after_a_discard_takes_a_new_number() -> None:
+    store = FakeStore()
+    service = await _draft_v2(store)
+    await service.discard_draft(2031, 2, actor=FINANCE)
+    created = await service.create_version(_minimum(fictional_rules(), "175"), actor=FINANCE)
+    assert created.version == 3
+
+
+@pytest.mark.asyncio
 async def test_a_discard_is_one_logged_operation_naming_the_version() -> None:
     store = FakeStore()
     service = await _draft_v2(store)

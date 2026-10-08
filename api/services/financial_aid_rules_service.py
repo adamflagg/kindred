@@ -821,7 +821,8 @@ class FinancialAidRulesService:
         return reason
 
     async def load(self, year: int, version: int | None = None) -> RulesVersion:
-        """One version, or the year's highest version when `version` is None."""
+        """One version, or the year's highest version when `version` is None. A discarded draft is never the
+        highest (`list_versions` leaves it out), but still loads by its number."""
         if version is None:
             rows = await self._store.list_versions(year)
             if not rows:
@@ -857,7 +858,8 @@ class FinancialAidRulesService:
         """Every section some version of `year` holds locked (Scenarios addendum §S11.3). Any version, not just the
         latest: a branch lifts the locks in the version it writes (`carry_forward`), as `_budget_total_locked`
         reasons. Locks come only from a posted round (`lock_writes`), never a date. The stored statuses alone: a
-        document the current schema rejects must not fail a read."""
+        document the current schema rejects must not fail a read. A discarded draft is left out: it never holds a
+        lock the version in effect lacks, since `discard_draft` refuses one that does."""
         rows = await self._store.list_versions(year)
         return frozenset(
             name
@@ -1033,7 +1035,7 @@ class FinancialAidRulesService:
 
     async def _create_first_or_next(self, document: AidRules, *, actor: str, done: str | None) -> RulesVersion:
         latest = await self._latest(document.year)
-        version = (latest.version if latest is not None else 0) + 1
+        version = await self._next_version(document.year)
         body = _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
         return await self._create(body, log_action="create", actor=actor, supersedes=latest, reason=_done_log(done))
 
@@ -1586,7 +1588,7 @@ class FinancialAidRulesService:
         latest = await self.load(year)
         source = latest if from_version == latest.version else await self.load(year, from_version)
         await self._assert_total_unmoved_once_locked(year, source.document)
-        version = latest.version + 1
+        version = await self._next_version(year)
         body = _body(
             year,
             version,

@@ -38,8 +38,9 @@ export interface ApproveVars {
  * A rules write (spec §7.5, §10). It refreshes on settle, not only on success: a 409 (G6) means the
  * rules moved under the person, and the screen has to show them what moved. The refresh's promise is
  * returned so the mutation waits for the refetch. `priced`: the write re-prices the season (an
- * approval), so every money read refreshes too. A save never edits the pricing version in place and
- * a start creates every section as a draft, so both are unpriced.
+ * approval), so every money read refreshes too. A save never edits the pricing version in place,
+ * a start creates every section as a draft, and a discard only hides versions newer than the pricing
+ * one, so all three are unpriced.
  */
 function useRulesWrite<Vars, Out>(
   write: (
