@@ -10,7 +10,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
-import { CS_INPUT, CS_LINK } from '../kit/csType'
+import { CS_INPUT, CS_LINK, CS_PMETA } from '../kit/csType'
 import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -24,11 +24,13 @@ import {
   ledgerCsvName,
   linesWords,
   parseLedgerFilters,
+  parseLinesTotal,
   sourceFamilyOptions,
 } from './ledgerFamiliesModel'
+import { LedgerLines } from './LedgerLines'
 import { keyWords, PROGRAM_FAMILIES } from './sourcesModel'
 
-type LedgerParam = 'source' | 'program' | 'level'
+type LedgerParam = 'source' | 'program' | 'level' | 'lines'
 
 const familyKey = (r: ApiAidLedgerFamily) => String(r.household_cm_id)
 const labelOfRow = (r: ApiAidLedgerFamily) => familyLabel(r, r.display_name)
@@ -44,11 +46,13 @@ const TOTALS: readonly ApiAidLedgerTotal[] = ['in_campminder_net', 'outside_gran
  * money-v2.html Ledger): one row per family named by the household page's label, In CampMinder
  * (net) and Outside grants as the server sends them, and the level as a pill only where the money
  * isn't on a request. Source, Program and Level go to the server (`?source=`, `?program=`,
- * `?level=`); the family opens its household page. Under the table, the server's two totals.
+ * `?level=`); the family opens its household page. Under the table, the server's two totals, each
+ * opening the lines behind it (`?lines=`).
  */
 export function LedgerFamilies({ view }: { view: AidView }) {
   const [params, setParams] = useSearchParams()
   const filters = parseLedgerFilters(params)
+  const openTotal = parseLinesTotal(params.get('lines'))
   const ledger = useAidMoneyLedger(filters)
   const sources = useAidSources()
   const names = useAidProgramNames()
@@ -69,6 +73,12 @@ export function LedgerFamilies({ view }: { view: AidView }) {
     () => sourceFamilyOptions(sources.data?.sources ?? []),
     [sources.data]
   )
+  // R3-3: the lines card names each line's family by its row here (no label on the lines read).
+  const byFamily = useMemo(
+    () => new Map((ledger.data?.rows ?? []).map((r) => [r.household_cm_id, r] as const)),
+    [ledger.data]
+  )
+  const familyOf = useCallback((id: number) => byFamily.get(id), [byFamily])
   const columns = useMemo(
     (): ReadonlyArray<AidColumn<ApiAidLedgerFamily>> => [
       {
@@ -213,13 +223,30 @@ export function LedgerFamilies({ view }: { view: AidView }) {
               {TOTALS.map((total) => (
                 <Fragment key={total}>
                   {' · '}
-                  <span>
+                  <button
+                    type="button"
+                    className={CS_LINK}
+                    onClick={() => setParam('lines', total)}
+                  >
                     {`${LEDGER_TOTAL_WORDS[total]} `}
                     <Money value={data[total]} />
-                  </span>
+                  </button>
                 </Fragment>
               ))}
+              <span className={`${CS_PMETA} ml-2`}>
+                each total opens its lines; the totals follow the filters, not the search
+              </span>
             </p>
+            {openTotal !== null && (
+              <LedgerLines
+                key={openTotal}
+                total={openTotal}
+                filters={filters}
+                view={view}
+                familyOf={familyOf}
+                onClose={() => setParam('lines', null)}
+              />
+            )}
           </div>
         )}
       </QueryGuard>
