@@ -4,13 +4,12 @@ import { useSearchParams } from 'react-router'
 import { useAidCommitteeReport } from '../../../hooks/camperships/useAidCommitteeReport'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { hasStatus, type AidRequestSet } from '../../../services/camperships/aidApi'
-import { GROUP, GROUP_BUTTON_OFF, GROUP_BUTTON_ON } from '../../admin/audit/auditStyles'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import { parseRequestSet, requestSetParam } from '../season/scenarios/controlsModel'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { aidHref, type AidView } from '../kit/asOf'
-import { REPORT_NOTE } from '../kit/reportStyles'
+import { CHIP_OFF, CHIP_ON, REPORT_FILTER_LABEL, REPORT_NOTE } from '../kit/reportStyles'
 import { ReportTable } from '../kit/ReportTable'
 import {
   appealsColumns,
@@ -62,23 +61,21 @@ export function YearOverYear({ view }: { view: AidView }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-muted-foreground text-xs font-semibold">Phases shown as</span>
-        <div className={`${GROUP} w-fit`}>
-          <button
-            type="button"
-            className={share === 'budget' ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-            onClick={() => setParam('phases', null)}
-          >
-            % of budget
-          </button>
-          <button
-            type="button"
-            className={share === 'share' ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-            onClick={() => setParam('phases', 'share')}
-          >
-            share of the phases
-          </button>
-        </div>
+        <span className={REPORT_FILTER_LABEL}>Phases shown as</span>
+        <button
+          type="button"
+          className={share === 'budget' ? CHIP_ON : CHIP_OFF}
+          onClick={() => setParam('phases', null)}
+        >
+          % of budget
+        </button>
+        <button
+          type="button"
+          className={share === 'share' ? CHIP_ON : CHIP_OFF}
+          onClick={() => setParam('phases', 'share')}
+        >
+          share of the phases
+        </button>
         <span className={REPORT_NOTE}>
           P = the dashboard&apos;s Posted; r = as reported, typed once. The dashboard computes every
           %.

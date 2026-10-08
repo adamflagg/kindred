@@ -83,6 +83,8 @@ export interface ReportColumn {
   readonly align?: 'left' | undefined
   /** `decided`: "Decided (not yet offered)", tinted amber, header and cells (D130; slice 4 K). */
   readonly tone?: 'decided' | undefined
+  /** `before`: a line left of the column, between a table's words and its figures (the mock's `.bl`). */
+  readonly divider?: 'before' | undefined
 }
 
 /**

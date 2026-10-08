@@ -4,11 +4,17 @@ import { Link, useSearchParams } from 'react-router'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { useAidStatistics } from '../../../hooks/camperships/useAidStatistics'
 import { hasStatus, type AidRequestSet } from '../../../services/camperships/aidApi'
-import { GROUP, GROUP_BUTTON_OFF, GROUP_BUTTON_ON } from '../../admin/audit/auditStyles'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import { aidHref, type AidView } from '../kit/asOf'
-import { REPORT_NOTE } from '../kit/reportStyles'
+import {
+  CHIP_OFF,
+  CHIP_ON,
+  COUNT_LINK,
+  REPORT_FILTER_LABEL,
+  REPORT_FILTERS,
+  REPORT_NOTE,
+} from '../kit/reportStyles'
 import { ReportTable } from '../kit/ReportTable'
 import { reportParam, type ReportAddress } from '../requests/reportFilter'
 import { requestSetParam } from '../season/scenarios/controlsModel'
@@ -36,7 +42,6 @@ import {
 import { useReportParam } from './useReportParam'
 
 const PATH = '/aid/reports/statistics'
-const COUNT_LINK = 'text-primary tabular-nums hover:underline'
 
 /**
  * Reports › Statistics, this season (spec §9.2, §9.7 RPT-4, 5, 9, 10, 22, 23; D80, D129–D131,
@@ -67,41 +72,6 @@ export function StatisticsTab({ view }: { view: AidView }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-muted-foreground text-xs font-semibold">Award table</span>
-        <div className={`${GROUP} w-fit`}>
-          <button
-            type="button"
-            className={choice.table === null ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-            onClick={() => setParam('table', null)}
-          >
-            {ALL_TABLES}
-          </button>
-          {tables.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={choice.table === t.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-              onClick={() => setParam('table', t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <span className="text-muted-foreground text-xs font-semibold">Round</span>
-        <div className={`${GROUP} w-fit`}>
-          {ROUND_CHIPS.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              className={choice.round === r.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-              onClick={() => setParam('round', r.key === '1' ? null : r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
       <ReportControls
         requestSet={choice.requestSet}
         onRequestSet={onRequestSet}
@@ -114,6 +84,30 @@ export function StatisticsTab({ view }: { view: AidView }) {
         }
       />
       {refusal !== null && <p className={AMBER_NOTE}>{refusal}</p>}
+      <div className={REPORT_FILTERS}>
+        <span className={REPORT_FILTER_LABEL}>Award table</span>
+        {[{ key: null, label: ALL_TABLES }, ...tables].map((t) => (
+          <button
+            key={t.key ?? 'all'}
+            type="button"
+            className={choice.table === t.key ? CHIP_ON : CHIP_OFF}
+            onClick={() => setParam('table', t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+        <span className={`${REPORT_FILTER_LABEL} ml-3`}>Round</span>
+        {ROUND_CHIPS.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            className={choice.round === r.key ? CHIP_ON : CHIP_OFF}
+            onClick={() => setParam('round', r.key === '1' ? null : r.key)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
       <QueryGuard
         isLoading={stats.isLoading}
         error={stats.data || refusal !== null ? null : stats.error}

@@ -69,6 +69,16 @@ describe('ProgramsTab (spec §9.3)', () => {
     expect(within(table).getAllByText('$2,100')).toHaveLength(3)
   })
 
+  it("divides each round's Apps and the total from the figures before them, as the mock does", async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By session' })
+    const heads = within(table).getAllByRole('columnheader')
+    const divided = heads.filter((h) => h.className.includes('border-l')).map((h) => h.textContent)
+    expect(divided).toHaveLength(4)
+    expect(divided.filter((t) => t?.startsWith('Apps'))).toHaveLength(3)
+    expect(divided).toContain('Total awarded')
+  })
+
   it("opens a session's Apps in Requests on that count's address (slice 4 J)", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By session' })

@@ -70,7 +70,7 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
     { key: 'from', header: 'Income from' },
     { key: 'to', header: 'Income to' },
     { key: 'fee', header: 'Eligible fee %' },
-    { key: 'apps', header: 'Apps', note: noteOf('apps') },
+    { key: 'apps', header: 'Apps', note: noteOf('apps'), divider: 'before' as const },
     { key: 'asked', header: 'Asked' },
     { key: 'asks', header: 'Asks' },
     { key: 'averageAsk', header: 'Avg ask' },

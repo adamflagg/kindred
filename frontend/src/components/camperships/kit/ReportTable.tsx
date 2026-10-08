@@ -22,6 +22,8 @@ import {
 } from './report'
 import {
   BASIS_BADGE,
+  COUNT_LINK,
+  DIVIDER_BEFORE,
   REPORT_NOTE,
   REPORT_TITLE,
   ROW_HEADING,
@@ -58,7 +60,6 @@ interface ReportTableProps {
 }
 
 const BODY_KINDS = new Set(['body', 'end'])
-const COUNT_LINK = 'text-primary tabular-nums hover:underline'
 
 /** A cell as the kit draws it: money through `Money`, a count above 0 with a link as that link (D20). */
 function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
@@ -71,6 +72,17 @@ function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
     )
   }
   return reportText(cell)
+}
+
+/** A cell's class: its column's alignment or tone, then the column's divider if it has one. */
+function cellClass(column: ReportColumn | undefined, index: number): string {
+  const base =
+    index === 0 || column?.align === 'left'
+      ? TD_LABEL
+      : column?.tone === 'decided'
+        ? TD_DECIDED
+        : TD_NUMBER
+  return column?.divider === 'before' ? `${base} ${DIVIDER_BEFORE}` : base
 }
 
 function indentStyle(indent: number | undefined) {
@@ -157,7 +169,8 @@ export function ReportTable({
 
   const header = (column: ReportColumn, index: number, rowSpan?: number) => {
     const numeric = index > 0 && column.align !== 'left'
-    const thClass = column.tone === 'decided' ? TH_DECIDED : numeric ? TH_NUMBER : TH_LABEL
+    const base = column.tone === 'decided' ? TH_DECIDED : numeric ? TH_NUMBER : TH_LABEL
+    const thClass = column.divider === 'before' ? `${base} ${DIVIDER_BEFORE}` : base
     const label = (
       <>
         {column.header}
@@ -282,13 +295,7 @@ export function ReportTable({
                   {row.cells.map((cell, index) => (
                     <td
                       key={columns[index]?.key ?? index}
-                      className={
-                        index === 0 || columns[index]?.align === 'left'
-                          ? TD_LABEL
-                          : columns[index]?.tone === 'decided'
-                            ? TD_DECIDED
-                            : TD_NUMBER
-                      }
+                      className={cellClass(columns[index], index)}
                       style={index === 0 ? indentStyle(row.indent) : undefined}
                     >
                       {cellContent(cell, row.links?.[index])}
