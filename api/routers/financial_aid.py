@@ -503,7 +503,7 @@ def _household_labels() -> HouseholdLabeler:
 
 
 def _grants() -> GrantsService:
-    return GrantsService(GrantsRepository(pb), labels=_household_labels())
+    return GrantsService(GrantsRepository(pb), labels=_household_labels(), program_labels=_program_labels)
 
 
 def _grants_register() -> GrantsRegisterService:

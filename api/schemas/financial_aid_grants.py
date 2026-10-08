@@ -158,6 +158,9 @@ class GrantRowOut(BaseModel):
     session_cm_id: int
     session_name: str
     program_family: str
+    # The season's rules label for program_family (programs.<key>.label), as the summary and the Ledger name it.
+    # "" for a key the rules don't name, a row with no program, and reads that load no rules.
+    program_label: str = ""
     grantor_key: str
     grantor_name: str
     description: str
@@ -188,6 +191,7 @@ class CamperSuggestionOut(BaseModel):
     camper_name: str
     session_cm_id: int
     program_family: str
+    program_label: str = ""  # as GrantRowOut.program_label
     basis: Literal["commitment", "attribution"]
     method: str
     commitment_id: str
