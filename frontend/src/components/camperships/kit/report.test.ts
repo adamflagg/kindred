@@ -1,0 +1,108 @@
+/** Reports' cells, Copy and CSV (spec §9.7 RPT-33; §11; D74). */
+import { describe, expect, it } from 'vitest'
+
+import {
+  BASIS_WORDS,
+  copyText,
+  countValue,
+  csvLines,
+  formatPct,
+  headingLines,
+  moneyValue,
+  pctValue,
+  reportCsv,
+  reportText,
+  textValue,
+  type ReportColumn,
+  type ReportHeading,
+  type ReportRow,
+} from './report'
+
+const HEADING: ReportHeading = {
+  title: 'By tier',
+  season: 2027,
+  figuresOn: '2027-04-10',
+  live: true,
+  basis: BASIS_WORDS.P,
+}
+const COLUMNS: ReportColumn[] = [
+  { key: 'tier', header: 'Tier' },
+  { key: 'apps', header: 'Apps', group: 'Round 1' },
+  { key: 'awarded', header: 'Awarded', group: 'Round 1' },
+  { key: 'pct', header: '% of ask' },
+]
+const ROWS: ReportRow[] = [
+  {
+    key: '1',
+    kind: 'body',
+    cells: [textValue('1'), countValue(1293), moneyValue(2399.72), pctValue(42.5)],
+  },
+  {
+    key: 'total',
+    kind: 'total',
+    cells: [textValue('All'), countValue(0), moneyValue(null), pctValue(null)],
+  },
+]
+
+describe('a cell', () => {
+  it('shows "—" for nothing there and "0" or "$0" for a real zero (D74)', () => {
+    expect(reportText(countValue(null))).toBe('—')
+    expect(reportText(countValue(0))).toBe('0')
+    expect(reportText(moneyValue(null))).toBe('—')
+    expect(reportText(moneyValue(0))).toBe('$0')
+    expect(formatPct(null)).toBe('—')
+  })
+
+  it('shows a percentage to the one decimal the server sent (§9.7)', () => {
+    expect(reportText(pctValue(42.5))).toBe('42.5%')
+    expect(reportText(pctValue(100))).toBe('100.0%')
+  })
+
+  it('writes plain signed numbers in the CSV, and nothing for "—" (§11)', () => {
+    expect(reportCsv(moneyValue(-1200))).toBe('-1200')
+    expect(reportCsv(moneyValue(2399.72))).toBe('2399.72')
+    expect(reportCsv(countValue(1293))).toBe('1293')
+    expect(reportCsv(pctValue(42.5))).toBe('42.5')
+    expect(reportCsv(pctValue(null))).toBe('')
+  })
+})
+
+describe('Copy and CSV carry the as-of and the basis (RPT-33)', () => {
+  it('heads every copy with the table, the season, the as-of and the basis', () => {
+    expect(headingLines(HEADING)).toEqual([
+      'By tier',
+      'Season 2027 · As of Apr 10, 2027 (live)',
+      'Basis: P (awarded = Posted)',
+    ])
+  })
+
+  it('names the request set when a reporting control is on (D138)', () => {
+    expect(
+      headingLines({ ...HEADING, live: false, requestSet: 'requests received through Feb 1, 2027' })
+    ).toEqual([
+      'By tier',
+      'Season 2027 · As of Apr 10, 2027',
+      'Basis: P (awarded = Posted)',
+      'Counts only requests received through Feb 1, 2027',
+    ])
+  })
+
+  it('copies values exactly as displayed, tab-separated, each header naming its group', () => {
+    expect(copyText(HEADING, COLUMNS, ROWS).split('\n').slice(4)).toEqual([
+      'Tier\tRound 1 · Apps\tRound 1 · Awarded\t% of ask',
+      '1\t1,293\t$2,399.72\t42.5%',
+      'All\t0\t—\t—',
+    ])
+  })
+
+  it('writes the CSV with plain numbers and the link last (D15)', () => {
+    const lines = csvLines(HEADING, COLUMNS, ROWS, '/aid/reports/statistics?year=2027')
+    expect(lines.slice(4)).toEqual([
+      ['Tier', 'Round 1 · Apps', 'Round 1 · Awarded', '% of ask'],
+      ['1', '1293', '2399.72', '42.5'],
+      ['All', '0', '', ''],
+      [],
+      ['Link', '/aid/reports/statistics?year=2027'],
+    ])
+  })
+})
