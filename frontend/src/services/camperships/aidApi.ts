@@ -78,6 +78,12 @@ import type {
   ApiAidLedgerTotal,
   ApiAidMoneyLedger,
   ApiAidSummary,
+  ApiAidCommitment,
+  ApiAidCommitmentIn,
+  ApiAidGrants,
+  ApiAidPlaceGrantsIn,
+  ApiAidPlaceGrantsOut,
+  ApiAidWithdrawIn,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
@@ -1144,4 +1150,82 @@ export async function fetchAidLedgerLines(
   if (!response.ok)
     throw await toApiError(response, 'Failed to load the lines behind the total', AidApiError)
   return (await response.json()) as ApiAidLedgerLines
+}
+
+/**
+ * Grants (spec §8.2; D55): the Register, Needs attention's groups and Expected, in one read. Live
+ * only. `offsets: false` skips the season's pricing (router: "a commitment edit's fresh read"): the
+ * shares then carry no round, so it never stands in for the Register's read.
+ */
+export async function fetchAidGrants(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  { offsets }: { readonly offsets: boolean }
+): Promise<ApiAidGrants> {
+  const params: Record<string, string> = offsets ? {} : { offsets: 'false' }
+  const response = await fetchWithAuth(withQuery(`${BASE}/grants/${String(year)}`, params))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the grants', AidApiError)
+  return (await response.json()) as ApiAidGrants
+}
+
+/** Confirm grant lines' campers, one or many (D16, D126): all or nothing, one operation. */
+export function placeAidGrants(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidPlaceGrantsIn
+): Promise<ApiAidPlaceGrantsOut> {
+  return send<ApiAidPlaceGrantsOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grants/${String(year)}/placements`,
+    body,
+    "Couldn't place the grant"
+  )
+}
+
+/** Record a grant committed but not yet posted (D55). It counts from now (D116). */
+export function createAidCommitment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidCommitmentIn
+): Promise<ApiAidCommitment> {
+  return send<ApiAidCommitment>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grants/${String(year)}/commitments`,
+    body,
+    "Couldn't record the commitment"
+  )
+}
+
+/** Save a whole commitment (the route replaces it, note and date included). */
+export function saveAidCommitment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  commitmentId: string,
+  body: ApiAidCommitmentIn
+): Promise<ApiAidCommitment> {
+  return send<ApiAidCommitment>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/grants/${String(year)}/commitments/${commitmentId}`,
+    body,
+    "Couldn't save the commitment"
+  )
+}
+
+/** Withdraw a commitment, with a reason (logged). */
+export function withdrawAidCommitment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  commitmentId: string,
+  body: ApiAidWithdrawIn
+): Promise<ApiAidCommitment> {
+  return send<ApiAidCommitment>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grants/${String(year)}/commitments/${commitmentId}/withdraw`,
+    body,
+    "Couldn't withdraw the commitment"
+  )
 }

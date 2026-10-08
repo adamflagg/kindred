@@ -189,6 +189,19 @@ import type {
   MoneyLedgerOut,
   CampAidLevel,
   ProgramSplit,
+  CamperCandidateOut,
+  CamperSuggestionOut,
+  CommitmentIn,
+  CommitmentOut,
+  GrantsResponse,
+  NeedsCamperOut,
+  PlaceGrantsIn,
+  PlaceGrantsOut,
+  PlacementIn,
+  RequestShareOut,
+  UnmappedDescriptionOut,
+  WaitingCommitmentOut,
+  WithdrawIn,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -482,3 +495,23 @@ export type ApiAidLedgerLevel = NonNullable<LedgerFamilyOut['level']>
 export type ApiAidLedgerLines = MoneyLedgerLinesOut
 export type ApiAidLedgerLine = LedgerLineOut
 export type ApiAidLedgerTotal = MoneyLedgerLinesOut['total']
+
+/**
+ * Grants' one read (spec §8.2; D55–D57, D126, D142): the Register, Needs attention's three groups and
+ * Expected. Mirrors Python `GrantsResponse` and its parts.
+ */
+export type ApiAidGrants = GrantsResponse
+export type ApiAidNeedsCamper = NeedsCamperOut
+export type ApiAidCamperSuggestion = CamperSuggestionOut
+export type ApiAidCamperCandidate = CamperCandidateOut
+export type ApiAidUnmappedDescription = UnmappedDescriptionOut
+export type ApiAidWaitingCommitment = WaitingCommitmentOut
+/** A request a grant sits on, and the round of it the rules count the share in (slice 3 ask 10). */
+export type ApiAidRequestShare = RequestShareOut
+/** Grants' writes (casework). Each mirrors its Python model. */
+export type ApiAidPlaceGrantsIn = PlaceGrantsIn
+export type ApiAidPlacementIn = PlacementIn
+export type ApiAidPlaceGrantsOut = PlaceGrantsOut
+export type ApiAidCommitmentIn = CommitmentIn
+export type ApiAidCommitment = CommitmentOut
+export type ApiAidWithdrawIn = WithdrawIn

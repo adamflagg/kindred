@@ -793,6 +793,10 @@ export const queryKeys = {
   // the ledger prefix: placements and reclassifications move them).
   aidGrantors: (includeRetired: boolean, year: number | null) =>
     ['financial-aid', 'grantors', includeRetired ? 'all' : 'in-use', year ?? 'no-season'] as const,
+  // Grants (slice 3 part 3a): the Register's priced read, and the stored-fields read (`offsets=false`)
+  // an edit takes at a click. Apart, so the click's unpriced answer never replaces the Register's.
+  aidGrants: (year: number) => ['financial-aid', 'grants', year, 'priced'] as const,
+  aidGrantsStored: (year: number) => ['financial-aid', 'grants', year, 'stored'] as const,
   aidFundingSources: (year: number) => ['financial-aid', 'sources', 'funding', year] as const,
   aidSummary: (year: number, asOf: string | null) =>
     ['financial-aid', 'ledger', year, 'summary', asOf ?? 'live'] as const,
