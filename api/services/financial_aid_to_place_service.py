@@ -107,7 +107,7 @@ GROUP_LABELS: Final[dict[Reason, str]] = {
     "program_mismatch": "The description names a program this camper isn't in",
 }
 
-PENDING_RECLASS: Final = "its reclassification waits for tonight's ledger sync"
+PENDING_RECLASS: Final = "its reclassification waits for the next ledger sync"
 
 
 class ToPlaceStore(Protocol):
@@ -150,7 +150,7 @@ def pending_reclass(override: OverrideRow | None, detail: LineDetail | None) -> 
 @dataclass(frozen=True)
 class SortedLines:
     """To place's items as its read lists them: the open lines by reason (every reason, in §8.1's order), the lines
-    left at family level (D58), and the lines whose reclassification waits for tonight's sync (D104), each with the
+    left at family level (D58), and the lines whose reclassification waits for the next ledger sync (D104), each with the
     source it names. Only the open lines are counted (open_count, open_total, and Today's line)."""
 
     groups: dict[Reason, list[ToPlaceItem]]

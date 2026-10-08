@@ -59,8 +59,15 @@ def test_view_alone_cannot_download_it() -> None:
 def test_the_route_reads_the_season_asked_for() -> None:
     service = _stub()
     response = _client().get(URL)
-    assert response.json() == {"year": 2031, "rows": []}
+    assert response.json() == {"year": 2031, "rows": [], "zero_left_out": 0}
     assert service.read.call_args.args == (2031,)
+
+
+def test_the_route_sends_how_many_zero_round_1s_it_left_out() -> None:
+    """Owner ruling E (10-06): the button says how many $0 Round 1 offers aren't in the file."""
+    service = _stub()
+    service.read = AsyncMock(return_value=MarchFileOut(year=2031, rows=[], zero_left_out=3))
+    assert _client().get(URL).json()["zero_left_out"] == 3
 
 
 def test_a_season_out_of_range_is_422() -> None:

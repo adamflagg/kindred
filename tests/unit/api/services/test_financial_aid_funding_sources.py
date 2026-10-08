@@ -190,7 +190,7 @@ async def test_rows_group_a_funders_descriptions_and_list_the_camps_own_read_onl
         "Two-Group Fund",
         "Years-at-Camp Grant",
     ]
-    assert out.group_change_warning == "Changing this re-places household-level lines on tonight's sync."
+    assert out.group_change_warning == "Changing this re-places household-level lines on the next ledger sync."
 
 
 async def test_an_unclassified_source_is_listed_read_only_under_its_own_section_not_hidden() -> None:

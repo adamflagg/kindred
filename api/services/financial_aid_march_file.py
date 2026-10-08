@@ -15,7 +15,11 @@ Never in the file:
   * from the first ticked season, a Round 1 CampMinder already holds money for (D162 Q1; Season.in_campminder): one
     short of its offer or otherwise in Requests > Not reconciled, or one covered in full that tonight's tick posts (C1).
     Sending it again risks posting the family twice.
-A $0 Round 1 is a real zero (D74) and still needs its offer: it is a $0 row (owner question 2, default).
+A $0 ROUND 1 writes no row (owner ruling E, 10-06; it replaces owner question 2's default, a $0 row): CampMinder
+has nothing to post, and the family needs a letter, not a posting. The read counts those requests (`zero_left_out`,
+requests not rows) so the button can say how many it left out; they stay in Requests > Needs an offer, where the
+registrar tells the family and marks Round 1 Posted by hand. A $0 Round 1 CampMinder already holds money for is out
+for that reason (D162, checked first) and is not counted. Only exactly $0 is left out: a Round 1 of cents is an offer.
 
 A FAMILY CAMP ROW (owner ruling A3 (a), 2026-10-02). A household's own request has no camper (person_cm_id 0), so its
 rows name the OLDEST CHILD attending that Family Camp session, as the registrar's 2025 file does (one child per
@@ -87,15 +91,21 @@ def march_shares(
     shares: Mapping[str, Sequence[PayerShareRecord]],
     left_out: list[str] | None = None,
     in_campminder: Collection[tuple[str, int]] = frozenset(),
+    zero_left_out: list[str] | None = None,
 ) -> list[MarchShare]:
     """Every payer share of every Round 1 offer still to make, by request. A request whose shares don't split is left
     out; its id is appended to `left_out` when the caller passes one, so the read can count it. `in_campminder`: the
-    (request, round)s CampMinder already holds money for (Season.in_campminder), whose Round 1 is never sent."""
+    (request, round)s CampMinder already holds money for (Season.in_campminder), whose Round 1 is never sent. A Round 1
+    decided at $0 is never sent either (ruling E); its id is appended to `zero_left_out` when the caller passes one."""
     out: list[MarchShare] = []
     for request_id, request in sorted(requests.items()):
         item = priced.get(request_id)
         decided = round1_to_offer(item) if item is not None else None
         if decided is None or (request_id, 1) in in_campminder:
+            continue
+        if decided == 0:  # ruling E: no $0 row; the read counts it for the button
+            if zero_left_out is not None:
+                zero_left_out.append(request_id)
             continue
         applicant = request.household_cm_id
         parts = split(decided, payers(request_id, applicant, shares.get(request_id, ())), applicant)
@@ -202,19 +212,23 @@ class MarchFileService:
         # first ticked season; before it, the season comes back unchanged).
         season = await self._decisions.with_unticked(await self._decisions.season(year))
         left_out: list[str] = []
-        shares = march_shares(season.requests, season.priced, season.shares, left_out, season.in_campminder())
+        zero_left_out: list[str] = []
+        shares = march_shares(
+            season.requests, season.priced, season.shares, left_out, season.in_campminder(), zero_left_out
+        )
         shares = await self._name_family_camp_children(year, season, shares)
         people = sorted({share.person_cm_id for share in shares if share.person_cm_id > 0})
         names = await self._store.fetch_camper_names(year, people)
         rows = march_rows(shares, names)
         logger.info(
-            "March file year=%s rows=%s requests=%s left_out=%s",
+            "March file year=%s rows=%s requests=%s left_out=%s zero_left_out=%s",
             year,
             len(rows),
             len({s.request_id for s in shares}),
             len(left_out),
+            len(zero_left_out),
         )
-        return MarchFileOut(year=year, rows=rows)
+        return MarchFileOut(year=year, rows=rows, zero_left_out=len(zero_left_out))
 
     async def _name_family_camp_children(self, year: int, season: Season, shares: list[MarchShare]) -> list[MarchShare]:
         """Each household request's shares (person 0) take the oldest attending child's Personal Id (ruling A3 (a));

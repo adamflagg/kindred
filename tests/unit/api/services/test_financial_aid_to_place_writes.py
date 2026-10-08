@@ -231,7 +231,7 @@ async def test_a_line_already_on_a_request_or_unknown_is_refused() -> None:
 async def test_a_line_waiting_on_a_reclassification_is_not_placed() -> None:
     store = one_line()
     seed_override_row(store, 9001, source_key=GRANT_KEY)
-    with pytest.raises(DecisionRefusedError, match="reclassification waits for tonight's ledger sync"):
+    with pytest.raises(DecisionRefusedError, match="reclassification waits for the next ledger sync"):
         await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
     with pytest.raises(DecisionRefusedError, match="reclassification waits"):  # nor left: it is out of the count
         await to_place_service(store).leave(YEAR, 9001, LeaveLineIn(note="n"), ACTOR)
