@@ -379,7 +379,10 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 	txns, err := findAllRecords(s.App, "financial_transactions",
 		"year = {:year} && (is_reversed = false || amount < 0) && ("+txnCategoryCMID+" = {:fa} || "+
 			txnCategoryCMID+" = {:inc} || "+txnCategoryCMID+" = {:adj})",
-		dbx.Params{"year": year, "fa": aidCategoryFinancialAssistance, "inc": aidCategoryFamilyIncentive, "adj": aidCategoryAdjustments})
+		dbx.Params{
+			"year": year, "fa": aidCategoryFinancialAssistance,
+			"inc": aidCategoryFamilyIncentive, "adj": aidCategoryAdjustments,
+		})
 	if err != nil {
 		return err
 	}
