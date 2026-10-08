@@ -75,7 +75,7 @@ export function YearOverYear({ view }: { view: AidView }) {
           className={share === 'share' ? CHIP_ON : CHIP_OFF}
           onClick={() => setParam('phases', 'share')}
         >
-          share of the phases
+          Share of the phases
         </button>
         <span className={REPORT_NOTE}>
           P = the dashboard&apos;s Posted; r = as reported, typed once. The dashboard computes every
@@ -101,21 +101,16 @@ export function YearOverYear({ view }: { view: AidView }) {
           const phasesFootnote = (
             <>
               Phase 1 is Round 1 money on requests received by the deadline; phase 2, Round 1 after
-              it; phase 3, appeals (D155). As offered never changes after posting; End of season is
-              net of cancellations, and reads to date until the season closes. The band under a %
-              compares As offered.
+              it; phase 3, appeals. As offered never changes after posting; End of season is net of
+              cancellations, and reads to date until the season closes. The band under a % compares
+              As offered.
               {reconciliation !== null && <span className="block">{reconciliation}</span>}
             </>
           )
           return (
             <div className="space-y-4">
-              {data.not_built.map((item) => (
-                <p key={item.figure} className={REPORT_NOTE}>
-                  {`Not built yet: ${item.reason}`}
-                </p>
-              ))}
               <ReportTable
-                heading={committeeHeading(data, 'Round 1 phases, year over year (RPT-1)')}
+                heading={committeeHeading(data, 'Round 1 phases, year over year')}
                 columns={phaseColumns(share, numberOf, phaseLabels(data))}
                 rows={phaseRows(data, share)}
                 csvFilename={committeeCsvName(view, 'phases', share)}
@@ -124,10 +119,7 @@ export function YearOverYear({ view }: { view: AidView }) {
                 footnote={phasesFootnote}
               />
               <ReportTable
-                heading={committeeHeading(
-                  data,
-                  'Applications and Round 1 ask at the cutoff (RPT-2, RPT-6)'
-                )}
+                heading={committeeHeading(data, 'Applications and Round 1 ask at the cutoff')}
                 columns={applicationColumns(numberOf)}
                 rows={applicationRows(data)}
                 csvFilename={committeeCsvName(view, 'applications', share)}
@@ -135,15 +127,15 @@ export function YearOverYear({ view }: { view: AidView }) {
                 footnote="Round 1 asks only, as they stood at the cutoff; appeals are never part of it. A row headed headline − Σ pools is a typed season whose pools don't add up, shown rather than hidden."
               />
               <ReportTable
-                heading={committeeHeading(data, 'Budget against actuals by pool (RPT-7, RPT-24)')}
+                heading={committeeHeading(data, 'Budget against actuals by pool')}
                 columns={budgetColumns(numberOf)}
                 rows={budgetRows(data)}
                 csvFilename={committeeCsvName(view, 'budget', share)}
                 link={link}
-                footnote="The camp's own money only, never Total Awards Granted (D106). The rules split is a reference (D119)."
+                footnote="The camp's own money only, never Total Awards Granted. The rules split is a reference."
               />
               <ReportTable
-                heading={committeeHeading(data, 'Applications and appeals (RPT-8)')}
+                heading={committeeHeading(data, 'Applications and appeals')}
                 columns={appealsColumns(numberOf)}
                 rows={appealsRows(data)}
                 csvFilename={committeeCsvName(view, 'appeals', share)}
@@ -151,7 +143,7 @@ export function YearOverYear({ view }: { view: AidView }) {
                 footnote="Finance's appeals: requests with any Round 2 or later ask, cancelled included. Not Development's appeals figure (a different population)."
               />
               <ReportTable
-                heading={committeeHeading(data, '% of ask awarded in Round 1 (RPT-13)')}
+                heading={committeeHeading(data, '% of ask awarded in Round 1')}
                 columns={ROUND1_COLUMNS}
                 rows={round1Rows(data)}
                 csvFilename={committeeCsvName(view, 'round1', share)}

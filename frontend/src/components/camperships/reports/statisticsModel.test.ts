@@ -105,10 +105,8 @@ describe('the tier table', () => {
     expect(header(STATISTICS_DECIDED, 'pctGrants')).toBe('% of ask incl. grants (posted + decided)')
   })
 
-  it('heads the award count "Awards (camp aid)", apart from Development\'s every-source count (L)', () => {
-    expect(tierColumns(STATISTICS, noNotes).find((c) => c.key === 'awards')?.header).toBe(
-      'Awards (camp aid)'
-    )
+  it('heads the award count "Awards", apart from Development\'s every-source count (L)', () => {
+    expect(tierColumns(STATISTICS, noNotes).find((c) => c.key === 'awards')?.header).toBe('Awards')
   })
 
   it("puts the registry's note numbers on their columns", () => {

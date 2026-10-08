@@ -181,7 +181,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
                 )}
               </p>
               <ReportTable
-                heading={statisticsHeading(data, 'Aid recipients who cancelled (RPT-22)', false)}
+                heading={statisticsHeading(data, 'Aid recipients who cancelled', false)}
                 basisBadge="P"
                 columns={cancelledColumns(numberOf)}
                 rows={cancelledRows(data, choice, linkOf)}
@@ -191,16 +191,16 @@ export function StatisticsTab({ view }: { view: AidView }) {
                 footnote="Each row is a reason, pool and round: a request posted in two rounds is in two rows, so the rows never add up to the cancelled applicants. The amount is the lock's, even if clawed back since."
               />
               <ReportTable
-                heading={statisticsHeading(data, 'Round 1 and appeals by tier (RPT-9)', false)}
+                heading={statisticsHeading(data, 'Round 1 and appeals by tier', false)}
                 basisBadge="P"
                 columns={tierAppealsColumns(numberOf)}
                 rows={tierAppealsRows(data)}
                 csvFilename={statisticsCsvName(view, choice, 'tier-appeals')}
                 link={link}
-                footnote="This table's counts open nothing yet: the server doesn't list their requests."
+                footnote="This table's counts don't open their requests."
               />
               <ReportTable
-                heading={statisticsHeading(data, 'March committee outcomes (RPT-23)', false)}
+                heading={statisticsHeading(data, 'March committee outcomes', false)}
                 basisBadge="P"
                 columns={OUTCOME_COLUMNS}
                 rows={outcomeRows(data, choice, linkOf)}

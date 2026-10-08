@@ -209,7 +209,7 @@ describe('StatisticsTab (spec §9.2)', () => {
 describe('StatisticsTab: the reporting controls and the three tables (D129, D130, D138)', () => {
   it('keeps the controls in the URL, off by default, and sends what they say (S4-3)', async () => {
     renderTab()
-    await screen.findByRole('table', { name: 'Aid recipients who cancelled (RPT-22)' })
+    await screen.findByRole('table', { name: 'Aid recipients who cancelled' })
     expect(screen.getByRole('checkbox', { name: 'Include not yet offered' })).not.toBeChecked()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Include not yet offered' }))
     await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
@@ -225,12 +225,8 @@ describe('StatisticsTab: the reporting controls and the three tables (D129, D130
   it('draws recipients who cancelled, RPT-9 and RPT-23 from the same read', async () => {
     renderTab()
     expect(await screen.findByText('Withdrawn in the dashboard')).toBeInTheDocument()
-    expect(
-      screen.getByRole('table', { name: 'Round 1 and appeals by tier (RPT-9)' })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('table', { name: 'March committee outcomes (RPT-23)' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Round 1 and appeals by tier' })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'March committee outcomes' })).toBeInTheDocument()
     expect(screen.getByText('As of Apr 10, 2027 (live) · rules v3')).toBeInTheDocument()
   })
 
@@ -261,7 +257,7 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
 
   it("opens RPT-23's Waiting for a response too, which no grid filter could hold before (#2974)", async () => {
     renderTab()
-    const table = await screen.findByRole('table', { name: 'March committee outcomes (RPT-23)' })
+    const table = await screen.findByRole('table', { name: 'March committee outcomes' })
     const [poolA] = within(table).getAllByRole('row').slice(1)
     expect(within(poolA!).getByRole('link', { name: '1' })).toHaveAttribute(
       'href',
@@ -272,7 +268,7 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
   it('keeps every count a link under a reporting control, carrying the control (the ids match the figure)', async () => {
     statistics = () => json(STATISTICS_THROUGH)
     renderTab('/aid/reports/statistics?through=2027-02-01')
-    const table = await screen.findByRole('table', { name: 'March committee outcomes (RPT-23)' })
+    const table = await screen.findByRole('table', { name: 'March committee outcomes' })
     expect(within(table).getAllByRole('link', { name: '9' })[0]).toHaveAttribute(
       'href',
       requestsLink(
@@ -283,9 +279,9 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
 
   it('opens nothing from RPT-9, and says so', async () => {
     renderTab()
-    const table = await screen.findByRole('table', { name: 'Round 1 and appeals by tier (RPT-9)' })
+    const table = await screen.findByRole('table', { name: 'Round 1 and appeals by tier' })
     expect(within(table).queryAllByRole('link')).toHaveLength(0)
-    expect(screen.getByText(/This table's counts open nothing yet/)).toBeInTheDocument()
+    expect(screen.getByText("This table's counts don't open their requests.")).toBeInTheDocument()
   })
 })
 
@@ -362,5 +358,29 @@ describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
           .at(-1)
       ).toBe('/api/financial-aid/reports/2027/programs?through_round1_deadline=true')
     )
+  })
+})
+
+describe('StatisticsTab: our words carry no internal ids (R4)', () => {
+  const CODES = /\bRPT-\d|\bD\d{2,3}\b|O-930/
+
+  it.each(['/aid/reports/statistics', '/aid/reports/statistics?rows=session'])(
+    'prints no RPT-, D-number or O-930 id on %s',
+    async (path) => {
+      renderTab(path)
+      await screen.findByRole('table', { name: /Aid recipients who cancelled/ })
+      expect(document.body.textContent).not.toMatch(CODES)
+    }
+  )
+
+  it('heads the award count "Awards", never "Awards (camp aid)"', async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent)
+    ).not.toContain('Awards (camp aid)')
+    expect(screen.queryByText(/Awards \(camp aid\)/)).toBeNull()
   })
 })

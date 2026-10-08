@@ -15,6 +15,7 @@ import {
   type ReportColumn,
   type ReportRow,
 } from './report'
+import { CS_CARD_HEADING } from './csType'
 import { ReportTable } from './ReportTable'
 
 const downloadCsv = vi.fn<(content: string, name: string) => void>()
@@ -245,5 +246,12 @@ describe('ReportTable', () => {
     expect(note.parentElement).toHaveTextContent('60.0%')
     await userEvent.click(screen.getByRole('button', { name: /Download CSV/ }))
     expect(downloadCsv.mock.calls[0]?.[0]).not.toContain('51–55%')
+  })
+
+  it('sets its heading in the sans card heading, not the display serif', () => {
+    renderTable()
+    const h = screen.getByRole('heading', { name: 'Every camper' })
+    expect(h.className).toContain(CS_CARD_HEADING)
+    expect(h.className).not.toContain('font-display')
   })
 })

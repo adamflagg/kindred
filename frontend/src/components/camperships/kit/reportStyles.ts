@@ -3,6 +3,8 @@
  * a header or cell takes `…_LABEL` or `…_NUMBER`, never the kit's `TH` plus `text-right` (slice 2's
  * styling rule: no two classes setting one property). Indents are inline padding for the same reason.
  */
+import { CS_CARD_HEADING } from './csType'
+
 // Headers wrap to two lines (bottom-aligned) so a 15-column table fits 1440 px (slice 4 refresh, the
 // statistics-v2 mock measured at 1440): figures never wrap.
 const TH_SHAPE =
@@ -32,7 +34,8 @@ export const ROW_TOTAL = 'bg-muted font-semibold'
 /** "P" or "r" beside a table's or a season's name (§9.7: every figure prints its basis). */
 export const BASIS_BADGE =
   'ml-1.5 rounded bg-sky-100 px-1 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
-export const REPORT_TITLE = 'font-display text-foreground text-sm font-semibold'
+/** A table's heading: the sans card heading, not the display serif (owner Q7 true-up). */
+export const REPORT_TITLE = CS_CARD_HEADING
 /** A small line of words under a table or a control. */
 export const REPORT_NOTE = 'text-muted-foreground text-xs'
 /** The reporting controls' bar. */

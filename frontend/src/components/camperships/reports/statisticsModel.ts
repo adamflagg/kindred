@@ -86,7 +86,7 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
         ]
       : []),
     { key: 'averageAward', header: 'Avg award', note: noteOf('average_award') },
-    { key: 'awards', header: 'Awards (camp aid)' },
+    { key: 'awards', header: 'Awards' },
     { key: 'liveAsked', header: 'Asked (live, in budget)', note: noteOf('pct_of_ask') },
     { key: 'pct', header: stats.pct_of_ask_label, note: noteOf('pct_of_ask') },
     {
