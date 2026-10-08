@@ -10,7 +10,12 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { campToday } from '../kit/dates'
-import { BUDGET_ROW, DEVELOPMENT, DEVELOPMENT_LIVE } from './developmentFixtures'
+import {
+  BUDGET_ROW,
+  DEVELOPMENT,
+  DEVELOPMENT_GRANTORS,
+  DEVELOPMENT_LIVE,
+} from './developmentFixtures'
 import { dayBefore } from './developmentModel'
 import { DevelopmentReport } from './DevelopmentReport'
 
@@ -76,7 +81,7 @@ describe('DevelopmentReport (spec §9.4)', () => {
     expect(
       within(table).getByText('2025 (as reported) · r · basis unconfirmed')
     ).toBeInTheDocument()
-    expect(screen.getByRole('table', { name: '2027 by source' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: '2027 by source' })).not.toBeInTheDocument()
   })
 
   it("keeps Show the dashboard's rebuild off, saying why in the server's words (Decision 16)", async () => {
@@ -104,6 +109,20 @@ describe('the Budget row (D2)', () => {
     renderReport()
     const table = await screen.findByRole('table', { name: 'Development report' })
     expect(within(table).queryByText(/Budget/)).not.toBeInTheDocument()
+  })
+})
+
+describe('the grantor lines (D3)', () => {
+  it('draw inline under Outside grants with their facts, in the one table', async () => {
+    liveAnswer = () => json(DEVELOPMENT_GRANTORS)
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    expect(within(table).getByText('Grantor A')).toBeInTheDocument()
+    expect(within(table).getByText('another funder · incentive')).toBeInTheDocument()
+    expect(
+      within(table).getByText('another funder · need-based · needs a group')
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('table')).toHaveLength(1)
   })
 })
 

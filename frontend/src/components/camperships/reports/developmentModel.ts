@@ -25,6 +25,8 @@ import {
 } from '../kit/report'
 
 const BUDGET_KEY = 'budget'
+const OUTSIDE_KEY = 'outside_awards'
+const ANOTHER_FUNDER = 'another funder'
 
 export const SECTION_WORDS: Readonly<Record<ApiAidDevelopmentRow['section'], string>> = {
   money: 'Money',
@@ -144,6 +146,7 @@ export function developmentRows(dev: ApiAidDevelopment): ReportRow[] {
         note: every.definition === '' ? undefined : every.definition,
         cells: cells(every.label, every),
       })
+      if (first.key === OUTSIDE_KEY) rows.push(...grantorRows(dev, indent))
       if (BROKEN_OUT.has(first.key)) {
         line.forEach((row, offset) => {
           if (row.group === null) return
@@ -214,29 +217,28 @@ export function notBuiltLines(dev: ApiAidDevelopment): string[] {
   return dev.not_built.filter((item) => item.figure !== 'rebuild').map((item) => item.reason)
 }
 
-export const SOURCE_COLUMNS: readonly ReportColumn[] = [
-  { key: 'source', header: 'Source' },
-  { key: 'who', header: 'Who paid', align: 'left' },
-  { key: 'kind', header: 'Incentive or need-based', align: 'left' },
-  { key: 'group', header: 'Group', align: 'left' },
-  { key: 'amount', header: 'This season' },
-  { key: 'awards', header: 'Awards' },
-]
-
-/** This season by source, each with D88's three facts. */
-export function sourceRows(dev: ApiAidDevelopment): ReportRow[] {
-  return dev.sources.map((source, index) => ({
-    key: `source-${source.source_key || 'camp'}-${source.group}-${String(index)}`,
-    kind: 'body',
-    cells: [
-      textValue(source.name),
-      textValue(source.who_paid),
-      textValue(source.incentive ? 'incentive' : 'need-based'),
-      textValue(source.group_label),
-      moneyValue(source.amount),
-      countValue(source.awards),
-    ],
-  }))
+/**
+ * The grantor lines under Outside grants (D88): one per source another funder paid, named, with its
+ * facts in muted words. Its amount sits only in the read's own season, the dashboard's column as of the
+ * figures day; the other columns have nothing there (D74), so they read "—". The camp's own is no line.
+ */
+function grantorRows(dev: ApiAidDevelopment, indent: 0 | 1 | 2): ReportRow[] {
+  const own = dev.columns.map(
+    (c) => c.season === dev.year && c.basis === 'P' && c.as_of === dev.figures_on
+  )
+  return dev.sources
+    .filter((source) => source.who_paid === ANOTHER_FUNDER)
+    .map((source, index) => ({
+      key: `grantor-${source.source_key}-${source.group}-${String(index)}`,
+      kind: 'body' as const,
+      indent: Math.min(indent + 1, 2) as 1 | 2,
+      note: [
+        source.who_paid,
+        source.incentive ? 'incentive' : 'need-based',
+        ...(source.group === '' ? ['needs a group'] : []),
+      ].join(' · '),
+      cells: [textValue(source.name), ...own.map((is) => moneyValue(is ? source.amount : null))],
+    }))
 }
 
 export function developmentCsvName(view: AidView, table: string): string {

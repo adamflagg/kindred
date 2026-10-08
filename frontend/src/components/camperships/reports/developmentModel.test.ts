@@ -1,8 +1,13 @@
 /** Development's table in words (spec §9.4; D65, D66, D87, D99, D158; Part C D44, D45). */
 import { describe, expect, it } from 'vitest'
 
-import { reportText } from '../kit/report'
-import { BUDGET_ROW, DEVELOPMENT, DEVELOPMENT_LIVE } from './developmentFixtures'
+import { csvLines, reportText } from '../kit/report'
+import {
+  BUDGET_ROW,
+  DEVELOPMENT,
+  DEVELOPMENT_GRANTORS,
+  DEVELOPMENT_LIVE,
+} from './developmentFixtures'
 import {
   columnHeader,
   datedSeasons,
@@ -14,7 +19,6 @@ import {
   notRebuiltColumnWords,
   rebuildReason,
   SUB_LINES,
-  sourceRows,
   unconfirmedWords,
   columnParam,
 } from './developmentModel'
@@ -160,12 +164,69 @@ describe('the report', () => {
     expect(rebuildReason(DEVELOPMENT)).toContain('waits on the 2017–2024 ledger backfill')
     expect(notBuiltLines(DEVELOPMENT)).toEqual([])
   })
+})
 
-  it('lists this season by source with its three facts (D88)', () => {
-    expect(sourceRows(DEVELOPMENT).map(texts)).toEqual([
-      ["The camp's awards", 'the camp', 'need-based', 'Pool A', '$1,500', '1'],
-      ['Grantor A', 'another funder', 'incentive', 'Pool A', '$500', '1'],
+describe('the grantor lines (D3)', () => {
+  const rows = developmentRows(DEVELOPMENT_GRANTORS)
+  const at = rows.findIndex((r) => texts(r)[0] === 'Outside grants')
+
+  it('puts one line per other funder under Outside grants, one level deeper, the camp’s own never', () => {
+    expect(at).toBeGreaterThan(0)
+    const lines = rows.slice(at + 1, at + 3)
+    expect(lines.map((r) => texts(r)[0])).toEqual(['Grantor A', 'Grantor B'])
+    expect(lines.map((r) => r.indent)).toEqual([
+      (rows[at]?.indent ?? 0) + 1,
+      (rows[at]?.indent ?? 0) + 1,
     ])
+    expect(rows.some((r) => texts(r)[0] === "The camp's awards")).toBe(false)
+  })
+
+  it('states the facts in muted words, and “needs a group” when the funder has none', () => {
+    expect(rows[at + 1]?.note).toBe('another funder · incentive')
+    expect(rows[at + 2]?.note).toBe('another funder · need-based · needs a group')
+  })
+
+  it('shows the amount only in the read’s own season, dashboard column, as of the figures day', () => {
+    expect(texts(rows[at + 1])).toEqual(['Grantor A', '—', '—', '$500'])
+    expect(texts(rows[at + 2])).toEqual(['Grantor B', '—', '—', '$250'])
+    // the as-of column (same season, an earlier day) is nothing there too
+    const withDay = developmentRows({
+      ...DEVELOPMENT,
+      rows: [
+        ...DEVELOPMENT.rows,
+        ...DEVELOPMENT_GRANTORS.rows
+          .filter((r) => r.key === 'outside_awards')
+          .map((r) => ({ ...r, values: [...r.values, 100] })),
+      ],
+      sources: DEVELOPMENT_GRANTORS.sources,
+    })
+    const i = withDay.findIndex((r) => texts(r)[0] === 'Outside grants')
+    expect(texts(withDay[i + 1])).toEqual(['Grantor A', '—', '—', '$500', '—'])
+  })
+
+  it('draws no lines, and no source table, when the read has no Outside grants line or no funder', () => {
+    expect(developmentRows(DEVELOPMENT_LIVE).some((r) => texts(r)[0] === 'Grantor A')).toBe(false)
+    const none = developmentRows({
+      ...DEVELOPMENT_GRANTORS,
+      sources: DEVELOPMENT_GRANTORS.sources.filter((s) => s.who_paid === 'the camp'),
+    })
+    expect(none.some((r) => texts(r)[0]?.startsWith('Grantor'))).toBe(false)
+  })
+
+  it('carries the lines into the CSV', () => {
+    const csv = csvLines(
+      {
+        title: 'Development report',
+        season: 2027,
+        figuresOn: '2027-06-03',
+        live: true,
+        basis: 'mixed',
+      } as never,
+      developmentColumns(DEVELOPMENT_GRANTORS),
+      rows,
+      '/x'
+    )
+    expect(csv.some((line) => line[0] === 'Grantor A')).toBe(true)
   })
 })
 

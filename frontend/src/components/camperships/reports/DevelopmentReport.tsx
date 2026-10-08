@@ -18,8 +18,6 @@ import {
   notBuiltLines,
   notRebuiltColumnWords,
   rebuildReason,
-  SOURCE_COLUMNS,
-  sourceRows,
   unconfirmedWords,
 } from './developmentModel'
 
@@ -87,16 +85,6 @@ export function DevelopmentReport({ view }: { view: AidView }) {
                 csvFilename={developmentCsvName(view, 'report')}
                 link={link}
                 footnote="All money: the camp's awards and every outside grant (D87). r = as reported, typed once; P = the dashboard's. Each line is the server's own figure over every group, money in no group included; the groups under a line are never added up to make it (Money in no group is its own line)."
-              />
-              <ReportTable
-                heading={developmentHeading(data, `${String(data.year)} by source`)}
-                basisBadge="P"
-                columns={SOURCE_COLUMNS}
-                rows={sourceRows(data)}
-                csvFilename={developmentCsvName(view, 'sources')}
-                link={link}
-                emptyText="No money given yet this season."
-                footnote="Each source with its three facts (D88): who paid, incentive or need-based, and the source."
               />
             </div>
           )

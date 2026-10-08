@@ -204,3 +204,33 @@ export const BUDGET_ROW: ApiAidDevelopmentRow = row({
   group: null,
   values: [1000000, 1050000, 1200000],
 })
+
+/**
+ * The read with an every-group `outside_awards` line, so the grantor lines have a line to sit under.
+ * Sources: the camp's own (never a line), a funder with a group, and one that needs a group.
+ */
+export const DEVELOPMENT_GRANTORS: ApiAidDevelopment = {
+  ...DEVELOPMENT_LIVE,
+  rows: [
+    ...DEVELOPMENT_LIVE.rows,
+    row({
+      key: 'outside_awards',
+      label: 'Outside grants',
+      group: null,
+      values: [40000, 45000, 500],
+    }),
+  ],
+  sources: [
+    ...DEVELOPMENT_LIVE.sources,
+    {
+      source_key: 'funder:grantor_b',
+      name: 'Grantor B',
+      who_paid: 'another funder',
+      incentive: false,
+      group: '',
+      group_label: '',
+      amount: 250,
+      awards: 1,
+    },
+  ],
+}
