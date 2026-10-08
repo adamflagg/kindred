@@ -224,6 +224,7 @@ describe('useAidDiscardRulesDraft (owner 2026-10-08)', () => {
     expect(sent()).toMatchObject({
       url: '/api/financial-aid/rules/2027/draft/discard',
       method: 'POST',
+      auth: 'Bearer test-jwt',
       body: { base_version: 4 },
     })
     refreshed(invalidate, 'rules')
