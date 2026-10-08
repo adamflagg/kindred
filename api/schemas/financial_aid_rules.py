@@ -71,6 +71,16 @@ class SectionSaveIn(BaseModel):
     past_season_reason: _PastReason | None = None
 
 
+class DiscardDraftIn(BaseModel):
+    """Discard the rules draft (owner 2026-10-08): the draft version the page showed, so a draft that moved on since
+    is refused rather than discarded unseen."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_version: int = Field(ge=1)
+    past_season_reason: _PastReason | None = None
+
+
 class SectionsSaveIn(BaseModel):
     """Several sections' editors saved as one operation (the Programs and costs card: programs and cost)."""
 

@@ -37,6 +37,7 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => {
     useAidSaveRulesSection: idle,
     useAidApproveRules: idle,
     useAidStartRulesFromLastYear: idle,
+    useAidDiscardRulesDraft: idle,
     useFreshAidRulesDraft: () => () => new Promise(() => undefined),
   }
 })
@@ -448,6 +449,15 @@ describe('Rules as chapters (spec §6)', () => {
     granted = FINANCE
     renderAt('/aid/season/rules?as_of=2027-03-15')
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
+  })
+
+  it('offers finance no Discard draft on a past date: only where a card can be edited (scan #3093)', () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules?as_of=2027-03-15')
+    expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull()
+    cleanup()
+    renderAt('/aid/season/rules')
+    expect(screen.getByRole('button', { name: 'Discard draft' })).toBeInTheDocument()
   })
 
   it('opens the chapters with a draft section by default, and Open All / Close All folds every one', async () => {

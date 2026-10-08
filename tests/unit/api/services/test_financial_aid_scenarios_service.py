@@ -2095,3 +2095,28 @@ async def test_an_option_built_on_the_version_in_effect_can_still_be_promoted() 
     assert (option.record.origin_version, option.promotable, option.blocked) == (1, True, None)
     _, branched_from = await world.service.make_rules_draft(YEAR, "B", base_version=1, acknowledged={}, actor=FINANCE)
     assert branched_from == 1
+
+
+# --- Make … the Rules Draft is off for an option built on a discarded rules draft (owner 2026-10-08) --------------------
+
+
+@pytest.mark.asyncio
+async def test_an_option_built_on_a_discarded_rules_draft_cannot_be_promoted() -> None:
+    """Discard throws away every unapproved change. An option kept off that draft would carry its edits back through
+    Make … the Rules Draft, so it is refused the way an option built on an older version is: start it again."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.rules.save_sections(YEAR, 1, with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)  # draft v2
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules_draft")
+    await world.service.save_draft(YEAR, _shifted(with_minimum(intake_rules(), Decimal(150)), "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 2
+    await world.rules.discard_draft(YEAR, 2, actor=FINANCE)
+    words = "built on v2, a discarded rules draft: start it again from the rules in effect"
+    option = next(
+        o for o in (await world.service.workspace(YEAR, FINANCE)).options if o.record.code == kept.record.code
+    )
+    assert (option.promotable, option.blocked) == (False, words)
+    with pytest.raises(ScenarioRefusedError, match="a discarded rules draft"):
+        await world.service.make_rules_draft(YEAR, kept.record.code, base_version=1, acknowledged={}, actor=FINANCE)

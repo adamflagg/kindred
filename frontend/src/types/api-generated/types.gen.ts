@@ -3872,6 +3872,23 @@ export type DevelopmentSourceOut = {
 }
 
 /**
+ * DiscardDraftIn
+ *
+ * Discard the rules draft (owner 2026-10-08): the draft version the page showed, so a draft that moved on since
+ * is refused rather than discarded unseen.
+ */
+export type DiscardDraftIn = {
+  /**
+   * Base Version
+   */
+  base_version: number
+  /**
+   * Past Season Reason
+   */
+  past_season_reason?: string | null
+}
+
+/**
  * DraftOut
  */
 export type DraftOut = {
@@ -24637,6 +24654,38 @@ export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponses = {
 
 export type SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponse =
   SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponses[keyof SaveAidRulesSectionsApiFinancialAidRulesYearSectionsPutResponses]
+
+export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostData = {
+  body: DiscardDraftIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/draft/discard'
+}
+
+export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostError =
+  DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostErrors[keyof DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostErrors]
+
+export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesDraftOut
+}
+
+export type DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponse =
+  DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponses[keyof DiscardAidRulesDraftApiFinancialAidRulesYearDraftDiscardPostResponses]
 
 export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostData = {
   body: NewVersionIn

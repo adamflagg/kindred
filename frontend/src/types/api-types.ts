@@ -157,6 +157,7 @@ import type {
   SectionSaveIn,
   SectionsSaveIn,
   SectionStatus,
+  DiscardDraftIn,
   SessionResolve,
   ShareLineOut,
   SocialGraphEdge,
@@ -380,6 +381,7 @@ export type ApiAidLeverEffect = LeverEffectOut
  */
 export type ApiAidSectionSaveIn = SectionSaveIn
 export type ApiAidSectionsSaveIn = SectionsSaveIn
+export type ApiAidDiscardDraftIn = DiscardDraftIn
 export type ApiAidRulesApproveIn = RulesApproveIn
 export type ApiAidStartFromLastYearIn = StartFromLastYearIn
 export type ApiAidRulesVersion = RulesVersionOut

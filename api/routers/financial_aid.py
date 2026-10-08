@@ -137,6 +137,7 @@ from api.schemas.financial_aid_reports import (
 from api.schemas.financial_aid_rules import (
     ApprovedRulesOut,
     ApprovedSectionOut,
+    DiscardDraftIn,
     DraftSectionOut,
     GroupOut,
     NewVersionIn,
@@ -270,7 +271,9 @@ from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
     AidRulesRepository,
     ApprovedRules,
+    DraftApprovedError,
     FinancialAidRulesService,
+    NoDraftToDiscardError,
     NotLatestVersionError,
     PricingVersionInUseError,
     PromotionPreview,
@@ -422,6 +425,8 @@ def _rules_http(exc: FinancialAidError) -> HTTPException:
             PricingVersionInUseError,
             ReplacementNotAcknowledgedError,
             AidWriteConflictError,
+            NoDraftToDiscardError,
+            DraftApprovedError,
         ),
     ):
         return HTTPException(status_code=409, detail=str(exc))
@@ -922,6 +927,21 @@ async def save_aid_rules_sections(year: _Year, body: SectionsSaveIn, user: AuthU
             past_season_reason=body.past_season_reason,
         )
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.post("/rules/{year}/draft/discard", response_model=RulesDraftOut)
+async def discard_aid_rules_draft(year: _Year, body: DiscardDraftIn, user: AuthUser = _RULES) -> RulesDraftOut:
+    """Throw the rules draft away (owner 2026-10-08): every version newer than the one in effect is marked discarded
+    and the Rules tab is back on the version in effect. 409 when the draft moved on since the page read it, holds an
+    approval made since it started, or there is nothing to go back to."""
+    service = _rules()
+    try:
+        await service.discard_draft(
+            year, body.base_version, actor=user.email, past_season_reason=body.past_season_reason
+        )
+        return _draft_out(await service.draft_view(year))
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
 

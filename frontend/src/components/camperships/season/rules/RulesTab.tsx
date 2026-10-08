@@ -34,6 +34,7 @@ import { useSeasonChrome } from '../seasonChrome'
 import { BudgetPointer } from './BudgetPointer'
 import { Chapter } from './Chapter'
 import { ChapterBar } from './ChapterBar'
+import { DiscardDraft } from './DiscardDraft'
 import { LeadLine, type LeadState } from './LeadLine'
 import { sectionContent } from './rulesDraft'
 import {
@@ -650,14 +651,27 @@ function ChaptersBody({
   const budgetDraft = draft?.sections.find((s) => s.section === 'budget')?.status.state === 'draft'
   const budgetErrors = (budget?.issues ?? []).filter((i) => i.severity === 'error').length
 
+  const lead = leadFor(editing !== null ? 'edit' : chrome.approving ? 'approve' : null)
+
   return (
     <div className="space-y-3">
       {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
       <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
-        <LeadLine
-          state={leadFor(editing !== null ? 'edit' : chrome.approving ? 'approve' : null)}
-          onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
-        />
+        <LeadLine state={lead} onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}>
+          {/* Only a draft newer than the version in effect, and only where a card could be edited: live, not locked,
+              not a receipt, never mid-edit or mid-approval (scan #3093). */}
+          {canEdit &&
+            lead.kind === 'finance' &&
+            lead.show === 'draft' &&
+            lead.approvedVersion !== null &&
+            lead.approvedVersion !== lead.draftVersion && (
+              <DiscardDraft
+                key={lead.draftVersion}
+                draftVersion={lead.draftVersion}
+                approvedVersion={lead.approvedVersion}
+              />
+            )}
+        </LeadLine>
       </ChapterBar>
       <ApprovePanel />
       <UnlockPanel />

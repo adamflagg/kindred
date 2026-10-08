@@ -65,8 +65,11 @@ class FakeStore:
         if self._after_read:
             await self._after_read.pop(0)()
 
-    async def list_versions(self, year: int) -> list[Any]:
-        rows = sorted((r for r in self.rows if r.year == year), key=lambda r: r.version)
+    async def list_versions(self, year: int, *, include_discarded: bool = False) -> list[Any]:
+        rows = sorted(
+            (r for r in self.rows if r.year == year and (include_discarded or not getattr(r, "discarded", False))),
+            key=lambda r: r.version,
+        )
         await self._read_done()
         return rows
 

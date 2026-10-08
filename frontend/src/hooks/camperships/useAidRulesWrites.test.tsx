@@ -16,6 +16,7 @@ import {
 import { queryKeys } from '../../utils/queryKeys'
 import {
   useAidApproveRules,
+  useAidDiscardRulesDraft,
   useAidSaveRulesSection,
   useAidSaveRulesSections,
   useAidStartRulesFromLastYear,
@@ -208,6 +209,25 @@ describe('useAidStartRulesFromLastYear (§7.5)', () => {
     refreshed(invalidate, 'rules')
     refreshed(invalidate, 'today')
     refreshed(invalidate, 'history')
+    refreshed(invalidate, 'scenarios')
+    expect(invalidate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['financial-aid', 'budget'] })
+    )
+  })
+})
+
+describe('useAidDiscardRulesDraft (owner 2026-10-08)', () => {
+  it('POSTs the draft version the page showed; refreshes the unpriced set, not the money', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidDiscardRulesDraft(), { wrapper })
+    await act(() => result.current.mutateAsync({ base_version: 4 }))
+    expect(sent()).toMatchObject({
+      url: '/api/financial-aid/rules/2027/draft/discard',
+      method: 'POST',
+      auth: 'Bearer test-jwt',
+      body: { base_version: 4 },
+    })
+    refreshed(invalidate, 'rules')
     refreshed(invalidate, 'scenarios')
     expect(invalidate).not.toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['financial-aid', 'budget'] })
