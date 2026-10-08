@@ -14,7 +14,8 @@ import { planContent, planIssues, splitWords, type PlanPool, type TypedPlan } fr
 
 const CONFLICT =
   'Someone else changed the rules draft since you opened this section. Nothing was saved; your typing is kept.'
-const LOCKED = 'Locked: the first approved budget stands all season. The program shares still edit.'
+const LOCKED =
+  'Locked: the first approved budget total stands all season. The program shares still edit.'
 
 /**
  * Edit Plan… (spec §5.2 B): the budget's total and program split, inline in the Budget card. Every card previews the

@@ -53,7 +53,7 @@ import os
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -262,9 +262,7 @@ class SectionInvalidError(FinancialAidError, ValueError):
     """A section editor's content is not a valid section; the message names each bad field."""
 
 
-BUDGET_TOTAL_LOCKED: Final = (
-    "The total is locked: the first approved budget stands all season. The program split can still change."
-)
+BUDGET_TOTAL_LOCKED: Final = "The total is locked: the first approved budget total stands all season, and posted amounts stand. The program split can still change."
 BUDGET_TOTAL_MISSING: Final = "Type the season's budget total before approving: it locks once approved."
 
 
@@ -488,6 +486,15 @@ def parse_section(document: AidRules, section: SectionName, content: Mapping[str
     except ValidationError as exc:
         details = "; ".join(f"{'.'.join(str(part) for part in e['loc'])}: {e['msg']}" for e in exc.errors())
         raise SectionInvalidError(f"{section} is not a valid section: {details}") from exc
+
+
+def _stored_budget_total(row: Any) -> Decimal:
+    """The budget total as stored on a version row; 0 for anything unreadable, so the draft read never fails."""
+    budget = (_json_object(row, "document") or {}).get("budget")
+    try:
+        return Decimal(str(budget.get("total", 0))) if isinstance(budget, dict) else Decimal(0)
+    except InvalidOperation:
+        return Decimal(0)
 
 
 def _protected(current: RulesVersion, parent: RulesVersion | None, section: SectionName, *, in_use: bool) -> bool:
@@ -934,9 +941,9 @@ class FinancialAidRulesService:
         )
 
     async def _budget_total_locked(self, year: int) -> bool:
-        """Owner 10-08: the budget TOTAL locks once ANY version of the season has had its budget section approved (the
-        first rules approval, around October), and Round 1 posting still locks it too (owner 10-06 (b): any Round 1
-        section locked). The program shares never lock. Any version counts, not just the latest: a save on the budget
+        """The budget TOTAL locks on either of two triggers. Owner 10-06 (b): Round 1 has posted (any Round 1 section
+        locked). Owner 10-08, the pre-lock: ANY version of the season is approved with a budget total filled in (> 0),
+        the first rules approval around October. The program shares never lock. Any version counts, not just the latest: a save on the budget
         branches rather than overwriting the newest approved copy (`_protected`), and a branch lifts the locks in the
         version it writes (`carry_forward`), so the approval is always kept on some version."""
         rows = await self._store.list_versions(year)
@@ -944,7 +951,10 @@ class FinancialAidRulesService:
         for row in rows:
             # The stored statuses alone: a document the current schema rejects must not fail the draft read.
             status = status_from_json(_json_object(row, "section_status"))
-            if status["budget"].state in _HELD or any(status[name].state == "locked" for name in round_one):
+            if any(status[name].state == "locked" for name in round_one):
+                return True
+            # The pre-lock: an approved version saved with a budget total filled in (> 0).
+            if status["budget"].state in _HELD and _stored_budget_total(row) > 0:
                 return True
         return False
 

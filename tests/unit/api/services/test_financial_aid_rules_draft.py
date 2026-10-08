@@ -1095,6 +1095,15 @@ async def test_the_lock_survives_a_shares_edit_that_sends_the_budget_back_to_dra
 
 
 @pytest.mark.asyncio
+async def test_an_approved_budget_stored_with_no_total_does_not_pre_lock() -> None:
+    """The pre-lock is an approved version with a total > 0, not the section's status alone."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    _legacy_total(store, 1, "0")
+    assert (await service.draft_view(2031)).budget_total_locked is False
+
+
+@pytest.mark.asyncio
 async def test_a_draft_budget_is_not_locked_while_no_version_ever_approved_it() -> None:
     store = FakeStore()
     service = _service(store)

@@ -205,7 +205,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     expect(screen.getByLabelText('Total locked')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Locked: the first approved budget stands all season. The program shares still edit.'
+        'Locked: the first approved budget total stands all season. The program shares still edit.'
       )
     ).toBeInTheDocument()
     await userEvent.clear(screen.getByLabelText('Pool A'))
