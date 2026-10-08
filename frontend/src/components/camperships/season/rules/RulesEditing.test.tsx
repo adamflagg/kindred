@@ -64,6 +64,18 @@ function fakeWrite(hook: string) {
     },
   }
 }
+/** The same write through mutateAsync (Discard draft settles on its promise, not mutate()'s callbacks). */
+function fakeAsyncWrite(hook: string) {
+  return {
+    isPending: pending,
+    mutateAsync: (vars: unknown) => {
+      calls.push({ hook, vars })
+      return outcome.kind === 'ok'
+        ? Promise.resolve(outcome.value)
+        : Promise.reject(new AidWriteError(outcome.message, outcome.status))
+    },
+  }
+}
 let server: Array<ApiAidRulesDraft | Error | Promise<ApiAidRulesDraft>>
 function freshRead(): Promise<ApiAidRulesDraft> {
   const next = server.length > 1 ? server.shift() : server[0]
@@ -76,7 +88,7 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
   useAidSaveRulesSections: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useAidApproveRules: () => fakeWrite('approve'),
   useAidStartRulesFromLastYear: () => fakeWrite('start'),
-  useAidDiscardRulesDraft: () => fakeWrite('discard'),
+  useAidDiscardRulesDraft: () => fakeAsyncWrite('discard'),
   useFreshAidRulesDraft: () => freshRead,
 }))
 

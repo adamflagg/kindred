@@ -34,18 +34,17 @@ export function DiscardDraft({
         type="button"
         className={CS_BTN2}
         disabled={discard.isPending}
-        onClick={() =>
-          discard.mutate(
-            { base_version: draftVersion },
-            {
-              onSuccess: () => setAsking(false),
-              onError: (caught) => {
-                setAsking(false)
-                setNotice(caught.message)
-              },
-            }
-          )
-        }
+        // mutateAsync, not mutate's callbacks: a refusal because the draft moved on refetches a new draft version,
+        // which re-keys this button, and React Query skips mutate()'s callbacks for a component that is gone.
+        onClick={() => {
+          discard
+            .mutateAsync({ base_version: draftVersion })
+            .then(() => setAsking(false))
+            .catch((caught: unknown) => {
+              setAsking(false)
+              setNotice(caught instanceof Error ? caught.message : String(caught))
+            })
+        }}
       >
         {discard.isPending ? 'Discarding…' : 'Discard'}
       </button>

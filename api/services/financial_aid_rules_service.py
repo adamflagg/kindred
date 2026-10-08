@@ -200,14 +200,16 @@ class NoDraftToDiscardError(FinancialAidError, ValueError):
 
 
 class DraftApprovedError(FinancialAidError, ValueError):
-    """Discard the rules draft when a section in it was approved or locked since it branched: discarding would throw
-    that approval away. Names the sections, by the Rules tab's titles."""
+    """Discard the rules draft when a section in it was approved, or locked by a posted round, since it branched:
+    discarding would throw that approval away, or a version a round read. Names the sections, by the Rules tab's
+    titles."""
 
     def __init__(self, sections: list[SectionName]) -> None:
         self.sections = sections
         titles = ", ".join(CARD_TITLES[name] for name in sections)
         super().__init__(
-            f"The rules draft holds an approval made since it was started ({titles}), so it can't be discarded"
+            f"The rules draft holds an approval or a posted round's lock made since it was started ({titles}), "
+            "so it can't be discarded"
         )
 
 
@@ -853,6 +855,12 @@ class FinancialAidRulesService:
             if all(version.section_status[name].state in ("approved", "locked") for name in sections):
                 return version
         return None
+
+    async def discarded_versions(self, year: int) -> frozenset[int]:
+        """The version numbers of `year` a Discard draft threw away (`discard_draft`): kept, loadable by number, and
+        never the rules draft again."""
+        everything = await self._store.list_versions(year, include_discarded=True)
+        return frozenset(int(row.version) for row in everything if getattr(row, "discarded", False))
 
     async def sections_locked_anywhere(self, year: int) -> frozenset[SectionName]:
         """Every section some version of `year` holds locked (Scenarios addendum §S11.3). Any version, not just the

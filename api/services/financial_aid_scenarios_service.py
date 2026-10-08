@@ -726,9 +726,15 @@ class FinancialAidScenariosService:
         return describe(await self._reference(option, options), option.document)
 
     @staticmethod
-    def _built_on_older(option: OptionRecord, effect: RulesVersion) -> str | None:
+    def _built_on_older(option: OptionRecord, effect: RulesVersion, discarded: Collection[int] = ()) -> str | None:
         """Why an option built on an older rules version than the one in effect can't be promoted (A11): its fixed
-        settings were read against that older version, and copying them could bring its tables back."""
+        settings were read against that older version, and copying them could bring its tables back. One built on a
+        discarded rules draft is refused the same way (owner 2026-10-08): promoting it would carry the discarded
+        draft's edits back."""
+        if option.origin_version in discarded:
+            return (
+                f"built on v{option.origin_version}, a discarded rules draft: start it again from the rules in effect"
+            )
         if option.origin_version < effect.version:
             return f"built on v{option.origin_version}, v{effect.version} is in effect now: start it again from the rules in effect"
         return None
@@ -1043,7 +1049,7 @@ class FinancialAidScenariosService:
         if option.document.year != year:
             raise YearMismatchError(f"The document is for {option.document.year}, not {year}")
         rules_draft = await self._rules.load(year)
-        older = self._built_on_older(option, await self._in_effect(year))
+        older = self._built_on_older(option, await self._in_effect(year), await self._rules.discarded_versions(year))
         if older is not None:
             raise ScenarioRefusedError(older)
         origin = (
@@ -1083,9 +1089,10 @@ class FinancialAidScenariosService:
         if done:  # promote refuses a done season, reason or not (spec §11.2); say so before the click
             return dict.fromkeys(options, (False, f"{year} is done: a sandbox never writes a done season"))
         origins: dict[int, RulesVersion] = {rules_draft.version: rules_draft}
+        discarded = await self._rules.discarded_versions(year)
         out: dict[str, tuple[bool, str | None]] = {}
         for code, option in options.items():
-            older = self._built_on_older(option, effect)
+            older = self._built_on_older(option, effect, discarded)
             if older is not None:
                 out[code] = (False, older)
                 continue

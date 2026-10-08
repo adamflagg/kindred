@@ -658,10 +658,11 @@ function ChaptersBody({
       {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
       <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
         <LeadLine state={lead} onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}>
-          {/* Only a draft newer than the version in effect can be thrown away, and never mid-edit or mid-approval. */}
-          {lead.kind === 'finance' &&
+          {/* Only a draft newer than the version in effect, and only where a card could be edited: live, not locked,
+              not a receipt, never mid-edit or mid-approval (scan #3093). */}
+          {canEdit &&
+            lead.kind === 'finance' &&
             lead.show === 'draft' &&
-            lead.hold === null &&
             lead.approvedVersion !== null &&
             lead.approvedVersion !== lead.draftVersion && (
               <DiscardDraft

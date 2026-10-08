@@ -195,3 +195,14 @@ async def test_the_rules_as_of_any_instant_still_replay_after_a_discard() -> Non
         found = await service.approved_as_of(2031, PRICING_SECTIONS, at)
         assert found is not None
         assert found.version == 1
+
+
+@pytest.mark.asyncio
+async def test_a_section_a_posted_round_locked_in_the_draft_refuses_in_words_that_say_so() -> None:
+    """A round posting while a draft is open locks the draft's unchanged sections (lock_writes). Nobody approved
+    anything, so the refusal must not say only "approval"; the draft is in use and stays."""
+    store = FakeStore()
+    service = await _draft_v2(store)
+    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    with pytest.raises(DraftApprovedError, match=r"an approval or a posted round's lock .*Counting a family's income"):
+        await service.discard_draft(2031, 2, actor=FINANCE)
