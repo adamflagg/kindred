@@ -49,7 +49,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Callable, Collection, Mapping, Sequence
+import os
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -255,6 +256,46 @@ class BudgetTotalLockedError(SectionInvalidError):
     10-06: "budget does lock but only the total dollar number": refused (422). The program shares stay editable."""
 
 
+class SeasonDoneError(FinancialAidError, ValueError):
+    """A rules write to a season earlier than the configured one, with no reason (spec §11.2). #2844 will replace the
+    test with the season's own `closed` state."""
+
+    def __init__(self, year: int, configured: int, *, sandbox: bool = False) -> None:
+        self.year, self.configured = year, configured
+        tail = (
+            "a sandbox never writes a done season; correct it on Rules."
+            if sandbox
+            else "Unlock it with a reason to correct it."
+        )
+        super().__init__(f"{year} is done (the dashboard's season is {configured}): {tail}")
+
+
+class SeasonYearUnknownError(FinancialAidError, RuntimeError):
+    """The configured season couldn't be read (Review Focus 3): no `_configured_year` on the sync status and no
+    CAMPMINDER_SEASON_ID. A done season is never treated as open for want of its year, so the read or write is refused
+    (503) until it can be read."""
+
+
+async def configured_season_year(pb: Any) -> int:
+    """The dashboard's configured season, strictly (spec §11.1; review minor 9). The same sync status
+    `current_season_year` reads, but that one swallows every failure and guesses the calendar year, which would read a
+    done season as open after the switch. Here the env var is the only fallback, and anything else raises."""
+    try:
+        status = await asyncio.to_thread(pb.send, "/api/custom/sync/status", {"method": "GET"})
+        year = int((status or {}).get("_configured_year") or 0)
+    except Exception as exc:  # re-raised below as the one error the router maps
+        logger.warning(f"Camperships rules: sync status unreadable ({exc})")
+        year = 0
+    if year:
+        return year
+    season = os.environ.get("CAMPMINDER_SEASON_ID", "")
+    if season.isdigit():
+        return int(season)
+    raise SeasonYearUnknownError(
+        "The dashboard's season couldn't be read, so no rules change is accepted; try again shortly"
+    )
+
+
 @dataclass(frozen=True)
 class SectionSaveResult:
     """A section save: the version it landed on, that version's validation report, and the version it branched
@@ -312,6 +353,7 @@ class ApprovedRules:
 
 
 _HELD: Final = ("approved", "locked")
+_DONE_PREFIX: Final = "Correcting a done season: "
 
 
 def _approved_section(version: RulesVersion | None, name: SectionName) -> ApprovedSection:
@@ -721,10 +763,31 @@ class FinancialAidRulesService:
         *,
         clock: Callable[[], datetime] | None = None,
         effects: ApprovalEffects | None = None,
+        configured_year: Callable[[], Awaitable[int]] | None = None,
     ) -> None:
         self._store = store
+        # Spec §11.1: None (intake's read-only service, internal routes, tests) means no season is ever done.
+        self._configured_year = configured_year
         self._effects = effects  # H3: only the approve route passes it; every other caller measures nothing
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+
+    async def season_state(self, year: int) -> tuple[bool, int | None]:
+        """(done, the configured season): done when `year` is earlier than the configured season (spec §11.1). The one
+        place that test lives, for #2844 to swap for the season's `closed` state."""
+        if self._configured_year is None:
+            return False, None
+        configured = await self._configured_year()
+        return year < configured, configured
+
+    async def _done_reason(self, year: int, past_season_reason: str | None) -> str | None:
+        """None for an open season; the stripped reason for a done one; refused (SeasonDoneError) without one."""
+        done, configured = await self.season_state(year)
+        if not done or configured is None:
+            return None
+        reason = (past_season_reason or "").strip()
+        if not reason:
+            raise SeasonDoneError(year, configured)
+        return reason
 
     async def load(self, year: int, version: int | None = None) -> RulesVersion:
         """One version, or the year's highest version when `version` is None."""
@@ -1017,6 +1080,7 @@ class FinancialAidRulesService:
         *,
         actor: str,
         expected_fingerprint: str | None = None,
+        past_season_reason: str | None = None,
     ) -> SectionSaveResult:
         """One section editor's save: `content` (that section's JSON) merged into the rules draft this call loads,
         then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
@@ -1028,6 +1092,7 @@ class FinancialAidRulesService:
             {section: content},
             actor=actor,
             expected_fingerprints=None if expected_fingerprint is None else {section: expected_fingerprint},
+            past_season_reason=past_season_reason,
         )
 
     async def save_section_contents(
@@ -1038,6 +1103,7 @@ class FinancialAidRulesService:
         *,
         actor: str,
         expected_fingerprints: Mapping[SectionName, str] | None = None,
+        past_season_reason: str | None = None,
     ) -> SectionSaveResult:
         """Several sections' editors saved as ONE operation (spec §15.5: the Programs and costs card sends `programs`
         and `cost` together). Each section goes through the one-section steps, in section order, against the one
@@ -1045,6 +1111,7 @@ class FinancialAidRulesService:
         nothing. A section not named keeps its content and its approval."""
         if not contents:
             raise NoSectionsNamedError("Name at least one section to save")
+        done = await self._done_reason(year, past_season_reason)
         current = await self._rules_draft(year, base_version)
         if expected_fingerprints is not None:
             if set(expected_fingerprints) != set(contents):
@@ -1062,7 +1129,9 @@ class FinancialAidRulesService:
             refused = changed_fixed(section, current.document.model_dump()[section], candidate.model_dump()[section])
             if refused:
                 raise FixedSettingError(f"{refused[0]} is fixed and can't be changed here")
-        return await self._save_over(current, candidate, actor=actor, via=None)
+        return await self._save_over(
+            current, candidate, actor=actor, via=None, reason=None if done is None else _DONE_PREFIX + done
+        )
 
     async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
         current = await self.load(year)
@@ -1074,7 +1143,7 @@ class FinancialAidRulesService:
         return current
 
     async def _save_over(
-        self, current: RulesVersion, candidate: AidRules, *, actor: str, via: str | None
+        self, current: RulesVersion, candidate: AidRules, *, actor: str, via: str | None, reason: str | None = None
     ) -> SectionSaveResult:
         year = current.year
         context = await self._context(year)
@@ -1107,7 +1176,7 @@ class FinancialAidRulesService:
         if branch:
             number = await self._next_version(year)
             body = _body(year, number, candidate, status, parent_year=year, parent_version=current.version)
-            created = await self._create(body, log_action="save", actor=actor, supersedes=current)
+            created = await self._create(body, log_action="save", actor=actor, supersedes=current, reason=reason)
             return SectionSaveResult(created, after, current.version)
         write = AidWrite(
             collection=AID_RULES,
@@ -1120,7 +1189,7 @@ class FinancialAidRulesService:
             entity_id=_entity_id(year, current.version),
             expected_revision=current.revision,
         )
-        await self._store.commit([write], actor=actor)
+        await self._store.commit([write], actor=actor, reason=reason)
         return SectionSaveResult(await self.load(year, current.version), after, None)
 
     async def promotion_preview(self, year: int, *, origin_version: int, document: AidRules) -> PromotionPreview:
@@ -1452,7 +1521,13 @@ class FinancialAidRulesService:
         return created, ValidationReport(issues=[cleared, *report.issues])
 
     async def _create(
-        self, body: dict[str, Any], *, log_action: str, actor: str, supersedes: RulesVersion | None
+        self,
+        body: dict[str, Any],
+        *,
+        log_action: str,
+        actor: str,
+        supersedes: RulesVersion | None,
+        reason: str | None = None,
     ) -> RulesVersion:
         """Create a version. `supersedes` is the season's latest version as read, None for a season's first: the
         create guards it (G6), so a write still aimed at it as "the latest" (a save, an approval, a tick's lock)
@@ -1472,7 +1547,7 @@ class FinancialAidRulesService:
             if supersedes is not None
             else []
         )
-        await self._store.commit([write], actor=actor, guards=guards)
+        await self._store.commit([write], actor=actor, guards=guards, reason=reason)
         return await self.load(year, version)
 
     async def _latest(self, year: int) -> RulesVersion | None:
