@@ -30,11 +30,13 @@ from api.services.financial_aid_casework_service import CaseworkNotFoundError
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare
 from api.services.financial_aid_household_page import (
+    HouseholdLabel,
     HouseholdNotFoundError,
     HouseholdPageService,
     adults_label,
     band_grants_by_request,
     grant_rows_with_band_flag,
+    household_labels,
     household_money,
     label_tiebreaks,
     page_scope,
@@ -1865,6 +1867,74 @@ async def test_staff_read_adult_1_and_adult_2_never_a_parent_role() -> None:
     page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
     labels = {a.role_label for h in page.households for a in h.adults_by_role}
     assert labels == {"Adult 1", "Adult 2"}
+
+
+# --- the label as other reads take it (ruling D, owner 10-06) -------------------------------------------------------
+# To place, the Ledger and the Grants Register name a family by the household card's label, from this module's own
+# helper (household_labels), never a second implementation: each household is named as the page names one with no
+# camper on it (a linked household, a duplicate waiting, a second payer), its tie-break scoped to the households asked
+# for together.
+
+
+class _Beckers(_AidAdults):
+    """CampMinder names the same two adults for the Johnsons and the Garcias."""
+
+    adults_by_household: ClassVar[dict[int, list[dict[str, Any]]]] = {
+        JOHNSON: [_adult(1000051, "Liam", "Becker", 1), _adult(1000052, "Olivia", "Becker", 2)],
+        GARCIA: [_adult(1000061, "Liam", "Becker", 1), _adult(1000062, "Olivia", "Becker", 2)],
+    }
+
+
+def _read(labels: dict[int, HouseholdLabel]) -> dict[int, tuple[str, str]]:
+    return {h: (found.label, found.tiebreak) for h, found in labels.items()}
+
+
+@pytest.mark.asyncio
+async def test_household_labels_name_each_household_exactly_as_the_page_does() -> None:
+    page = await _page_service(_family(), ledger=_AidAdults()).read(YEAR, JOHNSON)
+    on_page = {h.household_cm_id: (h.label, h.label_tiebreak) for h in page.households} | {
+        ln.household_cm_id: (ln.label, ln.label_tiebreak) for ln in page.links
+    }
+    assert set(on_page) == {JOHNSON, GARCIA, LINKED}  # not vacuous: a card each, and a household only a link names
+    assert _read(await household_labels(_AidAdults(), YEAR, list(on_page))) == on_page
+
+
+@pytest.mark.asyncio
+async def test_household_labels_fall_back_to_the_members_adults_then_the_mailing_title() -> None:
+    labels = await household_labels(_Ledger(), YEAR, [JOHNSON, GARCIA, LINKED])
+    assert _read(labels) == {
+        JOHNSON: ("The Johnson Family", ""),  # no adult CampMinder names, and no member read: its mailing title
+        GARCIA: ("The Garcia Family", ""),
+        LINKED: ("Riley Sam & Sam Chen", ""),  # its members' adults, as the page's link row reads it
+    }
+
+
+@pytest.mark.asyncio
+async def test_household_labels_read_members_only_where_campminder_names_no_adults() -> None:
+    ledger = _AidAdults()
+    await household_labels(ledger, YEAR, [JOHNSON, GARCIA, LINKED])
+    assert (ledger.household_reads, ledger.adults_reads) == ([frozenset({JOHNSON, GARCIA, LINKED})], [True])
+    assert ledger.member_reads == [frozenset({LINKED})]
+
+
+@pytest.mark.asyncio
+async def test_household_labels_break_ties_only_among_the_households_asked_for_together() -> None:
+    becker = "Liam & Olivia Becker"
+    assert _read(await household_labels(_Beckers(), YEAR, [JOHNSON])) == {JOHNSON: (becker, "")}
+    # Johnson's billing city is Riverside; Garcia's is blank, so its CampMinder id tells it apart.
+    assert _read(await household_labels(_Beckers(), YEAR, [JOHNSON, GARCIA, LINKED])) == {
+        JOHNSON: (becker, "Riverside, CA"),
+        GARCIA: (becker, f"#{GARCIA}"),
+        LINKED: ("Riley Sam & Sam Chen", ""),
+    }
+
+
+@pytest.mark.asyncio
+async def test_household_labels_name_nothing_for_no_household_and_read_nothing() -> None:
+    ledger = _Ledger()
+    assert await household_labels(ledger, YEAR, [0]) == {}
+    assert await household_labels(ledger, YEAR, []) == {}
+    assert (ledger.household_reads, ledger.member_reads) == ([], [])
 
 
 # --- duplicates waiting on a request (owner 2026-10-05: keep either request of a pair, from either card) ---------

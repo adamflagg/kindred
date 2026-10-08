@@ -18,6 +18,7 @@ from api.schemas.financial_aid_grants import (
     GrantorCreate,
     GrantorRetireIn,
     GrantorSave,
+    GrantRowOut,
     GrantsResponse,
     PlaceGrantsIn,
     WithdrawIn,
@@ -33,6 +34,7 @@ from api.services.financial_aid_ledger_service import FinancialAidNotFoundError,
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.pocketbase_batch import BatchRequest, BatchRequestFailedError, BatchResult
 from tests.unit.api.services.aid_commit_spy import AidCommitSpy, spy_on_commits
+from tests.unit.api.services.to_place_fakes import FakeLabels
 
 ACTOR = "finance@example.com"
 SERVICE = "api.services.financial_aid_grants_service"
@@ -525,6 +527,53 @@ async def test_one_grants_load_serves_the_register_and_the_read_from_a_single_lo
     assert repo.fetch_grant_postings.await_count == 1
     with pytest.raises(ValueError, match="2032"):
         await shared.register(2032)
+
+
+# Ruling D (owner 10-06): the Register names each row's family by the household card's label, from the household
+# page's own helper, with a tie-break only where two households in the same read read the same.
+BECKERS = "Liam & Olivia Becker"
+
+
+def _labelled(repo: MagicMock, labels: FakeLabels) -> GrantsService:
+    patch(f"{SERVICE}.current_season_year", AsyncMock(return_value=2031)).start()
+    return GrantsService(repo, labels=labels)
+
+
+@pytest.mark.asyncio
+async def test_each_register_row_names_its_family_by_the_household_pages_label() -> None:
+    repo = _read_repo(postings=[_posting(9001, 500), _posting(9002, 300, household_cm_id=150)])
+    labels = FakeLabels({100: BECKERS, 150: BECKERS})
+    out = await _labelled(repo, labels).read(2031)
+    assert {g.transaction_cm_id: (g.label, g.label_tiebreak) for g in out.grants} == {
+        9001: (BECKERS, "#100"),
+        9002: (BECKERS, "#150"),
+    }
+    # The copies needs a camper shows read the same.
+    assert {n.grant.transaction_cm_id: (n.grant.label, n.grant.label_tiebreak) for n in out.needs_camper} == {
+        9001: (BECKERS, "#100"),
+    }
+    assert {g.transaction_cm_id: g.family_name for g in out.grants}[9001] == "The Johnson Family"  # as it was
+    assert labels.calls == [frozenset({100, 150})]  # one call: the read's households
+
+
+@pytest.mark.asyncio
+async def test_a_register_with_one_household_per_label_has_no_tiebreak() -> None:
+    out = await _labelled(_read_repo(), FakeLabels({100: BECKERS})).read(2031)
+    assert [(g.label, g.label_tiebreak) for g in out.grants] == [(BECKERS, "")]
+
+
+@pytest.mark.asyncio
+async def test_a_grants_read_without_the_label_helper_names_no_label() -> None:
+    """Today and the household page read the register for its figures and name households their own way: they pay
+    for no label read, and every row's label stays empty."""
+    service, _ = _service(_read_repo())
+    out = await service.read(2031)
+    assert [(g.label, g.label_tiebreak) for g in out.grants] == [("", "")]
+
+
+def test_a_register_rows_label_defaults_to_empty() -> None:
+    assert GrantRowOut.model_fields["label"].default == ""
+    assert GrantRowOut.model_fields["label_tiebreak"].default == ""
 
 
 def _never_applied_repo(**kw: Any) -> MagicMock:

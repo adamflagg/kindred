@@ -9,12 +9,17 @@ from typing import get_args
 
 import pytest
 
-from api.schemas.financial_aid_money_ledger import LedgerLevelOut, LedgerTotalOut, MoneyLedgerOut
+from api.schemas.financial_aid_money_ledger import LedgerFamilyOut, LedgerLevelOut, LedgerTotalOut, MoneyLedgerOut
 from api.services.financial_aid_money_ledger import LedgerFilters, LedgerLevel, LedgerTotal
 from api.services.financial_aid_reconciliation import SplitPart
 from tests.unit.api.services.decisions_fakes import log_seeded, seed_line, seed_override, seed_request, share_row
 from tests.unit.api.services.financial_aid_fakes import YEAR
-from tests.unit.api.services.to_place_fakes import FakeToPlaceStore, money_ledger_service, seed_grant_line
+from tests.unit.api.services.to_place_fakes import (
+    FakeLabels,
+    FakeToPlaceStore,
+    money_ledger_service,
+    seed_grant_line,
+)
 
 EMMA = "reqemma00000001"  # Emma Johnson (1000011), household 1000001
 SAMUEL = "reqsamu00000001"  # Samuel Johnson (1000012), the same household
@@ -183,3 +188,39 @@ async def test_the_lines_behind_each_total_add_up_to_it_and_keep_a_reversed_line
         250.0,
         [(9101, 1000004, "Summer Program Grant")],
     )
+
+
+# --- naming the family (ruling D, owner 10-06) ----------------------------------------------------
+# A family row names its family by the household card's label, from the household page's own helper, with a tie-break
+# only where two rows of the same response read the same.
+
+BECKERS = "Liam & Olivia Becker"
+
+
+@pytest.mark.asyncio
+async def test_each_family_row_names_its_family_by_the_household_pages_label() -> None:
+    labels = FakeLabels({1000001: BECKERS, 1000002: BECKERS})
+    out = await money_ledger_service(_families(), labels=labels).ledger(YEAR)
+    assert [(r.household_cm_id, r.label, r.label_tiebreak) for r in out.rows] == [
+        (1000001, BECKERS, "#1000001"),
+        (1000002, BECKERS, "#1000002"),
+        (1000009, "Adults 1000009", ""),
+    ]
+    assert out.rows[0].display_name == "Family 1000001"  # the old name stays as it was
+    # One call, the rows' households: the family's second home (1000004) is in Emma's row, not a row of its own.
+    assert labels.calls == [frozenset({1000001, 1000002, 1000009})]
+
+
+@pytest.mark.asyncio
+async def test_a_filtered_ledger_breaks_ties_only_among_the_rows_it_shows() -> None:
+    labels = FakeLabels({1000001: BECKERS, 1000002: BECKERS})
+    out = await money_ledger_service(_families(), labels=labels).ledger(
+        YEAR, filters=LedgerFilters(None, None, "household")
+    )
+    assert [(r.household_cm_id, r.label, r.label_tiebreak) for r in out.rows] == [(1000001, BECKERS, "")]
+    assert labels.calls == [frozenset({1000001})]
+
+
+def test_a_family_rows_label_defaults_to_empty() -> None:
+    assert LedgerFamilyOut.model_fields["label"].default == ""
+    assert LedgerFamilyOut.model_fields["label_tiebreak"].default == ""

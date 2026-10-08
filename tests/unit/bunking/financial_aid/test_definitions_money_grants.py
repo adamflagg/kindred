@@ -3,6 +3,8 @@ Sources and Grants. Each new text is PENDING OWNER (owner question 4)."""
 
 from __future__ import annotations
 
+import re
+
 from bunking.financial_aid.definitions import BY_KEY, SURFACES
 
 
@@ -40,6 +42,21 @@ def test_a_placement_ticks_only_rounds_covered_in_full_at_the_posting_days_price
     assert "covers in full, oldest first" in text  # D146, D151
     assert "as of the posting date" in text  # D152
     assert "Posted is not checked automatically" in text
+
+
+def test_a_placement_never_reads_pending() -> None:
+    """Review item 32: ruling V1 (owner 10-03) named the state "pending", replacing "awaiting tonight's sync"."""
+    text = _text("placement_tick")
+    assert text.endswith("It never reads pending: the money is already in CampMinder.")
+    assert "awaiting tonight's sync" not in text
+
+
+def test_no_note_says_tick_or_awaiting_tonights_sync() -> None:
+    """Owner text item 30: staff check Posted, never tick it; and V1's "pending" replaced "awaiting tonight's sync"."""
+    for key, definition in BY_KEY.items():
+        words = f"{definition.term} {definition.text}"
+        assert not re.search(r"\b(un-?)?tick(ed|s|ing)?\b", words, re.IGNORECASE), key
+        assert "awaiting tonight" not in words, key
 
 
 def test_expected_is_never_a_grant_and_a_season_counts_no_commitment() -> None:

@@ -29,7 +29,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOSITIONS
 from api.schemas.financial_aid_to_place import (
@@ -97,6 +97,9 @@ from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWr
 from bunking.financial_aid.decisions import PricedRequest
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.pocketbase_batch import BatchLimitError, BatchRequestFailedError
+
+if TYPE_CHECKING:
+    from api.services.financial_aid_household_page import HouseholdLabeler
 
 GROUP_LABELS: Final[dict[Reason, str]] = {
     "several": "Several requests could take this",
@@ -323,10 +326,12 @@ class ToPlaceService:
         decisions: FinancialAidDecisionsService,
         store: ToPlaceStore,
         *,
+        labels: HouseholdLabeler,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._decisions = decisions
         self._store = store
+        self._labels = labels  # names each line's family as the household page does (ruling D, owner 10-06)
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
     def _today(self) -> date:
@@ -367,7 +372,10 @@ class ToPlaceService:
         people = {i.line.person_cm_id for i in items if i.line.person_cm_id > 0} | {
             c.person_cm_id for i in items for c in i.candidates if c.person_cm_id > 0
         }
-        families, persons = await self._store.fetch_names(year, households, people)
+        (families, persons), labels = await asyncio.gather(
+            self._store.fetch_names(year, households, people),
+            self._labels(year, {i.line.household_cm_id for i in items}),  # the response's lines' households
+        )
         today = self._today()
 
         def described(key: str) -> str:
@@ -400,6 +408,7 @@ class ToPlaceService:
         def line_out(item: ToPlaceItem, pending: str, note: str) -> ToPlaceLineOut:
             line = item.line
             detail = details.get(line.transaction_cm_id)
+            named = labels.get(line.household_cm_id)
             return ToPlaceLineOut(
                 transaction_cm_id=line.transaction_cm_id,
                 household_cm_id=line.household_cm_id,
@@ -415,6 +424,8 @@ class ToPlaceService:
                 suggestion=suggestion_out(item) if not pending else None,
                 left_note=note,
                 reclassified_to=described(pending) if pending else "",
+                household_label=named.label if named is not None else "",
+                household_label_tiebreak=named.tiebreak if named is not None else "",
             )
 
         sorted_lines = sort_lines(items, overrides, details, left)

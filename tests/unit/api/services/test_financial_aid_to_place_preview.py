@@ -30,7 +30,14 @@ from tests.unit.api.services.decisions_fakes import ACTOR, T0, FakeRules, approv
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import LIAM
 from tests.unit.api.services.test_financial_aid_to_place_changed_since import NOT_TICKED_9001, _correction, _not_ticked
-from tests.unit.api.services.to_place_fakes import EMMA, MAR8, FakeToPlaceStore, one_line, to_place_service
+from tests.unit.api.services.to_place_fakes import (
+    EMMA,
+    MAR8,
+    FakeLabels,
+    FakeToPlaceStore,
+    one_line,
+    to_place_service,
+)
 
 
 def _preview(*parts: tuple[str, str], note: str = "") -> PlacePreviewIn:
@@ -138,7 +145,10 @@ async def test_a_previews_pricing_records_only_the_grant_placement_log() -> None
         return register
 
     service = ToPlaceService(
-        FinancialAidDecisionsService(store, FakeRules(approved()), rows, clock=lambda: T0), store, clock=lambda: T0
+        FinancialAidDecisionsService(store, FakeRules(approved()), rows, clock=lambda: T0),
+        store,
+        labels=FakeLabels(),
+        clock=lambda: T0,
     )
     await service.preview(YEAR, 9001, _preview((EMMA, "1000")), ACTOR)
     writes = [write for operation in store.operations for write in operation]

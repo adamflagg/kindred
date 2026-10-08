@@ -96,7 +96,9 @@ class CandidateOut(BaseModel):
 class ToPlaceLineOut(BaseModel):
     """One camp-aid line no single request takes. `unplaced` is the part of `amount` still at family level.
     `left_note` is set while it is left at family level (D58); `reclassified_to` while a reclassification
-    (D104) waits for the next ledger sync."""
+    (D104) waits for the next ledger sync. `household_label` names the line's family as the household page does
+    (household_labels: as a household with no camper on the page), and `household_label_tiebreak` is "" unless another household in this response reads the same (ruling D,
+    owner 10-06; the group's `label` is its reason's)."""
 
     transaction_cm_id: int
     household_cm_id: int
@@ -112,6 +114,8 @@ class ToPlaceLineOut(BaseModel):
     suggestion: SuggestionOut | None
     left_note: str = ""
     reclassified_to: str = ""
+    household_label: str = ""
+    household_label_tiebreak: str = ""
 
 
 class ToPlaceGroupOut(BaseModel):
