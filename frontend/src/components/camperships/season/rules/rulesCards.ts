@@ -278,6 +278,9 @@ const number = (value: unknown) =>
   typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
 const trimmed = (n: number) => String(Number(n.toFixed(4)))
 
+/** A stored fraction (the schema's 0..1) as the percent its box and its row show: "0.5" → "50%". */
+export const fractionText = (value: unknown): string => `${trimmed(number(value) * 100)}%`
+
 /** A setting as staff read it: whole dollars (owner round 1: "if we're rounding to the whole dollar why are we even
  * showing that?"), % for shares and fractions, ✓ for yes, a long date, a choice's words. */
 export function settingText(
@@ -297,7 +300,7 @@ export function settingText(
     case 'pct?':
       return `${trimmed(number(value))}%`
     case 'frac':
-      return `${trimmed(number(value) * 100)}%`
+      return fractionText(value)
     case 'int?':
     case 'weight':
       return trimmed(number(value))

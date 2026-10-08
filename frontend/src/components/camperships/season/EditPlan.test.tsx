@@ -141,7 +141,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     expect(screen.getByRole('button', { name: 'Save to Rules Draft' })).toBeDisabled()
   })
 
-  it('saves {total, pools} with base_version and the fingerprint, closes, and says so in the Season notice', async () => {
+  it('saves {total, pools} with base_version and the fingerprint, and closes with no notice to dismiss', async () => {
     const onClose = vi.fn()
     const setNotice = vi.fn()
     save.mockImplementation((_vars, { onSuccess }) =>
@@ -168,7 +168,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
       },
     })
     expect(onClose).toHaveBeenCalled()
-    expect(setNotice).toHaveBeenCalledWith('Saved to the rules draft v5 · Approve on the tab bar')
+    expect(setNotice).not.toHaveBeenCalledWith(expect.stringMatching(/^Saved to the rules draft/))
   })
 
   it("keeps the typing on a 409, in the editor's words", async () => {

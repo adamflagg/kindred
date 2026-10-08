@@ -48,39 +48,30 @@ export function Flow({
   )
 }
 
+/** The Per person run's head: the read view's Standard and Infant columns; the editor labels each box on its line. */
 export const PerPersonHead = ({ editing = false }: { editing?: boolean }) => (
   <div
     className={`${CS_META} flex justify-end gap-2 border-b border-[color-mix(in_oklab,var(--border)_55%,transparent)] font-semibold`}
   >
     <span className="mr-auto font-normal">Per person</span>
-    <span className={`${editing ? 'min-w-[104px]' : 'min-w-16'} text-right`}>Standard</span>
-    <span className={`${editing ? 'min-w-[104px]' : 'min-w-16'} text-right`}>Infant</span>
+    {!editing && (
+      <>
+        <span className="min-w-16 text-right">Standard</span>
+        <span className="min-w-16 text-right">Infant</span>
+      </>
+    )}
   </div>
 )
 
-/** The per-person formula, once under a group's header (spec §5.2 E); in the editor it carries a muted "read-only". */
-export function FormulaLine({
-  cutoff,
-  readOnlyTag = false,
-}: {
-  cutoff: number | null | undefined
-  readOnlyTag?: boolean
-}) {
+/**
+ * The per-person formula, once under a group's header (spec §5.2 E). Infants are under 2 on the session's first day, a
+ * fixed fact (owner 2026-10-08; `bunking/financial_aid/headcount.py` INFANT_UNDER_MONTHS), not a season setting.
+ */
+export function FormulaLine() {
   return (
     <p className={CS_SMALL}>
-      Per person: everyone but infants pays the standard rate, infants the infant rate ·{' '}
-      {cutoff == null ? (
-        <>
-          infant age <b className="text-foreground font-medium">not set</b>
-        </>
-      ) : (
-        <>
-          infants are under{' '}
-          <b className="text-foreground font-medium">{`${String(cutoff)} months`}</b> on the
-          session&apos;s first day
-        </>
-      )}
-      {readOnlyTag && <span className={`${CS_META} ml-1`}>read-only</span>}
+      Per person: everyone but infants pays the standard rate, infants the infant rate · infants are
+      under <b className="text-foreground font-medium">2</b> on the session’s first day
     </p>
   )
 }

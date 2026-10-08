@@ -67,9 +67,9 @@ export function isRulesSection(value: string | null): value is ApiAidRulesSectio
 export interface StatusWords {
   readonly pill: string
   readonly tone: PillTone
-  /** Who and when, and the note naming the approving body (D39). */
+  /** Who and when (D39). */
   readonly meta: string
-  /** The approving body's note (Finance, Jan 20 meeting): the card says "Approved by ‹note›" beside the meta. */
+  /** What the approver typed ("Board approved Apr 13", "Men's weekend rate"): the card says "Notes: ‹note›" beside the meta. */
   readonly note: string | null
 }
 
@@ -84,7 +84,7 @@ const joined = (parts: ReadonlyArray<string | null | undefined>) =>
 
 /**
  * The pill and the line beside a section: "Approved" / "Locked" / "Draft · 3 changes", and
- * "Mar 9, 2027 · finance@… · Finance, Jan 20 meeting" (the note names the approving body, D39).
+ * "Mar 9, 2027 · finance@…", then the approval's notes (D39).
  * `changes` is null on the approved read, which has no draft to compare.
  */
 export function statusWords(status: ApiAidSectionStatus, changes: number | null): StatusWords {

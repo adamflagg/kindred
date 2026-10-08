@@ -34,7 +34,7 @@ function card(over: Partial<Parameters<typeof SectionCard>[0]> = {}) {
 }
 
 describe('a section card (spec §6.2 D)', () => {
-  it('heads with its title, the Locked pill and its footnote, the meta and Approved by on one line, and Edit…', () => {
+  it('heads with its title, the Locked pill and its footnote, the meta and the approval’s Notes on one line, and Edit…', () => {
     card()
     const head = screen.getByTestId('card-head-round3')
     expect(
@@ -42,9 +42,8 @@ describe('a section card (spec §6.2 D)', () => {
     ).toBeInTheDocument()
     expect(within(head).getByText('Locked')).toHaveClass('bg-stone-200')
     expect(within(head).getByText('1')).toBeInTheDocument() // the Locked footnote
-    expect(within(head).getByText(/· Approved by/)).toHaveTextContent(
-      '· Approved by Finance, Jan 20 meeting'
-    )
+    expect(within(head).getByText(/· Notes:/)).toHaveTextContent('· Notes: Finance, Jan 20 meeting')
+    expect(within(head).queryByText(/Approved by/)).toBeNull()
     expect(within(head).getByRole('button', { name: 'Edit…' })).toBeInTheDocument()
   })
 
@@ -136,8 +135,33 @@ describe('a section card (spec §6.2 D)', () => {
         note: null,
       },
     })
-    expect(screen.getByText(/^Changed since v3: /)).toBeInTheDocument()
+    expect(screen.getByTestId('changed-since')).toHaveTextContent(/^Changed since v3:/)
+    expect(within(screen.getByTestId('changed-since')).getAllByRole('listitem')).toHaveLength(1)
     expect(screen.getByText('was $300')).toBeInTheDocument()
+  })
+
+  it('lists the changes one per line, the first three shown and the rest behind "+n more"', async () => {
+    const limits = ['registrar_limit', 'a', 'b', 'c', 'd']
+    card({
+      approvedVersion: 3,
+      changes: limits.map((key) => ({ path: [key], kind: 'changed', before: '300', after: '400' })),
+    })
+    const since = screen.getByTestId('changed-since')
+    expect(within(since).getAllByRole('listitem')).toHaveLength(3)
+    await userEvent.click(within(since).getByRole('button', { name: '+2 more' }))
+    expect(within(since).getAllByRole('listitem')).toHaveLength(5)
+    await userEvent.click(within(since).getByRole('button', { name: 'Show fewer' }))
+    expect(within(since).getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('shows a long approval note in full on a click', async () => {
+    const note = 'Board approved the weekend rates at the March meeting after the budget review'
+    card({ status: { pill: 'In effect', tone: 'emerald', meta: 'Mar 9, 2027', note } })
+    const meta = screen.getByTestId('card-meta-round3')
+    expect(meta).toHaveClass('truncate')
+    await userEvent.click(meta)
+    expect(meta).not.toHaveClass('truncate')
+    expect(meta).toHaveClass('whitespace-normal')
   })
 
   it('shows no Edit… when it may not be edited (registrar, past date, another edit open)', () => {

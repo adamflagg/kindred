@@ -42,6 +42,7 @@ describe('flowColumns (spec §5.2 F, the mock packCols / layoutFlows)', () => {
 
   it('sizes the columns: 4 at 1440 read-only, 3 at 1100, fewer when editing', () => {
     expect(columnCount(1316, MIN_COLUMN.read)).toBe(4)
+    // A per-person edit row stacks its two boxes under the name, so the name has the line beside the group pick.
     expect(columnCount(1316, MIN_COLUMN.editPerPerson)).toBe(3)
     expect(columnCount(976, MIN_COLUMN.read)).toBe(3)
     expect(columnCount(976, MIN_COLUMN.editPerPerson)).toBe(2)

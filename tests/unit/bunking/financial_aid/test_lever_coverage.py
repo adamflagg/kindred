@@ -42,6 +42,14 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     ),
 }
 
+# Levers retired by an owner ruling: kept in the schema so every stored version still loads, and read by nothing, on
+# purpose. Unlike _WIRED_BY_LATER_SUBPROJECT, none is waiting to be wired.
+_RETIRED: dict[str, str] = {
+    "cost.infant_age_cutoff_months": (
+        "owner 2026-10-08: infants are under 2, always (headcount.INFANT_UNDER_MONTHS), not a season setting"
+    ),
+}
+
 
 def _model(annotation: object) -> type[BaseModel] | None:
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
@@ -129,6 +137,8 @@ def test_wired_by_later_subproject_entries_are_real_levers() -> None:
     for path in _WIRED_BY_LATER_SUBPROJECT:
         assert path in levers, f"'{path}' is deferred in _WIRED_BY_LATER_SUBPROJECT but is not a real lever path"
     assert not set(_WIRED_BY_LATER_SUBPROJECT) & _NOT_LEVERS, "a path cannot be both deferred and not-a-lever"
+    for path in _RETIRED:
+        assert path in levers, f"'{path}' is retired in _RETIRED but is not a real lever path"
 
 
 # test_schema.py only proves a bad value is refused and a good one kept. That is a type
@@ -140,6 +150,6 @@ def test_every_lever_is_exercised_by_a_test() -> None:
     sources = "\n".join(
         p.read_text(encoding="utf-8") for p in sorted(_HERE.glob("test_*.py")) if p.name not in _NOT_BEHAVIOUR
     )
-    exempt = _NOT_LEVERS | set(_WIRED_BY_LATER_SUBPROJECT)
+    exempt = _NOT_LEVERS | set(_WIRED_BY_LATER_SUBPROJECT) | set(_RETIRED)
     missing = [p for p in lever_paths(AidRules) if p not in exempt and not _literal(p).search(sources)]
     assert not missing, f"No test changes these levers with with_lever(): {missing}"
