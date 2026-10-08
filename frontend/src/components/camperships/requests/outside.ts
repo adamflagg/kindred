@@ -42,9 +42,9 @@ export function outsideOfRound(row: ApiAidGridRow, n: 1 | 2 | 3): CellOutside | 
   return round ? cellOf(outsideAmount(round), round.decided) : null
 }
 
-/** Every round's outside money against Total Decided. */
+/** Every decided round's outside money against Total Decided, which never sums a pending approval (D79). */
 export function outsideOfTotal(row: ApiAidGridRow): CellOutside | null {
-  return cellOf(sum(row.rounds), row.total_decided)
+  return cellOf(sum(row.rounds.filter((r) => r.status !== 'pending_approval')), row.total_decided)
 }
 
 /** The posted, not-clawed-back rounds' outside money against Total Posted. */

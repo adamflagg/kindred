@@ -67,6 +67,26 @@ describe('outside money of a row', () => {
     expect(outsideOfTotal(stale)).toBeNull()
   })
 
+  // Total Decided never sums a pending approval's amount (D79), so the Total tag, the footer and the
+  // CSV column, which all read against it, leave a pending round's outside money out too.
+  it('leaves a round pending approval out of the Total tag and the footer', () => {
+    const pending = gridRow({
+      total_decided: 1000,
+      total_posted: 1000,
+      rounds: [
+        roundOut(1, 'posted', { decided: 1000, posted: 1000 }),
+        roundOut(3, 'pending_approval', {
+          decided: null,
+          pending_approval: 1500,
+          outside_budget: 1500,
+          outside_label: 'Partner fund',
+        }),
+      ],
+    })
+    expect(outsideOfTotal(pending)).toBeNull()
+    expect(listOutside([pending])).toBe(0)
+  })
+
   it('reads a row with no outside money (fields absent or null) as none', () => {
     const plain = gridRow()
     expect(outsideOfRound(plain, 1)).toBeNull()
