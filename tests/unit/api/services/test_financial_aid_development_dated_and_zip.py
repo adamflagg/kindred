@@ -4,6 +4,7 @@ grant of 500 on her, posted February 10. The clock is April 1 2027. Fictional on
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
@@ -224,3 +225,28 @@ async def test_the_zip_tables_do_not_count_a_camper_who_cancelled() -> None:
     development = _development(registrations=[went(EMMA, 1000001, status=32), went(LIAM, 1000002)])
     out = await _service(development).zip_codes(YEAR)
     assert out.every_camper.total.campers == 1
+
+
+_INTERNAL_ID = re.compile(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b")
+
+
+async def test_the_zip_tables_name_the_aid_table_gap_without_an_internal_id() -> None:
+    """Owner 10-08 (visual true-up): the waiting aid table's reason is staff text, so no ruling number."""
+    development = _development(registrations=[went(EMMA, 1000001, year=2026)])
+    out = await _service(development, FakeDecisionsStore()).zip_codes(2026)
+    assert [n.reason for n in out.not_built if _INTERNAL_ID.search(n.reason)] == []
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        DatedColumn(season=2026, as_of=date(2026, 4, 12)),
+        DatedColumn(season=YEAR, as_of=date(2027, 4, 1)),
+        DatedColumn(season=YEAR + 1, as_of=date(2027, 3, 5)),
+    ],
+)
+async def test_a_refused_column_says_why_without_an_internal_id(column: DatedColumn) -> None:
+    """Pin. Owner 10-08 (visual true-up): a refusal is the sentence staff read (amber), so no ruling number."""
+    with pytest.raises(ReportsRefusedError) as refused:
+        await _service(_development()).development(YEAR, column=column)
+    assert not _INTERNAL_ID.search(str(refused.value))

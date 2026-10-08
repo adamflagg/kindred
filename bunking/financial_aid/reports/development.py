@@ -16,9 +16,10 @@ reporting groups). The service resolves every input to a group first; this modul
                   eligible camper) counts in the money and the families, never in a camper cut; the report says how
                   much and how many (`household_level`).
   need (§5.10)    per request: the highest of (the camp's awards in the rounds before an ask + that ask), over its
-                  asked rounds, so every ask is a floor; Total Requests = Σ need over attended requests. % of need
-                  met (the summer group only) = Σ per camper min(all money the camper got, the camper's need) ÷ Σ
-                  need.
+                  asked rounds, so every ask is a floor; an ask above the request's priced session cost counts AT
+                  the cost (Rule M, owner 10-08; no cost known: as typed). Total Requests = Σ need over attended
+                  requests. % of need met (the summer group only) = Σ per camper min(all money the camper got, the
+                  camper's need) ÷ Σ need.
   teens (D103)    the summer group's recipients aged 13–17 on the first day of their first session in the group;
                   youth 0–12; "18 and over"; "age unknown" when no birthdate.
   first-time      (D99, the default definition, stated on the line) summer: no summer-group attendance in any earlier

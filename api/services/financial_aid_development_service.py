@@ -150,7 +150,7 @@ REPORT: Final = "development"  # aid_report_definitions' key for development's s
 NOT_BUILT: Final[Mapping[str, str]] = {
     "rebuild": (
         "The dashboard's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons "
-        "show as reported, except their age lines, which are the dashboard's by age (D158)"
+        "show as reported, except their age lines, which are the dashboard's by age"
     ),
     "need_met_history": "% of need met before 2026 is as reported only: no per-round asks exist to rebuild it",
 }
@@ -577,7 +577,7 @@ class FinancialAidDevelopmentService:
             else [
                 NotBuiltOut(
                     figure="with_aid",
-                    reason=f"Campers who got aid by ZIP need {year}'s decisions (D67); the published page stands in",
+                    reason=f"Campers who got aid by ZIP need {year}'s decisions; the published page stands in",
                 )
             ],
         )

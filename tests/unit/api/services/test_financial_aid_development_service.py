@@ -761,3 +761,22 @@ async def test_no_row_definition_shows_an_internal_id() -> None:
     out = await _service(_development()).development(YEAR)
     shown = [r.definition for r in out.rows if re.search(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b", r.definition)]
     assert shown == []
+
+
+def _strings(value: Any) -> list[str]:
+    """Every string in a response, at any depth: what staff can be shown."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+async def test_no_string_in_the_report_shows_an_internal_id() -> None:
+    """Owner 10-08 (visual true-up): the named gaps (not_built), labels and notes carry no internal ids either."""
+    out = await _service(_development()).development(YEAR)
+    assert {n.figure for n in out.not_built} >= {"rebuild"}
+    shown = [s for s in _strings(out.model_dump()) if re.search(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b", s)]
+    assert shown == []
