@@ -339,10 +339,21 @@ describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('rows')
   })
 
-  it('shows the programs definition notes under Session and the statistics ones under Income tier', async () => {
+  it("puts the session table's notes right under it and keeps the statistics notes for the tables below", async () => {
+    // The tables under the session table still carry the statistics notes' numbers, so both lists show,
+    // each under what it explains.
     renderTab('/aid/reports/statistics?rows=session')
-    expect(await screen.findByText('Programs note.')).toBeInTheDocument()
-    expect(screen.queryByText('Apps: every received request.')).toBeNull()
+    const programs = await screen.findByText('Programs note.')
+    const stats = await screen.findByText('Apps: every received request.')
+    const below = screen.getByRole('heading', { name: /^Aid recipients who cancelled/ })
+    expect(programs.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(below.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows only the statistics notes under Income tier', async () => {
+    renderTab('/aid/reports/statistics')
+    expect(await screen.findByText('Apps: every received request.')).toBeInTheDocument()
+    expect(screen.queryByText('Programs note.')).toBeNull()
   })
 
   it('applies the reporting controls to the session table too (D138)', async () => {
