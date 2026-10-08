@@ -317,15 +317,15 @@ def not_ticked_out(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[C
 
 def not_ticked_outs(held: Sequence[tuple[int, LedgerTick, Sequence[ChangedReason]]]) -> list[NotTickedOut]:
     """Every withheld round of one placement, in order, with the shared "after it was posted on <day>, <changes>"
-    explanation said ONCE: a split's parts withheld for the same changes (same posting day, same list) would otherwise
+    explanation said ONCE per line: a split's parts withheld for the same changes (same posting day, same list) would otherwise
     repeat it, whole, in "What Confirm does". The first such part keeps the full `withheld_why`; each later one says
     only that its own round wasn't marked either, for the same changes (Money › To place, owner/coordinator 10-08).
-    Only an identical explanation folds: a part withheld for other changes keeps its own."""
-    seen: set[tuple[date, tuple[str, ...]]] = set()
+    Only an identical explanation on the same line folds (another line is another row on screen): a part withheld for other changes keeps its own."""
+    seen: set[tuple[int, date, tuple[str, ...]]] = set()
     out: list[NotTickedOut] = []
     for transaction_cm_id, tick, reasons in held:
         item = not_ticked_out(transaction_cm_id, tick, reasons)
-        key = (tick.posted_on, tuple(item.reasons))
+        key = (transaction_cm_id, tick.posted_on, tuple(item.reasons))
         if key in seen:
             item.why = f"Round {tick.round} wasn't marked posted automatically either: the same changes as above."
         seen.add(key)

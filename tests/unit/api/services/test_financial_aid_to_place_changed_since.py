@@ -809,3 +809,15 @@ async def test_two_withheld_parts_for_different_changes_each_keep_their_own_expl
     assert out[0].why.startswith("Round 1 wasn't marked posted automatically: after it was posted")
     assert out[1].why.startswith("Round 1 wasn't marked posted automatically: after it was posted")
     assert "grant was recorded" in out[1].why
+
+
+@pytest.mark.asyncio
+async def test_withheld_rounds_on_different_lines_each_keep_their_own_explanation() -> None:
+    """The fold is within ONE line's placement: a batch confirm's other line is another row on screen, so "as above"
+    would point at a different family's text. Same posting day and same changes, different transactions: both full."""
+    from api.services.financial_aid_to_place_service import not_ticked_outs
+
+    other = replace(TICK, request_id=SIBLING)
+    same = (ChangedReason("correction", "a correction was entered (Mar 9)"),)
+    out = not_ticked_outs([(9001, TICK, same), (9002, other, same)])
+    assert out[0].why == out[1].why == NOT_TICKED_WHY
