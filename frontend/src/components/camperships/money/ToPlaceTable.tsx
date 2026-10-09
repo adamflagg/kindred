@@ -98,7 +98,6 @@ function columnsFor(
     {
       key: 'candidates',
       header: 'Could belong to',
-      help: 'Requests it could belong to, each with what it still lacks in CampMinder',
       width: WIDTH.candidates,
       mark: marks.candidates ?? undefined,
       value: candidatesCell,
@@ -134,7 +133,6 @@ function columnsFor(
     {
       key: 'suggestion',
       header: 'Suggestion',
-      help: "The dashboard's suggestion",
       flex: true,
       mark: marks.suggestion ?? undefined,
       value: suggestionWords,

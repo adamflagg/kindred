@@ -321,6 +321,7 @@ export function confirmEffects(
   const withheld = would.would_not_tick ?? []
   const left = would.would_leave ?? []
   const out: EffectLine[] = []
+  const seenWhy = new Set<string>()
   const lines = (id: string): EffectLine[] => [
     ...ticks
       .filter((t) => t.request_id === id)
@@ -333,6 +334,16 @@ export function confirmEffects(
       .filter((n) => n.request_id === id)
       .map((n): EffectLine => {
         const day = postedDay(n.posted_on)
+        // A later round withheld for the very same changes says so, and leaves the next step to the first.
+        const key = `${n.posted_on}|${n.reasons.join('|')}`
+        if (seenWhy.has(key)) {
+          return {
+            sym: 'warn',
+            lead: `${round(n.round)} not marked Posted`,
+            text: ': the same changes as above',
+          }
+        }
+        seenWhy.add(key)
         return {
           sym: 'warn',
           lead: `${round(n.round)} not marked Posted`,

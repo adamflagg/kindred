@@ -90,7 +90,8 @@ export function EditorActions({
     <div className={CS_EDROW}>
       {children}
       {reason && (
-        <span className={CS_TOOLBAR_STATUS} title={reason}>
+        // An editor row has the room: the line is not held to the toolbar's 340px.
+        <span className={CS_TOOLBAR_STATUS.replace('max-w-[340px]', 'max-w-none')} title={reason}>
           {reason}
         </span>
       )}

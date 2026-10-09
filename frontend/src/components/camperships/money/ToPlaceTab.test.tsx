@@ -33,6 +33,9 @@ vi.mock('../../../lib/pocketbase', () => ({
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
 }))
+// The registry's notes for this surface: one note unless a test says so.
+const POSTED_NOTE = { key: 'posted', n: 1, text: 'Posted: the round’s Posted checkbox…' }
+let definitionNotes: Array<{ key: string; n: number; text: string }> = [POSTED_NOTE]
 let granted: string[] = []
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -104,6 +107,7 @@ function echoPreview(read: ApiAidToPlace | null, txn: number): Response {
 
 beforeEach(() => {
   granted = REGISTRAR
+  definitionNotes = [POSTED_NOTE]
   reads = [TO_PLACE]
   lastRead = null
   previewAnswer = null
@@ -121,7 +125,7 @@ beforeEach(() => {
         return Promise.resolve(
           json({
             surface: 'money-to-place',
-            notes: [{ key: 'posted', n: 1, text: 'Posted: the round’s Posted checkbox…' }],
+            notes: definitionNotes,
           })
         )
       }
@@ -851,6 +855,42 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
   })
 })
 
+describe('the footnote marks (design-language §12)', () => {
+  it('numbers each header and the callout from the registry, with the note as the mark’s title', async () => {
+    definitionNotes = [
+      {
+        key: 'not_yet_in_campminder',
+        n: 1,
+        text: 'Not yet in CampMinder: what a request still lacks.',
+      },
+      { key: 'to_place_suggestion', n: 2, text: 'Suggestion: the dashboard’s proposal.' },
+      { key: 'placement_tick', n: 3, text: 'Placing checks Posted: oldest first.' },
+      { key: 'posted', n: 4, text: 'Posted: the round’s Posted checkbox.' },
+    ]
+    renderTab()
+    await screen.findByText('5 lines open')
+    const table = screen.getAllByRole('table')[0] as HTMLElement
+    const mark = (header: RegExp) =>
+      within(within(table).getByRole('columnheader', { name: header })).getByText(/^\d$/)
+    await waitFor(() => expect(mark(/Could belong to/)).toHaveTextContent('1'))
+    expect(mark(/Could belong to/)).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Not yet in CampMinder/)
+    )
+    expect(mark(/^Suggestion/)).toHaveTextContent('2')
+    expect(mark(/What Confirm does/)).toHaveTextContent('3')
+    // Superscripts at about 0.72em (§12).
+    expect(mark(/What Confirm does/)).toHaveClass('text-[0.72em]')
+    const several = screen
+      .getByText('Several requests could take this line')
+      .closest('[data-aid-section]')
+    expect(within(several as HTMLElement).getByText('4')).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Posted: /)
+    )
+  })
+})
+
 describe('the notes at the foot (ruling I: the owner reads them in place)', () => {
   it("reads the server's money-to-place notes", async () => {
     renderTab()
@@ -1113,6 +1153,25 @@ describe('Split… and Place on Another Request… preview what they place (§8.
       note: '',
       expected_locked: '600.00',
     })
+  })
+
+  it('opens an editor under the three panels, the whole opened row, with its dependent choice shown off, not hidden (§24)', async () => {
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
+    const editor = within(row).getByTestId('place-editor')
+    // Not inside the right panel: it takes the row's width under all three.
+    expect(editor.closest('[data-panel]')).toBeNull()
+    expect(row.querySelector('[data-panel="confirm"]')).not.toContainElement(editor)
+    // The effects column is there before anything is picked, switched off.
+    const side = within(editor).getByTestId('place-effects')
+    expect(within(side).getByText('What placing this does')).toBeInTheDocument()
+    expect(within(side).getByText('Pick a request to see it')).toHaveClass('opacity-60')
+    // Title Case buttons on one row, the logged-with-who line beside them.
+    const place = within(editor).getByRole('button', { name: 'Place It' })
+    const back = within(editor).getByRole('button', { name: 'Back' })
+    expect(place.parentElement).toBe(back.parentElement)
+    expect(place.parentElement).toHaveTextContent('Each part lands on its request in full')
   })
 
   it('Back closes the editor and brings the buttons back', async () => {

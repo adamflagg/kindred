@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 
 /** A footnote mark: its number and the note's words, for the mark's native title. */
@@ -23,16 +25,21 @@ export interface ToPlaceMarks {
  * registry has loaded, so no number is guessed.
  */
 export function useToPlaceNotes(): ToPlaceMarks {
-  const defs = useAidDefinitions('money-to-place')
-  const mark = (key: string): NoteMark | null => {
-    const n = defs.numberOf(key)
-    const title = defs.entries.find((e) => e.key === key)?.text
-    return n === null || title === undefined ? null : { n, title }
-  }
-  return {
-    candidates: mark('not_yet_in_campminder'),
-    suggestion: mark('to_place_suggestion'),
-    confirm: mark('placement_tick'),
-    posted: mark('posted'),
-  }
+  const { notes, entries } = useAidDefinitions('money-to-place')
+  // Memoised on the registry's own (memoised) arrays: the columns that carry these marks are a memo
+  // dependency of the table, so a fresh object each render would rebuild them every render.
+  return useMemo((): ToPlaceMarks => {
+    const mark = (key: string): NoteMark | null => {
+      const at = entries.findIndex((e) => e.key === key)
+      const n = notes[at]?.n
+      const title = entries[at]?.text
+      return at < 0 || n === undefined || title === undefined ? null : { n, title }
+    }
+    return {
+      candidates: mark('not_yet_in_campminder'),
+      suggestion: mark('to_place_suggestion'),
+      confirm: mark('placement_tick'),
+      posted: mark('posted'),
+    }
+  }, [notes, entries])
 }

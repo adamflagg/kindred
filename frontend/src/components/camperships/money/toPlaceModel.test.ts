@@ -231,6 +231,34 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
     ])
   })
 
+  it('says "the same changes as above" for a later round withheld for the same reasons, with no second next step', () => {
+    const [part] = JOHNSON_SPLIT.suggestion?.parts ?? []
+    const [garciaWhy] = GARCIA_WITHHELD.suggestion?.would_not_tick ?? []
+    if (part === undefined || garciaWhy === undefined) throw new Error('fixture')
+    const again = {
+      ...JOHNSON_SPLIT,
+      suggestion: JOHNSON_SPLIT.suggestion && {
+        ...JOHNSON_SPLIT.suggestion,
+        would_tick: [],
+        would_lock: 0,
+        would_not_tick: [
+          { ...garciaWhy, request_id: EMMA_REQ },
+          { ...garciaWhy, request_id: 'reqsamuel000002' },
+        ],
+      },
+    }
+    const lines = confirmEffects(again)
+    const withheld = lines.filter((l) => l.sym === 'warn')
+    expect(withheld).toHaveLength(2)
+    expect(withheld[0]?.text).toBe(': income corrected Apr 20, after the Apr 3 posting')
+    expect(withheld[0]?.then).toBeDefined()
+    expect(withheld[1]).toEqual({
+      sym: 'warn',
+      lead: 'R2 not marked Posted',
+      text: ': the same changes as above',
+    })
+  })
+
   it('lays a round Confirm leaves out as ○ with what CampMinder holds and what it needs', () => {
     const line = {
       ...CHEN_EXACT,

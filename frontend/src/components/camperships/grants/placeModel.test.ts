@@ -69,7 +69,7 @@ describe('placeModel', () => {
     )
   })
 
-  it('draws the evidence one ✓ fact per line, and a ○ when there is no suggestion (§16)', () => {
+  it('draws the evidence one ✓ fact per line, none when there is no suggestion (§16)', () => {
     if (GARCIA?.suggestion == null) throw new Error('fixture')
     expect(evidenceLines(GARCIA)).toEqual(["✓ the household's one camper enrolled this season"])
     expect(
@@ -78,9 +78,8 @@ describe('placeModel', () => {
         suggestion: { ...GARCIA.suggestion, basis: 'commitment', method: '', amount_matches: true },
       })
     ).toEqual(['✓ a commitment from Grantor B names Liam Garcia, for this amount'])
-    expect(evidenceLines({ ...GARCIA, suggestion: null })).toEqual([
-      '○ the dashboard has no suggestion: pick the camper',
-    ])
+    // With no suggestion the line above already says "No suggestion: pick the camper"; no fact repeats it.
+    expect(evidenceLines({ ...GARCIA, suggestion: null })).toEqual([])
   })
 
   it('words the suggestion cell short, the session in the one-line form (§14)', () => {

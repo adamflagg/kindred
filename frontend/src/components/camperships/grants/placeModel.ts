@@ -44,12 +44,12 @@ export function evidenceWords(need: ApiAidNeedsCamper): string {
 }
 
 /**
- * The suggestion's evidence, one fact per line (§16): a ✓ for each, or a ○ when the dashboard has none.
- * Its camper is the bold line above, so the facts do not name them again.
+ * The suggestion's evidence, one fact per line (§16): a ✓ for each, none when the dashboard has no
+ * suggestion (the line above says so). Its camper is the bold line above, so the facts do not name them again.
  */
 export function evidenceLines(need: ApiAidNeedsCamper): string[] {
   const s = need.suggestion
-  if (s === null) return ['○ the dashboard has no suggestion: pick the camper']
+  if (s === null) return []
   if (s.basis === 'commitment') {
     const grantor = need.grant.grantor_name === '' ? 'the grantor' : need.grant.grantor_name
     return [

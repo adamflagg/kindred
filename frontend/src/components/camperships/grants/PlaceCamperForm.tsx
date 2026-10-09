@@ -106,6 +106,7 @@ export function PlaceCamperForm({
               <p className={CS_PMETA}>
                 It prices the camper’s unposted rounds with the grant; a posted amount stands.
               </p>
+              {/* The facts behind the suggestion (the household page has no panel that says them); none with no suggestion. */}
               {evidenceLines(need).map((fact) => (
                 <p key={fact} className={CS_PMETA}>
                   {fact}
