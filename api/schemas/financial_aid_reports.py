@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from api.schemas.financial_aid import SourceChangeOut
 from api.schemas.financial_aid_decisions import NotRebuiltOut
@@ -351,6 +351,9 @@ class DevelopmentGroupOut(BaseModel):
     key: str
     label: str
     kind: Literal["summer", "families", "campers"]
+    # The program families the season's rules send to this pool, sorted: what Set a Group... writes for it and what
+    # Money > Funders' "Covers:" line names. Empty on the development view, which has no use for it.
+    families: list[str] = []
 
 
 class DevelopmentColumnOut(BaseModel):
@@ -459,10 +462,20 @@ class FundingSourceIn(BaseModel):
     # clears the group; a value sets it (the group shown unchanged also keeps its families: several groups stay
     # several). The service tells absent from null by `model_fields_set`.
     group: str | None = Field(default=None, max_length=60)
+    # several pools at once (Set a Group... as a multi-select): the families written are the sorted union of what each
+    # picked pool funds. ABSENT keeps them; `[]` or an explicit null clears; the pools the source reaches now, picked
+    # exactly, keep them as they are. Sent together with `group` it is a 422.
+    groups: list[Annotated[str, Field(max_length=60)]] | None = Field(default=None, max_length=24)
     # None keeps each description's own flag (a group-only save never flattens a funder that mixes incentive and
     # need-based descriptions); True/False sets it on every description the save reaches
     incentive: bool | None = None
     note: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def _one_group_field(self) -> FundingSourceIn:
+        if "group" in self.model_fields_set and "groups" in self.model_fields_set:
+            raise ValueError("send either group or groups, not both")
+        return self
 
 
 # --- Development's dated columns and ZIP codes (§9.4, D90; Part C) -------------------------------------------------

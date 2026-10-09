@@ -3799,6 +3799,10 @@ export type DevelopmentGroupOut = {
    * Kind
    */
   kind: 'summer' | 'families' | 'campers'
+  /**
+   * Families
+   */
+  families?: Array<string>
 }
 
 /**
@@ -5061,6 +5065,10 @@ export type FundingSourceIn = {
    * Group
    */
   group?: string | null
+  /**
+   * Groups
+   */
+  groups?: Array<string> | null
   /**
    * Incentive
    */

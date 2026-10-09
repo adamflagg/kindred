@@ -574,9 +574,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="funder",
         term="Funder",
         text=(
-            'Funder: "Camp" is the camp\'s own aid; every other header is an outside funder, with its terms (full '
-            "coverage, canteen, pays after camp aid), eligibility and contacts. A description no funder claims yet "
-            'sits in "No funder yet", last.'
+            "Funder: Camp is the camp's own aid. Each other header is an outside funder with its terms, eligibility "
+            'and contacts; "No funder yet" comes last.'
         ),
         spec="§5.7",
         rulings=("D88", "D100"),
@@ -584,7 +583,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     Definition(
         key="incentive",
         term="Incentive or need-based",
-        text="Incentive or need-based: a per-description flag, never the funder type.",
+        text="Incentive or need-based: a flag on each description, never the funder type.",
         spec="§5.7",
         rulings=("D88",),
     ),
@@ -645,9 +644,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="reporting_group",
         term="Reporting group",
         text=(
-            "Reporting group: the season's budget pool, or programs within it, that an outside source funds. The "
-            "ledger places a household-level grant line with it. An outside source with none needs a group. "
-            "Changing it re-places household-level lines on the next sync."
+            "Reporting group: the budget pool an outside source funds; household-level grant lines follow it. An "
+            "outside source with no programs set needs a group."
         ),
         spec="§8.1",
         rulings=("D95", "D100", "D159"),
@@ -656,8 +654,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="source_lines",
         term="Lines this season",
         text=(
-            "Lines this season: the season's live CampMinder lines a description classifies, after any reclassifying "
-            "override, and their net. A reversed line is left out."
+            "Lines this season: the season's live CampMinder lines a description classifies, counting any line "
+            "reclassified in To place, and their net. Reversed lines are left out."
         ),
         spec="§5.5",
         rulings=("D58", "D74"),

@@ -34,7 +34,12 @@ vi.mock('../../../hooks/usePermissions', () => ({
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../shell/AidDefinitionNotes', () => ({
-  AidDefinitionNotes: ({ surface }: { surface: string }) => <p>{`Notes for ${surface}`}</p>,
+  AidDefinitionNotes: ({ surface, appendToLast }: { surface: string; appendToLast?: string }) => (
+    <p>
+      {`Notes for ${surface}`}
+      {appendToLast !== undefined && <span data-testid="note-appended">{appendToLast}</span>}
+    </p>
+  ),
 }))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
@@ -44,6 +49,17 @@ const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 const SOURCES = '/api/financial-aid/sources?'
 const GROUPS = '/api/financial-aid/reports/2027/funding-sources'
 const GRANTORS = '/api/financial-aid/grantors'
+
+// The registry's four Funders notes, numbered as the server sends them (bunking/financial_aid/definitions.py).
+const DEFINITIONS = {
+  surface: 'money-sources',
+  notes: [
+    ['funder', 'Funder'],
+    ['incentive', 'Incentive or need-based'],
+    ['reporting_group', 'Reporting group'],
+    ['source_lines', 'Lines this season'],
+  ].map(([key, term], i) => ({ key, n: i + 1, term, text: `${term}: the note's words.` })),
+}
 
 let sourceReads: ApiAidSources[] = []
 let fundingReads: ApiAidFundingSources[] = []
@@ -104,6 +120,7 @@ beforeEach(() => {
       const next = fundingReads.length > 1 ? fundingReads.shift() : fundingReads[0]
       return Promise.resolve(json(next ?? FUNDING_SOURCES_2027))
     }
+    if (path.includes('/definitions')) return Promise.resolve(json(DEFINITIONS))
     if (path.includes('/rules/')) return Promise.resolve(json(RULES_2027))
     // Each registry read takes the next answer; the last one repeats.
     const next = sourceReads.length > 1 ? sourceReads.shift() : sourceReads[0]
@@ -143,6 +160,24 @@ const openRow = async (description: string) => {
   await userEvent.click(await screen.findByText(description))
   await waitFor(() => expect(document.querySelector('[data-panel="source"]')).not.toBeNull())
 }
+/**
+ * The kit's white picker (design-language §3; it replaced the native selects): open it by its button, pick an
+ * option by its words. A multi picker stays open while it is checked, so a second pick needs no reopening.
+ */
+const openPicker = (scope: HTMLElement, label: string) =>
+  userEvent.click(within(scope).getByRole('button', { name: new RegExp(`^${label}:`) }))
+const pickOption = async (scope: HTMLElement, label: string, option: string | RegExp) => {
+  await openPicker(scope, label)
+  await userEvent.click(await screen.findByRole('option', { name: option }))
+}
+/** Pick pools in a multi-select, then close its popover (it stays open between picks, hiding the page). */
+const pickGroups = async (scope: HTMLElement, ...options: string[]) => {
+  await openPicker(scope, 'Reporting groups')
+  for (const option of options) {
+    await userEvent.click(await screen.findByRole('option', { name: option }))
+  }
+  await userEvent.keyboard('{Escape}')
+}
 const openFunder = async (key: string) => {
   await screen.findByText('Grantor A grant')
   await userEvent.click(within(rowByKey(`funder:${key}`)).getAllByRole('cell')[0] as HTMLElement)
@@ -167,17 +202,48 @@ describe('the grouped list (mock q2)', () => {
     ])
     expect(rowByKey('group:none')).toHaveAttribute('data-row-tone', 'warn')
     expect(rowByKey('group:camp')).toHaveAttribute('data-row-tone', 'group')
+    // Final UX (money-funders.html): a header reads name, terms, then the muted details, as three runs of
+    // one spanning cell (the live row ran the whole sentence together and overprinted the next cell).
     const camp = rowByKey('group:camp')
     expect(
-      within(camp).getByText(
-        "The camp's own aid · counts toward the budget · no terms or contacts · 2 descriptions"
-      )
+      within(camp).getByText("The camp's own aid · counts toward the budget")
     ).toBeInTheDocument()
+    expect(within(camp).getByText('no terms or contacts · 2 descriptions')).toBeInTheDocument()
+    const none = rowByKey('group:none')
     expect(
-      within(rowByKey('group:none')).getByText(
-        "Pick each description's funder; classify an unclassified one first · 2 descriptions"
-      )
+      within(none).getByText("Pick each description's funder; classify an unclassified one first")
     ).toBeInTheDocument()
+    expect(within(none).getByText('2 descriptions')).toBeInTheDocument()
+  })
+
+  it('draws a header as one spanning cell up to the totals, whole in its title (owner: the long name overprinted)', async () => {
+    // Replaces #3109's pin on the run-over (the header's words in the Source family cell): the name and its
+    // terms own columns 1 to 6 and cut at the totals, with every word in a native title (design-language §13).
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    for (const key of ['group:camp', 'funder:grantor_a', 'funder:grantor_k', 'group:none']) {
+      const cells = rowByKey(key).querySelectorAll('td')
+      expect(cells, key).toHaveLength(3)
+      expect(cells.item(0), key).toHaveAttribute('colspan', '6')
+      expect(cells.item(0).className, key).toContain('overflow-hidden')
+    }
+    expect(rowByKey('funder:grantor_a').querySelector('td')).toHaveAttribute(
+      'title',
+      'Grantor A · Not full coverage · eligibility: First and second summers · 1 contact'
+    )
+    // Each header reads: caret, the bold name, then the muted terms.
+    const first = rowByKey('funder:grantor_a').querySelector('td')
+    expect(first?.textContent.startsWith('▸')).toBe(true)
+    expect(within(rowByKey('funder:grantor_a')).getByText('Grantor A')).toHaveClass('font-bold')
+  })
+
+  it('indents a description under its funder with its own caret and a title for the whole name', async () => {
+    renderTab()
+    const row = (await screen.findByText('Grantor A grant')).closest('tr')
+    if (row === null) throw new Error('no row')
+    const first = row.querySelector('td')
+    expect(first?.textContent.startsWith('▸')).toBe(true)
+    expect(first).toHaveAttribute('title', 'Grantor A grant')
   })
 
   it("a funder's header holds its name, terms, eligibility, contacts and the season's totals", async () => {
@@ -216,6 +282,12 @@ describe('the grouped list (mock q2)', () => {
     expect(within(row).getByText('$98,400')).toBeInTheDocument()
     const fresh = rowByKey(REG_GRANTOR_E_NEW.id)
     expect(within(fresh).getByText('Needs a group')).toBeInTheDocument()
+    // The pill's title states the server's rule exactly (note 3): no programs set, not "reaches no pool".
+    expect(
+      within(fresh).getAllByTitle(
+        'An outside source with no programs set: open it and Set a Group…'
+      ).length
+    ).toBeGreaterThan(0)
     expect(within(fresh).getByText('need-based')).toBeInTheDocument()
     const unclassified = (await screen.findByText('Returning-family bonus 2027')).closest('tr')
     if (unclassified === null) throw new Error('no row')
@@ -226,17 +298,19 @@ describe('the grouped list (mock q2)', () => {
   it('has no Paid by, Grantor or Last change column, no purpose line, and headers that do not sort', async () => {
     renderTab()
     await screen.findByText('Grantor A grant')
-    const names = screen.getAllByRole('columnheader').map((h) => h.textContent)
-    expect(names).toEqual([
-      'Funder, then its descriptions in CampMinder',
-      'Source family',
-      'Incentive or need-based',
-      'Counts as aid',
-      'Counts toward the budget',
-      'Reporting group',
-      'Lines this season',
-      '$ this season',
-    ])
+    // The note marks (§12) arrive with the definitions read: 1 Funder, 2 Incentive, 3 Reporting group, 4 Lines.
+    await waitFor(() =>
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+        'Funder, then its descriptions in CampMinder1',
+        'Source family',
+        'Incentive or need-based2',
+        'Counts as aid',
+        'Counts toward the budget',
+        'Reporting group3',
+        'Lines this season4',
+        '$ this season4',
+      ])
+    )
     expect(
       within(screen.getByRole('table')).queryAllByRole('button', { name: /season|group/ })
     ).toEqual([])
@@ -244,14 +318,18 @@ describe('the grouped list (mock q2)', () => {
     expect(screen.queryByText(/Who pays for camperships/)).toBeNull()
   })
 
-  it('counts the chips and filters in the URL: Needs a group both ways, No funder yet', async () => {
+  it('counts the switcher and filters in the URL: Needs a group both ways, No funder yet', async () => {
+    // Final UX (design-language §18, owner: "shorten the filter choices"): the grey switcher with the counts
+    // inside, "All 5 · Needs a group 2 · No funder yet 2"; the long words moved into each choice's title.
     renderTab()
-    expect(
-      await screen.findByRole('button', { name: 'All 5 funders · 6 descriptions' })
-    ).toBeInTheDocument()
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Needs a group 2 · 1 with lines this season' })
+    const all = await screen.findByRole('button', { name: 'All 5' })
+    expect(all).toHaveAttribute('title', 'All 5 funders · 6 descriptions')
+    const needs = screen.getByRole('button', { name: 'Needs a group 2' })
+    expect(needs).toHaveAttribute(
+      'title',
+      '2 outside sources with no group · 1 with lines this season'
     )
+    await userEvent.click(needs)
     expect(screen.getByTestId('where')).toHaveTextContent('?show=needs-group')
     expect(screen.queryByText('Grantor A grant')).toBeNull()
     expect(screen.getByText('Grantor C full-ride program')).toBeInTheDocument()
@@ -261,11 +339,29 @@ describe('the grouped list (mock q2)', () => {
     expect(screen.queryByText('Grantor C full-ride program')).toBeNull()
   })
 
+  it('keeps search, New Funder… and Download CSV on the switcher`s one row, CSV last, with no sentence row', async () => {
+    // Owner (feedback 5): "fit search and download csv onto the same line". The per-role sentence moved into
+    // an (i) whose title holds it (answers §1a), so nothing sits between the toolbar and the table.
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    const bar = document.querySelector('[data-aid-toolbar]')
+    if (!(bar instanceof HTMLElement)) throw new Error('no toolbar')
+    expect(within(bar).getByRole('button', { name: 'All 5' })).toBeInTheDocument()
+    expect(within(bar).getByRole('checkbox', { name: 'Show retired' })).toBeInTheDocument()
+    expect(within(bar).getByLabelText('Search')).toBeInTheDocument()
+    const buttons = within(bar).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent).slice(-2)).toEqual(['New Funder…', 'Download CSV'])
+    const sentence =
+      'Click a funder for its terms and contacts, or a description to classify it or set its group. Every change is logged with who and why.'
+    expect(screen.queryByText(sentence)).toBeNull()
+    expect(within(bar).getByTitle(sentence)).toBeInTheDocument()
+  })
+
   it('shows retired funders on request, struck, and keeps them out of the table until then', async () => {
     renderTab()
     await screen.findByText('Grantor A grant')
     expect(screen.queryByText('Grantor F')).toBeNull()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Show retired funders' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Show retired' }))
     expect(screen.getByTestId('where')).toHaveTextContent('?retired=all')
     expect(screen.getByText('Grantor F')).toHaveClass('line-through')
   })
@@ -302,7 +398,14 @@ describe('links in', () => {
     renderTab('/aid/money/funders?row=srcgrantora0003')
     await waitFor(() => expect(document.querySelector('[data-panel="source"]')).not.toBeNull())
     const left = panel('source')
-    expect(within(left).getByText('Programs it funds: Summer Sessions')).toBeInTheDocument()
+    // Final UX (money-funders.html fundsLine, star 19): the pool's words, not the program families'. The
+    // groups arrive with the second read, so the first paint may say the programs; wait for the pool.
+    await waitFor(() =>
+      expect(left).toHaveTextContent(
+        'Reporting group: Pool A · covers Summer Sessions, Quest, Teen'
+      )
+    )
+    expect(left).not.toHaveTextContent('Programs it funds')
     expect(within(left).getByRole('link', { name: 'Grantor A' })).toHaveAttribute(
       'href',
       '/aid/money/funders?funder=grantor_a&year=2027'
@@ -359,9 +462,8 @@ describe('the registrar (view and casework): read only', () => {
     renderTab()
     await screen.findByText('Grantor A grant')
     const header = rowByKey('group:none')
-    expect(
-      within(header).getByText('Descriptions no funder claims yet · 2 descriptions')
-    ).toBeInTheDocument()
+    expect(within(header).getByText('Descriptions no funder claims yet')).toBeInTheDocument()
+    expect(within(header).getByText('2 descriptions')).toBeInTheDocument()
     expect(within(header).queryByText(/Pick each description/)).toBeNull()
   })
 
@@ -370,8 +472,10 @@ describe('the registrar (view and casework): read only', () => {
     const panelA = await openFunder('grantor_a')
     expect(within(panelA).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('button', { name: 'New Funder…' })).toBeNull()
-    expect(screen.getByText(/^Read only for you/)).toBeInTheDocument()
+    // The per-role sentence is the (i)'s title now, not a line above the table (answers §1a).
+    expect(screen.getByTitle(/^Read only for you/)).toBeInTheDocument()
     expect(screen.queryByText(/^Totals only/)).toBeNull()
+    expect(screen.queryByText(/totals only/)).toBeNull()
   })
 })
 
@@ -450,7 +554,10 @@ describe('finance (view, rules, grantors)', () => {
     ).toBeInTheDocument()
     expect(writes()).toHaveLength(0)
     expect(within(editor).getByRole('textbox', { name: 'Note' })).toHaveValue('Checked the letter')
-    expect(within(editor).getByRole('checkbox', { name: 'Family Camp Weekends' })).toBeChecked()
+    // The rebased programs read in pool words now: family_camp is Pool B's (final UX star 19).
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: Pool B' })
+    ).toBeInTheDocument()
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(JSON.parse(String(writes()[0]?.body))).toMatchObject({
@@ -466,20 +573,18 @@ describe('finance (view, rules, grantors)', () => {
     const editor = await screen.findByTestId('classify-editor')
     const warning = 'Changing this re-places household-level lines on the next ledger sync.'
     expect(within(editor).queryByText(warning)).toBeNull()
-    await userEvent.click(within(editor).getByRole('checkbox', { name: 'Family Camp Weekends' }))
+    // Picking another group moves the stored programs, so the sentence shows (star 19: pools, not eight boxes).
+    await pickOption(editor, 'Reporting groups', 'Pool B')
     expect(within(editor).getByText(warning)).toBeInTheDocument()
   })
 
-  it("Set a Group… writes development's route: one pool, the flag, and refreshes Funding sources", async () => {
+  it("Set a Group… writes development's route: the picked groups, the flag, and refreshes Funding sources", async () => {
     renderTab()
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
     const editor = await screen.findByTestId('group-editor')
     expect(within(editor).getByRole('button', { name: 'Save' })).toBeDisabled()
-    await userEvent.selectOptions(
-      within(editor).getByRole('combobox', { name: 'Reporting group' }),
-      'Pool A'
-    )
+    await pickGroups(editor, 'Pool A')
     expect(
       within(editor).getByText(
         'Changing this re-places household-level lines on the next ledger sync.'
@@ -490,7 +595,7 @@ describe('finance (view, rules, grantors)', () => {
     expect(writes()[0]).toMatchObject({
       url: '/api/financial-aid/reports/2027/funding-sources/srcgrantore0005',
       method: 'PUT',
-      body: JSON.stringify({ group: 'pool_a', incentive: false }),
+      body: JSON.stringify({ groups: ['pool_a'], incentive: false }),
     })
     expect(
       await screen.findByText('✓ Grantor E grant 2027: reporting group Pool A, need-based.')
@@ -513,10 +618,7 @@ describe('finance (view, rules, grantors)', () => {
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
     const editor = await screen.findByTestId('group-editor')
-    await userEvent.selectOptions(
-      within(editor).getByRole('combobox', { name: 'Reporting group' }),
-      'Pool A'
-    )
+    await pickGroups(editor, 'Pool A')
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     expect(
       await within(editor).findByText(/^Someone changed this since you opened it: Incentive\./)
@@ -525,7 +627,7 @@ describe('finance (view, rules, grantors)', () => {
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(JSON.parse(String(writes()[0]?.body))).toEqual({
-      group: 'pool_a',
+      groups: ['pool_a'],
       incentive: !e.incentive,
     })
   })
@@ -563,7 +665,7 @@ describe('finance (view, rules, grantors)', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'New Funder…' }))
       const form = screen.getByTestId('grantor-form')
       expect(within(form).getByText('New funder')).toBeInTheDocument()
-      expect(within(form).getByText(/mapped to a funder on their own row\./)).toBeInTheDocument()
+      expect(within(form).getByText(/map to a funder on their own row\./)).toBeInTheDocument()
       await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
       // Final audit E7: the key is internal; the form draws no Key field and it still follows the name.
       expect(within(form).queryByRole('textbox', { name: 'Key' })).toBeNull()
@@ -571,15 +673,12 @@ describe('finance (view, rules, grantors)', () => {
       await userEvent.click(
         within(form).getByRole('checkbox', { name: 'Pays the rest after camp aid' })
       )
-      await userEvent.selectOptions(
-        within(form).getByRole('combobox', { name: 'Covers the canteen deposit' }),
-        'no'
-      )
+      await pickOption(form, 'Covers the canteen deposit', 'no')
       await userEvent.type(
         within(form).getByRole('textbox', { name: 'Note' }),
         'From the seed review'
       )
-      await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+      await userEvent.click(within(form).getByRole('button', { name: 'Save Funder' }))
       await waitFor(() => expect(writes()).toHaveLength(1))
       expect(writes()[0]).toMatchObject({ url: GRANTORS, method: 'POST' })
       expect(JSON.parse(String(writes()[0]?.body))).toEqual({
@@ -604,7 +703,7 @@ describe('finance (view, rules, grantors)', () => {
       const form = screen.getByTestId('grantor-form')
       await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
       await userEvent.type(within(form).getByRole('textbox', { name: 'Note' }), 'x')
-      await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+      await userEvent.click(within(form).getByRole('button', { name: 'Save Funder' }))
       expect(await screen.findByText('✓ Grantor G: created, with your note.')).toBeInTheDocument()
       expect(screen.queryByTestId('grantor-form')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'New Funder…' })).toBeInTheDocument()
@@ -617,7 +716,7 @@ describe('finance (view, rules, grantors)', () => {
       const form = screen.getByTestId('grantor-form')
       await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
       await userEvent.type(within(form).getByRole('textbox', { name: 'Note' }), 'x')
-      await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+      await userEvent.click(within(form).getByRole('button', { name: 'Save Funder' }))
       expect(
         await within(form).findByText(
           "Nothing was written: a grantor with key 'grantor_g' already exists"
@@ -815,10 +914,7 @@ describe('finance (view, rules, grantors)', () => {
       await openRow('Grantor E grant 2027')
       await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
       const editor = await screen.findByTestId('group-editor')
-      await userEvent.selectOptions(
-        within(editor).getByRole('combobox', { name: 'Reporting group' }),
-        'Pool A'
-      )
+      await pickGroups(editor, 'Pool A')
       const release = holdReads(GROUPS, FUNDING_SOURCES_2027)
       await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
       await userEvent.type(
@@ -828,7 +924,7 @@ describe('finance (view, rules, grantors)', () => {
       release()
       await waitFor(() => expect(writes()).toHaveLength(1))
       expect(JSON.parse(String(writes()[0]?.body))).toEqual({
-        group: 'pool_a',
+        groups: ['pool_a'],
         incentive: false,
         note: 'Late note',
       })
@@ -839,9 +935,10 @@ describe('finance (view, rules, grantors)', () => {
       await openRow('Grantor E grant 2027')
       await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Funder…' }))
       const field = await screen.findByTestId('grantor-field')
-      await within(field).findByRole('option', { name: 'Grantor E' })
-      await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
-      await userEvent.selectOptions(within(field).getByRole('combobox'), 'Grantor E')
+      await waitFor(() =>
+        expect(within(field).getByRole('button', { name: /^Funder:/ })).toBeEnabled()
+      )
+      await pickOption(field, 'Funder', 'Grantor E')
       const note = within(field).getByRole('textbox', { name: 'Note' })
       await userEvent.type(note, 'New')
       const release = holdReads(SOURCES, SOURCES_2027)
@@ -871,12 +968,13 @@ describe("a description's funder (grantors, no rules)", () => {
     expect(within(edit).getByRole('button', { name: 'Set a Group…' })).toBeInTheDocument()
     await userEvent.click(within(edit).getByRole('button', { name: 'Map a Funder…' }))
     const field = await screen.findByTestId('grantor-field')
-    await within(field).findByRole('option', { name: 'Grantor E' })
     // Funders says "funder" to staff, never "grantor" (coordinator 10-09).
-    expect(within(field).getByRole('combobox', { name: 'Funder' })).toBeInTheDocument()
-    expect(within(field).getByRole('option', { name: '— no funder —' })).toBeInTheDocument()
-    await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
-    await userEvent.selectOptions(within(field).getByRole('combobox'), 'Grantor E')
+    await waitFor(() =>
+      expect(within(field).getByRole('button', { name: /^Funder:/ })).toBeEnabled()
+    )
+    await openPicker(field, 'Funder')
+    expect(await screen.findByRole('option', { name: '— no funder —' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('option', { name: 'Grantor E' }))
     await userEvent.type(within(field).getByRole('textbox', { name: 'Note' }), 'New for 2027')
     await userEvent.click(within(field).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
@@ -901,16 +999,17 @@ describe("a description's funder (grantors, no rules)", () => {
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Funder…' }))
     const field = await screen.findByTestId('grantor-field')
-    await within(field).findByRole('option', { name: 'Grantor E' })
-    await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
-    await userEvent.selectOptions(within(field).getByRole('combobox'), 'Grantor E')
+    await waitFor(() =>
+      expect(within(field).getByRole('button', { name: /^Funder:/ })).toBeEnabled()
+    )
+    await pickOption(field, 'Funder', 'Grantor E')
     await userEvent.type(within(field).getByRole('textbox', { name: 'Note' }), 'New for 2027')
     await userEvent.click(within(field).getByRole('button', { name: 'Save' }))
     expect(
       await within(field).findByText(/^Someone changed this since you opened it: Grantor\./)
     ).toBeInTheDocument()
     expect(writes()).toHaveLength(0)
-    expect(within(field).getByRole('combobox')).toHaveDisplayValue('Grantor E')
+    expect(within(field).getByRole('button', { name: 'Funder: Grantor E' })).toBeInTheDocument()
     await userEvent.click(within(field).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
   })
@@ -930,9 +1029,18 @@ describe("a description's funder (grantors, no rules)", () => {
     await openRow('Grantor A grant')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Change the Funder…' }))
     const field = await screen.findByTestId('grantor-field')
-    expect(await within(field).findByRole('option', { name: 'Grantor F (retired)' })).toBeDisabled()
-    expect(within(field).queryByRole('option', { name: 'Grantor F' })).toBeNull()
-    await waitFor(() => expect(within(field).getByRole('combobox')).toHaveValue('grantor_f'))
+    await waitFor(() =>
+      expect(
+        within(field).getByRole('button', { name: 'Funder: Grantor F (retired)' })
+      ).toBeEnabled()
+    )
+    await openPicker(field, 'Funder')
+    expect(await screen.findByRole('option', { name: /Grantor F \(retired\)/ })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+    expect(screen.queryByRole('option', { name: 'Grantor F' })).toBeNull()
+    await userEvent.keyboard('{Escape}')
     expect(
       within(field).getByText('Grantor F is retired: pick a funder in use, or', { exact: false })
     ).toBeInTheDocument()
@@ -964,17 +1072,14 @@ describe('development (summary, grantors; no view)', () => {
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
     const editor = await screen.findByTestId('group-editor')
-    await userEvent.selectOptions(
-      within(editor).getByRole('combobox', { name: 'Reporting group' }),
-      'Pool A'
-    )
+    await pickGroups(editor, 'Pool A')
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(writes()[0]).toMatchObject({
       url: '/api/financial-aid/reports/2027/funding-sources/srcgrantore0005',
       method: 'PUT',
     })
-    expect(JSON.parse(String(writes()[0]?.body))).toEqual({ group: 'pool_a', incentive: false })
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({ groups: ['pool_a'], incentive: false })
     await waitFor(() => expect(getsAfterWrite(GROUPS).length).toBeGreaterThan(0))
   })
 
@@ -984,22 +1089,28 @@ describe('development (summary, grantors; no view)', () => {
     expect(within(panelA).getByRole('button', { name: 'Edit…' })).toBeInTheDocument()
   })
 
-  it('says totals only, links no household, and fires only the reads development may make', async () => {
+  it('says totals only inside note 4, links no household, and fires only the reads development may make', async () => {
     renderTab()
     await screen.findByText('Grantor A grant')
+    // The mock folds it into the last registry note: no paragraph of its own under the table.
     expect(
-      screen.getByText('Totals only: no family is named, listed or linked on this tab.')
-    ).toBeInTheDocument()
+      screen.queryByText('Totals only: no family is named, listed or linked on this tab.')
+    ).toBeNull()
+    expect(await screen.findByText('Notes for money-sources')).toBeInTheDocument()
+    expect(await screen.findByTestId('note-appended')).toHaveTextContent(
+      'For you, totals only: no family is named on this tab.'
+    )
     expect(screen.queryByRole('link')).toBeNull()
     for (const { url } of calls()) {
       expect(url).toMatch(
-        /^\/api\/financial-aid\/(sources|grantors|reports\/2027\/funding-sources)/
+        /^\/api\/financial-aid\/(sources|grantors|definitions|reports\/2027\/funding-sources)/
       )
     }
     // Development's header says what it may do: it does not classify.
     expect(
-      within(rowByKey('group:none')).getByText("Pick each description's funder · 2 descriptions")
+      within(rowByKey('group:none')).getByText("Pick each description's funder")
     ).toBeInTheDocument()
+    expect(within(rowByKey('group:none')).getByText('2 descriptions')).toBeInTheDocument()
   })
 
   it('does not say totals only to someone who can see the families', async () => {
@@ -1007,5 +1118,245 @@ describe('development (summary, grantors; no view)', () => {
     renderTab()
     await screen.findByText('Grantor A grant')
     expect(screen.queryByText(/^Totals only/)).toBeNull()
+    expect(await screen.findByText('Notes for money-sources')).toBeInTheDocument()
+    expect(screen.queryByTestId('note-appended')).toBeNull()
+  })
+})
+
+// Final UX (design-language §24, money-funders.html; owner 10-09: "a pass through any other creation/edit type
+// popout boxes"): every editor reachable from Funders is wide and short, its selects are the white picker, and
+// its Title Case buttons share one row with the required or logged line.
+describe('the editors in the final design (§24)', () => {
+  const noteOf = (scope: HTMLElement) => within(scope).getByRole('textbox', { name: 'Note' })
+
+  it('Edit… picks the season`s reporting groups instead of eight program boxes (star 19, rev1)', async () => {
+    renderTab()
+    await openRow('Grantor A grant')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Edit…' }))
+    const editor = await screen.findByTestId('classify-editor')
+    // The eight ledger program families are gone: no "Bmitzvah", "Family school", "Other" boxes.
+    for (const name of ['Summer Sessions', 'Quest', 'Teen', 'Bmitzvah', 'Family school', 'Other']) {
+      expect(within(editor).queryByRole('checkbox', { name })).toBeNull()
+    }
+    expect(within(editor).getByText('Funds (its reporting group)')).toBeInTheDocument()
+    expect(within(editor).queryByText(/Programs it funds/)).toBeNull()
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: Pool A' })
+    ).toBeInTheDocument()
+    // "Covers:" names the rules' programs the pool covers, in the rules' words and order.
+    expect(within(editor).getByText('Covers: Summer Sessions, Quest, Teen')).toBeInTheDocument()
+    // Every select is the white picker.
+    expect(editor.querySelectorAll('select')).toHaveLength(0)
+  })
+
+  it('saves the union of the picked pools families, and the Covers line follows the picks', async () => {
+    renderTab()
+    await openRow('Grantor A grant')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Edit…' }))
+    const editor = await screen.findByTestId('classify-editor')
+    await pickOption(editor, 'Reporting groups', 'Pool B')
+    // The multi picker stays open while it is checked; close it to reach the rest of the editor.
+    await userEvent.keyboard('{Escape}')
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: Pool A, Pool B' })
+    ).toBeInTheDocument()
+    expect(
+      within(editor).getByText(
+        'Covers: Summer Sessions, Quest, Teen (Pool A) · Family Camp Weekends (Pool B)'
+      )
+    ).toBeInTheDocument()
+    await userEvent.type(noteOf(editor), 'Funds weekend families too')
+    await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toMatchObject({
+      implied_program_families: ['family_camp', 'quest', 'summer', 'teen'],
+    })
+  })
+
+  it('puts Save, Back and what is missing on one row', async () => {
+    renderTab()
+    await openRow('Grantor A grant')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Edit…' }))
+    const editor = await screen.findByTestId('classify-editor')
+    const save = within(editor).getByRole('button', { name: 'Save' })
+    expect(save).toBeDisabled()
+    const row = save.parentElement as HTMLElement
+    expect(within(row).getByRole('button', { name: 'Back' })).toBeInTheDocument()
+    expect(within(row).getByText('A note is required (it is logged)')).toBeInTheDocument()
+  })
+
+  it('Set a Group… names what the group covers, and says why Save waits', async () => {
+    renderTab()
+    await openRow('Grantor E grant 2027')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
+    const editor = await screen.findByTestId('group-editor')
+    expect(within(editor).getByText('Set a Group · Grantor E grant 2027')).toBeInTheDocument()
+    const save = within(editor).getByRole('button', { name: 'Save' })
+    expect(
+      within(save.parentElement as HTMLElement).getByText('Nothing to save yet.')
+    ).toBeVisible()
+    expect(editor.querySelectorAll('select')).toHaveLength(0)
+    await pickGroups(editor, 'Pool A')
+    expect(within(editor).getByText('Covers: Summer Sessions, Quest, Teen')).toBeInTheDocument()
+    expect(within(editor).queryByText('Nothing to save yet.')).toBeNull()
+  })
+
+  it('Set a Group… is a multi-select: Covers follows the picks, and the server sentence shows once they change', async () => {
+    renderTab()
+    await openRow('Grantor E grant 2027')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
+    const editor = await screen.findByTestId('group-editor')
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: — no group —' })
+    ).toBeInTheDocument()
+    expect(within(editor).getByText('No group: the source will need one.')).toBeInTheDocument()
+    await pickGroups(editor, 'Pool A')
+    await userEvent.click(await screen.findByRole('option', { name: 'Pool B' }))
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: Pool A, Pool B' })
+    ).toBeInTheDocument()
+    expect(
+      within(editor).getByText(
+        'Covers: Summer Sessions, Quest, Teen (Pool A) · Family Camp Weekends (Pool B)'
+      )
+    ).toBeInTheDocument()
+    expect(
+      within(editor).getByText(
+        'Changing this re-places household-level lines on the next ledger sync.'
+      )
+    ).toBeInTheDocument()
+    await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    const body = JSON.parse(String(writes()[0]?.body))
+    expect(body).toEqual({ groups: ['pool_a', 'pool_b'], incentive: false })
+    expect(body).not.toHaveProperty('group')
+  })
+
+  it('Set a Group… opens on the pools the source reaches, and an incentive-only save omits groups', async () => {
+    renderTab()
+    await openRow('Grantor A grant')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
+    const editor = await screen.findByTestId('group-editor')
+    expect(
+      await within(editor).findByRole('button', { name: 'Reporting groups: Pool A' })
+    ).toBeInTheDocument()
+    expect(within(editor).queryByText(/re-places household-level lines/)).toBeNull()
+    await userEvent.click(within(editor).getByRole('checkbox', { name: /Incentive/ }))
+    await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({ incentive: false })
+  })
+
+  it('Map a Funder… is titled with the description and keeps its buttons on one row', async () => {
+    renderTab()
+    await openRow('Grantor E grant 2027')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Funder…' }))
+    const field = await screen.findByTestId('grantor-field')
+    expect(within(field).getByText('Funder · Grantor E grant 2027')).toBeInTheDocument()
+    const save = within(field).getByRole('button', { name: 'Save' })
+    expect(
+      within(save.parentElement as HTMLElement).getByRole('button', { name: 'Back' })
+    ).toBeVisible()
+    expect(field.querySelectorAll('select')).toHaveLength(0)
+  })
+
+  describe('New Funder… and Edit… (rev1: 230px to 175px)', () => {
+    it('is wide and short: Full coverage and its two choices sit in the right column, shown off, not hidden', async () => {
+      renderTab()
+      await userEvent.click(await screen.findByRole('button', { name: 'New Funder…' }))
+      const form = screen.getByTestId('grantor-form')
+      const full = within(form).getByRole('checkbox', { name: 'Full coverage' })
+      const canteen = within(form).getByRole('button', {
+        name: 'Covers the canteen deposit: not known',
+      })
+      const after = within(form).getByRole('checkbox', { name: 'Pays the rest after camp aid' })
+      // The right column is the one with the dashed rule; the name, aliases, eligibility, contacts, note are left.
+      const side = full.closest('[class*="border-dashed"]')
+      expect(side).not.toBeNull()
+      expect(side?.contains(canteen)).toBe(true)
+      expect(side?.contains(after)).toBe(true)
+      expect(side?.contains(within(form).getByRole('textbox', { name: 'Name' }))).toBe(false)
+      // Shown, switched off while Full coverage is off.
+      expect(canteen).toBeDisabled()
+      expect(after).toBeDisabled()
+      await userEvent.click(full)
+      expect(canteen).toBeEnabled()
+      expect(after).toBeEnabled()
+      expect(form.querySelectorAll('select')).toHaveLength(0)
+    })
+
+    it('says Save Funder for a new one, Save for an edit, with the required line on the buttons` row', async () => {
+      renderTab()
+      await userEvent.click(await screen.findByRole('button', { name: 'New Funder…' }))
+      const form = screen.getByTestId('grantor-form')
+      const save = within(form).getByRole('button', { name: 'Save Funder' })
+      expect(save).toBeDisabled()
+      const row = save.parentElement as HTMLElement
+      expect(within(row).getByRole('button', { name: 'Back' })).toBeInTheDocument()
+      expect(within(row).getByText('A name and a note are required.')).toBeVisible()
+      expect(within(row).getByText(/Logged with who and why/)).toBeInTheDocument()
+      await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
+      await userEvent.type(noteOf(form), 'x')
+      expect(save).toBeEnabled()
+      // The mock keeps the line's space once satisfied (visibility hidden), so nothing on the row moves.
+      expect(within(row).getByText('A name and a note are required.')).not.toBeVisible()
+    })
+
+    it('an edit takes the whole opened row, not its right third', async () => {
+      renderTab('/aid/money/funders?funder=grantor_a')
+      const panelA = await screen.findByTestId('grantor-panel')
+      expect(panelA.querySelector('[data-panel="grantor"]')).not.toBeNull()
+      await userEvent.click(within(panelA).getByRole('button', { name: 'Edit…' }))
+      const form = await within(panelA).findByTestId('grantor-form')
+      expect(within(form).getByText('Editing · Grantor A')).toBeInTheDocument()
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeInTheDocument()
+      expect(panelA.querySelector('[data-panel="grantor"]')).toBeNull()
+      expect(panelA.querySelector('[data-panel="actions"]')).toBeNull()
+    })
+  })
+
+  it('Retire… and Unretire… are the wide, short reason editor with Title Case buttons on one row', async () => {
+    renderTab(`/aid/money/funders?funder=${GRANTOR_K.key}`)
+    const panelK = await screen.findByTestId('grantor-panel')
+    await userEvent.click(within(panelK).getByRole('button', { name: 'Retire…' }))
+    expect(within(panelK).getByText(`Retire ${GRANTOR_K.name}`)).toBeInTheDocument()
+    const retire = within(panelK).getByRole('button', { name: 'Retire' })
+    expect(
+      within(retire.parentElement as HTMLElement).getByRole('button', { name: 'Back' })
+    ).toBeVisible()
+    // The mock's words for an empty reason, not "Why is required".
+    await userEvent.click(retire)
+    expect(await within(panelK).findByText('A reason is required.')).toBeInTheDocument()
+    expect(within(panelK).queryByText('Why is required')).toBeNull()
+    expect(writes()).toHaveLength(0)
+  })
+
+  it('Unretire… says the same when its reason is empty', async () => {
+    renderTab('/aid/money/funders?retired=all&funder=grantor_f')
+    const panelF = await screen.findByTestId('grantor-panel')
+    await userEvent.click(within(panelF).getByRole('button', { name: 'Unretire…' }))
+    await userEvent.click(within(panelF).getByRole('button', { name: 'Unretire' }))
+    expect(await within(panelF).findByText('A reason is required.')).toBeInTheDocument()
+    expect(writes()).toHaveLength(0)
+  })
+})
+
+describe('development sees the same table and toolbar (owner item 6: "correct")', () => {
+  it('has the switcher, Show retired, search and New Funder… on the one row, and no sentence line', async () => {
+    granted = DEVELOPMENT
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    const bar = document.querySelector('[data-aid-toolbar]')
+    if (!(bar instanceof HTMLElement)) throw new Error('no toolbar')
+    expect(within(bar).getByRole('button', { name: 'All 5' })).toBeInTheDocument()
+    expect(within(bar).getByRole('checkbox', { name: 'Show retired' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'New Funder…' })).toBeInTheDocument()
+    expect(within(bar).getByLabelText('Search')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/^Click a funder for its terms and contacts, or a description to set/)
+    ).toBeNull()
+    expect(
+      within(bar).getByTitle(/^Click a funder for its terms and contacts, or a description to set/)
+    ).toBeInTheDocument()
   })
 })

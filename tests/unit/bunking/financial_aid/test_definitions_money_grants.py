@@ -84,6 +84,31 @@ def test_the_reporting_group_note_no_longer_points_at_today() -> None:
     assert "on Today" not in _text("reporting_group")
 
 
+def test_funders_notes_are_the_final_mocks_four_short_ones() -> None:
+    """Final UX (owner 10-09, star 5; design-language section 12; money-funders.html): Money > Funders' four notes are
+    the mock's shorter words, with no per-surface sentence trailing the table. The meanings are unchanged (D88, D100,
+    D58, D74). These four keys are on no other surface, so no other page's notes change. "Changing it re-places
+    household-level lines" left note 3: the editor shows the server's GROUP_CHANGE_WARNING at the moment it applies."""
+    assert _text("funder") == (
+        "Funder: Camp is the camp's own aid. Each other header is an outside funder with its terms, eligibility and "
+        'contacts; "No funder yet" comes last.'
+    )
+    assert _text("incentive") == "Incentive or need-based: a flag on each description, never the funder type."
+    assert _text("reporting_group") == (
+        "Reporting group: the budget pool an outside source funds; household-level grant lines follow it. An outside "
+        "source with no programs set needs a group."
+    )
+    assert _text("source_lines") == (
+        "Lines this season: the season's live CampMinder lines a description classifies, counting any line "
+        "reclassified in To place, and their net. Reversed lines are left out."
+    )
+    owners = [
+        s for s, keys in SURFACES.items() if {"funder", "incentive", "reporting_group", "source_lines"} & set(keys)
+    ]
+    assert owners == ["money-sources"]
+    assert len(SURFACES["money-sources"]) <= 6  # design-language section 12: six notes at most
+
+
 def test_to_place_notes_say_what_the_final_mock_says() -> None:
     """Final UX (owner 10-09, star 5; design-language section 12): Money > To place's notes are the mock's shorter words.
     The meanings are unchanged: D151's figure, D12/D16's suggestion and D146/D152's placement check. These keys are on
@@ -122,7 +147,9 @@ def test_a_reporting_group_change_re_places_every_households_household_level_lin
     """The ledger narrows a household-level line by group for every household (_sole_camper), as the shipped
     GROUP_CHANGE_WARNING says; the note claims no narrower scope."""
     text = _text("reporting_group")
-    assert "Changing it re-places household-level lines on the next sync." in text
+    # Final UX (money-funders.html note 3): the sentence about re-placing moved to the editor, which shows the
+    # server's own GROUP_CHANGE_WARNING when the group moves; the note keeps the claim "household-level lines follow it".
+    assert "household-level grant lines follow it" in text
     assert "multi-program" not in text
 
 

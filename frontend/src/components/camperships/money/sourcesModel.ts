@@ -6,6 +6,7 @@
  * funder-naming `source_family` Literal is never spelled out here (P-12).
  */
 import type {
+  ApiAidDevelopmentGroup,
   ApiAidFunderType,
   ApiAidFundingSource,
   ApiAidFundingSourceIn,
@@ -116,16 +117,6 @@ export function lastChangeWords(change: ApiAidSourceChange | null | undefined): 
   const day = Number.isNaN(Date.parse(change.at)) ? change.at : campToday(new Date(change.at))
   const head = `${change.by} · ${formatShortDate(day)}`
   return change.note.trim() === '' ? head : `${head} · "${change.note.trim()}"`
-}
-
-/**
- * Ruling H (owner 10-06): "Needs a group 5 · 2 with lines this season", every outside source with
- * no group, then those of them with live lines this season. Both are the server's flags and counts.
- */
-export function needsGroupWords(rows: readonly ApiAidSourceRow[]): string {
-  const needs = rows.filter((r) => r.needs_group === true)
-  const live = needs.filter((r) => (r.lines ?? 0) > 0)
-  return `Needs a group ${String(needs.length)} · ${String(live.length)} with lines this season`
 }
 
 export type SourcesShow = 'all' | 'needs-group' | 'unclassified'
@@ -259,57 +250,55 @@ export function dropsGrantor(row: ApiAidSourceRow, draft: ClassifyDraft): boolea
 export const DROPS_GRANTOR_WARNING =
   'Saving this drops its funder: only an outside grant or incentive names one. The funder itself stays in Money › Funders.'
 
-/** "Set a Group…"'s choice: a pool key, no group, or (a source over several pools) keep them. */
-export const KEEP_GROUPS = 'keep'
-export const NO_GROUP = ''
-
 export interface GroupDraft {
-  readonly group: string
+  /** The picked pool keys. */
+  readonly groups: readonly string[]
   readonly incentive: boolean
   readonly note: string
 }
 
-/** The editor's start: the group as shown (several pools: keep them), the flag, an empty note. */
-export function groupDraftFrom(source: ApiAidFundingSource): GroupDraft {
-  const group = source.group ?? (source.group_label === '' ? NO_GROUP : KEEP_GROUPS)
-  return { group, incentive: source.incentive, note: '' }
+/** The editor's start (mock option A, multi-select): the pools the source's programs reach, the flag, no note. */
+export function groupDraftFrom(source: ApiAidFundingSource, pools: readonly Pool[]): GroupDraft {
+  return {
+    groups: poolsOfFamilies(source.families, pools),
+    incentive: source.incentive,
+    note: '',
+  }
+}
+
+/** Whether the picked set differs from the pools the source reaches now (order never counts). */
+export function groupChanged(
+  source: ApiAidFundingSource,
+  draft: GroupDraft,
+  pools: readonly Pool[]
+): boolean {
+  return !sameSet(draft.groups, poolsOfFamilies(source.families, pools))
 }
 
 /**
- * The route's body (D159; `_keeps_group`): no `group` keeps the pools as they are, a key is one
- * pool, and `null` clears a source's one pool. For a source over several pools the server reads
- * `null` as "keep" (`_keeps_group`: `body.group == shown`, and `shown` is None there), so the editor
- * doesn't offer "no group" for it (`offersNoGroup`; R3-7): pick one pool, then clear it. The note is
- * optional (owner, Funding sources save 10-03).
+ * The route's body (D159): `groups` goes only when the set changed (`[]` clears), so an incentive-only
+ * save never rewrites the families; never the single `group`. The note is optional (owner, 10-03).
  */
-export function groupBody(draft: GroupDraft): ApiAidFundingSourceIn {
+export function groupBody(
+  source: ApiAidFundingSource,
+  draft: GroupDraft,
+  pools: readonly Pool[]
+): ApiAidFundingSourceIn {
   const note = draft.note.trim()
   return {
-    ...(draft.group === KEEP_GROUPS
-      ? {}
-      : { group: draft.group === NO_GROUP ? null : draft.group }),
+    ...(groupChanged(source, draft, pools) ? { groups: [...draft.groups] } : {}),
     incentive: draft.incentive,
     ...(note === '' ? {} : { note }),
   }
 }
 
-/**
- * Whether "— no group —" is offered (R3-7): not for a source over several pools, where the route
- * would keep them anyway (`groupBody`'s note).
- */
-export function offersNoGroup(source: ApiAidFundingSource): boolean {
-  return groupDraftFrom(source).group !== KEEP_GROUPS
-}
-
-/** Whether the save moves the group (the server's D159 warning shows then). */
-export function groupChanged(source: ApiAidFundingSource, draft: GroupDraft): boolean {
-  if (draft.group === KEEP_GROUPS) return false
-  return (draft.group === NO_GROUP ? null : draft.group) !== source.group
-}
-
 /** Whether the save changes anything at all. */
-export function groupEdited(source: ApiAidFundingSource, draft: GroupDraft): boolean {
-  return groupChanged(source, draft) || draft.incentive !== source.incentive
+export function groupEdited(
+  source: ApiAidFundingSource,
+  draft: GroupDraft,
+  pools: readonly Pool[]
+): boolean {
+  return groupChanged(source, draft, pools) || draft.incentive !== source.incentive
 }
 
 /** The fields "Set a Group…" watches between opening and saving (P-9). */
@@ -318,3 +307,91 @@ export const GROUP_WATCHED: ReadonlyArray<readonly [keyof ApiAidFundingSource, s
   ['families', 'Programs'],
   ['incentive', 'Incentive'],
 ]
+
+/**
+ * A season's reporting group as Edit… sees it (final UX, owner 10-09 star 19): the pool, and the program
+ * families the rules send to it, which is what the source stores (D100's `implied_program_families`).
+ */
+export interface Pool {
+  readonly key: string
+  readonly label: string
+  readonly families: readonly string[]
+}
+
+/** The server's groups as pools, in the rules' order. A server that sent no families leaves none. */
+export const poolsOfGroups = (groups: readonly ApiAidDevelopmentGroup[]): Pool[] =>
+  groups.map((g) => ({ key: g.key, label: g.label, families: g.families ?? [] }))
+
+/** The pools a set of families reaches, in the rules' order. A family no pool funds reaches none. */
+export const poolsOfFamilies = (families: readonly string[], pools: readonly Pool[]): string[] =>
+  pools.filter((p) => p.families.some((f) => families.includes(f))).map((p) => p.key)
+
+/** What picking these pools writes: every family each funds, once, sorted (as Set a Group… writes one pool). */
+export function familiesOfPools(picked: readonly string[], pools: readonly Pool[]): string[] {
+  const out = new Set<string>()
+  for (const pool of pools) if (picked.includes(pool.key)) for (const f of pool.families) out.add(f)
+  return [...out].sort()
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((x) => b.includes(x))
+
+/**
+ * The families a Classify save sends once the picker's pools are `picked`. While they are the pools the
+ * description already reached, nothing moved: it keeps exactly what it opened with, so finance's narrower
+ * setting (D100: "specific programs within them") and a family no pool funds are never rewritten.
+ */
+export function classifyPrograms(
+  picked: readonly string[],
+  pools: readonly Pool[],
+  opened: readonly string[]
+): ApiAidProgramFamily[] {
+  const families = sameSet(picked, poolsOfFamilies(opened, pools))
+    ? opened
+    : familiesOfPools(picked, pools)
+  // The route's own list: a family it would refuse is never sent.
+  return families.filter(isProgramFamily)
+}
+
+/** A pool's families in the rules' program order (the names' own), then any the rules do not name, by key. */
+function inRulesOrder(families: readonly string[], names: Readonly<Record<string, string>>) {
+  const order = Object.keys(names)
+  const rank = (f: string) => (order.includes(f) ? order.indexOf(f) : order.length)
+  return [...families].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+const coverWords = (pool: Pool, names: Readonly<Record<string, string>>) =>
+  inRulesOrder(pool.families, names)
+    .map((f) => programLabel(names, f))
+    .join(', ')
+
+/** The muted line under the picker (mock `coversMulti`): the rules' programs the picked pools cover. */
+export function coversWords(
+  picked: readonly string[],
+  pools: readonly Pool[],
+  names: Readonly<Record<string, string>>
+): string {
+  const chosen = pools.filter((p) => picked.includes(p.key))
+  if (chosen.length === 0) return 'No group: the source will need one.'
+  const [only] = chosen
+  if (chosen.length === 1 && only !== undefined) return `Covers: ${coverWords(only, names)}`
+  return `Covers: ${chosen.map((p) => `${coverWords(p, names)} (${p.label})`).join(' · ')}`
+}
+
+/**
+ * The opened row's "Programs it funds" line in the pools' words (mock `fundsLine`): the group, with
+ * what it covers when there is one, or the groups. Null: it reaches no pool.
+ */
+export function fundsWords(
+  families: readonly string[],
+  pools: readonly Pool[],
+  names: Readonly<Record<string, string>>
+): { lead: string; names: string; covers: string | null } | null {
+  const keys = poolsOfFamilies(families, pools)
+  const reached = pools.filter((p) => keys.includes(p.key))
+  const [only] = reached
+  if (reached.length === 0 || only === undefined) return null
+  return reached.length === 1
+    ? { lead: 'Reporting group', names: only.label, covers: coverWords(only, names) }
+    : { lead: 'Reporting groups', names: reached.map((p) => p.label).join(', '), covers: null }
+}

@@ -70,6 +70,19 @@ async def test_the_list_holds_outside_sources_with_their_group_and_facts() -> No
     assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
 
 
+async def test_each_group_names_the_program_families_its_pool_funds() -> None:
+    """Final UX (money-funders.html, owner 10-09 star 19, rev1): Edit... picks pools, not program families, and its
+    "Covers: Summer, Quest, Teen" line names what each pool covers. The families are the ones the season's rules
+    send to the pool (`by_family`), the same set Set a Group... writes for it; none for a pool no session reaches."""
+    out = await _service(_store()).funding_sources(YEAR)
+    found = {g.key: list(g.families) for g in out.groups}
+    assert found["camp_pool"] == ["quest", "summer"]
+    for key, families in found.items():
+        assert families == sorted(families), key
+    stored = {f for g in out.groups for f in g.families}
+    assert stored <= {"summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend"}
+
+
 async def test_setting_a_group_stores_the_program_families_that_pool_funds_with_one_logged_write() -> None:
     store = _store()
     out = await _service(store).save_funding_source(
@@ -519,3 +532,118 @@ async def test_a_funding_sources_write_that_lost_a_race_is_a_conflict_not_a_500(
         REGIONAL.id,
         CONFLICT_MESSAGE,
     )
+
+
+# --- Set a Group... as a multi-select (final UX, owner-approved mock option A): `groups` ------------------------------
+
+
+async def _pool_families(key: str) -> list[str]:
+    out = await _service(_store()).funding_sources(YEAR)
+    return next(list(g.families) for g in out.groups if g.key == key)
+
+
+async def test_two_picked_pools_store_the_union_of_the_families_each_funds() -> None:
+    camp, weekend = await _pool_families("camp_pool"), await _pool_families("weekend_pool")
+    assert camp
+    assert weekend
+    store = _store()
+    out = await _service(store).save_funding_source(
+        YEAR, YEARS_AT_CAMP.id, FundingSourceIn(groups=["weekend_pool", "camp_pool"]), actor=DEVELOPMENT
+    )
+    union = sorted({*camp, *weekend})
+    assert out.families == union
+    assert (out.group, out.group_label, out.needs_group, out.families_changed) == (None, "several groups", False, True)
+    [[write]] = store.operations
+    assert write.data == {"implied_program_families": union}
+
+
+@pytest.mark.parametrize("cleared", [[], None], ids=["empty-list", "null"])
+async def test_groups_empty_or_null_clears_the_families(cleared: list[str] | None) -> None:
+    store = _store()
+    out = await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn(groups=cleared), actor=DEVELOPMENT
+    )
+    assert (out.families, out.needs_group) == ([], True)
+    [[write]] = store.operations
+    assert write.data == {"implied_program_families": []}
+
+
+async def test_an_unknown_pool_in_groups_is_refused() -> None:
+    store = _store()
+    with pytest.raises(ReportsRefusedError, match="budget pools"):
+        await _service(store).save_funding_source(
+            YEAR, REGIONAL.id, FundingSourceIn(groups=["camp_pool", "nowhere"]), actor=DEVELOPMENT
+        )
+    assert store.operations == []
+
+
+async def test_a_picked_pool_no_program_funds_is_refused() -> None:
+    """A pool the rules list but no program reaches has no families to point the source at (as `group` is today)."""
+    store = _store()
+    service = _service(store)
+    real = await service._season_grouping(YEAR)
+    hollow = replace(real, by_family={f: p for f, p in real.by_family.items() if p != "bmitzvah_pool"})
+    with (
+        patch.object(service, "_season_grouping", return_value=hollow),
+        pytest.raises(ReportsRefusedError, match="No program"),
+    ):
+        await service.save_funding_source(
+            YEAR, REGIONAL.id, FundingSourceIn(groups=["camp_pool", "bmitzvah_pool"]), actor=DEVELOPMENT
+        )
+    assert store.operations == []
+
+
+async def test_groups_equal_to_the_pools_it_reaches_now_keep_the_narrower_families() -> None:
+    """Finance's narrower setting (D100) survives a save that picks exactly the pools the source reaches now."""
+    store = FakeDevelopmentStore(source_rows=[NARROW])
+    out = await _service(store).save_funding_source(
+        YEAR, NARROW.id, FundingSourceIn(groups=["camp_pool"], incentive=True), actor=DEVELOPMENT
+    )
+    [[write]] = store.operations
+    assert write.data == {"incentive": True}
+    assert out.families == ["summer"]
+
+
+async def test_groups_equal_to_the_several_pools_it_reaches_now_keep_its_families() -> None:
+    store = FakeDevelopmentStore(source_rows=[SPLIT])
+    await _service(store).save_funding_source(
+        YEAR, SPLIT.id, FundingSourceIn(groups=["camp_pool", "weekend_pool"], incentive=True), actor=DEVELOPMENT
+    )
+    [[write]] = store.operations
+    assert write.data == {"incentive": True}
+
+
+async def test_a_funder_row_keeps_families_when_groups_equal_the_one_set_every_member_reaches() -> None:
+    store = FakeDevelopmentStore(
+        source_rows=[replace(REGIONAL, grantor_key="regional_fund"), SPRING], grantor_rows=[FUND]
+    )
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn(groups=["camp_pool"], incentive=True), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert all(w.data == {"incentive": True} for w in operation)
+
+
+async def test_a_funder_row_writes_the_union_of_the_picked_pools_to_every_member() -> None:
+    camp, weekend = await _pool_families("camp_pool"), await _pool_families("weekend_pool")
+    store = FakeDevelopmentStore(
+        source_rows=[replace(REGIONAL, grantor_key="regional_fund"), SPRING], grantor_rows=[FUND]
+    )
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn(groups=["camp_pool", "weekend_pool"]), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert {tuple((w.data or {})["implied_program_families"]) for w in operation} == {tuple(sorted({*camp, *weekend}))}
+
+
+async def test_sending_both_group_and_groups_is_a_422() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="group"):
+        FundingSourceIn(group="camp_pool", groups=["camp_pool"])
+    with pytest.raises(ValidationError, match="group"):
+        FundingSourceIn(group=None, groups=[])
+    with pytest.raises(ValidationError):
+        FundingSourceIn(groups=["x" * 61])
+    with pytest.raises(ValidationError):
+        FundingSourceIn(groups=["a"] * 25)

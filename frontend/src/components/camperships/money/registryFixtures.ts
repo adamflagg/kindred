@@ -144,8 +144,9 @@ function funding(
 export const FUNDING_SOURCES_2027: ApiAidFundingSources = {
   year: 2027,
   groups: [
-    { key: 'pool_a', label: 'Pool A', kind: 'summer' },
-    { key: 'pool_b', label: 'Pool B', kind: 'families' },
+    // `families`: what the season's rules send to each pool (the server's `by_family`, sorted).
+    { key: 'pool_a', label: 'Pool A', kind: 'summer', families: ['quest', 'summer', 'teen'] },
+    { key: 'pool_b', label: 'Pool B', kind: 'families', families: ['family_camp'] },
   ],
   sources: [
     funding(REG_GRANTOR_A_GRANT, { group: 'pool_a', group_label: 'Pool A' }),

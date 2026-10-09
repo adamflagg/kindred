@@ -215,6 +215,11 @@ export interface AidTableProps<Row> {
    */
   readonly toolbarEnd?: ReactNode
   /**
+   * A page-level editor between the toolbar and the table (Money › Funders' New Funder…, §24), as the mock
+   * draws it; the page owns its open state and its buttons.
+   */
+  readonly belowToolbar?: ReactNode
+  /**
    * Controls between the status and the search (Requests' checked-rows bar: Check Accepted… and
    * Clear, kit CF.bar's `acts` before `CF.search`). Everything else keeps §5's order.
    */
@@ -296,6 +301,13 @@ export interface AidTableProps<Row> {
    * opens and exports like any other.
    */
   readonly rowTone?: ((row: Row) => 'group' | 'warn' | undefined) | undefined
+  /**
+   * Opt-in (Money › Funders, design-language §5): how many columns a row's first cell spans. The cell owns
+   * those columns and the cells under it are not drawn, so a funder's long name and terms line cut at the
+   * totals instead of running over the next cells, and a muted "nothing under it" line has the width. A row
+   * that asks for none is drawn as ever.
+   */
+  readonly firstCellSpan?: ((row: Row) => number | undefined) | undefined
   /** False: the headers do not sort and any sort in the URL is ignored. Default true. */
   readonly sortable?: boolean | undefined
   /**
@@ -360,6 +372,7 @@ export function AidTable<Row>({
   toolbarAfterGrouping,
   toolbarActions,
   toolbarEnd,
+  belowToolbar,
   toolbarBeforeSearch,
   searchWidth,
   nowrapHeaders = false,
@@ -386,6 +399,7 @@ export function AidTable<Row>({
   onLeave,
   foldScope,
   rowTone,
+  firstCellSpan,
   sortable = true,
   groupSections,
   query: queryProp,
@@ -904,6 +918,8 @@ export function AidTable<Row>({
       const isHighlighted = key === highlighted
       const isMarked = markedKeys?.has(key) === true
       const tone = rowTone?.(row)
+      // A row's first cell may own the columns beside it (firstCellSpan); the cells it covers are not drawn.
+      const covers = Math.max(1, Math.min(firstCellSpan?.(row) ?? 1, columns.length))
       return (
         <Fragment key={key}>
           <tr
@@ -948,6 +964,7 @@ export function AidTable<Row>({
               </td>
             )}
             {columns.map((c, index) => {
+              if (index > 0 && index < covers) return null
               const value = c.render ? undefined : c.value(row)
               const content = c.render ? (
                 c.render(row, { highlighted: isHighlighted, query })
@@ -967,6 +984,7 @@ export function AidTable<Row>({
                 <td
                   key={c.key}
                   title={title}
+                  colSpan={index === 0 && covers > 1 ? covers : undefined}
                   style={pinStyle(c)}
                   data-fit-col={c.fitContent ? c.key : undefined}
                   className={join(
@@ -979,6 +997,8 @@ export function AidTable<Row>({
                         : CELL_BG,
                     bodyEdge(c, index, isHighlighted, isMarked),
                     isPinned(c) && 'sticky z-10',
+                    // A spanning cell cuts its words at the totals (the others let a heading spill over).
+                    covers > 1 && index === 0 && 'overflow-hidden',
                     alignClass(c),
                     c.flex === true && isHighlighted ? 'whitespace-normal' : 'whitespace-nowrap'
                   )}
@@ -1098,6 +1118,8 @@ export function AidTable<Row>({
           </div>
         </div>
       )}
+
+      {belowToolbar}
 
       {sectionMode ? (
         // One measured box around every section (scan #3117 B): a ref on each card left it null once

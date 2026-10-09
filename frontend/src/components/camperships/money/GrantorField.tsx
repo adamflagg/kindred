@@ -6,7 +6,10 @@ import { useFreshAidSources } from '../../../hooks/camperships/useAidSources'
 import { useAidMapSourceGrantor } from '../../../hooks/camperships/useAidSourceWrites'
 import type { ApiAidSourceRow } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_INPUT, CS_LINK, CS_PMETA } from '../kit/csType'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD, CS_LINK, CS_PMETA } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import type { AidPickerOption } from '../kit/pickerWords'
 import {
   movedFields,
   movedWords,
@@ -129,65 +132,78 @@ export function GrantorField({
     }
   }
 
+  const options: Array<AidPickerOption<string>> = [
+    { value: NO_GRANTOR, label: '— no funder —' },
+    ...(retired === undefined
+      ? []
+      : [{ value: retired.key, label: `${retired.name} (retired)`, disabled: true }]),
+    ...inUse.map((g) => ({ value: g.key, label: g.name })),
+  ]
+  // What Save waits for, said beside the buttons (mock saveRow): the pick first, then the note.
+  const why =
+    ready || opened === null
+      ? undefined
+      : key === opened.grantor_key || key === retired?.key
+        ? 'Pick another funder.'
+        : "A note is required: it's logged."
   return (
-    <div className="space-y-2 text-sm" data-testid="grantor-field">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2">
-          Funder
-          <select
-            className={CS_INPUT}
-            value={key}
-            disabled={opened === null}
-            onChange={(event) => setKey(event.target.value)}
-          >
-            <option value={NO_GRANTOR}>— no funder —</option>
-            {retired !== undefined && (
-              <option value={retired.key} disabled>
-                {`${retired.name} (retired)`}
-              </option>
-            )}
-            {inUse.map((g) => (
-              <option key={g.key} value={g.key}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex min-w-[14rem] flex-1 items-center gap-2">
-          Note
-          <input
-            type="text"
-            className={`${CS_INPUT} w-full`}
-            maxLength={2000}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-          />
-        </label>
-      </div>
-      {key === retired?.key && (
-        <p className={CS_AMBER_NOTE}>
-          {`${retired.name} is retired: pick a funder in use, or `}
-          <Link
-            className={CS_LINK}
-            to={aidHref('/aid/money/funders', view, { funder: retired.key })}
-          >
-            Unretire It in Money › Funders
-          </Link>
-        </p>
-      )}
-      <p className={CS_PMETA}>
-        The funder&apos;s terms (full coverage, canteen, pays after camp aid) are set in Money ›
-        Funders.
-      </p>
-      {problem !== null && <p className={CS_AMBER_NOTE}>{problem}</p>}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={CS_BTN} disabled={!ready} onClick={() => void save()}>
-          {map.isPending ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" className={CS_BTN2} onClick={onCancel}>
-          Back
-        </button>
-      </div>
+    <div data-testid="grantor-field">
+      <EditorForm
+        title={`Funder · ${initial.description}`}
+        actions={
+          <EditorActions reason={why}>
+            <button type="button" className={CS_BTN} disabled={!ready} onClick={() => void save()}>
+              {map.isPending ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" className={CS_BTN2} onClick={onCancel}>
+              Back
+            </button>
+            {problem !== null && <span className={CS_AMBER_NOTE}>{problem}</span>}
+          </EditorActions>
+        }
+      >
+        <div className="space-y-1.5">
+          <EditorGrid columns={4}>
+            <EditorField label="Funder">
+              <AidPicker
+                label="Funder"
+                size="field"
+                disabled={opened === null}
+                value={key}
+                options={options}
+                onChange={setKey}
+                className="w-full [&>button]:w-full"
+              />
+            </EditorField>
+            <EditorField label="Note">
+              <input
+                type="text"
+                aria-label="Note"
+                className={`${CS_FIELD} w-full`}
+                maxLength={2000}
+                placeholder="required, logged with your name"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </EditorField>
+          </EditorGrid>
+          {key === retired?.key && (
+            <p className={CS_AMBER_NOTE}>
+              {`${retired.name} is retired: pick a funder in use, or `}
+              <Link
+                className={CS_LINK}
+                to={aidHref('/aid/money/funders', view, { funder: retired.key })}
+              >
+                Unretire It in Money › Funders
+              </Link>
+            </p>
+          )}
+          <p className={CS_PMETA}>
+            The funder&apos;s terms (full coverage, canteen, pays after camp aid) are set on the
+            funder&apos;s own row.
+          </p>
+        </div>
+      </EditorForm>
     </div>
   )
 }
