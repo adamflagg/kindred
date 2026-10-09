@@ -271,3 +271,19 @@ describe("the opened row's detail line (§15)", () => {
     expect(document.querySelector('[data-aid-detail]')).not.toHaveTextContent('Household request')
   })
 })
+
+describe('R3 pending approval (§13)', () => {
+  it('titles the amber "pending $X" with what it means', () => {
+    const pending = gridRow({
+      rounds: [
+        roundOut(1, 'posted', { decided: 1000, posted: 1000 }),
+        roundOut(3, 'pending_approval', { pending_approval: 400 }),
+      ],
+    })
+    render(<Grid rows={[pending]} />)
+    expect(screen.getByText('pending $400').closest('td')).toHaveAttribute(
+      'title',
+      'Pending approval: $400, never summed until approved'
+    )
+  })
+})

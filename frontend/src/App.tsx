@@ -65,6 +65,15 @@ const ManageRegistrationPage = lazy(() =>
 const AidHome = lazy(() => import('./pages/camperships/AidHome'))
 const AidReportsPage = lazy(() => import('./pages/camperships/AidReportsPage'))
 const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage'))
+const RequestsNotForDevelopment = lazy(
+  () => import('./pages/camperships/RequestsNotForDevelopment')
+)
+// A person without financial_aid.view (the development persona) sees an explaining card, not a dead end.
+const REQUESTS_FALLBACK = (
+  <Suspense fallback={<PageSkeleton />}>
+    <RequestsNotForDevelopment />
+  </Suspense>
+)
 const AidSeasonPage = lazy(() => import('./pages/camperships/AidSeasonPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
 const AidMoneyPage = lazy(() => import('./pages/camperships/AidMoneyPage'))
@@ -638,7 +647,10 @@ function App() {
                             <Route
                               path="requests"
                               element={
-                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                <RequirePermission
+                                  permission={Permission.FINANCIAL_AID_VIEW}
+                                  fallback={REQUESTS_FALLBACK}
+                                >
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidRequestsPage />

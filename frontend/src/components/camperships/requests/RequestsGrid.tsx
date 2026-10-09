@@ -327,6 +327,12 @@ const outsideFooterTitle = (rows: readonly ApiAidGridRow[]) => {
 const CELL_TITLE: Partial<Record<GridColumnKey, (row: ApiAidGridRow) => string | undefined>> = {
   camper: camperTitle,
   session: (row) => sessionCell(row).title,
+  r3: (row) => {
+    const r3 = roundOf(row, 3)
+    return r3?.status === 'pending_approval'
+      ? `Pending approval: ${formatMoney(r3.pending_approval)}, never summed until approved`
+      : undefined
+  },
   requestedBy: (row) =>
     row.requested_by
       ? `${row.requested_by}${(row.payer_count ?? 1) >= 2 ? ` · split between ${String(row.payer_count)} households` : ''}`
