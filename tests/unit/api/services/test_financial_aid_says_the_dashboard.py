@@ -95,7 +95,10 @@ def test_no_camperships_server_string_says_headcount() -> None:
 
 def test_the_cost_definition_says_number_of_people() -> None:
     (cost,) = (d for d in DEFINITIONS if d.key == "cost")
-    assert "Family Camp by number of people" in cost.text
+    # The owner's shorter wording (★5, final-ux 10-09) reads "Family Camp by the number of people"; the ruling
+    # this pins is the staff word, "number of people", never "headcount".
+    assert "Family Camp by the number of people" in cost.text
+    assert "headcount" not in cost.text.lower()
 
 
 def test_the_headcount_scan_skips_keys_and_paths_and_catches_prose() -> None:
