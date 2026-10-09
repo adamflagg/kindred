@@ -93,6 +93,7 @@ export function ZipCodes({ view }: { view: AidView }) {
                   link={link}
                   find
                   findPlaceholder="Find a ZIP"
+                  findNoun="ZIPs"
                   findWidth={104}
                   sortable
                   totalsFirst
@@ -111,6 +112,7 @@ export function ZipCodes({ view }: { view: AidView }) {
                   find={data.with_aid !== null}
                   tools={data.with_aid !== null}
                   findPlaceholder="Find a ZIP"
+                  findNoun="ZIPs"
                   findWidth={104}
                   sortable
                   totalsFirst

@@ -769,8 +769,17 @@ describe('ReportTable', () => {
       expect(find.closest('label')).toHaveClass('w-[140px]')
     })
 
-    it('says "N of M" in the toolbar while finding, with the whole-table words in its title, and no sentence row', async () => {
+    it('names the counted rows "rows" in the find title unless told what they are', async () => {
       renderTable({ find: true })
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Find in Every camper' }), '00012')
+      expect(screen.getByTestId('find-status')).toHaveAttribute(
+        'title',
+        "1 of 2 rows match “00012”; the totals row stays the whole table's"
+      )
+    })
+
+    it('says "N of M" in the toolbar while finding, with the whole-table words in its title, and no sentence row', async () => {
+      renderTable({ find: true, findNoun: 'ZIPs' })
       expect(screen.queryByTestId('find-status')).toBeNull()
       await userEvent.type(screen.getByRole('searchbox', { name: 'Find in Every camper' }), '00012')
       const status = screen.getByTestId('find-status')

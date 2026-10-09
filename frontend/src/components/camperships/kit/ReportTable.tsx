@@ -79,6 +79,8 @@ interface ReportTableProps {
   /** The find box's placeholder ("Find a ZIP") and width in px; the default is "Find", 140px. */
   readonly findPlaceholder?: string | undefined
   readonly findWidth?: number | undefined
+  /** What the find status counts, in its title ("ZIPs"); the default is "rows". */
+  readonly findNoun?: string | undefined
   /** False: the heading row carries the title alone, with no find, Copy or Download CSV (a table with no rows to find). */
   readonly tools?: boolean | undefined
   /**
@@ -203,6 +205,7 @@ export function ReportTable({
   hint,
   findPlaceholder = 'Find',
   findWidth,
+  findNoun = 'rows',
   tools = true,
   bounded = false,
 }: ReportTableProps) {
@@ -343,7 +346,7 @@ export function ReportTable({
               <span
                 data-testid="find-status"
                 className={CS_TOOLBAR_STATUS}
-                title={`${String(matching)} of ${String(bodyCount)} ZIPs match “${query.trim()}”; the totals row stays the whole table's`}
+                title={`${String(matching)} of ${String(bodyCount)} ${findNoun} match “${query.trim()}”; the totals row stays the whole table's`}
               >
                 {`${String(matching)} of ${String(bodyCount)}`}
               </span>
