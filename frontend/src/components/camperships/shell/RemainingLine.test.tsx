@@ -65,6 +65,48 @@ describe('RemainingLine (D48, D75; spec §7.3)', () => {
     expect(screen.getByRole('link', { name: 'Pool B $18k' })).toBeInTheDocument()
   })
 
+  // Owner 2026-10-08: the bar is short on room, so a known pool reads by its short name, like
+  // sessionName's `tiny` form. Any other key reads its label whole; the hover always has the full name.
+  it('reads a known pool by its short name and keeps the full label on hover', () => {
+    state = {
+      data: {
+        year: 2027,
+        pools: [
+          { pool: 'camp_quest', label: 'Camp & Quest', remaining: 298000 },
+          { pool: 'tbm', label: 'TBM', remaining: 19000 },
+          { pool: 'weekend', label: 'Weekend programs', remaining: 41000 },
+          { pool: 'pool_d', label: 'Pool D', remaining: 5000 },
+        ],
+        total: 363000,
+      },
+      isPending: false,
+      error: null,
+    }
+    renderAt()
+    expect(screen.getByRole('link', { name: 'C&Q $298k' })).toHaveAttribute('title', 'Camp & Quest')
+    expect(screen.getByRole('link', { name: 'TBM $19k' })).toHaveAttribute('title', 'TBM')
+    expect(screen.getByRole('link', { name: 'Weekend $41k' })).toHaveAttribute(
+      'title',
+      'Weekend programs'
+    )
+    expect(screen.getByRole('link', { name: 'Pool D $5k' })).toHaveAttribute('title', 'Pool D')
+  })
+
+  it('keeps the full label on hover for a summary-only user too', () => {
+    granted = ['financial_aid.summary']
+    state = {
+      data: {
+        year: 2027,
+        pools: [{ pool: 'camp_quest', label: 'Camp & Quest', remaining: 298000 }],
+        total: 298000,
+      },
+      isPending: false,
+      error: null,
+    }
+    renderAt()
+    expect(screen.getByTitle('Camp & Quest')).toHaveTextContent('C&Q $298k')
+  })
+
   it('inks an over-allocated pool in amber, with a minus and no parentheses', () => {
     renderAt()
     expect(screen.getByText(`${MINUS}$1k`)).toHaveClass('text-amber-700')
