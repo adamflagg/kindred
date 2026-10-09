@@ -26,10 +26,11 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
 }))
 vi.mock('../../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.summary' }),
+  usePermissions: () => ({ hasPermission: (p: string) => mockPerms.includes(p) }),
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
+let mockPerms: string[] = ['financial_aid.summary']
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 let columnAnswer: () => Response
 let liveAnswer: () => Response
@@ -39,6 +40,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-06-03T18:00:00Z'))
+  mockPerms = ['financial_aid.summary']
   columnAnswer = () => json(DEVELOPMENT)
   liveAnswer = () => json(DEVELOPMENT_LIVE)
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
@@ -133,6 +135,27 @@ describe('the grantor lines (D3)', () => {
       within(table).getByText('another funder · need-based · needs a group')
     ).toBeInTheDocument()
     expect(screen.getAllByRole('table')).toHaveLength(1)
+  })
+})
+
+describe('the grantor lines link to Money › Funders', () => {
+  it("open that funder's group for a user who sees Funders (development holds grantors)", async () => {
+    mockPerms = ['financial_aid.summary', 'financial_aid.funding_sources', 'financial_aid.grantors']
+    liveAnswer = () => json(DEVELOPMENT_GRANTORS)
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    expect(within(table).getByRole('link', { name: 'Grantor A' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?funder=grantor_a&year=2027'
+    )
+  })
+
+  it('stay plain words for a summary-only user, who has no Money', async () => {
+    liveAnswer = () => json(DEVELOPMENT_GRANTORS)
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    expect(within(table).getByText('Grantor A')).toBeInTheDocument()
+    expect(within(table).queryByRole('link', { name: 'Grantor A' })).toBeNull()
   })
 })
 

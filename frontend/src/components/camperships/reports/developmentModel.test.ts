@@ -212,6 +212,32 @@ describe('the grantor lines (D3)', () => {
     expect(none.some((r) => texts(r)[0]?.startsWith('Grantor'))).toBe(false)
   })
 
+  it('links each funder line to Money › Funders when given the link: its funder, or "No funder yet"', () => {
+    const href = (params: Readonly<Record<string, string>>) =>
+      `/aid/money/funders?${new URLSearchParams(params).toString()}`
+    const linked = developmentRows(
+      {
+        ...DEVELOPMENT_GRANTORS,
+        sources: [
+          ...DEVELOPMENT_GRANTORS.sources,
+          {
+            ...(DEVELOPMENT_GRANTORS.sources.find((s) => s.name === 'Grantor B') ??
+              DEVELOPMENT_GRANTORS.sources[0]!),
+            source_key: 'unmapped_award_2027',
+            name: 'Unmapped Award 2027',
+          },
+        ],
+      },
+      href
+    )
+    const i = linked.findIndex((r) => texts(r)[0] === 'Outside grants')
+    expect(linked[i + 1]?.links).toEqual({ 0: '/aid/money/funders?funder=grantor_a' })
+    expect(linked[i + 2]?.links).toEqual({ 0: '/aid/money/funders?funder=grantor_b' })
+    expect(linked[i + 3]?.links).toEqual({ 0: '/aid/money/funders?show=no-funder' })
+    // without a link (a user who can't open Funders) the lines are plain words
+    expect(rows[at + 1]?.links).toBeUndefined()
+  })
+
   it('carries the lines into the CSV', () => {
     const csv = csvLines(
       {

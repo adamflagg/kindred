@@ -6,6 +6,7 @@ import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
 import { SEARCH_INPUT } from '../../admin/audit/auditStyles'
 import { AMBER_NOTE, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
+import { CS_LINK } from './csType'
 import { DefRef } from './DefinitionNotes'
 import { TABLE_CARD } from './kitStyles'
 import { Money } from './MoneyText'
@@ -83,6 +84,14 @@ function figureContent(cell: ReportValue, href: string | undefined): ReactNode {
     return (
       <Link to={href} className={COUNT_LINK}>
         {formatCount(cell.value)}
+      </Link>
+    )
+  }
+  // A name that opens its own page (Development's funder lines → Money › Funders).
+  if (href !== undefined && cell.kind === 'text') {
+    return (
+      <Link to={href} className={CS_LINK}>
+        {cell.value}
       </Link>
     )
   }

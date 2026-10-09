@@ -110,7 +110,8 @@ export interface ReportRow {
   readonly note?: string | undefined
   /**
    * Where a count opens the requests behind it (D20; slice 4 J), by cell index: drawn as a link when
-   * the cell is a count above 0. Copy and the CSV take the words alone.
+   * the cell is a count above 0, or a name (a text cell) that opens its own page. Copy and the CSV
+   * take the words alone.
    */
   readonly links?: Readonly<Record<number, string>> | undefined
 }
