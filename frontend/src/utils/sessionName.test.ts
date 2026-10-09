@@ -602,6 +602,13 @@ describe('sessionName — #2790 tiny vocabulary', () => {
     expect(sessionName(name, type, 'tiny')).toBe(expected)
   })
 
+  it('the "other" mappings are anchored, so a stray word does not collapse a name', () => {
+    expect(sessionName('Board Game Weekend', 'other', 'tiny')).toBe('Board Game Weekend')
+    expect(sessionName('Board Retreat 2027', 'other', 'tiny')).toBe('Board Retreat 2027')
+    expect(sessionName('Gold Rush Reunion', 'other', 'tiny')).toBe('Gold Rush Reunion')
+    expect(sessionName('{camp} Board', 'other', 'tiny')).toBe('Board')
+  })
+
   it('an unmapped teen name reads whole, so two trips never collapse onto one label', () => {
     expect(sessionName('TLI: Camp to Portland', 'tli', 'tiny')).toBe('TLI: Camp to Portland')
     expect(sessionName('TLI: Portland to Camp', 'tli', 'tiny')).toBe('TLI: Portland to Camp')

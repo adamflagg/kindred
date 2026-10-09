@@ -281,13 +281,13 @@ const questTiny = mapped({
  * whole INCLUDING its colon part: "TLI: Camp to Portland" cut at the colon
  * would be "TLI" — the mapped label, for a different session.
  */
-const teenTiny: Render = (name) => TEEN_TINY[mapKey(name)] ?? name.trim()
 const TEEN_TINY: Readonly<Record<string, string>> = {
   counselorintraining: 'CIT',
   specialistintraining: 'SIT',
   teenleadershipinstitute: 'TLI',
   teenwinterretreat: 'TWR',
 }
+const teenTiny: Render = (name) => TEEN_TINY[mapKey(name)] ?? name.trim()
 
 /** "Year 1" / "Year 2" of a B*Mitzvah name. */
 function bmitzvahYear(name: string): string | undefined {
@@ -351,9 +351,11 @@ const schoolShort: Render = (name) => {
 
 /** `tiny` for the "other" programs (owner, 2026-10-09, #2790). */
 const otherTiny: Render = (name) => {
-  if (/staff kids/i.test(name)) return 'Staff Kids'
-  if (/\bboard\b/i.test(name)) return 'Board'
-  if (/gold rush/i.test(name)) return 'Gold Rush'
+  const key = mapKey(name)
+  if (key === 'staffkids' || key === 'staffkidsatcamp') return 'Staff Kids'
+  if (key === 'goldrush') return 'Gold Rush'
+  // "{camp} Board": the word closes the name, so "Board Game Weekend" is not it.
+  if (/(^|\s)board$/i.test(adultWeekendTitle(name))) return 'Board'
   return whole(name)
 }
 
