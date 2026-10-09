@@ -462,6 +462,21 @@ describe('Rules as chapters (spec §6)', () => {
     expect(screen.getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
   })
 
+  // Mock: switching the shown version sets P.discardAsk = false. Both views share one ChaptersBody, so the question
+  // would otherwise sit on the version in effect's bar with no Discard or Keep, and come back on the draft.
+  it('drops the Discard question when the switch moves to the version in effect, and does not bring it back', async () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: 'Discard Draft…' }))
+    expect(screen.getByText('Discard v4? Changes since v3 are lost.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: 'v3 in effect' }))
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open All' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: 'Draft v4' }))
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
+  })
+
   it('opens the chapters with a draft section by default, and Open All / Close All folds every one', async () => {
     granted = FINANCE
     renderAt('/aid/season/rules')

@@ -657,6 +657,17 @@ function ChaptersBody({
   const budgetErrors = (budget?.issues ?? []).filter((i) => i.severity === 'error').length
 
   const lead = leadFor(editing !== null ? 'edit' : chrome.approving ? 'approve' : null)
+  // Only a draft newer than the version in effect, and only where a card could be edited: live, not locked, not a
+  // receipt, never mid-edit or mid-approval (scan #3093).
+  const canDiscard =
+    canEdit &&
+    lead.kind === 'finance' &&
+    lead.show === 'draft' &&
+    lead.approvedVersion !== null &&
+    lead.approvedVersion !== lead.draftVersion
+  // The question never outlives its button (mock: show, edit and approve each clear P.discardAsk), or it would sit on
+  // the bar with no Discard or Keep, and come back after a Cancel.
+  if (asking && !canDiscard) setAsking(false)
 
   return (
     <div className="space-y-3">
@@ -667,21 +678,15 @@ function ChaptersBody({
           asking={asking}
           onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
         >
-          {/* Only a draft newer than the version in effect, and only where a card could be edited: live, not locked,
-              not a receipt, never mid-edit or mid-approval (scan #3093). */}
-          {canEdit &&
-            lead.kind === 'finance' &&
-            lead.show === 'draft' &&
-            lead.approvedVersion !== null &&
-            lead.approvedVersion !== lead.draftVersion && (
-              <DiscardDraft
-                key={lead.draftVersion}
-                draftVersion={lead.draftVersion}
-                approvedVersion={lead.approvedVersion}
-                asking={asking}
-                onAsk={setAsking}
-              />
-            )}
+          {canDiscard && lead.approvedVersion !== null && (
+            <DiscardDraft
+              key={lead.draftVersion}
+              draftVersion={lead.draftVersion}
+              approvedVersion={lead.approvedVersion}
+              asking={asking}
+              onAsk={setAsking}
+            />
+          )}
         </LeadLine>
       </ChapterBar>
       <ApprovePanel />

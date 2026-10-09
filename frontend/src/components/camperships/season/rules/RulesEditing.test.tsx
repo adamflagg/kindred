@@ -1251,6 +1251,22 @@ describe('the section editor footer (mock editFoot)', () => {
       within(row).getByText(/^Esc cancels · saving puts the change in draft v\d+$/)
     ).toBeInTheDocument()
   })
+
+  it('names the draft the save lands in: v4 over v3 in effect, and v5 when v4 is itself in effect (frozenFact)', async () => {
+    const view = renderAt('/aid/season/rules?open=2&section=awards')
+    await editCard('awards')
+    expect(
+      await screen.findByText('Esc cancels · saving puts the change in draft v4')
+    ).toBeInTheDocument()
+    view.unmount()
+    draft = { data: { ...rulesDraft(), approved_version: 4 }, isLoading: false, error: null }
+    server = [{ ...rulesDraft(), approved_version: 4 }]
+    renderAt('/aid/season/rules?open=2&section=awards')
+    await editCard('awards')
+    expect(
+      await screen.findByText('Esc cancels · saving puts the change in draft v5')
+    ).toBeInTheDocument()
+  })
 })
 
 describe('discarding the rules draft (owner 2026-10-08)', () => {
@@ -1298,6 +1314,16 @@ describe('discarding the rules draft (owner 2026-10-08)', () => {
     expect(
       await screen.findByText(/holds an approval made since it was started \(Appeal caps\)/)
     ).toBeInTheDocument()
+  })
+
+  // Mock: show, edit and approve each set P.discardAsk = false; the question never outlives its button.
+  it('drops the question when a card opens for editing, so Cancel does not bring it back', async () => {
+    renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
+    await editCard('awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
   })
 
   it('offers nothing when the draft is the version in effect, or while a card is edited', async () => {

@@ -9,6 +9,9 @@ import { TABLE_CARD, TD, TH } from '../../kit/kitStyles'
 /** The table's card: white, rounded, bordered, scrolling sideways rather than breaking the card. */
 export const RG_WRAP = `${TABLE_CARD} mt-1.5`
 export const RG_TABLE = 'w-full border-separate border-spacing-0 text-sm'
+/** A table the mock draws at its content width (fit(): the equity weights, the checks): the card hugs the table. */
+export const RG_WRAP_FIT = `${RG_WRAP} inline-block max-w-full align-top`
+export const RG_TABLE_FIT = RG_TABLE.replace('w-full', 'w-auto')
 // One text-align per class string: the kit's TH carries text-left, so the others swap it rather than add a second.
 export const RG_TH = TH
 export const RG_TH_NUM = TH.replace('text-left', 'text-right')
@@ -22,4 +25,4 @@ export const RG_TD = `${CELL} whitespace-nowrap`
 export const RG_TD_NUM = `${RG_TD} text-right tabular-nums`
 export const RG_TD_MID = `${RG_TD} text-center`
 export const RG_TD_NAME = `${RG_TD} font-bold`
-export const RG_TD_GROUP_NUM = `${RG_TD_NUM}`.replace(CS_RULE, CS_RULE_GROUP)
+export const RG_TD_GROUP_NUM = RG_TD_NUM.replace(CS_RULE, CS_RULE_GROUP)

@@ -360,9 +360,10 @@ export function RulesSectionEditor({
         <button type="button" className={CS_BTN2} disabled={saving} onClick={() => onDone(null)}>
           Cancel
         </button>
+        {/* The version the save lands in, as frozenFact says it: a draft that is itself in effect starts the next. */}
         <span
           className={`${CS_SMALL} truncate`}
-        >{`Esc cancels · saving puts the change in draft v${String(opened.draft.version)}`}</span>
+        >{`Esc cancels · saving puts the change in draft v${String(opened.draft.approved_version === opened.draft.version ? opened.draft.version + 1 : opened.draft.version)}`}</span>
         {blocked && (
           <span className={CS_AMBER_NOTE}>
             {unreadable

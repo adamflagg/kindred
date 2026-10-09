@@ -6,6 +6,7 @@ import { DefRef } from '../../kit/DefinitionNotes'
 import { CS_LINK_SM, CS_PANEL_HEAD, CS_PILL, CS_SMALL } from '../../kit/csType'
 import {
   RG_TABLE,
+  RG_TABLE_FIT,
   RG_TD,
   RG_TD_MID,
   RG_TD_NAME,
@@ -15,6 +16,7 @@ import {
   RG_TH_MID,
   RG_TH_NUM,
   RG_WRAP,
+  RG_WRAP_FIT,
 } from './gridStyles'
 import { checkRows, equityClasses, equityRows, namedAwardRows, settingText } from './rulesCards'
 import { keyLabel, type RulesNames } from './rulesModel'
@@ -81,8 +83,8 @@ function EquityTable({
 }: TablesProps) {
   const classes = equityClasses(content, groups)
   return (
-    <div className={RG_WRAP}>
-      <table data-testid="equity-table" className={RG_TABLE}>
+    <div className={RG_WRAP_FIT}>
+      <table data-testid="equity-table" className={RG_TABLE_FIT}>
         <thead>
           <tr>
             <th rowSpan={2} className={RG_TH}>
@@ -212,8 +214,8 @@ function NamedAwardsTable({ content, names, control, grantsHref }: TablesProps) 
 
 function ChecksTable({ content, names, control }: TablesProps) {
   return (
-    <div className={RG_WRAP}>
-      <table data-testid="checks-table" className={RG_TABLE}>
+    <div className={RG_WRAP_FIT}>
+      <table data-testid="checks-table" className={RG_TABLE_FIT}>
         <thead>
           <tr>
             <th className={RG_TH}>Check</th>

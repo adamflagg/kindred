@@ -286,3 +286,21 @@ describe('the checks table (spec §6.2 E.7)', () => {
     expect(rowOf(table, 'Placeholder income')).toHaveTextContent('Placeholder income—Warning—')
   })
 })
+
+// final-v2/season-rules.html wraps only the equity and checks tables in fit() (.cf-fit: inline-block, table width auto);
+// the tier grid and the named awards span the card.
+describe('table width (final mock fit())', () => {
+  it('draws the equity table at its content width', () => {
+    tables({ section: 'equity', content: EQUITY })
+    const equity = screen.getByTestId('equity-table')
+    expect(equity).toHaveClass('w-auto')
+    expect(equity.parentElement).toHaveClass('inline-block', 'max-w-full')
+  })
+
+  it('draws the checks table at its content width', () => {
+    tables({ section: 'quality_checks', content: CHECKS })
+    const checks = screen.getByTestId('checks-table')
+    expect(checks).toHaveClass('w-auto')
+    expect(checks.parentElement).toHaveClass('inline-block', 'max-w-full')
+  })
+})
