@@ -180,8 +180,6 @@ export function RegisterTab({ view }: { view: AidView }) {
         header: 'Aid request it offsets',
         width: 164,
         value: (r) => offsetWords(r, needsCamper),
-        // grants-v2's footer: the never-applied household-level lines the total counts.
-        footerNote: (shown) => neverAppliedNote(shown, needsCamper),
         render: (r) =>
           r.counts && r.requests.length > 0 ? (
             offsetWords(r, needsCamper)
@@ -363,7 +361,19 @@ export function RegisterTab({ view }: { view: AidView }) {
               csvExtra={REGISTER_CSV_EXTRA}
               highlighted={highlighted}
               onHighlight={onHighlight}
-              footerLabel={(shownRows) => footerWords(shownRows, needsCamper)}
+              footerLabel={(shownRows) => {
+                // grants-v2's footer: the count, then the never-applied lines the total counts (the note
+                // runs across the empty cells beside the label, clear of the Amount total).
+                const note = neverAppliedNote(shownRows, needsCamper)
+                return note === '' ? (
+                  footerWords(shownRows, needsCamper)
+                ) : (
+                  <>
+                    {footerWords(shownRows, needsCamper)}
+                    <span className="text-muted-foreground ml-6 font-normal">{note}</span>
+                  </>
+                )
+              }}
               renderDetail={renderDetail}
               searchPlaceholder="Camper, family, grantor"
               arrowKeys
