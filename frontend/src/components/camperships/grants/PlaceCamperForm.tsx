@@ -7,9 +7,12 @@ import { AidPicker } from '../kit/AidPicker'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_PANEL_HEAD, CS_PMETA } from '../kit/csType'
 import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
 import type { AidPickerOption } from '../kit/pickerWords'
+import { aidSessionName } from '../kit/sessionShort'
 import { refusalWords } from '../money/refusal'
 import {
+  candidateSessions,
   evidenceLines,
+  pickedSession,
   placedGrantWords,
   placementFor,
   stillNeedsCamper,
@@ -43,6 +46,8 @@ export function PlaceCamperForm({
         ? String(only.person_cm_id)
         : ''
   )
+  // The Session picker's value ("" = untouched: the suggestion's session, else the camper's first).
+  const [sessionPick, setSessionPick] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const inFlight = useRef(false)
@@ -65,7 +70,12 @@ export function PlaceCamperForm({
       }
       const out = await place.mutateAsync({
         year,
-        body: { placements: [placementFor(need, Number(person))], note: '' },
+        body: {
+          placements: [
+            placementFor(need, Number(person), pickedSession(need, Number(person), sessionPick)),
+          ],
+          note: '',
+        },
       })
       onDone(placedGrantWords(out))
     } catch (caught) {
@@ -83,6 +93,15 @@ export function PlaceCamperForm({
       label: need.suggestion?.person_cm_id === c.person_cm_id ? `${c.name} (suggested)` : c.name,
     })),
   ]
+
+  const sessions = person === '' ? [] : candidateSessions(need, Number(person))
+  const session = person === '' ? null : pickedSession(need, Number(person), sessionPick)
+  const sessionOptions: Array<AidPickerOption<string>> = sessions.map((s) => ({
+    value: String(s.session_cm_id),
+    label: aidSessionName(s.name, s.session_type) || s.name,
+    title: s.name,
+  }))
+  const [onlySession] = sessions
 
   return (
     <div data-aid-editor="" data-testid="place-camper-form">
@@ -133,11 +152,35 @@ export function PlaceCamperForm({
                 size="field"
                 value={person}
                 options={options}
-                onChange={setPerson}
+                onChange={(value) => {
+                  setPerson(value)
+                  setSessionPick('')
+                }}
                 className="w-full max-w-72 [&>button]:w-full"
               />
             </EditorField>
+            {sessions.length > 1 && (
+              <EditorField label="Session">
+                <AidPicker
+                  label="Session"
+                  size="field"
+                  value={String(session ?? '')}
+                  options={sessionOptions}
+                  onChange={setSessionPick}
+                  className="w-full max-w-72 [&>button]:w-full"
+                />
+              </EditorField>
+            )}
           </EditorGrid>
+          {sessions.length === 1 && onlySession !== undefined && (
+            <p className={CS_PMETA}>{onlySession.name}, the camper’s one session</p>
+          )}
+          <p className={CS_PMETA}>
+            {sessions.length > 1
+              ? 'This camper has several sessions: pick the one the grant pays for · '
+              : ''}
+            it lowers that request’s share in the round it counts in
+          </p>
         </EditorForm>
       </form>
     </div>

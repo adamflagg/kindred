@@ -6,6 +6,8 @@ export interface AidPickerOption<V extends string | number> {
   /** A pickable heading (bold) or a choice under one (indented), where a group heading is not itself a choice. */
   readonly level?: 'heading' | 'indent'
   readonly disabled?: boolean
+  /** The full words behind a short label: the button's title when picked, and the option's hover title. */
+  readonly title?: string
 }
 
 /** A multi picker names its picks while they fit in this many characters, and counts them past it. */

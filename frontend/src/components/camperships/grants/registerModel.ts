@@ -151,7 +151,7 @@ export function shareWords(share: ApiAidRequestShare): string {
  * `aidSessionName`: FC1 for Family Camp, the short form for the rest). "" when the row has none.
  */
 export function sessionWords(row: ApiAidGrantRow): { short: string; full: string } {
-  return { short: aidSessionName(row.session_name, undefined), full: row.session_name }
+  return { short: aidSessionName(row.session_name, row.session_type), full: row.session_name }
 }
 
 /** "Session 2 · " in front of a share's words, or nothing when the row has no session. */

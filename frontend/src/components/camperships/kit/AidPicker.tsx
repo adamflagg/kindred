@@ -89,11 +89,12 @@ export function AidPicker<V extends string | number>({
   className,
   placeholder,
 }: PickerBase<V> & { readonly value: V; readonly onChange: (value: V) => void }) {
-  const shown = options.find((o) => o.value === value)?.label ?? placeholder ?? String(value)
+  const picked = options.find((o) => o.value === value)
+  const shown = picked?.label ?? placeholder ?? String(value)
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled ?? false}>
       <div className={`relative inline-flex ${className ?? ''}`}>
-        <Face shown={shown} title={shown} label={label} className={faceOf(size)} />
+        <Face shown={shown} title={picked?.title ?? shown} label={label} className={faceOf(size)} />
         <ListboxOptions transition className={CS_PICKER_OPTIONS}>
           <OptionList
             options={options}
@@ -105,6 +106,7 @@ export function AidPicker<V extends string | number>({
                   option.level === 'heading' ? `${CS_PICKER_OPTION} font-bold` : CS_PICKER_OPTION
                 }
                 style={option.level === 'indent' ? { paddingLeft: 34 } : undefined}
+                {...(option.title === undefined ? {} : { title: option.title })}
               >
                 {({ selected }) => (
                   <>

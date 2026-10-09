@@ -77,7 +77,14 @@ const GRANTS_READ: ApiAidGrants = {
         amount_matches: false,
       },
       candidates: [
-        { person_cm_id: 1000002, name: 'Emma Johnson' },
+        {
+          person_cm_id: 1000002,
+          name: 'Emma Johnson',
+          sessions: [
+            { session_cm_id: 1000101, name: 'Session 1', session_type: 'main' },
+            { session_cm_id: 1000102, name: 'Session 2', session_type: 'main' },
+          ],
+        },
         { person_cm_id: 1000010, name: 'Samuel Johnson' },
       ],
     },
@@ -184,6 +191,19 @@ describe("the household page's grant buttons (rulings:340)", () => {
       }),
     })
     expect(await screen.findByText(/✓ 1 line placed on its camper/)).toBeInTheDocument()
+  })
+
+  it("asks which of the camper's sessions the grant pays for, and sends the one picked", async () => {
+    const table = await openGrantsTab()
+    await userEvent.click(await within(table).findByRole('button', { name: 'Place on a Camper…' }))
+    const form = screen.getByTestId('place-camper-form')
+    await userEvent.click(within(form).getByRole('button', { name: 'Session: Session 1' }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Session 2' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body)).placements).toEqual([
+      { transaction_cm_id: 1000304, person_cm_id: 1000002, session_cm_id: 1000102 },
+    ])
   })
 
   it('sends nothing when someone placed the line since the page loaded (P-9)', async () => {

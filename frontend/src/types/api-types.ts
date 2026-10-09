@@ -196,6 +196,7 @@ import type {
   CampAidLevel,
   ProgramSplit,
   CamperCandidateOut,
+  CandidateSessionOut,
   CamperSuggestionOut,
   CommitmentIn,
   CommitmentOut,
@@ -540,6 +541,7 @@ export type ApiAidGrants = GrantsResponse
 export type ApiAidNeedsCamper = NeedsCamperOut
 export type ApiAidCamperSuggestion = CamperSuggestionOut
 export type ApiAidCamperCandidate = CamperCandidateOut
+export type ApiAidCandidateSession = CandidateSessionOut
 export type ApiAidUnmappedDescription = UnmappedDescriptionOut
 export type ApiAidWaitingCommitment = WaitingCommitmentOut
 /** A request a grant sits on, and the round of it the rules count the share in (slice 3 ask 10). */

@@ -311,6 +311,29 @@ describe('one-line cells (money-grants.html; ★16, ★18, ruling 15)', () => {
     expect(sessionWords(GARCIA_HOUSEHOLD)).toEqual({ short: '', full: '' })
   })
 
+  it("passes the row's session_type, so a name only the type can shorten is shortened", () => {
+    // The type is what tells a weekend's adult program apart; by name alone it reads whole.
+    const adult = grantRow({
+      transaction_cm_id: 2,
+      person_cm_id: 0,
+      camper_basis: 'household',
+      session_name: "Women's Weekend: Spring",
+      session_type: 'adult',
+    })
+    expect(sessionWords(adult)).toEqual({
+      short: "Women's Weekend",
+      full: "Women's Weekend: Spring",
+    })
+    expect(sessionWords({ ...adult, session_type: '' }).short).toBe("Women's Weekend: Spring")
+    // Teen and Quest names are their own short form: the type is passed and they read whole.
+    const teen = grantRow({
+      transaction_cm_id: 3,
+      session_name: 'Teen Leadership Institute (TLI) 1',
+      session_type: 'tli',
+    })
+    expect(sessionWords(teen).short).toBe('Teen Leadership Institute (TLI) 1')
+  })
+
   it("titles the offsets cell with the full session and each share's part of the grant", () => {
     expect(offsetTitle(EMMA_GRANT, NEEDS)).toBe('Session 2 · R1 $1,420 · $700 of the grant')
     expect(offsetTitle(LIAM_SOLE_CAMPER, NEEDS)).toBe(

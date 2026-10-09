@@ -70,6 +70,34 @@ const TWO: ApiAidGrants = {
     },
   ],
 }
+/** Chen's candidates with their sessions: Olivia has two (the suggestion names the second), Riley one. */
+const WITH_SESSIONS: ApiAidGrants = {
+  ...TWO,
+  needs_camper: TWO.needs_camper.map((need) =>
+    need.grant.transaction_cm_id !== CHEN_HOUSEHOLD.transaction_cm_id
+      ? need
+      : {
+          ...need,
+          suggestion:
+            need.suggestion === null ? null : { ...need.suggestion, session_cm_id: 1000103 },
+          candidates: [
+            {
+              person_cm_id: 2000003,
+              name: 'Olivia Chen',
+              sessions: [
+                { session_cm_id: 1000102, name: 'Session 2', session_type: 'main' },
+                { session_cm_id: 1000103, name: 'Session 3', session_type: 'main' },
+              ],
+            },
+            {
+              person_cm_id: 2000010,
+              name: 'Riley Chen',
+              sessions: [{ session_cm_id: 1000104, name: 'Session 4', session_type: 'main' }],
+            },
+          ],
+        }
+  ),
+}
 /** A second single suggestion, in another household (placed by someone else in the P-9 test). */
 const SAM_HOUSEHOLD = grantRow({
   transaction_cm_id: 4000010,
@@ -324,6 +352,50 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(writes()[0]?.url).toBe('/api/financial-aid/grants/2027/placements')
     expect(JSON.parse(String(writes()[0]?.body))).toEqual({
       placements: [{ transaction_cm_id: 4000008, person_cm_id: 2000010, session_cm_id: null }],
+      note: '',
+    })
+  })
+
+  it('Another Camper… asks for the session only when the camper has several, pre-picked to the suggestion', async () => {
+    read = WITH_SESSIONS
+    renderGroup()
+    await userEvent.click(await screen.findByText(CHEN_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Another Camper…' }))
+    const form = within(panel).getByTestId('place-camper-form')
+    // Olivia (suggested, two sessions): the Session picker, on the suggestion's session.
+    expect(within(form).getByRole('button', { name: 'Session: Session 3' })).toBeInTheDocument()
+    expect(
+      within(form).getByText(/This camper has several sessions: pick the one the grant pays for/)
+    ).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: 'Session: Session 3' }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Session 2' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({
+      placements: [{ transaction_cm_id: 4000008, person_cm_id: 2000003, session_cm_id: 1000102 }],
+      note: '',
+    })
+  })
+
+  it('Another Camper… on a one-session camper names it, shows no picker and sends that session', async () => {
+    read = WITH_SESSIONS
+    renderGroup()
+    await userEvent.click(await screen.findByText(CHEN_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Another Camper…' }))
+    const form = within(panel).getByTestId('place-camper-form')
+    await userEvent.click(within(form).getByRole('button', { name: /^Camper:/ }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Riley Chen' }))
+    expect(within(form).queryByRole('button', { name: /^Session:/ })).toBeNull()
+    expect(within(form).getByText('Session 4, the camper’s one session')).toBeInTheDocument()
+    expect(
+      within(form).getByText('it lowers that request’s share in the round it counts in')
+    ).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({
+      placements: [{ transaction_cm_id: 4000008, person_cm_id: 2000010, session_cm_id: 1000104 }],
       note: '',
     })
   })

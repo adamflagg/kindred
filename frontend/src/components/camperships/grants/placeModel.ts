@@ -7,6 +7,7 @@ import type { EffectLine } from '../money/toPlaceModel'
 import { aidSessionName } from '../kit/sessionShort'
 import { formatMoney } from '../kit/money'
 import type {
+  ApiAidCandidateSession,
   ApiAidGrants,
   ApiAidHouseholdPage,
   ApiAidNeedsCamper,
@@ -122,18 +123,55 @@ export function suggestionCell(
   return session === undefined || session === '' ? s.camper_name : `${s.camper_name} · ${session}`
 }
 
+/** The sessions a candidate is actively enrolled in that the grant could pay for ([] = none known). */
+export function candidateSessions(
+  need: ApiAidNeedsCamper,
+  personCmId: number
+): ApiAidCandidateSession[] {
+  return need.candidates.find((c) => c.person_cm_id === personCmId)?.sessions ?? []
+}
+
 /**
- * The line placed on a camper: the suggestion's session goes with the suggested camper; any other
- * camper is placed with no session and the server finds it (P-17).
+ * The session Another Camper… places on: the one picked when it is one of the camper's, else the
+ * suggestion's when it names this camper, else the first they have, else none (the server finds it).
+ * `picked` is the picker's value ("" = untouched).
  */
-export function placementFor(need: ApiAidNeedsCamper, personCmId: number): ApiAidPlacementIn {
+export function pickedSession(
+  need: ApiAidNeedsCamper,
+  personCmId: number,
+  picked: string
+): number | null {
+  const sessions = candidateSessions(need, personCmId)
+  const suggested = suggestedSession(need, personCmId)
+  if (sessions.length === 0) return suggested
+  const chosen = sessions.find((s) => String(s.session_cm_id) === picked)
+  if (chosen !== undefined) return chosen.session_cm_id
+  return (
+    sessions.find((s) => s.session_cm_id === suggested)?.session_cm_id ??
+    sessions[0]?.session_cm_id ??
+    null
+  )
+}
+
+function suggestedSession(need: ApiAidNeedsCamper, personCmId: number): number | null {
   const s = need.suggestion
-  const session =
-    s !== null && s.person_cm_id === personCmId && s.session_cm_id > 0 ? s.session_cm_id : null
+  return s !== null && s.person_cm_id === personCmId && s.session_cm_id > 0 ? s.session_cm_id : null
+}
+
+/**
+ * The line placed on a camper. `session` is the one Another Camper… picked (null = none); left out, the
+ * suggestion's session goes with the suggested camper and any other camper is placed with no session and
+ * the server finds it (P-17).
+ */
+export function placementFor(
+  need: ApiAidNeedsCamper,
+  personCmId: number,
+  session?: number | null
+): ApiAidPlacementIn {
   return {
     transaction_cm_id: need.grant.transaction_cm_id,
     person_cm_id: personCmId,
-    session_cm_id: session,
+    session_cm_id: session === undefined ? suggestedSession(need, personCmId) : session,
   }
 }
 
