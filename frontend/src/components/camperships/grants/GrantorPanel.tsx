@@ -121,7 +121,7 @@ export function GrantorPanel({
             title={`Retire ${grantor.name}`}
             label="Why"
             submitLabel="Retire"
-            hint="Hidden from pickers from now; kept for history. Allowed only while no description maps to it and no open grant names it; otherwise the server says what still uses it."
+            hint="Hidden from pickers from now; kept for history. Allowed only while no description maps to it and no open grant names it."
             onCancel={close}
             onSubmit={async (reason) => {
               await inStaffWords(retire.mutateAsync({ key: grantor.key, reason }))
