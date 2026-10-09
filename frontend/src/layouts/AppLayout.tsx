@@ -9,11 +9,9 @@ import {
   RefreshCw,
   Loader2,
   User,
-  Home,
   ChevronDown,
   Sun,
   Moon,
-  Clock,
   LogOut,
   Settings,
   Eye,
@@ -38,7 +36,7 @@ import { RefreshHousingButton } from '../components/weekend/RefreshHousingButton
 import { weekendHousingSyncedAt } from '../components/weekend/weekendFreshness'
 import { invalidateBunkingQueries } from '../utils/queryInvalidation'
 import { queryKeys } from '../utils/queryKeys'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import { type Program, useProgram } from '../contexts/ProgramContext'
 import { canOpenProgram } from '../config/programAccess'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
@@ -54,6 +52,7 @@ import { useCanViewAs } from '../hooks/useCanViewAs'
 import type { SyncStatusResponse } from '../hooks/useSyncStatusAPI'
 import { buildSyncTooltip } from '../utils/syncTooltip'
 import { AidFreshness } from '../components/camperships/shell/AidFreshness'
+import { FreshnessChip } from '../components/FreshnessChip'
 import { AidSecondaryBarRight } from '../components/camperships/shell/AidSecondaryBarRight'
 
 /**
@@ -61,9 +60,9 @@ import { AidSecondaryBarRight } from '../components/camperships/shell/AidSeconda
  * and kindred#2478 §4 (`Housing synced` to its left).
  *
  * A four-for-four mirror of summer's pair in `AppLayout` below: Housing first,
- * request text second, each verb naming its own noun. Same
- * `text-xs`/`gap-3`/`whitespace-nowrap` grammar, same `h-3 w-3` icons, same
- * relative-inline-with-absolute-in-tooltip rule from #1706. GREY ALWAYS — no
+ * request text second, each verb naming its own noun. Both are `FreshnessChip`,
+ * the grammar every secondary bar shares: `text-xs`/`gap-3`, compact age inline
+ * with the absolute time in the tooltip (#1706). GREY ALWAYS — no
  * amber threshold, no dot, no banner: these are conditions, not events.
  *
  * Extracted rather than inlined only because the two independent visibility
@@ -109,16 +108,15 @@ function WeekendFreshness({
   return (
     <div className="text-muted-foreground flex items-center gap-3 text-xs">
       {housingSyncedAt !== undefined && (
-        <span
-          className="flex items-center gap-1.5 whitespace-nowrap"
+        <FreshnessChip
+          noun="Housing"
+          verb="synced"
+          at={housingSyncedAt}
           // The hover names the SAME run as the relative time beside it
           // (kindred#2760). `lodging_assignments` is a different, year-wide
           // job, so its time and counts could contradict the "N ago".
           title={`Last housing sync • ${new Date(housingSyncedAt).toISOString()}`}
-        >
-          <Home className="h-3 w-3" />
-          Housing synced {formatDistanceToNow(new Date(housingSyncedAt), { addSuffix: true })}
-        </span>
+        />
       )}
       {/*
         "Bunk notes uploaded", NOT summer's "Requests uploaded", and the
@@ -138,17 +136,14 @@ function WeekendFreshness({
         removed it is written out at that site.
       */}
       {upload?.uploaded_at !== undefined && (
-        <span
-          className="flex items-center gap-1.5 whitespace-nowrap"
+        <FreshnessChip
+          noun="Bunk notes"
+          verb="uploaded"
+          at={upload.uploaded_at}
           title={`Uploaded ${format(new Date(upload.uploaded_at), 'MMM d, h:mm a')} • ${
             upload.filename
           }`}
-        >
-          <Clock className="h-3 w-3" />
-          {/* #1706: relative-only inline; the absolute time lives in the tooltip */}
-          Bunk notes uploaded{' '}
-          {formatDistanceToNow(new Date(upload.uploaded_at), { addSuffix: true })}
-        </span>
+        />
       )}
     </div>
   )
@@ -659,16 +654,12 @@ export const AppLayout = () => {
                   syncStatus._bunk_requests_upload?.uploaded_at) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
                     {syncStatus.bunk_assignments?.end_time && (
-                      <span
-                        className="flex items-center gap-1.5 whitespace-nowrap"
+                      <FreshnessChip
+                        noun="Assignments"
+                        verb="synced"
+                        at={syncStatus.bunk_assignments.end_time}
                         title={buildSyncTooltip('bunk assignments', syncStatus.bunk_assignments)}
-                      >
-                        <Home className="h-3 w-3" />
-                        Assignments synced{' '}
-                        {formatDistanceToNow(new Date(syncStatus.bunk_assignments.end_time), {
-                          addSuffix: true,
-                        })}
-                      </span>
+                      />
                     )}
                     {/*
                       ⛔ NO FALLBACK TO `bunk_requests.end_time`, ON EITHER
@@ -697,8 +688,10 @@ export const AppLayout = () => {
                       Render the upload branch or NOTHING.
                     */}
                     {syncStatus._bunk_requests_upload?.uploaded_at && (
-                      <span
-                        className="flex items-center gap-1.5 whitespace-nowrap"
+                      <FreshnessChip
+                        noun="Requests"
+                        verb="uploaded"
+                        at={syncStatus._bunk_requests_upload.uploaded_at}
                         title={`Uploaded ${format(
                           new Date(syncStatus._bunk_requests_upload.uploaded_at),
                           'MMM d, h:mm a'
@@ -706,15 +699,7 @@ export const AppLayout = () => {
                           'bunk requests',
                           syncStatus.bunk_requests ?? { status: 'idle' }
                         )}`}
-                      >
-                        <Clock className="h-3 w-3" />
-                        {/* #1706: relative-only inline; absolute time lives in the tooltip */}
-                        Requests uploaded{' '}
-                        {formatDistanceToNow(
-                          new Date(syncStatus._bunk_requests_upload.uploaded_at),
-                          { addSuffix: true }
-                        )}
-                      </span>
+                      />
                     )}
                   </div>
                 )}

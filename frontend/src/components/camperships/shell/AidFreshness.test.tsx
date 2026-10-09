@@ -39,8 +39,8 @@ describe('AidFreshness (D5, D69: the two freshness chips)', () => {
       } as unknown as SyncStatusResponse,
     })
     renderFreshness()
-    expect(screen.getByText(/^FA applications synced about 2 hours ago$/)).toBeInTheDocument()
-    expect(screen.getByText(/^Ledger synced about 6 hours ago$/)).toBeInTheDocument()
+    expect(screen.getByText(/^Aid apps synced 2h ago$/)).toBeInTheDocument()
+    expect(screen.getByText(/^Ledger synced 6h ago$/)).toBeInTheDocument()
   })
 
   it("stays grey: a condition, not an alarm (#1706, summer's rule)", () => {
@@ -60,7 +60,7 @@ describe('AidFreshness (D5, D69: the two freshness chips)', () => {
       } as unknown as SyncStatusResponse,
     })
     renderFreshness()
-    expect(screen.queryByText(/FA applications/)).toBeNull()
+    expect(screen.queryByText(/Aid apps/)).toBeNull()
   })
 
   it('reads the status for anyone who can open Camperships, development included', () => {
