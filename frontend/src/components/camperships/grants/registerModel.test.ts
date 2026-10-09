@@ -31,6 +31,7 @@ import {
   cmWords,
   postedTitle,
   committedTitle,
+  openedStanding,
   cancelTitle,
   camperTitle,
   COMMITTED_CHIP,
@@ -262,6 +263,13 @@ describe('one-line cells (money-grants.html; ★16, ★18, ruling 15)', () => {
       'Posted in CampMinder May 2 · after the offer: extra for the family'
     )
     expect(postedTitle(OLIVIA_REVERSED)).toBe('Posted in CampMinder Mar 12 · reversed Apr 1')
+  })
+
+  it("reads a commitment's opened-row line in the mock's order: when, by hand, not yet in CampMinder", () => {
+    expect(openedStanding(RILEY_COMMITMENT)).toBe(
+      'committed Apr 2 · entered by hand · not yet in CampMinder'
+    )
+    expect(openedStanding(EMMA_GRANT)).toBe(standingCsv(EMMA_GRANT))
   })
 
   it('writes a commitment as one chip, its details in the title (★18)', () => {

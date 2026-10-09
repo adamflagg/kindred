@@ -115,6 +115,13 @@ export function standingNote(row: ApiAidGrantRow): string {
 export const standingCsv = (row: ApiAidGrantRow) =>
   [standingWords(row), standingNote(row)].filter((w) => w !== '').join(' · ')
 
+/** The opened row's line under the grant (money-grants.html): a commitment's date and how it stands, else the cell's long words. */
+export function openedStanding(row: ApiAidGrantRow): string {
+  return row.kind === 'commitment'
+    ? `${standingNote(row)} · not yet in CampMinder`
+    : standingCsv(row)
+}
+
 /**
  * Why no round counts a share, in plain words (`RequestShareOut.offsets`). `satisfies`: a new value
  * from the server fails tsc here.

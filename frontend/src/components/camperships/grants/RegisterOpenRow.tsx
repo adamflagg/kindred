@@ -12,7 +12,7 @@ import {
   funderLink,
   sessionWords,
   shareWords,
-  standingCsv,
+  openedStanding,
 } from './registerModel'
 
 /** The opened row's three panels (To place's `ToPlaceOpenRow` grammar, owner ruling A). */
@@ -105,7 +105,7 @@ export function RegisterOpenRow({
               </span>
             )}
           </div>
-          <div className={CS_PMETA}>{standingCsv(row)}</div>
+          <div className={CS_PMETA}>{openedStanding(row)}</div>
           {basis !== '' && <div className={CS_PMETA}>{basis}</div>}
           {row.kind === 'commitment' &&
             row.commitment_note !== undefined &&
