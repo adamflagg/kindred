@@ -308,11 +308,14 @@ describe('YearOverYear: the one controls row', () => {
     expect(screen.queryByRole('table', { name: CUTOFF })).toBeNull()
     const row = headingRow(CUTOFF)
     expect(within(row).getByText('Received through Dec 1, 2026')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'Nothing to count at Dec 1, 2026: The reporting controls work from 2027: every 2026 request was recorded on one day. Pick a later date, or check Through the R1 deadline.'
-      )
-    ).toBeInTheDocument()
+    // the mock bolds the lead in foreground ink, and the heading row is bare: nothing to Copy or download
+    const lead = screen.getByText('Nothing to count at Dec 1, 2026:')
+    expect(lead.tagName).toBe('B')
+    expect(lead.parentElement?.textContent).toBe(
+      'Nothing to count at Dec 1, 2026: The reporting controls work from 2027: every 2026 request was recorded on one day. Pick a later date, or check Through the R1 deadline.'
+    )
+    expect(within(row).queryByRole('button', { name: /copy/i })).toBeNull()
+    expect(within(row).queryByRole('button', { name: /download csv/i })).toBeNull()
     // the second read carries no date; it is the only other read
     const calls = committeeCalls()
     expect(calls.some((u) => u.endsWith('/committee'))).toBe(true)

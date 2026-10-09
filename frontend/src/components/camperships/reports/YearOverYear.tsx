@@ -179,7 +179,12 @@ export function YearOverYear({ view }: { view: AidView }) {
                   rows={[]}
                   csvFilename={csv('applications')}
                   link={link}
-                  emptyBody={`Nothing to count at ${formatLongDate(typed)}: ${refusal.replace(/\.$/, '')}. Pick a later date, or check Through the R1 deadline.`}
+                  emptyBody={
+                    <>
+                      <b className="text-foreground">{`Nothing to count at ${formatLongDate(typed)}:`}</b>
+                      {` ${refusal.replace(/\.$/, '')}. Pick a later date, or check Through the R1 deadline.`}
+                    </>
+                  }
                 />
               ) : (
                 <ReportTable

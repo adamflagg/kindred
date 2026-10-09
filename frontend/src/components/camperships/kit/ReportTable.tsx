@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
-import { CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
+import { CS_BODY, CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
 import { AidCopyButton, AidCsvButton } from './CsvButton'
 import { DefRef } from './DefinitionNotes'
 import { CS_RULE, TABLE_CARD } from './kitStyles'
@@ -78,6 +78,8 @@ interface ReportTableProps {
 }
 
 const BODY_KINDS = new Set(['body', 'end'])
+/** The mock's `.cf-empty`: a dashed card in muted body type, standing where the grid would. */
+const EMPTY_BODY = `bg-card border-border text-muted-foreground rounded-xl border border-dashed px-4 py-3.5 ${CS_BODY}`
 
 /** A cell as the kit draws it: money through `Money`, a count above 0 with a link as that link (D20). */
 function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
@@ -315,13 +317,18 @@ export function ReportTable({
                 />
               </label>
             )}
-            <AidCopyButton onCopy={() => void copy()} />
-            <AidCsvButton onDownload={download} />
+            {/* An empty body has nothing to export: the mock's heading row is bare there. */}
+            {emptyBody === undefined && (
+              <>
+                <AidCopyButton onCopy={() => void copy()} />
+                <AidCsvButton onDownload={download} />
+              </>
+            )}
           </div>
         </div>
       )}
       {emptyBody !== undefined ? (
-        <div className={`${TABLE_CARD} ${TD_LABEL} text-muted-foreground`}>{emptyBody}</div>
+        <div className={EMPTY_BODY}>{emptyBody}</div>
       ) : (
         <div className={TABLE_CARD}>
           {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}

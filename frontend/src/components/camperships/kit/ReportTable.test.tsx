@@ -728,3 +728,36 @@ describe('columns kept in the CSV only, and a note on a group (approved final mo
     expect(csv).toContain('2027,4,250,1000')
   })
 })
+
+describe('an empty body in place of the grid (approved final mock reports-yoy.html, the refused cutoff table)', () => {
+  const table = () =>
+    render(
+      <MemoryRouter>
+        <ReportTable
+          heading={HEADING}
+          description="Received through Dec 1, 2026"
+          columns={[{ key: 'season', header: 'Season' }]}
+          rows={[]}
+          csvFilename="x.csv"
+          link="/l"
+          emptyBody="Nothing to count at Dec 1, 2026."
+        />
+      </MemoryRouter>
+    )
+
+  it('keeps the heading and description but draws no Copy or Download CSV: nothing to export (the mock is bare)', () => {
+    table()
+    const row = screen.getByTestId('report-heading-row')
+    expect(within(row).getByText('Received through Dec 1, 2026')).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /copy/i })).toBeNull()
+    expect(within(row).queryByRole('button', { name: /download csv/i })).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it("draws the body as the mock's dashed empty box", () => {
+    table()
+    const body = screen.getByText('Nothing to count at Dec 1, 2026.')
+    expect(body.className).toContain('border-dashed')
+    expect(body.className).toContain('text-muted-foreground')
+  })
+})
