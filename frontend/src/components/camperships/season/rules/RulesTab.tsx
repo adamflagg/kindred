@@ -306,8 +306,9 @@ function ChaptersBody({
   const cancelled = useLodgingCancelledSessions(year)
   const [params, setSearchParams] = useSearchParams()
   const [inView, setInView] = useState<number | null>(null)
-  // The discard question lives on the chapter bar (mock P.discardAsk): the bar steps Open All / Close All aside.
-  const [asking, setAsking] = useState(false)
+  // The discard question lives on the chapter bar (mock P.discardAsk): the bar steps Open All / Close All aside. It
+  // holds the draft version it asks about, so a refetch that brings a newer draft can't inherit it (CodeRabbit #3116).
+  const [askingFor, setAskingFor] = useState<number | null>(null)
   // What the tiers editor would save (null while a box can't be read): Save sends it, and the grid follows it live.
   const [tiersContent, setTiersContent] = useState<Record<string, unknown> | null>(null)
   const sectionParam = params.get('section')
@@ -666,8 +667,9 @@ function ChaptersBody({
     lead.approvedVersion !== null &&
     lead.approvedVersion !== lead.draftVersion
   // The question never outlives its button (mock: show, edit and approve each clear P.discardAsk), or it would sit on
-  // the bar with no Discard or Keep, and come back after a Cancel.
-  if (asking && !canDiscard) setAsking(false)
+  // the bar with no Discard or Keep, and come back after a Cancel; nor its version, or Discard would send a newer one.
+  const asking = canDiscard && askingFor === lead.draftVersion
+  if (askingFor !== null && !asking) setAskingFor(null)
 
   return (
     <div className="space-y-3">
@@ -684,7 +686,7 @@ function ChaptersBody({
               draftVersion={lead.draftVersion}
               approvedVersion={lead.approvedVersion}
               asking={asking}
-              onAsk={setAsking}
+              onAsk={(ask) => setAskingFor(ask ? lead.draftVersion : null)}
             />
           )}
         </LeadLine>

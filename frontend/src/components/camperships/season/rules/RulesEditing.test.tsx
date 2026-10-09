@@ -1317,6 +1317,22 @@ describe('discarding the rules draft (owner 2026-10-08)', () => {
   })
 
   // Mock: show, edit and approve each set P.discardAsk = false; the question never outlives its button.
+  // CodeRabbit #3116: the question is about one version; a refetch that brings v5 must not let Discard send v5.
+  it('drops the question when the draft moves to a new version under it', async () => {
+    const view = renderAt('/aid/season/rules')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
+    expect(screen.getByText('Discard v4? Changes since v3 are lost.')).toBeInTheDocument()
+    draft = { data: movedDraft(), isLoading: false, error: null }
+    view.rerender(
+      <MemoryRouter initialEntries={['/aid/season/rules']}>
+        <Page />
+      </MemoryRouter>
+    )
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull()
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
+  })
+
   it('drops the question when a card opens for editing, so Cancel does not bring it back', async () => {
     renderAt('/aid/season/rules?section=awards')
     await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
