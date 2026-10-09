@@ -343,6 +343,20 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       expect(gap?.className).toContain('amber-700')
     })
 
+    // formatMoney keeps cents where a figure has them ($2,399.72): the whole figure is bold, and a
+    // cents gap is still the emphasised "apart".
+    it('bolds a figure with cents whole, and a cents gap is still the emphasised "apart"', async () => {
+      budget = budgetPosting(SUMMARY.counts_toward_budget + 0.28)
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      await within(line).findByRole('link', { name: /see To place/ })
+      expect([...line.querySelectorAll('b')].map((b) => b.textContent)).toEqual([
+        '$612,540',
+        '$612,540.28',
+      ])
+      expect(line.querySelector('[data-gap]')).toHaveTextContent('$0.28 apart')
+    })
+
     it('is one line: it never wraps', async () => {
       renderTab('/aid/money/ledger', live)
       expect((await screen.findByTestId('tie-out')).className).toContain('whitespace-nowrap')

@@ -59,8 +59,8 @@ const TOTAL_OF_COLUMN: Readonly<Record<string, ApiAidLedgerTotal>> = {
   camp: 'in_campminder_net',
   outside: 'outside_grants',
 }
-/** A family whose lines sit on Family Camp household requests (mock `famCell` / `campersCell`). */
 const householdSessionsOf = (r: ApiAidLedgerFamily) => r.household_sessions ?? []
+/** A family whose lines sit on Family Camp household requests (mock `famCell` / `campersCell`). */
 const isHousehold = (r: ApiAidLedgerFamily) => householdSessionsOf(r).length > 0
 const campersWords = (r: ApiAidLedgerFamily) =>
   isHousehold(r) ? householdCampersWords(r.campers, householdSessionsOf(r)) : r.campers.join(', ')

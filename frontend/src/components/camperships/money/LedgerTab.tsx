@@ -112,21 +112,19 @@ const TIE_BOX =
 const TIE_LINK = 'font-semibold underline underline-offset-2'
 
 /**
- * The one line that ties the Ledger to Season › Rounds & budget (owner 10-08, Q6; §9): a forest box
- * with a check when camp aid counting toward the budget equals Posted, an amber box with ⚠ and the
- * gap when it does not. One line, marked with its note.
+ * The figures of a tie-out sentence in bold (mock `tieOut`: `<b>`); `$N apart` is the gap, in the warn ink.
+ * A figure is formatMoney's: whole dollars, with cents only where it has them ($2,399.72).
  */
-/** The figures of a tie-out sentence in bold (mock `tieOut`: `<b>`); `$N apart` is the gap, in the warn ink. */
 function emphasised(words: string): ReactNode[] {
-  return words.split(/(\$[\d,]+ apart|\$[\d,]+)/).map((part, i) => {
-    if (/^\$[\d,]+ apart$/.test(part)) {
+  return words.split(/(\$[\d,]+(?:\.\d{2})? apart|\$[\d,]+(?:\.\d{2})?)/).map((part, i) => {
+    if (/^\$[\d,]+(?:\.\d{2})? apart$/.test(part)) {
       return (
         <span key={i} data-gap className="font-bold text-amber-700 dark:text-amber-300">
           {part}
         </span>
       )
     }
-    return /^\$[\d,]+$/.test(part) ? (
+    return /^\$[\d,]+(?:\.\d{2})?$/.test(part) ? (
       <b key={i} className="font-bold tabular-nums">
         {part}
       </b>
@@ -136,6 +134,11 @@ function emphasised(words: string): ReactNode[] {
   })
 }
 
+/**
+ * The one line that ties the Ledger to Season › Rounds & budget (owner 10-08, Q6; §9): a forest box
+ * with a check when camp aid counting toward the budget equals Posted, an amber box with ⚠ and the
+ * gap when it does not. One line, marked with its note.
+ */
 function TieOutLine({
   view,
   verdict,

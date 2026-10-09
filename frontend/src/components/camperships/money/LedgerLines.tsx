@@ -107,15 +107,18 @@ export function LedgerLines({
             : l.household_session != null
               ? `Posted to the household: ${l.household_session.name}`
               : NO_CAMPER_TITLE,
-        // A line posted to the household names no camper: ⌂, then its session, muted, when it has one.
+        // A line posted to the household names no camper: ⌂ and its session, muted, on a Family Camp
+        // household request (mock lines card); otherwise a muted "—".
         render: (l) =>
-          l.camper === '' ? (
+          l.camper !== '' ? (
+            l.camper
+          ) : l.household_session != null ? (
             <span className="text-muted-foreground inline-flex items-center gap-1">
               <Home className="inline-block h-3 w-3" />
-              {l.household_session != null && householdSessionTiny(l.household_session)}
+              {householdSessionTiny(l.household_session)}
             </span>
           ) : (
-            l.camper
+            <span className="text-muted-foreground">—</span>
           ),
         searchable: true,
       },

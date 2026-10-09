@@ -229,7 +229,9 @@ describe('the lines card, as the final mock draws it (★13, §23)', () => {
     }
   })
 
-  it('shows a household-level line’s camper as ⌂, titled, and titles every cut cell', async () => {
+  // Mock lines card: a line with no camper and no Family Camp session reads a muted "—" (⌂ is the Family
+  // Camp household mark only), titled "Posted to the household: no camper on the line".
+  it('shows a household-level line’s camper as a muted dash, titled, and titles every cut cell', async () => {
     renderAt(OPEN, LIVE_VIEW)
     const panel = await screen.findByTestId('ledger-lines')
     await within(panel).findByText('reversed Mar 9')
@@ -237,7 +239,8 @@ describe('the lines card, as the final mock draws it (★13, §23)', () => {
     if (household === undefined || camper === undefined) throw new Error('rows')
     const cells = within(household).getAllByRole('cell')
     expect(cells[1]).toHaveAttribute('title', 'Posted to the household: no camper on the line')
-    expect(cells[1]?.querySelector('svg')).not.toBeNull()
+    expect(cells[1]?.querySelector('svg')).toBeNull()
+    expect(cells[1]).toHaveTextContent(/^—$/)
     expect(cells[2]).toHaveAttribute('title', 'Camp aid · Summer')
     expect(cells[3]).toHaveAttribute('title', 'camp fa')
     expect(cells[4]).toHaveAttribute('title', 'Summer Sessions')
