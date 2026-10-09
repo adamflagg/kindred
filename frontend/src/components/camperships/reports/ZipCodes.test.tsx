@@ -134,9 +134,18 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
       )
     })
     renderZip('/aid/reports/zip-codes?group=nonsense')
-    expect(await screen.findByText(/is not one of this season's groups/)).toBeInTheDocument()
+    // Final mock (reports-zip.html, unknown group): an amber chip in the Group row, the server's words in its
+    // title, and ✕ shows the default group; no sentence above the page.
+    const chip = await screen.findByText('No group “nonsense”')
+    expect(chip.closest('span')).toHaveAttribute(
+      'title',
+      expect.stringContaining("is not one of this season's groups")
+    )
+    expect(
+      screen.getByText('Nothing to show for that group. ✕ on the chip shows the default group.')
+    ).toBeInTheDocument()
     expect(zipCalls()).toHaveLength(1) // a refusal is never retried
-    await userEvent.click(screen.getByRole('button', { name: 'Show the default group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clear No group “nonsense”' }))
     expect(screen.getByTestId('where').textContent).toBe('')
     expect(await screen.findByRole('table', { name: 'Every camper · Pool A' })).toBeInTheDocument()
   })

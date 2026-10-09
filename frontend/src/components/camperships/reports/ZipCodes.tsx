@@ -3,11 +3,11 @@ import { useSearchParams } from 'react-router'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { useAidZip } from '../../../hooks/camperships/useAidZip'
 import { hasStatus } from '../../../services/camperships/aidApi'
-import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_FLABEL, CS_TOOLBAR } from '../kit/csType'
+import { CS_FLABEL, CS_SMALL, CS_TOOLBAR } from '../kit/csType'
+import { AidFilterChip } from '../kit/Toolbar'
 import { AidSegmented } from '../kit/Segmented'
 import { ReportTable } from '../kit/ReportTable'
 import { useReportParam } from './useReportParam'
@@ -42,12 +42,22 @@ export function ZipCodes({ view }: { view: AidView }) {
   return (
     <div className="space-y-3">
       {refusal !== null && (
-        <p className={AMBER_NOTE}>
-          {`${refusal} `}
-          <button type="button" className="underline" onClick={() => setParam('group', null)}>
-            Show the default group
-          </button>
-        </p>
+        // Final mock: an old link's unknown group is an amber chip in the Group row, never a sentence above the page.
+        <>
+          <div className={CS_TOOLBAR}>
+            <span className={CS_FLABEL}>Group</span>
+            <AidFilterChip
+              warn
+              title={`${refusal} ✕ shows the default group.`}
+              onClear={() => setParam('group', null)}
+            >
+              {`No group “${asked ?? ''}”`}
+            </AidFilterChip>
+          </div>
+          <p className={CS_SMALL}>
+            Nothing to show for that group. ✕ on the chip shows the default group.
+          </p>
+        </>
       )}
       <QueryGuard
         isLoading={zip.isLoading}
