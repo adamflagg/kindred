@@ -380,7 +380,7 @@ describe('Grants › Register (§8.2)', () => {
     renderTab()
     await screen.findByTestId('register-chips')
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent.trim())
-    const cols = Array.from(document.querySelectorAll('table colgroup col')) as HTMLElement[]
+    const cols = Array.from(document.querySelectorAll<HTMLElement>('table colgroup col'))
     const offset = cols.length - headers.length
     const standing = cols[headers.findIndex((h) => h.startsWith('Where it stands')) + offset]
     expect(parseFloat(standing?.style.width ?? '0')).toBeGreaterThanOrEqual(228)
