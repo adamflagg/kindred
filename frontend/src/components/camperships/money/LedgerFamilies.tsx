@@ -9,7 +9,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
-import { CS_INPUT, CS_LINK, CS_PMETA } from '../kit/csType'
+import { CS_INPUT, CS_LINK, CS_LINK_CELL, CS_PMETA } from '../kit/csType'
 import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -99,7 +99,7 @@ export function LedgerFamilies({
         value: (r) => labelWords(labelOfRow(r)),
         render: (r) => (
           <Link
-            className={CS_LINK}
+            className={CS_LINK_CELL}
             to={aidHref(`/aid/households/${String(r.household_cm_id)}`, view)}
             onClick={(event) => event.stopPropagation()}
           >

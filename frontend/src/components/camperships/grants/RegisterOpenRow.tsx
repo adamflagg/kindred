@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_LINK, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit/csType'
+import { CS_LINK, CS_LINK_SM, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit/csType'
 import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { basisWords, didntApply, funderLink, shareWords, standingCsv } from './registerModel'
@@ -104,7 +104,7 @@ export function RegisterOpenRow({
               <div className={CS_PMETA}>{`Note: ${row.commitment_note}`}</div>
             )}
           <Link
-            className={`${CS_LINK} text-xs`}
+            className={`${CS_LINK_SM}`}
             to={aidHref(`/aid/households/${String(row.household_cm_id)}`, view)}
           >
             Open the Household ›

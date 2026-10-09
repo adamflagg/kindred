@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import { AidTable, type AidColumn } from './AidTable'
+import { CS_BAND, CS_BAND_WARN } from './csType'
 
 interface Row {
   id: string
@@ -49,11 +50,13 @@ const rowOf = (key: string) => {
 }
 
 describe('AidTable rowTone', () => {
-  it('draws a group row tinted, bold and ruled, and leaves other rows alone', () => {
+  // Design language §9 (owner: "wrong green on the header sections?"): a group row is the one green
+  // band, CS_BAND; "No funder yet" is the amber band warn. Emerald and yellow are retired.
+  it('draws a group row in the green band, bold and ruled, and leaves other rows alone', () => {
     renderTable({ rowTone: tone })
     const head = rowOf('h1')
     expect(head).toHaveAttribute('data-row-tone', 'group')
-    expect(head.className).toContain('bg-emerald-50')
+    expect(head.className).toContain(CS_BAND)
     for (const cell of Array.from(head.querySelectorAll('td'))) {
       expect(cell.className).toContain('font-semibold')
       expect(cell.className).toContain('border-t')
@@ -64,20 +67,20 @@ describe('AidTable rowTone', () => {
     expect(second?.className).not.toContain('bg-card')
     const item = rowOf('i1')
     expect(item).not.toHaveAttribute('data-row-tone')
-    expect(item.className).not.toContain('bg-emerald-50')
+    expect(item.className).not.toContain(CS_BAND)
     expect(item.querySelectorAll('td')[1]?.className).toContain('bg-card')
   })
 
   it('draws a warn group row amber-ish and distinct from a plain group', () => {
     renderTable({ rowTone: tone })
-    expect(rowOf('h2').className).toContain('bg-yellow-50')
+    expect(rowOf('h2').className).toContain(CS_BAND_WARN)
     expect(rowOf('h2')).toHaveAttribute('data-row-tone', 'warn')
   })
 
   it('keeps the pinned cell opaque in the same tint, so scrolled cells never show under it', () => {
     renderTable({ rowTone: tone })
     const pinned = rowOf('h1').querySelectorAll('td')[0]
-    expect(pinned?.className).toContain('bg-emerald-50')
+    expect(pinned?.className).toContain(CS_BAND)
     expect(pinned?.className).toContain('sticky')
   })
 

@@ -9,7 +9,7 @@ import {
   CS_AMBER_NOTE,
   CS_BTN,
   CS_BTN2,
-  CS_LINK,
+  CS_LINK_SM,
   CS_PANEL_HEAD,
   CS_PANEL_RULE,
   CS_PMETA,
@@ -98,7 +98,7 @@ export function NeedsCamperPanel({
             <div className={CS_PMETA}>{need.grant.description}</div>
           )}
           <Link
-            className={`${CS_LINK} text-xs`}
+            className={`${CS_LINK_SM}`}
             to={aidHref(`/aid/households/${String(need.grant.household_cm_id)}`, view)}
           >
             Open the Household ›

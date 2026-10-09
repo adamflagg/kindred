@@ -384,7 +384,10 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       const after = inOrder[i] as HTMLElement
       expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     }
-    expect(line.lastElementChild).toBe(screen.getByRole('button', { name: 'Download CSV' }))
+    // Design language §5: Download CSV is last in the toolbar's right-hand group.
+    expect(line.lastElementChild?.lastElementChild).toBe(
+      screen.getByRole('button', { name: 'Download CSV' })
+    )
     expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })
 

@@ -1,26 +1,39 @@
 import type { ReactNode } from 'react'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
-import { householdChipClass, ID_CHIP, PILL, PILL_WRAP, type PillTone } from './kitStyles'
+import { householdChipClass, ID_CHIP, PILL, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
 import { CM_PENDING_WORD } from '../requests/views'
 import { formatGap, formatMoney } from './money'
 
+/**
+ * A chip (design-language §11): one line, always. In a narrow column it truncates, and `title`
+ * carries the full words (owner 10-09: "needs to be one line").
+ */
 export function StatusPill({
   tone,
   children,
-  wrap = false,
+  title,
 }: {
   tone: PillTone
   children: ReactNode
-  /** Wrap inside a narrow column rather than be cut off by it. */
-  wrap?: boolean
+  title?: string
 }) {
   return (
-    <span
-      className={wrap ? `${PILL[tone].replace('whitespace-nowrap', '')} ${PILL_WRAP}` : PILL[tone]}
-    >
+    <span className={title ? `${PILL[tone]} cursor-help` : PILL[tone]} title={title}>
       {children}
+    </span>
+  )
+}
+
+/**
+ * A cancelled grant or request (§11 rev1): a muted stone ⊘ BEFORE the name, never a chip, so a long
+ * name cannot push a chip off screen. The cancellation's words ride in the title.
+ */
+export function CancelMark({ title }: { title: string }) {
+  return (
+    <span className="mr-1 cursor-help text-stone-500 dark:text-stone-400" title={title}>
+      ⊘
     </span>
   )
 }
@@ -35,17 +48,9 @@ export function ConfirmationState({ confirmation }: { confirmation: Confirmation
   const on = confirmation.on ? ` ${formatShortDate(confirmation.on)}` : ''
   switch (confirmation.status) {
     case 'awaiting_sync':
-      return (
-        <StatusPill wrap tone="muted">
-          {CM_PENDING_WORD}
-        </StatusPill>
-      )
+      return <StatusPill tone="muted">{CM_PENDING_WORD}</StatusPill>
     case 'confirmed':
-      return (
-        <StatusPill wrap tone="emerald">
-          ✓ confirmed{on}
-        </StatusPill>
-      )
+      return <StatusPill tone="ok">✓ confirmed{on}</StatusPill>
     case 'short':
     case 'over':
       return (
@@ -53,23 +58,15 @@ export function ConfirmationState({ confirmation }: { confirmation: Confirmation
           <span className="text-muted-foreground">
             CampMinder shows {formatMoney(confirmation.in_campminder)}
           </span>
-          <StatusPill wrap tone="amber">
+          <StatusPill tone="amber">
             {formatGap(confirmation.locked, confirmation.in_campminder)}
           </StatusPill>
         </span>
       )
     case 'not_in_campminder':
-      return (
-        <StatusPill wrap tone="amber">
-          Missing in CM
-        </StatusPill>
-      )
+      return <StatusPill tone="amber">Missing in CM</StatusPill>
     case 'reversed':
-      return (
-        <StatusPill wrap tone="stone">
-          reversed{on}
-        </StatusPill>
-      )
+      return <StatusPill tone="stone">reversed{on}</StatusPill>
   }
 }
 

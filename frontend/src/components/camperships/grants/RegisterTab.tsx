@@ -16,7 +16,7 @@ import {
   CS_CHIP_INK,
   CS_CHIP_ON,
   CS_FLABEL,
-  CS_LINK,
+  CS_LINK_CELL,
   CS_PMETA,
   CS_SELECT,
   CS_SMALL,
@@ -144,7 +144,7 @@ export function RegisterTab({ view }: { view: AidView }) {
         value: (r) => registerFamily(r).text,
         render: (r) => (
           <Link
-            className={CS_LINK}
+            className={CS_LINK_CELL}
             to={aidHref(`/aid/households/${String(r.household_cm_id)}`, view)}
           >
             <HouseholdLabelText label={registerFamily(r)} />
@@ -162,7 +162,7 @@ export function RegisterTab({ view }: { view: AidView }) {
             <span className={CS_PMETA}>no grantor yet</span>
           ) : (
             <Link
-              className={CS_LINK}
+              className={CS_LINK_CELL}
               to={aidHref('/aid/money/funders', view, { funder: r.grantor_key })}
             >
               {r.grantor_name}
@@ -210,13 +210,13 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'standing',
         header: 'Where it stands',
-        // Narrow, so the names beside it fit (final audit O6): the pill and the text wrap in it.
+        // Narrow, so the names beside it fit (final audit O6): the pill truncates, its words in the title.
         width: 150,
         value: standingCsv,
         render: (r) =>
           r.kind === 'commitment' ? (
             <div>
-              <StatusPill tone="amber" wrap>
+              <StatusPill tone="amber" title={sentenceCase(standingWords(r))}>
                 {sentenceCase(standingWords(r))}
               </StatusPill>
               <div className={`${CS_PMETA} whitespace-normal`}>{standingNote(r)}</div>

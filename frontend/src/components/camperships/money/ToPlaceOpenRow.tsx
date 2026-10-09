@@ -13,7 +13,7 @@ import {
   CS_AMBER_NOTE,
   CS_BTN,
   CS_BTN2,
-  CS_LINK,
+  CS_LINK_SM,
   CS_PANEL_HEAD,
   CS_PANEL_RULE,
   CS_PMETA,
@@ -268,12 +268,12 @@ export function ToPlaceOpenRow({
           )}
           <Link
             to={aidHref(`/aid/households/${String(line.household_cm_id)}`, view)}
-            className={`${CS_LINK} text-xs`}
+            className={`${CS_LINK_SM}`}
           >
             Open the Household ›
           </Link>
           {scope === null && (
-            <Link to={toPlaceHref(view, line.household_cm_id)} className={`${CS_LINK} text-xs`}>
+            <Link to={toPlaceHref(view, line.household_cm_id)} className={`${CS_LINK_SM}`}>
               Only This Family ›
             </Link>
           )}

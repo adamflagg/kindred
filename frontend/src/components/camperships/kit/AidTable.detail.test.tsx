@@ -87,7 +87,8 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
     this: HTMLElement
   ) {
-    return this.className.includes('overscroll-contain') ? 900 : 0
+    // The screen box is found by its attribute (§23 dropped overscroll-contain, the old handle).
+    return this.hasAttribute('data-aid-scroll-box') ? 900 : 0
   })
 })
 afterEach(() => {
@@ -122,6 +123,26 @@ describe('AidTable: a column that fits its widest chip on screen', () => {
     // "On hold": 49 + 18 is under the floor.
     expect(chipCol().style.width).toBe('84px')
     rerender(<Table rows={ROWS} />)
+    expect(chipCol().style.width).toBe('144px')
+  })
+
+  // Design language §11: a chip is one line and truncates inside its column, so its drawn width is
+  // capped by the very column being fitted. The fit reads the chip's natural width (scrollWidth),
+  // or each render would refit to the capped width and the column would creep a pixel at a time.
+  it('reads a truncated chip at its natural width, not the width its column cut it to', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      const width =
+        this.dataset['testid'] === 'chip' ? Math.min(60, this.textContent.length * 7) : 0
+      return { top: 0, bottom: 0, left: 0, right: width, width, height: 0, x: 0, y: 0, toJSON() {} }
+    })
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return this.dataset['testid'] === 'chip' ? this.textContent.length * 7 : 0
+    })
+    render(<Table />)
     expect(chipCol().style.width).toBe('144px')
   })
 
@@ -183,7 +204,7 @@ describe('AidTable: the opened row and its detail line', () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
       this: HTMLElement
     ) {
-      return this.className.includes('overscroll-contain') ? 700 : 0
+      return this.hasAttribute('data-aid-scroll-box') ? 700 : 0
     })
     act(() => {
       fireEvent(window, new Event('resize'))

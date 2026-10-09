@@ -77,11 +77,12 @@ describe('the History strip (spec §7.2 A)', () => {
 })
 
 describe('the filter bar (spec §7.2 B)', () => {
-  it('labels Person, From and Through at 14px, offers Anyone then each actor, system runs by name', () => {
+  it('labels Person, From and Through at 12.5px, offers Anyone then each actor, system runs by name', () => {
     renderFilters()
-    // The words sit in a bare <span>; the 14px role (CS_FLABEL) is on the <label> around it.
-    expect(screen.getByText('Person').closest('label')).toHaveClass('text-sm')
-    expect(screen.getByText('From').closest('span.inline-flex')).toHaveClass('text-sm')
+    // The words sit in a bare <span>; the label role (CS_FLABEL) is on the <label> around it.
+    // Design language §1: a filter label is the 12.5px muted kit label now (it was 14px ink).
+    expect(screen.getByText('Person').closest('label')).toHaveClass('text-[12.5px]')
+    expect(screen.getByText('From').closest('span.inline-flex')).toHaveClass('text-[12.5px]')
     const person = screen.getByRole('combobox', { name: 'Person' })
     expect(
       within(person)
@@ -93,7 +94,8 @@ describe('the filter bar (spec §7.2 B)', () => {
   it('searches on Enter, never per keystroke, in the grid search shape with ⌕ at the left', async () => {
     const onChange = renderFilters()
     const search = screen.getByPlaceholderText('Reason, person or record id')
-    expect(search).toHaveClass('pl-9')
+    // §2: the 26px kit search, its glyph 8px in (was pl-9).
+    expect(search).toHaveClass('h-[26px]', 'pl-[26px]')
     expect(search).toHaveAttribute('maxLength', '200')
     await userEvent.type(search, 'tier')
     expect(onChange).not.toHaveBeenCalled()

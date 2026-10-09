@@ -1,4 +1,4 @@
-import { ChevronDown, Download, Search, type LucideIcon } from 'lucide-react'
+import { Search, type LucideIcon } from 'lucide-react'
 import {
   Fragment,
   useCallback,
@@ -12,12 +12,16 @@ import {
 } from 'react'
 
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
-import { GROUP, GROUP_BUTTON_OFF, GROUP_BUTTON_ON } from '../../admin/audit/auditStyles'
-import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
 import { Tooltip } from '../../ui/Tooltip'
+import { AidCsvButton } from './CsvButton'
+import { CS_BOUNDED, CS_TOOLBAR, CS_TOOLBAR_LEFT, CS_TOOLBAR_RIGHT } from './csType'
+import { AidSegmented } from './Segmented'
 import {
+  AID_SEARCH_INPUT,
   CELL_BG,
+  CS_BAND,
+  CS_BAND_WARN,
   DETAIL_LINE,
   DETAIL_ROW,
   EDITOR_ROW,
@@ -53,12 +57,8 @@ import {
 } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
 
-/**
- * The grid's search box, trued up to the Grants mock's `.search` (owner, 10-06): card background
- * and a compact 3px / 12.5px box (26.75px tall) instead of the audit pages' muted, 38px field.
- */
-export const AID_SEARCH_INPUT =
-  'bg-card border-border focus:ring-primary/20 w-full rounded-lg border py-[3px] pr-3 pl-9 text-[12.5px] leading-[18.75px] focus:ring-2 focus:outline-none'
+/** The grid's search box; it lives in kitStyles so csType can alias it without importing this module. */
+export { AID_SEARCH_INPUT } from './kitStyles'
 
 export interface CellContext {
   readonly highlighted: boolean
@@ -104,6 +104,11 @@ export interface AidColumn<Row> {
    */
   readonly fitContent?: FitContent | undefined
   readonly value: (row: Row) => CellValue
+  /**
+   * The cell's native title (§13). A string cell titles itself with its own words; this gives a
+   * short form its full ones ("S2" → "Session 2"), or a figure a title.
+   */
+  readonly title?: ((row: Row) => string | undefined) | undefined
   /** What a header click sorts on, when it isn't the value (Requested by sorts on the last name, T3). */
   readonly sortValue?: ((row: Row) => CellValue) | undefined
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
@@ -167,14 +172,15 @@ export interface AidTableProps<Row> {
    */
   readonly renderDetail?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
-  /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
+  /** Controls the page puts at the head of the toolbar line (the Requests filters). */
   readonly toolbarLead?: ReactNode
   /**
-   * Controls drawn right after the Flat / By … switch. Passing them moves the switch up beside the
-   * lead: lead · switch · these · search · Download CSV (the Requests grid, owner rulings 10-04 late
-   * (grid follow-up)). Without them the line is lead · search · switch · Download CSV.
+   * Controls drawn right after the Flat / By … switch. The toolbar is one row that never wraps (§5):
+   * left, lead · switch · these; right, status · search · `toolbarActions` · Download CSV (always last).
    */
   readonly toolbarAfterGrouping?: ReactNode
+  /** The page's own actions (Record a Commitment…), drawn after the search and before Download CSV. */
+  readonly toolbarActions?: ReactNode
   /**
    * Extra items for Download CSV's menu (slice 3 rework R1: the March file). When set, Download CSV becomes
    * a split button: the main part downloads as ever, the caret opens a menu holding Download CSV (hint "This
@@ -187,7 +193,7 @@ export interface AidTableProps<Row> {
   readonly hideSearch?: boolean | undefined
   /** Runs when the CSV is downloaded, before the file is built (a page clearing a status line that is now stale). */
   readonly onCsvDownload?: (() => void) | undefined
-  /** A status line drawn under the toolbar (the March file's result); nothing is drawn when undefined. */
+  /** The result of the last action (the March file's), in the toolbar's right group before Download CSV (§5, §6). */
   readonly toolbarStatus?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
   readonly searchPlaceholder?: string | undefined
@@ -214,6 +220,10 @@ export interface AidTableProps<Row> {
    */
   readonly onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
+  /** The footer label's native title: it truncates (§10), so the full words live here. */
+  readonly footerTitle?: ((rows: readonly Row[]) => string) | undefined
+  /** How many columns the footer label spans; the default is the leading pinned columns with no total. */
+  readonly footerSpan?: number | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   /** Words for an empty table; a function gets whether a search is active (typed) to pick between them. */
   readonly emptyText?: string | ((searching: boolean) => string) | undefined
@@ -223,6 +233,11 @@ export interface AidTableProps<Row> {
    * always on screen. Off, the table renders as it always did.
    */
   readonly scrollBox?: boolean | undefined
+  /**
+   * A bounded card (§23): 420px tall at most, scrolling inside, in the page's flow and never sized
+   * to the window, with the header and totals held. `scrollBox` wins when both are set.
+   */
+  readonly bounded?: boolean | undefined
   /**
    * A save-first way out (the Requests page's walk `leave`): folding the group that holds the
    * highlighted row goes through it, and folds only when it calls `go`, so a draft that can't be
@@ -243,22 +258,18 @@ export interface AidTableProps<Row> {
   readonly sortable?: boolean | undefined
 }
 
-/** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
-const BOX_GAP = 12
-const BOX_MIN_HEIGHT = 200
+/** The box stops this far short of the screen's bottom (§23: the first footnote peeks above the fold). */
+const BOX_GAP = 40
+const BOX_MIN_HEIGHT = 420
 
 /** A column with a `total` is money: its value is a number, or nothing there. */
 const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)
 
 const NO_GROUPINGS: readonly never[] = []
-/** A `rowTone` row's tint, opaque in both themes (the row carries it; a pinned cell repeats it). */
-const TONE_BG = {
-  group:
-    'bg-emerald-50 dark:bg-[color-mix(in_oklab,var(--color-emerald-900)_30%,var(--color-card))]',
-  warn: 'bg-yellow-50 dark:bg-[color-mix(in_oklab,var(--color-yellow-900)_30%,var(--color-card))]',
-} as const
-/** A group row's cells: bold, a rule above, and no clipping, so a header's words can run on. */
-const TONE_TD = 'border-border border-t border-b px-2 py-1.5 align-top font-semibold'
+/** A `rowTone` row's tint (§9), opaque in both themes (the row carries it; a pinned cell repeats it). */
+const TONE_BG = { group: CS_BAND, warn: CS_BAND_WARN } as const
+/** A group row's cell: unclipped, so a heading's words may run across the empty cells beside it. */
+const TONE_TD = 'border-border border-t border-b px-2 py-[5px] align-top font-semibold'
 const FLEX_MIN = 250
 /** The selection's checkbox column (§4.10). */
 const SELECT_WIDTH = 32
@@ -290,6 +301,7 @@ export function AidTable<Row>({
   arrowKeys = false,
   toolbarLead,
   toolbarAfterGrouping,
+  toolbarActions,
   csvMenu,
   toolbarStatus,
   hideToolbar = false,
@@ -300,6 +312,8 @@ export function AidTable<Row>({
   highlighted: highlightedProp,
   onHighlight,
   footerLabel,
+  footerTitle,
+  footerSpan,
   markedKeys,
   selected,
   onSelectedChange,
@@ -307,6 +321,7 @@ export function AidTable<Row>({
   groupCount,
   emptyText = 'No rows match.',
   scrollBox = false,
+  bounded = false,
   onLeave,
   foldScope,
   rowTone,
@@ -513,42 +528,25 @@ export function AidTable<Row>({
   // resize and when anything above it changes height; the held header and totals' heights become
   // the rows' scroll margin, so a row moved into view is never left under them.
   const boxRef = useRef<HTMLDivElement>(null)
+  // A bounded card holds its header and totals too (§10, §23); only the screen box is sized to the window.
+  const held = scrollBox || bounded
 
-  // The CSV split button's menu: Esc and a press outside it close it.
-  const csvMenuRef = useRef<HTMLDivElement>(null)
-  const [csvMenuOpen, setCsvMenuOpen] = useState(false)
-  const hasCsvMenu = csvMenu !== undefined
-  // The menu going away (a view change) closes it, so it never reopens by itself when it returns.
-  if (!hasCsvMenu && csvMenuOpen) setCsvMenuOpen(false)
-  useEffect(() => {
-    if (!csvMenuOpen) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setCsvMenuOpen(false)
-    }
-    const onPress = (event: MouseEvent) => {
-      if (!csvMenuRef.current?.contains(event.target as Node)) setCsvMenuOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onPress)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.removeEventListener('mousedown', onPress)
-    }
-  }, [csvMenuOpen])
   const headRef = useRef<HTMLTableSectionElement>(null)
   const footRef = useRef<HTMLTableSectionElement>(null)
   const [margins, setMargins] = useState({ top: 0, bottom: 0 })
   const measure = useCallback(() => {
     const element = boxRef.current
-    if (!scrollBox || element === null) return
-    const top = element.getBoundingClientRect().top + window.scrollY
-    element.style.maxHeight = `${String(Math.max(BOX_MIN_HEIGHT, window.innerHeight - top - BOX_GAP))}px`
+    if (!held || element === null) return
+    if (scrollBox) {
+      const top = element.getBoundingClientRect().top + window.scrollY
+      element.style.maxHeight = `${String(Math.max(BOX_MIN_HEIGHT, window.innerHeight - top - BOX_GAP))}px`
+    }
     const next = {
       top: headRef.current?.getBoundingClientRect().height ?? 0,
       bottom: footRef.current?.getBoundingClientRect().height ?? 0,
     }
     setMargins((was) => (was.top === next.top && was.bottom === next.bottom ? was : next))
-  }, [scrollBox])
+  }, [held, scrollBox])
   useLayoutEffect(() => {
     const element = boxRef.current
     if (!scrollBox || element === null) return
@@ -585,8 +583,11 @@ export function AidTable<Row>({
     for (const column of columns) {
       if (!column.fitContent) continue
       const chips = [...element.querySelectorAll(`td[data-fit-col="${column.key}"]`)]
-        .map((cell) => cell.firstElementChild?.getBoundingClientRect().width)
-        .filter((width): width is number => width !== undefined)
+        .map((cell) => cell.firstElementChild)
+        .filter((chip): chip is Element => chip !== null)
+        // A one-line chip truncates inside its column (§11), so its drawn width is capped by the
+        // column being fitted; its natural width is the scroll width, or the column would creep.
+        .map((chip) => Math.max(chip.getBoundingClientRect().width, chip.scrollWidth))
       next[column.key] = fitColumnWidth(chips, column.fitContent)
     }
     setFitWidths((was) => {
@@ -658,7 +659,7 @@ export function AidTable<Row>({
   // In the screen box the header and totals are held on both axes: every cell sticks, and a pinned
   // one sits a layer above the rest (and above the pinned body cells), so nothing scrolls over it.
   const heldClasses = (column: AidColumn<Row>, side: 'top-0' | 'bottom-0', fallback: string) =>
-    scrollBox
+    held
       ? join('sticky', side, isPinned(column) ? 'z-40' : 'z-30', edgeOf(column))
       : pinClasses(column, fallback)
   // One shadow class per cell (Ruling 2026-10-01 (plan review)): a highlighted first cell that is
@@ -677,7 +678,7 @@ export function AidTable<Row>({
     if (column.pinnedRight) return RIGHT_PINNED_EDGE
     return highlightEdge ? HIGHLIGHT_EDGE : pinnedEdge ? PINNED_EDGE : ''
   }
-  const scrollMargins: CSSProperties | undefined = scrollBox
+  const scrollMargins: CSSProperties | undefined = held
     ? { scrollMarginTop: margins.top, scrollMarginBottom: margins.bottom }
     : undefined
   const alignClass = (column: AidColumn<Row>) =>
@@ -705,6 +706,11 @@ export function AidTable<Row>({
 
   const hasTotals = columns.some((c) => c.total)
   const labelSpan = (() => {
+    // A caller's span stops before the first column with a total, so no total is swallowed.
+    if (footerSpan !== undefined) {
+      const firstTotal = columns.findIndex((c) => c.total)
+      return Math.max(1, firstTotal < 0 ? footerSpan : Math.min(footerSpan, firstTotal))
+    }
     if (!footerLabel) return 1
     let span = 0
     for (const c of columns) {
@@ -717,101 +723,55 @@ export function AidTable<Row>({
   // Flat is always a choice, so one grouping is enough for a switch (owner ruling G1).
   const groupingSwitch =
     groupings.length > 0 ? (
-      <div className={GROUP}>
-        <button
-          type="button"
-          className={grouping ? GROUP_BUTTON_OFF : GROUP_BUTTON_ON}
-          onClick={() => setGroup(null)}
-        >
-          Flat
-        </button>
-        {groupings.map((g) => (
-          <button
-            key={g.key}
-            type="button"
-            className={group === g.key ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-            onClick={() => setGroup(g.key)}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
+      <AidSegmented
+        label="Grouping"
+        value={group ?? ''}
+        options={[
+          { value: '', label: 'Flat' },
+          ...groupings.map((g) => ({ value: g.key, label: g.label })),
+        ]}
+        onChange={(key) => setGroup(key === '' ? null : key)}
+      />
     ) : null
 
-  // The app's one CSV control (owner, 10-04: csv-options.html option A, no chip variant); with
-  // `csvMenu`, a split button whose caret opens the menu (slice 3 rework R1, variant A).
-  const csvButton =
-    csvMenu === undefined ? (
-      <button type="button" className={`${BUTTON_SECONDARY} ml-auto`} onClick={download}>
-        <Download className="h-4 w-4" />
-        Download CSV
-      </button>
-    ) : (
-      <div ref={csvMenuRef} className="relative z-50 ml-auto inline-flex">
-        <button type="button" className={`${BUTTON_SECONDARY} rounded-r-none`} onClick={download}>
-          <Download className="h-4 w-4" />
-          Download CSV
-        </button>
-        <button
-          type="button"
-          aria-label="More downloads"
-          className={`${BUTTON_SECONDARY} -ml-px rounded-l-none px-2 ${csvMenuOpen ? 'bg-muted/70' : ''}`}
-          onClick={() => setCsvMenuOpen((open) => !open)}
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
-        {csvMenuOpen && (
-          <div
-            data-testid="csv-menu"
-            onClick={() => setCsvMenuOpen(false)}
-            className="border-border bg-card text-card-foreground absolute top-full right-0 z-50 mt-1.5 min-w-72 rounded-lg border p-1.5 shadow-lg"
-          >
-            <button
-              type="button"
-              onClick={download}
-              className="hover:bg-muted/60 block w-full rounded-md px-2.5 py-1.5 text-left"
-            >
-              <span className="flex items-center gap-2 text-sm font-semibold">
-                <Download className="text-muted-foreground h-4 w-4" />
-                Download CSV
-              </span>
-              <span className="text-muted-foreground mt-0.5 ml-6 block text-xs">
-                This list, as filtered
-              </span>
-            </button>
-            <hr className="border-border mx-1.5 my-1" />
-            {csvMenu}
-          </div>
-        )}
-      </div>
-    )
   return (
     <div className="space-y-2">
       {!hideToolbar && (
-        <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          {toolbarLead}
-          {toolbarAfterGrouping !== undefined && groupingSwitch}
-          {toolbarAfterGrouping}
-          {!hideSearch && (
-            <div className="relative w-64">
-              <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-              <input
-                type="search"
-                aria-label="Search"
-                placeholder={searchPlaceholder}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className={AID_SEARCH_INPUT}
-              />
-            </div>
-          )}
-          {toolbarAfterGrouping === undefined && groupingSwitch}
-          {csvButton}
+        <div data-aid-toolbar="" className={CS_TOOLBAR}>
+          <div className={CS_TOOLBAR_LEFT}>
+            {toolbarLead}
+            {groupingSwitch}
+            {toolbarAfterGrouping}
+          </div>
+          <div className={CS_TOOLBAR_RIGHT}>
+            {toolbarStatus !== undefined && (
+              // The one part of the row that may shrink: it clips rather than push search and CSV off.
+              <div className="max-w-[340px] min-w-0 overflow-hidden">{toolbarStatus}</div>
+            )}
+            {!hideSearch && (
+              <div className="relative w-64 flex-none">
+                <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+                <input
+                  type="search"
+                  aria-label="Search"
+                  placeholder={searchPlaceholder}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className={AID_SEARCH_INPUT}
+                />
+              </div>
+            )}
+            {toolbarActions}
+            <AidCsvButton onDownload={download} menu={csvMenu} />
+          </div>
         </div>
       )}
-      {toolbarStatus}
 
-      <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
+      <div
+        ref={boxRef}
+        data-aid-scroll-box={scrollBox ? '' : undefined}
+        className={scrollBox ? SCROLL_BOX : bounded ? CS_BOUNDED : TABLE_CARD}
+      >
         <table className={TABLE} style={{ minWidth }}>
           <colgroup>
             {selectable && <col style={{ width: SELECT_WIDTH }} />}
@@ -826,7 +786,7 @@ export function AidTable<Row>({
                   className={join(
                     TH,
                     // Held top and left in the screen box, a layer above the scrolling headers.
-                    scrollBox ? 'sticky top-0 left-0 z-40' : 'sticky left-0 z-20'
+                    held ? 'sticky top-0 left-0 z-40' : 'sticky left-0 z-20'
                   )}
                 >
                   <input
@@ -947,32 +907,48 @@ export function AidTable<Row>({
                             )}
                           </td>
                         )}
-                        {columns.map((c, index) => (
-                          <td
-                            key={c.key}
-                            style={pinStyle(c)}
-                            data-fit-col={c.fitContent ? c.key : undefined}
-                            className={join(
-                              tone ? TONE_TD : TD,
-                              // A tone row's tint is on the row; only a pinned cell needs its own.
-                              tone
-                                ? isPinned(c) && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
-                                : isHighlighted
-                                  ? ROW_HIGHLIGHT
-                                  : CELL_BG,
-                              bodyEdge(c, index, isHighlighted, isMarked),
-                              isPinned(c) && 'sticky z-10',
-                              alignClass(c),
-                              c.flex === true && isHighlighted
-                                ? 'whitespace-normal'
-                                : 'whitespace-nowrap'
-                            )}
-                          >
-                            {c.render
-                              ? c.render(row, { highlighted: isHighlighted, query })
-                              : (c.value(row) ?? '—')}
-                          </td>
-                        ))}
+                        {columns.map((c, index) => {
+                          const value = c.render ? undefined : c.value(row)
+                          const content = c.render ? (
+                            c.render(row, { highlighted: isHighlighted, query })
+                          ) : c.total && typeof value === 'number' ? (
+                            <Money value={moneyValue(value)} />
+                          ) : (
+                            value
+                          )
+                          // §13: a cut cell carries its full words; a string titles itself (a
+                          // placeholder dash has nothing to add).
+                          const title = c.title
+                            ? c.title(row)
+                            : typeof content === 'string' && content !== '' && content !== '—'
+                              ? content
+                              : undefined
+                          return (
+                            <td
+                              key={c.key}
+                              title={title}
+                              style={pinStyle(c)}
+                              data-fit-col={c.fitContent ? c.key : undefined}
+                              className={join(
+                                tone ? TONE_TD : TD,
+                                // A tone row's tint is on the row; only a pinned cell needs its own.
+                                tone
+                                  ? isPinned(c) && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
+                                  : isHighlighted
+                                    ? ROW_HIGHLIGHT
+                                    : CELL_BG,
+                                bodyEdge(c, index, isHighlighted, isMarked),
+                                isPinned(c) && 'sticky z-10',
+                                alignClass(c),
+                                c.flex === true && isHighlighted
+                                  ? 'whitespace-normal'
+                                  : 'whitespace-nowrap'
+                              )}
+                            >
+                              {content ?? '—'}
+                            </td>
+                          )
+                        })}
                       </tr>
                       {isHighlighted && renderDetail && (
                         <tr data-aid-detail="" ref={detailRef} style={scrollMargins}>
@@ -1013,15 +989,20 @@ export function AidTable<Row>({
                   const spans = index === 0 && labelSpan > 1
                   // The checkbox column has no footer cell: the first one covers it too.
                   const leadsSelect = index === 0 && selectable
-                  const footerSpan = (spans ? labelSpan : 1) + (leadsSelect ? 1 : 0)
+                  const cellSpan = (spans ? labelSpan : 1) + (leadsSelect ? 1 : 0)
                   const total = c.total ? c.total(visible) : null
                   return (
                     <td
                       key={c.key}
-                      colSpan={footerSpan > 1 ? footerSpan : undefined}
+                      colSpan={cellSpan > 1 ? cellSpan : undefined}
+                      title={index === 0 && footerTitle ? footerTitle(visible) : undefined}
                       style={leadsSelect ? { left: 0 } : pinStyle(c)}
                       className={join(
-                        scrollBox && index === 0 && footerLabel ? TFOOT_CELL_WRAP : TFOOT_CELL,
+                        held && index === 0 && footerLabel && !footerTitle
+                          ? TFOOT_CELL_WRAP
+                          : TFOOT_CELL,
+                        // §10: a titled label flows out of its column and truncates.
+                        index === 0 && footerTitle && 'truncate',
                         heldClasses(c, 'bottom-0', 'z-10'),
                         spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
                         alignClass(c)

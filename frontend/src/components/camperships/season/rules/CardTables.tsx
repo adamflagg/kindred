@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import type { ApiAidRulesSection } from '../../../../types/api-types'
 import { DefRef } from '../../kit/DefinitionNotes'
 import {
-  CS_LINK,
+  CS_LINK_SM,
   CS_PANEL_HEAD,
   CS_PILL,
   CS_SMALL,
@@ -164,7 +164,7 @@ function NamedAwardsTable({ content, names, control, grantsHref }: TablesProps) 
                   <span className={`${CS_SMALL} block font-normal`}>{row.note}</span>
                 )}
                 {row.managedInGrants && grantsHref !== undefined && (
-                  <Link to={grantsHref} className={`${CS_SMALL} ${CS_LINK} block font-normal`}>
+                  <Link to={grantsHref} className={`${CS_LINK_SM} block font-normal`}>
                     Funder&apos;s terms in Money › Funders ›
                   </Link>
                 )}

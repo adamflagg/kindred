@@ -4,7 +4,7 @@
  * AMBER_NOTE, which carries its `dark:` partner. One text-align per class string: a header never
  * carries both `text-left` and `text-right` (the kit ledger's lesson), seasonStyles.test.ts holds it.
  */
-import { TH } from '../kit/kitStyles'
+import { CS_BAND, CS_BAND_EDGE, TH } from '../kit/kitStyles'
 
 /** A left-aligned header cell: the kit's TH, 12/15 (spec §1.1). */
 export const TH_LABEL = TH
@@ -18,8 +18,7 @@ export const TD_TEXT = 'border-border border-b px-2 py-1.5 text-left'
 export const TD_MONEY =
   'border-border border-b px-2 py-1.5 text-right whitespace-nowrap tabular-nums'
 /** The heading over the lines shown below the line (§5.3). */
-export const BELOW_HEADING =
-  'bg-muted/40 text-muted-foreground border-border border-b px-2 py-1.5 text-left text-xs font-semibold tracking-wide uppercase'
+export const BELOW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-1.5 text-left text-xs font-bold`
 /** A figure that opens its rows (D20). */
 export const FIGURE_LINK = 'hover:underline'
 /** A small card for a strip or a block under the table. */
