@@ -30,9 +30,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="decided",
         term="Decided",
         text=(
-            "Decided: the award the dashboard computed or staff decided for a request's round. It is live until the "
-            "round locks: income corrections, a new rules version or a grant can move it. It is never labelled "
-            '"awarded", which means Posted.'
+            "Decided: the award the dashboard computed or staff set for a round. It can still move (an income "
+            "correction, new rules, a grant) until the round is Posted."
         ),
         spec="§5.1",
         rulings=("D43", "D80"),
@@ -41,9 +40,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="posted",
         term="Posted",
         text=(
-            "Posted: the round's Posted checkbox and the amount it locked. Posting in CampMinder is the offer. The "
-            "registrar checks it after entering the award in CampMinder, or the overnight ledger sync does when the "
-            'registrar didn\'t. There is one "Posted", never two figures.'
+            "Posted: the round's Posted checkbox and the amount it locked. Posting in CampMinder is the offer; "
+            'there is one "Posted", never two figures.'
         ),
         spec="§5.1",
         rulings=("D47", "D51", "D52", "D59", "D78"),
@@ -62,12 +60,22 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D59", "D74"),
     ),
     Definition(
+        # The Requests grid's column is "CM ✓" (owner ★5, final-ux 10-09); the household keeps "Confirmation".
+        key="cm_check",
+        term="CM ✓",
+        text=(
+            "CM ✓: whether CampMinder's ledger matches what was checked Posted: ✓ matched · short / over · "
+            "missing · reversed · pending (tonight's sync)."
+        ),
+        spec="§5.1",
+        rulings=("D59", "D74"),
+    ),
+    Definition(
         key="cost",
         term="Cost",
         text=(
-            "Cost: each request's cost, the session's list price (an AG session's is its parent session's); Family Camp by "
-            "number of people; or a cost staff set, with its reason. Aid is a percentage of list price: discounts "
-            "CampMinder bills are not read."
+            "Cost: the session's list price (an AG session's is its parent's); Family Camp by the number of "
+            "people, or a cost staff set."
         ),
         spec="§5.8",
         rulings=("D77", "D118"),
@@ -798,7 +806,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
 SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
-    "requests": ("decided", "posted", "confirmation", "cost"),
+    "requests": ("decided", "posted", "cm_check", "cost"),
     "household": ("cost", "decided", "grants", "family_share", "posted", "confirmation"),
     "season-rounds-budget": (
         "allocated",

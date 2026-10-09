@@ -246,10 +246,40 @@ def test_projected_says_there_is_no_projection_below_a_five_percent_share() -> N
 def test_the_cost_note_says_an_ag_session_takes_its_parents_price() -> None:
     """A1 (spec §8): an AG session is priced at its parent session's list price."""
     cost = BY_KEY["cost"]
-    assert "the session's list price (an AG session's is its parent session's)" in cost.text
+    # owner ★5 "Shortened footnotes", final-ux 10-09: the approved shorter wording
+    assert "the session's list price (an AG session's is its parent's)" in cost.text
 
 
 def test_the_cost_note_names_a_cost_staff_set() -> None:
     """F3 (spec §10): Set Cost… gives a request a cost staff set, with its reason; the footnote says so."""
     text = BY_KEY["cost"].text
-    assert "Family Camp by number of people; or a cost staff set, with its reason." in text
+    # owner ★5, final-ux 10-09: shortened; the staff-set cost stays named
+    assert "Family Camp by the number of people, or a cost staff set." in text
+
+
+def test_requests_footnotes_are_the_approved_shortened_wording() -> None:
+    """Owner ★5 "Shortened footnotes", final-ux 10-09: the Requests mock's NOTE text, in the mock's order."""
+    assert SURFACES["requests"] == ("decided", "posted", "cm_check", "cost")
+    assert BY_KEY["decided"].text == (
+        "Decided: the award the dashboard computed or staff set for a round. It can still move (an income "
+        "correction, new rules, a grant) until the round is Posted."
+    )
+    assert BY_KEY["posted"].text == (
+        "Posted: the round's Posted checkbox and the amount it locked. Posting in CampMinder is the offer; "
+        'there is one "Posted", never two figures.'
+    )
+    assert BY_KEY["cm_check"].term == "CM ✓"
+    assert BY_KEY["cm_check"].text == (
+        "CM ✓: whether CampMinder's ledger matches what was checked Posted: ✓ matched · short / over · missing · "
+        "reversed · pending (tonight's sync)."
+    )
+    assert BY_KEY["cost"].text == (
+        "Cost: the session's list price (an AG session's is its parent's); Family Camp by the number of people, "
+        "or a cost staff set."
+    )
+
+
+def test_the_household_page_keeps_its_confirmation_note() -> None:
+    """The Requests column's "CM ✓" is its own note; the household's per-Posted-figure Confirmation is untouched."""
+    assert "confirmation" in SURFACES["household"]
+    assert "cm_check" not in SURFACES["household"]
