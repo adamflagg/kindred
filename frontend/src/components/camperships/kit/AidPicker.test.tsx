@@ -132,3 +132,25 @@ describe('AidPickerMulti (rev1: "the funds reporting group picker needs to suppo
     expect(button).toHaveAttribute('title', 'Camp & Quest, TBM, Weekend Programs')
   })
 })
+
+// Requests' Program picker (mock PROG_OPTS): a pool is a pickable bold heading, its programs indented.
+describe('AidPicker option levels', () => {
+  it('draws a heading option bold and an indented one pushed in', async () => {
+    render(
+      <AidPicker
+        label="Program"
+        value="all"
+        onChange={() => undefined}
+        options={[
+          { value: 'all', label: 'All programs' },
+          { value: 'pool:cq', label: 'Camp & Quest', level: 'heading' },
+          { value: 'summer', label: 'Summer', level: 'indent' },
+        ]}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Program/ }))
+    expect(screen.getByRole('option', { name: /Camp & Quest/ })).toHaveClass('font-bold')
+    expect(screen.getByRole('option', { name: /Summer/ }).style.paddingLeft).toBe('34px')
+    expect(screen.getByRole('option', { name: /All programs/ })).not.toHaveClass('font-bold')
+  })
+})

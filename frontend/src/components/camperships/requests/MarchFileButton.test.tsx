@@ -5,7 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { ApiAidMarchFile } from '../../../types/api-types'
-import { MarchFileItem, MarchFileResult } from './MarchFileButton'
+import { MarchFileItem } from './MarchFileButton'
+import { requestsStatus } from './requestsStatus'
+import { StatusSlot } from './StatusSlot'
 import { useMarchFile } from './useMarchFile'
 
 vi.mock('../../../lib/pocketbase', () => ({
@@ -49,7 +51,17 @@ function Harness() {
   return (
     <>
       <MarchFileItem march={march} />
-      <MarchFileResult march={march} />
+      {/* §6: the result is the toolbar's status slot now, not a box under it. */}
+      <StatusSlot
+        status={requestsStatus({
+          failures: [],
+          selected: 0,
+          hidden: 0,
+          result: null,
+          march: { said: march.said, error: march.error },
+        })}
+        onDismiss={march.dismiss}
+      />
     </>
   )
 }

@@ -46,6 +46,12 @@ let approved: { data: ApiAidApprovedRules | undefined } = { data: APPROVED_RULES
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => approved,
 }))
+// The page reads the registry's notes to number its marked headers: stable fixtures, no auth provider needed.
+vi.mock('../../hooks/camperships/useAidDefinitions', () => {
+  // No registry notes here: the marks on headers have their own tests (RequestsGrid.final.test.tsx).
+  const value = { entries: [], notes: [], numberOf: () => null, isPending: false, error: null }
+  return { useAidDefinitions: () => value }
+})
 const notesProps = vi.fn()
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: (props: unknown) => {
@@ -55,14 +61,16 @@ vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
 }))
 // Slice 3's March file has its own tests (MarchFileButton.test.tsx); here, only where it shows.
 vi.mock('../../components/camperships/requests/useMarchFile', () => ({
-  useMarchFile: (year: number) => ({ year }),
+  useMarchFile: (year: number) => ({
+    year,
+    said: `March result ${String(year)}`,
+    error: null,
+    dismiss: vi.fn(),
+  }),
 }))
 vi.mock('../../components/camperships/requests/MarchFileButton', () => ({
   MarchFileItem: ({ march }: { march: { year: number } }) => (
     <button type="button">{`March file ${String(march.year)}`}</button>
-  ),
-  MarchFileResult: ({ march }: { march: { year: number } }) => (
-    <p>{`March result ${String(march.year)}`}</p>
   ),
 }))
 
@@ -161,7 +169,9 @@ function renderAt(path: string) {
   )
 }
 
-const openProgram = () => userEvent.click(screen.getByLabelText('Program'))
+// §3: Program is the white AidPicker (a Listbox button named "Program: …"), not a native control.
+const programButton = () => screen.getByRole('button', { name: /^Program:/ })
+const openProgram = () => userEvent.click(programButton())
 const pickProgram = async (name: string) => {
   await openProgram()
   await userEvent.click(await screen.findByRole('option', { name }))
@@ -371,7 +381,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     const line = toolbar()
     expect(line).not.toBeNull()
     const inOrder = [
-      screen.getByLabelText('Program'),
+      programButton(),
       within(line).getByRole('button', { name: 'R1' }),
       within(line).getByRole('button', { name: 'Flat' }),
       screen.getByLabelText('Show IDs'),
@@ -394,7 +404,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   it('has no Counting toward the budget checkbox, and an old link’s counted=1 changes nothing', async () => {
     renderAt('/aid/requests?posted=1&counted=1')
     expect(screen.queryByLabelText('Counting toward the budget')).toBeNull()
-    expect(await screen.findByText('Posted in Round 1', { exact: false })).toBeInTheDocument()
+    expect(await screen.findByText('Posted in Round 1')).toBeInTheDocument()
     expect(screen.queryByText(/counting toward the budget/)).toBeNull()
   })
 
@@ -418,27 +428,28 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     }
     grid = { data: { ...LIVE, rows: [...GRID_ROWS, withdrawn] }, isLoading: false, error: null }
     renderAt('/aid/requests?live=1')
-    expect(screen.getByText(/Live requests only/)).toBeInTheDocument()
+    // §6: the sentence row is a removable chip on the toolbar (✕ = Show All).
+    expect(within(toolbar()).getByText('Live only')).toBeInTheDocument()
     expect(screen.queryByText('Withdrawn Camper')).toBeNull()
     expect(screen.queryByText('Riley Sam')).toBeNull()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clear Live only' }))
     expect(screen.getByTestId('where')).not.toHaveTextContent('live=')
     expect(screen.getByText('Withdrawn Camper')).toBeInTheDocument()
-    expect(screen.queryByText(/Live requests only/)).toBeNull()
+    expect(screen.queryByText('Live only')).toBeNull()
   })
 
   // Owner 10-06, option (a): Season's Posted / Accepted figures open on a hidden posted= / accepted=
   // param. No chip or control: a line says what the list is, like the live line, with Show All.
   it('narrows to a Season figure, says so on a line, and Show All clears it (owner 10-06)', async () => {
     renderAt('/aid/requests?accepted=1')
-    expect(screen.getByText('Accepted in Round 1 ·', { exact: false })).toBeInTheDocument()
+    expect(within(toolbar()).getByText('Accepted in Round 1')).toBeInTheDocument()
     // Olivia Chen was accepted in Round 1 and is in Round 2 now: the figure still counts her.
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
     expect(screen.queryByText(/tick/i)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clear Accepted in Round 1' }))
     expect(screen.getByTestId('where')).not.toHaveTextContent('accepted=')
     expect(screen.queryByText(/Accepted in Round 1/)).toBeNull()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
@@ -446,8 +457,11 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   it('words the figure line for any round', async () => {
     renderAt('/aid/requests?posted=all')
-    const line = screen.getByText(/Posted in any round/)
-    expect(line).toHaveTextContent(/^Posted in any round ·\s*Show All$/)
+    const chip = screen.getByText('Posted in any round')
+    expect(chip.closest('[title]')).toHaveAttribute(
+      'title',
+      'Posted in any round: the requests behind one Season figure. ✕ shows all.'
+    )
     expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
@@ -463,12 +477,12 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       isLoading: false,
     }
     renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
-    expect(screen.getByText(/The 1 request in one History operation/)).toBeInTheDocument()
+    expect(screen.getByText('History operation · 1')).toBeInTheDocument()
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     for (const other of ['Samuel Johnson', 'Liam Garcia', 'Olivia Chen', 'Riley Sam']) {
       expect(screen.queryByText(other)).toBeNull()
     }
-    await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clear History operation · 1' }))
     expect(screen.getByTestId('where')).not.toHaveTextContent('op=')
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
   })
@@ -481,15 +495,17 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       isLoading: false,
     }
     renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
-    expect(
-      screen.getByText(/That History operation isn't in the log you can read/)
-    ).toBeInTheDocument()
+    const chip = screen.getByText('History operation not found')
+    expect(chip.closest('[title]')).toHaveAttribute(
+      'title',
+      expect.stringContaining("That History operation isn't in the log you can read")
+    )
   })
 
   it('says the operation is still being read rather than "0 requests" while it loads', () => {
     operation = { data: undefined, error: null, isLoading: true }
     renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
-    expect(screen.getByText(/Reading one History operation…/)).toBeInTheDocument()
+    expect(screen.getByText('Reading History operation…')).toBeInTheDocument()
     expect(screen.queryByText(/The 0 requests/)).toBeNull()
   })
 
@@ -502,9 +518,9 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       refetch,
     }
     renderAt(`/aid/requests?op=${'o'.repeat(15)}`)
-    expect(screen.getByText(/Couldn't read that History operation/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "Couldn't read · Try Again" })).toBeInTheDocument()
     expect(screen.queryByText(/The 0 requests/)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
+    await userEvent.click(screen.getByRole('button', { name: "Couldn't read · Try Again" }))
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
@@ -540,19 +556,19 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     it('shows exactly the requests the count counts, with its line and Show All', async () => {
       reportIdsRead = { data: ids([GRID_ROWS[0]!.request_id]), error: null }
       renderAt(COUNT)
-      expect(screen.getByText(/The 1 request behind one Statistics count/)).toBeInTheDocument()
+      expect(screen.getByText('Statistics count · 1')).toBeInTheDocument()
       expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
       for (const other of ['Samuel Johnson', 'Liam Garcia', 'Olivia Chen', 'Riley Sam']) {
         expect(screen.queryByText(other)).toBeNull()
       }
-      await userEvent.click(screen.getByRole('button', { name: 'Show All' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Clear Statistics count · 1' }))
       expect(screen.getByTestId('where')).not.toHaveTextContent('report=')
       expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
     })
 
     it('shows none of the rows while the ids are out, and says so', () => {
       renderAt(COUNT)
-      expect(screen.getByText(/Reading the requests behind one Reports count/)).toBeInTheDocument()
+      expect(screen.getByText('Reading Reports count…')).toBeInTheDocument()
       expect(screen.queryByText('Emma Johnson')).toBeNull()
     })
 
@@ -560,10 +576,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       const refetch = vi.fn()
       reportIdsRead = { data: undefined, error: new Error('boom'), refetch }
       renderAt(COUNT)
-      expect(
-        screen.getByText(/Couldn't read the requests behind that Reports count/)
-      ).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('button', { name: 'Try Again' }))
+      await userEvent.click(screen.getByRole('button', { name: "Couldn't read · Try Again" }))
       expect(refetch).toHaveBeenCalledTimes(1)
     })
 
@@ -619,24 +632,17 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
   })
 
-  it("says on Needs an offer that a split request posts per household (⚠ Decision 39's interim)", () => {
-    renderAt('/aid/requests?view=needs-offer')
-    expect(screen.getByText(/posts one amount per household/)).toBeInTheDocument()
-  })
-
-  it('shows the split-request line on Needs an offer only', () => {
-    renderAt('/aid/requests?view=holds')
+  // §6 (owner 1a R1, R2): the two sentence rows are gone; their words ride in a title.
+  it('draws no split sentence on Needs an offer, and no Posted sentence on Waiting', () => {
+    const { unmount } = renderAt('/aid/requests?view=needs-offer')
     expect(screen.queryByText(/posts one amount per household/)).toBeNull()
-  })
-
-  it('says on Waiting on the family that Posted is this round, not yet accepted (owner ruling I2)', () => {
+    unmount()
     renderAt('/aid/requests?view=waiting')
-    expect(screen.getByText(/posted in this round, not yet accepted/)).toBeInTheDocument()
-  })
-
-  it('shows the Posted note on Waiting on the family only', () => {
-    renderAt('/aid/requests?view=holds')
     expect(screen.queryByText(/posted in this round, not yet accepted/)).toBeNull()
+    expect(
+      screen.getByRole('columnheader', { name: 'Posted' }).querySelector('[title]') ??
+        screen.getByRole('columnheader', { name: 'Posted' })
+    ).toBeInTheDocument()
   })
 
   it('keeps showing loaded rows when a background refetch fails (Decision 33)', () => {
@@ -668,7 +674,8 @@ describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
     // Owner 2026-10-04: a badge with nothing in it under the lens is not drawn.
     expect(screen.queryByRole('link', { name: /^On hold / })).toBeNull()
     expect(headers()).toContain('Appeal ask')
-    expect(screen.getByText('Showing appeals only.')).toBeInTheDocument()
+    // §6: no "Showing appeals only." sentence under the strip; the lit lens says it.
+    expect(screen.queryByText('Showing appeals only.')).toBeNull()
   })
 
   it('links each stage under the lens, and each lens with no stage (picking a lens clears the stage)', () => {
@@ -830,9 +837,12 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('/aid/households')
     expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
-    expect(
-      screen.getByText("Couldn't save Olivia Chen's Round 2 ask: The server is down")
-    ).toBeInTheDocument()
+    // §5–6 (answers R8): the failure is the toolbar's status slot, its words in the title.
+    const status = screen.getByText("⚠ Couldn't save Olivia Chen's Round 2 ask")
+    expect(status).toHaveAttribute(
+      'title',
+      "Couldn't save Olivia Chen's Round 2 ask: The server is down Go Back to the row to try again."
+    )
   })
 
   it('lands Back on the row whose family was opened, with the editor walk on (§3.5)', async () => {
@@ -1193,10 +1203,13 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     }
     await act(async () => fails[0]?.(new Error('Round 2 is posted')))
     await act(async () => fails[1]?.(new Error('Round 2 is posted')))
-    expect(screen.getAllByRole('button', { name: 'Go Back' })).toHaveLength(2)
-    await userEvent.click(screen.getAllByRole('button', { name: 'Go Back' })[1] as HTMLElement)
+    // §5–6: one status slot and one Go Back (to the first failure), the rest counted.
+    expect(screen.getAllByRole('button', { name: 'Go Back' })).toHaveLength(1)
+    expect(screen.getByText(/\(\+1 more\)$/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Go Back' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
     expect(screen.getAllByRole('button', { name: 'Go Back' })).toHaveLength(1)
+    expect(screen.queryByText(/\(\+1 more\)$/)).toBeNull()
   })
 
   describe('an entry typed on a row whose editor a refetch takes away (I2)', () => {
@@ -1285,7 +1298,7 @@ describe('ticks (§4.10, §5.2)', () => {
   it('confirms a bulk Accepted tick on the selected rows', async () => {
     renderAt('/aid/requests')
     await selectBoth()
-    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    expect(screen.getByText('2 checked')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
     expect(screen.getByText('Check Accepted on 2 requests · 2 families')).toBeInTheDocument()
   })
@@ -1352,7 +1365,8 @@ describe('ticks (§4.10, §5.2)', () => {
     expect(screen.getByText(/Riley Sam R1/)).toBeInTheDocument()
     expect(screen.queryByText('Check Accepted on 2 requests · 2 families')).toBeNull()
     // Liam had nothing to tick, so he stays selected for the next action.
-    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    expect(screen.getByText(/· 1 still checked$/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check Accepted…' })).toBeInTheDocument()
   })
 
   it('says so when the server found some already ticked: the list is what was sent, not what was ticked (M1)', async () => {
@@ -1441,7 +1455,7 @@ describe('ticks (§4.10, §5.2)', () => {
       await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
       expect(keyAsk).toHaveBeenCalledTimes(1)
       expect(screen.queryByText(/^Check Accepted on/)).toBeNull()
-      expect(await screen.findByText('1 selected')).toBeInTheDocument()
+      expect(await screen.findByText('1 checked')).toBeInTheDocument()
       expect(
         within(screen.getByText('Olivia Chen').closest('tr') as HTMLElement).getAllByText('$1,040')
           .length
@@ -1454,7 +1468,7 @@ describe('ticks (§4.10, §5.2)', () => {
       const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
       await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
       expect(await screen.findByText(/Couldn't save Olivia Chen's Round 2 ask/)).toBeInTheDocument()
-      expect(screen.queryByText('1 selected')).toBeNull()
+      expect(screen.queryByText('1 checked')).toBeNull()
     })
 
     it('opens nothing when that save fails, and the failure stays listed', async () => {
@@ -1472,7 +1486,7 @@ describe('ticks (§4.10, §5.2)', () => {
       renderAt('/aid/requests')
       await selectBoth()
       await userEvent.type(screen.getByLabelText('Search'), 'Riley')
-      expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+      expect(screen.getByText('2 checked · 1 hidden')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
       expect(screen.getByText('Check Accepted on 2 requests · 2 families')).toBeInTheDocument()
       expect(
@@ -1486,14 +1500,14 @@ describe('ticks (§4.10, §5.2)', () => {
       await pickProgram('Quest')
       // Samuel is now hidden by the filter; the search below hides him too.
       await userEvent.type(screen.getByLabelText('Search'), 'Olivia')
-      expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+      expect(screen.getByText('2 checked · 1 hidden')).toBeInTheDocument()
     })
 
     it('keeps a tick through a filter change', async () => {
       renderAt('/aid/requests')
       await selectCampers('Samuel Johnson', 'Olivia Chen')
       await pickProgram('Quest')
-      expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+      expect(screen.getByText('2 checked · 1 hidden')).toBeInTheDocument()
     })
 
     it("keeps a tick through a view change: the bar's action is chosen at the bar, not by the view", async () => {
@@ -1501,7 +1515,7 @@ describe('ticks (§4.10, §5.2)', () => {
       const samuel = screen.getByText('Samuel Johnson').closest('tr') as HTMLElement
       await userEvent.click(within(samuel).getByRole('checkbox', { name: 'Select' }))
       await userEvent.click(viewLink('Needs an offer'))
-      expect(screen.getByText('1 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+      expect(screen.getByText('1 checked · 1 hidden')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Check Accepted…' }))
       expect(screen.getByText('Check Accepted on 1 request · 1 family')).toBeInTheDocument()
     })
@@ -1609,7 +1623,7 @@ describe('the March file in the Download CSV menu (slice 3 rework R1; variant A)
     expect(caret()).toBeNull()
   })
 
-  it('draws the result line under the toolbar only where the split control is', () => {
+  it('puts the March File result in the toolbar’s status slot, only where the split control is (§6)', () => {
     granted = ['financial_aid.view', 'financial_aid.casework']
     const { unmount } = renderAt('/aid/requests?view=needs-offer&round=1')
     expect(screen.getByText('March result 2027')).toBeInTheDocument()

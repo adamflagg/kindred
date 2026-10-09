@@ -98,7 +98,10 @@ export function AidPicker<V extends string | number>({
               <ListboxOption
                 value={option.value}
                 disabled={option.disabled ?? false}
-                className={CS_PICKER_OPTION}
+                className={
+                  option.level === 'heading' ? `${CS_PICKER_OPTION} font-bold` : CS_PICKER_OPTION
+                }
+                style={option.level === 'indent' ? { paddingLeft: 34 } : undefined}
               >
                 {({ selected }) => (
                   <>

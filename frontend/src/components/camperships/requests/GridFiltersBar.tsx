@@ -1,162 +1,76 @@
-import {
-  Field,
-  Label,
-  Listbox,
-  ListboxButton,
-  ListboxOption,
-  ListboxOptions,
-} from '@headlessui/react'
-import { ChevronDown } from 'lucide-react'
+import type { ReactNode } from 'react'
 
-import { GROUP, GROUP_BUTTON_OFF, GROUP_BUTTON_ON } from '../../admin/audit/auditStyles'
-import { FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_FLABEL } from '../kit/csType'
+import type { AidPickerOption } from '../kit/pickerWords'
+import { AidSegmented } from '../kit/Segmented'
 import type { ProgramGroup } from './programLabel'
 import type { GridParamName } from './useGridParams'
 import type { RoundFilter } from './views'
 
-export interface FilterOption {
-  readonly value: string
-  readonly label: string
-}
+/** The picker's own value: a pool heading or a program, both kinds of key in one list. */
+const asPool = (key: string) => `pool:${key}`
+const asProgram = (key: string) => `program:${key}`
+const ALL = ''
+const ALL_PROGRAMS = 'All programs'
 
-/**
- * A filter as toggle chips: none lit is "any", clicking the lit chip clears it, one at a time. The
- * chips are the segmented group the audit log's filters and the Requests grid's old grouping toggle
- * use (`GROUP`, `GROUP_BUTTON_ON/OFF` in auditStyles), so a lit chip reads the same everywhere.
- * `value` is parsed before it gets here (`parseRoundFilter`), so it is always one of `options` or null.
- */
-function ChipFilter({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string | null
-  options: readonly FilterOption[]
-  onChange: (value: string | null) => void
-}) {
+/** A toolbar label beside its control. A span, not a <label>: a label would forward its click to the first segment. */
+function Labelled({ text, children }: { text: string; children: ReactNode }) {
   return (
-    <span className="flex items-center gap-2">
-      <span>{label}</span>
-      <span className={GROUP}>
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={value === option.value ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
-            onClick={() => onChange(value === option.value ? null : option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </span>
+    <span className="inline-flex items-center gap-1.5">
+      <span className={CS_FLABEL}>{text}</span>
+      {children}
     </span>
   )
 }
 
-/** The dropdown's own value: a pool heading or a program, both kinds of key in one list. */
-const asPool = (key: string) => `pool:${key}`
-const asProgram = (key: string) => `program:${key}`
-const ALL_PROGRAMS = 'All programs'
-const PLAIN = 'listbox-option py-1.5'
-const HEADING = `${PLAIN} font-semibold`
-const UNDER = `${PLAIN} pl-8`
-
 /**
- * Program and Pool as ONE grouped dropdown (slice 1 grid layout T6): each budget pool a heading you
- * can pick (`pool=`), its programs under it (`program=`); picking one clears the other. Summer's
- * filters are the model: AllCampersView's grouped Headless UI Listbox, whose group-level entries
- * ("Teen Programs", "Quests") are themselves options — a native <select> cannot make an <optgroup>
- * heading selectable. A stale URL value still filters, so it shows as its own option to clear (A5).
+ * The picker's options (slice 1 grid layout T6; the approved mock's PROG_OPTS): All programs, then each
+ * budget pool as a pickable bold heading (`pool=`) with its programs indented under it (`program=`);
+ * a program in no pool sits last, unindented. A stale URL value still filters, so it shows as its own
+ * option to clear (A5).
  */
-function ProgramSelect({
-  groups,
-  program,
-  pool,
-  onPick,
-}: {
-  groups: readonly ProgramGroup[]
-  program: string | null
+function programOptions(
+  groups: readonly ProgramGroup[],
+  program: string | null,
   pool: string | null
-  onPick: (pool: string | null, program: string | null) => void
-}) {
+): Array<AidPickerOption<string>> {
   const pools = groups.flatMap((g) => (g.pool ? [g.pool] : []))
   const programs = groups.flatMap((g) => g.programs)
-  const stalePool = pool !== null && pool !== '' && !pools.some((p) => p.value === pool)
-  const staleProgram =
-    program !== null && program !== '' && !programs.some((p) => p.value === program)
-  // A program wins when a link carries both: it is the narrower filter, and the one its row shows.
-  const value = program ? asProgram(program) : pool ? asPool(pool) : ''
-  const shown = program
-    ? (programs.find((p) => p.value === program)?.label ?? program)
-    : pool
-      ? (pools.find((p) => p.value === pool)?.label ?? pool)
-      : ALL_PROGRAMS
-  const pick = (picked: string) => {
-    if (picked.startsWith('pool:')) onPick(picked.slice('pool:'.length), null)
-    else if (picked.startsWith('program:')) onPick(null, picked.slice('program:'.length))
-    else onPick(null, null)
+  const out: Array<AidPickerOption<string>> = [{ value: ALL, label: ALL_PROGRAMS }]
+  if (pool !== null && pool !== '' && !pools.some((p) => p.value === pool)) {
+    out.push({ value: asPool(pool), label: pool, level: 'heading' })
   }
-  return (
-    <Field className="flex items-center gap-2">
-      <Label>Program</Label>
-      <Listbox value={value} onChange={pick}>
-        <div className="relative">
-          <ListboxButton className={`${FIELD_INLINE} flex items-center gap-1.5`}>
-            <span className="truncate">{shown}</span>
-            <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-          </ListboxButton>
-          <ListboxOptions transition className="listbox-options w-auto min-w-[220px]">
-            <ListboxOption value="" className={PLAIN}>
-              {ALL_PROGRAMS}
-            </ListboxOption>
-            {stalePool && (
-              <ListboxOption value={asPool(pool)} className={HEADING}>
-                {pool}
-              </ListboxOption>
-            )}
-            {staleProgram && (
-              <ListboxOption value={asProgram(program)} className={UNDER}>
-                {program}
-              </ListboxOption>
-            )}
-            {groups.map((group) => (
-              <div key={group.pool?.value ?? ''} className="border-border mt-1 border-t pt-1">
-                {group.pool && (
-                  <ListboxOption value={asPool(group.pool.value)} className={HEADING}>
-                    {group.pool.label}
-                  </ListboxOption>
-                )}
-                {group.programs.map((option) => (
-                  <ListboxOption
-                    key={option.value}
-                    value={asProgram(option.value)}
-                    className={group.pool ? UNDER : PLAIN}
-                  >
-                    {option.label}
-                  </ListboxOption>
-                ))}
-              </div>
-            ))}
-          </ListboxOptions>
-        </div>
-      </Listbox>
-    </Field>
-  )
+  if (program !== null && program !== '' && !programs.some((p) => p.value === program)) {
+    out.push({ value: asProgram(program), label: program, level: 'indent' })
+  }
+  for (const group of groups) {
+    if (group.pool) {
+      out.push({ value: asPool(group.pool.value), label: group.pool.label, level: 'heading' })
+    }
+    for (const option of group.programs) {
+      out.push({
+        value: asProgram(option.value),
+        label: option.label,
+        ...(group.pool ? { level: 'indent' as const } : {}),
+      })
+    }
+  }
+  return out
 }
 
-const ROUNDS: readonly FilterOption[] = [
+const ROUNDS = [
   { value: '1', label: 'R1' },
   { value: '2', label: 'R2' },
   { value: '3', label: 'R3' },
 ]
+
 /**
- * Program (pools as its headings, T6) and Round chips (Decision 9; owner ruling Group 2c Q3), held
- * in the URL. No Checklist chips: under D162 there are no Posted ticks (owner, fast-follow 10-03).
- * Controls only, as one fragment: the grid's toolbar (`AidTable`'s `toolbarLead`) lays them out on
- * its own line, then Flat / By reason, then Show IDs (`ShowIdsToggle`), search and Download CSV
- * (owner rulings 10-04 late (grid follow-up)).
+ * Program (the white picker, pools as its headings, T6) and Round (the segmented well; clicking the
+ * lit round clears it, as the chips did, Decision 9; owner ruling Group 2c Q3), held in the URL. No
+ * Checklist chips: under D162 there are no Posted ticks (owner, fast-follow 10-03). Controls only, as
+ * one fragment: the grid's toolbar (`AidTable`'s `toolbarLead`) lays them out on its one row, then
+ * Flat / By reason, then Show IDs (`ShowIdsToggle`), the link chip, search and Download CSV (§5).
  */
 export function GridFiltersBar({
   groups,
@@ -171,18 +85,35 @@ export function GridFiltersBar({
   pool: string | null
   round: RoundFilter | null
   onChange: (name: GridParamName, value: string | null) => void
-  /** The Program dropdown writes both at once: one is always cleared. */
+  /** The Program picker writes both at once: one is always cleared. */
   onProgramPool: (pool: string | null, program: string | null) => void
 }) {
+  // A program wins when a link carries both: it is the narrower filter, and the one its row shows.
+  const value = program ? asProgram(program) : pool ? asPool(pool) : ALL
+  const pick = (picked: string) => {
+    if (picked.startsWith('pool:')) onProgramPool(picked.slice('pool:'.length), null)
+    else if (picked.startsWith('program:')) onProgramPool(null, picked.slice('program:'.length))
+    else onProgramPool(null, null)
+  }
+  const current = round === null ? '' : String(round)
   return (
     <>
-      <ProgramSelect groups={groups} program={program} pool={pool} onPick={onProgramPool} />
-      <ChipFilter
-        label="Round"
-        value={round === null ? null : String(round)}
-        options={ROUNDS}
-        onChange={(v) => onChange('round', v)}
-      />
+      <Labelled text="Program">
+        <AidPicker
+          label="Program"
+          value={value}
+          options={programOptions(groups, program, pool)}
+          onChange={pick}
+        />
+      </Labelled>
+      <Labelled text="Round">
+        <AidSegmented
+          label="Round"
+          value={current}
+          options={ROUNDS}
+          onChange={(v) => onChange('round', v === current ? null : v)}
+        />
+      </Labelled>
     </>
   )
 }
@@ -196,7 +127,7 @@ export function ShowIdsToggle({
   onChange: (name: GridParamName, value: string | null) => void
 }) {
   return (
-    <label className="flex items-center gap-2">
+    <label className="flex items-center gap-1.5 text-[12.5px] whitespace-nowrap">
       <input
         type="checkbox"
         checked={showIds}

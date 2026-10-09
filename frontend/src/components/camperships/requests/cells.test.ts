@@ -40,8 +40,8 @@ describe('sessionCell (§14: tiny everywhere, the full name in the title)', () =
 
   it('falls back when the row carries no session_type (an older read)', () => {
     const cell = sessionCell(gridRow({ session_name: 'Session 3' }))
-    expect(cell?.title).toBe('Session 3')
-    expect(cell?.text).not.toBe('')
+    expect(cell.title).toBe('Session 3')
+    expect(cell.text).not.toBe('')
   })
 
   it('is the dash with the unclear words when no session matched', () => {
