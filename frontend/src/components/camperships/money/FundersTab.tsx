@@ -105,7 +105,7 @@ const headerLine = (
  * Money › Funders (owner 10-08; mock q2; D58, D86, D88, D100, D105, D143, D159, D160, ruling H): the
  * descriptions registry (Sources) and the grantor directory (Grantors) as one table grouped by who
  * pays. Camp first, then each funder with its terms and season totals in a header row and its
- * CampMinder descriptions under it, then "No funder yet". Chips `?show=`; a description opens from
+ * CampMinder descriptions under it, then "No funder yet". The switcher is `?show=`; a description opens from
  * `?row=<source id>`, a funder from `?funder=<key>` (`?grantor=` is the same). What each person may
  * edit follows their permissions: Classify… / Edit… is `rules`; Set a Group… is `rules` or
  * `grantors`; the funder on a description and the funder's terms are `grantors`. Live only.
@@ -525,7 +525,7 @@ export function FundersTab({ view }: { view: AidView }) {
                   className="text-muted-foreground inline-flex flex-none cursor-help"
                   title={how}
                 >
-                  <Info className="h-[13px] w-[13px]" aria-hidden />
+                  <Info className="h-[13px] w-[13px]" />
                 </span>
               </>
             }

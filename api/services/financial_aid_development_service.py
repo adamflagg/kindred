@@ -700,7 +700,9 @@ class FinancialAidDevelopmentService:
     ) -> tuple[dict[str, Any], dict[str, Any], SourceRecord]:
         """Decision 43 for one description: its before, what changes, and the source after. `keep_group`: the group
         as shown, or a body that does not mention the group, so the families stay exactly (an incentive-only save
-        never rewrites them); an explicit null group clears them."""
+        never rewrites them); an explicit null group clears them. `groups` (several pools) writes the sorted union of
+        the families each picked pool funds; `[]` or null clears, and the pools every member reaches now, picked exactly,
+        keep the families (`_keeps`)."""
         families = list(source.implied_program_families)
         if keep_group:
             pass
