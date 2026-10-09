@@ -299,12 +299,18 @@ export function ReportTable({
           indicator={
             <>
               {column.note ? <DefRef n={column.note} /> : null}
-              {sort?.key === column.key ? (sort.dir === 'asc' ? '↑' : '↓') : null}
+              {sort?.key === column.key ? (
+                <span className="text-primary ml-0.5 font-bold">
+                  {sort.dir === 'asc' ? '↑' : '↓'}
+                </span>
+              ) : null}
             </>
           }
           className={thClass}
           title={column.title}
           buttonClassName={numeric || column.tone !== undefined ? 'justify-end' : ''}
+          // the note mark rides the label's baseline like an inline <sup> (the mock's `.cf-sort`)
+          layoutClassName="items-baseline"
           style={column.width ? { width: column.width } : undefined}
         />
       )

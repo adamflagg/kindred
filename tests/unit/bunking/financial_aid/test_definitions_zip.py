@@ -32,7 +32,8 @@ def test_the_zip_notes_read_as_the_mock_words_them() -> None:
         "Outside the US and No ZIP on file come last, under any sort."
     )
     assert BY_KEY["zip_families"].text == "Families: CampMinder households, each counted once per table."
-    assert BY_KEY["zip_geography"].term == "Small groups"
+    # reports-zip.html bolds "Small groups show as they are": the kit bolds a term only when "," follows it.
+    assert BY_KEY["zip_geography"].term == "Small groups show as they are"
     assert BY_KEY["zip_geography"].text == (
         "Small groups show as they are, a one-family ZIP and its dollars included: a row is a ZIP, never a "
         "family. Geography goes no finer than ZIP."

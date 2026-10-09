@@ -22,6 +22,8 @@ export interface SortableColumnHeaderProps {
   title?: string | undefined
   /** Classes on the inner button — padding, hover, focus ring. */
   buttonClassName?: string
+  /** The button's cross-axis alignment and gap; the default centres the arrow 4px off the label. */
+  layoutClassName?: string
 }
 
 /**
@@ -47,6 +49,7 @@ export function SortableColumnHeader({
   style,
   title,
   buttonClassName,
+  layoutClassName = 'items-center gap-1',
 }: SortableColumnHeaderProps) {
   const Host = as
   const defaultIndicator = direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : null
@@ -62,7 +65,7 @@ export function SortableColumnHeader({
       <button
         type="button"
         onClick={onSort}
-        className={`inline-flex w-full cursor-pointer items-center gap-1 bg-transparent text-left ${buttonClassName ?? ''}`}
+        className={`inline-flex w-full cursor-pointer ${layoutClassName} bg-transparent text-left ${buttonClassName ?? ''}`}
       >
         {label}
         <span aria-hidden="true">{indicator ?? defaultIndicator}</span>

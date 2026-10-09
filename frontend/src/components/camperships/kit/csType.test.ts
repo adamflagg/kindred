@@ -185,6 +185,12 @@ describe('csType carries the final design language (design-language.md)', () => 
     expect(classes(cs.CS_NOTES)).toContain('text-[11.5px]')
   })
 
+  // Preflight gives <sup> `position: relative; top: -0.5em`; with align-super that raised it twice
+  // (4px above the mock's `.cf-sup`, measured on reports-zip.html). `static` drops the second lift.
+  it('§12: the footnote mark is raised once, by align-super alone', () => {
+    expect(classes(cs.CS_SUP)).toContain('static')
+  })
+
   it('§13: a cut cell truncates', () => {
     expect(classes(cs.CS_CUT)).toEqual(expect.arrayContaining(['truncate', 'max-w-full']))
   })

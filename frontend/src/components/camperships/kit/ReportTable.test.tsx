@@ -433,6 +433,16 @@ describe('ReportTable', () => {
       expect((writeText.mock.calls[0]?.[0] ?? '').split('\n')[4]).toBe('00010\t4\t$1,200')
     })
 
+    // reports-zip.html `.cf-sort`: the note mark sits on the label ("Campers¹↓"), the arrow primary and bold, 2px off.
+    it("sets a sortable header's note mark against its label and its arrow in the primary tone", async () => {
+      renderTable({ sortable: true })
+      const button = screen.getByRole('button', { name: 'Campers' })
+      expect(button.className).toContain('items-baseline')
+      expect(button.className).not.toMatch(/\bgap-1\b/)
+      await userEvent.click(button)
+      expect(screen.getByText('↑')).toHaveClass('text-primary', 'ml-0.5', 'font-bold')
+    })
+
     it('right-aligns a sortable number header over its numbers', () => {
       renderTable({ sortable: true })
       expect(screen.getByRole('button', { name: 'Campers' }).className).toContain('justify-end')

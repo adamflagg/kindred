@@ -779,7 +779,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     ),
     Definition(
         key="zip_geography",
-        term="Small groups",
+        term="Small groups show as they are",
         text=(
             "Small groups show as they are, a one-family ZIP and its dollars included: a row is a ZIP, never a "
             "family. Geography goes no finer than ZIP."
