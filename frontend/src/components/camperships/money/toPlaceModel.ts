@@ -645,7 +645,8 @@ export function toPlaceCsvName(year: number, householdCmId: number | null): stri
 /**
  * The other ways to place a line (§8.1; D12; money-v2.html): Split… needs two candidates (on a
  * line whose suggestion is itself a split, the button reads "Edit the Split…"); Place on Another
- * Request… needs a candidate the suggestion didn't pick, and is always offered on a program
+ * Request… needs a candidate the suggestion didn't pick or a split suggestion (the final mock draws it on
+ * the Johnson split: the whole line on one request), and is always offered on a program
  * mismatch, as the mock draws it (R1-8a, coordinator 10-08: follow money-v2): there the person
  * places the line on the request they judge right, beside its evidence.
  */
@@ -658,6 +659,8 @@ export function placeChoices(line: ApiAidToPlaceLine): {
     split: line.candidates.length >= 2,
     another:
       (line.reason === 'program_mismatch' && line.candidates.length > 0) ||
+      // A split suggestion: the whole line on one of its requests is the other way (final mock).
+      suggested.size >= 2 ||
       line.candidates.some((c) => !suggested.has(c.request_id)),
   }
 }

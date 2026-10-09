@@ -117,7 +117,7 @@ export function PlaceCamperForm({
           actions={
             <EditorActions reason={`${SUGGESTS_CONFIRMS} One logged operation in History.`}>
               <button type="submit" className={CS_BTN} disabled={busy}>
-                {busy ? 'Placing…' : 'Place It'}
+                {busy ? 'Placing…' : 'Put It There'}
               </button>
               <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
                 Back

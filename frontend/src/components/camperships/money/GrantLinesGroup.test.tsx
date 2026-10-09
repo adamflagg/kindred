@@ -317,7 +317,8 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     // The white picker in the editor's face (§3, §24), the choice that depends on it shown beside it.
     await userEvent.click(within(form).getByRole('button', { name: /^Camper:/ }))
     await userEvent.click(within(form).getByRole('option', { name: 'Riley Chen' }))
-    await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
+    // The approved final mock's words for this editor's button (money-to-place.html, owner 10-09).
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(writes()[0]?.method).toBe('POST')
     expect(writes()[0]?.url).toBe('/api/financial-aid/grants/2027/placements')
@@ -489,7 +490,7 @@ describe('Another Camper… is an editor in the final grammar (§24)', () => {
         'It prices the camper’s unposted rounds with the grant; a posted amount stands.'
       )
     ).toBeInTheDocument()
-    const place = within(form).getByRole('button', { name: 'Place It' })
+    const place = within(form).getByRole('button', { name: 'Put It There' })
     const back = within(form).getByRole('button', { name: 'Back' })
     expect(place.parentElement).toBe(back.parentElement)
     expect(form.querySelector('select')).toBeNull()

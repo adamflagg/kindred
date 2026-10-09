@@ -534,7 +534,9 @@ describe('open lines and the CSV name', () => {
 
 describe('the other ways to place a line (§8.1; D12; part 1b)', () => {
   it('offers Split… with two candidates, and another request when one is left unsuggested', () => {
-    expect(placeChoices(JOHNSON_SPLIT)).toEqual({ split: true, another: false })
+    // The approved final mock (money-to-place.html, owner 10-09) draws Place on Another Request… on the
+    // Johnson split too: the whole line on one of the split's requests is the other way to place it.
+    expect(placeChoices(JOHNSON_SPLIT)).toEqual({ split: true, another: true })
     expect(placeChoices(GARCIA_WITHHELD)).toEqual({ split: true, another: true })
     expect(placeChoices(CHEN_EXACT)).toEqual({ split: false, another: false })
     // money-v2.html draws "Place on another request…" on the program-mismatch line (R1-8a).

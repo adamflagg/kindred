@@ -18,7 +18,7 @@ import {
   CS_PMETA,
 } from '../kit/csType'
 import { DefRef } from '../kit/DefinitionNotes'
-import { formatMoney } from '../kit/money'
+import { formatMoney, toCents } from '../kit/money'
 import { PlaceEditor } from './PlaceEditor'
 import { ReasonEditor } from './ReasonEditor'
 import { ReclassifyEditor } from './ReclassifyEditor'
@@ -202,7 +202,9 @@ export function ToPlaceOpenRow({
           ) : line.suggestion.parts.length > 1 ? (
             <>
               <p>
-                <b>{`Split ${formatMoney(line.unplaced)}`}</b>
+                {/* What the parts add to: the server builds them over the whole line, so a partly
+                    placed line's unplaced figure would understate them (scan #3117 A). */}
+                <b>{`Split ${formatMoney(line.suggestion.parts.reduce((sum, p) => sum + toCents(p.amount), 0) / 100)}`}</b>
               </p>
               {line.suggestion.parts.map((p) => (
                 <p

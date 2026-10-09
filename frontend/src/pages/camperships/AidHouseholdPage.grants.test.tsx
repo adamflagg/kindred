@@ -173,7 +173,7 @@ describe("the household page's grant buttons (rulings:340)", () => {
     expect(
       within(form).getByText('✓ the program the aid application asked for')
     ).toBeInTheDocument()
-    await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(writes()[0]).toEqual({
       url: '/api/financial-aid/grants/2027/placements',
@@ -191,7 +191,7 @@ describe("the household page's grant buttons (rulings:340)", () => {
     const table = await openGrantsTab()
     await userEvent.click(await within(table).findByRole('button', { name: 'Place on a Camper…' }))
     const form = screen.getByTestId('place-camper-form')
-    await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
     expect(
       await within(form).findByText(/This line has its camper now: someone placed it/)
     ).toBeInTheDocument()

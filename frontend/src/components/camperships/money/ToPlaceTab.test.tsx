@@ -15,6 +15,7 @@ import { ToPlaceTab } from './ToPlaceTab'
 import { SOURCES } from './sourcesFixtures'
 import {
   CHEN_EXACT,
+  JOHNSON_SPLIT,
   RILEY_EXACT,
   SAM_RECLASSIFIED,
   TO_PLACE,
@@ -240,6 +241,26 @@ describe('Money › To place (§8.1)', () => {
         }),
       },
     ])
+  })
+
+  it('heads a split with what its parts add to, not what is still unplaced (scan #3117 A)', async () => {
+    // The server builds a split's parts over the whole line; on a partly placed line the
+    // unplaced figure is smaller than the parts' sum.
+    reads = [
+      {
+        ...TO_PLACE,
+        groups: TO_PLACE.groups.map((g) => ({
+          ...g,
+          lines: g.lines.map((l) =>
+            l.transaction_cm_id === JOHNSON_SPLIT.transaction_cm_id ? { ...l, unplaced: 1000 } : l
+          ),
+        })),
+      },
+    ]
+    renderTab()
+    const row = await openLine(JOHNSON_LINE)
+    expect(within(row).getByText('Split $3,620')).toBeInTheDocument()
+    expect(within(row).queryByText('Split $1,000')).toBeNull()
   })
 
   it('never sticks after "this now locks…": the panel shows the new preview and confirms it', async () => {
@@ -973,8 +994,11 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     const johnson = await openLine(JOHNSON_LINE)
     expect(within(johnson).getByRole('button', { name: 'Confirm Split' })).toBeInTheDocument()
     expect(within(johnson).getByRole('button', { name: 'Edit the Split…' })).toBeInTheDocument()
-    // Both candidates are in the suggestion: no other request to place it on.
-    expect(within(johnson).queryByRole('button', { name: 'Place on Another Request…' })).toBeNull()
+    // The approved final mock (money-to-place.html, owner 10-09) offers the whole line on one of the
+    // split's requests as well.
+    expect(
+      within(johnson).getByRole('button', { name: 'Place on Another Request…' })
+    ).toBeInTheDocument()
     const garcia = await openLine(GARCIA_LINE)
     expect(within(garcia).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
     expect(within(garcia).getByRole('button', { name: 'Split…' })).toBeInTheDocument()
@@ -1496,6 +1520,23 @@ describe('Money › To place › the outside-grant group (M5)', () => {
     const camp = screen.getByText('No request behind this line')
     expect(camp.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByText(GARCIA_GRANT)).toBeInTheDocument()
+  })
+
+  it('counts the grant heading over the lines the search leaves, as the camp-aid sections do (scan #3117 D)', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    await screen.findByText('2 lines · $2,300.50')
+    await userEvent.type(screen.getByRole('searchbox'), 'Chen')
+    expect(await screen.findByText('1 line · $800.50')).toBeInTheDocument()
+  })
+
+  it('ends a suggestion title without a stray separator when there is no evidence (scan #3117 C)', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    await screen.findByText('Outside grant posted to the family')
+    const titled = [...document.querySelectorAll('td[title]')].map((td) => td.getAttribute('title'))
+    expect(titled.some((t) => t?.startsWith('No suggestion'))).toBe(true)
+    expect(titled.filter((t) => t?.endsWith(' · '))).toEqual([])
   })
 
   it('the one Download CSV carries the grant lines too, each marked with its group (final audit O8)', async () => {

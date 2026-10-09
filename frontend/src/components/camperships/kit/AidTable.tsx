@@ -1046,7 +1046,7 @@ export function AidTable<Row>({
                   toggle: () => toggleFold(g),
                 })}
                 {!folded && (
-                  <div ref={boxRef} className={cardClass}>
+                  <div className={cardClass}>
                     <table className={TABLE} style={{ minWidth }}>
                       {colgroup}
                       {renderHead({ all, toggle: toggleGroup })}
@@ -1100,7 +1100,11 @@ export function AidTable<Row>({
       )}
 
       {sectionMode ? (
-        sectionNodes
+        // One measured box around every section (scan #3117 B): a ref on each card left it null once
+        // the last section folded, and the widths stopped following the window.
+        <div ref={boxRef} className="space-y-2">
+          {sectionNodes}
+        </div>
       ) : (
         <div ref={boxRef} data-aid-scroll-box={scrollBox ? '' : undefined} className={cardClass}>
           <table className={TABLE} style={{ minWidth }}>

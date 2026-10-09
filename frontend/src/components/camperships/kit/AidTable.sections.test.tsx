@@ -4,11 +4,11 @@
  * the checks, the ↑/↓ walk and the CSV stay the one table's. Also the search a page may hold itself,
  * so a second table on the page answers the same box. Fictional rows.
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { AidTable, type AidColumn, type AidGrouping } from './AidTable'
 
@@ -161,5 +161,44 @@ describe('a search the page holds (query, onQueryChange)', () => {
     expect(screen.getAllByText('Liam Garcia')).toHaveLength(2)
     expect(screen.queryByText('Emma Johnson')).toBeNull()
     expect(within(screen.getByTestId('second')).getByText('Liam Garcia')).toBeInTheDocument()
+  })
+})
+
+describe('AidTable sections: one measured box (scan #3117 B)', () => {
+  it('keeps measuring the opened row after the last section folds', async () => {
+    let width = 900
+    const spy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return this.tagName === 'DIV' ? width : 0
+    })
+    try {
+      render(
+        <MemoryRouter>
+          <AidTable<Row>
+            rows={ROWS}
+            columns={COLUMNS}
+            rowKey={(r) => r.id}
+            csvFilename="x.csv"
+            groupings={GROUPINGS}
+            defaultGrouping="reason"
+            renderDetail={(r) => <span data-testid="detail">{r.camper} detail</span>}
+            groupSections={(g) => (
+              <button type="button" onClick={g.toggle}>
+                {g.heading}
+              </button>
+            )}
+          />
+        </MemoryRouter>
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'No request' }))
+      width = 700
+      fireEvent(window, new Event('resize'))
+      await userEvent.click(screen.getByText('Emma Johnson'))
+      const line = screen.getByTestId('detail').parentElement as HTMLElement
+      expect(line.style.width).toBe('700px')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

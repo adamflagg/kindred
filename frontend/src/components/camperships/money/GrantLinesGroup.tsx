@@ -17,7 +17,7 @@ import { evidenceLines, suggestionCell, suggestionShort } from '../grants/placeM
 import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { AidTable, type AidColumn } from '../kit/AidTable'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_BTN, CS_BTN2, CS_LINK_CELL } from '../kit/csType'
+import { CS_BTN, CS_BTN2, CS_LINK_CELL, CS_SMALL } from '../kit/csType'
 import { familyLabel } from '../kit/familyLabel'
 import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -116,11 +116,13 @@ function GrantLinesBody({
         value: (n) => suggestionCell(n, sessions),
         title: (n) => {
           const facts = evidenceLines(n).join(' · ')
-          return `${suggestionCell(n, sessions)} · ${facts}`
+          return facts === ''
+            ? suggestionCell(n, sessions)
+            : `${suggestionCell(n, sessions)} · ${facts}`
         },
         render: (n) =>
           n.suggestion === null ? (
-            <span className="text-muted-foreground">{suggestionShort(n, sessions)}</span>
+            <span className={CS_SMALL}>{suggestionShort(n, sessions)}</span>
           ) : (
             <span className="font-bold">{suggestionShort(n, sessions)}</span>
           ),
@@ -161,7 +163,9 @@ function GrantLinesBody({
     [onDone]
   )
 
-  const total = needs.reduce((sum, n) => sum + Math.round(n.grant.amount * 100), 0) / 100
+  // The heading counts what the search leaves, as the camp-aid sections do (scan #3117 D).
+  const shown = matching === null ? needs : needs.filter((n) => matching.has(needsKey(n)))
+  const total = shown.reduce((sum, n) => sum + Math.round(n.grant.amount * 100), 0) / 100
   // The group's own bulk button, on its heading row, right: the single, exact suggestions, or the
   // checked lines with Clear (mock `gright`).
   const right = !canWork ? undefined : ticked.length > 0 ? (
@@ -196,7 +200,7 @@ function GrantLinesBody({
     <section>
       <GroupHeading
         title="Outside grant posted to the family"
-        meta={`${String(needs.length)} ${needs.length === 1 ? 'line' : 'lines'} · ${formatMoney(total)}`}
+        meta={`${String(shown.length)} ${shown.length === 1 ? 'line' : 'lines'} · ${formatMoney(total)}`}
         folded={folded}
         onToggle={() => setFolded((f) => !f)}
         right={right}
