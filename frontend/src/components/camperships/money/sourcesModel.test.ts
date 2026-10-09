@@ -25,10 +25,15 @@ import {
   incentiveWords,
   KEEP_GROUPS,
   lastChangeWords,
-  needsGroupWords,
   NO_GROUP,
   offersNoGroup,
   parseShow,
+  classifyPrograms,
+  coversWords,
+  familiesOfPools,
+  fundsWords,
+  poolsOfFamilies,
+  poolsOfGroups,
   programsChanged,
   programWords,
   readDraft,
@@ -70,10 +75,6 @@ describe('the registry in words', () => {
       'dev@example.com · Oct 2'
     )
     expect(lastChangeWords(null)).toBe('')
-  })
-
-  it('counts Needs a group both ways, as ruling H words it', () => {
-    expect(needsGroupWords(SOURCES_2027.sources)).toBe('Needs a group 2 · 1 with lines this season')
   })
 
   it('offers the families the registry already uses, never "unclassified" (P-12)', () => {
@@ -246,5 +247,76 @@ describe('source family words (server label first)', () => {
       { value: 'camp_fa', label: 'Camp aid' },
       { value: 'other_outside', label: 'Outside grants' },
     ])
+  })
+})
+
+// Final UX (money-funders.html, owner 10-09 star 19, rev1): Edit... picks the season's reporting groups
+// (pools), several at once, instead of eight program families.
+describe('reporting groups as pools (star 19)', () => {
+  const POOLS = poolsOfGroups(FUNDING_SOURCES_2027.groups)
+  // The rules name their programs in this order; "Covers" follows it, not the alphabet.
+  const NAMES = { summer: 'Summer', quest: 'Quest', teen: 'Teen', family_camp: 'Family Camp' }
+
+  it('reads a pool as its group with the families the season sends to it', () => {
+    expect(POOLS.map((p) => [p.key, p.label, p.families])).toEqual([
+      ['pool_a', 'Pool A', ['quest', 'summer', 'teen']],
+      ['pool_b', 'Pool B', ['family_camp']],
+    ])
+    // A server that sent no families (an older build) leaves a pool with none, never undefined.
+    expect(poolsOfGroups([{ key: 'p', label: 'P', kind: 'summer' }])[0]?.families).toEqual([])
+  })
+
+  it('finds the pools a set of families reaches, in the rules order, and none for a family no pool funds', () => {
+    expect(poolsOfFamilies(['summer'], POOLS)).toEqual(['pool_a'])
+    expect(poolsOfFamilies(['family_camp', 'summer'], POOLS)).toEqual(['pool_a', 'pool_b'])
+    expect(poolsOfFamilies(['other', 'family_school'], POOLS)).toEqual([])
+    expect(poolsOfFamilies([], POOLS)).toEqual([])
+  })
+
+  it('writes the union of the picked pools families, sorted, whatever order they were picked in', () => {
+    expect(familiesOfPools(['pool_b', 'pool_a'], POOLS)).toEqual([
+      'family_camp',
+      'quest',
+      'summer',
+      'teen',
+    ])
+    expect(familiesOfPools(['pool_b'], POOLS)).toEqual(['family_camp'])
+    expect(familiesOfPools([], POOLS)).toEqual([])
+  })
+
+  it('keeps the families exactly as they were while the picked pools are the pools they already reach', () => {
+    // Finance's narrower setting (D100: "specific programs within them") survives a save that does not move the groups.
+    expect(classifyPrograms(['pool_a'], POOLS, ['summer'])).toEqual(['summer'])
+    expect(classifyPrograms(['pool_a', 'pool_b'], POOLS, ['summer'])).toEqual([
+      'family_camp',
+      'quest',
+      'summer',
+      'teen',
+    ])
+    // Un-picking back to where it opened restores what it opened with.
+    expect(classifyPrograms(['pool_a'], POOLS, ['summer', 'other'])).toEqual(['summer', 'other'])
+    expect(classifyPrograms([], POOLS, ['summer'])).toEqual([])
+  })
+
+  it('says what the picked groups cover, one pool plainly and several with each pool named', () => {
+    expect(coversWords(['pool_a'], POOLS, NAMES)).toBe('Covers: Summer, Quest, Teen')
+    expect(coversWords(['pool_a', 'pool_b'], POOLS, NAMES)).toBe(
+      'Covers: Summer, Quest, Teen (Pool A) · Family Camp (Pool B)'
+    )
+    expect(coversWords([], POOLS, NAMES)).toBe('No group: the source will need one.')
+  })
+
+  it('words the opened row in pool names, not program families', () => {
+    expect(fundsWords(['summer'], POOLS, NAMES)).toEqual({
+      lead: 'Reporting group',
+      names: 'Pool A',
+      covers: 'Summer, Quest, Teen',
+    })
+    expect(fundsWords(['summer', 'family_camp'], POOLS, NAMES)).toEqual({
+      lead: 'Reporting groups',
+      names: 'Pool A, Pool B',
+      covers: null,
+    })
+    expect(fundsWords([], POOLS, NAMES)).toBeNull()
   })
 })

@@ -45,6 +45,17 @@ const SOURCES = '/api/financial-aid/sources?'
 const GROUPS = '/api/financial-aid/reports/2027/funding-sources'
 const GRANTORS = '/api/financial-aid/grantors'
 
+// The registry's four Funders notes, numbered as the server sends them (bunking/financial_aid/definitions.py).
+const DEFINITIONS = {
+  surface: 'money-sources',
+  notes: [
+    ['funder', 'Funder'],
+    ['incentive', 'Incentive or need-based'],
+    ['reporting_group', 'Reporting group'],
+    ['source_lines', 'Lines this season'],
+  ].map(([key, term], i) => ({ key, n: i + 1, term, text: `${term}: the note's words.` })),
+}
+
 let sourceReads: ApiAidSources[] = []
 let fundingReads: ApiAidFundingSources[] = []
 let grantorReads: ApiAidGrantors[] = []
@@ -104,6 +115,7 @@ beforeEach(() => {
       const next = fundingReads.length > 1 ? fundingReads.shift() : fundingReads[0]
       return Promise.resolve(json(next ?? FUNDING_SOURCES_2027))
     }
+    if (path.includes('/definitions')) return Promise.resolve(json(DEFINITIONS))
     if (path.includes('/rules/')) return Promise.resolve(json(RULES_2027))
     // Each registry read takes the next answer; the last one repeats.
     const next = sourceReads.length > 1 ? sourceReads.shift() : sourceReads[0]
@@ -167,17 +179,48 @@ describe('the grouped list (mock q2)', () => {
     ])
     expect(rowByKey('group:none')).toHaveAttribute('data-row-tone', 'warn')
     expect(rowByKey('group:camp')).toHaveAttribute('data-row-tone', 'group')
+    // Final UX (money-funders.html): a header reads name, terms, then the muted details, as three runs of
+    // one spanning cell (the live row ran the whole sentence together and overprinted the next cell).
     const camp = rowByKey('group:camp')
     expect(
-      within(camp).getByText(
-        "The camp's own aid · counts toward the budget · no terms or contacts · 2 descriptions"
-      )
+      within(camp).getByText("The camp's own aid · counts toward the budget")
     ).toBeInTheDocument()
+    expect(within(camp).getByText('no terms or contacts · 2 descriptions')).toBeInTheDocument()
+    const none = rowByKey('group:none')
     expect(
-      within(rowByKey('group:none')).getByText(
-        "Pick each description's funder; classify an unclassified one first · 2 descriptions"
-      )
+      within(none).getByText("Pick each description's funder; classify an unclassified one first")
     ).toBeInTheDocument()
+    expect(within(none).getByText('2 descriptions')).toBeInTheDocument()
+  })
+
+  it('draws a header as one spanning cell up to the totals, whole in its title (owner: the long name overprinted)', async () => {
+    // Replaces #3109's pin on the run-over (the header's words in the Source family cell): the name and its
+    // terms own columns 1 to 6 and cut at the totals, with every word in a native title (design-language §13).
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    for (const key of ['group:camp', 'funder:grantor_a', 'funder:grantor_k', 'group:none']) {
+      const cells = rowByKey(key).querySelectorAll('td')
+      expect(cells, key).toHaveLength(3)
+      expect(cells[0], key).toHaveAttribute('colspan', '6')
+      expect(cells[0]?.className, key).toContain('overflow-hidden')
+    }
+    expect(rowByKey('funder:grantor_a').querySelector('td')).toHaveAttribute(
+      'title',
+      'Grantor A · Not full coverage · eligibility: First and second summers · 1 contact'
+    )
+    // Each header reads: caret, the bold name, then the muted terms.
+    const first = rowByKey('funder:grantor_a').querySelector('td')
+    expect(first?.textContent?.startsWith('▸')).toBe(true)
+    expect(within(rowByKey('funder:grantor_a')).getByText('Grantor A')).toHaveClass('font-bold')
+  })
+
+  it('indents a description under its funder with its own caret and a title for the whole name', async () => {
+    renderTab()
+    const row = (await screen.findByText('Grantor A grant')).closest('tr')
+    if (row === null) throw new Error('no row')
+    const first = row.querySelector('td')
+    expect(first?.textContent?.startsWith('▸')).toBe(true)
+    expect(first).toHaveAttribute('title', 'Grantor A grant')
   })
 
   it("a funder's header holds its name, terms, eligibility, contacts and the season's totals", async () => {
@@ -226,17 +269,19 @@ describe('the grouped list (mock q2)', () => {
   it('has no Paid by, Grantor or Last change column, no purpose line, and headers that do not sort', async () => {
     renderTab()
     await screen.findByText('Grantor A grant')
-    const names = screen.getAllByRole('columnheader').map((h) => h.textContent)
-    expect(names).toEqual([
-      'Funder, then its descriptions in CampMinder',
-      'Source family',
-      'Incentive or need-based',
-      'Counts as aid',
-      'Counts toward the budget',
-      'Reporting group',
-      'Lines this season',
-      '$ this season',
-    ])
+    // The note marks (§12) arrive with the definitions read: 1 Funder, 2 Incentive, 3 Reporting group, 4 Lines.
+    await waitFor(() =>
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+        'Funder, then its descriptions in CampMinder1',
+        'Source family',
+        'Incentive or need-based2',
+        'Counts as aid',
+        'Counts toward the budget',
+        'Reporting group3',
+        'Lines this season4',
+        '$ this season4',
+      ])
+    )
     expect(
       within(screen.getByRole('table')).queryAllByRole('button', { name: /season|group/ })
     ).toEqual([])
@@ -244,14 +289,18 @@ describe('the grouped list (mock q2)', () => {
     expect(screen.queryByText(/Who pays for camperships/)).toBeNull()
   })
 
-  it('counts the chips and filters in the URL: Needs a group both ways, No funder yet', async () => {
+  it('counts the switcher and filters in the URL: Needs a group both ways, No funder yet', async () => {
+    // Final UX (design-language §18, owner: "shorten the filter choices"): the grey switcher with the counts
+    // inside, "All 5 · Needs a group 2 · No funder yet 2"; the long words moved into each choice's title.
     renderTab()
-    expect(
-      await screen.findByRole('button', { name: 'All 5 funders · 6 descriptions' })
-    ).toBeInTheDocument()
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Needs a group 2 · 1 with lines this season' })
+    const all = await screen.findByRole('button', { name: 'All 5' })
+    expect(all).toHaveAttribute('title', 'All 5 funders · 6 descriptions')
+    const needs = screen.getByRole('button', { name: 'Needs a group 2' })
+    expect(needs).toHaveAttribute(
+      'title',
+      '2 outside sources with no group · 1 with lines this season'
     )
+    await userEvent.click(needs)
     expect(screen.getByTestId('where')).toHaveTextContent('?show=needs-group')
     expect(screen.queryByText('Grantor A grant')).toBeNull()
     expect(screen.getByText('Grantor C full-ride program')).toBeInTheDocument()
@@ -261,11 +310,29 @@ describe('the grouped list (mock q2)', () => {
     expect(screen.queryByText('Grantor C full-ride program')).toBeNull()
   })
 
+  it('keeps search, New Funder… and Download CSV on the switcher`s one row, CSV last, with no sentence row', async () => {
+    // Owner (feedback 5): "fit search and download csv onto the same line". The per-role sentence moved into
+    // an (i) whose title holds it (answers §1a), so nothing sits between the toolbar and the table.
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    const bar = document.querySelector('[data-aid-toolbar]')
+    if (!(bar instanceof HTMLElement)) throw new Error('no toolbar')
+    expect(within(bar).getByRole('button', { name: 'All 5' })).toBeInTheDocument()
+    expect(within(bar).getByRole('checkbox', { name: 'Show retired' })).toBeInTheDocument()
+    expect(within(bar).getByLabelText('Search')).toBeInTheDocument()
+    const buttons = within(bar).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent).slice(-2)).toEqual(['New Funder…', 'Download CSV'])
+    const sentence =
+      'Click a funder for its terms and contacts, or a description to classify it or set its group. Every change is logged with who and why.'
+    expect(screen.queryByText(sentence)).toBeNull()
+    expect(within(bar).getByTitle(sentence)).toBeInTheDocument()
+  })
+
   it('shows retired funders on request, struck, and keeps them out of the table until then', async () => {
     renderTab()
     await screen.findByText('Grantor A grant')
     expect(screen.queryByText('Grantor F')).toBeNull()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Show retired funders' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Show retired' }))
     expect(screen.getByTestId('where')).toHaveTextContent('?retired=all')
     expect(screen.getByText('Grantor F')).toHaveClass('line-through')
   })
@@ -359,9 +426,8 @@ describe('the registrar (view and casework): read only', () => {
     renderTab()
     await screen.findByText('Grantor A grant')
     const header = rowByKey('group:none')
-    expect(
-      within(header).getByText('Descriptions no funder claims yet · 2 descriptions')
-    ).toBeInTheDocument()
+    expect(within(header).getByText('Descriptions no funder claims yet')).toBeInTheDocument()
+    expect(within(header).getByText('2 descriptions')).toBeInTheDocument()
     expect(within(header).queryByText(/Pick each description/)).toBeNull()
   })
 
@@ -370,7 +436,8 @@ describe('the registrar (view and casework): read only', () => {
     const panelA = await openFunder('grantor_a')
     expect(within(panelA).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('button', { name: 'New Funder…' })).toBeNull()
-    expect(screen.getByText(/^Read only for you/)).toBeInTheDocument()
+    // The per-role sentence is the (i)'s title now, not a line above the table (answers §1a).
+    expect(screen.getByTitle(/^Read only for you/)).toBeInTheDocument()
     expect(screen.queryByText(/^Totals only/)).toBeNull()
   })
 })
@@ -993,13 +1060,14 @@ describe('development (summary, grantors; no view)', () => {
     expect(screen.queryByRole('link')).toBeNull()
     for (const { url } of calls()) {
       expect(url).toMatch(
-        /^\/api\/financial-aid\/(sources|grantors|reports\/2027\/funding-sources)/
+        /^\/api\/financial-aid\/(sources|grantors|definitions|reports\/2027\/funding-sources)/
       )
     }
     // Development's header says what it may do: it does not classify.
     expect(
-      within(rowByKey('group:none')).getByText("Pick each description's funder · 2 descriptions")
+      within(rowByKey('group:none')).getByText("Pick each description's funder")
     ).toBeInTheDocument()
+    expect(within(rowByKey('group:none')).getByText('2 descriptions')).toBeInTheDocument()
   })
 
   it('does not say totals only to someone who can see the families', async () => {

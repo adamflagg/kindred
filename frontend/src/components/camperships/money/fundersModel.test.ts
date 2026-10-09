@@ -9,13 +9,13 @@ import type { ApiAidSourceRow } from '../../../types/api-types'
 import { GRANTOR_A, GRANTOR_C, GRANTOR_K, GRANTORS_ALL } from '../grants/grantorDirectoryFixtures'
 import {
   buildFunders,
-  chipWords,
   funderHeaderWords,
   funderIdOfParam,
   funderParamOfId,
   funderSearchExtra,
   funderTerms,
   noFunderWords,
+  switcherOptions,
   parseFundersShow,
   campWords,
   sourceFamilyWords,
@@ -150,8 +150,24 @@ describe('buildFunders: chips', () => {
   it('counts funders (Camp included), descriptions, needs a group and no funder yet', () => {
     const { counts } = buildFunders({ ...ALL, show: 'all', showRetired: false })
     expect(counts).toEqual({ funders: 5, descriptions: 6, noFunder: 2 })
-    expect(chipWords.all(counts)).toBe('All 5 funders · 6 descriptions')
-    expect(chipWords.noFunder(counts)).toBe('No funder yet 2')
+    // Final UX (§18, owner "shorten the filter choices"): the switcher says "All 5 · Needs a group 2 ·
+    // No funder yet 2" and keeps the long words in each choice's title. It replaces the chip words, which put
+    // "· 6 descriptions" and "· 1 with lines this season" on the buttons.
+    expect(switcherOptions(counts, SOURCES_2027.sources)).toEqual([
+      { value: 'all', label: 'All', count: 5, title: 'All 5 funders · 6 descriptions' },
+      {
+        value: 'needs-group',
+        label: 'Needs a group',
+        count: 2,
+        title: '2 outside sources with no group · 1 with lines this season',
+      },
+      {
+        value: 'no-funder',
+        label: 'No funder yet',
+        count: 2,
+        title: '2 descriptions no funder claims yet',
+      },
+    ])
   })
 
   it('counts a retired funder once it is shown', () => {
@@ -160,9 +176,9 @@ describe('buildFunders: chips', () => {
   })
 
   it('says one funder and one description in the singular', () => {
-    expect(chipWords.all({ funders: 1, descriptions: 1, noFunder: 0 })).toBe(
-      'All 1 funder · 1 description'
-    )
+    const [all, , none] = switcherOptions({ funders: 1, descriptions: 1, noFunder: 1 }, [])
+    expect(all?.title).toBe('All 1 funder · 1 description')
+    expect(none?.title).toBe('1 description no funder claims yet')
   })
 
   it('the counts do not move with the chip chosen', () => {
@@ -228,20 +244,25 @@ describe('header words', () => {
     expect(funderHeaderWords(two).detail).toBe('2 contacts')
   })
 
-  it("says Camp's and No funder yet's own words, with the description count", () => {
-    expect(campWords(3)).toBe(
-      "The camp's own aid · counts toward the budget · no terms or contacts · 3 descriptions"
-    )
-    expect(campWords(1)).toMatch(/· 1 description$/)
-    expect(noFunderWords(2, true, true)).toBe(
-      "Pick each description's funder; classify an unclassified one first · 2 descriptions"
-    )
-    expect(noFunderWords(2, false, true)).toBe("Pick each description's funder · 2 descriptions")
+  it("says Camp's and No funder yet's own words, with the description count muted beside them", () => {
+    // Final UX (money-funders.html): the header's terms and its muted details are two runs, so the cell can
+    // set the details in muted ink and cut at the totals.
+    expect(campWords(3)).toEqual({
+      terms: "The camp's own aid · counts toward the budget",
+      detail: 'no terms or contacts · 3 descriptions',
+    })
+    expect(campWords(1).detail).toMatch(/· 1 description$/)
+    expect(noFunderWords(2, true, true)).toEqual({
+      terms: "Pick each description's funder; classify an unclassified one first",
+      detail: '2 descriptions',
+    })
+    expect(noFunderWords(2, false, true).terms).toBe("Pick each description's funder")
     // Final audit O10: someone who cannot pick a funder is not told to; the line only says what is here.
-    expect(noFunderWords(2, false, false)).toBe(
-      'Descriptions no funder claims yet · 2 descriptions'
-    )
-    expect(noFunderWords(1, true, false)).toBe('Descriptions no funder claims yet · 1 description')
+    expect(noFunderWords(2, false, false)).toEqual({
+      terms: 'Descriptions no funder claims yet',
+      detail: '2 descriptions',
+    })
+    expect(noFunderWords(1, true, false).detail).toBe('1 description')
   })
 })
 

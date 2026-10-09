@@ -63,10 +63,36 @@ export interface FunderCounts {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${String(n)} ${n === 1 ? one : many}`
 
-export const chipWords = {
-  all: (c: FunderCounts) =>
-    `All ${plural(c.funders, 'funder')} · ${plural(c.descriptions, 'description')}`,
-  noFunder: (c: FunderCounts) => `No funder yet ${String(c.noFunder)}`,
+/**
+ * The switcher's choices (design-language §18; money-funders.html): short words with the counts inside,
+ * the long words in each title. Ruling H's "1 with lines this season" sits in Needs a group's title.
+ */
+export function switcherOptions(
+  c: FunderCounts,
+  sources: readonly ApiAidSourceRow[]
+): Array<{ value: FundersShow; label: string; count: number; title: string }> {
+  const needs = sources.filter((r) => r.needs_group === true)
+  const live = needs.filter((r) => (r.lines ?? 0) > 0)
+  return [
+    {
+      value: 'all',
+      label: 'All',
+      count: c.funders,
+      title: `All ${plural(c.funders, 'funder')} · ${plural(c.descriptions, 'description')}`,
+    },
+    {
+      value: 'needs-group',
+      label: 'Needs a group',
+      count: needs.length,
+      title: `${plural(needs.length, 'outside source')} with no group · ${String(live.length)} with lines this season`,
+    },
+    {
+      value: 'no-funder',
+      label: 'No funder yet',
+      count: c.noFunder,
+      title: `${plural(c.noFunder, 'description')} no funder claims yet`,
+    },
+  ]
 }
 
 function sum(
@@ -193,13 +219,17 @@ export function funderHeaderWords(g: ApiAidGrantor): { terms: string; detail: st
   return { terms: funderTerms(g), detail: parts.join(' · ') }
 }
 
-export const campWords = (n: number) =>
-  `The camp's own aid · counts toward the budget · no terms or contacts · ${plural(n, 'description')}`
+export const campWords = (n: number) => ({
+  terms: "The camp's own aid · counts toward the budget",
+  detail: `no terms or contacts · ${plural(n, 'description')}`,
+})
 
-export const noFunderWords = (n: number, canClassify: boolean, canPickFunder: boolean) =>
-  canPickFunder
-    ? `Pick each description's funder${canClassify ? '; classify an unclassified one first' : ''} · ${plural(n, 'description')}`
-    : `Descriptions no funder claims yet · ${plural(n, 'description')}`
+export const noFunderWords = (n: number, canClassify: boolean, canPickFunder: boolean) => ({
+  terms: canPickFunder
+    ? `Pick each description's funder${canClassify ? '; classify an unclassified one first' : ''}`
+    : 'Descriptions no funder claims yet',
+  detail: plural(n, 'description'),
+})
 
 /** The mock's "—" for a no, not the word. */
 export const yesNo = (value: boolean) => (value ? 'yes' : '—')

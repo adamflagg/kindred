@@ -91,6 +91,41 @@ describe('AidTable rowTone', () => {
   })
 })
 
+describe('AidTable toneSpan', () => {
+  // Design language §5 (money-funders.html): a funder's long name and its terms line run across the columns up
+  // to the totals. The live row let the words spill over the next cells and overprint; now the first cell
+  // owns those columns (colSpan), the cells it covers are not drawn, and the words cut with a title.
+  const THREE: Array<AidColumn<Row>> = [
+    { key: 'name', header: 'Name', width: 150, pinned: true, value: (r) => r.name },
+    { key: 'kind', header: 'Kind', width: 80, value: (r) => r.kind },
+    { key: 'count', header: 'Count', width: 80, value: (r) => r.count },
+  ]
+  const span = (r: Row) => (r.kind === 'head' ? 2 : undefined)
+
+  it('gives a tone row`s first cell the columns it spans and draws no cell under them', () => {
+    renderTable({ columns: THREE, rowTone: tone, toneSpan: span })
+    const cells = rowOf('h1').querySelectorAll('td')
+    expect(cells).toHaveLength(2)
+    expect(cells[0]).toHaveAttribute('colspan', '2')
+    expect(cells[0]?.textContent).toBe('Fund A')
+    expect(cells[1]?.textContent).toBe('3')
+  })
+
+  it('leaves rows that ask for no span, and tables that give none, as they were', () => {
+    renderTable({ columns: THREE, rowTone: tone, toneSpan: span })
+    expect(rowOf('i1').querySelectorAll('td')).toHaveLength(3)
+    expect(rowOf('h2').querySelectorAll('td')).toHaveLength(3)
+    document.body.innerHTML = ''
+    renderTable({ columns: THREE, rowTone: tone })
+    expect(rowOf('h1').querySelectorAll('td')).toHaveLength(3)
+  })
+
+  it('never spans a row that is not a tone row', () => {
+    renderTable({ columns: THREE, toneSpan: () => 2 })
+    expect(rowOf('h1').querySelectorAll('td')).toHaveLength(3)
+  })
+})
+
 describe('AidTable sortable', () => {
   it('sorts on a header click by default', async () => {
     renderTable()
@@ -124,5 +159,21 @@ describe('AidTable sortable', () => {
       r.getAttribute('data-row-key')
     )
     expect(keys).toEqual(['h1', 'i1', 'h2', 'i2'])
+  })
+})
+
+describe('AidTable belowToolbar', () => {
+  // Design language §24 (money-funders.html): New Funder… opens its page-level editor between the toolbar
+  // and the table, as the mock draws it, not above the toolbar.
+  it('draws the page-level editor between the toolbar and the table, and nothing when none is given', () => {
+    renderTable({ belowToolbar: <div data-testid="page-editor">New funder</div> })
+    const editor = screen.getByTestId('page-editor')
+    const toolbar = document.querySelector('[data-aid-toolbar]')
+    const table = document.querySelector('table')
+    expect(toolbar?.compareDocumentPosition(editor)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(editor.compareDocumentPosition(table as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    document.body.innerHTML = ''
+    renderTable()
+    expect(screen.queryByTestId('page-editor')).toBeNull()
   })
 })
