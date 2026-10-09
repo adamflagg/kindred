@@ -428,11 +428,11 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
   })
 })
 
-// Owner fast-follow (10-03), opened-row-options.html arrangement 3 "Side by side": in the grid the
-// editor is the right panel of the opened row. One line holds the ask, Award / Stage, the note and
-// the row's next step; the receipt, the payer shares and the key hint sit on the line under it. The
-// household is named once, by the detail line beside it, so the panel has no caption.
-describe('RequestEditor: the panel layout (the grid, side by side)', () => {
+// The grid's opened-row editor (owner fast-follow 10-03; full width under the detail text since §24,
+// owner 10-09). One line holds the ask, Award / Stage, the note, Save Ask / Cancel and any `trailing`;
+// the receipt, the payer shares and the key hint sit on the line under it. The detail line names the
+// household, so the panel has no caption.
+describe('RequestEditor: the panel layout (the grid)', () => {
   const STEP = <button type="button">Check Accepted</button>
   const top = () => screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
   const foot = () => document.querySelector('[data-editor-foot]') as HTMLElement

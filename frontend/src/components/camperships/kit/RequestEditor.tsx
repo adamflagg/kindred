@@ -143,10 +143,9 @@ interface RequestEditorProps {
   readonly showProblem?: boolean | undefined
   /**
    * 'row' under a highlighted table row; 'card' in place on the household page's request card (D22);
-   * 'panel' the Requests grid's opened row, beside its detail text (owner fast-follow 10-03,
-   * opened-row-options.html arrangement 3): the ask, Award / Stage, the note and `trailing` on one
-   * line, the receipt, shares and key hint under it, and no caption (the detail line names the
-   * household once).
+   * 'panel' the Requests grid's opened row, full width under its detail text (§24, owner 10-09): the
+   * ask, Award / Stage, the note, Save Ask and Cancel (and `trailing`) on one line, the receipt,
+   * shares and key hint under it, and no caption (the detail line names the household).
    */
   readonly layout?: 'row' | 'card' | 'panel' | undefined
   /** 'panel' only: the row's next step, at the end of the first line. */
@@ -250,7 +249,7 @@ interface Baseline {
 
 /**
  * The one shared request editor (§4.6; D22): an editor row under a highlighted table row, the
- * right-hand panel of the Requests grid's opened row, or in place on the household page's request
+ * full-width editor in the Requests grid's opened row, or in place on the household page's request
  * card.
  * - While typing it shows the computed award, the limit that bound it (the receipt's one-line
  *   form), the stage change, the recomputed payer shares and both CampMinder ids (D27).

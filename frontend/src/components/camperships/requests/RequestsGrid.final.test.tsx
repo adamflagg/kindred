@@ -123,6 +123,22 @@ describe('a household-level request in the Camper column (§15)', () => {
     )
   })
 
+  // A household request with no label and no family name still has a link to open the household:
+  // the dash camperLabel gives, never an empty anchor.
+  it('draws a dash link when the household has neither a label nor a family name', () => {
+    render(
+      <Grid
+        rows={[
+          { ...HOUSEHOLD, household_label: '', household_label_tiebreak: '', family_name: '' },
+        ]}
+      />
+    )
+    expect(screen.getByRole('link', { name: '—' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000001?year=2027'
+    )
+  })
+
   it('draws a camper as before, with no icon', () => {
     render(<Grid rows={[ROW_EMMA]} />)
     const cell = screen.getByRole('link', { name: 'Emma Johnson' }).closest('td') as HTMLElement

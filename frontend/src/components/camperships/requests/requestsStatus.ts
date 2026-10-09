@@ -14,6 +14,8 @@ export interface TickResult {
    * headed "Sent" rather than claimed as ticked.
    */
   readonly someAlreadyTicked: boolean
+  /** The server wrote nothing (doneWords' "Nothing changed"): not a success, so no ✓ (#2951 M1). */
+  readonly nothingChanged?: boolean
 }
 
 export interface SaveFailure {
@@ -68,6 +70,9 @@ export function requestsStatus(input: StatusInput): RequestsStatus | null {
     // A fresh result stays until dismissed or the next tick starts; rows still checked ride after it.
     const still = input.selected > 0 ? ` · ${String(input.selected)} still checked` : ''
     const words = `${resultWords(input.result)}${still}`
+    if (input.result.nothingChanged === true) {
+      return { text: words, title: words, tone: 'warn', dismiss: 'result' }
+    }
     return { text: `✓ ${words}`, title: words, tone: 'ok', dismiss: 'result' }
   }
   if (input.selected > 0) {

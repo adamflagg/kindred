@@ -6,7 +6,7 @@ import type { MarchFile } from './useMarchFile'
 /**
  * The March File's item in Download CSV's menu (`csvMenu`; variant A), on Requests › Needs an offer with
  * the Round 1 chip lit, for casework on a live read (the page decides). Its hint is the one line of
- * words the file needs; nothing is drawn under the toolbar until a click.
+ * words the file needs; its result says itself in the toolbar's status slot (requestsStatus).
  */
 export function MarchFileItem({ march }: { march: MarchFile }) {
   return (

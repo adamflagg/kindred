@@ -156,7 +156,7 @@ describe('REQUEST_VIEWS (§6.2)', () => {
   })
 
   // Batch 4 (owner LOCKED, grid-layout-options.html#or=i): Needs attention is frozen on the right,
-  // as wide as the widest chip on screen plus 18px, never under 84px.
+  // as wide as the widest chip on screen plus 18px; §8 raised the floor to its header's width, 112px.
   it('freezes Needs attention on the right, fitted to its chips', () => {
     expect(GRID_COLUMNS.attention.pinnedRight).toBe(true)
     expect(GRID_COLUMNS.attention.fitContent).toEqual({ pad: 18, min: 112 })

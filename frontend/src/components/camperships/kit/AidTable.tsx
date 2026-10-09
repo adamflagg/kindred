@@ -116,8 +116,8 @@ export interface AidColumn<Row> {
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
   /**
-   * A line drawn in this column's footer cell when it has no `total` (spec §12.2: "$X outside the
-   * budget" in Needs attention's footer). Null draws nothing.
+   * A line drawn in this column's footer cell when it has no `total` (spec §12.2: Requests' "incl. $X
+   * outside the budget" in the Requested by footer). Null draws nothing.
    */
   readonly footerNote?: ((rows: readonly Row[]) => ReactNode) | undefined
   /**

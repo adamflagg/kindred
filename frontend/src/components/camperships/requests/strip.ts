@@ -40,10 +40,6 @@ export const EXCEPTION_BADGES: readonly RequestViewKey[] = [
 /**
  * The strip's words, each in a native title on the element it explains (design-language §6; owner
  * 1a/1b: no sentence row that comes and goes). The legend line that said all of this at once is gone.
- *
- * Session unclear: the request's session is 0 because registration settles it on no one session
- * (financial_aid_session_resolver: the family is enrolled in none of the answer's program, or in
- * several the answer's text does not tell apart). It resolves on enrollment, or by staff.
  */
 const NARROWS = 'The lens narrows every count on the strip.'
 export function lensTitle(lens: RequestLens): string {
@@ -55,6 +51,11 @@ export function lensTitle(lens: RequestLens): string {
 export const stageTitle = (label: string): string =>
   `${label}: stages run left to right, per round.`
 
+/**
+ * Session unclear: the request's session is 0 because registration settles it on no one session
+ * (financial_aid_session_resolver: the family is enrolled in none of the answer's program, or in
+ * several the answer's text does not tell apart). It resolves on enrollment, or by staff.
+ */
 export const BADGE_TITLES: Readonly<Record<string, string>> = {
   holds:
     "On hold: a hold stops the request at any stage until it is released. The row's Needs attention chip says which.",

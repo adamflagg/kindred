@@ -68,11 +68,17 @@ const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage')
 const RequestsNotForDevelopment = lazy(
   () => import('./pages/camperships/RequestsNotForDevelopment')
 )
-// A person without financial_aid.view (the development persona) sees an explaining card, not a dead end.
+// The development persona (financial_aid.summary without .view: programAccess.ts) sees an explaining
+// card, not a dead end. Anyone without either still gets the denied page, and the card keeps its own
+// page boundary like every lazy route.
 const REQUESTS_FALLBACK = (
-  <Suspense fallback={<PageSkeleton />}>
-    <RequestsNotForDevelopment />
-  </Suspense>
+  <RequirePermission permission={Permission.FINANCIAL_AID_SUMMARY}>
+    <ErrorBoundary>
+      <Suspense fallback={<PageSkeleton />}>
+        <RequestsNotForDevelopment />
+      </Suspense>
+    </ErrorBoundary>
+  </RequirePermission>
 )
 const AidSeasonPage = lazy(() => import('./pages/camperships/AidSeasonPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))

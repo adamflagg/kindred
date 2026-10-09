@@ -90,6 +90,12 @@ describe('BulkConfirmDialog (§4.10)', () => {
   it('is a wide, short dialog: the names in two columns, not a tall list (§24)', () => {
     open()
     expect(screen.getByTestId('bulk-confirm-names')).toHaveClass('columns-2')
+    // A height-capped multi-column list grows sideways into extra columns; the box around it scrolls.
+    expect(screen.getByTestId('bulk-confirm-names')).not.toHaveClass('max-h-48')
+    expect(screen.getByTestId('bulk-confirm-names').parentElement).toHaveClass(
+      'max-h-48',
+      'overflow-y-auto'
+    )
     expect(screen.getByTestId('bulk-confirm-names').closest('.max-w-2xl')).not.toBeNull()
   })
 

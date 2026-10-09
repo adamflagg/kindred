@@ -163,11 +163,11 @@ function stepOf(
 }
 
 /**
- * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6), laid
- * out as opened-row-options.html arrangement 3 (owner fast-follow, 10-03; the editor no longer sits
- * beside it, §24). The text: the chip and the full needs-attention text (attention.ts's, the server's own message for a
- * check or hold), then Requested by (T3: the name only, "—" when the server can't name one), the
- * household link (the household is named once, here) and CM ✓ in full. No Person id (owner, (c)).
+ * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6). The
+ * text: the chip and the full needs-attention text (attention.ts's, the server's own message for a
+ * check or hold), then, for a household-level request, "Household request (Family Camp)" and its
+ * label (§15), Requested by (T3: the name only, "—" when the server can't name one), the household
+ * link and CM ✓ in full. No Person id (owner, (c)).
  * The next step: a link to where it is done, plain words, or (Full GO) a button for the row's own
  * Accepted tick, drawn only for someone who can tick and a row the tick takes.
  *
@@ -193,7 +193,7 @@ export function RequestDetailLine({
   onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
   /** The hand Posted tick (#2996; casework on a live read); without it Mark Posted draws nothing. */
   onMarkPosted?: MarkPosted | undefined
-  /** The row's editor, handed the step to end its line with (null where it draws no editor). */
+  /** The row's editor, drawn full width under the text (§24); handed null, the step stays on the text's line. */
   editor?: ((step: ReactNode) => ReactNode) | undefined
 }) {
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)

@@ -105,17 +105,21 @@ export function BulkConfirmDialog({
         <p className="font-medium">
           {plan.rows.length === 0 ? 'Nothing to check' : tickWords(plan)}
         </p>
-        <ul
-          data-testid="bulk-confirm-names"
-          className="text-muted-foreground max-h-48 columns-2 gap-x-6 overflow-y-auto text-xs"
-        >
-          {plan.rows.map((r) => (
-            <li key={`${r.requestId}:${String(r.round)}`}>
-              {r.label} · Round {r.round}
-              {r.hidden ? ' (hidden by the search or filters)' : ''}
-            </li>
-          ))}
-        </ul>
+        {/* The box scrolls, not the list: a height-capped multi-column list grows sideways into
+            extra columns past the dialog's edge instead of scrolling. */}
+        <div className="max-h-48 overflow-y-auto">
+          <ul
+            data-testid="bulk-confirm-names"
+            className="text-muted-foreground columns-2 gap-x-6 text-xs"
+          >
+            {plan.rows.map((r) => (
+              <li key={`${r.requestId}:${String(r.round)}`}>
+                {r.label} · Round {r.round}
+                {r.hidden ? ' (hidden by the search or filters)' : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
         {plan.skipped.length > 0 && (
           <p className={AMBER_NOTE}>Nothing to check on {namesOf(plan.skipped)}: left out.</p>
         )}

@@ -47,11 +47,19 @@ vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => approved,
 }))
 // The page reads the registry's notes to number its marked headers: stable fixtures, no auth provider needed.
-vi.mock('../../hooks/camperships/useAidDefinitions', () => {
-  // No registry notes here: the marks on headers have their own tests (RequestsGrid.final.test.tsx).
-  const value = { entries: [], notes: [], numberOf: () => null, isPending: false, error: null }
-  return { useAidDefinitions: () => value }
-})
+// No registry notes here: the marks on headers have their own tests (RequestsGrid.final.test.tsx).
+// One object per test, never per render, so the page's memos stay stable.
+const DEFINITIONS_READY = {
+  entries: [],
+  notes: [],
+  numberOf: () => null,
+  isPending: false,
+  error: null as Error | null,
+}
+let definitions = DEFINITIONS_READY
+vi.mock('../../hooks/camperships/useAidDefinitions', () => ({
+  useAidDefinitions: () => definitions,
+}))
 const notesProps = vi.fn()
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: (props: unknown) => {
@@ -180,6 +188,7 @@ const pickProgram = async (name: string) => {
 const viewLink = (label: string) => screen.getByRole('link', { name: new RegExp(`^${label} `) })
 
 beforeEach(() => {
+  definitions = DEFINITIONS_READY
   approved = { data: APPROVED_RULES_2026 }
   keyAsk.mockClear()
   grid = { data: LIVE, isLoading: false, error: null }
@@ -218,6 +227,29 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(notesProps.mock.lastCall?.[0]).toMatchObject({
       extra: [expect.stringMatching(/^Outside: the part of a round/)],
     })
+  })
+
+  // The footer's outside mark points at the outside note, which the notes list only once the registry
+  // has loaded: while it is out, or failed with nothing loaded, the footer carries no number.
+  it('marks the outside footer note only once the notes it points at are listed', () => {
+    const outside = gridRow({
+      request_id: 'reqoutside00001',
+      camper_name: 'Avery Testcamper',
+      total_decided: 3675,
+      rounds: [roundOut(1, 'posted', { decided: 3675, outside_budget: 3675 })],
+    })
+    grid = { data: { ...LIVE, rows: [...LIVE.rows, outside] }, isLoading: false, error: null }
+    const footerNote = () => screen.getByText(/^incl\. .* outside the budget/)
+    const { unmount } = renderAt('/aid/requests')
+    expect(footerNote().querySelector('sup')).toHaveTextContent('1')
+    unmount()
+    definitions = { ...DEFINITIONS_READY, isPending: true }
+    const second = renderAt('/aid/requests')
+    expect(footerNote().querySelector('sup')).toBeNull()
+    second.unmount()
+    definitions = { ...DEFINITIONS_READY, error: new Error('down') }
+    renderAt('/aid/requests')
+    expect(footerNote().querySelector('sup')).toBeNull()
   })
 
   // #2994: whether CM ✓ shows is the read's `ticked_season`, not a frontend copy of the first year.
@@ -440,8 +472,8 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   })
 
   // Owner 10-06, option (a): Season's Posted / Accepted figures open on a hidden posted= / accepted=
-  // param. No chip or control: a line says what the list is, like the live line, with Show All.
-  it('narrows to a Season figure, says so on a line, and Show All clears it (owner 10-06)', async () => {
+  // param. A toolbar chip says what the list is (§6), like Live only, and its ✕ clears it.
+  it('narrows to a Season figure, says so on a chip, and its ✕ clears it (owner 10-06)', async () => {
     renderAt('/aid/requests?accepted=1')
     expect(within(toolbar()).getByText('Accepted in Round 1')).toBeInTheDocument()
     // Olivia Chen was accepted in Round 1 and is in Round 2 now: the figure still counts her.
@@ -467,7 +499,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText('Emma Johnson')).toBeNull()
   })
 
-  it('shows only the requests of one History operation, with its line and Show All (spec §9.8)', async () => {
+  it('shows only the requests of one History operation, with its chip and ✕ (spec §9.8)', async () => {
     operation = {
       data: {
         ...DETAIL_POSTED,
@@ -553,7 +585,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
       request_ids: requestIds,
     })
 
-    it('shows exactly the requests the count counts, with its line and Show All', async () => {
+    it('shows exactly the requests the count counts, with its chip and ✕', async () => {
       reportIdsRead = { data: ids([GRID_ROWS[0]!.request_id]), error: null }
       renderAt(COUNT)
       expect(screen.getByText('Statistics count · 1')).toBeInTheDocument()
@@ -782,7 +814,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(screen.getByText(APPEAL_REFUSAL_R1)).toBeInTheDocument()
   })
 
-  it('opens the editor inside the detail line, beside its text, with no household caption of its own', async () => {
+  it('opens the editor inside the detail line, under its text, with no household caption of its own', async () => {
     renderAt('/aid/requests')
     await userEvent.click(sessionCell('Olivia Chen'))
     const detail = document.querySelector('[data-aid-detail]') as HTMLElement
@@ -1469,6 +1501,14 @@ describe('ticks (§4.10, §5.2)', () => {
       await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
       expect(await screen.findByText(/Couldn't save Olivia Chen's Round 2 ask/)).toBeInTheDocument()
       expect(screen.queryByText('1 checked')).toBeNull()
+    })
+
+    // CodeRabbit on #3111: Clear changes the selection like a checkbox, so it is an exit too (A18).
+    it('saves the typed ask first when the selection is cleared', async () => {
+      await typeAppealWithSamuelSelected()
+      await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+      expect(keyAsk).toHaveBeenCalledTimes(1)
+      expect(screen.queryByText(/checked/)).toBeNull()
     })
 
     it('opens nothing when that save fails, and the failure stays listed', async () => {

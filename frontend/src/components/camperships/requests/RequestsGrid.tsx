@@ -19,7 +19,7 @@ import { TICK_BUTTON } from '../kit/kitStyles'
 import { IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
-import { camperTitle, householdLabelOf, sessionCell } from './cells'
+import { camperLabel, camperTitle, householdLabelOf, sessionCell } from './cells'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import {
   listOutside,
@@ -87,7 +87,7 @@ interface RequestsGridProps {
   readonly searchWidth?: number | undefined
   /** Extra items in Download CSV's menu (the March file on Needs an offer, R1); sets the split button. */
   readonly csvMenu?: ReactNode
-  /** A status line under the toolbar (the March file's result). */
+  /** The toolbar's one status slot (§5–6): a failed save, the checked count, a bulk result or the March File's. */
   readonly toolbarStatus?: ReactNode
   /** Passed to the table: runs when the CSV downloads. */
   readonly onCsvDownload?: (() => void) | undefined
@@ -96,9 +96,8 @@ interface RequestsGridProps {
   /** What a fold belongs to (the page's lens and view); a change opens every group. Default: the view. */
   readonly foldScope?: string | undefined
   /**
-   * The opened row's editor (owner fast-follow 10-03, arrangement 3): drawn inside the detail line,
-   * as its right panel on a row that takes an ask, handed the row's next step to end its line with
-   * (null on a row that takes none, where the step stays in the detail line).
+   * The opened row's editor: drawn inside the detail line, full width under its text (§24, owner
+   * 10-09). It is handed null for the step: the row's next step stays in the detail line.
    */
   readonly renderEditor?:
     ((row: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => ReactNode) | undefined
@@ -208,7 +207,7 @@ function renderFor(
         if (household === null) {
           return (
             <HouseholdLink row={row} links={links} className={`${NAME_LINK} block truncate`}>
-              {row.camper_name}
+              {camperLabel(row)}
             </HouseholdLink>
           )
         }

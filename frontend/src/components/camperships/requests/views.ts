@@ -328,8 +328,8 @@ export const CM_CHECK_HELP = `CampMinder check: did the money posted in CampMind
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   // T3 (LOCKED): who filed the aid form, by name only (#2993's `requested_by`; null when the server
   // can't name one person). It replaced Family, links to the household and sorts by last name.
-  // Takes the spare width (batch 4): Needs attention is now only as wide as its chips, so in a
-  // narrow view the gap opens here, beside it, and never at 130 or under.
+  // Takes the spare width (batch 4): in a narrow view the gap opens here, beside Needs attention,
+  // and never under 150 (§8: wide enough for the name and the split · N chip).
   requestedBy: {
     header: 'Requested by',
     width: 150,
@@ -489,8 +489,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
       return on === null ? null : daysBetween(on, today)
     },
   },
-  // Frozen on the right and as wide as the widest chip on screen plus 18px, never under 84px (owner
-  // LOCKED batch 4, round 6). The cell is the chip; the full text is in the opened row's detail line.
+  // Frozen on the right and as wide as the widest chip on screen plus 18px (owner LOCKED batch 4,
+  // round 6). The cell is the chip; the full text is in its title and the opened row's detail line.
   attention: {
     header: 'Needs attention',
     pinnedRight: true,

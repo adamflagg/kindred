@@ -183,9 +183,13 @@ export default function AidRequestsPage() {
       ),
     [noteEntries, registryNotes]
   )
+  // AidDefinitionNotes lists the outside note only once the registry has loaded (or a refetch failed
+  // over loaded notes); until then a mark would point at a note that isn't there.
+  const notesListed =
+    !definitions.isPending && !(definitions.error && definitions.notes.length === 0)
   const outsideMark = useMemo(
-    () => ({ n: definitions.notes.length + 1, title: OUTSIDE_FOOTNOTE }),
-    [definitions.notes.length]
+    () => (notesListed ? { n: definitions.notes.length + 1, title: OUTSIDE_FOOTNOTE } : undefined),
+    [notesListed, definitions.notes.length]
   )
   const counts = useMemo(
     () => (lensed ? viewCounts(lensed, filters, live) : null),
@@ -251,8 +255,8 @@ export default function AidRequestsPage() {
     [canWork, leave, onHighlight]
   )
   // Bulk ticks (§4.10). Ticks persist across a search, a view and a filter (owner ruling
-  // 2026-10-02): the selection is request ids, and what a tick does is chosen at the bar, not by the
-  // view, so a row ticked anywhere means the same thing everywhere.
+  // 2026-10-02): the selection is request ids, and what a tick does is chosen at the toolbar's Check
+  // Accepted…, not by the view, so a row ticked anywhere means the same thing everywhere.
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
   const [plan, setPlan] = useState<TickPlan | null>(null)
   const [result, setResult] = useState<TickResult | null>(null)
@@ -330,6 +334,7 @@ export default function AidRequestsPage() {
         words,
         lines: (plan?.rows ?? []).map(tickedLine),
         someAlreadyTicked: out.unchanged > 0,
+        nothingChanged: out.written === 0,
       })
       setPlan(null)
     },
@@ -344,8 +349,8 @@ export default function AidRequestsPage() {
       leaveThen(null, () => setParams({ pool: nextPool, program: nextProgram })),
     [leaveThen, setParams]
   )
-  // A Season figure's Show All (interim, owner 10-06): the figure its line names goes; the other
-  // filters keep their own controls and lines.
+  // A Season figure chip's ✕ (§6; owner 10-06): the figure goes; the other filters keep their own
+  // controls and chips.
   const clearFigure = useCallback(
     () =>
       leaveThen(null, () =>
@@ -563,7 +568,7 @@ export default function AidRequestsPage() {
               type="button"
               className={CS_LINK_SM}
               title="Uncheck every row"
-              onClick={() => setSelected(new Set())}
+              onClick={() => changeSelected(new Set())}
             >
               Clear
             </button>

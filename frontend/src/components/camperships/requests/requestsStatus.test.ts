@@ -99,4 +99,23 @@ describe('requestsStatus', () => {
     )
     expect(requestsStatus({ ...NONE, result })?.tone).toBe('ok')
   })
+
+  // #2951 M1, the mock's "nothing" result: a tick the server wrote nothing for is not a success, so no
+  // ✓ and no green; it still lists what was sent and can be dismissed.
+  it('says a tick that changed nothing without a check mark, in warn', () => {
+    const s = requestsStatus({
+      ...NONE,
+      result: {
+        words: 'Nothing changed: 1 was already checked',
+        lines: ['Emma Johnson R1'],
+        someAlreadyTicked: true,
+        nothingChanged: true,
+      },
+    })
+    expect(s).toMatchObject({
+      text: 'Nothing changed: 1 was already checked. Sent: Emma Johnson R1',
+      tone: 'warn',
+      dismiss: 'result',
+    })
+  })
 })
