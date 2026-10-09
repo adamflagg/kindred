@@ -98,9 +98,10 @@ export function standingWords(row: ApiAidGrantRow): string {
 }
 
 /**
- * The muted line under where a row stands: a commitment's date ("committed Apr 2 · entered by
- * hand"); a line known after Round 1 posted, as grants-v2.html's Register draws it ("after the offer
- * · extra for the family", the owner's 10-08 filter mock, R5-1); else "".
+ * The words beside where a row stands, for the CSV, the search and the opened row (the one-line
+ * cell no longer draws them; its title says them, ★18): a commitment's date ("committed Apr 2 ·
+ * entered by hand"); a line known after Round 1 posted ("after the offer · extra for the family",
+ * the owner's 10-08 filter mock, R5-1); else "".
  */
 export function standingNote(row: ApiAidGrantRow): string {
   if (row.kind !== 'commitment') {
