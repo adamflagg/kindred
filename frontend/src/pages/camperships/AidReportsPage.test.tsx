@@ -99,27 +99,6 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(screen.getByText('Permission denied')).toBeInTheDocument()
   })
 
-  it.each([
-    ['/aid/reports/funding-sources?year=2027', '/aid/money/funders?year=2027'],
-    [
-      '/aid/reports/grantors?year=2027&as_of=2027-03-08',
-      '/aid/money/funders?year=2027&as_of=2027-03-08',
-    ],
-    [
-      '/aid/reports/development/zip?year=2027&as_of=2027-03-08',
-      '/aid/reports/zip-codes?year=2027&as_of=2027-03-08',
-    ],
-    ['/aid/reports/development/funding-sources?year=2027', '/aid/money/funders?year=2027'],
-    ['/aid/reports/development/grantors?year=2027', '/aid/money/funders?year=2027'],
-    ['/aid/reports/development/nonsense?year=2027', '/aid/reports/development?year=2027'],
-    ['/aid/reports/development?view=zip&year=2027', '/aid/reports/zip-codes?year=2027'],
-    ['/aid/reports/development?year=2027&view=grantors', '/aid/money/funders?year=2027'],
-    ['/aid/reports/development?view=funding-sources&year=2027', '/aid/money/funders?year=2027'],
-  ])('redirects the old address %s to %s', (from, to) => {
-    renderAt(from)
-    expect(screen.getByTestId('where').textContent).toBe(to)
-  })
-
   it('shows the four tabs in order and the Statistics body, with no views bar', () => {
     renderAt('/aid/reports/statistics')
     const names = ['Statistics', 'Year over year', 'Development', 'ZIP codes']
@@ -149,13 +128,6 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     renderAt('/aid/reports/year-over-year')
     expect(screen.getByText('Year over year body')).toBeInTheDocument()
     expect(screen.queryByText('Statistics body')).toBeNull()
-  })
-
-  it('redirects the old Programs link to Statistics by session, keeping the season and as-of', () => {
-    renderAt('/aid/reports/programs?year=2027&as_of=2027-03-08')
-    expect(screen.getByTestId('where')).toHaveTextContent(
-      '/aid/reports/statistics?year=2027&as_of=2027-03-08&rows=session'
-    )
   })
 
   it('shows development the report on its own tab (D65)', () => {

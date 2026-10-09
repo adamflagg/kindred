@@ -189,11 +189,11 @@ describe('buildFunders: the chips filter', () => {
     expect(ids(rows)).toEqual(['group:none', REG_GRANTOR_E_NEW.id, REG_UNCLASSIFIED.id])
   })
 
-  it('parses ?show=, taking the old unclassified chip as No funder yet', () => {
+  it('parses ?show=', () => {
     expect(parseFundersShow(null)).toBe('all')
     expect(parseFundersShow('needs-group')).toBe('needs-group')
     expect(parseFundersShow('no-funder')).toBe('no-funder')
-    expect(parseFundersShow('unclassified')).toBe('no-funder')
+    expect(parseFundersShow('unclassified')).toBe('all')
     expect(parseFundersShow('nonsense')).toBe('all')
   })
 })

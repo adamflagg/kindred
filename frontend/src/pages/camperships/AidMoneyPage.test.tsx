@@ -176,13 +176,6 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     renderAt('/aid/money/funders')
     expect(screen.getByText('Funders body')).toBeInTheDocument()
   })
-
-  it('aliases the old sources tab to funders, keeping the query string', () => {
-    renderAt('/aid/money/sources?row=s1000001&year=2027')
-    expect(screen.getByTestId('where')).toHaveTextContent(
-      '/aid/money/funders?row=s1000001&year=2027'
-    )
-  })
 })
 
 describe('the Money band subtitle (coordinator 2026-10-08)', () => {

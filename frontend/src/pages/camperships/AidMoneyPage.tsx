@@ -1,11 +1,11 @@
 import { Landmark } from 'lucide-react'
 import { useMemo } from 'react'
-import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
+import { Navigate, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
-import { householdParam, MONEY_TAB_ALIASES } from '../../components/camperships/money/moneyTabs'
+import { householdParam } from '../../components/camperships/money/moneyTabs'
 import { LedgerTab } from '../../components/camperships/money/LedgerTab'
 import { FundersTab } from '../../components/camperships/money/FundersTab'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
@@ -35,7 +35,6 @@ export default function AidMoneyPage() {
   // `?household=<cm_id>`: To place scoped to one family (D26; P-8), from a line's "Only This
   // Family ›" or the grid's and household page's "Place It in Money › To Place ›" (ruling C).
   const householdCmId = householdParam(params.get('household'))
-  const { search } = useLocation()
   const { hasPermission } = usePermissions()
   const year = useYear()
   const asOf = useAidAsOf()
@@ -46,9 +45,6 @@ export default function AidMoneyPage() {
   const campAid = useAidToPlace(null)
   const grants = useAidGrants()
   const placeCount = toPlaceCount(campAid.data?.open_count, grants.data?.needs_camper.length)
-  // The old Sources tab is Funders now; links keep their `?row=`.
-  const alias = tab === undefined ? undefined : MONEY_TAB_ALIASES[tab]
-  if (alias !== undefined) return <Navigate to={`${MONEY.path}/${alias}${search}`} replace />
   const resolved = resolveAidTab(MONEY, tab, { hasPermission })
   if (resolved.kind === 'denied') return <PermissionDeniedPage />
   if (resolved.kind === 'first') {
