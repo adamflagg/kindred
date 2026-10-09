@@ -254,3 +254,20 @@ describe('the toolbar the page fills (§5)', () => {
     expect((screen.getByRole('searchbox').parentElement as HTMLElement).style.width).toBe('180px')
   })
 })
+
+describe("the opened row's detail line (§15)", () => {
+  it('says "Household request (Family Camp): label" before Requested by, for a household request only', () => {
+    const { unmount } = render(
+      <Grid rows={[HOUSEHOLD]} extra={{ highlighted: HOUSEHOLD.request_id }} />
+    )
+    const detail = document.querySelector('[data-aid-detail]') as HTMLElement
+    // Flex children: the words are separate elements with no text between them.
+    expect(detail.textContent).toContain(
+      'Household request (Family Camp):Mia & Noah Johnson·Requested by'
+    )
+    expect(within(detail).getByText('Mia & Noah Johnson').tagName).toBe('B')
+    unmount()
+    render(<Grid rows={[ROW_EMMA]} extra={{ highlighted: ROW_EMMA.request_id }} />)
+    expect(document.querySelector('[data-aid-detail]')).not.toHaveTextContent('Household request')
+  })
+})

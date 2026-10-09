@@ -5,6 +5,7 @@
  * 2026-10-02, posted-tick investigation option B).
  */
 import type { ApiAidGridRow, ApiAidRound, ApiAidWriteOut } from '../../../types/api-types'
+import { camperLabel, sessionCell } from './cells'
 
 export type TickAction = 'accepted'
 
@@ -71,8 +72,8 @@ export function acceptedTarget(row: ApiAidGridRow): { readonly round: 1 | 2 | 3 
   return n === null ? null : { round: n }
 }
 
-export const nameOf = (row: ApiAidGridRow) =>
-  row.camper_name !== '' ? row.camper_name : row.family_name
+/** The camper, else the household's label (§15), else the family name. */
+export const nameOf = (row: ApiAidGridRow) => camperLabel(row)
 
 /**
  * What a tick would write on these rows as they stand now. Called at the click, never later.
@@ -88,7 +89,7 @@ export function tickPlan(
   for (const row of rows) seen.set(nameOf(row), (seen.get(nameOf(row)) ?? 0) + 1)
   const labelOf = (row: ApiAidGridRow) =>
     (seen.get(nameOf(row)) ?? 0) > 1 && row.session_name !== ''
-      ? `${nameOf(row)} (${row.session_name})`
+      ? `${nameOf(row)} (${sessionCell(row).text})`
       : nameOf(row)
 
   const ticks: TickRow[] = []

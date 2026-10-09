@@ -9,8 +9,6 @@ import {
   STRIP_COUNT_WATCH,
   STRIP_COUNT_ZERO,
   STRIP_EXCEPTIONS,
-  STRIP_LEGEND_LENS,
-  STRIP_LEGEND_LINE,
   STRIP_LENS,
   STRIP_LENS_ON,
   STRIP_LENS_UNDER,
@@ -21,12 +19,13 @@ import {
 } from '../kit/kitStyles'
 import { FoldedBadges } from './FoldedBadges'
 import {
-  APPEALS_LEGEND,
+  BADGE_TITLES,
   badgeTone,
   foldTone,
+  lensTitle,
   PIPELINE_STAGES,
   shownBadges,
-  STRIP_LEGEND,
+  stageTitle,
   type RequestLens,
 } from './strip'
 import { useBadgeFold } from './useBadgeFold'
@@ -98,9 +97,17 @@ export function RequestViewNav({
     href: string,
     className: string,
     state: 'on' | 'lens' | undefined,
-    body: ReactNode
+    body: ReactNode,
+    title: string
   ) => (
-    <Link key={key} to={href} onClick={open(href)} className={className} data-state={state}>
+    <Link
+      key={key}
+      to={href}
+      onClick={open(href)}
+      className={className}
+      data-state={state}
+      title={title}
+    >
       {body}
     </Link>
   )
@@ -125,7 +132,8 @@ export function RequestViewNav({
       on ? 'on' : undefined,
       <>
         {view.label} <i>{count === undefined ? '—' : count.requests}</i>
-      </>
+      </>,
+      BADGE_TITLES[key] ?? view.label
     )
   }
 
@@ -143,7 +151,8 @@ export function RequestViewNav({
               filled ? 'on' : picked ? 'lens' : undefined,
               <>
                 {label} <Count count={lensCounts?.get(key)} tone={filled ? 'ink' : 'watch'} />
-              </>
+              </>,
+              lensTitle(key)
             )
           })}
         </span>
@@ -160,7 +169,8 @@ export function RequestViewNav({
               <>
                 {view.label}{' '}
                 <Count count={counts?.get(key)} tone={watched ? (on ? 'ink' : 'watch') : 'todo'} />
-              </>
+              </>,
+              stageTitle(view.label)
             )
           })}
         </span>
@@ -191,15 +201,6 @@ export function RequestViewNav({
           </span>
         </span>
       </nav>
-      <p className={STRIP_LEGEND_LINE} data-testid="strip-legend">
-        {STRIP_LEGEND}
-        {lens === 'appeals' && (
-          <>
-            {' '}
-            <b className={STRIP_LEGEND_LENS}>{APPEALS_LEGEND}</b>
-          </>
-        )}
-      </p>
     </div>
   )
 }

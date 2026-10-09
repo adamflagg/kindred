@@ -12,7 +12,9 @@ import {
   resolveStrip,
   shownBadges,
   shownView,
-  STRIP_LEGEND,
+  BADGE_TITLES,
+  lensTitle,
+  stageTitle,
   stripCsvName,
 } from './strip'
 import {
@@ -43,10 +45,35 @@ describe('the views strip (T4; RULED P1, P2, P4)', () => {
   })
 })
 
-describe('the legend (owner 2026-10-04)', () => {
-  it('explains Session unclear in one clause: no one enrolled session matches the request yet', () => {
-    expect(STRIP_LEGEND).toBe(
-      'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count · Session unclear: no one enrolled session matches the request yet.'
+// Final language §6 (owner 1a/1b: "I don't like when the nav pushes down further only sometimes"): the
+// strip's legend line is gone, and each clause rides in a native title on the element it explains.
+describe('the strip’s words live in titles (§6; answers 1a, 1b)', () => {
+  it('says what each lens is, and that it narrows every count', () => {
+    expect(lensTitle('all')).toBe('All: every request. The lens narrows every count on the strip.')
+    expect(lensTitle('appeals')).toBe(
+      'Appeals: requests with a Round 2 or later ask. The lens narrows every count on the strip.'
+    )
+  })
+
+  it('says how a pipeline stage reads', () => {
+    expect(stageTitle('Needs an offer')).toBe(
+      'Needs an offer: stages run left to right, per round.'
+    )
+  })
+
+  it('carries each badge’s warning, including Session unclear’s', () => {
+    expect(Object.keys(BADGE_TITLES).sort()).toEqual([...EXCEPTION_BADGES].sort())
+    expect(BADGE_TITLES['session_not_settled']).toBe(
+      'Session unclear: no one enrolled session matches the request yet. It settles when the camper enrolls, or use Settle Session… on the household page.'
+    )
+    expect(BADGE_TITLES['holds']).toBe(
+      "On hold: a hold stops the request at any stage until it is released. The row's Needs attention chip says which."
+    )
+    expect(BADGE_TITLES['duplicates']).toBe(
+      'Duplicates: two requests look like the same camper and session. Open the household to keep one.'
+    )
+    expect(BADGE_TITLES['to_reverse']).toBe(
+      'To reverse: cancelled, withdrawn or a duplicate, and camp aid is still live in CampMinder. Reverse it there.'
     )
   })
 })

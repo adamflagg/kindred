@@ -38,13 +38,33 @@ export const EXCEPTION_BADGES: readonly RequestViewKey[] = [
 ]
 
 /**
+ * The strip's words, each in a native title on the element it explains (design-language §6; owner
+ * 1a/1b: no sentence row that comes and goes). The legend line that said all of this at once is gone.
+ *
  * Session unclear: the request's session is 0 because registration settles it on no one session
  * (financial_aid_session_resolver: the family is enrolled in none of the answer's program, or in
  * several the answer's text does not tell apart). It resolves on enrollment, or by staff.
  */
-export const STRIP_LEGEND =
-  'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count · Session unclear: no one enrolled session matches the request yet.'
-export const APPEALS_LEGEND = 'Showing appeals only.'
+const NARROWS = 'The lens narrows every count on the strip.'
+export function lensTitle(lens: RequestLens): string {
+  return lens === 'all'
+    ? `All: every request. ${NARROWS}`
+    : `Appeals: requests with a Round 2 or later ask. ${NARROWS}`
+}
+
+export const stageTitle = (label: string): string =>
+  `${label}: stages run left to right, per round.`
+
+export const BADGE_TITLES: Readonly<Record<string, string>> = {
+  holds:
+    "On hold: a hold stops the request at any stage until it is released. The row's Needs attention chip says which.",
+  duplicates:
+    'Duplicates: two requests look like the same camper and session. Open the household to keep one.',
+  session_not_settled:
+    'Session unclear: no one enrolled session matches the request yet. It settles when the camper enrolls, or use Settle Session… on the household page.',
+  to_reverse:
+    'To reverse: cancelled, withdrawn or a duplicate, and camp aid is still live in CampMinder. Reverse it there.',
+}
 
 export type BadgeTone = 'red' | 'amber' | 'zero'
 
