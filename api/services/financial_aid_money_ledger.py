@@ -82,6 +82,10 @@ class Piece:
     reversal_date: datetime | None
 
 
+# LedgerSourceFilter's "outside" (api/schemas/financial_aid_money_ledger.py): every line of the Outside grants column.
+OUTSIDE_SOURCE: Final = "outside"
+
+
 @dataclass(frozen=True)
 class LedgerFilters:
     """The Ledger's filters, per line (Decision 8). None is "all"."""
@@ -103,7 +107,6 @@ class LedgerFilters:
 
 
 NO_FILTERS: Final = LedgerFilters()
-OUTSIDE_SOURCE: Final = "outside"
 
 
 @dataclass(frozen=True)
