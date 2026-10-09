@@ -27,6 +27,7 @@ from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.schemas.financial_aid_grants import (
     CamperCandidateOut,
     CamperSuggestionOut,
+    CandidateSessionOut,
     CommitmentIn,
     CommitmentOut,
     ExpectedOut,
@@ -49,6 +50,7 @@ from api.schemas.financial_aid_grants import (
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import (
+    CAMPER_PROGRAM_FAMILIES,
     CamperSuggestion,
     Commitment,
     Enrollment,
@@ -336,6 +338,7 @@ class _Loaded:
     people: dict[int, Any]
     enrollments: list[Enrollment]
     session_names: dict[int, str]
+    session_types: dict[int, str]
     household_rows: list[Any]
 
 
@@ -599,6 +602,11 @@ class GrantsService:
             for s in (_expanded(a, "session") for a in attendees)
             if s is not None
         }
+        session_types = {
+            int(s.cm_id): str(getattr(s, "session_type", "") or "")
+            for s in (_expanded(a, "session") for a in attendees)
+            if s is not None
+        }
         grantor_by_source = {str(s.description_key): str(getattr(s, "grantor_key", "") or "") for s in sources}
         inputs = RegisterInputs(
             lines=lines,
@@ -627,6 +635,7 @@ class GrantsService:
             people=people,
             enrollments=enrollments,
             session_names=session_names,
+            session_types=session_types,
             household_rows=household_rows,
         )
 
@@ -648,6 +657,7 @@ class GrantsService:
         inputs, rows, sources, grantors_raw = loaded.inputs, loaded.rows, loaded.sources, loaded.grantors
         answers, family_sets, members, people = loaded.answers, loaded.family_sets, loaded.members, loaded.people
         enrollments, session_names, household_rows = loaded.enrollments, loaded.session_names, loaded.household_rows
+        session_types = loaded.session_types
 
         active = {e.person_cm_id for e in enrollments if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
         candidates = {
@@ -675,6 +685,21 @@ class GrantsService:
         def name_of(cm: int) -> str:
             return person_display_name(people[cm]) if cm in people else ""
 
+        def sessions_of(cm: int, row: RegisterRow) -> list[CandidateSessionOut]:
+            # The register's own eligibility (D95/D100, as _sole_camper): active enrolled, in a camper
+            # program the row's source can pay for.
+            group = inputs.families_by_source.get(row.source_key, frozenset())
+            pays_for = group & CAMPER_PROGRAM_FAMILIES if group else CAMPER_PROGRAM_FAMILIES
+            return [
+                CandidateSessionOut(
+                    session_cm_id=e.session_cm_id,
+                    name=session_names.get(e.session_cm_id, ""),
+                    session_type=session_types.get(e.session_cm_id, ""),
+                )
+                for e in sorted(enrollments, key=lambda e: e.session_cm_id)
+                if e.person_cm_id == cm and e.status_id == ACTIVE_ENROLLED_STATUS_ID and e.program_family in pays_for
+            ]
+
         def family_of(cm: int) -> str:
             return household_display_name(household_names.get(cm), cm)
 
@@ -699,6 +724,7 @@ class GrantsService:
                 camper_basis=row.camper_basis,
                 session_cm_id=row.session_cm_id,
                 session_name=session_names.get(row.session_cm_id, ""),
+                session_type=session_types.get(row.session_cm_id, ""),
                 program_family=row.program_family,
                 program_label=program_names.get(row.program_family, ""),
                 grantor_key=row.grantor_key,
@@ -753,7 +779,7 @@ class GrantsService:
                         else None
                     ),
                     candidates=[
-                        CamperCandidateOut(person_cm_id=cm, name=name_of(cm))
+                        CamperCandidateOut(person_cm_id=cm, name=name_of(cm), sessions=sessions_of(cm, n.row))
                         for cm in _with_suggested_camper(n.candidates, n.suggestion, active, people)
                     ],
                 )
