@@ -1494,7 +1494,7 @@ SPLIT_70_25 = {
 
 @pytest.mark.asyncio
 async def test_an_option_that_never_touched_the_budget_does_not_revert_the_drafts_newer_budget() -> None:
-    """Finance moves the rules draft's total and split after A was kept from v1; A changed round2 only, so the
+    """Finance moves the rules draft's split (the total is locked once the budget is approved) after A was kept from v1; A changed round2 only, so the
     promotion lists round2 alone and v2's budget stays."""
     world = await _frozen()
     await _approved_v1(world)
@@ -1502,12 +1502,12 @@ async def test_an_option_that_never_touched_the_budget_does_not_revert_the_draft
         YEAR, with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60"), FINANCE
     )
     await world.service.keep(YEAR, FINANCE)  # A
-    budget = with_levers(intake_rules(), {"budget.total": "550000", **SPLIT_70_25}).budget
+    budget = with_levers(intake_rules(), SPLIT_70_25).budget
     await world.rules.save_section(YEAR, 1, "budget", budget.model_dump(mode="json"), actor=FINANCE)  # branches v2
     promotion = await world.service.rules_draft_preview(YEAR, "A")
     assert [s.section for s in promotion.preview.sections] == ["round2"]
     draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=2, acknowledged={}, actor=FINANCE)
-    assert draft.version.document.budget.total == Decimal(550000)
+    assert draft.version.document.budget.total == intake_rules().budget.total
     assert draft.version.document.budget.pools["camp_pool"].share_pct == Decimal(70)
     assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
 
@@ -2095,3 +2095,28 @@ async def test_an_option_built_on_the_version_in_effect_can_still_be_promoted() 
     assert (option.record.origin_version, option.promotable, option.blocked) == (1, True, None)
     _, branched_from = await world.service.make_rules_draft(YEAR, "B", base_version=1, acknowledged={}, actor=FINANCE)
     assert branched_from == 1
+
+
+# --- Make … the Rules Draft is off for an option built on a discarded rules draft (owner 2026-10-08) --------------------
+
+
+@pytest.mark.asyncio
+async def test_an_option_built_on_a_discarded_rules_draft_cannot_be_promoted() -> None:
+    """Discard throws away every unapproved change. An option kept off that draft would carry its edits back through
+    Make … the Rules Draft, so it is refused the way an option built on an older version is: start it again."""
+    world = await _world()
+    await _approved_v1(world)
+    await world.rules.save_sections(YEAR, 1, with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)  # draft v2
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.load(YEAR, FINANCE, start="rules_draft")
+    await world.service.save_draft(YEAR, _shifted(with_minimum(intake_rules(), Decimal(150)), "5"), FINANCE)
+    kept = await world.service.keep(YEAR, FINANCE)
+    assert kept.record.origin_version == 2
+    await world.rules.discard_draft(YEAR, 2, actor=FINANCE)
+    words = "built on v2, a discarded rules draft: start it again from the rules in effect"
+    option = next(
+        o for o in (await world.service.workspace(YEAR, FINANCE)).options if o.record.code == kept.record.code
+    )
+    assert (option.promotable, option.blocked) == (False, words)
+    with pytest.raises(ScenarioRefusedError, match="a discarded rules draft"):
+        await world.service.make_rules_draft(YEAR, kept.record.code, base_version=1, acknowledged={}, actor=FINANCE)

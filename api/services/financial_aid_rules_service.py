@@ -53,7 +53,7 @@ import os
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -96,6 +96,7 @@ from bunking.financial_aid.rules.lifecycle import (
     status_to_json,
 )
 from bunking.financial_aid.rules.schema import SECTION_NAMES, AwardTable, MilestonesSection, Round2Table
+from bunking.financial_aid.scenarios.describe import CARD_TITLES
 from bunking.logging_config import get_logger
 from bunking.pocketbase_batch import BatchRequestFailedError
 
@@ -193,6 +194,25 @@ class PricingVersionInUseError(FinancialAidError, ValueError):
     new version instead."""
 
 
+class NoDraftToDiscardError(FinancialAidError, ValueError):
+    """Discard the rules draft with nothing to discard: no version newer than the one in effect, or nothing in effect
+    to go back to (a new season's first draft; Start from last year is its way back)."""
+
+
+class DraftApprovedError(FinancialAidError, ValueError):
+    """Discard the rules draft when a section in it was approved, or locked by a posted round, since it branched:
+    discarding would throw that approval away, or a version a round read. Names the sections, by the Rules tab's
+    titles."""
+
+    def __init__(self, sections: list[SectionName]) -> None:
+        self.sections = sections
+        titles = ", ".join(CARD_TITLES[name] for name in sections)
+        super().__init__(
+            f"The rules draft holds an approval or a posted round's lock made since it was started ({titles}), "
+            "so it can't be discarded"
+        )
+
+
 class ReplacementNotAcknowledgedError(FinancialAidError, ValueError):
     """A promotion would replace changes the person did not confirm replacing (D39's warning)."""
 
@@ -242,9 +262,8 @@ class SectionInvalidError(FinancialAidError, ValueError):
     """A section editor's content is not a valid section; the message names each bad field."""
 
 
-BUDGET_TOTAL_LOCKED: Final = (
-    "The total is locked: a posted round read it. Posted amounts stand; the program split can still change."
-)
+BUDGET_TOTAL_LOCKED: Final = "The total is locked: the first approved budget total stands all season, and posted amounts stand. The program split can still change."
+BUDGET_TOTAL_MISSING: Final = "Type the season's budget total before approving: it locks once approved."
 
 
 class FixedSettingError(SectionInvalidError):
@@ -252,8 +271,13 @@ class FixedSettingError(SectionInvalidError):
 
 
 class BudgetTotalLockedError(SectionInvalidError):
-    """A save that changes the season budget's total once Round 1 has posted (a Round 1 section is locked), owner
-    10-06: "budget does lock but only the total dollar number": refused (422). The program shares stay editable."""
+    """A save that changes the season budget's total once the budget has been approved (or Round 1 has posted), owner
+    10-08: the first approved budget stands all season: refused (422). The program shares stay editable."""
+
+
+class BudgetTotalMissingError(SectionInvalidError):
+    """Approving the budget section with no total (empty or zero): refused (422), owner 10-08, because the approval
+    locks the total."""
 
 
 class SeasonDoneError(FinancialAidError, ValueError):
@@ -358,6 +382,7 @@ class ApprovedRules:
 
 
 _HELD: Final = ("approved", "locked")
+_BUDGET_ONLY: Final[tuple[SectionName, ...]] = ("budget",)
 _DONE_PREFIX: Final = "Correcting a done season: "
 
 
@@ -463,6 +488,16 @@ def parse_section(document: AidRules, section: SectionName, content: Mapping[str
         raise SectionInvalidError(f"{section} is not a valid section: {details}") from exc
 
 
+def _stored_budget_total(row: Any) -> Decimal:
+    """The budget total as stored on a version row; 0 for anything unreadable, so the draft read never fails."""
+    budget = (_json_object(row, "document") or {}).get("budget")
+    try:
+        total = Decimal(str(budget.get("total", 0))) if isinstance(budget, dict) else Decimal(0)
+    except InvalidOperation:
+        return Decimal(0)
+    return total if total.is_finite() else Decimal(0)
+
+
 def _protected(current: RulesVersion, parent: RulesVersion | None, section: SectionName, *, in_use: bool) -> bool:
     """True when editing `section` in place would lose approved rules, so the edit belongs in a new version.
 
@@ -502,7 +537,7 @@ class RulesVersion(BaseModel):
 
 
 class AidRulesStore(Protocol):
-    async def list_versions(self, year: int) -> list[Any]: ...
+    async def list_versions(self, year: int, *, include_discarded: bool = False) -> list[Any]: ...
 
     async def fetch_version(self, year: int, version: int) -> Any | None: ...
 
@@ -546,8 +581,11 @@ class AidRulesRepository:
         )
         return rows
 
-    async def list_versions(self, year: int) -> list[Any]:
-        return await self._page(AID_RULES, {"filter": f"year = {int(year)}", "sort": f"version,{STABLE_SORT}"})
+    async def list_versions(self, year: int, *, include_discarded: bool = False) -> list[Any]:
+        """The year's versions in order. A discarded draft (`discard_draft`) is left out unless asked for: it is kept
+        for what names it by number (a scenario's origin, the log's replay) and for the next version's number."""
+        live = "" if include_discarded else " && discarded != true"
+        return await self._page(AID_RULES, {"filter": f"year = {int(year)}{live}", "sort": f"version,{STABLE_SORT}"})
 
     async def fetch_version(self, year: int, version: int) -> Any | None:
         rows = await self._page(
@@ -745,8 +783,8 @@ def _approved_at(
         if not version.complete:
             raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
         state = version.state
-        if state is None:
-            continue  # deleted by `at`
+        if state is None or state.get("discarded"):
+            continue  # deleted, or its draft discarded, by `at`
         try:
             status = status_from_json(state.get("section_status"))
             if not all(status[section].state in ("approved", "locked") for section in sections):
@@ -800,7 +838,8 @@ class FinancialAidRulesService:
         return reason
 
     async def load(self, year: int, version: int | None = None) -> RulesVersion:
-        """One version, or the year's highest version when `version` is None."""
+        """One version, or the year's highest version when `version` is None. A discarded draft is never the
+        highest (`list_versions` leaves it out), but still loads by its number."""
         if version is None:
             rows = await self._store.list_versions(year)
             if not rows:
@@ -832,11 +871,18 @@ class FinancialAidRulesService:
                 return version
         return None
 
+    async def discarded_versions(self, year: int) -> frozenset[int]:
+        """The version numbers of `year` a Discard draft threw away (`discard_draft`): kept, loadable by number, and
+        never the rules draft again."""
+        everything = await self._store.list_versions(year, include_discarded=True)
+        return frozenset(int(row.version) for row in everything if getattr(row, "discarded", False))
+
     async def sections_locked_anywhere(self, year: int) -> frozenset[SectionName]:
         """Every section some version of `year` holds locked (Scenarios addendum §S11.3). Any version, not just the
         latest: a branch lifts the locks in the version it writes (`carry_forward`), as `_budget_total_locked`
         reasons. Locks come only from a posted round (`lock_writes`), never a date. The stored statuses alone: a
-        document the current schema rejects must not fail a read."""
+        document the current schema rejects must not fail a read. A discarded draft is left out: it never holds a
+        lock the version in effect lacks, since `discard_draft` refuses one that does."""
         rows = await self._store.list_versions(year)
         return frozenset(
             name
@@ -896,16 +942,20 @@ class FinancialAidRulesService:
         )
 
     async def _budget_total_locked(self, year: int) -> bool:
-        """Owner 10-06 (b): the budget TOTAL locks once Round 1 has posted, i.e. any Round 1 section is locked; the
-        program shares never do. The budget section itself is not locked by a tick (D119), so this never reads it. Any
-        version counts, not just the latest: a save on a locked section lifts that lock in the version it writes
-        (`carry_forward`), and the total a posted round read must stay put there."""
+        """The budget TOTAL locks on either of two triggers. Owner 10-06 (b): Round 1 has posted (any Round 1 section
+        locked). Owner 10-08, the pre-lock: ANY version of the season is approved with a budget total filled in (> 0),
+        the first rules approval around October. The program shares never lock. Any version counts, not just the latest: a save on the budget
+        branches rather than overwriting the newest approved copy (`_protected`), and a branch lifts the locks in the
+        version it writes (`carry_forward`), so the approval is always kept on some version."""
         rows = await self._store.list_versions(year)
         round_one = ROUND_SECTIONS[1]
         for row in rows:
             # The stored statuses alone: a document the current schema rejects must not fail the draft read.
             status = status_from_json(_json_object(row, "section_status"))
             if any(status[name].state == "locked" for name in round_one):
+                return True
+            # The pre-lock: an approved version saved with a budget total filled in (> 0).
+            if status["budget"].state in _HELD and _stored_budget_total(row) > 0:
                 return True
         return False
 
@@ -987,8 +1037,9 @@ class FinancialAidRulesService:
             _entity_id(year, int(row.version)): {
                 "document": _json_object(row, "document"),
                 "section_status": _json_object(row, "section_status"),
+                "discarded": bool(getattr(row, "discarded", False)),
             }
-            for row in await self._store.list_versions(year)
+            for row in await self._store.list_versions(year, include_discarded=True)
         }
         return current, await self._store.fetch_log(year)
 
@@ -1011,7 +1062,7 @@ class FinancialAidRulesService:
 
     async def _create_first_or_next(self, document: AidRules, *, actor: str, done: str | None) -> RulesVersion:
         latest = await self._latest(document.year)
-        version = (latest.version if latest is not None else 0) + 1
+        version = await self._next_version(document.year)
         body = _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
         return await self._create(body, log_action="create", actor=actor, supersedes=latest, reason=_done_log(done))
 
@@ -1369,6 +1420,8 @@ class FinancialAidRulesService:
             if set(fingerprints) != set(named):
                 raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
             _assert_unchanged(current, fingerprints)
+        if "budget" in named and current.document.budget.total <= 0:
+            raise BudgetTotalMissingError(BUDGET_TOTAL_MISSING)
         await self._assert_total_unmoved_once_locked(year, current.document)
         before = await self._pricing_version_safely(year) if self._effects is not None else None
         report = await self.validate_document(current.document)
@@ -1386,15 +1439,25 @@ class FinancialAidRulesService:
             )
         return await self.load(year, current.version), report
 
+    async def _approved_budget_with_total(self, year: int) -> RulesVersion | None:
+        """The newest version with an approved budget and a total above zero: the same test the pre-lock uses, so the
+        guard and the lock cannot name different versions."""
+        for row in reversed(await self._store.list_versions(year)):
+            version = _to_version(row)
+            if version.section_status["budget"].state in _HELD and version.document.budget.total > 0:
+                return version
+        return None
+
     async def _assert_total_unmoved_once_locked(self, year: int, document: AidRules) -> None:
-        """Owner 10-06 (b), the one guard for every route a total could take after Round 1 posts: approving any
-        section of a draft (it may complete the sections that make the draft the pricing version) and branching a new
-        version. A document whose budget total differs from the version pricing the season is refused. With no
-        pricing version there is nothing to protect."""
+        """Owner 10-08, the one guard for every route a total could take once it is locked: approving any section of
+        a draft (it may complete the sections that make the draft the pricing version) and branching a new version. A
+        document whose budget total differs from the latest approved budget's, which under the lock is the first
+        approved total, is refused. Without an approved budget (a lock from Round 1 alone) it compares against the
+        version pricing the season, and with neither there is nothing to protect."""
         if not await self._budget_total_locked(year):
             return
-        pricing = await self.latest_approved(year, PRICING_SECTIONS)
-        if pricing is not None and Decimal(document.budget.total) != Decimal(pricing.document.budget.total):
+        reference = await self._approved_budget_with_total(year) or await self.latest_approved(year, PRICING_SECTIONS)
+        if reference is not None and Decimal(document.budget.total) != Decimal(reference.document.budget.total):
             raise BudgetTotalLockedError(BUDGET_TOTAL_LOCKED)
 
     async def _pricing_version(self, year: int) -> int:
@@ -1488,6 +1551,59 @@ class FinancialAidRulesService:
                 status = updated
         return writes, sorted(not_locked, key=SECTION_NAMES.index)
 
+    async def discard_draft(
+        self, year: int, base_version: int, *, actor: str, past_season_reason: str | None = None
+    ) -> None:
+        """Throw away the rules draft (owner 2026-10-08): every version newer than the one in effect is marked
+        discarded, and the Rules tab is back on the version in effect. Nothing is deleted. A scenario that names a
+        discarded version as its origin still loads it by number (`load(year, version)`), the log still replays it,
+        and the next version takes a new number (`_next_version`).
+
+        Refused (`DraftApprovedError`) when a section was approved or locked in the draft since it branched: that
+        approval would go with it. A newer version never prices the season or holds a decision (the version in
+        effect does), and intake reads only programs and cost carried unchanged from it, so nothing else reads it.
+        `base_version` is the draft the page showed: a draft that moved on since is a 409 (NotLatestVersionError).
+        """
+        reason = await self._done_reason(year, past_season_reason)
+        current = await self._rules_draft(year, base_version)
+        in_effect = await self.latest_approved(year, PRICING_SECTIONS)
+        if in_effect is None:
+            raise NoDraftToDiscardError(f"Nothing is in effect for {year} yet, so there is no version to go back to")
+        if current.version == in_effect.version:
+            raise NoDraftToDiscardError(f"The rules draft is the version in effect (v{in_effect.version})")
+        newer = [
+            version
+            for row in await self._store.list_versions(year)
+            if (version := _to_version(row)).version > in_effect.version
+        ]
+        approved = sorted(
+            {
+                name
+                for version in newer
+                for name in SECTION_NAMES
+                if version.section_status[name].state in ("approved", "locked")
+                and version.section_status[name] != in_effect.section_status[name]
+            },
+            key=SECTION_NAMES.index,
+        )
+        if approved:
+            raise DraftApprovedError(approved)
+        writes = [
+            AidWrite(
+                collection=AID_RULES,
+                action="update",
+                year=year,
+                record_id=version.record_id,
+                before={"discarded": False},
+                data={"discarded": True},
+                log_action="discard",
+                entity_id=_entity_id(year, version.version),
+                expected_revision=version.revision,
+            )
+            for version in newer
+        ]
+        await self._store.commit(writes, actor=actor, reason=reason)
+
     async def new_version(
         self,
         year: int,
@@ -1511,7 +1627,7 @@ class FinancialAidRulesService:
         latest = await self.load(year)
         source = latest if from_version == latest.version else await self.load(year, from_version)
         await self._assert_total_unmoved_once_locked(year, source.document)
-        version = latest.version + 1
+        version = await self._next_version(year)
         body = _body(
             year,
             version,
@@ -1628,8 +1744,10 @@ class FinancialAidRulesService:
             )
 
     async def _next_version(self, year: int) -> int:
-        latest = await self._latest_version_number(year)
-        return (latest or 0) + 1
+        """One past every version of the year, discarded ones too: a number is never used twice, so the log and a
+        scenario's origin never confuse a discarded draft with the version after it."""
+        rows = await self._store.list_versions(year, include_discarded=True)
+        return max((int(row.version) for row in rows), default=0) + 1
 
 
 def _dump(document: AidRules) -> dict[str, Any]:

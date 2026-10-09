@@ -218,6 +218,7 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
     lock: 'Locked',
     new_version: 'New version',
     start_from_last_year: 'Started from last year',
+    discard: 'Draft discarded',
   },
   aid_session_capacity: { set_capacity: 'Capacity set' },
 }

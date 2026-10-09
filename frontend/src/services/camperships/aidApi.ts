@@ -13,6 +13,7 @@ import type {
   ApiAidCorrectionIn,
   ApiAidCorrectionOut,
   ApiAidDefinitions,
+  ApiAidDiscardDraftIn,
   ApiAidDuplicateIn,
   ApiAidGrid,
   ApiAidCostOverrideIn,
@@ -89,6 +90,12 @@ import type {
   ApiAidPlaceGrantsIn,
   ApiAidPlaceGrantsOut,
   ApiAidWithdrawIn,
+  ApiAidCommitteeReport,
+  ApiAidPrograms,
+  ApiAidDevelopment,
+  ApiAidZip,
+  ApiAidReportRequestIds,
+  ApiAidStatistics,
 } from '../../types/api-types'
 import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
@@ -892,6 +899,26 @@ export function approveAidRules(
   )
 }
 
+/**
+ * Throw the rules draft away (owner 2026-10-08): every version newer than the one in effect is marked discarded, and
+ * the answer is the draft read, back on the version in effect. 409 when the draft moved on since `base_version`, holds
+ * an approval made since it started, or there is nothing to go back to.
+ */
+export function discardAidRulesDraft(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidDiscardDraftIn,
+  pastSeasonReason: string | null = null
+): Promise<ApiAidRulesDraft> {
+  return send<ApiAidRulesDraft>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/rules/${String(year)}/draft/discard`,
+    withReason(body, pastSeasonReason),
+    "Couldn't discard the rules draft"
+  )
+}
+
 /** Version 1 of an empty season, copied from last season's rules, every section a draft (§7.5). 409 when the season already has rules. */
 export function startAidRulesFromLastYear(
   fetchWithAuth: FetchWithAuth,
@@ -1305,4 +1332,117 @@ export async function fetchAidMarchFile(
   const response = await fetchWithAuth(`${BASE}/decisions/${String(year)}/march-file`)
   if (!response.ok) throw await toApiError(response, "Couldn't make the March file", AidApiError)
   return (await response.json()) as ApiAidMarchFile
+}
+
+// --- Reports (slice 4; spec §9) -----------------------------------------------------------------
+
+/**
+ * One Reports read (spec §9; D21): a GET with its query. A refusal keeps its status and the server's
+ * sentence (a 422 names a control the season can't take), so the page can show it beside the control.
+ */
+async function fetchAidReport<T>(
+  fetchWithAuth: FetchWithAuth,
+  path: string,
+  params: Readonly<Record<string, string>>,
+  fallback: string
+): Promise<T> {
+  const response = await fetchWithAuth(withQuery(`${BASE}/reports/${path}`, { ...params }))
+  if (!response.ok) throw await toApiError(response, fallback, AidApiError)
+  return (await response.json()) as T
+}
+
+/** Reports › Statistics (§9.2): one award table × round, the reporting controls and the as-of in `params`. `view`. */
+export function fetchAidStatistics(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidStatistics> {
+  return fetchAidReport<ApiAidStatistics>(
+    fetchWithAuth,
+    `${String(year)}/statistics`,
+    params,
+    'Failed to load Statistics'
+  )
+}
+
+/** Reports › Programs (§9.3, RPT-11): sessions by pool, the request set and the as-of in `params`. `view`. */
+export function fetchAidPrograms(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidPrograms> {
+  return fetchAidReport<ApiAidPrograms>(
+    fetchWithAuth,
+    `${String(year)}/programs`,
+    params,
+    'Failed to load Programs'
+  )
+}
+
+/** The committee's year-over-year tables (§9.7), seasons 2022 → `year`; live only. `view`. */
+export function fetchAidCommitteeReport(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidCommitteeReport> {
+  return fetchAidReport<ApiAidCommitteeReport>(
+    fetchWithAuth,
+    `${String(year)}/committee`,
+    params,
+    "Failed to load the committee's tables"
+  )
+}
+
+/**
+ * The requests behind one Statistics or Programs count (D20; #2974): `GET /reports/{year}/{report}/requests`
+ * with the count's address (the same chips, basis and reporting control as its read) and the grid's as-of.
+ * `view` only: development's summary never sees a request (D65).
+ */
+export function fetchAidReportRequests(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  report: 'statistics' | 'programs',
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidReportRequestIds> {
+  return fetchAidReport<ApiAidReportRequestIds>(
+    fetchWithAuth,
+    `${String(year)}/${report}/requests`,
+    params,
+    "Couldn't read the requests behind that count"
+  )
+}
+
+/**
+ * Reports › Development (§9.4): every line by group, seasons from 2022 as columns. `view` or `summary` (D65).
+ * `column` asks for one on-demand dated column, `<season>:<YYYY-MM-DD>`, returned among `columns`;
+ * the server saves nothing.
+ */
+export function fetchAidDevelopment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  column?: string
+): Promise<ApiAidDevelopment> {
+  return fetchAidReport<ApiAidDevelopment>(
+    fetchWithAuth,
+    `${String(year)}/development`,
+    column === undefined ? {} : { column },
+    'Failed to load the Development report'
+  )
+}
+
+/**
+ * ZIP codes (§9.4, D90; owner ruling C): `group` is a pool key of the season's rules or `all`;
+ * omitted, the server serves the summer group. An unknown group is a 422. `view` or `summary`.
+ */
+export function fetchAidZip(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidZip> {
+  return fetchAidReport<ApiAidZip>(
+    fetchWithAuth,
+    `${String(year)}/development/zip`,
+    params,
+    'Failed to load the ZIP codes'
+  )
 }

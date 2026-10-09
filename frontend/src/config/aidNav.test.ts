@@ -68,14 +68,15 @@ describe('the tabs (URL-held, §3.6)', () => {
     ])
   })
 
-  it('opens Reports on Statistics for view holders, and on Development alone for summary-only (D64, D65)', () => {
+  it('opens Reports on Statistics for view holders, and on Development for summary-only (D64, D65, Q7)', () => {
     const reports = aidSection('reports')
     expect(labels(visibleTabs(reports, REGISTRAR))).toEqual([
       'Statistics',
-      'Programs',
+      'Year over year',
       'Development',
+      'ZIP codes',
     ])
-    expect(labels(visibleTabs(reports, DEVELOPMENT))).toEqual(['Development'])
+    expect(labels(visibleTabs(reports, DEVELOPMENT))).toEqual(['Development', 'ZIP codes'])
   })
 
   it('keeps every slug unique within its section', () => {
@@ -170,5 +171,23 @@ describe('Money for development (owner 10-06, rulings:676; folded into Money 10-
   it('still sends development home to Reports › Development, and a summary-only user sees no Money', () => {
     expect(aidHomePath(DEVELOPMENT_GRANTORS)).toBe('/aid/reports/development')
     expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Reports'])
+  })
+})
+
+describe('Reports: four flat tabs, no views (owner Q7)', () => {
+  const reports = aidSection('reports')
+
+  it('is Statistics, Year over year, Development, ZIP codes, in that order, with no views', () => {
+    expect(reports.tabs.map((t) => t.slug)).toEqual([
+      'statistics',
+      'year-over-year',
+      'development',
+      'zip-codes',
+    ])
+    expect(reports.tabs.some((t) => 'views' in t && t.views !== undefined)).toBe(false)
+  })
+
+  it('gives summary-only users Development and ZIP codes only (owner Q7)', () => {
+    expect(labels(visibleTabs(reports, DEVELOPMENT))).toEqual(['Development', 'ZIP codes'])
   })
 })

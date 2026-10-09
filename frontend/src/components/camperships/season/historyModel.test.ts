@@ -241,6 +241,7 @@ describe('who, what kind, and the action words', () => {
   })
 
   it("words the server's own action codes, per collection (⚠ Decision 4)", () => {
+    expect(actionWords('aid_rules', 'discard')).toBe('Draft discarded')
     expect(actionWords('aid_decisions', 'post')).toBe('Posted')
     expect(actionWords('aid_decisions', 'unpost')).toBe('Posted undone')
     expect(actionWords('aid_decisions', 'ask')).toBe('Ask entered')

@@ -195,7 +195,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
   })
 
   // Owner 10-06 (b): "budget does lock but only the total dollar number." The shares stay editable all season.
-  it('after a posted round, shows Total read-only with the lock mark and words, and still saves the shares', async () => {
+  it('once the budget is approved, shows Total read-only with the lock mark and words, and still saves the shares', async () => {
     save.mockReset()
     render(<Harness draft={{ ...draftWithBudget('locked'), budget_total_locked: true }} />)
     const total = screen.getByLabelText('Total')
@@ -205,7 +205,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     expect(screen.getByLabelText('Total locked')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
+        'Locked: the first approved budget total stands all season. The program shares still edit.'
       )
     ).toBeInTheDocument()
     await userEvent.clear(screen.getByLabelText('Pool A'))
@@ -232,7 +232,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     render(<Harness draft={draftWithBudget()} />)
     expect(screen.getByLabelText('Total')).not.toHaveAttribute('readonly')
     expect(screen.queryByLabelText('Total locked')).toBeNull()
-    expect(screen.queryByText(/^Locked: a posted round read it\./)).toBeNull()
+    expect(screen.queryByText(/^Locked: the first approved budget/)).toBeNull()
   })
 
   // Slice 2: Approve… showed only when nothing was being edited. The plan's typing is unsaved text Approve must not

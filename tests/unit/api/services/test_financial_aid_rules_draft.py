@@ -12,8 +12,10 @@ import pytest
 
 from api.services.financial_aid_rules_service import (
     BUDGET_TOTAL_LOCKED,
+    BUDGET_TOTAL_MISSING,
     PRICING_SECTIONS,
     BudgetTotalLockedError,
+    BudgetTotalMissingError,
     FinancialAidRulesService,
     FixedSettingError,
     NotLatestVersionError,
@@ -49,6 +51,24 @@ async def _approved_v1(store: FakeStore) -> FinancialAidRulesService:
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_sections(2031, 1, list(SECTION_NAMES), actor=FINANCE, note="Board, Jan 8")
     return service
+
+
+async def _approved_but_budget(store: FakeStore) -> FinancialAidRulesService:
+    """2031 version 1 with every section approved but the budget: the total is still open (owner 10-08)."""
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(
+        2031, 1, [n for n in SECTION_NAMES if n != "budget"], actor=FINANCE, note="Board, Jan 8"
+    )
+    return service
+
+
+def _legacy_total(store: FakeStore, version: int, total: str, *, budget_state: str | None = None) -> None:
+    """A stored version carrying a total no save can write any more (it predates the 10-08 ruling)."""
+    row = next(r for r in store.rows if r.year == 2031 and r.version == version)
+    row.document["budget"]["total"] = total
+    if budget_state is not None:
+        row.section_status["budget"] = {"state": budget_state}
 
 
 def _minimum(rules: AidRules, amount: str) -> AidRules:
@@ -1038,11 +1058,75 @@ def _new_split() -> dict[str, dict[str, str]]:
 
 
 @pytest.mark.asyncio
-async def test_before_any_round_posts_the_budget_total_saves() -> None:
+async def test_before_the_budget_is_approved_the_total_saves() -> None:
     store = FakeStore()
-    service = await _approved_v1(store)
+    service = await _approved_but_budget(store)
     saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
     assert saved.version.document.budget.total == Decimal(520000)
+    assert (await service.draft_view(2031)).budget_total_locked is False
+
+
+@pytest.mark.asyncio
+async def test_approving_the_budget_locks_the_total_before_round_one_posts() -> None:
+    """Owner 10-08: the first approved budget stands all season, Round 1 posted or not."""
+    store = FakeStore()
+    service = await _approved_but_budget(store)
+    await service.approve_sections(2031, 1, ["budget"], actor=FINANCE, note="Board, Oct 8")
+    assert (await service.draft_view(2031)).budget_total_locked is True
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.save_section_contents(2031, 1, {"budget": _budget(total="520000")}, actor=FINANCE)
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_the_lock_survives_a_shares_edit_that_sends_the_budget_back_to_draft() -> None:
+    """The edit branches, so the approval stays on the version it was made in; the new draft keeps the total locked."""
+    store = FakeStore()
+    service = await _approved_but_budget(store)
+    await service.approve_sections(2031, 1, ["budget"], actor=FINANCE, note="Board, Oct 8")
+    saved = await service.save_section(2031, 1, "budget", _budget(pools=_new_split()), actor=FINANCE)
+    assert saved.version.section_status["budget"].state == "draft"
+    assert (await service.draft_view(2031)).budget_total_locked is True
+    with pytest.raises(BudgetTotalLockedError):
+        await service.save_section(2031, saved.version.version, "budget", _budget(total="520000"), actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_an_approved_budget_stored_with_no_total_does_not_pre_lock() -> None:
+    """The pre-lock is an approved version with a total > 0, not the section's status alone."""
+    store = FakeStore()
+    service = await _approved_v1(store)
+    _legacy_total(store, 1, "0")
+    assert (await service.draft_view(2031)).budget_total_locked is False
+
+
+@pytest.mark.asyncio
+async def test_a_draft_budget_is_not_locked_while_no_version_ever_approved_it() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    assert (await service.draft_view(2031)).budget_total_locked is False
+
+
+@pytest.mark.asyncio
+async def test_the_budget_cannot_be_approved_without_a_total() -> None:
+    store = FakeStore()
+    service = _service(store)
+    rules = fictional_rules()
+    await service.create_version(
+        rules.model_copy(update={"budget": rules.budget.model_copy(update={"total": Decimal(0)})}), actor=FINANCE
+    )
+    before = len(store.operations)
+    with pytest.raises(BudgetTotalMissingError, match=f"^{re.escape(BUDGET_TOTAL_MISSING)}$"):
+        await service.approve_sections(2031, 1, ["budget"], actor=FINANCE, note="Board, Oct 8")
+    with pytest.raises(BudgetTotalMissingError):
+        await service.approve_sections(2031, 1, ["income", "budget"], actor=FINANCE, note="Board, Oct 8")
+    assert len(store.operations) == before
+    approved, _ = await service.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Board, Oct 8")
+    assert approved.section_status["income"].state == "approved"
     assert (await service.draft_view(2031)).budget_total_locked is False
 
 
@@ -1062,7 +1146,7 @@ async def test_after_round_one_posts_a_shares_only_change_still_saves() -> None:
 @pytest.mark.asyncio
 async def test_after_round_one_posts_a_total_change_is_refused_in_the_lock_words() -> None:
     store = FakeStore()
-    service = await _approved_v1(store)
+    service = await _approved_but_budget(store)
     await service.lock_section(2031, 1, "income", actor=FINANCE)
     before = len(store.operations)
     with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
@@ -1099,17 +1183,31 @@ async def test_the_total_stays_locked_when_a_later_save_lifts_round_ones_lock_in
 
 
 @pytest.mark.asyncio
-async def test_a_total_saved_before_round_one_posts_cannot_be_approved_after_it() -> None:
-    """The draft saved while the total was still open must not become the pricing total once Round 1 has posted."""
+async def test_a_total_other_than_the_first_approved_one_cannot_be_approved() -> None:
+    """A stored draft that carries another total (legacy: no save can write one now) must not become the approved
+    budget: the guard compares against the latest approved budget, not the pricing version."""
     store = FakeStore()
     service = await _approved_v1(store)
-    saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
-    assert saved.version.version == 2
-    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    await service.new_version(2031, 1, actor=FINANCE)
+    _legacy_total(store, 2, "520000", budget_state="draft")
     before = len(store.operations)
     with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
         await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Mar 1")
     assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_the_guard_compares_against_the_approved_budget_when_no_version_prices_yet() -> None:
+    """October: only the budget is approved, so no pricing version exists to compare against."""
+    store = FakeStore()
+    service = await _approved_but_budget(store)
+    await service.approve_sections(2031, 1, ["budget"], actor=FINANCE, note="Board, Oct 8")
+    await service.new_version(2031, 1, actor=FINANCE)
+    _legacy_total(store, 2, "520000", budget_state="draft")
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.approve_sections(2031, 2, ["income"], actor=FINANCE, note="Board, Oct 9")
+    with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
+        await service.new_version(2031, 2, actor=FINANCE)
 
 
 @pytest.mark.asyncio
@@ -1124,20 +1222,14 @@ async def test_a_shares_only_budget_saved_before_round_one_posts_still_approves_
 
 
 @pytest.mark.asyncio
-async def test_a_total_approved_before_round_one_cannot_become_the_pricing_total_after_it() -> None:
-    """Scan #3039: v2's new total is approved while v1 still prices the season (v2's `awards` is still draft). Round 1
-    posts from v1's total. Approving v2's last draft section would make v2 the pricing version at the new total, though
-    `budget` is not among the sections named: the guard runs on every approval, against the pricing version."""
+async def test_approving_another_section_cannot_make_a_draft_with_another_total_the_pricing_version() -> None:
+    """Scan #3039: the guard runs on every approval, though `budget` is not among the sections named."""
     store = FakeStore()
     service = await _approved_v1(store)
-    await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
+    await service.new_version(2031, 1, actor=FINANCE)
+    _legacy_total(store, 2, "520000", budget_state="draft")
     awards = _minimum(fictional_rules(), "75").awards.model_dump(mode="json")
     await service.save_section(2031, 2, "awards", awards, actor=FINANCE)
-    await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Feb 1")
-    pricing = await service.latest_approved(2031, PRICING_SECTIONS)
-    assert pricing is not None
-    assert pricing.version == 1
-    await service.lock_section(2031, 2, "income", actor=FINANCE)
     before = len(store.operations)
     with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
         await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Mar 1")
@@ -1146,13 +1238,12 @@ async def test_a_total_approved_before_round_one_cannot_become_the_pricing_total
 
 @pytest.mark.asyncio
 async def test_a_new_version_cannot_branch_from_a_version_carrying_another_total_once_locked() -> None:
-    """Scan #3039: v2 prices the season at 520000 (approved before Round 1 posted); v1 carries 500000. Branching v3 from
-    v1 would make it, all approvals carried, the pricing version at the old total."""
+    """Scan #3039: v2 holds an approved budget at another total (legacy); v1 carries 500000. Branching v3 from v1
+    would make it, all approvals carried, the pricing version at the old total."""
     store = FakeStore()
     service = await _approved_v1(store)
-    await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
-    await service.approve_sections(2031, 2, ["budget"], actor=FINANCE, note="Board, Feb 1")
-    await service.lock_section(2031, 2, "income", actor=FINANCE)
+    await service.new_version(2031, 1, actor=FINANCE)
+    _legacy_total(store, 2, "520000")
     before = len(store.operations)
     with pytest.raises(BudgetTotalLockedError, match=f"^{re.escape(BUDGET_TOTAL_LOCKED)}$"):
         await service.new_version(2031, 1, actor=FINANCE)
@@ -1272,8 +1363,10 @@ async def test_first_approved_is_the_oldest_version_with_the_sections_approved()
     with another budget is approved; latest_approved moves, first_approved doesn't."""
     store = FakeStore()
     service = await _approved_v1(store)
-    saved = await service.save_section(2031, 1, "budget", _budget(total="520000"), actor=FINANCE)
-    await service.approve_sections(2031, saved.version.version, ["budget"], actor=FINANCE, note="Board, Mar 1")
+    # No save can write another total once the budget is approved (the pre-lock), so the later version is stored
+    # directly, as a legacy version would be: approvals carried from v1, its own total 520000.
+    await service.new_version(2031, 1, actor=FINANCE)
+    _legacy_total(store, 2, "520000")
     first = await service.first_approved(2031, ["budget"])
     latest = await service.latest_approved(2031, ["budget"])
     assert first is not None

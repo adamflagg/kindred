@@ -14,10 +14,14 @@ from fastapi.testclient import TestClient
 
 from api.services.financial_aid_rules_service import (
     BUDGET_TOTAL_LOCKED,
+    BUDGET_TOTAL_MISSING,
     ApprovedRules,
     ApprovedSection,
     BudgetTotalLockedError,
+    BudgetTotalMissingError,
+    DraftApprovedError,
     DraftSection,
+    NoDraftToDiscardError,
     NotLatestVersionError,
     RulesDraft,
     RulesNotFoundError,
@@ -97,6 +101,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, int, str]] = [
         Permission.FINANCIAL_AID_RULES,
     ),
     ("GET", "/api/financial-aid/rules/2031/approved", None, 200, Permission.FINANCIAL_AID_VIEW),
+    ("POST", "/api/financial-aid/rules/2031/draft/discard", {"base_version": 2}, 200, Permission.FINANCIAL_AID_RULES),
 ]
 
 
@@ -115,6 +120,7 @@ def _stub() -> Any:
     service.new_version = AsyncMock(return_value=VERSION)
     service.validate_document = AsyncMock(return_value=ValidationReport())
     service.approved_view = AsyncMock(return_value=APPROVED)
+    service.discard_draft = AsyncMock(return_value=None)
     return service
 
 
@@ -255,6 +261,14 @@ def test_approving_a_locked_budget_total_is_422_in_the_lock_words() -> None:
     assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_LOCKED)
 
 
+def test_approving_the_budget_without_a_total_is_422_in_the_missing_words() -> None:
+    service = _stub()
+    service.approve_sections = AsyncMock(side_effect=BudgetTotalMissingError(BUDGET_TOTAL_MISSING))
+    body = {"sections": ["budget"], "note": "Board, Oct 8", "fingerprints": {"budget": "abc"}}
+    response = _client().post("/api/financial-aid/rules/2031/versions/2/approve", json=body)
+    assert (response.status_code, response.json()["detail"]) == (422, BUDGET_TOTAL_MISSING)
+
+
 def test_a_two_section_save_passes_both_contents_and_fingerprints() -> None:
     service = _stub()
     _client().put("/api/financial-aid/rules/2031/sections", json=SECTIONS_BODY)
@@ -354,3 +368,46 @@ def test_the_new_version_route_passes_the_past_season_reason() -> None:
         "/api/financial-aid/rules/2031/versions/2/new-version", json={"unlock": [], "past_season_reason": "Branch"}
     )
     assert service.new_version.await_args.kwargs["past_season_reason"] == "Branch"
+
+
+DISCARD = "/api/financial-aid/rules/2031/draft/discard"
+
+
+def test_discarding_the_draft_passes_the_version_the_page_showed_and_answers_with_the_draft_read() -> None:
+    service = _stub()
+    response = _client().post(DISCARD, json={"base_version": 2})
+    assert response.status_code == 200
+    call = service.discard_draft.await_args
+    assert call.args == (2031, 2)
+    assert call.kwargs["actor"] == persona_user(PERSONA_FINANCE).email
+    assert call.kwargs["past_season_reason"] is None
+    service.draft_view.assert_awaited_once_with(2031)
+    assert response.json()["version"] == 2
+
+
+def test_discarding_passes_a_done_seasons_reason() -> None:
+    service = _stub()
+    _client().post(DISCARD, json={"base_version": 2, "past_season_reason": "Owner: start the edits again"})
+    assert service.discard_draft.await_args.kwargs["past_season_reason"] == "Owner: start the edits again"
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        NoDraftToDiscardError("The rules draft is the version in effect (v1)"),
+        DraftApprovedError(["awards"]),
+        NotLatestVersionError("Version 2 of 2031 is not the rules draft any more"),
+    ],
+)
+def test_a_refused_discard_is_409_in_the_servers_words(refusal: Exception) -> None:
+    service = _stub()
+    service.discard_draft = AsyncMock(side_effect=refusal)
+    response = _client().post(DISCARD, json={"base_version": 2})
+    assert (response.status_code, response.json()["detail"]) == (409, str(refusal))
+
+
+def test_a_discard_without_the_version_it_showed_is_422_before_the_service() -> None:
+    service = _stub()
+    assert _client().post(DISCARD, json={}).status_code == 422
+    assert _client().post(DISCARD, json={"base_version": 2, "extra": 1}).status_code == 422
+    service.discard_draft.assert_not_called()

@@ -458,6 +458,10 @@ async def test_list_versions_is_year_scoped_ordered_and_paged_with_a_stable_sort
     pb.collection.assert_called_with("aid_rules")
     kwargs = pb.collection.return_value.get_full_list.call_args.kwargs
     assert kwargs["batch"] == PAGE_SIZE
+    # A discarded draft is left out unless asked for (discard_draft; owner 2026-10-08).
+    assert kwargs["query_params"] == {"filter": "year = 2031 && discarded != true", "sort": "version,id"}
+    await AidRulesRepository(pb).list_versions(2031, include_discarded=True)
+    kwargs = pb.collection.return_value.get_full_list.call_args.kwargs
     assert kwargs["query_params"] == {"filter": "year = 2031", "sort": "version,id"}
 
 
@@ -985,9 +989,9 @@ async def test_the_rules_as_of_several_dates_come_from_one_read_and_agree_with_e
     reads: list[str] = []
     list_versions, fetch_log = store.list_versions, store.fetch_log
 
-    async def counted_list(year: int) -> list[Any]:
+    async def counted_list(year: int, *, include_discarded: bool = False) -> list[Any]:
         reads.append("list_versions")
-        return await list_versions(year)
+        return await list_versions(year, include_discarded=include_discarded)
 
     async def counted_log(year: int) -> list[Any]:
         reads.append("fetch_log")

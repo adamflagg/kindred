@@ -71,6 +71,16 @@ class SectionSaveIn(BaseModel):
     past_season_reason: _PastReason | None = None
 
 
+class DiscardDraftIn(BaseModel):
+    """Discard the rules draft (owner 2026-10-08): the draft version the page showed, so a draft that moved on since
+    is refused rather than discarded unseen."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_version: int = Field(ge=1)
+    past_season_reason: _PastReason | None = None
+
+
 class SectionsSaveIn(BaseModel):
     """Several sections' editors saved as one operation (the Programs and costs card: programs and cost)."""
 
@@ -150,7 +160,9 @@ class RulesDraftOut(BaseModel):
     sections: list[DraftSectionOut]
     report: ValidationReport
     branched_from: int | None = None  # a save that made this version from the one it names
-    budget_total_locked: bool = False  # owner 10-06 (b): Round 1 has posted; the total is read-only, the shares edit
+    budget_total_locked: bool = (
+        False  # owner 10-08: the budget was approved (or Round 1 posted); the total is read-only, the shares edit
+    )
     groups: list[GroupOut] = Field(default_factory=list)
     # Spec §11.1: the season is earlier than the configured one. `configured_year` is None when the service has no
     # reader for it; the screen only reads it when `season_done` is true.

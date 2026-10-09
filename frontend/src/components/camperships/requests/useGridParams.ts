@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { parseOp } from './opFilter'
+import { parseReportParam, type ReportAddress } from './reportFilter'
 import { parseSeasonFigure, type FigureMeasure, type SeasonFigure } from './seasonFigure'
 import { resolveStrip, shownView, type RequestLens } from './strip'
 import { parseRoundFilter, type RequestView, type RoundFilter } from './views'
 
 export type GridParamName =
-  'program' | 'pool' | 'round' | 'live' | FigureMeasure | 'ids' | 'row' | 'op'
+  'program' | 'pool' | 'round' | 'live' | FigureMeasure | 'ids' | 'row' | 'op' | 'report'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
@@ -24,6 +25,8 @@ export interface GridParams {
   readonly figure: SeasonFigure | null
   /** `?op=`: one History operation's requests (spec §9.8). */
   readonly op: string | null
+  /** `?report=`: the requests behind one Reports count (slice 4 J; reportFilter.ts). */
+  readonly report: ReportAddress | null
   readonly showIds: boolean
   /** The table's `?sort=` and `?group=` as written (AidTable owns them); the household link carries them (I1). */
   readonly sort: string | null
@@ -71,6 +74,9 @@ export function useGridParams(): GridParams {
     (name: GridParamName, value: string | null) => setMany({ [name]: value }),
     [setMany]
   )
+  const reportRaw = params.get('report')
+  // Held: a new object every render would rebuild the ids read's key and the grid's filters.
+  const reportParam = useMemo(() => parseReportParam(reportRaw), [reportRaw])
   const viewParam = params.get('view')
   const lensParam = params.get('lens')
   const { lens, stage } = useMemo(() => resolveStrip(viewParam, lensParam), [viewParam, lensParam])
@@ -87,6 +93,7 @@ export function useGridParams(): GridParams {
     live: params.get('live') === '1',
     figure: parseSeasonFigure(params),
     op: parseOp(params.get('op')),
+    report: reportParam,
     showIds: params.get('ids') === '1',
     sort: params.get('sort'),
     group: params.get('group'),
