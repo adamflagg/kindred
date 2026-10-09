@@ -107,6 +107,11 @@ export interface ReportColumn {
   readonly title?: string | undefined
   /** Opt the header into wrapping; headers are one line by default (the mock's `wrap`). */
   readonly wrap?: true | undefined
+  /**
+   * A muted sub-line under the header ("closed", "live · Jun 3"): drawn small under the one-line header; Copy
+   * and the CSV read it after the header ("2026 closed").
+   */
+  readonly sub?: string | undefined
   /** The definition note number after the group's name ("1 · Round 1 by the deadline⁵"), from the group's first column. */
   readonly groupNote?: number | null | undefined
   /**
@@ -197,7 +202,10 @@ export function headingLines(heading: ReportHeading): string[] {
 
 /** Each column's header, its group named first ("Round 1 · Apps"), so a pasted table reads alone. */
 export function headerTexts(columns: readonly ReportColumn[]): string[] {
-  return columns.map((c) => (c.group ? `${c.group} · ${c.header}` : c.header))
+  return columns.map((c) => {
+    const header = c.sub ? `${c.header} ${c.sub}` : c.header
+    return c.group ? `${c.group} · ${header}` : header
+  })
 }
 
 /** Copy (RPT-33): tab-separated, values exactly as displayed, ready to paste into a spreadsheet. */

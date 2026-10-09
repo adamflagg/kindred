@@ -281,6 +281,61 @@ describe('ReportTable', () => {
     expect(downloadCsv.mock.calls[0]?.[0]).not.toContain('51–55%')
   })
 
+  it("draws a group's note mark on its group header, and its divider on the group's first column (Development's As reported⁶)", () => {
+    renderTable({
+      columns: [
+        { key: 'm', header: 'Metric' },
+        { key: 'a', header: '2025', group: 'As reported', groupNote: 6 },
+        { key: 'b', header: '2026', group: 'As reported' },
+        { key: 'c', header: '2027', group: 'The dashboard', divider: 'before' },
+      ],
+      rows: [
+        {
+          key: 'r',
+          kind: 'body',
+          cells: [textValue('x'), moneyValue(1), moneyValue(2), moneyValue(3)],
+        },
+      ],
+    })
+    const group = screen.getByRole('columnheader', { name: /As reported/ })
+    expect(group.querySelector('sup')?.textContent).toBe('6')
+    expect(screen.getAllByRole('columnheader', { name: /The dashboard/ })[0]?.className).toContain(
+      CS_RULE_GROUP
+    )
+    expect(group.className).not.toContain(CS_RULE_GROUP)
+    expect(screen.getByRole('columnheader', { name: '2026' }).querySelector('sup')).toBeNull()
+  })
+
+  it("draws a column's sub-line small and muted under its header, and Copy and the CSV read it after the header", async () => {
+    renderTable({
+      columns: [
+        { key: 'm', header: 'Metric' },
+        { key: 'a', header: '2026', sub: 'closed' },
+      ],
+      rows: [{ key: 'r', kind: 'body', cells: [textValue('x'), moneyValue(1)] }],
+    })
+    const sub = screen.getByText('closed')
+    expect(sub.className).toContain('text-muted-foreground')
+    expect(sub.closest('th')).toHaveTextContent('2026closed')
+    await userEvent.click(screen.getByRole('button', { name: /Download CSV/ }))
+    expect(downloadCsv.mock.calls[0]?.[0]).toContain('Metric,2026 closed')
+  })
+
+  it("keeps a fixed table's note mark on its label's line, after the cut words", () => {
+    renderTable({
+      fixed: true,
+      columns: [
+        { key: 'm', header: 'Metric' },
+        { key: 'a', header: '2026' },
+      ],
+      rows: [{ key: 'r', kind: 'body', ref: 3, cells: [textValue('A long label'), moneyValue(1)] }],
+    })
+    const cell = screen.getByText('A long label').closest('td') as HTMLElement
+    const sup = cell.querySelector('sup') as HTMLElement
+    // inside the same flex line as the label, not a block after it
+    expect(sup.parentElement?.parentElement).toBe(screen.getByText('A long label').parentElement)
+  })
+
   it('sets its heading in the sans card heading, not the display serif', () => {
     renderTable()
     const h = screen.getByRole('heading', { name: 'Every camper' })

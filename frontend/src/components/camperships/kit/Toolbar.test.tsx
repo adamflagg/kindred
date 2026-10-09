@@ -35,6 +35,20 @@ describe('AidToolbar', () => {
     expect(status).toHaveAttribute('title', '✓ 2 rounds marked Posted · $1,280')
   })
 
+  it('can carry the status’s full words in a title of its own, the slot showing the short ones', () => {
+    render(
+      <AidToolbar
+        status="⚠ Can't show Jun 3: pick a day before today"
+        statusTitle="The server shows a dated column only for a day already past."
+        statusWarn
+      />
+    )
+    expect(screen.getByText("⚠ Can't show Jun 3: pick a day before today")).toHaveAttribute(
+      'title',
+      'The server shows a dated column only for a day already past.'
+    )
+  })
+
   it('labels a filter in the 12.5px muted label', () => {
     render(
       <ToolbarLabel text="Program">

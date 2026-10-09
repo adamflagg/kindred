@@ -51,9 +51,9 @@ def test_basis_unconfirmed_is_the_interim_default_until_d96_is_re_ruled() -> Non
     definition = BY_KEY.get("basis_unconfirmed")
     assert definition is not None
     assert (definition.spec, definition.rulings) == ("§5.7", ("D96",))
-    assert "{camp}'s own aid only" in definition.text
-    assert "may compare two bases" in definition.text
-    assert "the dashboard's interim default, not a ruling" in definition.text
+    # approved final mock (six notes): the amber "basis unconfirmed" box is gone, its meaning is note 6
+    assert "may count the camp's own aid only" in definition.text
+    assert "compare them with the dashboard's seasons with care" in definition.text
 
 
 def test_percent_of_ask_including_grants_counts_an_outside_funded_rounds_money_as_grants() -> None:

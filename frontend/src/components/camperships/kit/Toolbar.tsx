@@ -20,6 +20,7 @@ export function AidToolbar({
   lead,
   left,
   status,
+  statusTitle,
   statusWarn = false,
   right,
   className,
@@ -29,6 +30,8 @@ export function AidToolbar({
   readonly left?: ReactNode
   /** The result of the last action; it truncates, with the full words in its title. */
   readonly status?: string
+  /** The status's full words, when the slot shows a short form (a refusal's long server sentence). */
+  readonly statusTitle?: string
   /** The status is a refusal: amber ink, not muted. */
   readonly statusWarn?: boolean
   /** Search, actions, and Download CSV last. */
@@ -55,7 +58,7 @@ export function AidToolbar({
                   ? `${CS_TOOLBAR_STATUS.replace('text-muted-foreground', 'text-amber-700 dark:text-amber-400')}`
                   : CS_TOOLBAR_STATUS
               }
-              title={status}
+              title={statusTitle ?? status}
             >
               {status}
             </span>

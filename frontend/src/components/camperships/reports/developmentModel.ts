@@ -5,6 +5,8 @@
  * dated column staff ask for (saved nowhere). Definitions are numbered notes under the table, each row a
  * superscript. Pure; every figure is the server's (D21), and no row is a family (D66).
  */
+import { createElement } from 'react'
+
 import type {
   ApiAidDevelopment,
   ApiAidDevelopmentColumn,
@@ -14,6 +16,8 @@ import type { AidView } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
 import { formatLongDate, formatShortDate, parseIsoDay } from '../kit/dates'
 import type { DefinitionNote } from '../kit/DefinitionNotes'
+import { FunderCell } from './FunderCell'
+import { tableShortLabel } from './statisticsModel'
 import {
   averageValue,
   BASIS_WORDS,
@@ -37,25 +41,73 @@ export const SECTION_WORDS: Readonly<Record<ApiAidDevelopmentRow['section'], str
   appeals: 'Appeals and cancellations',
 }
 
+/** The muted words after each section's name, on the same line (the final mock's section rows). */
+export const SECTION_DESCRIPTIONS: Readonly<Record<ApiAidDevelopmentRow['section'], string>> = {
+  money: "all money: the camp's awards and every outside grant",
+  counts:
+    'campers who attended and got money from any source, once per program; Weekend counts families',
+  appeals: "the camp's own requests",
+}
+
+/**
+ * "Show the dashboard's rebuild for 2022–2025": hidden until the 2017–2024 ledger backfill exists (owner
+ * 10-09: a control nobody can click for months reads as broken; its fact moved into note 6). The code
+ * path stays behind this flag so it can come back.
+ */
+export const SHOW_REBUILD_SWITCH: boolean = false
+
 /** The first season the dashboard decides itself; an earlier closed P column is reproduced from the sheet. */
 const FIRST_DECIDED_SEASON = 2027
 
+/** A column's header as the final mock draws it: short and on one line, the long form in its title. */
+export interface ColumnHead {
+  readonly header: string
+  /** The small muted line under the year ("closed", "live · Jun 3", "as of Mar 9"). */
+  readonly sub?: string
+  readonly title: string
+}
+
 /**
- * A column's header, as development-v2 draws it (every figure prints its basis, §9.7): "2025 · as
- * reported", the read's own season "2027 · live · as of Jun 3", a finished season "2026 · closed ·
- * reproduced", and a column asked for as of a day "2027 as of Mar 9". A contested basis is marked.
+ * A column's head: the year alone, a sub-line for a dashboard column ("closed", "live · Jun 3"), and the
+ * long words in the title. An as-reported column's basis words ("basis unconfirmed") ride in its title;
+ * note 6 says the rest. Built from the seasons the server sends; no year is written here.
  */
-export function columnHeader(column: ApiAidDevelopmentColumn, dev: ApiAidDevelopment): string {
+export function columnHead(column: ApiAidDevelopmentColumn, dev: ApiAidDevelopment): ColumnHead {
   const season = String(column.season)
-  const words =
-    column.basis === 'r'
-      ? `${season} · as reported`
-      : column.as_of !== dev.figures_on
-        ? column.label
-        : column.season === dev.year
-          ? `${season} · live · as of ${formatShortDate(column.as_of)}`
-          : `${season} · closed${column.season < FIRST_DECIDED_SEASON ? ' · reproduced' : ''}`
-  return `${words}${column.basis_unconfirmed ? ' · basis unconfirmed' : ''}`
+  const lastReported = dev.columns.filter((c) => c.basis === 'r').at(-1)
+  if (column.basis === 'r') {
+    const words =
+      column === lastReported
+        ? `${season}: as reported, the figures sent to funders`
+        : `${season}: as reported, typed once, read only`
+    return {
+      header: season,
+      title: column.basis_unconfirmed ? `${words} (basis unconfirmed)` : words,
+    }
+  }
+  const short = formatShortDate(column.as_of ?? dev.figures_on)
+  if (column.as_of !== dev.figures_on) {
+    return {
+      header: season,
+      sub: `as of ${short}`,
+      title: `${column.label}: recomputed from dated records, never saved. A line the dashboard can't rebuild for that day reads "—", never an estimate.`,
+    }
+  }
+  if (column.season === dev.year) {
+    return {
+      header: season,
+      sub: `live · ${short}`,
+      title: `${season}, live: the dashboard's decisions as of ${short}`,
+    }
+  }
+  return {
+    header: season,
+    sub: 'closed',
+    title:
+      column.season < FIRST_DECIDED_SEASON
+        ? `${season}, closed: reproduced by the dashboard from finance's repaired sheet`
+        : `${season}, closed: the dashboard's decisions at the season's end`,
+  }
 }
 
 /** The one on-demand column staff asked for: a season as of a past day (component state only). */
@@ -67,27 +119,58 @@ export interface AsOfPick {
 /** The read's `?column=` address: `<season>:<YYYY-MM-DD>`. */
 export const columnParam = (pick: AsOfPick): string => `${String(pick.season)}:${pick.day}`
 
-export const NOT_SAVED_TAG = 'not saved · gone when you leave'
+export const NOT_SAVED_TAG = 'not saved'
+
+export const AS_REPORTED_GROUP = 'As reported'
+export const DASHBOARD_GROUP = 'The dashboard'
 
 /**
- * The columns; the one asked for as of a day carries the tag, since nothing keeps it, and the mock's
- * amber tint (the kit's decided tone).
+ * The columns: Metric, then the as-reported seasons under "As reported" (its note on the first) and the
+ * dashboard's under "The dashboard", a stronger rule between the two groups. The column asked for as of a
+ * day carries "not saved" under its year, and the mock's amber tint.
  */
 export function developmentColumns(
   dev: ApiAidDevelopment,
-  shown?: AsOfPick | null
+  shown?: AsOfPick | null,
+  options: { readonly asReportedNote?: number | null | undefined } = {}
 ): ReportColumn[] {
+  const dated = dev.columns.some((c) => c.basis === 'P' && c.as_of !== dev.figures_on)
+  const base = dated ? 98 : 104
+  let firstReported = true
+  let firstDashboard = true
   return [
     { key: 'line', header: 'Metric' },
     ...dev.columns.map((c, index): ReportColumn => {
+      const head = columnHead(c, dev)
+      const reported = c.basis === 'r'
       const temporary = shown?.season === c.season && c.as_of === shown.day
-      return temporary
-        ? {
-            key: `column-${String(index)}`,
-            header: `${columnHeader(c, dev)} · ${NOT_SAVED_TAG}`,
-            tone: 'decided',
-          }
-        : { key: `column-${String(index)}`, header: columnHeader(c, dev) }
+      const live = !reported && c.as_of === dev.figures_on && c.season === dev.year
+      const column: ReportColumn = {
+        key: `column-${String(index)}`,
+        header: head.header,
+        title: temporary
+          ? `${String(c.season)} as of ${formatLongDate(c.as_of ?? dev.figures_on)}: recomputed from dated records for you only, never saved; gone when you leave the page. A line the dashboard can't rebuild for that day reads "—", never an estimate.`
+          : head.title,
+        group: reported ? AS_REPORTED_GROUP : DASHBOARD_GROUP,
+        width: temporary ? base + 14 : live ? base + (dated ? 10 : 12) : base,
+        ...(temporary
+          ? {
+              sub: `${formatShortDate(c.as_of ?? dev.figures_on)} · ${NOT_SAVED_TAG}`,
+              tone: 'decided' as const,
+            }
+          : head.sub === undefined
+            ? {}
+            : { sub: head.sub }),
+      }
+      if (reported && firstReported) {
+        firstReported = false
+        if (options.asReportedNote) return { ...column, groupNote: options.asReportedNote }
+      }
+      if (!reported && firstDashboard) {
+        firstDashboard = false
+        return { ...column, divider: 'before' as const }
+      }
+      return column
     }),
   ]
 }
@@ -127,36 +210,44 @@ export const SUB_LINES: Readonly<Record<string, 1 | 2>> = {
   appeals_in_full: 1,
   appeals_in_part: 1,
   appeals_approved: 1,
-  gender_recipients: 1,
-  gender_enrolled: 1,
   not_in_group_amount: 1,
   not_in_group_awards: 1,
 }
 
 /**
- * The registry note (`reports-development`) a line points at when the read sends it no definition of
- * its own: the mock's superscripts. A line with a definition points at that instead.
+ * The registry note (`reports-development`) each line points at: the final mock's six notes. The server's
+ * own per-row definition text no longer numbers a row; the registry's six do, in the registry's order.
  */
+const NOTE_BUDGET = 'dev_budget'
+const NOTE_NEED = 'need'
+const NOTE_TOTAL = 'total_awards_granted'
+const NOTE_WHO = 'dev_recipients'
+const NOTE_FIRST = 'first_time'
+/** The "As reported" group header's note (the key is kept from the old basis note, reworded). */
+export const AS_REPORTED_NOTE_KEY = 'basis_unconfirmed'
 const REGISTRY_NOTE: Readonly<Record<string, string>> = {
-  total_requests: 'need',
-  need_met: 'need',
-  total_awards: 'total_awards_granted',
-  outside_awards: 'total_awards_granted',
-  recipients: 'dev_recipients',
-  families: 'dev_families',
-  shared_households: 'dev_families',
-  teens: 'teens',
-  youth: 'teens',
-  gender_recipients: 'gender',
-  gender_enrolled: 'gender',
-  first_time: 'first_time',
-  household_level_lines: 'household_level',
-  household_level_amount: 'household_level',
-  appeals_submitted: 'dev_appeals',
-  appeals_in_full: 'dev_appeals',
-  appeals_in_part: 'dev_appeals',
-  appeals_approved: 'dev_appeals',
-  declined_insufficient: 'dev_appeals',
+  budget: NOTE_BUDGET,
+  total_requests: NOTE_NEED,
+  need_met: NOTE_NEED,
+  total_awards: NOTE_TOTAL,
+  outside_awards: NOTE_TOTAL,
+  awards: NOTE_TOTAL,
+  average_award: NOTE_TOTAL,
+  recipients: NOTE_WHO,
+  families: NOTE_WHO,
+  teens: NOTE_WHO,
+  youth: NOTE_WHO,
+  gender_recipients: NOTE_WHO,
+  gender_enrolled: NOTE_WHO,
+  household_level_lines: NOTE_WHO,
+  household_level_amount: NOTE_WHO,
+  first_time: NOTE_FIRST,
+  returning: NOTE_FIRST,
+  appeals_submitted: NOTE_FIRST,
+  appeals_in_full: NOTE_FIRST,
+  appeals_in_part: NOTE_FIRST,
+  appeals_approved: NOTE_FIRST,
+  declined_insufficient: NOTE_FIRST,
 }
 
 /** A registry note: its key and its words (`useAidDefinitions('reports-development').entries`). */
@@ -166,7 +257,7 @@ export interface RegistryNote {
 }
 
 function lineIndent(key: string): 0 | 1 | 2 {
-  return SUB_LINES[key] ?? (key.startsWith('cancelled_') ? 1 : 0)
+  return SUB_LINES[key] ?? 0
 }
 
 /**
@@ -187,41 +278,37 @@ export interface DevelopmentTableOptions {
   readonly registry?: readonly RegistryNote[] | undefined
 }
 
-/** A row while it is built: the words its note number stands for, if any (numbered once all rows exist). */
-type Drafted = ReportRow & { readonly noteText?: string | undefined }
-
 /**
  * The table and its numbered notes (development-v2.html, final audit O1-O3). Rows are development's
  * lines, each section once in SECTION_WORDS' order, its lines in the server's order (the Budget line
  * leads Money wherever it is sent). Total Awards Granted's pools follow its own sub-lines; Recipients'
  * groups sit right under it. A line limited to some group kinds reads "label, group" for each group.
- * Every row stays one line: a definition is a superscript number on the row and a numbered note under
- * the table, numbered in the order the rows first call for them; the registry's notes no row calls
- * for follow, in the registry's order.
+ * Every row stays one line: a note is a superscript number on the row and a numbered note under the
+ * table; the registry's six notes are numbered in the registry's order, whichever rows call for them.
  */
 export function developmentTable(
   dev: ApiAidDevelopment,
   options: DevelopmentTableOptions = {}
 ): { rows: ReportRow[]; notes: DefinitionNote[] } {
   const registry = options.registry ?? []
-  const registryText = new Map(registry.map((note) => [note.key, note.text] as const))
-  const drafted: Drafted[] = []
+  const drafted: ReportRow[] = []
   const order = Object.keys(SECTION_WORDS)
   const lead = (row: ApiAidDevelopmentRow) => (row.key === BUDGET_KEY ? 0 : 1)
   const sent = [...dev.rows].sort(
     (a, b) => order.indexOf(a.section) - order.indexOf(b.section) || lead(a) - lead(b)
   )
-  const noteFor = (row: ApiAidDevelopmentRow): string | undefined => {
-    if (row.definition !== '') return row.definition
+  // A line's note number is its registry note's place in the registry's order: six, fixed (final mock).
+  const noteFor = (row: ApiAidDevelopmentRow): number | undefined => {
     const key = REGISTRY_NOTE[row.key]
-    return key === undefined ? undefined : registryText.get(key)
+    const at = key === undefined ? -1 : registry.findIndex((note) => note.key === key)
+    return at < 0 ? undefined : at + 1
   }
   const cells = (label: string, row: ApiAidDevelopmentRow) => [
     textValue(label),
     ...row.values.map((value) => valueCell(row, value)),
   ]
   let section: string | null = null
-  let pools: Drafted[] = [] // Total Awards Granted's pools, waiting for its sub-lines to pass
+  let pools: ReportRow[] = [] // Total Awards Granted's pools, waiting for its sub-lines to pass
   const flushPools = () => {
     drafted.push(...pools)
     pools = []
@@ -239,6 +326,7 @@ export function developmentTable(
         key: `section-${first.section}`,
         kind: 'heading',
         cells: [textValue(SECTION_WORDS[first.section])],
+        meta: SECTION_DESCRIPTIONS[first.section],
       })
     }
     const rowKey = (row: ApiAidDevelopmentRow, offset: number) =>
@@ -251,12 +339,12 @@ export function developmentTable(
         key: rowKey(every, everyIndex),
         kind: 'body',
         indent,
-        noteText: noteFor(every),
+        ref: noteFor(every),
         cells: cells(every.label, every),
       })
       if (first.key === OUTSIDE_KEY) drafted.push(...grantorRows(dev, indent, options.fundersHref))
       if (BROKEN_OUT.has(first.key)) {
-        const groups: Drafted[] = []
+        const groups: ReportRow[] = []
         line.forEach((row, offset) => {
           if (row.group === null) return
           groups.push({
@@ -275,7 +363,7 @@ export function developmentTable(
           key: rowKey(row, offset),
           kind: 'body',
           indent,
-          noteText: noteFor(row),
+          ref: noteFor(row),
           cells: cells(
             row.group === null ? row.label : `${row.label}, ${groupWords(dev, row.group)}`,
             row
@@ -286,22 +374,8 @@ export function developmentTable(
     start = end + 1
   }
   flushPools()
-  // Number the notes in the order the rows first call for them, each text once.
-  const numbers = new Map<string, number>()
-  const rows = drafted.map(({ noteText, ...row }): ReportRow => {
-    if (noteText === undefined) return row
-    let n = numbers.get(noteText)
-    if (n === undefined) {
-      n = numbers.size + 1
-      numbers.set(noteText, n)
-    }
-    return { ...row, ref: n }
-  })
-  for (const note of registry) {
-    if (!numbers.has(note.text)) numbers.set(note.text, numbers.size + 1)
-  }
-  const notes = [...numbers].map(([text, n]) => ({ n, text }))
-  return { rows, notes }
+  const notes = registry.map((note, index) => ({ n: index + 1, text: note.text }))
+  return { rows: drafted, notes }
 }
 
 /** The table's rows (see `developmentTable`). */
@@ -331,38 +405,6 @@ export function developmentHeading(dev: ApiAidDevelopment, title: string): Repor
   }
 }
 
-/** "Basis unconfirmed" (O-930-1; §9.4): the seasons whose as-reported basis is being reconciled. */
-export function unconfirmedWords(dev: ApiAidDevelopment): string | null {
-  const labels = dev.columns.filter((c) => c.basis_unconfirmed).map((c) => c.label)
-  if (labels.length === 0) return null
-  return `Basis unconfirmed: ${labels.join(', ')}. Whether those as-reported figures were all money or the camp's own dollars only is being reconciled; compare them with the dashboard's seasons with care.`
-}
-
-/**
- * A dated column's lines a past read can't rebuild read "—" (Part C D45; slice 2 Decision 11's words).
- * The count is the column's lines as drawn (final audit O10): every row that reads "—" there.
- */
-export function notRebuiltColumnWords(
-  dev: ApiAidDevelopment,
-  rows: readonly ReportRow[]
-): string | null {
-  const columns = dev.columns
-    .map((c, index) => ({ c, index }))
-    .filter(({ c }) => (c.not_rebuilt ?? []).length > 0)
-  if (columns.length === 0) return null
-  const blank = (index: number) =>
-    rows.filter((row) => {
-      const cell = row.cells[index + 1]
-      return (
-        row.kind === 'body' && cell !== undefined && cell.kind !== 'text' && cell.value === null
-      )
-    }).length
-  const named = columns
-    .map(({ c, index }) => `${c.label} (${String(blank(index))} lines)`)
-    .join(', ')
-  return `A dated column shows what the dashboard can rebuild for that day: a line it can't reads "—", never an estimate. ${named}.`
-}
-
 /**
  * How many requests counted at their session's cost (owner Rule M, revised 10-08): an ask above its
  * priced session's cost counts at the cost in Total Requests and % of need met, so this line says how
@@ -385,10 +427,45 @@ export function rebuildReason(dev: ApiAidDevelopment): string | null {
   return dev.not_built.find((item) => item.figure === 'rebuild')?.reason ?? null
 }
 
+/** A funder line's facts, as the final mock draws them at the right of its name. */
+export interface FunderFacts {
+  readonly kind: 'incentive' | 'need-based'
+  /** The reporting group by short name (title: the full name), or null: "needs a group". */
+  readonly pool: { readonly short: string; readonly full: string } | null
+  /** The source has no funder yet: a CampMinder description no funder claims. */
+  readonly noFunder: boolean
+}
+
+export function funderFacts(source: ApiAidDevelopment['sources'][number]): FunderFacts {
+  return {
+    kind: source.incentive ? 'incentive' : 'need-based',
+    pool:
+      source.group === ''
+        ? null
+        : {
+            short: tableShortLabel({ key: source.group, label: source.group_label }),
+            full: source.group_label,
+          },
+    noFunder: !source.source_key.startsWith('funder:'),
+  }
+}
+
+/** The facts in words, for the cell's title and the CSV ("another funder" rides here, not on screen). */
+function factsWords(source: ApiAidDevelopment['sources'][number]): string {
+  const facts = funderFacts(source)
+  return [
+    source.who_paid,
+    facts.kind,
+    facts.pool === null ? 'needs a group' : facts.pool.full,
+    ...(facts.noFunder ? ['no funder yet'] : []),
+  ].join(' · ')
+}
+
 /**
- * The grantor lines under Outside grants (D88): one per source another funder paid, named, with its
- * facts in muted words. Its amount sits only in the read's own season, the dashboard's column as of the
- * figures day; the other columns have nothing there (D74), so they read "—". The camp's own is no line.
+ * The grantor lines under Outside grants (D88): one per source another funder paid, ONE line each: the
+ * name (a link to Money › Funders, cut with an ellipsis) and its facts at the right of the cell. Its
+ * amount sits only in the read's own season, the dashboard's column as of the figures day; the other
+ * columns have nothing there (D74), so they read "—". The camp's own is no line.
  */
 function grantorRows(
   dev: ApiAidDevelopment,
@@ -401,28 +478,26 @@ function grantorRows(
   return dev.sources
     .filter((source) => source.who_paid === ANOTHER_FUNDER)
     .map((source, index) => {
-      // Who paid, incentive or need-based, and its group (or that it needs one), and "no funder yet"
-      // for a description no funder claims: two lines of one funder never read alike (final audit E3).
-      const facts = [
-        source.who_paid,
-        source.incentive ? 'incentive' : 'need-based',
-        source.group === '' ? 'needs a group' : source.group_label,
-        ...(source.source_key.startsWith('funder:') ? [] : ['no funder yet']),
-      ].join(' · ')
+      const words = `${source.name} (${factsWords(source)})`
+      const href = fundersHref?.(fundersParams(source.source_key))
       return {
         key: `grantor-${source.source_key}-${source.group}-${String(index)}`,
         kind: 'body' as const,
         indent: Math.min(indent + 1, 2) as 1 | 2,
-        note: facts,
-        // The CSV has no muted line: the facts ride in the name cell there.
+        // The CSV has no facts column: they ride in the name cell there.
         cells: [
-          textValue(source.name, `${source.name} (${facts})`),
+          {
+            ...textValue(source.name, words),
+            title: href === undefined ? words : `${words} · opens Money › Funders`,
+            display: createElement(FunderCell, {
+              name: source.name,
+              facts: funderFacts(source),
+              href,
+            }),
+          },
           ...own.map((is) => moneyValue(is ? source.amount : null)),
         ],
-        links:
-          fundersHref === undefined
-            ? undefined
-            : { 0: fundersHref(fundersParams(source.source_key)) },
+        links: href === undefined ? undefined : { 0: href },
       }
     })
 }
@@ -433,9 +508,9 @@ export function developmentCsvName(view: AidView, table: string): string {
 
 // --- The on-demand as-of column (Show As Of a Date…; D68, reworked: not saved) ---------------------------
 
-/** "2027 as of Mar 9, 2027". */
-export function datedWords(column: AsOfPick): string {
-  return `${String(column.season)} as of ${formatLongDate(column.day)}`
+/** The chip's words: "2027 as of Mar 9 · not saved". */
+export function asOfChipWords(column: AsOfPick): string {
+  return `${String(column.season)} as of ${formatShortDate(column.day)} · ${NOT_SAVED_TAG}`
 }
 
 /** The first season the dashboard keeps dated records for (D67): the server refuses an earlier one. */

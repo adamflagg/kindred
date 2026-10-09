@@ -435,12 +435,10 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     # Reports › Development (Part B): development's one all-money basis (§5.7, §5.10, §5.11).
     Definition(
         key="basis_unconfirmed",
-        term="Basis unconfirmed",
+        term="As reported",
         text=(
-            "Basis unconfirmed: a 2022–2025 column shows the figures development already sent funders, typed once. "
-            "The dashboard counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
-            "{camp}'s own aid only. Until that is settled, comparing such a column with 2026 or later "
-            "may compare two bases. This note is the dashboard's interim default, not a ruling."
+            "As reported: the figures already sent to funders, typed once. They may count the camp's own aid only, so compare them with the dashboard's seasons with care. "
+            "The dashboard's own rebuild of these years waits on the 2017–2024 ledger backfill."
         ),
         spec="§5.7",
         rulings=("D96",),
@@ -449,21 +447,32 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="total_awards_granted",
         term="Total Awards Granted",
         text=(
-            "Total Awards Granted: all money given out for camperships, together: {camp}'s awarded amounts and every "
-            "outside grant. Every outside grant is an award, and the counts follow the same money."
+            "Total Awards Granted: all money, the camp's Posted awards plus every outside grant. Grants/Awards counts each "
+            "attendee and session with any aid once; Average award = Total ÷ Grants/Awards."
         ),
         spec="§5.7",
-        rulings=("D87", "D88"),
+        rulings=(
+            "D87",
+            "D88",
+        ),
+    ),
+    Definition(
+        key="dev_budget",
+        term="Budget",
+        text=(
+            "Budget: the camp's own aid budget as the board first passed it; a later revision doesn't move it. An as-reported "
+            "season shows the figure finance typed."
+        ),
+        spec="§5.7",
+        rulings=("D87",),
     ),
     Definition(
         key="need",
-        term="Need",
+        term="Need and Total Requests",
         text=(
-            "Need: {camp}'s awards in the rounds before the latest ask + the latest ask, never less than any earlier "
-            "ask's own figure. Total Requests = Σ need of the live requests of campers who attended; a cancelled or closed request and outside grants are never in it. % "
-            "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need. A request "
-            "whose asks add up to more than its session's cost is counted at the cost, and a footnote says how many "
-            "requests were counted at the cost."
+            "Need and Total Requests: for each live request of a camper who attended, the latest ask plus the camp's "
+            "earlier-round awards, at most its session's cost; outside grants are left out. % of need met = money received, "
+            "up to need, ÷ need."
         ),
         spec="§5.10",
         rulings=("D91",),
@@ -472,15 +481,18 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="dev_recipients",
         term="Who counts",
         text=(
-            "Who counts: campers who attended (CampMinder status 2) and got money from any source, including campers "
-            "who never applied. A cancelled camper, or one who got nothing, is not counted. A camper counts once per "
-            "program; Weekend counts families. Only attendees of aid-eligible sessions (those a program open to aid claims "
-            "this season) are in these groups: someone who attended only a session that is not aid-eligible is not "
-            "counted anywhere. An outside grant on a session that is not aid-eligible still counts when the same "
-            "person also attended an aid-eligible session in that group."
+            "Who counts: campers who attended an aid-eligible session and got money from any source, applied or not; Weekend "
+            "counts families. Teens are 13–17 on their first day; gender is CampMinder's Gender Identity. A household's grant "
+            "counts on a camper only when the household has one eligible camper."
         ),
         spec="§5.11",
-        rulings=("D92",),
+        rulings=(
+            "D92",
+            "D89",
+            "D93",
+            "D94",
+            "D142",
+        ),
     ),
     # Reports › Development › Funding sources (Part C).
     Definition(
@@ -508,66 +520,17 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D90",),
     ),
     Definition(
-        key="teens",
-        term="Teens",
-        text=(
-            "Teens: Summer Camp and Quest campers aged 13–17 on the first day of their first session in that program. "
-            "Youth are 0–12."
-        ),
-        spec="§5.11",
-        rulings=("D89", "D103"),
-    ),
-    Definition(
-        key="dev_families",
-        term="Families",
-        text=(
-            "Families: each CampMinder household counts once, and the report says how many households share a "
-            "camper. Family Camp counts the households that attended and got money."
-        ),
-        spec="§5.11",
-        rulings=("D93",),
-    ),
-    Definition(
-        key="gender",
-        term="Gender",
-        text=(
-            "Gender: CampMinder's Gender Identity, for aid recipients and everyone enrolled. A write-in shows as "
-            "self-described and a blank as not given."
-        ),
-        spec="§5.11",
-        rulings=("D94",),
-    ),
-    Definition(
         key="first_time",
         term="First-time",
         text=(
-            "First-time depends on who is asking: a grantor's or donor's own definition decides it, so each "
-            "first-time line states its definition."
+            "First-time: no earlier session in that program since 2017, unless a grantor defines it. Appeals: a Round 2 or "
+            "later ask from a camper who attended; approved = a posted award in those rounds."
         ),
         spec="§5.11",
-        rulings=("D99",),
-    ),
-    Definition(
-        key="dev_appeals",
-        term="Appeals",
-        text=(
-            "Appeals: an ask in Round 2 or any later round, for a camper who attended, counted once per request. "
-            "Approved = a posted award above $0 in those rounds, in full or in part. Declined due to insufficient aid "
-            "= requests cancelled with that reason. Now every cancel-reason line includes campers who didn't attend."
+        rulings=(
+            "D99",
+            "D101",
         ),
-        spec="§5.11",
-        rulings=("D101", "D141"),
-    ),
-    Definition(
-        key="household_level",
-        term="Household-level grants",
-        text=(
-            "Household-level grants: a never-applied household's grant is tied to a camper only when the household "
-            "has exactly one eligible camper; otherwise it stays household-level, and the camper counts show it as "
-            "household-level and say by how much. Money totals and family counts are exact either way."
-        ),
-        spec="§5.11",
-        rulings=("D142",),
     ),
     # Money › To place (slice 3; PENDING OWNER, owner question 4).
     Definition(
@@ -870,15 +833,11 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "reports-development-zip": ("zip_who_counts", "zip_dollars", "zip_zip", "zip_families", "zip_geography"),
     "reports-funding-sources": ("source_facts",),
     "reports-development": (
-        "total_awards_granted",
+        "dev_budget",
         "need",
+        "total_awards_granted",
         "dev_recipients",
-        "teens",
-        "dev_families",
-        "gender",
         "first_time",
-        "dev_appeals",
-        "household_level",
         "basis_unconfirmed",
     ),
 }

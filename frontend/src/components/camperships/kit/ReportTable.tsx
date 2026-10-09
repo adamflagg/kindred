@@ -133,6 +133,19 @@ function cellTitle(cell: ReportValue): string | undefined {
   return cell.kind === 'text' && cell.value !== '' && cell.value !== '—' ? cell.value : undefined
 }
 
+/** The first cell is drawn as a flex line (cut label, mark, badge) rather than plain content. */
+function labelLine(
+  index: number,
+  row: ReportRow,
+  span: number,
+  fixed: boolean,
+  cell: ReportValue
+): boolean {
+  return (
+    index === 0 && (row.badge !== undefined || span > 1 || (fixed && cell.display === undefined))
+  )
+}
+
 function indentStyle(indent: number | undefined) {
   return indent ? { paddingLeft: `${String(0.5 + indent)}rem` } : undefined
 }
@@ -244,6 +257,11 @@ export function ReportTable({
     const label = (
       <>
         {column.header}
+        {column.sub ? (
+          <span className="text-muted-foreground block text-[11px] leading-[14px] font-normal">
+            {column.sub}
+          </span>
+        ) : null}
         {column.note ? <DefRef n={column.note} /> : null}
       </>
     )
@@ -359,7 +377,11 @@ export function ReportTable({
                         <th
                           key={`group-${segment.first.key}`}
                           colSpan={segment.span}
-                          className={TH_GROUP}
+                          className={
+                            segment.first.divider === 'before'
+                              ? TH_GROUP.replace(CS_RULE, DIVIDER_BEFORE)
+                              : TH_GROUP
+                          }
                         >
                           {segment.group}
                           {segment.first.groupNote ? <DefRef n={segment.first.groupNote} /> : null}
@@ -425,15 +447,17 @@ export function ReportTable({
                           className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
                           style={index === 0 ? indentStyle(row.indent) : undefined}
                         >
-                          {index === 0 &&
-                          (row.badge !== undefined ||
-                            span > 1 ||
-                            (fixed && cell.display === undefined)) ? (
+                          {labelLine(index, row, span, fixed, cell) ? (
                             // a spanned label cuts with a title; the badge stays at its right end
                             <span className="flex items-center gap-1.5">
                               <span className={`${CS_CUT} min-w-0 flex-initial`}>
                                 {cellContent(cell, row.links?.[index])}
                               </span>
+                              {index === 0 && row.ref !== undefined ? (
+                                <span className="-ml-1 flex-none">
+                                  <DefRef n={row.ref} />
+                                </span>
+                              ) : null}
                               {row.badge !== undefined && (
                                 <span className={`${BASIS_BADGE} ml-auto flex-none`}>
                                   {row.badge}
@@ -443,7 +467,11 @@ export function ReportTable({
                           ) : (
                             cellContent(cell, row.links?.[index])
                           )}
-                          {index === 0 && row.ref !== undefined ? <DefRef n={row.ref} /> : null}
+                          {index === 0 &&
+                          row.ref !== undefined &&
+                          !labelLine(index, row, span, fixed, cell) ? (
+                            <DefRef n={row.ref} />
+                          ) : null}
                           {index === 0 && row.note ? (
                             <div className={`${REPORT_NOTE} whitespace-normal`}>{row.note}</div>
                           ) : null}
