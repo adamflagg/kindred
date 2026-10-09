@@ -24,6 +24,36 @@ describe('DefinitionNotes (§4.8; D20: numbered notes at the bottom, no hover)',
     )
   })
 
+  // Design language §12 (kit CF.notes): the term leads in bold, the words follow.
+  it("sets a note's term in bold when it carries one", () => {
+    render(<DefinitionNotes notes={[{ n: 1, term: 'Locked', text: 'Locked: in effect.' }]} />)
+    const term = screen.getByText('Locked:')
+    expect(term.tagName).toBe('B')
+    expect(screen.getByRole('listitem')).toHaveTextContent('1. Locked: in effect.')
+  })
+
+  it('sets a term bold when a comma or an equals sign follows it, and never a word that only starts the same', () => {
+    render(
+      <DefinitionNotes
+        notes={[
+          {
+            n: 1,
+            term: 'Small groups show as they are',
+            text: 'Small groups show as they are, dollars included.',
+          },
+          { n: 2, term: 'Remaining', text: 'Remaining = Allocated − Posted.' },
+          { n: 3, term: 'Share', text: 'Shares are kept.' },
+        ]}
+      />
+    )
+    expect(screen.getByText('Small groups show as they are').tagName).toBe('B')
+    expect(screen.getByText('Remaining').tagName).toBe('B')
+    expect(screen.queryByText('Share')).toBeNull()
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(
+      '1. Small groups show as they are, dollars included.'
+    )
+  })
+
   it('draws nothing when a surface has no notes', () => {
     const { container } = render(<DefinitionNotes notes={[]} />)
     expect(container).toBeEmptyDOMElement()

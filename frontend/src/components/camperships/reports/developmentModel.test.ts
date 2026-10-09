@@ -109,6 +109,13 @@ describe('the report', () => {
     // the server's own definition text no longer numbers a row: the six registry notes do (final mock)
     expect(rows[1]?.ref).toBe(3)
     expect(notes).toEqual(REGISTRY.map((r, i) => ({ n: i + 1, text: r.text })))
+    // A registry note that carries its term passes it on, so the notes set it bold.
+    const termed = developmentTable(DEVELOPMENT, {
+      registry: [{ key: 'dev_budget', term: 'Budget', text: 'Budget: the first board-passed.' }],
+    })
+    expect(termed.notes).toEqual([
+      { n: 1, term: 'Budget', text: 'Budget: the first board-passed.' },
+    ])
     expect(rows.filter((r) => texts(r)[0] === 'Recipients')).toHaveLength(1)
     expect(rows.find((r) => texts(r)[0] === 'Recipients')?.ref).toBe(4)
     expect(rows.find((r) => texts(r)[0] === 'Pool A campers')?.ref).toBeUndefined()

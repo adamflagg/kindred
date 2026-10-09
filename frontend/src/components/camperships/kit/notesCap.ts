@@ -1,6 +1,8 @@
 export interface DefinitionNote {
   readonly n: number
   readonly text: string
+  /** The lead term, set bold: the note's text must begin `${term}:`. */
+  readonly term?: string
 }
 
 /** At most six numbered notes per page view (design-language §12; owner: "way too many footer notes"). */

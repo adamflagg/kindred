@@ -254,6 +254,8 @@ const REGISTRY_NOTE: Readonly<Record<string, string>> = {
 export interface RegistryNote {
   readonly key: string
   readonly text: string
+  /** The note's lead term, set bold in the notes. */
+  readonly term?: string
 }
 
 function lineIndent(key: string): 0 | 1 | 2 {
@@ -374,7 +376,11 @@ export function developmentTable(
     start = end + 1
   }
   flushPools()
-  const notes = registry.map((note, index) => ({ n: index + 1, text: note.text }))
+  const notes = registry.map((note, index) =>
+    note.term === undefined
+      ? { n: index + 1, text: note.text }
+      : { n: index + 1, term: note.term, text: note.text }
+  )
   return { rows: drafted, notes }
 }
 
