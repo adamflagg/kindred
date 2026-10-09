@@ -5,10 +5,13 @@ import { DefinitionNotes } from '../kit/DefinitionNotes'
 export function AidDefinitionNotes({
   surface,
   extra = [],
+  boldTerm = false,
 }: {
   surface: string
   /** Notes only this page's rows call for, numbered after the registry's. */
   extra?: readonly string[]
+  /** Bold each note's leading "Term:" (Requests; the mock does it there only). */
+  boldTerm?: boolean
 }) {
   const { notes, isPending, error } = useAidDefinitions(surface)
   // A failed refetch keeps the notes already loaded; the message is for when there are none.
@@ -21,5 +24,5 @@ export function AidDefinitionNotes({
   }
   if (isPending) return null
   const all = [...notes, ...extra.map((text, i) => ({ n: notes.length + i + 1, text }))]
-  return <DefinitionNotes notes={all} />
+  return <DefinitionNotes notes={all} boldTerm={boldTerm} />
 }

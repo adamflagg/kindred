@@ -14,6 +14,7 @@ import { formatShortDate } from '../kit/dates'
 import { formatGap, formatMoney, toCents } from '../kit/money'
 import type { PillTone } from '../kit/kitStyles'
 import type { CellValue, FitContent } from '../kit/table'
+import { camperLabel } from './cells'
 import { attentionFor, daysBetween, waitingSince } from './attention'
 import { LIVE_REQUEST_STATUSES } from './gridEditor'
 import { figureCsvWords, matchesFigure, type SeasonFigure } from './seasonFigure'
@@ -183,6 +184,8 @@ export interface GridColumnSpec {
   readonly inCsv?: false
   /** What the header says on hover and on click; the header then does not sort. */
   readonly help?: string
+  /** The definitions registry's key for the note this header's figure points at (§12): Decided¹, Posted², CM ✓³, Cost⁴. */
+  readonly noteKey?: string
   /** The CSV's own, fuller header name when the screen's is short. */
   readonly csvHeader?: string
   /** The CSV's own text when it says more than the screen's (CM ✓'s full detail, batch 4). */
@@ -325,16 +328,17 @@ export const CM_CHECK_HELP = `CampMinder check: did the money posted in CampMind
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   // T3 (LOCKED): who filed the aid form, by name only (#2993's `requested_by`; null when the server
   // can't name one person). It replaced Family, links to the household and sorts by last name.
-  // Takes the spare width (batch 4): Needs attention is now only as wide as its chips, so in a
-  // narrow view the gap opens here, beside it, and never at 130 or under.
+  // Takes the spare width (batch 4): in a narrow view the gap opens here, beside Needs attention,
+  // and never under 150 (§8: wide enough for the name and the split · N chip).
   requestedBy: {
     header: 'Requested by',
-    width: 130,
+    width: 150,
     flex: true,
     value: (r) => r.requested_by ?? null,
     sortValue: (r) => (r.requested_by ? lastNameFirst(r.requested_by) : null),
   },
-  camper: { header: 'Camper', width: 130, pinned: true, value: (r) => r.camper_name },
+  // §15: a household-level request reads, sorts, searches and exports by its household's label.
+  camper: { header: 'Camper', width: 170, pinned: true, value: (r) => camperLabel(r) },
   householdId: {
     header: 'Household',
     width: 84,
@@ -349,8 +353,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     value: (r) => r.person_cm_id,
   },
   // Blank when the session didn't match (an unsettled request): the cell draws "—".
-  session: { header: 'Session', width: 96, value: (r) => r.session_name || null },
-  stage: { header: 'Stage', width: 150, value: (r) => requestStage(r)?.text ?? null },
+  session: { header: 'Session', width: 136, value: (r) => r.session_name || null },
+  stage: { header: 'Stage', width: 158, value: (r) => requestStage(r)?.text ?? null },
   tier: { header: 'Tier', width: 44, align: 'right', value: (r) => r.tier },
   ask: {
     header: 'Ask',
@@ -359,7 +363,14 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     money: true,
     value: (r) => roundOf(r, 1)?.ask ?? null,
   },
-  cost: { header: 'Cost', width: 78, align: 'right', money: true, value: (r) => r.cost },
+  cost: {
+    header: 'Cost',
+    width: 78,
+    align: 'right',
+    money: true,
+    noteKey: 'cost',
+    value: (r) => r.cost,
+  },
   r1: {
     header: 'R1',
     width: 72,
@@ -384,7 +395,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   // A pending approval's amount is drawn in the cell, never summed (§5.3, D79).
   r3: {
     header: 'R3',
-    width: 60,
+    width: 92,
     align: 'right',
     money: true,
     value: (r) => roundOf(r, 3)?.decided ?? null,
@@ -402,6 +413,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     width: 78,
     align: 'right',
     money: true,
+    noteKey: 'posted',
     value: (r) => r.total_posted,
   },
   // Waiting on the family: the waiting round's own posted amount (owner ruling I2), so the footer is
@@ -411,6 +423,9 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     width: 78,
     align: 'right',
     money: true,
+    noteKey: 'posted',
+    // §6 (answers 1a R2): the sentence that sat under the strip on this view is the header's help.
+    help: 'Posted is the amount posted in this round, not yet accepted.',
     value: (r) => viewRound(r, 'waiting_on_family')?.posted ?? null,
   },
   // As wide as its widest chip, "reversed" (batch 4): the words are a closed set of six, so the
@@ -418,6 +433,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   confirmed: {
     header: 'CM ✓',
     csvHeader: 'Confirmed by CampMinder',
+    noteKey: 'cm_check',
     help: CM_CHECK_HELP,
     width: 84,
     value: (r) => cmChip(r)?.word ?? null,
@@ -433,9 +449,10 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   },
   decided: {
     header: 'Decided',
-    width: 78,
+    width: 82,
     align: 'right',
     money: true,
+    noteKey: 'decided',
     value: (r, { view }) => viewRound(r, view)?.decided ?? null,
   },
   // ⚠ Decision 40 (owner approved): under reverse-and-repost, what is typed into CampMinder for an
@@ -444,7 +461,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   // 2026-10-02: a reversal mid-appeal, before the repost syncs, leaves R1 + R2 to type).
   newTotal: {
     header: 'New total',
-    width: 78,
+    width: 80,
     align: 'right',
     money: true,
     // The ruling covered the per-row cell; a sum of these is a new figure nobody ruled (PR 4 review I1).
@@ -453,7 +470,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   },
   daysWaiting: {
     header: 'Days waiting',
-    width: 84,
+    width: 92,
     align: 'right',
     value: (r, { today }) => {
       const since = waitingSince(r)
@@ -461,23 +478,24 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     },
   },
   // A button has nothing to export (M16; build ruling 3).
-  tick: { header: 'Check', width: 150, inCsv: false, value: () => null },
-  cancelledOn: { header: 'Cancelled on', width: 96, value: (r) => r.cancellation?.on ?? null },
+  tick: { header: 'Check', width: 110, inCsv: false, value: () => null },
+  cancelledOn: { header: 'Cancelled on', width: 100, value: (r) => r.cancellation?.on ?? null },
   daysSinceCancelled: {
     header: 'Days since cancelled',
-    width: 96,
+    width: 132,
     align: 'right',
     value: (r, { today }) => {
       const on = r.cancellation?.on ?? null
       return on === null ? null : daysBetween(on, today)
     },
   },
-  // Frozen on the right and as wide as the widest chip on screen plus 18px, never under 84px (owner
-  // LOCKED batch 4, round 6). The cell is the chip; the full text is in the opened row's detail line.
+  // Frozen on the right and as wide as the widest chip on screen plus 18px (owner LOCKED batch 4,
+  // round 6). The cell is the chip; the full text is in its title and the opened row's detail line.
   attention: {
     header: 'Needs attention',
     pinnedRight: true,
-    fitContent: { pad: 18, min: 84 },
+    // §8 (the mock's attW): never under 84 (owner LOCKED batch 4) and never under its own header, ~112.
+    fitContent: { pad: 18, min: 112 },
     value: (r, { view, today, cancelledOnShown }) => {
       const found = attentionFor(r, view, today, cancelledOnShown)
       if (!found) return null

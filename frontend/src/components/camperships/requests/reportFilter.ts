@@ -93,7 +93,7 @@ export function bothIds(
   return new Set([...a].filter((id) => b.has(id)))
 }
 
-const REPORT_WORDS: Readonly<Record<ReportKind, string>> = {
+export const REPORT_WORDS: Readonly<Record<ReportKind, string>> = {
   statistics: 'Statistics',
   programs: 'Statistics by session',
 }
@@ -107,26 +107,4 @@ export function reportWords(n: number, report: ReportKind): string {
 export function missingWords(missing: number): string | null {
   if (missing === 0) return null
   return `${String(missing)} of them ${missing === 1 ? "isn't" : "aren't"} in this list`
-}
-
-/** While the ids read is out: never "The 0 requests". */
-export const REPORT_READING = 'Reading the requests behind one Reports count…'
-export const REPORT_FAILED = "Couldn't read the requests behind that Reports count"
-
-/**
- * The grid's line over a count's rows: its words once the ids land, "Reading…" while they're out, the
- * failure otherwise. `rowIds` is the grid read's request ids (null while it loads: nothing is called
- * missing before the rows are there).
- */
-export function reportLine(
-  report: ReportKind,
-  data: ApiAidReportRequestIds | undefined,
-  failed: boolean,
-  rowIds: ReadonlySet<string> | null
-): string {
-  if (data === undefined) return failed ? REPORT_FAILED : REPORT_READING
-  const words = reportWords(data.request_ids.length, report)
-  if (rowIds === null) return words
-  const missing = missingWords(data.request_ids.filter((id) => !rowIds.has(id)).length)
-  return missing === null ? words : `${words} · ${missing}`
 }

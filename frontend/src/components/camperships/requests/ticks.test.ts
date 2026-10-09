@@ -88,11 +88,24 @@ describe('tickPlan (§4.10; Decision 17)', () => {
   it('tells two requests of one camper apart by session, and leaves a unique name plain', () => {
     const second = { ...ROW_SAMUEL, request_id: 'reqsamuel000006', session_name: 'Session 4' }
     const plan = tickPlan([ROW_SAMUEL, second, RILEY], 'accepted')
+    // §14 (ruled 10-09, "Requests uses tiny everywhere"): the disambiguating session is the tiny form.
     expect(plan.rows.map((r) => r.label)).toEqual([
-      'Samuel Johnson (Session 3)',
-      'Samuel Johnson (Session 4)',
+      'Samuel Johnson (S3)',
+      'Samuel Johnson (S4)',
       'Riley Sam',
     ])
+  })
+
+  // §15: a household-level request is named by its household's label, never by a blank.
+  it('names a household-level request by its household label', () => {
+    const household = {
+      ...ROW_SAMUEL,
+      request_id: 'reqhh0000000009',
+      camper_name: '',
+      household_label: 'Mia & Noah Johnson',
+    }
+    const plan = tickPlan([household], 'accepted')
+    expect(plan.rows.map((r) => r.label)).toEqual(['Mia & Noah Johnson'])
   })
 
   it('marks the rows a search, view or filter hides', () => {

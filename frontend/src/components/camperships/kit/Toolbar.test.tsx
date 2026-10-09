@@ -95,3 +95,22 @@ describe('ToolbarLabel plain', () => {
     expect(screen.getByText('Round').closest('label')).toBeNull()
   })
 })
+
+// Requests' failed link filter keeps its Try Again behaviour inside the chip (design-language §6).
+describe('AidFilterChip with a label action', () => {
+  it('makes the label a button that runs the action, and ✕ still clears', async () => {
+    const user = userEvent.setup()
+    const onLabel = vi.fn()
+    const onClear = vi.fn()
+    render(
+      <AidFilterChip title="Couldn't read it." warn onClear={onClear} onLabelClick={onLabel}>
+        Couldn&apos;t read · Try Again
+      </AidFilterChip>
+    )
+    await user.click(screen.getByRole('button', { name: "Couldn't read · Try Again" }))
+    expect(onLabel).toHaveBeenCalledTimes(1)
+    expect(onClear).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: /Clear/ }))
+    expect(onClear).toHaveBeenCalledTimes(1)
+  })
+})

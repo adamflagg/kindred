@@ -3,6 +3,8 @@ export interface AidPickerOption<V extends string | number> {
   readonly value: V
   readonly label: string
   readonly group?: string
+  /** A pickable heading (bold) or a choice under one (indented), where a group heading is not itself a choice. */
+  readonly level?: 'heading' | 'indent'
   readonly disabled?: boolean
 }
 

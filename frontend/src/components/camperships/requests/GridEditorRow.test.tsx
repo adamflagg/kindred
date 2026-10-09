@@ -38,7 +38,7 @@ describe('GridEditorRow', () => {
   it("starts the preview afresh when the row changes under it (Task 12's carried note)", () => {
     const row = (r: typeof ROW_OLIVIA) => (
       <MemoryRouter>
-        <GridEditorRow row={r} walk={WALK} step={null} />
+        <GridEditorRow row={r} walk={WALK} />
       </MemoryRouter>
     )
     const { rerender } = render(row(ROW_OLIVIA))
@@ -53,7 +53,7 @@ describe('GridEditorRow', () => {
   it('draws no household link of its own on a row that refuses an ask', () => {
     render(
       <MemoryRouter>
-        <GridEditorRow row={REFUSING} walk={WALK} step={null} />
+        <GridEditorRow row={REFUSING} walk={WALK} />
       </MemoryRouter>
     )
     expect(screen.queryByRole('link')).toBeNull()
@@ -67,7 +67,7 @@ describe('GridEditorRow', () => {
       render(
         <MemoryRouter>
           <input aria-label="Search" />
-          <GridEditorRow row={REFUSING} walk={WALK} step={null} />
+          <GridEditorRow row={REFUSING} walk={WALK} />
         </MemoryRouter>
       )
 
@@ -106,21 +106,13 @@ describe('GridEditorRow', () => {
     })
   })
 
-  it('opens the ask editor as the panel, with the next step at the end of its line, on a row that takes one', () => {
+  it('opens the ask editor as the panel on a row that takes one', () => {
     render(
       <MemoryRouter>
-        <GridEditorRow
-          row={ROW_OLIVIA}
-          walk={WALK}
-          step={<button type="button">Check Accepted</button>}
-        />
+        <GridEditorRow row={ROW_OLIVIA} walk={WALK} />
       </MemoryRouter>
     )
     expect(screen.getByLabelText('Round 2 ask')).toBeInTheDocument()
     expect(screen.queryByText(/· household /)).toBeNull()
-    const top = screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
-    expect(top.lastElementChild).toContainElement(
-      screen.getByRole('button', { name: 'Check Accepted' })
-    )
   })
 })

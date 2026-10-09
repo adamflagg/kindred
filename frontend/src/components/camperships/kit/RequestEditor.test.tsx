@@ -428,12 +428,11 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
   })
 })
 
-// Owner fast-follow (10-03), opened-row-options.html arrangement 3 "Side by side": in the grid the
-// editor is the right panel of the opened row. One line holds the ask, Award / Stage, the note and
-// the row's next step; the receipt, the payer shares and the key hint sit on the line under it. The
-// household is named once, by the detail line beside it, so the panel has no caption.
-describe('RequestEditor: the panel layout (the grid, side by side)', () => {
-  const STEP = <button type="button">Check Accepted</button>
+// The grid's opened-row editor (owner fast-follow 10-03; full width under the detail text since §24,
+// owner 10-09). One line holds the ask, Award / Stage, the note, Save Ask / Cancel and any `trailing`;
+// the receipt, the payer shares and the key hint sit on the line under it. The detail line names the
+// household, so the panel has no caption.
+describe('RequestEditor: the panel layout (the grid)', () => {
   const top = () => screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
   const foot = () => document.querySelector('[data-editor-foot]') as HTMLElement
 
@@ -443,15 +442,12 @@ describe('RequestEditor: the panel layout (the grid, side by side)', () => {
     expect(screen.queryByText(/person 1000002/)).toBeNull()
   })
 
-  it('puts the ask, the award and stage, the note and the next step on one line, the step last', () => {
-    setup({ layout: 'panel', trailing: STEP })
+  it('puts the ask, the award and stage, and the note on one line', () => {
+    setup({ layout: 'panel' })
     const line = top()
     expect(line).toContainElement(screen.getByLabelText('Note'))
     expect(line).toContainElement(screen.getByText('Stage → Needs an offer'))
     expect(within(line).getByText(/^Award/)).toBeInTheDocument()
-    const step = screen.getByRole('button', { name: 'Check Accepted' })
-    expect(line.lastElementChild).toContainElement(step)
-    expect(line.lastElementChild).toHaveClass('ml-auto')
   })
 
   it('puts the receipt, the payer shares and the key hint on the line under it', () => {
@@ -467,6 +463,39 @@ describe('RequestEditor: the panel layout (the grid, side by side)', () => {
     setup({ layout: 'panel', preview: { status: 'idle' } })
     await userEvent.keyboard('{Enter}')
     expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+  })
+
+  // Design-language §24 (owner 10-09): Title Case buttons on the one row of fields, beside the reason.
+  it('puts Save Ask and Cancel on the fields line, after the note, Title Case (§24)', () => {
+    setup({ layout: 'panel' })
+    const line = top()
+    const save = within(line).getByRole('button', { name: 'Save Ask' })
+    const cancel = within(line).getByRole('button', { name: 'Cancel' })
+    const note = screen.getByLabelText('Note')
+    expect(note.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(save.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('Save Ask saves what is typed, once, and says why when it cannot (§24)', async () => {
+    const { onSave } = setup({ layout: 'panel', preview: { status: 'idle' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Ask' }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    await userEvent.click(screen.getByRole('button', { name: 'Save Ask' }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith({ amount: 1300, reason: 'Family emailed (Apr 9)' })
+  })
+
+  it('Cancel closes the editor, and Save Ask is off while a save is in flight (§24)', async () => {
+    const { onCancel } = setup({ layout: 'panel' })
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches Save Ask off while saving', () => {
+    setup({ layout: 'panel', saving: true })
+    expect(screen.getByRole('button', { name: 'Save Ask' })).toBeDisabled()
   })
 
   it('keeps the caption in the card layout, where nothing else names the household', () => {

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { STRIP_BADGE_ON } from '../kit/kitStyles'
 import { RequestViewNav } from './RequestViewNav'
-import { EXCEPTION_BADGES, STRIP_LEGEND, type RequestLens } from './strip'
+import { BADGE_TITLES, EXCEPTION_BADGES, type RequestLens } from './strip'
 import { REQUEST_VIEWS, type RequestView, type RequestViewKey, type ViewCount } from './views'
 
 const count = (requests: number): ViewCount => ({ families: requests, requests })
@@ -168,19 +168,27 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(link('Session unclear').className).not.toContain('px-[6px]')
   })
 
-  it('says under the strip how to read it, verbatim, and that only appeals show under that lens', () => {
+  // §6 (owner 1a/1b): no legend line, under any lens; the clauses are titles on what they explain.
+  it('draws no legend or appeals sentence, and puts each clause in a title', () => {
     const { unmount } = strip()
-    const legend =
-      'Stages run left to right per round · badges block a request at any stage · the lens on the left narrows every count · Session unclear: no one enrolled session matches the request yet.'
-    expect(STRIP_LEGEND).toBe(legend)
-    expect(screen.getByTestId('strip-legend')).toHaveTextContent(legend, {
-      normalizeWhitespace: true,
-    })
-    expect(screen.queryByText('Showing appeals only.')).toBeNull()
+    expect(screen.queryByTestId('strip-legend')).toBeNull()
+    expect(screen.queryByText(/Stages run left to right/)).toBeNull()
+    expect(link('All')).toHaveAttribute(
+      'title',
+      'All: every request. The lens narrows every count on the strip.'
+    )
+    expect(link('Needs an offer')).toHaveAttribute(
+      'title',
+      'Needs an offer: stages run left to right, per round.'
+    )
+    expect(link('Session unclear')).toHaveAttribute('title', BADGE_TITLES['session_not_settled'])
     unmount()
     strip({ lens: 'appeals' })
-    expect(screen.getByTestId('strip-legend')).toHaveTextContent(`${legend} Showing appeals only.`)
-    expect(screen.getByText('Showing appeals only.').tagName).toBe('B')
+    expect(screen.queryByText('Showing appeals only.')).toBeNull()
+    expect(link('Appeals')).toHaveAttribute(
+      'title',
+      'Appeals: requests with a Round 2 or later ask. The lens narrows every count on the strip.'
+    )
   })
 
   it('keeps to one line: nothing wraps', () => {

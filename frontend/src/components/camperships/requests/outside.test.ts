@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { gridRow, roundOut } from './gridFixtures'
 import {
   fundLines,
+  OUTSIDE_FOOTNOTE,
   listOutside,
   outsideOfPosted,
   outsideOfRound,
@@ -112,5 +113,14 @@ describe('outside money of a row', () => {
   it('names the fund and the split for the opened row', () => {
     expect(fundLines(whole)).toEqual(['Round 1 · Full-cost program $3,675 outside'])
     expect(fundLines(split)).toEqual(['Round 1 · camp award $3,576 · Partner fund $1,224 outside'])
+  })
+})
+
+// §12 (answers 1a): the client-side note is the mock's short one, a term and one sentence.
+describe('OUTSIDE_FOOTNOTE', () => {
+  it('is the mock’s short definition', () => {
+    expect(OUTSIDE_FOOTNOTE).toBe(
+      "Outside: the part of a round a named fund pays outside the budget. Rounds & budget doesn't count it."
+    )
   })
 })

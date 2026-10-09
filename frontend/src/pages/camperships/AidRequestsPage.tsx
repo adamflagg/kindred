@@ -1,48 +1,41 @@
 import { ListChecks } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
-import { ACTION_LINK, AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../components/QueryGuard'
 import { aidHref } from '../../components/camperships/kit/asOf'
 import type { AidRowNav } from '../../components/camperships/kit/AidTable'
 import { campToday } from '../../components/camperships/kit/dates'
+import { CS_BTN2, CS_LINK_SM } from '../../components/camperships/kit/csType'
+import { AidFilterChip, AidToolbar } from '../../components/camperships/kit/Toolbar'
 import type { EditorSave } from '../../components/camperships/kit/RequestEditor'
 import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
 import { toPlaceHref } from '../../components/camperships/money/moneyTabs'
-import { BulkBar, type TickResult } from '../../components/camperships/requests/BulkBar'
 import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
 import { GridEditorRow } from '../../components/camperships/requests/GridEditorRow'
 import { GridFiltersBar, ShowIdsToggle } from '../../components/camperships/requests/GridFiltersBar'
-import {
-  MarchFileItem,
-  MarchFileResult,
-} from '../../components/camperships/requests/MarchFileButton'
+import { MarchFileItem } from '../../components/camperships/requests/MarchFileButton'
 import { useMarchFile } from '../../components/camperships/requests/useMarchFile'
 import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
-import {
-  OP_FAILED,
-  OP_MISSING,
-  OP_READING,
-  opRequestIds,
-  opWords,
-} from '../../components/camperships/requests/opFilter'
+import { opRequestIds } from '../../components/camperships/requests/opFilter'
 import { programGroups } from '../../components/camperships/requests/programLabel'
 import {
   bothIds,
-  reportLine,
   reportParam,
   reportRequestIds,
 } from '../../components/camperships/requests/reportFilter'
-import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
+import { linkChips } from '../../components/camperships/requests/linkChips'
 import {
-  FIGURE_PARAMS,
-  figureParam,
-  figureWords,
-} from '../../components/camperships/requests/seasonFigure'
+  requestsStatus,
+  type SaveFailure,
+  type TickResult,
+} from '../../components/camperships/requests/requestsStatus'
+import { StatusSlot } from '../../components/camperships/requests/StatusSlot'
+import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
+import { FIGURE_PARAMS, figureParam } from '../../components/camperships/requests/seasonFigure'
 import {
   lensCounts,
   lensRows,
@@ -66,6 +59,7 @@ import {
   type GridFilters,
   type RequestView,
 } from '../../components/camperships/requests/views'
+import { camperLabel } from '../../components/camperships/requests/cells'
 import { listOutside, OUTSIDE_FOOTNOTE } from '../../components/camperships/requests/outside'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
@@ -74,6 +68,7 @@ import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
 import { useAidHistoryOperation } from '../../hooks/camperships/useAidHistory'
 import { useAidReportRequests } from '../../hooks/camperships/useAidReportRequests'
+import { useAidDefinitions } from '../../hooks/camperships/useAidDefinitions'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useAidKeyAsk, useAidTickPosted } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -123,17 +118,17 @@ export default function AidRequestsPage() {
   )
   const ids = useMemo(() => bothIds(opIds, reportIds), [opIds, reportIds])
   const reportFailed = reportRead.data === undefined && reportRead.error !== null
-  // The line says the operation is being read, or failed, rather than "The 0 requests" (a 404 has its own words).
+  // The chip says the operation is being read, or failed, rather than "The 0 requests" (a 404 has its own words).
   const opFailed =
     opRead.data === undefined && opRead.error !== null && !hasStatus(opRead.error, 404)
-  const opLine =
+  const opState =
     opRead.data !== undefined
-      ? opWords(opIds?.size ?? 0)
+      ? 'ready'
       : hasStatus(opRead.error, 404)
-        ? OP_MISSING
+        ? 'missing'
         : opFailed
-          ? OP_FAILED
-          : OP_READING
+          ? 'failed'
+          : 'reading'
   // The rules name their programs and pools. A failed or missing read never blocks the grid: keys spelled out.
   const approvedRules = useAidApprovedRules(null)
   const today = campToday()
@@ -172,6 +167,29 @@ export default function AidRequestsPage() {
   const outsideNotes = useMemo(
     () => (listOutside(visible) > 0 ? [OUTSIDE_FOOTNOTE] : []),
     [visible]
+  )
+  // The registry's notes, so a marked header (Decided¹, Posted², CM ✓³, Cost⁴) carries its number and
+  // the note's words (§12); the outside note, drawn client-side, is numbered after them.
+  const definitions = useAidDefinitions('requests')
+  const { entries: noteEntries, notes: registryNotes } = definitions
+  // `entries` and `notes` are the same list, memoised by the hook, so the page's memo stays stable.
+  const noteMarks = useMemo(
+    () =>
+      Object.fromEntries(
+        noteEntries.map((entry, i) => [
+          entry.key,
+          { n: registryNotes[i]?.n ?? i + 1, title: entry.text },
+        ])
+      ),
+    [noteEntries, registryNotes]
+  )
+  // AidDefinitionNotes lists the outside note only once the registry has loaded (or a refetch failed
+  // over loaded notes); until then a mark would point at a note that isn't there.
+  const notesListed =
+    !definitions.isPending && !(definitions.error && definitions.notes.length === 0)
+  const outsideMark = useMemo(
+    () => (notesListed ? { n: definitions.notes.length + 1, title: OUTSIDE_FOOTNOTE } : undefined),
+    [notesListed, definitions.notes.length]
   )
   const counts = useMemo(
     () => (lensed ? viewCounts(lensed, filters, live) : null),
@@ -237,8 +255,8 @@ export default function AidRequestsPage() {
     [canWork, leave, onHighlight]
   )
   // Bulk ticks (§4.10). Ticks persist across a search, a view and a filter (owner ruling
-  // 2026-10-02): the selection is request ids, and what a tick does is chosen at the bar, not by the
-  // view, so a row ticked anywhere means the same thing everywhere.
+  // 2026-10-02): the selection is request ids, and what a tick does is chosen at the toolbar's Check
+  // Accepted…, not by the view, so a row ticked anywhere means the same thing everywhere.
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
   const [plan, setPlan] = useState<TickPlan | null>(null)
   const [result, setResult] = useState<TickResult | null>(null)
@@ -316,6 +334,7 @@ export default function AidRequestsPage() {
         words,
         lines: (plan?.rows ?? []).map(tickedLine),
         someAlreadyTicked: out.unchanged > 0,
+        nothingChanged: out.written === 0,
       })
       setPlan(null)
     },
@@ -330,8 +349,8 @@ export default function AidRequestsPage() {
       leaveThen(null, () => setParams({ pool: nextPool, program: nextProgram })),
     [leaveThen, setParams]
   )
-  // A Season figure's Show All (interim, owner 10-06): the figure its line names goes; the other
-  // filters keep their own controls and lines.
+  // A Season figure chip's ✕ (§6; owner 10-06): the figure goes; the other filters keep their own
+  // controls and chips.
   const clearFigure = useCallback(
     () =>
       leaveThen(null, () =>
@@ -460,6 +479,107 @@ export default function AidRequestsPage() {
   // screen (loading, failed, a past date) they stand on a line of their own.
   const gridShown = grid.data !== undefined && (live || view.key === 'all')
 
+  // §6: every filter a link carries is a removable chip on the toolbar, its old sentence in the title.
+  const reportCount = reportRead.data?.request_ids.length ?? 0
+  const chips = linkChips({
+    live: liveOnly,
+    figure,
+    op: { on: op !== null, state: opState, count: opIds?.size ?? 0 },
+    report: {
+      on: report !== null,
+      state: reportRead.data !== undefined ? 'ready' : reportFailed ? 'failed' : 'reading',
+      kind: report?.report ?? 'statistics',
+      count: reportCount,
+      missing:
+        reportRead.data === undefined || rows === undefined
+          ? 0
+          : reportRead.data.request_ids.filter((id) => !rowKeys.has(id)).length,
+    },
+  })
+  const clearChip = (key: (typeof chips)[number]['key']) => {
+    if (key === 'figure') clearFigure()
+    else changeFilter(key, null)
+  }
+  const retryChip = (key: (typeof chips)[number]['key']) => {
+    if (key === 'op') void opRead.refetch()
+    if (key === 'report') void reportRead.refetch()
+  }
+  const chipsRow = chips.map((chip) => (
+    <AidFilterChip
+      key={chip.key}
+      title={chip.title}
+      warn={chip.warn}
+      onClear={() => clearChip(chip.key)}
+      onLabelClick={chip.retry ? () => retryChip(chip.key) : undefined}
+    >
+      {chip.label}
+    </AidFilterChip>
+  ))
+  // After Flat / By reason: Show IDs, then the link chips (the mock: Program · Round · Flat / By reason · Show IDs · chip).
+  const afterGrouping = (
+    <>
+      {idsToggle}
+      {chipsRow}
+    </>
+  )
+
+  // §5–6: failed saves, the checked rows, a bulk result and the March File result all say their words
+  // in the toolbar's one status slot, and their buttons sit on the same row, so the grid never moves.
+  const failures: SaveFailure[] = [...walk.failures].map(([key, message]) => {
+    const failedRow = byKey.get(key)
+    return { key, message, name: failedRow === undefined ? key : camperLabel(failedRow) }
+  })
+  const status = canWork
+    ? requestsStatus({
+        failures,
+        selected: selectedRows.length,
+        hidden: hiddenKeys.size,
+        result,
+        march: marchOffered ? { said: march.said, error: march.error } : null,
+      })
+    : null
+  const dismissStatus = (which: 'result' | 'march') => {
+    if (which === 'result') setResult(null)
+    else march.dismiss()
+  }
+  const beforeSearch =
+    status !== null && (status.goBack !== undefined || selectedRows.length > 0) ? (
+      <>
+        {status.goBack !== undefined && (
+          <button type="button" className={CS_BTN2} onClick={() => goBack(status.goBack ?? '')}>
+            Go Back
+          </button>
+        )}
+        {selectedRows.length > 0 && (
+          <>
+            <button
+              type="button"
+              className={CS_BTN2}
+              onClick={() =>
+                startTick(
+                  selectedRows.map((r) => r.request_id),
+                  'accepted'
+                )
+              }
+            >
+              Check Accepted…
+            </button>
+            <button
+              type="button"
+              className={CS_LINK_SM}
+              title="Uncheck every row"
+              onClick={() => changeSelected(new Set())}
+            >
+              Clear
+            </button>
+          </>
+        )}
+      </>
+    ) : undefined
+  // A link chip with checked rows is the one crowded case: the search narrows so the status keeps its count.
+  const searchWidth = chips.length > 0 && selectedRows.length > 0 ? 110 : 180
+  const statusNode = <StatusSlot status={status} onDismiss={dismissStatus} />
+
   return (
     <div className="space-y-3 sm:space-y-4">
       <AidPageBand
@@ -477,115 +597,15 @@ export default function AidRequestsPage() {
         lensHrefOf={lensHrefOf}
         onOpen={openView}
       />
-      {liveOnly && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          Live requests only ·
-          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('live', null)}>
-            Show All
-          </button>
-        </p>
-      )}
-      {op !== null && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {opLine} ·
-          {opFailed && (
-            <>
-              <button type="button" className={ACTION_LINK} onClick={() => void opRead.refetch()}>
-                Try Again
-              </button>
-              ·
-            </>
-          )}
-          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('op', null)}>
-            Show All
-          </button>
-        </p>
-      )}
-      {report !== null && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {reportLine(
-            report.report,
-            reportRead.data,
-            reportFailed,
-            rows === undefined ? null : rowKeys
-          )}{' '}
-          ·
-          {reportFailed && (
-            <>
-              <button
-                type="button"
-                className={ACTION_LINK}
-                onClick={() => void reportRead.refetch()}
-              >
-                Try Again
-              </button>
-              ·
-            </>
-          )}
-          <button
-            type="button"
-            className={ACTION_LINK}
-            onClick={() => changeFilter('report', null)}
-          >
-            Show All
-          </button>
-        </p>
-      )}
-      {figure !== null && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {figureWords(figure)} ·
-          <button type="button" className={ACTION_LINK} onClick={clearFigure}>
-            Show All
-          </button>
-        </p>
-      )}
       {!gridShown && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          {filtersBar}
-          {idsToggle}
-        </div>
-      )}
-      {view.key === 'waiting_on_family' && (
-        <p className="text-muted-foreground text-xs">
-          Posted is the amount posted in this round, not yet accepted.
-        </p>
-      )}
-      {view.key === 'needs_offer' && (
-        // ⚠ Decision 39's interim: grid rows can't say which requests are split yet.
-        <p className="text-muted-foreground text-xs">
-          A request split between households posts one amount per household: open the household for
-          each share.
-        </p>
-      )}
-      {[...walk.failures].map(([key, message]) => {
-        const failedRow = byKey.get(key)
-        const name =
-          failedRow === undefined
-            ? key
-            : failedRow.camper_name !== ''
-              ? failedRow.camper_name
-              : failedRow.family_name
-        return (
-          <p key={key} className={`${AMBER_NOTE} flex flex-wrap items-center gap-2`}>
-            {`Couldn't save ${name}'s Round 2 ask: ${message}`}
-            <button type="button" className={ACTION_LINK} onClick={() => goBack(key)}>
-              Go Back
-            </button>
-          </p>
-        )
-      })}
-      {canWork && (
-        <BulkBar
-          count={selectedRows.length}
-          hidden={hiddenKeys.size}
-          onTick={(action) =>
-            startTick(
-              selectedRows.map((r) => r.request_id),
-              action
-            )
+        <AidToolbar
+          left={
+            <>
+              {filtersBar}
+              {afterGrouping}
+            </>
           }
-          onClear={() => setSelected(new Set())}
-          result={result}
+          right={statusNode}
         />
       )}
       {canWork && (
@@ -617,21 +637,24 @@ export default function AidRequestsPage() {
               marked={canWork ? walk.failed : undefined}
               renderEditor={
                 canWork
-                  ? (r: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => (
+                  ? (r: ApiAidGridRow, nav: AidRowNav) => (
                       <GridEditorRow
                         key={walk.editorKey(r.request_id)}
                         row={r}
                         walk={walk.editorFor(r.request_id, nav)}
-                        step={step}
                       />
                     )
                   : undefined
               }
               links={links}
               filters={filtersBar}
-              filtersAfterGrouping={idsToggle}
+              filtersAfterGrouping={afterGrouping}
+              noteMarks={noteMarks}
+              outsideMark={outsideMark}
+              toolbarBeforeSearch={beforeSearch}
+              searchWidth={searchWidth}
               csvMenu={marchOffered ? <MarchFileItem march={march} /> : undefined}
-              toolbarStatus={marchOffered ? <MarchFileResult march={march} /> : undefined}
+              toolbarStatus={statusNode}
               // A plain CSV after a March File would leave "March File downloaded" standing, as if it ran again.
               onCsvDownload={marchOffered ? march.dismiss : undefined}
               onLeave={leaveForFold}
@@ -645,7 +668,7 @@ export default function AidRequestsPage() {
           )
         }
       </QueryGuard>
-      <AidDefinitionNotes surface="requests" extra={outsideNotes} />
+      <AidDefinitionNotes surface="requests" extra={outsideNotes} boldTerm />
     </div>
   )
 }

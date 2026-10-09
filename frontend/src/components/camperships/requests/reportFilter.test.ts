@@ -1,15 +1,7 @@
 /** Requests' `?report=` (slice 4 J; D20): the requests behind one Reports count, from the server's list. */
 import { describe, expect, it } from 'vitest'
 
-import {
-  bothIds,
-  parseReportParam,
-  REPORT_FAILED,
-  REPORT_READING,
-  reportLine,
-  reportParam,
-  reportRequestIds,
-} from './reportFilter'
+import { bothIds, parseReportParam, reportParam, reportRequestIds } from './reportFilter'
 
 const READ = {
   year: 2027,
@@ -65,27 +57,5 @@ describe('the rows a count opens', () => {
     expect(bothIds(null, a)).toBe(a)
     expect(bothIds(a, null)).toBe(a)
     expect(bothIds(a, new Set(['y', 'z']))).toEqual(new Set(['y']))
-  })
-})
-
-describe('the line over the rows', () => {
-  it('says it is reading, or that the read failed, never "The 0 requests"', () => {
-    expect(reportLine('statistics', undefined, false, null)).toBe(REPORT_READING)
-    expect(reportLine('statistics', undefined, true, null)).toBe(REPORT_FAILED)
-  })
-
-  it('names the count and says when the grid lacks some of its requests', () => {
-    expect(reportLine('programs', READ, false, new Set(READ.request_ids))).toBe(
-      'The 2 requests behind one Statistics by session count'
-    )
-    expect(reportLine('statistics', READ, false, new Set(['reqemma00000001']))).toBe(
-      "The 2 requests behind one Statistics count · 1 of them isn't in this list"
-    )
-  })
-
-  it('calls nothing missing while the grid itself is still loading', () => {
-    expect(reportLine('statistics', READ, false, null)).toBe(
-      'The 2 requests behind one Statistics count'
-    )
   })
 })

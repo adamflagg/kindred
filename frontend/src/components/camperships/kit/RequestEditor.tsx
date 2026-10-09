@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { AMBER_NOTE, FIELD, FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
+import { CS_BTN, CS_BTN2 } from './csType'
 import { STATUS_TONE } from './kitStyles'
 import { initialReason, parseMoneyInput, reasonMissing, type TextReasonPolicy } from './editor'
 import { Money } from './MoneyText'
@@ -142,14 +143,11 @@ interface RequestEditorProps {
   readonly showProblem?: boolean | undefined
   /**
    * 'row' under a highlighted table row; 'card' in place on the household page's request card (D22);
-   * 'panel' the Requests grid's opened row, beside its detail text (owner fast-follow 10-03,
-   * opened-row-options.html arrangement 3): the ask, Award / Stage, the note and `trailing` on one
-   * line, the receipt, shares and key hint under it, and no caption (the detail line names the
-   * household once).
+   * 'panel' the Requests grid's opened row, full width under its detail text (§24, owner 10-09): the
+   * ask, Award / Stage, the note, Save Ask and Cancel on one line, the receipt,
+   * shares and key hint under it, and no caption (the detail line names the household).
    */
   readonly layout?: 'row' | 'card' | 'panel' | undefined
-  /** 'panel' only: the row's next step, at the end of the first line. */
-  readonly trailing?: ReactNode
   /**
    * 'card' only: the household page lays the editor out itself (round 3, two columns), dressing the
    * fields in its own classes. No caption and no hint line of the editor's own: the surface places
@@ -249,7 +247,7 @@ interface Baseline {
 
 /**
  * The one shared request editor (§4.6; D22): an editor row under a highlighted table row, the
- * right-hand panel of the Requests grid's opened row, or in place on the household page's request
+ * full-width editor in the Requests grid's opened row, or in place on the household page's request
  * card.
  * - While typing it shows the computed award, the limit that bound it (the receipt's one-line
  *   form), the stage change, the recomputed payer shares and both CampMinder ids (D27).
@@ -527,7 +525,23 @@ export function RequestEditor(props: RequestEditorProps) {
           {problemNote}
           {saveErrorNote}
           {noteField}
-          {props.trailing ? <span className="ml-auto">{props.trailing}</span> : null}
+          {/* §24: Title Case buttons on the fields' own line, the problem (above) beside them. */}
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              className={CS_BTN}
+              disabled={props.saving === true}
+              onClick={() => {
+                const save = takeSave()
+                if (save) props.onSave(save)
+              }}
+            >
+              Save Ask
+            </button>
+            <button type="button" className={CS_BTN2} onClick={props.onCancel}>
+              Cancel
+            </button>
+          </span>
         </div>
         <div
           data-editor-foot=""

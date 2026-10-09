@@ -43,7 +43,7 @@ function Grid({
   tickedSeason?: boolean
   onTick?: (row: ApiAidGridRow, action: 'accepted') => void
   onMarkPosted?: (row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>
-  renderEditor?: (row: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => ReactNode
+  renderEditor?: (row: ApiAidGridRow, nav: AidRowNav) => ReactNode
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -454,8 +454,9 @@ describe('RequestsGrid fits its labels (sitting A, A2)', () => {
   it('lets a column header wrap, so two long headers never print over each other', () => {
     render(<Grid />)
     const header = screen.getByRole('columnheader', { name: 'CM ✓' })
-    expect(header.className).not.toContain('whitespace-nowrap')
-    expect(header.className).toContain('whitespace-normal')
+    // Final language §8: headers stay on one line on this grid (it was whitespace-normal).
+    expect(header.className).toContain('whitespace-nowrap')
+    expect(header.className).not.toContain('whitespace-normal')
   })
 
   it('lets a Stage chip wrap inside its column instead of being cut off', () => {
@@ -676,9 +677,10 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     render(<Grid />)
     expect(screen.getByRole('columnheader', { name: 'Needs attention' }).style.right).toBe('0px')
     expect(attentionCell('Liam Garcia').style.right).toBe('0px')
-    // jsdom has no layout, so every chip measures 0: the column sits on its 84px floor.
+    // jsdom has no layout, so every chip measures 0: the column sits on its floor, which is its own
+    // header's width (final language §8: never under the header, ~112), not the old 84.
     const cols = screen.getByRole('table').querySelectorAll('col')
-    expect((cols[cols.length - 1] as HTMLElement).style.width).toBe('84px')
+    expect((cols[cols.length - 1] as HTMLElement).style.width).toBe('112px')
   })
 
   it('opens a detail line under the clicked row, and Esc closes it', async () => {
@@ -780,7 +782,8 @@ describe('RequestsGrid: Needs attention frozen right, and the detail line (batch
     expect(within(row).queryByText(LIAM_FACT)).toBeNull()
     expect(attentionCell('Liam Garcia')).not.toHaveClass('whitespace-normal')
     const requester = within(row).getByRole('link', { name: 'Ana Garcia' })
-    expect(requester.parentElement).toHaveClass('truncate')
+    // §13: the link itself truncates now (the cell is a flex row with the split chip beside it).
+    expect(requester).toHaveClass('truncate')
   })
 
   it('spans every column, and keeps Person beside the pinned Camper with Show IDs (D25)', async () => {
@@ -1081,12 +1084,12 @@ describe("the detail line's Mark Posted (#2996)", () => {
 // then Requested by · Household › · CM ✓; the right panel is the editor, whose line ends with the
 // next step. A row with no editor keeps the left content full width, the next step top right. The
 // household is named once, and the line names no Person id (c).
-describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)', () => {
+describe('RequestsGrid: the opened row, the editor under its text (§24; was side by side, fast-follow arrangement 3)', () => {
   const detail = () => document.querySelector('[data-aid-detail]') as HTMLElement
   const left = () => detail().querySelector('[data-detail-left]') as HTMLElement
   const openRow = (camper: string) =>
     userEvent.click(within(rowOf(camper)).getAllByRole('cell')[1] as HTMLElement)
-  const editorStub = vi.fn((row: ApiAidGridRow, _nav: AidRowNav, step: ReactNode) =>
+  const editorStub = vi.fn((row: ApiAidGridRow, _nav: AidRowNav) =>
     row.appeal_refusal ? (
       <span>Refusal stub</span>
     ) : (
@@ -1095,7 +1098,6 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
           Round 2 ask <input />
         </label>
         <button type="button">Save</button>
-        {step}
       </div>
     )
   )
@@ -1103,26 +1105,30 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
     editorStub.mockClear()
   })
 
-  it('puts the editor in the right panel of the detail line, the next step at its end', async () => {
+  // Design-language §24 (owner 10-09, "an editor opened from a row takes the whole opened row, not one
+  // panel of it"): the editor sits under the detail text across the full width, not beside it.
+  it('puts the editor under the detail text on the whole opened row, the next step top right of the text (§24)', async () => {
     render(<Grid rows={[ROW_OLIVIA]} renderEditor={editorStub} />)
     await openRow('Olivia Chen')
     const editor = within(detail()).getByTestId('editor')
-    const right = editor.closest('[data-aid-editor]') as HTMLElement
-    expect(detail()).toContainElement(right)
-    expect(right).not.toContainElement(left())
+    const slot = editor.closest('[data-aid-editor]') as HTMLElement
+    expect(detail()).toContainElement(slot)
+    expect(slot).not.toContainElement(left())
     expect(within(left()).getByText('Requested by')).toBeInTheDocument()
     expect(
       within(left())
         .getAllByRole('link')
         .map((a) => a.textContent)
     ).toEqual(['Household 1000005 ›'])
-    // The step is handed to the editor, and drawn there only.
-    const step = within(editor).getByRole('link', { name: 'Open the Request ›' })
+    // The step stays in the detail line, top right, and is not handed to the editor.
+    expect(editorStub).toHaveBeenLastCalledWith(ROW_OLIVIA, expect.anything())
+    const step = within(detail()).getByRole('link', { name: 'Open the Request ›' })
     expect(step).toHaveAttribute('href', expect.stringContaining('#request-reqolivia000003'))
-    expect(within(detail()).getAllByRole('link', { name: 'Open the Request ›' })).toHaveLength(1)
-    // Two panels: a fixed-width left one, then the editor.
-    expect(left().parentElement).toBe(right.parentElement)
-    expect(left().parentElement).toHaveClass('grid')
+    expect(slot).not.toContainElement(step)
+    expect(left()).not.toContainElement(step)
+    // Stacked, not two panels: the text row, then the editor slot, in one column.
+    expect(left().parentElement?.parentElement).toBe(slot.parentElement)
+    expect(slot.parentElement).not.toHaveClass('grid')
   })
 
   // Scan K1 (#3000): the step sits inside the editor's panel now, but it is not the editor. With
@@ -1154,7 +1160,7 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
     render(<Grid rows={[ROW_LIAM]} renderEditor={editorStub} />)
     await openRow('Liam Garcia')
     expect(within(detail()).queryByTestId('editor')).toBeNull()
-    expect(editorStub).toHaveBeenLastCalledWith(ROW_LIAM, expect.anything(), null)
+    expect(editorStub).toHaveBeenLastCalledWith(ROW_LIAM, expect.anything())
     const step = within(detail()).getByRole('link', { name: 'Enter the Income ›' })
     expect(left()).not.toContainElement(step)
     expect(left().parentElement).toContainElement(step)
@@ -1194,16 +1200,22 @@ describe('RequestsGrid: the opened row side by side (fast-follow, arrangement 3)
 
 describe("Needs an offer's split marker (⚠ Decision 39; #2941's payer_count)", () => {
   // T3: the marker sits in Requested by, which replaced the Family column it was drawn in.
-  it('marks the Requested by cell "split · 2 households" when the request has two payers', () => {
+  // Final language §6/§11 and answers 1a R1: the chip reads "split · 2" in the sky tone, and the old
+  // sentence ("A request split between households posts one amount per household…") is its title.
+  it('marks the Requested by cell "split · 2" when the request has two payers', () => {
     render(<Grid slug="needs-offer" rows={[gridRow({ payer_count: 2 })]} />)
     const cell = screen.getByText('Sarah Johnson').closest('td') as HTMLElement
-    // The kit's stone StatusPill, not bare text.
-    expect(within(cell).getByText('split · 2 households')).toHaveClass('bg-stone-200')
+    const chip = within(cell).getByText('split · 2')
+    expect(chip).toHaveClass('bg-sky-100')
+    expect(chip).toHaveAttribute(
+      'title',
+      'Split between 2 households: each posts its own amount. Open the household for each share.'
+    )
   })
 
   it('counts the payers it is given', () => {
     render(<Grid slug="needs-offer" rows={[gridRow({ payer_count: 3 })]} />)
-    expect(screen.getByText('split · 3 households')).toBeInTheDocument()
+    expect(screen.getByText('split · 3')).toBeInTheDocument()
   })
 
   it('draws no marker for one payer or an unreplayed past read (null)', () => {
@@ -1276,17 +1288,13 @@ describe('money paid outside the budget', () => {
     }
   })
 
-  // requests-outside-v1 keeps the money columns' widths and lets "$1,224 outside" and the footer
-  // note wrap inside their cells (+32 px for the part-outside row); the cells are nowrap, so without
-  // this the words clip ("$1,224 outs").
-  it('wraps the tag and the footer note inside their cells rather than clipping them', () => {
+  // requests-outside-v1 lets "$1,224 outside" wrap inside its cell (+32 px for the part-outside row).
+  // The footer note no longer wraps (§10: the footer is one line; it was a block that wrapped).
+  it('wraps the tag inside its cell rather than clipping it', () => {
     render(<Grid rows={[split, whole]} />)
     expect(within(cellOf('Avery Testcamper', 'R1')).getByText('$1,224 outside')).toHaveClass(
       'whitespace-normal'
     )
-    const note = screen.getByText('$4,899 outside the budget')
-    expect(note).toHaveClass('block')
-    expect(note).toHaveClass('whitespace-normal')
   })
 
   it('leaves a row with no outside money untagged', () => {
@@ -1296,7 +1304,8 @@ describe('money paid outside the budget', () => {
 
   it('adds "$X outside the budget" to the footer only when the list holds some', () => {
     const { unmount } = render(<Grid rows={[split, whole]} />)
-    expect(screen.getByText('$4,899 outside the budget')).toBeInTheDocument()
+    // §10 and the mock: "incl. $X outside the budget", in the Requested by footer cell.
+    expect(screen.getByText('incl. $4,899 outside the budget')).toBeInTheDocument()
     unmount()
     render(<Grid rows={[ROW_LIAM]} />)
     expect(screen.queryByText(/outside the budget/)).toBeNull()

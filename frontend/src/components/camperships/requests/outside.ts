@@ -20,7 +20,7 @@ export const OUTSIDE_WORD = 'outside'
 const FALLBACK_FUND = 'Outside fund'
 
 export const OUTSIDE_FOOTNOTE =
-  "Outside: the part of a round a named fund pays outside the budget. Rounds & budget doesn't count it, so a list opened from one of its figures can add up to more than the figure."
+  "Outside: the part of a round a named fund pays outside the budget. Rounds & budget doesn't count it."
 
 function outsideAmount(round: ApiAidRound): number {
   if (round.clawed_back) return 0

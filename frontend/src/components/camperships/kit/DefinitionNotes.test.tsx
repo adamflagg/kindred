@@ -66,3 +66,20 @@ describe('the notes cap', () => {
     expect(notesOverCap(notes(7))).toBe(true)
   })
 })
+
+// Requests' mock bolds each note's term ("Decided: …"); no other mock does, so it is opt-in.
+describe('DefinitionNotes boldTerm', () => {
+  const notes = [{ n: 1, text: 'Decided: the award for a round.' }]
+
+  it('bolds the leading term when asked', () => {
+    render(<DefinitionNotes notes={notes} boldTerm />)
+    const term = screen.getByText('Decided:')
+    expect(term.tagName).toBe('B')
+    expect(screen.getByRole('listitem')).toHaveTextContent('1. Decided: the award for a round.')
+  })
+
+  it('leaves the words plain by default', () => {
+    render(<DefinitionNotes notes={notes} />)
+    expect(document.querySelector('b')).toBeNull()
+  })
+})

@@ -33,6 +33,12 @@ vi.mock('../../hooks/camperships/useAidHistory', () => ({
 vi.mock('../../hooks/camperships/useAidReportRequests', () => ({
   useAidReportRequests: () => ({ data: undefined, error: null }),
 }))
+// The page reads the registry's notes to number its marked headers: stable fixtures, no auth provider needed.
+vi.mock('../../hooks/camperships/useAidDefinitions', () => {
+  // No registry notes here: the marks on headers have their own tests (RequestsGrid.final.test.tsx).
+  const value = { entries: [], notes: [], numberOf: () => null, isPending: false, error: null }
+  return { useAidDefinitions: () => value }
+})
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => ({ data: undefined }),
 }))

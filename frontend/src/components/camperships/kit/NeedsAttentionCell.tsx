@@ -11,9 +11,9 @@ export interface AttentionItem {
 }
 
 /** An item's chip: red for a hold, amber for a note. */
-export function AttentionChip({ item }: { item: AttentionItem }) {
+export function AttentionChip({ item, title }: { item: AttentionItem; title?: string }) {
   return (
-    <StatusPill tone={item.level === 'hold' ? STATUS_TONE.hold : STATUS_TONE.note}>
+    <StatusPill tone={item.level === 'hold' ? STATUS_TONE.hold : STATUS_TONE.note} title={title}>
       {item.pill}
     </StatusPill>
   )
@@ -26,5 +26,11 @@ export function AttentionChip({ item }: { item: AttentionItem }) {
  * draws nothing.
  */
 export function NeedsAttentionCell({ item }: { item: AttentionItem | null }) {
-  return item === null ? null : <AttentionChip item={item} />
+  // §13: a chip that can be cut carries the whole fact in its title ("Session unclear: no one enrolled…").
+  return item === null ? null : (
+    <AttentionChip
+      item={item}
+      title={item.fact === '' ? item.pill : `${item.pill}: ${item.fact}`}
+    />
+  )
 }
