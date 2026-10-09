@@ -36,7 +36,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from api.constants.collections import (
     AID_APPLICATIONS,
@@ -251,6 +251,9 @@ from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
+
+if TYPE_CHECKING:  # the household page imports this module, so the labeler type is only named for the checker
+    from api.services.financial_aid_household_page import HouseholdLabeler
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 _CLOSED_REVERSIBLE: Final = frozenset({STATUS_WITHDRAWN, STATUS_DUPLICATE})
@@ -795,6 +798,7 @@ def grid_row(
         camper_name=campers.get(request.person_cm_id, ""),
         session_cm_id=request.session_cm_id,
         session_name=session.name if session is not None else "",
+        session_type=session.session_type if session is not None else "",
         program_key=priced.program_key,
         pool=priced.pool,
         request_status=request.status,
@@ -1454,6 +1458,7 @@ class FinancialAidDecisionsService:
         *,
         clock: Callable[[], datetime] | None = None,
         log_placements: bool = True,
+        labels: HouseholdLabeler | None = None,
     ) -> None:
         """`log_placements` False: this service's live pricing neither reads nor writes the grant placement
         log (3c-2). Only a scenario's frozen season and a rules approval's effect measurement (H3) pass it; neither
@@ -1463,6 +1468,9 @@ class FinancialAidDecisionsService:
         self._register = register
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self._logs_placements = log_placements
+        # The household page's label helper: names a household-level grid row as Money and Grants name it. None: the
+        # row falls back to its family name.
+        self._labels = labels
 
     async def _request_side(self, year: int, *, names: bool) -> _RequestSide:
         rules, applications, requests, corrections = await asyncio.gather(
@@ -2193,6 +2201,7 @@ class FinancialAidDecisionsService:
         (season, families, campers), contacts = await asyncio.gather(load(), self._store.fetch_fa_contacts(year))
         requesters = requester_names(contacts, season.requests.values())
         rows = [self.row_of(season, (families, campers), rid, requesters) for rid in season.priced]
+        rows = await self._with_household_labels(year, rows)
         if season.as_of is not None:
             # 3c-2: a row is exact unless a gap reaches its request; then it keeps 3c-1's figures. Every past
             # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS). Included
@@ -2246,6 +2255,28 @@ class FinancialAidDecisionsService:
             if past
             else [],
         )
+
+    async def _with_household_labels(self, year: int, rows: list[GridRowOut]) -> list[GridRowOut]:
+        """A household-level row (no camper) reads the household's label as Money and Grants name it, the tie-break
+        scoped to the grid's household-level rows; with no label read it falls back to its family name. A camper row
+        keeps "" (the grid names its camper)."""
+        households = {r.household_cm_id for r in rows if r.person_cm_id <= 0}
+        named = await self._labels(year, households) if self._labels is not None and households else {}
+        out: list[GridRowOut] = []
+        for row in rows:
+            if row.person_cm_id > 0:
+                out.append(row)
+                continue
+            label = named.get(row.household_cm_id)
+            out.append(
+                row.model_copy(
+                    update={
+                        "household_label": (label.label if label is not None else "") or row.family_name,
+                        "household_label_tiebreak": label.tiebreak if label is not None else "",
+                    }
+                )
+            )
+        return out
 
     def row_of(
         self,

@@ -8,11 +8,15 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from api.schemas.financial_aid import SourceFamily
 from api.schemas.financial_aid_decisions import AsOfAxis
 from api.schemas.source_family_labels import SourceFamilyLabelled
 
 LedgerLevelOut = Literal["household", "left", "no_request", "program_mismatch"]
 LedgerTotalOut = Literal["in_campminder_net", "outside_grants"]
+# The Ledger's source filter: one source family, or "outside": every line of the Outside grants column (each funder
+# that isn't the camp's own aid: outside, incentive, unclassified), whatever its source family.
+LedgerSourceFilter = Literal[SourceFamily, "outside"]
 
 
 class LedgerFamilyOut(BaseModel):

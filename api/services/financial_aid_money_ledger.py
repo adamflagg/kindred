@@ -82,6 +82,10 @@ class Piece:
     reversal_date: datetime | None
 
 
+# LedgerSourceFilter's "outside" (api/schemas/financial_aid_money_ledger.py): every line of the Outside grants column.
+OUTSIDE_SOURCE: Final = "outside"
+
+
 @dataclass(frozen=True)
 class LedgerFilters:
     """The Ledger's filters, per line (Decision 8). None is "all"."""
@@ -90,9 +94,13 @@ class LedgerFilters:
     program: str | None = None
     level: str | None = None
 
+    def _source_keeps(self, piece: Piece) -> bool:
+        """`source="outside"` is the Outside grants column itself (a piece that isn't camp aid), whatever its family."""
+        return not piece.camp if self.source == OUTSIDE_SOURCE else piece.source_family == self.source
+
     def keeps(self, piece: Piece) -> bool:
         return (
-            (self.source is None or piece.source_family == self.source)
+            (self.source is None or self._source_keeps(piece))
             and (self.program is None or piece.program == self.program)
             and (self.level is None or piece.level == self.level)
         )

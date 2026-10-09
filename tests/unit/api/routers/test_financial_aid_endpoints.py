@@ -353,4 +353,8 @@ async def test_summary_program_labels_come_from_the_approved_programs_never_a_dr
 
     rules = SimpleNamespace(latest_approved=AsyncMock(return_value=None))
     with patch.object(router, "_rules", return_value=rules):
-        assert await router._program_labels(2027) == {}
+        assert await router._program_labels(2027) == {
+            "quest": "Quest",
+            "teen": "Teen Leadership",
+            "bmitzvah": "B*Mitzvah",
+        }

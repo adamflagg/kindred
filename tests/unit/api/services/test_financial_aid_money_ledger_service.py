@@ -9,7 +9,14 @@ from typing import get_args
 
 import pytest
 
-from api.schemas.financial_aid_money_ledger import LedgerFamilyOut, LedgerLevelOut, LedgerTotalOut, MoneyLedgerOut
+from api.schemas.financial_aid import SourceFamily
+from api.schemas.financial_aid_money_ledger import (
+    LedgerFamilyOut,
+    LedgerLevelOut,
+    LedgerSourceFilter,
+    LedgerTotalOut,
+    MoneyLedgerOut,
+)
 from api.services.financial_aid_money_ledger import LedgerFilters, LedgerLevel, LedgerTotal
 from api.services.financial_aid_reconciliation import SplitPart
 from tests.unit.api.services.decisions_fakes import log_seeded, seed_line, seed_override, seed_request, share_row
@@ -131,6 +138,23 @@ async def test_the_filters_narrow_each_familys_lines_before_they_are_summed() ->
     grants = await service.ledger(YEAR, filters=LedgerFilters(source="other_outside"))
     assert [(r.household_cm_id, r.outside_grants) for r in grants.rows] == [(1000001, 250.0)]
     assert (grants.in_campminder_net, grants.outside_grants) == (0.0, 250.0)
+
+
+def test_the_ledgers_source_filter_is_every_source_family_and_outside() -> None:
+    assert get_args(LedgerSourceFilter) == (*get_args(SourceFamily), "outside")
+
+
+@pytest.mark.asyncio
+async def test_the_outside_source_filter_keeps_every_outside_grant_and_no_camp_aid() -> None:
+    """`source="outside"` is every line of the Outside grants column, whichever source family paid it."""
+    service = money_ledger_service(_families())
+    outside = await service.ledger(YEAR, filters=LedgerFilters(source="outside"))
+    assert (outside.in_campminder_net, outside.outside_grants) == (0.0, 250.0)
+    assert [(r.household_cm_id, r.outside_grants) for r in outside.rows] == [(1000001, 250.0)]
+    lines = await service.lines(YEAR, "outside_grants", filters=LedgerFilters(source="outside"))
+    assert [ln.amount for ln in lines.lines] == [250.0]
+    camp_lines = await service.lines(YEAR, "in_campminder_net", filters=LedgerFilters(source="outside"))
+    assert camp_lines.lines == []
 
 
 @pytest.mark.asyncio
