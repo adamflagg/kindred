@@ -8,7 +8,7 @@ import { QueryGuard } from '../../QueryGuard'
 import { aidHref, type AidView } from '../kit/asOf'
 import { CS_FLABEL } from '../kit/csType'
 import { AidCopyButton, AidCsvButton } from '../kit/CsvButton'
-import { formatShortDate } from '../kit/dates'
+import { campToday, formatShortDate } from '../kit/dates'
 import { DefinitionNotes } from '../kit/DefinitionNotes'
 import { REPORT_NOTE, REPORT_TITLE } from '../kit/reportStyles'
 import { ReportTable } from '../kit/ReportTable'
@@ -87,9 +87,10 @@ export function DevelopmentReport({ view }: { view: AidView }) {
   })
   // A refusal (today or later) is the status slot, in warn tone, the server's full words in its title.
   const refusal = asOf !== null && asked.isError ? asked.error.message : null
+  // The mock's short advice fits only a day not yet past; any other refusal names the server's own words.
   const status =
     refusal !== null && asOf !== null
-      ? `⚠ Can't show ${formatShortDate(asOf.day)}: pick a day before today`
+      ? `⚠ Can't show ${formatShortDate(asOf.day)}: ${asOf.day >= campToday() ? 'pick a day before today' : refusal}`
       : (exporter.copied ?? undefined)
 
   return (

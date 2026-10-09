@@ -376,14 +376,25 @@ describe('Show As Of a Date…: one on-demand column, not saved (D1), inline in 
   it("sends a refusal to the status slot, warn tone, the server's full words in its title, and keeps the typing", async () => {
     columnAnswer = () => json({ detail: 'A dated column needs a day already past' }, 422)
     renderReport()
-    await show('2027-06-02')
-    const status = await within(bar()).findByText("⚠ Can't show Jun 2: pick a day before today")
+    await show('2027-06-03')
+    const status = await within(bar()).findByText("⚠ Can't show Jun 3: pick a day before today")
     expect(status).toHaveClass('text-amber-700')
     expect(status).toHaveAttribute(
       'title',
       expect.stringContaining('A dated column needs a day already past')
     )
-    expect(screen.getByLabelText('As of')).toHaveValue('2027-06-02')
+    expect(screen.getByLabelText('As of')).toHaveValue('2027-06-03')
+  })
+
+  it("names the server's own refusal, not the today advice, for a past day it still refuses", async () => {
+    columnAnswer = () => json({ detail: '2025-05-01 is not a past day of the 2027 season' }, 422)
+    renderReport()
+    await show('2025-05-01')
+    const status = await within(bar()).findByText(
+      "⚠ Can't show May 1: 2025-05-01 is not a past day of the 2027 season"
+    )
+    expect(status).toHaveClass('text-amber-700')
+    expect(within(bar()).queryByText(/pick a day before today/)).not.toBeInTheDocument()
   })
 
   // the final mock (`?asof=refused`): Back returns to idle, and picking another day returns to the form;
@@ -391,8 +402,8 @@ describe('Show As Of a Date…: one on-demand column, not saved (D1), inline in 
   it('clears the refusal from the status slot on Back', async () => {
     columnAnswer = () => json({ detail: 'A dated column needs a day already past' }, 422)
     renderReport()
-    await show('2027-06-02')
-    await within(bar()).findByText("⚠ Can't show Jun 2: pick a day before today")
+    await show('2027-06-03')
+    await within(bar()).findByText("⚠ Can't show Jun 3: pick a day before today")
     await userEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(screen.getByRole('button', { name: 'Show As Of a Date…' })).toBeInTheDocument()
     expect(within(bar()).queryByText(/Can't show/)).not.toBeInTheDocument()
@@ -401,8 +412,8 @@ describe('Show As Of a Date…: one on-demand column, not saved (D1), inline in 
   it('clears the refusal from the status slot once another day is picked', async () => {
     columnAnswer = () => json({ detail: 'A dated column needs a day already past' }, 422)
     renderReport()
-    await show('2027-06-02')
-    await within(bar()).findByText("⚠ Can't show Jun 2: pick a day before today")
+    await show('2027-06-03')
+    await within(bar()).findByText("⚠ Can't show Jun 3: pick a day before today")
     fireEvent.change(screen.getByLabelText('As of'), { target: { value: MARCH } })
     expect(within(bar()).queryByText(/Can't show/)).not.toBeInTheDocument()
     expect(screen.getByLabelText('As of')).toHaveValue(MARCH)
