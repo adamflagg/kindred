@@ -62,6 +62,8 @@ interface ReportTableProps {
   readonly defaultSort?: { readonly key: string; readonly dir: 'asc' | 'desc' } | undefined
   /** Words under the table. */
   readonly footnote?: ReactNode | undefined
+  /** The totals row first, right under the header, sorted or not (zip-codes.html). */
+  readonly totalsFirst?: boolean | undefined
 }
 
 const BODY_KINDS = new Set(['body', 'end'])
@@ -149,27 +151,36 @@ export function ReportTable({
   footnote,
   description,
   defaultSort,
+  totalsFirst = false,
 }: ReportTableProps) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const { sort, toggleSort } = useAidTableUrl(columnKeys, [], urlPrefix, undefined, defaultSort)
   const [query, setQuery] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
 
-  // The rows as shown: a sort reorders the body rows; `end` rows stay after them, totals last.
+  // The rows as shown: a sort reorders the body rows; `end` rows stay after them, totals last (or
+  // first, with `totalsFirst`).
   const ordered = useMemo(() => {
-    if (!sortable || sort === null) return rows
-    const index = columnKeys.indexOf(sort.key)
-    const body = sortRows(
-      rows.filter((r) => r.kind === 'body'),
-      (r) => reportSortValue(r.cells[index]),
-      sort.dir
-    )
+    const sorted = (() => {
+      if (!sortable || sort === null) return rows
+      const index = columnKeys.indexOf(sort.key)
+      const body = sortRows(
+        rows.filter((r) => r.kind === 'body'),
+        (r) => reportSortValue(r.cells[index]),
+        sort.dir
+      )
+      return [
+        ...body,
+        ...rows.filter((r) => r.kind === 'end'),
+        ...rows.filter((r) => !BODY_KINDS.has(r.kind)),
+      ]
+    })()
+    if (!totalsFirst) return sorted
     return [
-      ...body,
-      ...rows.filter((r) => r.kind === 'end'),
-      ...rows.filter((r) => !BODY_KINDS.has(r.kind)),
+      ...sorted.filter((r) => r.kind === 'total'),
+      ...sorted.filter((r) => r.kind !== 'total'),
     ]
-  }, [rows, sortable, sort, columnKeys])
+  }, [rows, sortable, sort, columnKeys, totalsFirst])
 
   const searching = find && query.trim() !== ''
   const visible = searching
@@ -342,6 +353,7 @@ export function ReportTable({
                       style={index === 0 ? indentStyle(row.indent) : undefined}
                     >
                       {cellContent(cell, row.links?.[index])}
+                      {index === 0 && row.ref !== undefined ? <DefRef n={row.ref} /> : null}
                       {index === 0 && row.note ? (
                         <div className={`${REPORT_NOTE} whitespace-normal`}>{row.note}</div>
                       ) : null}

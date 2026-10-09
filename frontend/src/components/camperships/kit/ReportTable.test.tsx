@@ -339,6 +339,26 @@ describe('ReportTable', () => {
       expect(screen.getByText('00010').closest('td')?.className).not.toContain('font-mono')
     })
 
+    it('draws the totals row first, under the header, sorted or not, and so copies it (ZIP codes)', async () => {
+      renderTable({ sortable: true, totalsFirst: true })
+      expect(bodyTexts()).toEqual(['All · 2 ZIPs', '00010', '00012', 'Outside the US'])
+      await userEvent.click(screen.getByRole('button', { name: 'Campers' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Campers' }))
+      expect(bodyTexts()).toEqual(['All · 2 ZIPs', '00012', '00010', 'Outside the US'])
+      await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+      expect((writeText.mock.calls[0]?.[0] ?? '').split('\n')[4]).toBe('All · 2 ZIPs\t31\t$1,500')
+    })
+
+    it("draws a row's note number as a superscript after its label, kept out of Copy", async () => {
+      renderTable({
+        rows: [{ ...ROWS[0]!, ref: 3 }, ...ROWS.slice(1)],
+      })
+      const label = screen.getByText('00010').closest('td') as HTMLElement
+      expect(label.querySelector('sup')?.textContent).toBe('3')
+      await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+      expect((writeText.mock.calls[0]?.[0] ?? '').split('\n')[4]).toBe('00010\t4\t$1,200')
+    })
+
     it('right-aligns a sortable number header over its numbers', () => {
       renderTable({ sortable: true })
       expect(screen.getByRole('button', { name: 'Campers' }).className).toContain('justify-end')

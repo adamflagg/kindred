@@ -11,6 +11,7 @@ import { aidCsvFilename } from '../kit/csv'
 import {
   BASIS_WORDS,
   countValue,
+  averageValue,
   moneyValue,
   pctValue,
   textValue,
@@ -49,8 +50,8 @@ function sixCells(block: ApiAidRoundBlock): ReportValue[] {
     countValue(block.apps),
     moneyValue(block.requested),
     moneyValue(block.awarded),
-    moneyValue(block.average_request),
-    moneyValue(block.average_award),
+    averageValue(block.average_request),
+    averageValue(block.average_award),
     pctValue(block.pct_awarded),
   ]
 }
@@ -151,7 +152,7 @@ export function programsCsvName(view: AidView, requestSet: AidRequestSet): strin
   const through = requestSetParam(requestSet)
   return aidCsvFilename({
     surface: 'reports',
-    view: 'programs',
+    view: 'statistics-by-session',
     filters: through === null ? [] : [`through-${through}`],
     season: view.year,
     asOf: view.asOf.kind === 'past' ? view.asOf.date : null,

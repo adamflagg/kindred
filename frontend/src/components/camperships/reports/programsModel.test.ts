@@ -54,6 +54,30 @@ describe('Programs (RPT-11)', () => {
     ])
   })
 
+  it('shows an average with cents in whole dollars', () => {
+    const withCents = {
+      ...PROGRAMS,
+      pools: PROGRAMS.pools.map((pool, index) =>
+        index > 0
+          ? pool
+          : {
+              ...pool,
+              sessions: pool.sessions.map((s, i) =>
+                i > 0
+                  ? s
+                  : {
+                      ...s,
+                      round1: { ...s.round1, average_request: 2744.44, average_award: 2983.62 },
+                    }
+              ),
+            }
+      ),
+    }
+    const cells = programRows(withCents, ALL, linkOf)[1]?.cells.map(reportText) ?? []
+    expect(cells[4]).toBe('$2,744')
+    expect(cells[5]).toBe('$2,984')
+  })
+
   it("draws an unawarded session's server ratios: its ask average, a real 0% and no award average", () => {
     const session = programRows(PROGRAMS, ALL, linkOf)[2]
     expect(session?.cells.map(reportText).slice(0, 7)).toEqual([
@@ -74,7 +98,7 @@ describe('Programs (RPT-11)', () => {
       '3',
       '$8,000',
       '$1,500',
-      '$2,666.67',
+      '$2,667',
       '$1,500',
       '18.8%',
     ])
@@ -135,7 +159,7 @@ describe('Programs (RPT-11)', () => {
     })
     expect(programsLinkParams({ kind: 'all' })).toEqual({ rows: 'session' })
     expect(programsCsvName({ year: 2027, asOf: { kind: 'live' } }, { kind: 'deadline' })).toBe(
-      'camperships-reports-programs-through-deadline-2027.csv'
+      'camperships-reports-statistics-by-session-through-deadline-2027.csv'
     )
   })
 })

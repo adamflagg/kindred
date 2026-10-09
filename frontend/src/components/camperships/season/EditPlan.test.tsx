@@ -201,7 +201,7 @@ describe('Edit Plan… (spec §5.2 B)', () => {
     const total = screen.getByLabelText('Total')
     expect(total).toHaveAttribute('readonly')
     await userEvent.type(total, '5')
-    expect(total).toHaveValue('1000000')
+    expect(total).toHaveValue('$1,000,000')
     expect(screen.getByLabelText('Total locked')).toBeInTheDocument()
     expect(
       screen.getByText(

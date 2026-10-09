@@ -20,11 +20,12 @@ import {
  * The session table (spec §9.3; RPT-11; D129, D138; statistics-v2.html's session rows): one row per
  * session grouped by pool, with the server's pooled subtotals and its total, on the Posted basis. It
  * has no controls of its own: Statistics owns the one set and passes the request set. Sessions and
- * pools come from the rules. Each block's Apps opens its requests in Requests (slice 4 J).
+ * pools come from the rules. Its column notes are numbered from the Statistics list (every key it uses is
+ * there), so the page carries one list at its foot. Each block's Apps opens its requests in Requests (slice 4 J).
  */
 export function ProgramsTable({ view, requestSet }: { view: AidView; requestSet: AidRequestSet }) {
   const programs = useAidPrograms(requestSet)
-  const { numberOf } = useAidDefinitions('reports-programs')
+  const { numberOf } = useAidDefinitions('reports-statistics')
   const refusal =
     programs.error !== null && hasStatus(programs.error, 422) ? programs.error.message : null
   const columns = useMemo(() => programColumns(numberOf), [numberOf])
@@ -40,7 +41,7 @@ export function ProgramsTable({ view, requestSet }: { view: AidView; requestSet:
         isLoading={programs.isLoading}
         error={programs.data || refusal !== null ? null : programs.error}
         data={programs.data}
-        label="Programs"
+        label="the session table"
         emptyMessage="Nothing to show for these choices."
       >
         {(data) => {

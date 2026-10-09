@@ -20,6 +20,8 @@ const ROUTES: Record<string, Guard> = {
   'money/:tab?': 'viewOrGrantors',
   'season/:tab?': 'view',
   'reports/:tab?': 'open',
+  // Old Development addresses: AidReportsPage redirects them, under the same open guard.
+  'reports/development/:view': 'open',
   'households/:householdCmId': 'view',
 }
 

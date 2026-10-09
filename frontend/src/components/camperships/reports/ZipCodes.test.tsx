@@ -29,6 +29,16 @@ vi.mock('../../../utils/csvExport', async (importOriginal) => ({
 }))
 
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
+const ZIP_NOTES = {
+  surface: 'reports-development-zip',
+  notes: [
+    { key: 'zip_who_counts', n: 1, text: 'Who counts: households.' },
+    { key: 'zip_dollars', n: 2, text: 'Dollars: all money.' },
+    { key: 'zip_zip', n: 3, text: 'ZIP: first five digits.' },
+    { key: 'zip_families', n: 4, text: 'Families: households once.' },
+    { key: 'zip_geography', n: 5, text: 'Geography goes no finer than ZIP.' },
+  ],
+}
 let answer: (url: string) => ApiAidZip
 let fetchSpy: MockInstance<typeof fetch>
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
@@ -39,7 +49,7 @@ beforeEach(() => {
   answer = () => ZIP
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const text = String(url)
-    if (text.includes('/definitions')) return Promise.resolve(json({ surface: 'x', notes: [] }))
+    if (text.includes('/definitions')) return Promise.resolve(json(ZIP_NOTES))
     return Promise.resolve(json(answer(text)))
   })
 })
@@ -140,11 +150,36 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     const aid = screen.getByRole('table', { name: 'Campers who got aid · Pool A' })
     const sameCampers = screen.getByText(/The same campers, attended and got money/)
     expect(sameCampers.compareDocumentPosition(aid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // row 1 is the totals row (it comes first), row 2 the ZIP with the most campers
     const first = (table: HTMLElement) =>
-      within(within(table).getAllByRole('row')[1]!).getAllByRole('cell')[0]?.textContent
+      within(within(table).getAllByRole('row')[2]!).getAllByRole('cell')[0]?.textContent
     expect(first(every)).toBe('00012')
     expect(first(aid)).toBe('00012')
     expect(within(every).getByRole('columnheader', { name: /Campers/ })).toHaveTextContent('↓')
+  })
+
+  it('draws the totals row first, under the header, sorted or not', async () => {
+    renderZip()
+    const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
+    const cellOf = (row: number) =>
+      within(within(every).getAllByRole('row')[row]!).getAllByRole('cell')[0]?.textContent
+    expect(cellOf(1)).toBe('All · 2 ZIPs')
+    await userEvent.click(within(every).getByRole('columnheader', { name: /Campers/ }))
+    expect(cellOf(1)).toBe('All · 2 ZIPs')
+    const rows = within(every).getAllByRole('row')
+    expect(within(rows[rows.length - 1]!).getAllByRole('cell')[0]?.textContent).not.toMatch(/^All/)
+  })
+
+  it("numbers the Dollars, ZIP, Families and Campers columns with the mock's notes, listed at the foot", async () => {
+    renderZip()
+    const aid = await screen.findByRole('table', { name: 'Campers who got aid · Pool A' })
+    const sup = (name: RegExp) =>
+      within(aid).getByRole('columnheader', { name }).querySelector('sup')?.textContent
+    expect(sup(/^ZIP/)).toBe('3')
+    expect(sup(/^Campers/)).toBe('1')
+    expect(sup(/^Families/)).toBe('4')
+    expect(sup(/^Dollars/)).toBe('2')
+    expect(await screen.findByText('Geography goes no finer than ZIP.')).toBeInTheDocument()
   })
 
   it('draws ZIPs in the monospace font', async () => {

@@ -146,7 +146,7 @@ BUDGET_LABEL: Final = "Budget (this camp's, the first board-passed)"
 BUDGET_DEFINITION: Final = (
     "This camp's own aid budget as first passed by the board, one total, never the all-money total. A season the "
     "dashboard reads uses the season's first approved budget, which doesn't move with later revisions; an "
-    "as-reported season uses the budget finance typed"
+    "as-reported season uses the budget finance typed. A column as of a day before that first approval shows none"
 )
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
@@ -332,42 +332,82 @@ class _RowSpec:
     definition: str = ""
 
 
+# The development-v2 mock's lines, in its order and words (final audit O1/O2). Each long definition is the row's
+# numbered note on screen, never part of its label; the owner-ruled labels (Budget's, "Grants/Awards") stay exact.
 _ROWS: Final[tuple[_RowSpec, ...]] = (
     _RowSpec("budget", "money", BUDGET_LABEL, "dollars", False, None, "budget", BUDGET_DEFINITION),
-    _RowSpec("total_awards", "money", "Total Awards Granted", "dollars", True, None, "total_awards"),
-    _RowSpec("camp_awards", "money", "The camp's own awards", "dollars", True, None, None),
-    _RowSpec("outside_awards", "money", "Grants from other funders", "dollars", True, None, None),
+    _RowSpec("total_requests", "money", "Total requests (demand) = Σ need", "dollars", True, None, "total_requests"),
+    _RowSpec("total_awards", "money", "Total Awards Granted (all money)", "dollars", True, None, "total_awards"),
+    _RowSpec("camp_awards", "money", "this camp's awards (awarded = Posted)", "dollars", True, None, None),
+    _RowSpec("outside_awards", "money", "outside grants, every funder", "dollars", True, None, None),
     _RowSpec("incentive_awards", "money", "of which incentive grants", "dollars", True, None, None),
+    # Money no group holds (D100's "needs a group"; Family School and "other"): in the totals, its own line.
+    _RowSpec(
+        "not_in_group_amount",
+        "money",
+        "Money in no group (a source that needs a group, a program in no pool, other)",
+        "dollars",
+        False,
+        None,
+        None,
+    ),
+    _RowSpec("not_in_group_awards", "money", "Awards in no group", "count", False, None, None),
     _RowSpec("awards", "money", GRANTS_AWARDS_LABEL, "count", True, None, "awards", AWARDS_DEFINITION),
-    _RowSpec("average_award", "money", "Average award", "dollars", True, None, None, AVERAGE_AWARD_DEFINITION),
-    _RowSpec("total_requests", "money", "Total Requests (demand)", "dollars", True, None, "total_requests"),
+    _RowSpec(
+        "average_award",
+        "money",
+        "Average award = Total Awards Granted ÷ Grants/Awards",
+        "dollars",
+        True,
+        None,
+        None,
+        AVERAGE_AWARD_DEFINITION,
+    ),
     _RowSpec("need_met", "money", "% of need met", "percent", True, frozenset({"summer"}), "need_met"),
-    _RowSpec("recipients", "counts", "Applications (got money)", "count", True, None, "recipients"),
-    _RowSpec("families", "counts", "Families receiving", "count", True, None, "families"),
-    _RowSpec("shared_households", "counts", "of which households that share a camper", "count", False, None, None),
+    _RowSpec(
+        "recipients", "counts", "Recipients (attended and got money, any source)", "count", True, None, "recipients"
+    ),
+    _RowSpec("families", "counts", "Families (CampMinder households)", "count", True, None, "families"),
+    _RowSpec("shared_households", "counts", "including households that share a camper", "count", False, None, None),
     _RowSpec("shared_campers", "counts", "campers those households share", "count", False, None, None),
-    _RowSpec("teens", "counts", "Teens (13–17)", "count", True, frozenset({"summer"}), None),
-    _RowSpec("youth", "counts", "Youth (0–12)", "count", True, frozenset({"summer"}), None),
+    _RowSpec("teens", "counts", "Teens, 13–17 on their first session day", "count", True, frozenset({"summer"}), None),
+    _RowSpec("youth", "counts", "Youth, 0–12", "count", True, frozenset({"summer"}), None),
     _RowSpec("adults", "counts", "18 and over", "count", True, frozenset({"summer"}), None),
     _RowSpec("age_unknown", "counts", "Age unknown", "count", True, frozenset({"summer"}), None),
     _RowSpec(
         "teen_programs", "counts", "TLI + SCIT (program line)", "count", True, frozenset({"summer"}), "teen_programs"
     ),
+    # The gender lines follow here (_rows), as the mock draws them: after the ages, before First-time.
     _RowSpec("first_time", "counts", "First-time", "count", True, frozenset({"summer", "families"}), "first_time"),
     _RowSpec("returning", "counts", "Returning", "count", True, frozenset({"summer", "families"}), "returning"),
-    _RowSpec("household_level_lines", "counts", "Household-level grants (no camper)", "count", True, None, None),
-    _RowSpec("household_level_amount", "money", "Household-level grant dollars", "dollars", True, None, None),
-    # Money no group holds (D100's "needs a group"; Family School and "other"): in the totals, its own line.
-    _RowSpec("not_in_group_amount", "money", "Money in no group", "dollars", False, None, None),
-    _RowSpec("not_in_group_awards", "money", "Awards in no group", "count", False, None, None),
-    _RowSpec("appeals_submitted", "appeals", "Appeals submitted", "count", True, None, "appeals_submitted"),
-    _RowSpec("appeals_in_full", "appeals", "Approved in full", "count", True, None, None),
-    _RowSpec("appeals_in_part", "appeals", "Approved in part", "count", True, None, None),
-    _RowSpec("appeals_approved", "appeals", "Approved", "count", True, None, "appeals_approved"),
+    _RowSpec(
+        "household_level_lines", "counts", "Household-level grants not tied to a camper", "count", True, None, None
+    ),
+    _RowSpec(
+        "household_level_amount",
+        "counts",
+        "Household-level grant dollars not tied to a camper",
+        "dollars",
+        True,
+        None,
+        None,
+    ),
+    _RowSpec(
+        "appeals_submitted",
+        "appeals",
+        "Appeals (asks in Round 2 or later, campers who attended)",
+        "count",
+        True,
+        None,
+        "appeals_submitted",
+    ),
+    _RowSpec("appeals_in_full", "appeals", "approved in full", "count", True, None, None),
+    _RowSpec("appeals_in_part", "appeals", "approved in part", "count", True, None, None),
+    _RowSpec("appeals_approved", "appeals", "approved, in full or in part", "count", True, None, "appeals_approved"),
     _RowSpec(
         "declined_insufficient",
         "appeals",
-        "Declined enrollment for insufficient aid",
+        "Declined enrollment due to insufficient aid",
         "count",
         True,
         None,
@@ -375,6 +415,11 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
     ),
     *(_RowSpec(key, "appeals", label, "count", True, None, None) for key, label in _CANCEL_ROWS),
 )
+# The first-time line's words for each kind of group (the mock's "First-time campers" and "First weekend program").
+FIRST_TIME_LABELS: Final[Mapping[GroupKind, str]] = {
+    "summer": "First-time campers",
+    "families": "First weekend program",
+}
 
 
 def _group_value(key: str, figures: GroupFigures) -> Decimal | int | None:
@@ -829,15 +874,18 @@ class FinancialAidDevelopmentService:
             ):
                 continue  # 2026 before its decisions load (D67): as reported only
             # The Budget row (owner 10-08, D96): the season's FIRST approved budget, fixed when a later version is
-            # approved; a dated column shows it too (the board-passed figure, not the budget as of the day).
+            # approved; a dated column shows it too (the board-passed figure, not the budget as of the day), or none
+            # when its day came before that first approval.
             first = await self._rules.first_approved(season_year, ["budget"])
             budget = first.document.budget.total if first is not None else None
             native = await self._native(season, sources, budget=budget)
             natives[season_year], latest = native.column, native.grouping
             if column is not None and column.season == season_year:
                 past = await self._decisions.past_season(season_year, column.as_of, "campminder")
+                # Final audit O10: before the board first passed the budget there was no approved budget that day.
+                passed = budget if _budget_passed_by(first, column.as_of) else None
                 dated[(season_year, column.as_of)] = (
-                    await self._native(past, sources, as_of=column.as_of, register=season.register, budget=budget)
+                    await self._native(past, sources, as_of=column.as_of, register=season.register, budget=passed)
                 ).column
         reported = [
             s.figure for s in await self._history.reported() if FIRST_DEVELOPMENT_SEASON <= s.figure.year <= year
@@ -867,12 +915,13 @@ class FinancialAidDevelopmentService:
                     ),
                 )
             )
+        rows = _rows(latest.groups, columns, ages)
         return DevelopmentResponse(
             year=year,
             figures_on=today,
             groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in latest.groups],
-            columns=[c for c, _ in columns],
-            rows=_rows(latest.groups, columns, ages),
+            columns=[_name_blank_lines(c, index, rows) if c.not_rebuilt else c for index, (c, _) in enumerate(columns)],
+            rows=rows,
             sources=_sources(
                 natives.get(year), latest, sources, {g.key: g for g in await self._development.grantors()}
             ),
@@ -951,6 +1000,27 @@ def _columns(
     return out
 
 
+def _budget_passed_by(first: RulesVersion | None, day: date) -> bool:
+    """Whether the season's first approved budget had been approved by the end of `day` (camp time). A status that
+    carries no approval time (a version from before approvals were timed) counts as passed."""
+    if first is None:
+        return False
+    status = first.section_status.get("budget")
+    at = (status.approved_at or status.locked_at) if status is not None else None
+    return at is None or at < as_of_cutoff(day)
+
+
+def _name_blank_lines(
+    column: DevelopmentColumnOut, index: int, rows: Sequence[DevelopmentRowOut]
+) -> DevelopmentColumnOut:
+    """A dated column names every line it leaves blank (final audit O10: the note's count is what renders): the
+    lines a past read can't rebuild first, then each line null in that column for every group and in total."""
+    keys = dict.fromkeys(r.key for r in rows)
+    blank = [k for k in keys if all(r.values[index] is None for r in rows if r.key == k)]
+    named = [*column.not_rebuilt, *(k for k in blank if k not in column.not_rebuilt)]
+    return column.model_copy(update={"not_rebuilt": named})
+
+
 def _check_dated(season: int, day: date, today: date) -> None:
     """A dated column needs dated decisions, so 2026 (reproduced, undated, D67) and earlier are refused; its day must
     be a past day of its season (today is not past: development shows a column only once its day is)."""
@@ -1013,20 +1083,25 @@ def _rows(
                         value = _typed_value(data, spec.typed, pool)
                 values.append(_number(value, spec.unit))
             definition = spec.definition
+            label = spec.label
             if spec.key in {"first_time", "returning"} and scope is not None:
                 definition = FIRST_TIME_SUMMER if scope.kind == "summer" else FIRST_TIME_FAMILY
+                if spec.key == "first_time":
+                    label = FIRST_TIME_LABELS.get(scope.kind, spec.label)
             out.append(
                 DevelopmentRowOut(
                     key=spec.key,
                     section=spec.section,
-                    label=spec.label,
+                    label=label,
                     group=scope.key if scope is not None else None,
                     unit=spec.unit,
                     definition=definition,
                     values=values,
                 )
             )
-    return [*out, *_gender_rows(groups, columns)]
+        if spec.key == "teen_programs":
+            out.extend(_gender_rows(groups, columns))
+    return out
 
 
 def _gender_rows(

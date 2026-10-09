@@ -37,6 +37,13 @@ export function AsOfColumn({
   refusal,
 }: AsOfColumnProps) {
   const [adding, setAdding] = useState(false)
+  // Show closes the form once the column is on screen (development-v2: the chip's Remove is all that
+  // stays); a refusal leaves it open with the typing kept.
+  const [closedFor, setClosedFor] = useState<AsOfPick | null>(null)
+  if (shown !== null && shown !== closedFor) {
+    setClosedFor(shown)
+    setAdding(false)
+  }
   const [season, setSeason] = useState(seasons[0] ?? 0)
   const [day, setDay] = useState('')
   // a past day only: the server refuses today and later (#2967)
@@ -90,11 +97,11 @@ export function AsOfColumn({
             Back
           </button>
         </span>
-      ) : (
+      ) : shown === null ? (
         <button type="button" className={BUTTON_SECONDARY} onClick={() => setAdding(true)}>
           Show As Of a Date…
         </button>
-      )}
+      ) : null}
       {shown !== null && (
         <span className={REPORT_NOTE}>
           Recomputed from dated records, never a frozen copy; nothing is saved.

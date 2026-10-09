@@ -15,6 +15,7 @@ import { aidCsvFilename } from '../kit/csv'
 import { formatLongDate } from '../kit/dates'
 import {
   BASIS_WORDS,
+  averageValue,
   countValue,
   moneyValue,
   pctValue,
@@ -86,7 +87,7 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
         ]
       : []),
     { key: 'averageAward', header: 'Avg award', note: noteOf('average_award') },
-    { key: 'awards', header: 'Awards' },
+    { key: 'awards', header: 'Awards', note: noteOf('awarded_count') },
     { key: 'liveAsked', header: 'Asked (live, in budget)', note: noteOf('pct_of_ask') },
     { key: 'pct', header: stats.pct_of_ask_label, note: noteOf('pct_of_ask') },
     {
@@ -111,11 +112,11 @@ function figureCells(row: ApiAidStatisticsRow, decided: boolean): ReportValue[] 
     countValue(row.apps),
     moneyValue(row.asked),
     countValue(row.asks),
-    moneyValue(row.average_ask),
+    averageValue(row.average_ask),
     // Posted alone on either basis (#2974): the screen never subtracts decided from `amount`
     moneyValue(row.awarded),
     ...(decided ? [moneyValue(row.decided)] : []),
-    moneyValue(row.average_award),
+    averageValue(row.average_award),
     countValue(row.awarded_count),
     // % of ask's denominator, as sent (owner B4a (c)): never Asked, never computed here
     moneyValue(row.live_asked),
@@ -212,6 +213,9 @@ export function cancelledColumns(noteOf: NoteOf): ReportColumn[] {
   ]
 }
 
+/** A reason label's first letter in capitals: the server's words are sentence fragments. */
+const capitalised = (words: string) => words.charAt(0).toUpperCase() + words.slice(1)
+
 /** The reason and pool labels are the server's (#2974 sends `pool_label`; "No pool" for none). */
 export function cancelledRows(
   stats: ApiAidStatistics,
@@ -222,7 +226,7 @@ export function cancelledRows(
     key: `${row.reason}-${row.pool ?? 'none'}-${String(row.round)}-${String(index)}`,
     kind: 'body',
     cells: [
-      textValue(row.reason_label),
+      textValue(capitalised(row.reason_label)),
       textValue(row.pool_label),
       textValue(`Round ${String(row.round)}`),
       countValue(row.requests),

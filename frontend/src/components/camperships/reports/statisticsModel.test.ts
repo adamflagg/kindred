@@ -109,6 +109,24 @@ describe('the tier table', () => {
     expect(tierColumns(STATISTICS, noNotes).find((c) => c.key === 'awards')?.header).toBe('Awards')
   })
 
+  it('numbers the Awards column with its own note, keeping the label', () => {
+    const columns = tierColumns(STATISTICS, (key) => (key === 'awarded_count' ? 9 : null))
+    const awards = columns.find((c) => c.key === 'awards')
+    expect(awards?.header).toBe('Awards')
+    expect(awards?.note).toBe(9)
+  })
+
+  it('draws the averages in whole dollars, the cents dropped (mock)', () => {
+    const cents = {
+      ...STATISTICS,
+      rows: [{ ...STATISTICS.rows[0]!, average_ask: 2744.44, average_award: 1999.5 }],
+    }
+    const keys = tierColumns(cents, noNotes).map((c) => c.key)
+    const cell = texts(tierRows(cents, CAMP_R1, linkOf)[0]?.cells ?? [])
+    expect(cell[keys.indexOf('averageAsk')]).toBe('$2,744')
+    expect(cell[keys.indexOf('averageAward')]).toBe('$2,000')
+  })
+
   it("puts the registry's note numbers on their columns", () => {
     const notes: Record<string, number> = { apps: 1, awarded: 3, average_award: 4, pct_of_ask: 5 }
     const columns = tierColumns(STATISTICS, (key) => notes[key] ?? null)
@@ -166,12 +184,29 @@ describe('every count opens the requests behind it (slice 4 J; D20)', () => {
 })
 
 describe('RPT-22, RPT-9 and RPT-23', () => {
+  it('starts every cancel reason with a capital, on screen and in the CSV', () => {
+    const lower = {
+      ...STATISTICS,
+      recipients_cancelled: STATISTICS.recipients_cancelled.map((r, i) => ({
+        ...r,
+        reason_label: i === 0 ? 'declined: aid not enough / financial constraints' : 'schedule',
+      })),
+    }
+    const rows = cancelledRows(lower, CAMP_R1, linkOf)
+    expect(texts(rows[0]?.cells ?? [])[0]).toBe('Declined: aid not enough / financial constraints')
+    expect(texts(rows[1]?.cells ?? [])[0]).toBe('Schedule')
+    expect(rows[0]?.cells[0]).toEqual({
+      kind: 'text',
+      value: 'Declined: aid not enough / financial constraints',
+    })
+  })
+
   it("names each cancellation's reason and pool in the server's words (#2974)", () => {
     expect(cancelledRows(STATISTICS, CAMP_R1, linkOf).map((r) => texts(r.cells))).toEqual([
       ['Medical', 'Pool A', 'Round 1', '2', '$3,400'],
       ['Withdrawn in the dashboard', 'Pool B', 'Round 1', '1', '$700'],
       ['Duplicate', 'Pool A', 'Round 1', '1', '$500'],
-      ['no reason recorded', 'No pool', 'Round 2', '1', '$300'],
+      ['No reason recorded', 'No pool', 'Round 2', '1', '$300'],
     ])
   })
 

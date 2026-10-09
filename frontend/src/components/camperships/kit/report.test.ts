@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  averageValue,
   BASIS_WORDS,
   copyText,
   countValue,
@@ -126,5 +127,24 @@ describe('a cell with a note under its figure (R3)', () => {
     expect(pctValue(60, '51–55%: above')).toEqual({ kind: 'pct', value: 60, note: '51–55%: above' })
     expect(pctValue(60)).toEqual({ kind: 'pct', value: 60 })
     expect(pctValue(null, undefined)).toEqual({ kind: 'pct', value: null })
+  })
+})
+
+describe('averageValue', () => {
+  it('shows an average in whole dollars, as the mocks do, on screen, in Copy and in the CSV', () => {
+    expect(reportText(averageValue(2744.44))).toBe('$2,744')
+    expect(reportText(averageValue(2480.52))).toBe('$2,481')
+    expect(reportCsv(averageValue(2983.62))).toBe('2984')
+    expect(reportText(averageValue(null))).toBe('—')
+    expect(reportText(averageValue(undefined))).toBe('—')
+  })
+})
+
+describe('textValue with its own CSV', () => {
+  it('shows the words on screen and in Copy, and writes the plain signed number to the CSV (§11)', () => {
+    const cell = textValue('$40,000 under', '-40000')
+    expect(reportText(cell)).toBe('$40,000 under')
+    expect(reportCsv(cell)).toBe('-40000')
+    expect(reportCsv(textValue('Tier 1'))).toBe('Tier 1')
   })
 })
