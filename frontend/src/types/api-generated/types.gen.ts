@@ -5066,6 +5066,10 @@ export type FundingSourceIn = {
    */
   group?: string | null
   /**
+   * Groups
+   */
+  groups?: Array<string> | null
+  /**
    * Incentive
    */
   incentive?: boolean | null

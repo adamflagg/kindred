@@ -645,7 +645,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Reporting group",
         text=(
             "Reporting group: the budget pool an outside source funds; household-level grant lines follow it. An "
-            "outside source that reaches no pool needs a group."
+            "outside source with no programs set needs a group."
         ),
         spec="§8.1",
         rulings=("D95", "D100", "D159"),

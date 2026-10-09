@@ -518,6 +518,20 @@ def _keeps_group(body: FundingSourceIn, shown: str | None) -> bool:
     return "group" not in body.model_fields_set or body.group == shown
 
 
+def _reach(source: SourceRecord, found: Grouping) -> set[str]:
+    """The pools a source's program families reach now."""
+    return {found.by_family[f] for f in source.implied_program_families if f in found.by_family}
+
+
+def _keeps(body: FundingSourceIn, found: Grouping, members: Sequence[SourceRecord], shown: str | None) -> bool:
+    """`_keeps_group`, and for `groups`: the picked set is exactly the set every member reaches now (finance's narrower
+    setting survives). Both fields absent keeps the families."""
+    if "groups" in body.model_fields_set:
+        picked = set(body.groups or ())
+        return all(_reach(m, found) == picked for m in members)
+    return _keeps_group(body, shown)
+
+
 class FinancialAidDevelopmentService:
     def __init__(
         self,
@@ -690,6 +704,19 @@ class FinancialAidDevelopmentService:
         families = list(source.implied_program_families)
         if keep_group:
             pass
+        elif "groups" in body.model_fields_set:
+            picked = list(dict.fromkeys(body.groups or ()))
+            pools = {g.key for g in found.groups}
+            for key in picked:
+                if key not in pools:
+                    raise ReportsRefusedError(f"{key!r} is not one of {year}'s budget pools")
+            union: set[str] = set()
+            for key in picked:
+                funded = {f for f, pool in found.by_family.items() if pool == key}
+                if not funded:
+                    raise ReportsRefusedError(f"No program of {year} funds {key!r}: nothing to point the source at")
+                union |= funded
+            families = sorted(union)
         elif body.group is None:
             families = []
         else:
@@ -725,7 +752,7 @@ class FinancialAidDevelopmentService:
             source,
             body,
             found,
-            keep_group=_keeps_group(body, _funding_source(source, found).group),
+            keep_group=_keeps(body, found, [source], _funding_source(source, found).group),
         )
         if changed:
             await self._development.commit(
@@ -762,7 +789,7 @@ class FinancialAidDevelopmentService:
         if grantor_key not in grantors or not members:
             raise FunderNotFoundError(f"No funder {grantor_key} with an outside source")
         found = await self._season_grouping(year)
-        keep_group = _keeps_group(body, _row_of(grantors[grantor_key], members, found, "outside").group)
+        keep_group = _keeps(body, found, members, _row_of(grantors[grantor_key], members, found, "outside").group)
         writes: list[AidWrite] = []
         updated: list[SourceRecord] = []
         families_changed = False

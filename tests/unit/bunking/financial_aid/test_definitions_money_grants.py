@@ -96,7 +96,7 @@ def test_funders_notes_are_the_final_mocks_four_short_ones() -> None:
     assert _text("incentive") == "Incentive or need-based: a flag on each description, never the funder type."
     assert _text("reporting_group") == (
         "Reporting group: the budget pool an outside source funds; household-level grant lines follow it. An outside "
-        "source that reaches no pool needs a group."
+        "source with no programs set needs a group."
     )
     assert _text("source_lines") == (
         "Lines this season: the season's live CampMinder lines a description classifies, counting any line "
