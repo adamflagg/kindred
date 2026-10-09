@@ -351,6 +351,9 @@ class DevelopmentGroupOut(BaseModel):
     key: str
     label: str
     kind: Literal["summer", "families", "campers"]
+    # The program families the season's rules send to this pool, sorted: what Set a Group... writes for it and what
+    # Money > Funders' "Covers:" line names. Empty on the development view, which has no use for it.
+    families: list[str] = []
 
 
 class DevelopmentColumnOut(BaseModel):

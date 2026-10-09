@@ -3799,6 +3799,10 @@ export type DevelopmentGroupOut = {
    * Kind
    */
   kind: 'summer' | 'families' | 'campers'
+  /**
+   * Families
+   */
+  families?: Array<string>
 }
 
 /**

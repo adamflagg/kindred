@@ -660,7 +660,15 @@ class FinancialAidDevelopmentService:
         own = [s for s in every if s.funder_type == "camp"]
         return FundingSourcesResponse(
             year=year,
-            groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in found.groups],
+            groups=[
+                DevelopmentGroupOut(
+                    key=g.key,
+                    label=g.label,
+                    kind=g.kind,
+                    families=sorted(f for f, pool in found.by_family.items() if pool == g.key),
+                )
+                for g in found.groups
+            ],
             sources=[
                 _funding_source(s, found, counted=counted.get(s.description_key, (0, ZERO)), last=changed.get(s.id))
                 for s in sorted(outside, key=lambda s: (s.source_name.lower(), s.id))

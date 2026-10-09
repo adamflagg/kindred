@@ -70,6 +70,19 @@ async def test_the_list_holds_outside_sources_with_their_group_and_facts() -> No
     assert [g.key for g in out.groups] == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
 
 
+async def test_each_group_names_the_program_families_its_pool_funds() -> None:
+    """Final UX (money-funders.html, owner 10-09 star 19, rev1): Edit... picks pools, not program families, and its
+    "Covers: Summer, Quest, Teen" line names what each pool covers. The families are the ones the season's rules
+    send to the pool (`by_family`), the same set Set a Group... writes for it; none for a pool no session reaches."""
+    out = await _service(_store()).funding_sources(YEAR)
+    found = {g.key: list(g.families) for g in out.groups}
+    assert found["camp_pool"] == ["quest", "summer"]
+    for key, families in found.items():
+        assert families == sorted(families), key
+    stored = {f for g in out.groups for f in g.families}
+    assert stored <= {"summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend"}
+
+
 async def test_setting_a_group_stores_the_program_families_that_pool_funds_with_one_logged_write() -> None:
     store = _store()
     out = await _service(store).save_funding_source(
