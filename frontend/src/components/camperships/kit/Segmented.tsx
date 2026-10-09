@@ -5,7 +5,10 @@ export interface AidSegmentedOption<V extends string> {
   readonly label: string
   /** Shown inside the choice's own segment ("All 16"). */
   readonly count?: number
+  /** The words behind the choice; on a disabled one, why it is off. */
   readonly title?: string
+  /** Off: drawn dim, never reported ("Round" on Session rows). */
+  readonly disabled?: boolean
 }
 
 /**
@@ -41,7 +44,8 @@ export function AidSegmented<V extends string>({
             type="button"
             aria-pressed={on}
             title={option.title}
-            className={`${CS_SEG_BUTTON} ${on ? CS_SEG_ON : CS_SEG_OFF}`}
+            disabled={option.disabled ?? false}
+            className={`${CS_SEG_BUTTON} ${on ? CS_SEG_ON : CS_SEG_OFF} ${option.disabled ? 'cursor-not-allowed opacity-45' : ''}`}
             onClick={() => onChange(option.value)}
           >
             {option.label}

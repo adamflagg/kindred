@@ -2,17 +2,14 @@ import { Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
-import { CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
+import { CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
 import { AidCopyButton, AidCsvButton } from './CsvButton'
 import { DefRef } from './DefinitionNotes'
 import { CS_RULE, TABLE_CARD } from './kitStyles'
 import { Money } from './MoneyText'
 import {
-  copyText,
-  csvLines,
   formatCount,
   reportSortValue,
   reportText,
@@ -25,6 +22,7 @@ import {
   BASIS_BADGE,
   COUNT_LINK,
   DIVIDER_BEFORE,
+  REPORT_DESC,
   REPORT_NOTE,
   REPORT_TITLE,
   ROW_END,
@@ -32,15 +30,18 @@ import {
   ROW_SUBTOTAL,
   ROW_TOTAL,
   TD_DECIDED,
+  TD_DECIDED_INK,
   TD_LABEL,
   TD_NUMBER,
   TH_DECIDED,
+  TH_DECIDED_INK,
   TH_GROUP,
   TH_LABEL,
   TH_NUMBER,
 } from './reportStyles'
 import { matchesSearch, sortRows } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
+import { useReportExport } from './useReportExport'
 
 interface ReportTableProps {
   readonly heading: ReportHeading
@@ -51,13 +52,20 @@ interface ReportTableProps {
   readonly csvFilename: string
   /** The view's link, for the CSV's last line (D15). */
   readonly link: string
+  /**
+   * False: no heading row (title, description, Copy, Download CSV). The page then puts this table's Copy
+   * and CSV on its own controls row, through `useReportExport`, and the basis badge on the total row.
+   */
+  readonly showHeading?: boolean | undefined
+  /** Fixed column widths (every column's `width`; the first takes the rest), so a long label cuts. */
+  readonly fixed?: boolean | undefined
   /** A find box over the body rows (ZIP codes). */
   readonly find?: boolean | undefined
   /** Sortable headers (the sort lives in the URL under `urlPrefix`). */
   readonly sortable?: boolean | undefined
   readonly urlPrefix?: string | undefined
   readonly emptyText?: string | undefined
-  /** Words right under the title, above the toolbar (the mock's table description). */
+  /** Muted words right after the title on the heading row, truncated with a title (the mock's CF.thead). */
   readonly description?: ReactNode | undefined
   /** The sort while the URL carries none (the URL wins; a header click toggles from it). */
   readonly defaultSort?: { readonly key: string; readonly dir: 'asc' | 'desc' } | undefined
@@ -71,7 +79,7 @@ const BODY_KINDS = new Set(['body', 'end'])
 
 /** A cell as the kit draws it: money through `Money`, a count above 0 with a link as that link (D20). */
 function cellContent(cell: ReportValue, href: string | undefined): ReactNode {
-  const figure = figureContent(cell, href)
+  const figure = cell.display !== undefined ? cell.display : figureContent(cell, href)
   if (cell.note === undefined) return figure
   return (
     <>
@@ -108,9 +116,17 @@ function cellClass(column: ReportColumn | undefined, index: number, kind: string
       ? TD_LABEL
       : column?.tone === 'decided'
         ? TD_DECIDED
-        : TD_NUMBER
+        : column?.tone === 'decided-ink'
+          ? TD_DECIDED_INK
+          : TD_NUMBER
   const mono = column?.mono && kind === 'body' ? `${base} font-mono tabular-nums` : base
   return column?.divider === 'before' ? mono.replace(CS_RULE, DIVIDER_BEFORE) : mono
+}
+
+/** A cell's native title: the cell's own, else a text cell's words (it may be cut); a figure has none. */
+function cellTitle(cell: ReportValue): string | undefined {
+  if (cell.title !== undefined) return cell.title
+  return cell.kind === 'text' && cell.value !== '' && cell.value !== '—' ? cell.value : undefined
 }
 
 function indentStyle(indent: number | undefined) {
@@ -145,6 +161,8 @@ export function ReportTable({
   rows,
   csvFilename,
   link,
+  showHeading = true,
+  fixed = false,
   find = false,
   sortable = false,
   urlPrefix = '',
@@ -157,7 +175,6 @@ export function ReportTable({
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const { sort, toggleSort } = useAidTableUrl(columnKeys, [], urlPrefix, undefined, defaultSort)
   const [query, setQuery] = useState('')
-  const [copied, setCopied] = useState<string | null>(null)
 
   // The rows as shown: a sort reorders the body rows; `end` rows stay after them, totals last (or
   // first, with `totalsFirst`).
@@ -193,26 +210,30 @@ export function ReportTable({
   const matching = visible.filter((r) => BODY_KINDS.has(r.kind)).length
   const grouped = columns.some((c) => c.group !== undefined)
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(copyText(heading, columns, ordered))
-      setCopied('Copied, with its as-of date and basis: paste it into a spreadsheet.')
-    } catch {
-      setCopied("Couldn't copy here: use Download CSV.")
-    }
-  }
-  const download = () => {
-    const [first = [], ...rest] = csvLines(heading, columns, ordered, link)
-    downloadCsv(buildCsvContent(first, rest), csvFilename)
-  }
+  const { copy, download, copied } = useReportExport({
+    heading,
+    columns,
+    rows: ordered,
+    csvFilename,
+    link,
+  })
 
   const header = (column: ReportColumn, index: number, rowSpan?: number) => {
     const numeric = index > 0 && column.align !== 'left'
-    const base = column.tone === 'decided' ? TH_DECIDED : numeric ? TH_NUMBER : TH_LABEL
+    const base =
+      column.tone === 'decided'
+        ? TH_DECIDED
+        : column.tone === 'decided-ink'
+          ? TH_DECIDED_INK
+          : numeric
+            ? TH_NUMBER
+            : TH_LABEL
     const ruled = column.divider === 'before' ? base.replace(CS_RULE, DIVIDER_BEFORE) : base
     // Only the table's first column drops its rule: in a grouped header the second row's first
     // cell is a later column, and `first:` would strip its rule there.
-    const thClass = index === 0 ? ruled : ruled.replace(/\s*first:border-l-0/, '')
+    const rule = index === 0 ? ruled : ruled.replace(/\s*first:border-l-0/, '')
+    // One line unless the column opts into wrapping (the mock's `wrap`).
+    const thClass = column.wrap ? rule.replace('whitespace-nowrap', 'whitespace-normal') : rule
     const label = (
       <>
         {column.header}
@@ -235,7 +256,8 @@ export function ReportTable({
             </>
           }
           className={thClass}
-          buttonClassName={numeric || column.tone === 'decided' ? 'justify-end' : ''}
+          title={column.title}
+          buttonClassName={numeric || column.tone !== undefined ? 'justify-end' : ''}
           style={column.width ? { width: column.width } : undefined}
         />
       )
@@ -245,6 +267,7 @@ export function ReportTable({
         key={column.key}
         rowSpan={rowSpan}
         className={thClass}
+        title={column.title}
         style={column.width ? { width: column.width } : undefined}
       >
         {label}
@@ -254,41 +277,59 @@ export function ReportTable({
 
   return (
     <section className="space-y-1.5">
-      <div data-testid="report-heading-row" className="flex flex-nowrap items-center gap-2.5">
-        <h2 className={`${REPORT_TITLE} min-w-0 truncate`} title={heading.title}>
-          {heading.title}
-          {basisBadge ? <span className={BASIS_BADGE}>{basisBadge}</span> : null}
-        </h2>
-        <div className="ml-auto flex min-w-0 flex-none flex-nowrap items-center gap-2">
-          {copied !== null && (
-            <span className={CS_TOOLBAR_STATUS} title={copied}>
-              {copied}
-            </span>
+      {showHeading && (
+        <div data-testid="report-heading-row" className="flex flex-nowrap items-center gap-2.5">
+          <h2 className={`${REPORT_TITLE} shrink-0 whitespace-nowrap`} title={heading.title}>
+            {heading.title}
+            {basisBadge ? <span className={BASIS_BADGE}>{basisBadge}</span> : null}
+          </h2>
+          {description !== undefined && (
+            <div
+              className={REPORT_DESC}
+              title={typeof description === 'string' ? description : undefined}
+            >
+              {description}
+            </div>
           )}
-          {find && (
-            <label className="relative inline-block w-[140px] flex-none">
-              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Find"
-                aria-label={`Find in ${heading.title}`}
-                className={CS_SEARCH}
-              />
-            </label>
-          )}
-          <AidCopyButton onCopy={() => void copy()} />
-          <AidCsvButton onDownload={download} />
+          <div className="ml-auto flex min-w-0 flex-none flex-nowrap items-center gap-2">
+            {copied !== null && (
+              <span className={CS_TOOLBAR_STATUS} title={copied}>
+                {copied}
+              </span>
+            )}
+            {find && (
+              <label className="relative inline-block w-[140px] flex-none">
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Find"
+                  aria-label={`Find in ${heading.title}`}
+                  className={CS_SEARCH}
+                />
+              </label>
+            )}
+            <AidCopyButton onCopy={() => void copy()} />
+            <AidCsvButton onDownload={download} />
+          </div>
         </div>
-      </div>
-      {description !== undefined && <div className={REPORT_NOTE}>{description}</div>}
+      )}
       <div className={TABLE_CARD}>
         {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}
         <table
           aria-label={heading.title}
-          className="w-full border-separate border-spacing-0 text-sm"
+          className={`w-full border-separate border-spacing-0 text-sm ${fixed ? 'table-fixed' : ''}`}
         >
+          {fixed && (
+            // table-fixed reads its widths from the first header row, which in a grouped header holds
+            // group cells with none: a colgroup sizes every column, and the unsized first one takes the rest.
+            <colgroup>
+              {columns.map((column) => (
+                <col key={column.key} style={column.width ? { width: column.width } : undefined} />
+              ))}
+            </colgroup>
+          )}
           <thead>
             {grouped ? (
               <>
@@ -330,6 +371,9 @@ export function ReportTable({
                 <tr key={row.key}>
                   <td colSpan={columns.length} className={ROW_HEADING}>
                     {row.cells[0] ? reportText(row.cells[0]) : ''}
+                    {row.meta ? (
+                      <span className="text-muted-foreground ml-2 font-normal">{row.meta}</span>
+                    ) : null}
                   </td>
                 </tr>
               ) : (
@@ -345,19 +389,43 @@ export function ReportTable({
                           : undefined
                   }
                 >
-                  {row.cells.map((cell, index) => (
-                    <td
-                      key={columns[index]?.key ?? index}
-                      className={cellClass(columns[index], index, row.kind)}
-                      style={index === 0 ? indentStyle(row.indent) : undefined}
-                    >
-                      {cellContent(cell, row.links?.[index])}
-                      {index === 0 && row.ref !== undefined ? <DefRef n={row.ref} /> : null}
-                      {index === 0 && row.note ? (
-                        <div className={`${REPORT_NOTE} whitespace-normal`}>{row.note}</div>
-                      ) : null}
-                    </td>
-                  ))}
+                  {row.cells.map((cell, index) => {
+                    const span = row.span ?? 1
+                    // A spanned label covers the cells after it (they stay in `cells` for Copy and the CSV).
+                    if (index > 0 && index < span) return null
+                    return (
+                      <td
+                        key={columns[index]?.key ?? index}
+                        colSpan={index === 0 && span > 1 ? span : undefined}
+                        title={cellTitle(cell)}
+                        className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
+                        style={index === 0 ? indentStyle(row.indent) : undefined}
+                      >
+                        {index === 0 &&
+                        (row.badge !== undefined ||
+                          span > 1 ||
+                          (fixed && cell.display === undefined)) ? (
+                          // a spanned label cuts with a title; the badge stays at its right end
+                          <span className="flex items-center gap-1.5">
+                            <span className={`${CS_CUT} min-w-0 flex-initial`}>
+                              {cellContent(cell, row.links?.[index])}
+                            </span>
+                            {row.badge !== undefined && (
+                              <span className={`${BASIS_BADGE} ml-auto flex-none`}>
+                                {row.badge}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          cellContent(cell, row.links?.[index])
+                        )}
+                        {index === 0 && row.ref !== undefined ? <DefRef n={row.ref} /> : null}
+                        {index === 0 && row.note ? (
+                          <div className={`${REPORT_NOTE} whitespace-normal`}>{row.note}</div>
+                        ) : null}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             )}

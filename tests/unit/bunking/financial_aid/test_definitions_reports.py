@@ -7,20 +7,14 @@ from bunking.financial_aid.definitions import BY_KEY, SURFACES
 
 
 def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
-    # Slice 4 ask 4 appends three notes, so notes 1–8 keep the numbers staff already see.
+    # Approved final mock reports-statistics.html: the Statistics footer is six notes (cap 6), in this order.
     assert SURFACES["reports-statistics"] == (
         "apps",
-        "cancelled_applicants",
         "awarded",
         "average_award",
         "pct_of_ask",
-        "decided_not_offered",
-        "recipients_cancelled",
         "appeals",
-        "pct_of_ask_with_grants",
-        "round2_max_pct",
-        "appeal_rate",
-        "awarded_count",
+        "decided_not_offered",
     )
     assert SURFACES["reports-programs"] == ("apps", "awarded", "average_award", "pct_of_ask")
     assert SURFACES["reports-committee"] == (
@@ -33,28 +27,30 @@ def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
     )
 
 
-def test_awarded_is_posted_on_live_requests_never_total_awards_granted() -> None:
-    """D80 (awarded = offered = Posted, net of clawback), D129/D131 (a cancelled request leaves at once), D106."""
+def test_awarded_is_posted_on_live_requests_the_camps_own_aid_unlike_developments_grants_awards() -> None:
+    """D80 (awarded = offered = Posted, net of clawback), D129/D131 (live requests only), D106; the approved final
+    mock reports-statistics.html shortened the note."""
     note = BY_KEY["awarded"]
     assert (note.term, note.spec) == ("Awarded", "§5.6")
     assert "Posted" in note.text
-    assert "net of any clawback" in note.text
-    assert "cancelled request leaves it at once" in note.text
-    assert "never Total Awards Granted" in note.text
+    assert "net of clawbacks" in note.text
+    assert "on live requests" in note.text
+    assert "the camp's own aid only" in note.text
+    assert "unlike Development's Grants/Awards" in note.text
 
 
 def test_decided_not_yet_offered_is_never_called_awarded() -> None:
     """D130: a labelled second basis behind an off-by-default switch."""
     note = BY_KEY["decided_not_offered"]
-    assert note.term == "Decided (not yet offered)"
+    assert note.term == "Not yet offered"  # approved final mock: the shortened footnote
     assert "never called awarded" in note.text
     assert "moves until posted" in note.text
 
 
 def test_the_average_award_names_its_population() -> None:
     """O-930-16's default: D80's denominator, labelled against the sheet's."""
-    assert "÷ the awarded count" in BY_KEY["average_award"].text
-    assert "divide by all apps" in BY_KEY["average_award"].text
+    assert "awarded $ ÷ awards" in BY_KEY["average_award"].text
+    assert "divide by every app, $0 included" in BY_KEY["average_award"].text
 
 
 def test_typed_history_is_dollars_and_counts_with_kindred_computing_every_percent() -> None:
@@ -65,25 +61,17 @@ def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_d
     """D80 / §5.6; owner N1, (c) and (b) (RULED 2026-10-02)."""
     note = BY_KEY["pct_of_ask"]
     assert note.spec == "§5.6"
-    # Slice 4 ask 4: the denominator is named, so nobody reads it as the Asked column (owner B4a (c), D121).
-    assert note.text.startswith(
-        "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands today, "
-        "on live requests (not cancelled, withdrawn or a pending duplicate)."
-    )
-    assert "It is not the asked or requested total" in note.text
-    assert "every app's ask, cancelled and closed ones included" in note.text
-    assert "paid wholly by an outside funder" in note.text
-    assert "left out of the in-budget asks" in note.text  # the fourth deliberate assertion change
-    # Final audit: the percentage includes decided money when "include not yet offered" is on (the header says so).
-    assert 'the awarded $ is Posted + Decided, and the column reads "% of ask (posted + decided)"' in note.text
-    assert "never in this percentage" not in note.text
+    # Approved final mock reports-statistics.html: the shortened footnote names the denominator and Incl. grants.
+    assert note.text.startswith("% of ask: awarded $ ÷ the live requests' in-budget asks.")
+    assert "Incl. grants adds outside grants and fully funded rounds to both sides" in note.text
+    assert "Round 1 and All rounds" in note.text
 
 
 def test_awarded_says_live_for_the_request_standing_never_included() -> None:
     """Reports' request standing is "live" (received, not cancelled, D129/D131). "Included" is the Include override
     on the Requests grid, which Reports ignore (owner item 53 default), so no note may use it in this sense."""
     text = BY_KEY["awarded"].text
-    assert "on a live request" in text
+    assert "on live requests" in text
     assert "included request" not in text
 
 
@@ -112,13 +100,13 @@ def test_round_1_phases_define_both_columns_the_bands_and_the_total() -> None:
     assert "NOT RULED" not in text
 
 
-def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applications() -> None:
+def test_appeals_say_cancelled_requests_count_and_the_rate_divides_by_round_1_apps() -> None:
     """D131 / owner ruling (RULED 2026-10-02, appeals and cancellations): the appeal rate and the per-tier appeals count every
     request with a Round 2 or later ask, cancelled ones included; RPT-23's outcomes exclude them."""
     note = BY_KEY["appeals"]
     assert note.text.startswith(note.term)
-    assert "every request with a Round 2 or later ask, cancelled ones included" in note.text
-    assert "the rate divides by applications, which include cancellations" in note.text
+    assert "requests with a Round 2 or later ask, cancelled ones included" in note.text
+    assert "appeal rate = appeals ÷ Round 1 apps" in note.text
     assert note.key in SURFACES["reports-committee"]
     assert note.key in SURFACES["reports-statistics"]
 
@@ -136,9 +124,10 @@ def test_recipients_who_cancelled_names_a_confirmed_duplicate_that_holds_a_poste
     assert "a confirmed duplicate that holds one, on its own Duplicate line" in text
 
 
-def test_awarded_names_what_liveness_leaves_out() -> None:
-    """Owner A11 (APPROVED): not cancelled, withdrawn or a pending duplicate."""
-    assert "on a live request (not cancelled, withdrawn or a pending duplicate)" in BY_KEY["awarded"].text
+def test_awarded_counts_live_requests_only() -> None:
+    """Owner A11 (APPROVED): live means not cancelled, withdrawn or a pending duplicate. The approved final mock
+    reports-statistics.html shortened the note to "on live requests"; the exclusions are A11's, not the note's."""
+    assert "on live requests" in BY_KEY["awarded"].text
 
 
 def test_awards_count_explains_why_it_differs_from_developments_grants_awards() -> None:
@@ -148,3 +137,16 @@ def test_awards_count_explains_why_it_differs_from_developments_grants_awards() 
     assert note.text.startswith("Awards: ")
     assert "{camp}'s own Posted money above $0" in note.text
     assert "Grants/Awards counts every source" in note.text
+
+
+def test_the_statistics_note_texts_are_the_approved_mocks() -> None:
+    """Approved final mock reports-statistics.html: the six shortened footnotes, each opening with its term."""
+    assert BY_KEY["apps"].text.startswith(
+        "Apps: requests received (camper × session; household × session for Family Camp)"
+    )
+    assert BY_KEY["apps"].text.endswith("Refused duplicates are left out.")
+    assert BY_KEY["pct_of_ask"].text.startswith("% of ask: awarded $ ÷ the live requests' in-budget asks.")
+    assert "Incl. grants adds outside grants and fully funded rounds to both sides" in BY_KEY["pct_of_ask"].text
+    assert BY_KEY["decided_not_offered"].term == "Not yet offered"
+    assert BY_KEY["decided_not_offered"].text.endswith("it moves until posted.")
+    assert "R2 max fee % is a rules value, not an outcome" in BY_KEY["appeals"].text

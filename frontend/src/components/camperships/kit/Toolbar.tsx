@@ -20,6 +20,7 @@ export function AidToolbar({
   lead,
   left,
   status,
+  statusWarn = false,
   right,
   className,
 }: {
@@ -28,6 +29,8 @@ export function AidToolbar({
   readonly left?: ReactNode
   /** The result of the last action; it truncates, with the full words in its title. */
   readonly status?: string
+  /** The status is a refusal: amber ink, not muted. */
+  readonly statusWarn?: boolean
   /** Search, actions, and Download CSV last. */
   readonly right?: ReactNode
   readonly className?: string
@@ -46,7 +49,14 @@ export function AidToolbar({
       {(Boolean(status) || right !== undefined) && (
         <div className={CS_TOOLBAR_RIGHT}>
           {status && (
-            <span className={CS_TOOLBAR_STATUS} title={status}>
+            <span
+              className={
+                statusWarn
+                  ? `${CS_TOOLBAR_STATUS.replace('text-muted-foreground', 'text-amber-700 dark:text-amber-400')}`
+                  : CS_TOOLBAR_STATUS
+              }
+              title={status}
+            >
               {status}
             </span>
           )}
@@ -61,15 +71,22 @@ export function AidToolbar({
 export function ToolbarLabel({
   text,
   children,
+  plain = false,
 }: {
   readonly text: string
   readonly children: ReactNode
+  /**
+   * A span, not a label: a label around a segmented well would name its first button ("Round") instead
+   * of the choice's own words, since a label labels its first button.
+   */
+  readonly plain?: boolean
 }) {
+  const Host = plain ? 'span' : 'label'
   return (
-    <label className={`${CS_FLABEL} inline-flex items-center gap-1.5`}>
+    <Host className={`${CS_FLABEL} inline-flex items-center gap-1.5`}>
       <span>{text}</span>
       {children}
-    </label>
+    </Host>
   )
 }
 

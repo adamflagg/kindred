@@ -2,7 +2,7 @@
  * The Reports table (spec §9; RPT-33; §11): the server's rows and totals as sent, Copy as displayed,
  * the CSV, the find box and the sort.
  */
-import { render, screen, within } from '@testing-library/react'
+import { act, render, renderHook, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +18,7 @@ import {
 import { CS_BAND, CS_CARD_HEADING } from './csType'
 import { CS_RULE_GROUP } from './kitStyles'
 import { ReportTable } from './ReportTable'
+import { useReportExport } from './useReportExport'
 
 const downloadCsv = vi.fn<(content: string, name: string) => void>()
 vi.mock('../../../utils/csvExport', async (importOriginal) => ({
@@ -290,13 +291,20 @@ describe('ReportTable', () => {
   describe('the mock layout (description, one toolbar, default sort, mono)', () => {
     // Design language §5: a Reports table's heading row holds the title on the left and Find · Copy ·
     // Download CSV on the right, on that SAME row (it was a second row under the description).
-    it('draws the description under the heading row, above the table', () => {
+    // Approved final mock reports-statistics.html (CF.thead): the muted description sits right after the
+    // title on the SAME row, truncating with a title; it was a second line under the heading row.
+    it('draws the description inline on the heading row after the title, truncated with a title', () => {
       renderTable({ find: true, description: 'Who it counts.' })
       const words = screen.getByText('Who it counts.')
+      const title = screen.getByRole('heading', { name: 'Every camper' })
       const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
       const table = screen.getByRole('table', { name: 'Every camper' })
-      expect(find.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(screen.getByTestId('report-heading-row').contains(words)).toBe(true)
+      expect(title.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(words.compareDocumentPosition(find) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(words.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(words).toHaveClass('truncate')
+      expect(words).toHaveAttribute('title', 'Who it counts.')
     })
 
     it('keeps the title, the find box, Copy and Download CSV on one row that never wraps, in that order', () => {
@@ -428,6 +436,251 @@ describe('ReportTable', () => {
       expect(screen.getByTestId('report-heading-row').contains(status)).toBe(true)
       expect(status).toHaveClass('truncate')
       expect(status).toHaveAttribute('title', status.textContent)
+    })
+  })
+
+  describe('the Statistics screen extensions (approved final mock reports-statistics.html)', () => {
+    it("titles a header with its column's full words, and keeps every header on one line unless it wraps", () => {
+      renderTable({
+        columns: [
+          { key: 'zip', header: 'ZIP' },
+          { key: 'campers', header: 'Campers', title: 'Every camper, counted once' },
+          { key: 'dollars', header: 'Avg award', wrap: true },
+        ],
+      })
+      const campers = screen.getByRole('columnheader', { name: 'Campers' })
+      expect(campers).toHaveAttribute('title', 'Every camper, counted once')
+      expect(campers).toHaveClass('whitespace-nowrap')
+      expect(screen.getByRole('columnheader', { name: 'ZIP' })).toHaveClass('whitespace-nowrap')
+      const wrapped = screen.getByRole('columnheader', { name: 'Avg award' })
+      expect(wrapped).toHaveClass('whitespace-normal')
+      expect(wrapped).not.toHaveClass('whitespace-nowrap')
+    })
+
+    it('titles a sortable header too', () => {
+      renderTable({
+        sortable: true,
+        columns: [
+          { key: 'zip', header: 'ZIP' },
+          { key: 'campers', header: 'Campers', title: 'Every camper, counted once' },
+          { key: 'dollars', header: 'Dollars' },
+        ],
+      })
+      expect(screen.getByRole('columnheader', { name: 'Campers' })).toHaveAttribute(
+        'title',
+        'Every camper, counted once'
+      )
+    })
+
+    it('gives a text cell a native title with its full words, and lets a cell carry its own', () => {
+      renderTable({
+        rows: [
+          {
+            key: 'a',
+            kind: 'body',
+            cells: [
+              textValue('A long reason that may be cut'),
+              countValue(4),
+              { ...textValue('varies'), title: 'Each table sets its own', muted: true },
+            ],
+          },
+        ],
+      })
+      expect(screen.getByText('A long reason that may be cut').closest('td')).toHaveAttribute(
+        'title',
+        'A long reason that may be cut'
+      )
+      const varies = screen.getByText('varies').closest('td') as HTMLElement
+      expect(varies).toHaveAttribute('title', 'Each table sets its own')
+      // whole class tokens: a muted cell keeps its own last class and gains the muted ink
+      expect(varies).toHaveClass('text-muted-foreground', 'whitespace-nowrap')
+      // a figure has no title of its own to add
+      expect(screen.getByText('4').closest('td')).not.toHaveAttribute('title')
+    })
+
+    it("draws a decided-ink column in amber ink alone, header and cells, with no fill (the mock's .cf-dec)", () => {
+      renderTable({
+        columns: [
+          ...COLUMNS.slice(0, 2),
+          { key: 'dollars', header: 'Dollars', tone: 'decided-ink' },
+        ],
+      })
+      const head = screen.getByRole('columnheader', { name: 'Dollars' })
+      expect(head.className).toContain('text-amber-700')
+      expect(head.className).not.toContain('bg-amber-50')
+      expect(head.className).not.toContain('text-muted-foreground')
+      const cell = screen.getByText('$1,200').closest('td') as HTMLElement
+      expect(cell.className).toContain('text-amber-700')
+      expect(cell.className).not.toContain('bg-amber-50')
+    })
+
+    it("draws a cell's own display in place of its words, and Copy and the CSV keep the words", async () => {
+      renderTable({
+        rows: [
+          {
+            key: 'a',
+            kind: 'body',
+            cells: [
+              { ...textValue('00010'), display: <b data-testid="shown">ten</b> },
+              countValue(4),
+              moneyValue(1200),
+            ],
+          },
+        ],
+      })
+      expect(screen.getByTestId('shown')).toBeInTheDocument()
+      expect(screen.queryByText('00010')).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+      expect(writeText.mock.calls[0]?.[0]).toContain('00010\t4\t$1,200')
+    })
+
+    it("draws a heading row's meta muted after its name, and keeps it out of Copy", async () => {
+      renderTable({
+        rows: [
+          { key: 'h', kind: 'heading', meta: '3 sessions', cells: [textValue('Camp')] },
+          ROWS[0]!,
+        ],
+      })
+      const cell = screen.getByText('Camp').closest('td') as HTMLElement
+      const meta = within(cell).getByText('3 sessions')
+      expect(meta).toHaveClass('text-muted-foreground')
+      await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+      expect(writeText.mock.calls[0]?.[0]).not.toContain('3 sessions')
+    })
+
+    it('sizes every column of a fixed table through a colgroup, the unsized first taking the rest', () => {
+      renderTable({
+        fixed: true,
+        columns: [
+          { key: 'zip', header: 'ZIP' },
+          { key: 'campers', header: 'Campers', group: 'Round 1', width: 84 },
+          { key: 'dollars', header: 'Dollars', group: 'Round 1', width: 70 },
+        ],
+      })
+      const cols = Array.from(screen.getByRole('table').querySelectorAll('col'))
+      expect(cols.map((c) => c.style.width)).toEqual(['', '84px', '70px'])
+    })
+
+    it("cuts a fixed table's row label on one line, its title carrying the full words", () => {
+      renderTable({ fixed: true })
+      const label = screen.getByText('Outside the US')
+      expect(label).toHaveClass('truncate')
+      expect(label.closest('td')).toHaveAttribute('title', 'Outside the US')
+    })
+
+    it('hides the heading row for a headless table, which keeps its name and rows', () => {
+      renderTable({ showHeading: false, description: 'Hidden with it.' })
+      expect(screen.queryByTestId('report-heading-row')).toBeNull()
+      expect(screen.queryByRole('button', { name: /Copy/ })).toBeNull()
+      expect(screen.queryByRole('heading', { name: 'Every camper' })).toBeNull()
+      expect(screen.getByRole('table', { name: 'Every camper' })).toBeInTheDocument()
+      expect(bodyTexts()).toEqual(['00010', '00012', 'Outside the US', 'All · 2 ZIPs'])
+    })
+
+    it('spans a total row’s label over its first columns, and ends it with the basis badge', () => {
+      renderTable({
+        showHeading: false,
+        rows: [
+          ...ROWS.slice(0, 2),
+          {
+            key: 'total',
+            kind: 'total',
+            span: 2,
+            badge: 'P',
+            cells: [
+              { ...textValue('All pools · Round 1'), title: 'All pools · Round 1 · pooled ratios' },
+              textValue(''),
+              moneyValue(1500),
+            ],
+          },
+        ],
+      })
+      const total = screen.getByText('All pools · Round 1').closest('tr') as HTMLElement
+      const cells = within(total).getAllByRole('cell')
+      expect(cells).toHaveLength(2)
+      expect(cells[0]).toHaveAttribute('colspan', '2')
+      expect(cells[0]).toHaveAttribute('title', 'All pools · Round 1 · pooled ratios')
+      const label = within(cells[0]!).getByText('All pools · Round 1')
+      expect(label).toHaveClass('truncate')
+      const badge = within(cells[0]!).getByText('P')
+      expect(label.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('copies and downloads a spanned total as full-width rows, like any other', async () => {
+      const rows: ReportRow[] = [
+        ROWS[0]!,
+        {
+          key: 'total',
+          kind: 'total',
+          span: 2,
+          cells: [textValue('Everything'), textValue(''), moneyValue(1500)],
+        },
+      ]
+      const { result } = renderHook(() =>
+        useReportExport({
+          heading: HEADING,
+          columns: COLUMNS,
+          rows,
+          csvFilename: 'x.csv',
+          link: '/l',
+        })
+      )
+      await act(async () => {
+        await result.current.copy()
+      })
+      expect((writeText.mock.calls[0]?.[0] ?? '').split('\n').slice(4)).toEqual([
+        '00010\t4\t$1,200',
+        'Everything\t\t$1,500',
+      ])
+      expect(result.current.copied).toMatch(/^Copied/)
+      act(() => result.current.download())
+      expect(downloadCsv.mock.calls[0]?.[1]).toBe('x.csv')
+      expect(downloadCsv.mock.calls[0]?.[0]).toContain('Everything,,1500')
+    })
+
+    it('says why a copy failed, in words that point at Download CSV', async () => {
+      writeText.mockRejectedValueOnce(new Error('no clipboard'))
+      const { result } = renderHook(() =>
+        useReportExport({
+          heading: HEADING,
+          columns: COLUMNS,
+          rows: ROWS,
+          csvFilename: 'x.csv',
+          link: '/l',
+          copiedWords: '✓ Copied',
+        })
+      )
+      await act(async () => {
+        await result.current.copy()
+      })
+      expect(result.current.copied).toBe("Couldn't copy here: use Download CSV.")
+      await act(async () => {
+        await result.current.copy()
+      })
+      expect(result.current.copied).toBe('✓ Copied')
+    })
+
+    it('clears its status once the table it copied changes (a new choice is a new table)', async () => {
+      const { result, rerender } = renderHook(
+        ({ rows }: { rows: typeof ROWS }) =>
+          useReportExport({
+            heading: HEADING,
+            columns: COLUMNS,
+            rows,
+            csvFilename: 'x.csv',
+            link: '/l',
+            copiedWords: '✓ Copied',
+          }),
+        { initialProps: { rows: ROWS } }
+      )
+      await act(async () => {
+        await result.current.copy()
+      })
+      expect(result.current.copied).toBe('✓ Copied')
+      rerender({ rows: [...ROWS] })
+      expect(result.current.copied).toBe('✓ Copied')
+      rerender({ rows: ROWS.slice(1) })
+      expect(result.current.copied).toBeNull()
     })
   })
 })

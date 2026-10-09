@@ -103,8 +103,8 @@ export const STATISTICS: ApiAidStatistics = {
   table: 'camp',
   round: 1,
   tables: [
-    { key: 'camp', label: 'Table A' },
-    { key: 'family', label: 'Table B' },
+    { key: 'camp', label: 'Table A', pools: ['pool_a'] },
+    { key: 'family', label: 'Table B', pools: ['pool_b'] },
   ],
   rows: [TIER_1, TIER_2],
   total: STATISTICS_TOTAL,

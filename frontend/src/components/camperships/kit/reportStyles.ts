@@ -6,9 +6,9 @@
 import { CS_CARD_HEADING } from './csType'
 import { CS_BAND, CS_BAND_EDGE, CS_RULE, CS_RULE_GROUP } from './kitStyles'
 
-// Headers wrap to two lines (bottom-aligned) so a 15-column table fits 1440 px (slice 4 refresh, the
-// statistics-v2 mock measured at 1440): figures never wrap.
-const TH_SHAPE = `text-muted-foreground border-border border-b px-2 py-[5px] align-bottom text-xs font-semibold first:border-l-0 ${CS_RULE}`
+// A header is one line by default (the final mock's `nowrap`); a column that must wrap says so
+// (`ReportColumn.wrap`), bottom-aligned. Figures never wrap.
+const TH_SHAPE = `text-muted-foreground border-border border-b px-2 py-[5px] align-bottom text-xs font-semibold whitespace-nowrap first:border-l-0 ${CS_RULE}`
 const TH_BASE = `bg-muted ${TH_SHAPE}`
 export const TH_LABEL = `${TH_BASE} text-left`
 export const TH_NUMBER = `${TH_BASE} text-right`
@@ -24,6 +24,10 @@ export const TD_NUMBER = `${TD_BASE} text-right tabular-nums whitespace-nowrap`
 const DECIDED_FILL = 'bg-amber-50 dark:bg-amber-900/20'
 export const TH_DECIDED = `${DECIDED_FILL} ${TH_SHAPE} text-right`
 export const TD_DECIDED = `${TD_NUMBER} ${DECIDED_FILL}`
+/** The same amber as ink alone (the final mock's `.cf-dec`): no fill, header and cells. */
+const AMBER_INK = 'text-amber-700 dark:text-amber-300'
+export const TH_DECIDED_INK = `${TH_SHAPE.replace('text-muted-foreground', AMBER_INK)} bg-muted text-right`
+export const TD_DECIDED_INK = `${TD_NUMBER} ${AMBER_INK}`
 
 /** A group's name over its rows (Programs' pools; Development's sections). */
 export const ROW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-left text-xs font-semibold`
@@ -39,6 +43,8 @@ export const ROW_END = 'text-muted-foreground italic'
 /** "P" or "r" beside a table's or a season's name (§9.7: every figure prints its basis). */
 export const BASIS_BADGE =
   'ml-1.5 rounded bg-sky-100 px-1 text-xs font-semibold text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
+/** The muted description right after a table's title, on the same row (the mock's CF.thead desc). */
+export const REPORT_DESC = 'text-muted-foreground min-w-0 flex-1 truncate text-xs'
 /** A table's heading: the sans card heading, not the display serif (owner Q7 true-up). */
 export const REPORT_TITLE = CS_CARD_HEADING
 /** A small line of words under a table or a control. */
@@ -49,8 +55,7 @@ export const CONTROL_BAR =
 /** "Decided (not yet offered)": amber, never "awarded" (D130; S4-3). */
 export const DECIDED_INK = 'text-amber-700 dark:text-amber-400'
 
-/** The chips' row (the mock's `.filters`) and its small label (`.flab`). */
-export const REPORT_FILTERS = 'flex flex-wrap items-center gap-x-2 gap-y-1.5'
+/** A chips row's small label (the mock's `.flab`). */
 export const REPORT_FILTER_LABEL = 'text-muted-foreground text-xs'
 /** A chip is its own pill, not a segment of a group (the mock's `.chip`); the chosen one is forest. */
 const CHIP = 'rounded-full border px-2.5 py-0.5 text-xs font-semibold'
