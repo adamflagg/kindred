@@ -96,7 +96,10 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
   it('names Year over year in the same card for a summary-only user', () => {
     granted = DEVELOPMENT
     renderAt('/aid/reports/year-over-year')
-    expect(screen.getByText('Year over year is for finance and the registrar.')).toBeInTheDocument()
+    // approved final mock reports-yoy.html: Year over year's own words
+    expect(screen.getByText("Year over year is finance's report.")).toBeInTheDocument()
+    expect(screen.queryByText(/is for finance and the registrar/)).toBeNull()
+    expect(screen.getByRole('link', { name: 'Reports › Development ›' })).toBeInTheDocument()
     expect(screen.queryByText('Year over year body')).toBeNull()
   })
 

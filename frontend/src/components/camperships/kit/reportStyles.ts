@@ -49,18 +49,9 @@ export const REPORT_DESC = 'text-muted-foreground min-w-0 flex-1 truncate text-x
 export const REPORT_TITLE = CS_CARD_HEADING
 /** A small line of words under a table or a control. */
 export const REPORT_NOTE = 'text-muted-foreground text-xs'
-/** The reporting controls' bar. */
-export const CONTROL_BAR =
-  'bg-card border-border flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3 py-2 text-sm'
 /** "Decided (not yet offered)": amber, never "awarded" (D130; S4-3). */
 export const DECIDED_INK = 'text-amber-700 dark:text-amber-400'
 
-/** A chips row's small label (the mock's `.flab`). */
-export const REPORT_FILTER_LABEL = 'text-muted-foreground text-xs'
-/** A chip is its own pill, not a segment of a group (the mock's `.chip`); the chosen one is forest. */
-const CHIP = 'rounded-full border px-2.5 py-0.5 text-xs font-semibold'
-export const CHIP_OFF = `${CHIP} border-border bg-card text-foreground`
-export const CHIP_ON = `${CHIP} border-forest-700 bg-forest-700 dark:border-forest-600 dark:bg-forest-600 text-white`
 /** A count that opens its requests (the mock's `.lnk`): primary, semibold, dotted underline. */
 export const COUNT_LINK =
   'text-primary border-primary border-b border-dotted font-semibold whitespace-nowrap tabular-nums'

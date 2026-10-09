@@ -38,7 +38,8 @@ const PILL_SHAPE =
 /** A header (or label) that explains itself on hover and click: the dotted underline the journey rows use for a Tooltip trigger, and the help cursor. */
 export const HELP_HEADER =
   'decoration-muted-foreground/60 cursor-help text-left underline decoration-dotted underline-offset-2'
-export type PillTone = 'red' | 'amber' | 'ok' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted'
+export type PillTone =
+  'red' | 'amber' | 'ok' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted' | 'line'
 
 const PILL_OK = `${PILL_SHAPE} ${CS_OK_BG} ${CS_OK_INK}`
 
@@ -53,6 +54,8 @@ export const PILL: Record<PillTone, string> = {
   purple: `${PILL_SHAPE} bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300`,
   stone: `${PILL_SHAPE} bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300`,
   muted: `${PILL_SHAPE} bg-muted text-muted-foreground`,
+  /** Outlined, no fill: a season's basis (P · to date, r) beside its year. */
+  line: `${PILL_SHAPE} border-border text-foreground border bg-transparent`,
 }
 
 /** What each state wears (§4.5): hold red, note amber, accepted ok (forest), R2 sky, R3 purple, cancelled stone. */

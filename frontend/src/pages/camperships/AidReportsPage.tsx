@@ -51,7 +51,11 @@ export default function AidReportsPage() {
         <div
           className={`${CS_BAND_WARN} rounded-lg border border-amber-300 px-2.5 py-[3px] text-[12.5px] dark:border-amber-800`}
         >
-          <b>{known.label} is for finance and the registrar.</b>{' '}
+          <b>
+            {known.slug === 'year-over-year'
+              ? "Year over year is finance's report."
+              : `${known.label} is for finance and the registrar.`}
+          </b>{' '}
           <span className="text-muted-foreground">
             Development&apos;s report is{' '}
             <Link to={aidHref(`${REPORTS.path}/development`, view)} className={CS_LINK}>
