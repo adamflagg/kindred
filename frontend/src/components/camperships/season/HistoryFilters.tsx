@@ -71,7 +71,7 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
       }}
     >
       <span
-        className={`text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 ${CS_PANEL}`}
+        className={`text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 ${CS_PANEL}`}
       >
         ⌕
       </span>

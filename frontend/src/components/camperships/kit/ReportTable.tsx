@@ -1,14 +1,14 @@
-import { Copy, Download, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
-import { SEARCH_INPUT } from '../../admin/audit/auditStyles'
-import { AMBER_NOTE, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
+import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
-import { CS_LINK } from './csType'
+import { CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
+import { AidCopyButton, AidCsvButton } from './CsvButton'
 import { DefRef } from './DefinitionNotes'
-import { TABLE_CARD } from './kitStyles'
+import { CS_RULE, TABLE_CARD } from './kitStyles'
 import { Money } from './MoneyText'
 import {
   copyText,
@@ -27,6 +27,7 @@ import {
   DIVIDER_BEFORE,
   REPORT_NOTE,
   REPORT_TITLE,
+  ROW_END,
   ROW_HEADING,
   ROW_SUBTOTAL,
   ROW_TOTAL,
@@ -92,7 +93,7 @@ function figureContent(cell: ReportValue, href: string | undefined): ReactNode {
   // A name that opens its own page (Development's funder lines → Money › Funders).
   if (href !== undefined && cell.kind === 'text') {
     return (
-      <Link to={href} className={CS_LINK}>
+      <Link to={href} className={CS_LINK_CELL}>
         {cell.value}
       </Link>
     )
@@ -109,7 +110,7 @@ function cellClass(column: ReportColumn | undefined, index: number, kind: string
         ? TD_DECIDED
         : TD_NUMBER
   const mono = column?.mono && kind === 'body' ? `${base} font-mono tabular-nums` : base
-  return column?.divider === 'before' ? `${mono} ${DIVIDER_BEFORE}` : mono
+  return column?.divider === 'before' ? mono.replace(CS_RULE, DIVIDER_BEFORE) : mono
 }
 
 function indentStyle(indent: number | undefined) {
@@ -208,7 +209,7 @@ export function ReportTable({
   const header = (column: ReportColumn, index: number, rowSpan?: number) => {
     const numeric = index > 0 && column.align !== 'left'
     const base = column.tone === 'decided' ? TH_DECIDED : numeric ? TH_NUMBER : TH_LABEL
-    const thClass = column.divider === 'before' ? `${base} ${DIVIDER_BEFORE}` : base
+    const thClass = column.divider === 'before' ? base.replace(CS_RULE, DIVIDER_BEFORE) : base
     const label = (
       <>
         {column.header}
@@ -248,44 +249,37 @@ export function ReportTable({
     )
   }
 
-  const actions = (
-    <span className={find ? 'flex gap-2' : 'ml-auto flex gap-2'}>
-      <button type="button" className={BUTTON_SECONDARY} onClick={() => void copy()}>
-        <Copy className="h-3.5 w-3.5" /> Copy
-      </button>
-      <button type="button" className={BUTTON_SECONDARY} onClick={download}>
-        <Download className="h-3.5 w-3.5" /> Download CSV
-      </button>
-    </span>
-  )
-
   return (
     <section className="space-y-1.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className={REPORT_TITLE}>
+      <div data-testid="report-heading-row" className="flex flex-nowrap items-center gap-2.5">
+        <h2 className={`${REPORT_TITLE} min-w-0 truncate`} title={heading.title}>
           {heading.title}
           {basisBadge ? <span className={BASIS_BADGE}>{basisBadge}</span> : null}
         </h2>
-        {!find && actions}
+        <div className="ml-auto flex min-w-0 flex-none flex-nowrap items-center gap-2">
+          {copied !== null && (
+            <span className={CS_TOOLBAR_STATUS} title={copied}>
+              {copied}
+            </span>
+          )}
+          {find && (
+            <label className="relative inline-block w-[140px] flex-none">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find"
+                aria-label={`Find in ${heading.title}`}
+                className={CS_SEARCH}
+              />
+            </label>
+          )}
+          <AidCopyButton onCopy={() => void copy()} />
+          <AidCsvButton onDownload={download} />
+        </div>
       </div>
       {description !== undefined && <div className={REPORT_NOTE}>{description}</div>}
-      {find && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative">
-            <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find"
-              aria-label={`Find in ${heading.title}`}
-              className={`${SEARCH_INPUT} pl-7`}
-            />
-          </label>
-          {actions}
-        </div>
-      )}
-      {copied !== null && <p className={REPORT_NOTE}>{copied}</p>}
       <div className={TABLE_CARD}>
         {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}
         <table
@@ -343,7 +337,9 @@ export function ReportTable({
                       ? ROW_TOTAL
                       : row.kind === 'subtotal'
                         ? ROW_SUBTOTAL
-                        : undefined
+                        : row.kind === 'end'
+                          ? ROW_END
+                          : undefined
                   }
                 >
                   {row.cells.map((cell, index) => (

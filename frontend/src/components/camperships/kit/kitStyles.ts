@@ -7,32 +7,59 @@
 
 // ── Pills (§4.5; D19, D59) ────────────────────────────────────────────────────
 
+// ── Grid colour roles (design-language §8–9; cs-final.css --cf-rule, --cf-band, --cf-ok-bg) ──────
+// Defined here, beside the table that wears them; csType re-exports them. This module imports
+// nothing from csType (csType imports it).
+
+/** THE green (§9): section rows and every total row. Emerald and yellow bands are retired. */
+export const CS_BAND =
+  'bg-[color-mix(in_oklab,var(--color-forest-200)_24%,var(--color-card))] dark:bg-[color-mix(in_oklab,var(--color-forest-900)_55%,var(--color-card))]'
+/** The band's top rule. */
+export const CS_BAND_EDGE =
+  'border-t border-t-[color-mix(in_oklab,var(--color-forest-700)_28%,var(--color-border))] dark:border-t-[color-mix(in_oklab,var(--color-forest-600)_45%,var(--color-border))]'
+/** A section that needs staff ("No funder yet"). */
+export const CS_BAND_WARN =
+  'bg-[color-mix(in_oklab,var(--color-amber-100)_55%,var(--color-card))] dark:bg-[color-mix(in_oklab,var(--color-amber-900)_35%,var(--color-card))]'
+/** The positive pill and the done note (§9). */
+export const CS_OK_BG =
+  'bg-[color-mix(in_oklab,var(--color-forest-200)_55%,var(--color-card))] dark:bg-[color-mix(in_oklab,var(--color-forest-700)_45%,var(--color-card))]'
+export const CS_OK_INK = 'text-forest-800 dark:text-forest-200'
+/** The light rule on every column (§8; owner: "Grid style everywhere"). The first cell drops it. */
+export const CS_RULE =
+  'border-l border-l-[color-mix(in_oklab,var(--color-border)_75%,var(--color-card))] dark:border-l-[color-mix(in_oklab,var(--color-border)_80%,var(--color-card))]'
+/** The firmer rule on the first column of a column group. */
+export const CS_RULE_GROUP =
+  'border-l border-l-[color-mix(in_oklab,var(--color-border),var(--color-foreground)_10%)] dark:border-l-[color-mix(in_oklab,var(--color-border),var(--color-foreground)_14%)]'
+
+/** One chip size (§11): 11.5/16 600, padding 1px 8px, ONE line, truncating inside a narrow column. */
 const PILL_SHAPE =
-  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap'
+  'inline-block max-w-full truncate rounded-full px-2 py-px text-[11.5px] leading-4 font-semibold align-middle'
 
 /** A header (or label) that explains itself on hover and click: the dotted underline the journey rows use for a Tooltip trigger, and the help cursor. */
 export const HELP_HEADER =
   'decoration-muted-foreground/60 cursor-help text-left underline decoration-dotted underline-offset-2'
-/** A pill that wraps inside a narrow column rather than being cut off by it (the Stage column). */
-export const PILL_WRAP = 'whitespace-normal text-center rounded-xl'
+export type PillTone = 'red' | 'amber' | 'ok' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted'
 
-export type PillTone = 'red' | 'amber' | 'emerald' | 'sky' | 'purple' | 'stone' | 'muted'
+const PILL_OK = `${PILL_SHAPE} ${CS_OK_BG} ${CS_OK_INK}`
 
 export const PILL: Record<PillTone, string> = {
   red: `${PILL_SHAPE} bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300`,
   amber: `${PILL_SHAPE} bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300`,
-  emerald: `${PILL_SHAPE} bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300`,
+  /** The positive pill (§9): the forest ok tone. */
+  ok: PILL_OK,
+  /** @deprecated Emerald is retired (§9); the old name draws the ok tone until its callers move. */
+  emerald: PILL_OK,
   sky: `${PILL_SHAPE} bg-sky-100 text-sky-700 dark:bg-sky-900/35 dark:text-sky-300`,
   purple: `${PILL_SHAPE} bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300`,
   stone: `${PILL_SHAPE} bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300`,
   muted: `${PILL_SHAPE} bg-muted text-muted-foreground`,
 }
 
-/** What each state wears (§4.5): hold red, note amber, accepted emerald, R2 sky, R3 purple, cancelled stone. */
+/** What each state wears (§4.5): hold red, note amber, accepted ok (forest), R2 sky, R3 purple, cancelled stone. */
 export const STATUS_TONE = {
   hold: 'red',
   note: 'amber',
-  accepted: 'emerald',
+  accepted: 'ok',
   round2: 'sky',
   round3: 'purple',
   cancelled: 'stone',
@@ -62,15 +89,28 @@ export const ID_CHIP =
 
 // ── The table (§4.3; D18, D25, D28, D29, D31; mockups/round7.html) ────────────
 
+/**
+ * The grid's search box (design-language §2–3; kit .cf-search): the one 26px control height at
+ * 12.5px on card white, the glyph 8px in.
+ */
+export const AID_SEARCH_INPUT =
+  'bg-card border-border text-foreground placeholder:text-muted-foreground box-border h-[26px] w-full rounded-lg border pr-2.5 pl-[26px] text-[12.5px] leading-[18px] shadow-[0_1px_2px_hsl(var(--shadow-color)/0.07)] focus:border-[color-mix(in_oklab,var(--color-primary)_50%,var(--color-border))] focus:ring-2 focus:ring-primary/15 focus:outline-none'
+
 export const TABLE_CARD = 'bg-card border-border shadow-lodge-sm overflow-x-auto rounded-xl border'
-/** The opt-in screen box (grid layout T1): one box scrolling both ways, keeping its scroll to itself. */
-export const SCROLL_BOX =
-  'bg-card border-border shadow-lodge-sm overflow-auto overscroll-contain rounded-xl border'
+/**
+ * The opt-in screen box (grid layout T1): one box scrolling both ways. It never holds the wheel
+ * (§23): at its end the page scrolls on, so the notes below stay reachable.
+ */
+export const SCROLL_BOX = 'bg-card border-border shadow-lodge-sm overflow-auto rounded-xl border'
 export const TABLE = 'w-full table-fixed border-separate border-spacing-0 text-sm'
-export const TH =
-  'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 align-bottom text-left text-xs leading-tight font-semibold whitespace-normal'
-/** No `white-space` here: the cell picks nowrap, or normal on the highlighted flexible column (Ruling 2026-10-01 (plan review): no two classes setting one property). */
-export const TD = 'border-border overflow-hidden border-b px-2 py-1.5 align-top text-ellipsis'
+/** The header (§8): 12/15 600 muted on bg-muted, padded 5px 8px, the light column rule. */
+export const TH = `bg-muted text-muted-foreground border-border border-b px-2 py-[5px] align-bottom text-left text-xs leading-tight font-semibold whitespace-normal ${CS_RULE} first:border-l-0`
+/**
+ * A cell (§2, §8): padded 5px 8px, the light column rule on every column but the first. No
+ * `white-space` here: the cell picks nowrap, or normal on the highlighted flexible column (Ruling
+ * 2026-10-01 (plan review): no two classes setting one property).
+ */
+export const TD = `border-border overflow-hidden border-b px-2 py-[5px] align-top text-ellipsis ${CS_RULE} first:border-l-0`
 /** Cells are opaque, so pinned columns hide what scrolls under them. */
 export const CELL_BG = 'bg-card'
 /** The highlighted row (D31): amber tint, opaque in both themes. */
@@ -84,13 +124,12 @@ export const RIGHT_PINNED_EDGE = 'shadow-[-6px_0_6px_-6px_rgb(0_0_0/0.25)]'
 /** Both on one cell (a highlighted row's first cell is also the last pinned one): one shadow class, not two. */
 export const HIGHLIGHT_PINNED_EDGE =
   'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.25)]'
-export const TFOOT_CELL =
-  'bg-muted border-border border-t px-2 py-1.5 font-semibold whitespace-nowrap'
+/** A total row (§10): the green band, bold, its edge on top. */
+export const TFOOT_CELL = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bold whitespace-nowrap ${CS_RULE} first:border-l-0`
 /** The totals label's cell in the screen box: it wraps within the pinned column rather than printing over the next total. */
-export const TFOOT_CELL_WRAP =
-  'bg-muted border-border border-t px-2 py-1.5 font-semibold whitespace-normal'
-export const GROUP_ROW =
-  'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-xs font-semibold'
+export const TFOOT_CELL_WRAP = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[5px] font-bold whitespace-normal ${CS_RULE} first:border-l-0`
+/** A section row (§9): the green band. */
+export const GROUP_ROW = `${CS_BAND} text-foreground border-border border-b px-2 py-[5px] text-[13.5px] font-bold`
 /**
  * The opened row's detail line (batch 4, grid-layout-options.html round 6): the highlighted row's
  * tint with an amber rule under it. Its cell must not clip (`overflow-visible`) and carries no side

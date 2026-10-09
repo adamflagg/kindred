@@ -1,4 +1,3 @@
-import { Download } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
@@ -14,7 +13,8 @@ import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
 import { QueryGuard } from '../../QueryGuard'
 import { aidHref, type AidView } from '../kit/asOf'
 import { withLinkLine } from '../kit/csv'
-import { CS_BTN_TOOL, CS_LINK, CS_PANEL, CS_PILL } from '../kit/csType'
+import { AidCsvButton } from '../kit/CsvButton'
+import { CS_LINK, CS_PANEL, CS_PILL } from '../kit/csType'
 import { scopePool, budgetCsvName } from './budgetModel'
 import { BUDGET_CSV_HEADERS, budgetCsvRows, noPoolCommitted, poolCards } from './budgetCards'
 import { BudgetCard } from './BudgetCard'
@@ -63,12 +63,7 @@ export function RoundsBudgetCsv() {
       ),
       budgetCsvName(year, scope, asOf.kind === 'past' ? asOf.date : null)
     )
-  return (
-    <button type="button" className={CS_BTN_TOOL} onClick={download}>
-      <Download className="h-4 w-4" />
-      Download CSV
-    </button>
-  )
+  return <AidCsvButton onDownload={download} />
 }
 
 function RoundsBudgetBody({ budget, view }: { budget: ApiAidBudget; view: AidView }) {

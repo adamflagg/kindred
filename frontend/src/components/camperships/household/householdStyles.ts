@@ -84,7 +84,7 @@ export const HH_AMBER_NOTE = 'text-[12.5px] text-amber-700 dark:text-amber-400'
  * meaning tone. Household-local: the kit's PILL shape (12/500) stays on the grid and the header.
  */
 const ROUND_PILL_SHAPE =
-  'inline-flex items-center whitespace-nowrap rounded-full px-[9px] py-px text-[11.5px] leading-[1.5] font-bold'
+  'inline-flex items-center whitespace-nowrap rounded-full px-[9px] py-px text-[11.5px] leading-[1.5] font-semibold'
 export const HH_ROUND_PILL: Readonly<Record<RoundStateTone, string>> = {
   posted: `${ROUND_PILL_SHAPE} bg-forest-200/60 text-forest-900 dark:bg-forest-800/60 dark:text-forest-100`,
   offer: `${ROUND_PILL_SHAPE} bg-sky-200/60 text-sky-900 dark:bg-sky-900/50 dark:text-sky-100`,

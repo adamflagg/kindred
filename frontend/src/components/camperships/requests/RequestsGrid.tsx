@@ -188,7 +188,7 @@ function renderFor(
       return (row) => {
         const stage = requestStage(row)
         return stage ? (
-          <StatusPill tone={stage.tone} wrap>
+          <StatusPill tone={stage.tone} title={stage.text}>
             {stage.text}
           </StatusPill>
         ) : (

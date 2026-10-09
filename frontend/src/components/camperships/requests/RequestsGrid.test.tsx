@@ -473,7 +473,8 @@ describe('RequestsGrid in the screen box (grid layout T1)', () => {
   it('sits in the one scrolling box, with the header held', () => {
     render(<Grid />)
     const table = screen.getByRole('table')
-    expect(table.parentElement?.className).toContain('overscroll-contain')
+    // §23: the box no longer holds the wheel (overscroll-contain retired); it is found by its attribute.
+    expect(table.parentElement).toHaveAttribute('data-aid-scroll-box')
     expect(screen.getByRole('columnheader', { name: 'Session' }).className).toContain('top-0')
   })
 })

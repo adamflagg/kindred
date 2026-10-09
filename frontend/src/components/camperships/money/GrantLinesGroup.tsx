@@ -11,7 +11,7 @@ import { suggestionCell } from '../grants/placeModel'
 import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { AidTable, type AidColumn } from '../kit/AidTable'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_BTN, CS_BTN2, CS_LABEL, CS_LINK, CS_SMALL } from '../kit/csType'
+import { CS_BTN, CS_BTN2, CS_LABEL, CS_LINK_CELL, CS_SMALL } from '../kit/csType'
 import { familyLabel } from '../kit/familyLabel'
 import { formatMoney } from '../kit/money'
 import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
@@ -73,7 +73,7 @@ function GrantLinesBody({
         value: (n) => familyLabel(n.grant, n.grant.family_name).text,
         render: (n) => (
           <Link
-            className={`${CS_LINK} font-medium`}
+            className={`${CS_LINK_CELL}`}
             to={aidHref(`/aid/households/${String(n.grant.household_cm_id)}`, view)}
           >
             <HouseholdLabelText label={familyLabel(n.grant, n.grant.family_name)} />

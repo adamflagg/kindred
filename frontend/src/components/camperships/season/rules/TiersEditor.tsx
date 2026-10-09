@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { CS_AMBER_NOTE, CS_FLABEL, CS_INPUT, CS_LINK, CS_SMALL } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_FLABEL, CS_INPUT, CS_LINK_SM, CS_SMALL } from '../../kit/csType'
 import { DefRef } from '../../kit/DefinitionNotes'
 import { bandsOf, countNote, evenOf, type Band } from './tierGrid'
 
@@ -133,7 +133,7 @@ export function TiersEditor({
           ))}
         </div>
       )}
-      <button type="button" className={`${CS_LINK} ${CS_SMALL}`} onClick={toggle}>
+      <button type="button" className={`${CS_LINK_SM}`} onClick={toggle}>
         {byHand ? 'Back to even bands' : 'Edit bands by hand ›'}
       </button>
       {problem !== null && <p className={CS_AMBER_NOTE}>{problem}</p>}

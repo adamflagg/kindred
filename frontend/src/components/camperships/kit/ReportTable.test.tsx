@@ -15,7 +15,8 @@ import {
   type ReportColumn,
   type ReportRow,
 } from './report'
-import { CS_CARD_HEADING } from './csType'
+import { CS_BAND, CS_CARD_HEADING } from './csType'
+import { CS_RULE_GROUP } from './kitStyles'
 import { ReportTable } from './ReportTable'
 
 const downloadCsv = vi.fn<(content: string, name: string) => void>()
@@ -252,12 +253,13 @@ describe('ReportTable', () => {
     renderTable({
       columns: [COLUMNS[0]!, { key: 'campers', header: 'Campers', divider: 'before' }, COLUMNS[2]!],
     })
-    expect(screen.getByRole('columnheader', { name: 'Campers' }).className).toContain('border-l')
-    expect(screen.getByText('9').closest('td')?.className).toContain('border-l')
+    // Every column carries the light rule (§8); a flagged one swaps it for the firmer group rule.
+    expect(screen.getByRole('columnheader', { name: 'Campers' }).className).toContain(CS_RULE_GROUP)
+    expect(screen.getByText('9').closest('td')?.className).toContain(CS_RULE_GROUP)
     expect(screen.getByRole('columnheader', { name: /Dollars/ }).className).not.toContain(
-      'border-l'
+      CS_RULE_GROUP
     )
-    expect(screen.getByText('$1,200').closest('td')?.className).not.toContain('border-l')
+    expect(screen.getByText('$1,200').closest('td')?.className).not.toContain(CS_RULE_GROUP)
   })
 
   it("draws a cell's note as a muted second line under the figure, and keeps it out of the CSV", async () => {
@@ -286,29 +288,40 @@ describe('ReportTable', () => {
   })
 
   describe('the mock layout (description, one toolbar, default sort, mono)', () => {
-    it('draws the description right under the title, above the toolbar and the table', () => {
+    // Design language §5: a Reports table's heading row holds the title on the left and Find · Copy ·
+    // Download CSV on the right, on that SAME row (it was a second row under the description).
+    it('draws the description under the heading row, above the table', () => {
       renderTable({ find: true, description: 'Who it counts.' })
       const words = screen.getByText('Who it counts.')
-      const title = screen.getByRole('heading', { name: 'Every camper' })
       const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
       const table = screen.getByRole('table', { name: 'Every camper' })
-      expect(title.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-      expect(words.compareDocumentPosition(find) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(find.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(words.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 
-    it('keeps the find box, Copy and Download CSV in one toolbar row, in that order, apart from the title', () => {
+    it('keeps the title, the find box, Copy and Download CSV on one row that never wraps, in that order', () => {
       renderTable({ find: true })
+      const title = screen.getByRole('heading', { name: 'Every camper' })
       const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
       const copy = screen.getByRole('button', { name: /Copy/ })
       const csv = screen.getByRole('button', { name: /Download CSV/ })
-      const bar = find.closest('div')
-      expect(bar).not.toBeNull()
-      expect(bar?.contains(copy)).toBe(true)
-      expect(bar?.contains(csv)).toBe(true)
-      expect(bar?.contains(screen.getByRole('heading', { name: 'Every camper' }))).toBe(false)
+      const row = screen.getByTestId('report-heading-row')
+      for (const element of [title, find, copy, csv]) expect(row.contains(element)).toBe(true)
+      expect(row).toHaveClass('flex-nowrap')
+      expect(title.compareDocumentPosition(find) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(find.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(copy.compareDocumentPosition(csv) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    // §2, §4: Copy and Download CSV are the small 26px button; the find box is the 26px kit search,
+    // not the audit pages' 38px muted field.
+    it('draws Copy, Download CSV and the find box as 26px controls', () => {
+      renderTable({ find: true })
+      expect(screen.getByRole('button', { name: /Copy/ })).toHaveClass('h-[26px]')
+      expect(screen.getByRole('button', { name: /Download CSV/ })).toHaveClass('h-[26px]')
+      const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
+      expect(find).toHaveClass('h-[26px]', 'bg-card')
+      expect(find).not.toHaveClass('py-2')
     })
 
     it('opens sorted by defaultSort with the end row and totals last, and the arrow shows', () => {
@@ -363,6 +376,33 @@ describe('ReportTable', () => {
       renderTable({ sortable: true })
       expect(screen.getByRole('button', { name: 'Campers' }).className).toContain('justify-end')
       expect(screen.getByRole('button', { name: 'ZIP' }).className).not.toContain('justify-end')
+    })
+  })
+
+  describe('the final grid (design-language §6, §9, §10)', () => {
+    it('puts the total row in the green band and the end rows in muted italic', () => {
+      renderTable()
+      const total = screen.getByText('All · 2 ZIPs').closest('tr') as HTMLElement
+      expect(total.className).toContain(CS_BAND)
+      expect(total.className).toContain('font-bold')
+      const end = screen.getByText('Outside the US').closest('tr') as HTMLElement
+      expect(end).toHaveClass('italic', 'text-muted-foreground')
+    })
+
+    it('puts a heading row in the green band', () => {
+      renderTable({
+        rows: [{ key: 'h', kind: 'heading', cells: [{ kind: 'text', value: 'Money' }] }, ...ROWS],
+      })
+      expect(screen.getByText('Money').closest('td')?.className).toContain(CS_BAND)
+    })
+
+    it('reports Copy in the heading row, truncated with a title, never as a line that pushes the table down', async () => {
+      renderTable()
+      await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+      const status = screen.getByText(/Copied, with its as-of date and basis/)
+      expect(screen.getByTestId('report-heading-row').contains(status)).toBe(true)
+      expect(status).toHaveClass('truncate')
+      expect(status).toHaveAttribute('title', status.textContent)
     })
   })
 })

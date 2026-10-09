@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { CS_CARD, CS_CARD_TITLE, CS_LINK, CS_PILL, CS_SMALL } from '../../kit/csType'
+import { CS_CARD, CS_CARD_TITLE, CS_LINK_SM, CS_PILL } from '../../kit/csType'
 import type { ChapterDef, SummaryPill } from './rulesLayout'
 
 /** A chapter (spec §6.2 C): one card of section cards; folded, its summary pills. */
@@ -32,7 +32,7 @@ export function Chapter({
           {chapter.title}
         </button>
         {chapter.key === 'awards' && onJumpGrid !== undefined && (
-          <button type="button" className={`${CS_LINK} ${CS_SMALL}`} onClick={onJumpGrid}>
+          <button type="button" className={`${CS_LINK_SM}`} onClick={onJumpGrid}>
             Round 1 % by tier: in the tier grid ›
           </button>
         )}

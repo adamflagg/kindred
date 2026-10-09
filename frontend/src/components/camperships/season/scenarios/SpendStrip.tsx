@@ -3,10 +3,11 @@ import { useCallback, useRef, useState } from 'react'
 import type { ApiAidScenarioResults } from '../../../../types/api-types'
 import { NEGATIVE_INK, POOL_NEGATIVE_INK } from '../../kit/aidStyles'
 import {
+  CS_AMBER_NOTE,
   CS_CARD,
   CS_CARD_TITLE,
   CS_LABEL,
-  CS_LINK,
+  CS_LINK_SM,
   CS_META,
   CS_PILL,
   CS_SMALL,
@@ -14,7 +15,6 @@ import {
   CS_TD_CARD,
   CS_TH_CARD,
   CS_TH_CARD_NUM,
-  CS_AMBER_NOTE,
 } from '../../kit/csType'
 import { DefRef } from '../../kit/DefinitionNotes'
 import { formatWholeMoney } from '../../kit/money'
@@ -160,7 +160,7 @@ export function SpendStrip({
             <button
               ref={tierRef}
               type="button"
-              className={`${CS_LINK} ${CS_SMALL} ml-auto`}
+              className={`${CS_LINK_SM} ml-auto`}
               onClick={() => toggle('tier')}
             >
               By tier ▸
@@ -261,7 +261,7 @@ export function SpendStrip({
           <button
             ref={belowRef}
             type="button"
-            className={`${CS_LINK} ${CS_META} ml-auto`}
+            className={`${CS_LINK_SM} ml-auto`}
             onClick={() => toggle('below')}
           >
             Below the line

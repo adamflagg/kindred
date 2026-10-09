@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { AidRequestSet } from '../../../services/camperships/aidApi'
+import { CS_RULE_GROUP } from '../kit/kitStyles'
 import { PROGRAMS } from './programsFixtures'
 import { ProgramsTable } from './ProgramsTable'
 
@@ -113,7 +114,10 @@ describe('ProgramsTable (spec §9.3)', () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By session' })
     const heads = within(table).getAllByRole('columnheader')
-    const divided = heads.filter((h) => h.className.includes('border-l')).map((h) => h.textContent)
+    // Design language §8: every column now carries the light rule, so a divider is the group rule.
+    const divided = heads
+      .filter((h) => h.className.includes(CS_RULE_GROUP))
+      .map((h) => h.textContent)
     expect(divided).toHaveLength(4)
     expect(divided.filter((t) => t.startsWith('Apps'))).toHaveLength(3)
     expect(divided).toContain('Total awarded')

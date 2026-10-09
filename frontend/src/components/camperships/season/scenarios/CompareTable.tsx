@@ -10,7 +10,7 @@ import {
   CS_BTN_SM,
   CS_CARD,
   CS_FLABEL,
-  CS_LINK,
+  CS_LINK_SM,
   CS_PANEL_HEAD,
   CS_SMALL,
 } from '../../kit/csType'
@@ -252,7 +252,7 @@ export function CompareTable({
                       )}
                       <button
                         type="button"
-                        className={`${CS_LINK} ${CS_SMALL}`}
+                        className={`${CS_LINK_SM}`}
                         onClick={() => setRenaming(head.code)}
                       >
                         Rename

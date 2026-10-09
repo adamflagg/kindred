@@ -180,7 +180,8 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     const johnson = screen
       .getByText('1 · The Johnson Family')
       .closest('[data-household]') as HTMLElement
-    expect(within(johnson).getByText('✓ confirmed')).toHaveClass('bg-emerald-100')
+    // Design language §9: emerald is retired; the positive pill is the forest ok tone.
+    expect(within(johnson).getByText('✓ confirmed')).toHaveClass('text-forest-800')
     expect(johnson).not.toHaveClass('card-lodge')
     expect(johnson).toHaveClass('rounded-xl', 'border')
   })

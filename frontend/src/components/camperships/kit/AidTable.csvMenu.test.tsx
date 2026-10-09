@@ -118,9 +118,23 @@ describe('AidTable csvMenu', () => {
     expect(screen.queryByTestId('csv-menu')).toBeNull()
   })
 
-  it('draws the status below the toolbar, nothing under it before then', () => {
+  // Design language §5–6: the result of an action sits in the toolbar's status slot, on the same
+  // row, never in a line that comes and goes under it (replaces the slice 3 status line).
+  it('draws the status in the toolbar row, before Download CSV, and no line under the toolbar', () => {
     renderTable(true)
-    expect(toolbar().nextElementSibling).toHaveTextContent('Status Line')
-    expect(toolbar()).not.toHaveTextContent('Status Line')
+    expect(toolbar()).toHaveTextContent('Status Line')
+    expect(toolbar().nextElementSibling).not.toHaveTextContent('Status Line')
+    const text = toolbar().textContent
+    expect(text.indexOf('Status Line')).toBeLessThan(text.indexOf('Download CSV'))
+  })
+
+  // §4: the caret part of the split is 22px; the whole control is the small 26px button.
+  it('draws the split small: a 26px button and a 22px caret', () => {
+    renderTable(true)
+    expect(screen.getByRole('button', { name: 'More downloads' })).toHaveClass(
+      'w-[22px]',
+      'h-[26px]'
+    )
+    expect(within(toolbar()).getByRole('button', { name: 'Download CSV' })).toHaveClass('h-[26px]')
   })
 })

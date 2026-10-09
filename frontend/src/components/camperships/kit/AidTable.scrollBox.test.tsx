@@ -57,11 +57,12 @@ const th = (name: string) => screen.getByRole('columnheader', { name })
 const classesOf = (el: Element) => el.className.split(/\s+/)
 
 describe('AidTable scrollBox: the sticky contract', () => {
-  it('scrolls both ways in one box that keeps its scroll to itself', () => {
+  // Design language §23 (owner: "how do staff ever see footnotes?"): scroll chaining stays on, so a
+  // wheel at the box's end carries on scrolling the page to the notes below it.
+  it('scrolls both ways in one box, and hands the wheel back to the page at its ends', () => {
     renderTable(true)
-    expect(classesOf(box())).toEqual(
-      expect.arrayContaining(['overflow-auto', 'overscroll-contain'])
-    )
+    expect(classesOf(box())).toContain('overflow-auto')
+    expect(classesOf(box())).not.toContain('overscroll-contain')
     expect(classesOf(box())).not.toContain('overflow-x-auto')
   })
 
@@ -112,7 +113,7 @@ describe('AidTable scrollBox: its height', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement
     ) {
-      const isBox = this.className.includes('overscroll-contain')
+      const isBox = this.hasAttribute('data-aid-scroll-box')
       return {
         top: isBox ? top : 0,
         height: 0,
@@ -133,38 +134,41 @@ describe('AidTable scrollBox: its height', () => {
   const setInner = (h: number) =>
     Object.defineProperty(window, 'innerHeight', { value: h, configurable: true })
 
-  it('runs from the box top to the bottom of the screen, less a 12px gap', () => {
+  // Design language §23: the box stops about 40px short of the window's bottom edge, so the first
+  // footnote line peeks above the fold on first load: max(420px, 100vh − its top − 40px).
+  it('runs from the box top to 40px short of the bottom of the screen', () => {
     setInner(900)
     renderTable(true)
-    expect(box().style.maxHeight).toBe('688px')
+    expect(box().style.maxHeight).toBe('660px')
   })
 
-  // Spec change (RULED screen box (a)): the floor is 200px, so the box ends inside a 720px screen.
-  it('never goes under 200px', () => {
+  // §23 replaces the 200px floor (RULED screen box (a)) with 420px: on a short screen the box keeps
+  // 420px and the page, which still scrolls, carries the notes below it.
+  it('never goes under 420px', () => {
     setInner(380)
     renderTable(true)
-    expect(box().style.maxHeight).toBe('200px')
+    expect(box().style.maxHeight).toBe('420px')
   })
 
-  it('ends inside a short screen rather than holding a taller floor', () => {
+  it('holds the 420px floor on a short screen, the page scrolling on to the notes', () => {
     setInner(500)
     renderTable(true)
-    expect(box().style.maxHeight).toBe('288px')
+    expect(box().style.maxHeight).toBe('420px')
   })
 
   it('measures again when the window resizes and when the box moves', () => {
     setInner(900)
     renderTable(true)
-    setInner(700)
+    setInner(800)
     act(() => {
       fireEvent(window, new Event('resize'))
     })
-    expect(box().style.maxHeight).toBe('488px')
+    expect(box().style.maxHeight).toBe('560px')
     top = 260
     act(() => {
       fireEvent(window, new Event('resize'))
     })
-    expect(box().style.maxHeight).toBe('428px')
+    expect(box().style.maxHeight).toBe('500px')
   })
 })
 
@@ -177,7 +181,7 @@ describe('AidTable scrollBox: content above the box changes height', () => {
       this: HTMLElement
     ) {
       return {
-        top: this.className.includes('overscroll-contain') ? top : 0,
+        top: this.hasAttribute('data-aid-scroll-box') ? top : 0,
         height: 0,
         bottom: 0,
         left: 0,
@@ -211,10 +215,10 @@ describe('AidTable scrollBox: content above the box changes height', () => {
       </MemoryRouter>
     )
     const { rerender } = render(tree(COLUMNS))
-    expect(box().style.maxHeight).toBe('688px')
+    expect(box().style.maxHeight).toBe('660px')
     top = 232
     rerender(tree(COLUMNS.slice(0, 2)))
-    expect(box().style.maxHeight).toBe('656px')
+    expect(box().style.maxHeight).toBe('628px')
   })
 })
 

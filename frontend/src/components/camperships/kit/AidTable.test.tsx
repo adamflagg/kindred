@@ -187,10 +187,12 @@ describe('AidTable search', () => {
     expect(screen.getByLabelText('Search')).toHaveAttribute('placeholder', 'Search names or CM IDs')
   })
 
-  it("is the Grants mock's compact search: card background, 3px/12.5px (26.75px tall)", () => {
+  // Design language §2–3: the search is the one 26px control height at 12.5px on card white
+  // (replaces the Grants mock's 3px-padded, 26.75px box).
+  it('is the kit search: card background, 26px at 12.5px', () => {
     renderTable()
     const input = screen.getByLabelText('Search')
-    for (const cls of ['bg-card', 'py-[3px]', 'text-[12.5px]', 'leading-[18.75px]']) {
+    for (const cls of ['bg-card', 'h-[26px]', 'text-[12.5px]', 'leading-[18px]']) {
       expect(input).toHaveClass(cls)
     }
     for (const cls of ['bg-muted/40', 'py-2', 'text-sm']) expect(input).not.toHaveClass(cls)
@@ -399,12 +401,16 @@ describe('AidTable', () => {
   // Owner (10-04, csv-options.html option A): one CSV control across the app, the kit's own
   // "Download CSV" secondary button with lucide Download, ending the toolbar line. Replaces the
   // "⤓ CSV" chip variant (csvChip) and its two tests.
-  it('ends the toolbar with the one Download CSV button: a secondary button with the Download icon', () => {
+  // Design language §4–5: Download CSV is the small 26px button, last in the toolbar's right group
+  // (replaces the 38px secondary button that was the toolbar's last child).
+  it('ends the toolbar with the one Download CSV button: the small button with the Download icon', () => {
     renderTable('/aid/requests')
     const button = screen.getByRole('button', { name: 'Download CSV' })
     const toolbar = button.closest('[data-aid-toolbar]') as HTMLElement
-    expect(toolbar.lastElementChild).toBe(button)
-    expect(button).toHaveClass('ml-auto', 'rounded-lg', 'border', 'px-4', 'py-2', 'text-sm')
+    const right = toolbar.lastElementChild as HTMLElement
+    expect(right).toHaveClass('ml-auto')
+    expect(right.lastElementChild).toBe(button)
+    expect(button).toHaveClass('h-[26px]', 'rounded-lg', 'border', 'text-[12.5px]')
     expect(button.querySelector('svg.lucide-download')).not.toBeNull()
     expect(screen.queryByRole('button', { name: '⤓ CSV' })).toBeNull()
   })
@@ -996,19 +1002,24 @@ describe('AidTable with a selection (§4.10)', () => {
 // Owner rulings 10-04 late (grid follow-up): the Requests toolbar runs Program · Round · Flat / By
 // reason · Show IDs · filter · Download CSV. The kit keeps its own order for a table that passes no
 // after-grouping controls.
+// Design language §5: the toolbar is one row of two groups, the lead, switch and filters on the left
+// and search, actions and Download CSV on the right, so the switch now always sits beside the lead
+// (it used to follow the search when nothing came after it).
 describe('AidTable toolbar order', () => {
   const pieces = () => {
     const line = document.querySelector('[data-aid-toolbar]') as HTMLElement
-    return [...line.children].map((el) => {
-      if (el.querySelector('input[type="search"]')) return 'search'
-      if (within(el as HTMLElement).queryByRole('button', { name: 'Flat' })) return 'grouping'
-      return el.textContent
-    })
+    return [...line.children]
+      .flatMap((group) => [...group.children])
+      .map((el) => {
+        if (el.querySelector('input[type="search"]')) return 'search'
+        if (within(el as HTMLElement).queryByRole('button', { name: 'Flat' })) return 'grouping'
+        return el.textContent
+      })
   }
 
-  it('draws the lead, search, the grouping switch, then Download CSV, when nothing comes after the switch', () => {
+  it('draws the lead, the grouping switch, search, then Download CSV, when nothing comes after the switch', () => {
     renderTable('/aid/requests', { toolbarLead: <span>Lead</span> })
-    expect(pieces()).toEqual(['Lead', 'search', 'grouping', 'Download CSV'])
+    expect(pieces()).toEqual(['Lead', 'grouping', 'search', 'Download CSV'])
   })
 
   it('moves the switch beside the lead, with the after-grouping controls next, when it is given them', () => {

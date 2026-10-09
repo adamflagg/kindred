@@ -6,7 +6,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { AidTable, type AidColumn } from '../kit/AidTable'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_LINK } from '../kit/csType'
+import { CS_LINK_CELL } from '../kit/csType'
 import {
   groupWords,
   lineKey,
@@ -33,7 +33,7 @@ function familyColumn(view: AidView): AidColumn<ApiAidToPlaceLine> {
     render: (line) => (
       <Link
         to={aidHref(`/aid/households/${String(line.household_cm_id)}`, view)}
-        className={`${CS_LINK} font-medium`}
+        className={`${CS_LINK_CELL}`}
       >
         <HouseholdLabelText label={lineFamily(line)} />
       </Link>

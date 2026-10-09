@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ConfirmationOut } from '../../../types/api-generated'
 import { CM_PENDING_WORD } from '../requests/views'
 import { STATUS_TONE } from './kitStyles'
-import { ConfirmationState, HouseholdChip, IdChip, OverPill, StatusPill } from './Pills'
+import { CancelMark, ConfirmationState, HouseholdChip, IdChip, OverPill, StatusPill } from './Pills'
 
 function confirmation(over: Partial<ConfirmationOut>): ConfirmationOut {
   return {
@@ -21,28 +21,39 @@ function confirmation(over: Partial<ConfirmationOut>): ConfirmationOut {
 }
 
 describe('StatusPill (§4.5; D19, D59)', () => {
-  // Owner 2026-10-02: a chip that wraps to two lines centres its text.
-  it('centres its text when it wraps, and keeps one line otherwise', () => {
+  // Design language §11 (owner 10-09, "needs to be one line"): a chip never wraps. It truncates in a
+  // narrow column and its title carries the full words. This replaces the 2026-10-02 two-line chip.
+  it('stays on one line, truncating, with its full words in the title', () => {
     render(
-      <StatusPill tone={STATUS_TONE.hold} wrap>
+      <StatusPill tone={STATUS_TONE.hold} title="Round 3 · Refused by finance on Apr 2">
         R3 · Refused by finance
       </StatusPill>
     )
-    const wrapped = screen.getByText('R3 · Refused by finance')
-    expect(wrapped).toHaveClass('text-center', 'whitespace-normal')
-    expect(wrapped).not.toHaveClass('text-left')
+    const pill = screen.getByText('R3 · Refused by finance')
+    expect(pill).toHaveClass('truncate', 'max-w-full')
+    expect(pill).not.toHaveClass('whitespace-normal')
+    expect(pill).toHaveAttribute('title', 'Round 3 · Refused by finance on Apr 2')
   })
 
   it.each([
     ['hold', 'bg-red-100'],
     ['note', 'bg-amber-100'],
-    ['accepted', 'bg-emerald-100'],
+    // §9: emerald is retired in Camperships; the positive pill is the forest ok tone.
+    ['accepted', 'text-forest-800'],
     ['round2', 'bg-sky-100'],
     ['round3', 'bg-purple-100'],
     ['cancelled', 'bg-stone-200'],
   ] as const)('dresses %s in its hue', (state, hue) => {
     render(<StatusPill tone={STATUS_TONE[state]}>{state}</StatusPill>)
-    expect(screen.getByText(state)).toHaveClass('rounded-full', 'px-2', 'py-0.5', 'text-xs', hue)
+    // §11: one chip size, 11.5/16 600, padding 1px 8px.
+    expect(screen.getByText(state)).toHaveClass(
+      'rounded-full',
+      'px-2',
+      'py-px',
+      'text-[11.5px]',
+      'font-semibold',
+      hue
+    )
   })
 })
 
@@ -55,9 +66,12 @@ describe('ConfirmationState (D59; mockups/posted-words.html E)', () => {
     expect(screen.queryByText(/tonight/)).toBeNull()
   })
 
-  it('reads ✓ confirmed with its date, in emerald', () => {
+  // §9: the positive state reads in the forest ok tone (emerald retired), on one line (§11).
+  it('reads ✓ confirmed with its date, in the forest ok tone, on one line', () => {
     render(<ConfirmationState confirmation={confirmation({})} />)
-    expect(screen.getByText('✓ confirmed Mar 12')).toHaveClass('bg-emerald-100')
+    const pill = screen.getByText('✓ confirmed Mar 12')
+    expect(pill).toHaveClass('text-forest-800')
+    expect(pill).not.toHaveClass('whitespace-normal')
   })
 
   it("names CampMinder's figure only when it disagrees, and the gap exactly (D74)", () => {
@@ -138,4 +152,16 @@ describe('HouseholdChip (D32)', () => {
       expect(chip.className).not.toContain('undefined')
     }
   )
+})
+
+// Design language §11 rev1 (owner: "cancelled probably go with the circle slash before the name
+// because a long name could force the chip offscreen"): a glyph before the name, never a chip.
+describe('CancelMark', () => {
+  it('draws a muted stone ⊘ carrying the cancellation as its title', () => {
+    render(<CancelMark title="Cancelled May 14 (from CampMinder enrollment)" />)
+    const mark = screen.getByText('⊘')
+    expect(mark).toHaveAttribute('title', 'Cancelled May 14 (from CampMinder enrollment)')
+    expect(mark.className).toContain('stone')
+    expect(mark).not.toHaveClass('rounded-full')
+  })
 })

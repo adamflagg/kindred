@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
+import { CS_RULE_GROUP } from '../kit/kitStyles'
 import { PROGRAMS } from './programsFixtures'
 import {
   STATISTICS,
@@ -140,11 +141,12 @@ describe('StatisticsTab (spec §9.2)', () => {
   it("divides the band columns from the figures at the tier table's Apps", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By tier' })
+    // Design language §8: every column now carries the light rule, so a divider is the group rule.
     expect(within(table).getByRole('columnheader', { name: /^Apps/ }).className).toContain(
-      'border-l'
+      CS_RULE_GROUP
     )
     expect(within(table).getByRole('columnheader', { name: 'Asked' }).className).not.toContain(
-      'border-l'
+      CS_RULE_GROUP
     )
   })
 
