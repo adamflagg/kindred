@@ -22,8 +22,30 @@ def test_slice_3s_three_surfaces_number_their_notes_in_this_order() -> None:
         "posted",
     )
     # Slice 3 (10-08): Money › Funders (Sources folded in) renders "Grants this season"; Money › Grants never did.
-    assert SURFACES.get("money-sources") == ("source_facts", "reporting_group", "source_lines", "grantor_season")
-    assert SURFACES.get("grants") == ("grants", "expected_grant", "last_dollar", "household_level")
+    # Final audit: Funders explains its own four columns (the mock's notes); "Grants this season" is not one of them.
+    assert SURFACES.get("money-sources") == ("funder", "incentive", "reporting_group", "source_lines")
+    # Final audit: the Register's five columns (Expected was cut, so its note goes); the Ledger names its Outside grants.
+    assert SURFACES.get("grants") == (
+        "register_amount",
+        "register_offsets",
+        "register_stands",
+        "register_cancelled",
+        "register_counted",
+    )
+    assert SURFACES.get("money-ledger") == ("in_campminder_net", "outside_grants_ledger")
+
+
+def test_the_ledger_and_register_notes_say_what_the_mock_says() -> None:
+    assert "the gap is short or over, To place, and rounds checked since the last sync" in _text("in_campminder_net")
+    assert "including lines whose description is not classified yet" in _text("outside_grants_ledger")
+    assert "never Posted" in _text("outside_grants_ledger")
+    assert "household-level lines of families who didn't apply included" in _text("register_counted")
+    assert "never typed" in _text("register_cancelled")
+    assert _text("funder").startswith("Funder:")
+
+
+def test_the_reporting_group_note_no_longer_points_at_today() -> None:
+    assert "on Today" not in _text("reporting_group")
 
 
 def test_not_yet_in_campminder_is_d151s_figure() -> None:

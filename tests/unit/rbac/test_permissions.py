@@ -164,7 +164,14 @@ class TestPermissionInfo:
     def test_aid_view_screens_cover_every_view_gated_section(self):
         """Every Camperships section financial_aid.view opens (aidNav.ts) is listed."""
         paths = [s.path for s in PERMISSION_INFO["financial_aid.view"].screens]
-        assert paths == ["/aid", "/aid/requests", "/aid/grants", "/aid/money", "/aid/season", "/aid/reports"]
+        assert paths == ["/aid", "/aid/requests", "/aid/money", "/aid/season", "/aid/reports"]
+
+    def test_no_system_access_link_points_at_the_retired_grants_section(self):
+        """Camperships › Grants folded into Money; /aid/grants is only a redirect, and for a holder of
+        only the grantors permission it lands on a view tab they cannot open."""
+        for info in PERMISSION_INFO.values():
+            assert all(not s.path.startswith("/aid/grants") for s in info.screens), info.label
+        assert [s.path for s in PERMISSION_INFO["financial_aid.grantors"].screens] == ["/aid/money/funders"]
 
     def test_descriptions_contain_no_codenames(self):
         """Staff read descriptions verbatim (spec M4): no `area.action` codenames."""

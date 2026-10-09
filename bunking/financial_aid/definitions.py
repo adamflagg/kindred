@@ -173,7 +173,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "In CampMinder (net): the family's live CampMinder camp-aid lines this season (lines Money › Funders "
             "classes as camp aid, after any reclassifying override), across the households in the page scope, "
-            "net of reversals. Outside grants are a separate column and are not in it. It is not Posted."
+            "net of reversals. Outside grants are a separate column and are not in it. It is not Posted; the gap is short "
+            "or over, To place, and rounds checked since the last sync."
         ),
         spec="§5.5",
         rulings=("D26", "D58", "D59"),
@@ -295,8 +296,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands "
             "today, on live requests (not cancelled, withdrawn or a pending duplicate). It is not the asked or requested total, which sums every "
             "app's ask, cancelled and closed ones included. A round paid wholly by an outside funder is never awarded, so its "
-            "ask is left out of the in-budget asks this divides by. The awarded $ is Posted only: money decided but not "
-            'yet offered shows in its own "Decided (not yet offered)" column and is never in this percentage.'
+            'ask is left out of the in-budget asks this divides by. With "include not yet offered" on, the awarded $ '
+            'is Posted + Decided, and the column reads "% of ask (posted + decided)".'
         ),
         spec="§5.6",
         rulings=("D80",),
@@ -384,8 +385,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "money of the rounds an outside funder pays in full, ÷ the "
             "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
             "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
-            "The awarded $ is Posted only: money decided but not yet offered shows in its own "
-            '"Decided (not yet offered)" column and is never in this percentage.'
+            'With "include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
+            'grants (posted + decided)".'
         ),
         spec="§9.2",
         rulings=("D80", "D116", "D132"),
@@ -587,14 +588,89 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.1",
         rulings=("D81", "D146", "D151", "D152"),
     ),
+    # Final audit (10-09): the notes Money › Ledger, Funders and Grants carry in the approved mocks.
+    Definition(
+        key="outside_grants_ledger",
+        term="Outside grants",
+        text=(
+            "Outside grants: every other funder's lines, net of reversals, including lines whose description is not "
+            "classified yet; the totals line says how much. Outside money is never Posted."
+        ),
+        spec="§5.5",
+        rulings=("D26", "D58"),
+    ),
+    Definition(
+        key="funder",
+        term="Funder",
+        text=(
+            'Funder: "Camp" is the camp\'s own aid; every other header is an outside funder, with its terms (full '
+            "coverage, canteen, pays after camp aid), eligibility and contacts. A description no funder claims yet "
+            'sits in "No funder yet", last.'
+        ),
+        spec="§5.7",
+        rulings=("D88", "D100"),
+    ),
+    Definition(
+        key="incentive",
+        term="Incentive or need-based",
+        text="Incentive or need-based: a per-description flag, never the funder type.",
+        spec="§5.7",
+        rulings=("D88",),
+    ),
+    Definition(
+        key="register_amount",
+        term="Amount",
+        text=(
+            "Amount: the grant line's net in CampMinder, or a hand-entered commitment's amount. Outside money: "
+            "never in Remaining or Posted."
+        ),
+        spec="§5.8",
+        rulings=("D55",),
+    ),
+    Definition(
+        key="register_offsets",
+        term="Aid request it offsets",
+        text=(
+            "Aid request it offsets: the camper's request this season and how much of the grant it takes, or "
+            '"didn\'t apply". A household-level line of a family that never applied is tied to a camper only when '
+            "the household has exactly one eligible camper."
+        ),
+        spec="§5.8",
+        rulings=("D142",),
+    ),
+    Definition(
+        key="register_stands",
+        term="Where it stands",
+        text=('Where it stands: "in CampMinder" once a ledger line carries it; "committed" while only hand-entered.'),
+        spec="§5.8",
+        rulings=("D55",),
+    ),
+    Definition(
+        key="register_cancelled",
+        term="Cancelled",
+        text="Cancelled: from the camper's enrollment, never typed.",
+        spec="§5.8",
+        rulings=("D55",),
+    ),
+    Definition(
+        key="register_counted",
+        term="Counted",
+        text=(
+            "Counted: whether the line is in the total. Every live line counts, household-level lines of families "
+            "who didn't apply included. Not counted: a reversed line, a line waiting for its camper, a commitment "
+            "whose camper cancelled."
+        ),
+        spec="§8.2",
+        rulings=("D55", "D142"),
+    ),
     # Money › Sources (slice 3; PENDING OWNER, owner question 4). The three facts are #2967's source_facts.
     Definition(
         key="reporting_group",
         term="Reporting group",
         text=(
             "Reporting group: the season's budget pool, or programs within it, that an outside source funds. The "
-            "ledger places a household-level grant line with it. An outside source with none needs a group, here and "
-            "on Today. Changing it re-places household-level lines on the next sync."
+            "ledger places a household-level grant line with it. An outside source with none needs a group. "
+            "Changing it re-places household-level lines on the next sync."
         ),
         spec="§8.1",
         rulings=("D95", "D100", "D159"),
@@ -707,10 +783,10 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     ),
     # Scenarios addendum §S6: 1-4 in this order (Projected is note 3).
     "season-scenarios": ("scenario_spend", "remaining", "scenario_projected", "scenario_below_the_line"),
-    "money-ledger": ("in_campminder_net", "posted"),
+    "money-ledger": ("in_campminder_net", "outside_grants_ledger"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
-    "money-sources": ("source_facts", "reporting_group", "source_lines", "grantor_season"),  # Money › Funders
-    "grants": ("grants", "expected_grant", "last_dollar", "household_level"),
+    "money-sources": ("funder", "incentive", "reporting_group", "source_lines"),  # Money › Funders
+    "grants": ("register_amount", "register_offsets", "register_stands", "register_cancelled", "register_counted"),
     "reports-statistics": (
         "apps",
         "cancelled_applicants",
