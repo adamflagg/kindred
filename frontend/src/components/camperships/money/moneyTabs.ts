@@ -46,3 +46,21 @@ export function householdParam(raw: string | null): number | null {
   const id = Number(raw ?? '')
   return Number.isInteger(id) && id > 0 ? id : null
 }
+
+/**
+ * The whole target of an old `/aid/grants/<rest>` link, query string kept. Two fixes for old
+ * review-time links: Grantors' `?row=<key>` opened a grantor, and Funders opens one by
+ * `?funder=<key>`, so that param is renamed; and someone without `financial_aid.view` (development)
+ * can open only Funders, so any other target goes to Money's landing, which resolves to it.
+ */
+export function grantsRedirectTarget(rest: string, search: string, canView: boolean): string {
+  const path = grantsRedirectPath(rest)
+  const incoming = new URLSearchParams(search)
+  const rename = path === '/aid/money/funders' && !incoming.has('funder')
+  const params = new URLSearchParams()
+  for (const [name, value] of incoming)
+    params.append(rename && name === 'row' ? 'funder' : name, value)
+  const query = params.toString()
+  const target = !canView && path !== '/aid/money/funders' ? '/aid/money' : path
+  return query === '' ? target : `${target}?${query}`
+}

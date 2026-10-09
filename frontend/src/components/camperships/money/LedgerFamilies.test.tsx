@@ -128,7 +128,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     )
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Level' }),
-      'household level'
+      'Household level'
     )
     await waitFor(() =>
       expect(ledgerCalls().at(-1)).toBe(
@@ -158,7 +158,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     })
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Level' }),
-      'household level'
+      'Household level'
     )
     await waitFor(() => expect(ledgerCalls().at(-1)).toContain('level=household'))
     expect(screen.getByRole('combobox', { name: 'Level' })).toHaveValue('household')
@@ -255,7 +255,7 @@ describe('Money › Ledger family rows (P-22)', () => {
     )
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Level' }),
-      'household level'
+      'Household level'
     )
     await waitFor(() => expect(ledgerCalls().at(-1)).toContain('level=household'))
     for (const b of totals()) expect(b).toBeDisabled()

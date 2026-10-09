@@ -73,11 +73,9 @@ def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_d
     assert "every app's ask, cancelled and closed ones included" in note.text
     assert "paid wholly by an outside funder" in note.text
     assert "left out of the in-budget asks" in note.text  # the fourth deliberate assertion change
-    # Owner ruling K (10-08): two columns, Awarded = Posted only and "Decided (not yet offered)" beside it.
-    assert "Posted + Decided" not in note.text
-    assert "(posted + decided)" not in note.text
-    assert "awarded $ is Posted only" in note.text
-    assert 'its own "Decided (not yet offered)" column' in note.text
+    # Final audit: the percentage includes decided money when "include not yet offered" is on (the header says so).
+    assert 'the awarded $ is Posted + Decided, and the column reads "% of ask (posted + decided)"' in note.text
+    assert "never in this percentage" not in note.text
 
 
 def test_awarded_says_live_for_the_request_standing_never_included() -> None:

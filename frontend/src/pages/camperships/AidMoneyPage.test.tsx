@@ -158,11 +158,13 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     expect(screen.queryByText(/This tab shows today/)).toBeNull()
   })
 
-  it('mounts the Register on the Grants tab, with its own past-date note (P-18)', () => {
+  it('mounts the Register on the Grants tab, with the one past-date sentence every live-only Money tab uses (final audit E14)', () => {
     renderAt('/aid/money/grants?as_of=2027-05-01')
     expect(screen.getByText('Register body')).toBeInTheDocument()
-    expect(screen.getByText('Grants shows today: it has no past date.')).toBeInTheDocument()
-    expect(screen.queryByText(/Money › Ledger can show/)).toBeNull()
+    expect(
+      screen.getByText('This tab shows today. Money › Ledger can show May 1, 2027.')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/it has no past date/)).toBeNull()
   })
 
   it('shows no past-date note on Grants for a live view', () => {

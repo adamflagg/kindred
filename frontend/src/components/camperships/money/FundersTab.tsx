@@ -33,6 +33,7 @@ import {
   parseFundersShow,
   sourceFamilyWords,
   yesNo,
+  yesNoWords,
   type FunderRow,
   type FundersShow,
 } from './fundersModel'
@@ -54,7 +55,11 @@ const NOTHING_UNDER = 'No CampMinder description sits under it yet.'
 /** A header's words run across the empty cells beside it: columns 2 to 6 less the cell padding. */
 const HEADER_WORDS = 'inline-block max-w-[590px] truncate align-bottom font-normal'
 
-const headerLine = (row: Extract<FunderRow, { kind: 'funder' }>, canClassify: boolean) => {
+const headerLine = (
+  row: Extract<FunderRow, { kind: 'funder' }>,
+  canClassify: boolean,
+  canPickFunder: boolean
+) => {
   if (row.grantor !== null) {
     const { terms, detail } = funderHeaderWords(row.grantor)
     return { terms: row.retired ? `Retired · ${terms}` : terms, detail }
@@ -63,7 +68,7 @@ const headerLine = (row: Extract<FunderRow, { kind: 'funder' }>, canClassify: bo
     terms:
       row.tone === 'camp'
         ? campWords(row.descriptions.length)
-        : noFunderWords(row.descriptions.length, canClassify),
+        : noFunderWords(row.descriptions.length, canClassify, canPickFunder),
     detail: '',
   }
 }
@@ -189,14 +194,14 @@ export function FundersTab({ view }: { view: AidView }) {
         width: 150,
         value: (r) => {
           if (r.kind === 'funder') {
-            const line = headerLine(r, access.rules)
+            const line = headerLine(r, access.rules, access.grantors)
             return line.detail === '' ? line.terms : `${line.terms} · ${line.detail}`
           }
           return r.kind === 'empty' ? '' : sourceFamilyWords(r.source)
         },
         render: (r) => {
           if (r.kind === 'funder') {
-            const line = headerLine(r, access.rules)
+            const line = headerLine(r, access.rules, access.grantors)
             return (
               <span
                 className={HEADER_WORDS}
@@ -235,13 +240,15 @@ export function FundersTab({ view }: { view: AidView }) {
         key: 'aid',
         header: 'Counts as aid',
         width: 80,
-        value: (r) => (r.kind === 'description' ? yesNo(r.source.counts_as_aid) : ''),
+        value: (r) => (r.kind === 'description' ? yesNoWords(r.source.counts_as_aid) : ''),
+        render: (r) => (r.kind === 'description' ? yesNo(r.source.counts_as_aid) : ''),
       },
       {
         key: 'budget',
         header: 'Counts toward the budget',
         width: 100,
-        value: (r) => (r.kind === 'description' ? yesNo(r.source.counts_toward_budget) : ''),
+        value: (r) => (r.kind === 'description' ? yesNoWords(r.source.counts_toward_budget) : ''),
+        render: (r) => (r.kind === 'description' ? yesNo(r.source.counts_toward_budget) : ''),
       },
       {
         key: 'group',
@@ -292,7 +299,7 @@ export function FundersTab({ view }: { view: AidView }) {
           moneyCsv(r.kind === 'funder' ? r.amount : r.kind === 'empty' ? null : r.source.amount),
       },
     ],
-    [bySource, access.rules]
+    [bySource, access.rules, access.grantors]
   )
 
   const chip = (value: FundersShow, label: string) => (
@@ -419,12 +426,14 @@ export function FundersTab({ view }: { view: AidView }) {
             onHighlight={onHighlight}
             renderDetail={renderDetail}
             arrowKeys
-            emptyText={
+            emptyText={(searching) =>
               show === 'no-funder'
                 ? 'Every description has a funder.'
                 : show === 'needs-group'
                   ? 'Every outside source has a group.'
-                  : 'No funders yet.'
+                  : searching
+                    ? 'No funder or description matches.'
+                    : 'No funders yet.'
             }
           />
           {!canSee && (

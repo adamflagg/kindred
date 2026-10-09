@@ -119,7 +119,6 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
         (
             Screen("Camperships", "/aid"),
             Screen("Camperships › Requests", "/aid/requests"),
-            Screen("Camperships › Grants", "/aid/grants"),
             Screen("Camperships › Money", "/aid/money"),
             Screen("Camperships › Season", "/aid/season"),
             Screen("Camperships › Reports", "/aid/reports"),
@@ -141,7 +140,7 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
         "Camperships: grantors",
         "Grantors",
         "Camperships",
-        (Screen("Camperships › Grants", "/aid/grants"),),
+        (Screen("Camperships › Money › Funders", "/aid/money/funders"),),
     ),
     Permission.FINANCIAL_AID_FUNDING_SOURCES: PermissionInfo(
         "Camperships: funding sources",

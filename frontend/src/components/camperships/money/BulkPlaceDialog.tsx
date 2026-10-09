@@ -73,7 +73,7 @@ export function BulkPlaceDialog({
       isOpen
       onClose={close}
       closeDisabled={busy}
-      title="Confirm Exact Single Matches"
+      title={`Confirm ${String(plan.lines.length)} exact single ${plan.lines.length === 1 ? 'match' : 'matches'}`}
       size="md"
       footer={
         <div className="flex justify-end gap-2">

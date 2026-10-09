@@ -4,7 +4,6 @@ import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
-import { GRANTS_LIVE_ONLY } from '../../components/camperships/grants/grantsTabs'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
 import { householdParam, MONEY_TAB_ALIASES } from '../../components/camperships/money/moneyTabs'
 import { LedgerTab } from '../../components/camperships/money/LedgerTab'
@@ -75,9 +74,7 @@ export default function AidMoneyPage() {
       />
       {slug !== 'ledger' && asOf.kind === 'past' && (
         <p className="text-muted-foreground text-sm">
-          {slug === 'grants'
-            ? GRANTS_LIVE_ONLY
-            : `This tab shows today. Money › Ledger can show ${formatLongDate(asOf.date)}.`}
+          {`This tab shows today. Money › Ledger can show ${formatLongDate(asOf.date)}.`}
         </p>
       )}
       {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}

@@ -94,7 +94,7 @@ export function LedgerFamilies({
       {
         key: 'family',
         header: 'Family',
-        width: 200,
+        width: 300,
         pinned: true,
         value: (r) => labelWords(labelOfRow(r)),
         render: (r) => (
@@ -199,7 +199,7 @@ export function LedgerFamilies({
         'level',
         'Level',
         filters.level,
-        LEDGER_LEVELS.map((l) => ({ value: l, label: LEDGER_LEVEL_WORDS[l] }))
+        LEDGER_LEVELS.map((l) => ({ value: l, label: sentenceCase(LEDGER_LEVEL_WORDS[l]) }))
       )}
     </div>
   )
@@ -231,7 +231,7 @@ export function LedgerFamilies({
               urlPrefix="ledger_"
               csvFilename={ledgerCsvName(data.year, filters, asOf)}
               csvExtra={CSV_EXTRA}
-              searchPlaceholder="Family, camper or CM id"
+              searchPlaceholder="Family, camper or CM ID"
               emptyText="No family has aid lines for these filters."
             />
             <p className="text-sm" data-testid="ledger-totals">

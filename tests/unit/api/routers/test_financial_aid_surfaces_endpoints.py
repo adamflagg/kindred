@@ -266,7 +266,7 @@ def test_the_household_search_refuses_a_query_too_short_or_too_long(query: str) 
     assert _client().get(f"/api/financial-aid/household-search/2031?q={query}").status_code == 422
 
 
-@pytest.mark.parametrize(("surface", "notes"), [("money-to-place", 4), ("money-sources", 4), ("grants", 4)])
+@pytest.mark.parametrize(("surface", "notes"), [("money-to-place", 4), ("money-sources", 4), ("grants", 5)])
 def test_slice_3s_surfaces_serve_their_numbered_notes(surface: str, notes: int) -> None:
     with patch("api.routers.financial_aid.camp_label", return_value="Camp Fictional"):
         response = _client().get(f"/api/financial-aid/definitions?surface={surface}")

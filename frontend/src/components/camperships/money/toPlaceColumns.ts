@@ -7,6 +7,7 @@ import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
 import type { AidColumn, AidCsvExtra, AidGrouping } from '../kit/AidTable'
 import { moneyCsv } from '../kit/money'
 import {
+  campAidGroupWords,
   candidateDetail,
   candidateLabel,
   CONFIRM_DOES,
@@ -62,10 +63,21 @@ export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> 
  * exported row joins back to CampMinder and keeps every figure the read sent.
  */
 export const TO_PLACE_CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidToPlaceLine>> = [
-  { header: 'Household', value: (line) => String(line.household_cm_id) },
+  { header: 'Household CM id', value: (line) => String(line.household_cm_id) },
   { header: 'Line', value: (line) => String(line.transaction_cm_id) },
   { header: 'Still not placed', value: (line) => moneyCsv(line.unplaced) },
 ]
+
+/** The ids and Still not placed, then Group: the reason heading under "Camp aid" (the grant lines say theirs). */
+export function toPlaceCsvExtra(
+  groups: ApiAidToPlace['groups']
+): ReadonlyArray<AidCsvExtra<ApiAidToPlaceLine>> {
+  const labels = new Map(groups.map((g) => [g.reason, g.label] as const))
+  return [
+    ...TO_PLACE_CSV_EXTRA,
+    { header: 'Group', value: (line) => campAidGroupWords(labels.get(line.reason) ?? line.reason) },
+  ]
+}
 
 /** Grouped by the server's reasons, in its words and order (§8.1: "grouped by reason"). */
 export function reasonGrouping(

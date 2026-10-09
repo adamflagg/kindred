@@ -205,7 +205,7 @@ describe('the grouped list (mock q2)', () => {
     expect(within(rowByKey('funder:grantor_e')).getByText('0')).toBeInTheDocument()
   })
 
-  it('draws each description under its funder with the registry columns, and "no" for a false yes/no', async () => {
+  it('draws each description under its funder with the registry columns, and "—" for a false yes/no (final audit O9)', async () => {
     renderTab()
     const row = (await screen.findByText('Grantor A grant')).closest('tr')
     if (row === null) throw new Error('no row')
@@ -214,8 +214,8 @@ describe('the grouped list (mock q2)', () => {
     expect(within(row).getByText('other outside')).toBeInTheDocument()
     expect(within(row).getByText('Incentive')).toBeInTheDocument()
     expect(within(row).getByText('yes')).toBeInTheDocument()
-    expect(within(row).getByText('no')).toBeInTheDocument()
-    expect(within(row).queryByText('—')).toBeNull()
+    expect(within(row).getByText('—')).toBeInTheDocument()
+    expect(within(row).queryByText('no')).toBeNull()
     expect(within(row).getByText('61')).toBeInTheDocument()
     expect(within(row).getByText('$98,400')).toBeInTheDocument()
     const fresh = rowByKey(REG_GRANTOR_E_NEW.id)
@@ -359,6 +359,16 @@ describe('the registrar (view and casework): read only', () => {
     expect(within(panel('source')).queryByRole('button')).toBeNull()
   })
 
+  it('the No funder yet header gives a read-only user no instruction they cannot act on (final audit O10)', async () => {
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    const header = rowByKey('group:none')
+    expect(
+      within(header).getByText('Descriptions no funder claims yet · 2 descriptions')
+    ).toBeInTheDocument()
+    expect(within(header).queryByText(/Pick each description/)).toBeNull()
+  })
+
   it('opens a funder with no buttons, no New Funder…, and says it is read only', async () => {
     renderTab()
     const panelA = await openFunder('grantor_a')
@@ -366,6 +376,24 @@ describe('the registrar (view and casework): read only', () => {
     expect(screen.queryByRole('button', { name: 'New Funder…' })).toBeNull()
     expect(screen.getByText(/^Read only for you/)).toBeInTheDocument()
     expect(screen.queryByText(/^Totals only/)).toBeNull()
+  })
+})
+
+describe('a search that matches nothing (final audit E8)', () => {
+  it('says nothing matches, not that there are no funders', async () => {
+    renderTab()
+    await screen.findByText('Grantor A grant')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'zzzzqqq')
+    expect(await screen.findByText('No funder or description matches.')).toBeInTheDocument()
+    expect(screen.queryByText('No funders yet.')).toBeNull()
+  })
+
+  it('keeps "No funders yet." when nothing is typed and there are no rows', async () => {
+    sourceReads = [{ ...SOURCES_2027, sources: [] }]
+    grantorReads = [{ ...GRANTORS_ALL, grantors: [] }]
+    renderTab()
+    expect(await screen.findByText('No funders yet.')).toBeInTheDocument()
+    expect(screen.queryByText('No funder or description matches.')).toBeNull()
   })
 })
 
@@ -541,7 +569,8 @@ describe('finance (view, rules, grantors)', () => {
       expect(within(form).getByText('New funder')).toBeInTheDocument()
       expect(within(form).getByText(/mapped to a funder on their own row\./)).toBeInTheDocument()
       await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
-      expect(within(form).getByRole('textbox', { name: 'Key' })).toHaveValue('grantor_g')
+      // Final audit E7: the key is internal; the form draws no Key field and it still follows the name.
+      expect(within(form).queryByRole('textbox', { name: 'Key' })).toBeNull()
       await userEvent.click(within(form).getByRole('checkbox', { name: 'Full coverage' }))
       await userEvent.click(
         within(form).getByRole('checkbox', { name: 'Pays the rest after camp aid' })

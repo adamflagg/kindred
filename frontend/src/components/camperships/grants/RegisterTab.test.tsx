@@ -350,6 +350,10 @@ describe('Grants › Register (§8.2)', () => {
     // 10,200 counted by the server + 900 the dashboard counts for the family that never applied.
     expect(await screen.findByText('9 grants · 3 not counted')).toBeInTheDocument()
     expect(screen.getByText('$11,100')).toBeInTheDocument()
+    // Final audit E15: the footer says how many such lines the total counts, and their sum.
+    expect(
+      screen.getByText("counts 1 household-level line of families who didn't apply ($900)")
+    ).toBeInTheDocument()
   })
 
   it('puts "Aid request it offsets" just before Amount, and names the program from program_label', async () => {
@@ -360,7 +364,8 @@ describe('Grants › Register (§8.2)', () => {
       .map((h) => h.textContent.replace(/[^A-Za-z ]/g, '').trim())
     expect(headers.indexOf('Aid request it offsets')).toBe(headers.indexOf('Amount') - 1)
     expect(screen.getAllByText('Summer Camp').length).toBeGreaterThan(0)
-    expect(screen.getByText('Not placed')).toBeInTheDocument()
+    // Final audit E18: a line with no program reads "—" (the Camper cell says household level / needs a camper).
+    expect(screen.queryByText('Not placed')).toBeNull()
   })
 
   it('fits a 1440 screen: the columns sum to no more than the 1214px inside the card border', async () => {
@@ -376,15 +381,34 @@ describe('Grants › Register (§8.2)', () => {
     expect(total).toBeLessThanOrEqual(1214)
   })
 
-  it('gives the pill columns room for their whole pills: "Committed · not yet in CampMinder", "Not counted"', async () => {
+  it('gives the names room (final audit O6): Family and Grantor are wide, Where it stands is narrow, Cancelled stays', async () => {
     renderTab()
     await screen.findByTestId('register-chips')
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent.trim())
     const cols = Array.from(document.querySelectorAll<HTMLElement>('table colgroup col'))
     const offset = cols.length - headers.length
-    const standing = cols[headers.findIndex((h) => h.startsWith('Where it stands')) + offset]
-    expect(parseFloat(standing?.style.width ?? '0')).toBeGreaterThanOrEqual(228)
-    // and "Counted" for the whole "Not counted" pill (cut off at 100px once the table filled its card).
+    const width = (name: string) =>
+      parseFloat(cols[headers.findIndex((h) => h.startsWith(name)) + offset]?.style.width ?? '0')
+    expect(width('Family')).toBeGreaterThanOrEqual(180)
+    expect(width('Grantor')).toBeGreaterThanOrEqual(170)
+    expect(width('Where it stands')).toBeLessThanOrEqual(160)
+    expect(headers.some((h) => h.startsWith('Cancelled'))).toBe(true)
+  })
+
+  it('lets the committed note under Where it stands wrap instead of clipping (final audit)', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    const note = (await screen.findAllByText(/^committed .* · entered by hand$/))[0]
+    expect(note).toHaveClass('whitespace-normal')
+  })
+
+  it('keeps room for the "Not counted" pill', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent.trim())
+    const cols = Array.from(document.querySelectorAll<HTMLElement>('table colgroup col'))
+    const offset = cols.length - headers.length
+    // "Counted" for the whole "Not counted" pill (cut off at 100px once the table filled its card).
     const counted = cols[headers.findIndex((h) => h.startsWith('Counted')) + offset]
     expect(parseFloat(counted?.style.width ?? '0')).toBeGreaterThanOrEqual(110)
   })

@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { ApiAidGrants } from '../../../types/api-types'
+import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
 import { GrantLinesGroup } from './GrantLinesGroup'
 
@@ -331,11 +332,38 @@ describe('To place › Outside grant posted to the family (M5)', () => {
       await screen.findByRole('button', { name: 'Confirm the 1 Single, Exact Suggestion…' })
     )
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/Garcia: \$1,500 · Grantor B/)).toBeInTheDocument()
+    // Final audit E5: the dialog names the family by its household label ("Pat Garcia"), as every table does.
+    expect(within(dialog).getByText(/^Pat Garcia: \$1,500 · Grantor B/)).toBeInTheDocument()
     expect(within(dialog).queryByText(/Chen:/)).toBeNull()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 1' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(JSON.parse(String(writes()[0]?.body)).placements).toHaveLength(1)
+  })
+
+  it('bulk: names a family with the same tie-break every table shows', async () => {
+    read = {
+      ...TWO,
+      needs_camper: TWO.needs_camper.map((n) =>
+        n.grant.household_cm_id === 1000002
+          ? { ...n, grant: { ...n.grant, label_tiebreak: '#1000002' } }
+          : { ...n, grant: { ...n.grant, label: 'Mei Chen', label_tiebreak: 'Oakland, CA' } }
+      ),
+    }
+    renderGroup()
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Confirm the 1 Single, Exact Suggestion…' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/^Pat Garcia · #1000002: \$1,500/)).toBeInTheDocument()
+  })
+
+  it('bulk: the confirm button is the same secondary button the camp-aid group draws (final audit E6)', async () => {
+    read = TWO
+    renderGroup()
+    const button = await screen.findByRole('button', {
+      name: 'Confirm the 1 Single, Exact Suggestion…',
+    })
+    expect(button).toHaveClass(...BUTTON_SECONDARY.split(' '))
   })
 
   it('bulk: rows checked by hand are confirmed together, and a line that is not single is left out by name', async () => {

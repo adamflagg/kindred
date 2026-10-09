@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 
 import { Permission } from '../../../constants/permissions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
+import { useAidSessionNames } from '../../../hooks/camperships/useAidSessionNames'
 import { useAidToPlace } from '../../../hooks/camperships/useAidToPlace'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
@@ -22,7 +23,13 @@ import { ReclassifiedLines } from './ReclassifiedLines'
 import { lineKey } from './toPlaceColumns'
 import { ToPlaceOpenRow, type LineAccess } from './ToPlaceOpenRow'
 import { ToPlaceTable } from './ToPlaceTable'
-import { allLines, grantLinesFor, openLineWords, toPlaceCsvName } from './toPlaceModel'
+import {
+  allLines,
+  grantCsvRows,
+  grantLinesFor,
+  openLineWords,
+  toPlaceCsvName,
+} from './toPlaceModel'
 import { DONE_NOTE } from './toPlaceStyles'
 import { useInFlightLines, type InFlightLines } from './useInFlightLines'
 
@@ -65,6 +72,8 @@ function ToPlaceBody({
     () => grantLinesFor(grants.data?.needs_camper ?? [], householdCmId),
     [grants.data, householdCmId]
   )
+  const sessions = useAidSessionNames(data.year)
+  const grantCsv = useMemo(() => grantCsvRows(grantLines, sessions), [grantLines, sessions])
   const every = useMemo(() => allLines(data), [data])
   // Bulk (§4.10; P-6): checks persist across a search (owner ruling 2026-10-02); they are line ids,
   // and a line the read no longer holds open (placed elsewhere) drops out of the plan.
@@ -161,6 +170,7 @@ function ToPlaceBody({
         data={data}
         view={view}
         csvFilename={toPlaceCsvName(data.year, householdCmId)}
+        csvAppend={grantCsv}
         renderRow={renderRow}
         selected={access.casework ? selected : undefined}
         onSelectedChange={access.casework ? setSelected : undefined}

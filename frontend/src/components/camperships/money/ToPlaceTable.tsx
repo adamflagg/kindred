@@ -12,7 +12,7 @@ import {
   lineKey,
   lineSearch,
   reasonGrouping,
-  TO_PLACE_CSV_EXTRA,
+  toPlaceCsvExtra,
   TO_PLACE_FAMILY_WIDTH,
   TO_PLACE_LINE_WIDTH,
   TO_PLACE_TEXT_COLUMNS,
@@ -73,6 +73,7 @@ export function ToPlaceTable({
   data,
   view,
   csvFilename,
+  csvAppend,
   renderRow,
   selected,
   onSelectedChange,
@@ -81,6 +82,8 @@ export function ToPlaceTable({
   data: ApiAidToPlace
   view: AidView
   csvFilename: string
+  /** The grant lines as CSV rows (toPlaceModel.grantCsvRows), so the one file covers the whole tab. */
+  csvAppend?: ReadonlyArray<readonly string[]> | undefined
   renderRow: (line: ApiAidToPlaceLine) => ReactNode
   selected?: ReadonlySet<string> | undefined
   onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
@@ -89,6 +92,7 @@ export function ToPlaceTable({
   const rows = useMemo(() => data.groups.flatMap((g) => g.lines), [data.groups])
   const columns = useMemo(() => [familyColumn(view), LINE, ...TO_PLACE_TEXT_COLUMNS], [view])
   const groupings = useMemo(() => reasonGrouping(data.groups), [data.groups])
+  const csvExtra = useMemo(() => toPlaceCsvExtra(data.groups), [data.groups])
   return (
     <AidTable
       rows={rows}
@@ -104,7 +108,8 @@ export function ToPlaceTable({
       selected={selected}
       onSelectedChange={onSelectedChange}
       onMatchingChange={onMatchingChange}
-      csvExtra={TO_PLACE_CSV_EXTRA}
+      csvExtra={csvExtra}
+      csvAppend={csvAppend}
       emptyText="Nothing to place: every camp-aid line sits on a request."
     />
   )

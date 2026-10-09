@@ -5,7 +5,9 @@ import { useFreshAidGrants } from '../../../hooks/camperships/useAidGrants'
 import { useAidPlaceGrants } from '../../../hooks/camperships/useAidGrantWrites'
 import { queryKeys } from '../../../utils/queryKeys'
 import { Modal } from '../../ui/Modal'
+import { labelWords } from '../household/householdModel'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../kit/csType'
+import { familyLabel } from '../kit/familyLabel'
 import { refusalWords } from '../money/refusal'
 import { grantLineWords, MAX_GRANT_PLACEMENTS, planWords, type GrantPlan } from './needsModel'
 import { placedGrantWords, placementFor, stillNeedsCamper, suggestionCell } from './placeModel'
@@ -108,14 +110,14 @@ export function BulkGrantDialog({
         <ul className={`${CS_SMALL} max-h-48 overflow-y-auto`}>
           {plan.lines.map(({ need, hidden }) => (
             <li key={need.grant.transaction_cm_id}>
-              {`${need.grant.family_name}: ${grantLineWords(need)} → ${suggestionCell(need, sessions)}`}
+              {`${labelWords(familyLabel(need.grant, need.grant.family_name))}: ${grantLineWords(need)} → ${suggestionCell(need, sessions)}`}
               {hidden ? ' (hidden by the search)' : ''}
             </li>
           ))}
         </ul>
         {plan.leftOut.length > 0 && (
           <p className={CS_AMBER_NOTE}>
-            {`Left out, confirm one at a time: ${plan.leftOut.map((x) => x.grant.family_name).join(', ')} (not a single, exact suggestion).`}
+            {`Left out, confirm one at a time: ${plan.leftOut.map((x) => labelWords(familyLabel(x.grant, x.grant.family_name))).join(', ')} (not a single, exact suggestion).`}
           </p>
         )}
         {plan.gone > 0 && (
