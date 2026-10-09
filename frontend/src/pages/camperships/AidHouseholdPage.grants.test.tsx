@@ -202,23 +202,23 @@ describe("the household page's grant buttons (rulings:340)", () => {
     await openGrantsTab()
     await userEvent.click(screen.getByRole('button', { name: 'Add a Commitment…' }))
     const form = screen.getByTestId('commitment-form')
-    const camper = within(form).getByRole('combobox', { name: 'Camper' })
+    // Final UX §24 (money-grants.html): the form's selects are the white picker.
+    await userEvent.click(
+      within(form).getByRole('button', {
+        name: 'Camper: — pick —',
+      })
+    )
     // The page's campers only, not the season's.
-    expect(
-      within(camper)
-        .getAllByRole('option')
-        .map((o) => o.textContent)
-    ).toEqual([
+    expect(screen.getAllByRole('option').map((o) => o.textContent.replace('✓', ''))).toEqual([
       '— pick —',
       'Emma Johnson · Session 2 · The Johnson Family',
       'Samuel Johnson · Session 3 · The Johnson Family',
     ])
-    await within(form).findByRole('option', { name: 'Grantor C' })
-    await userEvent.selectOptions(
-      within(form).getByRole('combobox', { name: 'Grantor' }),
-      'Grantor C'
+    await userEvent.click(
+      screen.getByRole('option', { name: 'Samuel Johnson · Session 3 · The Johnson Family' })
     )
-    await userEvent.selectOptions(camper, 'Samuel Johnson · Session 3 · The Johnson Family')
+    await userEvent.click(within(form).getByRole('button', { name: 'Grantor: — pick —' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Grantor C' }))
     await userEvent.type(within(form).getByRole('textbox', { name: 'Amount' }), '500')
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))

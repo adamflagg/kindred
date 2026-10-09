@@ -8,15 +8,11 @@ import {
   useAidSaveCommitment,
 } from '../../../hooks/camperships/useAidGrantWrites'
 import type { ApiAidGrantRow } from '../../../types/api-types'
-import { EditorBox, EditorColumns, FormActions } from '../household/ReasonForm'
-import {
-  HH_AMBER_NOTE,
-  HH_EDITOR_LABEL,
-  HH_EDITOR_MONEY,
-  HH_EDITOR_PAIR,
-  HH_EDITOR_TEXT,
-} from '../household/householdStyles'
-import { CS_SELECT } from '../kit/csType'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_DATE_FIELD, CS_FIELD } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import { Effects } from '../kit/Effects'
+import type { AidPickerOption } from '../kit/pickerWords'
 import { campToday } from '../kit/dates'
 import {
   movedFields,
@@ -134,7 +130,7 @@ export function CommitmentForm({
     try {
       if (initial === undefined) {
         await create.mutateAsync({ year, body: read.body })
-        onDone('Commitment recorded. It counts for the calculator from now.')
+        onDone('Commitment recorded · counts for the calculator from now')
         return
       }
       let latest: ApiAidGrantRow | undefined
@@ -161,7 +157,7 @@ export function CommitmentForm({
         return
       }
       await save.mutateAsync({ year, commitmentId: initial.commitment_id, body: read.body })
-      onDone('Commitment saved.')
+      onDone('Commitment saved')
     } catch (caught) {
       setProblem(refusalWords(caught))
     } finally {
@@ -170,123 +166,142 @@ export function CommitmentForm({
     }
   }
 
+  const grantorOptions: Array<AidPickerOption<string>> = [
+    { value: '', label: '— pick —' },
+    ...(retired === undefined
+      ? []
+      : [{ value: retired.key, label: `${retired.name} (retired)`, disabled: true }]),
+    ...inUse.map((g) => ({ value: g.key, label: g.name })),
+  ]
+  const camperOptions: Array<AidPickerOption<string>> = [
+    {
+      value: '',
+      label: grid.isLoading && household === undefined ? 'Loading the campers…' : '— pick —',
+    },
+    ...choices.map((c) => ({ value: c.key, label: c.label })),
+  ]
+
   return (
     <div data-aid-editor="" data-testid="commitment-form">
-      <EditorBox head={initial === undefined ? 'Record a commitment' : 'Edit the commitment'}>
-        <form
-          onSubmit={(event) => {
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !inFlight.current) {
             event.preventDefault()
-            void submit()
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && !inFlight.current) {
-              event.preventDefault()
-              onCancel()
-            }
-          }}
+            onCancel()
+          }
+        }}
+      >
+        {/* §24 (money-grants.html .cf-ed): wide and short. The five fields in a label · field grid, what
+            Save does in the right column, Save and Cancel on one row. */}
+        <EditorForm
+          title={initial === undefined ? 'Record a commitment' : 'Edit the commitment'}
+          side={
+            <Effects
+              items={[
+                {
+                  sym: 'ok',
+                  text: (
+                    <>
+                      <b>Save</b> → counts for the calculator from now
+                    </>
+                  ),
+                },
+                { sym: 'ok', text: 'An unposted round re-prices' },
+                {
+                  sym: 'hand',
+                  text: 'A posted amount stands',
+                  then: '→ It leaves "committed" when its CampMinder line arrives',
+                },
+              ]}
+            />
+          }
+          actions={
+            <EditorActions>
+              <button type="submit" className={CS_BTN} disabled={busy || waiting}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
+                Cancel
+              </button>
+              {waiting && problem === null && (
+                <span className={CS_AMBER_NOTE}>Reading the latest…</span>
+              )}
+              {retired !== undefined && problem === null && (
+                <span className={CS_AMBER_NOTE}>
+                  {`${retired.name} is retired: pick a grantor in use, or Unretire It in Money › Funders.`}
+                </span>
+              )}
+              {problem !== null && <span className={CS_AMBER_NOTE}>{problem}</span>}
+            </EditorActions>
+          }
         >
-          <EditorColumns
-            side={
-              <p>
-                A grant committed but not yet posted in CampMinder. It counts for the calculator
-                from now: an unposted round re-prices, and a posted amount stands. It leaves
-                &quot;committed&quot; when its CampMinder line arrives.
-              </p>
-            }
-          >
-            <div className={HH_EDITOR_PAIR}>
-              <label className={HH_EDITOR_LABEL}>
-                Grantor
-                <select
-                  aria-label="Grantor"
-                  className={CS_SELECT}
+          <div className="space-y-1.5">
+            <EditorGrid columns={4}>
+              <EditorField label="Grantor">
+                <AidPicker
+                  label="Grantor"
+                  size="field"
                   disabled={waiting}
                   value={draft.grantorKey}
-                  onChange={(event) => set({ grantorKey: event.target.value })}
-                >
-                  <option value="">— pick —</option>
-                  {retired !== undefined && (
-                    <option value={retired.key} disabled>
-                      {`${retired.name} (retired)`}
-                    </option>
-                  )}
-                  {inUse.map((g) => (
-                    <option key={g.key} value={g.key}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={HH_EDITOR_LABEL}>
-                Camper
-                <select
-                  aria-label="Camper"
-                  className={CS_SELECT}
+                  options={grantorOptions}
+                  onChange={(grantorKey) => set({ grantorKey })}
+                  className="w-full max-w-60 [&>button]:w-full"
+                />
+              </EditorField>
+              <EditorField label="Camper">
+                <AidPicker
+                  label="Camper"
+                  size="field"
                   disabled={waiting}
                   value={draft.camperKey}
-                  onChange={(event) => set({ camperKey: event.target.value })}
-                >
-                  <option value="">{grid.isLoading ? 'Loading the campers…' : '— pick —'}</option>
-                  {choices.map((c) => (
-                    <option key={c.key} value={c.key}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className={HH_EDITOR_PAIR}>
-              <label className={HH_EDITOR_LABEL}>
-                Amount
+                  options={camperOptions}
+                  onChange={(camperKey) => set({ camperKey })}
+                  className="w-full max-w-72 [&>button]:w-full"
+                />
+              </EditorField>
+              <EditorField label="Amount">
                 <input
                   aria-label="Amount"
                   type="text"
                   inputMode="decimal"
-                  className={HH_EDITOR_MONEY}
+                  className={`${CS_FIELD} w-28 text-right tabular-nums`}
                   disabled={waiting}
                   value={draft.amount}
                   onChange={(event) => set({ amount: event.target.value })}
                 />
-              </label>
-              <label className={HH_EDITOR_LABEL}>
-                Committed on
+              </EditorField>
+              <EditorField label="Committed on">
                 <input
                   aria-label="Committed on"
                   type="date"
-                  className={HH_EDITOR_TEXT}
+                  className={CS_DATE_FIELD}
                   disabled={waiting}
                   value={draft.committedOn}
                   onChange={(event) => set({ committedOn: event.target.value })}
                 />
-              </label>
-            </div>
-            <label className={HH_EDITOR_LABEL}>
-              Note (optional)
-              <input
-                aria-label="Note"
-                type="text"
-                maxLength={2000}
-                className={HH_EDITOR_TEXT}
-                placeholder="e.g. letter from the grantor, Apr 2"
-                disabled={waiting}
-                value={draft.note}
-                onChange={(event) => set({ note: event.target.value })}
-              />
-            </label>
-          </EditorColumns>
-          <FormActions submitLabel={busy ? 'Saving…' : 'Save'} busy={busy} onCancel={onCancel}>
-            {waiting && problem === null && (
-              <span className={HH_AMBER_NOTE}>Reading the latest…</span>
-            )}
-            {retired !== undefined && problem === null && (
-              <span className={HH_AMBER_NOTE}>
-                {`${retired.name} is retired: pick a grantor in use, or Unretire It in Money › Funders.`}
-              </span>
-            )}
-            {problem !== null && <span className={HH_AMBER_NOTE}>{problem}</span>}
-          </FormActions>
-        </form>
-      </EditorBox>
+              </EditorField>
+            </EditorGrid>
+            <EditorGrid columns={2}>
+              <EditorField label="Note (optional)">
+                <input
+                  aria-label="Note"
+                  type="text"
+                  maxLength={2000}
+                  className={`${CS_FIELD} w-full`}
+                  placeholder="e.g. letter from the grantor, Apr 2"
+                  disabled={waiting}
+                  value={draft.note}
+                  onChange={(event) => set({ note: event.target.value })}
+                />
+              </EditorField>
+            </EditorGrid>
+          </div>
+        </EditorForm>
+      </form>
     </div>
   )
 }

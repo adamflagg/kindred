@@ -1,29 +1,73 @@
 /**
- * The Register's filters (spec §8.2; ruling G; grants-v2.html): the chips, the grantor and the program,
+ * The Register's filters (spec §8.2; ruling G; money-grants.html): the Show switcher, the grantor and the program,
  * all in the URL (`?show=`, `?grantor=`, `?program=`). Pure, and apart from the table on purpose: the
  * owner's 10-06 direction reworks these chips toward the Requests tab's waterfall and outliers (a mock
  * comes first), and that rework replaces this module, not the table.
  */
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
-import { didntApply, isAfterOffer, isHouseholdLevel } from './registerModel'
+import { countsInTotal, didntApply, isAfterOffer, isHouseholdLevel } from './registerModel'
 
 const OTHER_PROGRAM = 'Other program'
 
 export type RegisterShow =
-  'all' | 'committed' | 'household' | 'didnt-apply' | 'cancelled' | 'after-offer'
+  | 'all'
+  | 'in-cm'
+  | 'committed'
+  | 'household'
+  | 'didnt-apply'
+  | 'cancelled'
+  | 'after-offer'
+  | 'not-counted'
 
-/** The chips, in the mock's order, then ruling G's "After the offer". Sentence case: chips. */
+/**
+ * The Show switcher (design-language §18; money-grants.html), in the mock's order: All · In CM ·
+ * Committed · not in CM · Household level · Didn't apply · Cancelled · After the offer (ruling G) ·
+ * Not counted (★17). Each carries the words behind it as its title.
+ */
 export const REGISTER_SHOWS: ReadonlyArray<{
   readonly value: RegisterShow
   readonly label: string
+  readonly title: string
 }> = [
-  { value: 'all', label: 'All' },
-  { value: 'committed', label: 'Committed, not yet in CampMinder' },
-  { value: 'household', label: 'Household level' },
-  { value: 'didnt-apply', label: "Didn't apply" },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'after-offer', label: 'After the offer' },
+  {
+    value: 'all',
+    label: 'All',
+    title: 'Every outside grant in CampMinder this season, plus commitments entered by hand',
+  },
+  { value: 'in-cm', label: 'In CM', title: 'In CampMinder: a ledger line carries it' },
+  {
+    value: 'committed',
+    label: 'Committed · not in CM',
+    title:
+      'Committed by hand, not yet posted in CampMinder. Post it there: the next ledger sync matches it and it leaves this choice',
+  },
+  {
+    value: 'household',
+    label: 'Household level',
+    title: "A line on no camper in a household that isn't a household program",
+  },
+  {
+    value: 'didnt-apply',
+    label: "Didn't apply",
+    title: 'A family with no aid request this season: the grant counts and offsets nothing',
+  },
+  {
+    value: 'cancelled',
+    label: 'Cancelled',
+    title: 'The camper cancelled (from CampMinder enrollment)',
+  },
+  {
+    value: 'after-offer',
+    label: 'After the offer',
+    title: 'Known after Round 1 posted: extra for the family',
+  },
+  {
+    value: 'not-counted',
+    label: 'Not counted',
+    title:
+      'Left out of the total: a reversed line, a line waiting for its camper, or a commitment whose camper cancelled',
+  },
 ]
 
 export function matchesShow(
@@ -34,6 +78,8 @@ export function matchesShow(
   switch (show) {
     case 'all':
       return true
+    case 'in-cm':
+      return row.kind === 'ledger'
     case 'committed':
       return row.kind === 'commitment'
     case 'household':
@@ -44,6 +90,8 @@ export function matchesShow(
       return row.cancelled
     case 'after-offer':
       return isAfterOffer(row)
+    case 'not-counted':
+      return !countsInTotal(row, needsCamper)
   }
 }
 
@@ -94,11 +142,13 @@ export function showCounts(
     picked.filter((row) => matchesShow(row, show, needsCamper)).length
   return {
     all: picked.length,
+    'in-cm': count('in-cm'),
     committed: count('committed'),
     household: count('household'),
     'didnt-apply': count('didnt-apply'),
     cancelled: count('cancelled'),
     'after-offer': count('after-offer'),
+    'not-counted': count('not-counted'),
   }
 }
 

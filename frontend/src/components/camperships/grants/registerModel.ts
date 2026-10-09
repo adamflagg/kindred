@@ -12,6 +12,7 @@ import type { HouseholdLabel } from '../household/householdModel'
 import { familyLabel } from '../kit/familyLabel'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney, toCents } from '../kit/money'
+import { aidSessionName } from '../kit/sessionShort'
 
 /** A Register row's key: a ledger line by its transaction, a commitment by its id. */
 export const grantKey = (row: ApiAidGrantRow) =>
@@ -139,9 +140,22 @@ export function shareWords(share: ApiAidRequestShare): string {
 }
 
 /**
- * "Aid request it offsets": each share's round, "didn't apply" (a counted row on no request),
- * "applied · no camper yet" (a line in the read's needs-a-camper set), else "—" (a reversed line or a
- * cancelled camper's commitment offsets nothing).
+ * A row's session, short for its one-line cell and full for the title (design-language §14; the shared
+ * `aidSessionName`: FC1 for Family Camp, the short form for the rest). "" when the row has none.
+ */
+export function sessionWords(row: ApiAidGrantRow): { short: string; full: string } {
+  return { short: aidSessionName(row.session_name, undefined), full: row.session_name }
+}
+
+/** "Session 2 · " in front of a share's words, or nothing when the row has no session. */
+const withSession = (session: string, words: string) =>
+  session === '' ? words : `${session} · ${words}`
+
+/**
+ * "Aid request it offsets" (money-grants.html): the camper's session, then each share's round
+ * ("Session 2 · R1 $1,420"), "didn't apply" (a counted row on no request), "applied · no camper yet" (a
+ * line in the read's needs-a-camper set), else "—" (a reversed line or a cancelled camper's commitment
+ * offsets nothing). The session is the row's own: the read names none per share.
  */
 export function offsetWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
   if (didntApply(row, needsCamper)) return "didn't apply"
@@ -150,7 +164,28 @@ export function offsetWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number
       ? 'applied · no camper yet'
       : '—'
   }
-  return row.requests.map(shareWords).join(' · ')
+  return withSession(sessionWords(row).short, row.requests.map(shareWords).join(' · '))
+}
+
+/** Why a row offsets nothing, as the cell's title (the opened row says the same in a sentence). */
+export function offsetTitle(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+  if (didntApply(row, needsCamper)) {
+    return 'The family has no aid request this season: the grant counts, and offsets nothing'
+  }
+  if (row.is_reversed) return 'A reversed line offsets nothing'
+  if (row.kind === 'commitment' && row.cancelled) return 'The camper cancelled: it offsets nothing'
+  if (!row.counts) {
+    return needsCamper.has(row.transaction_cm_id)
+      ? 'Applied · waiting for its camper'
+      : 'It offsets nothing'
+  }
+  const session = sessionWords(row).full
+  return row.requests
+    .map(
+      (share) =>
+        `${withSession(session, shareWords(share))} · ${formatMoney(share.amount)} of the grant`
+    )
+    .join(' · ')
 }
 
 /**
@@ -186,26 +221,125 @@ export function footerWords(
   return notCounted === 0 ? grants : `${grants} · ${String(notCounted)} not counted`
 }
 
+/** The never-applied lines the total counts: how many, and what they add up to. */
+function neverApplied(rows: readonly ApiAidGrantRow[], needsCamper: ReadonlySet<number>) {
+  const lines = rows.filter((r) => !r.counts && didntApply(r, needsCamper))
+  const sum = lines.reduce((cents, r) => cents + toCents(r.amount), 0) / 100
+  return { count: lines.length, sum }
+}
+
 /**
- * The footer's note on the "Aid request it offsets" column (grants-v2): how many household-level
- * lines of families who didn't apply the total counts, and what they add up to. "" when none.
+ * The footer note on the "Aid request it offsets" column, in full (money-grants.html): how many
+ * household-level lines of families who didn't apply the total counts, and what they add up to. It is
+ * the short note's title. "" when none.
  */
 export function neverAppliedNote(
   rows: readonly ApiAidGrantRow[],
   needsCamper: ReadonlySet<number>
 ): string {
-  const lines = rows.filter((r) => !r.counts && didntApply(r, needsCamper))
-  if (lines.length === 0) return ''
-  const sum = lines.reduce((cents, r) => cents + toCents(r.amount), 0) / 100
-  return `counts ${String(lines.length)} household-level ${lines.length === 1 ? 'line' : 'lines'} of families who didn't apply (${formatMoney(sum)})`
+  const { count, sum } = neverApplied(rows, needsCamper)
+  if (count === 0) return ''
+  return `The total counts ${String(count)} household-level ${count === 1 ? 'line' : 'lines'} of families who didn't apply (${formatMoney(sum)})`
+}
+
+/** The same note short enough for the column's own footer cell (design-language §10). "" when none. */
+export function neverAppliedShort(
+  rows: readonly ApiAidGrantRow[],
+  needsCamper: ReadonlySet<number>
+): string {
+  const { count, sum } = neverApplied(rows, needsCamper)
+  return count === 0 ? '' : `incl. ${formatMoney(sum)} didn't apply`
+}
+
+/** Why a line is left out of the total, in the mock's words (★16): the amount's title. */
+export function notCountedWhy(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+  if (countsInTotal(row, needsCamper)) return ''
+  if (row.is_reversed) return 'reversed'
+  if (row.kind === 'commitment' && row.cancelled) return 'a commitment whose camper cancelled'
+  return 'waiting for its camper'
 }
 
 /**
- * The sentence under the table. ⚠ Number meaning (owner, spec §8.2): a household-level line of a
- * family that didn't apply counts; the owner confirms this before Money merges.
+ * The footer label's title: every row shown, and the lines left out with the reasons
+ * ("9 grants shown · 3 not counted (1 reversed, 1 waiting for its camper, ...)").
  */
-export const REGISTER_TOTAL_NOTE =
-  "A reversed line, a line waiting for its camper and a commitment whose camper cancelled show but stay out of the total; a posted grant counts until CampMinder reverses it, and so does a household-level line of a family that didn't apply and stays at household level. Outside grants are outside the camp's budget: never in Remaining."
+export function footerTitleWords(
+  rows: readonly ApiAidGrantRow[],
+  needsCamper: ReadonlySet<number>
+): string {
+  const shown = `${String(rows.length)} ${rows.length === 1 ? 'grant' : 'grants'} shown`
+  // The mock's order, whatever order the rows come in.
+  const order = ['reversed', 'waiting for its camper', 'a commitment whose camper cancelled']
+  const parts = order
+    .map(
+      (reason) =>
+        [reason, rows.filter((r) => notCountedWhy(r, needsCamper) === reason).length] as const
+    )
+    .filter(([, n]) => n > 0)
+  if (parts.length === 0) return shown
+  const total = parts.reduce((sum, [, n]) => sum + n, 0)
+  return `${shown} · ${String(total)} not counted (${parts.map(([reason, n]) => `${String(n)} ${reason}`).join(', ')})`
+}
+
+/** The chip of a commitment: one line, the details in `committedTitle` (★18). */
+export const COMMITTED_CHIP = 'Committed · not in CM'
+
+/** A commitment's chip title: when, by whom, and that CampMinder doesn't have it yet. */
+export function committedTitle(row: ApiAidGrantRow): string {
+  const on =
+    row.committed_on === undefined || row.committed_on === '' ? row.recorded_on : row.committed_on
+  return `Committed ${formatShortDate(on)} · entered by hand · not yet posted in CampMinder`
+}
+
+/** A posted line's cell words (★18): "in CM · Mar 12", plus "· reversed Apr 1" on a reversed line. */
+export function cmWords(row: ApiAidGrantRow): string {
+  const posted = row.recorded_on === '' ? 'in CM' : `in CM · ${formatShortDate(row.recorded_on)}`
+  if (!row.is_reversed) return posted
+  return `${posted} · reversed${row.reversal_date === '' ? '' : ` ${formatShortDate(row.reversal_date)}`}`
+}
+
+/** A posted line's title: the long words, with what the cell leaves out (fulfils, after the offer). */
+export function postedTitle(row: ApiAidGrantRow): string {
+  const posted =
+    row.recorded_on === ''
+      ? 'Posted in CampMinder'
+      : `Posted in CampMinder ${formatShortDate(row.recorded_on)}`
+  if (row.is_reversed) {
+    return `${posted} · reversed${row.reversal_date === '' ? '' : ` ${formatShortDate(row.reversal_date)}`}`
+  }
+  return [
+    posted,
+    row.fulfils_commitment_id === '' ? '' : 'fulfils a commitment',
+    isAfterOffer(row) ? 'after the offer: extra for the family' : '',
+  ]
+    .filter((w) => w !== '')
+    .join(' · ')
+}
+
+/** The ⊘'s title: that the camper cancelled, and whether the line still counts (ruling 15). */
+export function cancelTitle(row: ApiAidGrantRow): string {
+  return `The camper cancelled (from CampMinder enrollment): ${
+    row.kind === 'commitment'
+      ? "the commitment isn't counted"
+      : 'a posted grant still counts until CampMinder reverses it'
+  }`
+}
+
+/**
+ * The camper cell's title (§13): the name, the cancellation, and how the camper was found; a line on
+ * no camper names its kind. What the cell cuts is said here in full.
+ */
+export function camperTitle(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+  const basis = basisWords(row, needsCamper)
+  if (row.person_cm_id > 0) {
+    return [row.camper_name, row.cancelled ? cancelTitle(row) : '', basis]
+      .filter((w) => w !== '')
+      .join(' · ')
+  }
+  return [row.camper_basis === 'household' ? registerFamily(row).text : 'Household level', basis]
+    .filter((w) => w !== '')
+    .join(' · ')
+}
 
 const OTHER_PROGRAM = 'Other program'
 

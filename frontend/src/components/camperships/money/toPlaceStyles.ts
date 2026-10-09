@@ -18,10 +18,8 @@ export const GROUP_HEADING_ROW = 'mt-3.5 mb-1 ml-0.5 flex items-baseline gap-2'
 export const GROUP_CARET = 'mr-1 inline-block w-3'
 
 /**
- * @deprecated To place no longer wears these (the status slot, the ok tokens and `Effects` replace
- * them). Money › Grants and Money › Funders still import them until their own screens land.
+ * @deprecated To place and Grants no longer wear this (the status slot, the ok tokens and `Effects`
+ * replace it). Money › Funders still imports it until its own screen lands.
  */
-export const MARK_TEXT = 'text-emerald-700 dark:text-emerald-400'
-/** @deprecated See `MARK_TEXT`. */
 export const DONE_NOTE =
   'rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'

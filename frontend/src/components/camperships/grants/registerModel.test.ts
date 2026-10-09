@@ -22,10 +22,19 @@ import {
   programCsv,
   programWords,
   funderLink,
-  REGISTER_TOTAL_NOTE,
   didntApply,
   footerWords,
   neverAppliedNote,
+  neverAppliedShort,
+  notCountedWhy,
+  offsetTitle,
+  cmWords,
+  postedTitle,
+  committedTitle,
+  cancelTitle,
+  camperTitle,
+  COMMITTED_CHIP,
+  sessionWords,
   grantKey,
   isAfterOffer,
   needsCamperIds,
@@ -79,9 +88,10 @@ describe('a Register row in words', () => {
 
 describe('the aid request it offsets (#2975: requests[].offsets/round/round_amount)', () => {
   it('names the round and its amount now, or why no round counts it', () => {
-    expect(offsetWords(EMMA_GRANT, NEEDS)).toBe('R1 $1,420')
-    expect(offsetWords(RILEY_COMMITMENT, NEEDS)).toBe('R1 $0')
-    expect(offsetWords(OLIVIA_AFTER_OFFER, NEEDS)).toBe('after the offer')
+    // money-grants.html: the session leads (aidSessionName), then the round.
+    expect(offsetWords(EMMA_GRANT, NEEDS)).toBe('Session 2 · R1 $1,420')
+    expect(offsetWords(RILEY_COMMITMENT, NEEDS)).toBe('Session 3 · R1 $0')
+    expect(offsetWords(OLIVIA_AFTER_OFFER, NEEDS)).toBe('Quest · after the offer')
     expect(
       shareWords({ request_id: 'r', amount: 500, offsets: 'round', round: 2, round_amount: null })
     ).toBe('R2 · not decided yet')
@@ -118,7 +128,7 @@ describe('the aid request it offsets (#2975: requests[].offsets/round/round_amou
         { request_id: 'b', amount: 350, offsets: 'after_offer' },
       ],
     })
-    expect(offsetWords(split, NEEDS)).toBe('R1 $1,420 · after the offer')
+    expect(offsetWords(split, NEEDS)).toBe('Session 2 · R1 $1,420 · after the offer')
   })
 
   it('marks a grant known after the offer on any of its requests (ruling G)', () => {
@@ -169,12 +179,6 @@ describe("⚠ the Register total counts a never-applied household's lines (owner
       '9 grants · 3 not counted'
     )
   })
-
-  it('the note says a household-level line of a family that did not apply counts', () => {
-    expect(REGISTER_TOTAL_NOTE).toMatch(
-      /so does a household-level line of a family that didn.t apply/
-    )
-  })
 })
 
 describe('the Program column (program_label, #3090; #3085 fallbacks)', () => {
@@ -214,10 +218,10 @@ describe('where a Register row links in Funders', () => {
   })
 })
 
-describe('neverAppliedNote (final audit E15)', () => {
-  it('says how many household-level lines of families who did not apply the total counts, and their sum', () => {
+describe('neverAppliedNote (final audit E15; money-grants.html)', () => {
+  it('says in full how many household-level lines of families who did not apply the total counts, and their sum', () => {
     expect(neverAppliedNote([...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD], NEEDS)).toBe(
-      "counts 1 household-level line of families who didn't apply ($900)"
+      "The total counts 1 household-level line of families who didn't apply ($900)"
     )
     expect(
       neverAppliedNote(
@@ -227,9 +231,85 @@ describe('neverAppliedNote (final audit E15)', () => {
         ],
         NEEDS
       )
-    ).toBe("counts 2 household-level lines of families who didn't apply ($1,000.50)")
+    ).toBe("The total counts 2 household-level lines of families who didn't apply ($1,000.50)")
+  })
+  it('is "incl. $900 didn\'t apply" in the column\'s own footer cell (design-language §10)', () => {
+    expect(neverAppliedShort([...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD], NEEDS)).toBe(
+      "incl. $900 didn't apply"
+    )
   })
   it('says nothing when none are in view', () => {
     expect(neverAppliedNote(GRANTS.grants, NEEDS)).toBe('')
+    expect(neverAppliedShort(GRANTS.grants, NEEDS)).toBe('')
+  })
+})
+
+describe('one-line cells (money-grants.html; ★16, ★18, ruling 15)', () => {
+  it("names why a line is not counted, in the mock's words (★16)", () => {
+    expect(notCountedWhy(OLIVIA_REVERSED, NEEDS)).toBe('reversed')
+    expect(notCountedWhy(GARCIA_HOUSEHOLD, NEEDS)).toBe('waiting for its camper')
+    expect(notCountedWhy(SAMUEL_CANCELLED, NEEDS)).toBe('a commitment whose camper cancelled')
+  })
+
+  it('shortens a posted line to "in CM · Mar 12" and keeps the long words for the title (★18)', () => {
+    expect(cmWords(EMMA_GRANT)).toBe('in CM · Mar 12')
+    expect(cmWords(OLIVIA_REVERSED)).toBe('in CM · Mar 12 · reversed Apr 1')
+    expect(postedTitle(EMMA_GRANT)).toBe('Posted in CampMinder Mar 12')
+    expect(postedTitle({ ...EMMA_GRANT, fulfils_commitment_id: 'cmtx' })).toBe(
+      'Posted in CampMinder Mar 12 · fulfils a commitment'
+    )
+    expect(postedTitle(OLIVIA_AFTER_OFFER)).toBe(
+      'Posted in CampMinder May 2 · after the offer: extra for the family'
+    )
+    expect(postedTitle(OLIVIA_REVERSED)).toBe('Posted in CampMinder Mar 12 · reversed Apr 1')
+  })
+
+  it('writes a commitment as one chip, its details in the title (★18)', () => {
+    expect(COMMITTED_CHIP).toBe('Committed · not in CM')
+    expect(committedTitle(RILEY_COMMITMENT)).toBe(
+      'Committed Apr 2 · entered by hand · not yet posted in CampMinder'
+    )
+  })
+
+  it('says a cancelled camper in a title that tells whether the line still counts (ruling 15)', () => {
+    expect(cancelTitle(SAMUEL_POSTED_CANCELLED)).toBe(
+      'The camper cancelled (from CampMinder enrollment): a posted grant still counts until CampMinder reverses it'
+    )
+    expect(cancelTitle(SAMUEL_CANCELLED)).toBe(
+      "The camper cancelled (from CampMinder enrollment): the commitment isn't counted"
+    )
+  })
+
+  it('titles the camper cell with the name, the cancellation and how the camper was found', () => {
+    expect(camperTitle(EMMA_GRANT, NEEDS)).toBe('Emma Johnson')
+    expect(camperTitle({ ...EMMA_GRANT, camper_basis: 'placed' }, NEEDS)).toBe(
+      'Emma Johnson · placed by staff'
+    )
+    expect(camperTitle(SAMUEL_CANCELLED, NEEDS)).toBe(
+      "Samuel Johnson · The camper cancelled (from CampMinder enrollment): the commitment isn't counted"
+    )
+    expect(camperTitle(GARCIA_HOUSEHOLD, NEEDS)).toBe('Household level · needs a camper')
+  })
+
+  it('shows a session in its short form and keeps the full name for the title', () => {
+    expect(sessionWords(EMMA_GRANT)).toEqual({ short: 'Session 2', full: 'Session 2' })
+    const fc = grantRow({
+      transaction_cm_id: 1,
+      person_cm_id: 0,
+      camper_basis: 'household',
+      session_name: 'Family Camp 1: Fall Weekend',
+    })
+    expect(sessionWords(fc)).toEqual({ short: 'FC1', full: 'Family Camp 1: Fall Weekend' })
+    expect(sessionWords(GARCIA_HOUSEHOLD)).toEqual({ short: '', full: '' })
+  })
+
+  it("titles the offsets cell with the full session and each share's part of the grant", () => {
+    expect(offsetTitle(EMMA_GRANT, NEEDS)).toBe('Session 2 · R1 $1,420 · $700 of the grant')
+    expect(offsetTitle(LIAM_SOLE_CAMPER, NEEDS)).toBe(
+      'The family has no aid request this season: the grant counts, and offsets nothing'
+    )
+    expect(offsetTitle(OLIVIA_REVERSED, NEEDS)).toBe('A reversed line offsets nothing')
+    expect(offsetTitle(SAMUEL_CANCELLED, NEEDS)).toBe('The camper cancelled: it offsets nothing')
+    expect(offsetTitle(GARCIA_HOUSEHOLD, NEEDS)).toBe('Applied · waiting for its camper')
   })
 })
