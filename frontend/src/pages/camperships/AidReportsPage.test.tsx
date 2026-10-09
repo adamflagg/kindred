@@ -28,11 +28,7 @@ vi.mock('../../components/camperships/reports/ZipCodes', () => ({
 }))
 
 const FINANCE = ['financial_aid.view', 'financial_aid.casework', 'financial_aid.rules']
-const DEVELOPMENT = [
-  'financial_aid.summary',
-  'financial_aid.funding_sources',
-  'financial_aid.grantors',
-]
+const DEVELOPMENT = ['financial_aid.summary', 'financial_aid.grantors']
 
 function Where() {
   const { pathname, search } = useLocation()

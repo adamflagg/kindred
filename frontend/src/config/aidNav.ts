@@ -35,8 +35,7 @@ const OPEN: AidAccess = { anyOf: CAMPERSHIPS_OPEN_PERMISSIONS }
  * Owner 10-06 (rulings:676, amending S3-4 B): finance AND development add, edit and retire grantors.
  * Grants folded into Money on 10-08, so they do it in Money › Funders. Development holds `grantors` and
  * `summary` but not `view`, so Money opens for either, and its one tab for them is Funders; the other
- * three stay `view`. (GET /sources is view-or-grantors on the server, so a `funding_sources`-only user
- * would be refused: Funders stays VIEW_OR_GRANTORS.)
+ * three stay `view`. (GET /sources is view-or-grantors on the server: Funders stays VIEW_OR_GRANTORS.)
  */
 export const MONEY_OPEN_PERMISSIONS = [
   Permission.FINANCIAL_AID_VIEW,

@@ -138,7 +138,7 @@ describe('the grantor lines (D3)', () => {
 
 describe('the grantor lines link to Money › Funders', () => {
   it("open that funder's group for a user who sees Funders (development holds grantors)", async () => {
-    mockPerms = ['financial_aid.summary', 'financial_aid.funding_sources', 'financial_aid.grantors']
+    mockPerms = ['financial_aid.summary', 'financial_aid.grantors']
     liveAnswer = () => json(DEVELOPMENT_GRANTORS)
     renderReport()
     const table = await screen.findByRole('table', { name: 'Development report' })

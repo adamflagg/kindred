@@ -1123,7 +1123,7 @@ export async function fetchAidFundingSources(
 /**
  * Set a source's reporting group (one of `year`'s pools, or none with an explicit null; a body
  * without `group` keeps it) and its incentive flag, with an optional note (D88, D100, D159).
- * `funding_sources` or `rules`; the same route development's view writes.
+ * `grantors` or `rules`; the same route development's view writes.
  */
 export function saveAidFundingSource(
   fetchWithAuth: FetchWithAuth,

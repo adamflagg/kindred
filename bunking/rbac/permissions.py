@@ -18,7 +18,6 @@ class Permission:
 
     BUNKING_MANAGE = "bunking.manage"
     FINANCIAL_AID_CASEWORK = "financial_aid.casework"
-    FINANCIAL_AID_FUNDING_SOURCES = "financial_aid.funding_sources"
     FINANCIAL_AID_GRANTORS = "financial_aid.grantors"
     FINANCIAL_AID_RULES = "financial_aid.rules"
     FINANCIAL_AID_SUMMARY = "financial_aid.summary"
@@ -43,12 +42,9 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
         "set appeal amounts and cost overrides, assign grants and clear the posting worklist. "
         "It only adds editing to the screens that family-detail access opens."
     ),
-    Permission.FINANCIAL_AID_FUNDING_SOURCES: (
-        "Set each outside funding source's reporting group and incentive flag on the Development report's "
-        "Funding sources list. It shows no family's records."
-    ),
     Permission.FINANCIAL_AID_GRANTORS: (
-        "Add, edit and retire grantors, and match CampMinder's aid descriptions to them. "
+        "Add, edit and retire grantors, match CampMinder's aid descriptions to them, and set each description's "
+        "reporting group and incentive flag. "
         "Anyone with family-detail access can already see the grantor list."
     ),
     Permission.FINANCIAL_AID_RULES: (
@@ -141,12 +137,6 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
         "Grantors",
         "Camperships",
         (Screen("Camperships › Money › Funders", "/aid/money/funders"),),
-    ),
-    Permission.FINANCIAL_AID_FUNDING_SOURCES: PermissionInfo(
-        "Camperships: funding sources",
-        "Funding sources",
-        "Camperships",
-        (Screen("Camperships › Reports", "/aid/reports"),),
     ),
     Permission.FINANCIAL_AID_RULES: PermissionInfo(
         "Camperships: rules and budget",

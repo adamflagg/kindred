@@ -90,7 +90,7 @@ def test_development_and_finance_edit_a_funding_source_and_the_registrar_cannot(
     """D100: "Development and finance may edit the group and the incentive flag; the registrar may not"."""
     _stub()
     held = set(PERSONAS[persona])
-    allowed = {Permission.FINANCIAL_AID_FUNDING_SOURCES, Permission.FINANCIAL_AID_RULES} & held
+    allowed = {Permission.FINANCIAL_AID_GRANTORS, Permission.FINANCIAL_AID_RULES} & held
     status = _client(persona).put(SOURCE_URL, json={"group": "camp_pool", "incentive": True}).status_code
     assert (status != 403) == bool(allowed), (persona, status)
     if persona == PERSONA_REGISTRAR:
@@ -100,10 +100,32 @@ def test_development_and_finance_edit_a_funding_source_and_the_registrar_cannot(
 FUNDER_URL = "/api/financial-aid/reports/2027/funding-sources/funders/regional_fund"
 
 
+def test_a_grantors_only_user_can_set_a_group_and_a_summary_only_user_cannot() -> None:
+    """Owner 2026-10-09: Set a Group takes `rules` or `grantors`; the retired `funding_sources` opens nothing."""
+    from fastapi import FastAPI
+
+    from api.routers.financial_aid import router
+    from bunking.auth_middleware import get_current_user
+
+    _stub()
+
+    def put(perms: set[str]) -> int:
+        user = persona_user(PERSONA_DEVELOPMENT)
+        user.permissions = perms
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_current_user] = lambda: user
+        client = TestClient(app, raise_server_exceptions=False)
+        return client.put(SOURCE_URL, json={"group": "camp_pool", "incentive": True}).status_code
+
+    assert put({Permission.FINANCIAL_AID_GRANTORS}) != 403
+    assert put({Permission.FINANCIAL_AID_SUMMARY, "financial_aid.funding_sources"}) == 403
+
+
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 def test_a_funder_row_is_edited_by_whoever_edits_a_funding_source(persona: str) -> None:
     _stub()
-    allowed = {Permission.FINANCIAL_AID_FUNDING_SOURCES, Permission.FINANCIAL_AID_RULES} & set(PERSONAS[persona])
+    allowed = {Permission.FINANCIAL_AID_GRANTORS, Permission.FINANCIAL_AID_RULES} & set(PERSONAS[persona])
     status = _client(persona).put(FUNDER_URL, json={"group": "camp_pool", "incentive": True}).status_code
     assert (status != 403) == bool(allowed), (persona, status)
 

@@ -1,7 +1,7 @@
 /**
  * Camperships' nav and tabs per permission (spec §3.2, §3.3; D7, D44, D55, D62, D64, D65, D76).
  * Roles as main spec §14.2 defines them: registrar = view + casework; finance = all four;
- * development = summary (+ funding_sources, not needed here).
+ * development = summary (+ grantors, not needed here).
  */
 import { describe, expect, it } from 'vitest'
 
@@ -121,12 +121,8 @@ describe('resolveAidTab (§3.6; D76)', () => {
 })
 
 describe('Money for development (owner 10-06, rulings:676; folded into Money 10-08)', () => {
-  // main spec §14.2's development role: summary, funding_sources and grantors; no view.
-  const DEVELOPMENT_GRANTORS = holding(
-    'financial_aid.summary',
-    'financial_aid.funding_sources',
-    'financial_aid.grantors'
-  )
+  // main spec §14.2's development role: summary and grantors; no view (owner 10-09 folded funding_sources into grantors).
+  const DEVELOPMENT_GRANTORS = holding('financial_aid.summary', 'financial_aid.grantors')
   const money = aidSection('money')
 
   it('shows development Money beside Reports, and only its Funders tab', () => {
@@ -161,11 +157,8 @@ describe('Money for development (owner 10-06, rulings:676; folded into Money 10-
     ])
   })
 
-  it('has no Grants section any more, and a funding_sources-only user gets no Money (GET /sources would 403)', () => {
+  it('has no Grants section any more', () => {
     expect(() => aidSection('grants' as never)).toThrow()
-    expect(
-      labels(visibleSections(holding('financial_aid.summary', 'financial_aid.funding_sources')))
-    ).toEqual(['Reports'])
   })
 
   it('still sends development home to Reports › Development, and a summary-only user sees no Money', () => {

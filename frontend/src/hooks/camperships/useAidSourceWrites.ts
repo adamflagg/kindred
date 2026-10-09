@@ -53,7 +53,7 @@ export interface SetGroupVars {
   readonly body: ApiAidFundingSourceIn
 }
 
-/** "Set a Group…": a source's reporting group and incentive flag (`rules` here; the route also takes `funding_sources`). */
+/** "Set a Group…": a source's reporting group and incentive flag (`rules` here; the route also takes `grantors`). */
 export function useAidSetSourceGroup() {
   return useAidWrite(
     (fetchWithAuth, vars: SetGroupVars) =>
