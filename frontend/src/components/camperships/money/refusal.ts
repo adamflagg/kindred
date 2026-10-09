@@ -31,7 +31,7 @@ export function refusalWords(error: unknown): string {
     return `Someone else changed this while you looked; nothing was written. The page has reloaded: check it and try again. (${detail})`
   }
   if (detail.startsWith(MOVED_LOCK)) {
-    return `What this would lock changed since the page loaded; nothing was written. The page has reloaded: check what Confirm does now. (${detail})`
+    return `What this would mark Posted changed since the page loaded; nothing was written. The page has reloaded: check what Confirm does now. (${detail})`
   }
   if (wroteNothing(status)) return `Nothing was written: ${detail}`
   return `We can't tell whether this was saved. The page has reloaded: check it before trying again. (${detail})`

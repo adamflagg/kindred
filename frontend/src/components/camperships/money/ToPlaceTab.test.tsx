@@ -181,7 +181,7 @@ describe('Money › To place (§8.1)', () => {
     expect(within(panel).getByText('Emma Johnson · Session 2')).toBeInTheDocument()
     expect(within(panel).getByText('$2,200 not yet in CampMinder')).toBeInTheDocument()
     expect(
-      within(panel).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked')
+      within(panel).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')
     ).toBeInTheDocument()
   })
 
@@ -191,7 +191,7 @@ describe('Money › To place (§8.1)', () => {
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(
       await screen.findByText(
-        '✓ Chen: $1,500 placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500 locked.'
+        '✓ Chen: $1,500 placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500.'
       )
     ).toBeInTheDocument()
     expect(writes()).toEqual([
@@ -240,10 +240,10 @@ describe('Money › To place (§8.1)', () => {
     const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(
-      await within(panel).findByText(/What this would lock changed since the page loaded/)
+      await within(panel).findByText(/What this would mark Posted changed since the page loaded/)
     ).toBeInTheDocument()
     expect(
-      within(panel).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400 locked')
+      within(panel).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400')
     ).toBeInTheDocument()
     const confirm = within(panel).getByRole('button', { name: 'Confirm' })
     expect(confirm).toBeEnabled()
@@ -473,8 +473,7 @@ describe('Money › To place (§8.1)', () => {
     expect(within(chen).getByText('Marks nothing posted.').className).not.toMatch(/emerald/)
     const johnson = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
     expect(
-      within(johnson).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked')
-        .className
+      within(johnson).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780').className
     ).toMatch(/emerald/)
   })
 
@@ -649,7 +648,7 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
     renderTab()
     const row = await openLine(CHEN)
     expect(
-      await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400 locked')
+      await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400')
     ).toBeInTheDocument()
     expect(previews()).toEqual([
       {
@@ -700,7 +699,7 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
     await openLine('$600 · Camp aid · Summer · posted to Liam Garcia · Apr 3')
     // Straight on to the next line, before the first has settled.
     const row = await openLine(CHEN)
-    await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500 locked')
+    await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500')
     await new Promise((resolve) => setTimeout(resolve, 400))
     expect(previews().map((p) => p.url)).toEqual([
       '/api/financial-aid/money/2027/to-place/3000003/preview',
@@ -713,7 +712,7 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
     const row = await openLine(CHEN)
     await waitFor(() => expect(previews()).toHaveLength(1))
     expect(
-      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500 locked')
+      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500')
     ).toBeInTheDocument()
     expect(within(row).getByRole('button', { name: 'Confirm' })).toBeEnabled()
   })
@@ -723,7 +722,7 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
     renderTab()
     const row = await openLine(CHEN)
     expect(
-      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500 locked')
+      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500')
     ).toBeInTheDocument()
     // Past the settle time, so a call would have been made by now.
     await new Promise((resolve) => setTimeout(resolve, 400))
@@ -834,9 +833,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     const editor = within(row).getByTestId('place-editor')
     expect(within(editor).getByText('Parts add to $3,620 of $3,620 ✓')).toBeInTheDocument()
     expect(
-      await within(editor).findByText(
-        'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked'
-      )
+      await within(editor).findByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')
     ).toBeInTheDocument()
     previewAnswer = marksNothing
     const emma = within(editor).getByRole('textbox', { name: 'Part for Emma Johnson · Session 2' })
@@ -959,12 +956,10 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     lock = 780
     await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
     expect(
-      await within(editor).findByText(/What this would lock changed since the page loaded/)
+      await within(editor).findByText(/What this would mark Posted changed since the page loaded/)
     ).toBeInTheDocument()
     expect(
-      await within(editor).findByText(
-        'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked'
-      )
+      await within(editor).findByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')
     ).toBeInTheDocument()
     await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
     await waitFor(() => expect(writes()).toHaveLength(2))
@@ -989,7 +984,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     expect(within(editor).getByRole('button', { name: 'Place It' })).toBeDisabled()
     await userEvent.click(within(editor).getByRole('radio', { name: 'Liam Garcia · Quest' }))
     expect(
-      await within(editor).findByText('Marks Posted: Liam Garcia · Quest · Round 1 · $600 locked')
+      await within(editor).findByText('Marks Posted: Liam Garcia · Quest · Round 1 · $600')
     ).toBeInTheDocument()
     expect(parts(previews().at(-1))).toEqual([{ request_id: 'reqliamquest005', amount: '600.00' }])
     await userEvent.click(within(editor).getByRole('button', { name: 'Place It' }))
@@ -1172,7 +1167,9 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     const dialog = await screen.findByRole('dialog')
     // Final audit E4: the title counts, in the grant dialog's own words (the mock's "Confirm 2 exact single matches").
     expect(within(dialog).getByText('Confirm 2 exact single matches')).toBeInTheDocument()
-    expect(within(dialog).getByText(/^2 lines · 2 households · \$1,800 locked/)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/^2 lines · 2 households · marks \$1,800 Posted/)
+    ).toBeInTheDocument()
     expect(within(dialog).getByText('Estimate')).toBeInTheDocument()
     answers = [json({ ...PLACED, placed: [3000003, RILEY_EXACT.transaction_cm_id] })]
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 2' }))
@@ -1186,7 +1183,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     expect(body).not.toHaveProperty('expected_locked')
     expect(
       await screen.findByText(
-        '✓ 2 lines placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500 locked.'
+        '✓ 2 lines placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500.'
       )
     ).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -1204,7 +1201,9 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     await userEvent.click(screen.getByRole('button', { name: 'Confirm the Selected…' }))
     const dialog = await screen.findByRole('dialog')
     // One line: its own preview is exact, so no estimate pill (plan review m6).
-    expect(within(dialog).getByText(/^1 line · 1 household · \$1,500 locked/)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/^1 line · 1 household · marks \$1,500 Posted/)
+    ).toBeInTheDocument()
     expect(within(dialog).queryByText('Estimate')).toBeNull()
     expect(
       within(dialog).getByText('Left out, confirm one at a time: Johnson (a split).')

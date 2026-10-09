@@ -91,12 +91,12 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
 
   it('lists the rounds it marks posted, and those D152 withholds, before the click', () => {
     expect(confirmLines(JOHNSON_SPLIT)).toEqual([
-      'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked',
+      'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780',
     ])
     expect(confirmLines(GARCIA_WITHHELD)).toEqual([
       `Places the money; doesn't mark Liam Garcia · Session 2 posted: ${GARCIA_WHY}`,
     ])
-    expect(confirmSummary(JOHNSON_SPLIT)).toBe('Marks 1 round posted · $780 locked')
+    expect(confirmSummary(JOHNSON_SPLIT)).toBe('Marks 1 round posted · $780')
     expect(confirmSummary(GARCIA_WITHHELD)).toBe('1 to mark posted by hand')
     expect(confirmSummary(SAM_NO_REQUEST)).toBe('Nothing to confirm')
   })
@@ -116,7 +116,7 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
   })
 
   it('tells a line that marks a round posted from one that marks nothing', () => {
-    expect(isMarkLine('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780 locked')).toBe(true)
+    expect(isMarkLine('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')).toBe(true)
     expect(isMarkLine(NOTHING_MARKED)).toBe(false)
     expect(isMarkLine(`Places the money; doesn't mark Liam Garcia · Session 2 posted: x`)).toBe(
       false
@@ -131,7 +131,7 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
       would_not_tick: [],
     }
     expect(confirmLines(CHEN_EXACT, fresh)).toEqual([
-      'Marks Posted: Olivia Chen · Quest · Round 2 · $1,400 locked',
+      'Marks Posted: Olivia Chen · Quest · Round 2 · $1,400',
     ])
     expect(confirmBody(CHEN_EXACT, fresh)).toMatchObject({ expected_locked: '1400.00' })
     // No suggestion: nothing to confirm, whatever a preview says.
@@ -170,7 +170,7 @@ describe('what a placement did (§4.10: the result lists exactly what was marked
         [JOHNSON_SPLIT],
         labels
       )
-    ).toBe('Johnson: $3,620 placed. Marked Posted: Emma Johnson · Session 2 Round 2 · $780 locked.')
+    ).toBe('Johnson: $3,620 placed. Marked Posted: Emma Johnson · Session 2 Round 2 · $780.')
     expect(
       placedWords(
         {
@@ -290,7 +290,7 @@ describe('the other ways to place a line (§8.1; D12; part 1b)', () => {
       would_not_tick: [],
     }
     expect(wouldLines({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([
-      'Marks Posted: Liam Garcia · Quest · Round 1 · $600 locked',
+      'Marks Posted: Liam Garcia · Quest · Round 1 · $600',
     ])
     expect(confirmLines({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([])
     expect(
