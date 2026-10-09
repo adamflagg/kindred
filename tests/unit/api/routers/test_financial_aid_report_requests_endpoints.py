@@ -101,7 +101,17 @@ def test_statistics_requests_pass_the_reads_parameters_and_the_selector() -> Non
         "posted_round": None,
         "outcome_row": None,
         "outcome": None,
+        "appeals_count": None,
     }
+
+
+def test_an_rpt_9_link_reaches_the_service() -> None:
+    service = _stub()
+    response = _client().get(STATS, params={"part": "tier_appeals", "tier": "2", "appeals_count": "appeals"})
+    assert response.status_code == 200
+    kwargs = service.statistics_request_ids.call_args.kwargs
+    assert (kwargs["part"], kwargs["tier"], kwargs["appeals_count"]) == ("tier_appeals", 2, "appeals")
+    assert _client().get(STATS, params={"part": "tier_appeals", "appeals_count": "nonsense"}).status_code == 422
 
 
 def test_an_rpt_23_waiting_link_reaches_the_service() -> None:

@@ -55,6 +55,7 @@ from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_p
 Basis = Literal["posted", "posted_and_decided"]
 RoundChip = Literal[1, 2, 3] | None
 StatisticsCount = Literal["apps", "cancelled", "asks", "awarded", "decided"]
+TierAppealsCount = Literal["round1_apps", "appeals"]  # RPT-9's two counts
 OutcomeKind = Literal["accepted", "appealed", "waiting"]
 
 
@@ -355,12 +356,16 @@ def recipients_cancelled(requests: Iterable[ReportRequest], round_: RoundChip = 
     )
 
 
+def _tier_appeals_population(requests: Iterable[ReportRequest], table: str | None) -> list[ReportRequest]:
+    return [r for r in in_table(requests, table) if r.counts_as_received]  # a duplicate is no application
+
+
 def tier_appeals(
     requests: Iterable[ReportRequest], document: AidRules | None, *, table: str | None
 ) -> tuple[TierAppealsRow, ...]:
     """RPT-9: each tier's Round 1 apps beside its appeals, then a "no tier" row when any, then the totals (tier None,
     no band)."""
-    population = [r for r in in_table(requests, table) if r.counts_as_received]  # a duplicate is no application
+    population = _tier_appeals_population(requests, table)
     round1: dict[int | None, list[ReportRequest]] = defaultdict(list)
     round2: dict[int | None, int] = defaultdict(int)
     round3: dict[int | None, Decimal] = defaultdict(lambda: ZERO)
@@ -490,3 +495,19 @@ def outcome_members(
         return kind == "pool" and pool is not None and request.pool == pool
 
     return tuple(sorted(r.request_id for r in requests if in_row(r) and outcome in outcome_kinds(r)))
+
+
+def tier_appeals_members(
+    requests: Iterable[ReportRequest], *, table: str | None, tier: int | None, total: bool, count: TierAppealsCount
+) -> tuple[str, ...]:
+    """The requests behind one RPT-9 count: a tier's Round 1 apps (priced at that tier in Round 1) or appeals (a
+    Round 2 ask, at its Round 2 tier; `tier` None: the "no tier" row), or the totals (`total`, whatever `tier` says).
+    The same population and tiers as `tier_appeals`, which ignores the round chip. Sorted."""
+    round_: Literal[1, 2] = 1 if count == "round1_apps" else 2
+    return tuple(
+        sorted(
+            r.request_id
+            for r in _tier_appeals_population(requests, table)
+            if (count == "round1_apps" or in_round(r, 2)) and (total or _tier(r, round_) == tier)
+        )
+    )

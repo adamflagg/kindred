@@ -16,6 +16,8 @@ from bunking.financial_aid.reports.statistics import (
     outcome_members,
     outcomes,
     statistics,
+    tier_appeals,
+    tier_appeals_members,
     tier_members,
 )
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules
@@ -132,3 +134,23 @@ def test_an_rpt_23_row_opens_its_own_pool_and_no_pool_is_apart_from_the_headline
         for outcome, field in (("accepted", "accepted"), ("appealed", "appealed"), ("waiting", "waiting")):
             ids = outcome_members(season(), kind=row.kind, pool=row.pool, outcome=outcome)  # type: ignore[arg-type]
             assert len(ids) == getattr(row, field), (row.kind, row.pool, outcome)
+
+
+def test_a_tier_appeals_count_opens_exactly_its_requests() -> None:
+    """RPT-9: Round 1 apps (the tier a request was priced at in Round 1) and appeals (a Round 2 ask, in its Round 2
+    tier). A duplicate is no application; the totals row is the union of the rows."""
+    assert tier_appeals_members(season(), table="camp", tier=2, total=False, count="appeals") == (OLIVIA,)
+    assert tier_appeals_members(season(), table="camp", tier=3, total=False, count="appeals") == (RILEY,)
+    assert tier_appeals_members(season(), table="camp", tier=None, total=False, count="round1_apps") == (SAMUEL,)
+    rows = tier_appeals(season(), RULES, table="camp")
+    for count, field in (("round1_apps", "round1_apps"), ("appeals", "appeals")):
+        union: set[str] = set()
+        for index, row in enumerate(rows):
+            total = index == len(rows) - 1
+            ids = tier_appeals_members(season(), table="camp", tier=row.tier, total=total, count=count)  # type: ignore[arg-type]
+            assert len(ids) == getattr(row, field), (row.tier, total, count)
+            assert list(ids) == sorted(ids)
+            if not total:
+                union |= set(ids)
+            else:
+                assert union == set(ids), count

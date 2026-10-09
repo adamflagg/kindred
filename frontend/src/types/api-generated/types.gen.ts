@@ -26835,7 +26835,7 @@ export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsReque
     /**
      * Part
      */
-    part: 'tier' | 'total' | 'cancelled' | 'outcome'
+    part: 'tier' | 'total' | 'cancelled' | 'outcome' | 'tier_appeals' | 'total_appeals'
     /**
      * Table
      */
@@ -26892,6 +26892,10 @@ export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsReque
      * Outcome
      */
     outcome?: 'accepted' | 'appealed' | 'waiting' | null
+    /**
+     * Appeals Count
+     */
+    appeals_count?: 'round1_apps' | 'appeals' | null
   }
   url: '/api/financial-aid/reports/{year}/statistics/requests'
 }
