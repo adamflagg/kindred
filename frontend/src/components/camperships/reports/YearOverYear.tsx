@@ -3,45 +3,52 @@ import { useSearchParams } from 'react-router'
 
 import { useAidCommitteeReport } from '../../../hooks/camperships/useAidCommitteeReport'
 import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
-import { hasStatus, type AidRequestSet } from '../../../services/camperships/aidApi'
-import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
+import { hasStatus } from '../../../services/camperships/aidApi'
 import { QueryGuard } from '../../QueryGuard'
 import { parseRequestSet, requestSetParam } from '../season/scenarios/controlsModel'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CHIP_OFF, CHIP_ON, REPORT_FILTER_LABEL, REPORT_NOTE } from '../kit/reportStyles'
+import { CS_DATE, CS_FLABEL } from '../kit/csType'
+import { formatLongDate, formatShortDate } from '../kit/dates'
 import { ReportTable } from '../kit/ReportTable'
+import { AidSegmented } from '../kit/Segmented'
+import { AidToolbar, ToolbarLabel } from '../kit/Toolbar'
 import {
   appealsColumns,
   appealsRows,
   applicationColumns,
   applicationRows,
+  applicationsUnder,
   budgetColumns,
   budgetRows,
   committeeCsvName,
   committeeHeading,
   parsePhaseShare,
+  parsePools,
   phaseColumns,
   phaseLabels,
   phaseRows,
   reconciliationWords,
-  round1Rows,
-  ROUND1_COLUMNS,
 } from './committeeModel'
-import { ReportControls } from './ReportControls'
 import { useReportParam } from './useReportParam'
 
 const PATH = '/aid/reports/year-over-year'
+const CHECK = 'inline-flex flex-none items-center gap-1.5 whitespace-nowrap'
+const DATE_OFF = 'Off while Through the R1 deadline is checked: uncheck it to type or pick any date'
+const DATE_ON =
+  "The cutoff table counts applications received through this day. Moves this season's cutoff only; a typed season keeps the deck's date, and the other tables never move."
 
 /**
- * Statistics › Year over year (spec §9.7 RPT-1, 2, 6, 7, 8, 13, 24; S4-2; statistics-v2.html): the
- * committee's tables from one read, each season row marked P or r. `?phases=share` shows each phase
- * as a share of the phases' sum (default: % of budget, R1); `?through=<date>` moves this season's
- * RPT-2 cutoff off the application deadline. Live only.
+ * Reports › Year over year (spec §9.7; the approved final mock reports-yoy.html): ONE controls row
+ * (Phases as · Pools · Through the R1 deadline · Received through), then four tables from one read,
+ * each season marked P or r, then six notes. `?phases=share` shows each phase as a share of the
+ * phases' sum; `?pools=pool` splits the cutoff, budget and Round 1 tables by pool; `?through=<date>`
+ * moves this season's cutoff off the application deadline. Live only.
  */
 export function YearOverYear({ view }: { view: AidView }) {
   const [params] = useSearchParams()
   const share = parsePhaseShare(params.get('phases'))
+  const pools = parsePools(params.get('pools'))
   const throughRaw = params.get('through')
   const requestSet = useMemo(() => parseRequestSet(throughRaw), [throughRaw])
   const committee = useAidCommitteeReport(requestSet)
@@ -49,46 +56,97 @@ export function YearOverYear({ view }: { view: AidView }) {
   const setParam = useReportParam()
   const refusal =
     committee.error !== null && hasStatus(committee.error, 422) ? committee.error.message : null
-  const onRequestSet = useCallback(
-    (next: AidRequestSet) => setParam('through', requestSetParam(next)),
-    [setParam]
-  )
   const through = requestSetParam(requestSet)
   const link = aidHref(PATH, view, {
     ...(share === 'share' ? { phases: 'share' } : {}),
+    ...(pools === 'pool' ? { pools: 'pool' } : {}),
     ...(through === null ? {} : { through }),
   })
 
+  // The Round 1 deadline is the cutoff of this season's headline row while no date is typed.
+  const data = committee.data
+  const onDeadline = requestSet.kind !== 'date'
+  const deadline =
+    data === undefined || !onDeadline
+      ? null
+      : (data.applications.find(
+          (row) => row.year === data.year && row.kind === 'headline' && row.cutoff !== null
+        )?.cutoff ?? null)
+  const typed = requestSet.kind === 'date' ? requestSet.date : null
+  const status = (() => {
+    if (refusal !== null) {
+      return `⚠ Can't count at ${typed === null ? 'this date' : formatLongDate(typed)}: ${refusal}`
+    }
+    if (typed !== null && data !== undefined && typed > data.figures_on) {
+      return `Counts to today, ${formatShortDate(data.figures_on)}`
+    }
+    return undefined
+  })()
+  const onThroughDeadline = useCallback(
+    (checked: boolean) => {
+      // Unchecking keeps the deadline as the typed date: the user edits from where the figures are.
+      setParam('through', checked ? null : (deadline ?? data?.figures_on ?? null))
+    },
+    [setParam, deadline, data?.figures_on]
+  )
+
+  const controls = (
+    <AidToolbar
+      {...(status === undefined ? {} : { status })}
+      statusWarn={refusal !== null}
+      left={
+        <>
+          <ToolbarLabel text="Phases as" plain>
+            <AidSegmented
+              label="Phases as"
+              value={share}
+              options={[
+                { value: 'budget', label: '% of budget' },
+                { value: 'share', label: 'Share of the phases' },
+              ]}
+              onChange={(next) => setParam('phases', next === 'share' ? 'share' : null)}
+            />
+          </ToolbarLabel>
+          <ToolbarLabel text="Pools" plain>
+            <AidSegmented
+              label="Pools"
+              value={pools}
+              options={[
+                { value: 'all', label: 'All pools' },
+                { value: 'pool', label: 'By pool' },
+              ]}
+              onChange={(next) => setParam('pools', next === 'pool' ? 'pool' : null)}
+            />
+          </ToolbarLabel>
+          <label
+            className={`${CHECK} ${CS_FLABEL} text-foreground`}
+            title={`Count applications received by the Round 1 deadline${deadline === null ? '' : `, ${formatLongDate(deadline)}`} (the default)`}
+          >
+            <input
+              type="checkbox"
+              checked={onDeadline}
+              onChange={(event) => onThroughDeadline(event.target.checked)}
+            />
+            Through the R1 deadline
+          </label>
+          <ToolbarLabel text="Received through">
+            <input
+              type="date"
+              className={CS_DATE}
+              title={onDeadline ? DATE_OFF : DATE_ON}
+              value={typed ?? deadline ?? ''}
+              disabled={onDeadline}
+              onChange={(event) => setParam('through', event.target.value || null)}
+            />
+          </ToolbarLabel>
+        </>
+      }
+    />
+  )
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={REPORT_FILTER_LABEL}>Phases shown as</span>
-        <button
-          type="button"
-          className={share === 'budget' ? CHIP_ON : CHIP_OFF}
-          onClick={() => setParam('phases', null)}
-        >
-          % of budget
-        </button>
-        <button
-          type="button"
-          className={share === 'share' ? CHIP_ON : CHIP_OFF}
-          onClick={() => setParam('phases', 'share')}
-        >
-          Share of the phases
-        </button>
-        <span className={REPORT_NOTE}>
-          P = the dashboard&apos;s Posted; r = as reported, typed once. The dashboard computes every
-          %.
-        </span>
-      </div>
-      <ReportControls
-        requestSet={requestSet}
-        onRequestSet={onRequestSet}
-        showDeadline={false}
-        asOfWords="Applications are counted at the Round 1 deadline unless a date is set"
-      />
-      {refusal !== null && <p className={AMBER_NOTE}>{refusal}</p>}
+      {controls}
       <QueryGuard
         isLoading={committee.isLoading}
         error={committee.data || refusal !== null ? null : committee.error}
@@ -96,57 +154,52 @@ export function YearOverYear({ view }: { view: AidView }) {
         label="year-over-year"
         emptyMessage="Nothing to show for this date."
       >
-        {(data) => {
-          const reconciliation = reconciliationWords(data)
-          const phasesFootnote = (
-            <>
-              Phase 1 is Round 1 money on requests received by the deadline; phase 2, Round 1 after
-              it; phase 3, appeals. As offered never changes after posting; End of season is net of
-              cancellations, and reads to date until the season closes. The band under a % compares
-              As offered.
-              {reconciliation !== null && <span className="block">{reconciliation}</span>}
-            </>
-          )
+        {(report) => {
+          const csv = (table: string) => committeeCsvName(view, table, share, pools)
           return (
             <div className="space-y-4">
               <ReportTable
-                heading={committeeHeading(data, 'Round 1 phases, year over year')}
-                columns={phaseColumns(share, numberOf, phaseLabels(data))}
-                rows={phaseRows(data, share)}
-                csvFilename={committeeCsvName(view, 'phases', share)}
+                heading={committeeHeading(report, 'Round 1 phases, year over year')}
+                description="how much went out by the deadline, after it, and in appeals"
+                columns={phaseColumns(share, numberOf, phaseLabels(report))}
+                rows={phaseRows(report, share)}
+                csvFilename={csv('phases')}
                 link={link}
                 emptyText="No season has phases yet."
-                footnote={phasesFootnote}
+                footnote={reconciliationWords(report) ?? undefined}
               />
               <ReportTable
-                heading={committeeHeading(data, 'Applications and Round 1 ask at the cutoff')}
+                heading={committeeHeading(report, 'Applications and Round 1 ask at the cutoff')}
+                description={
+                  pools === 'pool' ? 'each pool, then all pools' : 'all pools · By pool splits them'
+                }
                 columns={applicationColumns(numberOf)}
-                rows={applicationRows(data)}
-                csvFilename={committeeCsvName(view, 'applications', share)}
+                rows={applicationRows(report, pools)}
+                csvFilename={csv('applications')}
                 link={link}
-                footnote="Round 1 asks only, as they stood at the cutoff; appeals are never part of it. A row headed headline − Σ pools is a typed season whose pools don't add up, shown rather than hidden."
+                footnote={applicationsUnder(report) ?? undefined}
               />
               <ReportTable
-                heading={committeeHeading(data, 'Budget against actuals by pool')}
+                fixed
+                heading={committeeHeading(report, 'Budget against actuals by pool')}
+                description={
+                  pools === 'pool' ? 'every season by pool' : 'all pools, and this season by pool'
+                }
                 columns={budgetColumns(numberOf)}
-                rows={budgetRows(data)}
-                csvFilename={committeeCsvName(view, 'budget', share)}
+                rows={budgetRows(report, pools)}
+                csvFilename={csv('budget')}
                 link={link}
-                footnote="The camp's own money only, never Total Awards Granted. The rules split is a reference."
               />
               <ReportTable
-                heading={committeeHeading(data, 'Applications and appeals')}
-                columns={appealsColumns(numberOf)}
-                rows={appealsRows(data)}
-                csvFilename={committeeCsvName(view, 'appeals', share)}
-                link={link}
-                footnote="Finance's appeals: requests with any Round 2 or later ask, cancelled included. Not Development's appeals figure (a different population)."
-              />
-              <ReportTable
-                heading={committeeHeading(data, '% of ask awarded in Round 1')}
-                columns={ROUND1_COLUMNS}
-                rows={round1Rows(data)}
-                csvFilename={committeeCsvName(view, 'round1', share)}
+                heading={committeeHeading(report, 'Appeals and % of ask in Round 1')}
+                description={
+                  pools === 'pool'
+                    ? 'this season by pool; appeals count once per season'
+                    : "all pools · By pool splits this season's Round 1"
+                }
+                columns={appealsColumns(numberOf, pools)}
+                rows={appealsRows(report, pools)}
+                csvFilename={csv('appeals')}
                 link={link}
               />
             </div>

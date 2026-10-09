@@ -684,3 +684,47 @@ describe('ReportTable', () => {
     })
   })
 })
+
+describe('columns kept in the CSV only, and a note on a group (approved final mock reports-yoy.html)', () => {
+  const COLS: ReportColumn[] = [
+    { key: 'season', header: 'Season' },
+    { key: 'apps', header: 'Apps', group: 'At the cutoff', groupNote: 3 },
+    { key: 'avg', header: 'Avg ask', group: 'At the cutoff', csvOnly: true },
+    { key: 'asked', header: 'Asked', group: 'At the cutoff' },
+  ]
+  const ROWS2: ReportRow[] = [
+    {
+      key: 'a',
+      kind: 'body',
+      cells: [textValue('2027'), countValue(4), moneyValue(250), moneyValue(1000)],
+    },
+  ]
+  const table = () =>
+    render(
+      <MemoryRouter>
+        <ReportTable heading={HEADING} columns={COLS} rows={ROWS2} csvFilename="x.csv" link="/l" />
+      </MemoryRouter>
+    )
+
+  it('does not draw a csvOnly column, header or cell, and the group spans only what is drawn', () => {
+    table()
+    const grid = screen.getByRole('table', { name: 'Every camper' })
+    expect(within(grid).queryByText('Avg ask')).toBeNull()
+    expect(within(grid).queryByText('$250')).toBeNull()
+    expect(within(grid).getByText('$1,000')).toBeInTheDocument()
+    const group = within(grid).getByText('At the cutoff').closest('th')
+    expect(group).toHaveAttribute('colspan', '2')
+    expect(group?.querySelector('sup')?.textContent).toBe('3')
+  })
+
+  it('leaves a csvOnly column out of Copy and keeps it in the CSV', async () => {
+    table()
+    await userEvent.click(screen.getByRole('button', { name: /copy/i }))
+    expect(writeText.mock.calls[0]?.[0]).not.toContain('Avg ask')
+    expect(writeText.mock.calls[0]?.[0]).not.toContain('250')
+    await userEvent.click(screen.getByRole('button', { name: /download csv/i }))
+    const csv = downloadCsv.mock.calls[0]?.[0] ?? ''
+    expect(csv).toContain('At the cutoff · Avg ask')
+    expect(csv).toContain('2027,4,250,1000')
+  })
+})

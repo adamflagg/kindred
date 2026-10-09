@@ -318,7 +318,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="finance_budget",
         term="Budget",
         text=(
-            "Budget: {camp}'s own Total FA budget, the one finance and the board approved. Only the total is hard; "
+            "Budget: {camp}'s own Total FA budget, as finance and the board approved it. Only the total is hard; "
             "the pool split is finance's soft setting."
         ),
         spec="§5.6",
@@ -326,10 +326,10 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     ),
     Definition(
         key="as_reported",
-        term="As reported (r)",
+        term="P and r",
         text=(
-            "As reported (r): finance's own history from before the dashboard had the data, typed once as dollars and "
-            "counts with an as-of date. The dashboard computes every percentage."
+            "P and r: P = the dashboard's Posted; r = as reported, finance's own figures typed once from the "
+            "committee decks. The dashboard computes every %."
         ),
         spec="§5.6",
         rulings=("D132", "D133"),
@@ -338,21 +338,42 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="round1_phases",
         term="Round 1 phases",
         text=(
-            "Round 1 phases: phase 1 is Round 1 money on requests received by the application deadline; phase 2 is "
-            "Round 1 money on requests received after it; phase 3 is appeals (Rounds 2 and 3). A request received "
-            "on time but posted later stays in phase 1. Each phase has two columns. As offered: the lock as posted "
-            "(awarded means offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
-            "outside the budget (an outside funder's full-cost round) is in neither column; for a season finance "
-            "typed, the deck's figure and its as-of date. End of season: net of cancellations and clawback; for a "
-            'season the dashboard priced it reads "to date" until the season closes, meaning the last session open to '
-            "aid "
-            "(summer, family camp and adult weekends alike) has ended; for a typed season, the end-of-season total. "
-            "A blank stays blank: nothing is estimated, and one column is never filled from the other. Each column is "
-            "shown as a % of the season's total budget and as its share of the three phases; the target bands compare "
-            'against As offered; the total, the over/under and "total − Σ phases" are End of season\'s.'
+            "Round 1 phases: 1 = Round 1 on requests in by the deadline, 2 = Round 1 after it, 3 = appeals. "
+            "As offered never drops; End of season is net of cancellations."
         ),
         spec="§9.7",
         rulings=("D155",),
+    ),
+    # Year over year words three notes its own way (approved final mock reports-yoy.html); Statistics keeps its own keys.
+    Definition(
+        key="committee_awarded",
+        term="Awarded",
+        text=(
+            "Awarded: Posted, net of clawbacks, on live requests. The camp's own aid only, never Total Awards "
+            "Granted: outside grants are left out."
+        ),
+        spec="§5.6",
+        rulings=("D80", "D106", "D129", "D131"),
+    ),
+    Definition(
+        key="committee_apps",
+        term="Applications",
+        text=(
+            "Applications: camper × session (household × session for Family Camp), cancelled ones included. "
+            "Asks are Round 1 asks only, as they stood at the cutoff."
+        ),
+        spec="§5.6",
+        rulings=("D72", "D131"),
+    ),
+    Definition(
+        key="committee_appeals",
+        term="Appeals",
+        text=(
+            "Appeals: requests with any Round 2 or later ask, cancelled ones included. Not Development's appeals "
+            "figure, which counts a different population."
+        ),
+        spec="§9.7",
+        rulings=("D131",),
     ),
     Definition(
         key="appeals",
@@ -830,7 +851,14 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "decided_not_offered",
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
-    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
+    "reports-committee": (
+        "finance_budget",
+        "committee_awarded",
+        "committee_apps",
+        "as_reported",
+        "round1_phases",
+        "committee_appeals",
+    ),
     "reports-development-zip": ("zip_who_counts", "zip_dollars", "zip_zip", "zip_families", "zip_geography"),
     "reports-funding-sources": ("source_facts",),
     "reports-development": (

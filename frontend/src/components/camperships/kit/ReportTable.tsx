@@ -208,7 +208,9 @@ export function ReportTable({
     : ordered
   const bodyCount = ordered.filter((r) => BODY_KINDS.has(r.kind)).length
   const matching = visible.filter((r) => BODY_KINDS.has(r.kind)).length
-  const grouped = columns.some((c) => c.group !== undefined)
+  // csvOnly columns are in Download CSV, never on screen or in Copy.
+  const drawn = useMemo(() => columns.filter((c) => !c.csvOnly), [columns])
+  const grouped = drawn.some((c) => c.group !== undefined)
 
   const { copy, download, copied } = useReportExport({
     heading,
@@ -325,7 +327,7 @@ export function ReportTable({
             // table-fixed reads its widths from the first header row, which in a grouped header holds
             // group cells with none: a colgroup sizes every column, and the unsized first one takes the rest.
             <colgroup>
-              {columns.map((column) => (
+              {drawn.map((column) => (
                 <col key={column.key} style={column.width ? { width: column.width } : undefined} />
               ))}
             </colgroup>
@@ -334,9 +336,9 @@ export function ReportTable({
             {grouped ? (
               <>
                 <tr>
-                  {groupSegments(columns).map((segment) =>
+                  {groupSegments(drawn).map((segment) =>
                     segment.group === undefined ? (
-                      header(segment.first, columns.indexOf(segment.first), 2)
+                      header(segment.first, drawn.indexOf(segment.first), 2)
                     ) : (
                       <th
                         key={`group-${segment.first.key}`}
@@ -344,24 +346,25 @@ export function ReportTable({
                         className={TH_GROUP}
                       >
                         {segment.group}
+                        {segment.first.groupNote ? <DefRef n={segment.first.groupNote} /> : null}
                       </th>
                     )
                   )}
                 </tr>
                 <tr>
-                  {columns.map((column, index) =>
+                  {drawn.map((column, index) =>
                     column.group === undefined ? null : header(column, index)
                   )}
                 </tr>
               </>
             ) : (
-              <tr>{columns.map((column, index) => header(column, index))}</tr>
+              <tr>{drawn.map((column, index) => header(column, index))}</tr>
             )}
           </thead>
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className={`${TD_LABEL} text-muted-foreground`}>
+                <td colSpan={drawn.length} className={`${TD_LABEL} text-muted-foreground`}>
                   {emptyText}
                 </td>
               </tr>
@@ -369,7 +372,7 @@ export function ReportTable({
             {visible.map((row) =>
               row.kind === 'heading' ? (
                 <tr key={row.key}>
-                  <td colSpan={columns.length} className={ROW_HEADING}>
+                  <td colSpan={drawn.length} className={ROW_HEADING}>
                     {row.cells[0] ? reportText(row.cells[0]) : ''}
                     {row.meta ? (
                       <span className="text-muted-foreground ml-2 font-normal">{row.meta}</span>
@@ -393,10 +396,15 @@ export function ReportTable({
                     const span = row.span ?? 1
                     // A spanned label covers the cells after it (they stay in `cells` for Copy and the CSV).
                     if (index > 0 && index < span) return null
+                    if (columns[index]?.csvOnly) return null
                     return (
                       <td
                         key={columns[index]?.key ?? index}
-                        colSpan={index === 0 && span > 1 ? span : undefined}
+                        colSpan={
+                          index === 0 && span > 1
+                            ? columns.slice(0, span).filter((c) => !c.csvOnly).length
+                            : undefined
+                        }
                         title={cellTitle(cell)}
                         className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
                         style={index === 0 ? indentStyle(row.indent) : undefined}

@@ -107,6 +107,13 @@ export interface ReportColumn {
   readonly title?: string | undefined
   /** Opt the header into wrapping; headers are one line by default (the mock's `wrap`). */
   readonly wrap?: true | undefined
+  /** The definition note number after the group's name ("1 · Round 1 by the deadline⁵"), from the group's first column. */
+  readonly groupNote?: number | null | undefined
+  /**
+   * Kept out of the screen and out of Copy (values as displayed) but written to Download CSV: a column
+   * the dashboard added beyond finance's slides (the mock's "hidden · in the CSV").
+   */
+  readonly csvOnly?: true | undefined
   /** The column's definition note number (`useAidDefinitions().numberOf`), shown as ¹. */
   readonly note?: number | null | undefined
   readonly width?: number | undefined
@@ -202,8 +209,13 @@ export function copyText(
   const lines = [
     ...headingLines(heading),
     '',
-    headerTexts(columns).join('\t'),
-    ...rows.map((row) => row.cells.map(reportText).join('\t')),
+    headerTexts(columns.filter((c) => !c.csvOnly)).join('\t'),
+    ...rows.map((row) =>
+      row.cells
+        .filter((_, i) => !columns[i]?.csvOnly)
+        .map(reportText)
+        .join('\t')
+    ),
   ]
   return lines.join('\n')
 }

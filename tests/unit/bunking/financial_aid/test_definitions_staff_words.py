@@ -43,7 +43,7 @@ def test_three_facts_names_the_flag_in_plain_english() -> None:
 
 
 def test_the_other_rewritten_notes_still_read() -> None:
-    assert "(awarded means offered)" in BY_KEY["round1_phases"].text
+    assert "As offered never drops" in BY_KEY["round1_phases"].text  # approved final mock reports-yoy.html: shortened
     assert "cancelled ones included" in BY_KEY["appeals"].text  # approved final mock: shortened
     assert "Since D158" not in BY_KEY["dev_appeals"].text
     assert "may have counted {camp}'s own aid only." in BY_KEY["basis_unconfirmed"].text

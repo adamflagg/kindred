@@ -176,3 +176,13 @@ describe('CancelMark', () => {
     expect(mark).not.toHaveClass('rounded-full')
   })
 })
+
+describe('the outlined "line" pill (approved final mock reports-yoy.html: the season basis P / r)', () => {
+  it('is transparent with a 1px border, still one truncating line', () => {
+    render(<StatusPill tone="line">P · to date</StatusPill>)
+    const pill = screen.getByText('P · to date')
+    expect(pill.className).toContain('border')
+    expect(pill.className).toContain('bg-transparent')
+    expect(pill.className).toContain('truncate')
+  })
+})
