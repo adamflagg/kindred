@@ -34,7 +34,12 @@ vi.mock('../../../hooks/usePermissions', () => ({
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../shell/AidDefinitionNotes', () => ({
-  AidDefinitionNotes: ({ surface }: { surface: string }) => <p>{`Notes for ${surface}`}</p>,
+  AidDefinitionNotes: ({ surface, appendToLast }: { surface: string; appendToLast?: string }) => (
+    <p>
+      {`Notes for ${surface}`}
+      {appendToLast !== undefined && <span data-testid="note-appended">{appendToLast}</span>}
+    </p>
+  ),
 }))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
@@ -165,6 +170,14 @@ const pickOption = async (scope: HTMLElement, label: string, option: string | Re
   await openPicker(scope, label)
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
+/** Pick pools in a multi-select, then close its popover (it stays open between picks, hiding the page). */
+const pickGroups = async (scope: HTMLElement, ...options: string[]) => {
+  await openPicker(scope, 'Reporting groups')
+  for (const option of options) {
+    await userEvent.click(await screen.findByRole('option', { name: option }))
+  }
+  await userEvent.keyboard('{Escape}')
+}
 const openFunder = async (key: string) => {
   await screen.findByText('Grantor A grant')
   await userEvent.click(within(rowByKey(`funder:${key}`)).getAllByRole('cell')[0] as HTMLElement)
@@ -269,6 +282,12 @@ describe('the grouped list (mock q2)', () => {
     expect(within(row).getByText('$98,400')).toBeInTheDocument()
     const fresh = rowByKey(REG_GRANTOR_E_NEW.id)
     expect(within(fresh).getByText('Needs a group')).toBeInTheDocument()
+    // The pill's title states the server's rule exactly (note 3): no programs set, not "reaches no pool".
+    expect(
+      within(fresh).getAllByTitle(
+        'An outside source with no programs set: open it and Set a Group…'
+      ).length
+    ).toBeGreaterThan(0)
     expect(within(fresh).getByText('need-based')).toBeInTheDocument()
     const unclassified = (await screen.findByText('Returning-family bonus 2027')).closest('tr')
     if (unclassified === null) throw new Error('no row')
@@ -456,6 +475,7 @@ describe('the registrar (view and casework): read only', () => {
     // The per-role sentence is the (i)'s title now, not a line above the table (answers §1a).
     expect(screen.getByTitle(/^Read only for you/)).toBeInTheDocument()
     expect(screen.queryByText(/^Totals only/)).toBeNull()
+    expect(screen.queryByText(/totals only/)).toBeNull()
   })
 })
 
@@ -558,13 +578,13 @@ describe('finance (view, rules, grantors)', () => {
     expect(within(editor).getByText(warning)).toBeInTheDocument()
   })
 
-  it("Set a Group… writes development's route: one pool, the flag, and refreshes Funding sources", async () => {
+  it("Set a Group… writes development's route: the picked groups, the flag, and refreshes Funding sources", async () => {
     renderTab()
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
     const editor = await screen.findByTestId('group-editor')
     expect(within(editor).getByRole('button', { name: 'Save' })).toBeDisabled()
-    await pickOption(editor, 'Reporting group', 'Pool A')
+    await pickGroups(editor, 'Pool A')
     expect(
       within(editor).getByText(
         'Changing this re-places household-level lines on the next ledger sync.'
@@ -575,7 +595,7 @@ describe('finance (view, rules, grantors)', () => {
     expect(writes()[0]).toMatchObject({
       url: '/api/financial-aid/reports/2027/funding-sources/srcgrantore0005',
       method: 'PUT',
-      body: JSON.stringify({ group: 'pool_a', incentive: false }),
+      body: JSON.stringify({ groups: ['pool_a'], incentive: false }),
     })
     expect(
       await screen.findByText('✓ Grantor E grant 2027: reporting group Pool A, need-based.')
@@ -598,7 +618,7 @@ describe('finance (view, rules, grantors)', () => {
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
     const editor = await screen.findByTestId('group-editor')
-    await pickOption(editor, 'Reporting group', 'Pool A')
+    await pickGroups(editor, 'Pool A')
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     expect(
       await within(editor).findByText(/^Someone changed this since you opened it: Incentive\./)
@@ -607,7 +627,7 @@ describe('finance (view, rules, grantors)', () => {
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(JSON.parse(String(writes()[0]?.body))).toEqual({
-      group: 'pool_a',
+      groups: ['pool_a'],
       incentive: !e.incentive,
     })
   })
@@ -894,7 +914,7 @@ describe('finance (view, rules, grantors)', () => {
       await openRow('Grantor E grant 2027')
       await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
       const editor = await screen.findByTestId('group-editor')
-      await pickOption(editor, 'Reporting group', 'Pool A')
+      await pickGroups(editor, 'Pool A')
       const release = holdReads(GROUPS, FUNDING_SOURCES_2027)
       await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
       await userEvent.type(
@@ -904,7 +924,7 @@ describe('finance (view, rules, grantors)', () => {
       release()
       await waitFor(() => expect(writes()).toHaveLength(1))
       expect(JSON.parse(String(writes()[0]?.body))).toEqual({
-        group: 'pool_a',
+        groups: ['pool_a'],
         incentive: false,
         note: 'Late note',
       })
@@ -1052,14 +1072,14 @@ describe('development (summary, grantors; no view)', () => {
     await openRow('Grantor E grant 2027')
     await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
     const editor = await screen.findByTestId('group-editor')
-    await pickOption(editor, 'Reporting group', 'Pool A')
+    await pickGroups(editor, 'Pool A')
     await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(writes()[0]).toMatchObject({
       url: '/api/financial-aid/reports/2027/funding-sources/srcgrantore0005',
       method: 'PUT',
     })
-    expect(JSON.parse(String(writes()[0]?.body))).toEqual({ group: 'pool_a', incentive: false })
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({ groups: ['pool_a'], incentive: false })
     await waitFor(() => expect(getsAfterWrite(GROUPS).length).toBeGreaterThan(0))
   })
 
@@ -1069,12 +1089,17 @@ describe('development (summary, grantors; no view)', () => {
     expect(within(panelA).getByRole('button', { name: 'Edit…' })).toBeInTheDocument()
   })
 
-  it('says totals only, links no household, and fires only the reads development may make', async () => {
+  it('says totals only inside note 4, links no household, and fires only the reads development may make', async () => {
     renderTab()
     await screen.findByText('Grantor A grant')
+    // The mock folds it into the last registry note: no paragraph of its own under the table.
     expect(
-      screen.getByText('Totals only: no family is named, listed or linked on this tab.')
-    ).toBeInTheDocument()
+      screen.queryByText('Totals only: no family is named, listed or linked on this tab.')
+    ).toBeNull()
+    expect(await screen.findByText('Notes for money-sources')).toBeInTheDocument()
+    expect(await screen.findByTestId('note-appended')).toHaveTextContent(
+      'For you, totals only: no family is named on this tab.'
+    )
     expect(screen.queryByRole('link')).toBeNull()
     for (const { url } of calls()) {
       expect(url).toMatch(
@@ -1093,6 +1118,8 @@ describe('development (summary, grantors; no view)', () => {
     renderTab()
     await screen.findByText('Grantor A grant')
     expect(screen.queryByText(/^Totals only/)).toBeNull()
+    expect(await screen.findByText('Notes for money-sources')).toBeInTheDocument()
+    expect(screen.queryByTestId('note-appended')).toBeNull()
   })
 })
 
@@ -1169,9 +1196,55 @@ describe('the editors in the final design (§24)', () => {
       within(save.parentElement as HTMLElement).getByText('Nothing to save yet.')
     ).toBeVisible()
     expect(editor.querySelectorAll('select')).toHaveLength(0)
-    await pickOption(editor, 'Reporting group', 'Pool A')
+    await pickGroups(editor, 'Pool A')
     expect(within(editor).getByText('Covers: Summer Sessions, Quest, Teen')).toBeInTheDocument()
     expect(within(editor).queryByText('Nothing to save yet.')).toBeNull()
+  })
+
+  it('Set a Group… is a multi-select: Covers follows the picks, and the server sentence shows once they change', async () => {
+    renderTab()
+    await openRow('Grantor E grant 2027')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
+    const editor = await screen.findByTestId('group-editor')
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: — no group —' })
+    ).toBeInTheDocument()
+    expect(within(editor).getByText('No group: the source will need one.')).toBeInTheDocument()
+    await pickGroups(editor, 'Pool A')
+    await userEvent.click(await screen.findByRole('option', { name: 'Pool B' }))
+    expect(
+      within(editor).getByRole('button', { name: 'Reporting groups: Pool A, Pool B' })
+    ).toBeInTheDocument()
+    expect(
+      within(editor).getByText(
+        'Covers: Summer Sessions, Quest, Teen (Pool A) · Family Camp Weekends (Pool B)'
+      )
+    ).toBeInTheDocument()
+    expect(
+      within(editor).getByText(
+        'Changing this re-places household-level lines on the next ledger sync.'
+      )
+    ).toBeInTheDocument()
+    await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    const body = JSON.parse(String(writes()[0]?.body))
+    expect(body).toEqual({ groups: ['pool_a', 'pool_b'], incentive: false })
+    expect(body).not.toHaveProperty('group')
+  })
+
+  it('Set a Group… opens on the pools the source reaches, and an incentive-only save omits groups', async () => {
+    renderTab()
+    await openRow('Grantor A grant')
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Set a Group…' }))
+    const editor = await screen.findByTestId('group-editor')
+    expect(
+      await within(editor).findByRole('button', { name: 'Reporting groups: Pool A' })
+    ).toBeInTheDocument()
+    expect(within(editor).queryByText(/re-places household-level lines/)).toBeNull()
+    await userEvent.click(within(editor).getByRole('checkbox', { name: /Incentive/ }))
+    await userEvent.click(within(editor).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body))).toEqual({ incentive: false })
   })
 
   it('Map a Funder… is titled with the description and keeps its buttons on one row', async () => {
@@ -1220,12 +1293,13 @@ describe('the editors in the final design (§24)', () => {
       expect(save).toBeDisabled()
       const row = save.parentElement as HTMLElement
       expect(within(row).getByRole('button', { name: 'Back' })).toBeInTheDocument()
-      expect(within(row).getByText('A name and a note are required.')).toBeInTheDocument()
+      expect(within(row).getByText('A name and a note are required.')).toBeVisible()
       expect(within(row).getByText(/Logged with who and why/)).toBeInTheDocument()
       await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
       await userEvent.type(noteOf(form), 'x')
       expect(save).toBeEnabled()
-      expect(within(row).queryByText('A name and a note are required.')).toBeNull()
+      // The mock keeps the line's space once satisfied (visibility hidden), so nothing on the row moves.
+      expect(within(row).getByText('A name and a note are required.')).not.toBeVisible()
     })
 
     it('an edit takes the whole opened row, not its right third', async () => {
@@ -1250,6 +1324,20 @@ describe('the editors in the final design (§24)', () => {
     expect(
       within(retire.parentElement as HTMLElement).getByRole('button', { name: 'Back' })
     ).toBeVisible()
+    // The mock's words for an empty reason, not "Why is required".
+    await userEvent.click(retire)
+    expect(await within(panelK).findByText('A reason is required.')).toBeInTheDocument()
+    expect(within(panelK).queryByText('Why is required')).toBeNull()
+    expect(writes()).toHaveLength(0)
+  })
+
+  it('Unretire… says the same when its reason is empty', async () => {
+    renderTab('/aid/money/funders?retired=all&funder=grantor_f')
+    const panelF = await screen.findByTestId('grantor-panel')
+    await userEvent.click(within(panelF).getByRole('button', { name: 'Unretire…' }))
+    await userEvent.click(within(panelF).getByRole('button', { name: 'Unretire' }))
+    expect(await within(panelF).findByText('A reason is required.')).toBeInTheDocument()
+    expect(writes()).toHaveLength(0)
   })
 })
 

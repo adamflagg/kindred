@@ -227,9 +227,13 @@ export function GrantorForm({
               </button>
               {problem !== null && <span className={CS_AMBER_NOTE}>{problem}</span>}
               {/* The mock's order: what is missing, then what saving does. */}
-              {missing !== undefined && (
-                <span className={`${CS_PMETA} flex-none text-[12.5px]`}>{missing}</span>
-              )}
+              {/* Hidden once satisfied but never removed (the mock's visibility): the row does not move. */}
+              <span
+                className={`${CS_PMETA} flex-none text-[12.5px]`}
+                style={{ visibility: missing === undefined ? 'hidden' : 'visible' }}
+              >
+                {missing ?? 'A name and a note are required.'}
+              </span>
               <span className={`${CS_PMETA} truncate`}>
                 {initial === undefined
                   ? 'Logged with who and why. Descriptions map to a funder on their own row.'

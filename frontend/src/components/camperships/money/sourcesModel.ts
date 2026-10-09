@@ -250,57 +250,55 @@ export function dropsGrantor(row: ApiAidSourceRow, draft: ClassifyDraft): boolea
 export const DROPS_GRANTOR_WARNING =
   'Saving this drops its funder: only an outside grant or incentive names one. The funder itself stays in Money › Funders.'
 
-/** "Set a Group…"'s choice: a pool key, no group, or (a source over several pools) keep them. */
-export const KEEP_GROUPS = 'keep'
-export const NO_GROUP = ''
-
 export interface GroupDraft {
-  readonly group: string
+  /** The picked pool keys. */
+  readonly groups: readonly string[]
   readonly incentive: boolean
   readonly note: string
 }
 
-/** The editor's start: the group as shown (several pools: keep them), the flag, an empty note. */
-export function groupDraftFrom(source: ApiAidFundingSource): GroupDraft {
-  const group = source.group ?? (source.group_label === '' ? NO_GROUP : KEEP_GROUPS)
-  return { group, incentive: source.incentive, note: '' }
+/** The editor's start (mock option A, multi-select): the pools the source's programs reach, the flag, no note. */
+export function groupDraftFrom(source: ApiAidFundingSource, pools: readonly Pool[]): GroupDraft {
+  return {
+    groups: poolsOfFamilies(source.families, pools),
+    incentive: source.incentive,
+    note: '',
+  }
+}
+
+/** Whether the picked set differs from the pools the source reaches now (order never counts). */
+export function groupChanged(
+  source: ApiAidFundingSource,
+  draft: GroupDraft,
+  pools: readonly Pool[]
+): boolean {
+  return !sameSet(draft.groups, poolsOfFamilies(source.families, pools))
 }
 
 /**
- * The route's body (D159; `_keeps_group`): no `group` keeps the pools as they are, a key is one
- * pool, and `null` clears a source's one pool. For a source over several pools the server reads
- * `null` as "keep" (`_keeps_group`: `body.group == shown`, and `shown` is None there), so the editor
- * doesn't offer "no group" for it (`offersNoGroup`; R3-7): pick one pool, then clear it. The note is
- * optional (owner, Funding sources save 10-03).
+ * The route's body (D159): `groups` goes only when the set changed (`[]` clears), so an incentive-only
+ * save never rewrites the families; never the single `group`. The note is optional (owner, 10-03).
  */
-export function groupBody(draft: GroupDraft): ApiAidFundingSourceIn {
+export function groupBody(
+  source: ApiAidFundingSource,
+  draft: GroupDraft,
+  pools: readonly Pool[]
+): ApiAidFundingSourceIn {
   const note = draft.note.trim()
   return {
-    ...(draft.group === KEEP_GROUPS
-      ? {}
-      : { group: draft.group === NO_GROUP ? null : draft.group }),
+    ...(groupChanged(source, draft, pools) ? { groups: [...draft.groups] } : {}),
     incentive: draft.incentive,
     ...(note === '' ? {} : { note }),
   }
 }
 
-/**
- * Whether "— no group —" is offered (R3-7): not for a source over several pools, where the route
- * would keep them anyway (`groupBody`'s note).
- */
-export function offersNoGroup(source: ApiAidFundingSource): boolean {
-  return groupDraftFrom(source).group !== KEEP_GROUPS
-}
-
-/** Whether the save moves the group (the server's D159 warning shows then). */
-export function groupChanged(source: ApiAidFundingSource, draft: GroupDraft): boolean {
-  if (draft.group === KEEP_GROUPS) return false
-  return (draft.group === NO_GROUP ? null : draft.group) !== source.group
-}
-
 /** Whether the save changes anything at all. */
-export function groupEdited(source: ApiAidFundingSource, draft: GroupDraft): boolean {
-  return groupChanged(source, draft) || draft.incentive !== source.incentive
+export function groupEdited(
+  source: ApiAidFundingSource,
+  draft: GroupDraft,
+  pools: readonly Pool[]
+): boolean {
+  return groupChanged(source, draft, pools) || draft.incentive !== source.incentive
 }
 
 /** The fields "Set a Group…" watches between opening and saving (P-9). */

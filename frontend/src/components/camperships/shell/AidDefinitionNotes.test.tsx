@@ -60,4 +60,27 @@ describe('AidDefinitionNotes', () => {
     render(<AidDefinitionNotes surface="requests" extra={['Outside: a fund.']} />)
     expect(screen.getByRole('listitem')).toHaveTextContent('1. Outside: a fund.')
   })
+
+  it('appends text to the last registry note, never as a new numbered note', () => {
+    state = {
+      notes: [
+        { n: 1, text: 'Decided: the award.' },
+        { n: 2, text: 'Posted: the amount in CampMinder.' },
+      ],
+      isPending: false,
+      error: null,
+    }
+    render(<AidDefinitionNotes surface="requests" appendToLast="For you, totals only." />)
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('1. Decided: the award.')
+    expect(items[0]).not.toHaveTextContent('totals only')
+    expect(items[1]).toHaveTextContent('2. Posted: the amount in CampMinder. For you, totals only.')
+  })
+
+  it('appends nothing when the registry has no notes', () => {
+    state = { notes: [], isPending: false, error: null }
+    const { container } = render(<AidDefinitionNotes surface="requests" appendToLast="Totals." />)
+    expect(container).toBeEmptyDOMElement()
+  })
 })

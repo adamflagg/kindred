@@ -76,7 +76,7 @@ const COLUMN_COUNT = 8
 /** The opened-row caret before a name (mock `.cf-caret`): ▸ shut, ▾ open. */
 const CARET = 'text-muted-foreground inline-block w-3 flex-none text-[10px]'
 const NO_POOLS: readonly Pool[] = []
-const NEEDS_GROUP_WHY = 'An outside source that reaches no pool: open it and Set a Group…'
+const NEEDS_GROUP_WHY = 'An outside source with no programs set: open it and Set a Group…'
 
 const headerWords = (
   row: Extract<FunderRow, { kind: 'funder' }>,
@@ -561,12 +561,12 @@ export function FundersTab({ view }: { view: AidView }) {
                     : 'No funders yet.'
             }
           />
-          {!canSee && (
-            <p className={CS_PMETA}>
-              Totals only: no family is named, listed or linked on this tab.
-            </p>
-          )}
-          <AidDefinitionNotes surface="money-sources" />
+          <AidDefinitionNotes
+            surface="money-sources"
+            {...(canSee
+              ? {}
+              : { appendToLast: 'For you, totals only: no family is named on this tab.' })}
+          />
         </div>
       )}
     </QueryGuard>

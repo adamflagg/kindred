@@ -22,11 +22,9 @@ import {
   groupBody,
   groupChanged,
   groupDraftFrom,
+  groupEdited,
   incentiveWords,
-  KEEP_GROUPS,
   lastChangeWords,
-  NO_GROUP,
-  offersNoGroup,
   parseShow,
   classifyPrograms,
   coversWords,
@@ -186,39 +184,65 @@ describe('the classification edit (P-12)', () => {
   })
 })
 
-describe('Set a Group… (P-14; D159)', () => {
-  it('starts from the group as shown, and keeps several pools unless one is picked', () => {
-    expect(groupDraftFrom(FUNDED_A)).toEqual({ group: 'pool_a', incentive: true, note: '' })
-    expect(groupDraftFrom(NEEDS_E)).toEqual({ group: NO_GROUP, incentive: false, note: '' })
-    const several = { ...FUNDED_A, group: null, group_label: 'several groups' }
-    expect(groupDraftFrom(several).group).toBe(KEEP_GROUPS)
+describe('Set a Group… as a multi-select (final UX, owner-approved mock option A; D159)', () => {
+  const POOLS = poolsOfGroups(FUNDING_SOURCES_2027.groups)
+  const both = {
+    ...FUNDED_A,
+    group: null,
+    group_label: 'several groups',
+    families: ['family_camp', 'quest'],
+  }
+
+  it("starts from the pools the source's programs reach, in the rules' order", () => {
+    expect(groupDraftFrom(FUNDED_A, POOLS)).toEqual({
+      groups: ['pool_a'],
+      incentive: true,
+      note: '',
+    })
+    expect(groupDraftFrom(NEEDS_E, POOLS)).toEqual({ groups: [], incentive: false, note: '' })
+    expect(groupDraftFrom(both, POOLS).groups).toEqual(['pool_a', 'pool_b'])
   })
 
-  it('sends one pool, an explicit null to clear, or no group at all to keep them', () => {
-    expect(groupBody({ group: 'pool_b', incentive: false, note: ' New pool ' })).toEqual({
-      group: 'pool_b',
+  it('sends `groups` (never `group`) only when the set changed; an incentive-only save omits it', () => {
+    const base = groupDraftFrom(FUNDED_A, POOLS)
+    expect(
+      groupBody(FUNDED_A, { ...base, groups: ['pool_a', 'pool_b'], note: ' New ' }, POOLS)
+    ).toEqual({
+      groups: ['pool_a', 'pool_b'],
+      incentive: true,
+      note: 'New',
+    })
+    expect(groupBody(FUNDED_A, { ...base, incentive: false }, POOLS)).toEqual({ incentive: false })
+    expect(groupBody(both, { ...groupDraftFrom(both, POOLS), incentive: false }, POOLS)).toEqual({
       incentive: false,
-      note: 'New pool',
     })
-    expect(groupBody({ group: NO_GROUP, incentive: true, note: '' })).toEqual({
-      group: null,
-      incentive: true,
-    })
-    expect(groupBody({ group: KEEP_GROUPS, incentive: true, note: '' })).toEqual({
+  })
+
+  it('clears with an empty list when every pool is unpicked', () => {
+    const base = groupDraftFrom(FUNDED_A, POOLS)
+    expect(groupBody(FUNDED_A, { ...base, groups: [] }, POOLS)).toEqual({
+      groups: [],
       incentive: true,
     })
   })
 
-  it("offers no 'no group' for a source over several pools: the route would keep them (R3-7)", () => {
-    expect(offersNoGroup(FUNDED_A)).toBe(true)
-    expect(offersNoGroup(NEEDS_E)).toBe(true)
-    expect(offersNoGroup({ ...FUNDED_A, group: null, group_label: 'several groups' })).toBe(false)
+  it('knows when the set itself moves, whatever the order picked (the warning shows then)', () => {
+    expect(
+      groupChanged(both, { ...groupDraftFrom(both, POOLS), groups: ['pool_b', 'pool_a'] }, POOLS)
+    ).toBe(false)
+    expect(groupChanged(FUNDED_A, { ...groupDraftFrom(FUNDED_A, POOLS), groups: [] }, POOLS)).toBe(
+      true
+    )
+    expect(
+      groupChanged(NEEDS_E, { ...groupDraftFrom(NEEDS_E, POOLS), groups: ['pool_a'] }, POOLS)
+    ).toBe(true)
   })
 
-  it('knows when the group itself moves (the warning shows then)', () => {
-    expect(groupChanged(FUNDED_A, groupDraftFrom(FUNDED_A))).toBe(false)
-    expect(groupChanged(FUNDED_A, { ...groupDraftFrom(FUNDED_A), group: NO_GROUP })).toBe(true)
-    expect(groupChanged(NEEDS_E, { ...groupDraftFrom(NEEDS_E), group: 'pool_a' })).toBe(true)
+  it('counts a flag-only change as an edit too', () => {
+    const base = groupDraftFrom(FUNDED_A, POOLS)
+    expect(groupEdited(FUNDED_A, base, POOLS)).toBe(false)
+    expect(groupEdited(FUNDED_A, { ...base, incentive: false }, POOLS)).toBe(true)
+    expect(groupEdited(FUNDED_A, { ...base, groups: ['pool_b'] }, POOLS)).toBe(true)
   })
 })
 

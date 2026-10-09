@@ -22,6 +22,7 @@ export function ReasonEditor({
   onCancel,
   testId,
   cancelLabel = 'Back',
+  requiredWords,
 }: {
   title: string
   label: string
@@ -33,6 +34,8 @@ export function ReasonEditor({
   testId?: string
   /** The close button's words: Back in To place; Cancel where the page's mock says so (Grants' Withdraw). */
   cancelLabel?: string
+  /** What an empty send says; default "<label> is required". Funders' Retire and Unretire: "A reason is required." */
+  requiredWords?: string
 }) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +51,7 @@ export function ReasonEditor({
     if (inFlight.current) return
     const trimmed = note.trim()
     if (trimmed === '') {
-      setError(`${label} is required`)
+      setError(requiredWords ?? `${label} is required`)
       return
     }
     inFlight.current = true

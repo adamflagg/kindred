@@ -121,6 +121,7 @@ export function GrantorPanel({
             title={`Retire ${grantor.name}`}
             label="Why"
             submitLabel="Retire"
+            requiredWords="A reason is required."
             hint="Hidden from pickers from now; kept for history. Allowed only while no description maps to it and no open grant names it."
             onCancel={close}
             onSubmit={async (reason) => {
@@ -136,6 +137,7 @@ export function GrantorPanel({
             title={`Unretire ${grantor.name}`}
             label="Why"
             submitLabel="Unretire"
+            requiredWords="A reason is required."
             hint=""
             onCancel={close}
             onSubmit={async (reason) => {
