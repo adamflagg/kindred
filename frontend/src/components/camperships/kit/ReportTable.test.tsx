@@ -389,6 +389,31 @@ describe('ReportTable', () => {
       expect(end).toHaveClass('italic', 'text-muted-foreground')
     })
 
+    // Scan #3109: a separated-borders table draws no border on a <tr>, so the band's edge rule sits
+    // on the total row's cells.
+    it("draws the total row's edge rule on its cells", () => {
+      renderTable()
+      const total = screen.getByText('All · 2 ZIPs').closest('tr') as HTMLElement
+      expect(total.className).toContain('*:border-t')
+    })
+
+    // Scan #3109: in a grouped header the second row's first cell is not the table's first column,
+    // so it keeps its column rule.
+    it("keeps the rule on the first cell of a grouped header's second row", () => {
+      renderTable({
+        columns: [
+          { key: 'zip', header: 'ZIP' },
+          { key: 'campers', header: 'Campers', group: 'Round 1' },
+          { key: 'dollars', header: 'Dollars', group: 'Round 1' },
+        ],
+      })
+      const sub = screen.getByRole('columnheader', { name: 'Campers' })
+      expect(sub.className).not.toContain('first:border-l-0')
+      expect(screen.getByRole('columnheader', { name: 'ZIP' }).className).toContain(
+        'first:border-l-0'
+      )
+    })
+
     it('puts a heading row in the green band', () => {
       renderTable({
         rows: [{ key: 'h', kind: 'heading', cells: [{ kind: 'text', value: 'Money' }] }, ...ROWS],

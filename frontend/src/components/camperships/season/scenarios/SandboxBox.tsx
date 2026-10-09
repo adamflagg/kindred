@@ -1,9 +1,10 @@
-import { CS_INPUT, CS_META, CS_SMALL } from '../../kit/csType'
+import { CS_META, CS_SMALL } from '../../kit/csType'
 import { keyLocked, type SandboxBinding } from './sandboxModel'
 import { BOX_BAD, BOX_CHANGED, WAS_INK } from './scenarioStyles'
 
-// Sandbox density (§S5 F): the kit's box with tighter padding.
-const BOX = `${CS_INPUT.replace(/\bp[xy]-\S+/g, '')} px-1.5 py-0.5 tabular-nums`
+// Sandbox density (§S5 F): a compact box on card white (§3), not the 30px editor field CS_INPUT is now.
+const BOX =
+  'bg-card border-border text-foreground rounded-md border px-1.5 py-0.5 text-sm tabular-nums focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none'
 
 /**
  * One editable value (§S5 F). Typing reports each keystroke (the strip prices it, nothing is recorded); leaving the

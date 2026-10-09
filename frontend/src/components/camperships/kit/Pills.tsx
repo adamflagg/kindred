@@ -20,7 +20,7 @@ export function StatusPill({
   title?: string
 }) {
   return (
-    <span className={`${PILL[tone]}${title ? 'cursor-help' : ''}`} title={title}>
+    <span className={title ? `${PILL[tone]} cursor-help` : PILL[tone]} title={title}>
       {children}
     </span>
   )

@@ -160,7 +160,7 @@ export const CS_INPUT = CS_FIELD
 // ── Buttons (§4; .cf-btn, .cf-btn2, .cf-csv): 26px, 12.5/600, radius 8, Title Case words ──
 const BTN_SHAPE = `${CS_CTL_H} box-border inline-flex flex-none cursor-pointer items-center gap-[5px] rounded-lg border px-2.5 text-[12.5px] leading-[18px] font-semibold whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-45`
 /** The primary action (Record a Commitment…, Save Funder). */
-export const CS_BTN = `${BTN_SHAPE} bg-forest-700 border-forest-700 text-white dark:bg-forest-500 dark:border-forest-500`
+export const CS_BTN = `${BTN_SHAPE} bg-forest-700 border-forest-700 text-white hover:bg-forest-800 hover:border-forest-800 dark:bg-forest-500 dark:border-forest-500 dark:hover:bg-forest-600 dark:hover:border-forest-600`
 /** The secondary action (Close, Back, Clear). */
 export const CS_BTN2 = `${BTN_SHAPE} bg-card border-border text-foreground shadow-[0_1px_2px_hsl(var(--shadow-color)/0.07)] hover:border-[color-mix(in_oklab,var(--color-primary)_45%,var(--color-border))]`
 /** Download CSV and Copy: the secondary button, the same on every page, always last on its row. */
@@ -172,7 +172,8 @@ export const CS_BTN_TOOL = CS_BTN_CSV
 export const CS_TOOLBAR =
   'flex min-h-[30px] flex-nowrap items-center gap-2.5 text-[12.5px] leading-[18px]'
 export const CS_TOOLBAR_LEFT = 'flex min-w-0 flex-nowrap items-center gap-2.5'
-export const CS_TOOLBAR_RIGHT = 'ml-auto flex flex-none flex-nowrap items-center gap-2'
+/** The right group may shrink only through its status slot; its controls are flex-none. */
+export const CS_TOOLBAR_RIGHT = 'ml-auto flex min-w-0 flex-nowrap items-center gap-2'
 /** The lead: a count line that used to sit above the table. */
 export const CS_TOOLBAR_LEAD = 'font-semibold whitespace-nowrap'
 /** The status slot: the result of the last action; it truncates, with the full words in its title. */

@@ -35,6 +35,17 @@ describe('StatusPill (§4.5; D19, D59)', () => {
     expect(pill).toHaveAttribute('title', 'Round 3 · Refused by finance on Apr 2')
   })
 
+  // Scan #3109: a titled pill keeps every tone class, the help cursor a class of its own.
+  it('keeps its tone whole when titled, and adds the help cursor as its own class', () => {
+    render(
+      <StatusPill tone="muted" title="Waiting on the family since May 2">
+        Waiting
+      </StatusPill>
+    )
+    const pill = screen.getByText('Waiting')
+    expect(pill).toHaveClass('text-muted-foreground', 'cursor-help')
+  })
+
   it.each([
     ['hold', 'bg-red-100'],
     ['note', 'bg-amber-100'],

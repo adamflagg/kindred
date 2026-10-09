@@ -268,7 +268,6 @@ const moneyValue = (value: CellValue): number | null => (typeof value === 'numbe
 const NO_GROUPINGS: readonly never[] = []
 /** A `rowTone` row's tint (§9), opaque in both themes (the row carries it; a pinned cell repeats it). */
 const TONE_BG = { group: CS_BAND, warn: CS_BAND_WARN } as const
-/** A group row's cells: bold, a rule above, and no clipping, so a header's words can run on. */
 /** A group row's cell: unclipped, so a heading's words may run across the empty cells beside it. */
 const TONE_TD = 'border-border border-t border-b px-2 py-[5px] align-top font-semibold'
 const FLEX_MIN = 250
@@ -707,7 +706,11 @@ export function AidTable<Row>({
 
   const hasTotals = columns.some((c) => c.total)
   const labelSpan = (() => {
-    if (footerSpan !== undefined) return footerSpan
+    // A caller's span stops before the first column with a total, so no total is swallowed.
+    if (footerSpan !== undefined) {
+      const firstTotal = columns.findIndex((c) => c.total)
+      return Math.max(1, firstTotal < 0 ? footerSpan : Math.min(footerSpan, firstTotal))
+    }
     if (!footerLabel) return 1
     let span = 0
     for (const c of columns) {
@@ -741,7 +744,10 @@ export function AidTable<Row>({
             {toolbarAfterGrouping}
           </div>
           <div className={CS_TOOLBAR_RIGHT}>
-            {toolbarStatus}
+            {toolbarStatus !== undefined && (
+              // The one part of the row that may shrink: it clips rather than push search and CSV off.
+              <div className="max-w-[340px] min-w-0 overflow-hidden">{toolbarStatus}</div>
+            )}
             {!hideSearch && (
               <div className="relative w-64 flex-none">
                 <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
@@ -902,17 +908,19 @@ export function AidTable<Row>({
                           </td>
                         )}
                         {columns.map((c, index) => {
+                          const value = c.render ? undefined : c.value(row)
                           const content = c.render ? (
                             c.render(row, { highlighted: isHighlighted, query })
-                          ) : c.total && typeof c.value(row) === 'number' ? (
-                            <Money value={moneyValue(c.value(row))} />
+                          ) : c.total && typeof value === 'number' ? (
+                            <Money value={moneyValue(value)} />
                           ) : (
-                            c.value(row)
+                            value
                           )
-                          // §13: a cut cell carries its full words; a string titles itself.
+                          // §13: a cut cell carries its full words; a string titles itself (a
+                          // placeholder dash has nothing to add).
                           const title = c.title
                             ? c.title(row)
-                            : typeof content === 'string'
+                            : typeof content === 'string' && content !== '' && content !== '—'
                               ? content
                               : undefined
                           return (

@@ -209,7 +209,10 @@ export function ReportTable({
   const header = (column: ReportColumn, index: number, rowSpan?: number) => {
     const numeric = index > 0 && column.align !== 'left'
     const base = column.tone === 'decided' ? TH_DECIDED : numeric ? TH_NUMBER : TH_LABEL
-    const thClass = column.divider === 'before' ? base.replace(CS_RULE, DIVIDER_BEFORE) : base
+    const ruled = column.divider === 'before' ? base.replace(CS_RULE, DIVIDER_BEFORE) : base
+    // Only the table's first column drops its rule: in a grouped header the second row's first
+    // cell is a later column, and `first:` would strip its rule there.
+    const thClass = index === 0 ? ruled : ruled.replace(/\s*first:border-l-0/, '')
     const label = (
       <>
         {column.header}

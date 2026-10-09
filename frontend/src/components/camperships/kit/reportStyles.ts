@@ -28,7 +28,11 @@ export const TD_DECIDED = `${TD_NUMBER} ${DECIDED_FILL}`
 /** A group's name over its rows (Programs' pools; Development's sections). */
 export const ROW_HEADING = `${CS_BAND} ${CS_BAND_EDGE} text-foreground border-border border-b px-2 py-[5px] text-left text-xs font-semibold`
 export const ROW_SUBTOTAL = 'font-semibold'
-export const ROW_TOTAL = `${CS_BAND} ${CS_BAND_EDGE} font-bold`
+/**
+ * A total row: the band, bold, and the band's edge rule on its CELLS (a separated-borders table
+ * draws no border on a <tr>). The edge colours are CS_BAND_EDGE's, written out for Tailwind.
+ */
+export const ROW_TOTAL = `${CS_BAND} font-bold *:border-t *:border-t-[color-mix(in_oklab,var(--color-forest-700)_28%,var(--color-border))] dark:*:border-t-[color-mix(in_oklab,var(--color-forest-600)_45%,var(--color-border))]`
 /** An "outside the list" row after the body (kind `end`): muted italic. */
 export const ROW_END = 'text-muted-foreground italic'
 

@@ -28,7 +28,7 @@ export function DefinitionNotes({ notes }: { notes: readonly DefinitionNote[] })
  */
 export function DefRef({ n, title }: { n: number; title?: string }) {
   return (
-    <sup className={`${CS_SUP}${title ? 'cursor-help' : ''}`} title={title}>
+    <sup className={title ? `${CS_SUP} cursor-help` : CS_SUP} title={title}>
       {n}
     </sup>
   )

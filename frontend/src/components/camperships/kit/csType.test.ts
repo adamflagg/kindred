@@ -165,6 +165,13 @@ describe('csType carries the final design language (design-language.md)', () => 
     expect(cs.CS_RULE_GROUP).toContain('border-l')
   })
 
+  // Scan #3109: the primary button keeps the hover the household button it replaced had.
+  it('§4: the primary button darkens on hover', () => {
+    expect(classes(cs.CS_BTN)).toEqual(
+      expect.arrayContaining(['hover:bg-forest-800', 'dark:hover:bg-forest-600'])
+    )
+  })
+
   it('§19: every link carries a size', () => {
     expect(classes(cs.CS_LINK)).toContain('text-[13.5px]')
     expect(classes(cs.CS_LINK_SM)).toContain('text-xs')

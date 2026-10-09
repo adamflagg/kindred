@@ -48,6 +48,7 @@ describe('DefinitionNotes (§4.8; D20: numbered notes at the bottom, no hover)',
     expect(mark).toHaveClass('text-[0.72em]', 'leading-none', 'font-medium', 'align-super')
     expect(mark).not.toHaveClass('text-xs')
     expect(mark).toHaveAttribute('title', 'Awarded: posted amounts, net of reversals.')
+    expect(mark).toHaveClass('tabular-nums', 'cursor-help')
   })
 })
 

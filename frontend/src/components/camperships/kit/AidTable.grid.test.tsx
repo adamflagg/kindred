@@ -122,6 +122,39 @@ describe('AidTable footer (§10: "flows out of its column on the bottom row")', 
   })
 })
 
+// Scan #3109: the status slot shrinks and clips rather than pushing search and CSV off the row.
+describe('AidTable toolbar status', () => {
+  it('sits in a slot that may shrink and clips what does not fit', () => {
+    renderTable({ toolbarStatus: <span>✓ March File downloaded for 12 households</span> })
+    const slot = screen.getByText('✓ March File downloaded for 12 households').parentElement
+    expect(slot).toHaveClass('min-w-0', 'overflow-hidden')
+  })
+})
+
+// Scan #3109: a label span never swallows a column that carries a total.
+describe('AidTable footer span guard', () => {
+  it('stops the label span before the first column with a total', () => {
+    renderTable({ footerLabel: () => '2 grants', footerSpan: 9 })
+    const label = screen.getByText('2 grants').closest('td') as HTMLElement
+    expect(label).toHaveAttribute('colspan', '3')
+    expect(screen.getByText('$750')).toBeInTheDocument()
+  })
+})
+
+// Scan #3109: a placeholder dash says nothing a tooltip could add.
+describe('AidTable placeholder cells', () => {
+  it('leaves an empty-value dash untitled', () => {
+    renderTable({
+      columns: [
+        { key: 'camper', header: 'Camper', width: 150, value: (r) => r.camper },
+        { key: 'none', header: 'Note', width: 90, value: () => '—' },
+      ],
+    })
+    expect(screen.getAllByText('—')[0]?.closest('td')).not.toHaveAttribute('title')
+    expect(screen.getByText('Emma Johnson').closest('td')).toHaveAttribute('title', 'Emma Johnson')
+  })
+})
+
 describe('AidTable bounded box (§23)', () => {
   it('draws a fixed 420px card in the page flow, never sized to the window', () => {
     renderTable({ bounded: true })
