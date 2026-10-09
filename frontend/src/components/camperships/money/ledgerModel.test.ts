@@ -13,6 +13,7 @@ import {
   splitWords,
   tieOut,
   tieOutWords,
+  gapReachesNotReconciled,
   summaryCsvName,
   summaryProgramWords,
 } from './ledgerModel'
@@ -176,5 +177,25 @@ describe('tieOutWords', () => {
     )
     expect(tieOutWords(t, 1)).toMatch(/see To place \(1 line\)$/)
     expect(tieOutWords(t, null)).toMatch(/\$12,100 apart · see To place$/)
+  })
+})
+
+describe('gapReachesNotReconciled', () => {
+  const apart = { kind: 'apart', camp: 652100, posted: 640000, apart: 12100 } as const
+  it('is true when To place holds less than the gap', () => {
+    expect(gapReachesNotReconciled(apart, 10810)).toBe(true)
+  })
+  it('is false when To place holds the whole gap, or more', () => {
+    expect(gapReachesNotReconciled(apart, 12100)).toBe(false)
+    expect(gapReachesNotReconciled(apart, 13000)).toBe(false)
+  })
+  it('is true when Posted is above camp aid: To place can never explain that', () => {
+    expect(
+      gapReachesNotReconciled({ kind: 'apart', camp: 600000, posted: 612100, apart: 12100 }, 99999)
+    ).toBe(true)
+  })
+  it('is false on a match, and when the To place total is unknown', () => {
+    expect(gapReachesNotReconciled({ kind: 'match', camp: 1, posted: 1, apart: 0 }, 0)).toBe(false)
+    expect(gapReachesNotReconciled(apart, null)).toBe(false)
   })
 })

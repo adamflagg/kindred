@@ -25,13 +25,14 @@ import {
   programLabelsOf,
   summaryProgramWords,
   tieOut,
+  gapReachesNotReconciled,
   tieOutWords,
   type TieOut,
 } from './ledgerModel'
 
 /** The footnote that explains the tie-out line, numbered after the registry's notes. */
 const TIE_OUT_NOTE =
-  'The tie-out line: camp aid in CampMinder that counts toward the budget, against Season › Rounds & budget Posted, every pool together. When they differ, the difference is camp aid waiting in To place, or a round checked since the last sync.'
+  'The tie-out line: camp aid in CampMinder that counts toward the budget, against Season › Rounds & budget Posted, every pool together. When they differ, the difference is camp aid waiting in To place, a round short or over in CampMinder (Requests › Not reconciled), or a round checked since the last sync.'
 
 /** A money column whose footer is the server's season figure, never a sum of the rows shown. */
 function moneyColumn(
@@ -81,10 +82,12 @@ function TieOutLine({
   view,
   verdict,
   openCount,
+  openTotal,
 }: {
   view: AidView
   verdict: TieOut
   openCount: number | null
+  openTotal: number | null
 }) {
   const words = tieOutWords(verdict, openCount)
   if (verdict.kind === 'match') {
@@ -110,6 +113,18 @@ function TieOutLine({
       <Link to={aidHref('/aid/money/to-place', view)} className="font-medium underline">
         see To place{after}
       </Link>
+      {gapReachesNotReconciled(verdict, openTotal) && (
+        <>
+          {' '}
+          ·{' '}
+          <Link
+            to={aidHref('/aid/requests', view, { view: 'not-reconciled' })}
+            className="font-medium underline"
+          >
+            see Requests › Not reconciled
+          </Link>
+        </>
+      )}
     </p>
   )
 }
@@ -147,7 +162,9 @@ export function LedgerTab({ view }: { view: AidView }) {
         <TieOutLine
           view={view}
           verdict={tieOut(data, budget.data)}
-          openCount={toPlace.data?.open_count ?? null}
+          // To place reads today only: on a past date its count and total are not that day's.
+          openCount={past === null ? (toPlace.data?.open_count ?? null) : null}
+          openTotal={past === null ? (toPlace.data?.open_total ?? null) : null}
         />
       )}
       <section className="space-y-2">
@@ -178,6 +195,7 @@ export function LedgerTab({ view }: { view: AidView }) {
                     rows={rows}
                     columns={columns}
                     rowKey={(r) => r.program}
+                    hideSearch
                     urlPrefix="f10_"
                     csvFilename={summaryCsvName(view.year, past?.date ?? null)}
                     footerLabel={() => 'All programs'}

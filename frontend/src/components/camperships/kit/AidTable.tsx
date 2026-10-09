@@ -148,6 +148,8 @@ export interface AidTableProps<Row> {
   readonly urlPrefix?: string | undefined
   readonly csvFilename: string
   readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
+  /** Finished CSV rows added after the table's own, in the same column order (csvColumns, then csvExtra). */
+  readonly csvAppend?: ReadonlyArray<readonly string[]> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   /**
    * An editor row under the highlighted one (D22), marked `data-aid-editor`. The Requests grid moved
@@ -181,6 +183,8 @@ export interface AidTableProps<Row> {
   readonly csvMenu?: ReactNode
   /** True: no toolbar at all (no search, switch or Download CSV), for a table whose page owns them. Default false. */
   readonly hideToolbar?: boolean | undefined
+  /** True: the toolbar keeps its switch and Download CSV but draws no search box (a table with no names or ids). */
+  readonly hideSearch?: boolean | undefined
   /** A status line drawn under the toolbar (the March file's result); nothing is drawn when undefined. */
   readonly toolbarStatus?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
@@ -276,6 +280,7 @@ export function AidTable<Row>({
   urlPrefix = '',
   csvFilename,
   csvExtra,
+  csvAppend,
   onOpenTotal,
   renderBelowHighlighted,
   renderDetail,
@@ -285,6 +290,7 @@ export function AidTable<Row>({
   csvMenu,
   toolbarStatus,
   hideToolbar = false,
+  hideSearch = false,
   searchPlaceholder = 'Search names or CM IDs',
   searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
@@ -677,7 +683,7 @@ export function AidTable<Row>({
     const csvColumns = columns.filter((c) => c.inCsv !== false)
     const extra = csvExtra ?? []
     // counted(): the kept row (shown only because it is highlighted) stays out of the file.
-    const data = counted(ordered).map((row) => [
+    const data: string[][] = counted(ordered).map((row) => [
       ...csvColumns.map((c) =>
         c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
       ),
@@ -686,7 +692,7 @@ export function AidTable<Row>({
     downloadCsv(
       buildCsvContent(
         [...csvColumns.map((c) => c.csvHeader ?? c.header), ...extra.map((e) => e.header)],
-        withLinkLine(data, window.location.href)
+        withLinkLine([...data, ...(csvAppend ?? []).map((r) => [...r])], window.location.href)
       ),
       csvFilename
     )
@@ -781,17 +787,19 @@ export function AidTable<Row>({
           {toolbarLead}
           {toolbarAfterGrouping !== undefined && groupingSwitch}
           {toolbarAfterGrouping}
-          <div className="relative w-64">
-            <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-            <input
-              type="search"
-              aria-label="Search"
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className={AID_SEARCH_INPUT}
-            />
-          </div>
+          {!hideSearch && (
+            <div className="relative w-64">
+              <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+              <input
+                type="search"
+                aria-label="Search"
+                placeholder={searchPlaceholder}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className={AID_SEARCH_INPUT}
+              />
+            </div>
+          )}
           {toolbarAfterGrouping === undefined && groupingSwitch}
           {csvButton}
         </div>

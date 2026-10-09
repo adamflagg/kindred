@@ -125,9 +125,10 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     expect(
       screen.getByText(/^The tie-out line: camp aid in CampMinder that counts toward the budget/)
     ).toBeInTheDocument()
-    // The footer is the season's, from the server: a search narrows the rows, never the footer.
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Summer')
-    expect(screen.queryByText('Family Camp Weekends')).toBeNull()
+    // Final audit E2: a 4-6 row program table holds no names or CM ids, so it draws no search box
+    // (it keeps Download CSV); the footer is the season's, from the server.
+    expect(screen.queryByRole('searchbox', { name: 'Search' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
     expect(within(rowOf('All programs')).getByText('$599,500')).toBeInTheDocument()
   })
 
@@ -220,6 +221,38 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       expect(line).not.toHaveTextContent('✓')
       const link = within(line).getByRole('link', { name: /see To place/ })
       expect(link.getAttribute('href')).toMatch(/^\/aid\/money\/to-place/)
+    })
+
+    it('also points at Requests › Not reconciled when To place cannot explain the whole gap', async () => {
+      // The gap is $12,540 and To place holds $6,920: the rest sits in Requests › Not reconciled.
+      budget = budgetPosting(600000)
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      const link = await within(line).findByRole('link', {
+        name: 'see Requests › Not reconciled',
+      })
+      expect(link.getAttribute('href')).toMatch(/^\/aid\/requests\?.*view=not-reconciled/)
+      expect(line).toHaveTextContent(/see To place \(\d+ lines\) · see Requests › Not reconciled$/)
+    })
+
+    it('does not point at Not reconciled when To place holds the whole gap', async () => {
+      budget = budgetPosting(612540 - TO_PLACE.open_total)
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      await within(line).findByRole('link', { name: /see To place/ })
+      expect(within(line).queryByRole('link', { name: /Not reconciled/ })).toBeNull()
+    })
+
+    it('on a past date counts no To place lines and points at no queue it cannot size', async () => {
+      budget = budgetPosting(600000)
+      renderTab('/aid/money/ledger?as_of=2027-05-01', {
+        year: 2027,
+        asOf: { kind: 'past', date: '2027-05-01', axis: 'posted' },
+      })
+      const line = await screen.findByTestId('tie-out')
+      await within(line).findByRole('link', { name: /see To place/ })
+      expect(line).not.toHaveTextContent(/\(\d+ lines?\)/)
+      expect(within(line).queryByRole('link', { name: /Not reconciled/ })).toBeNull()
     })
 
     it('shows nothing while the budget is loading, and nothing when it fails', async () => {

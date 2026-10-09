@@ -66,7 +66,7 @@ const registerSearch = (row: ApiAidGrantRow) => [
   row.description,
 ]
 const REGISTER_CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidGrantRow>> = [
-  { header: 'Household id', value: (r) => String(r.household_cm_id) },
+  { header: 'Household CM id', value: (r) => String(r.household_cm_id) },
 ]
 const NO_UNMAPPED: ReadonlyArray<{ source_id: string; description: string }> = []
 type FilterKey = 'show' | 'grantor' | 'program' | 'row'

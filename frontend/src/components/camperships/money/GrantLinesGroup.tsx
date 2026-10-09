@@ -14,6 +14,7 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { CS_BTN, CS_BTN2, CS_LABEL, CS_LINK, CS_SMALL } from '../kit/csType'
 import { familyLabel } from '../kit/familyLabel'
 import { formatMoney } from '../kit/money'
+import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { hiddenTicks } from '../requests/ticks'
 import { GRANT_CONFIRM_DOES, grantLinesFor } from './toPlaceModel'
 import { GRANT_NOTE } from './toPlaceStyles'
@@ -139,7 +140,7 @@ function GrantLinesBody({
         {canWork && singles.length > 0 && (
           <button
             type="button"
-            className={`${CS_BTN2} ml-auto`}
+            className={`${BUTTON_SECONDARY} ml-auto`}
             onClick={() => {
               setSelected(new Set([...selected, ...singles]))
               setAtClick(new Set(singles))

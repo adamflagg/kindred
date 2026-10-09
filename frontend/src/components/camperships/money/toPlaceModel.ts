@@ -18,7 +18,10 @@ import type { HouseholdLabel } from '../household/householdModel'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
 import { familyLabel } from '../kit/familyLabel'
-import { formatMoney, toCents } from '../kit/money'
+import { formatMoney, moneyCsv, toCents } from '../kit/money'
+import type { ApiAidNeedsCamper } from '../../../types/api-types'
+import { grantLineWords } from '../grants/needsModel'
+import { suggestionCell } from '../grants/placeModel'
 
 export type ToPlaceReason = ApiAidToPlaceLine['reason']
 
@@ -374,4 +377,33 @@ export function toPlaceCount(
   if (campOpenCount === undefined || grantLineCount === undefined) return null
   const total = campOpenCount + grantLineCount
   return total > 0 ? total : null
+}
+
+/** The CSV's Group column for the outside-grant group (the one file covers everything the tab counts). */
+export const GRANT_GROUP_WORDS = 'Outside grant posted to the family'
+
+/** The CSV's Group column for a camp-aid line: its reason heading, under "Camp aid". */
+export const campAidGroupWords = (heading: string) => `Camp aid: ${heading}`
+
+/**
+ * The outside-grant lines as CSV rows, in the camp-aid table's column order (Family, The line in
+ * CampMinder, Requests it could belong to, Suggestion, What Confirm does, then Household CM id, Line,
+ * Still not placed, Group), so the one To place file holds every line the tab counts (final audit O8).
+ * A grant line is wholly unplaced, so its amount is the figure still not placed.
+ */
+export function grantCsvRows(
+  needs: readonly ApiAidNeedsCamper[],
+  sessions: ReadonlyMap<number, string> | undefined
+): string[][] {
+  return needs.map((n) => [
+    familyLabel(n.grant, n.grant.family_name).text,
+    grantLineWords(n),
+    n.candidates.map((c) => c.name).join(', '),
+    suggestionCell(n, sessions),
+    GRANT_CONFIRM_DOES,
+    String(n.grant.household_cm_id),
+    String(n.grant.transaction_cm_id),
+    moneyCsv(n.grant.amount),
+    GRANT_GROUP_WORDS,
+  ])
 }

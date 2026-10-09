@@ -493,8 +493,8 @@ describe('Money › To place (§8.1)', () => {
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const [header, firstRow] = content.split('\n')
     // Ruling B dropped the "Not placed" column; the CSV keeps the figure.
-    expect(header).toMatch(/Household,Line,Still not placed$/)
-    expect(firstRow).toMatch(/1000001,3000001,3620$/)
+    expect(header).toMatch(/Household CM id,Line,Still not placed,Group$/)
+    expect(firstRow).toMatch(/1000001,3000001,3620,Camp aid: /)
   })
 
   describe('scan residue (#2990)', () => {
@@ -1170,6 +1170,8 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
       await screen.findByRole('button', { name: 'Confirm the 2 Exact Single Matches…' })
     )
     const dialog = await screen.findByRole('dialog')
+    // Final audit E4: the title counts, in the grant dialog's own words (the mock's "Confirm 2 exact single matches").
+    expect(within(dialog).getByText('Confirm 2 exact single matches')).toBeInTheDocument()
     expect(within(dialog).getByText(/^2 lines · 2 households · \$1,800 locked/)).toBeInTheDocument()
     expect(within(dialog).getByText('Estimate')).toBeInTheDocument()
     answers = [json({ ...PLACED, placed: [3000003, RILEY_EXACT.transaction_cm_id] })]
@@ -1294,6 +1296,33 @@ describe('Money › To place › the outside-grant group (M5)', () => {
     const camp = screen.getByText('No request behind it')
     expect(camp.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByText(GARCIA_LINE)).toBeInTheDocument()
+  })
+
+  it('the one Download CSV carries the grant lines too, each marked with its group (final audit O8)', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    await screen.findByText('Outside grant posted to the family')
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    const lines = content.split('\n')
+    const header = lines[0] ?? ''
+    expect(header).toMatch(/,Household CM id,Line,Still not placed,Group$/)
+    // 5 camp-aid lines and 2 grant lines: every line the tab counts is in the file.
+    const body = lines.filter((l) => /,(Camp aid|Outside grant)[^,]*$/.test(l))
+    expect(body).toHaveLength(7)
+    const grantRows = body.filter((l) => l.endsWith(',Outside grant posted to the family'))
+    expect(grantRows).toHaveLength(2)
+    expect(grantRows.some((l) => l.includes(',1000003,4000008,800.50,'))).toBe(true)
+    expect(body.filter((l) => l.startsWith('Pat Garcia,')).length).toBe(1)
+    expect(body.filter((l) => /,Camp aid: [^,]*$/.test(l))).toHaveLength(5)
+  })
+
+  it('a group-less read (no grant lines) still downloads only the camp-aid lines', async () => {
+    renderTab()
+    await screen.findByText('5 lines open · $6,920 camp aid')
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    expect(content).not.toContain('Outside grant posted to the family')
   })
 
   it('reads the grants with the signed-in token', async () => {

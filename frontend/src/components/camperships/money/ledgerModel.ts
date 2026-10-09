@@ -146,6 +146,17 @@ export function tieOut(summary: ApiAidSummary, budget: ApiAidBudget): TieOut {
   return { kind: gap === 0 ? 'match' : 'apart', camp, posted, apart: gap / 100 }
 }
 
+/**
+ * True when To place cannot hold the whole gap, so part of it sits in Requests › Not reconciled
+ * (Posted with nothing in CampMinder, or a round short or over): the gap is larger than the open
+ * To place total, or Posted is the larger figure (To place only ever adds camp aid). Unknown when
+ * the open total is (a past date reads no To place): then no pointer is drawn.
+ */
+export function gapReachesNotReconciled(t: TieOut, openTotal: number | null): boolean {
+  if (t.kind !== 'apart' || openTotal === null) return false
+  return toCents(t.posted) > toCents(t.camp) || toCents(t.apart) > toCents(openTotal)
+}
+
 /** The tie-out line in words (the check mark is drawn beside a match, not spelled here). */
 export function tieOutWords(t: TieOut, openCount: number | null): string {
   const camp = `Camp aid posted ${formatMoney(t.camp)}`
