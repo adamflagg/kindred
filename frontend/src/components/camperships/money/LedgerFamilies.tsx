@@ -14,7 +14,7 @@ import { labelWords } from '../household/householdModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidPicker } from '../kit/AidPicker'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
-import { CS_FLABEL, CS_LINK_CELL } from '../kit/csType'
+import { CS_FLABEL, CS_LINK_CELL, CS_PMETA } from '../kit/csType'
 import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
@@ -305,7 +305,7 @@ function FamilyTable({
               {sentenceCase(LEDGER_LEVEL_WORDS[r.level])}
             </StatusPill>
           ),
-        footerNote: () => <span className="text-muted-foreground font-normal">{foot.words}</span>,
+        footerNote: () => <span className={`${CS_PMETA} font-normal`}>{foot.words}</span>,
         footerTitle: () => foot.title,
       },
     ],

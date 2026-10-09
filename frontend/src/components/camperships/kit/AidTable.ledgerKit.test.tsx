@@ -56,6 +56,17 @@ describe('a total with its own title (★11)', () => {
     )
   })
 
+  it('draws a titled total as a link (primary, dotted underline), the kit CF.cf-link in a total row', () => {
+    renderTable()
+    const link = screen.getByRole('button', { name: '$750' })
+    expect(link).toHaveClass('text-primary', 'underline', 'decoration-dotted')
+  })
+
+  it('leaves an untitled total in the row’s own ink', () => {
+    renderTable({ columns: COLUMNS.map(({ totalTitle: _drop, ...c }) => c) })
+    expect(screen.getByRole('button', { name: '$750' })).not.toHaveClass('text-primary')
+  })
+
   it('leaves a total with no totalTitle untitled', () => {
     renderTable({ columns: COLUMNS.map(({ totalTitle: _drop, ...c }) => c) })
     expect(screen.getByRole('button', { name: '$750' })).not.toHaveAttribute('title')

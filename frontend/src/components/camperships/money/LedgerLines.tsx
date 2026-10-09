@@ -13,7 +13,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { aidHref, type AidView } from '../kit/asOf'
 import { AidTable, type AidColumn } from '../kit/AidTable'
-import { CS_BTN2, CS_CARD, CS_LINK_CELL, CS_PMETA } from '../kit/csType'
+import { CS_BTN2, CS_LINK_CELL, CS_PMETA } from '../kit/csType'
 import { formatShortDate } from '../kit/dates'
 import { familyLabel } from '../kit/familyLabel'
 import { moneyCsv } from '../kit/money'
@@ -65,7 +65,7 @@ export function LedgerLines({
       {
         key: 'family',
         header: 'Family',
-        width: 180,
+        width: 170,
         pinned: true,
         value: (l) => labelWords(labelOfLine(l)),
         title: (l) => labelWords(labelOfLine(l)),
@@ -84,18 +84,22 @@ export function LedgerLines({
       {
         key: 'camper',
         header: 'Camper',
-        width: 150,
+        width: 140,
         value: (l) => l.camper,
         title: (l) => (l.camper === '' ? NO_CAMPER_TITLE : l.camper),
         // A line posted to the household names no camper: ⌂ (the session isn't on this read).
         render: (l) =>
-          l.camper === '' ? <Home className="text-muted-foreground h-3 w-3" /> : l.camper,
+          l.camper === '' ? (
+            <Home className="text-muted-foreground inline-block h-3 w-3 align-[-2px]" />
+          ) : (
+            l.camper
+          ),
         searchable: true,
       },
       {
         key: 'description',
         header: 'Description in CampMinder',
-        width: 210,
+        width: 190,
         value: (l) => l.description,
         title: (l) => l.description,
         searchable: true,
@@ -103,14 +107,14 @@ export function LedgerLines({
       {
         key: 'source',
         header: 'Source family',
-        width: 160,
+        width: 150,
         value: (l) => familyWordsOf(l),
         title: (l) => familyWordsOf(l),
       },
       {
         key: 'program',
         header: 'Program',
-        width: 110,
+        width: 100,
         value: (l) => (l.program === '' ? '' : summaryProgramWords(l.program, l.program_label)),
         title: (l) =>
           l.program === ''
@@ -168,7 +172,7 @@ export function LedgerLines({
   )
 
   return (
-    <section className={`${CS_CARD} space-y-2 p-3`} data-testid="ledger-lines">
+    <section className="space-y-2 pt-2" data-testid="ledger-lines">
       {/* Loading or failed: the heading row's Close alone, so a stuck read never pins the card open. */}
       {lines.data === undefined && <AidToolbar right={close} />}
       <QueryGuard

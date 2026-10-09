@@ -41,6 +41,7 @@ import {
   TFOOT_CELL_WRAP,
   TH,
   TOTAL_BUTTON,
+  TOTAL_LINK,
 } from './kitStyles'
 import { csvCell, withLinkLine } from './csv'
 import { isPageKey } from './keyboard'
@@ -1084,7 +1085,7 @@ export function AidTable<Row>({
                         (onOpenTotal ? (
                           <button
                             type="button"
-                            className={TOTAL_BUTTON}
+                            className={c.totalTitle ? TOTAL_LINK : TOTAL_BUTTON}
                             title={c.totalTitle?.(visible)}
                             disabled={totalsDisabled}
                             onClick={() => onOpenTotal(c.key, visible)}
