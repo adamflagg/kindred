@@ -1,6 +1,7 @@
 /**
- * Reports › Programs' table (spec §9.3; RPT-11; statistics-v2.html's Programs): one row per session,
- * grouped by pool with the server's subtotals, then its total. Round 1 and Round 2 carry the
+ * Statistics' By session table (spec §9.3; RPT-11; the approved final mock reports-statistics.html; once
+ * Reports › Programs): one row per session, grouped by pool with the server's subtotals, then its total;
+ * an award table narrows it to that table's pools. Round 1 and Round 2 carry the
  * sheet's six columns, Round 3 two, then total awarded. Pure; every figure is the server's (D21),
  * subtotals are its pooled ratios. Sessions and pools are named by the server (the rules). Each block's
  * Apps opens the requests behind it (slice 4 J, #2974's `/programs/requests`).

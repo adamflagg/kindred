@@ -13,9 +13,10 @@ import { reportRetry } from './reportRetry'
 import { useAidAsOf } from './useAidAsOf'
 
 /**
- * Reports › Programs' one read (spec §9.3; RPT-11; D21): one row per session, grouped by pool, with
- * the server's pooled subtotals and total, on the request set, live or by the page's past day.
- * `view`. Inherits the app's cache defaults; refreshed by every money write (the reports prefix).
+ * Statistics' By session read (spec §9.3; RPT-11; D21): one row per session, grouped by pool, with
+ * the server's pooled subtotals and total, on the request set, live or by the page's past day. Needs
+ * `view`. `enabled` false skips the read (Statistics reads it only on Session rows). Inherits the app's
+ * cache defaults; refreshed by every money write (the reports prefix).
  */
 export function useAidPrograms(requestSet: AidRequestSet, enabled = true) {
   const year = useYear()

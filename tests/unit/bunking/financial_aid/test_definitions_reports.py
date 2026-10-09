@@ -27,8 +27,9 @@ def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
     )
 
 
-def test_awarded_is_posted_on_live_requests_never_total_awards_granted() -> None:
-    """D80 (awarded = offered = Posted, net of clawback), D129/D131 (a cancelled request leaves at once), D106."""
+def test_awarded_is_posted_on_live_requests_the_camps_own_aid_unlike_developments_grants_awards() -> None:
+    """D80 (awarded = offered = Posted, net of clawback), D129/D131 (live requests only), D106; the approved final
+    mock reports-statistics.html shortened the note."""
     note = BY_KEY["awarded"]
     assert (note.term, note.spec) == ("Awarded", "§5.6")
     assert "Posted" in note.text
@@ -99,7 +100,7 @@ def test_round_1_phases_define_both_columns_the_bands_and_the_total() -> None:
     assert "NOT RULED" not in text
 
 
-def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applications() -> None:
+def test_appeals_say_cancelled_requests_count_and_the_rate_divides_by_round_1_apps() -> None:
     """D131 / owner ruling (RULED 2026-10-02, appeals and cancellations): the appeal rate and the per-tier appeals count every
     request with a Round 2 or later ask, cancelled ones included; RPT-23's outcomes exclude them."""
     note = BY_KEY["appeals"]
@@ -123,8 +124,9 @@ def test_recipients_who_cancelled_names_a_confirmed_duplicate_that_holds_a_poste
     assert "a confirmed duplicate that holds one, on its own Duplicate line" in text
 
 
-def test_awarded_names_what_liveness_leaves_out() -> None:
-    """Owner A11 (APPROVED): not cancelled, withdrawn or a pending duplicate."""
+def test_awarded_counts_live_requests_only() -> None:
+    """Owner A11 (APPROVED): live means not cancelled, withdrawn or a pending duplicate. The approved final mock
+    reports-statistics.html shortened the note to "on live requests"; the exclusions are A11's, not the note's."""
     assert "on live requests" in BY_KEY["awarded"].text
 
 

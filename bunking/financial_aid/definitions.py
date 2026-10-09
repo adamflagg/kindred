@@ -363,7 +363,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§9.7",
         rulings=("D131",),
     ),
-    # Slice 4 ask 4: the Statistics columns that had no note (§9.2, §9.7 RPT-9).
+    # Slice 4 ask 4: the Statistics columns that had no note (§9.2, §9.7 RPT-9). Since the approved final mock
+    # reports-statistics.html (six notes, cap 6) these three, cancelled_applicants, recipients_cancelled and
+    # awarded_count sit on no surface: kept in the registry on purpose, off the Statistics footer.
     Definition(
         key="pct_of_ask_with_grants",
         term="% of ask incl. grants",

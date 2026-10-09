@@ -1,6 +1,6 @@
 /**
  * Reports › Statistics' words and tables (spec §9.2, §9.7 RPT-5, 9, 10, 22, 23; D80, D129–D131,
- * D157; statistics-v2.html). Pure: the tab renders these through `ReportTable`. Every figure and every
+ * D157; the approved final mock reports-statistics.html). Pure: the tab renders these through `ReportTable`. Every figure and every
  * total is the server's (D21); nothing here adds, subtracts or divides one. Each count names the
  * requests behind it (slice 4 J): the address the grid's `?report=` reads, never an id list here.
  */
@@ -73,13 +73,14 @@ export function roundChipOf(stats: ApiAidStatistics): RoundChip {
 export const isDecided = (stats: ApiAidStatistics) => stats.basis === 'posted_and_decided'
 
 /**
- * The tier table's columns (slice 4 K and L, PENDING OWNER). Awarded is Posted alone on either basis
- * (the read's `awarded`, #2974); on the decided basis an amber "Decided (not yet offered)" sits beside
- * it, and the two % columns take the server's labels, which name "(posted + decided)" there (owner
- * B4a (b)). The average award and its population are the camp's Posted money (D157; owner R2a D5):
- * "Awards" so nobody compares it with Development's Grants/Awards, which counts every
- * source (L). % of ask's denominator, the live requests' in-budget asks, is its own column right
- * before it: it isn't the Asked column, which counts every app's ask, cancelled included (owner B4a (c)).
+ * The tier table's columns (slice 4 K and L; the approved final mock reports-statistics.html). Awarded is
+ * Posted alone on either basis (the read's `awarded`, #2974); on the decided basis an amber "Decided"
+ * column (its title says "not yet offered") sits beside it, and the two % columns turn amber, each title
+ * naming "(posted + decided)" in full (owner B4a (b)). The average award and its population are the
+ * camp's Posted money (D157; owner R2a D5): "Awards" so nobody compares it with Development's
+ * Grants/Awards, which counts every source (L). % of ask's denominator, the live requests' in-budget
+ * asks, is its own column ("In-budget ask") right before it: it isn't the Asked column, which counts
+ * every app's ask, cancelled included (owner B4a (c)). Headers are short; the full words are titles.
  */
 export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColumn[] {
   const decided = isDecided(stats)

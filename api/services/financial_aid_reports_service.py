@@ -265,7 +265,8 @@ def _pool_rows_in_rules_order[R: (ApplicationsRow, BudgetRow, Round1PctRow)](
 
 def table_chips(document: AidRules | None) -> list[ChipOut]:
     """Each award table, labelled by the pool its programs share (pool A, pool B, ...), else by
-    its programs' labels."""
+    its programs' labels, with the pools its programs sit in (rules' pool order), which Statistics'
+    By session rows filter by."""
     if document is None:
         return []
     pool_order = {pool: index for index, pool in enumerate(document.budget.pools)}
