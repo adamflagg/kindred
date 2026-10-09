@@ -22,6 +22,10 @@
  * and pins only what can reach it (CamperCard's last-year line reads
  * `CamperHistoryProvider`, which admits at-camp session types only).
  *
+ * #2790 owner ruling 2026-10-09 deliberately changed the pins marked with
+ * that citation: `tiny` (S2, AG 2, the named quests, unmapped quests read
+ * whole) and the family `short` (no subtitle). Every other pin is untouched.
+ *
  * Reconciling the disparities these pins preserve — five renderings of one AG
  * session, three of one family weekend — is #2790, and deliberately not here.
  */
@@ -269,48 +273,51 @@ const CALL_SITE_GROUPS: CallSiteGroup[] = [
     ],
   },
   {
+    // #2790 owner ruling 2026-10-09: Session N -> S<N>, AG session -> AG <N>.
     group: 'tiny-camper-card',
     form: 'tiny',
     was: 'getSessionShorthand(name, type)',
     sites: ['CamperCard.tsx (last-year line; at-camp types only, per CamperHistoryProvider)'],
     pins: [
-      ['Session 2', 'main', '2'],
-      ['Session 3', 'main', '3'],
-      ['Session 2 (Grades 4-6)', 'main', '2'],
+      ['Session 2', 'main', 'S2'],
+      ['Session 3', 'main', 'S3'],
+      ['Session 2 (Grades 4-6)', 'main', 'S2'],
       ['Taste of Camp 1', 'main', 'Taste 1'],
-      ['Session 2a', 'embedded', '2a'],
-      ['Session 3b', 'embedded', '3b'],
+      ['Session 2a', 'embedded', 'S2a'],
+      ['Session 3b', 'embedded', 'S3b'],
       ['Taste of Camp 2', 'embedded', 'Taste 2'],
-      ['All-Gender Cabin-Session 2 (7th & 8th grades)', 'ag', '2'],
-      ['All-Gender Cabin-Session 4 (4th - 6th grades)', 'ag', '4'],
-      ['Session 4 (All-Gender Cabin)-6th & 7th grades', 'ag', '4'],
-      ['Session B (All-Gender Cabins)', 'ag', 'Session'],
-      ['All-Gender Cabin-Session 3 (Grades 6-8)', 'ag', '3'],
-      ['AG Session 4', 'ag', '4'],
+      ['All-Gender Cabin-Session 2 (7th & 8th grades)', 'ag', 'AG 2'],
+      ['All-Gender Cabin-Session 4 (4th - 6th grades)', 'ag', 'AG 4'],
+      ['Session 4 (All-Gender Cabin)-6th & 7th grades', 'ag', 'AG 4'],
+      ['Session B (All-Gender Cabins)', 'ag', 'AG B'],
+      ['All-Gender Cabin-Session 3 (Grades 6-8)', 'ag', 'AG 3'],
+      ['AG Session 4', 'ag', 'AG 4'],
       ['', '', ''],
     ],
   },
   {
+    // #2790 owner ruling 2026-10-09: as above, plus an unmapped quest reads
+    // as its name whole (was the generic 'Quest'); an untyped AG name reads AG.
     group: 'tiny-untyped',
     form: 'tiny',
     was: 'getSessionShorthand(name)',
     sites: ['bunkGraphStyles.ts (last-year node label)'],
     pins: [
-      ['Session 2', undefined, '2'],
-      ['Session 3', undefined, '3'],
-      ['Session 2 (Grades 4-6)', undefined, '2'],
+      ['Session 2', undefined, 'S2'],
+      ['Session 3', undefined, 'S3'],
+      ['Session 2 (Grades 4-6)', undefined, 'S2'],
       ['Taste of Camp 1', undefined, 'Taste 1'],
-      ['Session 2a', undefined, '2a'],
-      ['Session 3b', undefined, '3b'],
+      ['Session 2a', undefined, 'S2a'],
+      ['Session 3b', undefined, 'S3b'],
       ['Taste of Camp 2', undefined, 'Taste 2'],
-      ['All-Gender Cabin-Session 2 (7th & 8th grades)', undefined, '2'],
-      ['All-Gender Cabin-Session 4 (4th - 6th grades)', undefined, '4'],
-      ['Session 4 (All-Gender Cabin)-6th & 7th grades', undefined, '4'],
-      ['Session B (All-Gender Cabins)', undefined, 'Session'],
-      ['All-Gender Cabin-Session 3 (Grades 6-8)', undefined, '3'],
-      ['AG Session 4', undefined, '4'],
-      ['Teen Adventure Quests', undefined, 'Quest'],
-      ['Quest Session 2: Backpacking the High Sierra', undefined, 'Quest'],
+      ['All-Gender Cabin-Session 2 (7th & 8th grades)', undefined, 'AG 2'],
+      ['All-Gender Cabin-Session 4 (4th - 6th grades)', undefined, 'AG 4'],
+      ['Session 4 (All-Gender Cabin)-6th & 7th grades', undefined, 'AG 4'],
+      ['Session B (All-Gender Cabins)', undefined, 'AG B'],
+      ['All-Gender Cabin-Session 3 (Grades 6-8)', undefined, 'AG 3'],
+      ['AG Session 4', undefined, 'AG 4'],
+      ['Teen Adventure Quests', undefined, 'Teen Adventure Quests'],
+      ['Quest Session 2: Backpacking the High Sierra', undefined, 'Quest Session 2'],
       ['SCIT: Rising 12th', undefined, '12t'],
       ['TLI: Fall Interns', undefined, 'TLI:'],
       ['Family Camp 1: Memorial Day Weekend', undefined, '1'],
@@ -425,18 +432,11 @@ describe('#2763 record-adapter pins', () => {
       ],
       ['SCIT: Rising 12th', 'scit', 'SCIT: Rising 12th'],
       ['TLI: Fall Interns', 'tli', 'TLI: Fall Interns'],
-      ['Family Camp 1: Memorial Day Weekend', 'family', 'Family Camp 1: Memorial Day Weekend'],
-      [
-        'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
-        'family',
-        'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
-      ],
-      [
-        'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
-        'family',
-        'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
-      ],
-      ['Family Camp 10: Labor Day Weekend', 'family', 'Family Camp 10: Labor Day Weekend'],
+      // #2790 owner ruling 2026-10-09: Family Camp short carries NO subtitle.
+      ['Family Camp 1: Memorial Day Weekend', 'family', 'Family Camp 1'],
+      ['Family Camp 5: JFAM Weekend (w/ kids 10 and under)', 'family', 'Family Camp 5'],
+      ['Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)', 'family', 'Family Camp 8'],
+      ['Family Camp 10: Labor Day Weekend', 'family', 'Family Camp 10'],
       ['Spring Family Camp', 'family', 'Spring Family Camp'],
       ['Fall Family Camp II', 'family', 'Fall Family Camp II'],
       ['JFAM Winter Family Camp', 'family', 'JFAM Winter Family Camp'],
