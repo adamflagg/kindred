@@ -309,8 +309,8 @@ function renderFor(
 function outsideFooterNote(rows: readonly ApiAidGridRow[], mark: NoteMark | undefined): ReactNode {
   const outside = listOutside(rows)
   return outside > 0 ? (
-    <span className="text-muted-foreground inline-flex max-w-full font-normal">
-      <span className="truncate">{`incl. ${formatMoney(outside)} outside the budget`}</span>
+    <span className="text-muted-foreground block truncate font-normal">
+      {`incl. ${formatMoney(outside)} outside the budget`}
       {mark ? <DefRef n={mark.n} title={mark.title} /> : null}
     </span>
   ) : null

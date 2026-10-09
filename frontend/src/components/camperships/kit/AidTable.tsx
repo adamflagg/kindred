@@ -858,12 +858,23 @@ export function AidTable<Row>({
                           indicator: (
                             <>
                               {markOf(c)}
-                              {sort?.key === c.key ? (sort.dir === 'asc' ? '↑' : '↓') : null}
+                              {sort?.key === c.key ? (
+                                <span className="ml-1">{sort.dir === 'asc' ? '↑' : '↓'}</span>
+                              ) : null}
                             </>
                           ),
                         }
                       : {})}
-                    {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
+                    {...(c.align === 'right' || c.mark
+                      ? {
+                          // A marked label sits on the baseline with no gap, so the mark reads "Decided¹" (§12);
+                          // in a centred flex row vertical-align is ignored and the mark floated high and apart.
+                          buttonClassName: join(
+                            c.align === 'right' ? 'justify-end' : '',
+                            c.mark ? 'items-baseline! gap-0!' : ''
+                          ),
+                        }
+                      : {})}
                   />
                 )
               )}

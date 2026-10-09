@@ -223,7 +223,9 @@ describe('the footer is one line (§10)', () => {
         extra={{ outsideMark: { n: 5, title: 'Outside: the part…' } }}
       />
     )
-    const note = screen.getByText('incl. $500 outside the budget')
+    const note = screen.getByText(
+      (_, el) => el?.tagName === 'SPAN' && el.textContent === 'incl. $500 outside the budget5'
+    )
     const cell = note.closest('td') as HTMLElement
     expect(cell).toHaveAttribute(
       'title',
@@ -231,6 +233,11 @@ describe('the footer is one line (§10)', () => {
     )
     expect(note).toHaveClass('truncate')
     expect(cell.querySelector('sup')).toHaveTextContent('5')
+    // §12: the mark rides inside the one cut span (as the mock's .cf-cut), never as a flex item, where
+    // vertical-align is ignored and the mark floated to the top of the cell.
+    const mark = cell.querySelector('sup') as HTMLElement
+    expect(mark.parentElement).toHaveClass('truncate')
+    expect(mark.closest('.inline-flex')).toBeNull()
     const heads = screen.getAllByRole('columnheader').map((th) => th.textContent)
     const requestedBy = heads.findIndex((t) => t.startsWith('Requested by'))
     const footCells = Array.from((cell.closest('tfoot') as HTMLElement).querySelectorAll('td'))

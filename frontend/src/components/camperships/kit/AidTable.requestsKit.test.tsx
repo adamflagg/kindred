@@ -79,6 +79,14 @@ describe('a header footnote mark (§12)', () => {
     expect(mark).toHaveClass('text-[0.72em]')
   })
 
+  it('sits tight against a sortable label, raised from its baseline (§12, mock "Decided¹")', () => {
+    renderTable()
+    const mark = document.querySelector('thead sup[title^="Decided"]') as HTMLElement
+    // A flex row centres the mark's box and ignores vertical-align, so the mark floated high and 4px off.
+    const button = mark.closest('button') as HTMLElement
+    expect(button).toHaveClass('items-baseline!', 'gap-0!')
+  })
+
   it('draws it beside a help header too, and keeps the header name clean', () => {
     renderTable()
     const mark = document.querySelector('thead sup[title^="Posted:"]')
