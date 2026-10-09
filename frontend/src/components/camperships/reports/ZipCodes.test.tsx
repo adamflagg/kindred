@@ -149,7 +149,8 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
       '00012'
     )
     const status = screen.getAllByTestId('find-status')[0]!
-    expect(status).toHaveTextContent('1 of 4')
+    // Mock: the count is of ZIPs; Outside the US and No ZIP on file are not ZIPs.
+    expect(status).toHaveTextContent('1 of 2')
     expect(status).toHaveAttribute(
       'title',
       expect.stringContaining('the totals row stays the whole table')

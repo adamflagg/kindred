@@ -240,8 +240,9 @@ export function ReportTable({
         (r) => !BODY_KINDS.has(r.kind) || matchesSearch(r.cells.map(reportText), query)
       )
     : ordered
-  const bodyCount = ordered.filter((r) => BODY_KINDS.has(r.kind)).length
-  const matching = visible.filter((r) => BODY_KINDS.has(r.kind)).length
+  // The find status counts the table's own rows (ZIPs), never its end rows ("Outside the US", "No ZIP on file").
+  const bodyCount = ordered.filter((r) => r.kind === 'body').length
+  const matching = visible.filter((r) => r.kind === 'body').length
   // csvOnly columns are in Download CSV, never on screen or in Copy.
   const drawn = useMemo(() => columns.filter((c) => !c.csvOnly), [columns])
   const grouped = drawn.some((c) => c.group !== undefined)

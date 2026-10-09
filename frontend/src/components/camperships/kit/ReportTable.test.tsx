@@ -131,7 +131,7 @@ describe('ReportTable', () => {
     renderTable({ find: true })
     await userEvent.type(screen.getByRole('searchbox', { name: 'Find in Every camper' }), '00012')
     expect(bodyTexts()).toEqual(['00012', 'All · 2 ZIPs'])
-    expect(screen.getByTestId('find-status')).toHaveTextContent('1 of 3')
+    expect(screen.getByTestId('find-status')).toHaveTextContent('1 of 2')
     await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
     expect(writeText.mock.calls[0]?.[0]).toContain('00010')
   })
@@ -774,10 +774,10 @@ describe('ReportTable', () => {
       expect(screen.queryByTestId('find-status')).toBeNull()
       await userEvent.type(screen.getByRole('searchbox', { name: 'Find in Every camper' }), '00012')
       const status = screen.getByTestId('find-status')
-      expect(status).toHaveTextContent('1 of 3')
+      expect(status).toHaveTextContent('1 of 2')
       expect(status).toHaveAttribute(
         'title',
-        "1 of 3 ZIPs match “00012”; the totals row stays the whole table's"
+        "1 of 2 ZIPs match “00012”; the totals row stays the whole table's"
       )
       expect(screen.getByTestId('report-heading-row').contains(status)).toBe(true)
       expect(screen.queryByText(/rows match\./)).toBeNull()
