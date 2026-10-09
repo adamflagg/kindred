@@ -17,7 +17,6 @@ import (
 // the spec.
 var financialAidPermissions = []string{
 	"financial_aid.casework",
-	"financial_aid.funding_sources",
 	"financial_aid.grantors",
 	"financial_aid.rules",
 	"financial_aid.summary",
@@ -75,9 +74,9 @@ func loadBootedRoles(t *testing.T) map[string]bootedRole {
 }
 
 // TestBootedRolesCarryFinancialAidGrants proves migrations 1500000185 and
-// 1500000227 and the funding-sources permission migration (D100) against the
-// booted database: finance holds all six, registrar view+casework only, a system
-// development role holds summary, grantors and funding_sources alone, and no
+// 1500000227 and the funding-sources permission migration (D100) and its 2026-10-09 retirement (1500000240) against the
+// booted database: finance holds all five, registrar view+casework only, a system
+// development role holds summary and grantors alone, and no
 // other seeded role picked any of them up. (A fresh database has no exec role;
 // that exec is untouched is proven by pocketbase/pb_sp2/check-role-migration.sh and pinned
 // by TestFinancialAidPermissionsMigrationNeverNamesExec.)
@@ -121,11 +120,16 @@ func TestBootedRolesCarryFinancialAidGrants(t *testing.T) {
 	if !development.IsSystem {
 		t.Error("development must be a system role")
 	}
-	wantDevelopment := []string{"financial_aid.funding_sources", "financial_aid.grantors", "financial_aid.summary"}
+	wantDevelopment := []string{"financial_aid.grantors", "financial_aid.summary"}
 	if !slices.Equal(development.Permissions, wantDevelopment) {
 		t.Errorf("development (%q) = %v, want exactly %v (never "+
 			"sheets.export, bunking.manage, users.manage or rules -- analysis §9.3, owner ruling 2026-10-01)",
 			development.Name, development.Permissions, wantDevelopment)
+	}
+
+	// Owner ruling 2026-10-09: funding_sources was folded into grantors and retired from every role.
+	for slug, r := range roles {
+		lacks(slug, r, "financial_aid.funding_sources")
 	}
 
 	for slug, r := range roles {

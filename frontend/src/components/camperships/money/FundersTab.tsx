@@ -80,8 +80,7 @@ const headerLine = (
  * CampMinder descriptions under it, then "No funder yet". Chips `?show=`; a description opens from
  * `?row=<source id>`, a funder from `?funder=<key>` (`?grantor=` is the same). What each person may
  * edit follows their permissions: Classify… / Edit… is `rules`; Set a Group… is `rules` or
- * `funding_sources` (development's own route); the funder on a description and the funder's terms
- * are `grantors`. Live only.
+ * `grantors`; the funder on a description and the funder's terms are `grantors`. Live only.
  */
 export function FundersTab({ view }: { view: AidView }) {
   const sources = useAidSources()
@@ -100,7 +99,7 @@ export function FundersTab({ view }: { view: AidView }) {
       rules: hasPermission(Permission.FINANCIAL_AID_RULES),
       group:
         hasPermission(Permission.FINANCIAL_AID_RULES) ||
-        hasPermission(Permission.FINANCIAL_AID_FUNDING_SOURCES),
+        hasPermission(Permission.FINANCIAL_AID_GRANTORS),
       grantors: hasPermission(Permission.FINANCIAL_AID_GRANTORS),
     }),
     [hasPermission]

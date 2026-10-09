@@ -39,11 +39,7 @@ vi.mock('../shell/AidDefinitionNotes', () => ({
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules', 'financial_aid.grantors']
-const DEVELOPMENT = [
-  'financial_aid.summary',
-  'financial_aid.funding_sources',
-  'financial_aid.grantors',
-]
+const DEVELOPMENT = ['financial_aid.summary', 'financial_aid.grantors']
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 const SOURCES = '/api/financial-aid/sources?'
 const GROUPS = '/api/financial-aid/reports/2027/funding-sources'
@@ -871,7 +867,8 @@ describe("a description's funder (grantors, no rules)", () => {
     await openRow('Grantor E grant 2027')
     const edit = panel('edit')
     expect(within(edit).queryByRole('button', { name: 'Edit…' })).toBeNull()
-    expect(within(edit).queryByRole('button', { name: 'Set a Group…' })).toBeNull()
+    // Owner 10-09: `grantors` carries Set a Group too (funding_sources was folded into it).
+    expect(within(edit).getByRole('button', { name: 'Set a Group…' })).toBeInTheDocument()
     await userEvent.click(within(edit).getByRole('button', { name: 'Map a Funder…' }))
     const field = await screen.findByTestId('grantor-field')
     await within(field).findByRole('option', { name: 'Grantor E' })
@@ -947,7 +944,7 @@ describe("a description's funder (grantors, no rules)", () => {
   })
 })
 
-describe('development (summary, funding sources, grantors; no view)', () => {
+describe('development (summary, grantors; no view)', () => {
   beforeEach(() => {
     granted = DEVELOPMENT
   })

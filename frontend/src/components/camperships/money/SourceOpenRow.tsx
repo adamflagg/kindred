@@ -32,7 +32,7 @@ type Mode = 'none' | 'classify' | 'group' | 'grantor'
 export interface SourceAccess {
   /** `rules`: Classify… / Edit…. */
   readonly rules: boolean
-  /** `rules` or `funding_sources`: Set a Group… (the reporting group and the incentive flag). */
+  /** `rules` or `grantors`: Set a Group… (the reporting group and the incentive flag). */
   readonly group: boolean
   /** `grantors`: the description's grantor. */
   readonly grantors: boolean

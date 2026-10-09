@@ -2296,9 +2296,10 @@ async def get_report_development(
 
 # --- Reports › Development: ZIP codes, dated columns, Funding sources (Part C) ----------------------------------
 
-# D100: development and finance edit a funding source's group and incentive flag; the registrar may not.
+# D100, owner 2026-10-09: `rules` or `grantors` (finance, development) set a source's group and incentive flag;
+# the registrar may not. (`funding_sources` was folded into `grantors`.)
 _FUNDING_SOURCES_EDIT = Depends(
-    require_any_permission(Permission.FINANCIAL_AID_FUNDING_SOURCES, Permission.FINANCIAL_AID_RULES)
+    require_any_permission(Permission.FINANCIAL_AID_GRANTORS, Permission.FINANCIAL_AID_RULES)
 )
 
 

@@ -86,11 +86,7 @@ afterEach(() => {
   fetchSpy.mockRestore()
 })
 
-const DEVELOPMENT = [
-  'financial_aid.summary',
-  'financial_aid.funding_sources',
-  'financial_aid.grantors',
-]
+const DEVELOPMENT = ['financial_aid.summary', 'financial_aid.grantors']
 
 describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
   it('opens on the Ledger for a view holder, keeping the season and the as-of', () => {

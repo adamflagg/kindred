@@ -11,7 +11,6 @@
 export const Permission = {
   BUNKING_MANAGE: 'bunking.manage',
   FINANCIAL_AID_CASEWORK: 'financial_aid.casework',
-  FINANCIAL_AID_FUNDING_SOURCES: 'financial_aid.funding_sources',
   FINANCIAL_AID_GRANTORS: 'financial_aid.grantors',
   FINANCIAL_AID_RULES: 'financial_aid.rules',
   FINANCIAL_AID_SUMMARY: 'financial_aid.summary',
