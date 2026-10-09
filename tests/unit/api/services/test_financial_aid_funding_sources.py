@@ -633,7 +633,7 @@ async def test_a_funder_row_writes_the_union_of_the_picked_pools_to_every_member
         YEAR, "regional_fund", FundingSourceIn(groups=["camp_pool", "weekend_pool"]), actor=DEVELOPMENT
     )
     [operation] = store.operations
-    assert {tuple(w.data["implied_program_families"]) for w in operation} == {tuple(sorted({*camp, *weekend}))}
+    assert {tuple((w.data or {})["implied_program_families"]) for w in operation} == {tuple(sorted({*camp, *weekend}))}
 
 
 async def test_sending_both_group_and_groups_is_a_422() -> None:
