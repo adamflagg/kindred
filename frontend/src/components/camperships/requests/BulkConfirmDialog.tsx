@@ -2,8 +2,10 @@ import { useState } from 'react'
 
 import { useAidTickAccepted } from '../../../hooks/camperships/useAidWrites'
 import { AidWriteError } from '../../../services/camperships/aidApi'
-import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
+import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { Modal } from '../../ui/Modal'
+import { CS_BTN, CS_BTN2 } from '../kit/csType'
+import { EditorActions } from '../kit/EditorLayout'
 import type { ApiAidWriteOut } from '../../../types/api-types'
 import { doneWords, MAX_TICK_ROWS, tickWords, wroteNothing, type TickPlan } from './ticks'
 
@@ -79,20 +81,23 @@ export function BulkConfirmDialog({
       onClose={close}
       closeDisabled={busy}
       title="Check Accepted"
-      size="md"
+      size="lg"
       footer={
-        <div className="flex justify-end gap-2">
-          <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={close}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={BUTTON_PRIMARY}
-            disabled={busy || plan.rows.length === 0 || tooMany}
-            onClick={() => void confirm()}
-          >
-            {busy ? 'Checking…' : 'Confirm'}
-          </button>
+        // §24: Title Case buttons on one row, the logged-with-who line beside them.
+        <div className="pt-1">
+          <EditorActions reason="Logged in History as one operation">
+            <button
+              type="button"
+              className={CS_BTN}
+              disabled={busy || plan.rows.length === 0 || tooMany}
+              onClick={() => void confirm()}
+            >
+              {busy ? 'Checking…' : 'Confirm'}
+            </button>
+            <button type="button" className={CS_BTN2} disabled={busy} onClick={close}>
+              Cancel
+            </button>
+          </EditorActions>
         </div>
       }
     >
@@ -100,7 +105,10 @@ export function BulkConfirmDialog({
         <p className="font-medium">
           {plan.rows.length === 0 ? 'Nothing to check' : tickWords(plan)}
         </p>
-        <ul className="text-muted-foreground max-h-48 overflow-y-auto text-xs">
+        <ul
+          data-testid="bulk-confirm-names"
+          className="text-muted-foreground max-h-48 columns-2 gap-x-6 overflow-y-auto text-xs"
+        >
           {plan.rows.map((r) => (
             <li key={`${r.requestId}:${String(r.round)}`}>
               {r.label} · Round {r.round}

@@ -6,7 +6,7 @@ import { TICK_BUTTON } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { AttentionChip } from '../kit/NeedsAttentionCell'
 import { attentionFor, OPEN_REQUEST, type NextStep } from './attention'
-import { appealTarget } from './gridEditor'
+import { householdLabelOf } from './cells'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import { fundLines, OUTSIDE_WORD } from './outside'
 import { roundOf } from './stage'
@@ -162,24 +162,18 @@ function stepOf(
   )
 }
 
-/** The left panel's width beside an editor (opened-row-options.html arrangement 3: 384px). */
-const SIDE_BY_SIDE = 'grid grid-cols-[24rem_minmax(0,1fr)] items-stretch text-sm'
-const LEFT_BESIDE_EDITOR =
-  'flex min-w-0 flex-col gap-1 border-r border-dashed border-amber-300 pr-4 dark:border-amber-800'
-const RIGHT_PANEL = 'min-w-0 pl-4'
-
 /**
  * The opened row's detail line (batch 4, owner LOCKED grid-layout-options.html#or=i, round 6), laid
- * out as opened-row-options.html arrangement 3 "Side by side" (owner fast-follow, 10-03). The left
- * panel: the chip and the full needs-attention text (attention.ts's, the server's own message for a
+ * out as opened-row-options.html arrangement 3 (owner fast-follow, 10-03; the editor no longer sits
+ * beside it, §24). The text: the chip and the full needs-attention text (attention.ts's, the server's own message for a
  * check or hold), then Requested by (T3: the name only, "—" when the server can't name one), the
  * household link (the household is named once, here) and CM ✓ in full. No Person id (owner, (c)).
  * The next step: a link to where it is done, plain words, or (Full GO) a button for the row's own
  * Accepted tick, drawn only for someone who can tick and a row the tick takes.
  *
- * With an `editor` and a row that takes an ask, the editor is the right panel and the step ends its
- * line. Otherwise the left content takes the width with the step top right, and whatever the
- * editor says about the row (why it takes no ask, a refused save) sits under it.
+ * The left content takes the width with the step top right, and the editor (design-language §24, owner
+ * 10-09: an editor opened from a row takes the whole opened row, not one panel of it) sits under it,
+ * full width; so does whatever it says about a row that takes no ask (why, a refused save).
  */
 export function RequestDetailLine({
   row,
@@ -205,13 +199,11 @@ export function RequestDetailLine({
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
   const next = found === null ? OPEN_REQUEST : found.next
   const confirmation = showConfirmation ? cmDetail(row) : null
+  // §15: a household-level request says so, with the household's label, where a camper would be.
+  const household = householdLabelOf(row)
   const step = stepOf(next, row, links, onTick, onMarkPosted)
-  const beside = editor !== undefined && appealTarget(row).kind === 'appeal'
   const left = (
-    <div
-      data-detail-left=""
-      className={beside ? LEFT_BESIDE_EDITOR : 'flex min-w-0 flex-col gap-1'}
-    >
+    <div data-detail-left="" className="flex min-w-0 flex-col gap-1">
       <div>
         {found === null ? (
           <span className={MUTED}>Nothing needs attention on this request.</span>
@@ -223,6 +215,13 @@ export function RequestDetailLine({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+        {household !== null && (
+          <>
+            <span className={MUTED}>Household request (Family Camp):</span>
+            <b>{household.text}</b>
+            <span className={MUTED}>·</span>
+          </>
+        )}
         <span className={MUTED}>Requested by</span>
         <span className="font-medium">{row.requested_by ?? '—'}</span>
         <span className={MUTED}>·</span>
@@ -245,18 +244,6 @@ export function RequestDetailLine({
       ))}
     </div>
   )
-  if (beside) {
-    return (
-      <div className={SIDE_BY_SIDE}>
-        {left}
-        {/* The editor's own keys (↑/↓ save and move on) stay its own: AidTable stands aside here,
-            but not on the step at the end of its line, which is the row's (scan K1). */}
-        <div data-aid-editor="" className={RIGHT_PANEL}>
-          {editor(step === null ? null : <span data-aid-step="">{step}</span>)}
-        </div>
-      </div>
-    )
-  }
   return (
     <div className="flex flex-col gap-1 text-sm">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start">

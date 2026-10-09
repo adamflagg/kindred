@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { AMBER_NOTE, FIELD, FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
+import { CS_BTN, CS_BTN2 } from './csType'
 import { STATUS_TONE } from './kitStyles'
 import { initialReason, parseMoneyInput, reasonMissing, type TextReasonPolicy } from './editor'
 import { Money } from './MoneyText'
@@ -527,6 +528,23 @@ export function RequestEditor(props: RequestEditorProps) {
           {problemNote}
           {saveErrorNote}
           {noteField}
+          {/* §24: Title Case buttons on the fields' own line, the problem (above) beside them. */}
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              className={CS_BTN}
+              disabled={props.saving === true}
+              onClick={() => {
+                const save = takeSave()
+                if (save) props.onSave(save)
+              }}
+            >
+              Save Ask
+            </button>
+            <button type="button" className={CS_BTN2} onClick={props.onCancel}>
+              Cancel
+            </button>
+          </span>
           {props.trailing ? <span className="ml-auto">{props.trailing}</span> : null}
         </div>
         <div

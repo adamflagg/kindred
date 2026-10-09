@@ -469,6 +469,39 @@ describe('RequestEditor: the panel layout (the grid, side by side)', () => {
     expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
   })
 
+  // Design-language §24 (owner 10-09): Title Case buttons on the one row of fields, beside the reason.
+  it('puts Save Ask and Cancel on the fields line, after the note, Title Case (§24)', () => {
+    setup({ layout: 'panel' })
+    const line = top()
+    const save = within(line).getByRole('button', { name: 'Save Ask' })
+    const cancel = within(line).getByRole('button', { name: 'Cancel' })
+    const note = screen.getByLabelText('Note')
+    expect(note.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(save.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('Save Ask saves what is typed, once, and says why when it cannot (§24)', async () => {
+    const { onSave } = setup({ layout: 'panel', preview: { status: 'idle' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Ask' }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(within(top()).getByText('Enter the round 2 ask')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    await userEvent.click(screen.getByRole('button', { name: 'Save Ask' }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith({ amount: 1300, reason: 'Family emailed (Apr 9)' })
+  })
+
+  it('Cancel closes the editor, and Save Ask is off while a save is in flight (§24)', async () => {
+    const { onCancel } = setup({ layout: 'panel' })
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches Save Ask off while saving', () => {
+    setup({ layout: 'panel', saving: true })
+    expect(screen.getByRole('button', { name: 'Save Ask' })).toBeDisabled()
+  })
+
   it('keeps the caption in the card layout, where nothing else names the household', () => {
     setup({ layout: 'card' })
     expect(screen.getByText('Johnson · household 1000001 · person 1000002')).toBeInTheDocument()

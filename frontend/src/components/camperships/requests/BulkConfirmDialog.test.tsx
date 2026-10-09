@@ -85,6 +85,22 @@ describe('BulkConfirmDialog (§4.10)', () => {
     ).toBeInTheDocument()
   })
 
+  // Design-language §24 (owner 10-09, editors wide and short): a wide card, the names in columns, the
+  // Title Case buttons on one row with the logged-with-who line beside them.
+  it('is a wide, short dialog: the names in two columns, not a tall list (§24)', () => {
+    open()
+    expect(screen.getByTestId('bulk-confirm-names')).toHaveClass('columns-2')
+    expect(screen.getByTestId('bulk-confirm-names').closest('.max-w-2xl')).not.toBeNull()
+  })
+
+  it('puts Confirm and Cancel on one row with the History line beside them (§24)', () => {
+    open()
+    const confirm = screen.getByRole('button', { name: 'Confirm' })
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(confirm.parentElement).toBe(cancel.parentElement)
+    expect(confirm.parentElement).toHaveTextContent('Logged in History as one operation')
+  })
+
   it('refuses a plan over the server limit instead of splitting it', () => {
     const many = Array.from({ length: 901 }, (_, i) => ({
       ...ROW_SAMUEL,
