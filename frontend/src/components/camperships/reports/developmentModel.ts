@@ -1,6 +1,6 @@
 /**
- * Reports › Development's table (spec §9.4; D65, D66, D87–D94, D96, D99, D158; development-v2.html,
- * S4-4): rows are development's lines grouped Money · Counts · Appeals and cancellations, each for a
+ * Reports › Development's table (spec §9.4; D65, D66, D87–D94, D96, D99, D158; the approved final mock
+ * reports-development): rows are development's lines grouped Money · Counts · Appeals and cancellations, each for a
  * group or for every group; columns are seasons, as reported (r) or the dashboard's (P), and the one
  * dated column staff ask for (saved nowhere). Definitions are numbered notes under the table, each row a
  * superscript. Pure; every figure is the server's (D21), and no row is a family (D66).
@@ -200,7 +200,10 @@ const TOTAL_AWARDS_PARTS: ReadonlySet<string> = new Set([
   'incentive_awards',
 ])
 
-/** The mock's hierarchy: a sub-line sits under its parent (1), an incentive award under a camp's (2). */
+/**
+ * The mock's hierarchy: a sub-line sits under its parent (1), an incentive award under a camp's (2). The
+ * gender and cancel-reason lines sit flush (final mock): indented, they'd read as children of the line above.
+ */
 export const SUB_LINES: Readonly<Record<string, 1 | 2>> = {
   camp_awards: 1,
   outside_awards: 1,
@@ -276,12 +279,12 @@ export function fundersParams(sourceKey: string): Record<string, string> {
 export interface DevelopmentTableOptions {
   /** Links each funder line to Money › Funders; leave it out for a user who can't open it. */
   readonly fundersHref?: ((params: Readonly<Record<string, string>>) => string) | undefined
-  /** The registry's notes for the report, numbered here with the lines' own definitions. */
+  /** The registry's six notes for the report, numbered in the registry's order. */
   readonly registry?: readonly RegistryNote[] | undefined
 }
 
 /**
- * The table and its numbered notes (development-v2.html, final audit O1-O3). Rows are development's
+ * The table and its numbered notes (the approved final mock reports-development). Rows are development's
  * lines, each section once in SECTION_WORDS' order, its lines in the server's order (the Budget line
  * leads Money wherever it is sent). Total Awards Granted's pools follow its own sub-lines; Recipients'
  * groups sit right under it. A line limited to some group kinds reads "label, group" for each group.

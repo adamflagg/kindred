@@ -491,6 +491,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "D89",
             "D93",
             "D94",
+            "D103",
             "D142",
         ),
     ),

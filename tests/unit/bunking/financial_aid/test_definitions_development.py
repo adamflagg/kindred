@@ -56,6 +56,7 @@ def test_need_counts_live_requests_of_campers_who_attended_at_most_the_sessions_
 
 def test_who_counts_folds_in_teens_gender_and_household_level_grants() -> None:
     """D89, D92-D94, D142, D103 in one note: attended and got money from any source, applied or not."""
+    assert {"D89", "D92", "D93", "D94", "D103", "D142"} <= set(BY_KEY["dev_recipients"].rulings)
     text = BY_KEY["dev_recipients"].text
     assert "attended an aid-eligible session and got money from any source, applied or not" in text
     assert "Weekend counts families" in text

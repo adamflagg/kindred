@@ -11,6 +11,7 @@ interface AsOfColumnProps {
   /** The column on screen now, if any. The parent owns it: it lives in component state, never the URL. */
   readonly shown: AsOfPick | null
   readonly onShow: (pick: AsOfPick) => void
+  /** Drops the asked column: the chip's ✕, and Back or a new day after a refusal (it leaves the status slot). */
   readonly onRemove: () => void
   readonly pending: boolean
 }
@@ -73,7 +74,10 @@ export function AsOfColumn({ seasons, shown, onShow, onRemove, pending }: AsOfCo
           className={CS_DATE}
           value={day}
           max={latestDay}
-          onChange={(event) => setDay(event.target.value)}
+          onChange={(event) => {
+            setDay(event.target.value)
+            onRemove()
+          }}
         />
       </ToolbarLabel>
       <button
@@ -84,7 +88,14 @@ export function AsOfColumn({ seasons, shown, onShow, onRemove, pending }: AsOfCo
       >
         {pending ? 'Showing…' : 'Show'}
       </button>
-      <button type="button" className={CS_BTN2} onClick={() => setAdding(false)}>
+      <button
+        type="button"
+        className={CS_BTN2}
+        onClick={() => {
+          setAdding(false)
+          onRemove()
+        }}
+      >
         Back
       </button>
     </>

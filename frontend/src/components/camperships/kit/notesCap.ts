@@ -1,7 +1,7 @@
 export interface DefinitionNote {
   readonly n: number
   readonly text: string
-  /** The lead term, set bold: the note's text must begin `${term}:`. */
+  /** The lead term, set bold when the text opens with it and `:`, `,` or ` =` follows; plain otherwise. */
   readonly term?: string
 }
 
