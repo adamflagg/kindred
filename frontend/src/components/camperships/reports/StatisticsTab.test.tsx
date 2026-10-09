@@ -341,14 +341,20 @@ describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('rows')
   })
 
-  it("puts the session table's notes right under it and keeps the statistics notes for the tables below", async () => {
-    // The tables under the session table still carry the statistics notes' numbers, so both lists show,
-    // each under what it explains.
+  it("numbers the session table's columns from the statistics notes: one list, at the foot", async () => {
     renderTab('/aid/reports/statistics?rows=session')
-    const programs = await screen.findByText('Programs note.')
-    const stats = await screen.findByText('Apps: every received request.')
+    const table = await screen.findByRole('table', { name: 'By session' })
+    expect(await screen.findAllByText('Apps: every received request.')).toHaveLength(1)
+    expect(screen.queryByText('Programs note.')).toBeNull()
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('reports-programs'))).toBe(
+      false
+    )
+    // the session table's superscripts are the foot list's own numbers (Apps 1, Awarded 3)
+    const marks = Array.from(table.querySelectorAll('sup')).map((sup) => sup.textContent)
+    expect(marks).toContain('1')
+    expect(marks).toContain('3')
+    const stats = screen.getByText('Apps: every received request.')
     const below = screen.getByRole('heading', { name: /^Aid recipients who cancelled/ })
-    expect(programs.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(below.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 

@@ -18,10 +18,10 @@ import type { NoteOf } from './statisticsModel'
 
 export function zipColumns(withDollars: boolean, noteOf: NoteOf): ReportColumn[] {
   return [
-    { key: 'zip', header: 'ZIP', mono: true },
+    { key: 'zip', header: 'ZIP', mono: true, note: noteOf('zip_zip') },
     { key: 'campers', header: 'Campers', note: noteOf('zip_who_counts') },
-    { key: 'families', header: 'Families' },
-    ...(withDollars ? [{ key: 'dollars', header: 'Dollars' }] : []),
+    { key: 'families', header: 'Families', note: noteOf('zip_families') },
+    ...(withDollars ? [{ key: 'dollars', header: 'Dollars', note: noteOf('zip_dollars') }] : []),
   ]
 }
 

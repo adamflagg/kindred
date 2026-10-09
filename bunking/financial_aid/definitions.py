@@ -760,6 +760,51 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§7.4",
         rulings=("D35", "D38"),
     ),
+    Definition(
+        key="awarded_count",
+        term="Awards",
+        text=(
+            "Awards: requests with {camp}'s own Posted money above $0. Development's Grants/Awards counts every "
+            "source, {camp} aid plus a grant on one session counting once, so the two differ on purpose."
+        ),
+        spec="§9.2",
+        rulings=("D157",),
+    ),
+    Definition(
+        key="zip_dollars",
+        term="Dollars",
+        text=(
+            "Dollars: all money: {camp}'s awarded amounts (= Posted) and every outside grant, net of reversals. A "
+            "household-level grant line lands on that household's ZIP."
+        ),
+        spec="§9.4",
+        rulings=("D87", "D80"),
+    ),
+    Definition(
+        key="zip_zip",
+        term="ZIP",
+        text=(
+            "ZIP: the first five digits of the billing postal code on the camper's household record for that "
+            'season (households are year-scoped, so each season uses its own record). Outside the US and "No ZIP '
+            'on file" are their own rows, last.'
+        ),
+        spec="§9.4",
+        rulings=("D90",),
+    ),
+    Definition(
+        key="zip_families",
+        term="Families",
+        text="Families: CampMinder households, each once per table.",
+        spec="§9.4",
+        rulings=("D93",),
+    ),
+    Definition(
+        key="zip_geography",
+        term="Geography",
+        text="Geography goes no finer than ZIP. Small groups show as they are, dollars included.",
+        spec="§9.4",
+        rulings=("D66", "D90"),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -799,10 +844,11 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "pct_of_ask_with_grants",
         "round2_max_pct",
         "appeal_rate",
+        "awarded_count",
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
     "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
-    "reports-development-zip": ("zip_who_counts",),
+    "reports-development-zip": ("zip_who_counts", "zip_dollars", "zip_zip", "zip_families", "zip_geography"),
     "reports-funding-sources": ("source_facts",),
     "reports-development": (
         "total_awards_granted",

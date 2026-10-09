@@ -50,18 +50,18 @@ _DEV_ATS: Final[frozenset[At]] = frozenset({"pull", "season_end"})
 # rebuild it from (§9.5). The summer-only typed lines (% of need met, TLI + SCIT; ages are always Kindred's by age, D158) carry the summer group's
 # pool, so a typed figure reaches the row that shows it.
 _DEVELOPMENT: Final[tuple[tuple[str, Unit, frozenset[Dimension], str], ...]] = (
-    ("total_awards", "dollars", _POOL, "Total Awards Granted"),
+    ("total_awards", "dollars", _POOL, "Total Awards Granted (all money)"),
     ("awards", "count", _POOL, "Grants/Awards"),  # owner ruling L (10-08)
-    ("total_requests", "dollars", _POOL, "Total Requests (demand)"),
+    ("total_requests", "dollars", _POOL, "Total requests (demand) = Σ need"),
     ("need_met", "percent", _POOL, "% of need met"),
-    ("recipients", "count", _POOL, "Applications (campers and families who got money)"),
-    ("families", "count", _POOL, "Families receiving"),
+    ("recipients", "count", _POOL, "Recipients (attended and got money, any source)"),
+    ("families", "count", _POOL, "Families (CampMinder households)"),
     ("teen_programs", "count", _POOL, "TLI + SCIT"),
     ("first_time", "count", _POOL, "First-time"),
     ("returning", "count", _POOL, "Returning"),
-    ("appeals_submitted", "count", _POOL, "Appeals submitted"),
+    ("appeals_submitted", "count", _POOL, "Appeals (asks in Round 2 or later, campers who attended)"),
     ("appeals_approved", "count", _POOL, "Appeals approved"),
-    ("declined_insufficient", "count", _POOL, "Declined enrollment for insufficient aid"),
+    ("declined_insufficient", "count", _POOL, "Declined enrollment due to insufficient aid"),
 )
 METRICS: Final[tuple[Metric, ...]] = (
     Metric(

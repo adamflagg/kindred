@@ -1375,7 +1375,7 @@ export function fetchAidPrograms(
     fetchWithAuth,
     `${String(year)}/programs`,
     params,
-    'Failed to load Programs'
+    'Failed to load the session table'
   )
 }
 

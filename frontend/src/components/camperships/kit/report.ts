@@ -12,7 +12,13 @@ export type ReportValue =
   | { readonly kind: 'money'; readonly value: number | null; readonly note?: string | undefined }
   | { readonly kind: 'count'; readonly value: number | null; readonly note?: string | undefined }
   | { readonly kind: 'pct'; readonly value: number | null; readonly note?: string | undefined }
-  | { readonly kind: 'text'; readonly value: string; readonly note?: string | undefined }
+  | {
+      readonly kind: 'text'
+      readonly value: string
+      readonly note?: string | undefined
+      /** What the CSV writes instead of the words (§11: Over / under's plain signed number). */
+      readonly csv?: string | undefined
+    }
 
 // A `note` is a muted second line under the figure (RPT-1's band words): drawn on screen only, never
 // in Copy or the CSV.
@@ -20,6 +26,12 @@ export const moneyValue = (value: number | null | undefined): ReportValue => ({
   kind: 'money',
   value: value ?? null,
 })
+/**
+ * An average (Avg ask, Avg request, Avg award): whole dollars, as every Reports mock draws them. The
+ * server's figure carries cents; the round is display only, the same on screen, in Copy and the CSV.
+ */
+export const averageValue = (value: number | null | undefined): ReportValue =>
+  moneyValue(value === null || value === undefined ? null : Math.round(value))
 export const countValue = (value: number | null | undefined): ReportValue => ({
   kind: 'count',
   value: value ?? null,
@@ -29,7 +41,8 @@ export const pctValue = (value: number | null | undefined, note?: string): Repor
   value: value ?? null,
   ...(note === undefined ? {} : { note }),
 })
-export const textValue = (value: string): ReportValue => ({ kind: 'text', value })
+export const textValue = (value: string, csv?: string): ReportValue =>
+  csv === undefined ? { kind: 'text', value } : { kind: 'text', value, csv }
 
 /** "42.5%" as the server rounded it (one decimal, §9.7); "—" when there is no denominator. */
 export function formatPct(value: number | null): string {
@@ -65,7 +78,7 @@ export function reportCsv(cell: ReportValue): string {
     case 'pct':
       return cell.value === null ? '' : cell.value.toFixed(1)
     case 'text':
-      return cell.value
+      return cell.csv ?? cell.value
   }
 }
 
@@ -108,6 +121,8 @@ export interface ReportRow {
   readonly indent?: 0 | 1 | 2 | undefined
   /** A line under the first cell (a row's own definition, D99). Not copied. */
   readonly note?: string | undefined
+  /** The row's definition note number, a superscript after its label (Development's rows). Not copied. */
+  readonly ref?: number | undefined
   /**
    * Where a count opens the requests behind it (D20; slice 4 J), by cell index: drawn as a link when
    * the cell is a count above 0, or a name (a text cell) that opens its own page. Copy and the CSV

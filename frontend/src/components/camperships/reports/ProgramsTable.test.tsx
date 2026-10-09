@@ -70,6 +70,37 @@ function renderTab(
 }
 
 describe('ProgramsTable (spec §9.3)', () => {
+  it('names itself "the session table", never "Programs", while it loads', async () => {
+    fetchSpy.mockImplementation(() => new Promise(() => undefined))
+    renderTab()
+    expect(await screen.findByText(/Loading the session table data/)).toBeInTheDocument()
+    expect(screen.queryByText(/Loading Programs data/)).toBeNull()
+  })
+
+  it('numbers its columns from the Statistics notes (one list on the page)', async () => {
+    fetchSpy.mockImplementation((url) =>
+      Promise.resolve(
+        String(url).includes('/definitions')
+          ? json({
+              surface: 'reports-statistics',
+              notes: [
+                { key: 'apps', n: 1, text: 'Apps.' },
+                { key: 'awarded', n: 3, text: 'Awarded.' },
+              ],
+            })
+          : json(PROGRAMS)
+      )
+    )
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By session' })
+    await waitFor(() =>
+      expect(Array.from(table.querySelectorAll('sup')).map((s) => s.textContent)).toContain('3')
+    )
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('reports-programs'))).toBe(
+      false
+    )
+  })
+
   it("draws sessions by pool with the server's subtotal and total", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By session' })

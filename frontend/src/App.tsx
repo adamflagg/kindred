@@ -682,6 +682,20 @@ function App() {
                                 </RequirePermission>
                               }
                             />
+                            {/* Old Development addresses (zip, funding-sources, grantors): AidReportsPage
+                                redirects them to their new tab. */}
+                            <Route
+                              path="reports/development/:view"
+                              element={
+                                <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidReportsPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
                             <Route
                               path="reports/:tab?"
                               element={

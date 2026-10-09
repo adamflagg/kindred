@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 
 import { aidSection, visibleSections, visibleTabs } from '../../../config/aidNav'
+import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { useAidDevelopment } from '../../../hooks/camperships/useAidDevelopment'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
-import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { aidHref, type AidView } from '../kit/asOf'
+import { DefinitionNotes } from '../kit/DefinitionNotes'
 import { ReportTable } from '../kit/ReportTable'
 import { AsOfColumn } from './AsOfColumn'
 import {
@@ -16,7 +17,7 @@ import {
   type AsOfPick,
   developmentCsvName,
   developmentHeading,
-  developmentRows,
+  developmentTable,
   notRebuiltColumnWords,
   rebuildReason,
   unconfirmedWords,
@@ -48,6 +49,15 @@ export function DevelopmentReport({ view }: { view: AidView }) {
         : undefined,
     [hasPermission, view]
   )
+  // The registry's notes, numbered with the rows' own definitions under the table (final audit O3).
+  const definitions = useAidDefinitions('reports-development')
+  const table = useMemo(
+    () =>
+      development.data
+        ? developmentTable(development.data, { fundersHref, registry: definitions.entries })
+        : null,
+    [development.data, fundersHref, definitions.entries]
+  )
   const seasons = useMemo(
     () => (development.data ? datedSeasons(development.data) : []),
     [development.data]
@@ -64,7 +74,8 @@ export function DevelopmentReport({ view }: { view: AidView }) {
         {(data) => {
           const rebuild = rebuildReason(data)
           const unconfirmed = unconfirmedWords(data)
-          const notRebuilt = notRebuiltColumnWords(data)
+          const rows = table?.rows ?? []
+          const notRebuilt = notRebuiltColumnWords(data, rows)
           const capped = cappedWords(data)
           return (
             <div className="space-y-3">
@@ -89,7 +100,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
               <ReportTable
                 heading={developmentHeading(data, 'Development report')}
                 columns={developmentColumns(data, asOf)}
-                rows={developmentRows(data, fundersHref)}
+                rows={rows}
                 csvFilename={developmentCsvName(view, 'report')}
                 link={link}
                 footnote={
@@ -113,7 +124,13 @@ export function DevelopmentReport({ view }: { view: AidView }) {
           )
         }}
       </QueryGuard>
-      <AidDefinitionNotes surface="reports-development" />
+      {definitions.error && definitions.entries.length === 0 ? (
+        <p className="text-muted-foreground mt-3 text-xs">
+          The definitions for these figures couldn&apos;t load.
+        </p>
+      ) : (
+        <DefinitionNotes notes={table?.notes ?? []} />
+      )}
     </div>
   )
 }

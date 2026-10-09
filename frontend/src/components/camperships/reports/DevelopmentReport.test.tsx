@@ -80,9 +80,7 @@ describe('DevelopmentReport (spec §9.4)', () => {
     expect(within(table).queryByText('Every group')).not.toBeInTheDocument()
     expect(within(table).queryByRole('columnheader', { name: 'Group' })).not.toBeInTheDocument()
     expect(within(table).getAllByText('Total Awards Granted')).toHaveLength(1)
-    expect(
-      within(table).getByText('2025 (as reported) · r · basis unconfirmed')
-    ).toBeInTheDocument()
+    expect(within(table).getByText('2025 · as reported · basis unconfirmed')).toBeInTheDocument()
     expect(screen.queryByRole('table', { name: '2027 by source' })).not.toBeInTheDocument()
   })
 
@@ -130,7 +128,7 @@ describe('the grantor lines (D3)', () => {
     renderReport()
     const table = await screen.findByRole('table', { name: 'Development report' })
     expect(within(table).getByText('Grantor A')).toBeInTheDocument()
-    expect(within(table).getByText('another funder · incentive')).toBeInTheDocument()
+    expect(within(table).getByText('another funder · incentive · Pool A')).toBeInTheDocument()
     expect(
       within(table).getByText('another funder · need-based · needs a group')
     ).toBeInTheDocument()
@@ -178,6 +176,38 @@ describe('the footnotes (D4)', () => {
     renderReport()
     await screen.findByRole('table', { name: 'Development report' })
     expect(document.body.textContent).not.toMatch(/\bD\d{2,3}\b|RPT-|O-930/)
+  })
+})
+
+describe('the numbered notes (final audit O3)', () => {
+  it("keep each row to one line: its definition is a superscript and a numbered note under the table, the registry's after", async () => {
+    fetchSpy.mockImplementation((url) => {
+      const text = String(url)
+      if (text.includes('/definitions'))
+        return Promise.resolve(
+          json({
+            surface: 'reports-development',
+            notes: [
+              { n: 1, key: 'need', text: 'Need: the asks before the latest plus the latest.' },
+              { n: 2, key: 'basis_unconfirmed', text: 'Basis unconfirmed: typed seasons.' },
+            ],
+          })
+        )
+      return Promise.resolve(liveAnswer())
+    })
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    expect(within(table).queryByText('Every award, the camp’s and outside grants')).toBeNull()
+    const total = within(table).getByText('Total Awards Granted').closest('td') as HTMLElement
+    expect(total.querySelector('sup')?.textContent).toBe('1')
+    const items = await waitFor(() => {
+      const list = document.querySelectorAll('ol li')
+      expect(list.length).toBeGreaterThan(2)
+      return [...list].map((li) => li.textContent)
+    })
+    expect(items[0]).toBe('1. Every award, the camp’s and outside grants')
+    expect(items.at(-1)).toBe(`${String(items.length)}. Basis unconfirmed: typed seasons.`)
+    expect(items.filter((t) => t.includes('Need: the asks'))).toHaveLength(1)
   })
 })
 
@@ -247,13 +277,22 @@ describe('Show As Of a Date…: one on-demand column, not saved (D1)', () => {
     await show()
     expect(
       await screen.findByRole('columnheader', {
-        name: /2027 as of Mar 9 · P · not saved · gone when you leave/,
+        name: /2027 as of Mar 9 · not saved · gone when you leave/,
       })
     ).toBeInTheDocument()
     expect(calls().some(([url]) => url?.includes('column=2027%3A2027-03-09'))).toBe(true)
     expect(
       screen.getAllByRole('columnheader').filter((h) => h.textContent.includes('not saved'))
     ).toHaveLength(1)
+  })
+
+  it('closes the form once the column shows, leaving the chip with Remove (final audit E2)', async () => {
+    renderReport()
+    await show()
+    await screen.findByRole('columnheader', { name: /not saved/ })
+    expect(screen.queryByLabelText('As of')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
   })
 
   it('Remove drops the column, saves nothing, and puts nothing in the URL', async () => {

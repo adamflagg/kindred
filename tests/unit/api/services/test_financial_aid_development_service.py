@@ -748,6 +748,51 @@ async def test_the_budget_row_reads_the_seasons_first_approved_budget() -> None:
     assert [(r.group, r.values) for r in _budget_rows(out)] == [(None, [450000.0, 450000.0])]
 
 
+def _budget_approved_on(version: Any, at: datetime) -> Any:
+    """`version` with its budget section approved at `at` (the board's first pass)."""
+    status = dict(version.section_status)
+    status["budget"] = status["budget"].model_copy(update={"approved_at": at})
+    return version.model_copy(update={"section_status": status})
+
+
+async def test_a_dated_column_before_the_first_budget_approval_has_no_budget() -> None:
+    """Final audit O10: a dated column's day before the season's first budget approval had no approved budget, so
+    its Budget is null (blank), never the figure the board passed later. The live column keeps it, and the null
+    line is named among the column's not-rebuilt lines."""
+    fake = FakeRules(approved(intake_rules()))
+    assert fake.first is not None
+    fake.first = _budget_approved_on(
+        approved(with_lever(intake_rules(), "budget.total", "450000")), datetime(2027, 3, 10, 18, 0, tzinfo=UTC)
+    )
+    before = await _service(_development(), fake_rules=fake).development(
+        YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5))
+    )
+    assert [(r.group, r.values) for r in _budget_rows(before)] == [(None, [450000.0, None])]
+    assert "budget" in before.columns[1].not_rebuilt
+    assert "budget" not in before.columns[0].not_rebuilt
+    after = await _service(_development(), fake_rules=fake).development(
+        YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 20))
+    )
+    assert [(r.group, r.values) for r in _budget_rows(after)] == [(None, [450000.0, 450000.0])]
+
+
+async def test_a_dated_columns_not_rebuilt_lines_are_exactly_the_lines_it_leaves_null() -> None:
+    """Final audit O10: the read names, among a dated column's not-rebuilt lines, every line that reads null there
+    for every group and in total (the cancellation lines first), and no line that has a figure anywhere in it."""
+    fake = FakeRules(approved(intake_rules()))
+    fake.first = _budget_approved_on(approved(intake_rules()), datetime(2027, 3, 10, 18, 0, tzinfo=UTC))
+    out = await _service(_development(), fake_rules=fake).development(
+        YEAR, column=DatedColumn(season=YEAR, as_of=date(2027, 3, 5))
+    )
+    named = out.columns[1].not_rebuilt
+    keys = {r.key for r in out.rows}
+    blank = {k for k in keys if all(r.values[1] is None for r in out.rows if r.key == k)}
+    assert set(named) == blank
+    assert "budget" in named
+    assert len(named) == len(set(named))
+    assert named[0] == "declined_insufficient"
+
+
 async def test_a_season_with_no_approved_budget_shows_none_on_its_kindred_column() -> None:
     """No approved version carries a budget: the P column's Budget is blank, never a later draft's figure."""
     fake = FakeRules(approved(intake_rules()))
@@ -806,3 +851,64 @@ async def test_no_string_in_the_report_shows_an_internal_id() -> None:
     assert {n.figure for n in out.not_built} >= {"rebuild"}
     shown = [s for s in _strings(out.model_dump()) if re.search(r"\b(D\d{2,3}|RPT-\d+|O-\d+-\d+|item \d+)\b", s)]
     assert shown == []
+
+
+# --- Final audit O1/O2: the lines follow the approved development-v2 mock, in order and in words -------------
+
+
+def _lines(out: Any, section: str) -> list[tuple[str, str]]:
+    return list(dict.fromkeys((r.key, r.label) for r in out.rows if r.section == section and r.group is None))
+
+
+async def test_the_money_lines_follow_the_approved_mock_in_order_and_words() -> None:
+    """Budget, Total requests, Total Awards Granted with this camp's awards and the outside grants under it (the
+    pools sit under those on screen), the money no group holds, Grants/Awards, Average award, % of need met. The
+    owner-ruled words stay exactly: Budget's and "Grants/Awards"."""
+    out = await _service(_development()).development(YEAR)
+    assert _lines(out, "money") == [
+        ("budget", "Budget (this camp's, the first board-passed)"),
+        ("total_requests", "Total requests (demand) = Σ need"),
+        ("total_awards", "Total Awards Granted (all money)"),
+        ("camp_awards", "this camp's awards (awarded = Posted)"),
+        ("outside_awards", "outside grants, every funder"),
+        ("incentive_awards", "of which incentive grants"),
+        ("not_in_group_amount", "Money in no group (a source that needs a group, a program in no pool, other)"),
+        ("not_in_group_awards", "Awards in no group"),
+        ("awards", "Grants/Awards"),
+        ("average_award", "Average award = Total Awards Granted ÷ Grants/Awards"),
+    ]
+    need_met = [r for r in out.rows if r.key == "need_met"]
+    assert [(r.group, r.label) for r in need_met] == [("camp_pool", "% of need met")]
+    money_keys = [r.key for r in out.rows if r.section == "money"]
+    assert money_keys.index("need_met") == len(money_keys) - 1  # the last money line
+
+
+async def test_the_counts_and_appeals_lines_carry_the_mocks_words() -> None:
+    """The recipients line says what it counts (campers who attended and got money from any source, applied or
+    not), never "Applications"; families are CampMinder households; the gender lines follow the age lines and come
+    before First-time; the household-level dollars sit with the household-level count."""
+    out = await _service(_development()).development(YEAR)
+    counts = [(r.key, r.label) for r in out.rows if r.section == "counts"]
+    labels = dict(counts)
+    assert labels["recipients"] == "Recipients (attended and got money, any source)"
+    assert labels["families"] == "Families (CampMinder households)"
+    assert labels["shared_households"] == "including households that share a camper"
+    assert labels["teens"] == "Teens, 13–17 on their first session day"
+    assert labels["youth"] == "Youth, 0–12"
+    assert labels["household_level_lines"] == "Household-level grants not tied to a camper"
+    assert labels["household_level_amount"] == "Household-level grant dollars not tied to a camper"
+    first_time = {r.group: r.label for r in out.rows if r.key == "first_time"}
+    assert first_time == {"camp_pool": "First-time campers", "weekend_pool": "First weekend program"}
+    keys = [k for k, _ in counts]
+    gender = [i for i, k in enumerate(keys) if k.startswith("gender_")]
+    assert gender, "the fixture has gender rows"
+    assert keys.index("teen_programs") < min(gender)
+    assert max(gender) < keys.index("first_time")
+    assert keys.index("household_level_amount") == keys.index("household_level_lines") + len(
+        [r for r in out.rows if r.key == "household_level_lines"]
+    )
+    appeals = {r.key: r.label for r in out.rows if r.section == "appeals"}
+    assert appeals["appeals_submitted"] == "Appeals (asks in Round 2 or later, campers who attended)"
+    assert appeals["appeals_in_full"] == "approved in full"
+    assert appeals["appeals_in_part"] == "approved in part"
+    assert appeals["declined_insufficient"] == "Declined enrollment due to insufficient aid"

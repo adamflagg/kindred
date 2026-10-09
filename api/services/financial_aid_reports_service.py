@@ -114,7 +114,9 @@ from bunking.financial_aid.reports.statistics import (
     PCT_WITH_GRANTS_DECIDED_LABEL,
     PCT_WITH_GRANTS_LABEL,
     WITHDRAWN_REASON,
+    CancelledRow,
     OutcomeKind,
+    OutcomeRow,
     RoundChip,
     StatisticsCount,
     StatisticsRow,
@@ -213,21 +215,70 @@ def _pool_label(document: AidRules | None, pool: str | None) -> str:
     return pool
 
 
+def _pool_rank(document: AidRules | None, pool: str | None) -> int:
+    """A pool's place in the rules' `budget.pools` order, the one order every Reports table lists pools in. A pool the
+    rules don't name, and no pool, go after the named ones; a stable sort keeps their existing order."""
+    pools = list(document.budget.pools) if document is not None else []
+    return pools.index(pool) if pool in pools else len(pools)
+
+
+def _cancelled_in_pool_order(document: AidRules | None, rows: Sequence[CancelledRow]) -> list[CancelledRow]:
+    """Rows kept in their reason order, the pools inside each reason in the rules' pool order (round stays last)."""
+    return sorted(rows, key=lambda r: (r.reason, _pool_rank(document, r.pool), r.pool or "", r.round))
+
+
+def _outcomes_in_pool_order(document: AidRules | None, rows: Sequence[OutcomeRow]) -> list[OutcomeRow]:
+    """The pool rows in the rules' pool order, then the no-pool and headline rows where the read puts them."""
+    pooled = [r for r in rows if r.kind == "pool"]
+    return [*sorted(pooled, key=lambda r: _pool_rank(document, r.pool)), *(r for r in rows if r.kind != "pool")]
+
+
+def _pool_rows_in_rules_order[R: (ApplicationsRow, BudgetRow, Round1PctRow)](
+    rows: Sequence[R], document_of: Callable[[int], AidRules | None]
+) -> list[R]:
+    """Year over year's per-pool rows in the rules' pool order. Each run of pool rows of one season, basis and cutoff
+    is re-sorted by the season's rules (stable: a pool its rules don't know, typed history, keeps its existing order
+    after the known ones); the headline, no-pool and reconciliation rows keep their place."""
+    out: list[R] = []
+    run: list[R] = []
+
+    def flush() -> None:
+        if run:
+            out.extend(sorted(run, key=lambda r: _pool_rank(document_of(r.year), r.pool)))
+            run.clear()
+
+    def season_of(row: R) -> tuple[object, ...]:
+        return (row.year, row.basis, getattr(row, "cutoff", None))  # only applications rows carry a cutoff
+
+    for row in rows:
+        if run and (row.kind != "pool" or season_of(row) != season_of(run[0])):
+            flush()
+        if row.kind == "pool":
+            run.append(row)
+        else:
+            out.append(row)
+    flush()
+    return out
+
+
 def table_chips(document: AidRules | None) -> list[ChipOut]:
     """Each award table, labelled by the pool its programs share (pool A, pool B, ...), else by
     its programs' labels."""
     if document is None:
         return []
-    out: list[ChipOut] = []
+    pool_order = {pool: index for index, pool in enumerate(document.budget.pools)}
+    out: list[tuple[int, ChipOut]] = []
     for key in document.award_tables:
         programs_ = [p for p in document.programs.values() if (round1_table(document, p) or "") == key]
         pools = {p.budget_pool for p in programs_}
+        position = len(pool_order)  # a chip over several pools (or none) goes after, in its existing order
         if len(pools) == 1 and (pool := next(iter(pools))) is not None and pool in document.budget.pools:
             label = document.budget.pools[pool].label
+            position = pool_order[pool]
         else:
             label = " · ".join(p.label for p in programs_) or key
-        out.append(ChipOut(key=key, label=label))
-    return out
+        out.append((position, ChipOut(key=key, label=label)))
+    return [chip for _, chip in sorted(out, key=lambda item: item[0])]  # stable: ties keep award_tables order
 
 
 class FinancialAidReportsService:
@@ -397,7 +448,7 @@ class FinancialAidReportsService:
                     requests=row.requests,
                     posted=money(row.posted),
                 )
-                for row in result.recipients_cancelled
+                for row in _cancelled_in_pool_order(document, result.recipients_cancelled)
             ],
             tier_appeals=[
                 TierAppealsRowOut(
@@ -430,7 +481,7 @@ class FinancialAidReportsService:
                     appealed_asked=money(row.appealed_asked),
                     waiting=row.waiting,
                 )
-                for row in outcomes(read.requests)
+                for row in _outcomes_in_pool_order(document, outcomes(read.requests))
             ],
             request_set=read.note,
             not_rebuilt=self._gaps(read),
@@ -483,7 +534,7 @@ class FinancialAidReportsService:
                     ],
                     subtotal=row_out(group.subtotal, _pool_label(document, group.pool)),
                 )
-                for group in table.pools
+                for group in sorted(table.pools, key=lambda g: _pool_rank(document, g.pool))
             ],
             total=row_out(table.total, ALL_POOLS_LABEL),
             request_set=read.note,
@@ -656,10 +707,19 @@ class FinancialAidReportsService:
             figures_on=today,
             seasons=seasons,
             phases=[_phase_out(r) for r in tables.phases],
-            applications=[_applications_out(r, label(r.year, r.pool, r.kind)) for r in tables.applications],
-            budget=[_budget_out(r, label(r.year, r.pool, r.kind)) for r in tables.budget],
+            applications=[
+                _applications_out(r, label(r.year, r.pool, r.kind))
+                for r in _pool_rows_in_rules_order(tables.applications, lambda y: documents.get(y) or latest)
+            ],
+            budget=[
+                _budget_out(r, label(r.year, r.pool, r.kind))
+                for r in _pool_rows_in_rules_order(tables.budget, lambda y: documents.get(y) or latest)
+            ],
             appeals=[_appeals_out(r) for r in tables.appeals],
-            round1_pct=[_round1_out(r, label(r.year, r.pool, r.kind)) for r in tables.round1_pct],
+            round1_pct=[
+                _round1_out(r, label(r.year, r.pool, r.kind))
+                for r in _pool_rows_in_rules_order(tables.round1_pct, lambda y: documents.get(y) or latest)
+            ],
             not_built=[NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()],
         )
 

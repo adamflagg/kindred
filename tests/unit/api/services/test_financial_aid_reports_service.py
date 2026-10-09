@@ -84,7 +84,8 @@ async def test_statistics_counts_received_requests_and_awards_only_what_posted()
     assert (two.apps, two.asked, two.amount, two.awarded_count, two.pct_of_ask) == (1, 4000.0, 1500.0, 1, 37.5)
     assert (three.apps, three.asked, three.amount, three.awarded_count) == (1, 2000.0, 0.0, 0)
     assert (out.total.apps, out.total.amount) == (2, 1500.0)
-    assert [chip.key for chip in out.tables] == list(RULES.award_tables)
+    # the rules' pool order, not award_tables key order (camp, family, teen)
+    assert [chip.key for chip in out.tables] == ["teen", "family", "camp"]
 
 
 async def test_include_not_yet_offered_adds_the_decided_amounts_labelled_apart() -> None:
@@ -610,6 +611,50 @@ async def test_programs_lists_the_rules_sessions_by_pool() -> None:
     assert out.total.round1.apps == 2
 
 
+async def test_programs_pool_groups_follow_the_rules_pool_order_not_the_alphabet() -> None:
+    """Pool groups follow `budget.pools` (camp, weekend, b'mitzvah); a pool-less group goes last."""
+    out = await _service(report_season()).programs(YEAR)
+    named = [group.pool for group in out.pools if group.pool is not None]
+    assert named == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert [group.pool for group in out.pools][len(named) :] == [None] * (len(out.pools) - len(named))
+
+
+async def test_cancelled_and_outcome_rows_list_pools_in_the_rules_order() -> None:
+    from api.services.financial_aid_reports_service import _cancelled_in_pool_order, _outcomes_in_pool_order
+    from bunking.financial_aid.reports.statistics import CancelledRow, OutcomeRow
+
+    rules = intake_rules()  # pools: camp_pool, weekend_pool, bmitzvah_pool
+    z = Decimal(0)
+    cancelled = [CancelledRow("a", p, 1, 1, z) for p in ("bmitzvah_pool", None, "weekend_pool", "camp_pool")]
+    assert [r.pool for r in _cancelled_in_pool_order(rules, cancelled)] == [
+        "camp_pool",
+        "weekend_pool",
+        "bmitzvah_pool",
+        None,
+    ]
+    rows = [OutcomeRow(p, 0, z, 0, z, 0, "pool") for p in ("bmitzvah_pool", "camp_pool")]
+    rows += [OutcomeRow(None, 0, z, 0, z, 0, "no_pool"), OutcomeRow(None, 0, z, 0, z, 0, "headline")]
+    assert [(r.kind, r.pool) for r in _outcomes_in_pool_order(rules, rows)] == [
+        ("pool", "camp_pool"),
+        ("pool", "bmitzvah_pool"),
+        ("no_pool", None),
+        ("headline", None),
+    ]
+
+
+async def test_the_committee_budget_lists_pools_in_the_rules_order_headline_after() -> None:
+    """Year over year's per-pool rows follow `budget.pools` (camp, weekend, b'mitzvah), not the alphabet; the total stays
+    after the pools."""
+    out = await _service(report_season()).committee(YEAR)
+    rows = [(r.kind, r.pool) for r in out.budget if r.year == YEAR]
+    assert rows == [
+        ("pool", "camp_pool"),
+        ("pool", "weekend_pool"),
+        ("pool", "bmitzvah_pool"),
+        ("headline", None),
+    ]
+
+
 def _ag_season(ag_end: str = "") -> tuple[FakeDecisionsStore, Any]:
     """report_season with the summer program claiming `main`/`embedded` by type (no `ag`), plus "AG Session 3"
     (1000109, an AG session no program claims by id or type) sitting under "Session 2" (1000101, which has no end
@@ -895,6 +940,15 @@ async def test_a_table_chip_counts_a_program_that_prices_from_it_by_class() -> N
     )
     chips = {chip.key: chip.label for chip in table_chips(rules)}
     assert chips["family"] == "Family camp · Adult weekend"
+
+
+async def test_table_chips_follow_the_rules_pool_order_with_multi_pool_chips_after() -> None:
+    """Every Reports table lists pools in the rules' `budget.pools` order; award_tables key order differs here
+    (camp, family, teen). `camp` spans two pools, so it goes after the single-pool chips, in its existing order."""
+    rules = intake_rules()
+    assert list(rules.award_tables) == ["camp", "family", "teen"]
+    assert list(rules.budget.pools) == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
+    assert [chip.key for chip in table_chips(rules)] == ["teen", "family", "camp"]
 
 
 async def test_a_full_cost_after_aid_round_reports_its_camp_award_and_keeps_only_its_remainder_apart() -> None:

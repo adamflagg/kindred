@@ -158,12 +158,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
               {setWords !== null && <p className={AMBER_NOTE}>{setWords}</p>}
               {pastWords !== null && <p className={AMBER_NOTE}>{pastWords}</p>}
               {bySession ? (
-                <div>
-                  <ProgramsTable view={view} requestSet={choice.requestSet} />
-                  {/* The session table's own notes sit under it: the tables below keep the
-                      statistics notes' numbers, listed at the foot. */}
-                  <AidDefinitionNotes surface="reports-programs" />
-                </div>
+                <ProgramsTable view={view} requestSet={choice.requestSet} />
               ) : (
                 <ReportTable
                   heading={statisticsHeading(data, 'By tier')}

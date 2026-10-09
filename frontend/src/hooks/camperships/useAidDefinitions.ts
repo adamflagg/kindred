@@ -10,6 +10,7 @@ import { useApiWithAuth } from '../useApiWithAuth'
 import { usePermissions } from '../usePermissions'
 
 const NO_NOTES: DefinitionNote[] = []
+const NO_ENTRIES: Array<{ key: string; text: string }> = []
 
 /**
  * A surface's definition notes (§4.8; D20), and each figure's note number by its key. The route
@@ -29,12 +30,18 @@ export function useAidDefinitions(surface: string) {
     () => query.data?.notes.map((note) => ({ n: note.n, text: note.text })) ?? NO_NOTES,
     [query.data]
   )
+  // Each note with its key, for a surface that numbers the notes itself (Development's rows).
+  const entries = useMemo(
+    () => query.data?.notes.map((note) => ({ key: note.key, text: note.text })) ?? NO_ENTRIES,
+    [query.data]
+  )
   const numbers = useMemo(
     () => new Map((query.data?.notes ?? []).map((note) => [note.key, note.n] as const)),
     [query.data]
   )
   return {
     notes,
+    entries,
     numberOf: (key: string): number | null => numbers.get(key) ?? null,
     isPending: query.isPending,
     error: query.error,

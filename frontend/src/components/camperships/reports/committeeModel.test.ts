@@ -1,7 +1,7 @@
 /** The committee's tables in words (spec §9.7; D155; owner N2): P and r rows, as the server sends them. */
 import { describe, expect, it } from 'vitest'
 
-import { reportText } from '../kit/report'
+import { reportCsv, reportText } from '../kit/report'
 import { COMMITTEE } from './committeeFixtures'
 import {
   appealsColumns,
@@ -135,6 +135,16 @@ describe('the phase table (RPT-1; owner N2)', () => {
 })
 
 describe('the other four tables', () => {
+  it('shows an application average with cents in whole dollars', () => {
+    const [headline] = applicationRows({
+      ...COMMITTEE,
+      applications: COMMITTEE.applications.map((row, i) =>
+        i > 0 ? row : { ...row, at_cutoff: { ...row.at_cutoff!, average: 2744.44 } }
+      ),
+    })
+    expect(texts(headline)).toContain('$2,744')
+  })
+
   it('says when a frozen ask fell back to today’s (owner R2b D12)', () => {
     const [headline, pool] = applicationRows(COMMITTEE)
     expect(headline?.note).toBe(
@@ -149,6 +159,15 @@ describe('the other four tables', () => {
       '$6,000',
       '$3,000',
     ])
+  })
+
+  it('writes Over / under to the CSV as a plain signed number (under is negative), the words on screen', () => {
+    const phase = phaseRows(COMMITTEE, 'budget')[0]
+    expect(phase?.cells[13] && reportText(phase.cells[13])).toBe('$40,000 under')
+    expect(phase?.cells[13] && reportCsv(phase.cells[13])).toBe('-40000')
+    const budget = budgetRows(COMMITTEE)[0]
+    expect(budget?.cells[4] && reportText(budget.cells[4])).toBe('$40,000 under')
+    expect(budget?.cells[4] && reportCsv(budget.cells[4])).toBe('-40000')
   })
 
   it('keeps the typed note beside a budget row', () => {

@@ -94,7 +94,7 @@ export function bothIds(
 
 const REPORT_WORDS: Readonly<Record<ReportKind, string>> = {
   statistics: 'Statistics',
-  programs: 'Programs',
+  programs: 'Statistics by session',
 }
 
 /** "The 12 requests behind one Statistics count". */

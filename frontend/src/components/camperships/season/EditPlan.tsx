@@ -17,6 +17,12 @@ const CONFLICT =
 const LOCKED =
   'Locked: the first approved budget total stands all season. The program shares still edit.'
 
+/** The locked Total, drawn like every other figure ($1,111,000); read-only, so nothing parses back. */
+function lockedTotalText(raw: string): string {
+  const n = Number(raw)
+  return raw.trim() === '' || !Number.isFinite(n) ? raw : formatMoney(n)
+}
+
 /**
  * Edit Plan… (spec §5.2 B): the budget's total and program split, inline in the Budget card. Every card previews the
  * typed plan; Save writes the rules draft's budget section (prices nothing until approved). Finance, live only.
@@ -97,12 +103,13 @@ export function EditPlan({
       {totalLocked && <p className={CS_SMALL}>{LOCKED}</p>}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
         <label className="inline-flex items-center gap-1.5">
-          <span className={CS_LABEL}>Total</span> $
+          <span className={CS_LABEL}>Total</span>
+          {totalLocked ? null : ' $'}
           <input
             aria-label="Total"
             readOnly={totalLocked}
             className={`${CS_INPUT} w-[110px] text-right tabular-nums read-only:bg-stone-100 read-only:text-stone-500 dark:read-only:bg-stone-800 dark:read-only:text-stone-400`}
-            value={typed.total}
+            value={totalLocked ? lockedTotalText(typed.total) : typed.total}
             onChange={(event) => onType({ ...typed, total: event.target.value })}
           />
           {totalLocked && (

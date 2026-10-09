@@ -44,6 +44,7 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/aid/reports/:tab?" element={<AidReportsPage />} />
+        <Route path="/aid/reports/development/:view" element={<AidReportsPage />} />
       </Routes>
       <Where />
     </MemoryRouter>
@@ -71,13 +72,52 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/reports/development?year=2027')
   })
 
-  it('refuses Statistics and Year over year to a summary-only user, never redirecting them away', () => {
+  it('keeps the band and tabs for a summary-only user on Statistics, with a card pointing at Development', () => {
     granted = DEVELOPMENT
     renderAt('/aid/reports/statistics')
-    expect(screen.getByText('Permission denied')).toBeInTheDocument()
+    expect(screen.getByText('Statistics needs view.')).toBeInTheDocument()
     expect(screen.queryByText('Statistics body')).toBeNull()
+    expect(screen.queryByText('Permission denied')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Development' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Statistics' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Reports › Development ›' })).toHaveAttribute(
+      'href',
+      '/aid/reports/development?year=2027'
+    )
+  })
+
+  it('names Year over year in the same card for a summary-only user', () => {
+    granted = DEVELOPMENT
     renderAt('/aid/reports/year-over-year')
-    expect(screen.getAllByText('Permission denied')).toHaveLength(2)
+    expect(screen.getByText('Year over year needs view.')).toBeInTheDocument()
+    expect(screen.queryByText('Year over year body')).toBeNull()
+  })
+
+  it('still refuses an unknown tab to a user with no Reports tabs', () => {
+    granted = []
+    renderAt('/aid/reports/nonsense')
+    expect(screen.getByText('Permission denied')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['/aid/reports/funding-sources?year=2027', '/aid/money/funders?year=2027'],
+    [
+      '/aid/reports/grantors?year=2027&as_of=2027-03-08',
+      '/aid/money/funders?year=2027&as_of=2027-03-08',
+    ],
+    [
+      '/aid/reports/development/zip?year=2027&as_of=2027-03-08',
+      '/aid/reports/zip-codes?year=2027&as_of=2027-03-08',
+    ],
+    ['/aid/reports/development/funding-sources?year=2027', '/aid/money/funders?year=2027'],
+    ['/aid/reports/development/grantors?year=2027', '/aid/money/funders?year=2027'],
+    ['/aid/reports/development/nonsense?year=2027', '/aid/reports/development?year=2027'],
+    ['/aid/reports/development?view=zip&year=2027', '/aid/reports/zip-codes?year=2027'],
+    ['/aid/reports/development?year=2027&view=grantors', '/aid/money/funders?year=2027'],
+    ['/aid/reports/development?view=funding-sources&year=2027', '/aid/money/funders?year=2027'],
+  ])('redirects the old address %s to %s', (from, to) => {
+    renderAt(from)
+    expect(screen.getByTestId('where').textContent).toBe(to)
   })
 
   it('shows the four tabs in order and the Statistics body, with no views bar', () => {

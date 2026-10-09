@@ -69,7 +69,7 @@ describe('the line over the rows', () => {
 
   it('names the count and says when the grid lacks some of its requests', () => {
     expect(reportLine('programs', READ, false, new Set(READ.request_ids))).toBe(
-      'The 2 requests behind one Programs count'
+      'The 2 requests behind one Statistics by session count'
     )
     expect(reportLine('statistics', READ, false, new Set(['reqemma00000001']))).toBe(
       "The 2 requests behind one Statistics count · 1 of them isn't in this list"

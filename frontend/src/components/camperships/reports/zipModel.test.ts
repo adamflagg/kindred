@@ -29,6 +29,22 @@ describe('ZIP codes', () => {
     ])
   })
 
+  it('hooks the Dollars, ZIP, Families and Campers notes to their own columns', () => {
+    const notes: Record<string, number> = {
+      zip_who_counts: 1,
+      zip_dollars: 2,
+      zip_zip: 3,
+      zip_families: 4,
+    }
+    const columns = zipColumns(true, (key) => notes[key] ?? null)
+    expect(columns.map((c) => [c.header, c.note])).toEqual([
+      ['ZIP', 3],
+      ['Campers', 1],
+      ['Families', 4],
+      ['Dollars', 2],
+    ])
+  })
+
   it("offers exactly the read's groups, All last, never a list of its own (ruling C)", () => {
     expect(zipGroups(ZIP).map((g) => g.label)).toEqual(['Pool A', 'Pool B', 'All groups'])
     expect(zipGroups({ ...ZIP, groups: [] })).toEqual([])

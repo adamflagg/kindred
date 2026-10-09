@@ -14,10 +14,11 @@ import type {
 import type { AidView } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
-import { formatMoney } from '../kit/money'
+import { formatMoney, moneyCsv } from '../kit/money'
 import {
   BASIS_WORDS,
   countValue,
+  averageValue,
   moneyValue,
   pctValue,
   textValue,
@@ -54,6 +55,14 @@ export function overUnderWords(
 ): string {
   if (variance === null || side === null) return '—'
   return side === 'on' ? 'on budget' : `${formatMoney(Math.abs(variance))} ${side}`
+}
+
+/** Over / under as a cell: the words on screen and in Copy, the signed variance in the CSV (§11). */
+function overUnderValue(
+  variance: number | null,
+  side: 'over' | 'under' | 'on' | null
+): ReportValue {
+  return textValue(overUnderWords(variance, side), moneyCsv(variance))
 }
 
 /** A phase's target band and where As offered sits against it (RPT-1): "51–55%: above". */
@@ -122,7 +131,7 @@ export function phaseRows(committee: ApiAidCommitteeReport, share: PhaseShare): 
       moneyValue(row.total),
       pctValue(row.total_pct_of_budget),
       moneyValue(row.budget),
-      textValue(overUnderWords(row.variance, row.side))
+      overUnderValue(row.variance, row.side)
     )
     return { key: `phases-${String(row.year)}-${row.basis}`, kind: 'body', cells }
   })
@@ -143,7 +152,7 @@ export function reconciliationWords(committee: ApiAidCommitteeReport): string | 
 const counted = (c: ApiAidCounted | null): ReportValue[] => [
   countValue(c?.apps ?? null),
   moneyValue(c?.asked ?? null),
-  moneyValue(c?.average ?? null),
+  averageValue(c?.average ?? null),
 ]
 
 export function applicationColumns(noteOf: NoteOf): ReportColumn[] {
@@ -223,7 +232,7 @@ export function budgetRows(committee: ApiAidCommitteeReport): ReportRow[] {
       textValue(row.pool_label),
       moneyValue(row.budget),
       moneyValue(row.awarded),
-      textValue(overUnderWords(row.variance, row.side)),
+      overUnderValue(row.variance, row.side),
       pctValue(row.pct_of_budget),
       pctValue(row.pool_share),
       pctValue(row.rules_split_pct),

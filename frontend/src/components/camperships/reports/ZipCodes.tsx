@@ -27,7 +27,7 @@ const PATH = '/aid/reports/zip-codes'
  * Reports › ZIP codes (spec §9.4; D66, D90; zip-codes.html; owner ruling C): one
  * season, one group (the chip, `?group=`, from the read's own list; none asks for the server's
  * default, the summer group), two tables: every camper, and campers who got aid with all their
- * money. Each has a totals row, a find box, a sort, Copy and CSV. No family, no drill-down. Live only.
+ * money. Each has a totals row (first, under the header), a find box, a sort, Copy and CSV. No family, no drill-down. Live only.
  */
 export function ZipCodes({ view }: { view: AidView }) {
   const [params] = useSearchParams()
@@ -86,6 +86,7 @@ export function ZipCodes({ view }: { view: AidView }) {
                   link={link}
                   find
                   sortable
+                  totalsFirst
                   urlPrefix="every_"
                   description={zipScopeWords(data)}
                   defaultSort={{ key: 'campers', dir: 'desc' }}
@@ -100,6 +101,7 @@ export function ZipCodes({ view }: { view: AidView }) {
                     link={link}
                     find
                     sortable
+                    totalsFirst
                     urlPrefix="aid_"
                     description="The same campers, attended and got money from any source: the camp's awards and every outside grant. A household-level grant lands on its household's ZIP."
                     defaultSort={{ key: 'campers', dir: 'desc' }}

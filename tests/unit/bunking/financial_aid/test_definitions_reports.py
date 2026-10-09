@@ -20,6 +20,7 @@ def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
         "pct_of_ask_with_grants",
         "round2_max_pct",
         "appeal_rate",
+        "awarded_count",
     )
     assert SURFACES["reports-programs"] == ("apps", "awarded", "average_award", "pct_of_ask")
     assert SURFACES["reports-committee"] == (
@@ -138,3 +139,12 @@ def test_recipients_who_cancelled_names_a_confirmed_duplicate_that_holds_a_poste
 def test_awarded_names_what_liveness_leaves_out() -> None:
     """Owner A11 (APPROVED): not cancelled, withdrawn or a pending duplicate."""
     assert "on a live request (not cancelled, withdrawn or a pending duplicate)" in BY_KEY["awarded"].text
+
+
+def test_awards_count_explains_why_it_differs_from_developments_grants_awards() -> None:
+    """The Statistics Awards column carries this note: the camp's own Posted money above $0, not every source."""
+    note = BY_KEY["awarded_count"]
+    assert note.term == "Awards"
+    assert note.text.startswith("Awards: ")
+    assert "{camp}'s own Posted money above $0" in note.text
+    assert "Grants/Awards counts every source" in note.text
