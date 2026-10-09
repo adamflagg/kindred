@@ -232,17 +232,22 @@ describe('header words', () => {
       "The camp's own aid · counts toward the budget · no terms or contacts · 3 descriptions"
     )
     expect(campWords(1)).toMatch(/· 1 description$/)
-    expect(noFunderWords(2, true)).toBe(
+    expect(noFunderWords(2, true, true)).toBe(
       "Pick each description's funder; classify an unclassified one first · 2 descriptions"
     )
-    expect(noFunderWords(2, false)).toBe("Pick each description's funder · 2 descriptions")
+    expect(noFunderWords(2, false, true)).toBe("Pick each description's funder · 2 descriptions")
+    // Final audit O10: someone who cannot pick a funder is not told to; the line only says what is here.
+    expect(noFunderWords(2, false, false)).toBe(
+      'Descriptions no funder claims yet · 2 descriptions'
+    )
+    expect(noFunderWords(1, true, false)).toBe('Descriptions no funder claims yet · 1 description')
   })
 })
 
 describe('cells', () => {
   it('says "no", never a dash, for a false yes or no', () => {
     expect(yesNo(true)).toBe('yes')
-    expect(yesNo(false)).toBe('no')
+    expect(yesNo(false)).toBe('—')
   })
 
   it('shows the server source-family label when the row has one, else the old words, never a raw key', () => {

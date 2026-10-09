@@ -187,6 +187,20 @@ export function footerWords(
 }
 
 /**
+ * The footer's note on the "Aid request it offsets" column (grants-v2): how many household-level
+ * lines of families who didn't apply the total counts, and what they add up to. "" when none.
+ */
+export function neverAppliedNote(
+  rows: readonly ApiAidGrantRow[],
+  needsCamper: ReadonlySet<number>
+): string {
+  const lines = rows.filter((r) => !r.counts && didntApply(r, needsCamper))
+  if (lines.length === 0) return ''
+  const sum = lines.reduce((cents, r) => cents + toCents(r.amount), 0) / 100
+  return `counts ${String(lines.length)} household-level ${lines.length === 1 ? 'line' : 'lines'} of families who didn't apply (${formatMoney(sum)})`
+}
+
+/**
  * The sentence under the table. ⚠ Number meaning (owner, spec §8.2): a household-level line of a
  * family that didn't apply counts; the owner confirms this before Money merges.
  */
@@ -197,15 +211,12 @@ const OTHER_PROGRAM = 'Other program'
 
 /**
  * The Program column (#3090, with #3085's fallbacks as in money/ledgerModel): the server's
- * `program_label`; with none, a line waiting for its camper reads "Not placed", a line with no
- * program that stays at household level "Household level", else "Other program". Never a key.
+ * `program_label`; with none, a line with no program (waiting for its camper, or at household level:
+ * the Camper cell says which) reads "—", else "Other program". Never a key.
  */
-export function programWords(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+export function programWords(row: ApiAidGrantRow): string {
   if (row.program_label !== undefined && row.program_label !== '') return row.program_label
-  if (row.program_family !== '') return OTHER_PROGRAM
-  return row.kind === 'ledger' && needsCamper.has(row.transaction_cm_id)
-    ? 'Not placed'
-    : 'Household level'
+  return row.program_family !== '' ? OTHER_PROGRAM : '—'
 }
 
 /** Where a row's description or grantor lives in Funders: `?funder=<key>` or `?row=<source_id>`. */

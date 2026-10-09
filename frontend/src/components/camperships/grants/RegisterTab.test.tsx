@@ -350,6 +350,10 @@ describe('Grants › Register (§8.2)', () => {
     // 10,200 counted by the server + 900 the dashboard counts for the family that never applied.
     expect(await screen.findByText('9 grants · 3 not counted')).toBeInTheDocument()
     expect(screen.getByText('$11,100')).toBeInTheDocument()
+    // Final audit E15: the footer says how many such lines the total counts, and their sum.
+    expect(
+      screen.getByText("counts 1 household-level line of families who didn't apply ($900)")
+    ).toBeInTheDocument()
   })
 
   it('puts "Aid request it offsets" just before Amount, and names the program from program_label', async () => {
@@ -360,7 +364,8 @@ describe('Grants › Register (§8.2)', () => {
       .map((h) => h.textContent.replace(/[^A-Za-z ]/g, '').trim())
     expect(headers.indexOf('Aid request it offsets')).toBe(headers.indexOf('Amount') - 1)
     expect(screen.getAllByText('Summer Camp').length).toBeGreaterThan(0)
-    expect(screen.getByText('Not placed')).toBeInTheDocument()
+    // Final audit E18: a line with no program reads "—" (the Camper cell says household level / needs a camper).
+    expect(screen.queryByText('Not placed')).toBeNull()
   })
 
   it('fits a 1440 screen: the columns sum to no more than the 1214px inside the card border', async () => {

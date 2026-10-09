@@ -138,8 +138,8 @@ export function programChoices(rows: readonly ApiAidGrantRow[]): FilterChoice[] 
 /** D70's file name: the chip, then the grantor and program picked. */
 export function registerCsvName(year: number, filters: RegisterFilters): string {
   return aidCsvFilename({
-    surface: 'grants',
-    view: 'register',
+    surface: 'money',
+    view: 'grants',
     filters: [
       ...(filters.show === 'all' ? [] : [filters.show]),
       ...(filters.grantor === null ? [] : [filters.grantor]),

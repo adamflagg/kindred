@@ -58,7 +58,6 @@ export function GrantorForm({
   const [draft, setDraft] = useState<GrantorDraft>(() =>
     initial === undefined ? EMPTY_GRANTOR : draftOfGrantor(initial)
   )
-  const [keyTouched, setKeyTouched] = useState(false)
   const [opened, setOpened] = useState<ApiAidGrantor | null>(initial ?? null)
   const [problem, setProblem] = useState<string | null>(null)
   const typed = useRef(false)
@@ -168,28 +167,11 @@ export function GrantorForm({
                 onChange={(event) =>
                   set({
                     name: event.target.value,
-                    ...(initial === undefined && !keyTouched
-                      ? { key: suggestKey(event.target.value) }
-                      : {}),
+                    ...(initial === undefined ? { key: suggestKey(event.target.value) } : {}),
                   })
                 }
               />
             </label>
-            {initial === undefined && (
-              <label className={FIELD}>
-                Key
-                <input
-                  type="text"
-                  className={`${CS_INPUT} font-mono`}
-                  maxLength={60}
-                  value={draft.key}
-                  onChange={(event) => {
-                    setKeyTouched(true)
-                    set({ key: event.target.value })
-                  }}
-                />
-              </label>
-            )}
             <label className={FIELD}>
               Also known as
               <input

@@ -196,10 +196,13 @@ export function funderHeaderWords(g: ApiAidGrantor): { terms: string; detail: st
 export const campWords = (n: number) =>
   `The camp's own aid · counts toward the budget · no terms or contacts · ${plural(n, 'description')}`
 
-export const noFunderWords = (n: number, canClassify: boolean) =>
-  `Pick each description's funder${canClassify ? '; classify an unclassified one first' : ''} · ${plural(n, 'description')}`
+export const noFunderWords = (n: number, canClassify: boolean, canPickFunder: boolean) =>
+  canPickFunder
+    ? `Pick each description's funder${canClassify ? '; classify an unclassified one first' : ''} · ${plural(n, 'description')}`
+    : `Descriptions no funder claims yet · ${plural(n, 'description')}`
 
-export const yesNo = (value: boolean) => (value ? 'yes' : 'no')
+/** The mock's "—" for a no, not the word. */
+export const yesNo = (value: boolean) => (value ? 'yes' : '—')
 
 /** The source family in words: the server's label, never the key. An unclassified row has none. */
 export function sourceFamilyWords(row: ApiAidSourceRow): string {

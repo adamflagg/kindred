@@ -45,6 +45,7 @@ import {
   basisWords,
   camperWords,
   countsInTotal,
+  neverAppliedNote,
   programWords,
   registerTotal,
   footerWords,
@@ -172,13 +173,15 @@ export function RegisterTab({ view }: { view: AidView }) {
         key: 'program',
         header: 'Program',
         width: 110,
-        value: (r) => programWords(r, needsCamper),
+        value: programWords,
       },
       {
         key: 'offsets',
         header: 'Aid request it offsets',
         width: 164,
         value: (r) => offsetWords(r, needsCamper),
+        // grants-v2's footer: the never-applied household-level lines the total counts.
+        footerNote: (shown) => neverAppliedNote(shown, needsCamper),
         render: (r) =>
           r.counts && r.requests.length > 0 ? (
             offsetWords(r, needsCamper)

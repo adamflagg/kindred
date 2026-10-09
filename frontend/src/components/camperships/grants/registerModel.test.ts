@@ -24,6 +24,7 @@ import {
   REGISTER_TOTAL_NOTE,
   didntApply,
   footerWords,
+  neverAppliedNote,
   grantKey,
   isAfterOffer,
   needsCamperIds,
@@ -177,12 +178,13 @@ describe("⚠ the Register total counts a never-applied household's lines (owner
 
 describe('the Program column (program_label, #3090; #3085 fallbacks)', () => {
   it("uses the server's label", () => {
-    expect(programWords(EMMA_GRANT, NEEDS)).toBe('Summer Camp')
+    expect(programWords(EMMA_GRANT)).toBe('Summer Camp')
   })
-  it('falls back to Household level, Not placed, Other program; never a key', () => {
-    expect(programWords(NEVER_APPLIED_HOUSEHOLD, NEEDS)).toBe('Household level')
-    expect(programWords(GARCIA_HOUSEHOLD, NEEDS)).toBe('Not placed')
-    expect(programWords({ ...EMMA_GRANT, program_label: '', program_family: 'quest' }, NEEDS)).toBe(
+  it('falls back to a dash with no program (the Camper cell says household level), else Other program; never a key', () => {
+    // Final audit E18: grants-v2 draws "—", and the Camper cell already says "Household level · needs a camper".
+    expect(programWords(NEVER_APPLIED_HOUSEHOLD)).toBe('—')
+    expect(programWords(GARCIA_HOUSEHOLD)).toBe('—')
+    expect(programWords({ ...EMMA_GRANT, program_label: '', program_family: 'quest' })).toBe(
       'Other program'
     )
   })
@@ -196,5 +198,25 @@ describe('where a Register row links in Funders', () => {
       value: 'srcgrantore0005',
     })
     expect(funderLink({ ...OLIVIA_AFTER_OFFER, description: 'zzz' }, GRANTS.unmapped)).toBeNull()
+  })
+})
+
+describe('neverAppliedNote (final audit E15)', () => {
+  it('says how many household-level lines of families who did not apply the total counts, and their sum', () => {
+    expect(neverAppliedNote([...GRANTS.grants, NEVER_APPLIED_HOUSEHOLD], NEEDS)).toBe(
+      "counts 1 household-level line of families who didn't apply ($900)"
+    )
+    expect(
+      neverAppliedNote(
+        [
+          NEVER_APPLIED_HOUSEHOLD,
+          { ...NEVER_APPLIED_HOUSEHOLD, transaction_cm_id: 4000099, amount: 100.5 },
+        ],
+        NEEDS
+      )
+    ).toBe("counts 2 household-level lines of families who didn't apply ($1,000.50)")
+  })
+  it('says nothing when none are in view', () => {
+    expect(neverAppliedNote(GRANTS.grants, NEEDS)).toBe('')
   })
 })

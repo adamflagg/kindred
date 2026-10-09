@@ -69,7 +69,7 @@ describe('the Register filters', () => {
 
   it('names the file as D70 does', () => {
     expect(registerCsvName(2027, read('show=cancelled&grantor=grantor_b'))).toBe(
-      'camperships-grants-register-cancelled-grantor-b-2027.csv'
+      'camperships-money-grants-cancelled-grantor-b-2027.csv'
     )
   })
 })

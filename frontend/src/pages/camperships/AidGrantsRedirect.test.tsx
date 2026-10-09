@@ -4,9 +4,14 @@
  */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AidGrantsRedirect from './AidGrantsRedirect'
+
+let granted: string[] = ['financial_aid.view']
+vi.mock('../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
+}))
 
 function Where() {
   const { pathname, search } = useLocation()
@@ -25,6 +30,10 @@ function renderAt(path: string) {
 }
 
 describe('AidGrantsRedirect', () => {
+  beforeEach(() => {
+    granted = ['financial_aid.view']
+  })
+
   it.each([
     ['/aid/grants', '/aid/money/grants'],
     ['/aid/grants/register', '/aid/money/grants'],
@@ -55,5 +64,35 @@ describe('AidGrantsRedirect', () => {
   it('tolerates a trailing slash', () => {
     renderAt('/aid/grants/grantors/?year=2027')
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/money/funders?year=2027')
+  })
+
+  it('renames an old Grantors ?row= to ?funder=, the key Funders opens a funder by (final audit E17)', () => {
+    renderAt('/aid/grants/grantors?row=partner_fund_b&year=2027')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/money/funders?funder=partner_fund_b&year=2027'
+    )
+  })
+
+  describe('development (grantors, no view): a tab it cannot open sends it to Money (final audit E16)', () => {
+    beforeEach(() => {
+      granted = ['financial_aid.grantors']
+    })
+
+    it.each([
+      '/aid/grants',
+      '/aid/grants/register',
+      '/aid/grants/expected',
+      '/aid/grants/needs-attention',
+    ])('sends %s to /aid/money, which opens its Funders tab', (from) => {
+      renderAt(`${from}?year=2027`)
+      expect(screen.getByTestId('where')).toHaveTextContent('/aid/money?year=2027')
+    })
+
+    it('still sends the Grantors link, with its ?row= renamed, to Funders', () => {
+      renderAt('/aid/grants/grantors?row=partner_fund_b')
+      expect(screen.getByTestId('where')).toHaveTextContent(
+        '/aid/money/funders?funder=partner_fund_b'
+      )
+    })
   })
 })

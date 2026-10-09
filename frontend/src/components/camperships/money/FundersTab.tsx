@@ -54,7 +54,11 @@ const NOTHING_UNDER = 'No CampMinder description sits under it yet.'
 /** A header's words run across the empty cells beside it: columns 2 to 6 less the cell padding. */
 const HEADER_WORDS = 'inline-block max-w-[590px] truncate align-bottom font-normal'
 
-const headerLine = (row: Extract<FunderRow, { kind: 'funder' }>, canClassify: boolean) => {
+const headerLine = (
+  row: Extract<FunderRow, { kind: 'funder' }>,
+  canClassify: boolean,
+  canPickFunder: boolean
+) => {
   if (row.grantor !== null) {
     const { terms, detail } = funderHeaderWords(row.grantor)
     return { terms: row.retired ? `Retired · ${terms}` : terms, detail }
@@ -63,7 +67,7 @@ const headerLine = (row: Extract<FunderRow, { kind: 'funder' }>, canClassify: bo
     terms:
       row.tone === 'camp'
         ? campWords(row.descriptions.length)
-        : noFunderWords(row.descriptions.length, canClassify),
+        : noFunderWords(row.descriptions.length, canClassify, canPickFunder),
     detail: '',
   }
 }
@@ -189,14 +193,14 @@ export function FundersTab({ view }: { view: AidView }) {
         width: 150,
         value: (r) => {
           if (r.kind === 'funder') {
-            const line = headerLine(r, access.rules)
+            const line = headerLine(r, access.rules, access.grantors)
             return line.detail === '' ? line.terms : `${line.terms} · ${line.detail}`
           }
           return r.kind === 'empty' ? '' : sourceFamilyWords(r.source)
         },
         render: (r) => {
           if (r.kind === 'funder') {
-            const line = headerLine(r, access.rules)
+            const line = headerLine(r, access.rules, access.grantors)
             return (
               <span
                 className={HEADER_WORDS}
@@ -424,7 +428,7 @@ export function FundersTab({ view }: { view: AidView }) {
                 ? 'Every description has a funder.'
                 : show === 'needs-group'
                   ? 'Every outside source has a group.'
-                  : 'No funders yet.'
+                  : 'No funder or description matches.'
             }
           />
           {!canSee && (
