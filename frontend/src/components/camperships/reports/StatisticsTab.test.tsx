@@ -226,9 +226,10 @@ describe('StatisticsTab (spec §9.2; approved final mock reports-statistics.html
     await screen.findByRole('table', { name: 'By tier' })
     expect(screen.getByText(/Table A · Round 1 · received through Feb 1, 2027/)).toBeInTheDocument()
     expect(statisticsCalls()[0]).toContain('received_through=2027-02-01')
+    // The fixture holds 1 request with no received date: the retired sentence counted it, so the title does too.
     expect(picker()).toHaveAttribute(
       'title',
-      'Which requests count: requests received through Feb 1, 2027 4 later requests left out.'
+      'Which requests count: requests received through Feb 1, 2027 4 later requests left out, and 1 with no received date.'
     )
     expect(screen.queryByText(/Every figure below counts only/)).toBeNull()
   })

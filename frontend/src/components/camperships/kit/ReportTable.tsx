@@ -398,7 +398,7 @@ export function ReportTable({
                         key={columns[index]?.key ?? index}
                         colSpan={index === 0 && span > 1 ? span : undefined}
                         title={cellTitle(cell)}
-                        className={`${cellClass(columns[index], index, row.kind)}${cell.muted ? 'text-muted-foreground' : ''}`}
+                        className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
                         style={index === 0 ? indentStyle(row.indent) : undefined}
                       >
                         {index === 0 &&

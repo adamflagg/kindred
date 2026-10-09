@@ -55,8 +55,7 @@ export const CONTROL_BAR =
 /** "Decided (not yet offered)": amber, never "awarded" (D130; S4-3). */
 export const DECIDED_INK = 'text-amber-700 dark:text-amber-400'
 
-/** The chips' row (the mock's `.filters`) and its small label (`.flab`). */
-export const REPORT_FILTERS = 'flex flex-wrap items-center gap-x-2 gap-y-1.5'
+/** A chips row's small label (the mock's `.flab`). */
 export const REPORT_FILTER_LABEL = 'text-muted-foreground text-xs'
 /** A chip is its own pill, not a segment of a group (the mock's `.chip`); the chosen one is forest. */
 const CHIP = 'rounded-full border px-2.5 py-0.5 text-xs font-semibold'

@@ -27,6 +27,16 @@ function fullWords(value: AidRequestSet, note: ApiAidRequestSetNote | null): str
   return 'every request'
 }
 
+/** The requests the set leaves out, later ones and those with no received date (the retired sentence's words). */
+function leftOutWords(note: ApiAidRequestSetNote | null): string {
+  if (note === null) return ''
+  const later = note.left_out > 0 ? `${String(note.left_out)} later requests left out` : ''
+  const unknown = note.unknown > 0 ? `${String(note.unknown)} with no received date` : ''
+  if (later !== '' && unknown !== '') return ` ${later}, and ${unknown}.`
+  if (later !== '') return ` ${later}.`
+  return unknown !== '' ? ` ${unknown} left out.` : ''
+}
+
 /**
  * Statistics' one Requests picker (final mock reports-statistics.html; owner rev 10-09, "picker
  * form"): the white 26px picker whose popover lists All requests, Through the R1 deadline and, last,
@@ -63,8 +73,7 @@ export function RequestSetPicker({
   }, [open])
 
   const shown = shortWords(value)
-  const leftOut =
-    note !== null && note.left_out > 0 ? ` ${String(note.left_out)} later requests left out.` : ''
+  const leftOut = leftOutWords(note)
   const choose = (next: AidRequestSet) => {
     onChange(next)
     setOpen(false)

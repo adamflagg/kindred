@@ -261,17 +261,32 @@ export function programsHeading(programs: ApiAidPrograms): ReportHeading {
   }
 }
 
-export function programsLinkParams(requestSet: AidRequestSet): Record<string, string> {
+/** The By session view's URL (D15): the request set, and the award table its rows are narrowed to. */
+export function programsLinkParams(
+  requestSet: AidRequestSet,
+  table: string | null = null
+): Record<string, string> {
   const through = requestSetParam(requestSet)
-  return through === null ? { rows: 'session' } : { rows: 'session', through }
+  return {
+    rows: 'session',
+    ...(table === null ? {} : { table }),
+    ...(through === null ? {} : { through }),
+  }
 }
 
-export function programsCsvName(view: AidView, requestSet: AidRequestSet): string {
+export function programsCsvName(
+  view: AidView,
+  requestSet: AidRequestSet,
+  table: string | null = null
+): string {
   const through = requestSetParam(requestSet)
   return aidCsvFilename({
     surface: 'reports',
     view: 'statistics-by-session',
-    filters: through === null ? [] : [`through-${through}`],
+    filters: [
+      ...(table === null ? [] : [table]),
+      ...(through === null ? [] : [`through-${through}`]),
+    ],
     season: view.year,
     asOf: view.asOf.kind === 'past' ? view.asOf.date : null,
   })

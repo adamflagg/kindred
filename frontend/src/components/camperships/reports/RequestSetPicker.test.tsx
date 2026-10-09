@@ -51,6 +51,22 @@ describe('RequestSetPicker', () => {
     )
   })
 
+  it('adds the requests with no received date to the title, as the sentence it replaced did', () => {
+    renderPicker({ kind: 'date', date: '2027-03-10' }, { ...NOTE, unknown: 1 })
+    expect(button(/^Requests: /)).toHaveAttribute(
+      'title',
+      'Which requests count: requests received through Mar 10, 2027 4 later requests left out, and 1 with no received date.'
+    )
+  })
+
+  it('counts requests with no received date even when none came later', () => {
+    renderPicker({ kind: 'date', date: '2027-03-10' }, { ...NOTE, left_out: 0, unknown: 2 })
+    expect(button(/^Requests: /)).toHaveAttribute(
+      'title',
+      'Which requests count: requests received through Mar 10, 2027 2 with no received date left out.'
+    )
+  })
+
   it('lists All requests, Through the R1 deadline and, last, a real date field with no presets', async () => {
     renderPicker({ kind: 'all' })
     await userEvent.click(button(/^Requests: /))

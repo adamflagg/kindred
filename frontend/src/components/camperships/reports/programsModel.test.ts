@@ -325,6 +325,17 @@ describe('Programs (RPT-11)', () => {
       through: 'deadline',
     })
     expect(programsLinkParams({ kind: 'all' })).toEqual({ rows: 'session' })
+  })
+
+  it('keeps the chosen award table in the link and the file name, so the CSV reproduces its rows (D15)', () => {
+    expect(programsLinkParams({ kind: 'all' }, 'camp')).toEqual({ rows: 'session', table: 'camp' })
+    expect(programsCsvName({ year: 2027, asOf: { kind: 'live' } }, { kind: 'all' }, 'camp')).toBe(
+      'camperships-reports-statistics-by-session-camp-2027.csv'
+    )
+    expect(programsLinkParams({ kind: 'all' }, null)).toEqual({ rows: 'session' })
+  })
+
+  it('keeps the request set in the file name', () => {
     expect(programsCsvName({ year: 2027, asOf: { kind: 'live' } }, { kind: 'deadline' })).toBe(
       'camperships-reports-statistics-by-session-through-deadline-2027.csv'
     )

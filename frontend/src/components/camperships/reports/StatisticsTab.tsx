@@ -108,8 +108,8 @@ export function StatisticsTab({ view }: { view: AidView }) {
         heading: programsHeading(programs.data),
         columns: programColumns(numberOf),
         rows: programRows(programs.data, choice.requestSet, linkOf, sessionTable),
-        csvFilename: programsCsvName(view, choice.requestSet),
-        link: aidHref(PATH, view, programsLinkParams(choice.requestSet)),
+        csvFilename: programsCsvName(view, choice.requestSet, choice.table),
+        link: aidHref(PATH, view, programsLinkParams(choice.requestSet, choice.table)),
       }
     }
     if (!data) return null

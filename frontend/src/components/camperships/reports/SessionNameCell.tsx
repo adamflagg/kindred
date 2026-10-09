@@ -18,6 +18,8 @@ export function SessionNameCell({
   readonly sessionType: string
 }) {
   const textRef = useRef<HTMLSpanElement>(null)
+  // The cell is watched, not the name: a short name keeps its own width while the column grows.
+  const cellRef = useRef<HTMLSpanElement>(null)
   const [short, setShort] = useState(false)
   const shortRef = useRef(false)
   useLayoutEffect(() => {
@@ -41,7 +43,8 @@ export function SessionNameCell({
 
   useLayoutEffect(() => {
     const element = textRef.current
-    if (element === null || typeof ResizeObserver === 'undefined') return
+    const cell = cellRef.current
+    if (element === null || cell === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => {
       // Back to the full form, which the effect above then measures against the new width.
       if (shortRef.current) {
@@ -50,12 +53,16 @@ export function SessionNameCell({
         setShort(true)
       }
     })
-    observer.observe(element)
+    observer.observe(cell)
     return () => observer.disconnect()
   }, [])
 
   return (
-    <span className="flex min-w-0 items-center gap-1" title={sessionNameTitle(name, sessionType)}>
+    <span
+      ref={cellRef}
+      className="flex min-w-0 items-center gap-1"
+      title={sessionNameTitle(name, sessionType)}
+    >
       {sessionType === 'family' && (
         <Home className="text-muted-foreground h-3 w-3 flex-none" aria-hidden />
       )}

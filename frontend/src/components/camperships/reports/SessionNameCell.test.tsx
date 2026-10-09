@@ -11,6 +11,7 @@ import { SessionNameCell } from './SessionNameCell'
 
 let room = 1000
 let observed: (() => void) | null = null
+let watched: Element[] = []
 const original = {
   scrollWidth: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth'),
   clientWidth: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth'),
@@ -35,7 +36,9 @@ beforeEach(() => {
     constructor(callback: () => void) {
       observed = callback
     }
-    observe() {}
+    observe(element: Element) {
+      watched.push(element)
+    }
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver
@@ -43,6 +46,7 @@ beforeEach(() => {
 afterEach(() => {
   room = 1000
   observed = null
+  watched = []
   for (const key of ['scrollWidth', 'clientWidth'] as const) {
     if (original[key]) Object.defineProperty(HTMLElement.prototype, key, original[key])
   }
@@ -81,6 +85,12 @@ describe('SessionNameCell', () => {
     room = 200
     act(() => observed?.())
     expect(screen.getByText('AG 2 (7-8)')).toBeInTheDocument()
+  })
+
+  it('watches the cell, not the name: a short name keeps its own width while the column grows', () => {
+    room = 200
+    render(<SessionNameCell name={FULL} sessionType="ag" />)
+    expect(watched).toEqual([screen.getByText('AG 2 (7-8)').closest('span[title]')])
   })
 
   it('marks a Family Camp session with a house and says each app is a household; its short form has no subtitle', () => {

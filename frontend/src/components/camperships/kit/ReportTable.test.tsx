@@ -492,7 +492,8 @@ describe('ReportTable', () => {
       )
       const varies = screen.getByText('varies').closest('td') as HTMLElement
       expect(varies).toHaveAttribute('title', 'Each table sets its own')
-      expect(varies.className).toContain('text-muted-foreground')
+      // whole class tokens: a muted cell keeps its own last class and gains the muted ink
+      expect(varies).toHaveClass('text-muted-foreground', 'whitespace-nowrap')
       // a figure has no title of its own to add
       expect(screen.getByText('4').closest('td')).not.toHaveAttribute('title')
     })
@@ -657,6 +658,29 @@ describe('ReportTable', () => {
         await result.current.copy()
       })
       expect(result.current.copied).toBe('✓ Copied')
+    })
+
+    it('clears its status once the table it copied changes (a new choice is a new table)', async () => {
+      const { result, rerender } = renderHook(
+        ({ rows }: { rows: typeof ROWS }) =>
+          useReportExport({
+            heading: HEADING,
+            columns: COLUMNS,
+            rows,
+            csvFilename: 'x.csv',
+            link: '/l',
+            copiedWords: '✓ Copied',
+          }),
+        { initialProps: { rows: ROWS } }
+      )
+      await act(async () => {
+        await result.current.copy()
+      })
+      expect(result.current.copied).toBe('✓ Copied')
+      rerender({ rows: [...ROWS] })
+      expect(result.current.copied).toBe('✓ Copied')
+      rerender({ rows: ROWS.slice(1) })
+      expect(result.current.copied).toBeNull()
     })
   })
 })

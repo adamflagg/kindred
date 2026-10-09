@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
 import { copyText, csvLines, type ReportColumn, type ReportHeading, type ReportRow } from './report'
@@ -29,15 +29,21 @@ export function useReportExport({
   readonly link: string
   readonly copiedWords?: string
 }) {
-  const [copied, setCopied] = useState<string | null>(null)
+  // The status belongs to the table it copied: a new choice (new rows or heading) clears it, so "✓ Copied"
+  // never sits beside a table nobody copied and never hides the status that table would show.
+  const text = useMemo(() => copyText(heading, columns, rows), [heading, columns, rows])
+  const [status, setStatus] = useState<{ readonly words: string; readonly text: string } | null>(
+    null
+  )
   const copy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(copyText(heading, columns, rows))
-      setCopied(copiedWords)
+      await navigator.clipboard.writeText(text)
+      setStatus({ words: copiedWords, text })
     } catch {
-      setCopied(COPY_FAILED)
+      setStatus({ words: COPY_FAILED, text })
     }
-  }, [heading, columns, rows, copiedWords])
+  }, [text, copiedWords])
+  const copied = status !== null && status.text === text ? status.words : null
   const download = useCallback(() => {
     const [first = [], ...rest] = csvLines(heading, columns, rows, link)
     downloadCsv(buildCsvContent(first, rest), csvFilename)
