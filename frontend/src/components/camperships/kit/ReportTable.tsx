@@ -321,6 +321,15 @@ export function ReportTable({
           aria-label={heading.title}
           className={`w-full border-separate border-spacing-0 text-sm ${fixed ? 'table-fixed' : ''}`}
         >
+          {fixed && (
+            // table-fixed reads its widths from the first header row, which in a grouped header holds
+            // group cells with none: a colgroup sizes every column, and the unsized first one takes the rest.
+            <colgroup>
+              {columns.map((column) => (
+                <col key={column.key} style={column.width ? { width: column.width } : undefined} />
+              ))}
+            </colgroup>
+          )}
           <thead>
             {grouped ? (
               <>
@@ -392,7 +401,10 @@ export function ReportTable({
                         className={`${cellClass(columns[index], index, row.kind)}${cell.muted ? 'text-muted-foreground' : ''}`}
                         style={index === 0 ? indentStyle(row.indent) : undefined}
                       >
-                        {index === 0 && (row.badge !== undefined || span > 1) ? (
+                        {index === 0 &&
+                        (row.badge !== undefined ||
+                          span > 1 ||
+                          (fixed && cell.display === undefined)) ? (
                           // a spanned label cuts with a title; the badge stays at its right end
                           <span className="flex items-center gap-1.5">
                             <span className={`${CS_CUT} min-w-0 flex-initial`}>

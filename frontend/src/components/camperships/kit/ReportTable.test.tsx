@@ -547,6 +547,26 @@ describe('ReportTable', () => {
       expect(writeText.mock.calls[0]?.[0]).not.toContain('3 sessions')
     })
 
+    it('sizes every column of a fixed table through a colgroup, the unsized first taking the rest', () => {
+      renderTable({
+        fixed: true,
+        columns: [
+          { key: 'zip', header: 'ZIP' },
+          { key: 'campers', header: 'Campers', group: 'Round 1', width: 84 },
+          { key: 'dollars', header: 'Dollars', group: 'Round 1', width: 70 },
+        ],
+      })
+      const cols = Array.from(screen.getByRole('table').querySelectorAll('col'))
+      expect(cols.map((c) => c.style.width)).toEqual(['', '84px', '70px'])
+    })
+
+    it("cuts a fixed table's row label on one line, its title carrying the full words", () => {
+      renderTable({ fixed: true })
+      const label = screen.getByText('Outside the US')
+      expect(label).toHaveClass('truncate')
+      expect(label.closest('td')).toHaveAttribute('title', 'Outside the US')
+    })
+
     it('hides the heading row for a headless table, which keeps its name and rows', () => {
       renderTable({ showHeading: false, description: 'Hidden with it.' })
       expect(screen.queryByTestId('report-heading-row')).toBeNull()
