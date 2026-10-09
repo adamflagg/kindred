@@ -36,9 +36,16 @@ def test_slice_3s_three_surfaces_number_their_notes_in_this_order() -> None:
 
 
 def test_the_ledger_and_register_notes_say_what_the_mock_says() -> None:
-    assert "the gap is short or over, To place, and rounds checked since the last sync" in _text("in_campminder_net")
-    assert "including lines whose description is not classified yet" in _text("outside_grants_ledger")
-    assert "never Posted" in _text("outside_grants_ledger")
+    # Final UX (owner 10-09, star 5 and design-language section 12): the Ledger's notes are the mock's shorter words.
+    # The tie-out line (client side) now carries the gap's causes, so the note only points at it.
+    assert _text("in_campminder_net") == (
+        "In CampMinder (net): the family's live camp-aid lines this season, after any reclassifying, net of "
+        "reversals. It isn't Posted; the tie-out line shows the gap."
+    )
+    assert _text("outside_grants_ledger") == (
+        "Outside grants: every other funder's lines, net of reversals, including lines not classified yet. "
+        "Outside money is never Posted."
+    )
     assert "household-level lines of families who didn't apply included" in _text("register_counted")
     assert "never typed" in _text("register_cancelled")
     assert _text("funder").startswith("Funder:")
@@ -105,7 +112,10 @@ def test_expected_clears_on_a_line_or_an_open_commitment() -> None:
 
 
 def test_in_campminder_net_names_money_funders_where_sources_were_folded_in() -> None:
-    """Owner Q2 (10-08): Money › Sources folded into Money › Funders; the note names the tab staff see."""
+    """Owner Q2 (10-08): Money › Sources folded into Money › Funders, so the note never names the old tab.
+
+    The final-UX rewording (10-09, star 5) dropped the tab's name altogether: "after any reclassifying" says it
+    in the mock's shorter words, so only the absence of the retired name is still pinned.
+    """
     text = BY_KEY["in_campminder_net"].text
-    assert "Money › Funders" in text
     assert "Money › Sources" not in text
