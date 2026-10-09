@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
 import { Permission } from '../../../constants/permissions'
+import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
 import { useAidToPlace } from '../../../hooks/camperships/useAidToPlace'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
@@ -9,19 +10,19 @@ import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
 import { CS_LINK } from '../kit/csType'
-import { formatMoney } from '../kit/money'
 import { hiddenTicks } from '../requests/ticks'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { BulkPlaceBar } from './BulkPlaceBar'
 import { BulkPlaceDialog } from './BulkPlaceDialog'
 import { bulkEligible, bulkPlan, MAX_BULK_LINES } from './bulkPlaceModel'
+import { GrantLinesGroup } from './GrantLinesGroup'
 import { LeftLines } from './LeftLines'
 import { toPlaceHref } from './moneyTabs'
 import { ReclassifiedLines } from './ReclassifiedLines'
 import { lineKey } from './toPlaceColumns'
 import { ToPlaceOpenRow, type LineAccess } from './ToPlaceOpenRow'
 import { ToPlaceTable } from './ToPlaceTable'
-import { allLines, toPlaceCsvName } from './toPlaceModel'
+import { allLines, grantLinesFor, openLineWords, toPlaceCsvName } from './toPlaceModel'
 import { DONE_NOTE } from './toPlaceStyles'
 import { useInFlightLines, type InFlightLines } from './useInFlightLines'
 
@@ -57,6 +58,13 @@ function ToPlaceBody({
   onRefused: (words: string) => void
 }) {
   const open = useMemo(() => data.groups.flatMap((g) => g.lines), [data.groups])
+  // The outside-grant lines (the fourth group) count in the open line; a failed or loading grants
+  // read counts none, and the camp-aid groups stand on their own.
+  const grants = useAidGrants()
+  const grantLines = useMemo(
+    () => grantLinesFor(grants.data?.needs_camper ?? [], householdCmId),
+    [grants.data, householdCmId]
+  )
   const every = useMemo(() => allLines(data), [data])
   // Bulk (§4.10; P-6): checks persist across a search (owner ruling 2026-10-02); they are line ids,
   // and a line the read no longer holds open (placed elsewhere) drops out of the plan.
@@ -119,13 +127,12 @@ function ToPlaceBody({
     <div className="space-y-3">
       {shown?.tone === 'done' && <p className={DONE_NOTE}>✓ {shown.words}</p>}
       {shown?.tone === 'refused' && <p className={AMBER_NOTE}>{shown.words}</p>}
-      <p className="text-sm">
-        <span className="font-medium">
-          {`${String(data.open_count)} ${data.open_count === 1 ? 'line' : 'lines'} open · ${formatMoney(data.open_total)}`}
-        </span>{' '}
-        <span className="text-muted-foreground text-xs">
-          Click a line to see what it could belong to and what Confirm does.
-        </span>
+      <p className="text-sm font-medium">
+        {openLineWords(
+          data.open_count,
+          data.open_total,
+          grantLines.map((n) => n.grant)
+        )}
       </p>
       {access.casework && (
         <BulkPlaceBar
@@ -158,6 +165,12 @@ function ToPlaceBody({
         selected={access.casework ? selected : undefined}
         onSelectedChange={access.casework ? setSelected : undefined}
         onMatchingChange={access.casework ? onMatchingChange : undefined}
+      />
+      <GrantLinesGroup
+        view={view}
+        householdCmId={householdCmId}
+        canWork={access.casework}
+        onDone={onDone}
       />
       <LeftLines
         lines={data.left ?? []}

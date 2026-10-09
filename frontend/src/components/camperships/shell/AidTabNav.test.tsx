@@ -59,4 +59,19 @@ describe('AidTabNav (§3.6: tabs live in the URL)', () => {
     const { container } = renderAt('/aid/season/rules', { kind: 'live' })
     expect(container.querySelector('nav > div')).toBeNull()
   })
+
+  it('draws a count after a tab’s label, and none for a missing or zero count', () => {
+    render(
+      <MemoryRouter initialEntries={['/aid/season/rules']}>
+        <AidTabNav
+          section={season}
+          tabs={season.tabs}
+          view={{ year: 2027, asOf: { kind: 'live' } }}
+          counts={{ rules: 40, history: 0 }}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('link', { name: 'Rules 40' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'History' })).toBeInTheDocument()
+  })
 })

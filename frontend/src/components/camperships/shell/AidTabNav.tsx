@@ -14,11 +14,14 @@ export function AidTabNav({
   tabs,
   view,
   right,
+  counts,
 }: {
   section: AidSection
   tabs: readonly AidTab[]
   view: AidView
   right?: ReactNode | undefined
+  /** A number drawn after a tab's label, by slug (To place's open lines); missing or 0 draws none. */
+  counts?: Readonly<Record<string, number | undefined>> | undefined
 }) {
   return (
     <nav className={`${TAB_NAV} flex flex-wrap items-center gap-1`}>
@@ -29,6 +32,12 @@ export function AidTabNav({
           className={({ isActive }) => (isActive ? TAB_PILL_ACTIVE : TAB_PILL_IDLE)}
         >
           {tab.label}
+          {(counts?.[tab.slug] ?? 0) > 0 && (
+            <>
+              {' '}
+              <span className="font-normal opacity-75">{counts?.[tab.slug]}</span>
+            </>
+          )}
         </NavLink>
       ))}
       {right !== undefined && right !== null && (

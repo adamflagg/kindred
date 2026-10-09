@@ -91,11 +91,11 @@ describe('AppLayout on a Camperships page', () => {
   // Owner ruling 2026-10-01 (supersedes "then Users after a divider", D7/D64/D65):
   // Users and Manage left the bar for the user menu, so the divider that ended the
   // section has nothing to separate and is gone.
-  it('shows its six links and no Campers link; Users lives in the user menu, not the bar', () => {
+  it('shows its five links and no Campers link; Users lives in the user menu, not the bar', () => {
     granted = [VIEW]
     renderAt('/aid/requests')
 
-    for (const label of ['Today', 'Requests', 'Grants', 'Money', 'Season', 'Reports']) {
+    for (const label of ['Today', 'Requests', 'Money', 'Season', 'Reports']) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
     }
     expect(screen.queryByRole('link', { name: 'Campers' })).toBeNull()
@@ -124,7 +124,7 @@ describe('AppLayout on a Camperships page', () => {
     renderAt('/aid/reports/development')
 
     expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument()
-    for (const label of ['Today', 'Requests', 'Grants', 'Money', 'Season']) {
+    for (const label of ['Today', 'Requests', 'Money', 'Season']) {
       expect(screen.queryByRole('link', { name: label })).toBeNull()
     }
   })
@@ -135,7 +135,7 @@ describe('AppLayout on a Camperships page', () => {
 
     expect(screen.getByRole('link', { name: 'Campers' })).toBeInTheDocument()
     // Not Camperships: none of its section links are in the bar.
-    for (const label of ['Today', 'Requests', 'Grants', 'Money', 'Season', 'Reports']) {
+    for (const label of ['Today', 'Requests', 'Money', 'Season', 'Reports']) {
       expect(screen.queryByRole('link', { name: label })).toBeNull()
     }
     expect(screen.queryByTestId('aid-freshness')).toBeNull()
@@ -154,10 +154,10 @@ describe('AppLayout on a Camperships page', () => {
     granted = [VIEW]
     renderAt('/aid/requests?year=2025&as_of=2026-04-01')
 
-    const grants = screen.getByRole('link', { name: 'Grants' }).getAttribute('href') ?? ''
+    const grants = screen.getByRole('link', { name: 'Money' }).getAttribute('href') ?? ''
     expect(new URLSearchParams(grants.split('?')[1]).get('year')).toBe('2027')
     expect(new URLSearchParams(grants.split('?')[1]).get('as_of')).toBe('2026-04-01')
-    expect(grants.startsWith('/aid/grants?')).toBe(true)
+    expect(grants.startsWith('/aid/money?')).toBe(true)
     // useYear is mocked to 2027 in this file.
     expect(screen.getByRole('link', { name: 'Today' }).getAttribute('href')).not.toContain('as_of')
     expect(screen.getByRole('link', { name: 'Today' }).getAttribute('href')).toBe('/aid?year=2027')

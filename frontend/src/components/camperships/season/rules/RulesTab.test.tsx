@@ -572,10 +572,9 @@ describe('Rules as chapters (spec §6)', () => {
     const awards = { ...d.document.awards, decision_types: { named_full_cost_fund: fund } }
     draft = { data: { ...d, document: { ...d.document, awards } }, isLoading: false, error: null }
     renderAt('/aid/season/rules?open=2')
-    expect(screen.getByRole('link', { name: 'Managed in Grants ›' })).toHaveAttribute(
-      'href',
-      '/aid/grants/grantors?year=2027'
-    )
+    expect(
+      screen.getByRole('link', { name: "Funder's terms in Money › Funders ›" })
+    ).toHaveAttribute('href', '/aid/money/funders?year=2027')
   })
 })
 

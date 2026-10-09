@@ -5,6 +5,7 @@ import type { ApiAidToPlaceLine } from '../../../types/api-types'
 import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { ReasonForm } from '../household/ReasonForm'
+import { CS_LABEL, CS_SMALL } from '../kit/csType'
 import { TABLE, TD } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
 import { inStaffWords } from './refusal'
@@ -35,12 +36,12 @@ export function LeftLines({
   if (lines.length === 0) return null
   return (
     <section className="space-y-1.5" data-testid="left-lines">
-      <h3 className="text-sm font-semibold">
-        Left at family level{' '}
-        <span className="text-muted-foreground text-xs font-normal">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className={CS_LABEL}>Left at family level</span>
+        <span className={CS_SMALL}>
           {`${String(lines.length)} · ${formatMoney(total)} · not counted as open`}
         </span>
-      </h3>
+      </div>
       <div className={SIDE_CARD}>
         <table className={TABLE}>
           <tbody>

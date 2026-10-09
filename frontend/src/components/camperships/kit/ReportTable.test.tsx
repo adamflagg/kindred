@@ -170,6 +170,25 @@ describe('ReportTable', () => {
     expect(writeText.mock.calls[0]?.[0]).toContain('00010\t4\t$1,200')
   })
 
+  it("links a name cell the row gives an href (Development's funder lines), copying the words alone", async () => {
+    renderTable({
+      rows: [
+        {
+          key: 'grantor-a',
+          kind: 'body',
+          cells: [textValue('Grantor A'), countValue(2), moneyValue(500)],
+          links: { 0: '/aid/money/funders?funder=grantor_a' },
+        },
+      ],
+    })
+    expect(screen.getByRole('link', { name: 'Grantor A' })).toHaveAttribute(
+      'href',
+      '/aid/money/funders?funder=grantor_a'
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+    expect(writeText.mock.calls[0]?.[0]).toContain('Grantor A\t2\t$500')
+  })
+
   it("keeps a column's note marker and width when the table sorts (ZIP codes' Campers note)", () => {
     renderTable({
       sortable: true,

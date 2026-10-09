@@ -18,6 +18,7 @@ import {
   cancellationWords,
   cardShares,
   earlierReceipts,
+  expectedKindWords,
   expectedWords,
   householdCsvName,
   householdChipName,
@@ -515,5 +516,17 @@ describe('a household card, trued to the mock (D14, D15)', () => {
         { tone: 'amber', text: '1 short $210' },
       ],
     })
+  })
+})
+
+describe('expectedKindWords (Grants › Expected; D56, P-25)', () => {
+  it('names the grantor the server sends, else the generic words', () => {
+    const [expected] = PAGE.expected
+    if (expected === undefined) throw new Error('fixture')
+    expect(expectedKindWords(expected)).toBe('Expected: synagogue grant')
+    expect(expectedKindWords({ ...expected, display_name: 'Grantor B' })).toBe(
+      'Expected: Grantor B'
+    )
+    expect(expectedKindWords({ ...expected, display_name: null })).toBe('Expected: synagogue grant')
   })
 })

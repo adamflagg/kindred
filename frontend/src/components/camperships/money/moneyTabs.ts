@@ -1,19 +1,32 @@
 import { aidHref, type AidView } from '../kit/asOf'
 
 /**
- * Money's tabs (spec §8.1; D62; money-v2.html): each tab's one-line purpose, in the mock's words,
- * shown under the tab bar so a person knows what the tab is for before reading it (P-1).
+ * Money's tabs (spec §8.1; owner 10-08): Ledger · To place · Grants · Funders, the slugs in
+ * config/aidNav.ts. The purpose line under each tab is gone (visual true-up).
  */
-export type MoneyTab = 'ledger' | 'to-place' | 'sources'
+export type MoneyTab = 'ledger' | 'to-place' | 'grants' | 'funders'
 
-export const MONEY_TAB_PURPOSE: Readonly<Record<MoneyTab, string>> = {
-  ledger: "One row per family, plus finance's posted totals by program and source.",
-  'to-place':
-    'CampMinder aid lines that no single request explains. Attach each one to the right request.',
-  sources: "Finance's list of CampMinder descriptions and how each one is classified.",
+/** Old Money tab slugs and where they live now: Sources became Funders. */
+export const MONEY_TAB_ALIASES: Readonly<Record<string, MoneyTab>> = { sources: 'funders' }
+
+/**
+ * Where an old `/aid/grants/<rest>` link lands (Grants folded into Money, 10-08). `rest` is what
+ * follows `/aid/grants/` (empty for the bare section). Any other path goes to Money's landing.
+ */
+export function grantsRedirectPath(rest: string): string {
+  switch (rest.replace(/^\/+|\/+$/g, '')) {
+    case '':
+    case 'register':
+    case 'expected':
+      return '/aid/money/grants'
+    case 'grantors':
+      return '/aid/money/funders'
+    case 'needs-attention':
+      return '/aid/money/to-place'
+    default:
+      return '/aid/money'
+  }
 }
-
-export const isMoneyTab = (slug: string): slug is MoneyTab => slug in MONEY_TAB_PURPOSE
 
 /**
  * To place, for every family or one (`?household=<cm_id>`, the route's D26 scope; P-8): "Only This

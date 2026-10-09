@@ -6,6 +6,11 @@ import { QueryGuard } from '../../components/QueryGuard'
 import { AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
 import { type AidAsOf, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
+import {
+  HouseholdAddCommitment,
+  HouseholdPlaceOnCamper,
+} from '../../components/camperships/grants/HouseholdGrantForms'
+import { needsCamperOnPage } from '../../components/camperships/grants/placeModel'
 import { IncomeCorrection } from '../../components/camperships/household/CaseworkForms'
 import { HoldActions } from '../../components/camperships/household/HoldActions'
 import { HoldBanners } from '../../components/camperships/household/HoldBanners'
@@ -124,6 +129,24 @@ function HouseholdBody({
                   onOpenChange={opening.setOpen}
                 />
               )
+            : undefined
+        }
+        grantForms={
+          canWork
+            ? {
+                addCommitment: (opening) => (
+                  <HouseholdAddCommitment page={page} opening={opening} exits={exits} />
+                ),
+                placeOnCamper: (grant, opening) =>
+                  needsCamperOnPage(grant) ? (
+                    <HouseholdPlaceOnCamper
+                      page={page}
+                      grant={grant}
+                      opening={opening}
+                      exits={exits}
+                    />
+                  ) : null,
+              }
             : undefined
         }
       />

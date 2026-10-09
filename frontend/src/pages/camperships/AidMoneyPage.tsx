@@ -1,44 +1,34 @@
 import { Landmark } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, Navigate, useParams, useSearchParams } from 'react-router'
+import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
-import {
-  householdParam,
-  isMoneyTab,
-  MONEY_TAB_PURPOSE,
-} from '../../components/camperships/money/moneyTabs'
+import { GRANTS_LIVE_ONLY } from '../../components/camperships/grants/grantsTabs'
+import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
+import { householdParam, MONEY_TAB_ALIASES } from '../../components/camperships/money/moneyTabs'
+import { LedgerTab } from '../../components/camperships/money/LedgerTab'
+import { FundersTab } from '../../components/camperships/money/FundersTab'
 import { ToPlaceTab } from '../../components/camperships/money/ToPlaceTab'
-import { REQUEST_VIEWS } from '../../components/camperships/requests/views'
+import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
+import { toPlaceCount } from '../../components/camperships/money/toPlaceModel'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
+import { useAidGrants } from '../../hooks/camperships/useAidGrants'
+import { useAidToPlace } from '../../hooks/camperships/useAidToPlace'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 import PermissionDeniedPage from '../PermissionDeniedPage'
 
 const MONEY = aidSection('money')
-const LINK = 'text-primary font-medium hover:underline'
-
-/** The Requests views the ledger also feeds, worked where the request is (§8.1's table). */
-const ELSEWHERE = REQUEST_VIEWS.filter((v) => v.key === 'to_reverse' || v.key === 'not_reconciled')
-
-/** One tab not built yet in this part of slice 3: says so, and where its screen comes from. */
-function NotYet({ what }: { what: string }) {
-  return (
-    <div className="card-lodge text-muted-foreground p-6 text-sm">
-      {`Money › ${what} is built in a later part of slice 3.`}
-    </div>
-  )
-}
 
 /**
- * Money (spec §8.1; D58, D62; money-v2.html): Ledger · To place · Sources, each a URL-held tab (§3.6).
- * What CampMinder posted that doesn't hang on a request; what does lives with the request, so the
- * page links there. Only the Ledger's posted totals can show a past date (PR 3); the other tabs
- * show today and say so when the link carries a date.
+ * Money (spec §8.1, §8.2; D58, D62; owner 10-08): Ledger · To place · Grants · Funders, each a URL-held
+ * tab (§3.6). It opens on the first tab the user may see: the Ledger, or Funders for development.
+ * Only the Ledger's posted totals can show a past date; the other tabs show today and say so when
+ * the link carries a date. Funders is the sources and the grantors in one table, grouped by who pays.
  */
 export default function AidMoneyPage() {
   const { tab } = useParams()
@@ -46,52 +36,59 @@ export default function AidMoneyPage() {
   // `?household=<cm_id>`: To place scoped to one family (D26; P-8), from a line's "Only This
   // Family ›" or the grid's and household page's "Place It in Money › To Place ›" (ruling C).
   const householdCmId = householdParam(params.get('household'))
+  const { search } = useLocation()
   const { hasPermission } = usePermissions()
   const year = useYear()
   const asOf = useAidAsOf()
   const view = useMemo((): AidView => ({ year, asOf }), [year, asOf])
+  // The To place tab's count (M5): camp aid's open_count plus the outside-grant lines that need a
+  // camper, both season-wide whatever `?household=` says. The reads are the tab's own cache entries
+  // and are enabled for view holders only.
+  const campAid = useAidToPlace(null)
+  const grants = useAidGrants()
+  const placeCount = toPlaceCount(campAid.data?.open_count, grants.data?.needs_camper.length)
+  // The old Sources tab is Funders now; links keep their `?row=`.
+  const alias = tab === undefined ? undefined : MONEY_TAB_ALIASES[tab]
+  if (alias !== undefined) return <Navigate to={`${MONEY.path}/${alias}${search}`} replace />
   const resolved = resolveAidTab(MONEY, tab, { hasPermission })
   if (resolved.kind === 'denied') return <PermissionDeniedPage />
   if (resolved.kind === 'first') {
-    // A bare or unknown tab opens To place, the tab with work in it (Decision 2). Every Money tab
-    // needs only `view`, which the route already requires.
-    return <Navigate to={aidHref(`${MONEY.path}/to-place`, view)} replace />
+    // A bare or unknown tab opens the first one this user may see: the Ledger for view holders,
+    // Funders for development (owner 10-08; Decision 2's "To place first" is revisited).
+    return <Navigate to={aidHref(`${MONEY.path}/${resolved.tab.slug}`, view)} replace />
   }
-  const slug = resolved.tab?.slug ?? 'to-place'
+  const slug = resolved.tab?.slug ?? 'ledger'
 
   return (
     <div className="space-y-3 sm:space-y-4">
       <AidPageBand
         icon={Landmark}
         title={MONEY.label}
-        subtitle={`Season ${String(year)} · what CampMinder posted that no request explains`}
+        subtitle={`Season ${String(year)} · what CampMinder posted`}
         asOf={asOf}
       />
-      <AidTabNav section={MONEY} tabs={resolved.tabs} view={view} />
-      {isMoneyTab(slug) && <p className="text-sm">{MONEY_TAB_PURPOSE[slug]}</p>}
-      <p className="text-muted-foreground text-xs">
-        Also raised by the ledger, worked where the request is:{' '}
-        {ELSEWHERE.map((v, i) => (
-          <span key={v.key}>
-            {i > 0 && ' · '}
-            <Link className={LINK} to={aidHref('/aid/requests', view, { view: v.slug })}>
-              {`Requests › ${v.label}`}
-            </Link>
-          </span>
-        ))}
-        {' · '}
-        <Link className={LINK} to={aidHref('/aid/grants/needs-attention', view)}>
-          Grants › Needs attention
-        </Link>
-      </p>
+      <AidTabNav
+        section={MONEY}
+        tabs={resolved.tabs}
+        view={view}
+        counts={{ 'to-place': placeCount ?? undefined }}
+      />
       {slug !== 'ledger' && asOf.kind === 'past' && (
         <p className="text-muted-foreground text-sm">
-          {`This tab shows today. Money › Ledger can show ${formatLongDate(asOf.date)}.`}
+          {slug === 'grants'
+            ? GRANTS_LIVE_ONLY
+            : `This tab shows today. Money › Ledger can show ${formatLongDate(asOf.date)}.`}
         </p>
       )}
       {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}
-      {slug === 'ledger' && <NotYet what="Ledger" />}
-      {slug === 'sources' && <NotYet what="Sources" />}
+      {slug === 'ledger' && <LedgerTab view={view} />}
+      {slug === 'grants' && (
+        <>
+          <RegisterTab view={view} />
+          <AidDefinitionNotes surface="grants" />
+        </>
+      )}
+      {slug === 'funders' && <FundersTab view={view} />}
     </div>
   )
 }

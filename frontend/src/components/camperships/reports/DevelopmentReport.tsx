@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 
+import { aidSection, visibleSections, visibleTabs } from '../../../config/aidNav'
 import { useAidDevelopment } from '../../../hooks/camperships/useAidDevelopment'
+import { usePermissions } from '../../../hooks/usePermissions'
 import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
@@ -36,6 +38,16 @@ export function DevelopmentReport({ view }: { view: AidView }) {
   // While the dated read is out, or if it was refused, the live report stays and so does the control.
   const development = asOf !== null && asked.data ? asked : live
   const link = aidHref(PATH, view)
+  // Each funder line opens its group on Money › Funders, for a user who can open that tab.
+  const { hasPermission } = usePermissions()
+  const fundersHref = useMemo(
+    () =>
+      visibleSections({ hasPermission }).some((section) => section.key === 'money') &&
+      visibleTabs(aidSection('money'), { hasPermission }).some((tab) => tab.slug === 'funders')
+        ? (params: Readonly<Record<string, string>>) => aidHref('/aid/money/funders', view, params)
+        : undefined,
+    [hasPermission, view]
+  )
   const seasons = useMemo(
     () => (development.data ? datedSeasons(development.data) : []),
     [development.data]
@@ -77,7 +89,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
               <ReportTable
                 heading={developmentHeading(data, 'Development report')}
                 columns={developmentColumns(data, asOf)}
-                rows={developmentRows(data)}
+                rows={developmentRows(data, fundersHref)}
                 csvFilename={developmentCsvName(view, 'report')}
                 link={link}
                 footnote={

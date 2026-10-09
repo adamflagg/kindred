@@ -10,3 +10,7 @@ export const MARK_TEXT = 'text-emerald-700 dark:text-emerald-400'
 /** A result line after a write. */
 export const DONE_NOTE =
   'rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+
+/** The camp-aid group's note is green-ruled; an outside grant's is blue-ruled (M5, mock Q4). */
+export const GRANT_NOTE =
+  'border-l-2 border-blue-600 pl-2 text-xs text-blue-900 dark:border-blue-400 dark:text-blue-200'

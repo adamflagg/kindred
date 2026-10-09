@@ -104,7 +104,7 @@ const CHECKS = {
 
 type Props = Parameters<typeof CardTables>[0]
 function tables(over: Partial<Props> & Pick<Props, 'section' | 'content'>) {
-  // MemoryRouter: the named fund's "Managed in Grants ›" is a router Link.
+  // MemoryRouter: the named fund's "Funder's terms in Money › Funders ›" is a router Link.
   return render(
     <MemoryRouter>
       <CardTables
@@ -232,20 +232,19 @@ describe('the named awards table (spec §6.2 E.4)', () => {
     ])
   })
 
-  it('shows the named fund read-only, even in the editor, with "Managed in Grants ›" to Grants › Grantors (owner 10-06)', () => {
+  it('shows the named fund read-only, even in the editor, with "Funder\'s terms in Money › Funders ›" (coordinator 10-08)', () => {
     const control = vi.fn((path: readonly string[]) => <input aria-label={path.join('.')} />)
     tables({
       section: 'awards',
       content: AWARDS,
       control,
-      grantsHref: '/aid/grants/grantors?year=2027',
+      grantsHref: '/aid/money/funders?year=2027',
     })
     const table = screen.getByTestId('named-awards-table')
     const fund = rowOf(table, 'Named full-cost fund')
-    expect(within(fund).getByRole('link', { name: 'Managed in Grants ›' })).toHaveAttribute(
-      'href',
-      '/aid/grants/grantors?year=2027'
-    )
+    expect(
+      within(fund).getByRole('link', { name: "Funder's terms in Money › Funders ›" })
+    ).toHaveAttribute('href', '/aid/money/funders?year=2027')
     expect(within(fund).queryByRole('textbox')).toBeNull()
     expect(within(rowOf(table, 'Full-cost program')).queryByRole('link')).toBeNull()
   })

@@ -1,7 +1,6 @@
 import {
   CalendarCheck,
   FileBarChart,
-  HandCoins,
   Inbox,
   Landmark,
   ListChecks,
@@ -21,7 +20,6 @@ import PermissionDeniedPage from '../PermissionDeniedPage'
 const ICONS: Record<AidSectionKey, LucideIcon> = {
   today: Inbox,
   requests: ListChecks,
-  grants: HandCoins,
   money: Landmark,
   season: CalendarCheck,
   reports: FileBarChart,

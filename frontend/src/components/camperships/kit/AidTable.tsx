@@ -179,6 +179,8 @@ export interface AidTableProps<Row> {
    * list, as filtered"), a rule, then these. Esc and an outside click close it; a click inside closes it.
    */
   readonly csvMenu?: ReactNode
+  /** True: no toolbar at all (no search, switch or Download CSV), for a table whose page owns them. Default false. */
+  readonly hideToolbar?: boolean | undefined
   /** A status line drawn under the toolbar (the March file's result); nothing is drawn when undefined. */
   readonly toolbarStatus?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
@@ -223,6 +225,15 @@ export interface AidTableProps<Row> {
   readonly onLeave?: ((go: () => void) => void) | undefined
   /** Folds belong to this (the Requests grid's lens and view): a change clears them all. */
   readonly foldScope?: string | undefined
+  /**
+   * Draws a row as a group header inside a flat list (Money › Funders): a tinted, bold, ruled row
+   * whose cells carry no background of their own, so text in one cell may run across the empty
+   * cells beside it. `'warn'` is the same row in an amber tint. The row stays a row: it highlights,
+   * opens and exports like any other.
+   */
+  readonly rowTone?: ((row: Row) => 'group' | 'warn' | undefined) | undefined
+  /** False: the headers do not sort and any sort in the URL is ignored. Default true. */
+  readonly sortable?: boolean | undefined
 }
 
 /** The box runs to the bottom of the screen less this gap, and never gets shorter than the floor. */
@@ -233,6 +244,14 @@ const BOX_MIN_HEIGHT = 200
 const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)
 
 const NO_GROUPINGS: readonly never[] = []
+/** A `rowTone` row's tint, opaque in both themes (the row carries it; a pinned cell repeats it). */
+const TONE_BG = {
+  group:
+    'bg-emerald-50 dark:bg-[color-mix(in_oklab,var(--color-emerald-900)_30%,var(--color-card))]',
+  warn: 'bg-yellow-50 dark:bg-[color-mix(in_oklab,var(--color-yellow-900)_30%,var(--color-card))]',
+} as const
+/** A group row's cells: bold, a rule above, and no clipping, so a header's words can run on. */
+const TONE_TD = 'border-border border-t border-b px-2 py-1.5 align-top font-semibold'
 const FLEX_MIN = 250
 /** The selection's checkbox column (§4.10). */
 const SELECT_WIDTH = 32
@@ -265,6 +284,7 @@ export function AidTable<Row>({
   toolbarAfterGrouping,
   csvMenu,
   toolbarStatus,
+  hideToolbar = false,
   searchPlaceholder = 'Search names or CM IDs',
   searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
@@ -279,6 +299,8 @@ export function AidTable<Row>({
   scrollBox = false,
   onLeave,
   foldScope,
+  rowTone,
+  sortable = true,
 }: AidTableProps<Row>) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const groupingKeys = useMemo(() => groupings.map((g) => g.key), [groupings])
@@ -319,10 +341,10 @@ export function AidTable<Row>({
 
   const sorted = useCallback(
     (list: readonly Row[]) => {
-      const column = sort ? columns.find((c) => c.key === sort.key) : undefined
+      const column = sortable && sort ? columns.find((c) => c.key === sort.key) : undefined
       return column && sort ? sortRows(list, column.sortValue ?? column.value, sort.dir) : [...list]
     },
-    [columns, sort]
+    [columns, sort, sortable]
   )
   // The rows matching the search: what the totals, the counts and the CSV are of.
   const visible = useMemo(() => sorted(rows.filter(matches)), [rows, matches, sorted])
@@ -754,24 +776,26 @@ export function AidTable<Row>({
     )
   return (
     <div className="space-y-2">
-      <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        {toolbarLead}
-        {toolbarAfterGrouping !== undefined && groupingSwitch}
-        {toolbarAfterGrouping}
-        <div className="relative w-64">
-          <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-          <input
-            type="search"
-            aria-label="Search"
-            placeholder={searchPlaceholder}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className={AID_SEARCH_INPUT}
-          />
+      {!hideToolbar && (
+        <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          {toolbarLead}
+          {toolbarAfterGrouping !== undefined && groupingSwitch}
+          {toolbarAfterGrouping}
+          <div className="relative w-64">
+            <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+            <input
+              type="search"
+              aria-label="Search"
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className={AID_SEARCH_INPUT}
+            />
+          </div>
+          {toolbarAfterGrouping === undefined && groupingSwitch}
+          {csvButton}
         </div>
-        {toolbarAfterGrouping === undefined && groupingSwitch}
-        {csvButton}
-      </div>
+      )}
       {toolbarStatus}
 
       <div ref={boxRef} className={scrollBox ? SCROLL_BOX : TABLE_CARD}>
@@ -801,15 +825,19 @@ export function AidTable<Row>({
                 </th>
               )}
               {columns.map((c) =>
-                c.help ? (
+                c.help || !sortable ? (
                   <th
                     key={c.key}
                     style={pinStyle(c)}
                     className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
                   >
-                    <Tooltip content={c.help} className={HELP_HEADER}>
-                      {c.header}
-                    </Tooltip>
+                    {c.help ? (
+                      <Tooltip content={c.help} className={HELP_HEADER}>
+                        {c.header}
+                      </Tooltip>
+                    ) : (
+                      c.header
+                    )}
                   </th>
                 ) : (
                   <SortableColumnHeader
@@ -862,6 +890,7 @@ export function AidTable<Row>({
                   const key = rowKey(row)
                   const isHighlighted = key === highlighted
                   const isMarked = markedKeys?.has(key) === true
+                  const tone = rowTone?.(row)
                   return (
                     <Fragment key={key}>
                       <tr
@@ -875,7 +904,11 @@ export function AidTable<Row>({
                         onClick={() => {
                           if (key !== highlighted) setHighlight(key)
                         }}
-                        className="cursor-pointer"
+                        data-row-tone={tone}
+                        className={join(
+                          'cursor-pointer',
+                          tone && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
+                        )}
                         style={scrollMargins}
                       >
                         {selection && (
@@ -907,8 +940,13 @@ export function AidTable<Row>({
                             style={pinStyle(c)}
                             data-fit-col={c.fitContent ? c.key : undefined}
                             className={join(
-                              TD,
-                              isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
+                              tone ? TONE_TD : TD,
+                              // A tone row's tint is on the row; only a pinned cell needs its own.
+                              tone
+                                ? isPinned(c) && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
+                                : isHighlighted
+                                  ? ROW_HIGHLIGHT
+                                  : CELL_BG,
                               bodyEdge(c, index, isHighlighted, isMarked),
                               isPinned(c) && 'sticky z-10',
                               alignClass(c),

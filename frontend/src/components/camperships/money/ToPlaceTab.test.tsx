@@ -9,7 +9,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import type { ApiAidToPlace } from '../../../types/api-types'
+import type { ApiAidGrants, ApiAidToPlace } from '../../../types/api-types'
+import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
+import { CS_LABEL } from '../kit/csType'
 import { ToPlaceTab } from './ToPlaceTab'
 import { SOURCES } from './sourcesFixtures'
 import {
@@ -64,6 +66,10 @@ let answers: Response[] = []
 let gate: Promise<Response> | null = null
 let failReads = false
 let fetchSpy: MockInstance<typeof fetch>
+// The grants read (the fourth group): none need a camper unless a test says so.
+const NO_GRANT_LINES: ApiAidGrants = { ...GRANTS, needs_camper: [] }
+let grantsRead: ApiAidGrants = NO_GRANT_LINES
+let failGrants = false
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const calls = () =>
   fetchSpy.mock.calls.map(([url, init]) => ({
@@ -99,6 +105,8 @@ beforeEach(() => {
   answers = []
   gate = null
   failReads = false
+  grantsRead = NO_GRANT_LINES
+  failGrants = false
   downloadSpy.mockClear()
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
     const path = String(url)
@@ -112,6 +120,15 @@ beforeEach(() => {
           })
         )
       }
+      // The grants read behind the outside-grant group (M5).
+      if (path.includes('/api/financial-aid/grants/')) {
+        return Promise.resolve(
+          failGrants ? json({ detail: 'Server error' }, 500) : json(grantsRead)
+        )
+      }
+      // The approved rules (program words): none yet.
+      if (path.includes('/rules/'))
+        return Promise.resolve(json({ detail: 'no approved rules' }, 404))
       // Reclassify's targets (part 1b): the sources registry.
       if (path.includes('/sources')) return Promise.resolve(json(SOURCES))
       if (failReads) return Promise.resolve(json({ detail: 'Server error' }, 500))
@@ -149,9 +166,11 @@ const openLine = async (words: string) => {
 describe('Money › To place (§8.1)', () => {
   it("shows the server's open count and total, and the lines grouped by its reasons", async () => {
     renderTab()
-    expect(await screen.findByText('5 lines open · $6,920')).toBeInTheDocument()
+    expect(await screen.findByText('5 lines open · $6,920 camp aid')).toBeInTheDocument()
     expect(screen.getByText('Several requests could take this')).toBeInTheDocument()
-    expect(screen.getByText('3 households · 3 lines')).toBeInTheDocument()
+    expect(
+      screen.getByText('3 households · 3 lines · Camp aid: Confirm marks the round Posted.')
+    ).toBeInTheDocument()
     expect(screen.getByText('No request behind it')).toBeInTheDocument()
     expect(screen.getByText('1 · $120 · not counted as open')).toBeInTheDocument()
   })
@@ -261,6 +280,14 @@ describe('Money › To place (§8.1)', () => {
         body: JSON.stringify({ note: 'Waiting on CampMinder' }),
       },
     ])
+  })
+
+  it('heads "Left at family level" with the kit section label, not a display-serif heading', async () => {
+    renderTab()
+    const left = await screen.findByTestId('left-lines')
+    const heading = within(left).getByText('Left at family level')
+    expect(heading.tagName).not.toBe('H3')
+    expect(heading.className).toBe(CS_LABEL)
   })
 
   it('reopens a left line with a reason', async () => {
@@ -419,7 +446,7 @@ describe('Money › To place (§8.1)', () => {
     failReads = true
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
-    expect(screen.getByText('5 lines open · $6,920')).toBeInTheDocument()
+    expect(screen.getByText('5 lines open · $6,920 camp aid')).toBeInTheDocument()
   })
 
   it('offers "Leave With a Note…" on a line that is not a several-requests line', async () => {
@@ -461,7 +488,7 @@ describe('Money › To place (§8.1)', () => {
 
   it('exports the household and the line id, so a row joins back to CampMinder (review m5)', async () => {
     renderTab()
-    await screen.findByText('5 lines open · $6,920')
+    await screen.findByText('5 lines open · $6,920 camp aid')
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const [header, firstRow] = content.split('\n')
@@ -1144,7 +1171,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     )
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/^2 lines · 2 households · \$1,800 locked/)).toBeInTheDocument()
-    expect(within(dialog).getByText('estimate')).toBeInTheDocument()
+    expect(within(dialog).getByText('Estimate')).toBeInTheDocument()
     answers = [json({ ...PLACED, placed: [3000003, RILEY_EXACT.transaction_cm_id] })]
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 2' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
@@ -1176,7 +1203,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     const dialog = await screen.findByRole('dialog')
     // One line: its own preview is exact, so no estimate pill (plan review m6).
     expect(within(dialog).getByText(/^1 line · 1 household · \$1,500 locked/)).toBeInTheDocument()
-    expect(within(dialog).queryByText('estimate')).toBeNull()
+    expect(within(dialog).queryByText('Estimate')).toBeNull()
     expect(
       within(dialog).getByText('Left out, confirm one at a time: Johnson (a split).')
     ).toBeInTheDocument()
@@ -1227,5 +1254,94 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     await screen.findByText(CHEN)
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.queryByRole('button', { name: /Exact Single/ })).toBeNull()
+  })
+})
+
+describe('Money › To place › the outside-grant group (M5)', () => {
+  const CHEN_GRANT = grantRow({
+    transaction_cm_id: 4000008,
+    household_cm_id: 1000003,
+    family_name: 'Chen',
+    person_cm_id: 0,
+    camper_name: '',
+    camper_basis: 'none',
+    amount: 800.5,
+    counts: false,
+    requests: [],
+  })
+  const WITH_LINES: ApiAidGrants = {
+    ...GRANTS,
+    needs_camper: [
+      ...GRANTS.needs_camper,
+      {
+        grant: CHEN_GRANT,
+        household_applied: true,
+        suggestion: null,
+        candidates: [{ person_cm_id: 2000003, name: 'Olivia Chen' }],
+      },
+    ],
+  }
+  const GARCIA_LINE = '$1,500 · Grantor B · posted to the household · Apr 3'
+
+  it('adds the lines as a fourth group below the camp-aid table, and counts them in the open line', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    expect(
+      await screen.findByText('7 lines open · $6,920 camp aid · $2,300.50 outside grants')
+    ).toBeInTheDocument()
+    const heading = await screen.findByText('Outside grant posted to the family')
+    expect(screen.getByText('2 lines')).toBeInTheDocument()
+    const camp = screen.getByText('No request behind it')
+    expect(camp.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText(GARCIA_LINE)).toBeInTheDocument()
+  })
+
+  it('reads the grants with the signed-in token', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    await screen.findByText('Outside grant posted to the family')
+    const sent = fetchSpy.mock.calls.find(([url]) =>
+      String(url).startsWith('/api/financial-aid/grants/2027')
+    )
+    expect(new Headers(sent?.[1]?.headers).get('Authorization')).toBe('Bearer test-jwt')
+  })
+
+  it('draws no group and no grant part when no line needs a camper, and no purpose line', async () => {
+    renderTab()
+    await screen.findByText('5 lines open · $6,920 camp aid')
+    expect(screen.queryByText('Outside grant posted to the family')).toBeNull()
+    expect(screen.queryByText(/outside grants/)).toBeNull()
+    expect(screen.queryByText(/Click a line to see/)).toBeNull()
+  })
+
+  it('keeps the camp-aid table when the grants read fails', async () => {
+    failGrants = true
+    renderTab()
+    expect(await screen.findByText('5 lines open · $6,920 camp aid')).toBeInTheDocument()
+    expect(screen.getByText('No request behind it')).toBeInTheDocument()
+    expect(screen.queryByText('Outside grant posted to the family')).toBeNull()
+  })
+
+  it("narrows to one household's grant lines under ?household=", async () => {
+    grantsRead = WITH_LINES
+    reads = [{ ...TO_PLACE, household_cm_id: 1000003 }]
+    renderTab(1000003)
+    expect(
+      await screen.findByText('6 lines open · $6,920 camp aid · $800.50 outside grants')
+    ).toBeInTheDocument()
+    expect(screen.getByText('1 line')).toBeInTheDocument()
+    expect(screen.queryByText(GARCIA_LINE)).toBeNull()
+  })
+
+  it('shows a grant placement’s result on the tab', async () => {
+    grantsRead = WITH_LINES
+    answers = [json({ year: 2027, placed: 1, unchanged: 0, operation_id: 'op0000000000009' })]
+    renderTab()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByText(/^✓ 1 line placed on its camper/)).toBeInTheDocument()
+    expect(writes()[0]?.url).toBe('/api/financial-aid/grants/2027/placements')
+    expect(GARCIA_HOUSEHOLD.transaction_cm_id).toBe(4000002)
   })
 })

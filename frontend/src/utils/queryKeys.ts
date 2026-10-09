@@ -788,6 +788,24 @@ export const queryKeys = {
   aidPlacePreview: (year: number, transactionCmId: number, parts: string) =>
     ['financial-aid', 'to-place', year, 'preview', transactionCmId, parts] as const,
   aidSources: (year: number) => ['financial-aid', 'sources', 'registry', year] as const,
+  // part 2a: the grantor directory (retired or not; with a season's grants or not), Funding sources
+  // (under the sources prefix, so a `registry` refresh reaches it) and the posted totals (under
+  // the ledger prefix: placements and reclassifications move them).
+  aidGrantors: (includeRetired: boolean, year: number | null) =>
+    ['financial-aid', 'grantors', includeRetired ? 'all' : 'in-use', year ?? 'no-season'] as const,
+  // Grants (slice 3 part 3a): the Register's priced read, and the stored-fields read (`offsets=false`)
+  // an edit takes at a click. Apart, so the click's unpriced answer never replaces the Register's.
+  aidGrants: (year: number) => ['financial-aid', 'grants', year, 'priced'] as const,
+  aidGrantsStored: (year: number) => ['financial-aid', 'grants', year, 'stored'] as const,
+  aidFundingSources: (year: number) => ['financial-aid', 'sources', 'funding', year] as const,
+  aidSummary: (year: number, asOf: string | null) =>
+    ['financial-aid', 'ledger', year, 'summary', asOf ?? 'live'] as const,
+  // part 2b: the Ledger's family rows and the lines behind a total, keyed by the query they send
+  // (filters and day), under the ledger prefix: every Camperships write refreshes them.
+  aidMoneyLedger: (year: number, query: string) =>
+    ['financial-aid', 'ledger', year, 'families', query] as const,
+  aidLedgerLines: (year: number, total: string, query: string) =>
+    ['financial-aid', 'ledger', year, 'lines', total, query] as const,
   // Read at the click only (staleTime 0), never a standing query: the March file (spec §8.3).
   aidMarchFile: (year: number) => ['financial-aid', 'march-file', year] as const,
   // Reports (slice 4): every report read sits under one prefix, so every money write refreshes them.

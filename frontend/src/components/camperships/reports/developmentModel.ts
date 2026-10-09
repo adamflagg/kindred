@@ -104,7 +104,21 @@ function lineIndent(key: string): 0 | 1 | 2 {
  * with its definition (D99), the group rows only under the two lines the mock breaks out. A line limited
  * to some group kinds has no every-group figure, so it reads "label, group" for each group it has.
  */
-export function developmentRows(dev: ApiAidDevelopment): ReportRow[] {
+/**
+ * Where a funder line opens on Money › Funders: its funder's group (the server keys a mapped source
+ * `funder:<grantor key>`), or "No funder yet" for a description no funder claims.
+ */
+export function fundersParams(sourceKey: string): Record<string, string> {
+  return sourceKey.startsWith('funder:')
+    ? { funder: sourceKey.slice('funder:'.length) }
+    : { show: 'no-funder' }
+}
+
+/** `fundersHref` links each funder line to Money › Funders; leave it out for a user who can't open it. */
+export function developmentRows(
+  dev: ApiAidDevelopment,
+  fundersHref?: (params: Readonly<Record<string, string>>) => string
+): ReportRow[] {
   const rows: ReportRow[] = []
   // Each section once, in SECTION_WORDS' order (the mock's), its lines in the server's order: the read
   // sends a few lines after a later section's (household-level dollars, the gender rows).
@@ -146,7 +160,7 @@ export function developmentRows(dev: ApiAidDevelopment): ReportRow[] {
         note: every.definition === '' ? undefined : every.definition,
         cells: cells(every.label, every),
       })
-      if (first.key === OUTSIDE_KEY) rows.push(...grantorRows(dev, indent))
+      if (first.key === OUTSIDE_KEY) rows.push(...grantorRows(dev, indent, fundersHref))
       if (BROKEN_OUT.has(first.key)) {
         line.forEach((row, offset) => {
           if (row.group === null) return
@@ -234,7 +248,11 @@ export function rebuildReason(dev: ApiAidDevelopment): string | null {
  * facts in muted words. Its amount sits only in the read's own season, the dashboard's column as of the
  * figures day; the other columns have nothing there (D74), so they read "—". The camp's own is no line.
  */
-function grantorRows(dev: ApiAidDevelopment, indent: 0 | 1 | 2): ReportRow[] {
+function grantorRows(
+  dev: ApiAidDevelopment,
+  indent: 0 | 1 | 2,
+  fundersHref: ((params: Readonly<Record<string, string>>) => string) | undefined
+): ReportRow[] {
   const own = dev.columns.map(
     (c) => c.season === dev.year && c.basis === 'P' && c.as_of === dev.figures_on
   )
@@ -250,6 +268,10 @@ function grantorRows(dev: ApiAidDevelopment, indent: 0 | 1 | 2): ReportRow[] {
         ...(source.group === '' ? ['needs a group'] : []),
       ].join(' · '),
       cells: [textValue(source.name), ...own.map((is) => moneyValue(is ? source.amount : null))],
+      links:
+        fundersHref === undefined
+          ? undefined
+          : { 0: fundersHref(fundersParams(source.source_key)) },
     }))
 }
 

@@ -69,6 +69,27 @@ import type {
   ApiAidUseFormIn,
   ApiAidUseFormOut,
   ApiAidWriteOut,
+  ApiAidFundingSource,
+  ApiAidFundingSourceIn,
+  ApiAidFundingSources,
+  ApiAidGrantor,
+  ApiAidGrantorCreate,
+  ApiAidGrantorRetireIn,
+  ApiAidGrantorSave,
+  ApiAidGrantors,
+  ApiAidSourceGrantorIn,
+  ApiAidSourceRow,
+  ApiAidSourceUpdate,
+  ApiAidLedgerLines,
+  ApiAidLedgerTotal,
+  ApiAidMoneyLedger,
+  ApiAidSummary,
+  ApiAidCommitment,
+  ApiAidCommitmentIn,
+  ApiAidGrants,
+  ApiAidPlaceGrantsIn,
+  ApiAidPlaceGrantsOut,
+  ApiAidWithdrawIn,
   ApiAidCommitteeReport,
   ApiAidPrograms,
   ApiAidDevelopment,
@@ -1039,6 +1060,265 @@ export async function fetchAidSources(
   const response = await fetchWithAuth(withQuery(`${BASE}/sources`, { year: String(year) }))
   if (!response.ok) throw await toApiError(response, 'Failed to load the sources', AidApiError)
   return (await response.json()) as ApiAidSources
+}
+
+/** Classify a description (`rules`; D58, D105): the whole classification and a note. A no-op writes nothing; a race is a 409. */
+export function classifyAidSource(
+  fetchWithAuth: FetchWithAuth,
+  sourceId: string,
+  body: ApiAidSourceUpdate
+): Promise<ApiAidSourceRow> {
+  return send<ApiAidSourceRow>(
+    fetchWithAuth,
+    'PATCH',
+    `${BASE}/sources/${sourceId}`,
+    body,
+    "Couldn't save the classification"
+  )
+}
+
+/** Map a description to a grantor, or unmap it with null (`grantors`; D160), with a note. A race is a 409. */
+export function mapAidSourceGrantor(
+  fetchWithAuth: FetchWithAuth,
+  sourceId: string,
+  body: ApiAidSourceGrantorIn
+): Promise<ApiAidSourceRow> {
+  return send<ApiAidSourceRow>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/sources/${sourceId}/grantor`,
+    body,
+    "Couldn't save the grantor"
+  )
+}
+
+/**
+ * The grantor directory (§8.2; D160), `view` or `grantors`. Retired grantors only when asked
+ * (pickers never offer one); `year` adds each grantor's grants and $ that season (`season`).
+ */
+export async function fetchAidGrantors(
+  fetchWithAuth: FetchWithAuth,
+  { includeRetired, year }: { readonly includeRetired: boolean; readonly year: number | null }
+): Promise<ApiAidGrantors> {
+  const params: Record<string, string> = {
+    ...(includeRetired ? { include_retired: 'true' } : {}),
+    ...(year === null ? {} : { year: String(year) }),
+  }
+  const response = await fetchWithAuth(withQuery(`${BASE}/grantors`, params))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the grantors', AidApiError)
+  return (await response.json()) as ApiAidGrantors
+}
+
+/** Funding sources (D100): each outside source's reporting group under `year`'s pools, and the pools. `view` or `summary`. */
+export async function fetchAidFundingSources(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidFundingSources> {
+  const response = await fetchWithAuth(`${BASE}/reports/${String(year)}/funding-sources`)
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the reporting groups', AidApiError)
+  return (await response.json()) as ApiAidFundingSources
+}
+
+/**
+ * Set a source's reporting group (one of `year`'s pools, or none with an explicit null; a body
+ * without `group` keeps it) and its incentive flag, with an optional note (D88, D100, D159).
+ * `funding_sources` or `rules`; the same route development's view writes.
+ */
+export function saveAidFundingSource(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  sourceId: string,
+  body: ApiAidFundingSourceIn
+): Promise<ApiAidFundingSource> {
+  return send<ApiAidFundingSource>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/reports/${String(year)}/funding-sources/${sourceId}`,
+    body,
+    "Couldn't save the reporting group"
+  )
+}
+
+/** What CampMinder posted this season by program and source family, live or by a past day (F10). `view`. */
+export async function fetchAidSummary(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  asOf: string | null
+): Promise<ApiAidSummary> {
+  const params: Record<string, string> = {
+    year: String(year),
+    ...(asOf === null ? {} : { as_of: asOf }),
+  }
+  const response = await fetchWithAuth(withQuery(`${BASE}/summary`, params))
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the posted totals', AidApiError)
+  return (await response.json()) as ApiAidSummary
+}
+
+/** Money › Ledger's family rows (§8.1; D26, D151): one row per family, live or a past day, filtered by the server. `view`. */
+export async function fetchAidMoneyLedger(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidMoneyLedger> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/money/${String(year)}/ledger`, { ...params })
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the Ledger', AidApiError)
+  return (await response.json()) as ApiAidMoneyLedger
+}
+
+/** The lines behind one of the Ledger's two totals, under the same filters and day (owner ruling F). `view`. */
+export async function fetchAidLedgerLines(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  total: ApiAidLedgerTotal,
+  params: Readonly<Record<string, string>>
+): Promise<ApiAidLedgerLines> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/money/${String(year)}/ledger/lines`, { total, ...params })
+  )
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the lines behind the total', AidApiError)
+  return (await response.json()) as ApiAidLedgerLines
+}
+
+/**
+ * Grants (spec §8.2; D55): the Register, Needs attention's groups and Expected, in one read. Live
+ * only. `offsets: false` skips the season's pricing (router: "a commitment edit's fresh read"): the
+ * shares then carry no round, so it never stands in for the Register's read.
+ */
+export async function fetchAidGrants(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  { offsets }: { readonly offsets: boolean }
+): Promise<ApiAidGrants> {
+  const params: Record<string, string> = offsets ? {} : { offsets: 'false' }
+  const response = await fetchWithAuth(withQuery(`${BASE}/grants/${String(year)}`, params))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the grants', AidApiError)
+  return (await response.json()) as ApiAidGrants
+}
+
+/** Confirm grant lines' campers, one or many (D16, D126): all or nothing, one operation. */
+export function placeAidGrants(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidPlaceGrantsIn
+): Promise<ApiAidPlaceGrantsOut> {
+  return send<ApiAidPlaceGrantsOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grants/${String(year)}/placements`,
+    body,
+    "Couldn't place the grant"
+  )
+}
+
+/** Record a grant committed but not yet posted (D55). It counts from now (D116). */
+export function createAidCommitment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidCommitmentIn
+): Promise<ApiAidCommitment> {
+  return send<ApiAidCommitment>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grants/${String(year)}/commitments`,
+    body,
+    "Couldn't record the commitment"
+  )
+}
+
+/** Save a whole commitment (the route replaces it, note and date included). */
+export function saveAidCommitment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  commitmentId: string,
+  body: ApiAidCommitmentIn
+): Promise<ApiAidCommitment> {
+  return send<ApiAidCommitment>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/grants/${String(year)}/commitments/${commitmentId}`,
+    body,
+    "Couldn't save the commitment"
+  )
+}
+
+/** Withdraw a commitment, with a reason (logged). */
+export function withdrawAidCommitment(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  commitmentId: string,
+  body: ApiAidWithdrawIn
+): Promise<ApiAidCommitment> {
+  return send<ApiAidCommitment>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grants/${String(year)}/commitments/${commitmentId}/withdraw`,
+    body,
+    "Couldn't withdraw the commitment"
+  )
+}
+
+/** Create a grantor (`grantors`; D160), with a note. 409 when the key is taken (or retired). */
+export function createAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  body: ApiAidGrantorCreate
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grantors`,
+    body,
+    "Couldn't create the grantor"
+  )
+}
+
+/** Save a grantor whole, with a note (the route replaces the record; the key never changes). */
+export function saveAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  key: string,
+  body: ApiAidGrantorSave
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/grantors/${key}`,
+    body,
+    "Couldn't save the grantor"
+  )
+}
+
+/** Retire a grantor, with a reason. 409 while a description maps to it or an open grant names it. */
+export function retireAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  key: string,
+  body: ApiAidGrantorRetireIn
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grantors/${key}/retire`,
+    body,
+    "Couldn't retire the grantor"
+  )
+}
+
+/** Unretire a grantor, with a reason. 409 when it isn't retired. */
+export function unretireAidGrantor(
+  fetchWithAuth: FetchWithAuth,
+  key: string,
+  body: ApiAidGrantorRetireIn
+): Promise<ApiAidGrantor> {
+  return send<ApiAidGrantor>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/grantors/${key}/unretire`,
+    body,
+    "Couldn't unretire the grantor"
+  )
 }
 
 /**

@@ -173,6 +173,41 @@ import type {
   ValidationIssue,
   ViewIn,
   WorkspaceOut,
+  AidSourceUpdate,
+  DevelopmentGroupOut,
+  FundingSourceIn,
+  FundingSourceOut,
+  FundingSourcesResponse,
+  GrantorCreate,
+  GrantorDescription,
+  GrantorOut,
+  GrantorRetireIn,
+  GrantorSave,
+  GrantorSeasonOut,
+  GrantorsResponse,
+  SourceChangeOut,
+  SourceGrantorIn,
+  SummaryCell,
+  SummaryResponse,
+  LedgerFamilyOut,
+  LedgerLineOut,
+  MoneyLedgerLinesOut,
+  MoneyLedgerOut,
+  CampAidLevel,
+  ProgramSplit,
+  CamperCandidateOut,
+  CamperSuggestionOut,
+  CommitmentIn,
+  CommitmentOut,
+  GrantsResponse,
+  NeedsCamperOut,
+  PlaceGrantsIn,
+  PlaceGrantsOut,
+  PlacementIn,
+  RequestShareOut,
+  UnmappedDescriptionOut,
+  WaitingCommitmentOut,
+  WithdrawIn,
   AppealsRowOut,
   ApplicationsRowOut,
   BandOut,
@@ -196,7 +231,6 @@ import type {
   StatisticsRowOut,
   TierAppealsRowOut,
   DevelopmentColumnOut,
-  DevelopmentGroupOut,
   DevelopmentResponse,
   DevelopmentRowOut,
   DevelopmentSourceOut,
@@ -440,12 +474,88 @@ export type ApiAidPlacePreviewIn = PlacePreviewIn
 export type ApiAidPlacePreview = PlacePreviewOut
 
 /**
- * Money › Sources: the CampMinder description registry (spec §8.1; D58, D88, D100, D105). Mirrors
+ * Money › Funders: the CampMinder description registry (spec §8.1; D58, D88, D100, D105). Mirrors
  * Python `AidSourcesResponse`/`AidSourceRow`; `GET /sources?year=` adds each row's lines and $ this
  * season. `source_family` is a plain string here; the write's Literal names funders (P-12).
  */
 export type ApiAidSources = AidSourcesResponse
 export type ApiAidSourceRow = AidSourceRow
+
+/**
+ * Money › Funders' writes (spec §8.1; D58, D105, D160): a classification (`rules`) and a
+ * description's grantor (`grantors`). Each mirrors its Python model (`AidSourceUpdate`,
+ * `SourceGrantorIn`). `source_family` is a server Literal that names funders: it is typed here and
+ * never spelled out in the app (Decision P-12).
+ */
+export type ApiAidSourceUpdate = AidSourceUpdate
+export type ApiAidSourceFamily = AidSourceUpdate['source_family']
+export type ApiAidFunderType = AidSourceUpdate['funder_type']
+export type ApiAidProgramFamily = NonNullable<AidSourceUpdate['implied_program_families']>[number]
+export type ApiAidSourceGrantorIn = SourceGrantorIn
+export type ApiAidSourceChange = SourceChangeOut
+
+/** The grantor directory (spec §8.2; D86, D143, D160). Mirrors Python `GrantorsResponse`. */
+export type ApiAidGrantors = GrantorsResponse
+export type ApiAidGrantor = GrantorOut
+export type ApiAidGrantorDescription = GrantorDescription
+export type ApiAidGrantorSeason = GrantorSeasonOut
+
+/**
+ * Funding sources (D88, D100, D159): each outside source's reporting group under a season's pools,
+ * and its write ("Set a Group…"). Mirrors Python `FundingSourcesResponse`, `FundingSourceOut`,
+ * `FundingSourceIn`, `DevelopmentGroupOut`.
+ */
+export type ApiAidFundingSources = FundingSourcesResponse
+export type ApiAidFundingSource = FundingSourceOut
+export type ApiAidFundingSourceIn = FundingSourceIn
+
+/** Posted totals by program and source family (inventory F10; `GET /summary`). Mirrors Python `SummaryResponse`. */
+export type ApiAidSummary = SummaryResponse
+export type ApiAidSummaryCell = SummaryCell
+/**
+ * F10's pivot (money-v2: Camp aid · Outside grants · Total per program) and the camp-aid shares
+ * under it, split by the posting's funder type on the server (PR A; owner 10-08, R3-2). Mirrors
+ * Python `ProgramSplit`, `CampAidLevel`.
+ */
+export type ApiAidProgramSplit = ProgramSplit
+export type ApiAidCampAidLevel = CampAidLevel
+
+/**
+ * Money › Ledger's family rows and the lines behind its two totals (spec §8.1; D26, D97, D151;
+ * owner ruling F). Mirrors Python `MoneyLedgerOut`, `LedgerFamilyOut`, `MoneyLedgerLinesOut`,
+ * `LedgerLineOut`. `level` is the dashboard's own placement level (`LedgerLevelOut`).
+ */
+export type ApiAidMoneyLedger = MoneyLedgerOut
+export type ApiAidLedgerFamily = LedgerFamilyOut
+export type ApiAidLedgerLevel = NonNullable<LedgerFamilyOut['level']>
+export type ApiAidLedgerLines = MoneyLedgerLinesOut
+export type ApiAidLedgerLine = LedgerLineOut
+export type ApiAidLedgerTotal = MoneyLedgerLinesOut['total']
+
+/**
+ * Grants' one read (spec §8.2; D55–D57, D126, D142): the Register, Needs attention's three groups and
+ * Expected. Mirrors Python `GrantsResponse` and its parts.
+ */
+export type ApiAidGrants = GrantsResponse
+export type ApiAidNeedsCamper = NeedsCamperOut
+export type ApiAidCamperSuggestion = CamperSuggestionOut
+export type ApiAidCamperCandidate = CamperCandidateOut
+export type ApiAidUnmappedDescription = UnmappedDescriptionOut
+export type ApiAidWaitingCommitment = WaitingCommitmentOut
+/** A request a grant sits on, and the round of it the rules count the share in (slice 3 ask 10). */
+export type ApiAidRequestShare = RequestShareOut
+/** Grants' writes (casework). Each mirrors its Python model. */
+export type ApiAidPlaceGrantsIn = PlaceGrantsIn
+export type ApiAidPlacementIn = PlacementIn
+export type ApiAidPlaceGrantsOut = PlaceGrantsOut
+export type ApiAidCommitmentIn = CommitmentIn
+export type ApiAidCommitment = CommitmentOut
+export type ApiAidWithdrawIn = WithdrawIn
+
+/** Money › Funders' writes (`grantors`; D160; owner 10-06, rulings:676). Each mirrors its Python model. */
+export type ApiAidGrantorCreate = GrantorCreate
+export type ApiAidGrantorSave = GrantorSave
+export type ApiAidGrantorRetireIn = GrantorRetireIn
 
 /**
  * The March file's rows (spec §8.3; D73; S3-7): one per payer share of each Round 1 offer, and how many

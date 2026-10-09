@@ -1,8 +1,8 @@
 /**
- * Money › Sources fixtures (slice 3): an invented 2027 registry in the shape of `AidSourcesResponse`
+ * Money › Funders fixtures (slice 3): an invented 2027 registry in the shape of `AidSourcesResponse`
  * with `?year=2027` (each row's lines and $ this season). Funders are "Grantor A–E" (tests/CLAUDE.md's
  * generic names); every key, figure, date and note is invented. Reclassify's targets (part 1b) and
- * Money › Sources (part 2a) both read these, so every `AidSourceRow` field is set on some row.
+ * Money › Funders (part 2a) both read these, so every `AidSourceRow` field is set on some row.
  */
 import type { ApiAidSourceRow, ApiAidSources } from '../../../types/api-types'
 

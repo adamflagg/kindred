@@ -1288,3 +1288,30 @@ describe('folding a group', () => {
     expect(bodyCampers()).toEqual(['Liam Garcia', 'Samuel Johnson', 'Emma Johnson', 'Olivia Chen'])
   })
 })
+
+describe('AidTable hideToolbar', () => {
+  it('draws no search box and no Download CSV when the page owns them, and keeps both by default', () => {
+    const rows = [{ id: 'r1', name: 'Emma Johnson' }]
+    const columns: ReadonlyArray<AidColumn<{ id: string; name: string }>> = [
+      { key: 'name', header: 'Name', value: (r) => r.name },
+    ]
+    const table = (hide: boolean) => (
+      <MemoryRouter>
+        <AidTable
+          rows={rows}
+          columns={columns}
+          rowKey={(r) => r.id}
+          csvFilename="x.csv"
+          hideToolbar={hide}
+        />
+      </MemoryRouter>
+    )
+    const { rerender } = render(table(true))
+    expect(screen.queryByLabelText('Search')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    rerender(table(false))
+    expect(screen.getByLabelText('Search')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+  })
+})

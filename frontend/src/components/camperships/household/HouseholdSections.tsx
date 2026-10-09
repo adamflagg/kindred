@@ -29,6 +29,7 @@ import { HouseholdLabelText } from './HouseholdLabel'
 import {
   HH_DIFF_DEL,
   HH_EYEBROW,
+  HH_FORMS_DONE,
   HH_NOTE,
   HH_TABLE,
   HH_TD,
@@ -493,20 +494,52 @@ function grantCamper(grant: Grant): ReactNode {
 const EYEBROW = `${HH_EYEBROW} mt-3 mb-0.5 first:mt-0`
 
 /**
+ * A grant form's opening on the household page (rulings:340), as `CorrectOpening`: closed, the
+ * button; open, the form. `done` hands the panel what the write did, to show above the grants.
+ */
+export interface GrantFormOpening extends CorrectOpening {
+  done: (words: string) => void
+}
+
+/**
+ * The household page's two grant buttons (rulings:340), for casework: "Add a Commitment…" beside the
+ * Grants heading, "Place on a Camper…" on a line Grants lists as needing a camper. Each opens slice
+ * 3's grant form pre-filled with the household; the panel puts an open form in a row of its own.
+ * The grants stay ledger-built and read-only otherwise.
+ */
+export interface HouseholdGrantForms {
+  readonly addCommitment: (opening: GrantFormOpening) => ReactNode
+  readonly placeOnCamper: (grant: Grant, opening: GrantFormOpening) => ReactNode
+}
+
+const grantKey = (grant: Grant) => `${String(grant.transaction_cm_id)}:${grant.commitment_id}`
+
+/**
  * The household's grants with the Expected chips first, then every CampMinder aid posting, live and
  * reversed. A reversed line stays one row, struck through and dated, so "posted $X, reversed,
  * reposted $Y" reads top to bottom. Program in the rules' words (D31); the source in sentence case.
+ * `grantForms` (casework, rulings:340) adds the two grant buttons.
  */
 export function GrantsPostingsPanel({
   page,
   programNames,
+  grantForms,
 }: {
   page: ApiAidHouseholdPage
   programNames: Readonly<Record<string, string>>
+  grantForms?: HouseholdGrantForms | undefined
 }) {
+  const [adding, setAdding] = useState(false)
+  const [placing, setPlacing] = useState<string | null>(null)
+  const [said, setSaid] = useState<string | null>(null)
   const camperName = (personCmId: number) =>
     page.requests.find((r) => r.row.person_cm_id === personCmId)?.row.camper_name ??
     (personCmId > 0 ? `person ${String(personCmId)}` : 'the household')
+  const placeOpening = (grant: Grant): GrantFormOpening => ({
+    open: placing === grantKey(grant),
+    setOpen: (open) => setPlacing(open ? grantKey(grant) : null),
+    done: setSaid,
+  })
   return (
     <div>
       {page.expected.length > 0 && (
@@ -518,7 +551,18 @@ export function GrantsPostingsPanel({
           ))}
         </div>
       )}
-      <div className={EYEBROW}>Grants</div>
+      {said !== null && <p className={HH_FORMS_DONE}>✓ {said}</p>}
+      <div className="flex items-end justify-between gap-2">
+        <div className={EYEBROW}>Grants</div>
+        {grantForms !== undefined &&
+          !adding &&
+          grantForms.addCommitment({ open: false, setOpen: setAdding, done: setSaid })}
+      </div>
+      {grantForms !== undefined && adding && (
+        <div className="my-1.5">
+          {grantForms.addCommitment({ open: true, setOpen: setAdding, done: setSaid })}
+        </div>
+      )}
       {page.grants.length === 0 ? (
         <p className={HH_NOTE}>No outside grants.</p>
       ) : (
@@ -535,31 +579,49 @@ export function GrantsPostingsPanel({
           </thead>
           <tbody>
             {page.grants.map((grant) => (
-              <tr key={`${String(grant.transaction_cm_id)}:${grant.commitment_id}`}>
-                <td className={HH_TD}>{grant.grantor_name === '' ? '—' : grant.grantor_name}</td>
-                <td className={HH_TD}>
-                  {grant.description === '' ? <span className={MUTED}>—</span> : grant.description}
-                </td>
-                <td className={HH_TD}>{grantCamper(grant)}</td>
-                <td className={HH_TD}>
-                  {grant.recorded_on ? formatShortDate(grant.recorded_on) : '—'}
-                </td>
-                <td className={HH_TD_NUM}>
-                  {grant.is_reversed ? (
-                    <ReversedAmount value={grant.amount} reversedOn={grant.reversal_date} />
-                  ) : (
-                    <Money value={grant.amount} />
-                  )}
-                </td>
-                <td className={HH_TD}>
-                  {/* The band counts only live, counted, outside grants with a request share (outside_grants_by_request): say which these aren't. */}
-                  {grant.cancelled ? (
-                    <StatusPill tone="stone">cancelled</StatusPill>
-                  ) : !grant.in_band ? (
-                    <StatusPill tone="muted">not counted</StatusPill>
-                  ) : null}
-                </td>
-              </tr>
+              <Fragment key={grantKey(grant)}>
+                <tr>
+                  <td className={HH_TD}>{grant.grantor_name === '' ? '—' : grant.grantor_name}</td>
+                  <td className={HH_TD}>
+                    {grant.description === '' ? (
+                      <span className={MUTED}>—</span>
+                    ) : (
+                      grant.description
+                    )}
+                  </td>
+                  <td className={HH_TD}>{grantCamper(grant)}</td>
+                  <td className={HH_TD}>
+                    {grant.recorded_on ? formatShortDate(grant.recorded_on) : '—'}
+                  </td>
+                  <td className={HH_TD_NUM}>
+                    {grant.is_reversed ? (
+                      <ReversedAmount value={grant.amount} reversedOn={grant.reversal_date} />
+                    ) : (
+                      <Money value={grant.amount} />
+                    )}
+                  </td>
+                  <td className={HH_TD}>
+                    <div className="flex items-center gap-2">
+                      {/* The band counts only live, counted, outside grants with a request share (outside_grants_by_request): say which these aren't. */}
+                      {grant.cancelled ? (
+                        <StatusPill tone="stone">cancelled</StatusPill>
+                      ) : !grant.in_band ? (
+                        <StatusPill tone="muted">not counted</StatusPill>
+                      ) : null}
+                      {grantForms !== undefined &&
+                        placing !== grantKey(grant) &&
+                        grantForms.placeOnCamper(grant, placeOpening(grant))}
+                    </div>
+                  </td>
+                </tr>
+                {grantForms !== undefined && placing === grantKey(grant) && (
+                  <tr>
+                    <td colSpan={6} className={HH_TD}>
+                      {grantForms.placeOnCamper(grant, placeOpening(grant))}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
