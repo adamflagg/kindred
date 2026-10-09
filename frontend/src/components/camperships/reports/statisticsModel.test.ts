@@ -229,8 +229,8 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
     expect(addressOf(rows[3]?.links?.[3])).not.toHaveProperty('pool')
   })
 
-  it('draws RPT-9 with its rules value and its derived rate as sent, opening nothing', () => {
-    const [row] = tierAppealsRows(STATISTICS)
+  it('draws RPT-9 with its rules value and its derived rate as sent', () => {
+    const [row] = tierAppealsRows(STATISTICS, CAMP_R1, linkOf)
     expect(texts(row?.cells ?? [])).toEqual([
       '1',
       '$0',
@@ -242,11 +242,41 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
       '$600',
       '33.3%',
     ])
-    expect(row?.links).toBeUndefined()
+  })
+
+  it("opens RPT-9's Round 1 apps and appeals: a tier's own, the \"no tier\" row's, the totals'", () => {
+    const [tier, total] = STATISTICS.tier_appeals
+    const noTier = { ...tier!, tier: null, income_from: null, income_to: null }
+    const rows = tierAppealsRows(
+      { ...STATISTICS, tier_appeals: [tier!, noTier, total!] },
+      CAMP_R1,
+      linkOf
+    )
+    expect(addressOf(rows[0]?.links?.[3])).toEqual({
+      part: 'tier_appeals',
+      table: 'camp',
+      round: '1',
+      tier: '1',
+      appeals_count: 'round1_apps',
+    })
+    expect(addressOf(rows[0]?.links?.[5])).toMatchObject({
+      part: 'tier_appeals',
+      appeals_count: 'appeals',
+    })
+    expect(addressOf(rows[1]?.links?.[3])).not.toHaveProperty('tier')
+    expect(addressOf(rows[2]?.links?.[3])).toMatchObject({
+      part: 'total_appeals',
+      appeals_count: 'round1_apps',
+    })
+    expect(addressOf(rows[2]?.links?.[5])).toMatchObject({
+      part: 'total_appeals',
+      appeals_count: 'appeals',
+    })
+    expect(rows[0]?.links?.[7]).toBeUndefined() // money never links
   })
 
   it('draws RPT-9\'s last row as the server\'s totals, never a second "No tier" row', () => {
-    const rows = tierAppealsRows(STATISTICS)
+    const rows = tierAppealsRows(STATISTICS, CAMP_R1, linkOf)
     const total = rows.at(-1)
     expect(total?.kind).toBe('total')
     // the chip's table, as the tier table's totals row names it
@@ -267,7 +297,11 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
   it('keeps a real "No tier" row a body row; only the last row is the totals', () => {
     const [tier, total] = STATISTICS.tier_appeals
     const noTier = { ...tier!, tier: null, income_from: null, income_to: null }
-    const rows = tierAppealsRows({ ...STATISTICS, tier_appeals: [tier!, noTier, total!] })
+    const rows = tierAppealsRows(
+      { ...STATISTICS, tier_appeals: [tier!, noTier, total!] },
+      CAMP_R1,
+      linkOf
+    )
     expect(rows.map((r) => r.kind)).toEqual(['body', 'body', 'total'])
     expect(reportText(rows[1]!.cells[0]!)).toBe('No tier')
   })

@@ -245,7 +245,7 @@ export function cancelledRows(
   }))
 }
 
-/** RPT-9: Round 1 and appeals by tier, for the same award-table chip. No count opens anything yet. */
+/** RPT-9: Round 1 and appeals by tier, for the same award-table chip. Its two counts open their requests. */
 export function tierAppealsColumns(noteOf: NoteOf): ReportColumn[] {
   return [
     { key: 'tier', header: 'Tier' },
@@ -260,7 +260,30 @@ export function tierAppealsColumns(noteOf: NoteOf): ReportColumn[] {
   ]
 }
 
-export function tierAppealsRows(stats: ApiAidStatistics): ReportRow[] {
+/** RPT-9's count columns (cell index) and the server's name for each (`appeals_count`). */
+const APPEALS_COUNTS = [
+  [3, 'round1_apps'],
+  [5, 'appeals'],
+] as const
+
+/** A row's (or the totals') two count links: its part, then each count (the route ignores the round chip). */
+function appealsLinks(
+  choice: StatisticsChoice,
+  part: Readonly<Record<string, string>>,
+  linkOf: LinkOf
+): Record<number, string> {
+  const links: Record<number, string> = {}
+  for (const [cell, count] of APPEALS_COUNTS) {
+    links[cell] = linkOf(statisticsAddress(choice, { ...part, appeals_count: count }))
+  }
+  return links
+}
+
+export function tierAppealsRows(
+  stats: ApiAidStatistics,
+  choice: StatisticsChoice,
+  linkOf: LinkOf
+): ReportRow[] {
   const allTables = stats.table === null
   // The server always ends RPT-9 with its totals (tier null, no band, no fee: statistics.py
   // tier_appeals); the row has no kind of its own, so its place is the contract.
@@ -281,6 +304,7 @@ export function tierAppealsRows(stats: ApiAidStatistics): ReportRow[] {
           moneyValue(row.round3_awarded),
           pctValue(row.appeal_rate),
         ],
+        links: appealsLinks(choice, { part: 'total_appeals' }, linkOf),
       }
     }
     return {
@@ -299,6 +323,14 @@ export function tierAppealsRows(stats: ApiAidStatistics): ReportRow[] {
         moneyValue(row.round3_awarded),
         pctValue(row.appeal_rate),
       ],
+      // the "no tier" row is the route's tier-absent row
+      links: appealsLinks(
+        choice,
+        row.tier === null
+          ? { part: 'tier_appeals' }
+          : { part: 'tier_appeals', tier: String(row.tier) },
+        linkOf
+      ),
     }
   })
 }

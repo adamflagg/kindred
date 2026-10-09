@@ -279,11 +279,19 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
     )
   })
 
-  it('opens nothing from RPT-9, and says so', async () => {
-    renderTab()
+  it("opens RPT-9's Round 1 apps and appeals on exactly that count's address, with no 'counts don't open' note", async () => {
+    renderTab('/aid/reports/statistics?table=camp')
     const table = await screen.findByRole('table', { name: 'Round 1 and appeals by tier' })
-    expect(within(table).queryAllByRole('link')).toHaveLength(0)
-    expect(screen.getByText("This table's counts don't open their requests.")).toBeInTheDocument()
+    const links = within(table).getAllByRole('link')
+    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+      requestsLink(
+        'statistics?table=camp&round=1&part=tier_appeals&tier=1&appeals_count=round1_apps'
+      ),
+      requestsLink('statistics?table=camp&round=1&part=tier_appeals&tier=1&appeals_count=appeals'),
+      requestsLink('statistics?table=camp&round=1&part=total_appeals&appeals_count=round1_apps'),
+      requestsLink('statistics?table=camp&round=1&part=total_appeals&appeals_count=appeals'),
+    ])
+    expect(screen.queryByText(/counts don't open/)).toBeNull()
   })
 })
 

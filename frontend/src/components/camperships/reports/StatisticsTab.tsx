@@ -194,10 +194,9 @@ export function StatisticsTab({ view }: { view: AidView }) {
                 heading={statisticsHeading(data, 'Round 1 and appeals by tier', false)}
                 basisBadge="P"
                 columns={tierAppealsColumns(numberOf)}
-                rows={tierAppealsRows(data)}
+                rows={tierAppealsRows(data, choice, linkOf)}
                 csvFilename={statisticsCsvName(view, choice, 'tier-appeals')}
                 link={link}
-                footnote="This table's counts don't open their requests."
               />
               <ReportTable
                 heading={statisticsHeading(data, 'March committee outcomes', false)}
