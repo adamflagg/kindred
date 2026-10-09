@@ -98,16 +98,25 @@ export function AidFilterChip({
   title,
   warn = false,
   onClear,
+  onLabelClick,
   children,
 }: {
   readonly title: string
   readonly warn?: boolean
   readonly onClear: () => void
+  /** The label becomes a button (a failed read's "Try Again"); ✕ still clears. */
+  readonly onLabelClick?: (() => void) | undefined
   readonly children: string
 }) {
   return (
     <span className={warn ? CS_FCHIP_WARN : CS_FCHIP} title={title}>
-      {children}
+      {onLabelClick ? (
+        <button type="button" className="cursor-pointer font-semibold" onClick={onLabelClick}>
+          {children}
+        </button>
+      ) : (
+        children
+      )}
       <button
         type="button"
         aria-label={`Clear ${children}`}

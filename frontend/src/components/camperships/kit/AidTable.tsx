@@ -15,6 +15,7 @@ import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
 import { Tooltip } from '../../ui/Tooltip'
 import { AidCsvButton } from './CsvButton'
+import { DefRef } from './DefinitionNotes'
 import { CS_BOUNDED, CS_TOOLBAR, CS_TOOLBAR_LEFT, CS_TOOLBAR_RIGHT } from './csType'
 import { AidSegmented } from './Segmented'
 import {
@@ -120,6 +121,8 @@ export interface AidColumn<Row> {
    */
   readonly footerNote?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly searchable?: boolean | undefined
+  /** A footnote mark beside the header (§12: 0.72em, the note's words as its title). */
+  readonly mark?: { readonly n: number; readonly title?: string | undefined } | undefined
   /** False leaves the column out of the CSV download: an action column has nothing to export (M16). */
   readonly inCsv?: boolean | undefined
 }
@@ -181,6 +184,15 @@ export interface AidTableProps<Row> {
   readonly toolbarAfterGrouping?: ReactNode
   /** The page's own actions (Record a Commitment…), drawn after the search and before Download CSV. */
   readonly toolbarActions?: ReactNode
+  /**
+   * Controls between the status and the search (Requests' checked-rows bar: Check Accepted… and
+   * Clear, kit CF.bar's `acts` before `CF.search`). Everything else keeps §5's order.
+   */
+  readonly toolbarBeforeSearch?: ReactNode
+  /** The search box's width in px; the default is the kit's 256. A crowded row narrows it (§5). */
+  readonly searchWidth?: number | undefined
+  /** True: every header stays on one line (§8), for a table whose columns are sized to its headers. */
+  readonly nowrapHeaders?: boolean | undefined
   /**
    * Extra items for Download CSV's menu (slice 3 rework R1: the March file). When set, Download CSV becomes
    * a split button: the main part downloads as ever, the caret opens a menu holding Download CSV (hint "This
@@ -302,6 +314,9 @@ export function AidTable<Row>({
   toolbarLead,
   toolbarAfterGrouping,
   toolbarActions,
+  toolbarBeforeSearch,
+  searchWidth,
+  nowrapHeaders = false,
   csvMenu,
   toolbarStatus,
   hideToolbar = false,
@@ -681,6 +696,10 @@ export function AidTable<Row>({
   const scrollMargins: CSSProperties | undefined = held
     ? { scrollMarginTop: margins.top, scrollMarginBottom: margins.bottom }
     : undefined
+  // §8: a table can ask for headers on one line; TH wraps, so its wrap word is swapped, not stacked.
+  const thClass = nowrapHeaders ? TH.replace('whitespace-normal', 'whitespace-nowrap') : TH
+  const markOf = (column: AidColumn<Row>) =>
+    column.mark ? <DefRef n={column.mark.n} title={column.mark.title} /> : null
   const alignClass = (column: AidColumn<Row>) =>
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
@@ -748,8 +767,14 @@ export function AidTable<Row>({
               // The one part of the row that may shrink: it clips rather than push search and CSV off.
               <div className="max-w-[340px] min-w-0 overflow-hidden">{toolbarStatus}</div>
             )}
+            {toolbarBeforeSearch}
             {!hideSearch && (
-              <div className="relative w-64 flex-none">
+              <div
+                className={
+                  searchWidth === undefined ? 'relative w-64 flex-none' : 'relative flex-none'
+                }
+                style={searchWidth === undefined ? undefined : { width: searchWidth }}
+              >
                 <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
                 <input
                   type="search"
@@ -784,7 +809,7 @@ export function AidTable<Row>({
               {selection && (
                 <th
                   className={join(
-                    TH,
+                    thClass,
                     // Held top and left in the screen box, a layer above the scrolling headers.
                     held ? 'sticky top-0 left-0 z-40' : 'sticky left-0 z-20'
                   )}
@@ -802,7 +827,7 @@ export function AidTable<Row>({
                   <th
                     key={c.key}
                     style={pinStyle(c)}
-                    className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
+                    className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
                   >
                     {c.help ? (
                       <Tooltip content={c.help} className={HELP_HEADER}>
@@ -811,6 +836,7 @@ export function AidTable<Row>({
                     ) : (
                       c.header
                     )}
+                    {markOf(c)}
                   </th>
                 ) : (
                   <SortableColumnHeader
@@ -821,7 +847,17 @@ export function AidTable<Row>({
                     }
                     onSort={() => toggleSort(c.key)}
                     style={pinStyle(c)}
-                    className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
+                    className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
+                    {...(c.mark
+                      ? {
+                          indicator: (
+                            <>
+                              {markOf(c)}
+                              {sort?.key === c.key ? (sort.dir === 'asc' ? '↑' : '↓') : null}
+                            </>
+                          ),
+                        }
+                      : {})}
                     {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
                   />
                 )
