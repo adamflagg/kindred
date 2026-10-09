@@ -83,7 +83,7 @@ export function EditorActions({
   reason,
   children,
 }: {
-  readonly reason?: string
+  readonly reason?: string | undefined
   readonly children: ReactNode
 }) {
   return (

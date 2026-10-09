@@ -6,8 +6,10 @@ import {
   useAidSaveGrantor,
 } from '../../../hooks/camperships/useAidGrantorWrites'
 import type { ApiAidGrantor } from '../../../types/api-types'
-import { EditorBox } from '../household/ReasonForm'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_INPUT, CS_PMETA } from '../kit/csType'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FGRID_LABEL, CS_FIELD, CS_PMETA } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import type { AidPickerOption } from '../kit/pickerWords'
 import {
   movedFields,
   movedWords,
@@ -29,9 +31,10 @@ import {
   type GrantorDraft,
 } from './grantorModel'
 
-const ROW = 'flex flex-wrap items-center gap-3'
-const FIELD = 'flex items-center gap-2'
-const WIDE = 'flex min-w-[14rem] flex-1 items-center gap-2'
+const CANTEEN_OPTIONS: Array<AidPickerOption<CoversCanteen>> = CANTEEN_CHOICES.map((c) => ({
+  value: c,
+  label: CANTEEN_WORDS[c],
+}))
 
 /**
  * A new grantor, or an edit of one (spec §8.2; D86, D143, D160; `grantors`: finance and development,
@@ -140,28 +143,103 @@ export function GrantorForm({
     }
   }
 
+  const full = draft.fullCoverage
+  // What Save waits for, beside the buttons (mock): a name and a note first; the key rule only on a new one.
+  const missing =
+    draft.name.trim() === '' || draft.note.trim() === ''
+      ? 'A name and a note are required.'
+      : read.ok
+        ? undefined
+        : read.problem
   return (
     <div data-aid-editor="" data-testid="grantor-form">
-      <EditorBox head={initial === undefined ? 'New funder' : `Editing · ${initial.name}`}>
-        <form
-          className="space-y-2 text-sm"
-          onSubmit={(event) => {
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !inFlight.current) {
             event.preventDefault()
-            void submit()
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && !inFlight.current) {
-              event.preventDefault()
-              onCancel()
-            }
-          }}
+            onCancel()
+          }
+        }}
+      >
+        {/* §24, rev1 (money-funders.html): wide and short, 230px to 175px. Name, aliases, eligibility,
+            contacts and the note in a two-column grid left; Full coverage and the two choices that
+            depend on it right, switched off rather than hidden while it is off, so the editor never
+            changes height. The buttons share one row with the required line. */}
+        <EditorForm
+          title={initial === undefined ? 'New funder' : `Editing · ${initial.name}`}
+          side={
+            <EditorGrid columns={2}>
+              <span className="col-span-2">
+                <label
+                  className="flex items-center gap-1.5"
+                  title="The funder pays the whole cost of the session"
+                >
+                  <input
+                    type="checkbox"
+                    checked={full}
+                    onChange={(event) => set({ fullCoverage: event.target.checked })}
+                  />
+                  Full coverage
+                </label>
+              </span>
+              <EditorField label="Covers the canteen deposit" off={!full}>
+                <AidPicker
+                  label="Covers the canteen deposit"
+                  size="field"
+                  disabled={!full}
+                  value={draft.coversCanteen}
+                  options={CANTEEN_OPTIONS}
+                  onChange={(coversCanteen) => set({ coversCanteen })}
+                  className="w-32"
+                />
+              </EditorField>
+              <span className="col-span-2">
+                <label
+                  className={`flex items-center gap-1.5 ${full ? '' : 'opacity-50'}`}
+                  title={
+                    full
+                      ? 'A named fund that pays what is left after camp aid'
+                      : 'Only a full-coverage funder pays after camp aid'
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    disabled={!full}
+                    checked={full && draft.paysAfter}
+                    onChange={(event) => set({ paysAfter: event.target.checked })}
+                  />
+                  Pays the rest after camp aid
+                </label>
+              </span>
+            </EditorGrid>
+          }
+          actions={
+            <EditorActions reason={missing}>
+              <button type="submit" className={CS_BTN} disabled={!read.ok || busy}>
+                {busy ? 'Saving…' : initial === undefined ? 'Save Funder' : 'Save'}
+              </button>
+              <button type="button" className={CS_BTN2} onClick={onCancel} disabled={busy}>
+                Back
+              </button>
+              {problem !== null && <span className={CS_AMBER_NOTE}>{problem}</span>}
+              <span className={`${CS_PMETA} truncate`}>
+                {initial === undefined
+                  ? 'Logged with who and why. Descriptions map to a funder on their own row.'
+                  : 'A rename shows everywhere; history keeps who and why. Descriptions map to a funder on their own row.'}
+              </span>
+            </EditorActions>
+          }
         >
-          <div className={ROW}>
-            <label className={FIELD}>
-              Name
+          <EditorGrid columns={4}>
+            <EditorField label="Name">
               <input
                 type="text"
-                className={CS_INPUT}
+                aria-label="Name"
+                className={`${CS_FIELD} w-full`}
                 maxLength={200}
                 value={draft.name}
                 onChange={(event) =>
@@ -171,105 +249,54 @@ export function GrantorForm({
                   })
                 }
               />
-            </label>
-            <label className={FIELD}>
-              Also known as
+            </EditorField>
+            <EditorField label="Also known as">
               <input
                 type="text"
-                className={CS_INPUT}
+                aria-label="Also known as"
+                className={`${CS_FIELD} w-full`}
                 placeholder="comma-separated"
                 value={draft.aliases}
                 onChange={(event) => set({ aliases: event.target.value })}
               />
-            </label>
-          </div>
-          <div className={ROW}>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={draft.fullCoverage}
-                onChange={(event) => set({ fullCoverage: event.target.checked })}
-              />
-              Full coverage
-            </label>
-            {draft.fullCoverage && (
-              <>
-                <label className={FIELD}>
-                  Covers the canteen deposit
-                  <select
-                    className={CS_INPUT}
-                    value={draft.coversCanteen}
-                    onChange={(event) =>
-                      set({ coversCanteen: event.target.value as CoversCanteen })
-                    }
-                  >
-                    {CANTEEN_CHOICES.map((c) => (
-                      <option key={c} value={c}>
-                        {CANTEEN_WORDS[c]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={draft.paysAfter}
-                    onChange={(event) => set({ paysAfter: event.target.checked })}
-                  />
-                  Pays the rest after camp aid
-                </label>
-              </>
-            )}
-          </div>
-          <div className={ROW}>
-            <label className={WIDE}>
-              Eligibility
+            </EditorField>
+            <EditorField label="Eligibility">
               <input
                 type="text"
-                className={`${CS_INPUT} w-full`}
+                aria-label="Eligibility"
+                className={`${CS_FIELD} w-full`}
                 maxLength={2000}
+                placeholder="e.g. first-time campers"
                 value={draft.eligibility}
                 onChange={(event) => set({ eligibility: event.target.value })}
               />
-            </label>
-            <label className={WIDE}>
-              Contacts
+            </EditorField>
+            <EditorField label="Contacts">
               <input
                 type="text"
-                className={`${CS_INPUT} w-full`}
+                aria-label="Contacts"
+                className={`${CS_FIELD} w-full`}
                 maxLength={2000}
-                placeholder="name, email, phone"
+                placeholder="name, email, phone; …"
                 value={draft.contacts}
                 onChange={(event) => set({ contacts: event.target.value })}
               />
-            </label>
-          </div>
-          <label className={FIELD}>
-            Note
-            <input
-              type="text"
-              className={`${CS_INPUT} w-full`}
-              maxLength={2000}
-              value={draft.note}
-              onChange={(event) => set({ note: event.target.value })}
-            />
-          </label>
-          <p className={CS_PMETA}>
-            A rename changes the name everywhere it shows; history keeps who and why. Descriptions
-            are mapped to a funder on their own row.
-          </p>
-          {!read.ok && <p className={CS_AMBER_NOTE}>{read.problem}</p>}
-          {problem !== null && <p className={CS_AMBER_NOTE}>{problem}</p>}
-          <div className="flex gap-2">
-            <button type="submit" className={CS_BTN} disabled={!read.ok || busy}>
-              {busy ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" className={CS_BTN2} onClick={onCancel} disabled={busy}>
-              Back
-            </button>
-          </div>
-        </form>
-      </EditorBox>
+            </EditorField>
+            <span className={CS_FGRID_LABEL}>Note</span>
+            <div className="col-span-3 min-w-0">
+              <input
+                type="text"
+                aria-label="Note"
+                className={`${CS_FIELD} w-full`}
+                maxLength={2000}
+                placeholder="required, logged with your name"
+                value={draft.note}
+                onChange={(event) => set({ note: event.target.value })}
+              />
+            </div>
+          </EditorGrid>
+        </EditorForm>
+      </form>
     </div>
   )
 }

@@ -91,7 +91,7 @@ describe('AidTable rowTone', () => {
   })
 })
 
-describe('AidTable toneSpan', () => {
+describe('AidTable firstCellSpan', () => {
   // Design language §5 (money-funders.html): a funder's long name and its terms line run across the columns up
   // to the totals. The live row let the words spill over the next cells and overprint; now the first cell
   // owns those columns (colSpan), the cells it covers are not drawn, and the words cut with a title.
@@ -103,7 +103,7 @@ describe('AidTable toneSpan', () => {
   const span = (r: Row) => (r.kind === 'head' ? 2 : undefined)
 
   it('gives a tone row`s first cell the columns it spans and draws no cell under them', () => {
-    renderTable({ columns: THREE, rowTone: tone, toneSpan: span })
+    renderTable({ columns: THREE, rowTone: tone, firstCellSpan: span })
     const cells = rowOf('h1').querySelectorAll('td')
     expect(cells).toHaveLength(2)
     expect(cells[0]).toHaveAttribute('colspan', '2')
@@ -112,7 +112,7 @@ describe('AidTable toneSpan', () => {
   })
 
   it('leaves rows that ask for no span, and tables that give none, as they were', () => {
-    renderTable({ columns: THREE, rowTone: tone, toneSpan: span })
+    renderTable({ columns: THREE, rowTone: tone, firstCellSpan: span })
     expect(rowOf('i1').querySelectorAll('td')).toHaveLength(3)
     expect(rowOf('h2').querySelectorAll('td')).toHaveLength(3)
     document.body.innerHTML = ''
@@ -120,9 +120,10 @@ describe('AidTable toneSpan', () => {
     expect(rowOf('h1').querySelectorAll('td')).toHaveLength(3)
   })
 
-  it('never spans a row that is not a tone row', () => {
-    renderTable({ columns: THREE, toneSpan: () => 2 })
-    expect(rowOf('h1').querySelectorAll('td')).toHaveLength(3)
+  it('spans a plain row too, for a muted line that owns the width ("nothing under it yet")', () => {
+    renderTable({ columns: THREE, firstCellSpan: (r) => (r.kind === 'item' ? 3 : undefined) })
+    expect(rowOf('i1').querySelectorAll('td')).toHaveLength(1)
+    expect(rowOf('i1').querySelector('td')).toHaveAttribute('colspan', '3')
   })
 })
 

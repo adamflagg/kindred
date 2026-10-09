@@ -6,9 +6,9 @@ import {
   useAidUnretireGrantor,
 } from '../../../hooks/camperships/useAidGrantorWrites'
 import type { ApiAidGrantor, ApiAidGrantorDescription } from '../../../types/api-types'
-import { ReasonForm } from '../household/ReasonForm'
 import { CS_BTN2, CS_LINK, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit/csType'
 import { formatShortDate } from '../kit/dates'
+import { ReasonEditor } from '../money/ReasonEditor'
 import { inStaffWords } from '../money/refusal'
 import { isRetired, retireBlocked, termsWords } from './grantorModel'
 import { GrantorForm } from './GrantorForm'
@@ -48,6 +48,14 @@ export function GrantorPanel({
   }
   const terms = termsWords(grantor)
   const blocked = retireBlocked(grantor)
+  // §24, rev1 (money-funders.html): Edit… takes the whole opened row, not its right third.
+  if (mode === 'edit') {
+    return (
+      <div className="text-sm" data-testid="grantor-panel">
+        <GrantorForm grantor={grantor} onCancel={close} onDone={done} />
+      </div>
+    )
+  }
   return (
     <div className={SIDE_BY_SIDE} data-testid="grantor-panel">
       <div className={LEFT} data-panel="grantor">
@@ -108,37 +116,33 @@ export function GrantorPanel({
             )}
           </div>
         )}
-        {mode === 'edit' && <GrantorForm grantor={grantor} onCancel={close} onDone={done} />}
         {mode === 'retire' && (
-          <div data-aid-editor="">
-            <ReasonForm
-              label="Why"
-              head={`Retire ${grantor.name}`}
-              submitLabel="Retire"
-              hint="Hidden from pickers from now; kept for history. Allowed only while no description maps to it and no open grant names it; otherwise the server says what still uses it."
-              onCancel={close}
-              onSubmit={async (reason) => {
-                await inStaffWords(retire.mutateAsync({ key: grantor.key, reason }))
-                done(
-                  `${grantor.name}: retired, with your reason. Hidden from pickers; kept for history.`
-                )
-              }}
-            />
-          </div>
+          <ReasonEditor
+            title={`Retire ${grantor.name}`}
+            label="Why"
+            submitLabel="Retire"
+            hint="Hidden from pickers from now; kept for history. Allowed only while no description maps to it and no open grant names it; otherwise the server says what still uses it."
+            onCancel={close}
+            onSubmit={async (reason) => {
+              await inStaffWords(retire.mutateAsync({ key: grantor.key, reason }))
+              done(
+                `${grantor.name}: retired, with your reason. Hidden from pickers; kept for history.`
+              )
+            }}
+          />
         )}
         {mode === 'unretire' && (
-          <div data-aid-editor="">
-            <ReasonForm
-              label="Why"
-              head={`Unretire ${grantor.name}`}
-              submitLabel="Unretire"
-              onCancel={close}
-              onSubmit={async (reason) => {
-                await inStaffWords(unretire.mutateAsync({ key: grantor.key, reason }))
-                done(`${grantor.name}: unretired, with your reason.`)
-              }}
-            />
-          </div>
+          <ReasonEditor
+            title={`Unretire ${grantor.name}`}
+            label="Why"
+            submitLabel="Unretire"
+            hint=""
+            onCancel={close}
+            onSubmit={async (reason) => {
+              await inStaffWords(unretire.mutateAsync({ key: grantor.key, reason }))
+              done(`${grantor.name}: unretired, with your reason.`)
+            }}
+          />
         )}
       </div>
     </div>

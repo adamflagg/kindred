@@ -302,11 +302,12 @@ export interface AidTableProps<Row> {
    */
   readonly rowTone?: ((row: Row) => 'group' | 'warn' | undefined) | undefined
   /**
-   * Opt-in (Money › Funders, design-language §5): how many columns a `rowTone` row's first cell spans. The
-   * cell owns those columns and the cells under it are not drawn, so a long name and its terms line cut at
-   * the totals instead of running over the next cells. A row with no tone, or no span, is drawn as ever.
+   * Opt-in (Money › Funders, design-language §5): how many columns a row's first cell spans. The cell owns
+   * those columns and the cells under it are not drawn, so a funder's long name and terms line cut at the
+   * totals instead of running over the next cells, and a muted "nothing under it" line has the width. A row
+   * that asks for none is drawn as ever.
    */
-  readonly toneSpan?: ((row: Row) => number | undefined) | undefined
+  readonly firstCellSpan?: ((row: Row) => number | undefined) | undefined
   /** False: the headers do not sort and any sort in the URL is ignored. Default true. */
   readonly sortable?: boolean | undefined
   /**
@@ -398,7 +399,7 @@ export function AidTable<Row>({
   onLeave,
   foldScope,
   rowTone,
-  toneSpan,
+  firstCellSpan,
   sortable = true,
   groupSections,
   query: queryProp,
@@ -917,8 +918,8 @@ export function AidTable<Row>({
       const isHighlighted = key === highlighted
       const isMarked = markedKeys?.has(key) === true
       const tone = rowTone?.(row)
-      // A tone row's first cell may own the columns beside it (toneSpan); the cells it covers are not drawn.
-      const covers = tone ? Math.max(1, Math.min(toneSpan?.(row) ?? 1, columns.length)) : 1
+      // A row's first cell may own the columns beside it (firstCellSpan); the cells it covers are not drawn.
+      const covers = Math.max(1, Math.min(firstCellSpan?.(row) ?? 1, columns.length))
       return (
         <Fragment key={key}>
           <tr

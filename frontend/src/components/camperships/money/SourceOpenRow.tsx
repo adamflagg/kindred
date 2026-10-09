@@ -15,10 +15,12 @@ import { sourceFamilyWords } from './fundersModel'
 import {
   canNameGrantor,
   funderWords,
+  fundsWords,
   grantorWords,
   isUnclassified,
   keyWords,
   lastChangeWords,
+  poolsOfGroups,
   programWords,
 } from './sourcesModel'
 
@@ -74,6 +76,9 @@ export function SourceOpenRow({
     onDone(words)
   }
   const unclassified = isUnclassified(row)
+  const pools = poolsOfGroups(groups)
+  const funds = fundsWords(row.implied_program_families, pools, names)
+  // The mock's pool words ("Reporting group: Camp & Quest · covers …"); with no pools read yet, the programs it names.
   const programs = programWords(row.implied_program_families, names)
   const change = lastChangeWords(row.last_change)
   const canGroup = access.group && funding !== undefined && funding.editable !== false
@@ -93,7 +98,17 @@ export function SourceOpenRow({
           : `${funderWords(row.funder_type) || keyWords(row.funder_type)} · source family ${sourceFamilyWords(row)}`}
       </p>
       <p className={CS_PMETA}>
-        {programs === '' ? 'It names no program.' : `Programs it funds: ${programs}`}
+        {funds !== null ? (
+          <>
+            {`${funds.lead}: `}
+            <b className="text-foreground font-semibold">{funds.names}</b>
+            {funds.covers !== null && ` · covers ${funds.covers}`}
+          </>
+        ) : pools.length > 0 || programs === '' ? (
+          'It names no reporting group yet.'
+        ) : (
+          `Programs it funds: ${programs}`
+        )}
       </p>
       {row.grantor_key !== '' && (
         <p className={CS_PMETA}>
@@ -152,6 +167,7 @@ export function SourceOpenRow({
             row={row}
             rows={rows}
             names={names}
+            groups={groups}
             groupWarning={groupWarning}
             onCancel={close}
             onDone={done}
@@ -163,6 +179,7 @@ export function SourceOpenRow({
             year={year}
             source={funding}
             groups={groups}
+            names={names}
             onCancel={close}
             onDone={done}
           />

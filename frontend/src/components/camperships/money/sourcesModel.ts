@@ -347,10 +347,12 @@ export function classifyPrograms(
   picked: readonly string[],
   pools: readonly Pool[],
   opened: readonly string[]
-): string[] {
-  return sameSet(picked, poolsOfFamilies(opened, pools))
-    ? [...opened]
+): ApiAidProgramFamily[] {
+  const families = sameSet(picked, poolsOfFamilies(opened, pools))
+    ? opened
     : familiesOfPools(picked, pools)
+  // The route's own list: a family it would refuse is never sent.
+  return families.filter(isProgramFamily)
 }
 
 /** A pool's families in the rules' program order (the names' own), then any the rules do not name, by key. */

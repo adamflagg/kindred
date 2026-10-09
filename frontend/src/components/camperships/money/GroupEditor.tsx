@@ -7,7 +7,10 @@ import type {
   ApiAidFundingSource,
   ApiAidSourceRow,
 } from '../../../types/api-types'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_INPUT, CS_PMETA } from '../kit/csType'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD, CS_PMETA } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import type { AidPickerOption } from '../kit/pickerWords'
 import {
   movedFields,
   movedWords,
@@ -17,6 +20,7 @@ import {
 } from '../kit/staleCheck'
 import { refusalWords } from './refusal'
 import {
+  coversWords,
   GROUP_WATCHED,
   groupBody,
   groupChanged,
@@ -25,6 +29,7 @@ import {
   KEEP_GROUPS,
   NO_GROUP,
   offersNoGroup,
+  poolsOfGroups,
   type GroupDraft,
 } from './sourcesModel'
 
@@ -42,6 +47,7 @@ export function GroupEditor({
   year,
   source,
   groups,
+  names,
   onCancel,
   onDone,
 }: {
@@ -49,6 +55,8 @@ export function GroupEditor({
   year: number
   source: ApiAidFundingSource
   groups: readonly ApiAidDevelopmentGroup[]
+  /** The rules' program words, for the "Covers:" line. */
+  names: Readonly<Record<string, string>>
   onCancel: () => void
   onDone: (words: string) => void
 }) {
@@ -128,56 +136,73 @@ export function GroupEditor({
   if (opened === null) {
     return <p className={CS_PMETA}>{problem ?? 'Loading the latest for this source…'}</p>
   }
+  const pools = poolsOfGroups(groups)
+  const options: Array<AidPickerOption<string>> = [
+    ...(groupDraftFrom(opened).group === KEEP_GROUPS
+      ? [{ value: KEEP_GROUPS, label: `${opened.group_label} (keep them)` }]
+      : []),
+    ...(offersNoGroup(opened) ? [{ value: NO_GROUP, label: '— no group —' }] : []),
+    ...groups.map((g) => ({ value: g.key, label: g.label })),
+  ]
+  // What the picked group covers, in the rules' words (star 19): one pool's programs, or what it keeps.
+  const covers =
+    draft.group === KEEP_GROUPS
+      ? 'It keeps the pools it has now.'
+      : coversWords(draft.group === NO_GROUP ? [] : [draft.group], pools, names)
   return (
-    <div className="space-y-2 text-sm" data-testid="group-editor">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2">
-          Reporting group
-          <select
-            className={CS_INPUT}
-            value={draft.group}
-            onChange={(event) => set({ group: event.target.value })}
-          >
-            {groupDraftFrom(opened).group === KEEP_GROUPS && (
-              <option value={KEEP_GROUPS}>{`${opened.group_label} (keep them)`}</option>
-            )}
-            {offersNoGroup(opened) && <option value={NO_GROUP}>— no group —</option>}
-            {groups.map((g) => (
-              <option key={g.key} value={g.key}>
-                {g.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={draft.incentive}
-            onChange={(event) => set({ incentive: event.target.checked })}
-          />
-          Incentive (not need-based)
-        </label>
-        <label className="flex min-w-[14rem] flex-1 items-center gap-2">
-          Note (optional)
-          <input
-            type="text"
-            className={`${CS_INPUT} w-full`}
-            maxLength={2000}
-            value={draft.note}
-            onChange={(event) => set({ note: event.target.value })}
-          />
-        </label>
-      </div>
-      {groupChanged(opened, draft) && warning !== '' && <p className={CS_AMBER_NOTE}>{warning}</p>}
-      {problem !== null && <p className={CS_AMBER_NOTE}>{problem}</p>}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={CS_BTN} disabled={!ready} onClick={() => void send()}>
-          {save.isPending ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" className={CS_BTN2} onClick={onCancel}>
-          Back
-        </button>
-      </div>
+    <div data-testid="group-editor">
+      <EditorForm
+        title={`Set a Group · ${row.description}`}
+        actions={
+          <EditorActions reason={ready ? undefined : 'Nothing to save yet.'}>
+            <button type="button" className={CS_BTN} disabled={!ready} onClick={() => void send()}>
+              {save.isPending ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" className={CS_BTN2} onClick={onCancel}>
+              Back
+            </button>
+            {problem !== null && <span className={CS_AMBER_NOTE}>{problem}</span>}
+          </EditorActions>
+        }
+      >
+        <div className="space-y-1.5">
+          <EditorGrid columns={4}>
+            <EditorField label="Reporting group">
+              <AidPicker
+                label="Reporting group"
+                size="field"
+                value={draft.group}
+                options={options}
+                onChange={(group) => set({ group })}
+                className="w-full [&>button]:w-full"
+              />
+            </EditorField>
+            <EditorField label="Note (optional)">
+              <input
+                type="text"
+                aria-label="Note (optional)"
+                className={`${CS_FIELD} w-full`}
+                maxLength={2000}
+                placeholder="logged with your name"
+                value={draft.note}
+                onChange={(event) => set({ note: event.target.value })}
+              />
+            </EditorField>
+          </EditorGrid>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={draft.incentive}
+              onChange={(event) => set({ incentive: event.target.checked })}
+            />
+            Incentive (not need-based)
+          </label>
+          <p className={CS_PMETA}>{covers}</p>
+          {groupChanged(opened, draft) && warning !== '' && (
+            <p className={CS_AMBER_NOTE}>{warning}</p>
+          )}
+        </div>
+      </EditorForm>
     </div>
   )
 }

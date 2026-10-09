@@ -57,7 +57,8 @@ const NO_FUNDING: readonly ApiAidFundingSource[] = []
 const rowKey = (row: FunderRow) => row.id
 const rowTone = (row: FunderRow) =>
   row.kind === 'funder' ? (row.tone === 'none' ? ('warn' as const) : ('group' as const)) : undefined
-const toneSpan = (row: FunderRow) => (row.kind === 'funder' ? HEADER_SPAN : undefined)
+const firstCellSpan = (row: FunderRow) =>
+  row.kind === 'funder' ? HEADER_SPAN : row.kind === 'empty' ? COLUMN_COUNT : undefined
 const CSV_EXTRA: ReadonlyArray<AidCsvExtra<FunderRow>> = [
   {
     header: 'Funder',
@@ -70,6 +71,8 @@ const NOTHING_UNDER = 'No CampMinder description sits under it yet.'
  * its terms cut there, with every word in the cell's title, instead of overprinting the next cell.
  */
 const HEADER_SPAN = 6
+/** The "nothing under it yet" line owns the whole row, as the mock draws it. */
+const COLUMN_COUNT = 8
 /** The opened-row caret before a name (mock `.cf-caret`): ▸ shut, ▾ open. */
 const CARET = 'text-muted-foreground inline-block w-3 flex-none text-[10px]'
 const NO_POOLS: readonly Pool[] = []
@@ -174,9 +177,10 @@ export function FundersTab({ view }: { view: AidView }) {
     () => new Map(fundingRows.map((f) => [f.source_id, f] as const)),
     [fundingRows]
   )
+  const poolGroups = funding.data?.groups
   const pools = useMemo(
-    () => (funding.data === undefined ? NO_POOLS : poolsOfGroups(funding.data.groups)),
-    [funding.data]
+    () => (poolGroups === undefined ? NO_POOLS : poolsOfGroups(poolGroups)),
+    [poolGroups]
   )
   const grantorList = grantors.data?.grantors
   const sourceList = sources.data?.sources
@@ -241,7 +245,7 @@ export function FundersTab({ view }: { view: AidView }) {
           if (r.kind === 'funder') {
             return [r.name, headerWords(r, access.rules, access.grantors)].join(' · ')
           }
-          return r.kind === 'empty' ? undefined : r.source.description
+          return r.kind === 'empty' ? NOTHING_UNDER : r.source.description
         },
         render: (r, ctx) => {
           if (r.kind === 'funder') {
@@ -266,7 +270,7 @@ export function FundersTab({ view }: { view: AidView }) {
             )
           }
           if (r.kind === 'empty') {
-            return <span className={`${CS_PMETA} block pl-5`}>{NOTHING_UNDER}</span>
+            return <span className={`${CS_PMETA} block truncate pl-5`}>{NOTHING_UNDER}</span>
           }
           return (
             <span className="flex min-w-0 items-baseline gap-1.5 pl-3">
@@ -286,10 +290,12 @@ export function FundersTab({ view }: { view: AidView }) {
           if (r.kind === 'funder') return headerWords(r, access.rules, access.grantors)
           return r.kind === 'empty' ? '' : sourceFamilyWords(r.source)
         },
-        title: (r) =>
-          r.kind === 'description' && isUnclassified(r.source)
+        title: (r) => {
+          if (r.kind !== 'description') return undefined
+          return isUnclassified(r.source)
             ? 'New from the ledger sync. It counts as an outside grant until finance classifies it.'
-            : undefined,
+            : sourceFamilyWords(r.source)
+        },
         render: (r) => {
           if (r.kind === 'funder' || r.kind === 'empty') return ''
           return isUnclassified(r.source) ? (
@@ -305,10 +311,7 @@ export function FundersTab({ view }: { view: AidView }) {
         width: 168,
         mark: incentiveMark,
         value: (r) => (r.kind === 'description' ? incentiveWords(r.source) : ''),
-        title: (r) =>
-          r.kind === 'description' && incentiveWords(r.source) === 'incentive'
-            ? 'Incentive'
-            : undefined,
+        title: (r) => (r.kind === 'description' ? incentiveWords(r.source) : undefined),
         render: (r) => {
           if (r.kind !== 'description') return ''
           const words = incentiveWords(r.source)
@@ -343,7 +346,7 @@ export function FundersTab({ view }: { view: AidView }) {
           if (r.kind !== 'description') return undefined
           if (r.source.needs_group === true) return NEEDS_GROUP_WHY
           const words = groupWords(r.source)
-          if (words === null) return undefined
+          if (words === null) return bySource.get(r.source.id)?.group_label ?? undefined
           return r.source.funder_type === 'camp'
             ? `The camp's own aid here counts in the ${words.title} budget`
             : words.title
@@ -490,7 +493,7 @@ export function FundersTab({ view }: { view: AidView }) {
             columns={columns}
             rowKey={rowKey}
             rowTone={rowTone}
-            toneSpan={toneSpan}
+            firstCellSpan={firstCellSpan}
             nowrapHeaders
             sortable={false}
             searchExtra={funderSearchExtra}
