@@ -19,6 +19,13 @@ LedgerTotalOut = Literal["in_campminder_net", "outside_grants"]
 LedgerSourceFilter = Literal[SourceFamily, "outside"]
 
 
+class LedgerSessionOut(BaseModel):
+    """A session a household-level (Family Camp) request is for: the client shortens `name` by `session_type`."""
+
+    name: str
+    session_type: str
+
+
 class LedgerFamilyOut(BaseModel):
     household_cm_id: int  # the family's row opens this household's page: its applying household with the lowest id
     family_households: list[int]  # every household in the family (D26): that household first, then by id
@@ -35,6 +42,9 @@ class LedgerFamilyOut(BaseModel):
     # as a household with no camper on the page), and its muted tie-breaker: "" unless another row here reads the same.
     label: str = ""
     label_tiebreak: str = ""
+    # The sessions of the household-level requests (person_cm_id 0) its lines are placed on, by start day, once each;
+    # empty for a family whose lines sit on camper requests (the mock's household mark and "FC4 · household").
+    household_sessions: list[LedgerSessionOut] = []
 
 
 class MoneyLedgerOut(BaseModel):
@@ -61,6 +71,7 @@ class LedgerLineOut(SourceFamilyLabelled):
     is_reversed: bool  # reversed by the read's day: shown struck through, left out of `amount` (D54, D74)
     reversed_on: date | None
     level: LedgerLevelOut | None
+    household_session: LedgerSessionOut | None = None  # the session of the household request it is placed on
 
 
 class MoneyLedgerLinesOut(BaseModel):

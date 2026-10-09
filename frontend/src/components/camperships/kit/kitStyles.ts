@@ -148,6 +148,9 @@ export const TICK_BUTTON =
 /** The editor row under the highlighted row (D22; `renderBelowHighlighted`, money's To place). */
 export const EDITOR_ROW = 'bg-forest-50 dark:bg-forest-900 border-border border-b px-3 py-2.5'
 export const TOTAL_BUTTON = 'tabular-nums hover:underline'
+/** A total that opens its lines, said so by its title: a link in the band (kit `.cf-grid tfoot a`). */
+export const TOTAL_LINK =
+  'text-primary cursor-pointer font-bold tabular-nums underline decoration-dotted underline-offset-[3px] disabled:cursor-not-allowed disabled:opacity-60'
 
 // ── The receipt (§4.7, §6.5; D33) ─────────────────────────────────────────────
 

@@ -258,3 +258,24 @@ async def test_a_filtered_ledger_breaks_ties_only_among_the_rows_it_shows() -> N
 def test_a_family_rows_label_defaults_to_empty() -> None:
     assert LedgerFamilyOut.model_fields["label"].default == ""
     assert LedgerFamilyOut.model_fields["label_tiebreak"].default == ""
+
+
+@pytest.mark.asyncio
+async def test_a_household_request_gives_its_family_row_and_lines_the_session_in_the_mock() -> None:
+    """Mock money-ledger (famCell, campersCell, the lines card): a Family Camp household-level request (person 0)
+    marks its row with its session and its line with the same; a camper family carries none."""
+    store = _families()
+    seed_request(store, "reqfam000000001", household=1000010, person=0, session=1000201)
+    seed_line(store, 9020, "500", household=1000010, person=0)
+    service = money_ledger_service(store)
+    out = await service.ledger(YEAR)
+    sessions = {r.household_cm_id: [(s.name, s.session_type) for s in r.household_sessions] for r in out.rows}
+    family_camp = ("Family Camp 3: Riverside Weekend (w/ kids 10 and under)", "family")
+    assert sessions == {1000001: [], 1000002: [], 1000009: [], 1000010: [family_camp]}
+    lines = await service.lines(YEAR, "in_campminder_net")
+    marked = {
+        ln.transaction_cm_id: (ln.household_session.name, ln.household_session.session_type)
+        for ln in lines.lines
+        if ln.household_session is not None
+    }
+    assert marked == {9020: family_camp}

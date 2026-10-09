@@ -854,6 +854,7 @@ export type {
   LeaveLineIn,
   LedgerFamilyOut,
   LedgerLineOut,
+  LedgerSessionOut,
   LedgerTicksOut,
   LeftToTickOut,
   LeverEffectOut,

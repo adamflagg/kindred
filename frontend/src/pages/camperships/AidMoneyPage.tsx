@@ -61,6 +61,12 @@ export default function AidMoneyPage() {
         title={MONEY.label}
         subtitle={`Season ${String(year)} · what CampMinder posted`}
         asOf={asOf}
+        // §6: no sentence row that pushes the page down; the pill says which tabs show today.
+        asOfTitle={
+          asOf.kind === 'past'
+            ? `Money › Ledger shows ${formatLongDate(asOf.date)}. To place, Grants and Funders show today.`
+            : undefined
+        }
       />
       <AidTabNav
         section={MONEY}
@@ -68,11 +74,6 @@ export default function AidMoneyPage() {
         view={view}
         counts={{ 'to-place': placeCount ?? undefined }}
       />
-      {slug !== 'ledger' && asOf.kind === 'past' && (
-        <p className="text-muted-foreground text-sm">
-          {`This tab shows today. Money › Ledger can show ${formatLongDate(asOf.date)}.`}
-        </p>
-      )}
       {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}
       {slug === 'ledger' && <LedgerTab view={view} />}
       {slug === 'grants' && (

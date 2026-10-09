@@ -179,10 +179,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="in_campminder_net",
         term="In CampMinder (net)",
         text=(
-            "In CampMinder (net): the family's live CampMinder camp-aid lines this season (lines Money › Funders "
-            "classes as camp aid, after any reclassifying override), across the households in the page scope, "
-            "net of reversals. Outside grants are a separate column and are not in it. It is not Posted; the gap is short "
-            "or over, To place, and rounds checked since the last sync."
+            "In CampMinder (net): the family's live camp-aid lines this season, after any reclassifying, net of "
+            "reversals. It isn't Posted; the tie-out line shows the gap."
         ),
         spec="§5.5",
         rulings=("D26", "D58", "D59"),
@@ -572,8 +570,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="outside_grants_ledger",
         term="Outside grants",
         text=(
-            "Outside grants: every other funder's lines, net of reversals, including lines whose description is not "
-            "classified yet; the totals line says how much. Outside money is never Posted."
+            "Outside grants: every other funder's lines, net of reversals, including lines not classified yet. "
+            "Outside money is never Posted."
         ),
         spec="§5.5",
         rulings=("D26", "D58"),

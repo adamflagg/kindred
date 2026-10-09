@@ -41,6 +41,32 @@ describe('AidPageBand (D30: the compact band, no hero)', () => {
     expect(screen.getByText('As of Apr 1, 2026')).toHaveClass('bg-amber-100')
   })
 
+  it("carries the page's own words about the date in the pill's title (§6: no sentence row)", () => {
+    render(
+      <AidPageBand
+        icon={Inbox}
+        title="Money"
+        asOf={{ kind: 'past', date: '2026-04-01', axis: 'campminder' }}
+        asOfTitle="Money › Ledger shows Apr 1, 2026. To place, Grants and Funders show today."
+      />
+    )
+    expect(screen.getByText('As of Apr 1, 2026')).toHaveAttribute(
+      'title',
+      'Money › Ledger shows Apr 1, 2026. To place, Grants and Funders show today.'
+    )
+  })
+
+  it('gives the pill no title when the page has nothing to add', () => {
+    render(
+      <AidPageBand
+        icon={Inbox}
+        title="Requests"
+        asOf={{ kind: 'past', date: '2026-04-01', axis: 'campminder' }}
+      />
+    )
+    expect(screen.getByText('As of Apr 1, 2026')).not.toHaveAttribute('title')
+  })
+
   it('names the recorded axis in the pill', () => {
     render(
       <AidPageBand

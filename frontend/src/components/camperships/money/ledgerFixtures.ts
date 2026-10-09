@@ -247,3 +247,27 @@ export const LEDGER_LINES: ApiAidLedgerLines = {
     },
   ],
 }
+
+/** The registry's two Ledger notes, as `useAidDefinitions('money-ledger')` returns them (final UX wording). */
+export const LEDGER_NOTE_ENTRIES: ReadonlyArray<{ key: string; n: number; text: string }> = [
+  {
+    key: 'in_campminder_net',
+    n: 1,
+    text: "In CampMinder (net): the family's live camp-aid lines this season, after any reclassifying, net of reversals. It isn't Posted; the tie-out line shows the gap.",
+  },
+  {
+    key: 'outside_grants_ledger',
+    n: 2,
+    text: "Outside grants: every other funder's lines, net of reversals, including lines not classified yet. Outside money is never Posted.",
+  },
+]
+
+/** What a test's `vi.mock('…/useAidDefinitions')` returns for the Ledger: the two notes, numbered 1 and 2. */
+export const ledgerDefinitions = () => ({
+  notes: LEDGER_NOTE_ENTRIES.map(({ n, text }) => ({ n, text })),
+  entries: LEDGER_NOTE_ENTRIES.map(({ key, text }) => ({ key, text })),
+  numberOf: (key: string): number | null =>
+    LEDGER_NOTE_ENTRIES.find((e) => e.key === key)?.n ?? null,
+  isPending: false,
+  error: null,
+})

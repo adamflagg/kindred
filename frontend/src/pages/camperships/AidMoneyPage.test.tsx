@@ -140,12 +140,15 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     }
   })
 
-  it('says To place shows today when the link carries a past date, and keeps the pill', () => {
+  // Final UX (design-language §6, owner 10-09 "no conditional sentence rows that push the page down"):
+  // the sentence row became the amber pill's title, as the mock's `asof.why` has it.
+  it("says in the pill's title that To place shows today and the Ledger shows the link's date; no sentence row", () => {
     renderAt('/aid/money/to-place?as_of=2027-05-01')
-    expect(
-      screen.getByText('This tab shows today. Money › Ledger can show May 1, 2027.')
-    ).toBeInTheDocument()
-    expect(screen.getByText('As of May 1, 2027')).toBeInTheDocument()
+    expect(screen.getByText('As of May 1, 2027')).toHaveAttribute(
+      'title',
+      'Money › Ledger shows May 1, 2027. To place, Grants and Funders show today.'
+    )
+    expect(screen.queryByText(/This tab shows today/)).toBeNull()
   })
 
   it('shows the Ledger on a past date with no "shows today" line: its totals read that day', () => {
@@ -154,12 +157,10 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     expect(screen.queryByText(/This tab shows today/)).toBeNull()
   })
 
-  it('mounts the Register on the Grants tab, with the one past-date sentence every live-only Money tab uses (final audit E14)', () => {
+  it("mounts the Register on the Grants tab, with no past-date sentence (the pill's title says it; final UX §6)", () => {
     renderAt('/aid/money/grants?as_of=2027-05-01')
     expect(screen.getByText('Register body')).toBeInTheDocument()
-    expect(
-      screen.getByText('This tab shows today. Money › Ledger can show May 1, 2027.')
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/This tab shows today/)).toBeNull()
     expect(screen.queryByText(/it has no past date/)).toBeNull()
   })
 

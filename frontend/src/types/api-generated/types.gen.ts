@@ -8484,6 +8484,10 @@ export type LedgerFamilyOut = {
    * Label Tiebreak
    */
   label_tiebreak?: string
+  /**
+   * Household Sessions
+   */
+  household_sessions?: Array<LedgerSessionOut>
 }
 
 /**
@@ -8550,6 +8554,23 @@ export type LedgerLineOut = {
    * Level
    */
   level: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
+  household_session?: LedgerSessionOut | null
+}
+
+/**
+ * LedgerSessionOut
+ *
+ * A session a household-level (Family Camp) request is for: the client shortens `name` by `session_type`.
+ */
+export type LedgerSessionOut = {
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Session Type
+   */
+  session_type: string
 }
 
 /**

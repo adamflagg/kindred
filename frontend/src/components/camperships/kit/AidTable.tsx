@@ -41,6 +41,7 @@ import {
   TFOOT_CELL_WRAP,
   TH,
   TOTAL_BUTTON,
+  TOTAL_LINK,
 } from './kitStyles'
 import { csvCell, withLinkLine } from './csv'
 import { isPageKey } from './keyboard'
@@ -115,6 +116,8 @@ export interface AidColumn<Row> {
   readonly render?: ((row: Row, ctx: CellContext) => ReactNode) | undefined
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
+  /** The opening total's native title ("In CampMinder (net): open the lines behind it"). Needs `onOpenTotal`. */
+  readonly totalTitle?: ((rows: readonly Row[]) => string | undefined) | undefined
   /**
    * A line drawn in this column's footer cell when it has no `total` (spec §12.2: Requests' "incl. $X
    * outside the budget" in the Requested by footer). Null draws nothing.
@@ -164,6 +167,8 @@ export interface AidTableProps<Row> {
   /** Finished CSV rows added after the table's own, in the same column order (csvColumns, then csvExtra). */
   readonly csvAppend?: ReadonlyArray<readonly string[]> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
+  /** True: the totals that open their rows are switched off (the rows on screen are a stand-in for a read in flight). */
+  readonly totalsDisabled?: boolean | undefined
   /**
    * An editor row under the highlighted one (D22), marked `data-aid-editor`. The Requests grid moved
    * its editor into `renderDetail` (owner fast-follow 10-03); money's To place (#2990) still uses it.
@@ -189,6 +194,11 @@ export interface AidTableProps<Row> {
   readonly toolbarAfterGrouping?: ReactNode
   /** The page's own actions (Record a Commitment…), drawn after the search and before Download CSV. */
   readonly toolbarActions?: ReactNode
+  /**
+   * One control after Download CSV: the Ledger's lines card draws Close there (★13: "search, Download
+   * CSV and Close on that same row"). Download CSV is last everywhere else.
+   */
+  readonly toolbarEnd?: ReactNode
   /**
    * Controls between the status and the search (Requests' checked-rows bar: Check Accepted… and
    * Clear, kit CF.bar's `acts` before `CF.search`). Everything else keeps §5's order.
@@ -313,12 +323,14 @@ export function AidTable<Row>({
   csvExtra,
   csvAppend,
   onOpenTotal,
+  totalsDisabled = false,
   renderBelowHighlighted,
   renderDetail,
   arrowKeys = false,
   toolbarLead,
   toolbarAfterGrouping,
   toolbarActions,
+  toolbarEnd,
   toolbarBeforeSearch,
   searchWidth,
   nowrapHeaders = false,
@@ -793,6 +805,7 @@ export function AidTable<Row>({
             )}
             {toolbarActions}
             <AidCsvButton onDownload={download} menu={csvMenu} />
+            {toolbarEnd}
           </div>
         </div>
       )}
@@ -1072,7 +1085,9 @@ export function AidTable<Row>({
                         (onOpenTotal ? (
                           <button
                             type="button"
-                            className={TOTAL_BUTTON}
+                            className={c.totalTitle ? TOTAL_LINK : TOTAL_BUTTON}
+                            title={c.totalTitle?.(visible)}
+                            disabled={totalsDisabled}
                             onClick={() => onOpenTotal(c.key, visible)}
                           >
                             <Money value={total} />
