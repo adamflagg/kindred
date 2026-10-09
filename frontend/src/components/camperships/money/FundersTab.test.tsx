@@ -570,6 +570,19 @@ describe('finance (view, rules, grantors)', () => {
       await waitFor(() => expect(getsAfterWrite(GRANTORS).length).toBeGreaterThan(0))
     })
 
+    it('closes the New Funder form once the funder is created', async () => {
+      answers = [json(GRANTOR_A, 201)]
+      renderTab()
+      await userEvent.click(await screen.findByRole('button', { name: 'New Funder…' }))
+      const form = screen.getByTestId('grantor-form')
+      await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
+      await userEvent.type(within(form).getByRole('textbox', { name: 'Note' }), 'x')
+      await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+      expect(await screen.findByText('✓ Grantor G: created, with your note.')).toBeInTheDocument()
+      expect(screen.queryByTestId('grantor-form')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'New Funder…' })).toBeInTheDocument()
+    })
+
     it("shows a taken key in the server's words, not as a race", async () => {
       answers = [json({ detail: "a grantor with key 'grantor_g' already exists" }, 409)]
       renderTab()

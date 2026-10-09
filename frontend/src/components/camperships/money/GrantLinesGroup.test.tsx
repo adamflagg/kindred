@@ -249,6 +249,30 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(writes()).toHaveLength(0)
   })
 
+  it('locks Another Camper… while Confirm is still checking the line', async () => {
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    fetchSpy.mockImplementation(async (url, init) => {
+      const path = String(url)
+      if ((init?.method ?? 'GET') !== 'GET') return json(PLACED)
+      if (path.includes('offsets=false')) {
+        await held
+        return json(GRANTS)
+      }
+      if (path.startsWith('/api/financial-aid/grants/2027')) return json(read)
+      return json({ detail: 'no approved rules' }, 404)
+    })
+    renderGroup()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+    expect(within(panel).getByRole('button', { name: 'Another Camper…' })).toBeDisabled()
+    release()
+    await waitFor(() => expect(writes()).toHaveLength(1))
+  })
+
   it('Another Camper… places on the camper picked, with no session (P-17)', async () => {
     read = TWO
     renderGroup()

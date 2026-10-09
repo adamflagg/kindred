@@ -390,7 +390,15 @@ export function FundersTab({ view }: { view: AidView }) {
                 ? "Click a funder for its terms and contacts, or a description to set its reporting group, incentive flag and funder. Counts as aid and toward the budget stay finance's."
                 : 'Read only for you: finance classifies descriptions and sets their funders and groups.'}
           </p>
-          {creating && <GrantorForm onCancel={() => setCreating(false)} onDone={onDone} />}
+          {creating && (
+            <GrantorForm
+              onCancel={() => setCreating(false)}
+              onDone={(words) => {
+                setCreating(false)
+                onDone(words)
+              }}
+            />
+          )}
           {funding.error && !funding.data && (
             <p className={CS_AMBER_NOTE}>
               The reporting groups couldn&apos;t load; the rest of the registry is as it was.

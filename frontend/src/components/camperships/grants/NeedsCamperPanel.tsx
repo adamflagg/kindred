@@ -56,6 +56,8 @@ export function NeedsCamperPanel({
   const place = useAidPlaceGrants()
   const fresh = useFreshAidGrants()
   const [another, setAnother] = useState(false)
+  // True from the click until the check and the write settle: Another Camper… waits too.
+  const [confirming, setConfirming] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const inFlight = useRef(false)
   const suggestion = need.suggestion
@@ -63,6 +65,7 @@ export function NeedsCamperPanel({
   const confirm = async () => {
     if (inFlight.current || suggestion === null) return
     inFlight.current = true
+    setConfirming(true)
     setProblem(null)
     try {
       if (!stillNeedsCamper(await fresh(), need.grant.transaction_cm_id)) {
@@ -80,6 +83,7 @@ export function NeedsCamperPanel({
       setProblem(refusalWords(caught))
     } finally {
       inFlight.current = false
+      setConfirming(false)
     }
   }
 
@@ -127,7 +131,7 @@ export function NeedsCamperPanel({
                 <button
                   type="button"
                   className={CS_BTN2}
-                  disabled={another}
+                  disabled={another || confirming}
                   onClick={() => setAnother(true)}
                 >
                   Another Camper…

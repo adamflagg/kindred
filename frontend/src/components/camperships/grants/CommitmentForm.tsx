@@ -124,7 +124,7 @@ export function CommitmentForm({
     }
     if (retired !== undefined) {
       setProblem(
-        `${retired.name} is retired: pick a grantor in use, or Unretire It in Grants › Grantors.`
+        `${retired.name} is retired: pick a grantor in use, or Unretire It in Money › Funders.`
       )
       return
     }
@@ -280,7 +280,7 @@ export function CommitmentForm({
             )}
             {retired !== undefined && problem === null && (
               <span className={HH_AMBER_NOTE}>
-                {`${retired.name} is retired: pick a grantor in use, or Unretire It in Grants › Grantors.`}
+                {`${retired.name} is retired: pick a grantor in use, or Unretire It in Money › Funders.`}
               </span>
             )}
             {problem !== null && <span className={HH_AMBER_NOTE}>{problem}</span>}

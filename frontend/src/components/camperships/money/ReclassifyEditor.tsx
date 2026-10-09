@@ -117,7 +117,7 @@ export function ReclassifyEditor({
         <p className={CS_PMETA}>
           It can move money in or out of the budget. The next ledger sync applies it; until then the
           line is listed apart and can&apos;t be placed. A description reclassified again and again
-          is fixed once in Money › Sources.
+          is fixed once in Money › Funders.
         </p>
         {sources.error !== null && sources.data === undefined && (
           <p className={CS_AMBER_NOTE}>The sources couldn&apos;t load: {sources.error.message}</p>

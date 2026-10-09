@@ -315,7 +315,7 @@ describe('Grants › Register (§8.2)', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
     expect(
       within(form).getAllByText(
-        'Grantor F is retired: pick a grantor in use, or Unretire It in Grants › Grantors.'
+        'Grantor F is retired: pick a grantor in use, or Unretire It in Money › Funders.'
       ).length
     ).toBeGreaterThan(0)
     expect(writes()).toHaveLength(0)
