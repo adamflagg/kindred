@@ -509,13 +509,10 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     ),
     Definition(
         key="zip_who_counts",
-        term="Who counts",
+        term="Every camper",
         text=(
-            "Who counts: the every-family table counts households with an attendee in an aid-eligible session (one "
-            "a program open to aid claims this season) in the chosen group (the summer group unless another, or all "
-            "groups, is picked), with those attendees; the recipient table is the subset of them that received aid, "
-            "with its dollars. Someone who attended only a session that is not aid-eligible is not counted in either "
-            "table. A ZIP with one family shows as it is; no family is ever a row."
+            "Every camper: campers in an aid-eligible session of the chosen group, by their household's billing ZIP. "
+            "A camper only in a session not open to aid isn't counted."
         ),
         spec="§9.4",
         rulings=("D90",),
@@ -754,10 +751,11 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     ),
     Definition(
         key="zip_dollars",
-        term="Dollars",
+        term="Campers who got aid · Dollars",
         text=(
-            "Dollars: all money: {camp}'s awarded amounts (= Posted) and every outside grant, net of reversals. A "
-            "household-level grant line lands on that household's ZIP."
+            "Campers who got aid · Dollars: the same campers, who attended and got money from any source: the camp's "
+            "awards (= Posted) and every outside grant, net of reversals. A household-level grant lands on its "
+            "household's ZIP."
         ),
         spec="§9.4",
         rulings=("D87", "D80"),
@@ -766,9 +764,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="zip_zip",
         term="ZIP",
         text=(
-            "ZIP: the first five digits of the billing postal code on the camper's household record for that "
-            'season (households are year-scoped, so each season uses its own record). Outside the US and "No ZIP '
-            'on file" are their own rows, last.'
+            "ZIP: the first five digits of the billing postal code on the household's record for that season. "
+            "Outside the US and No ZIP on file come last, under any sort."
         ),
         spec="§9.4",
         rulings=("D90",),
@@ -776,14 +773,17 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     Definition(
         key="zip_families",
         term="Families",
-        text="Families: CampMinder households, each once per table.",
+        text="Families: CampMinder households, each counted once per table.",
         spec="§9.4",
         rulings=("D93",),
     ),
     Definition(
         key="zip_geography",
-        term="Geography",
-        text="Geography goes no finer than ZIP. Small groups show as they are, dollars included.",
+        term="Small groups show as they are",
+        text=(
+            "Small groups show as they are, a one-family ZIP and its dollars included: a row is a ZIP, never a "
+            "family. Geography goes no finer than ZIP."
+        ),
         spec="§9.4",
         rulings=("D66", "D90"),
     ),

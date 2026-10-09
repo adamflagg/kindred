@@ -203,7 +203,7 @@ export { CS_BAND, CS_BAND_EDGE, CS_BAND_WARN, CS_OK_BG, CS_OK_INK, CS_RULE, CS_R
 // ── Footnotes (§12; .cf-sup, .cf-notes) ──
 /** The footnote mark: 0.72em, raised, 500, muted (about 8.6px in a 12px header, 10px in a 14px cell). */
 export const CS_SUP =
-  'text-muted-foreground ml-px align-super text-[0.72em] leading-none font-medium tabular-nums'
+  'text-muted-foreground static ml-px align-super text-[0.72em] leading-none font-medium tabular-nums'
 /** The notes list: 11.5/16 muted. */
 export const CS_NOTES = 'text-muted-foreground text-[11.5px] leading-4'
 

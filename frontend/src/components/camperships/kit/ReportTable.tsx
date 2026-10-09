@@ -2,12 +2,11 @@ import { Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
-import { CS_BODY, CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
+import { CS_BODY, CS_BOUNDED, CS_CUT, CS_LINK_CELL, CS_SEARCH, CS_TOOLBAR_STATUS } from './csType'
 import { AidCopyButton, AidCsvButton } from './CsvButton'
 import { DefRef } from './DefinitionNotes'
-import { CS_RULE, TABLE_CARD } from './kitStyles'
+import { CS_BAND, CS_RULE, TABLE_CARD } from './kitStyles'
 import { Money } from './MoneyText'
 import {
   formatCount,
@@ -75,6 +74,20 @@ interface ReportTableProps {
   readonly footnote?: ReactNode | undefined
   /** The totals row first, right under the header, sorted or not (zip-codes.html). */
   readonly totalsFirst?: boolean | undefined
+  /** The title's hover: the table's description, in place of a line under it (zip-codes.html). */
+  readonly hint?: string | undefined
+  /** The find box's placeholder ("Find a ZIP") and width in px; the default is "Find", 140px. */
+  readonly findPlaceholder?: string | undefined
+  readonly findWidth?: number | undefined
+  /** What the find status counts, in its title ("ZIPs"); the default is "rows". */
+  readonly findNoun?: string | undefined
+  /** False: the heading row carries the title alone, with no find, Copy or Download CSV (a table with no rows to find). */
+  readonly tools?: boolean | undefined
+  /**
+   * A bounded card (§23): 420px tall at most, scrolling inside, in the page's flow and never sticky to the
+   * window. The header and, with `totalsFirst`, the totals row stay pinned while the body scrolls.
+   */
+  readonly bounded?: boolean | undefined
 }
 
 const BODY_KINDS = new Set(['body', 'end'])
@@ -189,6 +202,12 @@ export function ReportTable({
   description,
   defaultSort,
   totalsFirst = false,
+  hint,
+  findPlaceholder = 'Find',
+  findWidth,
+  findNoun = 'rows',
+  tools = true,
+  bounded = false,
 }: ReportTableProps) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const { sort, toggleSort } = useAidTableUrl(columnKeys, [], urlPrefix, undefined, defaultSort)
@@ -224,8 +243,9 @@ export function ReportTable({
         (r) => !BODY_KINDS.has(r.kind) || matchesSearch(r.cells.map(reportText), query)
       )
     : ordered
-  const bodyCount = ordered.filter((r) => BODY_KINDS.has(r.kind)).length
-  const matching = visible.filter((r) => BODY_KINDS.has(r.kind)).length
+  // The find status counts the table's own rows (ZIPs), never its end rows ("Outside the US", "No ZIP on file").
+  const bodyCount = ordered.filter((r) => r.kind === 'body').length
+  const matching = visible.filter((r) => r.kind === 'body').length
   // csvOnly columns are in Download CSV, never on screen or in Copy.
   const drawn = useMemo(() => columns.filter((c) => !c.csvOnly), [columns])
   const grouped = drawn.some((c) => c.group !== undefined)
@@ -253,7 +273,9 @@ export function ReportTable({
     // cell is a later column, and `first:` would strip its rule there.
     const rule = index === 0 ? ruled : ruled.replace(/\s*first:border-l-0/, '')
     // One line unless the column opts into wrapping (the mock's `wrap`).
-    const thClass = column.wrap ? rule.replace('whitespace-nowrap', 'whitespace-normal') : rule
+    const wrapped = column.wrap ? rule.replace('whitespace-nowrap', 'whitespace-normal') : rule
+    // A bounded card pins its header row (z-[2]: above the pinned totals row's z-[1]).
+    const thClass = bounded ? `${wrapped} sticky top-0 z-[2]` : wrapped
     const label = (
       <>
         {column.header}
@@ -277,12 +299,18 @@ export function ReportTable({
           indicator={
             <>
               {column.note ? <DefRef n={column.note} /> : null}
-              {sort?.key === column.key ? (sort.dir === 'asc' ? '↑' : '↓') : null}
+              {sort?.key === column.key ? (
+                <span className="text-primary ml-0.5 font-bold">
+                  {sort.dir === 'asc' ? '↑' : '↓'}
+                </span>
+              ) : null}
             </>
           }
           className={thClass}
           title={column.title}
           buttonClassName={numeric || column.tone !== undefined ? 'justify-end' : ''}
+          // the note mark rides the label's baseline like an inline <sup> (the mock's `.cf-sort`)
+          layoutClassName="items-baseline"
           style={column.width ? { width: column.width } : undefined}
         />
       )
@@ -304,7 +332,10 @@ export function ReportTable({
     <section className="space-y-1.5">
       {showHeading && (
         <div data-testid="report-heading-row" className="flex flex-nowrap items-center gap-2.5">
-          <h2 className={`${REPORT_TITLE} shrink-0 whitespace-nowrap`} title={heading.title}>
+          <h2
+            className={`${REPORT_TITLE} shrink-0 whitespace-nowrap`}
+            title={hint ?? heading.title}
+          >
             {heading.title}
             {basisBadge ? <span className={BASIS_BADGE}>{basisBadge}</span> : null}
           </h2>
@@ -317,28 +348,43 @@ export function ReportTable({
             </div>
           )}
           <div className="ml-auto flex min-w-0 flex-none flex-nowrap items-center gap-2">
-            {copied !== null && (
+            {tools && searching && (
+              <span
+                data-testid="find-status"
+                className={CS_TOOLBAR_STATUS}
+                title={`${String(matching)} of ${String(bodyCount)} ${findNoun} match “${query.trim()}”; the totals row stays the whole table's`}
+              >
+                {`${String(matching)} of ${String(bodyCount)}`}
+              </span>
+            )}
+            {tools && copied !== null && (
               <span className={CS_TOOLBAR_STATUS} title={copied}>
                 {copied}
               </span>
             )}
-            {find && (
-              <label className="relative inline-block w-[140px] flex-none">
+            {tools && find && (
+              <label
+                className={`relative inline-block flex-none ${findWidth === undefined ? 'w-[140px]' : ''}`}
+                style={findWidth === undefined ? undefined : { width: `${String(findWidth)}px` }}
+              >
                 <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
                 <input
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Find"
+                  placeholder={findPlaceholder}
                   aria-label={`Find in ${heading.title}`}
                   className={CS_SEARCH}
                 />
               </label>
             )}
             {/* An empty body has nothing to export: the mock's heading row is bare there. */}
-            {emptyBody === undefined && (
+            {tools && emptyBody === undefined && (
               <>
-                <AidCopyButton onCopy={() => void copy()} />
+                <AidCopyButton
+                  onCopy={() => void copy()}
+                  title="Copy the whole table, with its season, as-of date and basis, for a spreadsheet"
+                />
                 <AidCsvButton onDownload={download} />
               </>
             )}
@@ -348,7 +394,7 @@ export function ReportTable({
       {emptyBody !== undefined ? (
         <div className={EMPTY_BODY}>{emptyBody}</div>
       ) : (
-        <div className={TABLE_CARD}>
+        <div className={bounded ? CS_BOUNDED : TABLE_CARD}>
           {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}
           <table
             aria-label={heading.title}
@@ -432,6 +478,7 @@ export function ReportTable({
                   >
                     {row.cells.map((cell, index) => {
                       const span = row.span ?? 1
+                      const pinned = bounded && totalsFirst && row.kind === 'total'
                       // A spanned label covers the cells after it (they stay in `cells` for Copy and the CSV).
                       if (index > 0 && index < span) return null
                       if (columns[index]?.csvOnly) return null
@@ -444,7 +491,14 @@ export function ReportTable({
                               : undefined
                           }
                           title={cellTitle(cell)}
-                          className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
+                          className={[
+                            cellClass(columns[index], index, row.kind),
+                            cell.muted ? 'text-muted-foreground' : '',
+                            // 27px: one header row here (5 + 16 + 5 + 1); a grouped (two-row) header would need its own offset.
+                            pinned ? `sticky top-[27px] z-[1] ${CS_BAND}` : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
                           style={index === 0 ? indentStyle(row.indent) : undefined}
                         >
                           {labelLine(index, row, span, fixed, cell) ? (
@@ -484,11 +538,6 @@ export function ReportTable({
             </tbody>
           </table>
         </div>
-      )}
-      {searching && (
-        <p className={AMBER_NOTE}>
-          {`${String(matching)} of ${String(bodyCount)} rows match. The totals row is the whole table's; Copy and Download CSV take the whole table.`}
-        </p>
       )}
       {footnote !== undefined && <div className={REPORT_NOTE}>{footnote}</div>}
     </section>
