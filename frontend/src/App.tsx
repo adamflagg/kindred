@@ -68,7 +68,6 @@ const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage')
 const AidSeasonPage = lazy(() => import('./pages/camperships/AidSeasonPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
 const AidMoneyPage = lazy(() => import('./pages/camperships/AidMoneyPage'))
-const AidGrantsRedirect = lazy(() => import('./pages/camperships/AidGrantsRedirect'))
 const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
 const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -648,16 +647,6 @@ function App() {
                                 </RequirePermission>
                               }
                             />
-                            {/* Old Grants links (folded into Money, 10-08): no guard of its own; the Money
-                                route it lands on is the guarded one. */}
-                            <Route
-                              path="grants/*"
-                              element={
-                                <Suspense fallback={<PageSkeleton />}>
-                                  <AidGrantsRedirect />
-                                </Suspense>
-                              }
-                            />
                             <Route
                               path="money/:tab?"
                               element={
@@ -677,20 +666,6 @@ function App() {
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <AidSeasonPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </RequirePermission>
-                              }
-                            />
-                            {/* Old Development addresses (zip, funding-sources, grantors): AidReportsPage
-                                redirects them to their new tab. */}
-                            <Route
-                              path="reports/development/:view"
-                              element={
-                                <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <AidReportsPage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 </RequirePermission>

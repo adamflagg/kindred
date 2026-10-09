@@ -11,10 +11,10 @@ import { familyWordsOf, isUnclassified } from './sourcesModel'
 
 export type FundersShow = 'all' | 'needs-group' | 'no-funder'
 
-/** `?show=`. The old Sources chip "unclassified" is the same people as No funder yet. */
+/** `?show=`. */
 export function parseFundersShow(raw: string | null): FundersShow {
   if (raw === 'needs-group') return 'needs-group'
-  return raw === 'no-funder' || raw === 'unclassified' ? 'no-funder' : 'all'
+  return raw === 'no-funder' ? 'no-funder' : 'all'
 }
 
 export const CAMP_ID = 'group:camp'
