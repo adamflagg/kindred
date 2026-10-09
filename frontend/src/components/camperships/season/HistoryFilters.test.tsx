@@ -77,18 +77,19 @@ describe('the History strip (spec §7.2 A)', () => {
 })
 
 describe('the filter bar (spec §7.2 B)', () => {
-  it('labels Person, From and Through at 12.5px, offers Anyone then each actor, system runs by name', () => {
+  it('labels Person, From and Through at 12.5px, offers Anyone then each actor, system runs by name', async () => {
     renderFilters()
     // The words sit in a bare <span>; the label role (CS_FLABEL) is on the <label> around it.
     // Design language §1: a filter label is the 12.5px muted kit label now (it was 14px ink).
     expect(screen.getByText('Person').closest('label')).toHaveClass('text-[12.5px]')
     expect(screen.getByText('From').closest('span.inline-flex')).toHaveClass('text-[12.5px]')
-    const person = screen.getByRole('combobox', { name: 'Person' })
-    expect(
-      within(person)
-        .getAllByRole('option')
-        .map((o) => o.textContent)
-    ).toEqual(['Anyone', 'finance@example.com', 'Intake'])
+    // Owner ruling 10-09 ("the stylized WHITE picker for every select"): Person is the kit picker, not a native select.
+    await userEvent.click(screen.getByRole('button', { name: 'Person: Anyone' }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent.replace(/^✓/, ''))).toEqual([
+      'Anyone',
+      'finance@example.com',
+      'Intake',
+    ])
   })
 
   it('searches on Enter, never per keystroke, in the grid search shape with ⌕ at the left', async () => {
