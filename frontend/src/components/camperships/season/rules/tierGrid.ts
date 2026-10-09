@@ -188,6 +188,43 @@ export function inPoolOrder(keys: readonly string[], groups: readonly PoolGroup[
   return [...first, ...keys.filter((key) => !first.includes(key))]
 }
 
+/** A program as `documentGroups` reads it (ProgramProfile's fields that pick a pool's class). */
+interface PooledProgram {
+  readonly budget_pool?: string | null
+  readonly equity_class?: string | null
+  readonly open_to_aid?: boolean
+  readonly session_cm_ids?: readonly number[]
+  readonly session_types?: readonly string[]
+}
+
+/**
+ * The document's pools in the rules' order, each with the equity class its programs use most: the client's copy of
+ * the server's `season_groups` (bunking/financial_aid/rules/groups.py), for a surface the server sends no `groups`
+ * (the Scenarios Sandbox, whose document is the one being typed). Same filter, same tie-break (first seen).
+ */
+export function documentGroups(doc: {
+  readonly budget?: { readonly pools?: Readonly<Record<string, unknown>> | null } | null
+  readonly programs?: Readonly<Record<string, unknown>> | null
+}): PoolGroup[] {
+  const programs = Object.values(doc.programs ?? {}).filter(
+    (p): p is PooledProgram => typeof p === 'object' && p !== null
+  )
+  return Object.keys(doc.budget?.pools ?? {}).map((pool) => {
+    const classes = programs.flatMap((p) =>
+      p.open_to_aid !== false &&
+      p.budget_pool === pool &&
+      ((p.session_cm_ids?.length ?? 0) > 0 || (p.session_types?.length ?? 0) > 0) &&
+      typeof p.equity_class === 'string'
+        ? [p.equity_class]
+        : []
+    )
+    const counts = new Map<string, number>()
+    for (const cls of classes) counts.set(cls, (counts.get(cls) ?? 0) + 1)
+    const top = Math.max(0, ...counts.values())
+    return { equity_class: classes.find((cls) => counts.get(cls) === top) ?? null }
+  })
+}
+
 interface Issue {
   readonly code: string
   readonly path: string

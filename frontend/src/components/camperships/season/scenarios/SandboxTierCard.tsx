@@ -15,6 +15,7 @@ import { DefRef } from '../../kit/DefinitionNotes'
 import {
   bandsIn,
   gridCell,
+  documentGroups,
   gridClasses,
   gridColumns,
   rangeWords,
@@ -113,7 +114,8 @@ export function SandboxTierCard({
   const capLocked = binding.locked.includes('round2')
   const awardTables = doc.award_tables as Tables
   const capTables = (doc.round2.tables ?? {}) as Tables
-  const classes = gridClasses(doc.programs as Programs, awardTables)
+  // The server sends no groups here (the document is the one being typed): the pools come from the document itself.
+  const classes = gridClasses(doc.programs as Programs, awardTables, documentGroups(doc))
   const r1 = gridColumns(awardTables, classes, (key) => classLabel(key, doc))
   const caps = gridColumns(capTables, classes, (key) => classLabel(key, doc))
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'tiers'), doc)

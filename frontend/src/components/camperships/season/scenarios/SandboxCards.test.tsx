@@ -187,3 +187,48 @@ describe('the Sandbox cards’ labels keep their pre-kit look (kit fallout, #310
     }
   })
 })
+
+describe('the Sandbox grids follow the rules’ pool order (final mock: "pool order is the rules’ order")', () => {
+  // Pool B (teen) listed before Pool A (general): the columns follow the pools, not the tables' own order.
+  const POOLED = {
+    ...SANDBOX_DOC,
+    programs: {
+      summer: { budget_pool: 'pool_a', equity_class: 'general', session_types: ['main'] },
+      weekend: { budget_pool: 'pool_b', equity_class: 'teen', session_types: ['main'] },
+    },
+    budget: {
+      total: '1000000',
+      pools: {
+        pool_b: { label: 'Pool B', share_pct: '10' },
+        pool_a: { label: 'Pool A', share_pct: '90' },
+      },
+    },
+  } as typeof SANDBOX_DOC
+  const bound = () =>
+    bindingOf({
+      recorded: POOLED,
+      source: POOLED,
+      edits: new Map(),
+      locked: [],
+      byRound: null,
+      canEdit: true,
+      type: vi.fn(),
+      release: vi.fn(),
+    })
+  const order = (root: HTMLElement) =>
+    within(root)
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent)
+      .filter((text) => /General|Teen/.test(text))
+      .map((text) => (text.includes('Teen') ? 'Teen' : 'General'))
+
+  it('orders the tier grid’s columns by pool', () => {
+    render(<SandboxTierCard binding={bound()} fitButton={null} fitAnswer={null} />)
+    expect([...new Set(order(screen.getByTestId('sandbox-grid')))]).toEqual(['Teen', 'General'])
+  })
+
+  it('orders the equity weights’ columns by pool', () => {
+    const { container } = render(<SandboxEquityCard binding={bound()} />)
+    expect(order(container)).toEqual(['Teen', 'General'])
+  })
+})

@@ -4,6 +4,7 @@ import {
   bandsIn,
   bandsOf,
   countNote,
+  documentGroups,
   evenOf,
   gridCell,
   gridClasses,
@@ -155,5 +156,54 @@ describe('a note is neither a warning nor an error (B3)', () => {
       'alpha 3 warning',
     ])
     expect(gridOrdered(issues, ['alpha', 'beta'], 'beta')).toEqual([])
+  })
+})
+
+describe('the pools of a document, for a surface the server sends no groups (Scenarios Sandbox)', () => {
+  const program = (
+    pool: string | null,
+    cls: string | null,
+    extra: Record<string, unknown> = {}
+  ) => ({
+    budget_pool: pool,
+    equity_class: cls,
+    session_types: ['main'],
+    ...extra,
+  })
+
+  it('lists the pools in the rules order, each with the equity class its programs use most', () => {
+    const doc = {
+      budget: { pools: { teen: { label: 'Pool B' }, main: { label: 'Pool A' } } },
+      programs: {
+        one: program('main', 'summer'),
+        two: program('main', 'summer'),
+        three: program('main', 'family'),
+        four: program('teen', 'teen'),
+      },
+    }
+    expect(documentGroups(doc)).toEqual([{ equity_class: 'teen' }, { equity_class: 'summer' }])
+  })
+
+  it('leaves out programs closed to aid or claiming no session, as season_groups does', () => {
+    const doc = {
+      budget: { pools: { main: { label: 'Pool A' } } },
+      programs: {
+        closed: program('main', 'family', { open_to_aid: false }),
+        unclaimed: program('main', 'family', { session_types: [] }),
+        open: program('main', 'summer'),
+      },
+    }
+    expect(documentGroups(doc)).toEqual([{ equity_class: 'summer' }])
+  })
+
+  it('orders the grid the same way the Rules tab does once the groups are passed', () => {
+    const doc = {
+      budget: { pools: { teen: { label: 'Pool B' }, main: { label: 'Pool A' } } },
+      programs: { one: program('main', 'summer'), two: program('teen', 'teen') },
+    }
+    expect(gridClasses(doc.programs, { summer: {}, teen: {} }, documentGroups(doc))).toEqual([
+      'teen',
+      'summer',
+    ])
   })
 })
