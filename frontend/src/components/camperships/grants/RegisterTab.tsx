@@ -139,7 +139,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'family',
         header: 'Family',
-        width: 130,
+        width: 185,
         value: (r) => registerFamily(r).text,
         render: (r) => (
           <Link
@@ -154,7 +154,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'grantor',
         header: 'Grantor',
-        width: 140,
+        width: 175,
         value: (r) => (r.grantor_key === '' ? 'no grantor yet' : r.grantor_name),
         render: (r) =>
           r.grantor_key === '' ? (
@@ -172,7 +172,7 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'program',
         header: 'Program',
-        width: 110,
+        width: 95,
         value: programWords,
       },
       {
@@ -210,20 +210,22 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'standing',
         header: 'Where it stands',
-        // Room for the whole "Committed · not yet in CampMinder" pill: 210 clipped it.
-        width: 230,
+        // Narrow, so the names beside it fit (final audit O6): the pill and the text wrap in it.
+        width: 150,
         value: standingCsv,
         render: (r) =>
           r.kind === 'commitment' ? (
             <div>
-              <StatusPill tone="amber">{sentenceCase(standingWords(r))}</StatusPill>
+              <StatusPill tone="amber" wrap>
+                {sentenceCase(standingWords(r))}
+              </StatusPill>
               <div className={CS_PMETA}>{standingNote(r)}</div>
             </div>
           ) : r.is_reversed ? (
-            <s className={CS_PMETA}>{standingWords(r)}</s>
+            <s className={`${CS_PMETA} whitespace-normal`}>{standingWords(r)}</s>
           ) : (
             <div>
-              <span className={MARK_TEXT}>{`✓ ${standingWords(r)}`}</span>
+              <span className={`${MARK_TEXT} whitespace-normal`}>{`✓ ${standingWords(r)}`}</span>
               {standingNote(r) !== '' && <div className={CS_PMETA}>{standingNote(r)}</div>}
             </div>
           ),

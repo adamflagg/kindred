@@ -1336,3 +1336,25 @@ describe('AidTable hideSearch', () => {
     expect(screen.getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
   })
 })
+
+describe('AidTable onCsvDownload', () => {
+  it('runs when the CSV downloads, from the button and from the menu item (final audit E13)', async () => {
+    const onCsvDownload = vi.fn()
+    const columns: ReadonlyArray<AidColumn<{ id: string; name: string }>> = [
+      { key: 'name', header: 'Name', value: (r) => r.name },
+    ]
+    render(
+      <MemoryRouter>
+        <AidTable
+          rows={[{ id: 'r1', name: 'Emma Johnson' }]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          csvFilename="x.csv"
+          onCsvDownload={onCsvDownload}
+        />
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    expect(onCsvDownload).toHaveBeenCalledTimes(1)
+  })
+})

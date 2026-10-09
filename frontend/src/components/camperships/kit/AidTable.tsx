@@ -185,6 +185,8 @@ export interface AidTableProps<Row> {
   readonly hideToolbar?: boolean | undefined
   /** True: the toolbar keeps its switch and Download CSV but draws no search box (a table with no names or ids). */
   readonly hideSearch?: boolean | undefined
+  /** Runs when the CSV is downloaded, before the file is built (a page clearing a status line that is now stale). */
+  readonly onCsvDownload?: (() => void) | undefined
   /** A status line drawn under the toolbar (the March file's result); nothing is drawn when undefined. */
   readonly toolbarStatus?: ReactNode
   /** The search box's words and icon; the defaults are the kit's ("Search names or CM IDs", a magnifier). */
@@ -291,6 +293,7 @@ export function AidTable<Row>({
   toolbarStatus,
   hideToolbar = false,
   hideSearch = false,
+  onCsvDownload,
   searchPlaceholder = 'Search names or CM IDs',
   searchIcon: SearchIcon = Search,
   highlighted: highlightedProp,
@@ -680,6 +683,7 @@ export function AidTable<Row>({
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
   const download = () => {
+    onCsvDownload?.()
     const csvColumns = columns.filter((c) => c.inCsv !== false)
     const extra = csvExtra ?? []
     // counted(): the kept row (shown only because it is highlighted) stays out of the file.

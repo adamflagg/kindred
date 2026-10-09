@@ -247,7 +247,7 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       budget = budgetPosting(600000)
       renderTab('/aid/money/ledger?as_of=2027-05-01', {
         year: 2027,
-        asOf: { kind: 'past', date: '2027-05-01', axis: 'posted' },
+        asOf: { kind: 'past', date: '2027-05-01', axis: 'campminder' },
       })
       const line = await screen.findByTestId('tie-out')
       await within(line).findByRole('link', { name: /see To place/ })

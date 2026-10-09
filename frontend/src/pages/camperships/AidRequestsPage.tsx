@@ -632,6 +632,8 @@ export default function AidRequestsPage() {
               filtersAfterGrouping={idsToggle}
               csvMenu={marchOffered ? <MarchFileItem march={march} /> : undefined}
               toolbarStatus={marchOffered ? <MarchFileResult march={march} /> : undefined}
+              // A plain CSV after a March File would leave "March File downloaded" standing, as if it ran again.
+              onCsvDownload={marchOffered ? march.dismiss : undefined}
               onLeave={leaveForFold}
               foldScope={`${lens}/${view.key}`}
               selected={canWork ? selected : undefined}

@@ -296,7 +296,7 @@ export function FundersTab({ view }: { view: AidView }) {
           moneyCsv(r.kind === 'funder' ? r.amount : r.kind === 'empty' ? null : r.source.amount),
       },
     ],
-    [bySource, access.rules]
+    [bySource, access.rules, access.grantors]
   )
 
   const chip = (value: FundersShow, label: string) => (

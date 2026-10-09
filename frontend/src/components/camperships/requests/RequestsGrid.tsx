@@ -73,6 +73,8 @@ interface RequestsGridProps {
   readonly csvMenu?: ReactNode
   /** A status line under the toolbar (the March file's result). */
   readonly toolbarStatus?: ReactNode
+  /** Passed to the table: runs when the CSV downloads. */
+  readonly onCsvDownload?: (() => void) | undefined
   /** The page's save-first way out (the walk's `leave`): folding the opened row's group goes through it. */
   readonly onLeave?: ((go: () => void) => void) | undefined
   /** What a fold belongs to (the page's lens and view); a change opens every group. Default: the view. */
@@ -315,6 +317,7 @@ export function RequestsGrid({
   filtersAfterGrouping,
   csvMenu,
   toolbarStatus,
+  onCsvDownload,
   onLeave,
   foldScope,
   renderEditor,
@@ -372,6 +375,7 @@ export function RequestsGrid({
       toolbarAfterGrouping={filtersAfterGrouping}
       csvMenu={csvMenu}
       toolbarStatus={toolbarStatus}
+      onCsvDownload={onCsvDownload}
       onLeave={onLeave}
       // Lead ruling (scan of #3005): a fold in one view never shows up folded in another.
       foldScope={foldScope ?? view.key}
