@@ -9,6 +9,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from 'react'
 
 import { buildCsvContent, downloadCsv } from '../../../utils/csvExport'
@@ -150,6 +151,20 @@ export interface AidGrouping<Row> {
 }
 
 /**
+ * What a group's section above its table is handed (`groupSections`): the group's heading, its matching
+ * rows (never the kept row), whether it is folded, and the fold's toggle. `grouped` is false for the one
+ * section of a flat table, which has nothing to fold.
+ */
+export interface AidGroupSection<Row> {
+  readonly id: string
+  readonly heading: string
+  readonly grouped: boolean
+  readonly rows: readonly Row[]
+  readonly folded: boolean
+  readonly toggle: () => void
+}
+
+/**
  * Stability: `columns`, `groupings`, `rowKey` and `searchExtra` feed memos and effects, so pass
  * module-level constants or memoised values, never fresh literals each render. Only one table per
  * page may set `arrowKeys` (it adds a `window` ↑/↓ listener).
@@ -283,6 +298,20 @@ export interface AidTableProps<Row> {
   readonly rowTone?: ((row: Row) => 'group' | 'warn' | undefined) | undefined
   /** False: the headers do not sort and any sort in the URL is ignored. Default true. */
   readonly sortable?: boolean | undefined
+  /**
+   * Opt-in (Money › To place, design-language §16, §19): each group is its own section and its own
+   * table, as the approved mock draws it, instead of one table with group rows. The callback draws what
+   * sits above a group's table (its heading, callout and actions); a folded group keeps its section and
+   * loses its table; a group the search empties draws nothing. The search, the checks (a header box
+   * checks its own group), ↑/↓ and the CSV stay the one table's. A flat table is one section.
+   */
+  readonly groupSections?: ((section: AidGroupSection<Row>) => ReactNode) | undefined
+  /**
+   * A search the page holds itself, so a second table on the page answers the same box: pass both to the
+   * table that draws the box, only `query` to one with `hideToolbar`. Without them the table keeps its own.
+   */
+  readonly query?: string | undefined
+  readonly onQueryChange?: ((query: string) => void) | undefined
 }
 
 /** The box stops this far short of the screen's bottom (§23: the first footnote peeks above the fold). */
@@ -358,6 +387,9 @@ export function AidTable<Row>({
   foldScope,
   rowTone,
   sortable = true,
+  groupSections,
+  query: queryProp,
+  onQueryChange,
 }: AidTableProps<Row>) {
   const columnKeys = useMemo(() => columns.map((c) => c.key), [columns])
   const groupingKeys = useMemo(() => groupings.map((g) => g.key), [groupings])
@@ -367,7 +399,15 @@ export function AidTable<Row>({
     urlPrefix,
     defaultGrouping
   )
-  const [query, setQuery] = useState('')
+  const [ownQuery, setOwnQuery] = useState('')
+  const query = queryProp ?? ownQuery
+  const setQuery = useCallback(
+    (next: string) => {
+      setOwnQuery(next)
+      onQueryChange?.(next)
+    },
+    [onQueryChange]
+  )
   const [ownHighlight, setOwnHighlight] = useState<string | null>(null)
   const highlighted = onHighlight ? (highlightedProp ?? null) : ownHighlight
   const setHighlight = useCallback(
@@ -770,6 +810,255 @@ export function AidTable<Row>({
       />
     ) : null
 
+  const colgroup = (
+    <colgroup>
+      {selectable && <col style={{ width: SELECT_WIDTH }} />}
+      {columns.map((c) => (
+        <col key={c.key} style={c.flex ? undefined : { width: widthOf(c) }} />
+      ))}
+    </colgroup>
+  )
+
+  // The header row: its select-all box checks what `box` says (the whole table, or one section).
+  const renderHead = (
+    box: { readonly all: boolean; readonly toggle: () => void },
+    ref?: Ref<HTMLTableSectionElement>
+  ) => (
+    <thead ref={ref}>
+      <tr>
+        {selection && (
+          <th
+            className={join(
+              thClass,
+              // Held top and left in the screen box, a layer above the scrolling headers.
+              held ? 'sticky top-0 left-0 z-40' : 'sticky left-0 z-20'
+            )}
+          >
+            <input
+              type="checkbox"
+              aria-label="Select all"
+              checked={box.all}
+              onChange={box.toggle}
+            />
+          </th>
+        )}
+        {columns.map((c) =>
+          c.help || !sortable ? (
+            <th
+              key={c.key}
+              style={pinStyle(c)}
+              className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
+            >
+              {c.help ? (
+                <Tooltip content={c.help} className={HELP_HEADER}>
+                  {c.header}
+                </Tooltip>
+              ) : (
+                c.header
+              )}
+              {markOf(c)}
+            </th>
+          ) : (
+            <SortableColumnHeader
+              key={c.key}
+              label={c.header}
+              direction={
+                sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
+              }
+              onSort={() => toggleSort(c.key)}
+              style={pinStyle(c)}
+              className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
+              {...(c.mark
+                ? {
+                    indicator: (
+                      <>
+                        {markOf(c)}
+                        {sort?.key === c.key ? (
+                          <span className="ml-1">{sort.dir === 'asc' ? '↑' : '↓'}</span>
+                        ) : null}
+                      </>
+                    ),
+                  }
+                : {})}
+              {...(c.align === 'right' || c.mark
+                ? {
+                    // A marked label sits on the baseline with no gap, so the mark reads "Decided¹" (§12);
+                    // in a centred flex row vertical-align is ignored and the mark floated high and apart.
+                    buttonClassName: join(
+                      c.align === 'right' ? 'justify-end' : '',
+                      c.mark ? 'items-baseline! gap-0!' : ''
+                    ),
+                  }
+                : {})}
+            />
+          )
+        )}
+      </tr>
+    </thead>
+  )
+
+  // The rows of one group (or the flat table): each with its detail line and editor row.
+  const bodyRows = (list: readonly Row[]) =>
+    list.map((row) => {
+      const key = rowKey(row)
+      const isHighlighted = key === highlighted
+      const isMarked = markedKeys?.has(key) === true
+      const tone = rowTone?.(row)
+      return (
+        <Fragment key={key}>
+          <tr
+            data-row-key={key}
+            data-highlighted={isHighlighted ? 'true' : undefined}
+            data-marked={isMarked ? 'true' : undefined}
+            ref={(element) => {
+              if (element) rowRefs.current.set(key, element)
+              else rowRefs.current.delete(key)
+            }}
+            onClick={() => {
+              if (key !== highlighted) setHighlight(key)
+            }}
+            data-row-tone={tone}
+            className={join(
+              'cursor-pointer',
+              tone && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
+            )}
+            style={scrollMargins}
+          >
+            {selection && (
+              <td
+                // A tick is not a click on the row, and nor is the cell around the box:
+                // no highlight, so no save-then-move.
+                onClick={(event) => event.stopPropagation()}
+                className={join(
+                  TD,
+                  isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
+                  'sticky left-0 z-10 whitespace-nowrap',
+                  (isHighlighted || isMarked) && HIGHLIGHT_EDGE
+                )}
+              >
+                {/* The kept row is on screen only for its highlight: it isn't a match, so it can't be ticked (R1). */}
+                {key !== kept && (
+                  <input
+                    type="checkbox"
+                    aria-label="Select"
+                    checked={selection.selected.has(key)}
+                    onChange={() => toggleOne(key)}
+                  />
+                )}
+              </td>
+            )}
+            {columns.map((c, index) => {
+              const value = c.render ? undefined : c.value(row)
+              const content = c.render ? (
+                c.render(row, { highlighted: isHighlighted, query })
+              ) : c.total && typeof value === 'number' ? (
+                <Money value={moneyValue(value)} />
+              ) : (
+                value
+              )
+              // §13: a cut cell carries its full words; a string titles itself (a
+              // placeholder dash has nothing to add).
+              const title = c.title
+                ? c.title(row)
+                : typeof content === 'string' && content !== '' && content !== '—'
+                  ? content
+                  : undefined
+              return (
+                <td
+                  key={c.key}
+                  title={title}
+                  style={pinStyle(c)}
+                  data-fit-col={c.fitContent ? c.key : undefined}
+                  className={join(
+                    tone ? TONE_TD : TD,
+                    // A tone row's tint is on the row; only a pinned cell needs its own.
+                    tone
+                      ? isPinned(c) && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
+                      : isHighlighted
+                        ? ROW_HIGHLIGHT
+                        : CELL_BG,
+                    bodyEdge(c, index, isHighlighted, isMarked),
+                    isPinned(c) && 'sticky z-10',
+                    alignClass(c),
+                    c.flex === true && isHighlighted ? 'whitespace-normal' : 'whitespace-nowrap'
+                  )}
+                >
+                  {content ?? '—'}
+                </td>
+              )
+            })}
+          </tr>
+          {isHighlighted && renderDetail && (
+            <tr data-aid-detail="" ref={detailRef} style={scrollMargins}>
+              {/* The cell must not clip, or the sticky line is trapped inside it (round 6). */}
+              <td colSpan={span} className={DETAIL_ROW}>
+                <div className={DETAIL_LINE} style={boxWidth > 0 ? { width: boxWidth } : undefined}>
+                  {renderDetail(row, nav)}
+                </div>
+              </td>
+            </tr>
+          )}
+          {isHighlighted && renderBelowHighlighted && (
+            <tr>
+              <td colSpan={span} className={EDITOR_ROW} data-aid-editor="">
+                {/* Sticky-left like the group headings, so focus doesn't snap a right-scrolled table back. */}
+                <div className="sticky left-3 w-fit max-w-5xl">
+                  {renderBelowHighlighted(row, nav)}
+                </div>
+              </td>
+            </tr>
+          )}
+        </Fragment>
+      )
+    })
+
+  // Money › To place's sections: each group a heading and its own table (`groupSections`).
+  const cardClass = scrollBox ? SCROLL_BOX : bounded ? CS_BOUNDED : TABLE_CARD
+  const sectionMode = groupSections !== undefined && shown.length > 0
+  const sectionNodes =
+    groupSections !== undefined && sectionMode
+      ? groups
+          .filter((g) => g.rows.length > 0)
+          .map((g) => {
+            const folded = isFolded(g)
+            const keys = counted(g.rows).map(rowKey)
+            const all =
+              selection !== null &&
+              keys.length > 0 &&
+              keys.every((key) => selection.selected.has(key))
+            const toggleGroup = () => {
+              if (selection === null) return
+              const next = new Set(selection.selected)
+              for (const key of keys) {
+                if (all) next.delete(key)
+                else next.add(key)
+              }
+              selection.onChange(next)
+            }
+            return (
+              <div key={g.id || 'all'} data-aid-section={g.id} className="space-y-1.5">
+                {groupSections({
+                  id: g.id,
+                  heading: g.heading,
+                  grouped: grouping !== undefined,
+                  rows: counted(g.rows),
+                  folded,
+                  toggle: () => toggleFold(g),
+                })}
+                {!folded && (
+                  <div className={cardClass}>
+                    <table className={TABLE} style={{ minWidth }}>
+                      {colgroup}
+                      {renderHead({ all, toggle: toggleGroup })}
+                      <tbody>{bodyRows(g.rows)}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })
+      : null
+
   return (
     <div className="space-y-2">
       {!hideToolbar && (
@@ -810,299 +1099,112 @@ export function AidTable<Row>({
         </div>
       )}
 
-      <div
-        ref={boxRef}
-        data-aid-scroll-box={scrollBox ? '' : undefined}
-        className={scrollBox ? SCROLL_BOX : bounded ? CS_BOUNDED : TABLE_CARD}
-      >
-        <table className={TABLE} style={{ minWidth }}>
-          <colgroup>
-            {selectable && <col style={{ width: SELECT_WIDTH }} />}
-            {columns.map((c) => (
-              <col key={c.key} style={c.flex ? undefined : { width: widthOf(c) }} />
-            ))}
-          </colgroup>
-          <thead ref={headRef}>
-            <tr>
-              {selection && (
-                <th
-                  className={join(
-                    thClass,
-                    // Held top and left in the screen box, a layer above the scrolling headers.
-                    held ? 'sticky top-0 left-0 z-40' : 'sticky left-0 z-20'
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                  />
-                </th>
-              )}
-              {columns.map((c) =>
-                c.help || !sortable ? (
-                  <th
-                    key={c.key}
-                    style={pinStyle(c)}
-                    className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
+      {sectionMode ? (
+        // One measured box around every section (scan #3117 B): a ref on each card left it null once
+        // the last section folded, and the widths stopped following the window.
+        <div ref={boxRef} className="space-y-2">
+          {sectionNodes}
+        </div>
+      ) : (
+        <div ref={boxRef} data-aid-scroll-box={scrollBox ? '' : undefined} className={cardClass}>
+          <table className={TABLE} style={{ minWidth }}>
+            {colgroup}
+            {renderHead({ all: allSelected, toggle: toggleAll }, headRef)}
+            <tbody>
+              {visible.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={span}
+                    className={join(TD, CELL_BG, 'text-muted-foreground whitespace-nowrap')}
                   >
-                    {c.help ? (
-                      <Tooltip content={c.help} className={HELP_HEADER}>
-                        {c.header}
-                      </Tooltip>
-                    ) : (
-                      c.header
-                    )}
-                    {markOf(c)}
-                  </th>
-                ) : (
-                  <SortableColumnHeader
-                    key={c.key}
-                    label={c.header}
-                    direction={
-                      sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
-                    }
-                    onSort={() => toggleSort(c.key)}
-                    style={pinStyle(c)}
-                    className={join(thClass, heldClasses(c, 'top-0', 'z-20'))}
-                    {...(c.mark
-                      ? {
-                          indicator: (
-                            <>
-                              {markOf(c)}
-                              {sort?.key === c.key ? (
-                                <span className="ml-1">{sort.dir === 'asc' ? '↑' : '↓'}</span>
-                              ) : null}
-                            </>
-                          ),
-                        }
-                      : {})}
-                    {...(c.align === 'right' || c.mark
-                      ? {
-                          // A marked label sits on the baseline with no gap, so the mark reads "Decided¹" (§12);
-                          // in a centred flex row vertical-align is ignored and the mark floated high and apart.
-                          buttonClassName: join(
-                            c.align === 'right' ? 'justify-end' : '',
-                            c.mark ? 'items-baseline! gap-0!' : ''
-                          ),
-                        }
-                      : {})}
-                  />
-                )
+                    {typeof emptyText === 'function' ? emptyText(query.trim() !== '') : emptyText}
+                  </td>
+                </tr>
               )}
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr>
-                <td
-                  colSpan={span}
-                  className={join(TD, CELL_BG, 'text-muted-foreground whitespace-nowrap')}
-                >
-                  {typeof emptyText === 'function' ? emptyText(query.trim() !== '') : emptyText}
-                </td>
-              </tr>
-            )}
-            {groups.map((g) => (
-              <Fragment key={g.id || 'all'}>
-                {grouping && g.rows.length > 0 && (
-                  <tr>
-                    <td colSpan={span} className={GROUP_ROW} data-group-heading="">
-                      {/* The heading folds its group (owner rulings 10-04 late); the count stays. */}
-                      <button
-                        type="button"
-                        className="sticky left-2 cursor-pointer"
-                        onClick={() => toggleFold(g)}
-                      >
-                        <span className="mr-1.5 inline-block w-3">{isFolded(g) ? '▸' : '▾'}</span>
-                        <span>{g.heading}</span>
-                      </button>
-                      {groupCount ? (
-                        <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
-                      ) : null}
-                    </td>
-                  </tr>
-                )}
-                {(isFolded(g) ? [] : g.rows).map((row) => {
-                  const key = rowKey(row)
-                  const isHighlighted = key === highlighted
-                  const isMarked = markedKeys?.has(key) === true
-                  const tone = rowTone?.(row)
-                  return (
-                    <Fragment key={key}>
-                      <tr
-                        data-row-key={key}
-                        data-highlighted={isHighlighted ? 'true' : undefined}
-                        data-marked={isMarked ? 'true' : undefined}
-                        ref={(element) => {
-                          if (element) rowRefs.current.set(key, element)
-                          else rowRefs.current.delete(key)
-                        }}
-                        onClick={() => {
-                          if (key !== highlighted) setHighlight(key)
-                        }}
-                        data-row-tone={tone}
+              {groups.map((g) => (
+                <Fragment key={g.id || 'all'}>
+                  {grouping && g.rows.length > 0 && (
+                    <tr>
+                      <td colSpan={span} className={GROUP_ROW} data-group-heading="">
+                        {/* The heading folds its group (owner rulings 10-04 late); the count stays. */}
+                        <button
+                          type="button"
+                          className="sticky left-2 cursor-pointer"
+                          onClick={() => toggleFold(g)}
+                        >
+                          <span className="mr-1.5 inline-block w-3">{isFolded(g) ? '▸' : '▾'}</span>
+                          <span>{g.heading}</span>
+                        </button>
+                        {groupCount ? (
+                          <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  )}
+                  {bodyRows(isFolded(g) ? [] : g.rows)}
+                </Fragment>
+              ))}
+            </tbody>
+            {hasTotals && (
+              <tfoot ref={footRef}>
+                <tr>
+                  {columns.map((c, index) => {
+                    // The footer label spans the leading pinned columns that carry no total, so the
+                    // sticky cell after it can't paint over it (I1).
+                    if (index > 0 && index < labelSpan) return null
+                    const spans = index === 0 && labelSpan > 1
+                    // The checkbox column has no footer cell: the first one covers it too.
+                    const leadsSelect = index === 0 && selectable
+                    const cellSpan = (spans ? labelSpan : 1) + (leadsSelect ? 1 : 0)
+                    const total = c.total ? c.total(visible) : null
+                    return (
+                      <td
+                        key={c.key}
+                        colSpan={cellSpan > 1 ? cellSpan : undefined}
+                        title={
+                          index === 0 && footerTitle
+                            ? footerTitle(visible)
+                            : (c.footerTitle?.(visible) ?? undefined)
+                        }
+                        style={leadsSelect ? { left: 0 } : pinStyle(c)}
                         className={join(
-                          'cursor-pointer',
-                          tone && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
+                          held && index === 0 && footerLabel && !footerTitle
+                            ? TFOOT_CELL_WRAP
+                            : TFOOT_CELL,
+                          // §10: a titled label flows out of its column and truncates.
+                          index === 0 && footerTitle && 'truncate',
+                          // A footnote in its own cell (the outside note) is one line too.
+                          !c.total && c.footerNote && 'truncate',
+                          heldClasses(c, 'bottom-0', 'z-10'),
+                          spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
+                          alignClass(c)
                         )}
-                        style={scrollMargins}
                       >
-                        {selection && (
-                          <td
-                            // A tick is not a click on the row, and nor is the cell around the box:
-                            // no highlight, so no save-then-move.
-                            onClick={(event) => event.stopPropagation()}
-                            className={join(
-                              TD,
-                              isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
-                              'sticky left-0 z-10 whitespace-nowrap',
-                              (isHighlighted || isMarked) && HIGHLIGHT_EDGE
-                            )}
-                          >
-                            {/* The kept row is on screen only for its highlight: it isn't a match, so it can't be ticked (R1). */}
-                            {key !== kept && (
-                              <input
-                                type="checkbox"
-                                aria-label="Select"
-                                checked={selection.selected.has(key)}
-                                onChange={() => toggleOne(key)}
-                              />
-                            )}
-                          </td>
-                        )}
-                        {columns.map((c, index) => {
-                          const value = c.render ? undefined : c.value(row)
-                          const content = c.render ? (
-                            c.render(row, { highlighted: isHighlighted, query })
-                          ) : c.total && typeof value === 'number' ? (
-                            <Money value={moneyValue(value)} />
+                        {index === 0 && footerLabel ? footerLabel(visible) : null}
+                        {!c.total && c.footerNote ? c.footerNote(visible) : null}
+                        {c.total &&
+                          (onOpenTotal ? (
+                            <button
+                              type="button"
+                              className={c.totalTitle ? TOTAL_LINK : TOTAL_BUTTON}
+                              title={c.totalTitle?.(visible)}
+                              disabled={totalsDisabled}
+                              onClick={() => onOpenTotal(c.key, visible)}
+                            >
+                              <Money value={total} />
+                            </button>
                           ) : (
-                            value
-                          )
-                          // §13: a cut cell carries its full words; a string titles itself (a
-                          // placeholder dash has nothing to add).
-                          const title = c.title
-                            ? c.title(row)
-                            : typeof content === 'string' && content !== '' && content !== '—'
-                              ? content
-                              : undefined
-                          return (
-                            <td
-                              key={c.key}
-                              title={title}
-                              style={pinStyle(c)}
-                              data-fit-col={c.fitContent ? c.key : undefined}
-                              className={join(
-                                tone ? TONE_TD : TD,
-                                // A tone row's tint is on the row; only a pinned cell needs its own.
-                                tone
-                                  ? isPinned(c) && (isHighlighted ? ROW_HIGHLIGHT : TONE_BG[tone])
-                                  : isHighlighted
-                                    ? ROW_HIGHLIGHT
-                                    : CELL_BG,
-                                bodyEdge(c, index, isHighlighted, isMarked),
-                                isPinned(c) && 'sticky z-10',
-                                alignClass(c),
-                                c.flex === true && isHighlighted
-                                  ? 'whitespace-normal'
-                                  : 'whitespace-nowrap'
-                              )}
-                            >
-                              {content ?? '—'}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                      {isHighlighted && renderDetail && (
-                        <tr data-aid-detail="" ref={detailRef} style={scrollMargins}>
-                          {/* The cell must not clip, or the sticky line is trapped inside it (round 6). */}
-                          <td colSpan={span} className={DETAIL_ROW}>
-                            <div
-                              className={DETAIL_LINE}
-                              style={boxWidth > 0 ? { width: boxWidth } : undefined}
-                            >
-                              {renderDetail(row, nav)}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      {isHighlighted && renderBelowHighlighted && (
-                        <tr>
-                          <td colSpan={span} className={EDITOR_ROW} data-aid-editor="">
-                            {/* Sticky-left like the group headings, so focus doesn't snap a right-scrolled table back. */}
-                            <div className="sticky left-3 w-fit max-w-5xl">
-                              {renderBelowHighlighted(row, nav)}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </Fragment>
-            ))}
-          </tbody>
-          {hasTotals && (
-            <tfoot ref={footRef}>
-              <tr>
-                {columns.map((c, index) => {
-                  // The footer label spans the leading pinned columns that carry no total, so the
-                  // sticky cell after it can't paint over it (I1).
-                  if (index > 0 && index < labelSpan) return null
-                  const spans = index === 0 && labelSpan > 1
-                  // The checkbox column has no footer cell: the first one covers it too.
-                  const leadsSelect = index === 0 && selectable
-                  const cellSpan = (spans ? labelSpan : 1) + (leadsSelect ? 1 : 0)
-                  const total = c.total ? c.total(visible) : null
-                  return (
-                    <td
-                      key={c.key}
-                      colSpan={cellSpan > 1 ? cellSpan : undefined}
-                      title={
-                        index === 0 && footerTitle
-                          ? footerTitle(visible)
-                          : (c.footerTitle?.(visible) ?? undefined)
-                      }
-                      style={leadsSelect ? { left: 0 } : pinStyle(c)}
-                      className={join(
-                        held && index === 0 && footerLabel && !footerTitle
-                          ? TFOOT_CELL_WRAP
-                          : TFOOT_CELL,
-                        // §10: a titled label flows out of its column and truncates.
-                        index === 0 && footerTitle && 'truncate',
-                        // A footnote in its own cell (the outside note) is one line too.
-                        !c.total && c.footerNote && 'truncate',
-                        heldClasses(c, 'bottom-0', 'z-10'),
-                        spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
-                        alignClass(c)
-                      )}
-                    >
-                      {index === 0 && footerLabel ? footerLabel(visible) : null}
-                      {!c.total && c.footerNote ? c.footerNote(visible) : null}
-                      {c.total &&
-                        (onOpenTotal ? (
-                          <button
-                            type="button"
-                            className={c.totalTitle ? TOTAL_LINK : TOTAL_BUTTON}
-                            title={c.totalTitle?.(visible)}
-                            disabled={totalsDisabled}
-                            onClick={() => onOpenTotal(c.key, visible)}
-                          >
                             <Money value={total} />
-                          </button>
-                        ) : (
-                          <Money value={total} />
-                        ))}
-                    </td>
-                  )
-                })}
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+                          ))}
+                      </td>
+                    )
+                  })}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
     </div>
   )
 }

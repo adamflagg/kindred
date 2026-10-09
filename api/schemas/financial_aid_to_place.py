@@ -40,11 +40,17 @@ class TickedOut(BaseModel):
 
 
 class LeftToTickOut(BaseModel):
-    """A round the placement did not tick, and why: the registrar ticks it by hand if that is right."""
+    """A round the placement did not tick, and why: the registrar ticks it by hand if that is right. `why` is the
+    whole sentence; `kind`, `holds` and `needs` are its parts, so the screen lays it out in short lines (final UX,
+    design-language section 16): "short" is CampMinder holding `holds` while the round needs `needs`; "unchecked" is a
+    person having unchecked Posted on it (no figures)."""
 
     request_id: str
     round: int
     why: str
+    kind: Literal["short", "unchecked"] = "short"
+    holds: float | None = None
+    needs: float | None = None
 
 
 class NotTickedOut(BaseModel):
@@ -89,6 +95,9 @@ class CandidateOut(BaseModel):
     camper: str
     session_cm_id: int
     session: str
+    session_type: str = (
+        ""  # camp_sessions.session_type of the session (main, quest, family, ...): the client's short name
+    )
     not_yet_in_campminder: float
     cancelled: bool
 

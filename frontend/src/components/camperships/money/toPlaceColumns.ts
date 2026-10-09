@@ -1,23 +1,33 @@
 /**
- * To place's table (§8.1; §4.3; money-v2.html): its columns and grouping, as module-level constants
- * where they can be (AidTable's stability rule). Cells are cut off at the column edge; the opened row
- * under the highlighted line shows everything in full (D31; owner ruling A, 10-06).
+ * To place's table (§8.1; §4.3; final UX ★14): its six short columns and its grouping, as module-level
+ * constants where they can be (AidTable's stability rule). Cells are cut off at the column edge and
+ * every one carries its full words as a native title (§13); the opened row under the highlighted line
+ * shows everything in full (D31; owner ruling A, 10-06).
  */
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
-import type { AidColumn, AidCsvExtra, AidGrouping } from '../kit/AidTable'
+import type { AidCsvExtra, AidGrouping } from '../kit/AidTable'
 import { moneyCsv } from '../kit/money'
-import {
-  campAidGroupWords,
-  candidateDetail,
-  candidateLabel,
-  CONFIRM_DOES,
-  confirmSummary,
-  suggestionWords,
-} from './toPlaceModel'
+import { campAidGroupWords, candidateDetail, candidateLabel } from './toPlaceModel'
 
-/** Pinned widths (ToPlaceTable's two cell-drawn columns); with the text columns, the table fits 1440. */
-export const TO_PLACE_FAMILY_WIDTH = 170
-export const TO_PLACE_LINE_WIDTH = 270
+/** Pinned widths, from the approved mock; with the select column and the flexible Suggestion, 1440 holds them. */
+export const TO_PLACE_COLUMN_WIDTHS = {
+  family: 196,
+  line: 236,
+  candidates: 214,
+  suggestion: 250,
+  confirm: 158,
+  amount: 90,
+} as const
+
+/** The screen's headers in order, also the CSV's (the ids and the group follow as extras). */
+export const CSV_COLUMN_HEADERS = [
+  'Family',
+  'The line in CampMinder',
+  'Could belong to',
+  'Suggestion',
+  'What Confirm does',
+  'Amount',
+] as const
 
 export const lineKey = (line: ApiAidToPlaceLine) => String(line.transaction_cm_id)
 
@@ -29,34 +39,12 @@ export const lineSearch = (line: ApiAidToPlaceLine) => [
   ...line.candidates.map((c) => c.camper),
 ]
 
-/** The candidates in one cell: "Emma Johnson · Session 2 ($2,200 not yet in CampMinder), …". */
+/** The candidates in one string, in full words, for sorting, searching and the CSV. */
 export function candidatesCell(line: ApiAidToPlaceLine): string {
   return line.candidates.length === 0
     ? 'No application this season'
     : line.candidates.map((c) => `${candidateLabel(c)} (${candidateDetail(c)})`).join(', ')
 }
-
-/** Columns with no cell renderer: the table writes each one's value as text (and in the CSV). */
-export const TO_PLACE_TEXT_COLUMNS: ReadonlyArray<AidColumn<ApiAidToPlaceLine>> = [
-  {
-    key: 'candidates',
-    header: 'Requests it could belong to · not yet in CampMinder',
-    width: 260,
-    value: candidatesCell,
-  },
-  {
-    key: 'suggestion',
-    header: 'Suggestion and its evidence',
-    flex: true,
-    value: suggestionWords,
-  },
-  {
-    key: 'confirm',
-    header: 'What Confirm does',
-    width: 210,
-    value: confirmSummary,
-  },
-]
 
 /**
  * The ids the screen draws nowhere, and the part still not placed (ruling B dropped its column), so an
@@ -95,14 +83,11 @@ export function reasonGrouping(
 }
 
 /**
- * "2 households · 3 lines · Camp aid: Confirm marks the round Posted.": what a group holds on screen
- * (counts, never money) and what Confirm does there (M5). Distinct `household_cm_id`s, so
- * "households", not D26 families: a split family counts twice (plan review m11). A group's lines
- * share one reason.
+ * "8 lines · 8 households": what a group holds on screen (counts, never money), muted beside its
+ * heading. Distinct `household_cm_id`s, so "households", not D26 families: a split family counts
+ * twice (plan review m11). The callout (what Confirm does) is its own line now (§16).
  */
 export function groupWords(lines: readonly ApiAidToPlaceLine[]): string {
   const households = new Set(lines.map((l) => l.household_cm_id)).size
-  const counts = `${String(households)} ${households === 1 ? 'household' : 'households'} · ${String(lines.length)} ${lines.length === 1 ? 'line' : 'lines'}`
-  const [first] = lines
-  return first === undefined ? counts : `${counts} · ${CONFIRM_DOES[first.reason]}`
+  return `${String(lines.length)} ${lines.length === 1 ? 'line' : 'lines'} · ${String(households)} ${households === 1 ? 'household' : 'households'}`
 }

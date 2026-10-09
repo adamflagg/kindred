@@ -3,12 +3,13 @@ import { useRef, useState } from 'react'
 import { useFreshAidGrants } from '../../../hooks/camperships/useAidGrants'
 import { useAidPlaceGrants } from '../../../hooks/camperships/useAidGrantWrites'
 import type { ApiAidNeedsCamper } from '../../../types/api-types'
-import { EditorBox, EditorColumns, FormActions } from '../household/ReasonForm'
-import { HH_AMBER_NOTE, HH_EDITOR_LABEL } from '../household/householdStyles'
-import { CS_PMETA, CS_SELECT } from '../kit/csType'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_PANEL_HEAD, CS_PMETA } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import type { AidPickerOption } from '../kit/pickerWords'
 import { refusalWords } from '../money/refusal'
 import {
-  evidenceWords,
+  evidenceLines,
   placedGrantWords,
   placementFor,
   stillNeedsCamper,
@@ -16,9 +17,10 @@ import {
 } from './placeModel'
 
 /**
- * Place a household-level grant line on a camper (spec §8.2; D16, D126; casework): the household's
- * candidates, the suggestion pre-picked. A grant placement overwrites rather than refuses, so it reads
- * the line again just before sending (P-9) and sends nothing if someone placed it meanwhile.
+ * Place a household-level grant line on a camper (spec §8.2; D16, D126; casework; final UX §24): the
+ * household's candidates in the white picker, the suggestion pre-picked, what it does beside it, the
+ * buttons on one row. A grant placement overwrites rather than refuses, so it reads the line again just
+ * before sending (P-9) and sends nothing if someone placed it meanwhile.
  */
 export function PlaceCamperForm({
   need,
@@ -74,54 +76,70 @@ export function PlaceCamperForm({
     }
   }
 
+  const options: Array<AidPickerOption<string>> = [
+    { value: '', label: 'Pick the camper' },
+    ...need.candidates.map((c) => ({
+      value: String(c.person_cm_id),
+      label: need.suggestion?.person_cm_id === c.person_cm_id ? `${c.name} (suggested)` : c.name,
+    })),
+  ]
+
   return (
     <div data-aid-editor="" data-testid="place-camper-form">
-      <EditorBox head="Place on a camper" aside={SUGGESTS_CONFIRMS}>
-        <form
-          onSubmit={(event) => {
+      <form
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !inFlight.current) {
             event.preventDefault()
-            void submit()
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && !inFlight.current) {
-              event.preventDefault()
-              onCancel()
-            }
-          }}
-        >
-          <EditorColumns
-            side={
-              <p>
-                It prices the camper&apos;s unposted rounds with the grant; a posted amount stands.
-                One operation in History.
+            onCancel()
+          }
+        }}
+      >
+        <EditorForm
+          title="Put it on another camper"
+          side={
+            <div className="space-y-1">
+              <p className={CS_PANEL_HEAD}>What it does</p>
+              <p className={CS_PMETA}>
+                It prices the camper’s unposted rounds with the grant; a posted amount stands.
               </p>
-            }
-          >
-            <label className={HH_EDITOR_LABEL}>
-              Camper
-              <select
-                aria-label="Camper"
-                className={CS_SELECT}
+              {/* The facts behind the suggestion (the household page has no panel that says them); none with no suggestion. */}
+              {evidenceLines(need).map((fact) => (
+                <p key={fact} className={CS_PMETA}>
+                  {fact}
+                </p>
+              ))}
+            </div>
+          }
+          actions={
+            <EditorActions reason={`${SUGGESTS_CONFIRMS} One logged operation in History.`}>
+              <button type="submit" className={CS_BTN} disabled={busy}>
+                {busy ? 'Placing…' : 'Put It There'}
+              </button>
+              <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
+                Back
+              </button>
+              {problem !== null && <span className={CS_AMBER_NOTE}>{problem}</span>}
+            </EditorActions>
+          }
+        >
+          <EditorGrid columns={2}>
+            <EditorField label="Camper">
+              <AidPicker
+                label="Camper"
+                size="field"
                 value={person}
-                onChange={(event) => setPerson(event.target.value)}
-              >
-                <option value="">— pick —</option>
-                {need.candidates.map((c) => (
-                  <option key={c.person_cm_id} value={String(c.person_cm_id)}>
-                    {need.suggestion?.person_cm_id === c.person_cm_id
-                      ? `${c.name} (suggested)`
-                      : c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className={CS_PMETA}>{evidenceWords(need)}</p>
-          </EditorColumns>
-          <FormActions submitLabel={busy ? 'Placing…' : 'Place It'} busy={busy} onCancel={onCancel}>
-            {problem !== null && <span className={HH_AMBER_NOTE}>{problem}</span>}
-          </FormActions>
-        </form>
-      </EditorBox>
+                options={options}
+                onChange={setPerson}
+                className="w-full max-w-72 [&>button]:w-full"
+              />
+            </EditorField>
+          </EditorGrid>
+        </EditorForm>
+      </form>
     </div>
   )
 }

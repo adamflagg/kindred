@@ -7,10 +7,19 @@ import { queryKeys } from '../../../utils/queryKeys'
 import { Modal } from '../../ui/Modal'
 import { labelWords } from '../household/householdModel'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../kit/csType'
+import { EditorActions } from '../kit/EditorLayout'
+import { formatMoney } from '../kit/money'
 import { familyLabel } from '../kit/familyLabel'
 import { refusalWords } from '../money/refusal'
+import { EffectList } from '../money/ToPlaceParts'
 import { grantLineWords, MAX_GRANT_PLACEMENTS, planWords, type GrantPlan } from './needsModel'
-import { placedGrantWords, placementFor, stillNeedsCamper, suggestionCell } from './placeModel'
+import {
+  placedGrantWords,
+  placementFor,
+  stillNeedsCamper,
+  suggestionCell,
+  suggestionShort,
+} from './placeModel'
 
 /**
  * Confirm single, exact suggestions together (S3-6; §4.10): every line listed (those the search
@@ -84,33 +93,49 @@ export function BulkGrantDialog({
       onClose={close}
       closeDisabled={busy}
       title={`Confirm ${String(n)} ${n === 1 ? 'suggestion' : 'suggestions'}`}
-      size="md"
+      size="xl"
       footer={
-        <div className="flex justify-end gap-2">
-          <button type="button" className={CS_BTN2} disabled={busy} onClick={close}>
-            Back
-          </button>
-          <button
-            type="button"
-            className={CS_BTN}
-            disabled={busy || tooMany || n === 0}
-            onClick={() => void confirm()}
-          >
-            {busy ? 'Placing…' : `Confirm ${String(n)}`}
-          </button>
+        // §24: Title Case buttons on one row, the logged-with-who line beside them.
+        <div className="pt-1">
+          <EditorActions reason="All or nothing · one operation in Season › History">
+            <button
+              type="button"
+              className={CS_BTN}
+              disabled={busy || tooMany || n === 0}
+              onClick={() => void confirm()}
+            >
+              {busy ? 'Placing…' : `Confirm ${String(n)}`}
+            </button>
+            <button type="button" className={CS_BTN2} disabled={busy} onClick={close}>
+              Back
+            </button>
+          </EditorActions>
         </div>
       }
     >
       <div className="space-y-2 text-sm">
-        <p>{`Each line goes on its household's one applicant camper: ${planWords(plan)}.`}</p>
-        <p className={CS_SMALL}>
-          An unposted round re-prices with the grant; a posted round stands. All or nothing, one
-          operation in History.
-        </p>
-        <ul className={`${CS_SMALL} max-h-48 overflow-y-auto`}>
+        <EffectList
+          lines={[
+            {
+              sym: 'info',
+              text: `Each line goes on its household's one applicant camper · ${planWords(plan)}`,
+            },
+            {
+              sym: 'info',
+              text: 'An unposted round re-prices with the grant; a posted round stands',
+            },
+          ]}
+        />
+        <ul
+          data-testid="bulk-grant-names"
+          className={`${CS_SMALL} max-h-48 columns-2 gap-x-6 overflow-y-auto`}
+        >
           {plan.lines.map(({ need, hidden }) => (
-            <li key={need.grant.transaction_cm_id}>
-              {`${labelWords(familyLabel(need.grant, need.grant.family_name))}: ${grantLineWords(need)} → ${suggestionCell(need, sessions)}`}
+            <li
+              key={need.grant.transaction_cm_id}
+              title={`${labelWords(familyLabel(need.grant, need.grant.family_name))}: ${grantLineWords(need)} → ${suggestionCell(need, sessions)}`}
+            >
+              {`${labelWords(familyLabel(need.grant, need.grant.family_name))}: ${formatMoney(need.grant.amount)} · ${need.grant.grantor_key === '' ? need.grant.description || 'no grantor yet' : need.grant.grantor_name} → ${suggestionShort(need, sessions)}`}
               {hidden ? ' (hidden by the search)' : ''}
             </li>
           ))}

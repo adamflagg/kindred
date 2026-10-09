@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { useNavigate } from 'react-router'
 
 import { Permission } from '../../../constants/permissions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
@@ -7,10 +7,10 @@ import { useAidSessionNames } from '../../../hooks/camperships/useAidSessionName
 import { useAidToPlace } from '../../../hooks/camperships/useAidToPlace'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidToPlace, ApiAidToPlaceLine } from '../../../types/api-types'
-import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../QueryGuard'
 import type { AidView } from '../kit/asOf'
-import { CS_LINK } from '../kit/csType'
+import { CS_TOOLBAR_LEAD, CS_TOOLBAR_STATUS } from '../kit/csType'
+import { AidFilterChip } from '../kit/Toolbar'
 import { hiddenTicks } from '../requests/ticks'
 import { AidDefinitionNotes } from '../shell/AidDefinitionNotes'
 import { BulkPlaceBar } from './BulkPlaceBar'
@@ -27,23 +27,32 @@ import {
   allLines,
   grantCsvRows,
   grantLinesFor,
+  leadWords,
+  lineFamily,
   openLineWords,
   toPlaceCsvName,
 } from './toPlaceModel'
-import { DONE_NOTE } from './toPlaceStyles'
 import { useInFlightLines, type InFlightLines } from './useInFlightLines'
+import { useToPlaceNotes } from './useToPlaceNotes'
 
 /** The last write's outcome, for the season it was written in (#2990 F). */
 interface WriteNote {
   readonly tone: 'done' | 'refused'
   readonly words: string
+  /** The full words behind a short result, for the status's title. */
+  readonly title?: string | undefined
   readonly year: number
 }
 
+/** What the family chip says in its title, the old sentence (§6; answers 1a). */
+const oneFamilyTitle = (family: string) =>
+  `${family}: the household and every household that shares its requests. ✕ shows every family.`
+
 /**
- * One read of To place and the work on it: the result line, the open count, the bulk bar and its
- * dialog, the table with its opened rows, and the lines left or reclassified. Keyed by season and
- * scope, so the checks belong to the read they were made on.
+ * One read of To place and the work on it: the toolbar's one row (the open count, the switch, the
+ * status of the last action, the search, the bulk buttons and Download CSV), the table with its
+ * opened rows, the outside grants, and the lines left or reclassified. Keyed by season and scope, so
+ * the checks belong to the read they were made on.
  */
 function ToPlaceBody({
   data,
@@ -61,9 +70,11 @@ function ToPlaceBody({
   access: LineAccess
   inFlight: InFlightLines
   shown: WriteNote | null
-  onDone: (words: string) => void
+  onDone: (words: string, title?: string) => void
   onRefused: (words: string) => void
 }) {
+  const navigate = useNavigate()
+  const marks = useToPlaceNotes()
   const open = useMemo(() => data.groups.flatMap((g) => g.lines), [data.groups])
   // The outside-grant lines (the fourth group) count in the open line; a failed or loading grants
   // read counts none, and the camp-aid groups stand on their own.
@@ -75,6 +86,8 @@ function ToPlaceBody({
   const sessions = useAidSessionNames(data.year)
   const grantCsv = useMemo(() => grantCsvRows(grantLines, sessions), [grantLines, sessions])
   const every = useMemo(() => allLines(data), [data])
+  // The one search box, held here so the grant lines answer it too (the mock's `matches`).
+  const [query, setQuery] = useState('')
   // Bulk (§4.10; P-6): checks persist across a search (owner ruling 2026-10-02); they are line ids,
   // and a line the read no longer holds open (placed elsewhere) drops out of the plan.
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
@@ -107,11 +120,11 @@ function ToPlaceBody({
     [atClick, open, hidden, inFlight]
   )
   const bulkDone = useCallback(
-    (words: string, placed: readonly number[]) => {
+    (words: string, placed: readonly number[], title?: string) => {
       const gone = new Set(placed.map(String))
       setSelected((current) => new Set([...current].filter((k) => !gone.has(k))))
       setAtClick(null)
-      onDone(words)
+      onDone(words, title)
     },
     [onDone]
   )
@@ -125,37 +138,100 @@ function ToPlaceBody({
         scope={householdCmId}
         access={access}
         inFlight={inFlight}
+        marks={marks}
         onDone={onDone}
         onRefused={onRefused}
       />
     ),
-    [data.year, view, householdCmId, access, inFlight, onDone, onRefused]
+    [data.year, view, householdCmId, access, inFlight, marks, onDone, onRefused]
   )
+
+  const grantAmounts = grantLines.map((n) => n.grant)
+  const lead = leadWords(data.open_count, data.open_total, grantAmounts)
+  // The one status slot (§5–6): the checked count while anything is checked, else the last write's
+  // result or refusal. It truncates; the full words are its title.
+  const status =
+    checked.length > 0
+      ? {
+          text: `${String(checked.length)} checked${hidden.size > 0 ? ` · ${String(hidden.size)} hidden` : ''}`,
+          title: `${String(checked.length)} checked${hidden.size > 0 ? `, ${String(hidden.size)} of them hidden by the search` : ''}. Checks stay when you search; the dialog lists the hidden ones.`,
+          refused: false,
+        }
+      : shown !== null
+        ? {
+            text: shown.tone === 'done' ? `✓ ${shown.words}` : shown.words,
+            title: shown.tone === 'done' ? `✓ ${shown.title ?? shown.words}` : shown.words,
+            refused: shown.tone === 'refused',
+          }
+        : null
+  const scoped = every.find((l) => l.household_cm_id === householdCmId)
+  const family = scoped === undefined ? 'This family' : lineFamily(scoped).text
 
   return (
     <div className="space-y-3">
-      {shown?.tone === 'done' && <p className={DONE_NOTE}>✓ {shown.words}</p>}
-      {shown?.tone === 'refused' && <p className={AMBER_NOTE}>{shown.words}</p>}
-      <p className="text-sm font-medium">
-        {openLineWords(
-          data.open_count,
-          data.open_total,
-          grantLines.map((n) => n.grant)
-        )}
-      </p>
-      {access.casework && (
-        <BulkPlaceBar
-          count={checked.length}
-          hidden={hidden.size}
-          exact={exact.length}
-          onConfirmExact={() => {
-            setSelected((current) => new Set([...current, ...firstExact]))
-            setAtClick(new Set(firstExact))
-          }}
-          onConfirmSelected={() => setAtClick(new Set(checked))}
-          onClear={() => setSelected(new Set())}
-        />
-      )}
+      <ToPlaceTable
+        data={data}
+        view={view}
+        marks={marks}
+        csvFilename={toPlaceCsvName(data.year, householdCmId)}
+        csvAppend={grantCsv}
+        renderRow={renderRow}
+        selected={access.casework ? selected : undefined}
+        onSelectedChange={access.casework ? setSelected : undefined}
+        onMatchingChange={access.casework ? onMatchingChange : undefined}
+        query={query}
+        onQueryChange={setQuery}
+        toolbarLead={
+          <span
+            className={CS_TOOLBAR_LEAD}
+            title={openLineWords(data.open_count, data.open_total, grantAmounts)}
+          >
+            {lead.head}
+            <span className="text-muted-foreground font-normal"> · {lead.rest}</span>
+          </span>
+        }
+        toolbarAfterGrouping={
+          householdCmId === null ? undefined : (
+            <AidFilterChip
+              title={oneFamilyTitle(family)}
+              onClear={() => void navigate(toPlaceHref(view, null))}
+            >
+              One family
+            </AidFilterChip>
+          )
+        }
+        toolbarStatus={
+          status === null ? undefined : (
+            <span
+              className={
+                status.refused
+                  ? CS_TOOLBAR_STATUS.replace(
+                      'text-muted-foreground',
+                      'text-amber-700 dark:text-amber-400'
+                    )
+                  : CS_TOOLBAR_STATUS
+              }
+              title={status.title}
+            >
+              {status.text}
+            </span>
+          )
+        }
+        toolbarActions={
+          access.casework ? (
+            <BulkPlaceBar
+              count={checked.length}
+              exact={exact.length}
+              onConfirmExact={() => {
+                setSelected((current) => new Set([...current, ...firstExact]))
+                setAtClick(new Set(firstExact))
+              }}
+              onConfirmChecked={() => setAtClick(new Set(checked))}
+              onClear={() => setSelected(new Set())}
+            />
+          ) : undefined
+        }
+      />
       {access.casework && (
         <BulkPlaceDialog
           plan={plan}
@@ -166,23 +242,15 @@ function ToPlaceBody({
           onRefused={onRefused}
         />
       )}
-      <ToPlaceTable
-        data={data}
-        view={view}
-        csvFilename={toPlaceCsvName(data.year, householdCmId)}
-        csvAppend={grantCsv}
-        renderRow={renderRow}
-        selected={access.casework ? selected : undefined}
-        onSelectedChange={access.casework ? setSelected : undefined}
-        onMatchingChange={access.casework ? onMatchingChange : undefined}
-      />
       <GrantLinesGroup
         view={view}
         householdCmId={householdCmId}
         canWork={access.casework}
+        query={query}
         onDone={onDone}
       />
       <LeftLines
+        view={view}
         lines={data.left ?? []}
         total={data.left_total ?? 0}
         year={data.year}
@@ -190,17 +258,22 @@ function ToPlaceBody({
         onDone={onDone}
         onRefused={onRefused}
       />
-      <ReclassifiedLines lines={data.reclassified ?? []} total={data.reclassified_total ?? 0} />
+      <ReclassifiedLines
+        view={view}
+        lines={data.reclassified ?? []}
+        total={data.reclassified_total ?? 0}
+      />
     </div>
   )
 }
 
 /**
- * Money › To place (spec §8.1; D12, D16, D26, D58, D62, D104, D151, D152; money-v2.html): camp-aid
- * lines no single request takes, grouped by reason, each with the dashboard's suggestion, its
- * evidence and what Confirm will mark posted; the lines left at family level and those reclassified
+ * Money › To place (spec §8.1; D12, D16, D26, D58, D62, D104, D151, D152; final UX, money-to-place.html):
+ * camp-aid lines no single request takes, grouped by reason, each with the dashboard's suggestion, its
+ * evidence and what Confirm will mark Posted; the lines left at family level and those reclassified
  * apart. Live only. Casework confirms, splits, places elsewhere, confirms in bulk and leaves; `rules`
- * reclassifies. `householdCmId` scopes it to one family (`?household=`; P-8, ruling C).
+ * reclassifies. `householdCmId` scopes it to one family (`?household=`; P-8, ruling C), shown as a
+ * removable chip in the toolbar.
  */
 export function ToPlaceTab({
   view,
@@ -222,7 +295,7 @@ export function ToPlaceTab({
   // table would otherwise unmount the only place it was shown (review I1).
   const [note, setNote] = useState<WriteNote | null>(null)
   const onDone = useCallback(
-    (words: string) => setNote({ tone: 'done', words, year: view.year }),
+    (words: string, title?: string) => setNote({ tone: 'done', words, title, year: view.year }),
     [view.year]
   )
   const onRefused = useCallback(
@@ -235,14 +308,6 @@ export function ToPlaceTab({
 
   return (
     <div className="space-y-3">
-      {householdCmId !== null && (
-        <p className="text-sm">
-          One family&apos;s lines: the household and every household that shares its requests.{' '}
-          <Link className={CS_LINK} to={toPlaceHref(view, null)}>
-            All Families ›
-          </Link>
-        </p>
-      )}
       <QueryGuard
         isLoading={toPlace.isLoading}
         // Owner ruling Group 5: a failed background refetch keeps what loaded.
@@ -270,8 +335,8 @@ export function ToPlaceTab({
           )
         }
       </QueryGuard>
-      {/* Ruling I: the server's notes, shown so the owner reads them in place (no text changed here). */}
-      <AidDefinitionNotes surface="money-to-place" />
+      {/* Ruling I: the server's notes, shown so the owner reads them in place (the mock bolds each term). */}
+      <AidDefinitionNotes surface="money-to-place" boldTerm />
     </div>
   )
 }

@@ -84,4 +84,14 @@ describe('EditorActions', () => {
     expect(row).toHaveClass('flex', 'flex-nowrap')
     expect(screen.getByText('A name is needed')).toHaveAttribute('title', 'A name is needed')
   })
+  it('is not held to the toolbar status’s 340px: an editor row has the room', () => {
+    render(
+      <EditorActions reason="Each part lands on its request in full, or nothing is written · one logged operation">
+        <button type="button">Place It</button>
+      </EditorActions>
+    )
+    const reason = screen.getByText(/^Each part lands on its request in full/)
+    expect(reason).toHaveClass('max-w-none')
+    expect(reason).not.toHaveClass('max-w-[340px]')
+  })
 })

@@ -20,6 +20,17 @@ export function grantLineWords(n: ApiAidNeedsCamper): string {
   return parts.join(' · ')
 }
 
+/** What the table's line cell says, leading with what differs line to line: "Apr 3 · to the household · Grantor B". */
+export function grantLineCell(n: ApiAidNeedsCamper): string {
+  const g = n.grant
+  const who = g.grantor_key === '' ? g.description || 'no grantor yet' : g.grantor_name
+  return [
+    ...(g.recorded_on === '' ? [] : [formatShortDate(g.recorded_on)]),
+    'to the household',
+    who,
+  ].join(' · ')
+}
+
 /**
  * A single, exact suggestion (P-17; grants-v2.html Q3: "one applicant camper the grantor funds"): the
  * dashboard suggests the household's one candidate camper. Only these go in a bulk confirm; any other

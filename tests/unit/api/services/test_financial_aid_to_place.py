@@ -272,3 +272,52 @@ def test_a_proportional_split_with_a_zero_cent_part_offers_no_suggestion() -> No
         _cand("b", 1000012, due="800", weight="1"),
     ]
     assert suggest(_line("0.05"), found) is None
+
+
+# --- the evidence, one short fact per line (final UX, design-language section 16; answers section 3) ---------------
+
+
+@pytest.mark.asyncio
+async def test_the_evidence_reads_as_short_facts_the_screen_prefixes_with_a_check() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500", person=0, posted=MAR8)
+    (item,) = to_place(await _season(store), {})
+    assert item.suggestion is not None
+    assert [e.text for e in item.suggestion.evidence] == ["exact amount ($1,500)", "the family's only request"]
+
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, EMMA_QUEST, session=1000106)
+    seed_line(store, 9001, "100", person=1000011, posted=MAR8)
+    (item,) = to_place(await _season(store), {})
+    assert item.suggestion is not None
+    assert [e.text for e in item.suggestion.evidence] == ["exact amount ($100)", "posted to this camper"]
+
+
+@pytest.mark.asyncio
+async def test_the_day_evidence_and_the_together_and_proportional_evidence_are_short_too() -> None:
+    store = FakeDecisionsStore()
+    _siblings(store)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", person=0, posted=MAR9)
+    (item,) = to_place(await _season(store), {})
+    assert item.suggestion is not None
+    assert [e.text for e in item.suggestion.evidence] == ["exact amount ($1,500)", "posted the day Posted was checked"]
+
+    store = FakeDecisionsStore()
+    _siblings(store)
+    seed_line(store, 9001, "3000", person=0, posted=MAR8)
+    (item,) = to_place(await _season(store), {})
+    assert item.suggestion is not None
+    assert [e.text for e in item.suggestion.evidence] == ["the two requests together ($1,500 + $1,500)"]
+
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, EMMA_QUEST, session=1000106)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9002, "1400", person=0, posted=MAR8)
+    seed_line(store, 9001, "1600", person=0, posted=MAR8)
+    items = {i.line.transaction_cm_id: i for i in to_place(await _season(store), {})}
+    assert items[9002].suggestion is not None
+    assert [e.text for e in items[9002].suggestion.evidence] == ["split by the decided amounts"]

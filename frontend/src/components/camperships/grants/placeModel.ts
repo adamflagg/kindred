@@ -3,6 +3,9 @@
  * words, the placement the route takes, and what it did. Pure; shared by the household page's
  * "Place on a Camper…" (part 3a) and To place's outside-grant group (part 3b).
  */
+import type { EffectLine } from '../money/toPlaceModel'
+import { aidSessionName } from '../kit/sessionShort'
+import { formatMoney } from '../kit/money'
 import type {
   ApiAidGrants,
   ApiAidHouseholdPage,
@@ -38,6 +41,71 @@ export function evidenceWords(need: ApiAidNeedsCamper): string {
   }
   const words = METHOD_WORDS[s.method] ?? s.method.replaceAll('_', ' ')
   return `${s.camper_name}: ${words}.`
+}
+
+/**
+ * The suggestion's evidence, one fact per line (§16): a ✓ for each, none when the dashboard has no
+ * suggestion (the line above says so). Its camper is the bold line above, so the facts do not name them again.
+ */
+export function evidenceLines(need: ApiAidNeedsCamper): string[] {
+  const s = need.suggestion
+  if (s === null) return []
+  if (s.basis === 'commitment') {
+    const grantor = need.grant.grantor_name === '' ? 'the grantor' : need.grant.grantor_name
+    return [
+      `✓ a commitment from ${grantor} names ${s.camper_name}${s.amount_matches ? ', for this amount' : ''}`,
+    ]
+  }
+  return [`✓ ${METHOD_WORDS[s.method] ?? s.method.replaceAll('_', ' ')}`]
+}
+
+/**
+ * To place's suggestion cell, short (§14; mock `grantTable`): "Liam Garcia · Session 2", with the
+ * session in the one-line form (FC2 for a Family Camp, the short form for the rest). The session's
+ * type is not on this read, so it is told apart by its name. The full name goes in the title.
+ */
+export function suggestionShort(
+  need: ApiAidNeedsCamper,
+  sessions: ReadonlyMap<number, string> | undefined
+): string {
+  const s = need.suggestion
+  if (s === null) return 'No suggestion: pick the camper'
+  const name = s.session_cm_id > 0 ? sessions?.get(s.session_cm_id) : undefined
+  const short = name === undefined || name === '' ? '' : aidSessionName(name, undefined) || name
+  return short === '' ? s.camper_name : `${s.camper_name} · ${short}`
+}
+
+/**
+ * What Confirm does on a grant line, one effect per line (§16): it lowers the suggested camper's share in
+ * the round the grant counts in, and a Posted round stands. With no suggestion there is nothing to
+ * confirm yet: pick the camper.
+ */
+export function grantEffects(
+  need: ApiAidNeedsCamper,
+  sessions: ReadonlyMap<number, string> | undefined
+): EffectLine[] {
+  if (need.suggestion === null) {
+    const names = need.candidates.map((c) => c.name)
+    return [
+      {
+        sym: 'hand',
+        lead: 'Nothing to confirm yet',
+        text: ': pick the camper',
+        ...(names.length === 0
+          ? {}
+          : {
+              then: `→ Another Camper… and choose ${names.length === 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} or ${names.at(-1) ?? ''}`}`,
+            }),
+      },
+    ]
+  }
+  return [
+    {
+      sym: 'info',
+      text: `Lowers ${suggestionShort(need, sessions)}'s share by ${formatMoney(need.grant.amount)} in the round it counts in`,
+    },
+    { sym: 'hand', text: 'A Posted round stands' },
+  ]
 }
 
 /**

@@ -758,3 +758,24 @@ async def test_reclassifying_a_left_line_ends_its_leave_in_the_same_operation() 
         ("aid_flag_dispositions", "delete"),
     ]
     assert store.left == {}
+
+
+# --- the parts of "left unchecked" (final UX, design-language section 16: the client lays the sentence out) -----------
+
+
+@pytest.mark.asyncio
+async def test_a_short_round_names_what_campminder_holds_and_what_it_needs_as_parts() -> None:
+    store = one_line("1000")
+    out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1000")), ACTOR)
+    (left,) = out.left_to_tick
+    assert (left.kind, left.holds, left.needs) == ("short", 1000.0, 1500.0)
+
+
+@pytest.mark.asyncio
+async def test_a_round_a_person_unchecked_says_so_and_has_no_amounts() -> None:
+    store = one_line()
+    _posted(store, EMMA, 1, "1500")
+    store.events.append(DecisionEvent(id="ev9999999999999", request_id=EMMA, round=1, kind="unpost", created=MAY1))
+    out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+    (left,) = out.left_to_tick
+    assert (left.kind, left.holds, left.needs) == ("unchecked", None, None)

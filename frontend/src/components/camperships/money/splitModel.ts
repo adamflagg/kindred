@@ -16,7 +16,7 @@ export type SplitRead =
   | {
       readonly ok: true
       readonly body: ApiAidPlaceLineIn
-      /** "Parts add to $3,620 of $3,620 ✓" (money-v2.html's split editor). */
+      /** "Parts add to $3,620 of $3,620", the editor draws a ✓ beside it (mock `editor`). */
       readonly words: string
     }
   | { readonly ok: false; readonly problem: string }
@@ -61,9 +61,18 @@ export function readSplit(line: ApiAidToPlaceLine, inputs: SplitInputs): SplitRe
   if (parts.length > MAX_PARTS) {
     return { ok: false, problem: `At most ${String(MAX_PARTS)} parts` }
   }
-  const sum = `Parts add to ${formatMoney(cents / 100)} of ${formatMoney(line.amount)}`
-  if (cents !== toCents(line.amount)) return { ok: false, problem: `${sum} · must equal the line` }
-  return { ok: true, body: { parts, note: '' }, words: `${sum} ✓` }
+  const total = formatMoney(cents / 100)
+  if (cents !== toCents(line.amount)) {
+    return {
+      ok: false,
+      problem: `Parts add to ${total}: they must make ${formatMoney(line.amount)}`,
+    }
+  }
+  return {
+    ok: true,
+    body: { parts, note: '' },
+    words: `Parts add to ${total} of ${formatMoney(line.amount)}`,
+  }
 }
 
 /** Place on Another Request…: the whole line on one candidate. */

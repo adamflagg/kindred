@@ -164,11 +164,16 @@ describe("the household page's grant buttons (rulings:340)", () => {
     expect(within(table).getAllByRole('button', { name: 'Place on a Camper…' })).toHaveLength(1)
     await userEvent.click(place as HTMLElement)
     const form = screen.getByTestId('place-camper-form')
-    expect(within(form).getByRole('combobox', { name: 'Camper' })).toHaveValue('1000002')
+    // Final UX (design-language §3, §16, §24): the camper is the white picker, the suggestion pre-picked,
+    // and the evidence is one ✓ fact per line. The household page shares this editor with To place.
     expect(
-      within(form).getByText('Emma Johnson: the program the aid application asked for.')
+      within(form).getByRole('button', { name: 'Camper: Emma Johnson (suggested)' })
     ).toBeInTheDocument()
-    await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
+    expect(within(form).queryByRole('combobox')).toBeNull()
+    expect(
+      within(form).getByText('✓ the program the aid application asked for')
+    ).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(writes()[0]).toEqual({
       url: '/api/financial-aid/grants/2027/placements',
@@ -186,7 +191,7 @@ describe("the household page's grant buttons (rulings:340)", () => {
     const table = await openGrantsTab()
     await userEvent.click(await within(table).findByRole('button', { name: 'Place on a Camper…' }))
     const form = screen.getByTestId('place-camper-form')
-    await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
     expect(
       await within(form).findByText(/This line has its camper now: someone placed it/)
     ).toBeInTheDocument()

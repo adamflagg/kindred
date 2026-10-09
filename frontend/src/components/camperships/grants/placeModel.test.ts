@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest'
 
 import { GARCIA_HOUSEHOLD, GRANTS } from './grantsFixtures'
 import {
+  evidenceLines,
   evidenceWords,
+  grantEffects,
   placedGrantWords,
   placementFor,
   stillNeedsCamper,
   suggestionCell,
+  suggestionShort,
 } from './placeModel'
 
 const [GARCIA] = GRANTS.needs_camper
@@ -64,5 +67,52 @@ describe('placeModel', () => {
     expect(placedGrantWords({ year: 2027, placed: 1, unchanged: 0, operation_id: 'op1' })).toBe(
       '1 line placed on its camper. An unposted round re-prices with the grant; a posted amount stands.'
     )
+  })
+
+  it('draws the evidence one ✓ fact per line, none when there is no suggestion (§16)', () => {
+    if (GARCIA?.suggestion == null) throw new Error('fixture')
+    expect(evidenceLines(GARCIA)).toEqual(["✓ the household's one camper enrolled this season"])
+    expect(
+      evidenceLines({
+        ...GARCIA,
+        suggestion: { ...GARCIA.suggestion, basis: 'commitment', method: '', amount_matches: true },
+      })
+    ).toEqual(['✓ a commitment from Grantor B names Liam Garcia, for this amount'])
+    // With no suggestion the line above already says "No suggestion: pick the camper"; no fact repeats it.
+    expect(evidenceLines({ ...GARCIA, suggestion: null })).toEqual([])
+  })
+
+  it('words the suggestion cell short, the session in the one-line form (§14)', () => {
+    if (GARCIA?.suggestion == null) throw new Error('fixture')
+    const sessions = new Map([
+      [GARCIA.suggestion.session_cm_id, 'Family Camp 2: Fall Harvest Weekend'],
+    ])
+    expect(suggestionShort(GARCIA, sessions)).toBe('Liam Garcia · FC2')
+    expect(suggestionShort(GARCIA, new Map([[GARCIA.suggestion.session_cm_id, 'Session 2']]))).toBe(
+      'Liam Garcia · Session 2'
+    )
+    expect(suggestionShort({ ...GARCIA, suggestion: null }, sessions)).toBe(
+      'No suggestion: pick the camper'
+    )
+  })
+
+  it('says what Confirm does for a grant line, one effect per line', () => {
+    if (GARCIA?.suggestion == null) throw new Error('fixture')
+    const sessions = new Map([[GARCIA.suggestion.session_cm_id, 'Session 2']])
+    expect(grantEffects(GARCIA, sessions)).toEqual([
+      {
+        sym: 'info',
+        text: "Lowers Liam Garcia · Session 2's share by $1,500 in the round it counts in",
+      },
+      { sym: 'hand', text: 'A Posted round stands' },
+    ])
+    expect(grantEffects({ ...GARCIA, suggestion: null }, sessions)).toEqual([
+      {
+        sym: 'hand',
+        lead: 'Nothing to confirm yet',
+        text: ': pick the camper',
+        then: '→ Another Camper… and choose Liam Garcia',
+      },
+    ])
   })
 })

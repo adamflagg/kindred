@@ -102,9 +102,9 @@ if TYPE_CHECKING:
     from api.services.financial_aid_household_page import HouseholdLabeler
 
 GROUP_LABELS: Final[dict[Reason, str]] = {
-    "several": "Several requests could take this",
-    "no_request": "No request behind it",
-    "program_mismatch": "The description names a program this camper isn't in",
+    "several": "Several requests could take this line",
+    "no_request": "No request behind this line",
+    "program_mismatch": "The description names another program",
 }
 
 PENDING_RECLASS: Final = "its reclassification waits for the next ledger sync"
@@ -252,12 +252,22 @@ def _left_to_tick(
                 break
             if key in undone:
                 why = "You unchecked Posted on this round: mark it posted again by hand if that is right"
+                out.append(LeftToTickOut(request_id=request.request_id, round=view.round, why=why, kind="unchecked"))
             else:
                 why = (
                     f"CampMinder holds {dollars(held)} on this request; Round {view.round} needs "
                     f"{dollars(locked + view.decided)}: mark it posted by hand if that is right"
                 )
-            out.append(LeftToTickOut(request_id=request.request_id, round=view.round, why=why))
+                out.append(
+                    LeftToTickOut(
+                        request_id=request.request_id,
+                        round=view.round,
+                        why=why,
+                        kind="short",
+                        holds=money(held),
+                        needs=money(locked + view.decided),
+                    )
+                )
             break
     return out
 
@@ -484,6 +494,7 @@ class ToPlaceService:
             camper=persons.get(c.person_cm_id, "") if c.person_cm_id > 0 else "",
             session_cm_id=c.session_cm_id,
             session=session.name if session is not None else "",
+            session_type=session.session_type if session is not None else "",
             not_yet_in_campminder=money(c.not_yet_in_campminder),
             cancelled=c.cancelled,
         )

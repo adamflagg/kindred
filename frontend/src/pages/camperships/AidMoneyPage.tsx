@@ -1,8 +1,9 @@
 import { Landmark } from 'lucide-react'
 import { useMemo } from 'react'
-import { Navigate, useParams, useSearchParams } from 'react-router'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
+import { CS_LINK } from '../../components/camperships/kit/csType'
 import { formatLongDate } from '../../components/camperships/kit/dates'
 import { RegisterTab } from '../../components/camperships/grants/RegisterTab'
 import { householdParam } from '../../components/camperships/money/moneyTabs'
@@ -53,6 +54,21 @@ export default function AidMoneyPage() {
     return <Navigate to={aidHref(`${MONEY.path}/${resolved.tab.slug}`, view)} replace />
   }
   const slug = resolved.tab?.slug ?? 'ledger'
+  // The two views the ledger also raises, worked where the request is: sized links in the tab row's
+  // right slot, on To place only (the final mock; design-language §5, §19).
+  const alsoRaised =
+    slug === 'to-place' ? (
+      <span className="text-muted-foreground text-[12.5px]">
+        <span title="Also raised by the ledger, worked where the request is">Also raised:</span>{' '}
+        <Link className={CS_LINK} to={aidHref('/aid/requests', view, { view: 'not-reconciled' })}>
+          Requests › Not reconciled
+        </Link>{' '}
+        ·{' '}
+        <Link className={CS_LINK} to={aidHref('/aid/requests', view, { view: 'to-reverse' })}>
+          To reverse
+        </Link>
+      </span>
+    ) : undefined
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -73,6 +89,7 @@ export default function AidMoneyPage() {
         tabs={resolved.tabs}
         view={view}
         counts={{ 'to-place': placeCount ?? undefined }}
+        right={alsoRaised}
       />
       {slug === 'to-place' && <ToPlaceTab view={view} householdCmId={householdCmId} />}
       {slug === 'ledger' && <LedgerTab view={view} />}

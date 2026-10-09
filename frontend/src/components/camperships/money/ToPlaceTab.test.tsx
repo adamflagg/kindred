@@ -6,16 +6,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { ApiAidGrants, ApiAidToPlace } from '../../../types/api-types'
 import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
-import { CS_LABEL } from '../kit/csType'
 import { ToPlaceTab } from './ToPlaceTab'
 import { SOURCES } from './sourcesFixtures'
 import {
   CHEN_EXACT,
+  JOHNSON_SPLIT,
   RILEY_EXACT,
   SAM_RECLASSIFIED,
   TO_PLACE,
@@ -34,6 +34,9 @@ vi.mock('../../../lib/pocketbase', () => ({
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
 }))
+// The registry's notes for this surface: one note unless a test says so.
+const POSTED_NOTE = { key: 'posted', n: 1, text: 'Posted: the round’s Posted checkbox…' }
+let definitionNotes: Array<{ key: string; n: number; text: string }> = [POSTED_NOTE]
 let granted: string[] = []
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -41,6 +44,12 @@ vi.mock('../../../hooks/usePermissions', () => ({
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
+// The line cell leads with what differs line to line: the date, who, then the description (final UX ★14).
+const JOHNSON_LINE = 'May 14 · to the household · Camp aid · Summer'
+const GARCIA_LINE = 'Apr 3 · to Liam Garcia · Camp aid · Summer'
+const CHEN_LINE = 'May 20 · to the household · Camp aid · Quest'
+const SAM_LINE = 'Apr 18 · to Riley Sam · Camp aid · Summer'
+const SAMUEL_LINE = 'Jun 1 · to Samuel Johnson · Camp aid · Quest'
 const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 const PLACED = {
   year: 2027,
@@ -99,6 +108,7 @@ function echoPreview(read: ApiAidToPlace | null, txn: number): Response {
 
 beforeEach(() => {
   granted = REGISTRAR
+  definitionNotes = [POSTED_NOTE]
   reads = [TO_PLACE]
   lastRead = null
   previewAnswer = null
@@ -116,7 +126,7 @@ beforeEach(() => {
         return Promise.resolve(
           json({
             surface: 'money-to-place',
-            notes: [{ key: 'posted', n: 1, text: 'Posted: the round’s Posted checkbox…' }],
+            notes: definitionNotes,
           })
         )
       }
@@ -147,16 +157,30 @@ beforeEach(() => {
 })
 afterEach(() => fetchSpy.mockRestore())
 
+function Where() {
+  const here = useLocation()
+  return <span data-testid="where">{`${here.pathname}${here.search}`}</span>
+}
+
 function renderTab(householdCmId: number | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <ToPlaceTab view={VIEW} householdCmId={householdCmId} />
+        <Where />
       </MemoryRouter>
     </QueryClientProvider>
   )
 }
+
+/** The words of each "What Confirm does" line, symbol first removed: one effect per line (§16). */
+const effects = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll('[data-effect]')).map((li) =>
+    li.textContent.replace(/^[✓○⚠·]\s*/, '')
+  )
+/** The toolbar's one row (design-language §5). */
+const toolbar = () => document.querySelector('[data-aid-toolbar]') as HTMLElement
 
 const openLine = async (words: string) => {
   await userEvent.click(await screen.findByText(words))
@@ -166,34 +190,46 @@ const openLine = async (words: string) => {
 describe('Money › To place (§8.1)', () => {
   it("shows the server's open count and total, and the lines grouped by its reasons", async () => {
     renderTab()
-    expect(await screen.findByText('5 lines open · $6,920 camp aid')).toBeInTheDocument()
-    expect(screen.getByText('Several requests could take this')).toBeInTheDocument()
+    // The lead: the count bold, the figures muted, on the toolbar's one row (§5).
+    expect(await screen.findByText('5 lines open')).toBeInTheDocument()
+    expect(screen.getByText('· $6,920 camp aid')).toBeInTheDocument()
+    // Each reason is a bold heading with its count, and a callout on its own line (§16).
+    expect(screen.getByText('Several requests could take this line')).toBeInTheDocument()
+    expect(screen.getByText('3 lines · 3 households')).toBeInTheDocument()
+    const several = screen
+      .getByText('Several requests could take this line')
+      .closest('[data-aid-section]')
+    expect(within(several as HTMLElement).getByText('Confirm')).toBeInTheDocument()
     expect(
-      screen.getByText('3 households · 3 lines · Camp aid: Confirm marks the round Posted.')
+      within(several as HTMLElement).getByText('→ marks the round Posted ✓')
     ).toBeInTheDocument()
-    expect(screen.getByText('No request behind it')).toBeInTheDocument()
-    expect(screen.getByText('1 · $120 · not counted as open')).toBeInTheDocument()
+    expect(screen.getByText('No request behind this line')).toBeInTheDocument()
+    expect(screen.getByText('Nothing to mark Posted')).toBeInTheDocument()
+    expect(screen.getByText('→ Reclassify it, or Leave With a Note')).toBeInTheDocument()
+    // Left at family level: a heading and a muted meta (final UX, mock section 6).
+    expect(screen.getByText('1 line · $120 · not in the open count')).toBeInTheDocument()
   })
 
   it('opens a line: its candidates, the suggestion, its evidence and what Confirm does', async () => {
     renderTab()
-    const panel = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    const panel = await openLine(JOHNSON_LINE)
     expect(within(panel).getByText('Emma Johnson · Session 2')).toBeInTheDocument()
-    expect(within(panel).getByText('$2,200 not yet in CampMinder')).toBeInTheDocument()
-    expect(
-      within(panel).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')
-    ).toBeInTheDocument()
+    expect(within(panel).getByText('· $2,200 not yet in CampMinder')).toBeInTheDocument()
+    expect(effects(panel)).toContain('Marks Posted · Emma Johnson · Session 2 · R2 · $780')
   })
 
   it('Confirm sends what it showed it would lock, and says what it marked posted', async () => {
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const panel = await openLine(CHEN_LINE)
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(
-      await screen.findByText(
-        '✓ Chen: $1,500 placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500.'
-      )
+      await screen.findByText('✓ Chen: $1,500 placed · ✓ R2 Posted · $1,500')
     ).toBeInTheDocument()
+    // The status is short; the title carries every request by name (§4.10: the result lists what was marked).
+    expect(screen.getByText('✓ Chen: $1,500 placed · ✓ R2 Posted · $1,500')).toHaveAttribute(
+      'title',
+      '✓ Chen: $1,500 placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500.'
+    )
     expect(writes()).toEqual([
       {
         url: '/api/financial-aid/money/2027/to-place/3000003/place',
@@ -205,6 +241,26 @@ describe('Money › To place (§8.1)', () => {
         }),
       },
     ])
+  })
+
+  it('heads a split with what its parts add to, not what is still unplaced (scan #3117 A)', async () => {
+    // The server builds a split's parts over the whole line; on a partly placed line the
+    // unplaced figure is smaller than the parts' sum.
+    reads = [
+      {
+        ...TO_PLACE,
+        groups: TO_PLACE.groups.map((g) => ({
+          ...g,
+          lines: g.lines.map((l) =>
+            l.transaction_cm_id === JOHNSON_SPLIT.transaction_cm_id ? { ...l, unplaced: 1000 } : l
+          ),
+        })),
+      },
+    ]
+    renderTab()
+    const row = await openLine(JOHNSON_LINE)
+    expect(within(row).getByText('Split $3,620')).toBeInTheDocument()
+    expect(within(row).queryByText('Split $1,000')).toBeNull()
   })
 
   it('never sticks after "this now locks…": the panel shows the new preview and confirms it', async () => {
@@ -237,14 +293,12 @@ describe('Money › To place (§8.1)', () => {
       ),
     ]
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const panel = await openLine(CHEN_LINE)
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(
       await within(panel).findByText(/What this would mark Posted changed since the page loaded/)
     ).toBeInTheDocument()
-    expect(
-      within(panel).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400')
-    ).toBeInTheDocument()
+    expect(effects(panel)).toContain('Marks Posted · Olivia Chen · Quest · R2 · $1,400')
     const confirm = within(panel).getByRole('button', { name: 'Confirm' })
     expect(confirm).toBeEnabled()
     await userEvent.click(confirm)
@@ -255,7 +309,7 @@ describe('Money › To place (§8.1)', () => {
   it('a 409 race says someone else changed it, and Confirm stays on', async () => {
     answers = [json({ detail: 'Someone else changed this; reload and try again' }, 409)]
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const panel = await openLine(CHEN_LINE)
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(
       await within(panel).findByText(/Someone else changed this while you looked/)
@@ -266,12 +320,12 @@ describe('Money › To place (§8.1)', () => {
   it('leaves a line at family level with a note', async () => {
     answers = [json(WROTE)]
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const panel = await openLine(CHEN_LINE)
     await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
     await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
     await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
     expect(
-      await screen.findByText('✓ Chen: left at family level with your note. Reopen needs a reason.')
+      await screen.findByText('✓ Chen: left at family level with your note · Reopen needs a reason')
     ).toBeInTheDocument()
     expect(writes()).toEqual([
       {
@@ -282,24 +336,43 @@ describe('Money › To place (§8.1)', () => {
     ])
   })
 
-  it('heads "Left at family level" with the kit section label, not a display-serif heading', async () => {
+  it('heads "Left at family level" in bold sans, not a display-serif heading, with a muted meta (mock section 6)', async () => {
     renderTab()
     const left = await screen.findByTestId('left-lines')
     const heading = within(left).getByText('Left at family level')
     expect(heading.tagName).not.toBe('H3')
-    expect(heading.className).toBe(CS_LABEL)
+    expect(heading).toHaveClass('font-bold', 'text-[13.5px]')
+    expect(within(left).getByText('1 line · $120 · not in the open count')).toHaveClass(
+      'text-muted-foreground'
+    )
+  })
+
+  it('draws the left lines as a table: Family · The line · Why it was left · Amount · Reopen…', async () => {
+    renderTab()
+    const left = await screen.findByTestId('left-lines')
+    const heads = within(left)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+    expect(heads).toEqual(['Family', 'The line in CampMinder', 'Why it was left', 'Amount', ''])
+    expect(within(left).getByText('A deposit credit keyed as aid')).toBeInTheDocument()
+    expect(within(left).getByText('$120')).toBeInTheDocument()
+    // Every cut cell carries its full words (§13).
+    expect(within(left).getByText('A deposit credit keyed as aid').closest('td')).toHaveAttribute(
+      'title',
+      'A deposit credit keyed as aid'
+    )
   })
 
   it('reopens a left line with a reason', async () => {
     answers = [json(WROTE)]
     renderTab()
     const left = await screen.findByTestId('left-lines')
-    expect(within(left).getByText('Left: A deposit credit keyed as aid')).toBeInTheDocument()
+    expect(within(left).getByText('A deposit credit keyed as aid')).toBeInTheDocument()
     await userEvent.click(within(left).getByRole('button', { name: 'Reopen…' }))
     await userEvent.type(within(left).getByRole('textbox'), 'Fixed in CampMinder')
     await userEvent.click(within(left).getByRole('button', { name: 'Reopen' }))
     expect(
-      await screen.findByText('✓ Garcia: reopened; the line is open again.')
+      await screen.findByText('✓ Garcia: reopened · the line is open again')
     ).toBeInTheDocument()
     expect(writes()[0]).toMatchObject({
       url: '/api/financial-aid/money/2027/to-place/3000006/leave?reason=Fixed+in+CampMinder',
@@ -310,7 +383,7 @@ describe('Money › To place (§8.1)', () => {
   it('shows view-only staff the line and its preview, and no way to change it', async () => {
     granted = ['financial_aid.view']
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const panel = await openLine(CHEN_LINE)
     expect(within(panel).getByText('What Confirm does')).toBeInTheDocument()
     expect(within(panel).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Reopen…' })).toBeNull()
@@ -337,7 +410,7 @@ describe('Money › To place (§8.1)', () => {
       reads = [TO_PLACE, without(CHEN_EXACT.transaction_cm_id)]
       answers = [json({ detail: 'line 3000003: line 3000003 is already on a request' }, 422)]
       renderTab()
-      const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      const panel = await openLine(CHEN_LINE)
       await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
       expect(
         await screen.findByText(
@@ -350,7 +423,7 @@ describe('Money › To place (§8.1)', () => {
       reads = [TO_PLACE, without(CHEN_EXACT.transaction_cm_id)]
       answers = [json({ detail: 'Someone else changed this; reload and try again' }, 409)]
       renderTab()
-      const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      const panel = await openLine(CHEN_LINE)
       await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
       expect(
         await screen.findByText(/Someone else changed this while you looked; nothing was written/)
@@ -363,12 +436,10 @@ describe('Money › To place (§8.1)', () => {
         json({ detail: 'Someone else changed this; reload and try again' }, 409),
       ]
       renderTab()
-      const chen = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      const chen = await openLine(CHEN_LINE)
       await userEvent.click(within(chen).getByRole('button', { name: 'Confirm' }))
       expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
-      const johnson = await openLine(
-        '$3,620 · Camp aid · Summer · posted to the household · May 14'
-      )
+      const johnson = await openLine(JOHNSON_LINE)
       await userEvent.click(within(johnson).getByRole('button', { name: 'Confirm Split' }))
       expect(
         (await screen.findAllByText(/Someone else changed this while you looked/)).length
@@ -380,7 +451,7 @@ describe('Money › To place (§8.1)', () => {
       reads = [TO_PLACE, without(CHEN_EXACT.transaction_cm_id)]
       answers = [json({ detail: 'line 3000003 is already on a request' }, 422)]
       renderTab()
-      const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+      const panel = await openLine(CHEN_LINE)
       await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
       await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
       await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
@@ -404,16 +475,13 @@ describe('Money › To place (§8.1)', () => {
   })
 
   describe('a line in flight stays held (review m1)', () => {
-    const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
-    const JOHNSON = '$3,620 · Camp aid · Summer · posted to the household · May 14'
-
     it('reads Placing…, disables Confirm and Leave, and sends one POST on a double click', async () => {
       let release: (r: Response) => void = () => undefined
       gate = new Promise((resolve) => {
         release = resolve
       })
       renderTab()
-      const panel = await openLine(CHEN)
+      const panel = await openLine(CHEN_LINE)
       await userEvent.dblClick(within(panel).getByRole('button', { name: 'Confirm' }))
       expect(await within(panel).findByRole('button', { name: 'Placing…' })).toBeDisabled()
       expect(within(panel).getByRole('button', { name: 'Leave at Family Level…' })).toBeDisabled()
@@ -428,10 +496,10 @@ describe('Money › To place (§8.1)', () => {
         release = resolve
       })
       renderTab()
-      const first = await openLine(CHEN)
+      const first = await openLine(CHEN_LINE)
       await userEvent.click(within(first).getByRole('button', { name: 'Confirm' }))
-      await userEvent.click(await screen.findByText(JOHNSON))
-      const back = await openLine(CHEN)
+      await userEvent.click(await screen.findByText(JOHNSON_LINE))
+      const back = await openLine(CHEN_LINE)
       expect(within(back).getByRole('button', { name: 'Placing…' })).toBeDisabled()
       expect(within(back).getByRole('button', { name: 'Leave at Family Level…' })).toBeDisabled()
       expect(writes()).toHaveLength(1)
@@ -442,20 +510,20 @@ describe('Money › To place (§8.1)', () => {
 
   it('keeps the table when a background refetch fails (owner ruling Group 5)', async () => {
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const panel = await openLine(CHEN_LINE)
     failReads = true
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
-    expect(screen.getByText('5 lines open · $6,920 camp aid')).toBeInTheDocument()
+    expect(screen.getByText('5 lines open')).toBeInTheDocument()
   })
 
   it('offers "Leave With a Note…" on a line that is not a several-requests line', async () => {
     renderTab()
-    const panel = await openLine('$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1')
+    const panel = await openLine(SAMUEL_LINE)
     expect(within(panel).getByRole('button', { name: 'Leave With a Note…' })).toBeInTheDocument()
   })
 
-  it('colours a Marks Posted line green, and "Marks nothing posted." not at all (review m2)', async () => {
+  it('draws ✓ in green for a round it marks Posted, and "Marks nothing Posted." with no state colour (§16)', async () => {
     const none: ApiAidToPlace = {
       ...TO_PLACE,
       groups: TO_PLACE.groups.map((g) => ({
@@ -469,35 +537,38 @@ describe('Money › To place (§8.1)', () => {
     }
     reads = [none]
     renderTab()
-    const chen = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
-    expect(within(chen).getByText('Marks nothing posted.').className).not.toMatch(/emerald/)
-    const johnson = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
-    expect(
-      within(johnson).getByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780').className
-    ).toMatch(/emerald/)
+    const chen = await openLine(CHEN_LINE)
+    expect(effects(chen)).toContain('Marks nothing Posted.')
+    expect(chen.querySelector('[data-sym]')?.className).not.toMatch(/forest/)
+    const johnson = await openLine(JOHNSON_LINE)
+    const ok = johnson.querySelector('[data-effect] [data-sym]')
+    expect(ok).toHaveTextContent('✓')
+    expect(ok?.className).toMatch(/forest/)
   })
 
   it("heads the suggestion in the dashboard's words, never Kindred's (owner 10-05)", async () => {
     renderTab()
-    const panel = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
-    expect(screen.getByText('Suggestion and its evidence')).toBeInTheDocument()
-    expect(within(panel).getByText('Suggestion')).toBeInTheDocument()
+    const panel = await openLine(CHEN_LINE)
+    // The column header is the short word now; the footnote mark explains it (final UX ★14).
+    expect(screen.getAllByRole('columnheader', { name: /^Suggestion/ }).length).toBeGreaterThan(0)
+    expect(within(panel).getByText(/^Suggestion/)).toBeInTheDocument()
     expect(screen.queryByText(/Kindred/)).toBeNull()
   })
 
   it('exports the household and the line id, so a row joins back to CampMinder (review m5)', async () => {
     renderTab()
-    await screen.findByText('5 lines open · $6,920 camp aid')
+    await screen.findByText('5 lines open')
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const [header, firstRow] = content.split('\n')
-    // Ruling B dropped the "Not placed" column; the CSV keeps the figure.
-    expect(header).toMatch(/Household CM id,Line,Still not placed,Group$/)
-    expect(firstRow).toMatch(/1000001,3000001,3620,Camp aid: /)
+    // Ruling B dropped the "Not placed" column; the CSV keeps the figure. The Amount column is the line's own (final UX ★14).
+    expect(header).toMatch(
+      /^Family,The line in CampMinder,Could belong to,Suggestion,What Confirm does,Amount,Household CM id,Line,Still not placed,Group$/
+    )
+    expect(firstRow).toMatch(/,3620,1000001,3000001,3620,Camp aid: /)
   })
 
   describe('scan residue (#2990)', () => {
-    const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
     const NOTHING_CHANGED = {
       year: 2027,
       transaction_cm_id: 3000003,
@@ -511,7 +582,7 @@ describe('Money › To place (§8.1)', () => {
     it('A: Leave can’t be started while its line is saving, and sends nothing', async () => {
       gate = new Promise(() => undefined)
       renderTab()
-      const panel = await openLine(CHEN)
+      const panel = await openLine(CHEN_LINE)
       await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
       const leave = within(panel).getByRole('button', { name: 'Leave at Family Level…' })
       expect(leave).toBeDisabled()
@@ -530,7 +601,7 @@ describe('Money › To place (§8.1)', () => {
         </QueryClientProvider>
       )
       const { rerender } = render(tree(2027))
-      const panel = await openLine(CHEN)
+      const panel = await openLine(CHEN_LINE)
       await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
       expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
       rerender(tree(2028))
@@ -549,7 +620,7 @@ describe('Money › To place (§8.1)', () => {
     it('K: Leave says nothing changed when the server wrote nothing', async () => {
       answers = [json(NOTHING_CHANGED)]
       renderTab()
-      const panel = await openLine(CHEN)
+      const panel = await openLine(CHEN_LINE)
       await userEvent.click(within(panel).getByRole('button', { name: 'Leave at Family Level…' }))
       await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
       await userEvent.click(within(panel).getByRole('button', { name: 'Leave It' }))
@@ -591,32 +662,119 @@ describe('the table (owner rulings B and D, 10-06)', () => {
     expect(screen.queryByRole('columnheader', { name: /Not placed/ })).toBeNull()
   })
 
-  it('puts what each request still lacks in the candidates column, and no id under the family', async () => {
+  it('puts what each request still lacks in the candidates cell, short, with the full words in its title', async () => {
     renderTab()
-    expect(
-      await screen.findByText(
-        'Emma Johnson · Session 2 ($2,200 not yet in CampMinder), Samuel Johnson · Session 2 ($1,420 not yet in CampMinder)'
-      )
-    ).toBeInTheDocument()
+    const first = await screen.findByText('Emma Johnson · Session 2 · $2,200')
+    expect(screen.getAllByText('Samuel Johnson · Session 2 · $1,420').length).toBeGreaterThan(0)
+    expect(first.closest('td')).toHaveAttribute(
+      'title',
+      expect.stringContaining('Emma Johnson · Session 2: $2,200 not yet in CampMinder')
+    )
     // The household id is a tie-break only (rulings 10-05): never drawn under every family.
     expect(screen.queryByText('1000003')).toBeNull()
+  })
+
+  it('has the six short columns, headers on one line: Family · The line · Could belong to · Suggestion · What Confirm does · Amount (★14)', async () => {
+    renderTab()
+    await screen.findByText('5 lines open')
+    const table = screen.getAllByRole('table')[0] as HTMLElement
+    const heads = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent.replace(/\d+$/, ''))
+    expect(heads).toEqual([
+      '',
+      'Family',
+      'The line in CampMinder',
+      'Could belong to',
+      'Suggestion',
+      'What Confirm does',
+      'Amount',
+    ])
+    for (const th of within(table).getAllByRole('columnheader')) {
+      expect(th).toHaveClass('whitespace-nowrap')
+    }
+  })
+
+  it('sets the quiet cells in the muted meta size, as the mock’s .cf-m (12px)', async () => {
+    renderTab()
+    for (const words of ['No application this season', 'Nothing to confirm']) {
+      const [cell] = await screen.findAllByText(words)
+      expect(cell).toHaveClass('text-muted-foreground', 'text-xs')
+    }
+  })
+
+  it('says the suggestion in bold and each cell short: ✓ R2 Posted · $780, ⚠ R2 by hand', async () => {
+    renderTab()
+    expect(await screen.findByText('Place on Olivia Chen · Quest')).toHaveClass('font-bold')
+    expect(screen.getByText('Split $2,200 / $1,420')).toBeInTheDocument()
+    const johnson = (await screen.findByText(JOHNSON_LINE)).closest('tr') as HTMLElement
+    expect(within(johnson).getByText('R2 Posted · $780').closest('td')).toHaveAttribute(
+      'title',
+      expect.stringContaining('Marks Posted')
+    )
+    const garcia = screen.getByText(GARCIA_LINE).closest('tr') as HTMLElement
+    expect(within(garcia).getByText('R2 by hand')).toBeInTheDocument()
+    expect(within(garcia).getByText('⚠')).toBeInTheDocument()
+    expect(within(johnson).getByText('$3,620')).toBeInTheDocument()
+  })
+
+  it('draws each reason as its own heading, callout and table, the heading folding its group (mock)', async () => {
+    renderTab()
+    await screen.findByText('5 lines open')
+    const sections = document.querySelectorAll('[data-aid-section]')
+    expect(sections).toHaveLength(3)
+    for (const section of sections) expect(section.querySelector('table')).not.toBeNull()
+    const several = sections[0] as HTMLElement
+    await userEvent.click(
+      within(several).getByRole('button', { name: /Several requests could take this line/ })
+    )
+    expect(several.querySelector('table')).toBeNull()
+    // A shut group keeps its heading and drops its callout, as the mock does.
+    expect(within(several).queryByText('→ marks the round Posted ✓')).toBeNull()
+    expect(within(several).getByText('Several requests could take this line')).toBeInTheDocument()
+  })
+
+  it('goes flat: one heading, "Camp-aid lines", over one table', async () => {
+    renderTab()
+    await userEvent.click(await screen.findByRole('button', { name: 'Flat' }))
+    expect(await screen.findByText('Camp-aid lines')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-aid-section] table')).toHaveLength(1)
+  })
+
+  it('has one toolbar row: the lead, Flat / By reason, the search, Download CSV, nothing on a second row (§5)', async () => {
+    renderTab()
+    await screen.findByText('5 lines open')
+    const bar = toolbar()
+    expect(within(bar).getByText('5 lines open')).toHaveClass('font-semibold')
+    expect(within(bar).getByText('· $6,920 camp aid')).toHaveClass('text-muted-foreground')
+    expect(within(bar).getByRole('group', { name: 'Grouping' })).toBeInTheDocument()
+    expect(within(bar).getByRole('searchbox')).toHaveAttribute('placeholder', 'Names or CM IDs')
+    const labels = Array.from(bar.querySelectorAll('button,input')).map(
+      (e) => (e as HTMLInputElement).placeholder || e.textContent
+    )
+    expect(labels.at(-1)).toBe('Download CSV')
+    // No bulk bar, and no result line, above the table.
+    expect(document.querySelectorAll('[data-aid-toolbar]')).toHaveLength(1)
   })
 })
 
 describe('a line opens in three panels, the grid’s opened row (owner ruling A, 10-06)', () => {
   it('puts the line and its evidence left, the requests in the middle, Confirm right', async () => {
     renderTab()
-    const row = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    const row = await openLine(JOHNSON_LINE)
     const panel = (name: string) => {
       const found = row.querySelector(`[data-panel="${name}"]`)
       if (!(found instanceof HTMLElement)) throw new Error(`no ${name} panel`)
       return within(found)
     }
+    expect(panel('line').getByText('$3,620')).toBeInTheDocument()
     expect(
-      panel('line').getByText('$3,620 · Camp aid · Summer · posted to the household · May 14')
+      panel('line').getByText(/Camp aid · Summer · posted to the household · May 14/)
     ).toBeInTheDocument()
-    expect(panel('line').getByText(/The line equals the two requests/)).toBeInTheDocument()
-    expect(panel('candidates').getByText('$2,200 not yet in CampMinder')).toBeInTheDocument()
+    expect(
+      panel('line').getByText(/the two requests together \(\$2,200 \+ \$1,420\)/)
+    ).toBeInTheDocument()
+    expect(panel('candidates').getByText('· $2,200 not yet in CampMinder')).toBeInTheDocument()
     expect(panel('confirm').getByText('What Confirm does')).toBeInTheDocument()
     expect(panel('confirm').getByRole('button', { name: 'Confirm Split' })).toBeInTheDocument()
     // The opened row is AidTable's detail line, not the old editor row (#2990's).
@@ -625,15 +783,13 @@ describe('a line opens in three panels, the grid’s opened row (owner ruling A,
 
   it('Esc closes the opened line', async () => {
     renderTab()
-    await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    await openLine(JOHNSON_LINE)
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByTestId('to-place-row')).toBeNull()
   })
 })
 
 describe('Confirm reads a fresh preview when its line opens (P-4; review item 19)', () => {
-  const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
-
   it('asks the preview for the suggestion’s parts, shows its answer, and sends its lock', async () => {
     previewAnswer = (txn) =>
       json({
@@ -646,10 +802,10 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
         would_not_tick: [],
       })
     renderTab()
-    const row = await openLine(CHEN)
-    expect(
-      await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,400')
-    ).toBeInTheDocument()
+    const row = await openLine(CHEN_LINE)
+    await waitFor(() =>
+      expect(effects(row)).toContain('Marks Posted · Olivia Chen · Quest · R2 · $1,400')
+    )
     expect(previews()).toEqual([
       {
         url: '/api/financial-aid/money/2027/to-place/3000003/preview',
@@ -669,7 +825,7 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
     previewAnswer = () =>
       json({ detail: 'line 3000003: line 3000003 is already on a request' }, 422)
     renderTab()
-    const row = await openLine(CHEN)
+    const row = await openLine(CHEN_LINE)
     expect(
       await within(row).findByText(
         "Confirm can't place this as suggested now: line 3000003: line 3000003 is already on a request"
@@ -686,7 +842,7 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
 
   it('hides Confirm while the Leave form is open, so only the form’s own button sends (R1-12)', async () => {
     renderTab()
-    const row = await openLine(CHEN)
+    const row = await openLine(CHEN_LINE)
     expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
     await userEvent.click(within(row).getByRole('button', { name: 'Leave at Family Level…' }))
     expect(within(row).queryByRole('button', { name: 'Confirm' })).toBeNull()
@@ -696,10 +852,12 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
 
   it('asks only for a line that stays open: a line passed over asks nothing (R1-2)', async () => {
     renderTab()
-    await openLine('$600 · Camp aid · Summer · posted to Liam Garcia · Apr 3')
+    await openLine(GARCIA_LINE)
     // Straight on to the next line, before the first has settled.
-    const row = await openLine(CHEN)
-    await within(row).findByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500')
+    const row = await openLine(CHEN_LINE)
+    await waitFor(() =>
+      expect(effects(row)).toContain('Marks Posted · Olivia Chen · Quest · R2 · $1,500')
+    )
     await new Promise((resolve) => setTimeout(resolve, 400))
     expect(previews().map((p) => p.url)).toEqual([
       '/api/financial-aid/money/2027/to-place/3000003/preview',
@@ -709,31 +867,65 @@ describe('Confirm reads a fresh preview when its line opens (P-4; review item 19
   it('a preview that fails (a 500) leaves the read’s preview and Confirm in place', async () => {
     previewAnswer = () => json({ detail: 'Server error' }, 500)
     renderTab()
-    const row = await openLine(CHEN)
+    const row = await openLine(CHEN_LINE)
     await waitFor(() => expect(previews()).toHaveLength(1))
-    expect(
-      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500')
-    ).toBeInTheDocument()
+    expect(effects(row)).toContain('Marks Posted · Olivia Chen · Quest · R2 · $1,500')
     expect(within(row).getByRole('button', { name: 'Confirm' })).toBeEnabled()
   })
 
   it('view-only staff see the read’s preview and no preview call (the route is casework)', async () => {
     granted = ['financial_aid.view']
     renderTab()
-    const row = await openLine(CHEN)
-    expect(
-      within(row).getByText('Marks Posted: Olivia Chen · Quest · Round 2 · $1,500')
-    ).toBeInTheDocument()
+    const row = await openLine(CHEN_LINE)
+    expect(effects(row)).toContain('Marks Posted · Olivia Chen · Quest · R2 · $1,500')
     // Past the settle time, so a call would have been made by now.
     await new Promise((resolve) => setTimeout(resolve, 400))
     expect(previews()).toHaveLength(0)
   })
 })
 
+describe('the footnote marks (design-language §12)', () => {
+  it('numbers each header and the callout from the registry, with the note as the mark’s title', async () => {
+    definitionNotes = [
+      {
+        key: 'not_yet_in_campminder',
+        n: 1,
+        text: 'Not yet in CampMinder: what a request still lacks.',
+      },
+      { key: 'to_place_suggestion', n: 2, text: 'Suggestion: the dashboard’s proposal.' },
+      { key: 'placement_tick', n: 3, text: 'Placing checks Posted: oldest first.' },
+      { key: 'posted', n: 4, text: 'Posted: the round’s Posted checkbox.' },
+    ]
+    renderTab()
+    await screen.findByText('5 lines open')
+    const table = screen.getAllByRole('table')[0] as HTMLElement
+    const mark = (header: RegExp) =>
+      within(within(table).getByRole('columnheader', { name: header })).getByText(/^\d$/)
+    await waitFor(() => expect(mark(/Could belong to/)).toHaveTextContent('1'))
+    expect(mark(/Could belong to/)).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Not yet in CampMinder/)
+    )
+    expect(mark(/^Suggestion/)).toHaveTextContent('2')
+    expect(mark(/What Confirm does/)).toHaveTextContent('3')
+    // Superscripts at about 0.72em (§12).
+    expect(mark(/What Confirm does/)).toHaveClass('text-[0.72em]')
+    const several = screen
+      .getByText('Several requests could take this line')
+      .closest('[data-aid-section]')
+    expect(within(several as HTMLElement).getByText('4')).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Posted: /)
+    )
+  })
+})
+
 describe('the notes at the foot (ruling I: the owner reads them in place)', () => {
   it("reads the server's money-to-place notes", async () => {
     renderTab()
-    expect(await screen.findByText(/Posted: the round’s Posted checkbox/)).toBeInTheDocument()
+    // The mock bolds each note's leading term (boldTerm).
+    expect((await screen.findByText('Posted:')).tagName).toBe('B')
+    expect(await screen.findByText(/the round’s Posted checkbox/)).toBeInTheDocument()
     expect(calls().some((c) => c.url.includes('/definitions?surface=money-to-place'))).toBe(true)
   })
 })
@@ -775,17 +967,13 @@ describe('the family as the household card names it (owner ruling D, 10-06; #308
   it('names the family by its label in the result line', async () => {
     reads = [labelled]
     renderTab()
-    const row = await openLine('$1,500 · Camp aid · Quest · posted to the household · May 20')
+    const row = await openLine(CHEN_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Confirm' }))
     expect(await screen.findByText(/^✓ Mei & David Chen: \$1,500 placed/)).toBeInTheDocument()
   })
 })
 
 describe('Split… and Place on Another Request… preview what they place (§8.1; D12; P-4, review item 19)', () => {
-  const JOHNSON = '$3,620 · Camp aid · Summer · posted to the household · May 14'
-  const GARCIA = '$600 · Camp aid · Summer · posted to Liam Garcia · Apr 3'
-  const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
-  const SAM = '$900 · Camp aid · Summer · posted to Riley Sam · Apr 18'
   /** A preview that marks nothing posted and locks nothing, whatever the parts. */
   const marksNothing = (txn: number) =>
     json({
@@ -803,24 +991,27 @@ describe('Split… and Place on Another Request… preview what they place (§8.
 
   it('names the buttons as the mock does: Confirm Split and Edit the Split… on a split suggestion (review item 6)', async () => {
     renderTab()
-    const johnson = await openLine(JOHNSON)
+    const johnson = await openLine(JOHNSON_LINE)
     expect(within(johnson).getByRole('button', { name: 'Confirm Split' })).toBeInTheDocument()
     expect(within(johnson).getByRole('button', { name: 'Edit the Split…' })).toBeInTheDocument()
-    // Both candidates are in the suggestion: no other request to place it on.
-    expect(within(johnson).queryByRole('button', { name: 'Place on Another Request…' })).toBeNull()
-    const garcia = await openLine(GARCIA)
+    // The approved final mock (money-to-place.html, owner 10-09) offers the whole line on one of the
+    // split's requests as well.
+    expect(
+      within(johnson).getByRole('button', { name: 'Place on Another Request…' })
+    ).toBeInTheDocument()
+    const garcia = await openLine(GARCIA_LINE)
     expect(within(garcia).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
     expect(within(garcia).getByRole('button', { name: 'Split…' })).toBeInTheDocument()
     expect(
       within(garcia).getByRole('button', { name: 'Place on Another Request…' })
     ).toBeInTheDocument()
-    const chen = await openLine(CHEN)
+    const chen = await openLine(CHEN_LINE)
     expect(within(chen).queryByRole('button', { name: 'Split…' })).toBeNull()
     expect(within(chen).queryByRole('button', { name: 'Place on Another Request…' })).toBeNull()
-    const sam = await openLine(SAM)
+    const sam = await openLine(SAM_LINE)
     expect(within(sam).queryByRole('button', { name: /Split|Another/ })).toBeNull()
     // The program-mismatch line offers it, as money-v2.html draws it (R1-8a).
-    const samuel = await openLine('$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1')
+    const samuel = await openLine(SAMUEL_LINE)
     expect(
       within(samuel).getByRole('button', { name: 'Place on Another Request…' })
     ).toBeInTheDocument()
@@ -828,13 +1019,13 @@ describe('Split… and Place on Another Request… preview what they place (§8.
 
   it('opens on the suggestion, asks the preview for exactly the parts typed, and places what it showed', async () => {
     renderTab()
-    const row = await openLine(JOHNSON)
+    const row = await openLine(JOHNSON_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
     const editor = within(row).getByTestId('place-editor')
-    expect(within(editor).getByText('Parts add to $3,620 of $3,620 ✓')).toBeInTheDocument()
-    expect(
-      await within(editor).findByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')
-    ).toBeInTheDocument()
+    expect(within(editor).getByText('Parts add to $3,620 of $3,620')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(effects(editor)).toContain('Marks Posted · Emma Johnson · Session 2 · R2 · $780')
+    )
     previewAnswer = marksNothing
     const emma = within(editor).getByRole('textbox', { name: 'Part for Emma Johnson · Session 2' })
     const samuel = within(editor).getByRole('textbox', {
@@ -843,12 +1034,12 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     await userEvent.clear(emma)
     await userEvent.type(emma, '2000')
     expect(
-      within(editor).getByText('Parts add to $3,420 of $3,620 · must equal the line')
+      within(editor).getByText('Parts add to $3,420: they must make $3,620')
     ).toBeInTheDocument()
     expect(within(editor).getByRole('button', { name: 'Place the Split' })).toBeDisabled()
     await userEvent.clear(samuel)
     await userEvent.type(samuel, '1620')
-    expect(await within(editor).findByText('Marks nothing posted.')).toBeInTheDocument()
+    await waitFor(() => expect(effects(editor)).toContain('Marks nothing Posted.'))
     // Only sums that equal the line were asked, and the last ask is the parts on screen.
     expect(parts(previews().at(-1))).toEqual([
       { request_id: 'reqemma00000001', amount: '2000.00' },
@@ -857,7 +1048,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     answers = [json({ ...PLACED, placed: [3000001], ticked: [] })]
     await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
     expect(
-      await screen.findByText('✓ Johnson: $3,620 placed. Nothing marked posted.')
+      await screen.findByText('✓ Johnson: $3,620 placed · nothing marked Posted')
     ).toBeInTheDocument()
     expect(writes()).toEqual([
       {
@@ -877,7 +1068,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
 
   it('keeps Place the Split off until the preview has answered for the parts now typed', async () => {
     renderTab()
-    const row = await openLine(JOHNSON)
+    const row = await openLine(JOHNSON_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
     const editor = within(row).getByTestId('place-editor')
     const button = within(editor).getByRole('button', { name: 'Place the Split' })
@@ -891,7 +1082,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     await userEvent.clear(emma)
     await userEvent.type(emma, '2300')
     // The sum is right again, but the preview speaks for $2,200 / $1,420, not these parts.
-    expect(within(editor).getByText('Parts add to $3,620 of $3,620 ✓')).toBeInTheDocument()
+    expect(within(editor).getByText('Parts add to $3,620 of $3,620')).toBeInTheDocument()
     expect(button).toBeDisabled()
     await waitFor(() => expect(button).toBeEnabled())
     expect(parts(previews().at(-1))).toEqual([
@@ -902,7 +1093,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
 
   it('a refused preview says why in the editor and offers no place', async () => {
     renderTab()
-    const row = await openLine(JOHNSON)
+    const row = await openLine(JOHNSON_LINE)
     previewAnswer = () => json({ detail: 'request reqsamuel000002 is cancelled' }, 422)
     await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
     const editor = within(row).getByTestId('place-editor')
@@ -916,7 +1107,7 @@ describe('Split… and Place on Another Request… preview what they place (§8.
 
   it('a preview that fails can be asked again', async () => {
     renderTab()
-    const row = await openLine(JOHNSON)
+    const row = await openLine(JOHNSON_LINE)
     previewAnswer = () => json({ detail: 'Server error' }, 500)
     await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
     const editor = within(row).getByTestId('place-editor')
@@ -948,19 +1139,19 @@ describe('Split… and Place on Another Request… preview what they place (§8.
       json({ ...PLACED, placed: [3000001], ticked: [] }),
     ]
     renderTab()
-    const row = await openLine(JOHNSON)
+    const row = await openLine(JOHNSON_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Edit the Split…' }))
     const editor = within(row).getByTestId('place-editor')
-    expect(await within(editor).findByText('Marks nothing posted.')).toBeInTheDocument()
+    await waitFor(() => expect(effects(editor)).toContain('Marks nothing Posted.'))
     // The season moves between the preview and the click.
     lock = 780
     await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
     expect(
       await within(editor).findByText(/What this would mark Posted changed since the page loaded/)
     ).toBeInTheDocument()
-    expect(
-      await within(editor).findByText('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(effects(editor)).toContain('Marks Posted · Emma Johnson · Session 2 · R2 · $780')
+    )
     await userEvent.click(within(editor).getByRole('button', { name: 'Place the Split' }))
     await waitFor(() => expect(writes()).toHaveLength(2))
     expect(JSON.parse(String(writes()[1]?.body))).toMatchObject({ expected_locked: '780.00' })
@@ -978,14 +1169,14 @@ describe('Split… and Place on Another Request… preview what they place (§8.
         would_not_tick: [],
       })
     renderTab()
-    const row = await openLine(GARCIA)
+    const row = await openLine(GARCIA_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
     const editor = within(row).getByTestId('place-editor')
     expect(within(editor).getByRole('button', { name: 'Place It' })).toBeDisabled()
     await userEvent.click(within(editor).getByRole('radio', { name: 'Liam Garcia · Quest' }))
-    expect(
-      await within(editor).findByText('Marks Posted: Liam Garcia · Quest · Round 1 · $600')
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(effects(editor)).toContain('Marks Posted · Liam Garcia · Quest · R1 · $600')
+    )
     expect(parts(previews().at(-1))).toEqual([{ request_id: 'reqliamquest005', amount: '600.00' }])
     await userEvent.click(within(editor).getByRole('button', { name: 'Place It' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
@@ -996,9 +1187,28 @@ describe('Split… and Place on Another Request… preview what they place (§8.
     })
   })
 
+  it('opens an editor under the three panels, the whole opened row, with its dependent choice shown off, not hidden (§24)', async () => {
+    renderTab()
+    const row = await openLine(GARCIA_LINE)
+    await userEvent.click(within(row).getByRole('button', { name: 'Place on Another Request…' }))
+    const editor = within(row).getByTestId('place-editor')
+    // Not inside the right panel: it takes the row's width under all three.
+    expect(editor.closest('[data-panel]')).toBeNull()
+    expect(row.querySelector('[data-panel="confirm"]')).not.toContainElement(editor)
+    // The effects column is there before anything is picked, switched off.
+    const side = within(editor).getByTestId('place-effects')
+    expect(within(side).getByText('What placing this does')).toBeInTheDocument()
+    expect(within(side).getByText('Pick a request to see it')).toHaveClass('opacity-60')
+    // Title Case buttons on one row, the logged-with-who line beside them.
+    const place = within(editor).getByRole('button', { name: 'Place It' })
+    const back = within(editor).getByRole('button', { name: 'Back' })
+    expect(place.parentElement).toBe(back.parentElement)
+    expect(place.parentElement).toHaveTextContent('Each part lands on its request in full')
+  })
+
   it('Back closes the editor and brings the buttons back', async () => {
     renderTab()
-    const row = await openLine(GARCIA)
+    const row = await openLine(GARCIA_LINE)
     expect(within(row).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
     await userEvent.click(within(row).getByRole('button', { name: 'Split…' }))
     expect(within(row).getByTestId('place-editor')).toBeInTheDocument()
@@ -1013,13 +1223,11 @@ describe('Split… and Place on Another Request… preview what they place (§8.
 })
 
 describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () => {
-  const SAM = '$900 · Camp aid · Summer · posted to Riley Sam · Apr 18'
-  const SAMUEL = '$300 · Camp aid · Quest · posted to Samuel Johnson · Jun 1'
   const FINANCE = [...REGISTRAR, 'financial_aid.rules']
 
   it('shows the registrar Reclassify… (finance), off: it is `rules` (money-v2.html; R1-8b)', async () => {
     renderTab()
-    const row = await openLine(SAM)
+    const row = await openLine(SAM_LINE)
     expect(within(row).queryByRole('button', { name: 'Reclassify…' })).toBeNull()
     expect(within(row).getByRole('button', { name: 'Reclassify… (finance)' })).toBeDisabled()
   })
@@ -1027,7 +1235,7 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
   it('shows view-only staff no Reclassify at all', async () => {
     granted = ['financial_aid.view']
     renderTab()
-    const row = await openLine(SAM)
+    const row = await openLine(SAM_LINE)
     expect(within(row).queryByRole('button', { name: /Reclassify/ })).toBeNull()
   })
 
@@ -1035,12 +1243,12 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
     granted = FINANCE
     renderTab()
     expect(
-      within(await openLine(SAM)).getByRole('button', { name: 'Reclassify…' })
+      within(await openLine(SAM_LINE)).getByRole('button', { name: 'Reclassify…' })
     ).toBeInTheDocument()
     expect(
-      within(await openLine(SAMUEL)).getByRole('button', { name: 'Reclassify…' })
+      within(await openLine(SAMUEL_LINE)).getByRole('button', { name: 'Reclassify…' })
     ).toBeInTheDocument()
-    const johnson = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    const johnson = await openLine(JOHNSON_LINE)
     expect(within(johnson).queryByRole('button', { name: 'Reclassify…' })).toBeNull()
   })
 
@@ -1048,23 +1256,28 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
     granted = FINANCE
     answers = [json({ ...WROTE, transaction_cm_id: 3000004 })]
     renderTab()
-    const row = await openLine(SAM)
+    const row = await openLine(SAM_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Reclassify…' }))
     const editor = within(row).getByTestId('reclassify-editor')
+    // The white picker, in the editor's 30px face (§3, §24), listing the targets under their kind.
+    const picker = within(editor).getByRole('button', { name: /^Reclassify as:/ })
+    expect(picker.className).toMatch(/h-\[30px\]/)
+    expect(editor.querySelector('select')).toBeNull()
+    // Off until a source and a reason are given (an open list makes the rest of the page inert).
+    expect(within(editor).getByRole('button', { name: 'Reclassify' })).toBeDisabled()
+    await userEvent.click(picker)
     await within(editor).findByRole('option', { name: 'Grantor C full-ride program (outside)' })
     // The line's own description and the unclassified one are not offered.
     expect(within(editor).queryByRole('option', { name: /^Camp aid · Summer/ })).toBeNull()
     expect(within(editor).queryByRole('option', { name: /Returning-family bonus/ })).toBeNull()
-    expect(within(editor).getByRole('button', { name: 'Reclassify' })).toBeDisabled()
-    await userEvent.selectOptions(
-      within(editor).getByRole('combobox'),
-      'Grantor C full-ride program (outside)'
+    await userEvent.click(
+      within(editor).getByRole('option', { name: 'Grantor C full-ride program (outside)' })
     )
     await userEvent.type(within(editor).getByRole('textbox'), 'An outside full-ride line')
     await userEvent.click(within(editor).getByRole('button', { name: 'Reclassify' }))
     expect(
       await screen.findByText(
-        '✓ Sam: reclassified as Grantor C full-ride program. The next ledger sync applies it; until then the line is listed apart.'
+        '✓ Sam: reclassified as Grantor C full-ride program · the next ledger sync applies it'
       )
     ).toBeInTheDocument()
     expect(writes()).toEqual([
@@ -1084,13 +1297,12 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
     granted = FINANCE
     answers = [json({ detail: "source 'keygrantorc0004' is not classified as aid" }, 422)]
     renderTab()
-    const row = await openLine(SAM)
+    const row = await openLine(SAM_LINE)
     await userEvent.click(within(row).getByRole('button', { name: 'Reclassify…' }))
     const editor = within(row).getByTestId('reclassify-editor')
-    await within(editor).findByRole('option', { name: 'Grantor C full-ride program (outside)' })
-    await userEvent.selectOptions(
-      within(editor).getByRole('combobox'),
-      'Grantor C full-ride program (outside)'
+    await userEvent.click(within(editor).getByRole('button', { name: /^Reclassify as:/ }))
+    await userEvent.click(
+      await within(editor).findByRole('option', { name: 'Grantor C full-ride program (outside)' })
     )
     await userEvent.type(within(editor).getByRole('textbox'), 'An outside full-ride line')
     await userEvent.click(within(editor).getByRole('button', { name: 'Reclassify' }))
@@ -1104,41 +1316,61 @@ describe('Reclassify… (finance, D104; P-7) and the lines waiting apart', () =>
     ).toHaveLength(2)
   })
 
-  it('lists reclassified lines apart, with where they go and the server’s total', async () => {
+  it('lists reclassified lines apart as a table, with where they go and the server’s total (mock section 6)', async () => {
     reads = [{ ...TO_PLACE, reclassified: [SAM_RECLASSIFIED], reclassified_total: 450 }]
     renderTab()
     const apart = await screen.findByTestId('reclassified-lines')
+    const heading = within(apart).getByText('Reclassified')
+    expect(heading).toHaveClass('font-bold')
+    expect(within(apart).getByText('1 line · $450 · waits for the next ledger sync')).toHaveClass(
+      'text-muted-foreground'
+    )
     expect(
-      within(apart).getByText(/^Reclassified, waiting for the next ledger sync/)
-    ).toBeInTheDocument()
-    expect(
-      within(apart).getByText(
-        "1 · $450 · not counted as open; can't be placed or left until the sync applies it"
-      )
-    ).toBeInTheDocument()
+      within(apart)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent)
+    ).toEqual(['Family', 'The line in CampMinder', 'Reclassified as', 'Amount'])
     expect(within(apart).getByText('→ Grantor C full-ride program')).toBeInTheDocument()
+    expect(within(apart).getByText('$450')).toBeInTheDocument()
     expect(screen.queryByText(/tonight/)).toBeNull()
   })
 })
 
 describe('one family’s To place (D26; P-8)', () => {
-  it("reads one family's scope, and links back to every family", async () => {
+  it("reads one family's scope, and shows it as a removable chip in the toolbar (§6; answers 1a)", async () => {
     renderTab(1000001)
-    expect(await screen.findByRole('link', { name: 'All Families ›' })).toHaveAttribute(
-      'href',
-      '/aid/money/to-place?year=2027'
+    const chip = await screen.findByText('One family')
+    expect(toolbar()).toContainElement(chip)
+    // The old sentence sits in the chip's title, not in a row of its own that pushes the page down.
+    expect(chip.closest('span[title]')).toHaveAttribute(
+      'title',
+      expect.stringContaining('the household and every household that shares its requests')
     )
+    expect(screen.queryByText(/One family's lines:/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'All Families ›' })).toBeNull()
     const reads = calls().filter((c) => c.method === 'GET' && c.url.includes('/to-place'))
     expect(reads[0]?.url).toBe('/api/financial-aid/money/2027/to-place?household_cm_id=1000001')
     // R1-10: open a line in the family's scope, so the check isn't vacuous: no "Only This Family ›".
-    const row = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    const row = await openLine(JOHNSON_LINE)
     expect(within(row).getByRole('link', { name: 'Open the Household ›' })).toBeInTheDocument()
     expect(within(row).queryByRole('link', { name: 'Only This Family ›' })).toBeNull()
   })
 
+  it('clears the chip back to every family', async () => {
+    renderTab(1000001)
+    await userEvent.click(await screen.findByRole('button', { name: 'Clear One family' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/money/to-place?year=2027')
+  })
+
+  it('draws no chip for every family', async () => {
+    renderTab()
+    await screen.findByText('5 lines open')
+    expect(screen.queryByText('One family')).toBeNull()
+  })
+
   it('opens a line with "Only This Family ›" to its household’s scope', async () => {
     renderTab()
-    const row = await openLine('$3,620 · Camp aid · Summer · posted to the household · May 14')
+    const row = await openLine(JOHNSON_LINE)
     expect(within(row).getByRole('link', { name: 'Only This Family ›' })).toHaveAttribute(
       'href',
       '/aid/money/to-place?household=1000001&year=2027'
@@ -1153,8 +1385,6 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     if (row === null) throw new Error(`no row for ${words}`)
     return row
   }
-  const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
-  const JOHNSON = '$3,620 · Camp aid · Summer · posted to the household · May 14'
 
   it('one button checks every exact single match and opens the dialog; a program mismatch is never one', async () => {
     reads = [TO_PLACE_WITH_RILEY]
@@ -1162,7 +1392,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     // Chen's and Riley's lines; Samuel's program mismatch has one candidate and an exact amount,
     // but is a judgement call (plan review I3).
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Confirm the 2 Exact Single Matches…' })
+      await screen.findByRole('button', { name: 'Confirm the 2 Exact Matches…' })
     )
     const dialog = await screen.findByRole('dialog')
     // Final audit E4: the title counts, in the grant dialog's own words (the mock's "Confirm 2 exact single matches").
@@ -1181,24 +1411,20 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
       { transaction_cm_id: 3000008, parts: [{ request_id: 'reqriley0000006', amount: '300.00' }] },
     ])
     expect(body).not.toHaveProperty('expected_locked')
-    expect(
-      await screen.findByText(
-        '✓ 2 lines placed. Marked Posted: Olivia Chen · Quest Round 2 · $1,500.'
-      )
-    ).toBeInTheDocument()
+    expect(await screen.findByText('✓ 2 lines placed · ✓ R2 Posted · $1,500')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('keeps checks through a search, marks the hidden ones, and leaves out a split by name', async () => {
     reads = [TO_PLACE_WITH_RILEY]
     renderTab()
-    await screen.findByText(CHEN)
-    await userEvent.click(within(rowOf(CHEN)).getByRole('checkbox', { name: 'Select' }))
-    await userEvent.click(within(rowOf(JOHNSON)).getByRole('checkbox', { name: 'Select' }))
-    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    await screen.findByText(CHEN_LINE)
+    await userEvent.click(within(rowOf(CHEN_LINE)).getByRole('checkbox', { name: 'Select' }))
+    await userEvent.click(within(rowOf(JOHNSON_LINE)).getByRole('checkbox', { name: 'Select' }))
+    expect(screen.getByText('2 checked')).toBeInTheDocument()
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Olivia')
-    expect(await screen.findByText('2 selected · 1 hidden by the search')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Confirm the Selected…' }))
+    expect(await screen.findByText('2 checked · 1 hidden')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm the 2 Checked…' }))
     const dialog = await screen.findByRole('dialog')
     // One line: its own preview is exact, so no estimate pill (plan review m6).
     expect(
@@ -1211,7 +1437,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     await userEvent.click(within(dialog).getByRole('button', { name: 'Back' }))
     await userEvent.clear(screen.getByRole('searchbox', { name: 'Search' }))
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'Johnson')
-    await userEvent.click(await screen.findByRole('button', { name: 'Confirm the Selected…' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Confirm the \d+ Checked…/ }))
     expect(
       within(await screen.findByRole('dialog')).getByText(/\(hidden by the search\)/)
     ).toBeInTheDocument()
@@ -1224,7 +1450,7 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     answers = [json({ detail: 'line 3000008: line 3000008 is already on a request' }, 422)]
     renderTab()
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Confirm the 2 Exact Single Matches…' })
+      await screen.findByRole('button', { name: 'Confirm the 2 Exact Matches…' })
     )
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm 2' }))
@@ -1252,9 +1478,9 @@ describe('the bulk confirm of exact single matches (§4.10; P-6; review §3 A)',
     granted = ['financial_aid.view']
     reads = [TO_PLACE_WITH_RILEY]
     renderTab()
-    await screen.findByText(CHEN)
+    await screen.findByText(CHEN_LINE)
     expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.queryByRole('button', { name: /Exact Single/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Exact Match/ })).toBeNull()
   })
 })
 
@@ -1282,19 +1508,35 @@ describe('Money › To place › the outside-grant group (M5)', () => {
       },
     ],
   }
-  const GARCIA_LINE = '$1,500 · Grantor B · posted to the household · Apr 3'
+  const GARCIA_GRANT = 'Apr 3 · to the household · Grantor B'
 
   it('adds the lines as a fourth group below the camp-aid table, and counts them in the open line', async () => {
     grantsRead = WITH_LINES
     renderTab()
-    expect(
-      await screen.findByText('7 lines open · $6,920 camp aid · $2,300.50 outside grants')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('7 lines open')).toBeInTheDocument()
+    expect(screen.getByText('· $6,920 camp aid · $2,300.50 outside grants')).toBeInTheDocument()
     const heading = await screen.findByText('Outside grant posted to the family')
-    expect(screen.getByText('2 lines')).toBeInTheDocument()
-    const camp = screen.getByText('No request behind it')
+    expect(screen.getByText('2 lines · $2,300.50')).toBeInTheDocument()
+    const camp = screen.getByText('No request behind this line')
     expect(camp.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByText(GARCIA_LINE)).toBeInTheDocument()
+    expect(screen.getByText(GARCIA_GRANT)).toBeInTheDocument()
+  })
+
+  it('counts the grant heading over the lines the search leaves, as the camp-aid sections do (scan #3117 D)', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    await screen.findByText('2 lines · $2,300.50')
+    await userEvent.type(screen.getByRole('searchbox'), 'Chen')
+    expect(await screen.findByText('1 line · $800.50')).toBeInTheDocument()
+  })
+
+  it('ends a suggestion title without a stray separator when there is no evidence (scan #3117 C)', async () => {
+    grantsRead = WITH_LINES
+    renderTab()
+    await screen.findByText('Outside grant posted to the family')
+    const titled = [...document.querySelectorAll('td[title]')].map((td) => td.getAttribute('title'))
+    expect(titled.some((t) => t?.startsWith('No suggestion'))).toBe(true)
+    expect(titled.filter((t) => t?.endsWith(' · '))).toEqual([])
   })
 
   it('the one Download CSV carries the grant lines too, each marked with its group (final audit O8)', async () => {
@@ -1318,7 +1560,7 @@ describe('Money › To place › the outside-grant group (M5)', () => {
 
   it('a group-less read (no grant lines) still downloads only the camp-aid lines', async () => {
     renderTab()
-    await screen.findByText('5 lines open · $6,920 camp aid')
+    await screen.findByText('5 lines open')
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     expect(content).not.toContain('Outside grant posted to the family')
@@ -1336,7 +1578,7 @@ describe('Money › To place › the outside-grant group (M5)', () => {
 
   it('draws no group and no grant part when no line needs a camper, and no purpose line', async () => {
     renderTab()
-    await screen.findByText('5 lines open · $6,920 camp aid')
+    await screen.findByText('5 lines open')
     expect(screen.queryByText('Outside grant posted to the family')).toBeNull()
     expect(screen.queryByText(/outside grants/)).toBeNull()
     expect(screen.queryByText(/Click a line to see/)).toBeNull()
@@ -1345,8 +1587,8 @@ describe('Money › To place › the outside-grant group (M5)', () => {
   it('keeps the camp-aid table when the grants read fails', async () => {
     failGrants = true
     renderTab()
-    expect(await screen.findByText('5 lines open · $6,920 camp aid')).toBeInTheDocument()
-    expect(screen.getByText('No request behind it')).toBeInTheDocument()
+    expect(await screen.findByText('5 lines open')).toBeInTheDocument()
+    expect(screen.getByText('No request behind this line')).toBeInTheDocument()
     expect(screen.queryByText('Outside grant posted to the family')).toBeNull()
   })
 
@@ -1354,18 +1596,17 @@ describe('Money › To place › the outside-grant group (M5)', () => {
     grantsRead = WITH_LINES
     reads = [{ ...TO_PLACE, household_cm_id: 1000003 }]
     renderTab(1000003)
-    expect(
-      await screen.findByText('6 lines open · $6,920 camp aid · $800.50 outside grants')
-    ).toBeInTheDocument()
-    expect(screen.getByText('1 line')).toBeInTheDocument()
-    expect(screen.queryByText(GARCIA_LINE)).toBeNull()
+    expect(await screen.findByText('6 lines open')).toBeInTheDocument()
+    expect(screen.getByText('· $6,920 camp aid · $800.50 outside grants')).toBeInTheDocument()
+    expect(screen.getByText('1 line · $800.50')).toBeInTheDocument()
+    expect(screen.queryByText(GARCIA_GRANT)).toBeNull()
   })
 
   it('shows a grant placement’s result on the tab', async () => {
     grantsRead = WITH_LINES
     answers = [json({ year: 2027, placed: 1, unchanged: 0, operation_id: 'op0000000000009' })]
     renderTab()
-    await userEvent.click(await screen.findByText(GARCIA_LINE))
+    await userEvent.click(await screen.findByText(GARCIA_GRANT))
     const panel = await screen.findByTestId('needs-camper-panel')
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     expect(await screen.findByText(/^✓ 1 line placed on its camper/)).toBeInTheDocument()

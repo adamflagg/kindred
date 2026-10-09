@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { GRANTS } from './grantsFixtures'
-import { grantLineWords, grantPlan, planWords, singleSuggestion } from './needsModel'
+import { grantLineCell, grantLineWords, grantPlan, planWords, singleSuggestion } from './needsModel'
 
 const [GARCIA] = GRANTS.needs_camper
 
@@ -11,6 +11,13 @@ describe('needs a camper', () => {
     expect(GARCIA && grantLineWords(GARCIA)).toBe(
       '$1,500 · Grantor B · posted to the household · Apr 3'
     )
+  })
+
+  it('leads the line cell with the date, then who, then the grantor (final UX ★14)', () => {
+    expect(GARCIA && grantLineCell(GARCIA)).toBe('Apr 3 · to the household · Grantor B')
+    expect(
+      GARCIA && grantLineCell({ ...GARCIA, grant: { ...GARCIA.grant, recorded_on: '' } })
+    ).toBe('to the household · Grantor B')
   })
 
   it('takes a suggestion that is the household’s one candidate as single, exact (P-17)', () => {

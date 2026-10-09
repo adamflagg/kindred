@@ -11,8 +11,8 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import type { ApiAidGrants } from '../../../types/api-types'
-import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { GARCIA_HOUSEHOLD, GRANTS, grantRow } from '../grants/grantsFixtures'
+import { CS_BTN2 } from '../kit/csType'
 import { GrantLinesGroup } from './GrantLinesGroup'
 
 vi.mock('../../../lib/pocketbase', () => ({
@@ -149,18 +149,31 @@ function renderGroup(householdCmId: number | null = null) {
   )
 }
 
-const GARCIA_LINE = '$1,500 · Grantor B · posted to the household · Apr 3'
+// The line cell leads with the date, then who, then the grantor (final UX ★14); the amount has its column.
+const GARCIA_LINE = 'Apr 3 · to the household · Grantor B'
+const CHEN_LINE = 'Mar 12 · to the household · Grantor A'
 
 describe('To place › Outside grant posted to the family (M5)', () => {
   it('heads the group with its count and says what Confirm does, in a note of its own', async () => {
     renderGroup()
     expect(await screen.findByText('Outside grant posted to the family')).toBeInTheDocument()
-    expect(screen.getByText('1 line')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Confirm puts it on a camper's request; it lowers their share in the round it counts in, never Posted or the camp's budget."
-      )
-    ).toBeInTheDocument()
+    // The count and the figure, muted, beside the heading (mock `heading`).
+    expect(screen.getByText('1 line · $1,500')).toHaveClass('text-muted-foreground')
+    // The callout, on its own lines under a sky rule: a bold lead, then → and the result (§16).
+    expect(screen.getByText('Confirm')).toBeInTheDocument()
+    expect(screen.getByText("→ lowers the camper's share in that round")).toBeInTheDocument()
+    expect(screen.getByText("Posted and the camp's budget don't move")).toBeInTheDocument()
+    expect(document.querySelector('[data-does]')).toHaveClass('border-sky-600')
+  })
+
+  it('folds from its heading, keeping the heading and the callout off while shut', async () => {
+    renderGroup()
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Outside grant posted to the family/ })
+    )
+    expect(screen.queryByText(GARCIA_LINE)).toBeNull()
+    expect(document.querySelector('[data-does]')).toBeNull()
+    expect(screen.getByText('Outside grant posted to the family')).toBeInTheDocument()
   })
 
   it('draws the family, the line, and the dashboard’s suggestion with the session', async () => {
@@ -170,6 +183,13 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(
       screen.getByRole('columnheader', { name: /The dashboard.s suggestion/ })
     ).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Amount' })).toBeInTheDocument()
+    expect(screen.getByText('$1,500')).toBeInTheDocument()
+    // Every cut cell carries its full words (§13).
+    expect(screen.getByText(GARCIA_LINE).closest('td')).toHaveAttribute(
+      'title',
+      expect.stringContaining('$1,500 · Grantor B · posted to the household')
+    )
     // Ruled edit (M6 item 5): camper · session name (mock Q4), no program label in this cell.
     expect(await screen.findByText('Liam Garcia · Session 2')).toBeInTheDocument()
     expect(screen.queryByText('Liam Garcia (Summer)')).toBeNull()
@@ -200,10 +220,8 @@ describe('To place › Outside grant posted to the family (M5)', () => {
   it('under ?household= lists only that household’s lines', async () => {
     read = TWO
     renderGroup(1000003)
-    expect(await screen.findByText('1 line')).toBeInTheDocument()
-    expect(
-      screen.getByText('$800 · Grantor A · posted to the household · Mar 12')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('1 line · $800')).toBeInTheDocument()
+    expect(screen.getByText(CHEN_LINE)).toBeInTheDocument()
     expect(screen.queryByText(GARCIA_LINE)).toBeNull()
   })
 
@@ -211,8 +229,9 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     renderGroup()
     await userEvent.click(await screen.findByText(GARCIA_LINE))
     const panel = await screen.findByTestId('needs-camper-panel')
+    // The evidence is one ✓ fact per line (§16); the suggestion's name is the bold line above it.
     expect(
-      within(panel).getByText("Liam Garcia: the household's one camper enrolled this season.")
+      within(panel).getByText("✓ the household's one camper enrolled this season")
     ).toBeInTheDocument()
     await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
@@ -291,17 +310,15 @@ describe('To place › Outside grant posted to the family (M5)', () => {
   it('Another Camper… places on the camper picked, with no session (P-17)', async () => {
     read = TWO
     renderGroup()
-    await userEvent.click(
-      await screen.findByText('$800 · Grantor A · posted to the household · Mar 12')
-    )
+    await userEvent.click(await screen.findByText(CHEN_LINE))
     const panel = await screen.findByTestId('needs-camper-panel')
     await userEvent.click(within(panel).getByRole('button', { name: 'Another Camper…' }))
     const form = within(panel).getByTestId('place-camper-form')
-    await userEvent.selectOptions(
-      within(form).getByRole('combobox', { name: 'Camper' }),
-      'Riley Chen'
-    )
-    await userEvent.click(within(form).getByRole('button', { name: 'Place It' }))
+    // The white picker in the editor's face (§3, §24), the choice that depends on it shown beside it.
+    await userEvent.click(within(form).getByRole('button', { name: /^Camper:/ }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Riley Chen' }))
+    // The approved final mock's words for this editor's button (money-to-place.html, owner 10-09).
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
     await waitFor(() => expect(writes()).toHaveLength(1))
     expect(writes()[0]?.method).toBe('POST')
     expect(writes()[0]?.url).toBe('/api/financial-aid/grants/2027/placements')
@@ -314,9 +331,7 @@ describe('To place › Outside grant posted to the family (M5)', () => {
   it('offers only Confirm and Another Camper… on an opened line', async () => {
     read = TWO
     renderGroup()
-    await userEvent.click(
-      await screen.findByText('$800 · Grantor A · posted to the household · Mar 12')
-    )
+    await userEvent.click(await screen.findByText(CHEN_LINE))
     const panel = await screen.findByTestId('needs-camper-panel')
     expect(
       within(panel)
@@ -363,7 +378,7 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     const button = await screen.findByRole('button', {
       name: 'Confirm the 1 Single, Exact Suggestion…',
     })
-    expect(button).toHaveClass(...BUTTON_SECONDARY.split(' '))
+    expect(button).toHaveClass(...CS_BTN2.split(' '))
   })
 
   it('bulk: rows checked by hand are confirmed together, and a line that is not single is left out by name', async () => {
@@ -373,10 +388,10 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     await userEvent.click(boxes[0] as HTMLElement)
     await userEvent.click(boxes[1] as HTMLElement)
     // Ruled edit (M6 item 4): the grant group has no search of its own, so nothing is ever hidden by one.
-    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    expect(screen.getByText('2 checked')).toBeInTheDocument()
     expect(screen.queryByRole('searchbox', { name: 'Search' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Confirm the Selected…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm the 2 Checked…' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/Left out, confirm one at a time: Chen/)).toBeInTheDocument()
   })
@@ -418,5 +433,66 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(within(panel).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.queryByRole('button', { name: /Single, Exact/ })).toBeNull()
+  })
+})
+
+describe('To place › the outside-grant group answers the page’s one search box', () => {
+  function Searched({ query }: { query: string }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <GrantLinesGroup
+            view={VIEW}
+            householdCmId={null}
+            canWork
+            query={query}
+            onDone={() => undefined}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+  }
+
+  it('shows only the lines the search matches, and nothing when none does', async () => {
+    read = TWO
+    const { rerender } = render(<Searched query="" />)
+    expect(await screen.findByText(GARCIA_LINE)).toBeInTheDocument()
+    expect(screen.getByText(CHEN_LINE)).toBeInTheDocument()
+    rerender(<Searched query="Olivia" />)
+    expect(screen.queryByText(GARCIA_LINE)).toBeNull()
+    expect(screen.getByText(CHEN_LINE)).toBeInTheDocument()
+  })
+
+  it('has the big bulk button on its heading row, right, not a row of its own', async () => {
+    read = TWO
+    render(<Searched query="" />)
+    const button = await screen.findByRole('button', {
+      name: 'Confirm the 1 Single, Exact Suggestion…',
+    })
+    const row = screen
+      .getByText('Outside grant posted to the family')
+      .closest('[data-group-heading-row]')
+    expect(row).toContainElement(button)
+  })
+})
+
+describe('Another Camper… is an editor in the final grammar (§24)', () => {
+  it('opens wide and short: a Camper picker, what it does beside it, buttons on one row', async () => {
+    read = TWO
+    renderGroup()
+    await userEvent.click(await screen.findByText(CHEN_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Another Camper…' }))
+    const form = within(panel).getByTestId('place-camper-form')
+    expect(
+      within(form).getByText(
+        'It prices the camper’s unposted rounds with the grant; a posted amount stands.'
+      )
+    ).toBeInTheDocument()
+    const place = within(form).getByRole('button', { name: 'Put It There' })
+    const back = within(form).getByRole('button', { name: 'Back' })
+    expect(place.parentElement).toBe(back.parentElement)
+    expect(form.querySelector('select')).toBeNull()
   })
 })

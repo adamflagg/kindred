@@ -55,30 +55,25 @@ def test_the_reporting_group_note_no_longer_points_at_today() -> None:
     assert "on Today" not in _text("reporting_group")
 
 
-def test_not_yet_in_campminder_is_d151s_figure() -> None:
-    assert (
-        "locked total, plus the decided amounts of its rounds waiting for Posted to be checked (oldest first, up to "
-        "the first round that can't be checked), less the live camp-aid money already placed on it"
-        in _text("not_yet_in_campminder")
+def test_to_place_notes_say_what_the_final_mock_says() -> None:
+    """Final UX (owner 10-09, star 5; design-language section 12): Money > To place's notes are the mock's shorter words.
+    The meanings are unchanged: D151's figure, D12/D16's suggestion and D146/D152's placement check. These keys are on
+    no other surface (SURFACES lists them under money-to-place alone), so no other page's notes change."""
+    assert _text("not_yet_in_campminder") == (
+        "Not yet in CampMinder: what a request still lacks there: its locked total plus decided rounds waiting for "
+        "Posted, less camp aid already placed on it."
     )
-
-
-def test_a_suggestion_counts_toward_nothing_until_a_person_confirms_it() -> None:
-    assert "counts toward nothing until a person confirms it" in _text("to_place_suggestion")  # D12, D16
-
-
-def test_a_placement_ticks_only_rounds_covered_in_full_at_the_posting_days_price() -> None:
-    text = _text("placement_tick")
-    assert "covers in full, oldest first" in text  # D146, D151
-    assert "as of the posting date" in text  # D152
-    assert "Posted is not checked automatically" in text
-
-
-def test_a_placement_never_reads_pending() -> None:
-    """Review item 32: ruling V1 (owner 10-03) named the state "pending", replacing "awaiting tonight's sync"."""
-    text = _text("placement_tick")
-    assert text.endswith("It never reads pending: the money is already in CampMinder.")
-    assert "awaiting tonight's sync" not in text
+    assert _text("to_place_suggestion") == (
+        "Suggestion: the dashboard's proposed placement or split, with its evidence. It counts toward nothing until "
+        "a person confirms it, and never picks between equal matches."
+    )
+    assert _text("placement_tick") == (
+        "Placing checks Posted: on the rounds the money covers in full, oldest first. If pricing changed since the "
+        "posting, the money is placed and Posted is checked by hand."
+    )
+    surfaces_with = [s for s, keys in SURFACES.items() if "placement_tick" in keys or "to_place_suggestion" in keys]
+    assert surfaces_with == ["money-to-place"]
+    assert len(SURFACES["money-to-place"]) <= 6  # design-language section 12: six notes at most
 
 
 def test_no_note_says_tick_or_awaiting_tonights_sync() -> None:

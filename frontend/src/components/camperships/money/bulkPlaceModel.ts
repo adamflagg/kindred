@@ -47,14 +47,15 @@ export interface BulkPlan {
 }
 
 /**
- * The one-click button's words (money-v2's "Confirm the N exact single matches…", Title Case). It
+ * The one-click button's words (the final mock's "Confirm the N Exact Matches…", Title Case; its title says
+ * single). It
  * checks at most the route's 200 (R1-13); past that it says it takes the first 200 of them.
  */
 export function exactButtonWords(n: number): string {
   if (n > MAX_BULK_LINES) {
-    return `Confirm the First ${String(MAX_BULK_LINES)} of ${String(n)} Exact Single Matches…`
+    return `Confirm the First ${String(MAX_BULK_LINES)} of ${String(n)} Exact Matches…`
   }
-  return `Confirm the ${String(n)} Exact Single ${n === 1 ? 'Match' : 'Matches'}…`
+  return `Confirm the ${String(n)} Exact ${n === 1 ? 'Match' : 'Matches'}…`
 }
 
 /** Why a checked line is left out of the bulk confirm, in staff words. */

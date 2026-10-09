@@ -30,7 +30,8 @@ describe('readSplit', () => {
         ],
         note: '',
       },
-      words: 'Parts add to $3,620 of $3,620 ✓',
+      // The ✓ is drawn as a symbol beside the words (design-language §16; mock `editor`).
+      words: 'Parts add to $3,620 of $3,620',
     })
   })
 
@@ -44,7 +45,7 @@ describe('readSplit', () => {
   it('says what is wrong in staff words, to the cent', () => {
     expect(readSplit(JOHNSON_SPLIT, { [EMMA_REQ]: '2200', [SAMUEL_REQ]: '1400' })).toEqual({
       ok: false,
-      problem: 'Parts add to $3,600 of $3,620 · must equal the line',
+      problem: 'Parts add to $3,600: they must make $3,620',
     })
     // A cent short is short: float noise never makes a sum "close enough".
     expect(readSplit(JOHNSON_SPLIT, { [EMMA_REQ]: '2200', [SAMUEL_REQ]: '1419.99' })).toMatchObject(
