@@ -873,7 +873,7 @@ async def test_the_money_lines_follow_the_approved_mock_in_order_and_words() -> 
         ("outside_awards", "outside grants, every funder"),
         ("incentive_awards", "of which incentive grants"),
         ("not_in_group_amount", "Money in no group (a source that needs a group, a program in no pool, other)"),
-        ("not_in_group_awards", "Awards in no group"),
+        ("not_in_group_awards", "Grants/Awards in no group"),
         ("awards", "Grants/Awards"),
         ("average_award", "Average award = Total Awards Granted ÷ Grants/Awards"),
     ]

@@ -80,6 +80,27 @@ async def test_a_statistics_count_opens_exactly_its_requests() -> None:
     assert (posted.request_ids, decided.request_ids) == ([], [LIAM])
 
 
+async def test_an_rpt_9_count_opens_exactly_its_requests() -> None:
+    """RPT-9: each row's Round 1 apps and appeals open as many requests as the row says; the totals row is the union."""
+    service = _service(report_season())
+    stats = await service.statistics(YEAR, table="camp")
+    for index, row in enumerate(stats.tier_appeals):
+        total = index == len(stats.tier_appeals) - 1
+        for count, field in (("round1_apps", row.round1_apps), ("appeals", row.appeals)):
+            out = await service.statistics_request_ids(
+                YEAR,
+                part="total_appeals" if total else "tier_appeals",
+                table="camp",
+                tier=row.tier,
+                appeals_count=count,  # type: ignore[arg-type]
+            )
+            assert len(out.request_ids) == field, (row.tier, count)
+    tier2 = await service.statistics_request_ids(
+        YEAR, part="tier_appeals", table="camp", tier=2, appeals_count="round1_apps"
+    )
+    assert tier2.request_ids == [EMMA]
+
+
 async def test_rpt_22_and_rpt_23_rows_open_their_requests() -> None:
     """Ask 8: RPT-23's waiting (Emma: posted, not accepted, no Round 2 ask)."""
     waiting = await _service(report_season()).statistics_request_ids(
@@ -119,6 +140,8 @@ async def test_a_programs_count_opens_exactly_its_requests() -> None:
     "selector",
     [
         {"part": "tier", "tier": 2},  # no count
+        {"part": "tier_appeals", "tier": 2},  # no appeals_count
+        {"part": "total_appeals"},  # no appeals_count
         {"part": "total"},  # no count
         {"part": "cancelled", "reason": "medical"},  # no posted_round
         {"part": "outcome", "outcome_row": "pool", "outcome": "waiting"},  # a pool row with no pool

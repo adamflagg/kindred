@@ -322,7 +322,7 @@ from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.reports.programs import ProgramsCount, ProgramsPart
-from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount
+from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount, TierAppealsCount
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import (
     CommitteeView,
@@ -2135,12 +2135,14 @@ async def get_report_statistics_requests(
     posted_round: Annotated[int | None, Query(ge=1, le=3)] = None,
     outcome_row: OutcomeRowKind | None = None,
     outcome: OutcomeKind | None = None,
+    appeals_count: TierAppealsCount | None = None,
     user: AuthUser = _VIEW,  # D65: never development's summary
 ) -> ReportRequestIdsOut:
     """The requests behind one Statistics count (D20; slice 4 asks 1 and 8), on the read `/statistics` gives for the
     same parameters. `part`: `tier` (`tier` absent: the "no tier" row) or `total` with a `count`; `cancelled` (an
     RPT-22 row: `reason`, `posted_round`, `pool` absent for a null pool); `outcome` (an RPT-23 row: `outcome_row` =
-    its kind, `pool` for a pool row, `outcome`)."""
+    its kind, `pool` for a pool row, `outcome`); `tier_appeals` (an RPT-9 row, `tier` absent: the "no tier" row) or
+    `total_appeals` (its totals row), each with an `appeals_count`."""
     try:
         return await _reports().statistics_request_ids(
             year,
@@ -2159,6 +2161,7 @@ async def get_report_statistics_requests(
             posted_round=posted_round,
             outcome_row=outcome_row,
             outcome=outcome,
+            appeals_count=appeals_count,
         )
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc

@@ -39,6 +39,13 @@ describe('a Reports count in the URL', () => {
     })
   })
 
+  it("keeps RPT-9's appeals_count, which the statistics route takes", () => {
+    expect(parseReportParam('statistics?part=tier_appeals&tier=2&appeals_count=appeals')).toEqual({
+      report: 'statistics',
+      query: { part: 'tier_appeals', tier: '2', appeals_count: 'appeals' },
+    })
+  })
+
   it('reads a malformed address as no filter at all', () => {
     expect(parseReportParam(null)).toBeNull()
     expect(parseReportParam('ledger?part=tier')).toBeNull()

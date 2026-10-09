@@ -120,11 +120,13 @@ from bunking.financial_aid.reports.statistics import (
     RoundChip,
     StatisticsCount,
     StatisticsRow,
+    TierAppealsCount,
     cancelled_members,
     outcome_members,
     outcomes,
     statistics,
     tier_appeals,
+    tier_appeals_members,
     tier_members,
 )
 from bunking.financial_aid.rules import AidRules, resolve_program, round1_table
@@ -174,7 +176,7 @@ class ReportsRefusedError(FinancialAidError, ValueError):
     """A read or load that can't be answered as asked (422)."""
 
 
-StatisticsPart = Literal["tier", "total", "cancelled", "outcome"]
+StatisticsPart = Literal["tier", "total", "cancelled", "outcome", "tier_appeals", "total_appeals"]
 OutcomeRowKind = Literal["pool", "no_pool", "headline"]  # OutcomeRowOut.kind's three values
 
 
@@ -562,13 +564,17 @@ class FinancialAidReportsService:
         posted_round: int | None = None,
         outcome_row: OutcomeRowKind | None = None,
         outcome: OutcomeKind | None = None,
+        appeals_count: TierAppealsCount | None = None,
     ) -> ReportRequestIdsOut:
         """The requests behind one count on the Statistics read with the same parameters: a tier row's count (`tier`
-        None: the "no tier" row), the totals' count, an RPT-22 row (its reason, lock pool and round), or an RPT-23
-        outcome (its row kind and pool). RPT-22 follows the chips, as its rows do; RPT-23 follows neither the chips
+        None: the "no tier" row), the totals' count, an RPT-22 row (its reason, lock pool and round), an RPT-23
+        outcome (its row kind and pool), or an RPT-9 row's Round 1 apps or appeals (`tier_appeals`, or
+        `total_appeals` for its totals row; RPT-9 follows neither the round chip nor the basis, as its rows don't). RPT-22 follows the chips, as its rows do; RPT-23 follows neither the chips
         nor the basis, as its rows don't. Every part follows the date and the reporting control."""
         if part in ("tier", "total") and count is None:
             raise ReportsRefusedError("Choose a count: apps, cancelled, asks, awarded or decided")
+        if part in ("tier_appeals", "total_appeals") and appeals_count is None:
+            raise ReportsRefusedError("Choose a count: Round 1 apps or appeals")
         if part == "cancelled" and (reason is None or posted_round is None):
             raise ReportsRefusedError("A cancellations row is named by its reason and its round (and its pool, if any)")
         if part == "outcome" and (outcome_row is None or outcome is None or (outcome_row == "pool" and pool is None)):
@@ -578,7 +584,11 @@ class FinancialAidReportsService:
         read, _ = await self._statistics_read(
             year, table=table, through_deadline=through_deadline, through=through, as_of=as_of, axis=axis
         )
-        if part == "outcome" and outcome_row is not None and outcome is not None:
+        if part in ("tier_appeals", "total_appeals") and appeals_count is not None:
+            ids = tier_appeals_members(
+                read.requests, table=table, tier=tier, total=part == "total_appeals", count=appeals_count
+            )
+        elif part == "outcome" and outcome_row is not None and outcome is not None:
             ids = outcome_members(read.requests, kind=outcome_row, pool=pool, outcome=outcome)
         elif part == "cancelled" and reason is not None and posted_round is not None:
             ids = cancelled_members(

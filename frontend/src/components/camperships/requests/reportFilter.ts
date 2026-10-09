@@ -31,6 +31,7 @@ const KEYS: Readonly<Record<ReportKind, readonly string[]>> = {
     'posted_round',
     'outcome_row',
     'outcome',
+    'appeals_count',
   ],
   programs: [
     'part',
