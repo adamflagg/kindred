@@ -351,7 +351,7 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
         None,
         None,
     ),
-    _RowSpec("not_in_group_awards", "money", "Awards in no group", "count", False, None, None),
+    _RowSpec("not_in_group_awards", "money", "Grants/Awards in no group", "count", False, None, None),
     _RowSpec("awards", "money", GRANTS_AWARDS_LABEL, "count", True, None, "awards", AWARDS_DEFINITION),
     _RowSpec(
         "average_award",
