@@ -109,7 +109,7 @@ export interface ReportColumn {
  * - `body`: a row of the table;
  * - `heading`: a group's name over its rows (Programs' pools, Development's sections);
  * - `subtotal`: the server's subtotal of the rows above it;
- * - `total`: the server's total, last;
+ * - `total`: the server's total, last (first under ReportTable's `totalsFirst`);
  * - `end`: a body row that stays at the end whatever the sort (ZIP's "Outside the US").
  */
 export type ReportRowKind = 'body' | 'heading' | 'subtotal' | 'total' | 'end'

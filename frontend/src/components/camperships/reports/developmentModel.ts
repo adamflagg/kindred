@@ -1,8 +1,9 @@
 /**
  * Reports › Development's table (spec §9.4; D65, D66, D87–D94, D96, D99, D158; development-v2.html,
  * S4-4): rows are development's lines grouped Money · Counts · Appeals and cancellations, each for a
- * group or for every group; columns are seasons, as reported (r) or the dashboard's (P), and saved dated
- * columns. Pure; every figure is the server's (D21), and no row is a family (D66).
+ * group or for every group; columns are seasons, as reported (r) or the dashboard's (P), and the one
+ * dated column staff ask for (saved nowhere). Definitions are numbered notes under the table, each row a
+ * superscript. Pure; every figure is the server's (D21), and no row is a family (D66).
  */
 import type {
   ApiAidDevelopment,

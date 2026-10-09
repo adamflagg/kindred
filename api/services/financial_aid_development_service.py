@@ -146,7 +146,7 @@ BUDGET_LABEL: Final = "Budget (this camp's, the first board-passed)"
 BUDGET_DEFINITION: Final = (
     "This camp's own aid budget as first passed by the board, one total, never the all-money total. A season the "
     "dashboard reads uses the season's first approved budget, which doesn't move with later revisions; an "
-    "as-reported season uses the budget finance typed"
+    "as-reported season uses the budget finance typed. A column as of a day before that first approval shows none"
 )
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
@@ -874,7 +874,8 @@ class FinancialAidDevelopmentService:
             ):
                 continue  # 2026 before its decisions load (D67): as reported only
             # The Budget row (owner 10-08, D96): the season's FIRST approved budget, fixed when a later version is
-            # approved; a dated column shows it too (the board-passed figure, not the budget as of the day).
+            # approved; a dated column shows it too (the board-passed figure, not the budget as of the day), or none
+            # when its day came before that first approval.
             first = await self._rules.first_approved(season_year, ["budget"])
             budget = first.document.budget.total if first is not None else None
             native = await self._native(season, sources, budget=budget)
