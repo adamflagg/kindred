@@ -433,7 +433,6 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
 // the receipt, the payer shares and the key hint sit on the line under it. The detail line names the
 // household, so the panel has no caption.
 describe('RequestEditor: the panel layout (the grid)', () => {
-  const STEP = <button type="button">Check Accepted</button>
   const top = () => screen.getByLabelText('Round 2 ask').closest('[data-editor-top]') as HTMLElement
   const foot = () => document.querySelector('[data-editor-foot]') as HTMLElement
 
@@ -443,15 +442,12 @@ describe('RequestEditor: the panel layout (the grid)', () => {
     expect(screen.queryByText(/person 1000002/)).toBeNull()
   })
 
-  it('puts the ask, the award and stage, the note and the next step on one line, the step last', () => {
-    setup({ layout: 'panel', trailing: STEP })
+  it('puts the ask, the award and stage, and the note on one line', () => {
+    setup({ layout: 'panel' })
     const line = top()
     expect(line).toContainElement(screen.getByLabelText('Note'))
     expect(line).toContainElement(screen.getByText('Stage → Needs an offer'))
     expect(within(line).getByText(/^Award/)).toBeInTheDocument()
-    const step = screen.getByRole('button', { name: 'Check Accepted' })
-    expect(line.lastElementChild).toContainElement(step)
-    expect(line.lastElementChild).toHaveClass('ml-auto')
   })
 
   it('puts the receipt, the payer shares and the key hint on the line under it', () => {

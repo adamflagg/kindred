@@ -97,10 +97,9 @@ interface RequestsGridProps {
   readonly foldScope?: string | undefined
   /**
    * The opened row's editor: drawn inside the detail line, full width under its text (§24, owner
-   * 10-09). It is handed null for the step: the row's next step stays in the detail line.
+   * 10-09). The row's next step stays in the detail line.
    */
-  readonly renderEditor?:
-    ((row: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => ReactNode) | undefined
+  readonly renderEditor?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
   /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
   readonly marked?: ReadonlySet<string> | undefined
   readonly selected?: ReadonlySet<string> | undefined
@@ -431,7 +430,7 @@ export function RequestsGrid({
         showConfirmation={tickedSeason}
         onTick={onTick}
         onMarkPosted={onMarkPosted}
-        editor={renderEditor ? (step: ReactNode) => renderEditor(row, nav, step) : undefined}
+        editor={renderEditor ? () => renderEditor(row, nav) : undefined}
       />
     ),
     [view, today, links, tickedSeason, onTick, onMarkPosted, renderEditor]

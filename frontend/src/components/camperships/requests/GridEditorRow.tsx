@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ACTION_LINK } from '../../admin/lodging/lodgingStyles'
 import { useAidEditorPreview } from '../../../hooks/camperships/useAidEditorPreview'
@@ -15,12 +15,10 @@ function AppealEditor({
   row,
   initialAmount,
   walk,
-  step,
 }: {
   row: ApiAidGridRow
   initialAmount: number | null
   walk: WalkEditorProps
-  step: ReactNode
 }) {
   // The grid knows only the row's own household by name; another payer reads "Another household".
   const householdOf = useCallback(
@@ -43,7 +41,6 @@ function AppealEditor({
       preview={preview}
       onAmountChange={onAmountChange}
       layout="panel"
-      trailing={step}
       {...walk}
     />
   )
@@ -93,21 +90,11 @@ function Refusal({ why, walk }: { why: string; walk: WalkEditorProps }) {
 }
 
 /**
- * The opened row's editing part (§4.6; D22; Decision 13): the Round 2 ask as the right-hand panel
- * beside the detail text, with the row's next step at the end of its line (owner fast-follow,
- * opened-row-options.html arrangement 3), or why none can be keyed here. The detail line beside it
- * names and links the household, once.
+ * The opened row's editing part (§4.6; D22; Decision 13): the Round 2 ask as a full-width panel
+ * under the detail text, or why none can be keyed here. The detail line above it names and links
+ * the household, once.
  */
-export function GridEditorRow({
-  row,
-  walk,
-  step,
-}: {
-  row: ApiAidGridRow
-  walk: WalkEditorProps
-  /** The detail line's next step: drawn at the end of the editor's line when there is an editor. */
-  step: ReactNode
-}) {
+export function GridEditorRow({ row, walk }: { row: ApiAidGridRow; walk: WalkEditorProps }) {
   const target = appealTarget(row)
   if (target.kind === 'appeal') {
     return (
@@ -116,7 +103,6 @@ export function GridEditorRow({
         row={row}
         initialAmount={target.initialAmount}
         walk={walk}
-        step={step}
       />
     )
   }

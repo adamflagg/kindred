@@ -43,7 +43,7 @@ function Grid({
   tickedSeason?: boolean
   onTick?: (row: ApiAidGridRow, action: 'accepted') => void
   onMarkPosted?: (row: ApiAidGridRow, round: number, amount: number) => Promise<unknown>
-  renderEditor?: (row: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => ReactNode
+  renderEditor?: (row: ApiAidGridRow, nav: AidRowNav) => ReactNode
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -1089,7 +1089,7 @@ describe('RequestsGrid: the opened row, the editor under its text (§24; was sid
   const left = () => detail().querySelector('[data-detail-left]') as HTMLElement
   const openRow = (camper: string) =>
     userEvent.click(within(rowOf(camper)).getAllByRole('cell')[1] as HTMLElement)
-  const editorStub = vi.fn((row: ApiAidGridRow, _nav: AidRowNav, step: ReactNode) =>
+  const editorStub = vi.fn((row: ApiAidGridRow, _nav: AidRowNav) =>
     row.appeal_refusal ? (
       <span>Refusal stub</span>
     ) : (
@@ -1098,7 +1098,6 @@ describe('RequestsGrid: the opened row, the editor under its text (§24; was sid
           Round 2 ask <input />
         </label>
         <button type="button">Save</button>
-        {step}
       </div>
     )
   )
@@ -1122,7 +1121,7 @@ describe('RequestsGrid: the opened row, the editor under its text (§24; was sid
         .map((a) => a.textContent)
     ).toEqual(['Household 1000005 ›'])
     // The step stays in the detail line, top right, and is not handed to the editor.
-    expect(editorStub).toHaveBeenLastCalledWith(ROW_OLIVIA, expect.anything(), null)
+    expect(editorStub).toHaveBeenLastCalledWith(ROW_OLIVIA, expect.anything())
     const step = within(detail()).getByRole('link', { name: 'Open the Request ›' })
     expect(step).toHaveAttribute('href', expect.stringContaining('#request-reqolivia000003'))
     expect(slot).not.toContainElement(step)
@@ -1161,7 +1160,7 @@ describe('RequestsGrid: the opened row, the editor under its text (§24; was sid
     render(<Grid rows={[ROW_LIAM]} renderEditor={editorStub} />)
     await openRow('Liam Garcia')
     expect(within(detail()).queryByTestId('editor')).toBeNull()
-    expect(editorStub).toHaveBeenLastCalledWith(ROW_LIAM, expect.anything(), null)
+    expect(editorStub).toHaveBeenLastCalledWith(ROW_LIAM, expect.anything())
     const step = within(detail()).getByRole('link', { name: 'Enter the Income ›' })
     expect(left()).not.toContainElement(step)
     expect(left().parentElement).toContainElement(step)

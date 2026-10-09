@@ -193,8 +193,8 @@ export function RequestDetailLine({
   onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
   /** The hand Posted tick (#2996; casework on a live read); without it Mark Posted draws nothing. */
   onMarkPosted?: MarkPosted | undefined
-  /** The row's editor, drawn full width under the text (§24); handed null, the step stays on the text's line. */
-  editor?: ((step: ReactNode) => ReactNode) | undefined
+  /** The row's editor, drawn full width under the text (§24); the step stays on the text's line. */
+  editor?: (() => ReactNode) | undefined
 }) {
   const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
   const next = found === null ? OPEN_REQUEST : found.next
@@ -252,7 +252,7 @@ export function RequestDetailLine({
       </div>
       {editor !== undefined && (
         <div data-aid-editor="" className="empty:hidden">
-          {editor(null)}
+          {editor()}
         </div>
       )}
     </div>

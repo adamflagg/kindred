@@ -6,7 +6,7 @@ import { exactButtonWords } from './bulkPlaceModel'
  * Single Matches…" checks every exact single match and opens the dialog at once. Lines checked by
  * hand confirm through "Confirm the Selected…", with how many are checked and how many of them the
  * search hides (still checked, still sent: owner ruling 2026-10-02), and Clear. The Requests grid's
- * BulkBar grammar.
+ * bulk-bar grammar.
  */
 export function BulkPlaceBar({
   count,

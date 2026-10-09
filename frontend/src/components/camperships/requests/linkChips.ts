@@ -3,6 +3,7 @@
  * chip's old sentence is its title. Pure: the page reads the URL and the two id reads, this words them.
  */
 import { OP_MISSING } from './opFilter'
+import { missingWords, REPORT_WORDS, reportWords } from './reportFilter'
 import { figureWords, type SeasonFigure } from './seasonFigure'
 
 export interface LinkChip {
@@ -31,7 +32,6 @@ export interface LinkChipInput {
   }
 }
 
-const REPORT_NAME = { statistics: 'Statistics', programs: 'Statistics by session' } as const
 const SHOW_ALL = '✕ shows all.'
 const RETRY_LABEL = "Couldn't read · Try Again"
 
@@ -84,7 +84,7 @@ export function linkChips(input: LinkChipInput): LinkChip[] {
     }
   }
   if (report.on) {
-    const name = REPORT_NAME[report.kind]
+    const name = REPORT_WORDS[report.kind]
     if (report.state === 'failed') {
       out.push(
         chip(
@@ -103,11 +103,9 @@ export function linkChips(input: LinkChipInput): LinkChip[] {
         )
       )
     } else {
-      const words = `The ${String(report.count)} ${report.count === 1 ? 'request' : 'requests'} behind one ${name} count`
-      const missing =
-        report.missing === 0
-          ? ''
-          : ` · ${String(report.missing)} of them ${report.missing === 1 ? "isn't" : "aren't"} in this list`
+      const words = reportWords(report.count, report.kind)
+      const gap = missingWords(report.missing)
+      const missing = gap === null ? '' : ` · ${gap}`
       out.push(
         chip('report', `${name} count · ${String(report.count)}`, `${words}${missing}. ${SHOW_ALL}`)
       )

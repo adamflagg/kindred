@@ -213,6 +213,3 @@ export const STRIP_MEASURE =
 /** The +N chip's list of folded badges, anchored under the chip. */
 export const STRIP_FOLDED =
   'bg-popover border-border fixed z-[200] flex flex-col items-stretch gap-1 rounded-lg border p-1.5 whitespace-nowrap shadow-lg'
-
-export const STRIP_LEGEND_LINE = 'text-muted-foreground mt-1 mb-2 ml-1 text-[11.5px]'
-export const STRIP_LEGEND_LENS = 'text-primary font-semibold'

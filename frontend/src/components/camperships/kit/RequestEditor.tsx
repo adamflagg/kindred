@@ -144,12 +144,10 @@ interface RequestEditorProps {
   /**
    * 'row' under a highlighted table row; 'card' in place on the household page's request card (D22);
    * 'panel' the Requests grid's opened row, full width under its detail text (§24, owner 10-09): the
-   * ask, Award / Stage, the note, Save Ask and Cancel (and `trailing`) on one line, the receipt,
+   * ask, Award / Stage, the note, Save Ask and Cancel on one line, the receipt,
    * shares and key hint under it, and no caption (the detail line names the household).
    */
   readonly layout?: 'row' | 'card' | 'panel' | undefined
-  /** 'panel' only: the row's next step, at the end of the first line. */
-  readonly trailing?: ReactNode
   /**
    * 'card' only: the household page lays the editor out itself (round 3, two columns), dressing the
    * fields in its own classes. No caption and no hint line of the editor's own: the surface places
@@ -544,7 +542,6 @@ export function RequestEditor(props: RequestEditorProps) {
               Cancel
             </button>
           </span>
-          {props.trailing ? <span className="ml-auto">{props.trailing}</span> : null}
         </div>
         <div
           data-editor-foot=""

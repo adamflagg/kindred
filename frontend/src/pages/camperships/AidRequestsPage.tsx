@@ -1,5 +1,5 @@
 import { ListChecks } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { QueryGuard } from '../../components/QueryGuard'
@@ -637,12 +637,11 @@ export default function AidRequestsPage() {
               marked={canWork ? walk.failed : undefined}
               renderEditor={
                 canWork
-                  ? (r: ApiAidGridRow, nav: AidRowNav, step: ReactNode) => (
+                  ? (r: ApiAidGridRow, nav: AidRowNav) => (
                       <GridEditorRow
                         key={walk.editorKey(r.request_id)}
                         row={r}
                         walk={walk.editorFor(r.request_id, nav)}
-                        step={step}
                       />
                     )
                   : undefined
