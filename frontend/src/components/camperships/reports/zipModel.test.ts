@@ -68,14 +68,25 @@ describe('ZIP codes', () => {
     ])
   })
 
+  // Coordinator ruling 10-09: a 2027-or-later season with no aid table (rules with no groups) must not read
+  // "it starts with 2027"; it says the table starts with that season's own decisions.
+  it('says a 2027-or-later season has no aid table yet, never that it starts with 2027', () => {
+    expect(noAidWords({ ...ZIP, year: 2027, with_aid: null })).toBe(
+      "No aid table for 2027 yet: it starts with that season's decisions."
+    )
+    expect(noAidWords({ ...ZIP, year: 2028, with_aid: null })).toBe(
+      "No aid table for 2028 yet: it starts with that season's decisions."
+    )
+  })
+
   it("says the aid table's description, and why there is no aid table, in the mock's words", () => {
     expect(ZIP_AID_WORDS).toBe(
       "The same campers, attended and got money from any source: the camp's awards and every outside grant. A household-level grant lands on its household's ZIP."
     )
-    expect(noAidWords({ ...ZIP, with_aid: null })).toBe(
-      'No aid table for 2027: it starts with 2027, the first season decided in the dashboard.'
+    // the mock draws only seasons before 2027
+    expect(noAidWords({ ...ZIP, year: 2026, with_aid: null })).toBe(
+      'No aid table for 2026: it starts with 2027, the first season decided in the dashboard.'
     )
-    expect(noAidWords({ ...ZIP, year: 2026, with_aid: null })).toContain('No aid table for 2026:')
     expect(noAidWords(ZIP)).toBeNull()
   })
 

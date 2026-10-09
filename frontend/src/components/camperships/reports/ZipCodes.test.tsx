@@ -112,8 +112,9 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     renderZip()
     // the table's own muted empty row, never a sentence above it
     const aid = await screen.findByRole('table', { name: 'Campers who got aid · Pool A' })
+    // ZIP_NO_AID is a 2027 season: the coordinator's 10-09 wording for 2027 and later
     const words = within(aid).getByText(
-      'No aid table for 2027: it starts with 2027, the first season decided in the dashboard.'
+      "No aid table for 2027 yet: it starts with that season's decisions."
     )
     expect(words.closest('td')).toHaveClass('text-muted-foreground')
     expect(within(aid).queryByRole('searchbox')).toBeNull()
