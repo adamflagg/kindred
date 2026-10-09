@@ -621,11 +621,11 @@ async def test_data_quality_lists_off_season_sessions_and_aid_like_rows_outside_
     ] == [(5000, "Summer Grant", 2, -300.0)]
 
 
-def test_program_labels_come_from_the_rules_programs_and_are_empty_without_rules() -> None:
+def test_program_labels_come_from_the_rules_programs_and_only_the_fixed_words_without_rules() -> None:
     from api.services.financial_aid_program_labels import program_labels
     from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
     labels = program_labels(fictional_rules())
     assert labels["summer"] == "Summer"
     assert labels["family_camp"] == "Family camp"
-    assert program_labels(None) == {}
+    assert program_labels(None) == {"quest": "Quest", "teen": "Teen Leadership", "bmitzvah": "B*Mitzvah"}

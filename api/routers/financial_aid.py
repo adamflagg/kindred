@@ -58,7 +58,6 @@ from api.schemas.financial_aid import (
     NetTotalsResponse,
     OverrideBulkLoad,
     ProgramFamily,
-    SourceFamily,
     SourceGrantorIn,
     SummaryResponse,
 )
@@ -114,7 +113,13 @@ from api.schemas.financial_aid_intake import (
     UseFormOut,
 )
 from api.schemas.financial_aid_march_file import MarchFileOut
-from api.schemas.financial_aid_money_ledger import LedgerLevelOut, LedgerTotalOut, MoneyLedgerLinesOut, MoneyLedgerOut
+from api.schemas.financial_aid_money_ledger import (
+    LedgerLevelOut,
+    LedgerSourceFilter,
+    LedgerTotalOut,
+    MoneyLedgerLinesOut,
+    MoneyLedgerOut,
+)
 from api.schemas.financial_aid_reports import (
     CommitteeResponse,
     DatedColumn,
@@ -1082,7 +1087,10 @@ async def withdraw_grant_commitment(
 
 def _decisions() -> FinancialAidDecisionsService:
     return FinancialAidDecisionsService(
-        FinancialAidDecisionsRepository(pb), _rules(), GrantsService(GrantsRepository(pb)).register_rows
+        FinancialAidDecisionsRepository(pb),
+        _rules(),
+        GrantsService(GrantsRepository(pb)).register_rows,
+        labels=_household_labels(),
     )
 
 
@@ -2004,7 +2012,7 @@ async def get_money_ledger(
     year: _Year,
     as_of: date | None = None,
     as_of_axis: AsOfAxis = "campminder",
-    source: SourceFamily | None = None,
+    source: LedgerSourceFilter | None = None,
     program: ProgramFamily | None = None,
     level: LedgerLevelOut | None = None,
     user: AuthUser = _VIEW,
@@ -2025,7 +2033,7 @@ async def get_money_ledger_lines(
     total: LedgerTotalOut,
     as_of: date | None = None,
     as_of_axis: AsOfAxis = "campminder",
-    source: SourceFamily | None = None,
+    source: LedgerSourceFilter | None = None,
     program: ProgramFamily | None = None,
     level: LedgerLevelOut | None = None,
     user: AuthUser = _VIEW,

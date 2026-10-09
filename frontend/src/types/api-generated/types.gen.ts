@@ -6007,6 +6007,18 @@ export type GridRowOut = {
    */
   session_name: string
   /**
+   * Session Type
+   */
+  session_type?: string
+  /**
+   * Household Label
+   */
+  household_label?: string
+  /**
+   * Household Label Tiebreak
+   */
+  household_label_tiebreak?: string
+  /**
    * Program Key
    */
   program_key: string | null
@@ -26592,6 +26604,7 @@ export type GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetData = {
       | 'application_marker'
       | 'placeholder'
       | 'unclassified'
+      | 'outside'
       | null
     /**
      * Program
@@ -26671,6 +26684,7 @@ export type GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetData = {
       | 'application_marker'
       | 'placeholder'
       | 'unclassified'
+      | 'outside'
       | null
     /**
      * Program

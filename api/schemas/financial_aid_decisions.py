@@ -286,6 +286,12 @@ class GridRowOut(BaseModel):
     camper_name: str
     session_cm_id: int
     session_name: str
+    session_type: str = ""  # camp_sessions.session_type of the row's session (main, quest, family, ...); "" for none
+    # The household's label as Money and Grants name it (household_labels): filled for a household-level row (no
+    # camper), "" for a camper row. household_label_tiebreak is "" unless another household-level row on the grid
+    # reads the same. With no label read, a household row falls back to family_name.
+    household_label: str = ""
+    household_label_tiebreak: str = ""
     program_key: str | None
     pool: str | None
     request_status: str | None
