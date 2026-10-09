@@ -356,6 +356,17 @@ describe('AppLayout sync-status labels', () => {
     expect(screen.getByText(/Assignments synced/)).toBeInTheDocument()
   })
 
+  // The shared FreshnessChip grammar (2026-10-08): compact age, and the icon
+  // says where the data came from — refresh for a CampMinder sync, upload for
+  // a CSV — so the synced/uploaded distinction survives at a glance.
+  it('renders the summer pair compactly, a sync with the refresh icon and the upload with the upload icon', () => {
+    renderAppLayout()
+    const assignments = screen.getByText(/^Assignments synced (just now|\d+(m|h|d|mo|y) ago)$/)
+    const requests = screen.getByText(/^Requests uploaded (just now|\d+(m|h|d|mo|y) ago)$/)
+    expect(assignments.querySelector('svg.lucide-refresh-cw')).not.toBeNull()
+    expect(requests.querySelector('svg.lucide-upload')).not.toBeNull()
+  })
+
   // WAS: 'renders "Requests synced ..." label'. The fallback that produced that
   // label is gone — see the no-fallback test at the end of this describe — so the
   // request-text span now only ever renders the UPLOAD wording.
@@ -655,6 +666,14 @@ describe('AppLayout weekend freshness stack', () => {
     renderAppLayout('/weekend/fc4')
     const label = screen.getByText(/Housing synced/)
     expect(label.textContent).toMatch(/ago/)
+  })
+
+  it('renders the weekend pair in the same compact grammar as summer', () => {
+    renderAppLayout('/weekend/fc4')
+    const housing = screen.getByText(/^Housing synced \d+(m|h|d|mo|y) ago$/)
+    const notes = screen.getByText(/^Bunk notes uploaded \d+(m|h|d|mo|y) ago$/)
+    expect(housing.querySelector('svg.lucide-refresh-cw')).not.toBeNull()
+    expect(notes.querySelector('svg.lucide-upload')).not.toBeNull()
   })
 
   /**
