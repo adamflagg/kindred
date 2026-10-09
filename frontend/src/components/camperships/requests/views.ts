@@ -525,13 +525,17 @@ export interface GridFilters {
    * (posted / accepted, `tick=`) is gone: under D162 there are no Posted ticks (owner, fast-follow 10-03).
    */
   readonly round: RoundFilter | null
-  /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
+  /**
+   * Exactly these requests, or null for no such filter: a History operation's (`?op=`) or a Reports
+   * count's (`?report=`, slice 4 J), both read from the server's own list.
+   */
   readonly ids: ReadonlySet<string> | null
   /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
   readonly live: boolean
   /**
    * A Season Posted / Accepted figure's rows (`posted=` / `accepted=`; interim per owner 10-06, "a
-   * but c eventually": seasonFigure.ts, which slice 4 J replaces with server-sent ids).
+   * but c eventually": seasonFigure.ts). Slice 4 J built server-sent ids for Reports counts only
+   * (`?report=`); a Season figure moves onto the same mechanism once a Season ids route exists.
    */
   readonly figure: SeasonFigure | null
 }

@@ -15,7 +15,8 @@ export function useAidTableUrl(
   columnKeys: readonly string[],
   groupingKeys: readonly string[],
   prefix = '',
-  defaultGrouping?: string
+  defaultGrouping?: string,
+  defaultSort?: SortState
 ): {
   sort: SortState | null
   group: string | null
@@ -26,7 +27,17 @@ export function useAidTableUrl(
   const sortParam = `${prefix}sort`
   const groupParam = `${prefix}group`
   const rawSort = params.get(sortParam)
-  const sort = useMemo(() => parseSort(rawSort, columnKeys), [rawSort, columnKeys])
+  const defaultKey = defaultSort?.key
+  const defaultDir = defaultSort?.dir
+  // The URL's sort wins; with none, the table's own opening sort (a header click toggles from it).
+  const sort = useMemo(
+    () =>
+      parseSort(rawSort, columnKeys) ??
+      (defaultKey !== undefined && defaultDir !== undefined
+        ? { key: defaultKey, dir: defaultDir }
+        : null),
+    [rawSort, columnKeys, defaultKey, defaultDir]
+  )
   const raw = params.get(groupParam)
   const group =
     raw === FLAT

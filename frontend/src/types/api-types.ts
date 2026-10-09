@@ -173,6 +173,37 @@ import type {
   ValidationIssue,
   ViewIn,
   WorkspaceOut,
+  AppealsRowOut,
+  ApplicationsRowOut,
+  BandOut,
+  BudgetRowOut,
+  CancelledRowOut,
+  ChipOut,
+  CommitteeResponse,
+  CountedOut,
+  NotBuiltOut,
+  NotRebuiltOut,
+  OutcomeRowOut,
+  PhaseRowOut,
+  PoolGroupOut,
+  ProgramRowOut,
+  ProgramsResponse,
+  ReportRequestIdsOut,
+  RequestSetNote,
+  Round1PctRowOut,
+  RoundBlockOut,
+  StatisticsResponse,
+  StatisticsRowOut,
+  TierAppealsRowOut,
+  DevelopmentColumnOut,
+  DevelopmentGroupOut,
+  DevelopmentResponse,
+  DevelopmentRowOut,
+  DevelopmentSourceOut,
+  ZipGroupOut,
+  ZipResponse,
+  ZipRowOut,
+  ZipTableOut,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -422,3 +453,63 @@ export type ApiAidSourceRow = AidSourceRow
  */
 export type ApiAidMarchFile = MarchFileOut
 export type ApiAidMarchFileRow = MarchFileRowOut
+
+/**
+ * Reports › Statistics (spec §9.2, §9.7 RPT-5, 9, 10, 22, 23; D80, D129–D131, D138). Mirrors Python
+ * `StatisticsResponse` and its rows (`api/schemas/financial_aid_reports.py`).
+ */
+export type ApiAidStatistics = StatisticsResponse
+export type ApiAidStatisticsRow = StatisticsRowOut
+export type ApiAidCancelledRow = CancelledRowOut
+export type ApiAidTierAppealsRow = TierAppealsRowOut
+export type ApiAidOutcomeRow = OutcomeRowOut
+/** An award-table chip (key and the rules' label). Mirrors Python `ChipOut`. */
+export type ApiAidChip = ChipOut
+/** "Requests received through <date>" (D138). Mirrors Python `RequestSetNote`. */
+export type ApiAidRequestSetNote = RequestSetNote
+/** A figure a past date leaves empty, and why (D154). Mirrors Python `NotRebuiltOut`. */
+export type ApiAidNotRebuilt = NotRebuiltOut
+/** The requests behind one Statistics or Programs count (D20; #2974). Mirrors Python `ReportRequestIdsOut`. */
+export type ApiAidReportRequestIds = ReportRequestIdsOut
+
+/** Reports › Programs (spec §9.3; RPT-11): sessions by pool. Mirrors Python `ProgramsResponse` and its parts. */
+export type ApiAidPrograms = ProgramsResponse
+export type ApiAidProgramPool = PoolGroupOut
+export type ApiAidProgramRow = ProgramRowOut
+export type ApiAidRoundBlock = RoundBlockOut
+
+/**
+ * The committee's year-over-year tables (spec §9.7 RPT-1, 2, 6, 7, 8, 13, 24; D155; owner N2). Mirrors
+ * Python `CommitteeResponse` and its rows: P rows the dashboard's, r rows typed once. Named
+ * `…CommitteeReport` because `ApiAidCommittee` is Scenarios' compare table (`CommitteeOut`).
+ */
+export type ApiAidCommitteeReport = CommitteeResponse
+export type ApiAidPhaseRow = PhaseRowOut
+export type ApiAidBand = BandOut
+export type ApiAidApplicationsRow = ApplicationsRowOut
+export type ApiAidCounted = CountedOut
+export type ApiAidBudgetRow = BudgetRowOut
+export type ApiAidAppealsRow = AppealsRowOut
+export type ApiAidRound1PctRow = Round1PctRowOut
+/** A figure Reports doesn't build yet, and what it waits on; never names a request (D65). Mirrors Python `NotBuiltOut`. */
+export type ApiAidNotBuilt = NotBuiltOut
+
+/**
+ * Reports › Development (spec §9.4; D65, D66, D87–D94, D96, D99, D158): development's lines by
+ * group, seasons as columns, row-major. Aggregates only: no field names a family. Mirrors Python
+ * `DevelopmentResponse` and its parts.
+ */
+export type ApiAidDevelopment = DevelopmentResponse
+export type ApiAidDevelopmentGroup = DevelopmentGroupOut
+export type ApiAidDevelopmentColumn = DevelopmentColumnOut
+export type ApiAidDevelopmentRow = DevelopmentRowOut
+export type ApiAidDevelopmentSource = DevelopmentSourceOut
+
+/**
+ * Reports › Development › ZIP codes (spec §9.4; D90; owner ruling C): every camper and every camper
+ * who got aid, by the household's billing ZIP, for one group. Mirrors Python `ZipResponse` and its parts.
+ */
+export type ApiAidZip = ZipResponse
+export type ApiAidZipTable = ZipTableOut
+export type ApiAidZipRow = ZipRowOut
+export type ApiAidZipGroup = ZipGroupOut
