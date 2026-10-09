@@ -232,6 +232,19 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       expect(screen.queryByTestId('tie-out')).toBeNull()
     })
 
+    it('shows no tie-out on the as-recorded axis: the summary only goes by posting date', async () => {
+      summary = SUMMARY_PAST
+      renderTab('/aid/money/ledger?as_of=2027-05-01&as_of_axis=recorded', {
+        year: 2027,
+        asOf: { kind: 'past', date: '2027-05-01', axis: 'recorded' },
+      })
+      await screen.findByText(/they have no "as recorded" view/)
+      await waitFor(() =>
+        expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('/budget'))).toBe(true)
+      )
+      expect(screen.queryByTestId('tie-out')).toBeNull()
+    })
+
     it('reads the budget with the signed-in token', async () => {
       renderTab('/aid/money/ledger', live)
       await screen.findByTestId('tie-out')

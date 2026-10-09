@@ -11,7 +11,7 @@ import { usePermissions } from '../usePermissions'
 
 /**
  * Funding sources (D88, D100): each outside source's reporting group under the season's pools,
- * labelled by the rules, and the pools a group may be. Money › Sources joins it on `source_id` for
+ * labelled by the rules, and the pools a group may be. Money › Funders joins it on `source_id` for
  * its Reporting group column and "Set a Group…" (Decision P-14). `view` or `summary`, as the route.
  * Under the sources prefix: "Set a Group…", a classification and a grantor mapping refresh it
  * (`registry`), and a ledger sync through the 'financial-aid' prefix.

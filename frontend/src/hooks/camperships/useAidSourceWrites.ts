@@ -11,7 +11,7 @@ import type {
 import { useAidWrite } from './useAidWrites'
 
 /**
- * Money › Sources' writes (spec §8.1; D58, D100, D159, D160). Each refreshes on settle through
+ * Money › Funders' writes (spec §8.1; D58, D100, D159, D160). Each refreshes on settle through
  * `invalidateAidMoneyQueries` with `registry`: a classification moves what counts as aid and toward
  * the budget (Rounds & budget, Remaining, the grid, every award), the Ledger and To place; a grantor
  * mapping moves the directory's descriptions, the Register's grantor names and a full-coverage

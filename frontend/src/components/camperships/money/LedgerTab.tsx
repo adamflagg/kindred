@@ -141,7 +141,9 @@ export function LedgerTab({ view }: { view: AidView }) {
         programLabels={programLabels}
         programChoices={programChoices}
       />
-      {data && budget.data && (
+      {/* The summary only goes by CampMinder's posting date; on the as-recorded axis the budget
+          would be read on a different basis, so the two figures can't be compared. */}
+      {data && budget.data && past?.axis !== 'recorded' && (
         <TieOutLine
           view={view}
           verdict={tieOut(data, budget.data)}

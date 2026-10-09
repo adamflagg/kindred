@@ -237,8 +237,7 @@ interface TablesProps {
   dependentsMode: string | null
   /** In the editor: a box per editable cell (read-only columns never get one). */
   control?: CellControl | undefined
-  /** Grants › Grantors with the view (owner 10-06 (c)): the named fund's row links there. It resolves once slice 3
-   * ships the page, the same as History's links. */
+  /** Money › Funders with the view (owner 10-06 (c)): the named fund's row links there. */
   grantsHref?: string | undefined
 }
 

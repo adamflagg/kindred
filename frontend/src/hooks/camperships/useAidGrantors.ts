@@ -11,7 +11,7 @@ import { usePermissions } from '../usePermissions'
 /**
  * The grantor directory's read (spec §8.2; D160): `view` or `grantors` (owner ruling 2026-10-01).
  * Pickers read the grantors in use; the directory and any name shown from history read them all
- * (`includeRetired`). `year` adds each grantor's grants and $ that season (Grants › Grantors).
+ * (`includeRetired`). `year` adds each grantor's grants and $ that season (Money › Funders).
  * Inherits the app's cache defaults: every grantor or mapping write refreshes it
  * (`invalidateAidMoneyQueries`'s `registry`), and a ledger sync through the 'financial-aid' prefix.
  */

@@ -210,7 +210,7 @@ export function SectionCard({
   onEdit: () => void
   /** income.dependents_mode from the shown document: the equity table's Dependents note reads it. */
   dependentsMode?: string | null
-  /** Grants › Grantors with the view: the named fund's row links there (owner 10-06 (c)). */
+  /** Money › Funders with the view: the named fund's row links there (owner 10-06 (c)). */
   grantsHref?: string | undefined
   children?: ReactNode
 }) {

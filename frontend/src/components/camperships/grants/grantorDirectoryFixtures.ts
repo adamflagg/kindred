@@ -1,5 +1,5 @@
 /**
- * The grantor directory's fixtures (slice 3, Grants › Grantors), invented, in the shape of
+ * The grantor directory's fixtures (slice 3, Money › Funders), invented, in the shape of
  * `GrantorsResponse` read with `?include_retired=true&year=2027`. Grantor A is in use (one description,
  * grants this season); Grantor C covers the full cost; Grantor E maps nothing and has no grants;
  * Grantor K is a named fund (full coverage, pays the rest after camp aid, no canteen); Grantor F is retired.

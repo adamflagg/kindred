@@ -1,5 +1,5 @@
 /**
- * Grants › Grantors' words and edits (spec §8.2; D86, D143, D160; grants-v2.html; owner 10-06,
+ * Money › Funders' words and edits (spec §8.2; D86, D143, D160; grants-v2.html; owner 10-06,
  * rulings:676). Pure. The form sends a whole record and keeps the server's two full-coverage rules
  * (`api/schemas/financial_aid_grants.py:44–53`: covers_canteen and pays_after_camp_aid are recorded only
  * for a full-coverage grantor), so it never sends what the route refuses. A grantor's award terms are

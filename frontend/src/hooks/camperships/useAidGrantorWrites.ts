@@ -8,7 +8,7 @@ import type { ApiAidGrantorCreate, ApiAidGrantorSave } from '../../types/api-typ
 import { useAidWrite } from './useAidWrites'
 
 /**
- * Grants › Grantors' writes (spec §8.2; D86, D143, D160; `grantors`, held by finance and development:
+ * Money › Funders' writes (spec §8.2; D86, D143, D160; `grantors`, held by finance and development:
  * owner 10-06, rulings:676). Each refreshes on settle through `invalidateAidMoneyQueries` with
  * `registry`: the directory, the sources registry (a description's grantor name), Grants (names on the
  * Register) and every money read, because a grantor's full coverage and "pays the rest after camp aid"

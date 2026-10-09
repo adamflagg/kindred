@@ -442,7 +442,7 @@ export type ApiAidPlacePreviewIn = PlacePreviewIn
 export type ApiAidPlacePreview = PlacePreviewOut
 
 /**
- * Money › Sources: the CampMinder description registry (spec §8.1; D58, D88, D100, D105). Mirrors
+ * Money › Funders: the CampMinder description registry (spec §8.1; D58, D88, D100, D105). Mirrors
  * Python `AidSourcesResponse`/`AidSourceRow`; `GET /sources?year=` adds each row's lines and $ this
  * season. `source_family` is a plain string here; the write's Literal names funders (P-12).
  */
@@ -450,7 +450,7 @@ export type ApiAidSources = AidSourcesResponse
 export type ApiAidSourceRow = AidSourceRow
 
 /**
- * Money › Sources' writes (spec §8.1; D58, D105, D160): a classification (`rules`) and a
+ * Money › Funders' writes (spec §8.1; D58, D105, D160): a classification (`rules`) and a
  * description's grantor (`grantors`). Each mirrors its Python model (`AidSourceUpdate`,
  * `SourceGrantorIn`). `source_family` is a server Literal that names funders: it is typed here and
  * never spelled out in the app (Decision P-12).
@@ -521,7 +521,7 @@ export type ApiAidCommitmentIn = CommitmentIn
 export type ApiAidCommitment = CommitmentOut
 export type ApiAidWithdrawIn = WithdrawIn
 
-/** Grants › Grantors' writes (`grantors`; D160; owner 10-06, rulings:676). Each mirrors its Python model. */
+/** Money › Funders' writes (`grantors`; D160; owner 10-06, rulings:676). Each mirrors its Python model. */
 export type ApiAidGrantorCreate = GrantorCreate
 export type ApiAidGrantorSave = GrantorSave
 export type ApiAidGrantorRetireIn = GrantorRetireIn

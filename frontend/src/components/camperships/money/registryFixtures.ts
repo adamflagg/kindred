@@ -1,5 +1,5 @@
 /**
- * Money › Sources' reads, invented, in the server's shapes (`AidSourcesResponse` with `?year=2027`,
+ * Money › Funders' reads, invented, in the server's shapes (`AidSourcesResponse` with `?year=2027`,
  * `FundingSourcesResponse`). Part 2a's own set: it does not lean on part 1b's `sourcesFixtures.ts`.
  * "Grantor A–F", "Pool A/B"; ids made up. Needs a group: Grantor E (4 lines this season) and
  * Grantor C (none), so the chip reads "Needs a group 2 · 1 with lines this season".

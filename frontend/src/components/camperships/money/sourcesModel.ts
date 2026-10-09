@@ -1,5 +1,5 @@
 /**
- * Money › Sources' words, choices and edit bodies (spec §8.1; D58, D88, D100, D105, D159, D160;
+ * Money › Funders' words, choices and edit bodies (spec §8.1; D58, D88, D100, D105, D159, D160;
  * money-v2.html Sources; Decisions P-12 to P-14, ruling H). Pure. The registry is the server's; the
  * screen names its values and builds the bodies the routes take. Program words come from the rules
  * (`programLabel`); a source family shows as the server's key in words (`keyWords`); the
