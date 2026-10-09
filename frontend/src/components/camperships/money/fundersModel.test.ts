@@ -245,7 +245,7 @@ describe('header words', () => {
 })
 
 describe('cells', () => {
-  it('says "no", never a dash, for a false yes or no', () => {
+  it('says a dash for a false yes or no (final audit O9)', () => {
     expect(yesNo(true)).toBe('yes')
     expect(yesNo(false)).toBe('—')
   })

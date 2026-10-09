@@ -11,6 +11,7 @@ import {
   TO_PLACE,
 } from './toPlaceFixtures'
 import { CAMP_QUEST, GRANTOR_C_FULL_RIDE, SOURCES, UNCLASSIFIED } from './sourcesFixtures'
+import { grantRow } from '../grants/grantsFixtures'
 import { groupWords } from './toPlaceColumns'
 import {
   allLines,
@@ -21,6 +22,7 @@ import {
   confirmLines,
   confirmSummary,
   exactAmount,
+  grantCsvRows,
   grantLinesFor,
   isMarkLine,
   isOpen,
@@ -374,5 +376,24 @@ describe('the open line and the tab count (M5)', () => {
     const b = { grant: { household_cm_id: 1000002 } }
     expect(grantLinesFor([a, b], null)).toEqual([a, b])
     expect(grantLinesFor([a, b], 1000002)).toEqual([b])
+  })
+})
+
+describe('grantCsvRows (final audit O8)', () => {
+  it('names a family with its tie-break when two households share a label, as every table does', () => {
+    const need = {
+      grant: grantRow({
+        transaction_cm_id: 4000050,
+        household_cm_id: 1000050,
+        label: 'Pat Garcia',
+        label_tiebreak: '#1000050',
+      }),
+      household_applied: true,
+      suggestion: null,
+      candidates: [],
+    }
+    const [row] = grantCsvRows([need], undefined)
+    expect(row?.[0]).toBe('Pat Garcia · #1000050')
+    expect(row?.[8]).toBe('Outside grant posted to the family')
   })
 })

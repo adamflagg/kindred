@@ -17,6 +17,7 @@ import type {
 import type { HouseholdLabel } from '../household/householdModel'
 import { aidCsvFilename } from '../kit/csv'
 import { formatShortDate } from '../kit/dates'
+import { labelWords } from '../household/householdModel'
 import { familyLabel } from '../kit/familyLabel'
 import { formatMoney, moneyCsv, toCents } from '../kit/money'
 import type { ApiAidNeedsCamper } from '../../../types/api-types'
@@ -396,7 +397,7 @@ export function grantCsvRows(
   sessions: ReadonlyMap<number, string> | undefined
 ): string[][] {
   return needs.map((n) => [
-    familyLabel(n.grant, n.grant.family_name).text,
+    labelWords(familyLabel(n.grant, n.grant.family_name)),
     grantLineWords(n),
     n.candidates.map((c) => c.name).join(', '),
     suggestionCell(n, sessions),
