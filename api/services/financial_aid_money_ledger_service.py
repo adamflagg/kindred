@@ -18,6 +18,7 @@ from api.schemas.financial_aid_decisions import AsOfAxis
 from api.schemas.financial_aid_money_ledger import (
     LedgerFamilyOut,
     LedgerLineOut,
+    LedgerSessionOut,
     LedgerTotalOut,
     MoneyLedgerLinesOut,
     MoneyLedgerOut,
@@ -28,6 +29,7 @@ from api.services.financial_aid_decisions_service import (
     FinancialAidDecisionsService,
     as_of_instant,
 )
+from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_money_ledger import (
     NO_FILTERS,
@@ -66,10 +68,22 @@ class _Read:
     persons: dict[int, str]
     sources: dict[str, SourceRow]
     program_labels: Mapping[str, str]  # the season's rules label for each program key
+    sessions: Mapping[int, SessionRow]  # the season's sessions, for a household request's session
 
 
 def _name(names: Mapping[int, str], household: int) -> str:
     return names.get(household, f"Household {household}")
+
+
+def _session(sessions: Mapping[int, SessionRow], cm_id: int) -> LedgerSessionOut | None:
+    found = sessions.get(cm_id)
+    return LedgerSessionOut(name=found.name, session_type=found.session_type) if found is not None else None
+
+
+def _household_sessions(sessions: Mapping[int, SessionRow], ids: Collection[int]) -> list[LedgerSessionOut]:
+    """Each session once, by start day then id (a session the season doesn't know is left out)."""
+    known = sorted((sessions[i] for i in set(ids) if i in sessions), key=lambda s: (s.start_date, s.cm_id))
+    return [LedgerSessionOut(name=s.name, session_type=s.session_type) for s in known]
 
 
 def _people(persons: Mapping[int, str], ids: Collection[int]) -> list[str]:
@@ -125,7 +139,9 @@ class MoneyLedgerService:
             year, {p.family[0] for p in pieces}, {p.person_cm_id for p in pieces if p.person_cm_id > 0}
         )
         labels = program_labels(season.rules.document if season.rules is not None else None)
-        return _Read(day, axis if day is not None else None, pieces, families, persons, sources, labels)
+        return _Read(
+            day, axis if day is not None else None, pieces, families, persons, sources, labels, season.sessions
+        )
 
     async def ledger(
         self,
@@ -157,6 +173,7 @@ class MoneyLedgerService:
                 lines=t.lines,
                 reversed_lines=t.reversed_lines,
                 level=t.level,
+                household_sessions=_household_sessions(read.sessions, t.household_session_cm_ids),
             )
             for t in totals
         ]
@@ -207,6 +224,7 @@ class MoneyLedgerService:
                     else None
                 ),
                 level=lt.level,
+                household_session=_session(read.sessions, lt.household_session_cm_id),
             )
             for lt in found
         ]

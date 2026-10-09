@@ -80,6 +80,9 @@ class Piece:
     person_cm_id: int  # the camper it names; 0 for none
     post_date: datetime | None
     reversal_date: datetime | None
+    # The session of the household-level request (person_cm_id 0; Family Camp intake) this piece is placed on; 0 for
+    # none: a camper's request, or no request.
+    household_session_cm_id: int = 0
 
 
 # LedgerSourceFilter's "outside" (api/schemas/financial_aid_money_ledger.py): every line of the Outside grants column.
@@ -118,6 +121,7 @@ class FamilyTotals:
     reversed_lines: int
     level: LedgerLevel | None
     person_cm_ids: tuple[int, ...]
+    household_session_cm_ids: tuple[int, ...] = ()  # the household requests its pieces sit on, by session id
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,7 @@ class LineTotal:
     amount: Decimal
     level: LedgerLevel | None
     person_cm_ids: tuple[int, ...]
+    household_session_cm_id: int = 0  # the household request it sits on; 0 for none
 
 
 def _first_level(levels: Collection[LedgerLevel | None]) -> LedgerLevel | None:
@@ -217,6 +222,7 @@ def _piece(
     program: str,
     level: LedgerLevel | None,
     person: int,
+    household_session: int = 0,
 ) -> Piece:
     line = ledger_line.line
     return Piece(
@@ -233,6 +239,7 @@ def _piece(
         person_cm_id=person,
         post_date=line.post_date,
         reversal_date=line.reversal_date,
+        household_session_cm_id=household_session,
     )
 
 
@@ -289,6 +296,7 @@ def ledger_pieces(
                         program=program,
                         level=None,
                         person=request.person_cm_id,
+                        household_session=request.session_cm_id if request.person_cm_id <= 0 else 0,
                     )
                 )
                 continue
@@ -335,6 +343,7 @@ def family_totals(pieces: Iterable[Piece]) -> list[FamilyTotals]:
             reversed_lines=len({p.transaction_cm_id for p in items if not p.live}),
             level=_first_level({p.level for p in items}),
             person_cm_ids=tuple(sorted({p.person_cm_id for p in items if p.person_cm_id > 0})),
+            household_session_cm_ids=tuple(sorted({p.household_session_cm_id for p in items} - {0})),
         )
         for family, items in by_family.items()
     ]
@@ -353,6 +362,7 @@ def total_lines(pieces: Iterable[Piece], total: LedgerTotal) -> list[LineTotal]:
             amount=sum((p.amount for p in items), ZERO),
             level=_first_level({p.level for p in items}),
             person_cm_ids=tuple(sorted({p.person_cm_id for p in items if p.person_cm_id > 0})),
+            household_session_cm_id=next((p.household_session_cm_id for p in items if p.household_session_cm_id), 0),
         )
         for items in by_line.values()
     ]

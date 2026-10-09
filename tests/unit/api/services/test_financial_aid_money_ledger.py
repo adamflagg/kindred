@@ -251,3 +251,32 @@ def test_the_lines_behind_a_total_sum_a_split_lines_parts_and_keep_a_reversed_li
         (9007, Decimal(300), False, ()),
     ]
     assert [lt.first.transaction_cm_id for lt in total_lines(pieces, "outside_grants")] == [9101]
+
+
+def test_a_line_on_a_household_request_names_its_session_and_a_camper_request_names_none() -> None:
+    """Family Camp intake is one request per household (person_cm_id 0): the piece, and the family it totals into,
+    carry that request's session so the Ledger can draw the household mark and its session (mock money-ledger)."""
+    store = _johnsons()
+    seed_request(store, "reqfam000000001", household=1000002, person=0, session=1000201)
+    seed_request(store, "reqfam000000002", household=1000002, person=0, session=1000202)
+    camper = seed_line(store, 9001, "1500")
+    fam_a = seed_line(store, 9010, "800", household=1000002, person=0)
+    fam_b = seed_line(store, 9011, "400", household=1000002, person=0)
+    placed = SeasonLedger(
+        by_request={
+            EMMA: (camper,),
+            "reqfam000000001": (fam_a,),
+            "reqfam000000002": (fam_b,),
+        },
+        read=True,
+    )
+    pieces = _pieces(store, [_camp(camper), _camp(fam_a), _camp(fam_b)], placed)
+    assert {p.transaction_cm_id: p.household_session_cm_id for p in pieces} == {9001: 0, 9010: 1000201, 9011: 1000202}
+    by_family = {t.family: t for t in family_totals(pieces)}
+    assert by_family[(1000001,)].household_session_cm_ids == ()
+    assert by_family[(1000002,)].household_session_cm_ids == (1000201, 1000202)
+    assert {t.first.transaction_cm_id: t.household_session_cm_id for t in total_lines(pieces, "in_campminder_net")} == {
+        9001: 0,
+        9010: 1000201,
+        9011: 1000202,
+    }
