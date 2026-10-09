@@ -219,6 +219,18 @@ export function programWords(row: ApiAidGrantRow): string {
   return row.program_family !== '' ? OTHER_PROGRAM : '—'
 }
 
+/**
+ * The Program column's CSV and search words: the screen draws a dash for a line with no program, the
+ * file and the search keep which kind it is: "Not placed" (waiting for its camper) or "Household level".
+ */
+export function programCsv(row: ApiAidGrantRow, needsCamper: ReadonlySet<number>): string {
+  const words = programWords(row)
+  if (words !== '—') return words
+  return row.kind === 'ledger' && needsCamper.has(row.transaction_cm_id)
+    ? 'Not placed'
+    : 'Household level'
+}
+
 /** Where a row's description or grantor lives in Funders: `?funder=<key>` or `?row=<source_id>`. */
 export function funderLink(
   row: ApiAidGrantRow,

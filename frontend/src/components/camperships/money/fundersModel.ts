@@ -204,6 +204,9 @@ export const noFunderWords = (n: number, canClassify: boolean, canPickFunder: bo
 /** The mock's "—" for a no, not the word. */
 export const yesNo = (value: boolean) => (value ? 'yes' : '—')
 
+/** The CSV's and the search's words: a no stays "no" (the dash is only what the screen draws). */
+export const yesNoWords = (value: boolean) => (value ? 'yes' : 'no')
+
 /** The source family in words: the server's label, never the key. An unclassified row has none. */
 export function sourceFamilyWords(row: ApiAidSourceRow): string {
   return isUnclassified(row) ? '' : familyWordsOf(row)

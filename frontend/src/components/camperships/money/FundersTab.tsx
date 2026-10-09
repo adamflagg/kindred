@@ -33,6 +33,7 @@ import {
   parseFundersShow,
   sourceFamilyWords,
   yesNo,
+  yesNoWords,
   type FunderRow,
   type FundersShow,
 } from './fundersModel'
@@ -239,13 +240,15 @@ export function FundersTab({ view }: { view: AidView }) {
         key: 'aid',
         header: 'Counts as aid',
         width: 80,
-        value: (r) => (r.kind === 'description' ? yesNo(r.source.counts_as_aid) : ''),
+        value: (r) => (r.kind === 'description' ? yesNoWords(r.source.counts_as_aid) : ''),
+        render: (r) => (r.kind === 'description' ? yesNo(r.source.counts_as_aid) : ''),
       },
       {
         key: 'budget',
         header: 'Counts toward the budget',
         width: 100,
-        value: (r) => (r.kind === 'description' ? yesNo(r.source.counts_toward_budget) : ''),
+        value: (r) => (r.kind === 'description' ? yesNoWords(r.source.counts_toward_budget) : ''),
+        render: (r) => (r.kind === 'description' ? yesNo(r.source.counts_toward_budget) : ''),
       },
       {
         key: 'group',
@@ -423,12 +426,14 @@ export function FundersTab({ view }: { view: AidView }) {
             onHighlight={onHighlight}
             renderDetail={renderDetail}
             arrowKeys
-            emptyText={
+            emptyText={(searching) =>
               show === 'no-funder'
                 ? 'Every description has a funder.'
                 : show === 'needs-group'
                   ? 'Every outside source has a group.'
-                  : 'No funder or description matches.'
+                  : searching
+                    ? 'No funder or description matches.'
+                    : 'No funders yet.'
             }
           />
           {!canSee && (

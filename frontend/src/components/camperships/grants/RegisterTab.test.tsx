@@ -395,6 +395,13 @@ describe('Grants › Register (§8.2)', () => {
     expect(headers.some((h) => h.startsWith('Cancelled'))).toBe(true)
   })
 
+  it('lets the committed note under Where it stands wrap instead of clipping (final audit)', async () => {
+    renderTab()
+    await screen.findByTestId('register-chips')
+    const note = (await screen.findAllByText(/^committed .* · entered by hand$/))[0]
+    expect(note).toHaveClass('whitespace-normal')
+  })
+
   it('keeps room for the "Not counted" pill', async () => {
     renderTab()
     await screen.findByTestId('register-chips')

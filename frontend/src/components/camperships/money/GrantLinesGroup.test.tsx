@@ -340,6 +340,23 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(JSON.parse(String(writes()[0]?.body)).placements).toHaveLength(1)
   })
 
+  it('bulk: names a family with the same tie-break every table shows', async () => {
+    read = {
+      ...TWO,
+      needs_camper: TWO.needs_camper.map((n) =>
+        n.grant.household_cm_id === 1000002
+          ? { ...n, grant: { ...n.grant, label_tiebreak: '#1000002' } }
+          : { ...n, grant: { ...n.grant, label: 'Mei Chen', label_tiebreak: 'Oakland, CA' } }
+      ),
+    }
+    renderGroup()
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Confirm the 1 Single, Exact Suggestion…' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/^Pat Garcia · #1000002: \$1,500/)).toBeInTheDocument()
+  })
+
   it('bulk: the confirm button is the same secondary button the camp-aid group draws (final audit E6)', async () => {
     read = TWO
     renderGroup()

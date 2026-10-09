@@ -19,6 +19,7 @@ import {
   camperWords,
   registerTotal,
   countsInTotal,
+  programCsv,
   programWords,
   funderLink,
   REGISTER_TOTAL_NOTE,
@@ -185,6 +186,18 @@ describe('the Program column (program_label, #3090; #3085 fallbacks)', () => {
     expect(programWords(NEVER_APPLIED_HOUSEHOLD)).toBe('—')
     expect(programWords(GARCIA_HOUSEHOLD)).toBe('—')
     expect(programWords({ ...EMMA_GRANT, program_label: '', program_family: 'quest' })).toBe(
+      'Other program'
+    )
+  })
+})
+
+describe('the Program CSV and search words', () => {
+  it('keep Household level and Not placed where the screen says a dash', () => {
+    const needs = new Set([NEVER_APPLIED_HOUSEHOLD.transaction_cm_id])
+    expect(programCsv(NEVER_APPLIED_HOUSEHOLD, needs)).toBe('Not placed')
+    expect(programCsv(NEVER_APPLIED_HOUSEHOLD, new Set())).toBe('Household level')
+    expect(programCsv(EMMA_GRANT, needs)).toBe('Summer Camp')
+    expect(programCsv({ ...EMMA_GRANT, program_label: '', program_family: 'quest' }, needs)).toBe(
       'Other program'
     )
   })

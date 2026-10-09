@@ -46,6 +46,7 @@ import {
   camperWords,
   countsInTotal,
   neverAppliedNote,
+  programCsv,
   programWords,
   registerTotal,
   footerWords,
@@ -173,7 +174,8 @@ export function RegisterTab({ view }: { view: AidView }) {
         key: 'program',
         header: 'Program',
         width: 95,
-        value: programWords,
+        value: (r) => programCsv(r, needsCamper),
+        render: programWords,
       },
       {
         key: 'offsets',
@@ -217,14 +219,16 @@ export function RegisterTab({ view }: { view: AidView }) {
               <StatusPill tone="amber" wrap>
                 {sentenceCase(standingWords(r))}
               </StatusPill>
-              <div className={CS_PMETA}>{standingNote(r)}</div>
+              <div className={`${CS_PMETA} whitespace-normal`}>{standingNote(r)}</div>
             </div>
           ) : r.is_reversed ? (
             <s className={`${CS_PMETA} whitespace-normal`}>{standingWords(r)}</s>
           ) : (
             <div>
               <span className={`${MARK_TEXT} whitespace-normal`}>{`✓ ${standingWords(r)}`}</span>
-              {standingNote(r) !== '' && <div className={CS_PMETA}>{standingNote(r)}</div>}
+              {standingNote(r) !== '' && (
+                <div className={`${CS_PMETA} whitespace-normal`}>{standingNote(r)}</div>
+              )}
             </div>
           ),
       },

@@ -387,6 +387,14 @@ describe('a search that matches nothing (final audit E8)', () => {
     expect(await screen.findByText('No funder or description matches.')).toBeInTheDocument()
     expect(screen.queryByText('No funders yet.')).toBeNull()
   })
+
+  it('keeps "No funders yet." when nothing is typed and there are no rows', async () => {
+    sourceReads = [{ ...SOURCES_2027, sources: [] }]
+    grantorReads = [{ ...GRANTORS_ALL, grantors: [] }]
+    renderTab()
+    expect(await screen.findByText('No funders yet.')).toBeInTheDocument()
+    expect(screen.queryByText('No funder or description matches.')).toBeNull()
+  })
 })
 
 describe('finance (view, rules, grantors)', () => {

@@ -215,7 +215,8 @@ export interface AidTableProps<Row> {
   readonly onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
-  readonly emptyText?: string | undefined
+  /** Words for an empty table; a function gets whether a search is active (typed) to pick between them. */
+  readonly emptyText?: string | ((searching: boolean) => string) | undefined
   /**
    * Opt-in (grid layout T1, Scroll b): the table sits in one box that scrolls both ways, as tall as
    * the screen leaves room for, with the header and totals held, so the horizontal scrollbar is
@@ -874,7 +875,7 @@ export function AidTable<Row>({
                   colSpan={span}
                   className={join(TD, CELL_BG, 'text-muted-foreground whitespace-nowrap')}
                 >
-                  {emptyText}
+                  {typeof emptyText === 'function' ? emptyText(query.trim() !== '') : emptyText}
                 </td>
               </tr>
             )}

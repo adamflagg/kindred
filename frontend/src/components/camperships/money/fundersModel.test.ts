@@ -20,6 +20,7 @@ import {
   campWords,
   sourceFamilyWords,
   yesNo,
+  yesNoWords,
   type FunderRow,
 } from './fundersModel'
 import {
@@ -248,6 +249,11 @@ describe('cells', () => {
   it('says a dash for a false yes or no (final audit O9)', () => {
     expect(yesNo(true)).toBe('yes')
     expect(yesNo(false)).toBe('—')
+  })
+
+  it('keeps yes and no in words for the CSV and the search', () => {
+    expect(yesNoWords(true)).toBe('yes')
+    expect(yesNoWords(false)).toBe('no')
   })
 
   it('shows the server source-family label when the row has one, else the old words, never a raw key', () => {
