@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
@@ -116,6 +116,26 @@ const TIE_LINK = 'font-semibold underline underline-offset-2'
  * with a check when camp aid counting toward the budget equals Posted, an amber box with ⚠ and the
  * gap when it does not. One line, marked with its note.
  */
+/** The figures of a tie-out sentence in bold (mock `tieOut`: `<b>`); `$N apart` is the gap, in the warn ink. */
+function emphasised(words: string): ReactNode[] {
+  return words.split(/(\$[\d,]+ apart|\$[\d,]+)/).map((part, i) => {
+    if (/^\$[\d,]+ apart$/.test(part)) {
+      return (
+        <span key={i} data-gap className="font-bold text-amber-700 dark:text-amber-300">
+          {part}
+        </span>
+      )
+    }
+    return /^\$[\d,]+$/.test(part) ? (
+      <b key={i} className="font-bold tabular-nums">
+        {part}
+      </b>
+    ) : (
+      part
+    )
+  })
+}
+
 function TieOutLine({
   view,
   verdict,
@@ -140,9 +160,9 @@ function TieOutLine({
           className={`${TIE_BOX} border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))] ${CS_OK_BG} ${CS_OK_INK}`}
         >
           <span>
-            {before} ·{' '}
+            {emphasised(before)} ·{' '}
             <Link to={aidHref('/aid/season/rounds-budget', view)} className={TIE_LINK}>
-              {`matches ${matches}`}
+              {emphasised(`matches ${matches}`)}
             </Link>{' '}
             <span className="font-bold">✓</span>
             {note}
@@ -160,7 +180,7 @@ function TieOutLine({
       >
         <span>
           {'⚠ '}
-          {before} →{' '}
+          {emphasised(before)} →{' '}
           <Link to={aidHref('/aid/money/to-place', view)} className={TIE_LINK}>
             see To place{after}
           </Link>

@@ -24,6 +24,7 @@ import { sentenceCase } from '../kit/words'
 import {
   LEDGER_LEVEL_TONE,
   LEDGER_LEVEL_WORDS,
+  householdSessionTiny,
   ledgerLinesCsvName,
   linesHeading,
   type LedgerFilters,
@@ -69,28 +70,50 @@ export function LedgerLines({
         pinned: true,
         value: (l) => labelWords(labelOfLine(l)),
         title: (l) => labelWords(labelOfLine(l)),
-        render: (l) => (
+        render: (l) => {
           // R3-14: the family's household, the one the name and the family row are.
-          <Link
-            className={CS_LINK_CELL}
-            to={aidHref(`/aid/households/${String(l.family_household_cm_id)}`, view)}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <HouseholdLabelText label={labelOfLine(l)} />
-          </Link>
-        ),
+          const link = (
+            <Link
+              className={CS_LINK_CELL}
+              to={aidHref(`/aid/households/${String(l.family_household_cm_id)}`, view)}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <HouseholdLabelText label={labelOfLine(l)} />
+            </Link>
+          )
+          // §15: a line posted to a Family Camp household reads ⌂ before its family label.
+          return l.household_session != null ? (
+            <span className="flex min-w-0 items-center gap-1">
+              <Home className="text-muted-foreground h-3 w-3 flex-none" />
+              {link}
+            </span>
+          ) : (
+            link
+          )
+        },
         searchable: true,
       },
       {
         key: 'camper',
         header: 'Camper',
         width: 140,
-        value: (l) => l.camper,
-        title: (l) => (l.camper === '' ? NO_CAMPER_TITLE : l.camper),
-        // A line posted to the household names no camper: ⌂ (the session isn't on this read).
+        value: (l) =>
+          l.camper === '' && l.household_session != null
+            ? householdSessionTiny(l.household_session)
+            : l.camper,
+        title: (l) =>
+          l.camper !== ''
+            ? l.camper
+            : l.household_session != null
+              ? `Posted to the household: ${l.household_session.name}`
+              : NO_CAMPER_TITLE,
+        // A line posted to the household names no camper: ⌂, then its session, muted, when it has one.
         render: (l) =>
           l.camper === '' ? (
-            <Home className="text-muted-foreground inline-block h-3 w-3 align-[-2px]" />
+            <span className="text-muted-foreground inline-flex items-center gap-1">
+              <Home className="inline-block h-3 w-3" />
+              {l.household_session != null && householdSessionTiny(l.household_session)}
+            </span>
           ) : (
             l.camper
           ),

@@ -164,6 +164,61 @@ describe('Money › Ledger family rows (P-22)', () => {
     )
   })
 
+  // Mock money-ledger famCell / campersCell (§14, §15): a Family Camp household shows ⌂ before its label, and its
+  // Campers cell reads the session in the tiny form with the full name in the title.
+  describe('a Family Camp household row', () => {
+    const FC4 = { name: 'Family Camp 4: Riverside Weekend', session_type: 'family' }
+    const WFC = { name: "Women's Weekend", session_type: 'adult' }
+    const serve = (row: Partial<(typeof LEDGER.rows)[number]>) => {
+      fetchSpy.mockImplementation((url) => {
+        const path = String(url)
+        const body = path.includes('/rules/')
+          ? RULES_2027
+          : path.includes('/sources')
+            ? SOURCES_2027
+            : { ...LEDGER, rows: [{ ...LEDGER.rows[0], campers: [], ...row }] }
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+      })
+    }
+
+    it('draws ⌂ before the label and reads "FC4 · household", the full session name in the title', async () => {
+      serve({ household_sessions: [FC4] })
+      renderAt('/aid/money/ledger')
+      const link = await screen.findByRole('link', { name: /Pat Johnson/ })
+      expect(link.parentElement?.querySelector('svg')).not.toBeNull()
+      const cell = within(rowOf(1000001)).getAllByRole('cell')[1]
+      expect(cell).toHaveTextContent('FC4 · household')
+      expect(cell).toHaveAttribute(
+        'title',
+        `${FC4.name}: a household-level request, no camper on the line`
+      )
+    })
+
+    it('lists several sessions in one cell', async () => {
+      serve({ household_sessions: [FC4, WFC] })
+      renderAt('/aid/money/ledger')
+      await screen.findByRole('link', { name: /Pat Johnson/ })
+      expect(within(rowOf(1000001)).getAllByRole('cell')[1]).toHaveTextContent(
+        'FC4, WW · household'
+      )
+    })
+
+    it('lists the campers first when the family has campers of its own', async () => {
+      serve({ household_sessions: [FC4], campers: ['Emma Johnson'] })
+      renderAt('/aid/money/ledger')
+      await screen.findByRole('link', { name: /Pat Johnson/ })
+      expect(within(rowOf(1000001)).getAllByRole('cell')[1]).toHaveTextContent(
+        'Emma Johnson · FC4 · household'
+      )
+    })
+
+    it('draws no ⌂ on a camper family', async () => {
+      renderAt('/aid/money/ledger')
+      const link = await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })
+      expect(link.parentElement?.querySelector('svg')).toBeNull()
+    })
+  })
+
   it('is one toolbar row, in the kit: three white pickers, the search, then Download CSV last; no native select', async () => {
     renderAt('/aid/money/ledger')
     await screen.findByRole('link', { name: 'Liam & Olivia Garcia' })

@@ -315,6 +315,34 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       expect(apart.className).not.toContain('emerald')
     })
 
+    // Mock tieOut(): the figures are bold; a gap is an emphasised "$N apart" in the warn ink.
+    it('bolds the figures, and the match line keeps them bold inside its link', async () => {
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      const bold = [...line.querySelectorAll('b')].map((b) => b.textContent)
+      expect(bold).toEqual(['$612,540', '$612,540'])
+      expect(
+        within(line)
+          .getByRole('link', { name: /Rounds & budget/ })
+          .querySelector('b')
+      ).not.toBeNull()
+    })
+
+    it('reads the gap as an emphasised "apart" in the warn ink', async () => {
+      budget = budgetPosting(600000)
+      renderTab('/aid/money/ledger', live)
+      const line = await screen.findByTestId('tie-out')
+      await within(line).findByRole('link', { name: /see To place/ })
+      expect([...line.querySelectorAll('b')].map((b) => b.textContent)).toEqual([
+        '$612,540',
+        '$600,000',
+      ])
+      const gap = line.querySelector('[data-gap]')
+      expect(gap).toHaveTextContent('$12,540 apart')
+      expect(gap?.className).toContain('font-bold')
+      expect(gap?.className).toContain('amber-700')
+    })
+
     it('is one line: it never wraps', async () => {
       renderTab('/aid/money/ledger', live)
       expect((await screen.findByTestId('tie-out')).className).toContain('whitespace-nowrap')

@@ -1,3 +1,4 @@
+import { Home } from 'lucide-react'
 import { useCallback, useMemo, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
@@ -25,6 +26,7 @@ import { sentenceCase } from '../kit/words'
 import {
   familiesWords,
   footNoteWords,
+  householdCampersWords,
   LEDGER_LEVEL_TONE,
   LEDGER_LEVEL_WORDS,
   LEDGER_LEVELS,
@@ -57,6 +59,21 @@ const TOTAL_OF_COLUMN: Readonly<Record<string, ApiAidLedgerTotal>> = {
   camp: 'in_campminder_net',
   outside: 'outside_grants',
 }
+/** A family whose lines sit on Family Camp household requests (mock `famCell` / `campersCell`). */
+const householdSessionsOf = (r: ApiAidLedgerFamily) => r.household_sessions ?? []
+const isHousehold = (r: ApiAidLedgerFamily) => householdSessionsOf(r).length > 0
+const campersWords = (r: ApiAidLedgerFamily) =>
+  isHousehold(r) ? householdCampersWords(r.campers, householdSessionsOf(r)) : r.campers.join(', ')
+const campersTitle = (r: ApiAidLedgerFamily) =>
+  isHousehold(r)
+    ? `${householdSessionsOf(r)
+        .map((s) => s.name)
+        .join(
+          '; '
+        )}: a household-level request${r.campers.length === 0 ? ', no camper on the line' : ''}`
+    : r.campers.length === 0
+      ? NO_CAMPER_TITLE
+      : r.campers.join(', ')
 const NO_CAMPER_TITLE = 'No camper on these lines: CampMinder posted them to the household'
 
 /**
@@ -234,25 +251,40 @@ function FamilyTable({
         pinned: true,
         value: (r) => labelWords(labelOfRow(r)),
         title: (r) => labelWords(labelOfRow(r)),
-        render: (r) => (
-          <Link
-            className={CS_LINK_CELL}
-            to={aidHref(`/aid/households/${String(r.household_cm_id)}`, view)}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <HouseholdLabelText label={labelOfRow(r)} />
-          </Link>
-        ),
+        render: (r) => {
+          const link = (
+            <Link
+              className={CS_LINK_CELL}
+              to={aidHref(`/aid/households/${String(r.household_cm_id)}`, view)}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <HouseholdLabelText label={labelOfRow(r)} />
+            </Link>
+          )
+          // §15: a Family Camp household reads ⌂ before its label, as the Requests grid does.
+          return isHousehold(r) ? (
+            <span className="flex min-w-0 items-center gap-1">
+              <Home className="text-muted-foreground h-3 w-3 flex-none" />
+              {link}
+            </span>
+          ) : (
+            link
+          )
+        },
         searchable: true,
       },
       {
         key: 'campers',
         header: 'Campers',
         width: 220,
-        value: (r) => r.campers.join(', '),
-        title: (r) => (r.campers.length === 0 ? NO_CAMPER_TITLE : r.campers.join(', ')),
+        value: (r) => campersWords(r),
+        title: (r) => campersTitle(r),
         render: (r) =>
-          r.campers.length === 0 ? (
+          isHousehold(r) ? (
+            <span className={r.campers.length === 0 ? 'text-muted-foreground' : undefined}>
+              {campersWords(r)}
+            </span>
+          ) : r.campers.length === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : (
             r.campers.join(', ')

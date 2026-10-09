@@ -3,6 +3,7 @@
  * owner ruling F; money-v2.html Ledger). Pure. Every figure is the server's; the filters and the
  * day go to the server, and the lines read gets exactly the family read's.
  */
+import { sessionName } from '../../../utils/sessionName'
 import type { ApiAidLedgerLevel, ApiAidLedgerTotal } from '../../../types/api-types'
 import { asOfQuery, type AidAsOf } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
@@ -208,4 +209,17 @@ export function linesHeading(
     title: `${LEDGER_TOTAL_WORDS[total]} ${formatMoney(amount)}`,
     desc: `the ${String(lines)} ${lines === 1 ? 'line' : 'lines'} behind it${reversedWords}`,
   }
+}
+
+/** A household request's session in the tiny form ("FC4"), the one entry point for session names (#2763). */
+export const householdSessionTiny = (s: { name: string; session_type: string }): string =>
+  sessionName(s.name, s.session_type, 'tiny')
+
+/** Family Camp household rows' Campers cell (mock `campersCell`): the campers, then "FC4, WW · household". */
+export function householdCampersWords(
+  campers: readonly string[],
+  sessions: ReadonlyArray<{ name: string; session_type: string }>
+): string {
+  const tiny = [...new Set(sessions.map(householdSessionTiny))].join(', ')
+  return [...(campers.length > 0 ? [campers.join(', ')] : []), `${tiny} · household`].join(' · ')
 }

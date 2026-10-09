@@ -245,6 +245,37 @@ describe('the lines card, as the final mock draws it (★13, §23)', () => {
     expect(within(camper).getAllByRole('cell')[7]).not.toHaveAttribute('title', '')
   })
 
+  // Mock lines card: a line posted to a Family Camp household reads ⌂ and the session in the tiny form, titled
+  // "Posted to the household: {full session name}", and its family label carries ⌂ too.
+  it('shows a Family Camp household line as ⌂ with its session', async () => {
+    const [first, ...rest] = LEDGER_LINES.lines
+    if (first === undefined) throw new Error('fixture')
+    lines = {
+      ...LEDGER_LINES,
+      lines: [
+        {
+          ...first,
+          household_session: { name: 'Family Camp 4: Riverside Weekend', session_type: 'family' },
+        },
+        ...rest,
+      ],
+    }
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    await within(panel).findByText('reversed Mar 9')
+    const [household, camper] = within(panel).getAllByRole('row').slice(1)
+    if (household === undefined || camper === undefined) throw new Error('rows')
+    const cells = within(household).getAllByRole('cell')
+    expect(cells[1]).toHaveTextContent('FC4')
+    expect(cells[1]?.querySelector('svg')).not.toBeNull()
+    expect(cells[1]).toHaveAttribute(
+      'title',
+      'Posted to the household: Family Camp 4: Riverside Weekend'
+    )
+    expect(cells[0]?.querySelector('svg')).not.toBeNull()
+    expect(within(camper).getAllByRole('cell')[0]?.querySelector('svg')).toBeNull()
+  })
+
   it('searches the lines from the heading row', async () => {
     renderAt(OPEN, LIVE_VIEW)
     const panel = await screen.findByTestId('ledger-lines')
