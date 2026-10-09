@@ -425,23 +425,12 @@ jobs:
     # scripts/ci/check-go-version-alignment.sh enforces the setup-go side.
     - name: Read the Go minor from pocketbase/go.mod
       id: go
-      env:
-        # TEMPORARY (owner 2026-10-08): go1.27.1 carries GO-2026-6611/6612/6613/6617
-        # (net/http, http2), fixed in go1.27.2, but actions/go-versions' manifest,
-        # which check-latest reads, doesn't list 1.27.2 yet. An exact version not
-        # in the manifest makes setup-go download it from go.dev. Delete this env
-        # once the manifest lists 1.27.2:
-        #   curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep '"1.27.2"'
-        GO_PATCH_PIN: '1.27.2'
       run: |
         go_minor=$(sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' pocketbase/go.mod)
         if [[ ! "$go_minor" =~ ^[0-9]+\.[0-9]+$ ]]; then
           echo "::error file=pocketbase/go.mod::no parseable 'go X.Y' line (got '$go_minor')"
           exit 1
         fi
-        # GO_PATCH_PIN (step env): an exact patch of this minor, handed to setup-go in
-        # place of the bare minor. Unset, the rule above holds.
-        if [[ -n "${GO_PATCH_PIN:-}" && "$GO_PATCH_PIN" == "$go_minor".* ]]; then go_minor=$GO_PATCH_PIN; fi
         echo "go_minor=$go_minor" >> "$GITHUB_OUTPUT"
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
