@@ -1720,6 +1720,10 @@ export type CampAidLevel = {
 
 /**
  * CamperCandidateOut
+ *
+ * sessions = the ones the candidate is actively enrolled in this season that the grant could pay
+ * for (a camper program its source's group allows), so the Another Camper editor can name the one it
+ * lowers. [] = none to pick from.
  */
 export type CamperCandidateOut = {
   /**
@@ -1730,6 +1734,10 @@ export type CamperCandidateOut = {
    * Name
    */
   name: string
+  /**
+   * Sessions
+   */
+  sessions?: Array<CandidateSessionOut>
 }
 
 /**
@@ -2275,6 +2283,24 @@ export type CandidateOut = {
    * Cancelled
    */
   cancelled: boolean
+}
+
+/**
+ * CandidateSessionOut
+ */
+export type CandidateSessionOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Session Type
+   */
+  session_type: string
 }
 
 /**
@@ -5647,6 +5673,10 @@ export type GrantRowOut = {
    */
   session_name: string
   /**
+   * Session Type
+   */
+  session_type?: string
+  /**
    * Program Family
    */
   program_family: string
@@ -6834,6 +6864,10 @@ export type HouseholdGrantRowOut = {
    * Session Name
    */
   session_name: string
+  /**
+   * Session Type
+   */
+  session_type?: string
   /**
    * Program Family
    */

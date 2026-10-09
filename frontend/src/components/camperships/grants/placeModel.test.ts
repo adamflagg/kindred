@@ -7,6 +7,8 @@ import {
   evidenceWords,
   grantEffects,
   placedGrantWords,
+  candidateSessions,
+  pickedSession,
   placementFor,
   stillNeedsCamper,
   suggestionCell,
@@ -51,6 +53,39 @@ describe('placeModel', () => {
       session_cm_id: 1000102,
     })
     expect(placementFor(GARCIA, 2000009).session_cm_id).toBeNull()
+  })
+
+  it("offers a candidate's sessions, pre-picked to the suggestion's, else the first", () => {
+    if (GARCIA === undefined) throw new Error('fixture')
+    const sessions = [
+      { session_cm_id: 1000101, name: 'Session 1', session_type: 'main' },
+      { session_cm_id: 1000102, name: 'Session 2', session_type: 'main' },
+    ]
+    const need = {
+      ...GARCIA,
+      candidates: [
+        { person_cm_id: 2000002, name: 'Liam Garcia', sessions },
+        { person_cm_id: 2000009, name: 'Mia Garcia', sessions },
+        { person_cm_id: 2000010, name: 'Noa Garcia' },
+      ],
+    }
+    expect(candidateSessions(need, 2000002).map((s) => s.session_cm_id)).toEqual([1000101, 1000102])
+    expect(candidateSessions(need, 2000010)).toEqual([])
+    expect(candidateSessions(need, 7)).toEqual([])
+    // The suggestion names 1000102 for Liam; Mia has none suggested, so the first.
+    expect(pickedSession(need, 2000002, '')).toBe(1000102)
+    expect(pickedSession(need, 2000009, '')).toBe(1000101)
+    expect(pickedSession(need, 2000009, '1000102')).toBe(1000102)
+    // A pick that isn't one of the camper's sessions is ignored; no sessions known: the suggestion's, else none.
+    expect(pickedSession(need, 2000009, '5')).toBe(1000101)
+    expect(pickedSession(need, 2000010, '')).toBeNull()
+  })
+
+  it('places on the session picked, over the suggestion', () => {
+    if (GARCIA === undefined) throw new Error('fixture')
+    expect(placementFor(GARCIA, 2000002, 1000101).session_cm_id).toBe(1000101)
+    expect(placementFor(GARCIA, 2000009, 1000103).session_cm_id).toBe(1000103)
+    expect(placementFor(GARCIA, 2000009, null).session_cm_id).toBeNull()
   })
 
   it('knows whether a read still lists the line', () => {

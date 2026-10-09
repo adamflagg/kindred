@@ -1392,3 +1392,63 @@ async def test_the_household_pages_grant_rows_read_program_labels_from_the_same_
         service.return_value = page
         await router.get_household_page(2031, 100)
     assert grants.call_args.kwargs["program_labels"] is router._program_labels
+
+
+# --- the Another Camper session picker's sessions, and session_type on a row --------------
+
+
+def _typed_attendee(person: int, session: int, session_type: str, status: int = 2) -> SimpleNamespace:
+    session_rec = SimpleNamespace(cm_id=session, session_type=session_type, name=f"Session {session % 100} full name")
+    return SimpleNamespace(person_id=person, status_id=status, expand={"session": session_rec})
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_lists_the_sessions_they_are_actively_enrolled_in_that_the_grant_can_pay_for() -> None:
+    repo = _read_repo()
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[
+            _typed_attendee(1001, 1000101, "main"),
+            _typed_attendee(1001, 1000102, "embedded"),
+            _typed_attendee(1001, 1000103, "main", status=4),  # cancelled: not offered
+            _typed_attendee(1001, 1000104, "family"),  # Family Camp: a household program, not a camper's
+            _typed_attendee(1002, 1000101, "main"),
+        ]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (need,) = out.needs_camper
+    by_name = {c.name: c for c in need.candidates}
+    assert [(s.session_cm_id, s.session_type) for s in by_name["Emma Johnson"].sessions] == [
+        (1000101, "main"),
+        (1000102, "embedded"),
+    ]
+    assert by_name["Emma Johnson"].sessions[0].name == "Session 1 full name"
+    assert [s.session_cm_id for s in by_name["Liam Johnson"].sessions] == [1000101]
+
+
+@pytest.mark.asyncio
+async def test_a_grant_row_carries_its_sessions_type_for_the_short_name() -> None:
+    placed = SimpleNamespace(
+        transaction_cm_id=9001,
+        attributed_person_cm_id=1001,
+        attributed_session_cm_id=1000102,
+        program_family="summer",
+        source_key_override="",
+        source="staff",
+    )
+    repo = _read_repo(overrides=[placed])
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_typed_attendee(1001, 1000101, "main"), _typed_attendee(1001, 1000102, "teen")]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (row,) = out.grants
+    assert (row.session_cm_id, row.session_type) == (1000102, "teen")
+
+
+@pytest.mark.asyncio
+async def test_a_grant_row_with_no_session_has_an_empty_session_type() -> None:
+    service, _ = _service(_read_repo())
+    out = await service.read(2031)
+    (row,) = out.grants
+    assert row.session_type == ""

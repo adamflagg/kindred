@@ -159,6 +159,8 @@ class GrantRowOut(SourceFamilyLabelled):
     camper_basis: CamperBasis
     session_cm_id: int
     session_name: str
+    # The row's session's CampMinder session_type ("" with no session): the short form's key (kit/sessionShort).
+    session_type: str = ""
     program_family: str
     # The season's rules label for program_family (programs.<key>.label), as the summary and the Ledger name it.
     # "" for a key the rules don't name, a row with no program, and reads that load no rules.
@@ -200,9 +202,20 @@ class CamperSuggestionOut(BaseModel):
     amount_matches: bool
 
 
+class CandidateSessionOut(BaseModel):
+    session_cm_id: int
+    name: str
+    session_type: str
+
+
 class CamperCandidateOut(BaseModel):
+    """sessions = the ones the candidate is actively enrolled in this season that the grant could pay
+    for (a camper program its source's group allows), so the Another Camper editor can name the one it
+    lowers. [] = none to pick from."""
+
     person_cm_id: int
     name: str
+    sessions: list[CandidateSessionOut] = []
 
 
 class NeedsCamperOut(BaseModel):

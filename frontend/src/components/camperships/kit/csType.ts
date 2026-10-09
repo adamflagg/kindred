@@ -197,8 +197,8 @@ export const CS_SEG_BUTTON =
   'inline-flex h-5 cursor-pointer items-center rounded-md px-2.5 text-xs leading-4 font-medium whitespace-nowrap'
 export const CS_SEG_ON = 'bg-primary text-primary-foreground'
 export const CS_SEG_OFF = 'text-muted-foreground hover:text-foreground bg-transparent'
-/** A choice's count, inside its segment, after a space (the space is the kit's 3px gap). */
-export const CS_SEG_COUNT = 'tabular-nums opacity-75'
+/** A choice's count, inside its segment, 3px off its label (a flex button drops the space; mock `.ct`). */
+export const CS_SEG_COUNT = 'ml-[3px] tabular-nums opacity-75'
 /** The well under its older name (the Rules lead switch, Scenarios' panel switch). */
 export const CS_SEG = CS_SEG_WELL
 

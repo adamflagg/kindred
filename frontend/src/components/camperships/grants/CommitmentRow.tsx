@@ -2,9 +2,9 @@ import { useState } from 'react'
 
 import { useAidWithdrawCommitment } from '../../../hooks/camperships/useAidGrantWrites'
 import type { ApiAidGrantRow } from '../../../types/api-types'
-import { ReasonForm } from '../household/ReasonForm'
 import type { AidView } from '../kit/asOf'
 import { CS_BTN2, CS_PMETA } from '../kit/csType'
+import { ReasonEditor } from '../money/ReasonEditor'
 import { inStaffWords } from '../money/refusal'
 import { CommitmentForm } from './CommitmentForm'
 import { RegisterOpenRow } from './RegisterOpenRow'
@@ -65,10 +65,11 @@ export function CommitmentRow({
     mode === 'edit' ? (
       <CommitmentForm year={year} row={row} onCancel={() => setMode('none')} onDone={finish} />
     ) : mode === 'withdraw' ? (
-      <ReasonForm
+      <ReasonEditor
         label="Why"
-        head="Withdraw this commitment"
+        title="Withdraw this commitment"
         submitLabel="Withdraw"
+        cancelLabel="Cancel"
         hint="It leaves the Register and the calculator's grants from now; a posted amount stands. Kept in History."
         onCancel={() => setMode('none')}
         onSubmit={async (reason) => {
@@ -76,7 +77,7 @@ export function CommitmentRow({
             withdraw.mutateAsync({ year, commitmentId: row.commitment_id, reason })
           )
           finish(
-            "Commitment withdrawn, with your reason. It leaves the calculator's grants from now."
+            "Commitment withdrawn, with your reason · it leaves the calculator's grants from now"
           )
         }}
       />

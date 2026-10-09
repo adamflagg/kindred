@@ -21,6 +21,7 @@ export function ReasonEditor({
   onSubmit,
   onCancel,
   testId,
+  cancelLabel = 'Back',
 }: {
   title: string
   label: string
@@ -30,6 +31,8 @@ export function ReasonEditor({
   onSubmit: (note: string) => Promise<unknown>
   onCancel: () => void
   testId?: string
+  /** The close button's words: Back in To place; Cancel where the page's mock says so (Grants' Withdraw). */
+  cancelLabel?: string
 }) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -84,7 +87,7 @@ export function ReasonEditor({
               </button>
               {/* A write in flight finishes on this form: leaving would drop its refusal unseen. */}
               <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
-                Back
+                {cancelLabel}
               </button>
               {error !== null && <span className={HH_AMBER_NOTE}>{error}</span>}
             </EditorActions>

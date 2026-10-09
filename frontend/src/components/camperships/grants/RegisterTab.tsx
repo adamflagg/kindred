@@ -1,33 +1,24 @@
+import { Home } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../constants/permissions'
+import { useAidDefinitions } from '../../../hooks/camperships/useAidDefinitions'
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { ApiAidGrantRow } from '../../../types/api-types'
 import { QueryGuard } from '../../QueryGuard'
 import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { aidHref, type AidView } from '../kit/asOf'
+import { AidPicker } from '../kit/AidPicker'
 import { AidTable, type AidColumn, type AidCsvExtra } from '../kit/AidTable'
-import {
-  CS_BTN,
-  CS_CHIP,
-  CS_CHIP_COUNT,
-  CS_CHIP_INK,
-  CS_CHIP_ON,
-  CS_FLABEL,
-  CS_LINK_CELL,
-  CS_PMETA,
-  CS_SELECT,
-  CS_SMALL,
-  CS_STRIP,
-  CS_STRIP_LENSES,
-} from '../kit/csType'
+import { CS_BTN, CS_CUT, CS_LINK_CELL, CS_OK_INK, CS_PMETA, CS_TOOLBAR_STATUS } from '../kit/csType'
 import { moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
-import { StatusPill } from '../kit/Pills'
-import { sentenceCase } from '../kit/words'
-import { DONE_NOTE, MARK_TEXT } from '../money/toPlaceStyles'
+import { CancelMark, StatusPill } from '../kit/Pills'
+import type { AidPickerOption } from '../kit/pickerWords'
+import { AidSegmented } from '../kit/Segmented'
+import { AidToolbar, ToolbarLabel } from '../kit/Toolbar'
 import { CommitmentForm } from './CommitmentForm'
 import { CommitmentRow } from './CommitmentRow'
 import { RegisterOpenRow } from './RegisterOpenRow'
@@ -43,21 +34,28 @@ import {
 } from './registerFilters'
 import {
   basisWords,
+  camperTitle,
   camperWords,
+  cancelTitle,
+  cmWords,
+  COMMITTED_CHIP,
+  committedTitle,
   countsInTotal,
-  neverAppliedNote,
-  programCsv,
-  programWords,
-  registerTotal,
+  footerTitleWords,
   footerWords,
   grantKey,
   needsCamperIds,
+  neverAppliedNote,
+  neverAppliedShort,
+  notCountedWhy,
+  offsetTitle,
   offsetWords,
-  REGISTER_TOTAL_NOTE,
+  postedTitle,
+  programCsv,
+  programWords,
   registerFamily,
+  registerTotal,
   standingCsv,
-  standingNote,
-  standingWords,
 } from './registerModel'
 
 /** Search reaches the household and camper ids and the grant line (§4.3). */
@@ -67,20 +65,84 @@ const registerSearch = (row: ApiAidGrantRow) => [
   row.transaction_cm_id > 0 ? row.transaction_cm_id : null,
   row.description,
 ]
-const REGISTER_CSV_EXTRA: ReadonlyArray<AidCsvExtra<ApiAidGrantRow>> = [
-  { header: 'Household CM id', value: (r) => String(r.household_cm_id) },
-]
 const NO_UNMAPPED: ReadonlyArray<{ source_id: string; description: string }> = []
 type FilterKey = 'show' | 'grantor' | 'program' | 'row'
 
+/** A figure the total leaves out (★16): grey italic, the reason in the cell's title. */
+const OUT = 'text-muted-foreground italic'
+/** The picker widths the mock's toolbar gives Grantor and Program (money-grants.html). */
+const GRANTOR_WIDTH = 'w-[104px] [&>button]:min-w-0 [&>button]:flex-1'
+const PROGRAM_WIDTH = 'w-[92px] [&>button]:min-w-0 [&>button]:flex-1'
+
+/** The Camper cell (money-grants.html): ⊘ first when the camper cancelled, "placed by staff" after the name. */
+function CamperCell({
+  row,
+  needsCamper,
+}: {
+  row: ApiAidGrantRow
+  needsCamper: ReadonlySet<number>
+}) {
+  if (row.camper_basis === 'household') {
+    // §15: a household program's line reads ⌂ and the household's label.
+    return (
+      <span className="flex min-w-0 items-center gap-1">
+        <Home className="text-muted-foreground h-3 w-3 flex-none" />
+        <span className={`${CS_CUT} min-w-0`}>
+          <HouseholdLabelText label={registerFamily(row)} />
+        </span>
+      </span>
+    )
+  }
+  if (row.person_cm_id <= 0) {
+    const why = basisWords(row, needsCamper)
+    return (
+      <StatusPill tone="amber" title={`A grant line on no camper${why === '' ? '' : ` · ${why}`}`}>
+        Household level
+      </StatusPill>
+    )
+  }
+  const basis = basisWords(row, needsCamper)
+  return (
+    <span className="flex min-w-0 items-baseline">
+      {row.cancelled && <CancelMark title={cancelTitle(row)} />}
+      <span className={`${CS_CUT} min-w-0`}>
+        {row.camper_name}
+        {basis !== '' && <span className="text-muted-foreground">{` · ${basis}`}</span>}
+      </span>
+    </span>
+  )
+}
+
+/** "Where it stands" (★18): a one-line chip for a commitment, "✓ in CM · Mar 12" for a posted line. */
+function StandingCell({ row }: { row: ApiAidGrantRow }) {
+  if (row.kind === 'commitment') {
+    return (
+      <StatusPill tone="amber" title={committedTitle(row)}>
+        {COMMITTED_CHIP}
+      </StatusPill>
+    )
+  }
+  if (row.is_reversed) return <s className="text-muted-foreground">{cmWords(row)}</s>
+  return (
+    <>
+      <span className={`${CS_OK_INK} mr-1 font-bold`}>✓</span>
+      {cmWords(row)}
+      {row.fulfils_commitment_id !== '' && (
+        <span className="text-muted-foreground"> · fulfils a commitment</span>
+      )}
+    </>
+  )
+}
+
 /**
- * Grants › Register (spec §8.2; D55, D126, D142; rulings D, G; grants-v2.html): every outside-grant
- * line in CampMinder this season, plus hand-entered commitments. Filters in the URL
- * (`registerFilters`), a row opened from a link (`?row=`). The total counts what the server counts
- * (⚠ P-15).
+ * Grants › Register (spec §8.2; D55, D126, D142; rulings D, G; money-grants.html, final UX): every
+ * outside-grant line in CampMinder this season, plus hand-entered commitments. Filters in the URL
+ * (`registerFilters`), a row opened from a link (`?row=`). One toolbar row, one-line rows, the total
+ * counts what the server counts (⚠ P-15).
  */
 export function RegisterTab({ view }: { view: AidView }) {
   const grants = useAidGrants()
+  const defs = useAidDefinitions('grants')
   const { hasPermission } = usePermissions()
   const canWork = hasPermission(Permission.FINANCIAL_AID_CASEWORK)
   const [params, setParams] = useSearchParams()
@@ -115,33 +177,34 @@ export function RegisterTab({ view }: { view: AidView }) {
   const needsCamper = useMemo(() => needsCamperIds(grants.data?.needs_camper ?? []), [grants.data])
   const unmapped = grants.data?.unmapped ?? NO_UNMAPPED
 
+  // The footnote marks (§12): the registry's notes are numbered Amount, Offsets, Stands, ...; none until it loads.
+  const markOf = (key: string) => {
+    const n = defs.numberOf(key)
+    const title = defs.entries.find((e) => e.key === key)?.text
+    return n === null || title === undefined ? undefined : { n, title }
+  }
+  const amountMark = markOf('register_amount')
+  const offsetsMark = markOf('register_offsets')
+  const standsMark = markOf('register_stands')
+
   const columns = useMemo(
     (): ReadonlyArray<AidColumn<ApiAidGrantRow>> => [
       {
         key: 'camper',
         header: 'Camper',
-        width: 150,
+        width: 196,
         pinned: true,
         value: camperWords,
-        render: (r) => (
-          <div>
-            {r.person_cm_id > 0 || r.camper_basis === 'household' ? (
-              camperWords(r)
-            ) : (
-              <StatusPill tone="amber">Household level</StatusPill>
-            )}
-            {basisWords(r, needsCamper) !== '' && (
-              <div className={CS_PMETA}>{basisWords(r, needsCamper)}</div>
-            )}
-          </div>
-        ),
+        title: (r) => camperTitle(r, needsCamper),
+        render: (r) => <CamperCell row={r} needsCamper={needsCamper} />,
         searchable: true,
       },
       {
         key: 'family',
         header: 'Family',
-        width: 185,
+        width: 226,
         value: (r) => registerFamily(r).text,
+        title: (r) => `${registerFamily(r).text} · open the household`,
         render: (r) => (
           <Link
             className={CS_LINK_CELL}
@@ -155,8 +218,12 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'grantor',
         header: 'Grantor',
-        width: 175,
+        width: 196,
         value: (r) => (r.grantor_key === '' ? 'no grantor yet' : r.grantor_name),
+        title: (r) =>
+          r.grantor_key === ''
+            ? `No grantor yet: "${r.description}" isn't mapped to a funder`
+            : `${r.grantor_name} · open in Money › Funders`,
         render: (r) =>
           r.grantor_key === '' ? (
             <span className={CS_PMETA}>no grantor yet</span>
@@ -173,82 +240,88 @@ export function RegisterTab({ view }: { view: AidView }) {
       {
         key: 'program',
         header: 'Program',
-        width: 95,
+        width: 114,
         value: (r) => programCsv(r, needsCamper),
+        title: (r) =>
+          programWords(r) !== '—'
+            ? programWords(r)
+            : needsCamper.has(r.transaction_cm_id) && r.kind === 'ledger'
+              ? 'Not placed: waiting for its camper'
+              : 'Household level',
         render: programWords,
       },
       {
         key: 'offsets',
         header: 'Aid request it offsets',
-        width: 164,
+        width: 192,
         value: (r) => offsetWords(r, needsCamper),
+        title: (r) => offsetTitle(r, needsCamper),
         render: (r) =>
           r.counts && r.requests.length > 0 ? (
             offsetWords(r, needsCamper)
           ) : (
             <span className={CS_PMETA}>{offsetWords(r, needsCamper)}</span>
           ),
+        mark: offsetsMark,
+        // The never-applied note in its own column's footer, beside the total it explains (§10).
+        footerNote: (rows) => {
+          const words = neverAppliedShort(rows, needsCamper)
+          return words === '' ? null : <span className={CS_PMETA}>{words}</span>
+        },
+        footerTitle: (rows) => neverAppliedNote(rows, needsCamper) || undefined,
       },
       {
         key: 'amount',
         header: 'Amount',
-        width: 90,
+        width: 92,
         align: 'right',
         value: (r) => r.amount,
-        render: (r) =>
-          r.is_reversed ? (
+        title: (r) =>
+          countsInTotal(r, needsCamper)
+            ? undefined
+            : `Not counted: ${notCountedWhy(r, needsCamper)}`,
+        render: (r) => {
+          const figure = r.is_reversed ? (
             <s>
               <Money value={r.amount} />
             </s>
           ) : (
             <Money value={r.amount} />
-          ),
+          )
+          return countsInTotal(r, needsCamper) ? figure : <span className={OUT}>{figure}</span>
+        },
         csv: (r) => moneyCsv(r.amount),
+        mark: amountMark,
         // ⚠ P-15: only the rows the server counts.
         total: (rows) => registerTotal(rows, needsCamper),
+        footerTitle: () => 'The lines the total counts',
       },
       {
         key: 'standing',
         header: 'Where it stands',
-        // Narrow, so the names beside it fit (final audit O6): the pill truncates, its words in the title.
-        width: 150,
+        width: 176,
         value: standingCsv,
-        render: (r) =>
-          r.kind === 'commitment' ? (
-            <div>
-              <StatusPill tone="amber" title={sentenceCase(standingWords(r))}>
-                {sentenceCase(standingWords(r))}
-              </StatusPill>
-              <div className={`${CS_PMETA} whitespace-normal`}>{standingNote(r)}</div>
-            </div>
-          ) : r.is_reversed ? (
-            <s className={`${CS_PMETA} whitespace-normal`}>{standingWords(r)}</s>
-          ) : (
-            <div>
-              <span className={`${MARK_TEXT} whitespace-normal`}>{`✓ ${standingWords(r)}`}</span>
-              {standingNote(r) !== '' && (
-                <div className={`${CS_PMETA} whitespace-normal`}>{standingNote(r)}</div>
-              )}
-            </div>
-          ),
-      },
-      {
-        key: 'cancelled',
-        header: 'Cancelled',
-        width: 90,
-        value: (r) => (r.cancelled ? 'cancelled' : ''),
-        render: (r) => (r.cancelled ? <StatusPill tone="stone">Cancelled</StatusPill> : ''),
-      },
-      {
-        key: 'counted',
-        header: 'Counted',
-        width: 110,
-        value: (r) => (countsInTotal(r, needsCamper) ? 'counted' : 'not counted'),
-        render: (r) =>
-          countsInTotal(r, needsCamper) ? '' : <StatusPill tone="muted">Not counted</StatusPill>,
+        title: (r) => (r.kind === 'commitment' ? committedTitle(r) : postedTitle(r)),
+        render: (r) => <StandingCell row={r} />,
+        mark: standsMark,
       },
     ],
-    [view, needsCamper]
+    // The marks are rebuilt each render; their numbers and words are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [view, needsCamper, amountMark?.n, offsetsMark?.n, standsMark?.n, defs.entries]
+  )
+
+  // Cancelled and Counted lost their columns (ruling 15, ★16); the file keeps both facts.
+  const csvExtra = useMemo(
+    (): ReadonlyArray<AidCsvExtra<ApiAidGrantRow>> => [
+      { header: 'Household CM id', value: (r) => String(r.household_cm_id) },
+      { header: 'Cancelled', value: (r) => (r.cancelled ? 'cancelled' : '') },
+      {
+        header: 'Counted',
+        value: (r) => (countsInTotal(r, needsCamper) ? 'counted' : 'not counted'),
+      },
+    ],
+    [needsCamper]
   )
 
   // Keyed by row: a form's typing belongs to its row, and a refetch never resets it.
@@ -285,74 +358,54 @@ export function RegisterTab({ view }: { view: AidView }) {
       {(data) => {
         const rows = filterRegister(data.grants, filters, needsCamper)
         const counts = showCounts(data.grants, filters, needsCamper)
-        const chip = (value: RegisterShow, label: string) => {
-          const on = filters.show === value
-          return (
-            <button
-              key={value}
-              type="button"
-              className={on ? CS_CHIP_ON : value === 'all' ? CS_CHIP_INK : CS_CHIP}
-              onClick={() => setParam('show', value === 'all' || on ? null : value)}
-            >
-              {label} <span className={CS_CHIP_COUNT}>{counts[value]}</span>
-            </button>
-          )
-        }
-        const [all, ...rest] = REGISTER_SHOWS
+        const grantorOptions: Array<AidPickerOption<string>> = [
+          { value: '', label: 'All' },
+          ...grantorChoices(data.grants),
+        ]
+        const programOptions: Array<AidPickerOption<string>> = [
+          { value: '', label: 'All' },
+          ...programChoices(data.grants),
+        ]
+        const pickers = (
+          <>
+            <ToolbarLabel text="Grantor" plain>
+              <AidPicker
+                label="Grantor"
+                value={filters.grantor ?? ''}
+                options={grantorOptions}
+                onChange={(next) => setParam('grantor', next === '' ? null : next)}
+                className={GRANTOR_WIDTH}
+              />
+            </ToolbarLabel>
+            <ToolbarLabel text="Program" plain>
+              <AidPicker
+                label="Program"
+                value={filters.program ?? ''}
+                options={programOptions}
+                onChange={(next) => setParam('program', next === '' ? null : next)}
+                className={PROGRAM_WIDTH}
+              />
+            </ToolbarLabel>
+          </>
+        )
         return (
           <div className="space-y-3">
-            {shown !== null && <p className={DONE_NOTE}>✓ {shown.words}</p>}
-            <div className={CS_STRIP} data-testid="register-chips">
-              {all !== undefined && (
-                <div className={CS_STRIP_LENSES}>{chip(all.value, all.label)}</div>
-              )}
-              <div className="flex min-w-0 gap-0.5 overflow-x-auto">
-                {rest.map((s) => chip(s.value, s.label))}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <label className={`${CS_FLABEL} inline-flex items-center gap-2`}>
-                <span>Grantor</span>
-                <select
-                  aria-label="Grantor"
-                  className={CS_SELECT}
-                  value={filters.grantor ?? ''}
-                  onChange={(event) => setParam('grantor', event.target.value || null)}
-                >
-                  <option value="">All</option>
-                  {grantorChoices(data.grants).map((g) => (
-                    <option key={g.value} value={g.value}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={`${CS_FLABEL} inline-flex items-center gap-2`}>
-                <span>Program</span>
-                <select
-                  aria-label="Program"
-                  className={CS_SELECT}
-                  value={filters.program ?? ''}
-                  onChange={(event) => setParam('program', event.target.value || null)}
-                >
-                  <option value="">All</option>
-                  {programChoices(data.grants).map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {canWork && !recording && (
-                <button
-                  type="button"
-                  className={`${CS_BTN} ml-auto`}
-                  onClick={() => setRecording(true)}
-                >
-                  Record a Commitment…
-                </button>
-              )}
-            </div>
+            {/* §18: one flat list with one choice on is the grey switcher, counts inside; it keeps its own row. */}
+            <AidToolbar
+              left={
+                <AidSegmented<RegisterShow>
+                  label="Show"
+                  value={filters.show}
+                  options={REGISTER_SHOWS.map((s) => ({
+                    value: s.value,
+                    label: s.label,
+                    count: counts[s.value],
+                    title: s.title,
+                  }))}
+                  onChange={(value) => setParam('show', value === 'all' ? null : value)}
+                />
+              }
+            />
             {recording && (
               <CommitmentForm year={data.year} onCancel={() => setRecording(false)} onDone={done} />
             )}
@@ -362,28 +415,51 @@ export function RegisterTab({ view }: { view: AidView }) {
               rowKey={grantKey}
               searchExtra={registerSearch}
               csvFilename={registerCsvName(data.year, filters)}
-              csvExtra={REGISTER_CSV_EXTRA}
+              csvExtra={csvExtra}
               highlighted={highlighted}
               onHighlight={onHighlight}
+              nowrapHeaders
+              toolbarLead={pickers}
+              searchWidth={190}
+              toolbarStatus={
+                shown === null ? undefined : (
+                  <span className={CS_TOOLBAR_STATUS} title={shown.words}>
+                    ✓ {shown.words}
+                  </span>
+                )
+              }
+              toolbarActions={
+                canWork ? (
+                  <button
+                    type="button"
+                    className={CS_BTN}
+                    disabled={recording}
+                    title={recording ? 'The form is open below' : undefined}
+                    onClick={() => setRecording(true)}
+                  >
+                    Record a Commitment…
+                  </button>
+                ) : undefined
+              }
+              // The label spans Camper and Family and cuts off with a title (money-grants.html).
+              footerSpan={2}
               footerLabel={(shownRows) => {
-                // grants-v2's footer: the count, then the never-applied lines the total counts (the note
-                // runs across the empty cells beside the label, clear of the Amount total).
-                const note = neverAppliedNote(shownRows, needsCamper)
-                return note === '' ? (
-                  footerWords(shownRows, needsCamper)
-                ) : (
+                const [count = '', notCounted] = footerWords(shownRows, needsCamper).split(' · ')
+                return (
                   <>
-                    {footerWords(shownRows, needsCamper)}
-                    <span className="text-muted-foreground ml-6 font-normal">{note}</span>
+                    {count}
+                    {notCounted !== undefined && (
+                      <span className="text-muted-foreground font-normal">{` · ${notCounted}`}</span>
+                    )}
                   </>
                 )
               }}
+              footerTitle={(shownRows) => footerTitleWords(shownRows, needsCamper)}
               renderDetail={renderDetail}
               searchPlaceholder="Camper, family, grantor"
               arrowKeys
               emptyText="No grants match."
             />
-            <p className={CS_SMALL}>{REGISTER_TOTAL_NOTE}</p>
           </div>
         )
       }}

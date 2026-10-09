@@ -25,6 +25,14 @@ describe('AidSegmented', () => {
     expect(screen.getByRole('button', { name: 'No funder yet' })).toBeInTheDocument()
   })
 
+  // The button is a flex box, so the space between the label and its count is dropped: the mock's
+  // `.ct { margin-left: 3px }` is what keeps "All 16" from reading "All16".
+  it('sets each count 3px off its label, since a flex button drops the space', () => {
+    render(<AidSegmented label="Show" value="all" options={CHOICES} onChange={vi.fn()} />)
+    const count = screen.getByRole('button', { name: 'All 16' }).querySelector('span')
+    expect(count).toHaveClass('ml-[3px]')
+  })
+
   it('fills the picked segment with primary and marks it pressed', () => {
     render(<AidSegmented label="Show" value="group" options={CHOICES} onChange={vi.fn()} />)
     const on = screen.getByRole('button', { name: 'Needs a group 0' })

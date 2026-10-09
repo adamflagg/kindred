@@ -63,7 +63,8 @@ function NoteWords({ note, boldTerm }: { note: DefinitionNote; boldTerm: boolean
       </>
     )
   }
-  if (next === ',' || text.startsWith(' =', term.length)) {
+  // "Cancelled (⊘ before a name): …": the term alone is bold, its aside stays plain.
+  if (next === ',' || text.startsWith(' =', term.length) || text.startsWith(' (', term.length)) {
     return (
       <>
         <b className="text-foreground font-semibold">{term}</b>

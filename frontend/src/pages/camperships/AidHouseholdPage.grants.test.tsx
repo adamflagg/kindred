@@ -77,7 +77,14 @@ const GRANTS_READ: ApiAidGrants = {
         amount_matches: false,
       },
       candidates: [
-        { person_cm_id: 1000002, name: 'Emma Johnson' },
+        {
+          person_cm_id: 1000002,
+          name: 'Emma Johnson',
+          sessions: [
+            { session_cm_id: 1000101, name: 'Session 1', session_type: 'main' },
+            { session_cm_id: 1000102, name: 'Session 2', session_type: 'main' },
+          ],
+        },
         { person_cm_id: 1000010, name: 'Samuel Johnson' },
       ],
     },
@@ -186,6 +193,19 @@ describe("the household page's grant buttons (rulings:340)", () => {
     expect(await screen.findByText(/✓ 1 line placed on its camper/)).toBeInTheDocument()
   })
 
+  it("asks which of the camper's sessions the grant pays for, and sends the one picked", async () => {
+    const table = await openGrantsTab()
+    await userEvent.click(await within(table).findByRole('button', { name: 'Place on a Camper…' }))
+    const form = screen.getByTestId('place-camper-form')
+    await userEvent.click(within(form).getByRole('button', { name: 'Session: Session 1' }))
+    await userEvent.click(within(form).getByRole('option', { name: 'Session 2' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Put It There' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(JSON.parse(String(writes()[0]?.body)).placements).toEqual([
+      { transaction_cm_id: 1000304, person_cm_id: 1000002, session_cm_id: 1000102 },
+    ])
+  })
+
   it('sends nothing when someone placed the line since the page loaded (P-9)', async () => {
     storedRead = { ...GRANTS_READ, needs_camper: [] }
     const table = await openGrantsTab()
@@ -202,23 +222,23 @@ describe("the household page's grant buttons (rulings:340)", () => {
     await openGrantsTab()
     await userEvent.click(screen.getByRole('button', { name: 'Add a Commitment…' }))
     const form = screen.getByTestId('commitment-form')
-    const camper = within(form).getByRole('combobox', { name: 'Camper' })
+    // Final UX §24 (money-grants.html): the form's selects are the white picker.
+    await userEvent.click(
+      within(form).getByRole('button', {
+        name: 'Camper: — pick —',
+      })
+    )
     // The page's campers only, not the season's.
-    expect(
-      within(camper)
-        .getAllByRole('option')
-        .map((o) => o.textContent)
-    ).toEqual([
+    expect(screen.getAllByRole('option').map((o) => o.textContent.replace('✓', ''))).toEqual([
       '— pick —',
       'Emma Johnson · Session 2 · The Johnson Family',
       'Samuel Johnson · Session 3 · The Johnson Family',
     ])
-    await within(form).findByRole('option', { name: 'Grantor C' })
-    await userEvent.selectOptions(
-      within(form).getByRole('combobox', { name: 'Grantor' }),
-      'Grantor C'
+    await userEvent.click(
+      screen.getByRole('option', { name: 'Samuel Johnson · Session 3 · The Johnson Family' })
     )
-    await userEvent.selectOptions(camper, 'Samuel Johnson · Session 3 · The Johnson Family')
+    await userEvent.click(within(form).getByRole('button', { name: 'Grantor: — pick —' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Grantor C' }))
     await userEvent.type(within(form).getByRole('textbox', { name: 'Amount' }), '500')
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(writes()).toHaveLength(1))

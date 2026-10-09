@@ -54,6 +54,21 @@ describe('DefinitionNotes (§4.8; D20: numbered notes at the bottom, no hover)',
     )
   })
 
+  // money-grants.html: "<b>Cancelled</b> (⊘ before a name): …", the term alone in bold, its aside plain.
+  it('sets only the term bold when a parenthetical aside follows it', () => {
+    render(
+      <DefinitionNotes
+        notes={[
+          { n: 1, term: 'Cancelled', text: 'Cancelled (⊘ before a name): from the enrollment.' },
+        ]}
+      />
+    )
+    expect(screen.getByText('Cancelled').tagName).toBe('B')
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent(
+      '1. Cancelled (⊘ before a name): from the enrollment.'
+    )
+  })
+
   it('draws nothing when a surface has no notes', () => {
     const { container } = render(<DefinitionNotes notes={[]} />)
     expect(container).toBeEmptyDOMElement()

@@ -6,7 +6,14 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { CS_LINK, CS_LINK_SM, CS_PANEL_HEAD, CS_PANEL_RULE, CS_PMETA } from '../kit/csType'
 import { formatMoney } from '../kit/money'
 import { Money } from '../kit/MoneyText'
-import { basisWords, didntApply, funderLink, shareWords, standingCsv } from './registerModel'
+import {
+  basisWords,
+  didntApply,
+  funderLink,
+  sessionWords,
+  shareWords,
+  openedStanding,
+} from './registerModel'
 
 /** The opened row's three panels (To place's `ToPlaceOpenRow` grammar, owner ruling A). */
 const THREE_PANELS =
@@ -70,6 +77,8 @@ export function RegisterOpenRow({
   editor?: ReactNode
 }) {
   const basis = basisWords(row, needsCamper)
+  // The mock's opened row names the full session before the round (the cell has the short form).
+  const session = sessionWords(row).full
   const funder = funderLink(row, unmapped)
   const funderTo =
     funder === null ? null : aidHref('/aid/money/funders', view, { [funder.param]: funder.value })
@@ -96,7 +105,7 @@ export function RegisterOpenRow({
               </span>
             )}
           </div>
-          <div className={CS_PMETA}>{standingCsv(row)}</div>
+          <div className={CS_PMETA}>{openedStanding(row)}</div>
           {basis !== '' && <div className={CS_PMETA}>{basis}</div>}
           {row.kind === 'commitment' &&
             row.commitment_note !== undefined &&
@@ -117,7 +126,7 @@ export function RegisterOpenRow({
           ) : (
             row.requests.map((share) => (
               <div key={share.request_id}>
-                {`${formatMoney(share.amount)} of it · ${shareWords(share)}`}
+                {`${formatMoney(share.amount)} of it · ${session === '' ? '' : `${session} · `}${shareWords(share)}`}
               </div>
             ))
           )}

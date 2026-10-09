@@ -97,6 +97,7 @@ export type {
   CancellationSessionBreakdown,
   CancelledRowOut,
   CandidateOut,
+  CandidateSessionOut,
   CanonicalEntry,
   CanonicalSearchResponse,
   CellOut,
