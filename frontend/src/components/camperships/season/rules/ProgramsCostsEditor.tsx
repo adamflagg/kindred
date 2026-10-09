@@ -13,6 +13,8 @@ import {
 import type { CatalogSession } from '../../../../hooks/camperships/useAidSessionCatalog'
 import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import type { ApiAidGroup, ApiAidRulesDraft } from '../../../../types/api-types'
+import { AidPicker } from '../../kit/AidPicker'
+import { EditorActions } from '../../kit/EditorLayout'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_LABEL, CS_SMALL } from '../../kit/csType'
 import { MIN_COLUMN } from './programsCostsFlow'
 import { ROW, flowItems, useBoxWidth } from './programsCostsLayout'
@@ -277,23 +279,24 @@ export function ProgramsCostsEditor({
           />
         )}
         <RowName row={r} minimum={false} off={off} />
-        <select
-          className="border-border bg-background w-[132px] rounded-md border px-0.5 text-xs"
+        <AidPicker
+          size="field"
+          label="Group"
+          className="w-[170px] shrink-0"
           value={r.group}
-          onChange={(e) => type(editKey(id, 'g'), e.target.value, original.group)}
-        >
-          {[
+          options={[
             ...groups.map((g) => [g.pool, g.label] as const),
             [NOT_OPEN, 'Not open to aid'] as const,
           ].map(([value, label]) => {
             const reachable = value === r.group || pickTarget(doc, value, kind) !== null
-            return (
-              <option key={value} value={value} disabled={!reachable}>
-                {reachable ? label : `${label} (no program prices this kind here)`}
-              </option>
-            )
+            return {
+              value,
+              label: reachable ? label : `${label} (no program prices this kind here)`,
+              disabled: !reachable,
+            }
           })}
-        </select>
+          onChange={(picked) => type(editKey(id, 'g'), picked, original.group)}
+        />
       </>
     )
     if (perPerson) {
@@ -369,7 +372,7 @@ export function ProgramsCostsEditor({
           <Flow items={notOpenItems} width={width} minColumn={MIN_COLUMN.edit} />
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2">
+      <EditorActions>
         <button
           type="button"
           className={CS_BTN}
@@ -382,9 +385,17 @@ export function ProgramsCostsEditor({
           Cancel
         </button>
         <span className={CS_SMALL}>Esc cancels</span>
-        {fix !== null && <span className={CS_AMBER_NOTE}>{fix.words}</span>}
-        {error !== null && <span className={CS_AMBER_NOTE}>{error}</span>}
-      </div>
+        {fix !== null && (
+          <span className={`${CS_AMBER_NOTE} min-w-0 truncate`} title={fix.words}>
+            {fix.words}
+          </span>
+        )}
+        {error !== null && (
+          <span className={`${CS_AMBER_NOTE} min-w-0 truncate`} title={error}>
+            {error}
+          </span>
+        )}
+      </EditorActions>
     </div>
   )
 }

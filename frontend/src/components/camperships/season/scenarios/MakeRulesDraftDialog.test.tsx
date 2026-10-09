@@ -187,6 +187,19 @@ describe('Make it the rules draft (D39; Decision 21)', () => {
     expect(screen.queryByTestId('promotion-preview')).toBeNull()
   })
 
+  // Design language §24: wide, buttons on ONE row (primary first), the reason beside them.
+  it('puts Make It the Rules Draft, Cancel and what it waits on on one row, in a wide dialog', async () => {
+    await renderDialog('/aid/season/scenarios?compare=A1')
+    const go = await screen.findByRole('button', { name: 'Make It the Rules Draft' })
+    const row = go.parentElement as HTMLElement
+    expect(row).toHaveClass('flex-nowrap')
+    expect(go.compareDocumentPosition(within(row).getByRole('button', { name: 'Cancel' }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    // Disabled until the replaced edit is ticked: the row says what it waits on.
+    expect(within(row).getByText('Tick each warning to go on')).toBeInTheDocument()
+  })
+
   it('forgets a tick when it is closed and opened again', async () => {
     await renderDialog('/aid/season/scenarios?compare=A1')
     await userEvent.click(within(screen.getByTestId('promotion-preview')).getByRole('checkbox'))

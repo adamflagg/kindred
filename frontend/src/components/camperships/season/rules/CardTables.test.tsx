@@ -125,16 +125,43 @@ const rowOf = (table: HTMLElement, label: string) =>
   within(table).getByText(label).closest('tr') as HTMLElement
 
 describe('the equity table (spec §6.2 E.3)', () => {
-  it('heads Criterion · Enabled · Weight, by equity class⁷ (one column per class) · Counts when (read-only)', () => {
+  it('heads Criterion · Enabled · Weight, by equity class⁶ (one column per class) · Counts when (read-only)', () => {
     tables({ section: 'equity', content: EQUITY })
     expect(heads(screen.getByTestId('equity-table'))).toEqual([
       'Criterion',
       'Enabled',
-      'Weight, by equity class7',
+      'Weight, by equity class6',
       'Counts whenread-only',
       'Summer',
       'Family',
     ])
+  })
+
+  it("orders the weight columns by the rules' pool order, not the key order the weights are stored in", () => {
+    const stored = {
+      ...EQUITY,
+      weights: { family: EQUITY.weights.family, summer: EQUITY.weights.summer },
+    }
+    tables({
+      section: 'equity',
+      content: stored,
+      groups: [
+        { pool: 'pool_a', label: 'Pool A', equity_class: 'summer' },
+        { pool: 'pool_b', label: 'Pool B', equity_class: 'family' },
+      ],
+    })
+    expect(heads(screen.getByTestId('equity-table')).slice(-2)).toEqual(['Summer', 'Family'])
+  })
+
+  // Design language §8 and the mock's `.cf-rcard table`: a card-white table card, a light rule on every column.
+  it('draws the kit grid: a card-white table card, a rule on every column, 14px cells', () => {
+    tables({ section: 'equity', content: EQUITY })
+    const table = screen.getByTestId('equity-table')
+    expect(table.parentElement).toHaveClass('bg-card', 'rounded-xl', 'border')
+    expect(table).toHaveClass('text-sm')
+    const cell = within(table).getByText('Dependents at or above 3').closest('td') as HTMLElement
+    expect(cell.className).toContain('border-l-[color-mix')
+    expect(cell).toHaveClass('first:border-l-0')
   })
 
   it('greys a criterion that is not enabled and keeps its weights', () => {

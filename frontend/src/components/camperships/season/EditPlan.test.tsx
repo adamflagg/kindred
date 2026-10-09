@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -107,6 +107,30 @@ function Harness({
     </SeasonChromeContext.Provider>
   )
 }
+
+describe('Edit Plan… as an editor (design-language §24)', () => {
+  it('lays Total and the pool shares in the two-column field grid, the split words beside them', () => {
+    render(<Harness />)
+    const grid = screen.getByTestId('aid-editor-grid')
+    expect(within(grid).getByLabelText('Total')).toBeInTheDocument()
+    expect(within(grid).getByLabelText('Pool A')).toBeInTheDocument()
+    expect(within(grid).getByLabelText('Pool B')).toBeInTheDocument()
+    const form = screen.getByTestId('aid-editor-form')
+    expect(
+      within(form).getByText('sums to 100% · Pool A $900,000 · Pool B $100,000')
+    ).toBeInTheDocument()
+  })
+
+  it('puts the buttons, Esc and the reason on ONE row, Title Case', () => {
+    render(<Harness />)
+    const save = screen.getByRole('button', { name: 'Save to Rules Draft' })
+    const row = save.parentElement as HTMLElement
+    expect(row).toHaveClass('flex-nowrap')
+    expect(within(row).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(within(row).getByText('Esc cancels')).toBeInTheDocument()
+    expect(within(row).getByText('No change yet')).toBeInTheDocument()
+  })
+})
 
 describe('Edit Plan… (spec §5.2 B)', () => {
   it('shows Total $, Program split with a box per pool, the split words and No change yet', () => {

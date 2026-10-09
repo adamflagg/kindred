@@ -22,6 +22,26 @@ const CONTEXT: EditContext = {
 }
 
 describe('RuleControl', () => {
+  it('draws a choice as the field-size white picker, and sends the picked value', async () => {
+    const onChange = vi.fn()
+    render(
+      <RuleControl
+        path={['income', 'basis']}
+        value="gross"
+        spec={{ kind: 'choice', options: ['gross', 'agi'] }}
+        raw="gross"
+        problem={null}
+        onChange={onChange}
+      />
+    )
+    expect(document.querySelector('select')).toBeNull()
+    const face = screen.getByRole('button', { name: /Prior-year income measure/ })
+    expect(face).toHaveClass('h-[30px]')
+    await userEvent.click(face)
+    await userEvent.click(screen.getAllByRole('option')[1] as HTMLElement)
+    expect(onChange).toHaveBeenLastCalledWith('agi')
+  })
+
   it("offers the season's unclaimed sessions in Add a session, and removes a chip with ×", async () => {
     const onChange = vi.fn()
     render(
@@ -35,13 +55,15 @@ describe('RuleControl', () => {
       />
     )
     expect(screen.getByText('Session 2')).toBeInTheDocument()
-    const add = screen.getByRole('combobox', { name: 'Add a session' })
+    // The white picker, never a native select (§3): its button reads "Add a session".
+    expect(document.querySelector('select')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^Add a session/ }))
     expect(
-      within(add)
+      within(screen.getByRole('listbox'))
         .getAllByRole('option')
         .map((o) => o.textContent)
-    ).toEqual(['Add a session', 'Session 3'])
-    await userEvent.selectOptions(add, '1000103')
+    ).toEqual(['Session 3'])
+    await userEvent.click(screen.getByRole('option', { name: 'Session 3' }))
     expect(onChange).toHaveBeenLastCalledWith('1000102,1000103')
     await userEvent.click(screen.getByRole('button', { name: '×' }))
     expect(onChange).toHaveBeenLastCalledWith('')

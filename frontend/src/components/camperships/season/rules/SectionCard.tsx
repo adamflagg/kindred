@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 
 import type {
   ApiAidFieldChange,
+  ApiAidGroup,
   ApiAidRulesSection,
   ApiAidValidationIssue,
 } from '../../../../types/api-types'
@@ -11,6 +12,7 @@ import {
   CS_BTN_SM,
   CS_CARD,
   CS_CARD_HEADING,
+  CS_LINK_SM,
   CS_PILL,
   CS_SMALL,
 } from '../../kit/csType'
@@ -131,6 +133,7 @@ export function CardBody({
   details,
   dependentsMode = null,
   grantsHref,
+  groups,
   rowControl,
   cellControl,
 }: {
@@ -143,6 +146,8 @@ export function CardBody({
   details: boolean
   dependentsMode?: string | null
   grantsHref?: string | undefined
+  /** The rules' pools in their order, for the equity weights' columns. */
+  groups?: readonly ApiAidGroup[] | undefined
   /** In the editor: the box for an editable row, and for an editable table cell. */
   rowControl?: ((row: CardRow) => ReactNode) | undefined
   cellControl?: CellControl | undefined
@@ -151,12 +156,7 @@ export function CardBody({
   return (
     <>
       <ChangedSince version={approvedVersion} lines={changes.map((c) => changeWords(c, names))} />
-      {spec?.lead && (
-        <p className={`${CS_SMALL} mt-1`}>
-          {spec.lead}
-          {section === 'quality_checks' && <DefRef n={6} />}
-        </p>
-      )}
+      {spec?.lead && <p className={`${CS_SMALL} mt-1`}>{spec.lead}</p>}
       <CardTables
         section={section}
         content={content}
@@ -165,6 +165,7 @@ export function CardBody({
         details={details}
         dependentsMode={dependentsMode}
         grantsHref={grantsHref}
+        groups={groups}
         control={cellControl}
       />
       {spec !== undefined && (
@@ -196,6 +197,7 @@ export function SectionCard({
   onEdit,
   dependentsMode = null,
   grantsHref,
+  groups,
   children,
 }: {
   section: ApiAidRulesSection
@@ -212,16 +214,14 @@ export function SectionCard({
   dependentsMode?: string | null
   /** Money › Funders with the view: the named fund's row links there (owner 10-06 (c)). */
   grantsHref?: string | undefined
+  /** The rules' pools in their order, for the equity weights' columns. */
+  groups?: readonly ApiAidGroup[] | undefined
   children?: ReactNode
 }) {
   const [details, setDetails] = useState(false)
   const extra =
     section === 'equity' && children === undefined ? (
-      <button
-        type="button"
-        className={`${CS_SMALL} text-primary font-medium`}
-        onClick={() => setDetails(!details)}
-      >
+      <button type="button" className={CS_LINK_SM} onClick={() => setDetails(!details)}>
         {details ? 'Hide details' : 'Show details'}
       </button>
     ) : null
@@ -247,6 +247,7 @@ export function SectionCard({
           details={details}
           dependentsMode={dependentsMode}
           grantsHref={grantsHref}
+          groups={groups}
         />
       )}
     </section>

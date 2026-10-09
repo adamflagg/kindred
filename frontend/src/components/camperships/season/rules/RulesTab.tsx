@@ -306,6 +306,8 @@ function ChaptersBody({
   const cancelled = useLodgingCancelledSessions(year)
   const [params, setSearchParams] = useSearchParams()
   const [inView, setInView] = useState<number | null>(null)
+  // The discard question lives on the chapter bar (mock P.discardAsk): the bar steps Open All / Close All aside.
+  const [asking, setAsking] = useState(false)
   // What the tiers editor would save (null while a box can't be read): Save sends it, and the grid follows it live.
   const [tiersContent, setTiersContent] = useState<Record<string, unknown> | null>(null)
   const sectionParam = params.get('section')
@@ -440,7 +442,7 @@ function ChaptersBody({
             bands={live}
             awardTables={tables(document_.award_tables)}
             appealTables={tables(document_.round2.tables)}
-            classes={gridClasses(programs, document_.award_tables)}
+            classes={gridClasses(programs, document_.award_tables, groups)}
             warned={warned}
             noted={noted}
             label={groupWords(groups, names)}
@@ -458,7 +460,7 @@ function ChaptersBody({
           bands={bandsIn(document_.tiers)}
           awardTables={awardTables}
           appealTables={appealTables}
-          classes={gridClasses(programs, awardTables)}
+          classes={gridClasses(programs, awardTables, groups)}
           warned={warned}
           noted={noted}
           label={groupWords(groups, names)}
@@ -490,6 +492,7 @@ function ChaptersBody({
               details={false}
               dependentsMode={dependentsMode()}
               grantsHref={grantsHref}
+              groups={groups}
               rowControl={control}
               cellControl={cell}
             />
@@ -540,6 +543,7 @@ function ChaptersBody({
         onEdit={() => startEdit(section)}
         dependentsMode={dependentsMode()}
         grantsHref={grantsHref}
+        groups={groups}
       >
         {s.content === null ? (
           <p className={`${CS_SMALL} mt-1`}>
@@ -643,6 +647,7 @@ function ChaptersBody({
         onEdit={startEdit}
         editing={part !== null && node !== undefined ? { part, node } : null}
         label={groupWords(groups, names)}
+        groups={groups}
       />
     )
   }
@@ -657,7 +662,11 @@ function ChaptersBody({
     <div className="space-y-3">
       {/* The switch and Open All / Close All ride on the chapter bar's line (owner 10-08: buy the row back). */}
       <ChapterBar draft={draft} inView={inView} budgetHref={budgetHref} onJump={jump}>
-        <LeadLine state={lead} onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}>
+        <LeadLine
+          state={lead}
+          asking={asking}
+          onAll={(all) => writeOpen(all ? CHAPTERS.map((c) => c.n) : [])}
+        >
           {/* Only a draft newer than the version in effect, and only where a card could be edited: live, not locked,
               not a receipt, never mid-edit or mid-approval (scan #3093). */}
           {canEdit &&
@@ -669,6 +678,8 @@ function ChaptersBody({
                 key={lead.draftVersion}
                 draftVersion={lead.draftVersion}
                 approvedVersion={lead.approvedVersion}
+                asking={asking}
+                onAsk={setAsking}
               />
             )}
         </LeadLine>
@@ -796,6 +807,7 @@ export function RulesTab() {
       return {
         kind: 'receipt',
         words: versionWords(version, copies),
+        version,
         backHref: href({ version: null }),
       }
     }
@@ -850,7 +862,7 @@ export function RulesTab() {
         >
           {version !== null && (
             <Link to={href({ version: null })} className={CS_LINK}>
-              The Rules as They Price the Season ›
+              Back to the rules in effect ›
             </Link>
           )}
         </Missing>

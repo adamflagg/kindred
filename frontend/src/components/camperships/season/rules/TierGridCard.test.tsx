@@ -145,6 +145,31 @@ describe('the tier grid card (spec §6.2 E.2)', () => {
     ])
   })
 
+  it("orders the columns by the rules' pool order (the groups the server derived), not the stored key order", () => {
+    grid({
+      groups: [
+        { pool: 'pool_a', label: 'Pool A', equity_class: 'teen' },
+        { pool: 'pool_b', label: 'Pool B', equity_class: 'summer' },
+        { pool: 'pool_c', label: 'Pool C', equity_class: 'family' },
+      ],
+    })
+    const heads = within(screen.getByTestId('tier-grid'))
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+      .slice(4, 7)
+    expect(heads.map((h) => h.split(/its own|same as/)[0])).toEqual(['Teen', 'Summer', 'Family'])
+  })
+
+  // Design language §8, the mock's `.cf-rcard table`: a card-white table card, a rule on every column, 14px cells.
+  it('draws the kit grid: a card-white table card, a rule on every column, 14px cells', () => {
+    grid()
+    const table = screen.getByTestId('tier-grid')
+    expect(table.parentElement).toHaveClass('bg-card', 'rounded-xl', 'border')
+    expect(table).toHaveClass('text-sm')
+    expect(cell(1, 1).className).toContain('border-l-[color-mix')
+    expect(cell(1, 1)).toHaveClass('first:border-l-0')
+  })
+
   it("shows an inherited cell's parent value, muted, and an override as its own", () => {
     grid()
     expect(cell(1, 1)).toHaveTextContent('$0 – $35,000')

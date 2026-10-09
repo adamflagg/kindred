@@ -112,11 +112,12 @@ describe('RulesTab for the registrar (D76: the approved version, read only)', ()
   it("opens a receipt's version, and offers the rules as they price the season", () => {
     renderAt('/aid/season/rules?version=2&year=2027')
     expect(askedVersion).toContain(2)
-    expect(screen.getByText(/Rules v2 · approved Jan 20, 2027\./)).toBeInTheDocument()
+    expect(screen.getByText(/Rules v2 · approved Jan 20, 2027$/)).toBeInTheDocument()
     expect(screen.queryByText(/receipt/)).toBeNull()
-    expect(
-      screen.getByRole('link', { name: 'The Rules as They Price the Season ›' })
-    ).toHaveAttribute('href', '/aid/season/rules?year=2027')
+    expect(screen.getByRole('link', { name: 'Back to the rules in effect ›' })).toHaveAttribute(
+      'href',
+      '/aid/season/rules?year=2027'
+    )
   })
 
   it('says so when no rules are approved for the season yet', () => {
@@ -215,9 +216,10 @@ describe('RulesTab review fixes', () => {
     }
     renderAt('/aid/season/rules?version=99&year=2027')
     expect(screen.getByText("Rules v99 doesn't exist for 2027.")).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: 'The Rules as They Price the Season ›' })
-    ).toHaveAttribute('href', '/aid/season/rules?year=2027')
+    expect(screen.getByRole('link', { name: 'Back to the rules in effect ›' })).toHaveAttribute(
+      'href',
+      '/aid/season/rules?year=2027'
+    )
   })
 
   it("says which version a section comes from when it isn't the pricing one", () => {
@@ -273,7 +275,7 @@ describe('RulesTab for finance (D39)', () => {
   it("opens a receipt's version as the approved read, never the draft (Decision 31)", () => {
     renderAt('/aid/season/rules?version=2&year=2027')
     expect(askedVersion).toContain(2)
-    expect(screen.getByText(/Rules v2 · approved Jan 20, 2027\./)).toBeInTheDocument()
+    expect(screen.getByText(/Rules v2 · approved Jan 20, 2027$/)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^Draft v/ })).toBeNull()
   })
 
@@ -451,13 +453,13 @@ describe('Rules as chapters (spec §6)', () => {
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()
   })
 
-  it('offers finance no Discard draft on a past date: only where a card can be edited (scan #3093)', () => {
+  it('offers finance no Discard Draft… on a past date: only where a card can be edited (scan #3093)', () => {
     granted = FINANCE
     renderAt('/aid/season/rules?as_of=2027-03-15')
-    expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Discard Draft…' })).toBeNull()
     cleanup()
     renderAt('/aid/season/rules')
-    expect(screen.getByRole('button', { name: 'Discard draft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
   })
 
   it('opens the chapters with a draft section by default, and Open All / Close All folds every one', async () => {
@@ -481,12 +483,10 @@ describe('Rules as chapters (spec §6)', () => {
     expect(screen.getByRole('link', { name: 'Rounds & budget ›' })).toBeInTheDocument()
   })
 
-  it('reads a receipt link as that version with The Rules as They Price the Season ›', () => {
+  it('reads a receipt link as that version with Back to the rules in effect ›', () => {
     granted = REGISTRAR
     renderAt('/aid/season/rules?version=3')
-    expect(
-      screen.getByRole('link', { name: 'The Rules as They Price the Season ›' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to the rules in effect ›' })).toBeInTheDocument()
   })
 
   it('has no sentence restating the draft version under the tab bar', () => {
@@ -504,10 +504,16 @@ describe('Rules as chapters (spec §6)', () => {
     expect(screen.getByRole('button', { name: /^Programs/ })).toHaveClass('bg-primary')
   })
 
-  it('shows the seven footnotes under the page', () => {
+  it('shows the six footnotes under the page', () => {
     granted = FINANCE
     renderAt('/aid/season/rules')
-    expect(screen.getByText(/^Equity class: picks both/)).toBeInTheDocument()
+    // The term leads in bold (kit DefinitionNotes), so the sentence is the list item's, not one text node.
+    expect(screen.getByText('Equity class:').closest('li')).toHaveTextContent(
+      "6. Equity class: picks a program's equity weights"
+    )
+    expect(
+      screen.getAllByRole('listitem').filter((li) => /^\d\. /.test(li.textContent))
+    ).toHaveLength(6)
   })
 
   it('a season with no rules (2028): "Rules draft | None in effect", "No rules for 2028 yet." and Start for finance', () => {

@@ -1,6 +1,6 @@
 /**
  * Scenarios' notes (§S5 K): 1–4 are the registry's (`season-scenarios`: Spend, Remaining, Projected, Below the
- * line), 5–11 the page's own. Notes 6–8 are the Rules tab's notes 2, 3 and 7, read from RULES_FOOTNOTES, so the
+ * line), 5–11 the page's own. Notes 6–8 are the Rules tab's notes 2, 3 and 6, read from RULES_FOOTNOTES, so the
  * two tabs say the same thing and can't drift. The mock's note 12 ("Illustrative figures") is mock-only.
  */
 import type { DefinitionNote } from '../../kit/DefinitionNotes'
@@ -26,7 +26,7 @@ export const SCENARIO_PAGE_NOTES: readonly DefinitionNote[] = [
   },
   { n: PAGE_NOTE.tier, text: rules(2) },
   { n: PAGE_NOTE.ceiling, text: rules(3) },
-  { n: PAGE_NOTE.equityClass, text: rules(7) },
+  { n: PAGE_NOTE.equityClass, text: rules(6) },
   {
     n: PAGE_NOTE.readOnly,
     text: 'Read-only: the current-year weight is 100% less the prior-year weight.',

@@ -1,6 +1,7 @@
 import { useState, type RefObject } from 'react'
 
-import { CS_BTN, CS_BTN2, CS_INPUT, CS_LABEL, CS_SMALL } from '../../kit/csType'
+import { EditorActions } from '../../kit/EditorLayout'
+import { CS_BTN, CS_BTN2, CS_INPUT, CS_LABEL } from '../../kit/csType'
 import { KEEP_NAME_MAX, keepName } from './controlsModel'
 import { ScenarioPopover } from './ScenarioPopover'
 
@@ -52,15 +53,16 @@ export function KeepPopover({
           }}
         />
       </label>
-      <div className="mt-2 flex gap-2">
-        <button type="button" className={CS_BTN} onClick={keep}>
-          {`Keep as ${nextCode}`}
-        </button>
-        <button type="button" className={CS_BTN2} onClick={onClose}>
-          Cancel
-        </button>
+      <div className="mt-2">
+        <EditorActions {...(figure !== '' ? { reason: figure } : {})}>
+          <button type="button" className={CS_BTN} onClick={keep}>
+            {`Keep as ${nextCode}`}
+          </button>
+          <button type="button" className={CS_BTN2} onClick={onClose}>
+            Cancel
+          </button>
+        </EditorActions>
       </div>
-      {figure !== '' && <p className={`${CS_SMALL} mt-1`}>{figure}</p>}
     </ScenarioPopover>
   )
 }

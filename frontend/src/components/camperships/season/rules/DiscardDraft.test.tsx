@@ -28,7 +28,16 @@ vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
 function Harness() {
   const [version, setVersion] = useState(4)
   moved.bump = () => setVersion(5)
-  return <DiscardDraft key={version} draftVersion={version} approvedVersion={3} />
+  const [asking, setAsking] = useState(false)
+  return (
+    <DiscardDraft
+      key={version}
+      draftVersion={version}
+      approvedVersion={3}
+      asking={asking}
+      onAsk={setAsking}
+    />
+  )
 }
 
 describe('DiscardDraft', () => {
@@ -41,7 +50,7 @@ describe('DiscardDraft', () => {
         </SeasonChromeContext.Provider>
       </QueryClientProvider>
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Discard draft' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Discard Draft…' }))
     await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
     await waitFor(() =>
       expect(setNotice).toHaveBeenCalledWith('Version 4 of 2027 is not the rules draft any more')

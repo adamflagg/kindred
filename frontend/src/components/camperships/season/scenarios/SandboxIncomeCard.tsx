@@ -2,12 +2,12 @@ import {
   CS_AMBER_NOTE,
   CS_CARD,
   CS_CARD_HEADING,
-  CS_FLABEL,
+  CS_CLABEL,
   CS_META,
   CS_PANEL_HEAD,
-  CS_SELECT,
   CS_SMALL,
 } from '../../kit/csType'
+import { AidPicker } from '../../kit/AidPicker'
 import { DefRef } from '../../kit/DefinitionNotes'
 import { CHOICE_WORDS } from '../rules/rulesCards'
 import { SandboxBox } from './SandboxBox'
@@ -40,7 +40,7 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
   const row = (key: string, width: 96 | 64, muted = false) => (
     <label
       key={key}
-      className={`${CS_FLABEL} flex items-baseline gap-1.5 ${muted ? 'text-muted-foreground' : ''}`}
+      className={`${CS_CLABEL} flex items-baseline gap-1.5 ${muted ? 'text-muted-foreground' : ''}`}
     >
       {boxLabel(key, doc)}{' '}
       <SandboxBox
@@ -64,7 +64,7 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
       </div>
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}
       <div className={CS_PANEL_HEAD}>Which years count</div>
-      <label className={`${CS_FLABEL} flex items-baseline gap-1.5`}>
+      <label className={`${CS_CLABEL} flex items-baseline gap-1.5`}>
         {boxLabel(PRIOR_WEIGHT, doc)}{' '}
         <SandboxBox
           boxKey={PRIOR_WEIGHT}
@@ -81,24 +81,22 @@ export function SandboxIncomeCard({ binding }: { binding: SandboxBinding }) {
       </p>
       <div className={CS_PANEL_HEAD}>Expenses, savings and dependents</div>
       {INCOME_MONEY.slice(0, 3).map((key) => row(key, 96))}
-      <label className={`${CS_FLABEL} flex items-baseline gap-1.5`}>
+      <label className={`${CS_CLABEL} flex items-baseline gap-1.5`}>
         Dependents
-        <select
-          aria-label="Dependents"
-          className={CS_SELECT}
+        <AidPicker
+          size="field"
+          label="Dependents"
           value={binding.value(DEPENDENTS)}
           disabled={!binding.canEdit || keyLocked(DEPENDENTS, binding.locked)}
-          onChange={(event) => {
-            binding.type(DEPENDENTS, event.target.value)
+          options={MODES.map((mode) => ({
+            value: mode,
+            label: CHOICE_WORDS['dependents_mode']?.[mode] ?? mode,
+          }))}
+          onChange={(mode) => {
+            binding.type(DEPENDENTS, mode)
             binding.release()
           }}
-        >
-          {MODES.map((mode) => (
-            <option key={mode} value={mode}>
-              {CHOICE_WORDS['dependents_mode']?.[mode] ?? mode}
-            </option>
-          ))}
-        </select>
+        />
         {dependentsWas !== null && <span className={`${CS_META} ${WAS_INK}`}>{dependentsWas}</span>}
       </label>
       {row('income.per_dependent_reduction', 64, !lowers)}

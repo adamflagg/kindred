@@ -9,6 +9,7 @@ import { formatMoney } from '../../kit/money'
 import { codeWords } from '../../requests/attention'
 import { formatSetting, labelOf, type RulesNames } from './rulesModel'
 import { valueAt } from './sectionEdit'
+import { inPoolOrder, type PoolGroup } from './tierGrid'
 
 export type RowType =
   | 'money'
@@ -148,7 +149,7 @@ export const CARD_SPECS: Readonly<Partial<Record<ApiAidRulesSection, CardSpec>>>
     ],
   },
   quality_checks: {
-    lead: 'A check set to Hold puts the request on hold until staff look; one set to Warning only informs. The list of checks is read-only.',
+    lead: 'Hold → the request waits until staff look · Warning → only informs · Award above cost and Household income conflict always hold. The list of checks is read-only.',
     groups: [],
     readOnly: [],
   },
@@ -359,9 +360,11 @@ export interface EquityRow {
   readonly dependents: boolean
 }
 
-/** The equity classes, as the weights carry them: one weight column each. */
-export const equityClasses = (content: Record<string, unknown>): string[] =>
-  Object.keys(recordOf(content['weights']))
+/** The equity classes, in the rules' pool order: one weight column each. */
+export const equityClasses = (
+  content: Record<string, unknown>,
+  groups: readonly PoolGroup[] = []
+): string[] => inPoolOrder(Object.keys(recordOf(content['weights'])), groups)
 
 export function equityRows(
   content: Record<string, unknown>,

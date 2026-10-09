@@ -272,9 +272,14 @@ export function ApproveForm({
 
   return (
     <div className={`${CS_CARD} space-y-2`} data-testid="approve-form">
-      <h3
-        className={CS_CARD_HEADING}
-      >{`Approve sections of the rules draft (v${String(seen.version)})`}</h3>
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h3
+          className={CS_CARD_HEADING}
+        >{`Approve sections of the rules draft (v${String(seen.version)})`}</h3>
+        <span
+          className={CS_SMALL}
+        >{`Approving puts them in effect: v${String(seen.version)} then prices the season`}</span>
+      </div>
       {sections.length === 0 ? (
         <p className={CS_MUTED}>No section of the draft waits for approval.</p>
       ) : (
@@ -282,7 +287,7 @@ export function ApproveForm({
           {sections.map((section) => {
             const row = seen.sections.find((s) => s.section === section)
             return (
-              <div key={section} className="flex flex-wrap items-baseline gap-x-2">
+              <div key={section} className="flex min-w-0 flex-nowrap items-baseline gap-x-2">
                 {/* The changes sit beside the label, not in it: a checkbox's name stays its section's title. */}
                 <label className={`${CS_FLABEL} inline-flex items-baseline gap-x-2`}>
                   <input
@@ -294,7 +299,10 @@ export function ApproveForm({
                   {SECTION_TITLES[section]}
                 </label>
                 {row !== undefined && row.changes.length > 0 && (
-                  <span className={CS_SMALL}>
+                  <span
+                    className={`${CS_SMALL} max-w-[60rem] min-w-0 truncate`}
+                    title={sectionChangeWords(row.changes, namesFor(section))}
+                  >
                     {sectionChangeWords(row.changes, namesFor(section))}
                   </span>
                 )}
@@ -345,6 +353,9 @@ export function ApproveForm({
             type="button"
             className={CS_BTN}
             disabled={working || ticked.size === 0 || note.trim() === ''}
+            title={
+              ticked.size === 0 || note.trim() === '' ? 'Check a section and add a note' : undefined
+            }
             onClick={() => void submit()}
           >
             {working

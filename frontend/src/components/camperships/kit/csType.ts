@@ -55,6 +55,11 @@ export const CS_CHIP_INK = STRIP_LENS.all
 export const CS_CHIP_ON = STRIP_LENS_ON
 export const CS_CHIP_COUNT = STRIP_COUNT_WATCH
 /** A filter's label in the toolbar (kit .cf-lab, design-language §1): 12.5/18, muted, one line. */
+/**
+ * A label inside a card's form (Scenarios' Sandbox cards): 14px foreground, as CS_FLABEL was before the kit. §1 moved
+ * only TOOLBAR controls and their labels to 12.5px muted; a card form is neither a toolbar nor a §24 editor grid.
+ */
+export const CS_CLABEL = 'text-foreground text-sm'
 export const CS_FLABEL = 'text-muted-foreground text-[12.5px] leading-[18px] whitespace-nowrap'
 export const CS_SEARCH = AID_SEARCH_INPUT
 

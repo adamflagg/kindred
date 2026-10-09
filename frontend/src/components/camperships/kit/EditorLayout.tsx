@@ -66,7 +66,7 @@ export function EditorField({
   off = false,
   children,
 }: {
-  readonly label: string
+  readonly label: ReactNode
   readonly off?: boolean
   readonly children: ReactNode
 }) {

@@ -154,3 +154,20 @@ describe('AidPicker option levels', () => {
     expect(screen.getByRole('option', { name: /All programs/ })).not.toHaveClass('font-bold')
   })
 })
+
+describe('AidPicker placeholder', () => {
+  it('reads the placeholder while the value matches no option', () => {
+    render(
+      <AidPicker
+        label="Add a session"
+        value=""
+        placeholder="Add a session"
+        options={PROGRAMS}
+        onChange={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Add a session: Add a session' })).toHaveTextContent(
+      'Add a session'
+    )
+  })
+})

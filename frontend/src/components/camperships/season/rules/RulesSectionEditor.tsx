@@ -342,7 +342,7 @@ export function RulesSectionEditor({
         <SectionView content={body.content} renderValue={(path) => controlAt(path)} names={names} />
       )}
       {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center gap-2">
         <button
           type="button"
           className={CS_BTN}
@@ -360,7 +360,9 @@ export function RulesSectionEditor({
         <button type="button" className={CS_BTN2} disabled={saving} onClick={() => onDone(null)}>
           Cancel
         </button>
-        <span className={CS_SMALL}>Esc cancels</span>
+        <span
+          className={`${CS_SMALL} truncate`}
+        >{`Esc cancels · saving puts the change in draft v${String(opened.draft.version)}`}</span>
         {blocked && (
           <span className={CS_AMBER_NOTE}>
             {unreadable

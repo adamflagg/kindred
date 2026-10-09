@@ -126,6 +126,10 @@ describe('csType carries the final design language (design-language.md)', () => 
     )
   })
 
+  it('§1: a card form label (the Sandbox cards) keeps its pre-kit 14px foreground look', () => {
+    expect(classes(cs.CS_CLABEL)).toEqual(['text-foreground', 'text-sm'])
+  })
+
   it('§9: one green band (forest-200 at 24% over the card; forest-900 at 55% in the dark)', () => {
     expect(cs.CS_BAND).toContain('var(--color-forest-200)_24%')
     expect(cs.CS_BAND).toContain('dark:bg-[color-mix(in_oklab,var(--color-forest-900)_55%')

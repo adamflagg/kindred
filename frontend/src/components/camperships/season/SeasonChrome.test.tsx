@@ -1,5 +1,5 @@
 /** The Season chrome (spec §4): Approve… on the tab bar, the panel, the notice. Hooks mocked; fixtures fictional. */
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
@@ -145,6 +145,24 @@ describe('SeasonChrome (spec §4)', () => {
     expect(screen.getByText('Esc cancels')).toBeInTheDocument()
   })
 
+  // Final mock approvePanel(): a heading row with what approving does, the change words cut with a title, and the
+  // Approve button saying what it needs while it is disabled.
+  it('heads the panel with what approving does, and titles the disabled Approve button with what it needs', async () => {
+    renderChrome()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await screen.findByLabelText('Notes')
+    expect(
+      screen.getByText(/^Approving puts them in effect: v\d+ then prices the season$/)
+    ).toBeInTheDocument()
+    const go = screen.getByRole('button', { name: /^Approve \d Sections?$/ })
+    expect(go).toBeDisabled()
+    expect(go).toHaveAttribute('title', 'Check a section and add a note')
+    const form = screen.getByTestId('approve-form')
+    const change = within(form).getAllByText(/›/)[0] as HTMLElement
+    expect(change).toHaveClass('truncate')
+    expect(change).toHaveAttribute('title', change.textContent)
+  })
+
   it('shows one notice line with Dismiss, the only place results appear', async () => {
     renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Say' }))
@@ -216,12 +234,15 @@ describe('SeasonChrome (spec §4)', () => {
 
   // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
   // editor's text.
-  it('hides Approve… while an editor is open and brings it back when the editor closes', async () => {
+  // Final mock hold(): the button stays, greyed, and says why.
+  it('greys Approve… while an editor is open, saying why, and enables it when the editor closes', async () => {
     renderChrome()
     await userEvent.click(screen.getByRole('button', { name: 'Start editing' }))
-    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    const approve = screen.getByRole('button', { name: 'Approve…' })
+    expect(approve).toBeDisabled()
+    expect(approve).toHaveAttribute('title', 'Save or cancel the edit first.')
     await userEvent.click(screen.getByRole('button', { name: 'Stop editing' }))
-    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeEnabled()
   })
 
   // Slice 2: leaving Rules closed approve mode; the rebuilt form would lose its ticks and its Notes text.
@@ -387,6 +408,19 @@ function renderUnlock({
     </MemoryRouter>
   )
 }
+
+describe('the Unlock panel as an editor (§24)', () => {
+  it('puts Unlock, Back and the logged-with-who line on one row', async () => {
+    renderUnlock()
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock…' }))
+    const row = screen.getByRole('button', { name: 'Unlock' }).parentElement as HTMLElement
+    expect(row).toHaveClass('flex-nowrap')
+    expect(within(row).getByRole('button', { name: 'Back' })).toBeInTheDocument()
+    expect(
+      within(row).getByText(/Every save and approval is logged with this reason/)
+    ).toBeInTheDocument()
+  })
+})
 
 describe('Unlock… on a done season (spec §11.3)', () => {
   it('replaces Approve… with Unlock… for finance, and the registrar gets neither', () => {

@@ -153,14 +153,37 @@ describe('Income counting (§S5 F3)', () => {
     render(<SandboxIncomeCard binding={binding} />)
     expect(screen.getByText('30%')).toBeInTheDocument()
     expect(screen.getByText('not used now')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Dependents' })).toHaveValue('tier_shift')
+    // The white picker (§3), never a native select; it reads the mode in the rules' words.
+    expect(document.querySelector('select')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Dependents:/ })).toHaveTextContent(/move the tier/i)
   })
 
   it('releases a Dependents choice at once', async () => {
     const { binding, type, release } = setup()
     render(<SandboxIncomeCard binding={binding} />)
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Dependents' }), 'none')
+    await userEvent.click(screen.getByRole('button', { name: /^Dependents:/ }))
+    await userEvent.click(screen.getAllByRole('option').at(-1) as HTMLElement)
     expect(type).toHaveBeenCalledWith('income.dependents_mode', 'none')
     expect(release).toHaveBeenCalledOnce()
+  })
+})
+
+// #3109 moved every CS_FLABEL to 12.5px muted (a toolbar label, design-language §1). The Sandbox cards are card forms:
+// their labels keep the 14px foreground they had before the kit.
+describe('the Sandbox cards’ labels keep their pre-kit look (kit fallout, #3109)', () => {
+  it('sets income and tier labels at 14px foreground, not the toolbar label', () => {
+    const { binding } = setup()
+    const { container } = render(
+      <>
+        <SandboxTierCard binding={binding} fitButton={null} fitAnswer={null} />
+        <SandboxIncomeCard binding={binding} />
+      </>
+    )
+    const labels = [...container.querySelectorAll('label')]
+    expect(labels.length).toBeGreaterThan(3)
+    for (const label of labels) {
+      expect(label).toHaveClass('text-sm')
+      expect(label).not.toHaveClass('text-[12.5px]')
+    }
   })
 })

@@ -7,7 +7,8 @@ import { hasStatus } from '../../../services/camperships/aidApi'
 import type { ApiAidRulesDraft } from '../../../types/api-types'
 import { DefRef } from '../kit/DefinitionNotes'
 import { formatMoney, toCents } from '../kit/money'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_INPUT, CS_LABEL, CS_SMALL } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FGRID_LABEL, CS_FIELD, CS_SMALL } from '../kit/csType'
 import { savePrecondition } from './rules/precondition'
 import { useSeasonChrome } from './seasonChrome'
 import { planContent, planIssues, splitWords, type PlanPool, type TypedPlan } from './planModel'
@@ -98,50 +99,18 @@ export function EditPlan({
       }
     )
   }
+  const reason = [...issues, ...(error !== null ? [error] : [])].join(' · ')
   return (
-    <div className="mt-2 space-y-1.5 border-t border-dashed border-amber-300 pt-2 dark:border-amber-800">
-      {totalLocked && <p className={CS_SMALL}>{LOCKED}</p>}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <label className="inline-flex items-center gap-1.5">
-          <span className={CS_LABEL}>Total</span>
-          {totalLocked ? null : ' $'}
-          <input
-            aria-label="Total"
-            readOnly={totalLocked}
-            className={`${CS_INPUT} w-[110px] text-right tabular-nums read-only:bg-stone-100 read-only:text-stone-500 dark:read-only:bg-stone-800 dark:read-only:text-stone-400`}
-            value={totalLocked ? lockedTotalText(typed.total) : typed.total}
-            onChange={(event) => onType({ ...typed, total: event.target.value })}
-          />
-          {totalLocked && (
-            <Lock
-              aria-label="Total locked"
-              className="size-3.5 text-stone-500 dark:text-stone-400"
-            />
-          )}
-        </label>
-        <span className={CS_LABEL}>
-          Program split{shareNote !== null && <DefRef n={shareNote} />}
-        </span>
-        {pools.map((pool) => (
-          <label key={pool.key} className="inline-flex items-center gap-1.5">
-            {pool.label}
-            <input
-              aria-label={pool.label}
-              className={`${CS_INPUT} w-16 text-right tabular-nums`}
-              value={typed.shares[pool.key] ?? ''}
-              onChange={(event) =>
-                onType({ ...typed, shares: { ...typed.shares, [pool.key]: event.target.value } })
-              }
-            />
-            %
-          </label>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className={CS_SMALL}>{split ?? ''}</span>
-        <span className="ml-auto flex flex-wrap items-center gap-2">
-          {issues.length > 0 && <span className={CS_AMBER_NOTE}>{issues.join(' · ')}</span>}
-          {error !== null && <span className={CS_AMBER_NOTE}>{error}</span>}
+    <EditorForm
+      className="mt-2"
+      side={
+        <div className="space-y-1">
+          {totalLocked && <p className={CS_SMALL}>{LOCKED}</p>}
+          <p className={CS_SMALL}>{split ?? ''}</p>
+        </div>
+      }
+      actions={
+        <EditorActions>
           <button
             type="button"
             className={CS_BTN}
@@ -154,8 +123,55 @@ export function EditPlan({
             Cancel
           </button>
           <span className={CS_SMALL}>Esc cancels</span>
-        </span>
-      </div>
-    </div>
+          {reason !== '' && (
+            <span className={`${CS_AMBER_NOTE} min-w-0 truncate`} title={reason}>
+              {reason}
+            </span>
+          )}
+        </EditorActions>
+      }
+    >
+      <EditorGrid>
+        <EditorField label="Total">
+          <span className="inline-flex items-center gap-1.5">
+            {totalLocked ? null : '$'}
+            <input
+              aria-label="Total"
+              readOnly={totalLocked}
+              className={`${CS_FIELD} w-[130px] text-right tabular-nums read-only:bg-stone-100 read-only:text-stone-500 dark:read-only:bg-stone-800 dark:read-only:text-stone-400`}
+              value={totalLocked ? lockedTotalText(typed.total) : typed.total}
+              onChange={(event) => onType({ ...typed, total: event.target.value })}
+            />
+            {totalLocked && (
+              <Lock
+                aria-label="Total locked"
+                className="size-3.5 text-stone-500 dark:text-stone-400"
+              />
+            )}
+          </span>
+        </EditorField>
+        {pools.map((pool, i) => (
+          <EditorField
+            key={pool.key}
+            label={
+              i === 0 ? <>Program split{shareNote !== null && <DefRef n={shareNote} />}</> : ''
+            }
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span className={CS_FGRID_LABEL}>{pool.label}</span>
+              <input
+                aria-label={pool.label}
+                className={`${CS_FIELD} w-16 text-right tabular-nums`}
+                value={typed.shares[pool.key] ?? ''}
+                onChange={(event) =>
+                  onType({ ...typed, shares: { ...typed.shares, [pool.key]: event.target.value } })
+                }
+              />
+              %
+            </span>
+          </EditorField>
+        ))}
+      </EditorGrid>
+    </EditorForm>
   )
 }

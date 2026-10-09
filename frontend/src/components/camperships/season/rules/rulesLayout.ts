@@ -142,35 +142,41 @@ export function chapterSummary(
   return out
 }
 
-/** Rules' own page notes (§6.2 H), in rules-v3's Fix 1 words; not money definitions. */
+/**
+ * Rules' own page notes (§6.2 H), in the approved final mock's words (final-v2/season-rules.html NOTES): six, the cap
+ * (§12). The old note 6 ("Award above cost and Household income conflict always hold") moved into Quality checks' own
+ * lead line; the equity class note is now 6.
+ */
 export const RULES_FOOTNOTES: readonly DefinitionNote[] = [
   {
     n: 1,
-    text: 'Locked: in effect, and a posted round has read it. Editing it starts a new version; posted amounts stand.',
+    term: 'Locked',
+    text: 'Locked: in effect, and a posted round has read it. Editing starts a new version; posted amounts stand.',
   },
   {
     n: 2,
-    text: 'Tier: tier 1 is the lowest income and gets the most aid; equity criteria can move a family toward it, never past tier 1.',
+    term: 'Tier',
+    text: 'Tier: tier 1 is the lowest income and gets the most aid. Equity criteria move a family toward it, never past tier 1.',
   },
   {
     n: 3,
-    text: 'Income ceiling: above this counted income, no camp money in any round. Outside grants are unaffected.',
+    term: 'Income ceiling',
+    text: 'Income ceiling: above it, no camp money in any round. Outside grants are unaffected.',
   },
   {
     n: 4,
+    term: 'Read-only',
     text: 'Read-only: how the dashboard prices, shown so staff know it. Changing one is a developer change, not a rules edit.',
   },
   {
     n: 5,
+    term: 'Named award kinds',
     // Owner 10-06 (a): the named fund subtracts outside grants too (Task 17's engine branch).
-    text: "Named award kinds: full cost pays the cost less grants, plus the extra amount; full cost after camp aid pays what the camp award and outside grants leave of the cost; a fixed top-up adds its amount; staff type the amount on the request. A named award that doesn't count toward the budget sits below the line.",
+    text: "Named award kinds: Full cost = the cost less grants, plus the extra amount · Full cost after camp aid = what the camp award and grants leave · Fixed top-up = adds its amount · Staff type the amount. One that doesn't count toward the budget sits below the line.",
   },
   {
     n: 6,
-    text: 'Award above cost and Household income conflict always hold, whether or not they are listed here.',
-  },
-  {
-    n: 7,
-    text: "Equity class: picks both the program's row of equity weights and its award table (Round 1 % and appeal caps).",
+    term: 'Equity class',
+    text: "Equity class: picks a program's equity weights and its award table (Round 1 % and appeal caps).",
   },
 ]

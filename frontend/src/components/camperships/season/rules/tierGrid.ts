@@ -154,7 +154,8 @@ function parentOf(table: unknown): string | null {
  */
 export function gridClasses(
   programs: Readonly<Record<string, { readonly equity_class?: string | null }>>,
-  tables: Readonly<Record<string, unknown>>
+  tables: Readonly<Record<string, unknown>>,
+  groups: readonly PoolGroup[] = []
 ): string[] {
   const ordered: string[] = []
   for (const program of Object.values(programs)) {
@@ -163,7 +164,28 @@ export function gridClasses(
   }
   const all = [...ordered, ...Object.keys(tables).filter((key) => !ordered.includes(key))]
   const sources = new Set(Object.values(tables).map(parentOf))
-  return [...all.filter((key) => sources.has(key)), ...all.filter((key) => !sources.has(key))]
+  return inPoolOrder(
+    [...all.filter((key) => sources.has(key)), ...all.filter((key) => !sources.has(key))],
+    groups
+  )
+}
+
+/** A pool of the rules, in the order the rules list them, and the equity class its programs share. */
+export interface PoolGroup {
+  readonly equity_class?: string | null
+}
+
+/**
+ * Equity classes in the rules' pool order (final mock: "pool order is the rules' order"): each class where its pool
+ * sits in `groups`, the classes no pool pairs with after them in the order given. Never a hard-coded order: it is the
+ * order of the read.
+ */
+export function inPoolOrder(keys: readonly string[], groups: readonly PoolGroup[]): string[] {
+  const pooled = groups.flatMap((g) =>
+    typeof g.equity_class === 'string' && keys.includes(g.equity_class) ? [g.equity_class] : []
+  )
+  const first = [...new Set(pooled)]
+  return [...first, ...keys.filter((key) => !first.includes(key))]
 }
 
 interface Issue {
