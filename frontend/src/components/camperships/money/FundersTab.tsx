@@ -255,16 +255,17 @@ export function FundersTab({ view }: { view: AidView }) {
               <span className="block truncate">
                 <span className={`${CARET} align-baseline`}>{ctx.highlighted ? '▾' : '▸'}</span>
                 <span className={r.retired ? 'font-bold line-through' : 'font-bold'}>{r.name}</span>
-                <span className="ml-2.5 font-normal">
+                <span className="ml-2.5 text-[12.5px] font-normal">
                   {r.retired
                     ? `Retired · ${line.terms}`.replace(/^Retired · Retired · /, 'Retired · ')
                     : line.terms}
                 </span>
+                {/* Mock .cf-t then .cf-m: the terms at 12.5px ink, the details at 12px muted. */}
                 {line.detail !== '' && (
-                  <>
-                    {' · '}
-                    <span className="text-muted-foreground font-normal">{line.detail}</span>
-                  </>
+                  <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                    {'· '}
+                    <span>{line.detail}</span>
+                  </span>
                 )}
               </span>
             )
