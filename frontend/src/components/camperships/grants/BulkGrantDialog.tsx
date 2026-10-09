@@ -8,7 +8,7 @@ import { Modal } from '../../ui/Modal'
 import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../kit/csType'
 import { refusalWords } from '../money/refusal'
 import { grantLineWords, MAX_GRANT_PLACEMENTS, planWords, type GrantPlan } from './needsModel'
-import { placedGrantWords, placementFor, stillNeedsCamper, suggestedWords } from './placeModel'
+import { placedGrantWords, placementFor, stillNeedsCamper, suggestionCell } from './placeModel'
 
 /**
  * Confirm single, exact suggestions together (S3-6; §4.10): every line listed (those the search
@@ -20,13 +20,14 @@ import { placedGrantWords, placementFor, stillNeedsCamper, suggestedWords } from
 export function BulkGrantDialog({
   plan,
   year,
-  names,
+  sessions,
   onClose,
   onDone,
 }: {
   plan: GrantPlan | null
   year: number
-  names: Readonly<Record<string, string>>
+  /** Session names by id (useAidSessionNames), for the suggestion's "camper · session". */
+  sessions: ReadonlyMap<number, string> | undefined
   onClose: () => void
   onDone: (words: string, placed: readonly number[]) => void
 }) {
@@ -107,7 +108,7 @@ export function BulkGrantDialog({
         <ul className={`${CS_SMALL} max-h-48 overflow-y-auto`}>
           {plan.lines.map(({ need, hidden }) => (
             <li key={need.grant.transaction_cm_id}>
-              {`${need.grant.family_name}: ${grantLineWords(need)} → ${suggestedWords(need, names)}`}
+              {`${need.grant.family_name}: ${grantLineWords(need)} → ${suggestionCell(need, sessions)}`}
               {hidden ? ' (hidden by the search)' : ''}
             </li>
           ))}

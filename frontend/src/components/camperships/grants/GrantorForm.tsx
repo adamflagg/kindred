@@ -116,7 +116,7 @@ export function GrantorForm({
         return
       }
       if (latest === undefined || opened === null) {
-        setProblem('This grantor is no longer in the directory.')
+        setProblem('This funder is no longer in the directory.')
         return
       }
       const moved = movedFields(opened, latest, GRANTOR_WATCHED)
@@ -143,7 +143,7 @@ export function GrantorForm({
 
   return (
     <div data-aid-editor="" data-testid="grantor-form">
-      <EditorBox head={initial === undefined ? 'New grantor' : `Editing · ${initial.name}`}>
+      <EditorBox head={initial === undefined ? 'New funder' : `Editing · ${initial.name}`}>
         <form
           className="space-y-2 text-sm"
           onSubmit={(event) => {
@@ -274,7 +274,7 @@ export function GrantorForm({
           </label>
           <p className={CS_PMETA}>
             A rename changes the name everywhere it shows; history keeps who and why. Descriptions
-            are mapped to a grantor on their source row.
+            are mapped to a funder on their own row.
           </p>
           {!read.ok && <p className={CS_AMBER_NOTE}>{read.problem}</p>}
           {problem !== null && <p className={CS_AMBER_NOTE}>{problem}</p>}

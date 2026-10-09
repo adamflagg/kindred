@@ -7,7 +7,6 @@ import {
   placedGrantWords,
   placementFor,
   stillNeedsCamper,
-  suggestedWords,
   suggestionCell,
 } from './placeModel'
 
@@ -16,7 +15,6 @@ const [GARCIA] = GRANTS.needs_camper
 describe('placeModel', () => {
   it('words the suggestion and its evidence, never in code', () => {
     if (GARCIA?.suggestion == null) throw new Error('fixture')
-    expect(suggestedWords(GARCIA, { summer: 'Summer Camp' })).toBe('Liam Garcia (Summer Camp)')
     expect(evidenceWords(GARCIA)).toBe(
       "Liam Garcia: the household's one camper enrolled this season."
     )
@@ -29,16 +27,6 @@ describe('placeModel', () => {
     expect(evidenceWords({ ...GARCIA, suggestion: null })).toBe(
       'The dashboard has no suggestion: pick the camper.'
     )
-  })
-
-  it("prefers the server's program_label over the rules' names (M5)", () => {
-    if (GARCIA?.suggestion == null) throw new Error('fixture')
-    const labelled = {
-      ...GARCIA,
-      suggestion: { ...GARCIA.suggestion, program_label: 'Summer Camp 2' },
-    }
-    expect(suggestedWords(labelled, {})).toBe('Liam Garcia (Summer Camp 2)')
-    expect(suggestedWords(labelled, { summer: 'Other name' })).toBe('Liam Garcia (Summer Camp 2)')
   })
 
   it('words the To place suggestion cell as camper · session, with no program label', () => {

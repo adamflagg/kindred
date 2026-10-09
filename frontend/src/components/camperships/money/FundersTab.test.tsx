@@ -538,6 +538,8 @@ describe('finance (view, rules, grantors)', () => {
       renderTab()
       await userEvent.click(await screen.findByRole('button', { name: 'New Funder…' }))
       const form = screen.getByTestId('grantor-form')
+      expect(within(form).getByText('New funder')).toBeInTheDocument()
+      expect(within(form).getByText(/mapped to a funder on their own row\./)).toBeInTheDocument()
       await userEvent.type(within(form).getByRole('textbox', { name: 'Name' }), 'Grantor G')
       expect(within(form).getByRole('textbox', { name: 'Key' })).toHaveValue('grantor_g')
       await userEvent.click(within(form).getByRole('checkbox', { name: 'Full coverage' }))
@@ -679,7 +681,7 @@ describe('finance (view, rules, grantors)', () => {
       expect(within(panelA).getByRole('button', { name: 'Retire…' })).toBeDisabled()
       expect(
         within(panelA).getByText(
-          '1 CampMinder description still maps to it. Map it to another grantor first.'
+          '1 CampMinder description still maps to it. Map it to another funder first.'
         )
       ).toBeInTheDocument()
     })
@@ -810,7 +812,7 @@ describe('finance (view, rules, grantors)', () => {
     it('Map a Funder… sends the note as it stands when the re-check lands', async () => {
       renderTab()
       await openRow('Grantor E grant 2027')
-      await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Grantor…' }))
+      await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Funder…' }))
       const field = await screen.findByTestId('grantor-field')
       await within(field).findByRole('option', { name: 'Grantor E' })
       await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
@@ -841,9 +843,12 @@ describe("a description's funder (grantors, no rules)", () => {
     const edit = panel('edit')
     expect(within(edit).queryByRole('button', { name: 'Edit…' })).toBeNull()
     expect(within(edit).queryByRole('button', { name: 'Set a Group…' })).toBeNull()
-    await userEvent.click(within(edit).getByRole('button', { name: 'Map a Grantor…' }))
+    await userEvent.click(within(edit).getByRole('button', { name: 'Map a Funder…' }))
     const field = await screen.findByTestId('grantor-field')
     await within(field).findByRole('option', { name: 'Grantor E' })
+    // Funders says "funder" to staff, never "grantor" (coordinator 10-09).
+    expect(within(field).getByRole('combobox', { name: 'Funder' })).toBeInTheDocument()
+    expect(within(field).getByRole('option', { name: '— no funder —' })).toBeInTheDocument()
     await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
     await userEvent.selectOptions(within(field).getByRole('combobox'), 'Grantor E')
     await userEvent.type(within(field).getByRole('textbox', { name: 'Note' }), 'New for 2027')
@@ -868,7 +873,7 @@ describe("a description's funder (grantors, no rules)", () => {
     sourceReads = [SOURCES_2027, SOURCES_2027, moved]
     renderTab()
     await openRow('Grantor E grant 2027')
-    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Grantor…' }))
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Map a Funder…' }))
     const field = await screen.findByTestId('grantor-field')
     await within(field).findByRole('option', { name: 'Grantor E' })
     await waitFor(() => expect(within(field).getByRole('combobox')).toBeEnabled())
@@ -897,15 +902,13 @@ describe("a description's funder (grantors, no rules)", () => {
     ]
     renderTab()
     await openRow('Grantor A grant')
-    await userEvent.click(
-      within(panel('edit')).getByRole('button', { name: 'Change the Grantor…' })
-    )
+    await userEvent.click(within(panel('edit')).getByRole('button', { name: 'Change the Funder…' }))
     const field = await screen.findByTestId('grantor-field')
     expect(await within(field).findByRole('option', { name: 'Grantor F (retired)' })).toBeDisabled()
     expect(within(field).queryByRole('option', { name: 'Grantor F' })).toBeNull()
     await waitFor(() => expect(within(field).getByRole('combobox')).toHaveValue('grantor_f'))
     expect(
-      within(field).getByText('Grantor F is retired: pick a grantor in use, or', { exact: false })
+      within(field).getByText('Grantor F is retired: pick a funder in use, or', { exact: false })
     ).toBeInTheDocument()
     expect(
       within(field).getByRole('link', { name: 'Unretire It in Money › Funders' })
@@ -925,7 +928,7 @@ describe('development (summary, funding sources, grantors; no view)', () => {
     await openRow('Grantor E grant 2027')
     const edit = panel('edit')
     expect(within(edit).getByRole('button', { name: 'Set a Group…' })).toBeInTheDocument()
-    expect(within(edit).getByRole('button', { name: 'Map a Grantor…' })).toBeInTheDocument()
+    expect(within(edit).getByRole('button', { name: 'Map a Funder…' })).toBeInTheDocument()
     expect(within(edit).queryByRole('button', { name: /^Edit…$|^Classify…$/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'New Funder…' })).toBeInTheDocument()
   })

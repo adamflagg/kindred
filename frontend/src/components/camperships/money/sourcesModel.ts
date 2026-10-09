@@ -229,12 +229,12 @@ export function programsChanged(row: ApiAidSourceRow, draft: ClassifyDraft): boo
 export const SOURCE_WATCHED: ReadonlyArray<readonly [keyof ApiAidSourceRow, string]> = [
   ['source_name', 'Name'],
   ['source_family', 'Family'],
-  ['funder_type', 'Funder'],
+  ['funder_type', 'Paid by'],
   ['counts_as_aid', 'Counts as aid'],
   ['counts_toward_budget', 'Counts toward the budget'],
   ['implied_program_families', 'Programs'],
   ['incentive', 'Incentive'],
-  ['grantor_key', 'Grantor'],
+  ['grantor_key', 'Funder'],
   ['note', 'Note'],
 ]
 
@@ -257,7 +257,7 @@ export function dropsGrantor(row: ApiAidSourceRow, draft: ClassifyDraft): boolea
 }
 
 export const DROPS_GRANTOR_WARNING =
-  'Saving this drops its grantor: only an outside grant or incentive names one (Money › Funders keeps the funder).'
+  'Saving this drops its funder: only an outside grant or incentive names one. The funder itself stays in Money › Funders.'
 
 /** "Set a Group…"'s choice: a pool key, no group, or (a source over several pools) keep them. */
 export const KEEP_GROUPS = 'keep'

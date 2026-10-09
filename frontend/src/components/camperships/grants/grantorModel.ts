@@ -100,7 +100,7 @@ export type GrantorRead<T> =
   { readonly ok: true; readonly body: T } | { readonly ok: false; readonly problem: string }
 
 export function readSave(draft: GrantorDraft): GrantorRead<ApiAidGrantorSave> {
-  if (draft.name.trim() === '') return { ok: false, problem: 'Name the grantor' }
+  if (draft.name.trim() === '') return { ok: false, problem: 'Name the funder' }
   if (draft.note.trim() === '') return { ok: false, problem: 'A note is required (it is logged)' }
   return { ok: true, body: fields(draft) }
 }
@@ -156,8 +156,8 @@ export function retireBlocked(g: ApiAidGrantor): string | null {
   const n = g.descriptions.length
   if (n === 0) return null
   return n === 1
-    ? '1 CampMinder description still maps to it. Map it to another grantor first.'
-    : `${String(n)} CampMinder descriptions still map to it. Map them to another grantor first.`
+    ? '1 CampMinder description still maps to it. Map it to another funder first.'
+    : `${String(n)} CampMinder descriptions still map to it. Map them to another funder first.`
 }
 
 /** The season's grant lines and their net (GET /grantors?year=); null when the read has no season. */

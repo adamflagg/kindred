@@ -174,6 +174,20 @@ describe('To place › Outside grant posted to the family (M5)', () => {
     expect(screen.queryByText('Liam Garcia (Summer)')).toBeNull()
   })
 
+  it("names the suggestion the row's way, camper · session, in the opened row and the bulk dialog", async () => {
+    renderGroup()
+    await userEvent.click(await screen.findByText(GARCIA_LINE))
+    const panel = await screen.findByTestId('needs-camper-panel')
+    const suggestion = panel.querySelector('[data-panel="suggestion"]') as HTMLElement
+    expect(await within(suggestion).findByText('Liam Garcia · Session 2')).toBeInTheDocument()
+    expect(within(panel).queryByText('Liam Garcia (Summer)')).toBeNull()
+    await userEvent.click(
+      screen.getByRole('button', { name: /Confirm the 1 Single, Exact Suggestion/ })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/→ Liam Garcia · Session 2$/)).toBeInTheDocument()
+  })
+
   it('draws nothing when no grant line needs a camper', async () => {
     read = { ...GRANTS, needs_camper: [] }
     const { container } = renderGroup()

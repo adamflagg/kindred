@@ -10,7 +10,6 @@ import type {
   ApiAidPlaceGrantsOut,
   ApiAidPlacementIn,
 } from '../../../types/api-types'
-import { programLabel } from '../requests/programLabel'
 
 /**
  * How the ledger sync placed the line on its suggested camper (`CamperSuggestionOut.method`, Go's
@@ -39,18 +38,6 @@ export function evidenceWords(need: ApiAidNeedsCamper): string {
   }
   const words = METHOD_WORDS[s.method] ?? s.method.replaceAll('_', ' ')
   return `${s.camper_name}: ${words}.`
-}
-
-/** "Liam Garcia (Summer)": the suggested camper and the program, in the server's `program_label`, else the rules' words. */
-export function suggestedWords(
-  need: ApiAidNeedsCamper,
-  names: Readonly<Record<string, string>>
-): string {
-  const s = need.suggestion
-  if (s === null) return 'No suggestion: pick the camper'
-  return s.program_family === ''
-    ? s.camper_name
-    : `${s.camper_name} (${s.program_label || programLabel(names, s.program_family)})`
 }
 
 /**

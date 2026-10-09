@@ -136,7 +136,7 @@ export function SourceOpenRow({
               )}
               {canGrantor && (
                 <button type="button" className={CS_BTN2} onClick={() => setMode('grantor')}>
-                  {row.grantor_key === '' ? 'Map a Grantor…' : 'Change the Grantor…'}
+                  {row.grantor_key === '' ? 'Map a Funder…' : 'Change the Funder…'}
                 </button>
               )}
             </div>

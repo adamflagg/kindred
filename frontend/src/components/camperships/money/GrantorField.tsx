@@ -121,7 +121,7 @@ export function GrantorField({
       const name = inUse.find((g) => g.key === sent.key)?.name
       onDone(
         name === undefined
-          ? `${initial.description}: no grantor now, with your note.`
+          ? `${initial.description}: no funder now, with your note.`
           : `${initial.description}: mapped to ${name}, with your note.`
       )
     } catch (caught) {
@@ -133,14 +133,14 @@ export function GrantorField({
     <div className="space-y-2 text-sm" data-testid="grantor-field">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2">
-          Grantor
+          Funder
           <select
             className={CS_INPUT}
             value={key}
             disabled={opened === null}
             onChange={(event) => setKey(event.target.value)}
           >
-            <option value={NO_GRANTOR}>— no grantor —</option>
+            <option value={NO_GRANTOR}>— no funder —</option>
             {retired !== undefined && (
               <option value={retired.key} disabled>
                 {`${retired.name} (retired)`}
@@ -166,7 +166,7 @@ export function GrantorField({
       </div>
       {key === retired?.key && (
         <p className={CS_AMBER_NOTE}>
-          {`${retired.name} is retired: pick a grantor in use, or `}
+          {`${retired.name} is retired: pick a funder in use, or `}
           <Link
             className={CS_LINK}
             to={aidHref('/aid/money/funders', view, { funder: retired.key })}

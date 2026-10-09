@@ -22,7 +22,7 @@ import {
   placedGrantWords,
   placementFor,
   stillNeedsCamper,
-  suggestedWords,
+  suggestionCell,
   SUGGESTS_CONFIRMS,
 } from './placeModel'
 
@@ -42,14 +42,15 @@ export function NeedsCamperPanel({
   need,
   year,
   view,
-  names,
+  sessions,
   canWork,
   onDone,
 }: {
   need: ApiAidNeedsCamper
   year: number
   view: AidView
-  names: Readonly<Record<string, string>>
+  /** Session names by id (useAidSessionNames), for the suggestion's "camper · session". */
+  sessions: ReadonlyMap<number, string> | undefined
   canWork: boolean
   onDone: (words: string) => void
 }) {
@@ -105,7 +106,7 @@ export function NeedsCamperPanel({
         </div>
         <div className={MIDDLE} data-panel="suggestion">
           <div className={CS_PANEL_HEAD}>Suggestion</div>
-          <div>{suggestedWords(need, names)}</div>
+          <div>{suggestionCell(need, sessions)}</div>
           <div className={CS_PMETA}>{evidenceWords(need)}</div>
           <div className={CS_PMETA}>
             {need.candidates.length === 0

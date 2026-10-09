@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
 import { useAidGrants } from '../../../hooks/camperships/useAidGrants'
-import { useAidProgramNames } from '../../../hooks/camperships/useAidProgramNames'
 import { useAidSessionNames } from '../../../hooks/camperships/useAidSessionNames'
 import type { ApiAidNeedsCamper } from '../../../types/api-types'
 import { BulkGrantDialog } from '../grants/BulkGrantDialog'
@@ -38,7 +37,6 @@ function GrantLinesBody({
   canWork: boolean
   onDone: (words: string) => void
 }) {
-  const names = useAidProgramNames()
   const sessions = useAidSessionNames(year)
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
   const [matching, setMatching] = useState<ReadonlySet<string> | null>(null)
@@ -114,12 +112,12 @@ function GrantLinesBody({
         need={need}
         year={year}
         view={view}
-        names={names}
+        sessions={sessions}
         canWork={canWork}
         onDone={onDone}
       />
     ),
-    [year, view, names, canWork, onDone]
+    [year, view, sessions, canWork, onDone]
   )
   const bulkDone = useCallback(
     (words: string, placed: readonly number[]) => {
@@ -170,7 +168,7 @@ function GrantLinesBody({
         <BulkGrantDialog
           plan={plan}
           year={year}
-          names={names}
+          sessions={sessions}
           onClose={() => setAtClick(null)}
           onDone={bulkDone}
         />

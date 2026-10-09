@@ -88,20 +88,20 @@ describe('grantorModel', () => {
     })
     expect(readSave({ ...EMPTY_GRANTOR, note: 'n' })).toEqual({
       ok: false,
-      problem: 'Name the grantor',
+      problem: 'Name the funder',
     })
   })
 
   it('says why Retire… waits, only for what the read can see (a mapped description)', () => {
     expect(retireBlocked(GRANTOR_A)).toBe(
-      '1 CampMinder description still maps to it. Map it to another grantor first.'
+      '1 CampMinder description still maps to it. Map it to another funder first.'
     )
     expect(
       retireBlocked({
         ...GRANTOR_A,
         descriptions: [...GRANTOR_A.descriptions, ...GRANTOR_C.descriptions],
       })
-    ).toBe('2 CampMinder descriptions still map to it. Map them to another grantor first.')
+    ).toBe('2 CampMinder descriptions still map to it. Map them to another funder first.')
     // Grants this season don't block it (the server counts open commitments, not ledger lines).
     expect(retireBlocked(GRANTOR_K)).toBeNull()
     expect(retireBlocked(GRANTOR_E)).toBeNull()
