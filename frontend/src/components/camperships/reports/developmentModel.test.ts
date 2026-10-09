@@ -9,18 +9,18 @@ import {
   DEVELOPMENT_LIVE,
 } from './developmentFixtures'
 import {
+  asOfChipWords,
   cappedWords,
-  columnHeader,
+  columnHead,
   developmentTable,
   datedSeasons,
-  datedWords,
   dayBefore,
   developmentColumns,
   developmentRows,
-  notRebuiltColumnWords,
+  funderFacts,
   rebuildReason,
+  SECTION_DESCRIPTIONS,
   SUB_LINES,
-  unconfirmedWords,
   columnParam,
 } from './developmentModel'
 
@@ -77,15 +77,27 @@ describe('the report', () => {
     expect(money).toBeLessThan(drawn.findIndex(([, text]) => text === 'Counts'))
   })
 
-  it('has no Group column: the header is Metric and the season columns (development-v2)', () => {
+  it('has no Group column: the header is Metric and the season columns, short and one line (final mock)', () => {
     expect(developmentColumns(DEVELOPMENT).map((c) => c.header)).toEqual([
       'Metric',
-      ...DEVELOPMENT.columns.map((c) => columnHeader(c, DEVELOPMENT)),
+      '2025',
+      '2026',
+      '2027',
+      '2027',
     ])
   })
 
-  it('draws a line with an every-group row once, its definition a numbered note, never in the row', () => {
-    const { rows, notes } = developmentTable(DEVELOPMENT)
+  const REGISTRY = [
+    { key: 'dev_budget', text: 'Budget: the first board-passed.' },
+    { key: 'need', text: 'Need and Total Requests: the asks.' },
+    { key: 'total_awards_granted', text: 'Total Awards Granted: all money.' },
+    { key: 'dev_recipients', text: 'Who counts: attended and got money.' },
+    { key: 'first_time', text: 'First-time: no earlier session.' },
+    { key: 'basis_unconfirmed', text: 'As reported: typed once.' },
+  ]
+
+  it('draws a line with an every-group row once, its note a superscript number from the registry, never in the row', () => {
+    const { rows, notes } = developmentTable(DEVELOPMENT, { registry: REGISTRY })
     expect(texts(rows[1])).toEqual([
       'Total Awards Granted',
       '$900,000',
@@ -93,37 +105,97 @@ describe('the report', () => {
       '$2,500',
       '$1,800',
     ])
-    // final audit O3: the row stays one line, with a superscript; the words are in the notes below
-    expect(rows.every((r) => r.note === undefined || r.key.startsWith('grantor-'))).toBe(true)
-    expect(rows[1]?.ref).toBe(1)
-    expect(notes[0]).toEqual({ n: 1, text: 'Every award, the camp’s and outside grants' })
+    expect(rows.every((r) => r.note === undefined)).toBe(true)
+    // the server's own definition text no longer numbers a row: the six registry notes do (final mock)
+    expect(rows[1]?.ref).toBe(3)
+    expect(notes).toEqual(REGISTRY.map((r, i) => ({ n: i + 1, text: r.text })))
+    // A registry note that carries its term passes it on, so the notes set it bold.
+    const termed = developmentTable(DEVELOPMENT, {
+      registry: [{ key: 'dev_budget', term: 'Budget', text: 'Budget: the first board-passed.' }],
+    })
+    expect(termed.notes).toEqual([
+      { n: 1, term: 'Budget', text: 'Budget: the first board-passed.' },
+    ])
     expect(rows.filter((r) => texts(r)[0] === 'Recipients')).toHaveLength(1)
-    const recipients = rows.find((r) => texts(r)[0] === 'Recipients')
-    expect(notes.find((n) => n.n === recipients?.ref)?.text).toBe(
-      'People with an award this season'
-    )
+    expect(rows.find((r) => texts(r)[0] === 'Recipients')?.ref).toBe(4)
     expect(rows.find((r) => texts(r)[0] === 'Pool A campers')?.ref).toBeUndefined()
   })
 
-  it('numbers the notes in the order the rows first call for them, as the mock does, each once', () => {
-    const { rows, notes } = developmentTable(DEVELOPMENT)
-    const refs = rows.map((r) => r.ref).filter((n) => n !== undefined)
-    expect([...new Set(refs)]).toEqual(notes.map((n) => n.n))
-    expect(notes.map((n) => n.n)).toEqual(notes.map((_, i) => i + 1))
+  it('numbers by the registry order, not by the order the rows call for the notes: six, fixed', () => {
+    const { rows } = developmentTable(DEVELOPMENT, { registry: REGISTRY })
+    const ref = (label: string) => rows.find((r) => texts(r)[0] === label)?.ref
+    expect(ref('% of need met, Pool A')).toBe(2)
+    expect(ref('First-time, Pool A')).toBe(5)
+    expect(ref('First-time, Pool B')).toBe(5)
+    expect(ref('Declined enrollment for insufficient aid')).toBe(5)
+    expect(ref('Gender, campers who got money: girl, Pool A')).toBe(4)
+    expect(ref('Camp awards')).toBeUndefined()
   })
 
-  it("numbers a row the registry defines (its key's note) when the read sends no definition, and lists the registry's other notes after", () => {
-    const registry = [
-      { key: 'need', text: 'Need: the asks.' },
-      { key: 'dev_appeals', text: 'Appeals: Round 2 asks.' },
-      { key: 'basis_unconfirmed', text: 'Basis unconfirmed: typed years.' },
+  it('marks Budget¹, requests and need², Total/outside/Grants/Average³, who counts⁴ and first-time/appeals⁵ (the mock)', () => {
+    const budget = { ...DEVELOPMENT_LIVE, rows: [...DEVELOPMENT_LIVE.rows, BUDGET_ROW] }
+    const extra = (key: string, section: 'money' | 'counts' | 'appeals') => ({
+      ...DEVELOPMENT.rows[0]!,
+      key,
+      section,
+      label: key,
+      group: null,
+    })
+    const keys: Array<[string, 'money' | 'counts' | 'appeals', number | undefined]> = [
+      ['budget', 'money', 1],
+      ['total_requests', 'money', 2],
+      ['need_met', 'money', 2],
+      ['total_awards', 'money', 3],
+      ['outside_awards', 'money', 3],
+      ['awards', 'money', 3],
+      ['average_award', 'money', 3],
+      ['camp_awards', 'money', undefined],
+      ['recipients', 'counts', 4],
+      ['families', 'counts', 4],
+      ['shared_households', 'counts', undefined],
+      ['teens', 'counts', 4],
+      ['youth', 'counts', 4],
+      ['adults', 'counts', undefined],
+      ['teen_programs', 'counts', undefined],
+      ['gender_recipients', 'counts', 4],
+      ['gender_enrolled', 'counts', 4],
+      ['household_level_lines', 'counts', 4],
+      ['household_level_amount', 'counts', 4],
+      ['first_time', 'counts', 5],
+      ['returning', 'counts', 5],
+      ['appeals_submitted', 'appeals', 5],
+      ['appeals_in_full', 'appeals', 5],
+      ['appeals_in_part', 'appeals', 5],
+      ['appeals_approved', 'appeals', 5],
+      ['declined_insufficient', 'appeals', 5],
+      ['cancelled_medical', 'appeals', undefined],
     ]
-    const { rows, notes } = developmentTable(DEVELOPMENT, { registry })
-    const declined = rows.find((r) => texts(r)[0] === 'Declined enrollment for insufficient aid')
-    expect(notes.find((n) => n.n === declined?.ref)?.text).toBe('Appeals: Round 2 asks.')
-    const needMet = rows.find((r) => texts(r)[0] === '% of need met, Pool A')
-    expect(notes.find((n) => n.n === needMet?.ref)?.text).toBe('Need: the asks.')
-    expect(notes.at(-1)?.text).toBe('Basis unconfirmed: typed years.')
+    const dev = {
+      ...budget,
+      rows: keys.map(([key, section]) => extra(key, section)),
+    }
+    const { rows } = developmentTable(dev, { registry: REGISTRY })
+    const got = Object.fromEntries(
+      rows.filter((r) => r.kind === 'body').map((r) => [texts(r)[0], r.ref])
+    )
+    for (const [key, , n] of keys) expect(got[key], key).toBe(n)
+  })
+
+  it('draws no numbers, and lists no notes, while the registry has not loaded', () => {
+    const { rows, notes } = developmentTable(DEVELOPMENT)
+    expect(rows.every((r) => r.ref === undefined)).toBe(true)
+    expect(notes).toEqual([])
+  })
+
+  it('describes each section after its name, as the mock does', () => {
+    expect(SECTION_DESCRIPTIONS).toEqual({
+      money: "all money: the camp's awards and every outside grant",
+      counts:
+        'campers who attended and got money from any source, once per program; Weekend counts families',
+      appeals: "the camp's own requests",
+    })
+    const heads = developmentRows(DEVELOPMENT).filter((r) => r.kind === 'heading')
+    expect(heads.map((r) => r.meta)).toEqual(Object.values(SECTION_DESCRIPTIONS))
   })
 
   it('draws Total Awards Granted and Recipients by group, indented under them, labelled by group', () => {
@@ -184,68 +256,76 @@ describe('the report', () => {
     expect(labels.indexOf('Camp awards') + 1).toBe(labels.indexOf('Incentive awards'))
   })
 
-  it('reads a kind-limited line "label, Pool A", each distinct definition its own note', () => {
-    const { rows, notes } = developmentTable(DEVELOPMENT)
-    const row = (label: string) => rows.find((r) => texts(r)[0] === label)
-    expect(texts(row('% of need met, Pool A'))).toEqual([
-      '% of need met, Pool A',
-      '—',
-      '76.5%',
-      '61.2%',
-      '54.0%',
-    ])
-    const noteOf = (label: string) => notes.find((n) => n.n === row(label)?.ref)?.text
-    expect(noteOf('First-time, Pool A')).toBe(
-      'No summer session at camp in any earlier season from 2017'
-    )
-    expect(noteOf('First-time, Pool B')).toBe('No family camp in any earlier season')
+  it('reads a kind-limited line "label, Pool A"', () => {
+    const { rows } = developmentTable(DEVELOPMENT)
+    const row = rows.find((r) => texts(r)[0] === '% of need met, Pool A')
+    expect(texts(row)).toEqual(['% of need met, Pool A', '—', '76.5%', '61.2%', '54.0%'])
   })
 
-  it('never lists one definition twice: rows with the same words share one note number', () => {
-    const same = {
-      ...DEVELOPMENT,
-      rows: DEVELOPMENT.rows.map((r) =>
-        r.key === 'first_time' ? { ...r, definition: 'Same words' } : r
-      ),
-    }
-    const { rows, notes } = developmentTable(same)
-    const refs = rows.filter((r) => texts(r)[0]?.startsWith('First-time')).map((r) => r.ref)
-    expect(refs[0]).toBeDefined()
-    expect(refs).toEqual([refs[0], refs[0]])
-    expect(notes.filter((n) => n.text === 'Same words')).toHaveLength(1)
-  })
-
-  it('indents the sub-lines as the mock does (SUB_LINES)', () => {
+  it('indents the sub-lines as the mock does (SUB_LINES); gender and cancel-reason rows sit flush', () => {
     expect(SUB_LINES['camp_awards']).toBe(1)
     expect(SUB_LINES['incentive_awards']).toBe(2)
     const rows = developmentRows(DEVELOPMENT)
     const indentOf = (label: string) => rows.find((r) => texts(r)[0] === label)?.indent
     expect(indentOf('Camp awards')).toBe(1)
     expect(indentOf('Incentive awards')).toBe(2)
-    expect(indentOf('Cancelled after an award')).toBe(1)
     expect(indentOf('Total Awards Granted')).toBe(0)
-    expect(indentOf('Gender, campers who got money: girl, Pool A')).toBe(1)
+    // final mock critic pass: flush, so they no longer read as children of the row above
+    expect(indentOf('Cancelled after an award')).toBe(0)
+    expect(indentOf('Gender, campers who got money: girl, Pool A')).toBe(0)
   })
 
-  it('heads each column as the mock does: as reported, live as of the day, or as of a day; a contested basis marked', () => {
-    expect(DEVELOPMENT.columns.map((c) => columnHeader(c, DEVELOPMENT))).toEqual([
-      '2025 · as reported · basis unconfirmed',
-      '2026 · as reported',
-      '2027 · live · as of Jun 3',
-      '2027 as of Mar 9',
-    ])
+  it('heads each column short and on one line, its long form in the title, its basis in the group (final mock)', () => {
+    const heads = DEVELOPMENT.columns.map((c) => columnHead(c, DEVELOPMENT))
+    expect(heads[0]).toEqual({
+      header: '2025',
+      title: '2025: as reported, typed once, read only (basis unconfirmed)',
+    })
+    expect(heads[1]).toEqual({
+      header: '2026',
+      title: '2026: as reported, the figures sent to funders',
+    })
+    expect(heads[2]).toEqual({
+      header: '2027',
+      sub: 'live · Jun 3',
+      title: "2027, live: the dashboard's decisions as of Jun 3",
+    })
+    expect(heads[3]?.header).toBe('2027')
+    expect(heads[3]?.sub).toBe('as of Mar 9')
     const closed = { ...DEVELOPMENT.columns[2]!, season: 2026, label: '2026' }
-    expect(columnHeader(closed, DEVELOPMENT)).toBe('2026 · closed · reproduced')
-    expect(unconfirmedWords(DEVELOPMENT)).toContain('Basis unconfirmed: 2025 (as reported).')
+    expect(columnHead(closed, DEVELOPMENT)).toEqual({
+      header: '2026',
+      sub: 'closed',
+      title: "2026, closed: reproduced by the dashboard from finance's repaired sheet",
+    })
   })
 
-  it("counts a dated column's lines as they render: every row that reads — in that column (final audit O10)", () => {
-    const rows = developmentRows(DEVELOPMENT)
-    const blank = rows.filter((r) => r.kind === 'body' && texts(r)[4] === '—').length
-    expect(blank).toBeGreaterThan(1)
-    expect(notRebuiltColumnWords(DEVELOPMENT, rows)).toContain(
-      `2027 as of Mar 9 (${String(blank)} lines)`
-    )
+  it('groups the columns As reported (note 6 on the first) and The dashboard (a stronger rule before it)', () => {
+    const closed = { ...DEVELOPMENT.columns[2]!, season: 2026, label: '2026' }
+    const dev = {
+      ...DEVELOPMENT_LIVE,
+      columns: [...DEVELOPMENT_LIVE.columns.slice(0, 2), closed, DEVELOPMENT_LIVE.columns[2]!],
+    }
+    const cols = developmentColumns(dev, null, { asReportedNote: 6 })
+    expect(cols.map((c) => c.group)).toEqual([
+      undefined,
+      'As reported',
+      'As reported',
+      'The dashboard',
+      'The dashboard',
+    ])
+    expect(cols.map((c) => c.groupNote)).toEqual([undefined, 6, undefined, undefined, undefined])
+    expect(cols.map((c) => c.divider)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      'before',
+      undefined,
+    ])
+    expect(cols.slice(1).every((c) => c.width !== undefined)).toBe(true)
+    expect(cols[3]?.sub).toBe('closed')
+    // without the registry's note there is no mark pointing at nothing
+    expect(developmentColumns(dev)[1]?.groupNote).toBeUndefined()
   })
 
   it("names the rebuild's reason in the server's words", () => {
@@ -256,6 +336,9 @@ describe('the report', () => {
 describe('the grantor lines (D3)', () => {
   const rows = developmentRows(DEVELOPMENT_GRANTORS)
   const at = rows.findIndex((r) => texts(r)[0] === 'Outside grants')
+  const [first, second] = DEVELOPMENT_GRANTORS.sources.filter(
+    (s) => s.who_paid === 'another funder'
+  )
 
   it('puts one line per other funder under Outside grants, one level deeper, the camp’s own never', () => {
     expect(at).toBeGreaterThan(0)
@@ -268,24 +351,55 @@ describe('the grantor lines (D3)', () => {
     expect(rows.some((r) => texts(r)[0] === "The camp's awards")).toBe(false)
   })
 
-  it('states the facts in muted words: who paid, incentive or need-based, and its group, or “needs a group”', () => {
-    expect(rows[at + 1]?.note).toBe('another funder · incentive · Pool A')
-    expect(rows[at + 2]?.note).toBe('another funder · need-based · needs a group')
+  it('states the facts on the line itself: incentive or need-based, the pool by short name, or “needs a group”', () => {
+    expect(funderFacts(first!)).toEqual({
+      kind: 'incentive',
+      pool: { short: 'Pool A', full: 'Pool A' },
+      noFunder: false,
+    })
+    expect(funderFacts(second!)).toEqual({ kind: 'need-based', pool: null, noFunder: false })
+    // the short name is the program's own: Camp & Quest reads C&Q, Weekend Programs reads Weekend
+    expect(
+      funderFacts({ ...first!, group: 'camp_quest', group_label: 'Camp & Quest' }).pool
+    ).toEqual({ short: 'C&Q', full: 'Camp & Quest' })
+    expect(
+      funderFacts({ ...first!, group: 'weekend', group_label: 'Weekend Programs' }).pool?.short
+    ).toBe('Weekend')
   })
 
   it('says “no funder yet” for a description no funder claims', () => {
+    const unmapped = { ...first!, source_key: 'unmapped_award', name: 'Unmapped Award' }
+    expect(funderFacts(unmapped).noFunder).toBe(true)
+    expect(funderFacts(first!).noFunder).toBe(false)
+  })
+
+  it('titles the cell with the name, every fact, and where it opens; “another funder” rides there', () => {
+    const href = (params: Readonly<Record<string, string>>) =>
+      `/aid/money/funders?${new URLSearchParams(params).toString()}`
+    const linked = developmentRows(DEVELOPMENT_GRANTORS, href)
+    expect(linked[at + 1]?.cells[0]).toMatchObject({
+      title: 'Grantor A (another funder · incentive · Pool A) · opens Money › Funders',
+    })
+    expect(linked[at + 2]?.cells[0]).toMatchObject({
+      title: 'Grantor B (another funder · need-based · needs a group) · opens Money › Funders',
+    })
+    // a user who can't open Funders: the same words, without the destination
+    expect(rows[at + 1]?.cells[0]).toMatchObject({
+      title: 'Grantor A (another funder · incentive · Pool A)',
+    })
+    expect(rows[at + 1]?.note).toBeUndefined()
+  })
+
+  it('draws the cell as the name with its facts at the right (a display), and “no funder yet” in the title', () => {
+    expect(rows[at + 1]?.cells[0]?.display).toBeDefined()
     const unmapped = developmentRows({
       ...DEVELOPMENT_GRANTORS,
-      sources: [
-        {
-          ...DEVELOPMENT_GRANTORS.sources[1]!,
-          source_key: 'unmapped_award',
-          name: 'Unmapped Award',
-        },
-      ],
+      sources: [{ ...first!, source_key: 'unmapped_award', name: 'Unmapped Award' }],
     })
     const i = unmapped.findIndex((r) => texts(r)[0] === 'Outside grants')
-    expect(unmapped[i + 1]?.note).toBe('another funder · incentive · Pool A · no funder yet')
+    expect(unmapped[i + 1]?.cells[0]?.title).toBe(
+      'Unmapped Award (another funder · incentive · Pool A · no funder yet)'
+    )
   })
 
   it('shows the amount only in the read’s own season, dashboard column, as of the figures day', () => {
@@ -323,12 +437,7 @@ describe('the grantor lines (D3)', () => {
         ...DEVELOPMENT_GRANTORS,
         sources: [
           ...DEVELOPMENT_GRANTORS.sources,
-          {
-            ...(DEVELOPMENT_GRANTORS.sources.find((s) => s.name === 'Grantor B') ??
-              DEVELOPMENT_GRANTORS.sources[0]!),
-            source_key: 'unmapped_award_2027',
-            name: 'Unmapped Award 2027',
-          },
+          { ...second!, source_key: 'unmapped_award_2027', name: 'Unmapped Award 2027' },
         ],
       },
       href
@@ -341,7 +450,7 @@ describe('the grantor lines (D3)', () => {
     expect(rows[at + 1]?.links).toBeUndefined()
   })
 
-  it('carries the lines into the CSV', () => {
+  it('carries each funder line’s facts into the CSV, so two lines of one funder stay apart', () => {
     const csv = csvLines(
       {
         title: 'Development report',
@@ -354,7 +463,6 @@ describe('the grantor lines (D3)', () => {
       rows,
       '/x'
     )
-    // final audit E3: the CSV keeps each funder line's facts, so two lines of one funder stay apart
     expect(csv.some((line) => line[0] === 'Grantor A (another funder · incentive · Pool A)')).toBe(
       true
     )
@@ -389,12 +497,16 @@ describe('the on-demand column (D1)', () => {
     expect(columnParam(MARCH)).toBe('2027:2027-03-09')
   })
 
-  it('tags only the column that matches the one asked for, as not saved', () => {
-    const tag = ' · not saved · gone when you leave'
+  it('draws the column asked for as 2027 with “Mar 9 · not saved” under it, tinted, and no other column so', () => {
     const columns = developmentColumns(DEVELOPMENT, MARCH)
-    const headers = columns.map((c) => c.header)
-    expect(headers[4]).toBe(`2027 as of Mar 9${tag}`)
-    // the mock's amber tint on the temporary column, and on no other
+    expect(columns[4]).toMatchObject({
+      header: '2027',
+      sub: 'Mar 9 · not saved',
+      tone: 'decided',
+      group: 'The dashboard',
+    })
+    expect(columns[4]?.title).toContain('recomputed from dated records for you only, never saved')
+    expect(columns[4]?.title).toContain('reads "—", never an estimate')
     expect(columns.map((c) => c.tone)).toEqual([
       undefined,
       undefined,
@@ -402,13 +514,16 @@ describe('the on-demand column (D1)', () => {
       undefined,
       'decided',
     ])
-    expect(headers.filter((h) => h.includes('not saved'))).toHaveLength(1)
-    expect(developmentColumns(DEVELOPMENT).some((c) => c.header.includes('not saved'))).toBe(false)
+    expect(developmentColumns(DEVELOPMENT).some((c) => c.sub?.includes('not saved'))).toBe(false)
     expect(
       developmentColumns(DEVELOPMENT, { season: 2027, day: '2027-04-12' }).some((c) =>
-        c.header.includes('not saved')
+        c.sub?.includes('not saved')
       )
     ).toBe(false)
+  })
+
+  it('words the chip “2027 as of Mar 9 · not saved”', () => {
+    expect(asOfChipWords(MARCH)).toBe('2027 as of Mar 9 · not saved')
   })
 
   it("offers the report's own P seasons from 2027, newest first (D67)", () => {
@@ -424,7 +539,6 @@ describe('the on-demand column (D1)', () => {
     expect(datedSeasons({ ...DEVELOPMENT, columns: [...DEVELOPMENT.columns, earlierP] })).toEqual([
       2027,
     ])
-    expect(datedWords(MARCH)).toBe('2027 as of Mar 9, 2027')
   })
 
   it('offers a past day only: the latest is the day before today, across a month and a year', () => {

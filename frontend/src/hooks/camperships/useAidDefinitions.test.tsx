@@ -23,8 +23,18 @@ vi.mock('../usePermissions', () => ({
 const PAYLOAD = {
   surface: 'requests',
   notes: [
-    { key: 'decided', n: 1, text: 'Decided: the award computed or decided for the round.' },
-    { key: 'posted', n: 2, text: "Posted: the round's Posted tick and the amount it locked." },
+    {
+      key: 'decided',
+      n: 1,
+      term: 'Decided',
+      text: 'Decided: the award computed or decided for the round.',
+    },
+    {
+      key: 'posted',
+      n: 2,
+      term: 'Posted',
+      text: "Posted: the round's Posted tick and the amount it locked.",
+    },
   ],
 }
 
@@ -70,9 +80,16 @@ describe('useAidDefinitions (§4.8; D20)', () => {
   it("numbers each figure's note by its key", async () => {
     const { result } = renderHook(() => useAidDefinitions('requests'), { wrapper })
     await waitFor(() => expect(result.current.notes).toHaveLength(2))
+    // The read sends each note's term so the notes set it bold (design language §12).
     expect(result.current.notes[0]).toEqual({
       n: 1,
+      term: 'Decided',
       text: 'Decided: the award computed or decided for the round.',
+    })
+    expect(result.current.entries[1]).toEqual({
+      key: 'posted',
+      term: 'Posted',
+      text: "Posted: the round's Posted tick and the amount it locked.",
     })
     expect(result.current.numberOf('posted')).toBe(2)
     expect(result.current.numberOf('unknown')).toBeNull()

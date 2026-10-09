@@ -20,6 +20,7 @@ class DefinitionNoteOut(BaseModel):
 
     key: str
     n: int
+    term: str  # the lead words the text opens with (`<term>:`), set bold on the page (design language §12)
     text: str
 
 

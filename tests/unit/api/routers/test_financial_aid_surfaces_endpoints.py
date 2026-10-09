@@ -65,12 +65,24 @@ def test_a_surfaces_notes_are_numbered_from_1_with_the_camp_name_filled_in() -> 
     assert body["notes"][3] == {
         "key": "family_share",
         "n": 4,
+        "term": "Family's share",
         "text": (
             "Family's share = cost − Camp Fictional aid (decided) − grants, over the family's included requests. "
             "It is not a balance: CampMinder's balance also holds payments, deposits and other charges. For a "
             "split family it is the family total."
         ),
     }
+    assert "{camp}" not in str(body)
+
+
+def test_each_note_carries_its_term_so_the_page_can_set_it_bold() -> None:
+    """Design language §12 (kit CF.notes): a note's lead term is bold, so the read sends it, camp filled in."""
+    with patch("api.routers.financial_aid.camp_label", return_value="Camp Fictional"):
+        body = _client(PERSONA_DEVELOPMENT).get("/api/financial-aid/definitions?surface=reports-statistics").json()
+    assert body["notes"], "the surface has notes"
+    for note in body["notes"]:
+        assert note["term"], note["key"]
+        assert note["text"].startswith(f"{note['term']}:"), note["key"]
     assert "{camp}" not in str(body)
 
 

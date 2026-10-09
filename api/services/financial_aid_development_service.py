@@ -375,7 +375,13 @@ _ROWS: Final[tuple[_RowSpec, ...]] = (
     _RowSpec("adults", "counts", "18 and over", "count", True, frozenset({"summer"}), None),
     _RowSpec("age_unknown", "counts", "Age unknown", "count", True, frozenset({"summer"}), None),
     _RowSpec(
-        "teen_programs", "counts", "TLI + SCIT (program line)", "count", True, frozenset({"summer"}), "teen_programs"
+        "teen_programs",
+        "counts",
+        "Teen leadership (program line)",
+        "count",
+        True,
+        frozenset({"summer"}),
+        "teen_programs",
     ),
     # The gender lines follow here (_rows), as the mock draws them: after the ages, before First-time.
     _RowSpec("first_time", "counts", "First-time", "count", True, frozenset({"summer", "families"}), "first_time"),

@@ -14,7 +14,7 @@ export function DefinitionNotes({
   boldTerm = false,
 }: {
   notes: readonly DefinitionNote[]
-  /** Bold each note's leading "Term:" (the Requests mock does; no other page's does). */
+  /** Also bold a leading "Term:" on notes the server sends no matching term for (the Requests mock). */
   boldTerm?: boolean
 }) {
   if (notes.length === 0) return null
@@ -23,7 +23,9 @@ export function DefinitionNotes({
       {notes.map((note) => (
         <li key={note.n} className="flex gap-1.5">
           <span className="tabular-nums">{note.n}.</span>{' '}
-          <span>{boldTerm ? <TermFirst text={note.text} /> : note.text}</span>
+          <span>
+            <NoteWords note={note} boldTerm={boldTerm} />
+          </span>
         </li>
       ))}
     </ol>
@@ -40,6 +42,36 @@ export function DefRef({ n, title }: { n: number; title?: string | undefined }) 
       {n}
     </sup>
   )
+}
+
+/**
+ * A note's words with its lead term in bold (design language §12): "Budget:" with its colon, or the term alone
+ * where a comma or "=" follows it ("Small groups show as they are, …", "Remaining = …"). A note the server
+ * sends no term for bolds its "Term:" only under `boldTerm` (Requests); plain otherwise.
+ */
+function NoteWords({ note, boldTerm }: { note: DefinitionNote; boldTerm: boolean }) {
+  const { term, text } = note
+  if (term === undefined || !text.startsWith(term)) {
+    return boldTerm ? <TermFirst text={text} /> : <>{text}</>
+  }
+  const next = text.charAt(term.length)
+  if (next === ':') {
+    return (
+      <>
+        <b className="text-foreground font-semibold">{`${term}:`}</b>
+        {text.slice(term.length + 1)}
+      </>
+    )
+  }
+  if (next === ',' || text.startsWith(' =', term.length)) {
+    return (
+      <>
+        <b className="text-foreground font-semibold">{term}</b>
+        {text.slice(term.length)}
+      </>
+    )
+  }
+  return boldTerm ? <TermFirst text={text} /> : <>{text}</>
 }
 
 /** "Term: the words" with the term in bold; a note with no colon stays plain. */

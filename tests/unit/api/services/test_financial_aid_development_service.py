@@ -390,6 +390,8 @@ async def test_typed_summer_lines_reach_their_rows() -> None:
     assert _row(out, "need_met", "camp_pool").values[0] == 70.0
     assert _row(out, "teens", "camp_pool").values[0] is None  # no 2025 ledger lines in this fake: blank, never typed
     assert _row(out, "teen_programs", "camp_pool").values[0] == 3.0
+    # approved final mock: the program line reads "Teen leadership (program line)"
+    assert _row(out, "teen_programs", "camp_pool").label == "Teen leadership (program line)"
 
 
 async def test_development_lists_every_cancel_reason_with_its_label() -> None:

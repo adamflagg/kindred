@@ -3696,6 +3696,10 @@ export type DefinitionNoteOut = {
    */
   n: number
   /**
+   * Term
+   */
+  term: string
+  /**
    * Text
    */
   text: string
