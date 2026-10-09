@@ -48,7 +48,7 @@ export function ZipCodes({ view }: { view: AidView }) {
             <span className={CS_FLABEL}>Group</span>
             <AidFilterChip
               warn
-              title={`${refusal} ✕ shows the default group.`}
+              title={`${/[.!?]$/.test(refusal) ? refusal : `${refusal}.`} ✕ shows the default group.`}
               onClear={() => setParam('group', null)}
             >
               {`No group “${asked ?? ''}”`}
@@ -59,72 +59,75 @@ export function ZipCodes({ view }: { view: AidView }) {
           </p>
         </>
       )}
-      <QueryGuard
-        isLoading={zip.isLoading}
-        error={zip.data || refusal !== null ? null : zip.error}
-        data={zip.data}
-        label="ZIP codes"
-        emptyMessage="Nothing to show for this group."
-      >
-        {(data) => {
-          const groups = zipGroups(data)
-          const link = aidHref(PATH, view, data.group === null ? {} : { group: data.group })
-          return (
-            <div className="space-y-4">
-              {groups.length > 0 && (
-                <div className={CS_TOOLBAR}>
-                  <span className={CS_FLABEL}>Group</span>
-                  <AidSegmented
-                    label="Group"
-                    value={data.group ?? ''}
-                    options={groups.map((g) => ({ value: g.key, label: g.label }))}
-                    onChange={(key) => setParam('group', key)}
+      {/* A refusal's one sentence is the line under its chip: no second empty state below it. */}
+      {refusal === null && (
+        <QueryGuard
+          isLoading={zip.isLoading}
+          error={zip.data ? null : zip.error}
+          data={zip.data}
+          label="ZIP codes"
+          emptyMessage="Nothing to show for this group."
+        >
+          {(data) => {
+            const groups = zipGroups(data)
+            const link = aidHref(PATH, view, data.group === null ? {} : { group: data.group })
+            return (
+              <div className="space-y-4">
+                {groups.length > 0 && (
+                  <div className={CS_TOOLBAR}>
+                    <span className={CS_FLABEL}>Group</span>
+                    <AidSegmented
+                      label="Group"
+                      value={data.group ?? ''}
+                      options={groups.map((g) => ({ value: g.key, label: g.label }))}
+                      onChange={(key) => setParam('group', key)}
+                    />
+                  </div>
+                )}
+                {/* minmax(0, 1fr): a track may shrink below its table's width, so a heading row never spills past its card. */}
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <ReportTable
+                    heading={zipHeading(data, 'Every camper')}
+                    hint={zipScopeWords(data)}
+                    columns={zipColumns(false, numberOf)}
+                    rows={zipRows(data.every_camper, false)}
+                    csvFilename={zipCsvName(view, data, 'every-camper')}
+                    link={link}
+                    find
+                    findPlaceholder="Find a ZIP"
+                    findNoun="ZIPs"
+                    findWidth={104}
+                    sortable
+                    totalsFirst
+                    bounded
+                    urlPrefix="every_"
+                    defaultSort={{ key: 'campers', dir: 'desc' }}
+                  />
+                  <ReportTable
+                    heading={zipHeading(data, 'Campers who got aid')}
+                    hint={ZIP_AID_WORDS}
+                    columns={zipColumns(true, numberOf)}
+                    rows={data.with_aid === null ? [] : zipRows(data.with_aid, true)}
+                    emptyText={noAidWords(data) ?? undefined}
+                    csvFilename={zipCsvName(view, data, 'with-aid')}
+                    link={link}
+                    find={data.with_aid !== null}
+                    tools={data.with_aid !== null}
+                    findPlaceholder="Find a ZIP"
+                    findNoun="ZIPs"
+                    findWidth={104}
+                    sortable
+                    totalsFirst
+                    bounded
+                    urlPrefix="aid_"
+                    defaultSort={{ key: 'campers', dir: 'desc' }}
                   />
                 </div>
-              )}
-              {/* minmax(0, 1fr): a track may shrink below its table's width, so a heading row never spills past its card. */}
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <ReportTable
-                  heading={zipHeading(data, 'Every camper')}
-                  hint={zipScopeWords(data)}
-                  columns={zipColumns(false, numberOf)}
-                  rows={zipRows(data.every_camper, false)}
-                  csvFilename={zipCsvName(view, data, 'every-camper')}
-                  link={link}
-                  find
-                  findPlaceholder="Find a ZIP"
-                  findNoun="ZIPs"
-                  findWidth={104}
-                  sortable
-                  totalsFirst
-                  bounded
-                  urlPrefix="every_"
-                  defaultSort={{ key: 'campers', dir: 'desc' }}
-                />
-                <ReportTable
-                  heading={zipHeading(data, 'Campers who got aid')}
-                  hint={ZIP_AID_WORDS}
-                  columns={zipColumns(true, numberOf)}
-                  rows={data.with_aid === null ? [] : zipRows(data.with_aid, true)}
-                  emptyText={noAidWords(data) ?? undefined}
-                  csvFilename={zipCsvName(view, data, 'with-aid')}
-                  link={link}
-                  find={data.with_aid !== null}
-                  tools={data.with_aid !== null}
-                  findPlaceholder="Find a ZIP"
-                  findNoun="ZIPs"
-                  findWidth={104}
-                  sortable
-                  totalsFirst
-                  bounded
-                  urlPrefix="aid_"
-                  defaultSort={{ key: 'campers', dir: 'desc' }}
-                />
               </div>
-            </div>
-          )
-        }}
-      </QueryGuard>
+            )
+          }}
+        </QueryGuard>
+      )}
       <AidDefinitionNotes surface="reports-development-zip" />
     </div>
   )

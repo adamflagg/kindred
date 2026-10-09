@@ -494,7 +494,8 @@ export function ReportTable({
                           className={[
                             cellClass(columns[index], index, row.kind),
                             cell.muted ? 'text-muted-foreground' : '',
-                            pinned ? `sticky top-[26px] z-[1] ${CS_BAND}` : '',
+                            // 27px: one header row here (5 + 16 + 5 + 1); a grouped (two-row) header would need its own offset.
+                            pinned ? `sticky top-[27px] z-[1] ${CS_BAND}` : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}

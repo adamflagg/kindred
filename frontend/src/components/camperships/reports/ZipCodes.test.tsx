@@ -137,13 +137,16 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     // Final mock (reports-zip.html, unknown group): an amber chip in the Group row, the server's words in its
     // title, and ✕ shows the default group; no sentence above the page.
     const chip = await screen.findByText('No group “nonsense”')
+    // The server's words end without a stop: the title adds one before its own sentence, as the mock's does.
     expect(chip.closest('span')).toHaveAttribute(
       'title',
-      expect.stringContaining("is not one of this season's groups")
+      "'nonsense' is not one of this season's groups. ✕ shows the default group."
     )
     expect(
       screen.getByText('Nothing to show for that group. ✕ on the chip shows the default group.')
     ).toBeInTheDocument()
+    // One sentence under the chip, as the mock draws it: no second empty-state line below.
+    expect(screen.queryByText('Nothing to show for this group.')).not.toBeInTheDocument()
     expect(zipCalls()).toHaveLength(1) // a refusal is never retried
     await userEvent.click(screen.getByRole('button', { name: 'Clear No group “nonsense”' }))
     expect(screen.getByTestId('where').textContent).toBe('')

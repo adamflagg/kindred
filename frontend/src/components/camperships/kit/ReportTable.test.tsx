@@ -835,7 +835,9 @@ describe('ReportTable', () => {
       }
       const totals = within(screen.getAllByRole('row')[1]!).getAllByRole('cell')
       expect(totals[0]!.textContent).toBe('All · 2 ZIPs')
-      for (const td of totals) expect(td).toHaveClass('sticky', 'top-[26px]')
+      // The totals pin at the app's header height, 27px (5 + 16 + 5 + 1: text-xs is 16px tall here, measured on
+      // the branch's own CSS), so its top rule stays in view; the mock's 26px is its own 15px-line header.
+      for (const td of totals) expect(td).toHaveClass('sticky', 'top-[27px]')
       // a body row pins nothing
       expect(within(screen.getAllByRole('row')[2]!).getAllByRole('cell')[0]).not.toHaveClass(
         'sticky'
