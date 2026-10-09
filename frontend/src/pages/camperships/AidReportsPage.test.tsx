@@ -71,7 +71,9 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
   it('keeps the band and tabs for a summary-only user on Statistics, with a card pointing at Development', () => {
     granted = DEVELOPMENT
     renderAt('/aid/reports/statistics')
-    expect(screen.getByText('Statistics needs view.')).toBeInTheDocument()
+    // approved final mock reports-statistics.html: the amber warn box, not "needs view"
+    expect(screen.getByText('Statistics is for finance and the registrar.')).toBeInTheDocument()
+    expect(screen.queryByText(/needs view/)).toBeNull()
     expect(screen.queryByText('Statistics body')).toBeNull()
     expect(screen.queryByText('Permission denied')).toBeNull()
     expect(screen.getByRole('link', { name: 'Development' })).toBeInTheDocument()
@@ -82,10 +84,19 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     )
   })
 
+  it('draws the denied card in the amber warn box', () => {
+    granted = DEVELOPMENT
+    renderAt('/aid/reports/statistics')
+    const box = screen
+      .getByText('Statistics is for finance and the registrar.')
+      .closest('div') as HTMLElement
+    expect(box.className).toContain('amber')
+  })
+
   it('names Year over year in the same card for a summary-only user', () => {
     granted = DEVELOPMENT
     renderAt('/aid/reports/year-over-year')
-    expect(screen.getByText('Year over year needs view.')).toBeInTheDocument()
+    expect(screen.getByText('Year over year is for finance and the registrar.')).toBeInTheDocument()
     expect(screen.queryByText('Year over year body')).toBeNull()
   })
 

@@ -249,10 +249,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     # Reports (slice 4's back end, Part A): finance's report words (§5.6). "Awarded" labels money here only.
     Definition(
         key="apps",
-        term="Applications",
+        term="Apps",
         text=(
-            "Applications: individual requests (camper × session; household × session for Family Camp). Received = "
-            "every intake request except refused duplicates, cancelled requests included."
+            "Apps: requests received (camper × session; household × session for Family Camp), cancelled ones included. Refused duplicates are left out."
         ),
         spec="§5.6",
         rulings=("D72", "D131"),
@@ -271,20 +270,16 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="awarded",
         term="Awarded",
         text=(
-            "Awarded = offered = Posted: a round counts as awarded once it is posted (checked by hand or by the sync), "
-            "net of any clawback, on a live request (not cancelled, withdrawn or a pending duplicate). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
-            "from the request's status: a cancelled request leaves it at once, while Rounds & budget's Posted keeps "
-            "its money until the reversal posts."
+            "Awarded: Posted, net of clawbacks, on live requests: the camp's own aid only. Awards counts requests with Posted above $0, unlike Development's Grants/Awards."
         ),
         spec="§5.6",
         rulings=("D80", "D106", "D129", "D131"),
     ),
     Definition(
         key="average_award",
-        term="Average award",
+        term="Avg award",
         text=(
-            "Average award: awarded $ ÷ the awarded count. The 2026 sheet and the committee decks divide by all apps, "
-            "$0 included, so this figure reads higher."
+            "Avg award: awarded $ ÷ awards. The committee decks divide by every app, $0 included, so this reads higher than the decks."
         ),
         spec="§5.6",
         rulings=("D80",),
@@ -293,22 +288,16 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="pct_of_ask",
         term="% of ask",
         text=(
-            "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands "
-            "today, on live requests (not cancelled, withdrawn or a pending duplicate). It is not the asked or requested total, which sums every "
-            "app's ask, cancelled and closed ones included. A round paid wholly by an outside funder is never awarded, so its "
-            'ask is left out of the in-budget asks this divides by. With "include not yet offered" on, the awarded $ '
-            'is Posted + Decided, and the column reads "% of ask (posted + decided)".'
+            "% of ask: awarded $ ÷ the live requests' in-budget asks. Incl. grants adds outside grants and fully funded rounds to both sides (Round 1 and All rounds)."
         ),
         spec="§5.6",
         rulings=("D80",),
     ),
     Definition(
         key="decided_not_offered",
-        term="Decided (not yet offered)",
+        term="Not yet offered",
         text=(
-            "Decided (not yet offered): behind an off-by-default switch, the amounts decided but not yet posted are "
-            "added, one basis at a time. They are never called awarded, and each moves until posted: rules versions "
-            "and income corrections can change it."
+            "Not yet offered: decided but not posted. Off by default, never called awarded, and it moves until posted."
         ),
         spec="§5.1",
         rulings=("D43", "D130"),
@@ -369,9 +358,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="appeals",
         term="Appeals",
         text=(
-            "Appeals: the appeal rate and each tier's appeals count every request with a Round 2 or later ask, "
-            "cancelled ones included, because the rate divides by applications, which include cancellations. "
-            "The outcomes table and the Season screen's Round 2 asks leave cancelled requests out."
+            "Appeals: requests with a Round 2 or later ask, cancelled ones included; appeal rate = appeals ÷ Round 1 apps. R2 max fee % is a rules value, not an outcome."
         ),
         spec="§9.7",
         rulings=("D131",),
@@ -834,17 +821,11 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "grants": ("register_amount", "register_offsets", "register_stands", "register_cancelled", "register_counted"),
     "reports-statistics": (
         "apps",
-        "cancelled_applicants",
         "awarded",
         "average_award",
         "pct_of_ask",
-        "decided_not_offered",
-        "recipients_cancelled",
         "appeals",
-        "pct_of_ask_with_grants",
-        "round2_max_pct",
-        "appeal_rate",
-        "awarded_count",
+        "decided_not_offered",
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
     "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),

@@ -58,3 +58,30 @@ describe('AidCopyButton', () => {
     expect(onCopy).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('button titles', () => {
+  it('carries a title on Copy and on Download CSV when the page says what each takes', () => {
+    render(
+      <>
+        <AidCopyButton onCopy={vi.fn()} title="Copy the By tier table, to paste into a deck" />
+        <AidCsvButton
+          onDownload={vi.fn()}
+          title="By tier · CSV, with this view's link on its last line"
+        />
+      </>
+    )
+    expect(screen.getByRole('button', { name: 'Copy' })).toHaveAttribute(
+      'title',
+      'Copy the By tier table, to paste into a deck'
+    )
+    expect(screen.getByRole('button', { name: 'Download CSV' })).toHaveAttribute(
+      'title',
+      "By tier · CSV, with this view's link on its last line"
+    )
+  })
+
+  it('can be off while there is nothing to copy yet', () => {
+    render(<AidCopyButton onCopy={vi.fn()} disabled />)
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled()
+  })
+})

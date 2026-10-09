@@ -51,4 +51,26 @@ describe('AidSegmented', () => {
     )
     expect(screen.getByRole('button', { name: 'R1' })).toHaveAttribute('title', 'Round 1')
   })
+
+  // Approved final mock reports-statistics.html (seg): a choice can be off, its title saying why.
+  it('draws a disabled choice off, says why in its title, and never reports it', async () => {
+    const onChange = vi.fn()
+    render(
+      <AidSegmented
+        label="Round"
+        value="all"
+        options={[
+          { value: 'r1', label: 'R1', disabled: true, title: 'Every round is a column here' },
+          { value: 'all', label: 'All' },
+        ]}
+        onChange={onChange}
+      />
+    )
+    const off = screen.getByRole('button', { name: 'R1' })
+    expect(off).toBeDisabled()
+    expect(off).toHaveAttribute('title', 'Every round is a column here')
+    expect(off).toHaveClass('opacity-45', 'cursor-not-allowed')
+    await userEvent.click(off)
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

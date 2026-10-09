@@ -30,6 +30,7 @@ const row = (over: Partial<ApiAidProgramRow>): ApiAidProgramRow => ({
 export const SESSION_2 = row({
   session_cm_id: 1000102,
   session_name: 'Session 2',
+  session_type: 'main',
   round1: block({
     apps: 2,
     requested: 6000,
@@ -68,6 +69,7 @@ export const PROGRAMS: ApiAidPrograms = {
         row({
           session_cm_id: 1000103,
           session_name: 'Session 3',
+          session_type: 'main',
           round1: block({
             apps: 1,
             requested: 2000,
@@ -129,4 +131,47 @@ export const PROGRAMS: ApiAidPrograms = {
   }),
   request_set: null,
   not_rebuilt: [],
+}
+
+/** Two pools, the second a Family Camp one: the Award table filter and the household mark. */
+const POOL_B = {
+  pool: 'pool_b',
+  pool_label: 'Pool B',
+  sessions: [
+    row({
+      session_cm_id: 1000201,
+      session_name: 'Family Camp 3: Young Families Weekend',
+      session_type: 'family',
+      round1: block({
+        apps: 2,
+        requested: 3000,
+        asks: 2,
+        awarded: 900,
+        awarded_count: 1,
+        average_request: 1500,
+        average_award: 900,
+        pct_awarded: 30,
+      }),
+      total_awarded: 900,
+    }),
+  ],
+  subtotal: row({
+    session_name: 'Pool B',
+    round1: block({
+      apps: 2,
+      requested: 3000,
+      asks: 2,
+      awarded: 900,
+      awarded_count: 1,
+      average_request: 1500,
+      average_award: 900,
+      pct_awarded: 30,
+    }),
+    total_awarded: 900,
+  }),
+}
+
+export const PROGRAMS_TWO_POOLS: ApiAidPrograms = {
+  ...PROGRAMS,
+  pools: [...PROGRAMS.pools, POOL_B],
 }

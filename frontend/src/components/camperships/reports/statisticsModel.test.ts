@@ -12,17 +12,19 @@ import {
   STATISTICS_THROUGH,
 } from './statisticsFixtures'
 import {
-  asOfWords,
   cancelledApplicantsLink,
   cancelledColumns,
   cancelledRows,
   notRebuiltWords,
   outcomeRows,
-  requestSetWords,
+  OUTCOME_COLUMNS,
+  requestSetLeftOut,
+  tierAppealsColumns,
   statisticsCsvName,
   statisticsHeading,
   statisticsLinkParams,
   tableLabel,
+  tableShortLabel,
   tierAppealsRows,
   tierColumns,
   tierRows,
@@ -58,11 +60,45 @@ describe('the tier table', () => {
     expect(texts(rows[2]?.cells ?? []).slice(0, 5)).toEqual(['Table A · Round 1', '', '', '', '16'])
   })
 
+  // Approved final mock reports-statistics.html (By tier): the total's label spans Tier..Eligible fee %,
+  // carries the P pill at its right end (the table has no heading row), and says what it is in its title.
+  it('spans the total label over four columns with the P badge, and titles it with its pooled-ratio note', () => {
+    const total = tierRows(STATISTICS, CAMP_R1, linkOf)[2]!
+    expect(total.span).toBe(4)
+    expect(total.badge).toBe('P')
+    expect(total.cells[0]?.title).toBe(
+      'Table A · Round 1 · subtotals and this total are pooled ratios, not averages of the rows'
+    )
+  })
+
+  it("adds the request set's words to the total label when one is on, and what it counts to its title", () => {
+    const choice = readStatisticsChoice(new URLSearchParams('table=camp&through=2027-02-01'))
+    const total = tierRows(STATISTICS_THROUGH, choice, linkOf).at(-1)!
+    expect(reportText(total.cells[0]!)).toBe('Table A · Round 1 · received through Feb 1, 2027')
+    expect(total.cells[0]?.title).toContain(
+      'Table A · Round 1: counts only requests received through Feb 1, 2027'
+    )
+  })
+
+  it('marks "No tier" an end row', () => {
+    const rows = tierRows(
+      { ...STATISTICS, rows: [{ ...STATISTICS.rows[0]!, tier: null }] },
+      CAMP_R1,
+      linkOf
+    )
+    expect(rows[0]?.kind).toBe('end')
+  })
+
   it('says "and up" for the top tier and "varies" for the fee % on All award tables (RPT-10)', () => {
     expect(texts(tierRows(STATISTICS, CAMP_R1, linkOf)[1]?.cells ?? [])[2]).toBe('and up')
     const all = tierRows(STATISTICS_ALL_TABLES, CAMP_R1, linkOf)
     expect(texts(all[0]?.cells ?? [])[3]).toBe('varies')
     expect(texts(all[2]?.cells ?? [])[0]).toBe('All award tables · Round 1')
+    // quieter than a figure, and it says what to do about it (mock)
+    expect(all[0]?.cells[3]).toMatchObject({
+      muted: true,
+      title: 'Each award table sets its own fee share: pick one to see it',
+    })
   })
 
   it('reads "—" for the fee % on All award tables in Round 3, which has no table value', () => {
@@ -73,8 +109,10 @@ describe('the tier table', () => {
   it("shows % of ask's denominator, the live in-budget asks, right before it and apart from Asked (owner B4a (c))", () => {
     const keys = tierColumns(STATISTICS, noNotes).map((c) => c.key)
     expect(keys.indexOf('liveAsked')).toBe(keys.indexOf('pct') - 1)
-    expect(tierColumns(STATISTICS, noNotes)[keys.indexOf('liveAsked')]?.header).toBe(
-      'Asked (live, in budget)'
+    const live = tierColumns(STATISTICS, noNotes)[keys.indexOf('liveAsked')]
+    expect(live?.header).toBe('In-budget ask')
+    expect(live?.title).toBe(
+      "Asked (live, in budget): each round's ask as it stands today, on live requests"
     )
     const cells = texts(tierRows(STATISTICS, CAMP_R1, linkOf)[0]?.cells ?? [])
     expect(cells[keys.indexOf('asked')]).toBe('$36,000')
@@ -86,10 +124,10 @@ describe('the tier table', () => {
     const keys = columns.map((c) => c.key)
     const headers = columns.map((c) => c.header)
     expect(headers).toContain('Awarded')
-    expect(headers).toContain('Decided (not yet offered)')
+    expect(headers).toContain('Decided')
     expect(headers).not.toContain('Posted + decided')
-    // amber, as the mock draws it: the kit tints the column (ReportTable)
-    expect(columns.find((c) => c.key === 'decided')?.tone).toBe('decided')
+    // amber ink alone, as the approved final mock draws it (.cf-dec): the kit colours the column
+    expect(columns.find((c) => c.key === 'decided')?.tone).toBe('decided-ink')
     const cells = texts(tierRows(STATISTICS_DECIDED, CAMP_R1, linkOf)[0]?.cells ?? [])
     // TIER_1's amount is 30,000 on this basis: Awarded reads the read's `awarded`, 27,000
     expect(cells[keys.indexOf('awarded')]).toBe('$27,000')
@@ -97,23 +135,70 @@ describe('the tier table', () => {
     expect(tierColumns(STATISTICS, noNotes).map((c) => c.key)).not.toContain('decided')
   })
 
-  it("heads both % columns with the server's labels, which name the decided numerator (owner B4a (b))", () => {
-    const header = (stats: typeof STATISTICS, key: string) =>
-      tierColumns(stats, noNotes).find((c) => c.key === key)?.header
-    expect(header(STATISTICS, 'pct')).toBe('% of ask')
-    expect(header(STATISTICS_DECIDED, 'pct')).toBe('% of ask (posted + decided)')
-    expect(header(STATISTICS_DECIDED, 'pctGrants')).toBe('% of ask incl. grants (posted + decided)')
+  // Approved final mock: with Include not yet offered on, the two % headers turn amber instead of growing
+  // words that would wrap the row; each title says "(posted + decided)" in full (owner B4a (b)).
+  it('turns both % headers amber on the decided basis, their titles naming the decided numerator', () => {
+    const column = (stats: typeof STATISTICS, key: string) =>
+      tierColumns(stats, noNotes).find((c) => c.key === key)
+    expect(column(STATISTICS, 'pct')).toMatchObject({ header: '% of ask', title: '% of ask' })
+    expect(column(STATISTICS, 'pct')?.tone).toBeUndefined()
+    expect(column(STATISTICS_DECIDED, 'pct')).toMatchObject({
+      header: '% of ask',
+      tone: 'decided-ink',
+    })
+    expect(column(STATISTICS_DECIDED, 'pct')?.title).toBe(
+      '% of ask (posted + decided): amber while Include not yet offered is on'
+    )
+    expect(column(STATISTICS_DECIDED, 'pctGrants')).toMatchObject({
+      header: '% incl. grants',
+      tone: 'decided-ink',
+    })
+    expect(column(STATISTICS_DECIDED, 'pctGrants')?.title).toContain('(posted + decided)')
+    expect(column(STATISTICS, 'pctGrants')?.title).toBe(
+      '% of ask incl. grants. Round 1 and All rounds only: a grant belongs to the request, not a round.'
+    )
+  })
+
+  it('sizes and titles the By tier columns as the mock does, one line each', () => {
+    const columns = tierColumns(STATISTICS, noNotes)
+    expect(columns.map((c) => [c.header, c.width ?? null])).toEqual([
+      ['Tier', null],
+      ['Income from', 98],
+      ['Income to', 92],
+      ['Eligible fee %', 106],
+      ['Apps', 66],
+      ['Asked', 92],
+      ['Asks', 58],
+      ['Avg ask', 78],
+      ['Awarded', 94],
+      ['Avg award', 90],
+      ['Awards', 72],
+      ['In-budget ask', 106],
+      ['% of ask', 84],
+      ['% incl. grants', 110],
+    ])
+    expect(columns.find((c) => c.key === 'fee')?.title).toBe(
+      'The fee share this tier pays under the chosen award table; "varies" across tables'
+    )
+    expect(columns.find((c) => c.key === 'asked')?.title).toBe(
+      "Every app's ask, cancelled and closed ones included"
+    )
+    expect(columns.find((c) => c.key === 'asks')?.title).toBe('One per round asked')
+    expect(columns.find((c) => c.key === 'apps')?.divider).toBe('before')
+    expect(columns.find((c) => c.key === 'liveAsked')?.divider).toBe('before')
+    expect(columns.some((c) => c.wrap)).toBe(false)
   })
 
   it('heads the award count "Awards", apart from Development\'s every-source count (L)', () => {
     expect(tierColumns(STATISTICS, noNotes).find((c) => c.key === 'awards')?.header).toBe('Awards')
   })
 
-  it('numbers the Awards column with its own note, keeping the label', () => {
-    const columns = tierColumns(STATISTICS, (key) => (key === 'awarded_count' ? 9 : null))
+  // Approved final mock: the Awards figure is explained by the Awarded note (the footer is six notes).
+  it('numbers the Awards column with the Awarded note, keeping the label', () => {
+    const columns = tierColumns(STATISTICS, (key) => (key === 'awarded' ? 2 : null))
     const awards = columns.find((c) => c.key === 'awards')
     expect(awards?.header).toBe('Awards')
-    expect(awards?.note).toBe(9)
+    expect(awards?.note).toBe(2)
   })
 
   it('draws the averages in whole dollars, the cents dropped (mock)', () => {
@@ -127,11 +212,23 @@ describe('the tier table', () => {
     expect(cell[keys.indexOf('averageAward')]).toBe('$2,000')
   })
 
-  it("puts the registry's note numbers on their columns", () => {
-    const notes: Record<string, number> = { apps: 1, awarded: 3, average_award: 4, pct_of_ask: 5 }
-    const columns = tierColumns(STATISTICS, (key) => notes[key] ?? null)
-    expect(columns.find((c) => c.key === 'apps')?.note).toBe(1)
-    expect(columns.find((c) => c.key === 'pct')?.note).toBe(5)
+  it("puts the registry's note numbers on their columns, the % columns on % of ask's", () => {
+    const notes: Record<string, number> = {
+      apps: 1,
+      awarded: 2,
+      average_award: 3,
+      pct_of_ask: 4,
+      decided_not_offered: 6,
+    }
+    const columns = tierColumns(STATISTICS_DECIDED, (key) => notes[key] ?? null)
+    const noteOf = (key: string) => columns.find((c) => c.key === key)?.note
+    expect(noteOf('apps')).toBe(1)
+    expect(noteOf('awarded')).toBe(2)
+    expect(noteOf('decided')).toBe(6)
+    expect(noteOf('averageAward')).toBe(3)
+    expect(noteOf('liveAsked')).toBe(4)
+    expect(noteOf('pct')).toBe(4)
+    expect(noteOf('pctGrants')).toBe(4)
   })
 })
 
@@ -210,6 +307,18 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
     ])
   })
 
+  it("titles the cancelled table's Requests and Locked amount, and gives Requests no note mark (the words are the title)", () => {
+    const columns = cancelledColumns(() => 9)
+    const requests = columns.find((c) => c.key === 'requests')
+    expect(requests?.note).toBeUndefined()
+    expect(requests?.title).toBe(
+      'Requests with a posted award later cancelled or withdrawn. A confirmed duplicate that holds one is on its own Duplicate line. Once cancelled, a request is already out of Awarded.'
+    )
+    expect(columns.find((c) => c.key === 'posted')?.title).toBe(
+      "The lock's amount, even if clawed back since"
+    )
+  })
+
   it('draws the reason, pool and round as words, left-aligned as the mock', () => {
     expect(
       cancelledColumns(() => null)
@@ -227,6 +336,41 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
       pool: 'pool_a',
     })
     expect(addressOf(rows[3]?.links?.[3])).not.toHaveProperty('pool')
+  })
+
+  it('marks the appeals notes as the mock does, and titles the two derived columns', () => {
+    const notes: Record<string, number> = { apps: 1, appeals: 5 }
+    const columns = tierAppealsColumns((key) => notes[key] ?? null)
+    expect(columns.map((c) => [c.header, c.note ?? null])).toEqual([
+      ['Tier', null],
+      ['Income from', null],
+      ['Income to', null],
+      ['R1 apps', 1],
+      ['R1 eligible fee %', null],
+      ['Appeals (R2)', 5],
+      ['R2 max fee %', 5],
+      ['R3 awarded', null],
+      ['Appeal rate', 5],
+    ])
+    expect(columns.find((c) => c.key === 'r2max')?.title).toBe(
+      "A rules value: the most Round 1 and Round 2 aid together may cover, as a % of the session's cost"
+    )
+    expect(columns.find((c) => c.key === 'rate')?.title).toBe(
+      'The dashboard derives it; no deck gives it per tier'
+    )
+  })
+
+  it('spans RPT-9\'s total label over three columns, and marks "No tier" an end row', () => {
+    const [tier, total] = STATISTICS.tier_appeals
+    const noTier = { ...tier!, tier: null, income_from: null, income_to: null }
+    const rows = tierAppealsRows(
+      { ...STATISTICS, tier_appeals: [tier!, noTier, total!] },
+      CAMP_R1,
+      linkOf
+    )
+    expect(rows.map((r) => r.kind)).toEqual(['body', 'end', 'total'])
+    expect(rows[2]?.span).toBe(3)
+    expect(rows[2]?.cells[0]?.title).toBe('Table A · Round 1 and its appeals')
   })
 
   it('draws RPT-9 with its rules value and its derived rate as sent', () => {
@@ -294,7 +438,7 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
     expect(rows.filter((r) => r.kind === 'body')).toHaveLength(1)
   })
 
-  it('keeps a real "No tier" row a body row; only the last row is the totals', () => {
+  it('keeps a real "No tier" row before the totals; only the last row is the totals', () => {
     const [tier, total] = STATISTICS.tier_appeals
     const noTier = { ...tier!, tier: null, income_from: null, income_to: null }
     const rows = tierAppealsRows(
@@ -302,7 +446,7 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
       CAMP_R1,
       linkOf
     )
-    expect(rows.map((r) => r.kind)).toEqual(['body', 'body', 'total'])
+    expect(rows.map((r) => r.kind)).toEqual(['body', 'end', 'total'])
     expect(reportText(rows[1]!.cells[0]!)).toBe('No tier')
   })
 
@@ -317,7 +461,7 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
     const rows = outcomeRows(NO_POOL, CAMP_R1, linkOf)
     expect(rows.map((r) => [texts(r.cells)[0], r.kind])).toEqual([
       ['All pools', 'total'],
-      ['No pool', 'body'],
+      ['No pool', 'end'],
     ])
     expect(addressOf(rows[1]?.links?.[5])).toMatchObject({
       part: 'outcome',
@@ -344,17 +488,30 @@ describe('RPT-22, RPT-9 and RPT-23', () => {
   })
 })
 
+describe('March committee outcomes columns', () => {
+  it('titles Round 2 asked: not-cancelled requests, as Season shows them', () => {
+    expect(OUTCOME_COLUMNS.find((c) => c.key === 'appealedAsked')?.title).toBe(
+      'Round 2 asks on requests not cancelled, as Season shows them. Appeals in the table above count cancelled requests too.'
+    )
+  })
+})
+
 describe('what the page says around it', () => {
   it('names the table the server answered by its label from the rules', () => {
     expect(tableLabel(STATISTICS)).toBe('Table A')
     expect(tableLabel(STATISTICS_ALL_TABLES)).toBe('All award tables')
   })
 
-  it('labels every figure with the request set when a control is on (D138)', () => {
-    expect(requestSetWords(STATISTICS)).toBeNull()
-    expect(requestSetWords(STATISTICS_THROUGH)).toBe(
-      'Every figure below counts only requests received through Feb 1, 2027: 4 later requests left out, and 1 with no received date.'
-    )
+  it('names the requests a request set left out, for the cancelled line and the Requests picker (D138)', () => {
+    expect(requestSetLeftOut(STATISTICS)).toBeNull()
+    expect(requestSetLeftOut(STATISTICS_THROUGH)).toBe(4)
+  })
+
+  it('shortens an award table to its label in the mock, the rules label the fallback', () => {
+    expect(tableShortLabel({ key: 'camp', label: 'Camp & Quest' })).toBe('C&Q')
+    expect(tableShortLabel({ key: 'tbm', label: 'TBM' })).toBe('TBM')
+    expect(tableShortLabel({ key: 'weekend', label: 'Weekend Programs' })).toBe('Weekend')
+    expect(tableShortLabel({ key: 'table_z', label: 'Pool Z' })).toBe('Pool Z')
   })
 
   it('says a past date never estimates, without the developer-facing reasons (D154)', () => {
@@ -371,11 +528,6 @@ describe('what the page says around it', () => {
     expect(statisticsHeading(STATISTICS_DECIDED, 'RPT-22', false).basis).toBe(
       'P (awarded = Posted)'
     )
-  })
-
-  it('names the day and the rules version beside the controls', () => {
-    expect(asOfWords('2027-04-10', true, 3)).toBe('As of Apr 10, 2027 (live) · rules v3')
-    expect(asOfWords('2027-03-08', false, null)).toBe('As of Mar 8, 2027 · no approved rules')
   })
 })
 

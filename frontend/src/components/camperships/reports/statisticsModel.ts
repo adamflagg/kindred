@@ -12,7 +12,6 @@ import type {
 } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
-import { formatLongDate } from '../kit/dates'
 import {
   BASIS_WORDS,
   averageValue,
@@ -48,6 +47,23 @@ export function tableLabel(stats: ApiAidStatistics): string {
   return stats.tables.find((t) => t.key === stats.table)?.label ?? stats.table
 }
 
+/**
+ * The award-table segment's words (mock: All · C&Q · TBM · Weekend): the rules' label with its program
+ * word dropped, and the long "Camp & Quest" as C&Q. The full label is the segment's title.
+ */
+export function tableShortLabel(table: { readonly key: string; readonly label: string }): string {
+  if (table.label === 'Camp & Quest') return 'C&Q'
+  return table.label.replace(/ Programs$/, '')
+}
+
+/** How many later requests the request set left out (the picker's title, the cancelled line), or null. */
+export function requestSetLeftOut(report: {
+  readonly request_set: ApiAidRequestSetNote | null
+}): number | null {
+  const set = report.request_set
+  return set === null || set.left_out === 0 ? null : set.left_out
+}
+
 /** The round the server answered, as a chip key. */
 export function roundChipOf(stats: ApiAidStatistics): RoundChip {
   return stats.round === null ? 'all' : stats.round === 2 ? '2' : stats.round === 3 ? '3' : '1'
@@ -66,34 +82,77 @@ export const isDecided = (stats: ApiAidStatistics) => stats.basis === 'posted_an
  * before it: it isn't the Asked column, which counts every app's ask, cancelled included (owner B4a (c)).
  */
 export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColumn[] {
+  const decided = isDecided(stats)
+  // With Include not yet offered on, the two % headers turn amber instead of growing words that would
+  // wrap the row; each title says "(posted + decided)" in full (owner B4a (b); final mock).
+  const percent = (what: string, tail: string) => ({
+    title: `${what}${decided ? ' (posted + decided)' : ''}${tail}`,
+    ...(decided ? { tone: 'decided-ink' as const } : {}),
+  })
   return [
     { key: 'tier', header: 'Tier' },
-    { key: 'from', header: 'Income from' },
-    { key: 'to', header: 'Income to' },
-    { key: 'fee', header: 'Eligible fee %' },
-    { key: 'apps', header: 'Apps', note: noteOf('apps'), divider: 'before' as const },
-    { key: 'asked', header: 'Asked' },
-    { key: 'asks', header: 'Asks' },
-    { key: 'averageAsk', header: 'Avg ask' },
-    { key: 'awarded', header: 'Awarded', note: noteOf('awarded') },
-    ...(isDecided(stats)
+    { key: 'from', header: 'Income from', width: 98 },
+    { key: 'to', header: 'Income to', width: 92 },
+    {
+      key: 'fee',
+      header: 'Eligible fee %',
+      width: 106,
+      title: 'The fee share this tier pays under the chosen award table; "varies" across tables',
+    },
+    {
+      key: 'apps',
+      header: 'Apps',
+      note: noteOf('apps'),
+      divider: 'before' as const,
+      width: 66,
+    },
+    {
+      key: 'asked',
+      header: 'Asked',
+      width: 92,
+      title: "Every app's ask, cancelled and closed ones included",
+    },
+    { key: 'asks', header: 'Asks', width: 58, title: 'One per round asked' },
+    { key: 'averageAsk', header: 'Avg ask', width: 78 },
+    { key: 'awarded', header: 'Awarded', note: noteOf('awarded'), width: 94 },
+    ...(decided
       ? [
           {
             key: 'decided',
-            header: 'Decided (not yet offered)',
+            header: 'Decided',
             note: noteOf('decided_not_offered'),
-            tone: 'decided' as const,
+            tone: 'decided-ink' as const,
+            width: 78,
+            title: 'Decided (not yet offered): moves until posted',
           },
         ]
       : []),
-    { key: 'averageAward', header: 'Avg award', note: noteOf('average_award') },
-    { key: 'awards', header: 'Awards', note: noteOf('awarded_count') },
-    { key: 'liveAsked', header: 'Asked (live, in budget)', note: noteOf('pct_of_ask') },
-    { key: 'pct', header: stats.pct_of_ask_label, note: noteOf('pct_of_ask') },
+    { key: 'averageAward', header: 'Avg award', note: noteOf('average_award'), width: 90 },
+    { key: 'awards', header: 'Awards', note: noteOf('awarded'), width: 72 },
+    {
+      key: 'liveAsked',
+      header: 'In-budget ask',
+      note: noteOf('pct_of_ask'),
+      divider: 'before' as const,
+      width: 106,
+      title: "Asked (live, in budget): each round's ask as it stands today, on live requests",
+    },
+    {
+      key: 'pct',
+      header: '% of ask',
+      note: noteOf('pct_of_ask'),
+      width: 84,
+      ...percent('% of ask', decided ? ': amber while Include not yet offered is on' : ''),
+    },
     {
       key: 'pctGrants',
-      header: stats.pct_of_ask_with_grants_label,
-      note: noteOf('pct_of_ask_with_grants'),
+      header: '% incl. grants',
+      note: noteOf('pct_of_ask'),
+      width: 110,
+      ...percent(
+        '% of ask incl. grants',
+        `${decided ? ': amber while Include not yet offered is on' : ''}. Round 1 and All rounds only: a grant belongs to the request, not a round.`
+      ),
     },
   ]
 }
@@ -102,10 +161,13 @@ export function tierColumns(stats: ApiAidStatistics, noteOf: NoteOf): ReportColu
  * The eligible fee %: the rules' value, "varies" on All award tables (§9.2), "—" where none. Round 3
  * has no table value, so the server's null there is "—" on All award tables too.
  */
-function feeCell(fee: number | null, varies: boolean): ReportValue {
+function feeCell(fee: number | null, varies: boolean, why: string): ReportValue {
   if (fee !== null) return pctValue(fee)
-  return textValue(varies ? 'varies' : '—')
+  // a word where a figure would be: quieter, and its title says what to do (final mock)
+  return varies ? { ...textValue('varies'), muted: true, title: why } : textValue('—')
 }
+
+const VARIES_FEE = 'Each award table sets its own fee share: pick one to see it'
 
 function figureCells(row: ApiAidStatisticsRow, decided: boolean): ReportValue[] {
   return [
@@ -166,12 +228,13 @@ export function tierRows(
   const varies = stats.table === null && stats.round !== 3
   const body = stats.rows.map((row, index): ReportRow => ({
     key: `tier-${row.tier === null ? 'none' : String(row.tier)}-${String(index)}`,
-    kind: 'body',
+    // "No tier" stays after the tiers, muted italic (final mock)
+    kind: row.tier === null ? 'end' : 'body',
     cells: [
       textValue(row.tier === null ? 'No tier' : String(row.tier)),
       moneyValue(row.income_from),
       row.income_to === null && row.tier !== null ? textValue('and up') : moneyValue(row.income_to),
-      feeCell(row.fee_pct, varies),
+      feeCell(row.fee_pct, varies, VARIES_FEE),
       ...figureCells(row, decided),
     ],
     // the "no tier" row is the route's tier-absent row
@@ -182,11 +245,19 @@ export function tierRows(
       linkOf
     ),
   }))
+  const label = `${tableLabel(stats)} · ${ROUND_WORDS[roundChipOf(stats)]}`
+  const set = stats.request_set
   const total: ReportRow = {
     key: 'total',
     kind: 'total',
+    // the label spans Tier..Eligible fee %, with the P pill at its right end: this table has no heading row
+    span: 4,
+    badge: 'P',
     cells: [
-      textValue(`${tableLabel(stats)} · ${ROUND_WORDS[roundChipOf(stats)]}`),
+      {
+        ...textValue(set === null ? label : `${label} · ${set.label.replace(/^requests /, '')}`),
+        title: `${set === null ? label : `${label}: counts only ${set.label}`} · subtotals and this total are pooled ratios, not averages of the rows`,
+      },
       textValue(''),
       textValue(''),
       textValue(''),
@@ -203,13 +274,25 @@ export function cancelledApplicantsLink(choice: StatisticsChoice, linkOf: LinkOf
 }
 
 /** RPT-22: aid recipients who cancelled, by reason, pool and round (D131; owner R2a D24, B4b (a)). */
-export function cancelledColumns(noteOf: NoteOf): ReportColumn[] {
+export function cancelledColumns(_noteOf: NoteOf): ReportColumn[] {
   return [
     { key: 'reason', header: 'Reason' },
-    { key: 'pool', header: 'Pool', align: 'left' },
-    { key: 'round', header: 'Round', align: 'left' },
-    { key: 'requests', header: 'Requests', note: noteOf('recipients_cancelled') },
-    { key: 'posted', header: 'Locked amount' },
+    { key: 'pool', header: 'Pool', align: 'left', width: 200 },
+    { key: 'round', header: 'Round', align: 'left', width: 140 },
+    {
+      key: 'requests',
+      header: 'Requests',
+      width: 120,
+      // its words are the title: no note mark (the footer is six notes)
+      title:
+        'Requests with a posted award later cancelled or withdrawn. A confirmed duplicate that holds one is on its own Duplicate line. Once cancelled, a request is already out of Awarded.',
+    },
+    {
+      key: 'posted',
+      header: 'Locked amount',
+      width: 140,
+      title: "The lock's amount, even if clawed back since",
+    },
   ]
 }
 
@@ -248,15 +331,34 @@ export function cancelledRows(
 /** RPT-9: Round 1 and appeals by tier, for the same award-table chip. Its two counts open their requests. */
 export function tierAppealsColumns(noteOf: NoteOf): ReportColumn[] {
   return [
-    { key: 'tier', header: 'Tier' },
-    { key: 'from', header: 'Income from' },
-    { key: 'to', header: 'Income to' },
-    { key: 'apps', header: 'R1 apps' },
-    { key: 'fee', header: 'R1 eligible fee %' },
-    { key: 'appeals', header: 'Appeals (R2)', note: noteOf('appeals') },
-    { key: 'r2max', header: 'R2 max fee % (a rules value)', note: noteOf('round2_max_pct') },
-    { key: 'r3', header: 'R3 awarded' },
-    { key: 'rate', header: "Appeal rate (the dashboard's)", note: noteOf('appeal_rate') },
+    { key: 'tier', header: 'Tier', width: 70 },
+    { key: 'from', header: 'Income from', width: 110 },
+    { key: 'to', header: 'Income to', width: 110 },
+    { key: 'apps', header: 'R1 apps', note: noteOf('apps'), divider: 'before', width: 90 },
+    { key: 'fee', header: 'R1 eligible fee %', width: 130 },
+    {
+      key: 'appeals',
+      header: 'Appeals (R2)',
+      note: noteOf('appeals'),
+      divider: 'before',
+      width: 120,
+    },
+    {
+      key: 'r2max',
+      header: 'R2 max fee %',
+      note: noteOf('appeals'),
+      width: 120,
+      title:
+        "A rules value: the most Round 1 and Round 2 aid together may cover, as a % of the session's cost",
+    },
+    { key: 'r3', header: 'R3 awarded', width: 110 },
+    {
+      key: 'rate',
+      header: 'Appeal rate',
+      note: noteOf('appeals'),
+      width: 110,
+      title: 'The dashboard derives it; no deck gives it per tier',
+    },
   ]
 }
 
@@ -293,8 +395,12 @@ export function tierAppealsRows(
       return {
         key: 'total',
         kind: 'total',
+        span: 3,
         cells: [
-          textValue(tableLabel(stats)),
+          {
+            ...textValue(tableLabel(stats)),
+            title: `${tableLabel(stats)} · Round 1 and its appeals`,
+          },
           textValue(''),
           textValue(''),
           countValue(row.round1_apps),
@@ -309,7 +415,7 @@ export function tierAppealsRows(
     }
     return {
       key: `appeals-${row.tier === null ? 'none' : String(row.tier)}-${String(index)}`,
-      kind: 'body',
+      kind: row.tier === null ? 'end' : 'body',
       cells: [
         textValue(row.tier === null ? 'No tier' : String(row.tier)),
         moneyValue(row.income_from),
@@ -317,9 +423,13 @@ export function tierAppealsRows(
           ? textValue('and up')
           : moneyValue(row.income_to),
         countValue(row.round1_apps),
-        feeCell(row.round1_fee_pct, allTables),
+        feeCell(row.round1_fee_pct, allTables, 'Each award table sets its own fee share'),
         countValue(row.appeals),
-        feeCell(row.round2_max_pct, allTables),
+        feeCell(
+          row.round2_max_pct,
+          allTables,
+          'Blank on All award tables: each table has its own Round 2 caps'
+        ),
         moneyValue(row.round3_awarded),
         pctValue(row.appeal_rate),
       ],
@@ -338,11 +448,17 @@ export function tierAppealsRows(
 /** RPT-23: the March committee's outcomes per pool, then the server's no-pool row and all pools. */
 export const OUTCOME_COLUMNS: readonly ReportColumn[] = [
   { key: 'pool', header: 'Pool' },
-  { key: 'accepted', header: 'Accepted' },
-  { key: 'acceptedAmount', header: 'Accepted $' },
-  { key: 'appealed', header: 'Appealed' },
-  { key: 'appealedAsked', header: 'Round 2 asked' },
-  { key: 'waiting', header: 'Waiting for a response' },
+  { key: 'accepted', header: 'Accepted', width: 150 },
+  { key: 'acceptedAmount', header: 'Accepted $', width: 160 },
+  { key: 'appealed', header: 'Appealed', width: 150 },
+  {
+    key: 'appealedAsked',
+    header: 'Round 2 asked',
+    width: 160,
+    title:
+      'Round 2 asks on requests not cancelled, as Season shows them. Appeals in the table above count cancelled requests too.',
+  },
+  { key: 'waiting', header: 'Waiting for a response', width: 200 },
 ]
 
 /** The route's `outcome_row` for a row the read sent (`kind`, #2972); a reconciliation row has none. */
@@ -376,7 +492,7 @@ export function outcomeRows(
     }
     return {
       key: `outcome-${row.kind}-${row.pool ?? 'none'}-${String(index)}`,
-      kind: row.kind === 'headline' ? 'total' : 'body',
+      kind: row.kind === 'headline' ? 'total' : row.kind === 'no_pool' ? 'end' : 'body',
       cells: [
         textValue(row.pool_label),
         countValue(row.accepted),
@@ -412,27 +528,11 @@ export function statisticsHeading(
   }
 }
 
-/** "Every figure below counts only requests received through Feb 1, 2027: 4 later requests left out." */
-export function requestSetWords(report: {
-  readonly request_set: ApiAidRequestSetNote | null
-}): string | null {
-  const set = report.request_set
-  if (set === null) return null
-  const unknown = set.unknown > 0 ? `, and ${String(set.unknown)} with no received date` : ''
-  return `Every figure below counts only ${set.label}: ${String(set.left_out)} later requests left out${unknown}.`
-}
-
 /** A past date's empty figures (D154; slice 2 Decision 11's words): never an estimate. */
 export function notRebuiltWords(stats: { not_rebuilt: readonly unknown[] }): string | null {
   return stats.not_rebuilt.length === 0
     ? null
     : 'A past date shows what the dashboard can rebuild exactly: a figure it can’t reads "—", never an estimate.'
-}
-
-/** "As of Apr 10, 2027 (live) · rules v3": the day the figures are as of, and the rules that priced them. */
-export function asOfWords(figuresOn: string, live: boolean, rulesVersion: number | null): string {
-  const rules = rulesVersion === null ? 'no approved rules' : `rules v${String(rulesVersion)}`
-  return `As of ${formatLongDate(figuresOn)}${live ? ' (live)' : ''} · ${rules}`
 }
 
 /** The URL parameters that reproduce a Statistics view (D15), for links and the CSV's last line. */

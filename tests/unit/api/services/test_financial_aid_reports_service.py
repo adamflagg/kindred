@@ -611,6 +611,17 @@ async def test_programs_lists_the_rules_sessions_by_pool() -> None:
     assert out.total.round1.apps == 2
 
 
+async def test_programs_rows_carry_the_sessions_type_for_the_short_name_and_the_household_mark() -> None:
+    """Approved final mock reports-statistics.html: the session names read full-or-short, and Family Camp rows carry a
+    household mark, both of which need the session's type. A subtotal, the total and an unmatched row carry none."""
+    out = await _service(report_season()).programs(YEAR)
+    camp = next(group for group in out.pools if group.pool == "camp_pool")
+    session2 = next(row for row in camp.sessions if row.session_cm_id == 1000101)
+    assert session2.session_type == "main"
+    assert camp.subtotal.session_type == ""
+    assert out.total.session_type == ""
+
+
 async def test_programs_pool_groups_follow_the_rules_pool_order_not_the_alphabet() -> None:
     """Pool groups follow `budget.pools` (camp, weekend, b'mitzvah); a pool-less group goes last."""
     out = await _service(report_season()).programs(YEAR)
@@ -949,6 +960,15 @@ async def test_table_chips_follow_the_rules_pool_order_with_multi_pool_chips_aft
     assert list(rules.award_tables) == ["camp", "family", "teen"]
     assert list(rules.budget.pools) == ["camp_pool", "weekend_pool", "bmitzvah_pool"]
     assert [chip.key for chip in table_chips(rules)] == ["teen", "family", "camp"]
+
+
+async def test_table_chips_name_the_pools_their_programs_sit_in_for_the_session_rows_filter() -> None:
+    """Approved final mock reports-statistics.html: Award table filters Session rows to that table's pool groups, so
+    a chip carries its pools (in the rules' pool order), including a chip that spans several."""
+    chips = {chip.key: chip.pools for chip in table_chips(intake_rules())}
+    assert chips["teen"] == ["camp_pool"]  # the teen program prices from it, and sits in the camp pool
+    assert chips["family"] == ["weekend_pool"]
+    assert chips["camp"] == ["camp_pool", "bmitzvah_pool"]  # summer and quest in one pool, B'mitzvah in another
 
 
 async def test_a_full_cost_after_aid_round_reports_its_camp_award_and_keeps_only_its_remainder_apart() -> None:

@@ -27,6 +27,7 @@ StatisticsBasis = Literal["posted", "posted_and_decided"]
 class ChipOut(BaseModel):
     key: str
     label: str
+    pools: list[str] = []  # the budget pools this table's programs sit in, in the rules' pool order (may span several)
 
 
 class NotBuiltOut(BaseModel):
@@ -138,6 +139,7 @@ class RoundBlockOut(BaseModel):
 class ProgramRowOut(BaseModel):
     session_cm_id: int  # 0: session not matched (or a subtotal / total)
     session_name: str
+    session_type: str = ""  # the session's type ("family", "main", ...) for the short name; "" on a subtotal or total
     round1: RoundBlockOut
     round2: RoundBlockOut
     round3: RoundBlockOut

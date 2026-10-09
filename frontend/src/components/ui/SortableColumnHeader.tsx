@@ -18,6 +18,8 @@ export interface SortableColumnHeaderProps {
   className?: string
   /** Inline style on the host cell (a pinned column's left offset). */
   style?: CSSProperties | undefined
+  /** A native title on the host cell (the full words behind a short header). */
+  title?: string | undefined
   /** Classes on the inner button — padding, hover, focus ring. */
   buttonClassName?: string
 }
@@ -43,6 +45,7 @@ export function SortableColumnHeader({
   as = 'th',
   className,
   style,
+  title,
   buttonClassName,
 }: SortableColumnHeaderProps) {
   const Host = as
@@ -54,6 +57,7 @@ export function SortableColumnHeader({
       aria-sort={direction ?? undefined}
       className={className}
       style={style}
+      title={title}
     >
       <button
         type="button"

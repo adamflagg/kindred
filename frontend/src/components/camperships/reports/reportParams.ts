@@ -12,11 +12,16 @@ import { parseRequestSet } from '../season/scenarios/controlsModel'
 
 export type RoundChip = '1' | '2' | '3' | 'all'
 
-export const ROUND_CHIPS: ReadonlyArray<{ readonly key: RoundChip; readonly label: string }> = [
-  { key: '1', label: 'R1' },
-  { key: '2', label: 'R2' },
-  { key: '3', label: 'R3' },
-  { key: 'all', label: 'All rounds' },
+/** The Round segment (final mock: R1 · R2 · R3 · All), each with its full words as its title. */
+export const ROUND_CHIPS: ReadonlyArray<{
+  readonly key: RoundChip
+  readonly label: string
+  readonly title: string
+}> = [
+  { key: '1', label: 'R1', title: 'Round 1' },
+  { key: '2', label: 'R2', title: 'Round 2 (appeals)' },
+  { key: '3', label: 'R3', title: 'Round 3' },
+  { key: 'all', label: 'All', title: 'All rounds' },
 ]
 
 /** The round's words, for the totals row and the copied table's heading. */

@@ -72,3 +72,26 @@ describe('AidFilterChip', () => {
     )
   })
 })
+
+describe('AidToolbar status', () => {
+  it('reads muted, and amber when it is a refusal', () => {
+    const { rerender } = render(<AidToolbar status="Copied" />)
+    expect(screen.getByText('Copied').className).toContain('text-muted-foreground')
+    rerender(<AidToolbar status="Not from this season" statusWarn />)
+    const warn = screen.getByText('Not from this season')
+    expect(warn.className).toContain('text-amber-700')
+    expect(warn.className).not.toContain('text-muted-foreground')
+  })
+})
+
+describe('ToolbarLabel plain', () => {
+  it("is a span, so a segmented well keeps its buttons' own names", () => {
+    render(
+      <ToolbarLabel text="Round" plain>
+        <button type="button">R1</button>
+      </ToolbarLabel>
+    )
+    expect(screen.getByRole('button', { name: 'R1' })).toBeInTheDocument()
+    expect(screen.getByText('Round').closest('label')).toBeNull()
+  })
+})

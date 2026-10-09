@@ -17,7 +17,7 @@ import { useAidAsOf } from './useAidAsOf'
  * the server's pooled subtotals and total, on the request set, live or by the page's past day.
  * `view`. Inherits the app's cache defaults; refreshed by every money write (the reports prefix).
  */
-export function useAidPrograms(requestSet: AidRequestSet) {
+export function useAidPrograms(requestSet: AidRequestSet, enabled = true) {
   const year = useYear()
   const asOf = useAidAsOf()
   const { fetchWithAuth } = useApiWithAuth()
@@ -27,7 +27,7 @@ export function useAidPrograms(requestSet: AidRequestSet) {
   return useQuery({
     queryKey: queryKeys.aidReport(year, 'programs', params),
     queryFn: () => fetchAidPrograms(fetchWithAuth, year, params),
-    enabled: year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
+    enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
     retry: reportRetry,
   })
 }

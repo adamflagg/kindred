@@ -5,13 +5,13 @@
  * Only `fetch` is faked.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { CS_RULE_GROUP } from '../kit/kitStyles'
-import { PROGRAMS } from './programsFixtures'
+import { PROGRAMS_TWO_POOLS } from './programsFixtures'
 import {
   STATISTICS,
   STATISTICS_ALL_TABLES,
@@ -20,6 +20,11 @@ import {
 } from './statisticsFixtures'
 import { StatisticsTab } from './StatisticsTab'
 
+const downloadCsv = vi.fn<(content: string, name: string) => void>()
+vi.mock('../../../utils/csvExport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/csvExport')>()),
+  downloadCsv: (content: string, name: string) => downloadCsv(content, name),
+}))
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
@@ -27,6 +32,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
 }))
 let granted: string[] = []
+let writeText: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
@@ -37,7 +43,8 @@ const NOTES = {
   surface: 'reports-statistics',
   notes: [
     { key: 'apps', n: 1, text: 'Apps: every received request.' },
-    { key: 'awarded', n: 3, text: 'Awarded: Posted.' },
+    { key: 'awarded', n: 2, text: 'Awarded: Posted.' },
+    { key: 'decided_not_offered', n: 6, text: 'Not yet offered: decided but not posted.' },
   ],
 }
 
@@ -52,9 +59,12 @@ const requestsLink = (address: string) =>
   `/aid/requests?${new URLSearchParams({ report: address, year: '2027' }).toString()}`
 
 beforeEach(() => {
+  writeText = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve())
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  downloadCsv.mockClear()
   granted = ['financial_aid.view']
   statistics = () => json(STATISTICS)
-  programs = PROGRAMS
+  programs = PROGRAMS_TWO_POOLS
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
@@ -97,51 +107,80 @@ function renderTab(path = '/aid/reports/statistics') {
   )
 }
 
-describe('StatisticsTab (spec §9.2)', () => {
-  it("draws the tier table and the server's total, with the cancelled applicants' line (D131)", async () => {
+const toolbar = () => screen.getByTestId('aid-toolbar')
+const picker = () => within(toolbar()).getByRole('button', { name: /^Requests: / })
+
+describe('StatisticsTab (spec §9.2; approved final mock reports-statistics.html)', () => {
+  it("draws the tier table headless, with the server's total spanning its label and the P badge on it", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By tier' })
     expect(within(table).getByText('$27,000')).toBeInTheDocument()
-    expect(within(table).getByText('Table A · Round 1')).toBeInTheDocument()
-    expect(
-      screen.getByText(/Cancelled applicants \(counted in Apps too, and on their own line here\):/)
-    ).toBeInTheDocument()
+    const label = within(table).getByText('Table A · Round 1')
+    expect(label.closest('td')).toHaveAttribute('colspan', '4')
+    expect(within(label.closest('td') as HTMLElement).getByText('P')).toBeInTheDocument()
+    // no heading row of its own: its Copy and CSV are on the controls row
+    expect(screen.queryByRole('heading', { name: 'By tier' })).toBeNull()
     expect(screen.getByText('Apps: every received request.')).toBeInTheDocument()
   })
 
-  it("offers the rules' award tables as chips, with All award tables first (RPT-10)", async () => {
+  it('says none of the words the mock dropped: the controls box, the as-of line, the count footnote', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
-    const chips = ['All award tables', 'Table A', 'Table B'].map((name) =>
-      screen.getByRole('button', { name })
+    expect(screen.queryByText(/Reporting controls/)).toBeNull()
+    expect(screen.queryByText(/rules v3/)).toBeNull()
+    expect(screen.queryByText(/Each count opens the requests behind it/)).toBeNull()
+    expect(screen.queryByText(/Subtotals are pooled ratios/)).toBeNull()
+  })
+
+  it('puts Rows, Award table, Round, Requests, Include not yet offered, Copy and Download CSV on ONE row', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    const bar = toolbar()
+    expect(bar).toHaveClass('flex-nowrap')
+    for (const name of ['Rows', 'Award table', 'Round']) {
+      expect(within(bar).getByRole('group', { name })).toBeInTheDocument()
+    }
+    expect(picker()).toBeInTheDocument()
+    expect(
+      within(bar).getByRole('checkbox', { name: 'Include not yet offered' })
+    ).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Copy' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+    const names = Array.from(bar.querySelectorAll('[role=group]')).map((g) =>
+      g.getAttribute('aria-label')
     )
-    expect(chips).toHaveLength(3)
+    expect(names).toEqual(['Rows', 'Award table', 'Round'])
   })
 
-  it('puts the chips below the reporting controls, as the mock orders them', async () => {
+  it('offers All, then each rules award table as a segment titled with its full name', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
-    const controls = screen.getByLabelText('Received through')
-    const chip = screen.getByRole('button', { name: 'Table A' })
-    expect(controls.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('draws the chips as separate rounded pills, the chosen one in forest', async () => {
-    renderTab('/aid/reports/statistics?table=camp')
-    await screen.findByRole('table', { name: 'By tier' })
-    const on = screen.getByRole('button', { name: 'R1' })
-    const off = screen.getByRole('button', { name: 'R2' })
-    expect(on.className).toContain('rounded-full')
-    expect(off.className).toContain('rounded-full')
-    expect(on.className).toContain('bg-forest-700')
-    expect(off.className).not.toContain('bg-forest-700')
-    expect(off.className).toContain('bg-card')
+    const group = screen.getByRole('group', { name: 'Award table' })
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((b) => [b.textContent, b.title])
+    ).toEqual([
+      ['All', 'All award tables'],
+      ['Table A', 'Table A'],
+      ['Table B', 'Table B'],
+    ])
+    const rounds = screen.getByRole('group', { name: 'Round' })
+    expect(
+      within(rounds)
+        .getAllByRole('button')
+        .map((b) => [b.textContent, b.title])
+    ).toEqual([
+      ['R1', 'Round 1'],
+      ['R2', 'Round 2 (appeals)'],
+      ['R3', 'Round 3'],
+      ['All', 'All rounds'],
+    ])
   })
 
   it("divides the band columns from the figures at the tier table's Apps", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'By tier' })
-    // Design language §8: every column now carries the light rule, so a divider is the group rule.
     expect(within(table).getByRole('columnheader', { name: /^Apps/ }).className).toContain(
       CS_RULE_GROUP
     )
@@ -150,11 +189,17 @@ describe('StatisticsTab (spec §9.2)', () => {
     )
   })
 
-  it('keeps the chips in the URL and reads the table and round the user picked', async () => {
+  it('keeps the segments in the URL and reads the table and round the user picked', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
-    await userEvent.click(screen.getByRole('button', { name: 'Table B' }))
-    await userEvent.click(screen.getByRole('button', { name: 'All rounds' }))
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Award table' })).getByRole('button', {
+        name: 'Table B',
+      })
+    )
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Round' })).getByRole('button', { name: 'All' })
+    )
     expect(screen.getByTestId('where')).toHaveTextContent('?table=family&round=all')
     await waitFor(() =>
       expect(statisticsCalls().at(-1)).toBe(
@@ -163,28 +208,37 @@ describe('StatisticsTab (spec §9.2)', () => {
     )
   })
 
-  it('says "varies" for the fee % on All award tables', async () => {
+  it('says "varies" for the fee % on All award tables, muted, with what to do', async () => {
     statistics = () => json(STATISTICS_ALL_TABLES)
     renderTab()
     const table = await screen.findByRole('table', { name: 'By tier' })
-    expect(within(table).getAllByText('varies')).toHaveLength(2)
+    const varies = within(table).getAllByText('varies')
+    expect(varies).toHaveLength(2)
+    expect(varies[0]?.closest('td')).toHaveAttribute(
+      'title',
+      'Each award table sets its own fee share: pick one to see it'
+    )
   })
 
-  it('labels every figure when a link carries a reporting control (D138)', async () => {
+  it("puts a request set in the total's label, and its words in the picker title (D138)", async () => {
     statistics = () => json(STATISTICS_THROUGH)
     renderTab('/aid/reports/statistics?through=2027-02-01')
-    expect(
-      await screen.findByText(
-        /Every figure below counts only requests received through Feb 1, 2027/
-      )
-    ).toBeInTheDocument()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.getByText(/Table A · Round 1 · received through Feb 1, 2027/)).toBeInTheDocument()
     expect(statisticsCalls()[0]).toContain('received_through=2027-02-01')
+    expect(picker()).toHaveAttribute(
+      'title',
+      'Which requests count: requests received through Feb 1, 2027 4 later requests left out.'
+    )
+    expect(screen.queryByText(/Every figure below counts only/)).toBeNull()
   })
 
-  it('says a past date never estimates (D154)', async () => {
+  it('says a past date never estimates in the controls row, not above the tables (D154)', async () => {
     statistics = () => json(STATISTICS_PAST)
     renderTab()
-    expect(await screen.findByText(/never an estimate/)).toBeInTheDocument()
+    const status = await screen.findByText(/never an estimate/)
+    expect(toolbar().contains(status)).toBe(true)
+    expect(status).toHaveAttribute('title', status.textContent)
   })
 
   it('keeps what loaded when a refetch fails (owner ruling Group 5)', async () => {
@@ -193,7 +247,6 @@ describe('StatisticsTab (spec §9.2)', () => {
       calls += 1
       return calls === 1 ? json(STATISTICS) : json({ detail: 'boom' }, 500)
     }
-    // The hook retries a dropped connection (`reportRetry`); no delay here, so the retries run at once.
     const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
     render(
       <QueryClientProvider client={client}>
@@ -210,46 +263,101 @@ describe('StatisticsTab (spec §9.2)', () => {
   })
 })
 
-describe('StatisticsTab: the reporting controls and the three tables (D129, D130, D138)', () => {
+describe('StatisticsTab: Copy and Download CSV of the first table, on the controls row', () => {
+  it('copies the By tier table to paste into a deck, and says so in the row', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    const copy = within(toolbar()).getByRole('button', { name: 'Copy' })
+    expect(copy).toHaveAttribute('title', 'Copy the By tier table, to paste into a deck')
+    await userEvent.click(copy)
+    expect(writeText.mock.calls[0]?.[0]).toContain('Table A · Round 1')
+    expect(writeText.mock.calls[0]?.[0].split('\n')[0]).toBe('By tier')
+    expect(within(toolbar()).getByText('✓ Copied')).toBeInTheDocument()
+  })
+
+  it("downloads By tier's CSV with this view's link on its last line", async () => {
+    renderTab('/aid/reports/statistics?table=camp')
+    await screen.findByRole('table', { name: 'By tier' })
+    const csv = within(toolbar()).getByRole('button', { name: 'Download CSV' })
+    expect(csv).toHaveAttribute('title', "By tier · CSV, with this view's link on its last line")
+    await userEvent.click(csv)
+    const [content, name] = downloadCsv.mock.calls[0] ?? ['', '']
+    expect(name).toContain('statistics-by-tier')
+    expect(content).toContain('Link,/aid/reports/statistics?table=camp&year=2027')
+  })
+})
+
+describe('StatisticsTab: the Requests picker and Include not yet offered (D129, D130, D138)', () => {
   it('keeps the controls in the URL, off by default, and sends what they say (S4-3)', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'Aid recipients who cancelled' })
     expect(screen.getByRole('checkbox', { name: 'Include not yet offered' })).not.toBeChecked()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Include not yet offered' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
+    await userEvent.click(picker())
+    await userEvent.click(screen.getByRole('button', { name: 'Through the R1 deadline' }))
     expect(screen.getByTestId('where')).toHaveTextContent('?decided=1&through=deadline')
     await waitFor(() =>
       expect(statisticsCalls().at(-1)).toBe(
         '/api/financial-aid/reports/2027/statistics?round=1&basis=posted_and_decided&through_round1_deadline=true'
       )
     )
-    expect(screen.getByLabelText('Received through')).toBeDisabled()
+    expect(picker()).toHaveAccessibleName('Requests: By the R1 deadline')
   })
 
-  it('draws recipients who cancelled, RPT-9 and RPT-23 from the same read', async () => {
+  it('takes a received-through day from the picker, and clearing it returns to all requests', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    await userEvent.click(picker())
+    fireEvent.change(screen.getByLabelText('Received through'), { target: { value: '2027-03-10' } })
+    expect(screen.getByTestId('where')).toHaveTextContent('?through=2027-03-10')
+    expect(picker()).toHaveAccessibleName('Requests: Through Mar 10')
+    fireEvent.change(screen.getByLabelText('Received through'), { target: { value: '' } })
+    expect(screen.getByTestId('where')).not.toHaveTextContent('through')
+  })
+
+  it('titles Include not yet offered with its note, and tints it amber while on', async () => {
+    renderTab('/aid/reports/statistics?decided=1')
+    await screen.findByRole('table', { name: 'By tier' })
+    const label = screen.getByRole('checkbox', { name: 'Include not yet offered' }).closest('label')
+    expect(label).toHaveAttribute('title', 'Not yet offered: decided but not posted.')
+    expect(label?.className).toContain('text-amber-700')
+  })
+
+  it('draws recipients who cancelled, RPT-9 and RPT-23 from the same read, each with its heading row and description', async () => {
     renderTab()
     expect(await screen.findByText('Withdrawn in the dashboard')).toBeInTheDocument()
-    expect(screen.getByRole('table', { name: 'Round 1 and appeals by tier' })).toBeInTheDocument()
-    expect(screen.getByRole('table', { name: 'March committee outcomes' })).toBeInTheDocument()
-    expect(screen.getByText('As of Apr 10, 2027 (live) · rules v3')).toBeInTheDocument()
+    for (const [name, words] of [
+      ['Aid recipients who cancelled', /A request posted in two rounds is in two rows/],
+      ['Round 1 and appeals by tier', /Each tier's appeals are counted at their Round 2 tier/],
+      ['March committee outcomes', /The offers the March committee made/],
+    ] as const) {
+      const row = screen
+        .getByRole('heading', { name: new RegExp(`^${name}`) })
+        .closest('[data-testid=report-heading-row]')
+      expect(within(row as HTMLElement).getByText(words)).toBeInTheDocument()
+      expect(screen.getByRole('table', { name })).toBeInTheDocument()
+    }
   })
 
-  it('keeps the controls after a refusal, so the user can turn the control off', async () => {
+  it('keeps the controls after a refusal, showing the sentence in the row, so the user can turn the control off', async () => {
     statistics = (url) =>
       url.includes('through_round1_deadline')
         ? json({ detail: 'The reporting controls work from 2027.' }, 422)
         : json(STATISTICS)
     renderTab('/aid/reports/statistics?through=deadline')
-    expect(await screen.findByText('The reporting controls work from 2027.')).toBeInTheDocument()
+    const refusal = await screen.findByText('The reporting controls work from 2027.')
+    expect(toolbar().contains(refusal)).toBe(true)
+    expect(refusal.className).toContain('text-amber-700')
     expect(screen.getByRole('button', { name: 'R2' })).toBeInTheDocument()
     expect(screen.getByText('Nothing to show for these choices.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
+    await userEvent.click(picker())
+    await userEvent.click(screen.getByRole('button', { name: 'All requests' }))
     expect(await screen.findByText('Table A · Round 1')).toBeInTheDocument()
     expect(screen.queryByText('The reporting controls work from 2027.')).toBeNull()
   })
 })
 
-describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () => {
+describe('StatisticsTab: the cancelled applicants line and every count (slice 4 J; D20)', () => {
   it("opens a tier's Apps in Requests on exactly that count's address", async () => {
     renderTab('/aid/reports/statistics?table=camp')
     const table = await screen.findByRole('table', { name: 'By tier' })
@@ -259,7 +367,29 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
     )
   })
 
-  it("opens RPT-23's Waiting for a response too, which no grid filter could hold before (#2974)", async () => {
+  it('says the cancelled applicants count in Apps too, with the link to them', async () => {
+    renderTab('/aid/reports/statistics?table=camp')
+    await screen.findByRole('table', { name: 'By tier' })
+    const line = screen.getByText(/^Cancelled applicants, counted in Apps too:/)
+    expect(within(line).getByRole('link', { name: '1' })).toHaveAttribute(
+      'href',
+      requestsLink('statistics?table=camp&round=1&part=total&count=cancelled')
+    )
+    expect(line.textContent).not.toContain('left out')
+  })
+
+  it('adds how many later requests are left out when the request set says so', async () => {
+    statistics = () => json(STATISTICS_THROUGH)
+    renderTab('/aid/reports/statistics?through=2027-02-01')
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(
+      screen.getByText(
+        /Cancelled applicants, counted in Apps too:.*· 4 requests received later are left out/
+      )
+    ).toBeInTheDocument()
+  })
+
+  it("opens RPT-23's Waiting for a response too (#2974)", async () => {
     renderTab()
     const table = await screen.findByRole('table', { name: 'March committee outcomes' })
     const [poolA] = within(table).getAllByRole('row').slice(1)
@@ -281,11 +411,14 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
     )
   })
 
-  it("opens RPT-9's Round 1 apps and appeals on exactly that count's address, with no 'counts don't open' note", async () => {
+  it("opens RPT-9's Round 1 apps and appeals on exactly that count's address", async () => {
     renderTab('/aid/reports/statistics?table=camp')
     const table = await screen.findByRole('table', { name: 'Round 1 and appeals by tier' })
-    const links = within(table).getAllByRole('link')
-    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+    expect(
+      within(table)
+        .getAllByRole('link')
+        .map((l) => l.getAttribute('href'))
+    ).toEqual([
       requestsLink(
         'statistics?table=camp&round=1&part=tier_appeals&tier=1&appeals_count=round1_apps'
       ),
@@ -293,61 +426,104 @@ describe('StatisticsTab: every count opens its requests (slice 4 J; D20)', () =>
       requestsLink('statistics?table=camp&round=1&part=total_appeals&appeals_count=round1_apps'),
       requestsLink('statistics?table=camp&round=1&part=total_appeals&appeals_count=appeals'),
     ])
-    expect(screen.queryByText(/counts don't open/)).toBeNull()
   })
 })
 
-describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
-  const chipLabels = () =>
-    Array.from(document.querySelectorAll('button.rounded-full')).map((b) => b.textContent)
+describe('StatisticsTab: Rows, Income tier | Session — no control disappears', () => {
+  const pressed = (group: string) =>
+    within(screen.getByRole('group', { name: group }))
+      .getAllByRole('button')
+      .filter((b) => b.getAttribute('aria-pressed') === 'true')
+      .map((b) => b.textContent)
 
-  it('puts Rows first, then Income tier and Session, before the award table and round chips', async () => {
-    renderTab()
-    await screen.findByRole('table', { name: 'By tier' })
-    expect(chipLabels()).toEqual([
-      'Income tier',
-      'Session',
-      'All award tables',
-      'Table A',
-      'Table B',
-      'R1',
-      'R2',
-      'R3',
-      'All rounds',
-    ])
-    const rows = screen.getByText('Rows')
-    expect(rows.compareDocumentPosition(screen.getByText('Award table'))).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    )
-  })
-
-  it('shows the session table instead of By tier, with the rounds note and no tier-only chips', async () => {
+  it('shows the session table, with Rows, Award table, Round, the picker and the checkbox all still there', async () => {
     renderTab('/aid/reports/statistics?rows=session')
     expect(await screen.findByRole('table', { name: 'By session' })).toBeInTheDocument()
     expect(screen.queryByRole('table', { name: 'By tier' })).toBeNull()
-    expect(
-      screen.getByText('Rounds 1, 2 and 3 are columns in the session table')
-    ).toBeInTheDocument()
-    expect(chipLabels()).toEqual(['Income tier', 'Session'])
-    expect(screen.queryByRole('checkbox', { name: 'Include not yet offered' })).toBeNull()
+    expect(pressed('Rows')).toEqual(['Session'])
+    expect(screen.getByRole('group', { name: 'Award table' })).toBeInTheDocument()
+    expect(picker()).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Include not yet offered' })).toBeInTheDocument()
+    expect(screen.queryByText(/columns in the session table/)).toBeNull()
+  })
+
+  it('holds Round at All, R1 to R3 off with the words why', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    await screen.findByRole('table', { name: 'By session' })
+    expect(pressed('Round')).toEqual(['All'])
+    const rounds = within(screen.getByRole('group', { name: 'Round' }))
+    for (const name of ['R1', 'R2', 'R3']) {
+      const button = rounds.getByRole('button', { name })
+      expect(button).toBeDisabled()
+      expect(button.title).toMatch(/^On Session rows every round is already a column block/)
+    }
+  })
+
+  it('turns Include not yet offered off on Session, unchecked, and says why', async () => {
+    renderTab('/aid/reports/statistics?rows=session&decided=1')
+    await screen.findByRole('table', { name: 'By session' })
+    const box = screen.getByRole('checkbox', { name: 'Include not yet offered' })
+    expect(box).toBeDisabled()
+    expect(box).not.toBeChecked()
+    expect(box.closest('label')).toHaveAttribute(
+      'title',
+      "Not on Session rows yet: the session figures don't carry Decided amounts. Income tier rows have it."
+    )
+  })
+
+  it("filters the session rows to the award table's pool, and the total to that pool", async () => {
+    renderTab('/aid/reports/statistics?rows=session&table=family')
+    const table = await screen.findByRole('table', { name: 'By session' })
+    expect(within(table).getByText('Pool B')).toBeInTheDocument()
+    expect(within(table).queryByText('Pool A')).toBeNull()
+    expect(within(table).getByText('Table B')).toBeInTheDocument()
+    expect(within(table).queryByText('All pools')).toBeNull()
+  })
+
+  it('keeps every pool and the all-pools total on All award tables', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    const table = await screen.findByRole('table', { name: 'By session' })
+    expect(within(table).getByText('Pool A')).toBeInTheDocument()
+    expect(within(table).getByText('Pool B')).toBeInTheDocument()
+    expect(within(table).getByText('All pools')).toBeInTheDocument()
+    expect(within(table).getByText('2 sessions')).toBeInTheDocument()
+  })
+
+  it('marks a Family Camp session with a house and its household rule', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    const table = await screen.findByRole('table', { name: 'By session' })
+    const name = within(table).getByText('Family Camp 3: Young Families Weekend')
+    expect(name.closest('td')).toHaveAttribute(
+      'title',
+      'Family Camp 3: Young Families Weekend · household requests: each app is a household'
+    )
+    expect(name.parentElement?.querySelector('svg')).not.toBeNull()
   })
 
   it('keeps the cancelled line, recipients who cancelled, RPT-9 and March outcomes under Session', async () => {
     renderTab('/aid/reports/statistics?rows=session')
     await screen.findByRole('table', { name: 'By session' })
-    expect(screen.getByText(/Cancelled applicants \(counted in Apps too/)).toBeInTheDocument()
+    expect(screen.getByText(/Cancelled applicants, counted in Apps too/)).toBeInTheDocument()
     expect(screen.getByRole('table', { name: /Aid recipients who cancelled/ })).toBeInTheDocument()
     expect(screen.getByRole('table', { name: /Round 1 and appeals by tier/ })).toBeInTheDocument()
     expect(screen.getByRole('table', { name: /March committee outcomes/ })).toBeInTheDocument()
   })
 
-  it('clears table, round and decided when Session is chosen, and Income tier removes rows', async () => {
+  it('clears round and decided when Session is chosen, keeps the award table, and Income tier removes rows', async () => {
     renderTab('/aid/reports/statistics?table=camp&round=2&decided=1&through=deadline')
     await screen.findByRole('table', { name: 'By tier' })
-    await userEvent.click(screen.getByRole('button', { name: 'Session' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('?through=deadline&rows=session')
-    await userEvent.click(screen.getByRole('button', { name: 'Income tier' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('?through=deadline')
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Rows' })).getByRole('button', { name: 'Session' })
+    )
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '?table=camp&through=deadline&rows=session'
+    )
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Rows' })).getByRole('button', {
+        name: 'Income tier',
+      })
+    )
+    expect(screen.getByTestId('where')).toHaveTextContent('?table=camp&through=deadline')
     expect(screen.getByTestId('where')).not.toHaveTextContent('rows')
   })
 
@@ -355,43 +531,26 @@ describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
     renderTab('/aid/reports/statistics?rows=session')
     const table = await screen.findByRole('table', { name: 'By session' })
     expect(await screen.findAllByText('Apps: every received request.')).toHaveLength(1)
-    expect(screen.queryByText('Programs note.')).toBeNull()
     expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('reports-programs'))).toBe(
       false
     )
-    // the session table's superscripts are the foot list's own numbers (Apps 1, Awarded 3)
     const marks = Array.from(table.querySelectorAll('sup')).map((sup) => sup.textContent)
     expect(marks).toContain('1')
-    expect(marks).toContain('3')
-    const stats = screen.getByText('Apps: every received request.')
+    expect(marks).toContain('2')
+    const notes = screen.getByText('Apps: every received request.')
     const below = screen.getByRole('heading', { name: /^Aid recipients who cancelled/ })
-    expect(below.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(below.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('says the request set and the past-date rule once under Session, though both reads carry them', async () => {
-    statistics = () => json({ ...STATISTICS_THROUGH, not_rebuilt: STATISTICS_PAST.not_rebuilt })
-    programs = {
-      ...PROGRAMS,
-      request_set: STATISTICS_THROUGH.request_set,
-      not_rebuilt: STATISTICS_PAST.not_rebuilt,
-    }
-    renderTab('/aid/reports/statistics?rows=session&through=2027-02-01')
-    await screen.findByRole('table', { name: 'By session' })
-    expect(screen.getAllByText(/Every figure below counts only/)).toHaveLength(1)
-    expect(screen.getAllByText(/never an estimate/)).toHaveLength(1)
-  })
-
-  it('shows only the statistics notes under Income tier', async () => {
-    renderTab('/aid/reports/statistics')
-    expect(await screen.findByText('Apps: every received request.')).toBeInTheDocument()
-    expect(screen.queryByText('Programs note.')).toBeNull()
-  })
-
-  it('applies the reporting controls to the session table too (D138)', async () => {
-    renderTab('/aid/reports/statistics?rows=session')
-    await screen.findByRole('table', { name: 'By session' })
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Through the Round 1 deadline' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('through=deadline')
+  it('reads the session table only on Session, and sends the request set (D138)', async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('/programs'))).toBe(false)
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Rows' })).getByRole('button', { name: 'Session' })
+    )
+    await userEvent.click(picker())
+    await userEvent.click(screen.getByRole('button', { name: 'Through the R1 deadline' }))
     await waitFor(() =>
       expect(
         fetchSpy.mock.calls
@@ -399,6 +558,20 @@ describe('StatisticsTab: Rows, Income tier | Session (owner Q7)', () => {
           .filter((u) => u.includes('/programs'))
           .at(-1)
       ).toBe('/api/financial-aid/reports/2027/programs?through_round1_deadline=true')
+    )
+  })
+
+  it('copies By session from the controls row, full session names kept, and names it in its titles', async () => {
+    renderTab('/aid/reports/statistics?rows=session&through=deadline')
+    await screen.findByRole('table', { name: 'By session' })
+    const copy = within(toolbar()).getByRole('button', { name: 'Copy' })
+    expect(copy).toHaveAttribute('title', 'Copy the By session table, to paste into a deck')
+    await userEvent.click(copy)
+    expect(writeText.mock.calls[0]?.[0]).toContain('Family Camp 3: Young Families Weekend')
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadCsv.mock.calls[0] ?? ['']
+    expect(content).toContain(
+      'Link,/aid/reports/statistics?rows=session&through=deadline&year=2027'
     )
   })
 })
@@ -423,6 +596,5 @@ describe('StatisticsTab: our words carry no internal ids (R4)', () => {
         .getAllByRole('columnheader')
         .map((h) => h.textContent)
     ).not.toContain('Awards (camp aid)')
-    expect(screen.queryByText(/Awards \(camp aid\)/)).toBeNull()
   })
 })

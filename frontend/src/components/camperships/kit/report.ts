@@ -4,21 +4,32 @@
  * lines both carry (the table, the season, its as-of and its basis). Pure: `ReportTable` renders it.
  * The server sends every figure and every total (D21); nothing here adds one up.
  */
+import type { ReactNode } from 'react'
+
 import { formatLongDate } from './dates'
 import { formatMoney, moneyCsv } from './money'
 import type { CellValue } from './table'
 
+interface ReportValueBase {
+  readonly note?: string | undefined
+  /** A native title for the cell (the full words behind a cut label, or why a dash is a dash). */
+  readonly title?: string | undefined
+  /** Muted ink ("varies": a word where a figure would be). */
+  readonly muted?: boolean | undefined
+  /** What the screen draws in place of the words (a name that fits or shortens); Copy and the CSV keep the words. */
+  readonly display?: ReactNode | undefined
+}
+
 export type ReportValue =
-  | { readonly kind: 'money'; readonly value: number | null; readonly note?: string | undefined }
-  | { readonly kind: 'count'; readonly value: number | null; readonly note?: string | undefined }
-  | { readonly kind: 'pct'; readonly value: number | null; readonly note?: string | undefined }
-  | {
+  | (ReportValueBase & { readonly kind: 'money'; readonly value: number | null })
+  | (ReportValueBase & { readonly kind: 'count'; readonly value: number | null })
+  | (ReportValueBase & { readonly kind: 'pct'; readonly value: number | null })
+  | (ReportValueBase & {
       readonly kind: 'text'
       readonly value: string
-      readonly note?: string | undefined
       /** What the CSV writes instead of the words (§11: Over / under's plain signed number). */
       readonly csv?: string | undefined
-    }
+    })
 
 // A `note` is a muted second line under the figure (RPT-1's band words): drawn on screen only, never
 // in Copy or the CSV.
@@ -92,13 +103,21 @@ export interface ReportColumn {
   readonly header: string
   /** A heading over several columns ("Round 1"), drawn as a second header row. */
   readonly group?: string | undefined
+  /** The header's native title: the full words behind a short header. */
+  readonly title?: string | undefined
+  /** Opt the header into wrapping; headers are one line by default (the mock's `wrap`). */
+  readonly wrap?: true | undefined
   /** The column's definition note number (`useAidDefinitions().numberOf`), shown as ¹. */
   readonly note?: number | null | undefined
   readonly width?: number | undefined
   /** `left`: a column of words (a pool, a round, a group), left-aligned as the mocks draw it; figures align right. */
   readonly align?: 'left' | undefined
-  /** `decided`: "Decided (not yet offered)", tinted amber, header and cells (D130; slice 4 K). */
-  readonly tone?: 'decided' | undefined
+  /**
+   * `decided`: tinted amber, header and cells (D130; slice 4 K; Development's temporary column).
+   * `decided-ink`: amber ink alone, no fill (Statistics' Decided column and, with Include not yet
+   * offered on, its two % columns: the final mock's `.cf-dec`).
+   */
+  readonly tone?: 'decided' | 'decided-ink' | undefined
   /** `before`: a line left of the column, between a table's words and its figures (the mock's `.bl`). */
   readonly divider?: 'before' | undefined
   /** Body cells in the monospace font (ZIP codes, so the digits line up). */
@@ -119,6 +138,15 @@ export interface ReportRow {
   readonly kind: ReportRowKind
   readonly cells: readonly ReportValue[]
   readonly indent?: 0 | 1 | 2 | undefined
+  /**
+   * The first cell's label spans this many columns (a total row's label over Tier..Eligible fee %). The
+   * cells after it stay in `cells`, empty, so Copy and the CSV keep every column; they are not drawn.
+   */
+  readonly span?: number | undefined
+  /** A basis badge at the right end of the first cell's label (the total row of a table with no heading row). */
+  readonly badge?: 'P' | 'r' | undefined
+  /** A heading row's muted words after its name ("12 sessions"). Not copied. */
+  readonly meta?: string | undefined
   /** A line under the first cell (a row's own definition, D99). Not copied. */
   readonly note?: string | undefined
   /** The row's definition note number, a superscript after its label (Development's rows). Not copied. */

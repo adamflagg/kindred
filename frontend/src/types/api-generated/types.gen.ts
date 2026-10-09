@@ -2388,6 +2388,10 @@ export type ChipOut = {
    * Label
    */
   label: string
+  /**
+   * Pools
+   */
+  pools?: Array<string>
 }
 
 /**
@@ -12129,6 +12133,10 @@ export type ProgramRowOut = {
    * Session Name
    */
   session_name: string
+  /**
+   * Session Type
+   */
+  session_type?: string
   round1: RoundBlockOut
   round2: RoundBlockOut
   round3: RoundBlockOut

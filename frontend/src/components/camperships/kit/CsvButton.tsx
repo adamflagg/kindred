@@ -15,10 +15,14 @@ export function AidCsvButton({
   onDownload,
   menu,
   label = 'Download CSV',
+  title,
+  disabled = false,
 }: {
   readonly onDownload: () => void
   readonly menu?: ReactNode
   readonly label?: string
+  readonly title?: string
+  readonly disabled?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -43,7 +47,13 @@ export function AidCsvButton({
 
   if (!hasMenu) {
     return (
-      <button type="button" className={CS_BTN_CSV} onClick={onDownload}>
+      <button
+        type="button"
+        className={CS_BTN_CSV}
+        title={title}
+        disabled={disabled}
+        onClick={onDownload}
+      >
         <Download className={ICON} />
         {label}
       </button>
@@ -92,9 +102,17 @@ export function AidCsvButton({
 }
 
 /** Copy (kit CF.copy): the same small button, for a report table's tab-separated copy. */
-export function AidCopyButton({ onCopy }: { readonly onCopy: () => void }) {
+export function AidCopyButton({
+  onCopy,
+  title,
+  disabled = false,
+}: {
+  readonly onCopy: () => void
+  readonly title?: string
+  readonly disabled?: boolean
+}) {
   return (
-    <button type="button" className={CS_BTN_CSV} onClick={onCopy}>
+    <button type="button" className={CS_BTN_CSV} title={title} disabled={disabled} onClick={onCopy}>
       <Copy className={ICON} />
       Copy
     </button>

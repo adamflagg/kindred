@@ -9,7 +9,7 @@ import { YearOverYear } from '../../components/camperships/reports/YearOverYear'
 import { ZipCodes } from '../../components/camperships/reports/ZipCodes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
-import { CS_CARD, CS_LINK } from '../../components/camperships/kit/csType'
+import { CS_BAND_WARN, CS_LINK } from '../../components/camperships/kit/csType'
 import { aidSection, resolveAidTab, visibleTabs } from '../../config/aidNav'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../hooks/useCurrentYear'
@@ -48,8 +48,10 @@ export default function AidReportsPage() {
           asOf={asOf}
         />
         <AidTabNav section={REPORTS} tabs={visibleTabs(REPORTS, { hasPermission })} view={view} />
-        <div className={CS_CARD}>
-          <b>{known.label} needs view.</b>{' '}
+        <div
+          className={`${CS_BAND_WARN} rounded-lg border border-amber-300 px-2.5 py-[3px] text-[12.5px] dark:border-amber-800`}
+        >
+          <b>{known.label} is for finance and the registrar.</b>{' '}
           <span className="text-muted-foreground">
             Development&apos;s report is{' '}
             <Link to={aidHref(`${REPORTS.path}/development`, view)} className={CS_LINK}>

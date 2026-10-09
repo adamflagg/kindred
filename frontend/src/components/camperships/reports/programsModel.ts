@@ -5,7 +5,14 @@
  * subtotals are its pooled ratios. Sessions and pools are named by the server (the rules). Each block's
  * Apps opens the requests behind it (slice 4 J, #2974's `/programs/requests`).
  */
-import type { ApiAidProgramRow, ApiAidPrograms, ApiAidRoundBlock } from '../../../types/api-types'
+import { createElement } from 'react'
+
+import type {
+  ApiAidProgramPool,
+  ApiAidProgramRow,
+  ApiAidPrograms,
+  ApiAidRoundBlock,
+} from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
 import {
@@ -24,24 +31,59 @@ import type { AidRequestSet } from '../../../services/camperships/aidApi'
 import type { ReportAddress } from '../requests/reportFilter'
 import { requestSetParam } from '../season/scenarios/controlsModel'
 import { requestSetQuery } from './reportParams'
+import { SessionNameCell } from './SessionNameCell'
+import { sessionNameTitle } from './sessionNameTitle'
 import type { LinkOf, NoteOf } from './statisticsModel'
 
 export function programColumns(noteOf: NoteOf): ReportColumn[] {
-  const six = (group: string, asked: string): ReportColumn[] => [
-    { key: `${group}-apps`, header: 'Apps', group, note: noteOf('apps'), divider: 'before' },
-    { key: `${group}-requested`, header: asked, group },
-    { key: `${group}-awarded`, header: 'Awarded', group, note: noteOf('awarded') },
-    { key: `${group}-avgRequest`, header: 'Avg request', group },
-    { key: `${group}-avgAward`, header: 'Avg award', group, note: noteOf('average_award') },
-    { key: `${group}-pct`, header: '% awarded', group, note: noteOf('pct_of_ask') },
+  // The mock's widths: a long session name takes the rest; four ratio headers per block may wrap.
+  const six = (
+    group: string,
+    asked: string,
+    w: readonly [number, number, number, number, number, number]
+  ): ReportColumn[] => [
+    {
+      key: `${group}-apps`,
+      header: 'Apps',
+      group,
+      note: noteOf('apps'),
+      divider: 'before',
+      width: w[0],
+    },
+    { key: `${group}-requested`, header: asked, group, width: w[1] },
+    { key: `${group}-awarded`, header: 'Awarded', group, note: noteOf('awarded'), width: w[2] },
+    { key: `${group}-avgRequest`, header: 'Avg request', group, wrap: true, width: w[3] },
+    {
+      key: `${group}-avgAward`,
+      header: 'Avg award',
+      group,
+      note: noteOf('average_award'),
+      wrap: true,
+      width: w[4],
+    },
+    {
+      key: `${group}-pct`,
+      header: '% awarded',
+      group,
+      note: noteOf('pct_of_ask'),
+      wrap: true,
+      width: w[5],
+    },
   ]
   return [
     { key: 'session', header: 'Session' },
-    ...six('Round 1', 'Requested'),
-    ...six('Round 2 (appeals)', 'Asked'),
-    { key: 'r3-apps', header: 'Apps', group: 'Round 3', divider: 'before' },
-    { key: 'r3-awarded', header: 'Awarded', group: 'Round 3' },
-    { key: 'total', header: 'Total awarded', divider: 'before' },
+    ...six('Round 1', 'Requested', [56, 84, 84, 66, 66, 70]),
+    ...six('Round 2 (appeals)', 'Asked', [50, 70, 76, 62, 62, 70]),
+    { key: 'r3-apps', header: 'Apps', group: 'Round 3', divider: 'before', width: 48 },
+    { key: 'r3-awarded', header: 'Awarded', group: 'Round 3', width: 72 },
+    {
+      key: 'total',
+      header: 'Total awarded',
+      divider: 'before',
+      wrap: true,
+      width: 84,
+      title: 'Rounds 1–3 Posted, net of clawbacks',
+    },
   ]
 }
 
@@ -80,9 +122,9 @@ function appsLinks(
   return links
 }
 
-function cells(label: string, row: ApiAidProgramRow): ReportValue[] {
+function cells(label: ReportValue, row: ApiAidProgramRow): ReportValue[] {
   return [
-    textValue(label),
+    label,
     ...sixCells(row.round1),
     ...sixCells(row.round2),
     countValue(row.round3.apps),
@@ -91,23 +133,62 @@ function cells(label: string, row: ApiAidProgramRow): ReportValue[] {
   ]
 }
 
+/** The award table chosen, as the session rows filter by it: its pools and its (full) name. */
+export interface SessionTableChoice {
+  readonly pools: readonly string[]
+  readonly label: string
+}
+
+const POOLED = 'subtotals and this total are pooled ratios, not averages of the rows'
+
+/**
+ * The rows: each pool's heading, sessions and subtotal, then the total. With an award table chosen, only
+ * the pool groups that table sits in (the no-pool group never), and the total is that table's: the single
+ * pool's own server subtotal. Over several pools there is no server total and a client sum would be an
+ * estimate (D21), so there is no total row.
+ */
 export function programRows(
   programs: ApiAidPrograms,
   requestSet: AidRequestSet,
-  linkOf: LinkOf
+  linkOf: LinkOf,
+  table: SessionTableChoice | null = null
 ): ReportRow[] {
   const rows: ReportRow[] = []
-  for (const pool of programs.pools) {
+  const set = programs.request_set
+  const counts = set === null ? '' : `: counts only ${set.label}`
+  const groups: readonly ApiAidProgramPool[] =
+    table === null
+      ? programs.pools
+      : programs.pools.filter((g) => g.pool !== null && table.pools.includes(g.pool))
+  for (const pool of groups) {
     const key = pool.pool ?? 'none'
     // the no-pool group is the route's pool-absent group
     const inPool: Record<string, string> = pool.pool === null ? {} : { pool: pool.pool }
-    rows.push({ key: `heading-${key}`, kind: 'heading', cells: [textValue(pool.pool_label)] })
+    const family = pool.sessions.some((s) => (s.session_type ?? '') === 'family')
+    rows.push({
+      key: `heading-${key}`,
+      kind: 'heading',
+      cells: [textValue(pool.pool_label)],
+      meta: `${String(pool.sessions.length)} session${pool.sessions.length === 1 ? '' : 's'}${family ? ' · Family Camp apps count households' : ''}`,
+    })
     pool.sessions.forEach((session, index) => {
+      const type = session.session_type ?? ''
       rows.push({
         key: `session-${key}-${String(session.session_cm_id)}-${String(index)}`,
-        kind: 'body',
+        // "Session not matched" sits in the no-pool group: muted italic, as the mock draws it
+        kind: pool.pool === null ? 'end' : 'body',
         indent: 1,
-        cells: cells(session.session_name, session),
+        cells: cells(
+          {
+            ...textValue(session.session_name),
+            title: sessionNameTitle(session.session_name, type),
+            display: createElement(SessionNameCell, {
+              name: session.session_name,
+              sessionType: type,
+            }),
+          },
+          session
+        ),
         // session 0 is "session not matched": the route takes it as such
         links: appsLinks(
           requestSet,
@@ -119,17 +200,53 @@ export function programRows(
     rows.push({
       key: `subtotal-${key}`,
       kind: 'subtotal',
-      cells: cells(`${pool.pool_label} subtotal`, pool.subtotal),
+      cells: cells(
+        {
+          ...textValue(`${pool.pool_label} subtotal`),
+          title: `${pool.pool_label} subtotal: pooled ratios, not averages of the rows`,
+        },
+        pool.subtotal
+      ),
       links: appsLinks(requestSet, { part: 'subtotal', ...inPool }, linkOf),
     })
   }
-  rows.push({
+  if (table === null) {
+    rows.push(
+      totalRow(
+        programs.total,
+        programs.total.session_name,
+        counts,
+        { part: 'total' },
+        requestSet,
+        linkOf
+      )
+    )
+  } else if (groups.length === 1 && groups[0] !== undefined && groups[0].pool !== null) {
+    const only = groups[0]
+    const pool = groups[0].pool
+    rows.push(
+      totalRow(only.subtotal, table.label, counts, { part: 'subtotal', pool }, requestSet, linkOf)
+    )
+  }
+  return rows
+}
+
+function totalRow(
+  source: ApiAidProgramRow,
+  label: string,
+  counts: string,
+  part: Readonly<Record<string, string>>,
+  requestSet: AidRequestSet,
+  linkOf: LinkOf
+): ReportRow {
+  return {
     key: 'total',
     kind: 'total',
-    cells: cells(programs.total.session_name, programs.total),
-    links: appsLinks(requestSet, { part: 'total' }, linkOf),
-  })
-  return rows
+    // this table has no heading row of its own, so its basis badge sits at the total label's end
+    badge: 'P',
+    cells: cells({ ...textValue(label), title: `${label}${counts} · ${POOLED}` }, source),
+    links: appsLinks(requestSet, part, linkOf),
+  }
 }
 
 export function programsHeading(programs: ApiAidPrograms): ReportHeading {

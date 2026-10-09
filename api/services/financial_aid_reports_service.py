@@ -279,7 +279,8 @@ def table_chips(document: AidRules | None) -> list[ChipOut]:
             position = pool_order[pool]
         else:
             label = " · ".join(p.label for p in programs_) or key
-        out.append((position, ChipOut(key=key, label=label)))
+        in_order = sorted((pool for pool in pools if pool in pool_order), key=lambda pool: pool_order[pool])
+        out.append((position, ChipOut(key=key, label=label, pools=in_order)))
     return [chip for _, chip in sorted(out, key=lambda item: item[0])]  # stable: ties keep award_tables order
 
 
@@ -507,11 +508,13 @@ class FinancialAidReportsService:
         sessions = rules_sessions(read.season, document)
         table = programs(read.requests, sessions)
         names = {cm_id: row.name for cm_id, row in read.season.sessions.items()}
+        types = {cm_id: row.session_type for cm_id, row in read.season.sessions.items()}
 
-        def row_out(row: ProgramRow, name: str) -> ProgramRowOut:
+        def row_out(row: ProgramRow, name: str, session_type: str = "") -> ProgramRowOut:
             return ProgramRowOut(
                 session_cm_id=row.session_cm_id,
                 session_name=name,
+                session_type=session_type,
                 round1=_block(row.round1),
                 round2=_block(row.round2),
                 round3=_block(row.round3),
@@ -530,7 +533,9 @@ class FinancialAidReportsService:
                     pool_label=_pool_label(document, group.pool),
                     sessions=[
                         row_out(
-                            row, names.get(row.session_cm_id, UNMATCHED_LABEL) if row.session_cm_id else UNMATCHED_LABEL
+                            row,
+                            names.get(row.session_cm_id, UNMATCHED_LABEL) if row.session_cm_id else UNMATCHED_LABEL,
+                            types.get(row.session_cm_id, ""),
                         )
                         for row in group.sessions
                     ],

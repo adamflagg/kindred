@@ -32,6 +32,136 @@ describe('Programs (RPT-11)', () => {
     ])
   })
 
+  // Approved final mock reports-statistics.html (sessionTable): a pool row reads "<Pool>  <N> sessions" with
+  // the count muted, Weekend adding that Family Camp apps count households.
+  it('says how many sessions a pool holds, and that Family Camp apps count households', () => {
+    const [heading] = programRows(PROGRAMS, ALL, linkOf)
+    expect(heading?.meta).toBe('2 sessions')
+    const family = {
+      ...PROGRAMS,
+      pools: [
+        {
+          ...PROGRAMS.pools[0]!,
+          sessions: [{ ...PROGRAMS.pools[0]!.sessions[0]!, session_type: 'family' }],
+        },
+      ],
+    }
+    expect(programRows(family, ALL, linkOf)[0]?.meta).toBe(
+      '1 session · Family Camp apps count households'
+    )
+  })
+
+  it('titles the subtotal and the total as pooled ratios, and puts the P pill on the total', () => {
+    const rows = programRows(PROGRAMS, ALL, linkOf)
+    expect(rows[3]?.cells[0]?.title).toBe(
+      'Pool A subtotal: pooled ratios, not averages of the rows'
+    )
+    expect(rows[4]?.badge).toBe('P')
+    expect(rows[4]?.cells[0]?.title).toBe(
+      'All pools · subtotals and this total are pooled ratios, not averages of the rows'
+    )
+    expect(rows.filter((r) => r.badge !== undefined)).toHaveLength(1)
+  })
+
+  it("names the request set in the total's title when one is on", () => {
+    const rows = programRows(
+      {
+        ...PROGRAMS,
+        request_set: {
+          basis: 'date',
+          through: '2027-02-01',
+          label: 'requests received through Feb 1, 2027',
+          left_out: 4,
+          unknown: 0,
+        },
+      },
+      { kind: 'date', date: '2027-02-01' },
+      linkOf
+    )
+    expect(rows.at(-1)?.cells[0]?.title).toBe(
+      'All pools: counts only requests received through Feb 1, 2027 · subtotals and this total are pooled ratios, not averages of the rows'
+    )
+  })
+
+  it("keeps a session's full name in its words and title, and draws it through the name cell", () => {
+    const [, session] = programRows(PROGRAMS, ALL, linkOf)
+    expect(session?.cells[0]).toMatchObject({
+      kind: 'text',
+      value: 'Session 2',
+      title: 'Session 2',
+    })
+    expect(session?.cells[0]?.display).toBeDefined()
+  })
+
+  it("marks a Family Camp session's title with the household rule", () => {
+    const family = {
+      ...PROGRAMS,
+      pools: [
+        {
+          ...PROGRAMS.pools[0]!,
+          sessions: [
+            {
+              ...PROGRAMS.pools[0]!.sessions[0]!,
+              session_name: 'Family Camp 3: Young Families Weekend',
+              session_type: 'family',
+            },
+          ],
+        },
+      ],
+    }
+    expect(programRows(family, ALL, linkOf)[1]?.cells[0]?.title).toBe(
+      'Family Camp 3: Young Families Weekend · household requests: each app is a household'
+    )
+  })
+
+  it('keeps the unmatched session an end row, muted italic as the mock draws it', () => {
+    const noPool = {
+      ...PROGRAMS,
+      pools: PROGRAMS.pools.map((p) => ({ ...p, pool: null, pool_label: 'No pool' })),
+    }
+    expect(programRows(noPool, ALL, linkOf)[1]?.kind).toBe('end')
+  })
+
+  describe('Award table filters the session rows to its pools', () => {
+    const TWO = {
+      ...PROGRAMS,
+      pools: [
+        PROGRAMS.pools[0]!,
+        { ...PROGRAMS.pools[0]!, pool: 'pool_b', pool_label: 'Pool B' },
+        { ...PROGRAMS.pools[0]!, pool: null, pool_label: 'No pool' },
+      ],
+    }
+
+    it('keeps only the pool groups the table sits in, and leaves the no-pool group out', () => {
+      const rows = programRows(TWO, ALL, linkOf, { pools: ['pool_b'], label: 'Table B' })
+      expect(rows.filter((r) => r.kind === 'heading').map((r) => reportText(r.cells[0]!))).toEqual([
+        'Pool B',
+      ])
+    })
+
+    it("makes a single pool's total that pool's own server subtotal, named for the table", () => {
+      const rows = programRows(TWO, ALL, linkOf, { pools: ['pool_b'], label: 'Table B' })
+      const total = rows.at(-1)!
+      expect(total.kind).toBe('total')
+      expect(reportText(total.cells[0]!)).toBe('Table B')
+      const subtotal = rows.find((r) => r.kind === 'subtotal')!
+      expect(total.cells.slice(1).map(reportText)).toEqual(subtotal.cells.slice(1).map(reportText))
+      expect(addressOf(total.links?.[1])).toMatchObject({ part: 'subtotal', pool: 'pool_b' })
+    })
+
+    it('draws no total over several pools: the server sends none, and a client sum would estimate', () => {
+      const rows = programRows(TWO, ALL, linkOf, { pools: ['pool_a', 'pool_b'], label: 'Both' })
+      expect(rows.some((r) => r.kind === 'total')).toBe(false)
+      expect(rows.filter((r) => r.kind === 'subtotal')).toHaveLength(2)
+    })
+
+    it('shows every group and the server total when no table is chosen', () => {
+      const rows = programRows(TWO, ALL, linkOf, null)
+      expect(rows.filter((r) => r.kind === 'heading')).toHaveLength(3)
+      expect(rows.at(-1)?.kind).toBe('total')
+    })
+  })
+
   it("draws Round 1's and Round 2's six columns, Round 3's two and total awarded, as sent", () => {
     const session = programRows(PROGRAMS, ALL, linkOf)[1]
     expect(session?.cells.map(reportText)).toEqual([
@@ -121,6 +251,43 @@ describe('Programs (RPT-11)', () => {
     expect(columns[1]).toMatchObject({ header: 'Apps', group: 'Round 1' })
     expect(columns[8]).toMatchObject({ header: 'Asked', group: 'Round 2 (appeals)' })
     expect(columns[13]).toMatchObject({ header: 'Apps', group: 'Round 3' })
+  })
+
+  it('sizes, wraps and titles the session columns as the mock does', () => {
+    const columns = programColumns(() => null)
+    const wrapped = columns.filter((c) => c.wrap).map((c) => `${c.group ?? ''}|${c.header}`)
+    expect(wrapped).toEqual([
+      'Round 1|Avg request',
+      'Round 1|Avg award',
+      'Round 1|% awarded',
+      'Round 2 (appeals)|Avg request',
+      'Round 2 (appeals)|Avg award',
+      'Round 2 (appeals)|% awarded',
+      '|Total awarded',
+    ])
+    expect(columns.map((c) => c.width ?? null)).toEqual([
+      null,
+      56,
+      84,
+      84,
+      66,
+      66,
+      70,
+      50,
+      70,
+      76,
+      62,
+      62,
+      70,
+      48,
+      72,
+      84,
+    ])
+    expect(columns.find((c) => c.key === 'total')?.title).toBe(
+      'Rounds 1–3 Posted, net of clawbacks'
+    )
+    // the Round 2 block's money column is Asked; Round 1's is Requested
+    expect(columns[2]?.header).toBe('Requested')
   })
 
   it("opens each block's Apps on its session, pool subtotal or total (slice 4 J; #2974)", () => {
