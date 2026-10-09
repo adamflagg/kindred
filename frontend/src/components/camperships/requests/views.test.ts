@@ -86,7 +86,9 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     const fixed = keys.reduce((sum, k) => sum + (GRID_COLUMNS[k].width ?? 0), 0)
     // Family widened 110 → 130 now it is unpinned and truncated long names (integration ruling);
     // Requested by took its place and width (T3).
-    expect(GRID_COLUMNS.requestedBy.width).toBe(130)
+    // Final language §8: Requested by takes the spare width and is never under 150 (the card scrolls
+    // inside itself when the fixed columns leave less); it was 130.
+    expect(GRID_COLUMNS.requestedBy.width).toBe(150)
     // Batch 4 (owner rulings): CM ✓ is as wide as its widest one-word chip ("reversed"), and Needs
     // attention has no fixed width (it fits the chips on screen, measured), so Family takes the
     // spare width at 130 or more (Requested by since T3). Was: CM ✓ 90 and Needs attention flexible, 1,486 with it at 250.
@@ -94,14 +96,70 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     expect(GRID_COLUMNS.attention.width).toBeUndefined()
     expect(GRID_COLUMNS.attention.flex).toBeUndefined()
     expect(GRID_COLUMNS.requestedBy.flex).toBe(true)
-    expect(fixed).toBe(1236 - 90 + CM_WIDTH)
+    // The approved mock's widths (§13: Camper 130 → 170 and Session 96 → 136, measured to hold
+    // "Women's Weekend" whole; §8: headers on one line, so Stage 158, R3 92 for its pending amount, Decided 82, ...).
+    expect(fixed).toBe(1236 - 90 + CM_WIDTH + 40 + 40 + 20 + 8 + 32)
+  })
+
+  // §13 / §14 / §15: the widths the approved Requests mock settled on.
+  it('gives the grid the approved mock’s column widths', () => {
+    const widths = Object.fromEntries(
+      Object.entries(GRID_COLUMNS).map(([k, spec]) => [k, spec.width])
+    )
+    expect(widths).toMatchObject({
+      camper: 170,
+      session: 136,
+      stage: 158,
+      r3: 92,
+      decided: 82,
+      newTotal: 80,
+      daysWaiting: 92,
+      tick: 110,
+      cancelledOn: 100,
+      daysSinceCancelled: 132,
+    })
+  })
+
+  // §8 / the mock's attW: never under 84 (owner LOCKED batch 4) and never under its own header.
+  it('keeps Needs attention at least as wide as its own header', () => {
+    expect(GRID_COLUMNS.attention.fitContent).toEqual({ pad: 18, min: 112 })
+  })
+
+  // §15: a household-level request reads, sorts, searches and exports by its household's label.
+  it('reads a household request’s Camper as the household label, never blank', () => {
+    const household = gridRow({
+      camper_name: '',
+      household_label: 'Wei & Lin Chen',
+      household_label_tiebreak: 'Riverside',
+    })
+    expect(GRID_COLUMNS.camper.value(household, CTX)).toBe('Wei & Lin Chen')
+    expect(GRID_COLUMNS.camper.value(gridRow(), CTX)).toBe('Emma Johnson')
+    // The sort uses the value, so these rows no longer all sort first.
+    expect(GRID_COLUMNS.camper.sortValue).toBeUndefined()
+  })
+
+  // §8 header footnote marks: Decided¹, Posted², CM ✓³, Cost⁴ (the registry's keys; numbers from it).
+  it('names the note each marked header points at', () => {
+    expect(GRID_COLUMNS.decided.noteKey).toBe('decided')
+    expect(GRID_COLUMNS.posted.noteKey).toBe('posted')
+    expect(GRID_COLUMNS.roundPosted.noteKey).toBe('posted')
+    expect(GRID_COLUMNS.confirmed.noteKey).toBe('cm_check')
+    expect(GRID_COLUMNS.cost.noteKey).toBe('cost')
+  })
+
+  // §1a R2: "Posted is the amount posted in this round, not yet accepted." moves into the header's help.
+  it('puts the waiting view’s Posted explanation on the column header', () => {
+    expect(GRID_COLUMNS.roundPosted.help).toBe(
+      'Posted is the amount posted in this round, not yet accepted.'
+    )
+    expect(GRID_COLUMNS.posted.help).toBeUndefined()
   })
 
   // Batch 4 (owner LOCKED, grid-layout-options.html#or=i): Needs attention is frozen on the right,
   // as wide as the widest chip on screen plus 18px, never under 84px.
   it('freezes Needs attention on the right, fitted to its chips', () => {
     expect(GRID_COLUMNS.attention.pinnedRight).toBe(true)
-    expect(GRID_COLUMNS.attention.fitContent).toEqual({ pad: 18, min: 84 })
+    expect(GRID_COLUMNS.attention.fitContent).toEqual({ pad: 18, min: 112 })
     expect(GRID_COLUMNS.attention.pinned).toBeUndefined()
   })
 

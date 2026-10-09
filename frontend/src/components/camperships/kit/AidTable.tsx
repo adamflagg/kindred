@@ -120,6 +120,11 @@ export interface AidColumn<Row> {
    * budget" in Needs attention's footer). Null draws nothing.
    */
   readonly footerNote?: ((rows: readonly Row[]) => ReactNode) | undefined
+  /**
+   * The footer cell's native title when the cell is not the label's (§10): a footnote that can be
+   * cut carries its full words. Undefined draws none.
+   */
+  readonly footerTitle?: ((rows: readonly Row[]) => string | undefined) | undefined
   readonly searchable?: boolean | undefined
   /** A footnote mark beside the header (§12: 0.72em, the note's words as its title). */
   readonly mark?: { readonly n: number; readonly title?: string | undefined } | undefined
@@ -1031,7 +1036,11 @@ export function AidTable<Row>({
                     <td
                       key={c.key}
                       colSpan={cellSpan > 1 ? cellSpan : undefined}
-                      title={index === 0 && footerTitle ? footerTitle(visible) : undefined}
+                      title={
+                        index === 0 && footerTitle
+                          ? footerTitle(visible)
+                          : (c.footerTitle?.(visible) ?? undefined)
+                      }
                       style={leadsSelect ? { left: 0 } : pinStyle(c)}
                       className={join(
                         held && index === 0 && footerLabel && !footerTitle
@@ -1039,6 +1048,8 @@ export function AidTable<Row>({
                           : TFOOT_CELL,
                         // §10: a titled label flows out of its column and truncates.
                         index === 0 && footerTitle && 'truncate',
+                        // A footnote in its own cell (the outside note) is one line too.
+                        !c.total && c.footerNote && 'truncate',
                         heldClasses(c, 'bottom-0', 'z-10'),
                         spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
                         alignClass(c)

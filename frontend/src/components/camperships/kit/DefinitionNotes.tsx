@@ -34,7 +34,7 @@ export function DefinitionNotes({
  * A figure's note number, beside its label: "Decided ¹" (§12: 0.72em, raised, 500). `title` carries
  * the note's words, so the mark explains itself without a trip to the notes.
  */
-export function DefRef({ n, title }: { n: number; title?: string }) {
+export function DefRef({ n, title }: { n: number; title?: string | undefined }) {
   return (
     <sup className={title ? `${CS_SUP} cursor-help` : CS_SUP} title={title}>
       {n}

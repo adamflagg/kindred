@@ -17,7 +17,7 @@ export function StatusPill({
 }: {
   tone: PillTone
   children: ReactNode
-  title?: string
+  title?: string | undefined
 }) {
   return (
     <span className={title ? `${PILL[tone]} cursor-help` : PILL[tone]} title={title}>
