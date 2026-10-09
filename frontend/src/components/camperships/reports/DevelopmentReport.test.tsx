@@ -159,12 +159,38 @@ describe('the footnotes (D4)', () => {
 })
 
 describe('the footnote lines', () => {
-  it('are plain lines, not a numbered list beside the numbered definition notes, and only the mock’s three', async () => {
+  it('are plain lines, not a numbered list beside the numbered definition notes', async () => {
     renderReport()
     const table = await screen.findByRole('table', { name: 'Development report' })
     const card = table.closest('section') ?? document.body
     expect(card.querySelector('ol')).toBeNull()
     expect(screen.queryByText(/Each line is the server's own figure/)).toBeNull()
+  })
+})
+
+describe('the capped-requests line (Rule M)', () => {
+  const LINE =
+    "Total Requests and % of need met: 1 request above its session's cost counted at the cost (2027)."
+
+  it('sits under the table and above the footnote lines', async () => {
+    renderReport()
+    const table = await screen.findByRole('table', { name: 'Development report' })
+    const line = await screen.findByText(LINE)
+    expect(screen.getAllByText(LINE)).toHaveLength(1)
+    expect(table.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const footnote = screen.getByText(/Every outside source is listed by name/)
+    expect(line.compareDocumentPosition(footnote) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('is absent when no column has a capped request', async () => {
+    liveAnswer = () =>
+      json({
+        ...DEVELOPMENT_LIVE,
+        columns: DEVELOPMENT_LIVE.columns.map((c) => ({ ...c, requests_capped: 0 })),
+      })
+    renderReport()
+    await screen.findByRole('table', { name: 'Development report' })
+    expect(document.body.textContent).not.toContain('counted at the cost')
   })
 })
 

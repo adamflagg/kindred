@@ -16,6 +16,7 @@ const column = (over: Partial<ApiAidDevelopmentColumn>): ApiAidDevelopmentColumn
   basis_unconfirmed: false,
   label: '2027',
   not_rebuilt: [],
+  requests_capped: 0,
   ...over,
 })
 
@@ -46,7 +47,13 @@ export const DEVELOPMENT: ApiAidDevelopment = {
       label: '2025 (as reported)',
     }),
     column({ season: 2026, basis: 'r', as_of: '2026-09-29', label: '2026 (as reported)' }),
-    column({ season: 2027, basis: 'P', as_of: '2027-06-03', label: '2027' }),
+    column({
+      season: 2027,
+      basis: 'P',
+      as_of: '2027-06-03',
+      label: '2027',
+      requests_capped: 1,
+    }),
     column({
       season: 2027,
       basis: 'P',

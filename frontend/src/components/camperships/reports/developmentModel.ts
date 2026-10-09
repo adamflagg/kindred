@@ -207,6 +207,23 @@ export function notRebuiltColumnWords(dev: ApiAidDevelopment): string | null {
   return `A dated column shows what the dashboard can rebuild for that day: a line it can't reads "—", never an estimate. ${named}.`
 }
 
+/**
+ * How many requests counted at their session's cost (owner Rule M, revised 10-08): an ask above its
+ * priced session's cost counts at the cost in Total Requests and % of need met, so this line says how
+ * many, one clause per column that has any, in column order.
+ */
+export function cappedWords(dev: ApiAidDevelopment): string | null {
+  const clauses = dev.columns
+    .filter((c) => (c.requests_capped ?? 0) > 0)
+    .map((c) => {
+      const n = c.requests_capped ?? 0
+      const noun = n === 1 ? 'request above its' : 'requests above their'
+      return `${String(n)} ${noun} session's cost counted at the cost (${c.label})`
+    })
+  if (clauses.length === 0) return null
+  return `Total Requests and % of need met: ${clauses.join('; ')}.`
+}
+
 /** "Show the dashboard's rebuild" (≈, §9.4): why it is off, while the read names `rebuild` as not built. */
 export function rebuildReason(dev: ApiAidDevelopment): string | null {
   return dev.not_built.find((item) => item.figure === 'rebuild')?.reason ?? null

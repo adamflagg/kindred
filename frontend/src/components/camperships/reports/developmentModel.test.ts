@@ -9,6 +9,7 @@ import {
   DEVELOPMENT_LIVE,
 } from './developmentFixtures'
 import {
+  cappedWords,
   columnHeader,
   datedSeasons,
   datedWords,
@@ -286,5 +287,41 @@ describe('the on-demand column (D1)', () => {
     expect(dayBefore('2027-04-12')).toBe('2027-04-11')
     expect(dayBefore('2027-03-01')).toBe('2027-02-28')
     expect(dayBefore('2028-01-01')).toBe('2027-12-31')
+  })
+})
+
+describe('the capped-requests line (Rule M)', () => {
+  const withCapped = (counts: Array<number | undefined>) => ({
+    ...DEVELOPMENT,
+    columns: DEVELOPMENT.columns.map((c, i) => {
+      const n = counts[i]
+      const copy = { ...c }
+      if (n === undefined) delete copy.requests_capped
+      else copy.requests_capped = n
+      return copy
+    }),
+  })
+
+  it('says one request above its session’s cost counted at the cost, for the column that has one', () => {
+    expect(cappedWords(DEVELOPMENT)).toBe(
+      "Total Requests and % of need met: 1 request above its session's cost counted at the cost (2027)."
+    )
+  })
+
+  it('says requests and their, in the plural', () => {
+    expect(cappedWords(withCapped([0, 0, 3, 0]))).toBe(
+      "Total Requests and % of need met: 3 requests above their session's cost counted at the cost (2027)."
+    )
+  })
+
+  it('gives one clause per column, in column order, with one prefix and one final period', () => {
+    expect(cappedWords(withCapped([0, 0, 3, 1]))).toBe(
+      "Total Requests and % of need met: 3 requests above their session's cost counted at the cost (2027); 1 request above its session's cost counted at the cost (2027 as of Mar 9)."
+    )
+  })
+
+  it('is null when every column is 0 or missing', () => {
+    expect(cappedWords(withCapped([0, 0, 0, 0]))).toBeNull()
+    expect(cappedWords(withCapped([undefined, undefined, undefined, undefined]))).toBeNull()
   })
 })

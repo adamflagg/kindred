@@ -8,6 +8,7 @@ import { aidHref, type AidView } from '../kit/asOf'
 import { ReportTable } from '../kit/ReportTable'
 import { AsOfColumn } from './AsOfColumn'
 import {
+  cappedWords,
   datedSeasons,
   developmentColumns,
   type AsOfPick,
@@ -52,6 +53,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
           const rebuild = rebuildReason(data)
           const unconfirmed = unconfirmedWords(data)
           const notRebuilt = notRebuiltColumnWords(data)
+          const capped = cappedWords(data)
           return (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-4">
@@ -80,7 +82,9 @@ export function DevelopmentReport({ view }: { view: AidView }) {
                 link={link}
                 footnote={
                   // Plain lines, not a numbered list: the definition notes below are the numbered one.
+                  // The capped-requests line, when there is one, leads them, directly under the table.
                   <div className="space-y-0.5">
+                    {capped !== null && <p>{capped}</p>}
                     <p>
                       Every outside source is listed by name with its facts: who paid, incentive or
                       need-based, and its group.
