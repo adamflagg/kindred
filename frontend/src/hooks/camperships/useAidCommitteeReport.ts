@@ -17,7 +17,7 @@ import { reportRetry } from './reportRetry'
  * as-of). A received-through date moves this season's RPT-2 cutoff. `view`. Refreshed by every money
  * write (the reports prefix) and a sync; a typed-history load has no screen (Decision 22).
  */
-export function useAidCommitteeReport(requestSet: AidRequestSet) {
+export function useAidCommitteeReport(requestSet: AidRequestSet, enabled = true) {
   const year = useYear()
   const { fetchWithAuth } = useApiWithAuth()
   const { isLoading: authLoading } = useAuth()
@@ -26,7 +26,7 @@ export function useAidCommitteeReport(requestSet: AidRequestSet) {
   return useQuery({
     queryKey: queryKeys.aidReport(year, 'committee', params),
     queryFn: () => fetchAidCommitteeReport(fetchWithAuth, year, params),
-    enabled: year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
+    enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
     retry: reportRetry,
   })
 }

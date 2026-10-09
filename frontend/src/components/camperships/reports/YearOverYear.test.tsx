@@ -289,6 +289,44 @@ describe('YearOverYear: the one controls row', () => {
     ).not.toBeChecked()
   })
 
+  it('replaces only the cutoff table on a refusal: the other three read the default and stay (approved final mock)', async () => {
+    committeeFor = (url) =>
+      url.includes('received_through')
+        ? json(
+            {
+              detail:
+                'The reporting controls work from 2027: every 2026 request was recorded on one day.',
+            },
+            422
+          )
+        : json(COMMITTEE)
+    renderView('/aid/reports/year-over-year?through=2026-12-01')
+    await screen.findByRole('table', { name: PHASES })
+    for (const name of [BUDGET, APPEALS]) {
+      expect(screen.getByRole('table', { name })).toBeInTheDocument()
+    }
+    expect(screen.queryByRole('table', { name: CUTOFF })).toBeNull()
+    const row = headingRow(CUTOFF)
+    expect(within(row).getByText('Received through Dec 1, 2026')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Nothing to count at Dec 1, 2026: The reporting controls work from 2027: every 2026 request was recorded on one day. Pick a later date, or check Through the R1 deadline.'
+      )
+    ).toBeInTheDocument()
+    // the second read carries no date; it is the only other read
+    const calls = committeeCalls()
+    expect(calls.some((u) => u.endsWith('/committee'))).toBe(true)
+    expect(screen.getAllByTestId('aid-toolbar')).toHaveLength(1)
+  })
+
+  it('makes no second read while the date is accepted', async () => {
+    renderView('/aid/reports/year-over-year?through=2027-02-15')
+    await screen.findByRole('table', { name: PHASES })
+    expect(committeeCalls()).toEqual([
+      '/api/financial-aid/reports/2027/committee?received_through=2027-02-15',
+    ])
+  })
+
   it('says a future date counts to today', async () => {
     renderView('/aid/reports/year-over-year?through=2027-05-01')
     await screen.findByRole('table', { name: PHASES })

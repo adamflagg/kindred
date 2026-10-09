@@ -56,6 +56,9 @@ export function YearOverYear({ view }: { view: AidView }) {
   const setParam = useReportParam()
   const refusal =
     committee.error !== null && hasStatus(committee.error, 422) ? committee.error.message : null
+  // A refused date refuses only the cutoff table: the other three never read it, so they come from a
+  // second read without the date (enabled only while refused).
+  const fallback = useAidCommitteeReport({ kind: 'all' }, refusal !== null)
   const through = requestSetParam(requestSet)
   const link = aidHref(PATH, view, {
     ...(share === 'share' ? { phases: 'share' } : {}),
@@ -148,9 +151,9 @@ export function YearOverYear({ view }: { view: AidView }) {
     <div className="space-y-3">
       {controls}
       <QueryGuard
-        isLoading={committee.isLoading}
+        isLoading={committee.isLoading || (refusal !== null && fallback.isLoading)}
         error={committee.data || refusal !== null ? null : committee.error}
-        data={committee.data}
+        data={committee.data ?? (refusal !== null ? fallback.data : undefined)}
         label="year-over-year"
         emptyMessage="Nothing to show for this date."
       >
@@ -168,17 +171,31 @@ export function YearOverYear({ view }: { view: AidView }) {
                 emptyText="No season has phases yet."
                 footnote={reconciliationWords(report) ?? undefined}
               />
-              <ReportTable
-                heading={committeeHeading(report, 'Applications and Round 1 ask at the cutoff')}
-                description={
-                  pools === 'pool' ? 'each pool, then all pools' : 'all pools · By pool splits them'
-                }
-                columns={applicationColumns(numberOf)}
-                rows={applicationRows(report, pools)}
-                csvFilename={csv('applications')}
-                link={link}
-                footnote={applicationsUnder(report) ?? undefined}
-              />
+              {refusal !== null && typed !== null ? (
+                <ReportTable
+                  heading={committeeHeading(report, 'Applications and Round 1 ask at the cutoff')}
+                  description={`Received through ${formatLongDate(typed)}`}
+                  columns={applicationColumns(numberOf)}
+                  rows={[]}
+                  csvFilename={csv('applications')}
+                  link={link}
+                  emptyBody={`Nothing to count at ${formatLongDate(typed)}: ${refusal.replace(/\.$/, '')}. Pick a later date, or check Through the R1 deadline.`}
+                />
+              ) : (
+                <ReportTable
+                  heading={committeeHeading(report, 'Applications and Round 1 ask at the cutoff')}
+                  description={
+                    pools === 'pool'
+                      ? 'each pool, then all pools'
+                      : 'all pools · By pool splits them'
+                  }
+                  columns={applicationColumns(numberOf)}
+                  rows={applicationRows(report, pools)}
+                  csvFilename={csv('applications')}
+                  link={link}
+                  footnote={applicationsUnder(report) ?? undefined}
+                />
+              )}
               <ReportTable
                 fixed
                 heading={committeeHeading(report, 'Budget against actuals by pool')}

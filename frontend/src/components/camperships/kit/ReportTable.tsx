@@ -69,6 +69,8 @@ interface ReportTableProps {
   readonly description?: ReactNode | undefined
   /** The sort while the URL carries none (the URL wins; a header click toggles from it). */
   readonly defaultSort?: { readonly key: string; readonly dir: 'asc' | 'desc' } | undefined
+  /** Replaces the grid with a muted empty body (a refused date): the heading row stays. */
+  readonly emptyBody?: ReactNode | undefined
   /** Words under the table. */
   readonly footnote?: ReactNode | undefined
   /** The totals row first, right under the header, sorted or not (zip-codes.html). */
@@ -168,6 +170,7 @@ export function ReportTable({
   urlPrefix = '',
   emptyText = 'Nothing to show.',
   footnote,
+  emptyBody,
   description,
   defaultSort,
   totalsFirst = false,
@@ -317,129 +320,136 @@ export function ReportTable({
           </div>
         </div>
       )}
-      <div className={TABLE_CARD}>
-        {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}
-        <table
-          aria-label={heading.title}
-          className={`w-full border-separate border-spacing-0 text-sm ${fixed ? 'table-fixed' : ''}`}
-        >
-          {fixed && (
-            // table-fixed reads its widths from the first header row, which in a grouped header holds
-            // group cells with none: a colgroup sizes every column, and the unsized first one takes the rest.
-            <colgroup>
-              {drawn.map((column) => (
-                <col key={column.key} style={column.width ? { width: column.width } : undefined} />
-              ))}
-            </colgroup>
-          )}
-          <thead>
-            {grouped ? (
-              <>
-                <tr>
-                  {groupSegments(drawn).map((segment) =>
-                    segment.group === undefined ? (
-                      header(segment.first, drawn.indexOf(segment.first), 2)
-                    ) : (
-                      <th
-                        key={`group-${segment.first.key}`}
-                        colSpan={segment.span}
-                        className={TH_GROUP}
-                      >
-                        {segment.group}
-                        {segment.first.groupNote ? <DefRef n={segment.first.groupNote} /> : null}
-                      </th>
-                    )
-                  )}
-                </tr>
-                <tr>
-                  {drawn.map((column, index) =>
-                    column.group === undefined ? null : header(column, index)
-                  )}
-                </tr>
-              </>
-            ) : (
-              <tr>{drawn.map((column, index) => header(column, index))}</tr>
+      {emptyBody !== undefined ? (
+        <div className={`${TABLE_CARD} ${TD_LABEL} text-muted-foreground`}>{emptyBody}</div>
+      ) : (
+        <div className={TABLE_CARD}>
+          {/* aria-label: a test handle naming the table by its heading (frontend/CLAUDE.md's rule). */}
+          <table
+            aria-label={heading.title}
+            className={`w-full border-separate border-spacing-0 text-sm ${fixed ? 'table-fixed' : ''}`}
+          >
+            {fixed && (
+              // table-fixed reads its widths from the first header row, which in a grouped header holds
+              // group cells with none: a colgroup sizes every column, and the unsized first one takes the rest.
+              <colgroup>
+                {drawn.map((column) => (
+                  <col
+                    key={column.key}
+                    style={column.width ? { width: column.width } : undefined}
+                  />
+                ))}
+              </colgroup>
             )}
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr>
-                <td colSpan={drawn.length} className={`${TD_LABEL} text-muted-foreground`}>
-                  {emptyText}
-                </td>
-              </tr>
-            )}
-            {visible.map((row) =>
-              row.kind === 'heading' ? (
-                <tr key={row.key}>
-                  <td colSpan={drawn.length} className={ROW_HEADING}>
-                    {row.cells[0] ? reportText(row.cells[0]) : ''}
-                    {row.meta ? (
-                      <span className="text-muted-foreground ml-2 font-normal">{row.meta}</span>
-                    ) : null}
+            <thead>
+              {grouped ? (
+                <>
+                  <tr>
+                    {groupSegments(drawn).map((segment) =>
+                      segment.group === undefined ? (
+                        header(segment.first, drawn.indexOf(segment.first), 2)
+                      ) : (
+                        <th
+                          key={`group-${segment.first.key}`}
+                          colSpan={segment.span}
+                          className={TH_GROUP}
+                        >
+                          {segment.group}
+                          {segment.first.groupNote ? <DefRef n={segment.first.groupNote} /> : null}
+                        </th>
+                      )
+                    )}
+                  </tr>
+                  <tr>
+                    {drawn.map((column, index) =>
+                      column.group === undefined ? null : header(column, index)
+                    )}
+                  </tr>
+                </>
+              ) : (
+                <tr>{drawn.map((column, index) => header(column, index))}</tr>
+              )}
+            </thead>
+            <tbody>
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={drawn.length} className={`${TD_LABEL} text-muted-foreground`}>
+                    {emptyText}
                   </td>
                 </tr>
-              ) : (
-                <tr
-                  key={row.key}
-                  className={
-                    row.kind === 'total'
-                      ? ROW_TOTAL
-                      : row.kind === 'subtotal'
-                        ? ROW_SUBTOTAL
-                        : row.kind === 'end'
-                          ? ROW_END
-                          : undefined
-                  }
-                >
-                  {row.cells.map((cell, index) => {
-                    const span = row.span ?? 1
-                    // A spanned label covers the cells after it (they stay in `cells` for Copy and the CSV).
-                    if (index > 0 && index < span) return null
-                    if (columns[index]?.csvOnly) return null
-                    return (
-                      <td
-                        key={columns[index]?.key ?? index}
-                        colSpan={
-                          index === 0 && span > 1
-                            ? columns.slice(0, span).filter((c) => !c.csvOnly).length
+              )}
+              {visible.map((row) =>
+                row.kind === 'heading' ? (
+                  <tr key={row.key}>
+                    <td colSpan={drawn.length} className={ROW_HEADING}>
+                      {row.cells[0] ? reportText(row.cells[0]) : ''}
+                      {row.meta ? (
+                        <span className="text-muted-foreground ml-2 font-normal">{row.meta}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ) : (
+                  <tr
+                    key={row.key}
+                    className={
+                      row.kind === 'total'
+                        ? ROW_TOTAL
+                        : row.kind === 'subtotal'
+                          ? ROW_SUBTOTAL
+                          : row.kind === 'end'
+                            ? ROW_END
                             : undefined
-                        }
-                        title={cellTitle(cell)}
-                        className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
-                        style={index === 0 ? indentStyle(row.indent) : undefined}
-                      >
-                        {index === 0 &&
-                        (row.badge !== undefined ||
-                          span > 1 ||
-                          (fixed && cell.display === undefined)) ? (
-                          // a spanned label cuts with a title; the badge stays at its right end
-                          <span className="flex items-center gap-1.5">
-                            <span className={`${CS_CUT} min-w-0 flex-initial`}>
-                              {cellContent(cell, row.links?.[index])}
-                            </span>
-                            {row.badge !== undefined && (
-                              <span className={`${BASIS_BADGE} ml-auto flex-none`}>
-                                {row.badge}
+                    }
+                  >
+                    {row.cells.map((cell, index) => {
+                      const span = row.span ?? 1
+                      // A spanned label covers the cells after it (they stay in `cells` for Copy and the CSV).
+                      if (index > 0 && index < span) return null
+                      if (columns[index]?.csvOnly) return null
+                      return (
+                        <td
+                          key={columns[index]?.key ?? index}
+                          colSpan={
+                            index === 0 && span > 1
+                              ? columns.slice(0, span).filter((c) => !c.csvOnly).length
+                              : undefined
+                          }
+                          title={cellTitle(cell)}
+                          className={`${cellClass(columns[index], index, row.kind)} ${cell.muted ? 'text-muted-foreground' : ''}`}
+                          style={index === 0 ? indentStyle(row.indent) : undefined}
+                        >
+                          {index === 0 &&
+                          (row.badge !== undefined ||
+                            span > 1 ||
+                            (fixed && cell.display === undefined)) ? (
+                            // a spanned label cuts with a title; the badge stays at its right end
+                            <span className="flex items-center gap-1.5">
+                              <span className={`${CS_CUT} min-w-0 flex-initial`}>
+                                {cellContent(cell, row.links?.[index])}
                               </span>
-                            )}
-                          </span>
-                        ) : (
-                          cellContent(cell, row.links?.[index])
-                        )}
-                        {index === 0 && row.ref !== undefined ? <DefRef n={row.ref} /> : null}
-                        {index === 0 && row.note ? (
-                          <div className={`${REPORT_NOTE} whitespace-normal`}>{row.note}</div>
-                        ) : null}
-                      </td>
-                    )
-                  })}
-                </tr>
-              )
-            )}
-          </tbody>
-        </table>
-      </div>
+                              {row.badge !== undefined && (
+                                <span className={`${BASIS_BADGE} ml-auto flex-none`}>
+                                  {row.badge}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            cellContent(cell, row.links?.[index])
+                          )}
+                          {index === 0 && row.ref !== undefined ? <DefRef n={row.ref} /> : null}
+                          {index === 0 && row.note ? (
+                            <div className={`${REPORT_NOTE} whitespace-normal`}>{row.note}</div>
+                          ) : null}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
       {searching && (
         <p className={AMBER_NOTE}>
           {`${String(matching)} of ${String(bodyCount)} rows match. The totals row is the whole table's; Copy and Download CSV take the whole table.`}
