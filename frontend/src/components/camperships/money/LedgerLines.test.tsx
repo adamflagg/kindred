@@ -25,6 +25,10 @@ vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.view' }),
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+vi.mock('../../../hooks/camperships/useAidDefinitions', async () => {
+  const { ledgerDefinitions } = await import('./ledgerFixtures')
+  return { useAidDefinitions: () => ledgerDefinitions() }
+})
 
 const PAST: AidView = { year: 2027, asOf: { kind: 'past', date: '2027-05-01', axis: 'campminder' } }
 const FILTERED = '/aid/money/ledger?as_of=2027-05-01&source=camp_fa&level=household'
@@ -85,15 +89,12 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
     // The lines read's own amount, unlike the family read's total: the heading must show this one.
     lines = { ...LEDGER_LINES, amount: 600000 }
     renderAt(FILTERED, PAST)
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'In CampMinder (net) $615,460' })
-    )
+    await userEvent.click(await screen.findByRole('button', { name: '$615,460' }))
     expect(screen.getByTestId('where')).toHaveTextContent('lines=in_campminder_net')
     const panel = await screen.findByTestId('ledger-lines')
+    expect(await within(panel).findByText('In CampMinder (net) $600,000')).toBeInTheDocument()
     expect(
-      await within(panel).findByText(
-        'In CampMinder (net) $600,000 · the 2 lines behind it, 1 reversed (struck, not counted)'
-      )
+      within(panel).getByText('the 2 lines behind it, 1 reversed (struck, not counted)')
     ).toBeInTheDocument()
     const family = urls().find((u) => u.startsWith('/api/financial-aid/money/2027/ledger?'))
     const behind = urls().find((u) => u.startsWith('/api/financial-aid/money/2027/ledger/lines'))
@@ -162,9 +163,8 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
     lines = { ...LEDGER_LINES, total: 'outside_grants', amount: 141450, lines: [] }
     renderAt('/aid/money/ledger?lines=outside_grants', { year: 2027, asOf: { kind: 'live' } })
     const panel = await screen.findByTestId('ledger-lines')
-    expect(
-      await within(panel).findByText('Outside grants $141,450 · the 0 lines behind it')
-    ).toBeInTheDocument()
+    expect(await within(panel).findByText('Outside grants $141,450')).toBeInTheDocument()
+    expect(within(panel).getByText('the 0 lines behind it')).toBeInTheDocument()
     expect(urls()).toContain('/api/financial-aid/money/2027/ledger/lines?total=outside_grants')
   })
 
@@ -179,4 +179,78 @@ describe("The Ledger's totals open their lines (ruling F)", () => {
       expect(screen.getByTestId('where')).not.toHaveTextContent('lines=')
     }
   )
+})
+
+describe('the lines card, as the final mock draws it (★13, §23)', () => {
+  const OPEN = '/aid/money/ledger?lines=in_campminder_net'
+  const LIVE_VIEW: AidView = { year: 2027, asOf: { kind: 'live' } }
+
+  it('has ONE heading row: title, desc, then search, Download CSV and Close, in that order', async () => {
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    await within(panel).findByText('In CampMinder (net) $615,460')
+    const bars = panel.querySelectorAll('[data-aid-toolbar]')
+    expect(bars).toHaveLength(1)
+    const bar = bars[0] as HTMLElement
+    expect(bar).toHaveTextContent('In CampMinder (net) $615,460')
+    expect(bar).toHaveTextContent('the 2 lines behind it, 1 reversed (struck, not counted)')
+    expect(within(bar).getByPlaceholderText('Names or CM IDs')).toBeInTheDocument()
+    const buttons = within(bar)
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+    expect(buttons.slice(-2)).toEqual(['Download CSV', 'Close'])
+  })
+
+  it('titles the heading words, so a cut one reads whole', async () => {
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    expect(await within(panel).findByText('In CampMinder (net) $615,460')).toHaveAttribute(
+      'title',
+      'In CampMinder (net) $615,460'
+    )
+  })
+
+  it('holds the lines in a bounded 420px box, its header and Amount in the mock’s widths', async () => {
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    await within(panel).findByText('reversed Mar 9')
+    expect(within(panel).getByRole('table').parentElement?.className).toContain('max-h-[420px]')
+    for (const header of [
+      'Family',
+      'Camper',
+      'Description in CampMinder',
+      'Source family',
+      'Program',
+      'Amount',
+      'Posted on',
+      "Level, where it isn't a request",
+    ]) {
+      expect(within(panel).getByRole('columnheader', { name: header })).toBeInTheDocument()
+    }
+  })
+
+  it('shows a household-level line’s camper as ⌂, titled, and titles every cut cell', async () => {
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    await within(panel).findByText('reversed Mar 9')
+    const [household, camper] = within(panel).getAllByRole('row').slice(1)
+    if (household === undefined || camper === undefined) throw new Error('rows')
+    const cells = within(household).getAllByRole('cell')
+    expect(cells[1]).toHaveAttribute('title', 'Posted to the household: no camper on the line')
+    expect(cells[1]?.querySelector('svg')).not.toBeNull()
+    expect(cells[2]).toHaveAttribute('title', 'Camp aid · Summer')
+    expect(cells[3]).toHaveAttribute('title', 'camp fa')
+    expect(cells[4]).toHaveAttribute('title', 'Summer Sessions')
+    expect(within(camper).getAllByRole('cell')[1]).toHaveAttribute('title', 'Emma Johnson')
+    expect(within(camper).getAllByRole('cell')[7]).not.toHaveAttribute('title', '')
+  })
+
+  it('searches the lines from the heading row', async () => {
+    renderAt(OPEN, LIVE_VIEW)
+    const panel = await screen.findByTestId('ledger-lines')
+    await within(panel).findByText('reversed Mar 9')
+    await userEvent.type(within(panel).getByPlaceholderText('Names or CM IDs'), 'Emma')
+    expect(within(panel).queryByText('$3,620')).toBeNull()
+    expect(within(panel).getByText('reversed Mar 9')).toBeInTheDocument()
+  })
 })

@@ -165,5 +165,31 @@ export function tieOutWords(t: TieOut, openCount: number | null): string {
   }
   const lines =
     openCount === null ? '' : ` (${String(openCount)} ${openCount === 1 ? 'line' : 'lines'})`
-  return `${camp} · Season › Rounds & budget Posted ${formatMoney(t.posted)} · ${formatMoney(t.apart)} apart · see To place${lines}`
+  return `${camp} · Season › Rounds & budget Posted ${formatMoney(t.posted)} · ${formatMoney(t.apart)} apart → see To place${lines}`
+}
+
+/** The Unclassified note (mock `NOTE.uncl`): the registry has no entry for it; only its column's season needs it. */
+export const UNCLASSIFIED_NOTE =
+  "Unclassified: lines whose description Money › Funders hasn't classified yet. The column shows only while the season has some."
+
+/** The tie-out line's note (mock `NOTE.tie`), numbered after the registry's. */
+export const TIE_OUT_NOTE =
+  'The tie-out line: camp aid that counts toward the budget, against Season › Rounds & budget Posted, every pool. A gap is camp aid in To place, a round short or over (Requests › Not reconciled), or a round checked since the last sync.'
+
+/**
+ * The page's own notes and their numbers (mock `noteKeys`/`noteNo`): after the registry's `base`
+ * notes, Unclassified only while the season has some, then the tie-out. Max 6 (§12): 4 here. With
+ * the registry not loaded (`base` 0) no number is known, so none is drawn.
+ */
+export function ledgerNoteMarks(
+  base: number,
+  hasUnclassifiedMoney: boolean
+): { unclassified: number | null; tieOut: number | null; extra: string[] } {
+  if (base === 0) return { unclassified: null, tieOut: null, extra: [] }
+  const unclassified = hasUnclassifiedMoney ? base + 1 : null
+  return {
+    unclassified,
+    tieOut: base + (hasUnclassifiedMoney ? 2 : 1),
+    extra: [...(hasUnclassifiedMoney ? [UNCLASSIFIED_NOTE] : []), TIE_OUT_NOTE],
+  }
 }

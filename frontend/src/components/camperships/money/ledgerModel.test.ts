@@ -6,6 +6,7 @@ import { BUDGET } from '../season/budgetFixtures'
 import {
   footWords,
   hasUnclassified,
+  ledgerNoteMarks,
   pivotRows,
   programChoicesOf,
   programLabelsOf,
@@ -16,6 +17,8 @@ import {
   gapReachesNotReconciled,
   summaryCsvName,
   summaryProgramWords,
+  TIE_OUT_NOTE,
+  UNCLASSIFIED_NOTE,
 } from './ledgerModel'
 
 const NAMES = { summer: 'Summer Sessions', family_camp: 'Family Camp Weekends' }
@@ -170,13 +173,14 @@ describe('tieOutWords', () => {
       'Camp aid posted $652,100 · matches Season › Rounds & budget Posted $652,100'
     )
   })
+  // Final UX (mock tieOut(): "$Z apart → see To place"): the arrow, not a dot, leads to the way out.
   it('words a gap, with the To place count when known', () => {
     const t = { kind: 'apart', camp: 652100, posted: 640000, apart: 12100 } as const
     expect(tieOutWords(t, 4)).toBe(
-      'Camp aid posted $652,100 · Season › Rounds & budget Posted $640,000 · $12,100 apart · see To place (4 lines)'
+      'Camp aid posted $652,100 · Season › Rounds & budget Posted $640,000 · $12,100 apart → see To place (4 lines)'
     )
     expect(tieOutWords(t, 1)).toMatch(/see To place \(1 line\)$/)
-    expect(tieOutWords(t, null)).toMatch(/\$12,100 apart · see To place$/)
+    expect(tieOutWords(t, null)).toMatch(/\$12,100 apart → see To place$/)
   })
 })
 
@@ -197,5 +201,33 @@ describe('gapReachesNotReconciled', () => {
   it('is false on a match, and when the To place total is unknown', () => {
     expect(gapReachesNotReconciled({ kind: 'match', camp: 1, posted: 1, apart: 0 }, 0)).toBe(false)
     expect(gapReachesNotReconciled(apart, null)).toBe(false)
+  })
+})
+
+describe('the notes the page adds to the registry (§12; mock NOTE and noteNo)', () => {
+  it('words the Unclassified and tie-out notes as the mock does', () => {
+    expect(UNCLASSIFIED_NOTE).toBe(
+      "Unclassified: lines whose description Money › Funders hasn't classified yet. The column shows only while the season has some."
+    )
+    expect(TIE_OUT_NOTE).toBe(
+      'The tie-out line: camp aid that counts toward the budget, against Season › Rounds & budget Posted, every pool. A gap is camp aid in To place, a round short or over (Requests › Not reconciled), or a round checked since the last sync.'
+    )
+  })
+
+  it('numbers them after the registry: Unclassified 3 and the tie-out 4 while the season has unclassified money', () => {
+    const marks = ledgerNoteMarks(2, true)
+    expect(marks).toEqual({ unclassified: 3, tieOut: 4, extra: [UNCLASSIFIED_NOTE, TIE_OUT_NOTE] })
+  })
+
+  it('drops Unclassified, and the tie-out is 3, when the season has none', () => {
+    expect(ledgerNoteMarks(2, false)).toEqual({
+      unclassified: null,
+      tieOut: 3,
+      extra: [TIE_OUT_NOTE],
+    })
+  })
+
+  it('draws no marks before the registry has loaded', () => {
+    expect(ledgerNoteMarks(0, true)).toEqual({ unclassified: null, tieOut: null, extra: [] })
   })
 })

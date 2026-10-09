@@ -11,16 +11,22 @@ interface AidPageBandProps {
   subtitle?: ReactNode | undefined
   /** Money pages pass it (D20: the as-of shows once, here). Pages of counts (Today) leave it out. */
   asOf?: AidAsOf | undefined
+  /** The pill's native title: what this page says about the date (which tabs show today), not a sentence row. */
+  asOfTitle?: string | undefined
   stats?: ReactNode | undefined
 }
 
-function AsOfPill({ asOf }: { asOf: AidAsOf }) {
+function AsOfPill({ asOf, title }: { asOf: AidAsOf; title?: string | undefined }) {
   if (asOf.kind === 'live') return null
   const text =
     asOf.kind === 'past'
       ? `As of ${formatLongDate(asOf.date)}${asOf.axis === 'recorded' ? ' · as recorded' : ''}`
       : `Not a past date: ${asOf.raw} · showing live`
-  return <span className={`${AMBER_PILL} font-sans`}>{text}</span>
+  return (
+    <span className={`${AMBER_PILL} font-sans`} title={title}>
+      {text}
+    </span>
+  )
 }
 
 /**
@@ -29,7 +35,14 @@ function AsOfPill({ asOf }: { asOf: AidAsOf }) {
  * amber pill for a past day (D20; the pill covers the Remaining line too, D48). No full-width
  * banner, no hero.
  */
-export function AidPageBand({ icon: Icon, title, subtitle, asOf, stats }: AidPageBandProps) {
+export function AidPageBand({
+  icon: Icon,
+  title,
+  subtitle,
+  asOf,
+  asOfTitle,
+  stats,
+}: AidPageBandProps) {
   const live = asOf?.kind === 'live' ? `as of ${formatShortDate(campToday())} (live)` : null
   return (
     <div className="from-forest-700 to-forest-800 rounded-xl bg-gradient-to-r px-4 py-4 sm:px-6 sm:py-5">
@@ -41,7 +54,7 @@ export function AidPageBand({ icon: Icon, title, subtitle, asOf, stats }: AidPag
           <div>
             <h1 className="font-display flex flex-wrap items-center gap-2 text-lg font-bold text-white sm:text-xl">
               {title}
-              {asOf !== undefined && <AsOfPill asOf={asOf} />}
+              {asOf !== undefined && <AsOfPill asOf={asOf} title={asOfTitle} />}
             </h1>
             {(subtitle !== undefined || live !== null) && (
               <p className="text-forest-200 text-xs sm:text-sm">

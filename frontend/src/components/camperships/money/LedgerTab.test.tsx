@@ -10,7 +10,14 @@ import type { AidView } from '../kit/asOf'
 import { BUDGET } from '../season/budgetFixtures'
 import { TO_PLACE } from './toPlaceFixtures'
 import { LedgerTab } from './LedgerTab'
-import { RULES_2027, SUMMARY, SUMMARY_PAST, SUMMARY_UNCLASSIFIED } from './ledgerFixtures'
+import {
+  LEDGER_NOTE_ENTRIES,
+  RULES_2027,
+  SUMMARY,
+  SUMMARY_PAST,
+  SUMMARY_UNCLASSIFIED,
+} from './ledgerFixtures'
+import { TIE_OUT_NOTE, UNCLASSIFIED_NOTE } from './ledgerModel'
 
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -22,6 +29,10 @@ vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.view' }),
 }))
 vi.mock('../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+vi.mock('../../../hooks/camperships/useAidDefinitions', async () => {
+  const { ledgerDefinitions } = await import('./ledgerFixtures')
+  return { useAidDefinitions: () => ledgerDefinitions() }
+})
 vi.mock('../shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: ({ surface, extra = [] }: { surface: string; extra?: readonly string[] }) => (
     <div>
@@ -122,9 +133,9 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/A split placement still counts/)).toBeNull()
     expect(screen.getByText('Notes for money-ledger')).toBeInTheDocument()
-    expect(
-      screen.getByText(/^The tie-out line: camp aid in CampMinder that counts toward the budget/)
-    ).toBeInTheDocument()
+    // §12 (owner ★5): the tie-out is note 3 while the season has no unclassified money.
+    expect(screen.getByText(TIE_OUT_NOTE)).toBeInTheDocument()
+    expect(screen.queryByText(UNCLASSIFIED_NOTE)).toBeNull()
     // Final audit E2: a 4-6 row program table holds no names or CM ids, so it draws no search box
     // (it keeps Download CSV); the footer is the season's, from the server.
     expect(screen.queryByRole('searchbox', { name: 'Search' })).toBeNull()
@@ -190,6 +201,86 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
     expect(screen.queryByText('$541,200')).toBeNull()
   })
 
+  it('adds the Unclassified note, then the tie-out, after the registry’s two while the season has unclassified money', async () => {
+    summary = SUMMARY_UNCLASSIFIED
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findByRole('columnheader', { name: /^Unclassified/ })
+    const notes = screen.getByText('Notes for money-ledger').parentElement as HTMLElement
+    const texts = Array.from(notes.querySelectorAll('p')).map((p) => p.textContent)
+    expect(texts).toEqual(['Notes for money-ledger', UNCLASSIFIED_NOTE, TIE_OUT_NOTE])
+  })
+
+  it('numbers the header marks as the notes: 1, 2, and 3 on Unclassified, each titled with its note', async () => {
+    summary = SUMMARY_UNCLASSIFIED
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    const unclassified = await screen.findByRole('columnheader', { name: /^Unclassified/ })
+    expect(within(unclassified).getByText('3')).toHaveAttribute('title', UNCLASSIFIED_NOTE)
+    const camp = screen.getByRole('columnheader', { name: /^Camp aid \(net\)/ })
+    expect(within(camp).getByText('1')).toHaveAttribute('title', LEDGER_NOTE_ENTRIES[0]?.text)
+    const outside = screen.getByRole('columnheader', { name: /^Outside grants/ })
+    expect(within(outside).getByText('2')).toHaveAttribute('title', LEDGER_NOTE_ENTRIES[1]?.text)
+  })
+
+  it('marks the tie-out box with its note number: 4 with unclassified money, 3 without', async () => {
+    summary = SUMMARY_UNCLASSIFIED
+    budget = budgetPosting(SUMMARY_UNCLASSIFIED.counts_toward_budget)
+    const { unmount } = renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    expect(within(await screen.findByTestId('tie-out')).getByText('4')).toHaveAttribute(
+      'title',
+      TIE_OUT_NOTE
+    )
+    unmount()
+    summary = SUMMARY
+    budget = budgetPosting(SUMMARY.counts_toward_budget)
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    expect(within(await screen.findByTestId('tie-out')).getByText('3')).toBeInTheDocument()
+  })
+
+  it('draws the program section’s heading on ONE row: the fold caret, its title, "today · all families", and its Download CSV', async () => {
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findAllByText('Summer Sessions')
+    const bars = document.querySelectorAll('[data-aid-toolbar]')
+    expect(bars).toHaveLength(1)
+    const bar = bars[0] as HTMLElement
+    expect(
+      within(bar).getByRole('button', { name: /Posted in CampMinder by program and source/ })
+    ).toBeInTheDocument()
+    expect(bar).toHaveTextContent('today · all families')
+    expect(within(bar).getByRole('button', { name: 'Download CSV' })).toBeInTheDocument()
+  })
+
+  it('folds to its heading row alone: no table and no Download CSV, the caret opens it again', async () => {
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findAllByText('Summer Sessions')
+    const caret = screen.getByRole('button', { name: /Posted in CampMinder by program and source/ })
+    await userEvent.click(caret)
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download CSV' })).toBeNull()
+    expect(screen.getByText('today · all families')).toBeInTheDocument()
+    const folded = screen.getByRole('button', {
+      name: /Posted in CampMinder by program and source/,
+    })
+    expect(folded).toHaveAttribute('title', 'Open the totals by program and source')
+    await userEvent.click(folded)
+    expect(await screen.findAllByText('Summer Sessions')).not.toHaveLength(0)
+  })
+
+  it('mutes the Household level and Not placed rows, titled, and keeps the shares sentence under the table', async () => {
+    renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
+    await screen.findAllByText('Summer Sessions')
+    const household = screen.getByText('Household level')
+    expect(household).toHaveClass('text-muted-foreground')
+    expect(household.closest('td')).toHaveAttribute(
+      'title',
+      'Household level: money on a household, not on a request'
+    )
+    expect(screen.getByText('Not placed').closest('td')).toHaveAttribute(
+      'title',
+      'Not placed: money with no request behind it'
+    )
+    expect(screen.getByText(/^Counts toward the budget:/)).toBeInTheDocument()
+  })
+
   describe('the tie-out line', () => {
     const live: AidView = { year: 2027, asOf: { kind: 'live' } }
 
@@ -209,16 +300,37 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       )
     })
 
+    // §9, Q6: forest when it matches (emerald is retired), amber with ⚠ when it does not.
+    it('is a forest box on a match, with no emerald left, and an amber box when the figures differ', async () => {
+      const { unmount } = renderTab('/aid/money/ledger', live)
+      const match = await screen.findByTestId('tie-out')
+      expect(match.className).toContain('forest')
+      expect(match.className).not.toContain('emerald')
+      unmount()
+      budget = budgetPosting(600000)
+      renderTab('/aid/money/ledger', live)
+      const apart = await screen.findByTestId('tie-out')
+      await within(apart).findByRole('link', { name: /see To place/ })
+      expect(apart.className).toContain('amber')
+      expect(apart.className).not.toContain('emerald')
+    })
+
+    it('is one line: it never wraps', async () => {
+      renderTab('/aid/money/ledger', live)
+      expect((await screen.findByTestId('tie-out')).className).toContain('whitespace-nowrap')
+    })
+
     it('shows the gap and To place with its open count when the figures differ', async () => {
       budget = budgetPosting(600000)
       renderTab('/aid/money/ledger', live)
       const line = await screen.findByTestId('tie-out')
       await waitFor(() =>
         expect(line).toHaveTextContent(
-          `Camp aid posted $612,540 · Season › Rounds & budget Posted $600,000 · $12,540 apart · see To place (${String(TO_PLACE.open_count)} lines)`
+          `Camp aid posted $612,540 · Season › Rounds & budget Posted $600,000 · $12,540 apart → see To place (${String(TO_PLACE.open_count)} lines)`
         )
       )
       expect(line).not.toHaveTextContent('✓')
+      expect(line).toHaveTextContent(/^⚠ Camp aid posted/)
       const link = within(line).getByRole('link', { name: /see To place/ })
       expect(link.getAttribute('href')).toMatch(/^\/aid\/money\/to-place/)
     })
@@ -232,7 +344,9 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
         name: 'see Requests › Not reconciled',
       })
       expect(link.getAttribute('href')).toMatch(/^\/aid\/requests\?.*view=not-reconciled/)
-      expect(line).toHaveTextContent(/see To place \(\d+ lines\) · see Requests › Not reconciled$/)
+      expect(line).toHaveTextContent(
+        /see To place \(\d+ lines\) · see Requests › Not reconciled\d$/
+      )
     })
 
     it('does not point at Not reconciled when To place holds the whole gap', async () => {
@@ -282,7 +396,7 @@ describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
       renderTab('/aid/money/ledger', live)
       await screen.findByTestId('tie-out')
       const call = fetchSpy.mock.calls.find(([u]) => String(u).includes('/budget'))
-      const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers)
+      const headers = new Headers(call?.[1]?.headers)
       expect(headers.get('Authorization')).toBe('Bearer test-jwt')
     })
   })

@@ -8,6 +8,7 @@ import { asOfQuery, type AidAsOf } from '../kit/asOf'
 import { aidCsvFilename } from '../kit/csv'
 import { formatMoney } from '../kit/money'
 import type { PillTone } from '../kit/kitStyles'
+import type { AidPickerOption } from '../kit/pickerWords'
 
 /**
  * The level where a family's money isn't on a request (P-22), in staff's words. `satisfies`
@@ -74,17 +75,53 @@ export function ledgerParams(filters: LedgerFilters, asOf: AidAsOf): Record<stri
 }
 
 /**
- * A select's choices plus the value the URL sends when none of them is it (a stale or hand-edited
- * `?source=`/`?program=`): what is sent is what is shown, so the select never says "all" over a
- * filtered read.
+ * A picker's choices plus the value the URL sends when none of them is it (a stale or hand-edited
+ * `?source=`/`?program=`): what is sent is what is shown, so the picker never says "All" over a
+ * filtered read. It sits right after All, as the Requests picker does for a stale value.
  */
-export function withSentValue(
-  options: ReadonlyArray<{ readonly value: string; readonly label: string }>,
+export function withAllAndSent(
+  options: ReadonlyArray<AidPickerOption<string>>,
   sent: string | null,
   label: (key: string) => string
-): ReadonlyArray<{ readonly value: string; readonly label: string }> {
+): ReadonlyArray<AidPickerOption<string>> {
   if (sent === null || options.some((o) => o.value === sent)) return options
-  return [...options, { value: sent, label: label(sent) }]
+  const [all, ...rest] = options
+  return [...(all ? [all] : []), { value: sent, label: label(sent) }, ...rest]
+}
+
+const CAMP_FAMILY = 'camp_fa'
+const UNCLASSIFIED_FAMILY = 'unclassified'
+
+/**
+ * The Source picker's choices (design-language §3; mock `srcOpts`): All; the camp's own aid; under
+ * "Outside grants", "Every outside grant" (`source=outside`, #3107) and then each outside source
+ * family; "Not classified" only while the season has some. The registry's families are the words.
+ */
+export function sourcePickerOptions(
+  families: ReadonlyArray<{ readonly value: string; readonly label: string }>,
+  sent: string | null,
+  hasUnclassified: boolean
+): ReadonlyArray<AidPickerOption<string>> {
+  const camp = families.find((f) => f.value === CAMP_FAMILY)
+  const unclassified = families.find((f) => f.value === UNCLASSIFIED_FAMILY)
+  const showUnclassified = hasUnclassified || sent === UNCLASSIFIED_FAMILY
+  return [
+    { value: '', label: 'All' },
+    ...(camp ? [{ ...camp, group: "The camp's own" }] : []),
+    { value: 'outside', label: 'Every outside grant', group: 'Outside grants' },
+    ...families
+      .filter((f) => f.value !== CAMP_FAMILY && f.value !== UNCLASSIFIED_FAMILY)
+      .map((f) => ({ ...f, group: 'Outside grants' })),
+    ...(showUnclassified
+      ? [
+          {
+            value: UNCLASSIFIED_FAMILY,
+            label: unclassified?.label ?? 'Not yet classified',
+            group: 'Not classified',
+          },
+        ]
+      : []),
+  ]
 }
 
 /** "6 · 2 reversed", or "3". */
@@ -121,10 +158,10 @@ export function ledgerLinesCsvName(
 }
 
 /**
- * The family footer's note on money not yet classified (coordinator ruling 2026-10-08). The family
- * read counts an unclassified line as an outside grant until it is classified, while `GET /summary`
- * splits it out; the summary is season-wide, so under any filter the note names no amount. The
- * figure is the summary's, never summed here.
+ * The total row's note on money not yet classified (coordinator ruling 2026-10-08; mock `unclWords`).
+ * The family read counts an unclassified line as an outside grant until it is classified, while
+ * `GET /summary` splits it out; the summary is season-wide, so under any filter the note names no
+ * amount. The figure is the summary's, never summed here.
  */
 export function unclassifiedNote(
   unclassified: number | null | undefined,
@@ -132,6 +169,43 @@ export function unclassifiedNote(
 ): string | null {
   if (!unclassified || unclassified <= 0) return null
   return filtered
-    ? 'may include money not yet classified'
-    : `includes ${formatMoney(unclassified)} not yet classified`
+    ? 'Outside grants may include money not yet classified'
+    : `Outside grants incl. ${formatMoney(unclassified)} not yet classified`
+}
+
+/** What the total row's hint says about the totals (mock `TIP`), in the label's title. */
+export const TOTALS_TIP =
+  'Each total opens its lines. The totals follow the filters, not the search.'
+
+/** "4 families" / "1 family": the total row's label. */
+export const familiesWords = (n: number): string =>
+  `${String(n)} ${n === 1 ? 'family' : 'families'}`
+
+/** An opening total's native title. */
+export const totalOpenTitle = (total: ApiAidLedgerTotal): string =>
+  `${LEDGER_TOTAL_WORDS[total]}: open the lines behind it`
+
+/** The total row's last cell: the unclassified note, else the muted hint; the title carries the tip. */
+export function footNoteWords(
+  unclassified: number | null | undefined,
+  filtered: boolean
+): { words: string; title: string } {
+  const note = unclassifiedNote(unclassified, filtered)
+  return note === null
+    ? { words: 'each total opens its lines', title: TOTALS_TIP }
+    : { words: note, title: `${note}. ${TOTALS_TIP}` }
+}
+
+/** The lines card's heading row: "In CampMinder (net) $6,400" and "the 5 lines behind it, 2 reversed (struck, not counted)". */
+export function linesHeading(
+  total: ApiAidLedgerTotal,
+  amount: number,
+  lines: number,
+  reversed: number
+): { title: string; desc: string } {
+  const reversedWords = reversed === 0 ? '' : `, ${String(reversed)} reversed (struck, not counted)`
+  return {
+    title: `${LEDGER_TOTAL_WORDS[total]} ${formatMoney(amount)}`,
+    desc: `the ${String(lines)} ${lines === 1 ? 'line' : 'lines'} behind it${reversedWords}`,
+  }
 }
