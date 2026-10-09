@@ -9,6 +9,7 @@ import pytest
 
 from api.schemas.financial_aid_decisions import GridRowOut
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_grants_register import RegisterRow
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.to_place_fakes import FakeLabels
@@ -20,7 +21,7 @@ UNSET = "requnset00000001"
 
 
 def _service(store: FakeDecisionsStore, labels: FakeLabels | None) -> FinancialAidDecisionsService:
-    async def register(year: int) -> list:
+    async def register(year: int) -> list[RegisterRow]:
         return []
 
     return FinancialAidDecisionsService(store, FakeRules(approved()), register, clock=lambda: T0, labels=labels)
