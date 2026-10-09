@@ -15,7 +15,7 @@ const familyOf = (line: ApiAidToPlaceLine) => lineFamily(line).text
 
 /**
  * The bulk confirm's dialog (§4.10; P-6): every checked line it takes (hidden ones marked), the
- * households, and what they lock, labelled an estimate when there are two or more (owner ruling
+ * households, and what they mark Posted, labelled an estimate when there are two or more (owner ruling
  * Group 3a Q4); the checked lines it leaves out, and why. `plan` is derived by the tab from the
  * CURRENT read while the dialog shows, so a refusal (the reads refresh before it rejects) never
  * re-sends the refused body: Confirm sends what is open now, and lines that dropped out are counted
@@ -47,6 +47,11 @@ export function BulkPlaceDialog({
   const tooMany = plan.lines.length > MAX_BULK_LINES
   const several = plan.lines.length > 1
   const busy = place.isPending
+  const marked = estimateLocked(plan)
+  const marking =
+    marked > 0
+      ? `marks ${formatMoney(marked)} Posted`
+      : 'places the money; Posted stays to check by hand'
   const close = () => {
     if (inFlight.current) return
     setError(null)
@@ -95,13 +100,13 @@ export function BulkPlaceDialog({
         <p className="font-medium">
           {plan.lines.length === 0
             ? 'Nothing to confirm together'
-            : `${plural(plan.lines.length, 'line', 'lines')} · ${plural(plan.households, 'household', 'households')} · ${formatMoney(estimateLocked(plan))} locked `}
+            : `${plural(plan.lines.length, 'line', 'lines')} · ${plural(plan.households, 'household', 'households')} · ${marking} `}
           {several && <StatusPill tone="amber">Estimate</StatusPill>}
         </p>
         <p className="text-muted-foreground text-xs">
           {several
-            ? 'Each line goes on its family’s one request. Two lines landing on one request can lock more or less together than apart, so the total is an estimate; the result lists exactly what was marked posted. All or nothing, one operation.'
-            : 'The line goes on its family’s one request, and locks what it shows: if that moved since the page loaded, nothing is written and the page reloads.'}
+            ? 'Each line goes on its family’s one request. Two lines landing on one request can check Posted for more or less together than apart, so the total is an estimate; the result lists exactly what was marked Posted. All or nothing, one operation.'
+            : 'The line goes on its family’s one request, and checks Posted for what it shows: if that moved since the page loaded, nothing is written and the page reloads.'}
         </p>
         {plan.gone > 0 && (
           <p className={AMBER_NOTE}>

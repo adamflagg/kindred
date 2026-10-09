@@ -170,7 +170,7 @@ export function wouldLines(line: ApiAidToPlaceLine, would: PlacementWould): stri
   const labels = requestLabels([line])
   const marks = (would.would_tick ?? []).map(
     (t) =>
-      `${MARKS}${labelOf(labels, t.request_id)} · Round ${String(t.round)} · ${formatMoney(t.amount)} locked`
+      `${MARKS}${labelOf(labels, t.request_id)} · Round ${String(t.round)} · ${formatMoney(t.amount)}`
   )
   const withheld = (would.would_not_tick ?? []).map(
     (n) => `Places the money; doesn't mark ${labelOf(labels, n.request_id)} posted: ${n.why}`
@@ -195,7 +195,7 @@ export function confirmLines(
   return wouldLines(line, would)
 }
 
-/** The short form for the table's column: "Marks 1 round posted · $780 locked", "1 to mark posted by hand". */
+/** The short form for the table's column: "Marks 1 round posted · $780", "1 to mark posted by hand". */
 export function confirmSummary(line: ApiAidToPlaceLine): string {
   const suggestion = line.suggestion
   if (suggestion === null) return line.reason === 'no_request' ? 'Nothing to confirm' : '—'
@@ -204,7 +204,7 @@ export function confirmSummary(line: ApiAidToPlaceLine): string {
   const parts: string[] = []
   if (marks.length > 0) {
     parts.push(
-      `Marks ${plural(marks.length, 'round', 'rounds')} posted · ${formatMoney(suggestion.would_lock ?? 0)} locked`
+      `Marks ${plural(marks.length, 'round', 'rounds')} posted · ${formatMoney(suggestion.would_lock ?? 0)}`
     )
   }
   if (byHand > 0) parts.push(`${String(byHand)} to mark posted by hand`)
@@ -258,8 +258,7 @@ export function placedWords(
   const parts = [head]
   if (out.ticked.length > 0) {
     const marked = out.ticked.map(
-      (t) =>
-        `${labelOf(labels, t.request_id)} Round ${String(t.round)} · ${formatMoney(t.amount)} locked`
+      (t) => `${labelOf(labels, t.request_id)} Round ${String(t.round)} · ${formatMoney(t.amount)}`
     )
     parts.push(`Marked Posted: ${marked.join(', ')}`)
   } else {

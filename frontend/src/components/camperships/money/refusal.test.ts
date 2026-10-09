@@ -44,7 +44,7 @@ describe('refusalWords', () => {
   it("says what a moved lock means, and that a fault can't say whether it saved", () => {
     expect(
       refusalWords(new AidWriteError('this now locks $1,400, not the $1,500 you confirmed', 422))
-    ).toMatch(/^What this would lock changed since the page loaded/)
+    ).toMatch(/^What this would mark Posted changed since the page loaded/)
     expect(refusalWords(new AidWriteError('Server error', 500))).toMatch(
       /^We can't tell whether this was saved/
     )
