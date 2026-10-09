@@ -464,7 +464,8 @@ export interface ConfirmCell {
   readonly title: string
 }
 
-const roundList = (rounds: readonly number[]) => rounds.map(round).join(', ')
+/** Rounds in short form, each once: a split can leave the same round on two requests (the title names both). */
+const roundList = (rounds: readonly number[]) => [...new Set(rounds)].map(round).join(', ')
 
 export function confirmCell(line: ApiAidToPlaceLine): ConfirmCell {
   const suggestion = line.suggestion

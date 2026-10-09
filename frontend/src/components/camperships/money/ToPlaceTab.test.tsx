@@ -674,6 +674,14 @@ describe('the table (owner rulings B and D, 10-06)', () => {
     }
   })
 
+  it('sets the quiet cells in the muted meta size, as the mock’s .cf-m (12px)', async () => {
+    renderTab()
+    for (const words of ['No application this season', 'Nothing to confirm']) {
+      const [cell] = await screen.findAllByText(words)
+      expect(cell).toHaveClass('text-muted-foreground', 'text-xs')
+    }
+  })
+
   it('says the suggestion in bold and each cell short: ✓ R2 Posted · $780, ⚠ R2 by hand', async () => {
     renderTab()
     expect(await screen.findByText('Place on Olivia Chen · Quest')).toHaveClass('font-bold')

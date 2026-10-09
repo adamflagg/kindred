@@ -336,6 +336,19 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
     expect(confirmSummary(SAM_NO_REQUEST)).toBe('Nothing to confirm')
   })
 
+  it('names a round once in the cell when a split leaves it on two requests (the title names both)', () => {
+    const withheld = GARCIA_WITHHELD.suggestion?.would_not_tick?.[0]
+    if (withheld === undefined) throw new Error('fixture lost its withheld round')
+    const split = {
+      ...GARCIA_WITHHELD,
+      suggestion: GARCIA_WITHHELD.suggestion && {
+        ...GARCIA_WITHHELD.suggestion,
+        would_not_tick: [withheld, { ...withheld, request_id: 'req-other' }],
+      },
+    }
+    expect(confirmCell(split)).toMatchObject({ sym: 'warn', words: 'R2 by hand' })
+  })
+
   it('carries the full words of the cell in its title', () => {
     expect(confirmCell(GARCIA_WITHHELD).title).toContain('R2 not marked Posted')
     expect(confirmCell(JOHNSON_SPLIT).title).toContain('Marks Posted')

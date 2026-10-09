@@ -7,7 +7,7 @@ import { HouseholdLabelText } from '../household/HouseholdLabel'
 import { labelWords } from '../household/householdModel'
 import { AidTable, type AidColumn } from '../kit/AidTable'
 import { aidHref, type AidView } from '../kit/asOf'
-import { CS_LINK_CELL } from '../kit/csType'
+import { CS_LINK_CELL, CS_SMALL } from '../kit/csType'
 import { formatMoney, moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import {
@@ -107,7 +107,7 @@ function columnsFor(
           : line.candidates.map((c) => `${candidateLabel(c)}: ${candidateDetail(c)}`).join('\n'),
       render: (line) =>
         line.candidates.length === 0 ? (
-          <span className="text-muted-foreground">No application this season</span>
+          <span className={CS_SMALL}>No application this season</span>
         ) : (
           line.candidates.map((c, i) => {
             const money = formatMoney(c.not_yet_in_campminder)
@@ -142,7 +142,7 @@ function columnsFor(
       },
       render: (line) =>
         line.suggestion === null ? (
-          <span className="text-muted-foreground">{suggestionShort(line)}</span>
+          <span className={CS_SMALL}>{suggestionShort(line)}</span>
         ) : (
           <span className="font-bold">{suggestionShort(line)}</span>
         ),
@@ -157,7 +157,7 @@ function columnsFor(
       render: (line) => {
         const cell = confirmCell(line)
         return cell.sym === null ? (
-          <span className="text-muted-foreground">{cell.words}</span>
+          <span className={CS_SMALL}>{cell.words}</span>
         ) : (
           <span>
             <span className={`mr-1 font-bold ${SYM_INK[cell.sym]}`}>{SYM_CHAR[cell.sym]}</span>
