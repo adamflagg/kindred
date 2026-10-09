@@ -5,7 +5,7 @@ import {
   CS_AMBER_NOTE,
   CS_CARD,
   CS_CARD_HEADING,
-  CS_FLABEL,
+  CS_CLABEL,
   CS_SMALL,
   CS_TABLE_CARD,
   CS_TD_CARD,
@@ -15,6 +15,7 @@ import { DefRef } from '../../kit/DefinitionNotes'
 import {
   bandsIn,
   gridCell,
+  documentGroups,
   gridClasses,
   gridColumns,
   rangeWords,
@@ -113,7 +114,8 @@ export function SandboxTierCard({
   const capLocked = binding.locked.includes('round2')
   const awardTables = doc.award_tables as Tables
   const capTables = (doc.round2.tables ?? {}) as Tables
-  const classes = gridClasses(doc.programs as Programs, awardTables)
+  // The server sends no groups here (the document is the one being typed): the pools come from the document itself.
+  const classes = gridClasses(doc.programs as Programs, awardTables, documentGroups(doc))
   const r1 = gridColumns(awardTables, classes, (key) => classLabel(key, doc))
   const caps = gridColumns(capTables, classes, (key) => classLabel(key, doc))
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'tiers'), doc)
@@ -126,11 +128,11 @@ export function SandboxTierCard({
       </div>
       {fixFirst !== null && <p className={CS_AMBER_NOTE}>{fixFirst}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-x-4.5 gap-y-1.5 tabular-nums">
-        <label className={`${CS_FLABEL} inline-flex items-baseline gap-1`}>
+        <label className={`${CS_CLABEL} inline-flex items-baseline gap-1`}>
           Start{' '}
           <SandboxBox boxKey={TIER_START} label="Start" width={96} unit="$" binding={binding} />
         </label>
-        <label className={`${CS_FLABEL} inline-flex items-baseline gap-1`}>
+        <label className={`${CS_CLABEL} inline-flex items-baseline gap-1`}>
           Band width{' '}
           <SandboxBox
             boxKey={TIER_WIDTH}
@@ -140,11 +142,11 @@ export function SandboxTierCard({
             binding={binding}
           />
         </label>
-        <label className={`${CS_FLABEL} inline-flex items-baseline gap-1`}>
+        <label className={`${CS_CLABEL} inline-flex items-baseline gap-1`}>
           Tiers{' '}
           <SandboxBox boxKey={TIER_COUNT} label="Tiers" width={46} unit={null} binding={binding} />
         </label>
-        <label className={`${CS_FLABEL} inline-flex items-baseline gap-1`}>
+        <label className={`${CS_CLABEL} inline-flex items-baseline gap-1`}>
           Income ceiling
           <DefRef n={PAGE_NOTE.ceiling} />
           <SandboxBox
@@ -157,7 +159,7 @@ export function SandboxTierCard({
           />
         </label>
         <span className="bg-border h-5 w-px" />
-        <label className={`${CS_FLABEL} inline-flex items-baseline gap-1`}>
+        <label className={`${CS_CLABEL} inline-flex items-baseline gap-1`}>
           Minimum award{' '}
           <SandboxBox
             boxKey={MINIMUM}

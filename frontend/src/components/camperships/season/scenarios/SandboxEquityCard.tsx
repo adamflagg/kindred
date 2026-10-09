@@ -8,6 +8,7 @@ import {
 } from '../../kit/csType'
 import { DefRef } from '../../kit/DefinitionNotes'
 import { equityClasses, equityRows } from '../rules/rulesCards'
+import { documentGroups } from '../rules/tierGrid'
 import { SandboxBox } from './SandboxBox'
 import { LockNoteView } from './SandboxTierCard'
 import {
@@ -32,7 +33,7 @@ export function SandboxEquityCard({ binding }: { binding: SandboxBinding }) {
   const before =
     binding.source === null ? null : (binding.source.equity as unknown as Record<string, unknown>)
   const note = lockNote('equity', binding.locked, binding.byRound)
-  const classes = equityClasses(content)
+  const classes = equityClasses(content, documentGroups(binding.typed))
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'equity'), binding.typed)
   return (
     <section

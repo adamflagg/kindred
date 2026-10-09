@@ -153,14 +153,82 @@ describe('Income counting (§S5 F3)', () => {
     render(<SandboxIncomeCard binding={binding} />)
     expect(screen.getByText('30%')).toBeInTheDocument()
     expect(screen.getByText('not used now')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Dependents' })).toHaveValue('tier_shift')
+    // The white picker (§3), never a native select; it reads the mode in the rules' words.
+    expect(document.querySelector('select')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Dependents:/ })).toHaveTextContent(/move the tier/i)
   })
 
   it('releases a Dependents choice at once', async () => {
     const { binding, type, release } = setup()
     render(<SandboxIncomeCard binding={binding} />)
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Dependents' }), 'none')
+    await userEvent.click(screen.getByRole('button', { name: /^Dependents:/ }))
+    await userEvent.click(screen.getAllByRole('option').at(-1) as HTMLElement)
     expect(type).toHaveBeenCalledWith('income.dependents_mode', 'none')
     expect(release).toHaveBeenCalledOnce()
+  })
+})
+
+// #3109 moved every CS_FLABEL to 12.5px muted (a toolbar label, design-language §1). The Sandbox cards are card forms:
+// their labels keep the 14px foreground they had before the kit.
+describe('the Sandbox cards’ labels keep their pre-kit look (kit fallout, #3109)', () => {
+  it('sets income and tier labels at 14px foreground, not the toolbar label', () => {
+    const { binding } = setup()
+    const { container } = render(
+      <>
+        <SandboxTierCard binding={binding} fitButton={null} fitAnswer={null} />
+        <SandboxIncomeCard binding={binding} />
+      </>
+    )
+    const labels = [...container.querySelectorAll('label')]
+    expect(labels.length).toBeGreaterThan(3)
+    for (const label of labels) {
+      expect(label).toHaveClass('text-sm')
+      expect(label).not.toHaveClass('text-[12.5px]')
+    }
+  })
+})
+
+describe('the Sandbox grids follow the rules’ pool order (final mock: "pool order is the rules’ order")', () => {
+  // Pool B (teen) listed before Pool A (general): the columns follow the pools, not the tables' own order.
+  const POOLED = {
+    ...SANDBOX_DOC,
+    programs: {
+      summer: { budget_pool: 'pool_a', equity_class: 'general', session_types: ['main'] },
+      weekend: { budget_pool: 'pool_b', equity_class: 'teen', session_types: ['main'] },
+    },
+    budget: {
+      total: '1000000',
+      pools: {
+        pool_b: { label: 'Pool B', share_pct: '10' },
+        pool_a: { label: 'Pool A', share_pct: '90' },
+      },
+    },
+  } as typeof SANDBOX_DOC
+  const bound = () =>
+    bindingOf({
+      recorded: POOLED,
+      source: POOLED,
+      edits: new Map(),
+      locked: [],
+      byRound: null,
+      canEdit: true,
+      type: vi.fn(),
+      release: vi.fn(),
+    })
+  const order = (root: HTMLElement) =>
+    within(root)
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent)
+      .filter((text) => /General|Teen/.test(text))
+      .map((text) => (text.includes('Teen') ? 'Teen' : 'General'))
+
+  it('orders the tier grid’s columns by pool', () => {
+    render(<SandboxTierCard binding={bound()} fitButton={null} fitAnswer={null} />)
+    expect([...new Set(order(screen.getByTestId('sandbox-grid')))]).toEqual(['Teen', 'General'])
+  })
+
+  it('orders the equity weights’ columns by pool', () => {
+    const { container } = render(<SandboxEquityCard binding={bound()} />)
+    expect(order(container)).toEqual(['Teen', 'General'])
   })
 })

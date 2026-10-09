@@ -2,12 +2,24 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 
 import type {
   ApiAidFieldChange,
+  ApiAidGroup,
   ApiAidRulesDocument,
   ApiAidRulesSection,
   ApiAidValidationIssue,
 } from '../../../../types/api-types'
 import { DefRef } from '../../kit/DefinitionNotes'
-import { CS_CARD, CS_SMALL, CS_TABLE_CARD, CS_TD_CARD, CS_TH_CARD } from '../../kit/csType'
+import { CS_CARD, CS_SMALL } from '../../kit/csType'
+import {
+  RG_TABLE,
+  RG_TD,
+  RG_TD_GROUP_NUM,
+  RG_TD_NUM,
+  RG_TH,
+  RG_TH_GROUP_MID,
+  RG_TH_GROUP_NUM,
+  RG_TH_NUM,
+  RG_WRAP,
+} from './gridStyles'
 import { GRID_PARTS, GRID_TITLES } from './rulesLayout'
 import {
   changeWords,
@@ -40,9 +52,9 @@ export type GridPart = (typeof GRID_PARTS)[number]
 type Tables = Readonly<Record<string, TableShape>>
 type Programs = Readonly<Record<string, { readonly equity_class?: string | null }>>
 
-const TH_NUM = CS_TH_CARD.replace('text-left', 'text-right')
-const TH_MID = CS_TH_CARD.replace('text-left', 'text-center')
-const TD_NUM = `${CS_TD_CARD} text-right tabular-nums`
+const TH_NUM = RG_TH_NUM
+const TH_MID = RG_TH_GROUP_MID
+const TD_NUM = RG_TD_NUM
 
 /** The card's cell ⚠ click, for the grid an editor draws inside it: it opens the card's one list (coordinator B2). */
 const GridWarnContext = createContext<((table: string) => void) | null>(null)
@@ -56,7 +68,9 @@ function GridCellView({
   note,
   onNote,
   control,
+  groupStart = false,
 }: {
+  groupStart?: boolean
   cell: { value: string | null; inherited: boolean }
   warned: boolean
   onWarn: () => void
@@ -69,7 +83,12 @@ function GridCellView({
   return (
     <td
       data-inherited={cell.inherited ? '' : undefined}
-      className={cell.inherited ? `${TD_NUM} text-muted-foreground` : TD_NUM}
+      className={[
+        groupStart ? RG_TD_GROUP_NUM : TD_NUM,
+        cell.inherited ? 'text-muted-foreground' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {control ?? (cell.value === null ? '—' : `${cell.value}%`)}
       {warned && (
@@ -157,67 +176,74 @@ export function TierGridTable({
   }
   return (
     <>
-      <table data-testid="tier-grid" className={`${CS_TABLE_CARD} mt-2`}>
-        <thead>
-          <tr>
-            <th rowSpan={2} className={CS_TH_CARD}>
-              Tier
-              <DefRef n={2} />
-            </th>
-            <th rowSpan={2} className={TH_NUM}>
-              Counted income
-            </th>
-            <th colSpan={r1.length} className={TH_MID}>
-              Round 1 % of the cost
-            </th>
-            <th colSpan={r2.length} className={TH_MID}>
-              Round 1 + 2 cap, % of the cost
-            </th>
-          </tr>
-          <tr>
-            {[...r1, ...r2].map((col, i) => (
-              <th key={`${String(i)}:${col.table}`} className={TH_NUM}>
-                {col.label}
-                <span className={`${CS_SMALL} block font-normal`}>{col.caption}</span>
+      <div className={RG_WRAP}>
+        <table data-testid="tier-grid" className={RG_TABLE}>
+          <thead>
+            <tr>
+              <th rowSpan={2} className={RG_TH}>
+                Tier
+                <DefRef n={2} />
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {bands.map((band, i) => {
-            const tier = i + 1
-            return (
-              <tr key={tier} data-tier={tier}>
-                <td className={`${CS_TD_CARD} font-bold`}>{tier}</td>
-                <td className={TD_NUM}>{rangeWords(band)}</td>
-                {r1.map((col) => (
-                  <GridCellView
-                    key={`r1:${col.table}`}
-                    cell={gridCell(awardTables, col.table, tier, 'r1_pct')}
-                    warned={warned.has(`${col.table}:${String(tier)}`)}
-                    onWarn={() => warn(col.table)}
-                    note={noted.get(`${col.table}:${String(tier)}`)}
-                    onNote={() => {
-                      const key = `${col.table}:${String(tier)}`
-                      setFootnote(footnote === key ? null : key)
-                    }}
-                    control={boxFor('award_tables', awardTables, col.table, tier, 'r1_pct')}
-                  />
-                ))}
-                {r2.map((col) => (
-                  <GridCellView
-                    key={`r2:${col.table}`}
-                    cell={gridCell(appealTables, col.table, tier, 'total_pct')}
-                    warned={false}
-                    onWarn={() => undefined}
-                    control={boxFor('round2', appealTables, col.table, tier, 'total_pct')}
-                  />
-                ))}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+              <th rowSpan={2} className={TH_NUM}>
+                Counted income
+              </th>
+              <th colSpan={r1.length} className={TH_MID}>
+                Round 1 % of the cost
+              </th>
+              <th colSpan={r2.length} className={TH_MID}>
+                Round 1 + 2 cap, % of the cost
+              </th>
+            </tr>
+            <tr>
+              {[...r1, ...r2].map((col, i) => (
+                <th
+                  key={`${String(i)}:${col.table}`}
+                  className={i === 0 || i === r1.length ? RG_TH_GROUP_NUM : TH_NUM}
+                >
+                  {col.label}
+                  <span className={`${CS_SMALL} block font-normal`}>{col.caption}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bands.map((band, i) => {
+              const tier = i + 1
+              return (
+                <tr key={tier} data-tier={tier}>
+                  <td className={`${RG_TD} font-bold`}>{tier}</td>
+                  <td className={TD_NUM}>{rangeWords(band)}</td>
+                  {r1.map((col, c) => (
+                    <GridCellView
+                      key={`r1:${col.table}`}
+                      groupStart={c === 0}
+                      cell={gridCell(awardTables, col.table, tier, 'r1_pct')}
+                      warned={warned.has(`${col.table}:${String(tier)}`)}
+                      onWarn={() => warn(col.table)}
+                      note={noted.get(`${col.table}:${String(tier)}`)}
+                      onNote={() => {
+                        const key = `${col.table}:${String(tier)}`
+                        setFootnote(footnote === key ? null : key)
+                      }}
+                      control={boxFor('award_tables', awardTables, col.table, tier, 'r1_pct')}
+                    />
+                  ))}
+                  {r2.map((col, c) => (
+                    <GridCellView
+                      key={`r2:${col.table}`}
+                      groupStart={c === 0}
+                      cell={gridCell(appealTables, col.table, tier, 'total_pct')}
+                      warned={false}
+                      onWarn={() => undefined}
+                      control={boxFor('round2', appealTables, col.table, tier, 'total_pct')}
+                    />
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       {footnoteWords !== undefined && (
         <p data-testid="grid-note" className={`${CS_SMALL} mt-1`}>
           {footnoteWords}
@@ -244,6 +270,7 @@ export function TierGridCard({
   onEdit,
   editing,
   label,
+  groups = [],
 }: {
   /** The shown document: the draft's, or the version in effect's. */
   document: ApiAidRulesDocument
@@ -260,6 +287,8 @@ export function TierGridCard({
   editing: { part: GridPart; node: ReactNode } | null
   /** The tables' column heads (`groupWords`); `keyLabel` when absent. */
   label?: (key: string) => string
+  /** The rules' pools in their order: the grid's columns follow it. */
+  groups?: readonly ApiAidGroup[]
 }) {
   // The award table head's one list: every issue (table null, the chip) or one table's cell warnings (its ⚠).
   const [listing, setListing] = useState<{ table: string | null } | null>(null)
@@ -271,7 +300,7 @@ export function TierGridCard({
       : tierLineWords(bandsIn(approved.tiers), approved.tiers.income_ceiling ?? null)
   const awardTables = document.award_tables as Tables
   const appealTables = (document.round2.tables ?? {}) as Tables
-  const classes = gridClasses(document.programs as Programs, awardTables)
+  const classes = gridClasses(document.programs as Programs, awardTables, groups)
   const roundOne = issuesBySection.award_tables ?? []
   const warned = warnedCells(roundOne)
   const noted = notedCells(roundOne)

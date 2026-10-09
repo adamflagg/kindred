@@ -18,8 +18,8 @@ import {
   CS_LINK,
   CS_PANEL,
   CS_PILL,
-  CS_SMALL,
 } from '../kit/csType'
+import { EditorActions } from '../kit/EditorLayout'
 import { approvedNotice } from './rules/approveWords'
 import { ApproveForm } from './rules/ApproveForm'
 import { draftSections } from './rules/rulesDraft'
@@ -142,12 +142,19 @@ export function SeasonChromeProvider({
   return <SeasonChromeContext.Provider value={value}>{children}</SeasonChromeContext.Provider>
 }
 
-/** "Approve…" on the tab bar's right (spec §4: cs-btn2). Hidden while the panel is open or an editor is. */
+/** "Approve…" on the tab bar's right (spec §4: cs-btn2). Hidden while the panel is open; greyed while an editor is. */
 export function ApproveButton() {
   const { canApprove, approving, editing, openApprove } = useSeasonChrome()
-  if (!canApprove || approving || editing) return null
+  if (!canApprove || approving) return null
+  // An open editor holds Approve…, saying why (mock hold()): it would approve the draft without the typing under it.
   return (
-    <button type="button" className={CS_BTN2} onClick={openApprove}>
+    <button
+      type="button"
+      className={CS_BTN2}
+      disabled={editing}
+      title={editing ? 'Save or cancel the edit first.' : undefined}
+      onClick={openApprove}
+    >
       Approve…
     </button>
   )
@@ -231,14 +238,7 @@ function UnlockForm() {
         />
         {missing && <span className={CS_AMBER_NOTE}>A reason is required</span>}
       </div>
-      <p className={CS_SMALL}>
-        If you unlock: Edit… and Approve… come back for this visit. Every save and approval is
-        logged with this reason.
-      </p>
-      <div className="flex gap-2">
-        <button type="button" className={CS_BTN2} onClick={closeUnlock}>
-          Back
-        </button>
+      <EditorActions reason="If you unlock: Edit… and Approve… come back for this visit. Every save and approval is logged with this reason.">
         <button
           type="button"
           className={CS_BTN}
@@ -246,7 +246,10 @@ function UnlockForm() {
         >
           Unlock
         </button>
-      </div>
+        <button type="button" className={CS_BTN2} onClick={closeUnlock}>
+          Back
+        </button>
+      </EditorActions>
     </div>
   )
 }
@@ -276,12 +279,9 @@ export function SeasonNotice() {
   return (
     <p className={`${CS_PANEL} whitespace-pre-line`} data-testid="rules-notice">
       {notice}{' '}
-      {/* cs-link inherits its size: the small span makes Dismiss 12px without a second size on the button. */}
-      <span className={CS_SMALL}>
-        <button type="button" className={CS_LINK} onClick={() => setNotice(null)}>
-          Dismiss
-        </button>
-      </span>
+      <button type="button" className={CS_LINK} onClick={() => setNotice(null)}>
+        Dismiss
+      </button>
     </p>
   )
 }

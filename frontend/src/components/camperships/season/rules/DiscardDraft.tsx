@@ -1,35 +1,40 @@
-import { useState } from 'react'
-
 import { useAidDiscardRulesDraft } from '../../../../hooks/camperships/useAidRulesWrites'
-import { CS_BTN2, CS_SMALL } from '../../kit/csType'
+import { CS_BTN2 } from '../../kit/csType'
 import { useSeasonChrome } from '../seasonChrome'
 
 /**
- * Discard draft (owner 2026-10-08), beside the draft / in-effect switch: asks once more, then throws the draft away
- * and the tab is back on the version in effect. A refusal goes to the Season notice line, in the server's words.
+ * Discard Draft… (owner 2026-10-08), beside the draft / in-effect switch. Clicking it asks once more, INLINE on the
+ * chapter bar (final mock P.discardAsk): the lead line carries the question ("Discard v4? Changes since v3 are lost.")
+ * and this draws its Discard and Keep buttons. The tab owns `asking`, so the bar can step Open All / Close All aside
+ * while the question is open. A refusal goes to the Season notice line, in the server's words.
  */
 export function DiscardDraft({
   draftVersion,
   approvedVersion,
+  asking,
+  onAsk,
 }: {
   draftVersion: number
   approvedVersion: number
+  asking: boolean
+  onAsk: (asking: boolean) => void
 }) {
   const discard = useAidDiscardRulesDraft()
   const { setNotice } = useSeasonChrome()
-  const [asking, setAsking] = useState(false)
   if (!asking) {
     return (
-      <button type="button" className={CS_BTN2} onClick={() => setAsking(true)}>
-        Discard draft
+      <button
+        type="button"
+        className={CS_BTN2}
+        title={`Throws draft v${String(draftVersion)} away; the tab goes back to v${String(approvedVersion)}, the version in effect`}
+        onClick={() => onAsk(true)}
+      >
+        Discard Draft…
       </button>
     )
   }
   return (
-    <span className="flex shrink-0 items-center gap-2">
-      <span className={CS_SMALL}>
-        {`Discard draft v${String(draftVersion)}? Its changes since v${String(approvedVersion)} are lost.`}
-      </span>
+    <>
       <button
         type="button"
         className={CS_BTN2}
@@ -39,9 +44,9 @@ export function DiscardDraft({
         onClick={() => {
           discard
             .mutateAsync({ base_version: draftVersion })
-            .then(() => setAsking(false))
+            .then(() => onAsk(false))
             .catch((caught: unknown) => {
-              setAsking(false)
+              onAsk(false)
               setNotice(caught instanceof Error ? caught.message : String(caught))
             })
         }}
@@ -52,10 +57,10 @@ export function DiscardDraft({
         type="button"
         className={CS_BTN2}
         disabled={discard.isPending}
-        onClick={() => setAsking(false)}
+        onClick={() => onAsk(false)}
       >
         Keep
       </button>
-    </span>
+    </>
   )
 }

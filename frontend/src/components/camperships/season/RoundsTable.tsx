@@ -5,6 +5,7 @@ import { DefRef } from '../kit/DefinitionNotes'
 import type { AidView } from '../kit/asOf'
 import {
   CS_AMBER_NOTE,
+  CS_LINK_CELL,
   CS_META,
   CS_TABLE_CARD,
   CS_TD_CARD,
@@ -56,7 +57,7 @@ export function RoundsTable({
                     {part.href === null ? (
                       part.words
                     ) : (
-                      <Link to={part.href} className="text-primary font-medium hover:underline">
+                      <Link to={part.href} className={CS_LINK_CELL}>
                         {part.words}
                       </Link>
                     )}

@@ -199,3 +199,34 @@ it('equity: Show details opens the read-only Reads column, and Hide details clos
   await userEvent.click(screen.getByRole('button', { name: 'Hide details' }))
   expect(within(table).queryByRole('columnheader', { name: /^Reads/ })).toBeNull()
 })
+
+// Design language §19 (owner item 13): every link carries one size, and no link is composed with a second.
+describe('links carry a size (§19)', () => {
+  it('sets Show details as a 12px link, not a muted small span dressed as a link', () => {
+    card({ section: 'equity', content: EQUITY_CONTENT, names: { ...names, section: 'equity' } })
+    const link = screen.getByRole('button', { name: 'Show details' })
+    expect(link).toHaveClass('text-primary', 'font-medium', 'text-xs')
+    expect(link).not.toHaveClass('text-muted-foreground')
+  })
+
+  it('sets "+n more" as a 12px link', () => {
+    const limits = ['registrar_limit', 'a', 'b', 'c', 'd']
+    card({
+      approvedVersion: 3,
+      changes: limits.map((key) => ({ path: [key], kind: 'changed', before: '300', after: '400' })),
+    })
+    expect(screen.getByRole('button', { name: '+2 more' })).toHaveClass('text-primary', 'text-xs')
+  })
+})
+
+describe('the Quality checks line (final mock: six notes)', () => {
+  it('says "always hold" on its own line, with no footnote mark', () => {
+    card({
+      section: 'quality_checks',
+      content: { checks: {} },
+      names: { ...names, section: 'quality_checks' },
+    })
+    const lead = screen.getByText(/Award above cost and Household income conflict always hold/)
+    expect(lead.querySelector('sup')).toBeNull()
+  })
+})

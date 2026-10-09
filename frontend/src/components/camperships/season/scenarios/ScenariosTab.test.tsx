@@ -110,6 +110,16 @@ vi.mock('../../../../hooks/usePermissions', () => ({
 }))
 
 let location = ''
+// Owner ruling 10-09 ("the stylized WHITE picker for every select"): Price and Start from are the kit picker.
+async function pickPrice(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: /^Price:/ }))
+  await userEvent.click(screen.getByRole('option', { name: label }))
+}
+
+async function openStart() {
+  await userEvent.click(screen.getByRole('button', { name: /^Start from:/ }))
+}
+
 function Where() {
   location = useLocation().search
   return null
@@ -171,20 +181,17 @@ describe('the control line (§S5 A)', () => {
 
   it('prices both the sandbox and Compare on Price ▾ (N6)', async () => {
     renderAt('?panel=compare')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    await pickPrice('through the Round 1 deadline')
     expect(location).toContain('through=deadline')
     expect(compareCalls.at(-1)?.query.requestSet).toEqual({ kind: 'deadline' })
     await userEvent.click(screen.getByRole('button', { name: 'Sandbox' }))
     expect(pricingCalls.at(-1)?.requestSet).toEqual({ kind: 'deadline' })
   })
 
-  it('offers the rules draft in Start from only while it differs (§S15 item 4)', () => {
+  it('offers the rules draft in Start from only while it differs (§S15 item 4)', async () => {
     renderAt('', { pricing_version: 4, rules_version: 5, rules_draft_version: 5 })
-    expect(
-      within(screen.getByRole('combobox', { name: 'Start from' })).getByRole('option', {
-        name: 'Rules draft · v5',
-      })
-    ).toBeInTheDocument()
+    await openStart()
+    expect(screen.getByRole('option', { name: 'Rules draft · v5' })).toBeInTheDocument()
   })
 
   it('says on the Start from line what an option was built on, offers no Make … the Rules Draft, and Compare still opens (F6; A11)', async () => {
@@ -193,7 +200,7 @@ describe('the control line (§S5 A)', () => {
       draft: scenarioDraft({ built_on_version: 4 }),
       options: OPTIONS.map((o) => (o.code === 'B' ? { ...o, promotable: false } : o)),
     })
-    const strip = screen.getByRole('combobox', { name: 'Start from' }).parentElement as HTMLElement
+    const strip = screen.getByTestId('start-strip')
     expect(within(strip).getByText('built on v4, v5 is in effect now')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /the Rules Draft…$/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^Compare/ }))
@@ -251,16 +258,20 @@ describe('the control line (§S5 A)', () => {
     expect(screen.getByText(work.error)).toBeInTheDocument()
   })
 
-  it('keeps Start from open after a refused load, so the way back is one choice away (disagreement 16)', () => {
+  it('keeps Start from open after a refused load, so the way back is one choice away (disagreement 16)', async () => {
     // A load of last season's rules is still refused when they don't fit; the tab stays open on the draft, and the
     // rules in effect are the first entry of Start from.
     work.error =
       "2026's criteria don't fit 2027's rules in effect (programs.teen.r1_table: no such table): start from the rules and edit instead"
     renderAt()
     expect(screen.getByText(work.error)).toBeInTheDocument()
-    const start = screen.getByRole('combobox', { name: 'Start from' })
+    const start = screen.getByRole('button', { name: /^Start from:/ })
     expect(start).toBeEnabled()
-    expect(within(start).getByRole('option', { name: 'Rules in effect · v3' })).toBeEnabled()
+    await openStart()
+    expect(screen.getByRole('option', { name: 'Rules in effect · v3' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
   })
 })
 
@@ -365,7 +376,7 @@ describe('Compare (§S5 H) and the URL (§S5 L)', () => {
   it('reads an old trail link as the sandbox and drops its params on the next write', async () => {
     renderAt('?panel=trail&trail_page=2')
     expect(screen.getByTestId('spend-strip')).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    await pickPrice('through the Round 1 deadline')
     expect(location).not.toContain('trail_page')
     expect(location).not.toContain('panel=trail')
   })
@@ -447,7 +458,7 @@ describe('a refused Price ▾ read (CodeRabbit on #3047; lead #29 ruling 3)', ()
       isPlaceholderData: false,
       isFetching: false,
     }
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    await pickPrice('through the Round 1 deadline')
     await userEvent.click(screen.getByRole('button', { name: 'By tier ▸' }))
     expect(
       within(screen.getByTestId('tier-popover')).getByText('By tier · 420 applications held')

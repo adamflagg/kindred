@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { AidPicker } from '../kit/AidPicker'
 import type { ApiAidHistoryKind, ApiAidHistoryKindCount } from '../../../types/api-types'
 import {
   CS_CHIP,
@@ -203,19 +204,17 @@ export function HistoryFilters({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className={`${CS_FLABEL} inline-flex items-center gap-2`}>
           <span>Person</span>
-          <select
-            aria-label="Person"
+          {/* Owner ruling 10-09: the white kit picker for every select. */}
+          <AidPicker
+            label="Person"
             value={filters.actor ?? ''}
-            onChange={(event) => onChange('actor', orNull(event.target.value))}
-            className={`${CS_SELECT} max-w-[220px]`}
-          >
-            <option value="">Anyone</option>
-            {people.map((actor) => (
-              <option key={actor} value={actor}>
-                {actorWords(actor)}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: 'Anyone' },
+              ...people.map((actor) => ({ value: actor, label: actorWords(actor) })),
+            ]}
+            onChange={(actor) => onChange('actor', orNull(actor))}
+            className="max-w-[220px]"
+          />
         </label>
         <DayBox label="From" value={filters.since} onDay={(day) => onChange('since', day)} />
         <DayBox label="Through" value={filters.until} onDay={(day) => onChange('until', day)} />

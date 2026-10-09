@@ -15,7 +15,7 @@ describe('the notes (§S5 K)', () => {
     expect(SCENARIO_PAGE_NOTES.slice(1, 4).map((n) => n.text)).toEqual([
       rules(2),
       rules(3),
-      rules(7),
+      rules(6),
     ])
   })
 

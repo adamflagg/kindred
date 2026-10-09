@@ -10,7 +10,8 @@ import { useYear } from '../../../../hooks/useCurrentYear'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import { Modal } from '../../../ui/Modal'
 import { aidHref } from '../../kit/asOf'
-import { CS_AMBER_NOTE, CS_BODY, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
+import { EditorActions } from '../../kit/EditorLayout'
+import { CS_AMBER_NOTE, CS_BODY, CS_BTN, CS_BTN2, CS_LINK, CS_SMALL } from '../../kit/csType'
 import { PILL } from '../../kit/kitStyles'
 import { SECTION_TITLES, changeWords, type RulesVocabulary } from '../rules/rulesModel'
 import { settingWords } from './compareModel'
@@ -94,13 +95,14 @@ export function MakeRulesDraftDialog({
       onClose={close}
       closeDisabled={promote.isPending}
       title={`Make ${code ?? ''} the rules draft`}
-      size="lg"
+      size="xl"
       footer={
         done === null ? (
-          <div className="flex justify-end gap-2">
-            <button type="button" className={CS_BTN2} disabled={promote.isPending} onClick={close}>
-              Cancel
-            </button>
+          <EditorActions
+            {...(data !== undefined && !allConfirmed(data, acks)
+              ? { reason: 'Tick each warning to go on' }
+              : {})}
+          >
             <button
               type="button"
               className={CS_BTN}
@@ -114,20 +116,23 @@ export function MakeRulesDraftDialog({
             >
               {promote.isPending ? 'Making It the Rules Draft…' : 'Make It the Rules Draft'}
             </button>
-          </div>
+            <button type="button" className={CS_BTN2} disabled={promote.isPending} onClick={close}>
+              Cancel
+            </button>
+          </EditorActions>
         ) : (
-          <div className="flex justify-end">
+          <EditorActions>
             <button type="button" className={CS_BTN} onClick={close}>
               Done
             </button>
-          </div>
+          </EditorActions>
         )
       }
     >
       {done !== null ? (
         <p className={CS_BODY} data-testid="promotion-done">
           {`${code ?? ''}'s changes are in the rules draft, v${String(done)}. Each changed section now needs approval: `}
-          <Link to={rulesHref} className="text-primary hover:underline">
+          <Link to={rulesHref} className={CS_LINK}>
             Rules ›
           </Link>
           , or Approve… on the tab bar.

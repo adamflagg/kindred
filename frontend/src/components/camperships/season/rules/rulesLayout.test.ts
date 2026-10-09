@@ -113,18 +113,30 @@ describe('a folded chapter (spec §6.2 C; disagreement 8)', () => {
   })
 })
 
-describe('footnotes (spec §6.2 H; rules-v3 Fix 1)', () => {
-  it('numbers the seven page notes in the mock words', () => {
-    expect(RULES_FOOTNOTES.map((n) => n.n)).toEqual([1, 2, 3, 4, 5, 6, 7])
+describe('footnotes (spec §6.2 H; final-v2 season-rules.html: six notes, §12)', () => {
+  it('numbers six page notes in the approved mock words, the term bold', () => {
+    expect(RULES_FOOTNOTES.map((n) => n.n)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(RULES_FOOTNOTES.map((n) => n.term)).toEqual([
+      'Locked',
+      'Tier',
+      'Income ceiling',
+      'Read-only',
+      'Named award kinds',
+      'Equity class',
+    ])
     expect(RULES_FOOTNOTES[1]?.text).toBe(
-      'Tier: tier 1 is the lowest income and gets the most aid; equity criteria can move a family toward it, never past tier 1.'
+      'Tier: tier 1 is the lowest income and gets the most aid. Equity criteria move a family toward it, never past tier 1.'
     )
-    expect(RULES_FOOTNOTES[4]?.text).toContain(
-      'full cost after camp aid pays what the camp award and outside grants leave of the cost'
+    expect(RULES_FOOTNOTES[4]?.text).toBe(
+      "Named award kinds: Full cost = the cost less grants, plus the extra amount · Full cost after camp aid = what the camp award and grants leave · Fixed top-up = adds its amount · Staff type the amount. One that doesn't count toward the budget sits below the line."
     )
     // Privacy (Global Constraints): the class note is generic, and it names no program or class.
-    expect(RULES_FOOTNOTES[6]?.text).toBe(
-      "Equity class: picks both the program's row of equity weights and its award table (Round 1 % and appeal caps)."
+    expect(RULES_FOOTNOTES[5]?.text).toBe(
+      "Equity class: picks a program's equity weights and its award table (Round 1 % and appeal caps)."
     )
+  })
+
+  it('drops the "always hold" note: Quality checks says it on its own line', () => {
+    expect(RULES_FOOTNOTES.some((n) => n.text.includes('always hold'))).toBe(false)
   })
 })

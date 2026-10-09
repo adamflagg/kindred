@@ -19,6 +19,8 @@ interface PickerBase<V extends string | number> {
   readonly size?: 'control' | 'field'
   readonly disabled?: boolean
   readonly className?: string
+  /** What the button reads while `value` matches no option (an "Add a …" picker that holds nothing). */
+  readonly placeholder?: string
 }
 
 const CHECK = 'text-primary absolute left-[7px]'
@@ -85,8 +87,9 @@ export function AidPicker<V extends string | number>({
   size,
   disabled,
   className,
+  placeholder,
 }: PickerBase<V> & { readonly value: V; readonly onChange: (value: V) => void }) {
-  const shown = options.find((o) => o.value === value)?.label ?? String(value)
+  const shown = options.find((o) => o.value === value)?.label ?? placeholder ?? String(value)
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled ?? false}>
       <div className={`relative inline-flex ${className ?? ''}`}>

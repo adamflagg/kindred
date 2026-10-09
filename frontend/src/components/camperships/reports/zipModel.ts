@@ -109,9 +109,14 @@ export function zipCsvName(view: AidView, zip: ApiAidZip, table: string): string
   })
 }
 
-/** Why there's no aid table yet, in plain words (the table's own empty row): the server's reason carries an internal id. */
+/**
+ * Why there's no aid table yet, in plain words (the table's own empty row): the server's reason carries an internal id.
+ * Before 2027 the mock's words; a 2027-or-later season (rules with no groups) waits on its own decisions (ruling 10-09).
+ */
 export function noAidWords(zip: ApiAidZip): string | null {
-  return zip.with_aid === null
-    ? `No aid table for ${String(zip.year)}: it starts with 2027, the first season decided in the dashboard.`
-    : null
+  if (zip.with_aid !== null) return null
+  const year = String(zip.year)
+  return zip.year < 2027
+    ? `No aid table for ${year}: it starts with 2027, the first season decided in the dashboard.`
+    : `No aid table for ${year} yet: it starts with that season's decisions.`
 }

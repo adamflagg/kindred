@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 
-import { CS_AMBER_NOTE } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_LINK_SM } from '../../kit/csType'
 
 /** Lines shown before "+n more": a whole re-priced season ran on as one paragraph across the card. */
 const SHOWN = 3
@@ -25,7 +25,7 @@ export function ChangedSince({
         ))}
       </ul>
       {lines.length > SHOWN && (
-        <button type="button" className="pl-3 font-semibold" onClick={() => setAll(!all)}>
+        <button type="button" className={`${CS_LINK_SM} ml-3`} onClick={() => setAll(!all)}>
           {all ? 'Show fewer' : `+${String(lines.length - SHOWN)} more`}
         </button>
       )}

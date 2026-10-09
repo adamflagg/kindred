@@ -995,9 +995,14 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     expect(
       await screen.findByText(/^Editing Programs and costs in the rules draft \(v\d+\)$/)
     ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    // Mock hold(): Approve… stays, disabled, saying why (it was hidden before the final mock).
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve…' })).toHaveAttribute(
+      'title',
+      'Save or cancel the edit first.'
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve…' })).toBeEnabled()
   })
 
   it('disables every Edit… while the Approve panel is open', async () => {
@@ -1010,14 +1015,14 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
   // Slice 2: Approve… showed only when nothing was being edited, so it could never approve the old copy of an open
   // card's typing. The tab tells the chrome while any card editor (the tiers editor included) is open.
   it.each(['tiers'])(
-    'hides Approve… while the %s editor is open and brings it back on Cancel',
+    'disables Approve… while the %s editor is open and enables it again on Cancel',
     async (section) => {
       renderAt(`/aid/season/rules?open=1,5&section=${section}`)
       expect(await screen.findByRole('button', { name: 'Approve…' })).toBeInTheDocument()
       await editCard(section)
-      expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Approve…' })).toBeDisabled()
       await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-      expect(screen.getByRole('button', { name: 'Approve…' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Approve…' })).toBeEnabled()
     }
   )
 })
@@ -1234,24 +1239,65 @@ describe('the tiers editor and the grid editors in the tier grid card (spec §6.
   })
 })
 
+describe('the section editor footer (mock editFoot)', () => {
+  it('puts Save, Cancel and the muted "Esc cancels · saving puts the change in draft vN" on one row', async () => {
+    renderAt('/aid/season/rules?open=2&section=awards')
+    await editCard('awards')
+    const save = await screen.findByRole('button', { name: 'Save' })
+    const row = save.parentElement as HTMLElement
+    expect(row).toHaveClass('flex-nowrap')
+    expect(within(row).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(
+      within(row).getByText(/^Esc cancels · saving puts the change in draft v\d+$/)
+    ).toBeInTheDocument()
+  })
+
+  it('names the draft the save lands in: v4 over v3 in effect, and v5 when v4 is itself in effect (frozenFact)', async () => {
+    const view = renderAt('/aid/season/rules?open=2&section=awards')
+    await editCard('awards')
+    expect(
+      await screen.findByText('Esc cancels · saving puts the change in draft v4')
+    ).toBeInTheDocument()
+    view.unmount()
+    draft = { data: { ...rulesDraft(), approved_version: 4 }, isLoading: false, error: null }
+    server = [{ ...rulesDraft(), approved_version: 4 }]
+    renderAt('/aid/season/rules?open=2&section=awards')
+    await editCard('awards')
+    expect(
+      await screen.findByText('Esc cancels · saving puts the change in draft v5')
+    ).toBeInTheDocument()
+  })
+})
+
 describe('discarding the rules draft (owner 2026-10-08)', () => {
   const bar = () => screen.getByTestId('chapter-bar')
 
-  it('offers Discard draft beside the switch, and asks once more before sending the version shown', async () => {
+  it('offers Discard Draft… beside the switch, and asks once more, inline on the bar, before sending the version shown', async () => {
     renderAt('/aid/season/rules')
-    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard draft' }))
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
     expect(calls).toHaveLength(0)
-    expect(screen.getByText('Discard draft v4? Its changes since v3 are lost.')).toBeInTheDocument()
+    expect(screen.getByText('Discard v4? Changes since v3 are lost.')).toBeInTheDocument()
+    // The question reads whole on the one row: Open All / Close All step aside meanwhile (mock P.discardAsk).
+    expect(within(bar()).queryByRole('button', { name: 'Open All' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
     expect(calls).toEqual([{ hook: 'discard', vars: { base_version: 4 } }])
   })
 
+  it('titles Discard Draft… with what it does', () => {
+    renderAt('/aid/season/rules')
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toHaveAttribute(
+      'title',
+      'Throws draft v4 away; the tab goes back to v3, the version in effect'
+    )
+  })
+
   it('Keep closes the question and sends nothing', async () => {
     renderAt('/aid/season/rules')
-    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard draft' }))
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
     await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
-    expect(screen.queryByText(/Its changes since v3 are lost/)).toBeNull()
-    expect(within(bar()).getByRole('button', { name: 'Discard draft' })).toBeInTheDocument()
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(within(bar()).getByRole('button', { name: 'Open All' })).toBeInTheDocument()
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
     expect(calls).toHaveLength(0)
   })
 
@@ -1263,21 +1309,47 @@ describe('discarding the rules draft (owner 2026-10-08)', () => {
         'The rules draft holds an approval made since it was started (Appeal caps), so it can’t be discarded',
     }
     renderAt('/aid/season/rules')
-    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard draft' }))
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
     await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
     expect(
       await screen.findByText(/holds an approval made since it was started \(Appeal caps\)/)
     ).toBeInTheDocument()
   })
 
+  // Mock: show, edit and approve each set P.discardAsk = false; the question never outlives its button.
+  // CodeRabbit #3116: the question is about one version; a refetch that brings v5 must not let Discard send v5.
+  it('drops the question when the draft moves to a new version under it', async () => {
+    const view = renderAt('/aid/season/rules')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
+    expect(screen.getByText('Discard v4? Changes since v3 are lost.')).toBeInTheDocument()
+    draft = { data: movedDraft(), isLoading: false, error: null }
+    view.rerender(
+      <MemoryRouter initialEntries={['/aid/season/rules']}>
+        <Page />
+      </MemoryRouter>
+    )
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull()
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
+  })
+
+  it('drops the question when a card opens for editing, so Cancel does not bring it back', async () => {
+    renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(within(bar()).getByRole('button', { name: 'Discard Draft…' }))
+    await editCard('awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText(/Changes since v3 are lost/)).toBeNull()
+    expect(within(bar()).getByRole('button', { name: 'Discard Draft…' })).toBeInTheDocument()
+  })
+
   it('offers nothing when the draft is the version in effect, or while a card is edited', async () => {
     draft = { data: { ...rulesDraft(), approved_version: 4 }, isLoading: false, error: null }
     const view = renderAt('/aid/season/rules')
-    expect(within(bar()).queryByRole('button', { name: 'Discard draft' })).toBeNull()
+    expect(within(bar()).queryByRole('button', { name: 'Discard Draft…' })).toBeNull()
     view.unmount()
     draft = { data: rulesDraft(), isLoading: false, error: null }
     renderAt('/aid/season/rules?section=awards')
     await editCard('awards')
-    expect(within(bar()).queryByRole('button', { name: 'Discard draft' })).toBeNull()
+    expect(within(bar()).queryByRole('button', { name: 'Discard Draft…' })).toBeNull()
   })
 })

@@ -20,6 +20,7 @@ import {
   CS_STRIP,
 } from '../../kit/csType'
 import type { LoadFrom } from '../../../../hooks/camperships/useAidScenarioDraft'
+import { AidPicker } from '../../kit/AidPicker'
 import { campToday } from '../../kit/dates'
 import { guardWords, PRICE_CHOICES, type StartEntry } from './controlsModel'
 import { KeepPopover } from './KeepPopover'
@@ -159,12 +160,11 @@ export function ScenarioControls(props: {
       {props.nothingNew !== null && <span className={CS_SMALL}>{props.nothingNew}</span>}
       <label className={`${CS_SMALL} inline-flex items-center gap-1.5`}>
         Price
-        <select
-          aria-label="Price"
-          className={CS_SELECT_CTL}
+        <AidPicker
+          label="Price"
           value={priceValue}
-          onChange={(event) => {
-            const kind = event.target.value
+          options={PRICE_CHOICES}
+          onChange={(kind) => {
             props.onPrice(
               kind === 'deadline'
                 ? { kind: 'deadline' }
@@ -173,13 +173,7 @@ export function ScenarioControls(props: {
                   : { kind: 'all' }
             )
           }}
-        >
-          {PRICE_CHOICES.map((choice) => (
-            <option key={choice.value} value={choice.value}>
-              {choice.label}
-            </option>
-          ))}
-        </select>
+        />
         {props.price.kind === 'date' && (
           <input
             type="date"
@@ -193,29 +187,27 @@ export function ScenarioControls(props: {
           />
         )}
       </label>
-      <div ref={groupRef} className={`${CS_STRIP} relative flex-wrap whitespace-normal`}>
+      <div
+        ref={groupRef}
+        data-testid="start-strip"
+        className={`${CS_STRIP} relative flex-wrap whitespace-normal`}
+      >
         <span className={`${CS_META} font-bold`}>Start from</span>
-        <select
-          aria-label="Start from"
-          className={CS_SELECT_CTL}
+        <AidPicker
+          label="Start from"
           value={selected}
           disabled={!props.canEdit}
-          onChange={(event) => {
-            const entry = props.start.find((e) => e.value === event.target.value)
+          options={[
+            ...(props.loadedCode !== null
+              ? [{ value: '', label: `${props.loadedCode}, kept`, disabled: true }]
+              : []),
+            ...props.start,
+          ]}
+          onChange={(value) => {
+            const entry = props.start.find((e) => e.value === value)
             if (entry !== undefined) ask({ start: entry.value }, 'It')
           }}
-        >
-          {props.loadedCode !== null && (
-            <option value="" disabled>
-              {`${props.loadedCode}, kept`}
-            </option>
-          )}
-          {props.start.map((entry) => (
-            <option key={entry.value} value={entry.value} disabled={entry.disabled}>
-              {entry.label}
-            </option>
-          ))}
-        </select>
+        />
         {props.builtOn !== null && <span className={CS_SMALL}>{props.builtOn}</span>}
         <span className="bg-border h-5 w-px" />
         {props.chips.length === 0 && <span className={CS_SMALL}>nothing kept yet</span>}

@@ -182,19 +182,22 @@ describe('HistoryTab', () => {
     granted = FINANCE
     pages.data = only(FINANCE_PAGE)
     renderAt()
-    const person = screen.getByRole('combobox', { name: 'Person' })
-    expect(
-      within(person)
-        .getAllByRole('option')
-        .map((o) => o.textContent)
-    ).toEqual(['Anyone', FINANCE_EMAIL, REGISTRAR_EMAIL])
-    await userEvent.selectOptions(person, REGISTRAR_EMAIL)
+    // Owner ruling 10-09: Person is the kit's white picker (a listbox), not a native select.
+    await userEvent.click(screen.getByRole('button', { name: 'Person: Anyone' }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent.replace(/^✓/, ''))).toEqual([
+      'Anyone',
+      FINANCE_EMAIL,
+      REGISTRAR_EMAIL,
+    ])
+    await userEvent.click(screen.getByRole('option', { name: REGISTRAR_EMAIL }))
     expect(where().get('actor')).toBe(REGISTRAR_EMAIL)
     expect(lastQuery()).toMatchObject({ actor: REGISTRAR_EMAIL })
   })
 
-  it("keeps a pasted link's person in the list even when this page doesn't name them", () => {
+  it("keeps a pasted link's person in the list even when this page doesn't name them", async () => {
     renderAt('/aid/season/history?actor=someone%40example.com')
+    // The kit picker (owner ruling 10-09) lists its options once opened; its face reads the person.
+    await userEvent.click(screen.getByRole('button', { name: 'Person: someone@example.com' }))
     expect(screen.getByRole('option', { name: 'someone@example.com' })).toBeInTheDocument()
   })
 

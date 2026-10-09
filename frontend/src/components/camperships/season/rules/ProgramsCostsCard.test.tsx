@@ -262,7 +262,7 @@ function renderEditor(over: { cancelled?: ReadonlySet<number>; onDone?: () => vo
 }
 
 describe('ProgramsCostsEditor', () => {
-  it('lists every session, never pre-checks Not running, and offers only reachable groups', () => {
+  it('lists every session, never pre-checks Not running, and offers only reachable groups', async () => {
     mockSave()
     renderEditor({ cancelled: new Set([1000202]) })
     expect(
@@ -270,10 +270,16 @@ describe('ProgramsCostsEditor', () => {
         .getAllByRole('checkbox', { checked: true })
         .map((c) => c.closest('[data-testid]')?.getAttribute('data-testid'))
     ).toEqual(['pc-row-1000106']) // the stored list only: the lodging board's flag is a tag, not a check
-    const group = within(screen.getByTestId('pc-row-1000202')).getByRole('combobox')
+    // The white field-size picker, never a native select (§3, §24).
+    expect(document.querySelector('select')).toBeNull()
+    const group = within(screen.getByTestId('pc-row-1000202')).getByRole('button', {
+      name: /^Group/,
+    })
+    expect(group).toHaveClass('h-[30px]')
+    await userEvent.click(group)
     expect(
-      within(group).getByRole('option', { name: 'School (no program prices this kind here)' })
-    ).toBeDisabled()
+      screen.getByRole('option', { name: 'School (no program prices this kind here)' })
+    ).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('keeps Save off until something is typed, then sends only the section it changed, with its fingerprint', async () => {
@@ -304,10 +310,10 @@ describe('ProgramsCostsEditor', () => {
   it('sends both sections, with both fingerprints, when a group and a price change together', async () => {
     const send = mockSave()
     renderEditor()
-    await userEvent.selectOptions(
-      within(screen.getByTestId('pc-row-1000110')).getByRole('combobox'),
-      'Not open to aid'
+    await userEvent.click(
+      within(screen.getByTestId('pc-row-1000110')).getByRole('button', { name: /^Group/ })
     )
+    await userEvent.click(screen.getByRole('option', { name: 'Not open to aid' }))
     const tuition = within(screen.getByTestId('pc-row-1000101')).getByLabelText('Tuition')
     await userEvent.clear(tuition)
     await userEvent.type(tuition, '6895')
@@ -472,6 +478,16 @@ describe('ProgramsCostsEditor', () => {
     expect(within(screen.getByTestId('pc-row-1000102')).getByLabelText('Tuition')).toHaveValue(
       '6,695.50'
     )
+  })
+
+  it('puts Save, Cancel and the reason on one row (§24)', async () => {
+    mockSave()
+    renderEditor()
+    const save = screen.getByRole('button', { name: 'Save' })
+    const row = save.parentElement as HTMLElement
+    expect(row).toHaveClass('flex-nowrap')
+    expect(within(row).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(within(row).getByText('Esc cancels')).toBeInTheDocument()
   })
 
   it('Esc cancels', async () => {

@@ -11,6 +11,16 @@ type Props = ComponentProps<typeof ScenarioControls>
 /** Re-renders the last `setup` with some props changed, as a refetch would. */
 let again: (over: Partial<Props>) => void = () => undefined
 
+// Owner ruling 10-09 ("the stylized WHITE picker for every select"): Price and Start from are the kit picker.
+async function pickPrice(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: /^Price:/ }))
+  await userEvent.click(screen.getByRole('option', { name: label }))
+}
+
+async function openStart() {
+  await userEvent.click(screen.getByRole('button', { name: /^Start from:/ }))
+}
+
 function setup(over: Partial<Props> = {}) {
   const props: Props = {
     panel: 'sandbox',
@@ -68,13 +78,13 @@ describe('the control line (§S5 A)', () => {
 
   it('sets the request set from Price ▾, a date with its own box', async () => {
     const props = setup()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'deadline')
+    await pickPrice('through the Round 1 deadline')
     expect(props.onPrice).toHaveBeenCalledWith({ kind: 'deadline' })
   })
 
   it('prices through a date that opens on today, and the date box beside it moves it (disagreement 15)', async () => {
     const props = setup()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Price' }), 'date')
+    await pickPrice('through a date…')
     expect(props.onPrice).toHaveBeenLastCalledWith({ kind: 'date', date: campToday() })
     again({ price: { kind: 'date', date: '2027-02-01' } })
     fireEvent.change(screen.getByLabelText('Price through'), { target: { value: '2027-02-10' } })
@@ -83,9 +93,10 @@ describe('the control line (§S5 A)', () => {
 
   it('shows "‹code›, kept" while a kept option is loaded, and loads a start from the menu', async () => {
     const props = setup()
-    const start = screen.getByRole('combobox', { name: 'Start from' })
-    expect(within(start).getByRole('option', { name: 'B, kept' })).toBeDisabled()
-    await userEvent.selectOptions(start, 'last_rules')
+    expect(screen.getByRole('button', { name: 'Start from: B, kept' })).toBeInTheDocument()
+    await openStart()
+    expect(screen.getByRole('option', { name: 'B, kept' })).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(screen.getByRole('option', { name: "Last season's rules" }))
     expect(props.onLoad).toHaveBeenCalledWith({ start: 'last_rules' })
   })
 

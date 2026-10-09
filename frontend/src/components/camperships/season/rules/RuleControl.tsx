@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { CS_AMBER_NOTE, CS_INPUT, CS_PILL, CS_SELECT } from '../../kit/csType'
+import { AidPicker } from '../../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_INPUT, CS_PILL } from '../../kit/csType'
 import { CHOICE_WORDS } from './rulesCards'
 import { fieldName, type FieldSpec } from './sectionEdit'
 
@@ -99,34 +100,27 @@ export function RuleControl({
       break
     case 'choice':
       body = (
-        <select
-          aria-label={name}
-          className={CS_SELECT}
+        <AidPicker
+          size="field"
+          label={name}
           value={raw}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {spec.options.map((option) => (
-            <option key={option} value={option}>
-              {CHOICE_WORDS[field]?.[option] ?? option.replaceAll('_', ' ')}
-            </option>
-          ))}
-        </select>
+          options={spec.options.map((option) => ({
+            value: option,
+            label: CHOICE_WORDS[field]?.[option] ?? option.replaceAll('_', ' '),
+          }))}
+          onChange={onChange}
+        />
       )
       break
     case 'pick':
       body = (
-        <select
-          aria-label={name}
-          className={CS_SELECT}
+        <AidPicker
+          size="field"
+          label={name}
           value={raw}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {spec.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          options={spec.options.map((option) => ({ value: option.value, label: option.label }))}
+          onChange={onChange}
+        />
       )
       break
     case 'date':
@@ -158,21 +152,16 @@ export function RuleControl({
               </button>
             </span>
           ))}
-          <select
-            aria-label="Add a session"
-            className={CS_SELECT}
+          <AidPicker
+            size="field"
+            label="Add a session"
             value=""
-            onChange={(event) => {
-              if (event.target.value !== '') onChange([...chosen, event.target.value].join(','))
+            placeholder="Add a session"
+            options={offered.map((o) => ({ value: String(o.id), label: o.name }))}
+            onChange={(picked) => {
+              if (picked !== '') onChange([...chosen, picked].join(','))
             }}
-          >
-            <option value="">Add a session</option>
-            {offered.map((o) => (
-              <option key={o.id} value={String(o.id)}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          />
         </span>
       )
       break
