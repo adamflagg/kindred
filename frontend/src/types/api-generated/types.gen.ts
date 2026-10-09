@@ -2264,6 +2264,10 @@ export type CandidateOut = {
    */
   session: string
   /**
+   * Session Type
+   */
+  session_type?: string
+  /**
    * Not Yet In Campminder
    */
   not_yet_in_campminder: number
@@ -8609,7 +8613,10 @@ export type LedgerTicksOut = {
 /**
  * LeftToTickOut
  *
- * A round the placement did not tick, and why: the registrar ticks it by hand if that is right.
+ * A round the placement did not tick, and why: the registrar ticks it by hand if that is right. `why` is the
+ * whole sentence; `kind`, `holds` and `needs` are its parts, so the screen lays it out in short lines (final UX,
+ * design-language section 16): "short" is CampMinder holding `holds` while the round needs `needs`; "unchecked" is a
+ * person having unchecked Posted on it (no figures).
  */
 export type LeftToTickOut = {
   /**
@@ -8624,6 +8631,18 @@ export type LeftToTickOut = {
    * Why
    */
   why: string
+  /**
+   * Kind
+   */
+  kind?: 'short' | 'unchecked'
+  /**
+   * Holds
+   */
+  holds?: number | null
+  /**
+   * Needs
+   */
+  needs?: number | null
 }
 
 /**

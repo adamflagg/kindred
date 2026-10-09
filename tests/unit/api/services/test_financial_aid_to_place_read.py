@@ -28,10 +28,11 @@ async def test_the_read_groups_the_open_lines_by_reason_with_their_names() -> No
         ("no_request", 1, 700.0),
         ("program_mismatch", 1, 200.0),
     ]
+    # Final UX (owner 10-09, answers-requests-money section 3): the mock's group headings.
     assert [g.label for g in out.groups] == [
-        "Several requests could take this",
-        "No request behind it",
-        "The description names a program this camper isn't in",
+        "Several requests could take this line",
+        "No request behind this line",
+        "The description names another program",
     ]
     assert (out.open_count, out.open_total) == (3, 2400.0)
     (line,) = out.groups[0].lines
@@ -47,6 +48,8 @@ async def test_the_read_groups_the_open_lines_by_reason_with_their_names() -> No
         "Session 2",
         1500.0,
     )
+    # Final UX (design-language section 14): the client shortens the session by its type, so the candidate carries it.
+    assert candidate.session_type == "main"
     assert line.suggestion is not None
     assert [(p.request_id, p.amount) for p in line.suggestion.parts] == [(EMMA, 1500.0)]
     # §4.10: what confirming it would lock, worked out as the write works it out
@@ -108,7 +111,7 @@ async def test_each_line_names_its_family_by_the_household_pages_label() -> None
     }
     assert lines[9001].family == "Family 1000001"  # the old name stays as it was
     assert labels.calls == [frozenset({1000001, 1000007, 1000009})]  # one call: the response's households
-    assert out.groups[0].label == "Several requests could take this"  # the group's own label is the reason's
+    assert out.groups[0].label == "Several requests could take this line"  # the group's own label is the reason's
 
 
 @pytest.mark.asyncio

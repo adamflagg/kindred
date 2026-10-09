@@ -265,6 +265,9 @@ def proportional(amount: Decimal, weights: Sequence[tuple[str, Decimal]]) -> tup
     return tuple(Part(rid, Decimal(floors[rid]) * _CENT) for rid, _ in weights)
 
 
+_COUNT_WORDS: Final = {2: "two", 3: "three", 4: "four"}
+
+
 def _dollars(amount: Decimal) -> str:
     return f"${amount:,.0f}" if amount == amount.to_integral_value() else f"${amount:,.2f}"
 
@@ -273,15 +276,13 @@ def _facts(line: CampLine, candidate: Candidate, alone: bool) -> tuple[Evidence,
     """Every fact that ties `line` to `candidate`, in the fixed order the module docstring gives."""
     facts: list[Evidence] = []
     if candidate.not_yet_in_campminder > 0 and candidate.not_yet_in_campminder == line.amount:
-        facts.append(
-            Evidence("amount", f"exactly what this request still needs in CampMinder ({_dollars(line.amount)})")
-        )
+        facts.append(Evidence("amount", f"exact amount ({_dollars(line.amount)})"))
     if line.person_cm_id > 0 and line.person_cm_id == candidate.person_cm_id:
-        facts.append(Evidence("person", "CampMinder posted it to this camper"))
+        facts.append(Evidence("person", "posted to this camper"))
     if line.post_date is not None and camp_date(line.post_date) in candidate.ticked_on:
-        facts.append(Evidence("date", "posted the day Posted was checked on this request"))
+        facts.append(Evidence("date", "posted the day Posted was checked"))
     if alone:
-        facts.append(Evidence("only_request", "the only request this family has"))
+        facts.append(Evidence("only_request", "the family's only request"))
     return tuple(facts)
 
 
@@ -322,14 +323,14 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
     due = [c for c in found if c.not_yet_in_campminder > 0]
     if len(due) > 1 and sum((c.not_yet_in_campminder for c in due), ZERO) == line.amount:
         parts = tuple(Part(c.request_id, c.not_yet_in_campminder) for c in due)
-        what = f"together exactly what these requests still need in CampMinder ({_dollars(line.amount)})"
+        what = f"the {_COUNT_WORDS.get(len(due), str(len(due)))} requests together ({' + '.join(_dollars(c.not_yet_in_campminder) for c in due)})"
         return Suggestion(parts, (Evidence("amount", what),))
     weighted = [c for c in found if c.weight > 0 and not c.cancelled]
     if len(weighted) > 1:
         parts = proportional(line.amount, [(c.request_id, c.weight) for c in weighted])
         if any(part.amount <= 0 for part in parts):
             return None  # a $0.00 share is a guess too (D12)
-        what = "split in proportion to the decided amounts (a posted round at the amount it locked)"
+        what = "split by the decided amounts"
         return Suggestion(parts, (Evidence("proportional", what),))
     return None
 

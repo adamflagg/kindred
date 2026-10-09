@@ -533,11 +533,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="not_yet_in_campminder",
         term="Not yet in CampMinder",
         text=(
-            "Not yet in CampMinder: a candidate request's locked total, plus the decided amounts of its rounds waiting "
-            "for Posted to be checked (oldest first, up to the first round that can't be checked), less the live "
-            "camp-aid money "
-            "already placed on it. It is what To place weighs a line "
-            "against; it redefines nothing."
+            "Not yet in CampMinder: what a request still lacks there: its locked total plus decided rounds waiting for "
+            "Posted, less camp aid already placed on it."
         ),
         spec="§8.1",
         rulings=("D151",),
@@ -546,9 +543,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="to_place_suggestion",
         term="Suggestion",
         text=(
-            "Suggestion: the dashboard's proposed placement or split of a line, with its evidence (an exact amount "
-            "match, the person on the line, the date, or a split in proportion to the decided amounts). It counts "
-            "toward nothing until a person confirms it, and the dashboard never chooses between equal matches."
+            "Suggestion: the dashboard's proposed placement or split, with its evidence. It counts toward nothing until "
+            "a person confirms it, and never picks between equal matches."
         ),
         spec="§8.1",
         rulings=("D12", "D16"),
@@ -557,10 +553,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="placement_tick",
         term="Placing checks Posted",
         text=(
-            "Placing checks Posted: placing a line checks Posted on the rounds the placed money covers in full, oldest "
-            "first, at their decided amounts as of the posting date. If anything that prices the request was "
-            "recorded since that posting, the money is still placed but Posted is not checked automatically, and the "
-            "registrar checks it by hand. It never reads pending: the money is already in CampMinder."
+            "Placing checks Posted: on the rounds the money covers in full, oldest first. If pricing changed since the "
+            "posting, the money is placed and Posted is checked by hand."
         ),
         spec="§5.1",
         rulings=("D81", "D146", "D151", "D152"),
