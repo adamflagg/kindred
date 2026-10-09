@@ -18,10 +18,30 @@ import type { NoteOf } from './statisticsModel'
 
 export function zipColumns(withDollars: boolean, noteOf: NoteOf): ReportColumn[] {
   return [
-    { key: 'zip', header: 'ZIP', mono: true, note: noteOf('zip_zip') },
-    { key: 'campers', header: 'Campers', note: noteOf('zip_who_counts') },
-    { key: 'families', header: 'Families', note: noteOf('zip_families') },
-    ...(withDollars ? [{ key: 'dollars', header: 'Dollars', note: noteOf('zip_dollars') }] : []),
+    { key: 'zip', header: 'ZIP', mono: true, note: noteOf('zip_zip'), title: 'Sort by ZIP' },
+    {
+      key: 'campers',
+      header: 'Campers',
+      // The aid table's campers are the ones who got money: its note is the Dollars one (the mock's 2).
+      note: noteOf(withDollars ? 'zip_dollars' : 'zip_who_counts'),
+      title: 'Sort by Campers',
+    },
+    {
+      key: 'families',
+      header: 'Families',
+      note: noteOf('zip_families'),
+      title: 'Sort by Families',
+    },
+    ...(withDollars
+      ? [
+          {
+            key: 'dollars',
+            header: 'Dollars',
+            note: noteOf('zip_dollars'),
+            title: 'Sort by Dollars',
+          },
+        ]
+      : []),
   ]
 }
 
@@ -32,6 +52,7 @@ export function zipRows(table: ApiAidZipTable, withDollars: boolean): ReportRow[
     countValue(row.families),
     ...(withDollars ? [moneyValue(row.dollars)] : []),
   ]
+  const ends = table.rows.filter((row) => row.kind !== 'us').map((row) => row.zip)
   return [
     ...table.rows.map((row): ReportRow => ({
       key: `${row.kind}-${row.zip}`,
@@ -41,7 +62,13 @@ export function zipRows(table: ApiAidZipTable, withDollars: boolean): ReportRow[
     {
       key: 'total',
       kind: 'total',
-      cells: cells(table.total, `All · ${String(table.zips)} ZIPs`),
+      cells: [
+        {
+          ...textValue(`All · ${String(table.zips)} ZIPs`),
+          title: `All ${String(table.zips)} ZIPs${ends.length > 0 ? `, with ${ends.join(' and ')}` : ''}: the server's total, never a sum of the rows shown`,
+        },
+        ...cells(table.total, '').slice(1),
+      ],
     },
   ]
 }
@@ -57,12 +84,16 @@ export function zipHeading(zip: ApiAidZip, title: string): ReportHeading {
   }
 }
 
-/** The line under the every-camper table's title: who it counts, and the group when the read names one. */
+/** The every-camper table's description (its title's hover): who it counts, and the group when the read names one. */
 export function zipScopeWords(zip: ApiAidZip): string {
   return zip.group_label === ''
     ? "Campers enrolled in an aid-eligible session, by their household's billing ZIP."
     : `${zip.group_label}: campers enrolled in an aid-eligible session, by their household's billing ZIP.`
 }
+
+/** The aid table's description, in its title's hover. */
+export const ZIP_AID_WORDS =
+  "The same campers, attended and got money from any source: the camp's awards and every outside grant. A household-level grant lands on its household's ZIP."
 
 /** The group chip's choices: exactly the read's (the rules' pools, then All), never a list here. */
 export function zipGroups(zip: ApiAidZip): ReadonlyArray<{ key: string; label: string }> {
@@ -78,9 +109,9 @@ export function zipCsvName(view: AidView, zip: ApiAidZip, table: string): string
   })
 }
 
-/** Why there's no aid table yet, in plain words: the server's reason carries an internal id. */
+/** Why there's no aid table yet, in plain words (the table's own empty row): the server's reason carries an internal id. */
 export function noAidWords(zip: ApiAidZip): string | null {
   return zip.with_aid === null
-    ? `Campers who got aid by ZIP start with ${String(zip.year)}'s decisions.`
+    ? `No aid table for ${String(zip.year)}: it starts with 2027, the first season decided in the dashboard.`
     : null
 }

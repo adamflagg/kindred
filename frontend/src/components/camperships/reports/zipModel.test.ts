@@ -3,7 +3,16 @@ import { describe, expect, it } from 'vitest'
 
 import { headingLines, reportText } from '../kit/report'
 import { ZIP } from './zipFixtures'
-import { zipColumns, zipCsvName, zipGroups, zipHeading, zipRows, zipScopeWords } from './zipModel'
+import {
+  ZIP_AID_WORDS,
+  noAidWords,
+  zipColumns,
+  zipCsvName,
+  zipGroups,
+  zipHeading,
+  zipRows,
+  zipScopeWords,
+} from './zipModel'
 
 const texts = (row: { cells: ReadonlyArray<Parameters<typeof reportText>[0]> } | undefined) =>
   (row?.cells ?? []).map(reportText)
@@ -29,20 +38,45 @@ describe('ZIP codes', () => {
     ])
   })
 
-  it('hooks the Dollars, ZIP, Families and Campers notes to their own columns', () => {
+  it("hooks the notes to their own columns: Campers is note 1 on the every-camper table and note 2 on the aid table (the mock's)", () => {
     const notes: Record<string, number> = {
       zip_who_counts: 1,
       zip_dollars: 2,
       zip_zip: 3,
       zip_families: 4,
     }
-    const columns = zipColumns(true, (key) => notes[key] ?? null)
-    expect(columns.map((c) => [c.header, c.note])).toEqual([
+    const aid = zipColumns(true, (key) => notes[key] ?? null)
+    expect(aid.map((c) => [c.header, c.note])).toEqual([
       ['ZIP', 3],
-      ['Campers', 1],
+      ['Campers', 2],
       ['Families', 4],
       ['Dollars', 2],
     ])
+    expect(zipColumns(false, (key) => notes[key] ?? null).map((c) => [c.header, c.note])).toEqual([
+      ['ZIP', 3],
+      ['Campers', 1],
+      ['Families', 4],
+    ])
+  })
+
+  it('titles every sortable header "Sort by <label>"', () => {
+    expect(zipColumns(true, () => null).map((c) => c.title)).toEqual([
+      'Sort by ZIP',
+      'Sort by Campers',
+      'Sort by Families',
+      'Sort by Dollars',
+    ])
+  })
+
+  it("says the aid table's description, and why there is no aid table, in the mock's words", () => {
+    expect(ZIP_AID_WORDS).toBe(
+      "The same campers, attended and got money from any source: the camp's awards and every outside grant. A household-level grant lands on its household's ZIP."
+    )
+    expect(noAidWords({ ...ZIP, with_aid: null })).toBe(
+      'No aid table for 2027: it starts with 2027, the first season decided in the dashboard.'
+    )
+    expect(noAidWords({ ...ZIP, year: 2026, with_aid: null })).toContain('No aid table for 2026:')
+    expect(noAidWords(ZIP)).toBeNull()
   })
 
   it("offers exactly the read's groups, All last, never a list of its own (ruling C)", () => {

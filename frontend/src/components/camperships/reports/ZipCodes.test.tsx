@@ -32,11 +32,15 @@ const VIEW = { year: 2027, asOf: { kind: 'live' } as const }
 const ZIP_NOTES = {
   surface: 'reports-development-zip',
   notes: [
-    { key: 'zip_who_counts', n: 1, text: 'Who counts: households.' },
-    { key: 'zip_dollars', n: 2, text: 'Dollars: all money.' },
+    { key: 'zip_who_counts', n: 1, text: 'Every camper: households.' },
+    { key: 'zip_dollars', n: 2, text: 'Campers who got aid · Dollars: all money.' },
     { key: 'zip_zip', n: 3, text: 'ZIP: first five digits.' },
     { key: 'zip_families', n: 4, text: 'Families: households once.' },
-    { key: 'zip_geography', n: 5, text: 'Geography goes no finer than ZIP.' },
+    {
+      key: 'zip_geography',
+      n: 5,
+      text: 'Small groups show as they are. Geography goes no finer than ZIP.',
+    },
   ],
 }
 let answer: (url: string) => ApiAidZip
@@ -78,7 +82,8 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     expect(await screen.findByRole('table', { name: 'Every camper · Pool A' })).toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'Campers who got aid · Pool A' })).toBeInTheDocument()
     expect(zipCalls()).toEqual(['/api/financial-aid/reports/2027/development/zip'])
-    expect(screen.getByRole('button', { name: 'Pool A' }).className).toContain('bg-primary')
+    expect(screen.getByRole('button', { name: 'Pool A' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('group', { name: 'Group' })).toBeInTheDocument()
   })
 
   it('reads the group a chip names, through the URL', async () => {
@@ -105,11 +110,15 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
   it("says why there's no aid table before the season's decisions", async () => {
     answer = () => ZIP_NO_AID
     renderZip()
-    expect(
-      await screen.findByText("Campers who got aid by ZIP start with 2027's decisions.")
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('table', { name: 'Campers who got aid · Pool A' })).toBeNull()
-    // one plain sentence: no "Not built yet" line and no server reason carrying an internal id
+    // the table's own muted empty row, never a sentence above it
+    const aid = await screen.findByRole('table', { name: 'Campers who got aid · Pool A' })
+    const words = within(aid).getByText(
+      'No aid table for 2027: it starts with 2027, the first season decided in the dashboard.'
+    )
+    expect(words.closest('td')).toHaveClass('text-muted-foreground')
+    expect(within(aid).queryByRole('searchbox')).toBeNull()
+    expect(screen.queryByText(/start with 2027's decisions/)).toBeNull()
+    // no "Not built yet" line and no server reason carrying an internal id
     expect(screen.queryByText(/Not built yet/)).toBeNull()
     expect(screen.queryByText(/The aid table waits/)).toBeNull()
   })
@@ -139,17 +148,33 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
       screen.getByRole('searchbox', { name: 'Find in Every camper · Pool A' }),
       '00012'
     )
-    expect(screen.getByText(/1 of 4 rows match/)).toBeInTheDocument()
+    const status = screen.getAllByTestId('find-status')[0]!
+    expect(status).toHaveTextContent('1 of 4')
+    expect(status).toHaveAttribute(
+      'title',
+      expect.stringContaining('the totals row stays the whole table')
+    )
+    expect(
+      screen.getByRole('searchbox', { name: 'Find in Every camper · Pool A' })
+    ).toHaveAttribute('placeholder', 'Find a ZIP')
   })
 
-  it('puts the descriptions before the tables, and opens each with the most campers first', async () => {
+  it("keeps each table's description in its title's hover, not in a line, and opens each with the most campers first", async () => {
     renderZip()
     const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
-    const words = screen.getByText(/campers enrolled in an aid-eligible session/)
-    expect(words.compareDocumentPosition(every) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Every camper · Pool A' })).toHaveAttribute(
+      'title',
+      "Pool A: campers enrolled in an aid-eligible session, by their household's billing ZIP."
+    )
+    expect(screen.getByRole('heading', { name: 'Campers who got aid · Pool A' })).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^The same campers, attended and got money from any source/)
+    )
+    expect(screen.queryByText(/campers enrolled in an aid-eligible session/)).toBeNull()
+    expect(screen.queryByText(/The same campers, attended and got money/)).toBeNull()
+    // the one-family line is note 5 now, not a line under the tables
+    expect(screen.queryByText(/^Small groups show as they are, a ZIP with one family/)).toBeNull()
     const aid = screen.getByRole('table', { name: 'Campers who got aid · Pool A' })
-    const sameCampers = screen.getByText(/The same campers, attended and got money/)
-    expect(sameCampers.compareDocumentPosition(aid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // row 1 is the totals row (it comes first), row 2 the ZIP with the most campers
     const first = (table: HTMLElement) =>
       within(within(table).getAllByRole('row')[2]!).getAllByRole('cell')[0]?.textContent
@@ -176,10 +201,40 @@ describe('ZipCodes (spec §9.4; owner ruling C)', () => {
     const sup = (name: RegExp) =>
       within(aid).getByRole('columnheader', { name }).querySelector('sup')?.textContent
     expect(sup(/^ZIP/)).toBe('3')
-    expect(sup(/^Campers/)).toBe('1')
+    expect(sup(/^Campers/)).toBe('2')
     expect(sup(/^Families/)).toBe('4')
     expect(sup(/^Dollars/)).toBe('2')
-    expect(await screen.findByText('Geography goes no finer than ZIP.')).toBeInTheDocument()
+    const every = screen.getByRole('table', { name: 'Every camper · Pool A' })
+    expect(
+      within(every)
+        .getByRole('columnheader', { name: /^Campers/ })
+        .querySelector('sup')?.textContent
+    ).toBe('1')
+    expect(within(aid).getByRole('columnheader', { name: /^ZIP/ })).toHaveAttribute(
+      'title',
+      'Sort by ZIP'
+    )
+    expect(
+      await screen.findByText('Small groups show as they are. Geography goes no finer than ZIP.')
+    ).toBeInTheDocument()
+  })
+
+  it('titles the totals row with the server-total words, and sets each table in a bounded scroll card', async () => {
+    renderZip()
+    const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
+    const total = within(every).getByText('All · 2 ZIPs').closest('td')
+    expect(total).toHaveAttribute(
+      'title',
+      "All 2 ZIPs, with Outside the US and No ZIP on file: the server's total, never a sum of the rows shown"
+    )
+    expect(every.parentElement).toHaveClass('max-h-[420px]', 'overflow-auto')
+  })
+
+  it('keeps the heading row inside its column: the two tables share the row as equal tracks that may shrink', async () => {
+    renderZip()
+    const every = await screen.findByRole('table', { name: 'Every camper · Pool A' })
+    const grid = every.closest('section')!.parentElement as HTMLElement
+    expect(grid.className).toContain('minmax(0,1fr)')
   })
 
   it('draws ZIPs in the monospace font', async () => {

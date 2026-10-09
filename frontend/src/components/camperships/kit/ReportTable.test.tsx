@@ -127,13 +127,11 @@ describe('ReportTable', () => {
     ])
   })
 
-  it('finds body rows only: the totals row stays, and says it is the whole table', async () => {
+  it('finds body rows only: the totals row stays, and the toolbar says it is the whole table', async () => {
     renderTable({ find: true })
     await userEvent.type(screen.getByRole('searchbox', { name: 'Find in Every camper' }), '00012')
     expect(bodyTexts()).toEqual(['00012', 'All · 2 ZIPs'])
-    expect(
-      screen.getByText(/1 of 3 rows match\. The totals row is the whole table's/)
-    ).toBeInTheDocument()
+    expect(screen.getByTestId('find-status')).toHaveTextContent('1 of 3')
     await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
     expect(writeText.mock.calls[0]?.[0]).toContain('00010')
   })
@@ -736,6 +734,104 @@ describe('ReportTable', () => {
       expect(result.current.copied).toBe('✓ Copied')
       rerender({ rows: ROWS.slice(1) })
       expect(result.current.copied).toBeNull()
+    })
+  })
+
+  describe('the ZIP codes screen extensions (approved final mock reports-zip.html)', () => {
+    it("puts the table's description in the title's hover, not in a line under it", () => {
+      renderTable({ hint: 'Who this table counts.' })
+      expect(screen.getByRole('heading', { name: 'Every camper' })).toHaveAttribute(
+        'title',
+        'Who this table counts.'
+      )
+      expect(screen.queryByText('Who this table counts.')).toBeNull()
+    })
+
+    it("keeps the heading's own words as its title without a hint", () => {
+      renderTable()
+      expect(screen.getByRole('heading', { name: 'Every camper' })).toHaveAttribute(
+        'title',
+        'Every camper'
+      )
+    })
+
+    it('names its find box and sizes it as asked: "Find a ZIP", 104px', () => {
+      renderTable({ find: true, findPlaceholder: 'Find a ZIP', findWidth: 104 })
+      const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
+      expect(find).toHaveAttribute('placeholder', 'Find a ZIP')
+      expect((find.closest('label') as HTMLElement).style.width).toBe('104px')
+    })
+
+    it('keeps the 140px "Find" box when asked for nothing else', () => {
+      renderTable({ find: true })
+      const find = screen.getByRole('searchbox', { name: 'Find in Every camper' })
+      expect(find).toHaveAttribute('placeholder', 'Find')
+      expect(find.closest('label')).toHaveClass('w-[140px]')
+    })
+
+    it('says "N of M" in the toolbar while finding, with the whole-table words in its title, and no sentence row', async () => {
+      renderTable({ find: true })
+      expect(screen.queryByTestId('find-status')).toBeNull()
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Find in Every camper' }), '00012')
+      const status = screen.getByTestId('find-status')
+      expect(status).toHaveTextContent('1 of 3')
+      expect(status).toHaveAttribute(
+        'title',
+        "1 of 3 ZIPs match “00012”; the totals row stays the whole table's"
+      )
+      expect(screen.getByTestId('report-heading-row').contains(status)).toBe(true)
+      expect(screen.queryByText(/rows match\./)).toBeNull()
+    })
+
+    it('titles Copy with what it copies', () => {
+      renderTable()
+      expect(screen.getByRole('button', { name: /Copy/ })).toHaveAttribute(
+        'title',
+        'Copy the whole table, with its season, as-of date and basis, for a spreadsheet'
+      )
+    })
+
+    it('draws no find, Copy or CSV when it has no tools (a table with nothing to find)', () => {
+      renderTable({ find: true, tools: false })
+      expect(screen.queryByRole('searchbox')).toBeNull()
+      expect(screen.queryByRole('button', { name: /Copy/ })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Download CSV/ })).toBeNull()
+      expect(screen.getByRole('heading', { name: 'Every camper' })).toBeInTheDocument()
+    })
+
+    it('says its own words in an empty row when it has no rows', () => {
+      renderTable({ rows: [], emptyText: 'No aid table for 2027: it starts with 2027.' })
+      expect(
+        screen.getByText('No aid table for 2027: it starts with 2027.').closest('td')
+      ).toHaveAttribute('colspan', '3')
+    })
+
+    it('bounds the card (it scrolls inside, in the page flow) and pins the header and the totals row under it', () => {
+      renderTable({ bounded: true, totalsFirst: true })
+      const card = screen.getByRole('table', { name: 'Every camper' }).parentElement as HTMLElement
+      expect(card).toHaveClass('max-h-[420px]', 'overflow-auto')
+      expect(card.className).not.toContain('overflow-x-auto')
+      for (const th of within(screen.getByRole('table')).getAllByRole('columnheader')) {
+        expect(th).toHaveClass('sticky', 'top-0')
+      }
+      const totals = within(screen.getAllByRole('row')[1]!).getAllByRole('cell')
+      expect(totals[0]!.textContent).toBe('All · 2 ZIPs')
+      for (const td of totals) expect(td).toHaveClass('sticky', 'top-[26px]')
+      // a body row pins nothing
+      expect(within(screen.getAllByRole('row')[2]!).getAllByRole('cell')[0]).not.toHaveClass(
+        'sticky'
+      )
+    })
+
+    it('pins a sortable table’s headers too, and draws an unbounded table as before', () => {
+      renderTable({ bounded: true, sortable: true })
+      expect(screen.getByRole('columnheader', { name: 'Campers' })).toHaveClass('sticky', 'top-0')
+      document.body.innerHTML = ''
+      renderTable({ sortable: true })
+      expect(screen.getByRole('columnheader', { name: 'Campers' })).not.toHaveClass('sticky')
+      expect(screen.getByRole('table', { name: 'Every camper' }).parentElement).not.toHaveClass(
+        'max-h-[420px]'
+      )
     })
   })
 })
