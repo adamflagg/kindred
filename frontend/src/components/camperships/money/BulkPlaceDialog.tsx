@@ -2,13 +2,24 @@ import { useRef, useState } from 'react'
 
 import { useAidPlaceLines } from '../../../hooks/camperships/useAidToPlaceWrites'
 import type { ApiAidToPlaceLine } from '../../../types/api-types'
-import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
+import { AMBER_NOTE } from '../../admin/lodging/lodgingStyles'
 import { Modal } from '../../ui/Modal'
+import { CS_BTN, CS_BTN2 } from '../kit/csType'
+import { EditorActions } from '../kit/EditorLayout'
 import { StatusPill } from '../kit/Pills'
 import { formatMoney } from '../kit/money'
 import { bulkBody, estimateLocked, MAX_BULK_LINES, type BulkPlan } from './bulkPlaceModel'
 import { refusalWords } from './refusal'
-import { lineFamily, lineWords, placedWords, requestLabels, suggestionWords } from './toPlaceModel'
+import {
+  lineFamily,
+  lineWords,
+  placedTitle,
+  placedWords,
+  requestLabels,
+  suggestionShort,
+  suggestionWords,
+} from './toPlaceModel'
+import { EffectList } from './ToPlaceParts'
 
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`
 const familyOf = (line: ApiAidToPlaceLine) => lineFamily(line).text
@@ -34,7 +45,7 @@ export function BulkPlaceDialog({
   /** Every line the read sent, so the result names each request it marked posted. */
   allLines: readonly ApiAidToPlaceLine[]
   onClose: () => void
-  onDone: (words: string, placed: readonly number[]) => void
+  onDone: (words: string, placed: readonly number[], title?: string) => void
   /** The tab's note takes a refusal too, so a stale green line never stays up (P-26). */
   onRefused: (words: string) => void
 }) {
@@ -63,7 +74,11 @@ export function BulkPlaceDialog({
     setError(null)
     try {
       const out = await place.mutateAsync({ year, body: bulkBody(plan) })
-      onDone(placedWords(out, allLines, requestLabels(allLines), familyOf), out.placed)
+      onDone(
+        placedWords(out, allLines, familyOf),
+        out.placed,
+        placedTitle(out, allLines, requestLabels(allLines), familyOf)
+      )
     } catch (caught) {
       const words = refusalWords(caught)
       setError(words)
@@ -79,20 +94,23 @@ export function BulkPlaceDialog({
       onClose={close}
       closeDisabled={busy}
       title={`Confirm ${String(plan.lines.length)} exact single ${plan.lines.length === 1 ? 'match' : 'matches'}`}
-      size="md"
+      size="xl"
       footer={
-        <div className="flex justify-end gap-2">
-          <button type="button" className={BUTTON_SECONDARY} disabled={busy} onClick={close}>
-            Back
-          </button>
-          <button
-            type="button"
-            className={BUTTON_PRIMARY}
-            disabled={busy || tooMany || plan.lines.length === 0}
-            onClick={() => void confirm()}
-          >
-            {busy ? 'Placing…' : `Confirm ${String(plan.lines.length)}`}
-          </button>
+        // §24: Title Case buttons on one row, the logged-with-who line beside them.
+        <div className="pt-1">
+          <EditorActions reason="All or nothing · one operation in Season › History">
+            <button
+              type="button"
+              className={CS_BTN}
+              disabled={busy || tooMany || plan.lines.length === 0}
+              onClick={() => void confirm()}
+            >
+              {busy ? 'Placing…' : `Confirm ${String(plan.lines.length)}`}
+            </button>
+            <button type="button" className={CS_BTN2} disabled={busy} onClick={close}>
+              Back
+            </button>
+          </EditorActions>
         </div>
       }
     >
@@ -103,20 +121,41 @@ export function BulkPlaceDialog({
             : `${plural(plan.lines.length, 'line', 'lines')} · ${plural(plan.households, 'household', 'households')} · ${marking} `}
           {several && <StatusPill tone="amber">Estimate</StatusPill>}
         </p>
-        <p className="text-muted-foreground text-xs">
-          {several
-            ? 'Each line goes on its family’s one request. Two lines landing on one request can check Posted for more or less together than apart, so the total is an estimate; the result lists exactly what was marked Posted. All or nothing, one operation.'
-            : 'The line goes on its family’s one request, and checks Posted for what it shows: if that moved since the page loaded, nothing is written and the page reloads.'}
-        </p>
+        <EffectList
+          lines={[
+            {
+              sym: 'info',
+              text: several
+                ? "Each line goes on its family's one request"
+                : "The line goes on its family's one request",
+            },
+            several
+              ? {
+                  sym: 'hand',
+                  text: 'The total is an estimate: two lines on one request can mark more or less Posted together than apart',
+                  then: '→ The result lists exactly what was marked Posted',
+                }
+              : {
+                  sym: 'hand',
+                  text: 'If what it marks Posted moved since the page loaded, nothing is written and the page reloads',
+                },
+          ]}
+        />
         {plan.gone > 0 && (
           <p className={AMBER_NOTE}>
             {`${plural(plan.gone, 'line is', 'lines are')} no longer open and ${plan.gone === 1 ? 'was' : 'were'} left out.`}
           </p>
         )}
-        <ul className="text-muted-foreground max-h-48 overflow-y-auto text-xs">
+        <ul
+          data-testid="bulk-place-names"
+          className="text-muted-foreground max-h-48 columns-2 gap-x-6 overflow-y-auto text-xs"
+        >
           {plan.lines.map(({ line, hidden }) => (
-            <li key={line.transaction_cm_id}>
-              {`${familyOf(line)}: ${lineWords(line)} → ${suggestionWords(line).replace(/^Place on /, '')}`}
+            <li
+              key={line.transaction_cm_id}
+              title={`${familyOf(line)}: ${lineWords(line)} → ${suggestionWords(line).replace(/^Place on /, '')}`}
+            >
+              {`${familyOf(line)}: ${formatMoney(line.amount)} → ${suggestionShort(line).replace(/^Place on /, '')}`}
               {hidden ? ' (hidden by the search)' : ''}
             </li>
           ))}
@@ -128,7 +167,7 @@ export function BulkPlaceDialog({
         )}
         {tooMany && (
           <p className={AMBER_NOTE}>
-            {`One confirm takes at most ${String(MAX_BULK_LINES)} lines: select fewer.`}
+            {`One confirm takes at most ${String(MAX_BULK_LINES)} lines: check fewer.`}
           </p>
         )}
         {error !== null && <p className={AMBER_NOTE}>{error}</p>}

@@ -133,9 +133,9 @@ describe('bulkPlan', () => {
 describe('exactButtonWords (R1-13: one click takes at most what the route takes)', () => {
   it('names the count, and the first 200 when there are more', () => {
     expect(MAX_BULK_LINES).toBe(200)
-    expect(exactButtonWords(1)).toBe('Confirm the 1 Exact Single Match…')
-    expect(exactButtonWords(2)).toBe('Confirm the 2 Exact Single Matches…')
-    expect(exactButtonWords(200)).toBe('Confirm the 200 Exact Single Matches…')
-    expect(exactButtonWords(250)).toBe('Confirm the First 200 of 250 Exact Single Matches…')
+    expect(exactButtonWords(1)).toBe('Confirm the 1 Exact Match…')
+    expect(exactButtonWords(2)).toBe('Confirm the 2 Exact Matches…')
+    expect(exactButtonWords(200)).toBe('Confirm the 200 Exact Matches…')
+    expect(exactButtonWords(250)).toBe('Confirm the First 200 of 250 Exact Matches…')
   })
 })

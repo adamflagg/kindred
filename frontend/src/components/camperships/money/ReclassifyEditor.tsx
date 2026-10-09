@@ -3,9 +3,10 @@ import { useState } from 'react'
 import { useAidSources } from '../../../hooks/camperships/useAidSources'
 import { useAidReclassifyLine } from '../../../hooks/camperships/useAidToPlaceWrites'
 import type { ApiAidToPlaceLine } from '../../../types/api-types'
-import { EditorBox } from '../household/ReasonForm'
-import { HH_FIELD_TEXT, HH_FORM_LABEL, HH_FORM_ROW } from '../household/householdStyles'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_PMETA, CS_SELECT } from '../kit/csType'
+import { AidPicker } from '../kit/AidPicker'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
+import type { AidPickerOption } from '../kit/pickerWords'
 import { refusalWords } from './refusal'
 import { lineFamily, reclassifyTargets, targetWords } from './toPlaceModel'
 import type { InFlightLines } from './useInFlightLines'
@@ -30,7 +31,7 @@ export function ReclassifyEditor({
   year: number
   inFlight: InFlightLines
   onCancel: () => void
-  onDone: (words: string) => void
+  onDone: (words: string, title?: string) => void
   /** A refusal goes up to the tab too: this row unmounts when the refresh drops its line. */
   onRefused: (words: string) => void
 }) {
@@ -58,7 +59,7 @@ export function ReclassifyEditor({
       onDone(
         out.written === 0
           ? `${family}: already reclassified as ${chosen.description}; nothing changed.`
-          : `${family}: reclassified as ${chosen.description}. The next ledger sync applies it; until then the line is listed apart.`
+          : `${family}: reclassified as ${chosen.description} · the next ledger sync applies it`
       )
     } catch (caught) {
       const words = refusalWords(caught)
@@ -69,69 +70,77 @@ export function ReclassifyEditor({
     }
   }
 
+  // The targets under their kind, so no label outgrows the popover (mock `TARGET_OPTS`).
+  const options: Array<AidPickerOption<string>> = [
+    {
+      value: '',
+      label: sources.isLoading ? 'Loading the sources…' : 'Pick a classified aid source',
+    },
+    ...targets
+      .map((t) => ({
+        value: t.description_key,
+        label: targetWords(t),
+        group: t.who_paid === 'the camp' ? 'Camp aid' : 'Outside money',
+      }))
+      .sort((a, b) => (a.group === b.group ? 0 : a.group === 'Outside money' ? -1 : 1)),
+  ]
+
   return (
-    <EditorBox head="Reclassify">
-      <form
-        className="space-y-2"
-        data-testid="reclassify-editor"
-        onSubmit={(event) => {
+    <form
+      data-testid="reclassify-editor"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void send()
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
           event.preventDefault()
-          void send()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            if (!busy) onCancel()
-          }
-        }}
+          if (!busy) onCancel()
+        }
+      }}
+    >
+      <EditorForm
+        title="Reclassify"
+        actions={
+          <EditorActions reason="It can move money in or out of the budget · the next ledger sync applies it · until then the line is listed apart">
+            <button type="submit" className={CS_BTN} disabled={!ready}>
+              {busy ? 'Reclassifying…' : 'Reclassify'}
+            </button>
+            <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
+              Back
+            </button>
+            {sources.error !== null && sources.data === undefined && (
+              <span className={CS_AMBER_NOTE}>
+                The sources couldn&apos;t load: {sources.error.message}
+              </span>
+            )}
+            {error !== null && <span className={CS_AMBER_NOTE}>{error}</span>}
+          </EditorActions>
+        }
       >
-        <div className={HH_FORM_ROW}>
-          <label className={HH_FORM_LABEL}>
-            Reclassify as
-            <select
-              className={CS_SELECT}
+        <EditorGrid columns={4}>
+          <EditorField label="Reclassify as">
+            <AidPicker
+              label="Reclassify as"
+              size="field"
               value={target}
-              onChange={(event) => setTarget(event.target.value)}
-            >
-              <option value="">
-                {sources.isLoading ? 'Loading the sources…' : '— pick a classified aid source —'}
-              </option>
-              {targets.map((t) => (
-                <option key={t.id} value={t.description_key}>
-                  {targetWords(t)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={HH_FORM_LABEL}>
-            Reason
+              options={options}
+              onChange={setTarget}
+              className="w-full [&>button]:w-full"
+            />
+          </EditorField>
+          <EditorField label="Reason">
             <input
               type="text"
-              className={HH_FIELD_TEXT}
+              aria-label="Reason"
+              className={`${CS_FIELD} w-full`}
               maxLength={REASON_MAX}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
             />
-          </label>
-        </div>
-        <p className={CS_PMETA}>
-          It can move money in or out of the budget. The next ledger sync applies it; until then the
-          line is listed apart and can&apos;t be placed. A description reclassified again and again
-          is fixed once in Money › Funders.
-        </p>
-        {sources.error !== null && sources.data === undefined && (
-          <p className={CS_AMBER_NOTE}>The sources couldn&apos;t load: {sources.error.message}</p>
-        )}
-        {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="submit" className={CS_BTN} disabled={!ready}>
-            {busy ? 'Reclassifying…' : 'Reclassify'}
-          </button>
-          <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
-            Back
-          </button>
-        </div>
-      </form>
-    </EditorBox>
+          </EditorField>
+        </EditorGrid>
+      </EditorForm>
+    </form>
   )
 }

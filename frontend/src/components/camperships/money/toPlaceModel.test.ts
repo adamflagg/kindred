@@ -12,34 +12,44 @@ import {
 } from './toPlaceFixtures'
 import { CAMP_QUEST, GRANTOR_C_FULL_RIDE, SOURCES, UNCLASSIFIED } from './sourcesFixtures'
 import { grantRow } from '../grants/grantsFixtures'
+import { moneyCsv } from '../kit/money'
 import { groupWords } from './toPlaceColumns'
 import {
   allLines,
   candidateDetail,
   candidateLabel,
-  CONFIRM_DOES,
+  candidateShort,
   confirmBody,
-  confirmLines,
+  confirmCell,
+  confirmEffects,
   confirmSummary,
+  evidenceLines,
   exactAmount,
+  GRANT_CONFIRM_DOES,
+  GRANT_DOES,
   grantCsvRows,
   grantLinesFor,
-  isMarkLine,
+  GROUP_DOES,
   isOpen,
+  leadWords,
+  lineCell,
+  lineWordsBare,
+  noSuggestionEffects,
   lineWords,
   NOTHING_MARKED,
   openLineWords,
   placeChoices,
+  placedTitle,
   placedWords,
   reclassifyTargets,
   requestLabels,
   stillNotPlacedWords,
+  suggestionShort,
   suggestionWords,
   suggestsSplit,
   targetWords,
   toPlaceCount,
   toPlaceCsvName,
-  wouldLines,
 } from './toPlaceModel'
 
 // A withheld round's sentence in the server's frame (financial_aid_to_place.py `withheld_why`, owner
@@ -80,6 +90,80 @@ describe('the line and its candidates in words', () => {
   })
 })
 
+describe('the line and its cells (design-language §13, §14, §15)', () => {
+  it('leads the line cell with what differs line to line: the date, who, then the description', () => {
+    expect(lineCell(JOHNSON_SPLIT)).toBe('May 14 · to the household · Camp aid · Summer')
+    expect(lineCell(GARCIA_WITHHELD)).toBe('Apr 3 · to Liam Garcia · Camp aid · Summer')
+    expect(lineCell({ ...JOHNSON_SPLIT, posted_on: null })).toBe(
+      'to the household · Camp aid · Summer'
+    )
+  })
+
+  it('short-names a candidate by its session, and a household request with ⌂ and the household label', () => {
+    const [emma] = JOHNSON_SPLIT.candidates
+    expect(emma && candidateShort(emma, JOHNSON_SPLIT)).toBe('Emma Johnson · Session 2')
+    const household = {
+      ...(emma as NonNullable<typeof emma>),
+      person_cm_id: 0,
+      camper: '',
+      session: 'Family Camp 2: Fall Harvest Weekend',
+      session_type: 'family',
+    }
+    expect(
+      candidateShort(household, { ...JOHNSON_SPLIT, household_label: 'Mia & Noah Johnson' })
+    ).toBe('⌂ Mia & Noah Johnson · FC2')
+    // A household that shares the line's requests is named by its family, as the long form does.
+    expect(
+      candidateShort({ ...household, household_cm_id: 1000009, family: 'Johnson' }, JOHNSON_SPLIT)
+    ).toBe('⌂ Johnson household · FC2')
+  })
+})
+
+describe('what Confirm says for a line with no suggestion (mock `fx`)', () => {
+  it('says a no-request line has nothing to mark Posted, and what to do instead', () => {
+    expect(noSuggestionEffects(SAM_NO_REQUEST)).toEqual([
+      {
+        sym: 'hand',
+        lead: 'Nothing to mark Posted',
+        text: ': no application this season',
+        then: '→ Reclassify… or Leave With a Note…',
+      },
+    ])
+  })
+
+  it('says the dashboard does not choose between equal matches', () => {
+    const [emma, samuel] = JOHNSON_SPLIT.candidates
+    const tied = {
+      ...JOHNSON_SPLIT,
+      amount: 900,
+      unplaced: 900,
+      suggestion: null,
+      candidates: [
+        { ...(emma as NonNullable<typeof emma>), not_yet_in_campminder: 900 },
+        { ...(samuel as NonNullable<typeof samuel>), not_yet_in_campminder: 900 },
+      ],
+    }
+    expect(noSuggestionEffects(tied)).toEqual([
+      {
+        sym: 'hand',
+        lead: "The dashboard doesn't choose",
+        text: ': Emma Johnson · Session 2 and Samuel Johnson · Session 2 each need $900',
+        then: '→ Place on Another Request… and pick one',
+      },
+    ])
+  })
+
+  it('has nothing to add for a line that has a suggestion', () => {
+    expect(noSuggestionEffects(CHEN_EXACT)).toEqual([])
+  })
+
+  it('draws the opened row’s line without its amount, which is drawn bold before it', () => {
+    expect(lineWordsBare(JOHNSON_SPLIT)).toBe(
+      'Camp aid · Summer · posted to the household · May 14'
+    )
+  })
+})
+
 describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
   it('words a single placement and a split from the server’s parts', () => {
     expect(suggestionWords(CHEN_EXACT)).toBe('Place on Olivia Chen · Quest')
@@ -89,19 +173,148 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
     expect(suggestionWords(SAM_NO_REQUEST)).toBe('Nothing to suggest: no request.')
   })
 
-  it('lists the rounds it marks posted, and those D152 withholds, before the click', () => {
-    expect(confirmLines(JOHNSON_SPLIT)).toEqual([
-      'Marks Posted: Emma Johnson · Session 2 · Round 2 · $780',
+  it('has a short bold form for the cell: a place, a split by its amounts, or why there is none', () => {
+    expect(suggestionShort(CHEN_EXACT)).toBe('Place on Olivia Chen · Quest')
+    expect(suggestionShort(JOHNSON_SPLIT)).toBe('Split $2,200 / $1,420')
+    expect(suggestionShort(SAM_NO_REQUEST)).toBe('Nothing to suggest: no request')
+    expect(suggestionShort({ ...GARCIA_WITHHELD, suggestion: null })).toBe('No suggestion')
+  })
+
+  it('says two equal matches when the dashboard will not choose between them (D12)', () => {
+    const [emma, samuel] = JOHNSON_SPLIT.candidates
+    const tied = {
+      ...JOHNSON_SPLIT,
+      amount: 900,
+      unplaced: 900,
+      suggestion: null,
+      candidates: [
+        { ...(emma as NonNullable<typeof emma>), not_yet_in_campminder: 900 },
+        { ...(samuel as NonNullable<typeof samuel>), not_yet_in_campminder: 900 },
+      ],
+    }
+    expect(suggestionShort(tied)).toBe('No suggestion: two equal matches')
+    expect(evidenceLines(tied)).toEqual([
+      '○ Emma Johnson · Session 2 and Samuel Johnson · Session 2 each need exactly $900',
+      '○ the dashboard never chooses between equal matches',
     ])
-    expect(confirmLines(GARCIA_WITHHELD)).toEqual([
-      `Places the money; doesn't mark Liam Garcia · Session 2 posted: ${GARCIA_WHY}`,
+    expect(confirmCell(tied)).toMatchObject({ sym: 'hand', words: 'Pick one of 2' })
+  })
+
+  it('shows the evidence one fact per line, each with a check', () => {
+    expect(evidenceLines(CHEN_EXACT)).toEqual([
+      '✓ exact amount ($1,500)',
+      "✓ the family's only request",
     ])
-    expect(confirmSummary(JOHNSON_SPLIT)).toBe('Marks 1 round posted · $780')
-    expect(confirmSummary(GARCIA_WITHHELD)).toBe('1 to mark posted by hand')
+    expect(evidenceLines(SAM_NO_REQUEST)).toEqual([])
+  })
+
+  it('draws the rounds it marks Posted as ✓ lines, and a part nothing is marked on as a plain place', () => {
+    expect(confirmEffects(JOHNSON_SPLIT)).toEqual([
+      { sym: 'ok', lead: 'Marks Posted', text: ' · Emma Johnson · Session 2 · R2 · $780' },
+      { sym: 'info', text: 'Places $1,420 on Samuel Johnson · Session 2' },
+    ])
+    expect(confirmEffects(CHEN_EXACT)).toEqual([
+      { sym: 'ok', lead: 'Marks Posted', text: ' · Olivia Chen · Quest · R2 · $1,500' },
+    ])
+    expect(confirmEffects(SAM_NO_REQUEST)).toEqual([])
+  })
+
+  it('lays the owner’s 10-03 “not marked Posted” sentence out in short lines from its parts (★6)', () => {
+    expect(confirmEffects(GARCIA_WITHHELD)).toEqual([
+      { sym: 'info', text: 'Places $600 on Liam Garcia · Session 2' },
+      {
+        sym: 'warn',
+        lead: 'R2 not marked Posted',
+        text: ': income corrected Apr 20, after the Apr 3 posting',
+        then: "→ Check the offer, then Mark Posted · it keeps the higher of Apr 3's amount and today's",
+      },
+    ])
+  })
+
+  it('lays a round Confirm leaves out as ○ with what CampMinder holds and what it needs', () => {
+    const line = {
+      ...CHEN_EXACT,
+      suggestion: CHEN_EXACT.suggestion && {
+        ...CHEN_EXACT.suggestion,
+        would_tick: [],
+        would_lock: 0,
+        would_leave: [
+          {
+            request_id: 'reqolivia000003',
+            round: 2,
+            why: 'CampMinder holds $1,000 on this request; Round 2 needs $1,500: mark it posted by hand if that is right',
+            kind: 'short' as const,
+            holds: 1000,
+            needs: 1500,
+          },
+        ],
+      },
+    }
+    expect(confirmEffects(line)).toEqual([
+      { sym: 'info', text: 'Places $1,500 on Olivia Chen · Quest' },
+      {
+        sym: 'hand',
+        lead: 'R2 stays unchecked',
+        text: ': CampMinder holds $1,000 · R2 needs $1,500',
+        then: "→ Mark Posted by hand if that's right",
+      },
+    ])
+  })
+
+  it('says a round a person unchecked was unchecked, with no amounts', () => {
+    const line = {
+      ...CHEN_EXACT,
+      suggestion: CHEN_EXACT.suggestion && {
+        ...CHEN_EXACT.suggestion,
+        would_tick: [],
+        would_lock: 0,
+        would_leave: [
+          {
+            request_id: 'reqolivia000003',
+            round: 1,
+            why: 'You unchecked Posted on this round: mark it posted again by hand if that is right',
+            kind: 'unchecked' as const,
+          },
+        ],
+      },
+    }
+    expect(confirmEffects(line).at(-1)).toEqual({
+      sym: 'hand',
+      lead: 'R1 stays unchecked',
+      text: ': you unchecked Posted',
+      then: "→ Mark Posted again if that's right",
+    })
+  })
+
+  it('falls back to the server’s own sentence when a read carries no parts for a left round', () => {
+    const line = {
+      ...CHEN_EXACT,
+      suggestion: CHEN_EXACT.suggestion && {
+        ...CHEN_EXACT.suggestion,
+        would_tick: [],
+        would_lock: 0,
+        would_leave: [{ request_id: 'reqolivia000003', round: 2, why: 'The server’s words' }],
+      },
+    }
+    expect(confirmEffects(line).at(-1)).toMatchObject({ sym: 'hand', text: ': The server’s words' })
+  })
+
+  it('has one short cell for the table, symbol first: ✓ posted, ○ by hand, ⚠ withheld', () => {
+    expect(confirmCell(JOHNSON_SPLIT)).toMatchObject({ sym: 'ok', words: 'R2 Posted · $780' })
+    expect(confirmCell(GARCIA_WITHHELD)).toMatchObject({ sym: 'warn', words: 'R2 by hand' })
+    expect(confirmCell(SAM_NO_REQUEST)).toMatchObject({ sym: null, words: 'Nothing to confirm' })
+    expect(confirmSummary(JOHNSON_SPLIT)).toBe('✓ R2 Posted · $780')
+    expect(confirmSummary(GARCIA_WITHHELD)).toBe('⚠ R2 by hand')
     expect(confirmSummary(SAM_NO_REQUEST)).toBe('Nothing to confirm')
   })
 
-  it('says it marks nothing posted when no round is covered in full (D146)', () => {
+  it('carries the full words of the cell in its title', () => {
+    expect(confirmCell(GARCIA_WITHHELD).title).toContain('R2 not marked Posted')
+    expect(confirmCell(JOHNSON_SPLIT).title).toContain('Marks Posted')
+    expect(confirmCell(SAM_NO_REQUEST).title).toBe('Nothing to confirm: no request to mark Posted')
+  })
+
+  it('says it marks nothing Posted when no round is covered in full (D146)', () => {
     const none = {
       ...CHEN_EXACT,
       suggestion: CHEN_EXACT.suggestion && {
@@ -110,17 +323,9 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
         would_lock: 0,
       },
     }
-    expect(confirmLines(none)).toEqual([NOTHING_MARKED])
-    expect(NOTHING_MARKED).toBe('Marks nothing posted.')
-    expect(confirmSummary(none)).toBe('Marks nothing posted')
-  })
-
-  it('tells a line that marks a round posted from one that marks nothing', () => {
-    expect(isMarkLine('Marks Posted: Emma Johnson · Session 2 · Round 2 · $780')).toBe(true)
-    expect(isMarkLine(NOTHING_MARKED)).toBe(false)
-    expect(isMarkLine(`Places the money; doesn't mark Liam Garcia · Session 2 posted: x`)).toBe(
-      false
-    )
+    expect(confirmEffects(none).at(-1)).toEqual({ sym: 'info', text: NOTHING_MARKED })
+    expect(NOTHING_MARKED).toBe('Marks nothing Posted.')
+    expect(confirmCell(none)).toMatchObject({ sym: null, words: 'Nothing marked' })
   })
 
   it('reads a fresh preview in place of the read’s when one is given (P-4)', () => {
@@ -130,12 +335,12 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
       would_leave: [],
       would_not_tick: [],
     }
-    expect(confirmLines(CHEN_EXACT, fresh)).toEqual([
-      'Marks Posted: Olivia Chen · Quest · Round 2 · $1,400',
+    expect(confirmEffects(CHEN_EXACT, fresh)).toEqual([
+      { sym: 'ok', lead: 'Marks Posted', text: ' · Olivia Chen · Quest · R2 · $1,400' },
     ])
     expect(confirmBody(CHEN_EXACT, fresh)).toMatchObject({ expected_locked: '1400.00' })
     // No suggestion: nothing to confirm, whatever a preview says.
-    expect(confirmLines(SAM_NO_REQUEST, fresh)).toEqual([])
+    expect(confirmEffects(SAM_NO_REQUEST, fresh)).toEqual([])
   })
 
   it("sends the suggestion's parts and what it showed it would lock, exact to the cent", () => {
@@ -153,24 +358,19 @@ describe('the suggestion and what Confirm does (§4.10; D146, D152)', () => {
   })
 })
 
-describe('what a placement did (§4.10: the result lists exactly what was marked posted)', () => {
+describe('what a placement did (§4.10: the result lists exactly what was marked Posted)', () => {
   const labels = requestLabels(allLines(TO_PLACE))
+  const marked = {
+    year: 2027,
+    operation_id: 'op0000000000001',
+    placed: [3000001],
+    ticked: [{ request_id: EMMA_REQ, round: 2, amount: 780 }],
+    left_to_tick: [],
+    not_ticked: [],
+  }
 
-  it('names the rounds marked posted, and those to mark posted by hand', () => {
-    expect(
-      placedWords(
-        {
-          year: 2027,
-          operation_id: 'op0000000000001',
-          placed: [3000001],
-          ticked: [{ request_id: EMMA_REQ, round: 2, amount: 780 }],
-          left_to_tick: [],
-          not_ticked: [],
-        },
-        [JOHNSON_SPLIT],
-        labels
-      )
-    ).toBe('Johnson: $3,620 placed. Marked Posted: Emma Johnson · Session 2 Round 2 · $780.')
+  it('says it short in the status slot: how much, then ✓ the round Posted, ⚠ or ○ by hand', () => {
+    expect(placedWords(marked, [JOHNSON_SPLIT])).toBe('Johnson: $3,620 placed · ✓ R2 Posted · $780')
     expect(
       placedWords(
         {
@@ -182,12 +382,37 @@ describe('what a placement did (§4.10: the result lists exactly what was marked
           not_ticked: GARCIA_WITHHELD.suggestion?.would_not_tick ?? [],
           sections_not_locked: ['award_tables'],
         },
-        [GARCIA_WITHHELD, SAMUEL_MISMATCH],
-        labels
+        [GARCIA_WITHHELD, SAMUEL_MISMATCH]
       )
-    ).toBe(
-      `2 lines placed. Nothing marked posted. Not marked posted: Liam Garcia · Session 2 (${GARCIA_WHY}). Rules not locked yet: award tables.`
-    )
+    ).toBe('2 lines placed · nothing marked Posted · ⚠ R2 by hand · rules not locked yet')
+    expect(
+      placedWords(
+        {
+          year: 2027,
+          operation_id: 'op0000000000003',
+          placed: [3000003],
+          ticked: [],
+          left_to_tick: [{ request_id: 'reqolivia000003', round: 2, why: 'x' }],
+        },
+        [CHEN_EXACT]
+      )
+    ).toBe('Chen: $1,500 placed · nothing marked Posted · ○ R2 by hand')
+  })
+
+  it('counts several rounds marked Posted together, to the cent', () => {
+    expect(
+      placedWords(
+        {
+          ...marked,
+          placed: [3000001, 3000003],
+          ticked: [
+            { request_id: EMMA_REQ, round: 2, amount: 780.1 },
+            { request_id: 'reqolivia000003', round: 2, amount: 1500 },
+          ],
+        },
+        [JOHNSON_SPLIT, CHEN_EXACT]
+      )
+    ).toBe('2 lines placed · ✓ 2 rounds Posted · $2,280.10')
   })
 
   it('names the family the way the caller asks (the household label, ruling D)', () => {
@@ -201,10 +426,53 @@ describe('what a placement did (§4.10: the result lists exactly what was marked
           left_to_tick: [],
         },
         [CHEN_EXACT],
-        labels,
         () => 'Mei & David Chen'
       )
-    ).toBe('Mei & David Chen: $1,500 placed. Nothing marked posted.')
+    ).toBe('Mei & David Chen: $1,500 placed · nothing marked Posted')
+  })
+
+  it('keeps every request named in the title, as the result always listed them', () => {
+    expect(placedTitle(marked, [JOHNSON_SPLIT], labels)).toBe(
+      'Johnson: $3,620 placed. Marked Posted: Emma Johnson · Session 2 Round 2 · $780.'
+    )
+    expect(
+      placedTitle(
+        {
+          year: 2027,
+          operation_id: 'op0000000000002',
+          placed: [3000002, 3000005],
+          ticked: [],
+          left_to_tick: [],
+          not_ticked: GARCIA_WITHHELD.suggestion?.would_not_tick ?? [],
+          sections_not_locked: ['award_tables'],
+        },
+        [GARCIA_WITHHELD, SAMUEL_MISMATCH],
+        labels
+      )
+    ).toBe(
+      `2 lines placed. Nothing marked Posted. Not marked Posted: Liam Garcia · Session 2 (${GARCIA_WHY}). Rules not locked yet: award tables.`
+    )
+    expect(
+      placedTitle(
+        {
+          year: 2027,
+          operation_id: 'op0000000000003',
+          placed: [3000003],
+          ticked: [],
+          left_to_tick: [
+            {
+              request_id: 'reqolivia000003',
+              round: 2,
+              why: 'CampMinder holds $1,000 on this request; Round 2 needs $1,500: mark it posted by hand if that is right',
+            },
+          ],
+        },
+        [CHEN_EXACT],
+        labels
+      )
+    ).toBe(
+      'Chen: $1,500 placed. Nothing marked Posted. Left unchecked: Olivia Chen · Quest Round 2 (CampMinder holds $1,000 on this request; Round 2 needs $1,500: mark it posted by hand if that is right).'
+    )
   })
 })
 
@@ -219,44 +487,6 @@ describe('open lines and the CSV name', () => {
     expect(toPlaceCsvName(2027, null)).toBe('camperships-money-to-place-2027.csv')
     expect(toPlaceCsvName(2027, 1000001)).toBe(
       'camperships-money-to-place-household-1000001-2027.csv'
-    )
-  })
-})
-
-describe('the leave and left lines say "by hand" once (review m3)', () => {
-  const labels = requestLabels(allLines(TO_PLACE))
-  // The server's words for a round a placement leaves (financial_aid_to_place_service.py).
-  const WHY =
-    'CampMinder holds $1,000 on this request; Round 2 needs $1,500: mark it posted by hand if that is right'
-
-  it('words a round Confirm leaves with the round and the server’s own reason', () => {
-    const line = {
-      ...CHEN_EXACT,
-      suggestion: CHEN_EXACT.suggestion && {
-        ...CHEN_EXACT.suggestion,
-        would_tick: [],
-        would_lock: 0,
-        would_leave: [{ request_id: 'reqolivia000003', round: 2, why: WHY }],
-      },
-    }
-    expect(confirmLines(line)).toEqual([`Leaves Olivia Chen · Quest · Round 2: ${WHY}`])
-  })
-
-  it('words a round left unchecked without repeating "by hand"', () => {
-    expect(
-      placedWords(
-        {
-          year: 2027,
-          operation_id: 'op0000000000003',
-          placed: [3000003],
-          ticked: [],
-          left_to_tick: [{ request_id: 'reqolivia000003', round: 2, why: WHY }],
-        },
-        [CHEN_EXACT],
-        labels
-      )
-    ).toBe(
-      `Chen: $1,500 placed. Nothing marked posted. Left unchecked: Olivia Chen · Quest Round 2 (${WHY}).`
     )
   })
 })
@@ -288,19 +518,19 @@ describe('the other ways to place a line (§8.1; D12; part 1b)', () => {
       would_lock: 600,
       would_leave: [],
       would_not_tick: [],
+      parts: [{ request_id: 'reqliamquest005', amount: 600 }],
     }
-    expect(wouldLines({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([
-      'Marks Posted: Liam Garcia · Quest · Round 1 · $600',
+    expect(confirmEffects({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([
+      { sym: 'ok', lead: 'Marks Posted', text: ' · Liam Garcia · Quest · R1 · $600' },
     ])
-    expect(confirmLines({ ...GARCIA_WITHHELD, suggestion: null }, would)).toEqual([])
     expect(
-      wouldLines(JOHNSON_SPLIT, {
+      confirmEffects(JOHNSON_SPLIT, {
         would_tick: [],
         would_lock: 0,
         would_leave: [],
         would_not_tick: [],
-      })
-    ).toEqual([NOTHING_MARKED])
+      }).at(-1)
+    ).toEqual({ sym: 'info', text: NOTHING_MARKED })
   })
 })
 
@@ -328,22 +558,41 @@ describe('Reclassify targets (D104; P-7)', () => {
   })
 })
 
-describe('what each group says Confirm does (M5)', () => {
-  it('names the camp-aid sentence by reason, and says a no-request line has nothing to mark', () => {
-    expect(CONFIRM_DOES.several).toBe('Camp aid: Confirm marks the round Posted.')
-    expect(CONFIRM_DOES.program_mismatch).toBe('Camp aid: Confirm marks the round Posted.')
-    expect(CONFIRM_DOES.no_request).toBe(
-      'Camp aid: this line has no request to mark, so it is reclassified or left with a note.'
+describe('what each group says Confirm does (M5; design-language §16, answers §3)', () => {
+  it('gives a bold lead then → and the result, one callout per group', () => {
+    expect(GROUP_DOES.several).toEqual({
+      tone: 'default',
+      lines: [{ lead: 'Confirm', text: ' → marks the round Posted', posted: true, ok: true }],
+    })
+    expect(GROUP_DOES.program_mismatch.lines).toEqual([
+      { lead: 'Confirm', text: ' → marks the round Posted', ok: true },
+      { pre: 'Or ', lead: 'Reclassify', text: ' if the money belongs to that other program' },
+    ])
+  })
+
+  it('says a no-request line has nothing to mark Posted, under an amber rule', () => {
+    expect(GROUP_DOES.no_request).toEqual({
+      tone: 'warn',
+      lines: [{ lead: 'Nothing to mark Posted', text: ' → Reclassify it, or Leave With a Note' }],
+    })
+  })
+
+  it('words the outside grant’s callout in two short lines, sky-ruled (owner: "friendly-ization")', () => {
+    expect(GRANT_DOES).toEqual({
+      tone: 'grant',
+      lines: [
+        { lead: 'Confirm', text: " → lowers the camper's share in that round" },
+        { text: "Posted and the camp's budget don't move" },
+      ],
+    })
+    expect(GRANT_CONFIRM_DOES).toBe(
+      "Confirm → lowers the camper's share in that round; Posted and the camp's budget don't move"
     )
   })
 
-  it('draws counts, then the sentence, in each group heading', () => {
-    expect(groupWords([JOHNSON_SPLIT, GARCIA_WITHHELD, CHEN_EXACT])).toBe(
-      '3 households · 3 lines · Camp aid: Confirm marks the round Posted.'
-    )
-    expect(groupWords([SAM_NO_REQUEST])).toBe(
-      '1 household · 1 line · Camp aid: this line has no request to mark, so it is reclassified or left with a note.'
-    )
+  it('draws counts in each group heading, never money', () => {
+    expect(groupWords([JOHNSON_SPLIT, GARCIA_WITHHELD, CHEN_EXACT])).toBe('3 lines · 3 households')
+    expect(groupWords([SAM_NO_REQUEST])).toBe('1 line · 1 household')
   })
 })
 
@@ -358,6 +607,14 @@ describe('the open line and the tab count (M5)', () => {
     expect(openLineWords(5, 6920, grants)).toBe(
       '7 lines open · $6,920 camp aid · $2,000.50 outside grants'
     )
+  })
+
+  it('splits the same words for the toolbar: the count bold, the figures muted', () => {
+    expect(leadWords(5, 6920, [{ amount: 1500 }])).toEqual({
+      head: '6 lines open',
+      rest: '$6,920 camp aid · $1,500 outside grants',
+    })
+    expect(leadWords(1, 900, [])).toEqual({ head: '1 line open', rest: '$900 camp aid' })
   })
 
   it('the tab count is the camp-aid open_count plus the grant lines that need a camper', () => {
@@ -394,6 +651,8 @@ describe('grantCsvRows (final audit O8)', () => {
     }
     const [row] = grantCsvRows([need], undefined)
     expect(row?.[0]).toBe('Pat Garcia · #1000050')
-    expect(row?.[8]).toBe('Outside grant posted to the family')
+    // The camp-aid table gained an Amount column (final UX), so the grant rows carry it in the same slot.
+    expect(row?.[5]).toBe(moneyCsv(need.grant.amount))
+    expect(row?.[9]).toBe('Outside grant posted to the family')
   })
 })

@@ -64,7 +64,7 @@ export const JOHNSON_SPLIT: ApiAidToPlaceLine = {
     evidence: [
       {
         kind: 'proportional',
-        text: 'The line equals the two requests’ amounts not yet in CampMinder together.',
+        text: 'the two requests together ($2,200 + $1,420)',
       },
     ],
     would_tick: [{ request_id: EMMA_REQ, round: 2, amount: 780 }],
@@ -107,7 +107,7 @@ export const GARCIA_WITHHELD: ApiAidToPlaceLine = {
   ],
   suggestion: {
     parts: [{ request_id: LIAM_REQ, amount: 600 }],
-    evidence: [{ kind: 'person', text: 'The person on the line is Liam Garcia.' }],
+    evidence: [{ kind: 'person', text: 'posted to this camper' }],
     would_tick: [],
     would_lock: 0,
     would_leave: [],
@@ -151,8 +151,8 @@ export const CHEN_EXACT: ApiAidToPlaceLine = {
   suggestion: {
     parts: [{ request_id: OLIVIA_REQ, amount: 1500 }],
     evidence: [
-      { kind: 'amount', text: 'Exact amount: Olivia’s $1,500 not yet in CampMinder.' },
-      { kind: 'only_request', text: 'The family’s one live request.' },
+      { kind: 'amount', text: 'exact amount ($1,500)' },
+      { kind: 'only_request', text: "the family's only request" },
     ],
     would_tick: [{ request_id: OLIVIA_REQ, round: 2, amount: 1500 }],
     would_lock: 1500,
@@ -192,7 +192,7 @@ export const SAMUEL_MISMATCH: ApiAidToPlaceLine = {
   candidates: [SAMUEL],
   suggestion: {
     parts: [{ request_id: SAMUEL_REQ, amount: 300 }],
-    evidence: [{ kind: 'amount', text: 'Exact amount: Samuel’s Round 3 is $300.' }],
+    evidence: [{ kind: 'amount', text: 'exact amount ($300)' }],
     would_tick: [{ request_id: SAMUEL_REQ, round: 3, amount: 300 }],
     would_lock: 300,
     would_leave: [],
@@ -230,21 +230,21 @@ export const TO_PLACE: ApiAidToPlace = {
   groups: [
     {
       reason: 'several',
-      label: 'Several requests could take this',
+      label: 'Several requests could take this line',
       count: 3,
       total: 5720,
       lines: [JOHNSON_SPLIT, GARCIA_WITHHELD, CHEN_EXACT],
     },
     {
       reason: 'no_request',
-      label: 'No request behind it',
+      label: 'No request behind this line',
       count: 1,
       total: 900,
       lines: [SAM_NO_REQUEST],
     },
     {
       reason: 'program_mismatch',
-      label: "The description names a program this camper isn't in",
+      label: 'The description names another program',
       count: 1,
       total: 300,
       lines: [SAMUEL_MISMATCH],
@@ -296,8 +296,8 @@ export const RILEY_EXACT: ApiAidToPlaceLine = {
   suggestion: {
     parts: [{ request_id: RILEY_REQ, amount: 300 }],
     evidence: [
-      { kind: 'amount', text: 'Exact amount: Riley’s $300 not yet in CampMinder.' },
-      { kind: 'only_request', text: 'The family’s one live request.' },
+      { kind: 'amount', text: 'exact amount ($300)' },
+      { kind: 'only_request', text: "the family's only request" },
     ],
     would_tick: [{ request_id: RILEY_REQ, round: 1, amount: 300 }],
     would_lock: 300,

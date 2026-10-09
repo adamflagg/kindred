@@ -11,23 +11,23 @@ import type {
   ApiAidPlacePreviewIn,
   ApiAidToPlaceLine,
 } from '../../../types/api-types'
-import { EditorBox } from '../household/ReasonForm'
-import { HH_FIELD_NUMBER, HH_FORM_LABEL } from '../household/householdStyles'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_PANEL_HEAD, CS_PMETA } from '../kit/csType'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_FIELD, CS_PANEL_HEAD, CS_PMETA } from '../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../kit/EditorLayout'
 import { formatMoney } from '../kit/money'
 import { previewRefusalWords, refusalWords } from './refusal'
 import { initialInputs, readSplit, wholeLineOn, type SplitInputs } from './splitModel'
 import {
   candidateDetail,
   candidateLabel,
+  candidateShort,
+  confirmEffects,
   exactAmount,
-  isMarkLine,
   lineFamily,
+  placedTitle,
   placedWords,
   requestLabels,
-  wouldLines,
 } from './toPlaceModel'
-import { MARK_TEXT } from './toPlaceStyles'
+import { EffectList } from './ToPlaceParts'
 import type { InFlightLines } from './useInFlightLines'
 
 /**
@@ -67,7 +67,7 @@ export function PlaceEditor({
   mode: 'split' | 'another'
   inFlight: InFlightLines
   onCancel: () => void
-  onDone: (words: string) => void
+  onDone: (words: string, title?: string) => void
   /** A refusal goes up to the tab too: this row unmounts when the refresh drops its line. */
   onRefused: (words: string) => void
 }) {
@@ -131,7 +131,10 @@ export function PlaceEditor({
     setError(null)
     try {
       const out = await place.mutateAsync({ year, transactionCmId: txn, body })
-      onDone(placedWords(out, [line], requestLabels([line]), () => family))
+      onDone(
+        placedWords(out, [line], () => family),
+        placedTitle(out, [line], requestLabels([line]), () => family)
+      )
     } catch (caught) {
       // The reads (and this preview) refreshed before the rejection: what placing does now shows,
       // and the button places what it now shows.
@@ -147,33 +150,82 @@ export function PlaceEditor({
     mode === 'split'
       ? `Split ${formatMoney(line.amount)}`
       : `Place all ${formatMoney(line.amount)} on one request`
+  // The dependent choice, in the right column and always on screen: switched off, not hidden, until
+  // there is something to preview (§24).
+  const side = (
+    <div className="space-y-1" data-testid="place-effects">
+      <p className={CS_PANEL_HEAD}>What placing this does</p>
+      {typed === null ? (
+        <p className={`${CS_PMETA} opacity-60`}>
+          {mode === 'split'
+            ? 'Type parts that make the whole line to see it'
+            : 'Pick a request to see it'}
+        </p>
+      ) : refused !== null ? (
+        <p className={CS_AMBER_NOTE}>{refused}</p>
+      ) : answer !== null ? (
+        <EffectList lines={confirmEffects(line, answer)} />
+      ) : current && preview.isError ? (
+        <p className={CS_AMBER_NOTE}>
+          {`Couldn't work out what placing this does: ${preview.error.message} `}
+          <button type="button" className={CS_BTN2} onClick={() => void preview.refetch()}>
+            Try Again
+          </button>
+        </p>
+      ) : (
+        <p className={CS_PMETA}>Working out what placing this does…</p>
+      )}
+    </div>
+  )
   return (
-    <EditorBox head={head}>
-      <form
-        className="space-y-2 text-sm"
-        data-testid="place-editor"
-        onSubmit={(event) => {
+    <form
+      data-testid="place-editor"
+      className="text-sm"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void send()
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
           event.preventDefault()
-          void send()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            if (!busy) onCancel()
-          }
-        }}
+          if (!busy) onCancel()
+        }
+      }}
+    >
+      <EditorForm
+        title={head}
+        side={side}
+        actions={
+          <EditorActions reason="Each part lands on its request in full, or nothing is written · one logged operation">
+            <button
+              type="submit"
+              className={CS_BTN}
+              disabled={body === null || place.isPending || busy}
+            >
+              {place.isPending || busy
+                ? 'Placing…'
+                : mode === 'split'
+                  ? 'Place the Split'
+                  : 'Place It'}
+            </button>
+            <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
+              Back
+            </button>
+            {error !== null && <span className={CS_AMBER_NOTE}>{error}</span>}
+          </EditorActions>
+        }
       >
-        <ul className="space-y-1">
-          {line.candidates.map((c) => (
-            <li key={c.request_id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              {mode === 'split' ? (
-                <label className={HH_FORM_LABEL}>
-                  <span>{candidateLabel(c)}</span>
+        {mode === 'split' ? (
+          <>
+            <EditorGrid columns={2}>
+              {line.candidates.map((c) => (
+                <EditorField key={c.request_id} label={candidateShort(c, line)}>
                   <input
                     type="text"
                     inputMode="decimal"
                     aria-label={`Part for ${candidateLabel(c)}`}
-                    className={HH_FIELD_NUMBER}
+                    title={`${candidateLabel(c)} · ${candidateDetail(c)}`}
+                    className={`${CS_FIELD} w-32 text-right tabular-nums`}
                     value={inputs[c.request_id] ?? ''}
                     onChange={(event) => {
                       const next = { ...inputs, [c.request_id]: event.target.value }
@@ -182,9 +234,32 @@ export function PlaceEditor({
                       ask(read.ok ? read.body : null, DEBOUNCE_MS)
                     }}
                   />
-                </label>
+                </EditorField>
+              ))}
+            </EditorGrid>
+            <p className={`${CS_PMETA} mt-1`}>
+              {split.ok ? (
+                <>
+                  <span data-sym="" className="text-forest-700 dark:text-forest-300 mr-1 font-bold">
+                    ✓
+                  </span>
+                  {split.words}
+                </>
               ) : (
-                <label className={HH_FORM_LABEL}>
+                <>
+                  <span data-sym="" className="mr-1 font-bold text-amber-700 dark:text-amber-300">
+                    ⚠
+                  </span>
+                  {split.problem}
+                </>
+              )}
+            </p>
+          </>
+        ) : (
+          <ul className="space-y-1">
+            {line.candidates.map((c) => (
+              <li key={c.request_id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <label className="inline-flex items-center gap-1.5">
                   <input
                     type="radio"
                     name={`another-${String(txn)}`}
@@ -194,65 +269,14 @@ export function PlaceEditor({
                       ask(wholeLineOn(line, c.request_id), 0)
                     }}
                   />
-                  <span>{candidateLabel(c)}</span>
+                  <span>{candidateShort(c, line)}</span>
                 </label>
-              )}
-              <span className={CS_PMETA}>{candidateDetail(c)}</span>
-            </li>
-          ))}
-        </ul>
-        {mode === 'split' &&
-          (split.ok ? (
-            <p className={CS_PMETA}>{split.words}</p>
-          ) : (
-            <p className={CS_AMBER_NOTE}>{split.problem}</p>
-          ))}
-        {typed !== null && (
-          <div className="space-y-0.5">
-            <p className={CS_PANEL_HEAD}>What placing this does</p>
-            {refused !== null ? (
-              <p className={CS_AMBER_NOTE}>{refused}</p>
-            ) : answer !== null ? (
-              <ul className="space-y-0.5">
-                {wouldLines(line, answer).map((words) => (
-                  <li key={words} className={isMarkLine(words) ? MARK_TEXT : undefined}>
-                    {words}
-                  </li>
-                ))}
-              </ul>
-            ) : current && preview.isError ? (
-              <p className={CS_AMBER_NOTE}>
-                {`Couldn't work out what placing this does: ${preview.error.message} `}
-                <button type="button" className={CS_BTN2} onClick={() => void preview.refetch()}>
-                  Try Again
-                </button>
-              </p>
-            ) : (
-              <p className={CS_PMETA}>Working out what placing this does…</p>
-            )}
-          </div>
+                <span className={CS_PMETA}>{`· ${candidateDetail(c)}`}</span>
+              </li>
+            ))}
+          </ul>
         )}
-        <p className={CS_PMETA}>
-          Each part lands on its request in full, or nothing is written. One logged operation.
-        </p>
-        {error !== null && <p className={CS_AMBER_NOTE}>{error}</p>}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="submit"
-            className={CS_BTN}
-            disabled={body === null || place.isPending || busy}
-          >
-            {place.isPending || busy
-              ? 'Placing…'
-              : mode === 'split'
-                ? 'Place the Split'
-                : 'Place It'}
-          </button>
-          <button type="button" className={CS_BTN2} disabled={busy} onClick={onCancel}>
-            Back
-          </button>
-        </div>
-      </form>
-    </EditorBox>
+      </EditorForm>
+    </form>
   )
 }

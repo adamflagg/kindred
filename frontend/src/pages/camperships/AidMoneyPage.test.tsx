@@ -124,7 +124,8 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
   it('shows the four tabs in order, and To place’s body on its tab', () => {
     renderAt('/aid/money/to-place')
     const nav = screen.getAllByRole('link').map((a) => a.textContent)
-    expect(nav).toEqual(['Ledger', 'To place', 'Grants', 'Funders'])
+    // The tab row's right slot carries To place's two "Also raised" links after the four tabs.
+    expect(nav.slice(0, 4)).toEqual(['Ledger', 'To place', 'Grants', 'Funders'])
     expect(screen.getByText('To place body')).toBeInTheDocument()
   })
 
@@ -132,11 +133,40 @@ describe('AidMoneyPage (spec §8.1; D62; owner 10-08)', () => {
     for (const slug of ['ledger', 'to-place', 'grants', 'funders']) {
       const { unmount } = renderAt(`/aid/money/${slug}`)
       expect(screen.queryByText(/^Also raised by the ledger/)).toBeNull()
-      expect(screen.queryByRole('link', { name: /^Requests ›/ })).toBeNull()
       expect(screen.queryByRole('link', { name: 'Grants › Needs attention' })).toBeNull()
       expect(screen.queryByText(/One row per family, plus finance/)).toBeNull()
       expect(screen.queryByText(/CampMinder aid lines that no single request explains/)).toBeNull()
       unmount()
+    }
+  })
+
+  // Final UX (the approved money-to-place mock; design-language §5, §19): the two views the ledger also
+  // raises are two sized links in the tab row's right slot, on To place only, no row of their own.
+  it('puts "Also raised: Requests › Not reconciled · To reverse" in the tab row on To place only', () => {
+    const { unmount } = renderAt('/aid/money/to-place?year=2027')
+    const nav = screen.getByText('Also raised:').closest('nav') as HTMLElement
+    const tabs = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent)
+    expect(tabs.slice(-2)).toEqual(['Requests › Not reconciled', 'To reverse'])
+    expect(screen.getByRole('link', { name: 'Requests › Not reconciled' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=not-reconciled&year=2027'
+    )
+    expect(screen.getByRole('link', { name: 'To reverse' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=to-reverse&year=2027'
+    )
+    // Sized links (§19): 13.5px, never an inherited 16.
+    expect(screen.getByRole('link', { name: 'To reverse' })).toHaveClass('text-[13.5px]')
+    expect(screen.getByText('Also raised:')).toHaveAttribute(
+      'title',
+      'Also raised by the ledger, worked where the request is'
+    )
+    unmount()
+    for (const slug of ['ledger', 'grants', 'funders']) {
+      const again = renderAt(`/aid/money/${slug}`)
+      expect(screen.queryByText('Also raised:')).toBeNull()
+      expect(screen.queryByRole('link', { name: 'To reverse' })).toBeNull()
+      again.unmount()
     }
   })
 

@@ -14,16 +14,18 @@ import {
   CS_PANEL_RULE,
   CS_PMETA,
 } from '../kit/csType'
+import { formatShortDate } from '../kit/dates'
+import { formatMoney } from '../kit/money'
 import { refusalWords } from '../money/refusal'
-import { grantLineWords } from './needsModel'
+import { EffectList } from '../money/ToPlaceParts'
 import { PlaceCamperForm } from './PlaceCamperForm'
 import {
-  evidenceWords,
+  evidenceLines,
+  grantEffects,
   placedGrantWords,
   placementFor,
   stillNeedsCamper,
-  suggestionCell,
-  SUGGESTS_CONFIRMS,
+  suggestionShort,
 } from './placeModel'
 
 const THREE_PANELS =
@@ -33,10 +35,12 @@ const MIDDLE = `flex min-w-0 flex-col gap-1 border-r px-4 ${CS_PANEL_RULE}`
 const LAST = 'flex min-w-0 flex-col gap-1.5 pl-4'
 
 /**
- * A "needs a camper" line opened (owner ruling A; spec §8.2; D16, D126): left, the line in CampMinder;
- * middle, the suggestion and its evidence, and the household's campers; right, Confirm (the
- * suggestion, its session with it) and Another Camper… (casework). Each reads the line again just
- * before sending (P-9): a placement overwrites, so a line placed meanwhile is never re-placed.
+ * A "needs a camper" line opened (owner ruling A; spec §8.2; D16, D126; final UX §16, §24): left, the
+ * line in CampMinder; middle, the suggestion and its evidence one fact per line, and the household's
+ * campers; right, what Confirm does (one effect per line), then Confirm (the suggestion, its session
+ * with it) and Another Camper… (casework). Another Camper… opens its editor under the three panels,
+ * the whole opened row's width. Each reads the line again just before sending (P-9): a placement
+ * overwrites, so a line placed meanwhile is never re-placed.
  */
 export function NeedsCamperPanel({
   need,
@@ -93,12 +97,15 @@ export function NeedsCamperPanel({
       <div className={THREE_PANELS}>
         <div className={PANEL} data-panel="line">
           <div className={CS_PANEL_HEAD}>The grant line in CampMinder</div>
-          <div>{grantLineWords(need)}</div>
+          <div>
+            <b>{formatMoney(need.grant.amount)}</b>
+            {` · ${grantLineBare(need)}`}
+          </div>
           {need.grant.description !== '' && (
             <div className={CS_PMETA}>{need.grant.description}</div>
           )}
           <Link
-            className={`${CS_LINK_SM}`}
+            className={CS_LINK_SM}
             to={aidHref(`/aid/households/${String(need.grant.household_cm_id)}`, view)}
           >
             Open the Household ›
@@ -106,8 +113,18 @@ export function NeedsCamperPanel({
         </div>
         <div className={MIDDLE} data-panel="suggestion">
           <div className={CS_PANEL_HEAD}>Suggestion</div>
-          <div>{suggestionCell(need, sessions)}</div>
-          <div className={CS_PMETA}>{evidenceWords(need)}</div>
+          {suggestion === null ? (
+            <div className={CS_PMETA}>No suggestion: pick the camper.</div>
+          ) : (
+            <div>
+              <b>{suggestionShort(need, sessions)}</b>
+            </div>
+          )}
+          {evidenceLines(need).map((fact) => (
+            <div key={fact} className={CS_PMETA}>
+              {fact}
+            </div>
+          ))}
           <div className={CS_PMETA}>
             {need.candidates.length === 0
               ? 'No camper in the household this season.'
@@ -115,14 +132,15 @@ export function NeedsCamperPanel({
           </div>
         </div>
         <div className={LAST} data-panel="actions">
-          <div className={CS_PMETA}>{SUGGESTS_CONFIRMS}</div>
-          {canWork && (
-            <div className="flex flex-wrap gap-2">
+          <div className={CS_PANEL_HEAD}>What Confirm does</div>
+          <EffectList lines={grantEffects(need, sessions)} />
+          {canWork && !another && (
+            <div className="flex flex-wrap gap-2 pt-1">
               {suggestion !== null && (
                 <button
                   type="button"
                   className={CS_BTN}
-                  disabled={place.isPending || another}
+                  disabled={place.isPending}
                   onClick={() => void confirm()}
                 >
                   {place.isPending ? 'Placing…' : 'Confirm'}
@@ -132,17 +150,12 @@ export function NeedsCamperPanel({
                 <button
                   type="button"
                   className={CS_BTN2}
-                  disabled={another || confirming}
+                  disabled={confirming}
                   onClick={() => setAnother(true)}
                 >
                   Another Camper…
                 </button>
               )}
-            </div>
-          )}
-          {canWork && (
-            <div className={CS_PMETA}>
-              It prices the camper&apos;s unposted rounds with the grant; a posted amount stands.
             </div>
           )}
           {problem !== null && <div className={CS_AMBER_NOTE}>{problem}</div>}
@@ -161,4 +174,15 @@ export function NeedsCamperPanel({
       )}
     </div>
   )
+}
+
+/** The line's words without its amount, which is drawn bold before them. */
+function grantLineBare(need: ApiAidNeedsCamper): string {
+  const g = need.grant
+  const who = g.grantor_key === '' ? g.description || 'no grantor yet' : g.grantor_name
+  return [
+    who,
+    'posted to the household',
+    ...(g.recorded_on === '' ? [] : [formatShortDate(g.recorded_on)]),
+  ].join(' · ')
 }
