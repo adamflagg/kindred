@@ -9,6 +9,17 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import { aidHref } from '../kit/asOf'
 import { MoneyCompact } from '../kit/MoneyText'
 
+/**
+ * Each pool's name on this crowded bar, by rules key (owner 2026-10-08), the way `sessionName`'s
+ * `tiny` form shortens sessions. A key not listed reads its label whole, and the hover always
+ * carries the full label. Pools change at most once a season; a renamed one is a one-line edit here.
+ */
+const POOL_SHORT_NAMES: Readonly<Record<string, string>> = {
+  camp_quest: 'C&Q',
+  tbm: 'TBM',
+  weekend: 'Weekend',
+}
+
 // A block of inline figures, not a flex row, so a crowded bar can end it in an ellipsis (a flex row clips mid-figure).
 const LINE = 'text-muted-foreground block min-w-0 truncate text-xs [&>*+*]:ml-1.5'
 
@@ -55,7 +66,7 @@ export function RemainingLine() {
       {data.pools.map((pool, index) => {
         const figure = (
           <>
-            {pool.label}{' '}
+            {POOL_SHORT_NAMES[pool.pool] ?? pool.label}{' '}
             <MoneyCompact value={pool.remaining} tone="pool" className="font-semibold" />
           </>
         )
@@ -65,12 +76,15 @@ export function RemainingLine() {
             {opens ? (
               <Link
                 to={aidHref('/aid/season/rounds-budget', { year, asOf }, { pool: pool.pool })}
+                title={pool.label}
                 className="text-foreground border-border border-b border-dotted"
               >
                 {figure}
               </Link>
             ) : (
-              <span className="text-foreground">{figure}</span>
+              <span title={pool.label} className="text-foreground">
+                {figure}
+              </span>
             )}
           </Fragment>
         )
