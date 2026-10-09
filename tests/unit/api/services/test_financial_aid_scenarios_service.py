@@ -1494,7 +1494,7 @@ SPLIT_70_25 = {
 
 @pytest.mark.asyncio
 async def test_an_option_that_never_touched_the_budget_does_not_revert_the_drafts_newer_budget() -> None:
-    """Finance moves the rules draft's total and split after A was kept from v1; A changed round2 only, so the
+    """Finance moves the rules draft's split (the total is locked once the budget is approved) after A was kept from v1; A changed round2 only, so the
     promotion lists round2 alone and v2's budget stays."""
     world = await _frozen()
     await _approved_v1(world)
@@ -1502,12 +1502,12 @@ async def test_an_option_that_never_touched_the_budget_does_not_revert_the_draft
         YEAR, with_lever(intake_rules(), "round2.tables.camp.tiers.4.total_pct", "60"), FINANCE
     )
     await world.service.keep(YEAR, FINANCE)  # A
-    budget = with_levers(intake_rules(), {"budget.total": "550000", **SPLIT_70_25}).budget
+    budget = with_levers(intake_rules(), SPLIT_70_25).budget
     await world.rules.save_section(YEAR, 1, "budget", budget.model_dump(mode="json"), actor=FINANCE)  # branches v2
     promotion = await world.service.rules_draft_preview(YEAR, "A")
     assert [s.section for s in promotion.preview.sections] == ["round2"]
     draft, _ = await world.service.make_rules_draft(YEAR, "A", base_version=2, acknowledged={}, actor=FINANCE)
-    assert draft.version.document.budget.total == Decimal(550000)
+    assert draft.version.document.budget.total == intake_rules().budget.total
     assert draft.version.document.budget.pools["camp_pool"].share_pct == Decimal(70)
     assert draft.version.document.round2.tables["camp"].tiers[4].total_pct == Decimal(60)
 
