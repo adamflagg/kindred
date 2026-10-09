@@ -10,14 +10,16 @@
  * is now a closed set, named for its grain, and every rendering call site says
  * which one it prints.
  *
- * ⚠️ CONSOLIDATION ONLY (owner ruling 2026-09-23). Every form reproduces,
- * character for character, what its call sites printed before the move — see
- * `sessionName.pins.test.ts`, which pins each call site's output as literals
- * generated from the old functions. The disparities that preserves (the five
- * AG renderings; the per-form AG detection below; `identity` keeping an adult
- * weekend's "(3 nights)" while `title` drops it) are deliberate, and
- * reconciling them is #2790. Do not "tidy" a rule here without that issue:
- * each one is a rendered string on some surface.
+ * ⚠️ #2763 WAS CONSOLIDATION ONLY (owner ruling 2026-09-23): every form
+ * reproduced, character for character, what its call sites printed before the
+ * move — see `sessionName.pins.test.ts`. #2790's owner vocabulary ruling
+ * (2026-10-09) is the first deliberate change on top of that: it sets the
+ * `tiny` and `short` vocabularies (S2, AG 2, WW, NW Canada, BM1 EB, "Hebrew 1
+ * · Wed 4pm", ...). `full`, `identity`, `title`, `matrix` and `chart` are
+ * untouched. The disparities that remain (the five AG renderings; the per-form
+ * AG detection below; `identity` keeping an adult weekend's "(3 nights)" while
+ * `title` drops it) are still #2790's open items. Do not "tidy" a rule here
+ * without the owner: each one is a rendered string on some surface.
  *
  * The forms, longest first:
  *
@@ -26,10 +28,10 @@
  * | `full`     | as CampMinder stores it                                                    | session lists and headers (via the record adapters) |
  * | `identity` | the part before a colon: "Family Camp 5", "Women's Weekend (3 nights)"     | weekend board: title switcher, session list, attribution pills |
  * | `title`    | "Session 2" / "Family Camp 5" / "Women's Weekend"                          | camper journey, siblings |
- * | `short`    | "AG 2 (7-8)" / raw / "Women's Weekend"                                     | camper header chips, metrics drill-downs, forecast |
+ * | `short`    | "AG 2 (7-8)" / "Family Camp 5" (no subtitle) / "Women's Weekend"; "B*Mitzvah Y1 East Bay", "Hebrew 1 · Wed 4pm", "Family School EB" | camper header chips, metrics drill-downs, forecast |
  * | `matrix`   | "AG Session 2 (7th & 8th)"                                                 | registration availability matrix |
  * | `chart`    | "All-Gender 2 (6-8)", truncated at 25                                      | registration charts and tables |
- * | `tiny`     | "2", "2a", "Taste 2", "Quest" / "FC5" / never abbreviated                  | bunking card and graph last-year line, household journey |
+ * | `tiny`     | "S2", "S2a", "Taste 2", "AG 2", "NW Canada" / "FC5" / "WW", "MW"           | bunking card and graph last-year line, household journey |
  *
  * `matrix` and `chart` are two forms, not one, because their outputs differ
  * today and the owner ruled to keep both (#2790 decides whether to merge).
@@ -39,8 +41,11 @@
  *
  * `tiny` ABBREVIATES ONLY WHAT CAMPMINDER NUMBERED OR THE OWNER MAPPED — the
  * rule `weekendLabel` was built on (kindred#2393), carried to the whole form.
- * An adult program has no tiny form at all until the owner supplies its
- * vocabulary, and reads as its identity whole.
+ * The owner's 2026-10-09 ruling (#2790) is the mapping: the named quests, WW
+ * and MW, BM1 EB, Heb 1, TFS EB, CIT, SIT, TLI, TWR, Staff Kids, Board and Gold
+ * Rush. A name no mapping covers — an unmapped quest, any other adult program,
+ * a B*Mitzvah region the ruling did not name — reads as its identity whole
+ * (the part before a colon), never an abbreviation of it.
  *
  * Record-level concerns stay OUT of this function: a missing name's fallback
  * ('AG', 'Quest', `null`) and the AG -> parent-session lookup live in the
@@ -48,7 +53,9 @@
  */
 
 import {
+  adultWeekendLabel,
   adultWeekendTitle,
+  familyShortName,
   shortWeekendName,
   weekendLabel,
   weekendTitle,
@@ -72,7 +79,19 @@ export type SessionNameForm = (typeof SESSION_NAME_FORMS)[number]
  * session_type — Taste of Camp is a main or embedded session — but two forms
  * have always recognised it by name, so it gets its own row.
  */
-type Program = 'main' | 'embedded' | 'taste' | 'ag' | 'quest' | 'teen' | 'family' | 'adult'
+type Program =
+  | 'main'
+  | 'embedded'
+  | 'taste'
+  | 'ag'
+  | 'quest'
+  | 'teen'
+  | 'family'
+  | 'adult'
+  | 'bmitzvah'
+  | 'hebrew'
+  | 'school'
+  | 'other'
 
 type Render = (name: string) => string
 
@@ -200,14 +219,13 @@ const embeddedChart: Render = (name) => {
 }
 
 /**
- * `tiny` for a summer session — "2", "2a"; then any number; then the first
- * word. (The old function also had an AG branch after the "Session N" match;
- * every one of its patterns contains "session N", so the match above always
- * won and the branch never ran. AG's tiny IS this rule.)
+ * `tiny` for a summer session — "S2", "S2a" (#2790; was the bare "2"); then
+ * any number; then the first word. The "S" goes only on a "Session N" match:
+ * a bare number pulled out of some other name is not a session number.
  */
 const sessionNumber: Render = (name) => {
   const sessionMatch = name.match(/Session\s*(\d+[a-z]?)/i)?.[1]
-  if (sessionMatch) return sessionMatch
+  if (sessionMatch) return `S${sessionMatch}`
   const numberMatch = name.match(/(\d+[a-z]?)/)?.[1]
   if (numberMatch) return numberMatch
   return name.split(' ')[0] ?? name
@@ -221,6 +239,122 @@ const sessionNumber: Render = (name) => {
 const tasteTiny: Render = (name) => {
   const cohortMatch = name.match(/\s(\d{1,2})\s*$/)
   return cohortMatch ? `Taste ${cohortMatch[1]}` : 'Taste'
+}
+
+/** `tiny` for AG (#2790) — "AG 2", "AG B": the AG session's own number. */
+const agTiny: Render = (name) => {
+  const sessionId = name.match(/session\s*(\w+)/i)?.[1]
+  return sessionId ? `AG ${sessionId}` : 'AG'
+}
+
+/** A name's identity — the part before a colon. What an unmapped name reads as. */
+const whole: Render = (name) => shortWeekendName(name)
+
+/**
+ * A mapping key: the identity with a trailing parenthetical dropped, lowercased,
+ * punctuation gone — so "Surf `n` Turf Quest" and "Teen Winter Retreat
+ * (December)" find their entries, and nothing keys on the camp's own name.
+ */
+function mapKey(name: string): string {
+  return adultWeekendTitle(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+/** A tiny map lookup; an unmapped name reads whole, never invented. */
+function mapped(map: Readonly<Record<string, string>>): Render {
+  return (name) => map[mapKey(name)] ?? whole(name)
+}
+
+/** The quests the owner named (2026-10-09, #2790). An unmapped quest reads whole. */
+const questTiny = mapped({
+  northwestcanadaquest: 'NW Canada',
+  questh20: 'H2O',
+  rockandriverquest: 'Rock & River',
+  sierraslamquest: 'Sierra Slam',
+  surfnturfquest: 'Surf n Turf',
+  tasteofquest: 'Taste Quest',
+})
+
+/**
+ * CIT, SIT, TLI and TWR (owner, 2026-10-09, #2790). An unmapped name reads
+ * whole INCLUDING its colon part: "TLI: Camp to Portland" cut at the colon
+ * would be "TLI" — the mapped label, for a different session.
+ */
+const teenTiny: Render = (name) => TEEN_TINY[mapKey(name)] ?? name.trim()
+const TEEN_TINY: Readonly<Record<string, string>> = {
+  counselorintraining: 'CIT',
+  specialistintraining: 'SIT',
+  teenleadershipinstitute: 'TLI',
+  teenwinterretreat: 'TWR',
+}
+
+/** "Year 1" / "Year 2" of a B*Mitzvah name. */
+function bmitzvahYear(name: string): string | undefined {
+  return name.match(/\byear\s*([12])\b/i)?.[1]
+}
+
+/** The two regions the owner named for B*Mitzvah and Family School. */
+function region(
+  name: string
+): { abbr: 'EB' | 'SF'; words: 'East Bay' | 'San Francisco' } | undefined {
+  if (/east bay/i.test(name)) return { abbr: 'EB', words: 'East Bay' }
+  if (/san francisco/i.test(name)) return { abbr: 'SF', words: 'San Francisco' }
+  return undefined
+}
+
+/** `tiny` for B*Mitzvah — "BM1 EB". Needs both a ruled year and region. */
+const bmitzvahTiny: Render = (name) => {
+  const year = bmitzvahYear(name)
+  const where = region(name)
+  return year && where ? `BM${year} ${where.abbr}` : whole(name)
+}
+
+/** `short` for B*Mitzvah — "B*Mitzvah Y1 East Bay". Else whole, as before. */
+const bmitzvahShort: Render = (name) => {
+  const year = bmitzvahYear(name)
+  const where = region(name)
+  return year && where ? `B*Mitzvah Y${year} ${where.words}` : name
+}
+
+/** `tiny` for Hebrew — "Heb 1". */
+const hebrewTiny: Render = (name) => {
+  const number = name.match(/^\s*hebrew\s+(\d+)/i)?.[1]
+  return number ? `Heb ${number}` : whole(name)
+}
+
+/**
+ * `short` for Hebrew — "Hebrew 1 · Wed 4pm", from the record's own day and
+ * time words ("Hebrew 1 - Wednesdays at 4pm"). A day is cut to its three-letter
+ * weekday; the time is kept verbatim. A name without both prints whole.
+ */
+const hebrewShort: Render = (name) => {
+  const match = name.match(
+    /^\s*(hebrew\s+\d+)\s*[-–]\s*(mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)days?\s+at\s+(\d{1,2}(?::\d{2})?\s*[ap]m)\b/i
+  )
+  if (!match) return name
+  const day = (match[2] ?? '').slice(0, 3)
+  return `${match[1]} · ${day.charAt(0).toUpperCase()}${day.slice(1).toLowerCase()} ${match[3]}`
+}
+
+/** `tiny` for Family School — "TFS EB" / "TFS SF". */
+const schoolTiny: Render = (name) => {
+  const where = region(name)
+  return where ? `TFS ${where.abbr}` : whole(name)
+}
+
+/** `short` for Family School — "Family School EB" / "Family School SF". */
+const schoolShort: Render = (name) => {
+  const where = region(name)
+  return where ? `Family School ${where.abbr}` : name
+}
+
+/** `tiny` for the "other" programs (owner, 2026-10-09, #2790). */
+const otherTiny: Render = (name) => {
+  if (/staff kids/i.test(name)) return 'Staff Kids'
+  if (/\bboard\b/i.test(name)) return 'Board'
+  if (/gold rush/i.test(name)) return 'Gold Rush'
+  return whole(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -242,21 +376,32 @@ const RULES: Readonly<Record<Program, Readonly<Record<SessionNameForm, Render>>>
   main: SUMMER_MAIN,
   embedded: { ...SUMMER_MAIN, chart: embeddedChart },
   taste: { ...SUMMER_MAIN, chart: raw, tiny: tasteTiny },
-  ag: { ...SUMMER_MAIN, title: agTitle, short: agShort, matrix: agMatrix, chart: agChart },
-  quest: { ...SUMMER_MAIN, chart: truncated, tiny: () => 'Quest' },
-  // SCIT and TLI have never had a rule of their own in any form.
-  teen: SUMMER_MAIN,
+  ag: {
+    ...SUMMER_MAIN,
+    title: agTitle,
+    short: agShort,
+    matrix: agMatrix,
+    chart: agChart,
+    tiny: agTiny,
+  },
+  quest: { ...SUMMER_MAIN, chart: truncated, tiny: questTiny },
+  // SCIT, TLI and Teen Winter Retreat: only `tiny` has a rule (#2790).
+  teen: { ...SUMMER_MAIN, tiny: teenTiny },
+  bmitzvah: { ...SUMMER_MAIN, short: bmitzvahShort, tiny: bmitzvahTiny },
+  hebrew: { ...SUMMER_MAIN, short: hebrewShort, tiny: hebrewTiny },
+  school: { ...SUMMER_MAIN, short: schoolShort, tiny: schoolTiny },
+  other: { ...SUMMER_MAIN, tiny: otherTiny },
   // The weekend rules live in `weekendNames.ts`, beside the slug the tiny
-  // label is built from. `short` leaves a family name whole: that is what the
-  // camper chip has always printed for one.
-  family: { ...SUMMER_MAIN, title: weekendTitle, tiny: weekendLabel },
-  // No tiny vocabulary for adult programs (owner, 2026-09-23): the identity,
-  // never an abbreviation — not even of a number, as a family weekend's is.
+  // label is built from. `short` is the number without its theme (#2790): a
+  // weekend's theme moves between numbers year to year.
+  family: { ...SUMMER_MAIN, title: weekendTitle, short: familyShortName, tiny: weekendLabel },
+  // Adult tiny: only Women's / Men's Weekend are mapped (WW / MW, #2790); any
+  // other adult program reads as its identity, never an abbreviation.
   adult: {
     ...SUMMER_MAIN,
     title: adultWeekendTitle,
     short: adultWeekendTitle,
-    tiny: shortWeekendName,
+    tiny: adultWeekendLabel,
   },
 }
 
@@ -268,6 +413,11 @@ function programOfType(sessionType: string | undefined): Program {
     case 'quest':
     case 'family':
     case 'adult':
+    case 'bmitzvah':
+    case 'hebrew':
+    case 'school':
+    case 'other':
+    case 'teen':
       return sessionType
     case 'scit':
     case 'tli':
@@ -310,8 +460,19 @@ const PROGRAM_FOR: Readonly<
   },
   tiny: (name, sessionType) => {
     if (sessionType === 'family' || sessionType === 'adult') return sessionType
+    if (
+      sessionType === 'bmitzvah' ||
+      sessionType === 'hebrew' ||
+      sessionType === 'school' ||
+      sessionType === 'other'
+    ) {
+      return sessionType
+    }
+    if (sessionType === 'scit' || sessionType === 'tli' || sessionType === 'teen') return 'teen'
     if (looksQuest(name, sessionType)) return 'quest'
     if (looksTaste(name)) return 'taste'
+    // The bunking graph passes no type; its AG names read AG like `short`'s do.
+    if (sessionType === 'ag' || (sessionType === undefined && looksAgStrict(name))) return 'ag'
     return 'main'
   },
 }

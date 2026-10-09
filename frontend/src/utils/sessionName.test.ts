@@ -30,7 +30,7 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       short: 'Session 2 (Grades 4-6)',
       matrix: 'Session 2 (Grades 4-6)',
       chart: 'Session 2 (4-6)',
-      tiny: '2',
+      tiny: 'S2', // #2790 owner ruling 2026-10-09 (was '2')
     },
   ],
   [
@@ -44,7 +44,7 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       short: 'Session 2a',
       matrix: 'Session 2a',
       chart: 'Session 2a',
-      tiny: '2a',
+      tiny: 'S2a', // #2790 owner ruling 2026-10-09 (was '2a')
     },
   ],
   [
@@ -72,7 +72,7 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       short: 'AG 2 (7-8)',
       matrix: 'AG Session 2 (7th & 8th)',
       chart: 'All-Gender 2',
-      tiny: '2',
+      tiny: 'AG 2', // #2790 owner ruling 2026-10-09 (was '2')
     },
   ],
   [
@@ -86,7 +86,9 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       short: 'Teen Adventure Quests',
       matrix: 'Teen Adventure Quests',
       chart: 'Teen Adventure Quests',
-      tiny: 'Quest',
+      // #2790: an unmapped quest reads as its name whole, never an invented
+      // abbreviation (was the generic 'Quest').
+      tiny: 'Teen Adventure Quests',
     },
   ],
   [
@@ -100,7 +102,7 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       short: 'SCIT: Rising 12th',
       matrix: 'SCIT: Rising 12th',
       chart: 'SCIT: Rising 12th',
-      tiny: '12t',
+      tiny: 'SCIT: Rising 12th', // #2790: an unmapped teen name reads whole (was '12t')
     },
   ],
   [
@@ -111,7 +113,7 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       full: 'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
       identity: 'Family Camp 5',
       title: 'Family Camp 5',
-      short: 'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
+      short: 'Family Camp 5', // #2790 owner ruling 2026-10-09: no subtitle
       matrix: 'Family Camp 5: JFAM Weekend (w/ kids 10 and under)',
       chart: 'Family Camp 5: JFAM We...',
       tiny: 'FC5',
@@ -142,7 +144,7 @@ const TABLE: ReadonlyArray<readonly [string, string, string, Row]> = [
       short: "Women's Weekend",
       matrix: "Women's Weekend (3 nights)",
       chart: "Women's Weekend (3 nig...",
-      tiny: "Women's Weekend (3 nights)",
+      tiny: 'WW', // #2790 owner ruling 2026-10-09 (was the identity whole)
     },
   ],
 ]
@@ -220,8 +222,9 @@ describe('sessionName — tiny never invents an abbreviation', () => {
   // adult program has no tiny form at all — not even a CampMinder number,
   // which a family weekend would be abbreviated from.
   it.each([
-    ["Women's Weekend (3 nights)", "Women's Weekend (3 nights)"],
-    ["Men's Weekend", "Men's Weekend"],
+    // Women's / Men's Weekend left this list: #2790 owner ruling 2026-10-09
+    // maps them to WW / MW (pinned in the #2790 block below). Every OTHER
+    // adult program still reads whole.
     ['Divorce & Discovery: A Jewish Healing Retreat', 'Divorce & Discovery'],
     ["Men's Retreat 2", "Men's Retreat 2"],
   ])('an adult program, %j, is never abbreviated', (name, expected) => {
@@ -360,6 +363,8 @@ describe("sessionName — the retired functions' specs", () => {
     })
   })
 
+  // #2790 owner ruling 2026-10-09: "Session N" reads S<N> and an AG session reads
+  // AG <N> (both were the bare number). Fallbacks below are unchanged.
   describe('tiny (was getSessionShorthand)', () => {
     it('should return empty string for empty session name', () => {
       expect(sessionName('', undefined, 'tiny')).toBe('')
@@ -377,16 +382,16 @@ describe("sessionName — the retired functions' specs", () => {
     })
 
     it('should extract session number from "Session N" format', () => {
-      expect(sessionName('Session 2', undefined, 'tiny')).toBe('2')
-      expect(sessionName('Session 3', undefined, 'tiny')).toBe('3')
-      expect(sessionName('Session 2a', undefined, 'tiny')).toBe('2a')
-      expect(sessionName('Session 3b', undefined, 'tiny')).toBe('3b')
+      expect(sessionName('Session 2', undefined, 'tiny')).toBe('S2')
+      expect(sessionName('Session 3', undefined, 'tiny')).toBe('S3')
+      expect(sessionName('Session 2a', undefined, 'tiny')).toBe('S2a')
+      expect(sessionName('Session 3b', undefined, 'tiny')).toBe('S3b')
     })
 
     it('should extract number from AG sessions', () => {
-      expect(sessionName('AG Session 2', 'ag', 'tiny')).toBe('2')
-      expect(sessionName('All-Gender Cabin-Session 3', undefined, 'tiny')).toBe('3')
-      expect(sessionName('Session 2 All-Gender', undefined, 'tiny')).toBe('2')
+      expect(sessionName('AG Session 2', 'ag', 'tiny')).toBe('AG 2')
+      expect(sessionName('All-Gender Cabin-Session 3', undefined, 'tiny')).toBe('AG 3')
+      expect(sessionName('Session 2 All-Gender', undefined, 'tiny')).toBe('AG 2')
     })
 
     it('should fallback to number extraction', () => {
@@ -400,7 +405,7 @@ describe("sessionName — the retired functions' specs", () => {
     })
 
     it('should handle AG session type parameter', () => {
-      expect(sessionName('Some AG Session 2', 'ag', 'tiny')).toBe('2')
+      expect(sessionName('Some AG Session 2', 'ag', 'tiny')).toBe('AG 2')
     })
   })
 
@@ -489,5 +494,187 @@ describe("sessionName — the retired functions' specs", () => {
       expect(sessionName('Session 2', undefined, 'matrix')).toBe('Session 2')
       expect(sessionName('Taste of Camp 2', undefined, 'matrix')).toBe('Taste of Camp 2')
     })
+  })
+})
+
+/**
+ * kindred#2790 — the owner's tiny / short vocabulary (ruling 2026-10-09).
+ * Real shapes come from the synced `camp_sessions` names; the camp's own name
+ * is `{camp}` here and never appears in a rule.
+ */
+describe('sessionName — #2790 tiny vocabulary', () => {
+  it.each([
+    ["Women's Weekend", 'WW'],
+    ["Women's Weekend (3 nights)", 'WW'],
+    ["Men's Weekend", 'MW'],
+  ])('adult %j → %s', (name, expected) => {
+    expect(sessionName(name, 'adult', 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['Adults Unplugged', 'Adults Unplugged'],
+    ['Divorce & Discovery: A Jewish Healing Retreat', 'Divorce & Discovery'],
+    ["Men's Retreat 2", "Men's Retreat 2"],
+  ])('any other adult program, %j, keeps its identity whole', (name, expected) => {
+    expect(sessionName(name, 'adult', 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['Northwest Canada Quest', 'NW Canada'],
+    ['Quest H20', 'H2O'],
+    ['Rock and River Quest', 'Rock & River'],
+    ['Sierra Slam Quest', 'Sierra Slam'],
+    ['Surf `n` Turf Quest', 'Surf n Turf'],
+    ['Taste of Quest', 'Taste Quest'],
+  ])('quest %j → %s', (name, expected) => {
+    expect(sessionName(name, 'quest', 'tiny')).toBe(expected)
+    expect(sessionName(name, undefined, 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['Women of the Wild Quest', 'Women of the Wild Quest'],
+    ['Magical Mystery Tour', 'Magical Mystery Tour'],
+    ['Sierra Slam Quest 2', 'Sierra Slam Quest 2'],
+    ['Quest Session 2: Backpacking the High Sierra', 'Quest Session 2'],
+  ])('an UNMAPPED quest, %j, reads as its name whole, never invented', (name, expected) => {
+    expect(sessionName(name, 'quest', 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['Session 2', 'main', 'S2'],
+    ['Session 3', 'main', 'S3'],
+    ['Session 2 (Grades 4-6)', 'main', 'S2'],
+    ['Session 2a', 'embedded', 'S2a'],
+    ['Session 3b', 'embedded', 'S3b'],
+    ['Taste of Camp 1', 'main', 'Taste 1'],
+    ['Taste of Camp 2', 'embedded', 'Taste 2'],
+    ['Taste of Camp', 'main', 'Taste'],
+    ['All-Gender Cabin-Session 2 (7th & 8th grades)', 'ag', 'AG 2'],
+    ['Session 4 (All-Gender Cabin)-6th & 7th grades', 'ag', 'AG 4'],
+    ['Session B (All-Gender Cabins)', 'ag', 'AG B'],
+    ['AG Session 4', 'ag', 'AG 4'],
+  ])('summer %j (%s) → %s', (name, type, expected) => {
+    expect(sessionName(name, type, 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ["{camp}'s B*Mitzvah Program Year 1 - East Bay", 'BM1 EB'],
+    ["{camp}'s B*Mitzvah Program Year 1 - San Francisco", 'BM1 SF'],
+    ["{camp}'s B*Mitzvah Program Year 2 - East Bay", 'BM2 EB'],
+    ["{camp}'s B*Mitzvah Program Year 2 - San Francisco", 'BM2 SF'],
+    // No ruled region, or no year: never invent one — the name whole.
+    [
+      "B'nai Mitzvah Program Year 1 - South Peninsula",
+      "B'nai Mitzvah Program Year 1 - South Peninsula",
+    ],
+    ['{camp} B*Mitzvah Fall 2025 Shabbaton', '{camp} B*Mitzvah Fall 2025 Shabbaton'],
+  ])('B*Mitzvah %j → %s', (name, expected) => {
+    expect(sessionName(name, 'bmitzvah', 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['Hebrew 1 - Wednesdays at 4pm', 'Heb 1'],
+    ['Hebrew 2 - Wednesdays at 5:15pm', 'Heb 2'],
+    ['Hebrew 1', 'Heb 1'],
+  ])('Hebrew %j → %s', (name, expected) => {
+    expect(sessionName(name, 'hebrew', 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['{camp} Family School - East Bay cohort', 'TFS EB'],
+    ['{camp} Family School - San Francisco cohort', 'TFS SF'],
+    ['{camp} Family School (Marin Cohort)', '{camp} Family School (Marin Cohort)'],
+  ])('Family School %j → %s', (name, expected) => {
+    expect(sessionName(name, 'school', 'tiny')).toBe(expected)
+  })
+
+  it.each([
+    ['Counselor In-Training', 'scit', 'CIT'],
+    ['Specialist In-Training', 'scit', 'SIT'],
+    ['Teen Leadership Institute', 'tli', 'TLI'],
+    ['Teen Winter Retreat', 'teen', 'TWR'],
+    ['Teen Winter Retreat (December)', 'teen', 'TWR'],
+    ['Staff Kids at Camp', 'other', 'Staff Kids'],
+    ['{camp} Board', 'other', 'Board'],
+    ['Gold Rush', 'other', 'Gold Rush'],
+    ['{camp} Israel Program: Leadership in Action', 'other', '{camp} Israel Program'],
+  ])('%j (%s) → %s', (name, type, expected) => {
+    expect(sessionName(name, type, 'tiny')).toBe(expected)
+  })
+
+  it('an unmapped teen name reads whole, so two trips never collapse onto one label', () => {
+    expect(sessionName('TLI: Camp to Portland', 'tli', 'tiny')).toBe('TLI: Camp to Portland')
+    expect(sessionName('TLI: Portland to Camp', 'tli', 'tiny')).toBe('TLI: Portland to Camp')
+    expect(sessionName('SCIT: Rising 12th', 'scit', 'tiny')).toBe('SCIT: Rising 12th')
+  })
+
+  it('leaves Family Camp FC1..FC8, WFC and RSC unchanged', () => {
+    expect(sessionName('Family Camp 8: JFAM Weekend', 'family', 'tiny')).toBe('FC8')
+    expect(sessionName('Winter Family Camp', 'family', 'tiny')).toBe('WFC')
+    expect(sessionName('Ready, Set, Camp', 'family', 'tiny')).toBe('RSC')
+    expect(sessionName('Spring Family Retreat', 'family', 'tiny')).toBe('Spring FR')
+  })
+})
+
+describe('sessionName — #2790 short vocabulary', () => {
+  it.each([
+    ["{camp}'s B*Mitzvah Program Year 1 - East Bay", 'B*Mitzvah Y1 East Bay'],
+    ["{camp}'s B*Mitzvah Program Year 1 - San Francisco", 'B*Mitzvah Y1 San Francisco'],
+    ["{camp}'s B*Mitzvah Program Year 2 - East Bay", 'B*Mitzvah Y2 East Bay'],
+    ["{camp}'s B*Mitzvah Program Year 2 - San Francisco", 'B*Mitzvah Y2 San Francisco'],
+    // Not a ruled region: stays as short does today (whole).
+    [
+      "B'nai Mitzvah Program Year 1 - South Peninsula",
+      "B'nai Mitzvah Program Year 1 - South Peninsula",
+    ],
+  ])('B*Mitzvah %j → %s', (name, expected) => {
+    expect(sessionName(name, 'bmitzvah', 'short')).toBe(expected)
+  })
+
+  it.each([
+    ['Hebrew 1 - Wednesdays at 4pm', 'Hebrew 1 · Wed 4pm'],
+    ['Hebrew 2 - Wednesdays at 5:15pm', 'Hebrew 2 · Wed 5:15pm'],
+    ['Hebrew 1 - Wednesdays at 5:00pm', 'Hebrew 1 · Wed 5:00pm'],
+    ['Hebrew 1', 'Hebrew 1'],
+  ])('Hebrew %j → %s', (name, expected) => {
+    expect(sessionName(name, 'hebrew', 'short')).toBe(expected)
+  })
+
+  it.each([
+    ['{camp} Family School - East Bay cohort', 'Family School EB'],
+    ['{camp} Family School - San Francisco cohort', 'Family School SF'],
+    ['{camp} Family School (Marin Cohort)', '{camp} Family School (Marin Cohort)'],
+  ])('Family School %j → %s', (name, expected) => {
+    expect(sessionName(name, 'school', 'short')).toBe(expected)
+  })
+
+  it.each([
+    ['Family Camp 2: Keshet LGBTQ Weekend', 'Family Camp 2'],
+    ['Family Camp 5: JFAM Weekend (w/ kids 10 and under)', 'Family Camp 5'],
+    ['Family Camp 10: Labor Day Weekend', 'Family Camp 10'],
+    ['Family Camp 3', 'Family Camp 3'],
+    // Un-numbered names stay as short does today.
+    ['Ready, Set, Camp', 'Ready, Set, Camp'],
+    ['Winter Family Camp', 'Winter Family Camp'],
+    ['JFAM Winter Family Camp', 'JFAM Winter Family Camp'],
+    ['Spring Family Camp', 'Spring Family Camp'],
+  ])('Family Camp short carries no subtitle: %j → %s', (name, expected) => {
+    expect(sessionName(name, 'family', 'short')).toBe(expected)
+  })
+
+  it('leaves everything else exactly as short renders today', () => {
+    expect(sessionName('Session 2', 'main', 'short')).toBe('Session 2')
+    expect(sessionName('Rock and River Quest', 'quest', 'short')).toBe('Rock and River Quest')
+    expect(sessionName("Women's Weekend (3 nights)", 'adult', 'short')).toBe("Women's Weekend")
+    expect(sessionName('Gold Rush', 'other', 'short')).toBe('Gold Rush')
+    expect(sessionName('Counselor In-Training', 'scit', 'short')).toBe('Counselor In-Training')
+  })
+
+  it('leaves full unchanged for every ruled program', () => {
+    const n = "{camp}'s B*Mitzvah Program Year 1 - East Bay"
+    expect(sessionName(n, 'bmitzvah', 'full')).toBe(n)
+    expect(sessionName('Hebrew 1 - Wednesdays at 4pm', 'hebrew', 'full')).toBe(
+      'Hebrew 1 - Wednesdays at 4pm'
+    )
   })
 })

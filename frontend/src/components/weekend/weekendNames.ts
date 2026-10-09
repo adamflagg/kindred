@@ -30,10 +30,10 @@
  *   `FFCI` for "Fall Family Camp II" is that, on the screen.
  *
  * ★ RENDER THROUGH `sessionName` (utils/sessionName.ts, kindred#2763), not
- * through these. `shortWeekendName`, `weekendTitle`, `adultWeekendTitle` and
- * `weekendLabel` are the family and adult rows of its rules tables — the
- * `identity`, `title` and `tiny` forms — and live here beside the slug the
- * tiny label is built from. `weekendSlug`/`weekendRef` stay URL helpers, and
+ * through these. `shortWeekendName`, `weekendTitle`, `adultWeekendTitle`,
+ * `weekendLabel`, `familyShortName` and `adultWeekendLabel` are the family
+ * and adult rows of its rules tables (the `identity`, `title`, `short` and
+ * `tiny` forms) and live here beside the slug the tiny label is built from. `weekendSlug`/`weekendRef` stay URL helpers, and
  * `splitWeekendName(...).qualifier` / `weekendSubtitle` are the second line
  * under a name, not a form of it.
  */
@@ -363,6 +363,42 @@ export function adultWeekendTitle(name: string): string {
   const trimmed = name.trim()
   const identity = trimmed.split(':')[0]?.trim() ?? trimmed
   return identity.replace(/\s*\([^()]*\)\s*$/, '').trim()
+}
+
+/**
+ * A family weekend's `short` form (owner ruling 2026-10-09, kindred#2790):
+ * "Family Camp 2", NEVER "Family Camp 2: Keshet ...". A weekend's theme moves
+ * between numbers from year to year (Keshet is not always FC2, JFOC not always
+ * FC7), so a historical view must stay subtitle-agnostic.
+ *
+ * Only a NUMBERED identity is cut at its colon. An un-numbered name (Ready,
+ * Set, Camp; Winter Family Camp; the 2017-2019 names) has no theme to drop and
+ * stays whole, as `short` has always printed it.
+ */
+export function familyShortName(name: string): string {
+  const identity = shortWeekendName(name)
+  return /\s\d+$/.test(identity) ? identity : name
+}
+
+/**
+ * An adult weekend's `tiny` form. The owner mapped exactly two (2026-10-09,
+ * kindred#2790): Women's Weekend -> WW, Men's Weekend -> MW. Any other adult
+ * program keeps its identity whole — an invented abbreviation is how the UI
+ * starts disagreeing with CampMinder about what a session is called.
+ *
+ * Matched on the name with its trailing qualifier dropped, so "(3 nights)"
+ * still reads WW. A curly apostrophe is the same apostrophe.
+ */
+const ADULT_TINY: Readonly<Record<string, string>> = {
+  "women's weekend": 'WW',
+  "men's weekend": 'MW',
+}
+
+export function adultWeekendLabel(name: string): string {
+  const key = adultWeekendTitle(name)
+    .replace(/\u2019/g, "'")
+    .toLowerCase()
+  return ADULT_TINY[key] ?? shortWeekendName(name)
 }
 
 /** The parenthetical under the title, or `''` where the weekend has none. */

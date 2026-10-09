@@ -15,6 +15,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  adultWeekendLabel,
+  familyShortName,
   weekendSubtitle,
   weekendTitle,
   resolveWeekendRef,
@@ -399,5 +401,28 @@ describe('the camper journey mid-shorthand', () => {
 
   it('keeps an unrecognised suffix rather than dropping it', () => {
     expect(weekendSubtitle('Family Camp 9: Harvest Weekend')).toBe('Harvest Weekend')
+  })
+})
+
+describe('#2790 — family short and adult tiny (owner ruling 2026-10-09)', () => {
+  it.each([
+    ['Family Camp 2: Keshet LGBTQ Weekend', 'Family Camp 2'],
+    ['Family Camp 10: Labor Day Weekend', 'Family Camp 10'],
+    ['Family Camp 3', 'Family Camp 3'],
+    ['Ready, Set, Camp', 'Ready, Set, Camp'],
+    ['JFAM Winter Family Camp', 'JFAM Winter Family Camp'],
+    ['Spring Family Camp', 'Spring Family Camp'],
+  ])('familyShortName(%j) → %j: the number, never the theme', (name, expected) => {
+    expect(familyShortName(name)).toBe(expected)
+  })
+
+  it.each([
+    ["Women's Weekend", 'WW'],
+    ['Women\u2019s Weekend (3 nights)', 'WW'],
+    ["Men's Weekend", 'MW'],
+    ["Men's Retreat", "Men's Retreat"],
+    ['Adults Unplugged', 'Adults Unplugged'],
+  ])('adultWeekendLabel(%j) → %j', (name, expected) => {
+    expect(adultWeekendLabel(name)).toBe(expected)
   })
 })
