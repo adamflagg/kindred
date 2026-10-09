@@ -30,7 +30,7 @@ def test_slice_3s_three_surfaces_number_their_notes_in_this_order() -> None:
         "register_offsets",
         "register_stands",
         "register_cancelled",
-        "register_counted",
+        "register_not_counted",
     )
     assert SURFACES.get("money-ledger") == ("in_campminder_net", "outside_grants_ledger")
 
@@ -46,9 +46,38 @@ def test_the_ledger_and_register_notes_say_what_the_mock_says() -> None:
         "Outside grants: every other funder's lines, net of reversals, including lines not classified yet. "
         "Outside money is never Posted."
     )
-    assert "household-level lines of families who didn't apply included" in _text("register_counted")
     assert "never typed" in _text("register_cancelled")
     assert _text("funder").startswith("Funder:")
+
+
+def test_the_grants_notes_are_the_final_mocks_five_short_notes() -> None:
+    """Final UX (owner 10-09, star 5; design-language section 12; money-grants.html): five short notes. The long unnumbered
+    sentence under the table is gone (its words are notes 4 and 5), and Counted became Not counted (star 17). These
+    keys are on no other surface (SURFACES lists them under grants alone), so no other page's notes change."""
+    assert _text("register_amount") == (
+        "Amount: the grant line's net in CampMinder, or a commitment's amount. Outside money: never in Remaining or "
+        "Posted."
+    )
+    assert _text("register_offsets") == (
+        "Aid request it offsets: the camper's request, by session, and the round the grant lowers, or \"didn't "
+        "apply\". A never-applied household's line goes to a camper only when it has one eligible camper."
+    )
+    assert _text("register_stands") == (
+        'Where it stands: "\u2713 in CM" once a CampMinder line carries it; "Committed \u00b7 not in CM" while only '
+        "entered by hand."
+    )
+    assert _text("register_cancelled") == (
+        "Cancelled (\u2298 before a name): from the camper's enrollment, never typed. A posted grant still counts "
+        "until CampMinder reverses it."
+    )
+    assert _text("register_not_counted") == (
+        "Not counted (a grey italic amount): a reversed line, a line waiting for its camper, or a commitment whose "
+        "camper cancelled. Every other line counts, a didn't-apply family's household line included."
+    )
+    assert BY_KEY["register_not_counted"].term == "Not counted"
+    owners = [s for s, keys in SURFACES.items() if any(k.startswith("register_") for k in keys)]
+    assert owners == ["grants"]
+    assert len(SURFACES["grants"]) <= 6  # design-language section 12: six notes at most
 
 
 def test_the_reporting_group_note_no_longer_points_at_today() -> None:

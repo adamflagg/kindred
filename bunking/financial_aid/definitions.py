@@ -588,12 +588,14 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.7",
         rulings=("D88",),
     ),
+    # Money › Grants (final UX 10-09, star 5; design-language section 12): the mock's five short notes. Cancelled and
+    # Not counted lost their columns, so their notes say how the mark reads. These keys are on no other surface.
     Definition(
         key="register_amount",
         term="Amount",
         text=(
-            "Amount: the grant line's net in CampMinder, or a hand-entered commitment's amount. Outside money: "
-            "never in Remaining or Posted."
+            "Amount: the grant line's net in CampMinder, or a commitment's amount. Outside money: never in Remaining "
+            "or Posted."
         ),
         spec="§5.8",
         rulings=("D55",),
@@ -602,9 +604,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="register_offsets",
         term="Aid request it offsets",
         text=(
-            "Aid request it offsets: the camper's request this season and how much of the grant it takes, or "
-            '"didn\'t apply". A household-level line of a family that never applied is tied to a camper only when '
-            "the household has exactly one eligible camper."
+            "Aid request it offsets: the camper's request, by session, and the round the grant lowers, or "
+            "\"didn't apply\". A never-applied household's line goes to a camper only when it has one eligible camper."
         ),
         spec="§5.8",
         rulings=("D142",),
@@ -612,24 +613,29 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     Definition(
         key="register_stands",
         term="Where it stands",
-        text=('Where it stands: "in CampMinder" once a ledger line carries it; "committed" while only hand-entered.'),
+        text=(
+            'Where it stands: "\u2713 in CM" once a CampMinder line carries it; "Committed \u00b7 not in CM" while only '
+            "entered by hand."
+        ),
         spec="§5.8",
         rulings=("D55",),
     ),
     Definition(
         key="register_cancelled",
         term="Cancelled",
-        text="Cancelled: from the camper's enrollment, never typed.",
+        text=(
+            "Cancelled (\u2298 before a name): from the camper's enrollment, never typed. A posted grant still counts "
+            "until CampMinder reverses it."
+        ),
         spec="§5.8",
         rulings=("D55",),
     ),
     Definition(
-        key="register_counted",
-        term="Counted",
+        key="register_not_counted",
+        term="Not counted",
         text=(
-            "Counted: whether the line is in the total. Every live line counts, household-level lines of families "
-            "who didn't apply included. Not counted: a reversed line, a line waiting for its camper, a commitment "
-            "whose camper cancelled."
+            "Not counted (a grey italic amount): a reversed line, a line waiting for its camper, or a commitment whose "
+            "camper cancelled. Every other line counts, a didn't-apply family's household line included."
         ),
         spec="§8.2",
         rulings=("D55", "D142"),
@@ -805,7 +811,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "money-ledger": ("in_campminder_net", "outside_grants_ledger"),
     "money-to-place": ("not_yet_in_campminder", "to_place_suggestion", "placement_tick", "posted"),
     "money-sources": ("funder", "incentive", "reporting_group", "source_lines"),  # Money › Funders
-    "grants": ("register_amount", "register_offsets", "register_stands", "register_cancelled", "register_counted"),
+    "grants": ("register_amount", "register_offsets", "register_stands", "register_cancelled", "register_not_counted"),
     "reports-statistics": (
         "apps",
         "awarded",
