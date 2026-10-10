@@ -1834,7 +1834,7 @@ async def get_definitions(
     return DefinitionsResponse(
         surface=surface,
         notes=[
-            DefinitionNoteOut(key=key, n=n, term=shown.term, text=shown.text)
+            DefinitionNoteOut(key=key, n=n, term=shown.term, text=shown.text, also_bold=list(shown.also_bold))
             for n, key in enumerate(keys, start=1)
             for shown in (render(BY_KEY[key], camp=camp),)
         ],

@@ -71,6 +71,7 @@ def test_a_surfaces_notes_are_numbered_from_1_with_the_camp_name_filled_in() -> 
             "It is not a balance: CampMinder's balance also holds payments, deposits and other charges. For a "
             "split family it is the family total."
         ),
+        "also_bold": [],  # ux3 statistics-7: the read now carries it, empty where a note has none
     }
     assert "{camp}" not in str(body)
 
@@ -84,6 +85,16 @@ def test_each_note_carries_its_term_so_the_page_can_set_it_bold() -> None:
         assert note["term"], note["key"]
         assert note["text"].startswith(f"{note['term']}:"), note["key"]
     assert "{camp}" not in str(body)
+
+
+def test_a_note_sends_the_extra_terms_the_page_sets_bold() -> None:
+    """ux3 statistics-7: `also_bold` rides the read (empty where a note has none)."""
+    with patch("api.routers.financial_aid.camp_label", return_value="Camp Fictional"):
+        body = _client(PERSONA_DEVELOPMENT).get("/api/financial-aid/definitions?surface=reports-statistics").json()
+    bold = {note["key"]: note["also_bold"] for note in body["notes"]}
+    assert bold["pct_of_ask"] == ["Incl. grants"]
+    assert bold["appeals"] == ["appeal rate", "R2 max fee %"]
+    assert bold["apps"] == []
 
 
 def test_an_unknown_surface_is_404_and_a_missing_one_422() -> None:

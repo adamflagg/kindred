@@ -111,7 +111,8 @@ def test_percent_of_ask_with_grants_adds_the_live_requests_grants_on_round_1_onl
         req("reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="800", posted="300"), grants="500")
     ]
     round1 = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
-    assert (round1.grants, round1.pct_of_ask_with_grants) == (Decimal(500), Decimal("50.0"))
+    # Owner Q9 (2026-10-10): each grant joins the denominator too, (1,500 + 500) ÷ (4,000 + 500), a share never past 100%.
+    assert (round1.grants, round1.pct_of_ask_with_grants) == (Decimal(500), Decimal("44.4"))
     round2 = _tier(statistics(requests, RULES, table="camp", round_=2).rows, 2)
     assert (round2.grants, round2.pct_of_ask_with_grants) == (None, None)
     every = statistics(requests, RULES, table="camp", round_=None).total
@@ -290,9 +291,10 @@ def test_percent_of_ask_with_grants_keeps_the_outside_funded_ask_in_its_denomina
     ]
     table = statistics(requests, RULES, table="camp", round_=1)
     two = _tier(table.rows, 2)
-    assert (two.pct_of_ask, two.grants, two.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal(2000), Decimal("83.3"))
+    # Owner Q9 (2026-10-10): the grants join the denominator as well, (500 + 2,000) ÷ (1,000 + 2,000 + 2,000).
+    assert (two.pct_of_ask, two.grants, two.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal(2000), Decimal("50.0"))
     # The totals row follows the same rule.
-    assert (table.total.pct_of_ask, table.total.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal("83.3"))
+    assert (table.total.pct_of_ask, table.total.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal("50.0"))
 
 
 def test_an_outside_funded_rounds_own_money_counts_as_grants_on_percent_of_ask_with_grants() -> None:
@@ -306,8 +308,9 @@ def test_an_outside_funded_rounds_own_money_counts_as_grants_on_percent_of_ask_w
     table = statistics(requests, RULES, table="camp", round_=1)
     two = _tier(table.rows, 2)
     assert (two.amount, two.pct_of_ask) == (Decimal(500), Decimal("50.0"))
-    assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(2000), Decimal("83.3"))
-    assert (table.total.grants, table.total.pct_of_ask_with_grants) == (Decimal(2000), Decimal("83.3"))
+    # Owner Q9 (2026-10-10): (500 + 2,000) ÷ (1,000 + 2,000 + 2,000).
+    assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(2000), Decimal("50.0"))
+    assert (table.total.grants, table.total.pct_of_ask_with_grants) == (Decimal(2000), Decimal("50.0"))
 
 
 def test_an_outside_funded_rounds_decided_money_counts_only_on_the_decided_basis() -> None:
@@ -320,7 +323,7 @@ def test_an_outside_funded_rounds_decided_money_counts_only_on_the_decided_basis
     posted = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
     both = _tier(statistics(requests, RULES, table="camp", round_=1, basis="posted_and_decided").rows, 2)
     assert (posted.grants, posted.pct_of_ask_with_grants) == (Decimal(0), Decimal("16.7"))
-    assert (both.grants, both.pct_of_ask_with_grants, both.decided) == (Decimal(2000), Decimal("83.3"), Decimal(0))
+    assert (both.grants, both.pct_of_ask_with_grants, both.decided) == (Decimal(2000), Decimal("50.0"), Decimal(0))
 
 
 def test_an_outside_funded_rounds_money_leaves_with_a_clawback_or_a_cancellation() -> None:
@@ -509,3 +512,11 @@ def test_a1_the_march_committees_round_2_asked_is_capped() -> None:
     request = req("reqemma00000001", rnd(1, ask="3000", posted="3000"), rnd(2, ask="2500"), cost=COST)
     *_, every = outcomes([request])
     assert (every.appealed, every.appealed_asked) == (1, Decimal(1000))
+
+
+def test_a_grant_larger_than_the_ask_never_pushes_percent_of_ask_with_grants_past_100() -> None:
+    """Owner Q9 (2026-10-10): "% incl. grants" adds each grant's amount to the denominator too, so it reads as a share.
+    A $1,500 ask with a $6,000 grant and nothing awarded was 400.0%; it is now 6,000 ÷ 7,500 = 80.0%."""
+    requests = [req("reqemma00000001", rnd(1, ask="1500"), grants="6000")]
+    two = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
+    assert (two.amount, two.grants, two.pct_of_ask_with_grants) == (Decimal(0), Decimal(6000), Decimal("80.0"))

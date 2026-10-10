@@ -22,6 +22,7 @@ class DefinitionNoteOut(BaseModel):
     n: int
     term: str  # the lead words the text opens with (`<term>:`), set bold on the page (design language §12)
     text: str
+    also_bold: list[str] = Field(default_factory=list)  # more terms the page sets bold in `text` (empty: none)
 
 
 class DefinitionsResponse(BaseModel):

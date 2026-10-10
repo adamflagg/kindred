@@ -117,3 +117,30 @@ def test_a1_requested_and_the_appeals_asked_are_capped_like_statistics_round_chi
     assert (one.requested, one.requested_as_typed, one.pct_awarded) == (Decimal(4000), Decimal(4500), Decimal("30.0"))
     assert (two.requested, two.requested_as_typed, two.pct_awarded) == (Decimal(2800), Decimal(3000), Decimal("50.0"))
     assert table.requests_capped == 1  # need 4,500 > 4,000: the All-rounds basis, as Statistics' footnote
+
+
+# --- the session order and the not-aided rows (ux3 statistics-14, statistics-13) ---------------------------------
+
+
+def test_sessions_follow_the_given_rank_with_session_not_matched_last() -> None:
+    """Owner Q8: a reader's order (bunking/session_order.py), never the CampMinder id; the unmatched row stays last."""
+    requests = [req("reqemma00000001", rnd(1, ask="4000", posted="1500"), session=0)]
+    rank = {TASTE_1: 0, SESSION_2: 1}
+    table = programs(requests, {SESSION_2: "camp_pool", TASTE_1: "camp_pool"}, rank=rank)
+    assert [row.session_cm_id for row in table.pools[0].sessions] == [TASTE_1, SESSION_2, UNMATCHED_SESSION]
+
+
+def test_a_session_of_a_program_closed_to_aid_with_no_applications_is_not_a_row() -> None:
+    """Owner Q7: "i think we should hide sessions which are the no pool ones yes." Keyed off the rules (the program is
+    not open to aid), never the zero count: a session of an aided program shows at 0."""
+    sessions: dict[int, str | None] = {SESSION_2: "camp_pool", TASTE_1: None, FAMILY_6: None}
+    table = programs([], sessions, closed_to_aid=frozenset({TASTE_1, FAMILY_6}))
+    assert [(g.pool, [r.session_cm_id for r in g.sessions]) for g in table.pools] == [("camp_pool", [SESSION_2])]
+
+
+def test_a_closed_to_aid_session_with_an_application_shows() -> None:
+    sessions: dict[int, str | None] = {TASTE_1: None, FAMILY_6: None}
+    requests = [req("reqemma00000001", rnd(1, ask="400"), session=TASTE_1)]
+    table = programs(requests, sessions, closed_to_aid=frozenset({TASTE_1, FAMILY_6}))
+    assert [(g.pool, [r.session_cm_id for r in g.sessions]) for g in table.pools] == [(None, [TASTE_1])]
+    assert table.pools[0].sessions[0].round1.apps == 1

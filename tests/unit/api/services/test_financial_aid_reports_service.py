@@ -424,8 +424,9 @@ async def test_an_edited_answer_is_one_application_and_a_refused_duplicate_is_no
 async def test_grants_on_the_request_feed_percent_of_ask_with_grants() -> None:
     out = await _service(report_season(), register=[grant_row(EMMA, "500")]).statistics(YEAR, table="camp", round_=1)
     two = _tier(out.rows, 2)
-    # (1,500 + 500) ÷ Emma's 4,000 ask capped at Session 2's 2,000 (owner A5, 2026-10-09: the capped basis)
-    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 100.0)
+    # (1,500 + 500) ÷ (Emma's 4,000 ask capped at Session 2's 2,000, plus the 500 grant): owner A5 (2026-10-09, the
+    # capped basis) and Q9 (2026-10-10, the grant joins the denominator too).
+    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 80.0)
 
 
 async def test_the_round_1_deadline_switch_leaves_out_requests_received_after_it() -> None:
@@ -500,8 +501,9 @@ async def test_a_past_date_reads_grants_where_the_placement_log_had_them() -> No
     _placed(store, row, datetime(2027, 3, 1, 18, 0, tzinfo=UTC))
     out = await _service(store, register=[row]).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 10))
     two = _tier(out.rows, 2)
-    # (1,500 + 500) ÷ Emma's 4,000 ask capped at Session 2's 2,000 (owner A5, 2026-10-09: the capped basis)
-    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 100.0)
+    # (1,500 + 500) ÷ (Emma's 4,000 ask capped at Session 2's 2,000, plus the 500 grant): owner A5 (2026-10-09, the
+    # capped basis) and Q9 (2026-10-10, the grant joins the denominator too).
+    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 80.0)
     assert "grants" not in {g.figure for g in out.not_rebuilt}
 
 
@@ -643,6 +645,33 @@ async def test_programs_lists_the_rules_sessions_by_pool() -> None:
     assert (session2.session_name, session2.round1.apps, session2.round1.awarded) == ("Session 2", 2, 1500.0)
     assert {row.session_cm_id for row in camp.sessions} >= {1000101, 1000104, 1000106}
     assert out.total.round1.apps == 2
+
+
+async def test_programs_lists_each_pools_sessions_in_the_session_order_with_an_ag_under_its_parent() -> None:
+    """Owner Q8 (2026-10-09): by start date (longer first), an AG right under its parent, quests after the summer
+    sessions; the shared order (bunking/session_order.py), not the CampMinder id."""
+    store = report_season()
+    store.sessions = [replace(s, parent_cm_id=1000101 if s.cm_id == 1000103 else 0) for s in store.sessions]
+    out = await _service(store).programs(YEAR)
+    camp = next(group for group in out.pools if group.pool == "camp_pool")
+    wanted = [1000104, 1000101, 1000103, 1000102, 1000105, 1000106]
+    listed = [row.session_cm_id for row in camp.sessions]
+    assert [i for i in listed if i in wanted] == wanted
+    assert listed.index(1000103) == listed.index(1000101) + 1
+
+
+async def test_programs_hides_a_zero_application_session_of_a_program_closed_to_aid_but_not_one_with_applications() -> (
+    None
+):
+    """Owner Q7 (2026-10-10): keyed off the rules (open_to_aid false) AND zero applications, never the zero count
+    alone. Quest closed to aid: its empty session leaves the table; Session 2 (aided, with requests) stays."""
+    closed = FakeRules(approved(with_levers(RULES, {"programs.quest.open_to_aid": False})))
+    out = await _service(report_season(), rules=closed).programs(YEAR)
+    every = {row.session_cm_id for group in out.pools for row in group.sessions}
+    assert 1000106 not in every
+    assert 1000101 in every
+    opened = await _service(report_season()).programs(YEAR)
+    assert 1000106 in {row.session_cm_id for group in opened.pools for row in group.sessions}
 
 
 async def test_programs_rows_carry_the_sessions_type_for_the_short_name_and_the_household_mark() -> None:

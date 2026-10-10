@@ -23,6 +23,9 @@ class Definition:
     text: str  # the whole note, opening with `term`
     spec: str  # the clean spec section that holds the signed meaning
     rulings: tuple[str, ...]
+    # Terms the page sets bold wherever they occur in `text`, beside the lead term (the final mocks bold "Awards",
+    # "Incl. grants", "appeal rate"); sent as data so the words carry no markup.
+    also_bold: tuple[str, ...] = ()
 
 
 DEFINITIONS: Final[tuple[Definition, ...]] = (
@@ -343,6 +346,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         ),
         spec="§5.6",
         rulings=("D80", "D106", "D129", "D131"),
+        also_bold=("Awards",),
     ),
     Definition(
         key="average_award",
@@ -357,10 +361,11 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="pct_of_ask",
         term="% of ask",
         text=(
-            "% of ask: awarded $ ÷ the live requests' in-budget asks. Asks are capped as Asked is. Incl. grants adds outside grants and fully funded rounds to both sides (Round 1 and All rounds)."
+            "% of ask: awarded $ ÷ the live requests' in-budget asks. In-budget asks are capped at the session's cost, as Asked is. Incl. grants adds outside grants and fully funded rounds to both sides (Round 1 and All rounds)."
         ),
         spec="§5.6",
         rulings=("D80",),
+        also_bold=("Incl. grants",),
     ),
     Definition(
         key="decided_not_offered",
@@ -452,6 +457,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         ),
         spec="§9.7",
         rulings=("D131",),
+        also_bold=("appeal rate", "R2 max fee %"),
     ),
     # Slice 4 ask 4: the Statistics columns that had no note (§9.2, §9.7 RPT-9). Since the approved final mock
     # reports-statistics.html (six notes, cap 6) these three, cancelled_applicants, recipients_cancelled and
@@ -463,7 +469,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests and the "
             "money of the rounds an outside funder pays in full, ÷ the "
             "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
-            "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
+            "denominator, unlike % of ask), plus those same grants: each grant counts on both sides, so the figure reads as a "
+            "share and never passes 100%. It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. "
             'With "include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
             'grants (posted + decided)".'
         ),
