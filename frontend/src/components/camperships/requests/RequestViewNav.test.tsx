@@ -219,6 +219,16 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
     expect(picked).toContain('text-forest-900')
   })
 
+  // A count still loading reads a plain "—": never an amber pill, not on Not reconciled, not picked.
+  it('draws a loading count as a plain muted dash, never a pill', () => {
+    strip({ counts: null, stage: 'needs_offer' })
+    for (const name of ['Not reconciled', 'Needs an offer']) {
+      const dash = within(link(name)).getByText('—')
+      expect(dash.className).not.toMatch(/\bbg-amber/)
+      expect(dash.className).toContain('text-muted-foreground')
+    }
+  })
+
   it('keeps exception badges 22px with the amber and red tones of the mock', () => {
     strip()
     expect(link('On hold').className).toContain('h-[22px]')

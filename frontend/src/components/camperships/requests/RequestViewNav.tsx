@@ -49,7 +49,8 @@ const AMBER_STAGES: ReadonlySet<RequestViewKey> = new Set(['not_reconciled'])
 
 /**
  * A count (mock `.n`): a lens's reads in the lens's ink; a chevron's is plain muted, except the
- * picked stage's (amber-400 pill) and Not reconciled's (the amber pill, even at 0).
+ * picked stage's (amber-400 pill) and Not reconciled's (the amber pill, even at 0). A count still
+ * loading is a plain "—" on a chevron: a pill would read as a flagged figure.
  */
 function Count({
   count,
@@ -61,11 +62,13 @@ function Count({
   const className =
     kind === 'lens'
       ? STRIP_COUNT_LENS
-      : kind === 'picked'
-        ? STRIP_COUNT_PICKED
-        : kind === 'amber'
-          ? STRIP_COUNT_AMBER
-          : STRIP_COUNT_PLAIN
+      : count === undefined
+        ? STRIP_COUNT_PLAIN
+        : kind === 'picked'
+          ? STRIP_COUNT_PICKED
+          : kind === 'amber'
+            ? STRIP_COUNT_AMBER
+            : STRIP_COUNT_PLAIN
   return <i className={className}>{count === undefined ? '—' : count.requests}</i>
 }
 
