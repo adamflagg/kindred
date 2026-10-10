@@ -92,21 +92,32 @@ export function programGroups(
 }
 
 /**
+ * The ledger families the rules never key by their own name, and the budget pool each belongs to
+ * (the server's `RULES_KEY_ALIASES` and fixed families): Quest and Teen Leadership sit in the camp
+ * and quest pool, B*Mitzvah is the rules' `tbm`, adult weekends are the weekend pool.
+ */
+const FAMILY_POOLS: Readonly<Record<string, string>> = {
+  quest: 'camp_quest',
+  teen: 'camp_quest',
+  bmitzvah: 'tbm',
+  adult_weekend: 'weekend',
+}
+
+/**
  * Where a program sits in the pool order (final audit M-E8; "pool order is the rules' order"): its
- * budget pool's place in the rules' `budget.pools`, then its place among the rules' programs. A
- * family the rules do not name (Quest, Teen Leadership on a Ledger) belongs to the camp & quest
- * pool, as that pool's label says, and follows the programs the rules do name there. Ties go to the
- * caller's own key or label order. With no rules every key ranks alike.
+ * budget pool's place in the rules' `budget.pools`, then its place among the rules' programs, the
+ * families the rules do not key (`FAMILY_POOLS`) after them. Any other unnamed family comes last.
+ * Ties go to the caller's own key or label order. With no rules every key ranks alike.
  */
 export function programRank(rules: ApiAidApprovedRules | undefined): (program: string) => number {
   const pools = Object.keys(poolLabels(rules))
   const programs = Object.keys(sectionContent(rules, 'programs') ?? {})
   const filed = stringField(sectionContent(rules, 'programs'), 'budget_pool')
-  const homePool = Math.max(pools.indexOf('camp_quest'), 0)
   return (program) => {
     const known = programs.indexOf(program)
-    const pool = known === -1 ? homePool : Math.max(pools.indexOf(filed[program] ?? ''), 0)
-    // Inside a pool the rules' programs keep the rules' order, and the unnamed ones follow them.
+    const home = known === -1 ? FAMILY_POOLS[program] : filed[program]
+    const pool = home === undefined ? pools.length : Math.max(pools.indexOf(home), 0)
+    // Inside a pool the rules' programs keep the rules' order, and the unkeyed families follow them.
     return pool * 1000 + (known === -1 ? 999 : known)
   }
 }

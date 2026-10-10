@@ -172,12 +172,13 @@ describe('programRank (final audit M-E8: pool order, then the rules’ order ins
     ],
   }
 
-  it('ranks Summer, then a ledger-only family (Quest, Teen) in the same pool, then TBM, then Family Camp', () => {
+  it('ranks Summer, then the ledger-only Quest and Teen in its pool, then TBM, then Family Camp', () => {
     const rank = programRank(rules)
-    const order = ['family_camp', 'tbm', 'teen', 'quest', 'summer'].sort(
+    const order = ['family_camp', 'bmitzvah', 'teen', 'quest', 'summer', 'tbm', 'other'].sort(
       (a, b) => rank(a) - rank(b) || a.localeCompare(b)
     )
-    expect(order).toEqual(['summer', 'quest', 'teen', 'tbm', 'family_camp'])
+    // B*Mitzvah is the rules' TBM; a family nothing names comes last.
+    expect(order).toEqual(['summer', 'quest', 'teen', 'tbm', 'bmitzvah', 'family_camp', 'other'])
   })
 
   it('ranks every key alike while the rules have not loaded', () => {
