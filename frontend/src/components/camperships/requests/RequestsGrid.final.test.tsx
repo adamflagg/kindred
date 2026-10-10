@@ -101,11 +101,18 @@ describe('the Session column (§14: tiny everywhere)', () => {
       expect((cols[0] as HTMLElement).style.width).toBe('170px')
       expect((cols[1] as HTMLElement).style.width).toBe('136px')
       unmount()
-      scroll.mockReturnValue(50)
+      scroll.mockReturnValue(60)
+      const again = render(<Grid rows={[ROW_EMMA]} />)
+      expect(
+        (screen.getByRole('table').querySelectorAll('col')[1] as HTMLElement).style.width
+      ).toBe('78px')
+      again.unmount()
+      // Never under its sorted header: "Session" (~45px at 12px semibold), the 4px gap and ↑ (~11px), plus 16.
+      scroll.mockReturnValue(20)
       render(<Grid rows={[ROW_EMMA]} />)
       expect(
         (screen.getByRole('table').querySelectorAll('col')[1] as HTMLElement).style.width
-      ).toBe('68px')
+      ).toBe('76px')
     } finally {
       scroll.mockRestore()
     }

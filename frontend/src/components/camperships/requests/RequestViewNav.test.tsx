@@ -230,11 +230,10 @@ describe('RequestViewNav: the views strip (T4; mock v=f, ls=b, po=b, rv=todo)', 
   // ux3 requests-4: the mock outlines the picked lens (1px primary) in both views, never fills it.
   it('outlines the picked lens at h-6 with and without a stage; an idle lens is transparent-bordered', () => {
     const { unmount } = strip()
-    for (const cls of [link('All').className]) {
-      expect(cls).toContain('border-primary')
-      expect(cls).toContain('h-6')
-      expect(cls).not.toContain('bg-primary')
-    }
+    const all = link('All').className
+    expect(all).toContain('border-primary')
+    expect(all).toContain('h-6')
+    expect(all).not.toContain('bg-primary')
     expect(link('Appeals').className).toContain('border-transparent')
     expect(link('Appeals').className).toContain('font-normal')
     unmount()

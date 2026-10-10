@@ -59,6 +59,7 @@ import {
   type CellValue,
   type FitContent,
   type RowGroup,
+  type TextMeasurer,
 } from './table'
 import { useAidTableUrl } from './useAidTableUrl'
 
@@ -665,6 +666,8 @@ export function AidTable<Row>({
   // have changed what is drawn) and on resize; each setState is a no-op when nothing moved.
   const [fitWidths, setFitWidths] = useState<Readonly<Record<string, number>>>({})
   const [boxWidth, setBoxWidth] = useState(0)
+  // One canvas for this table's life (re-made only if its font changes), not one per render.
+  const measurerRef = useRef<{ readonly font: string; readonly measure: TextMeasurer } | null>(null)
   const measureWidths = useCallback(() => {
     const element = boxRef.current
     if (element === null) return
@@ -680,14 +683,19 @@ export function AidTable<Row>({
         .map((chip) => Math.max(chip.getBoundingClientRect().width, chip.scrollWidth))
       next[column.key] = fitColumnWidth(chips, column.fitContent)
     }
-    // A total column fits its footer total (ux3 requests-10): measured once per data set, here, on
-    // the 14px bold the footer draws in. Nothing measures in jsdom, so the spec width stands there.
+    // A total column fits its footer total (ux3 requests-10), on the 14px bold the footer draws in.
+    // Once per data set: the total of every row, not the searched ones, so typing in the search box
+    // never moves a column (a searched total still says its full figure in its title). Nothing
+    // measures in jsdom, so the spec width stands there.
     if (columns.some((column) => column.total && column.width !== undefined)) {
-      const measure = canvasMeasurer(`700 14px ${getComputedStyle(element).fontFamily}`)
+      const font = `700 14px ${getComputedStyle(element).fontFamily}`
+      if (measurerRef.current?.font !== font)
+        measurerRef.current = { font, measure: canvasMeasurer(font) }
+      const { measure } = measurerRef.current
       for (const column of columns) {
         if (!column.total || column.fitContent || column.flex || column.width === undefined)
           continue
-        const total = column.total(visible)
+        const total = column.total(rows)
         if (total === null) continue
         next[column.key] = moneyColumnWidth(column.width, formatMoney(total), measure)
       }
@@ -698,7 +706,7 @@ export function AidTable<Row>({
         keys.length === Object.keys(was).length && keys.every((key) => was[key] === next[key])
       return same ? was : next
     })
-  }, [columns, visible])
+  }, [columns, rows])
   useLayoutEffect(measureWidths)
   useEffect(() => {
     window.addEventListener('resize', measureWidths)

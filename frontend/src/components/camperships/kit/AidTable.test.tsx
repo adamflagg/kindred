@@ -1425,6 +1425,8 @@ describe('the kit grid matches the final mock (ux3 Requests)', () => {
       HTMLCanvasElement.prototype.getContext = original
     })
 
+    // The decided column's <col> (family, camper, decided: no checkbox column here).
+    const DECIDED = COLUMNS.findIndex((c) => c.key === 'decided')
     const widthsOf = (container: HTMLElement) =>
       [...container.querySelectorAll('col')].map((col) => (col as HTMLElement).style.width)
 
@@ -1433,12 +1435,32 @@ describe('the kit grid matches the final mock (ux3 Requests)', () => {
         columns: COLUMNS.map((c) => (c.key === 'decided' ? { ...c, width: 40 } : c)),
       })
       // "$3,950" is 6 characters: 60px measured + 16px padding.
-      expect(widthsOf(container)).toContain('76px')
+      expect(widthsOf(container)[DECIDED]).toBe('76px')
     })
 
     it('never narrows a column under its spec width', () => {
       const { container } = renderTable()
-      expect(widthsOf(container)).toContain('90px')
+      expect(widthsOf(container)[DECIDED]).toBe('90px')
+    })
+
+    // requests-10: "measured once per data set", so a search typed into the box never moves it.
+    it('holds a total column at its data set width while the search narrows the rows', async () => {
+      const { container } = renderTable('/aid/requests', {
+        columns: COLUMNS.map((c) => (c.key === 'decided' ? { ...c, width: 40 } : c)),
+      })
+      expect(widthsOf(container)[DECIDED]).toBe('76px')
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'chen')
+      expect(bodyCampers()).toEqual(['Olivia Chen'])
+      expect(widthsOf(container)[DECIDED]).toBe('76px')
+    })
+
+    it('measures on one canvas, not a new one each render', async () => {
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      renderTable('/aid/requests', {
+        columns: COLUMNS.map((c) => (c.key === 'decided' ? { ...c, width: 40 } : c)),
+      })
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'chen')
+      expect(getContext).toHaveBeenCalledTimes(1)
     })
   })
 })

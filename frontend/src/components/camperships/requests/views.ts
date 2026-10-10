@@ -355,10 +355,11 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   },
   // Blank when the session didn't match (an unsettled request): the cell draws "—".
   // ux3 requests-11 (owner): fits the names on screen, 136 (the mock's width) the cap; a longer one cuts with its title.
+  // Never under its own header sorted: "Session" (~45px at 12px semibold), the 4px gap and ↑ (~11px), plus 16.
   session: {
     header: 'Session',
     width: 136,
-    fitContent: { pad: 18, min: 64, max: 136 },
+    fitContent: { pad: 18, min: 76, max: 136 },
     value: (r) => r.session_name || null,
   },
   stage: { header: 'Stage', width: 158, value: (r) => requestStage(r)?.text ?? null },
