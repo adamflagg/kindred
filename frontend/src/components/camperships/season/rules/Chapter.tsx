@@ -3,6 +3,9 @@ import type { ReactNode } from 'react'
 import { CS_CARD, CS_CARD_TITLE, CS_LINK_SM, CS_PILL } from '../../kit/csType'
 import type { ChapterDef, SummaryPill } from './rulesLayout'
 
+/** A chapter card is the kit's .cf-chap: CS_CARD with 9px top and bottom padding (ux3 chrome-7). */
+const CHAPTER_CARD = CS_CARD.replace('py-3', 'py-[9px]')
+
 /** A chapter (spec §6.2 C): one card of section cards; folded, its summary pills. */
 export function Chapter({
   chapter,
@@ -23,7 +26,7 @@ export function Chapter({
     <section
       id={`chap-${String(chapter.n)}`}
       data-chapter={chapter.n}
-      className={`${CS_CARD} scroll-mt-[56px]`}
+      className={`${CHAPTER_CARD} scroll-mt-[56px]`}
     >
       <div className="flex flex-wrap items-baseline gap-x-2">
         <button type="button" className={CS_CARD_TITLE} onClick={onToggle}>

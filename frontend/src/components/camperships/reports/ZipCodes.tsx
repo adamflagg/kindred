@@ -72,7 +72,7 @@ export function ZipCodes({ view }: { view: AidView }) {
             const groups = zipGroups(data)
             const link = aidHref(PATH, view, data.group === null ? {} : { group: data.group })
             return (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {groups.length > 0 && (
                   <div className={CS_TOOLBAR}>
                     <span className={CS_FLABEL}>Group</span>

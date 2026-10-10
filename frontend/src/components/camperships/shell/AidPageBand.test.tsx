@@ -91,4 +91,14 @@ describe('AidPageBand (D30: the compact band, no hero)', () => {
     render(<AidPageBand icon={Inbox} title="Household" stats={<div>$1,800 decided</div>} />)
     expect(screen.getByText('$1,800 decided')).toBeInTheDocument()
   })
+
+  // chrome-3: the mock's .cf-band is padding 16px 24px (80px tall) with a 38px icon tile.
+  it('is 16px padded with a 38px icon tile', () => {
+    render(<AidPageBand icon={Inbox} title="Requests" />)
+    const band = screen.getByRole('heading', { level: 1 }).closest('.rounded-xl')
+    expect(band).toHaveClass('sm:py-4')
+    expect(band).not.toHaveClass('sm:py-5')
+    const tile = band?.querySelector('svg')?.parentElement
+    expect(tile).toHaveClass('sm:size-[38px]', 'sm:p-0', 'flex', 'items-center', 'justify-center')
+  })
 })

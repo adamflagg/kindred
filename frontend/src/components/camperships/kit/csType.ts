@@ -98,6 +98,8 @@ export const CS_CARD_TITLE = 'font-bold'
 export const CS_CARD_HEADING = `${CS_CARD_TITLE} !font-sans !text-[13.5px] !leading-normal !tracking-[inherit]`
 /** cs-body 13.5/20.25, for a block outside a card. */
 export const CS_BODY = 'text-[13.5px] leading-normal'
+/** The mock's `.cf-empty`: a dashed card in muted body type, standing where a table or grid would. */
+export const CS_EMPTY = `bg-card border-border text-muted-foreground rounded-xl border border-dashed px-4 py-3.5 ${CS_BODY}`
 /** cs-label 13.5/600: a fold line's or a row's label. */
 export const CS_LABEL = 'text-foreground text-[13.5px] leading-normal font-semibold'
 /** A card's sub-head, 12.5/18.75 600 (spec §6.2 D: "Which years count", "Applications and Round 1"). */

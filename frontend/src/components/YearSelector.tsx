@@ -16,7 +16,7 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
     return (
       <div className="relative">
         <div className="flex items-center gap-2">
-          <Calendar className="text-primary h-4 w-4 flex-shrink-0" />
+          {!aid && <Calendar className="text-primary h-4 w-4 flex-shrink-0" />}
           <div className="flex min-w-[80px] items-center justify-center py-1">
             <Loader2 className="text-primary h-4 w-4 animate-spin" />
           </div>
@@ -28,7 +28,7 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
   return (
     <div className="relative">
       <div className="flex items-center gap-2">
-        <Calendar className="text-primary h-4 w-4 flex-shrink-0" />
+        {!aid && <Calendar className="text-primary h-4 w-4 flex-shrink-0" />}
         <Listbox value={currentYear} onChange={setCurrentYear} disabled={isTransitioning}>
           <div className="relative">
             <ListboxButton
@@ -39,7 +39,7 @@ export default function YearSelector({ aid = false }: { aid?: boolean }) {
               }
             >
               <span>{currentYear}</span>
-              <ChevronDown className="text-muted-foreground h-4 w-4" />
+              <ChevronDown className={`text-muted-foreground ${aid ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
             </ListboxButton>
             <ListboxOptions
               transition

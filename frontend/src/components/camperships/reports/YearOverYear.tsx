@@ -148,7 +148,7 @@ export function YearOverYear({ view }: { view: AidView }) {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {controls}
       <QueryGuard
         isLoading={committee.isLoading || (refusal !== null && fallback.isLoading)}

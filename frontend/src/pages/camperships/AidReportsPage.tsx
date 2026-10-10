@@ -7,6 +7,7 @@ import { DevelopmentReport } from '../../components/camperships/reports/Developm
 import { StatisticsTab } from '../../components/camperships/reports/StatisticsTab'
 import { YearOverYear } from '../../components/camperships/reports/YearOverYear'
 import { ZipCodes } from '../../components/camperships/reports/ZipCodes'
+import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { CS_BAND_WARN, CS_LINK } from '../../components/camperships/kit/csType'
@@ -56,14 +57,24 @@ export default function AidReportsPage() {
     const known = REPORTS.tabs.find((t) => t.slug === tab)
     if (known === undefined) return <PermissionDeniedPage />
     return (
-      <div className="space-y-3 sm:space-y-4">
-        <AidPageBand
-          icon={FileBarChart}
-          title={REPORTS.label}
-          subtitle={`Season ${String(year)}`}
-          asOf={asOf}
+      <div className="space-y-2.5">
+        <AidPageHead
+          band={
+            <AidPageBand
+              icon={FileBarChart}
+              title={REPORTS.label}
+              subtitle={`Season ${String(year)}`}
+              asOf={asOf}
+            />
+          }
+          tabs={
+            <AidTabNav
+              section={REPORTS}
+              tabs={visibleTabs(REPORTS, { hasPermission })}
+              view={view}
+            />
+          }
         />
-        <AidTabNav section={REPORTS} tabs={visibleTabs(REPORTS, { hasPermission })} view={view} />
         <div
           className={`${CS_BAND_WARN} rounded-lg border border-amber-300 px-2.5 py-[3px] text-[12.5px] dark:border-amber-800`}
         >
@@ -90,24 +101,30 @@ export default function AidReportsPage() {
   const at = current.slug
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <AidPageBand
-        icon={FileBarChart}
-        title={at === 'development' || at === 'zip-codes' ? 'Development report' : REPORTS.label}
-        subtitle={
-          at === 'zip-codes' ? (
-            `Where ${String(year)} campers live, by ZIP: counts and dollars, never a family`
-          ) : at === 'development' ? (
-            'Aid by season, for grant writing: numbers and quantities, never a family'
-          ) : at === 'statistics' ? (
-            <StatisticsSubtitle year={year} />
-          ) : (
-            `Season ${String(year)} · from the dashboard's Posted amounts and the typed history`
-          )
+    <div className="space-y-2.5">
+      <AidPageHead
+        band={
+          <AidPageBand
+            icon={FileBarChart}
+            title={
+              at === 'development' || at === 'zip-codes' ? 'Development report' : REPORTS.label
+            }
+            subtitle={
+              at === 'zip-codes' ? (
+                `Where ${String(year)} campers live, by ZIP: counts and dollars, never a family`
+              ) : at === 'development' ? (
+                'Aid by season, for grant writing: numbers and quantities, never a family'
+              ) : at === 'statistics' ? (
+                <StatisticsSubtitle year={year} />
+              ) : (
+                `Season ${String(year)} · from the dashboard's Posted amounts and the typed history`
+              )
+            }
+            asOf={asOf}
+          />
         }
-        asOf={asOf}
+        tabs={<AidTabNav section={REPORTS} tabs={resolved.tabs} view={view} />}
       />
-      <AidTabNav section={REPORTS} tabs={resolved.tabs} view={view} />
       {asOf.kind === 'past' && LIVE_ONLY.has(at) && (
         <p className="text-muted-foreground text-sm">This view shows today: it has no past date.</p>
       )}

@@ -45,10 +45,10 @@ export function AidPageBand({
 }: AidPageBandProps) {
   const live = asOf?.kind === 'live' ? `as of ${formatShortDate(campToday())} (live)` : null
   return (
-    <div className="from-forest-700 to-forest-800 rounded-xl bg-gradient-to-r px-4 py-4 sm:px-6 sm:py-5">
+    <div className="from-forest-700 to-forest-800 rounded-xl bg-gradient-to-r px-4 py-4 sm:px-6 sm:py-4">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="rounded-lg bg-white/10 p-1.5 sm:p-2">
+          <div className="flex items-center justify-center rounded-lg bg-white/10 p-1.5 sm:size-[38px] sm:p-0">
             <Icon className="h-5 w-5 text-amber-400 sm:h-6 sm:w-6" />
           </div>
           <div>

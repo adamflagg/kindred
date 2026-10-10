@@ -96,6 +96,30 @@ describe('AppLayout on a Camperships page', () => {
   // Users and Manage left the bar for the user menu, so the divider that ended the
   // section has nothing to separate and is gone.
   // Final audit M-E5: only the Camperships subbar gets the kit's white 26px Season picker.
+  // chrome-m1: the opaque wrapper hid body::before's grid; Camperships alone lets it show.
+  it('lets the page grid show on Camperships only (the wrapper is not opaque there)', () => {
+    granted = [VIEW]
+    const aid = renderAt('/aid/requests')
+    expect(aid.container.firstElementChild).not.toHaveClass('bg-background')
+    aid.unmount()
+    const summer = renderAt('/bunking')
+    expect(summer.container.firstElementChild).toHaveClass('bg-background')
+  })
+
+  // chrome-4 (owner, every program): the subbar row is 48px and <main> has 20px above, as the mock.
+  it.each(['/aid/requests', '/bunking'])(
+    'has a 48px subbar row and 20px main top on %s',
+    (route) => {
+      granted = [VIEW]
+      const { container } = renderAt(route)
+      const main = container.querySelector('main')
+      expect(main).toHaveClass('pt-5', 'pb-6')
+      expect(main).not.toHaveClass('py-6')
+      expect(container.querySelector('.h-12.items-center.justify-between')).not.toBeNull()
+      expect(container.querySelector('.h-14.items-center.justify-between')).toBeNull()
+    }
+  )
+
   it('asks for the kit-dressed Season picker', () => {
     granted = [VIEW]
     renderAt('/aid/requests')

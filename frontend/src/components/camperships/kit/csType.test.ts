@@ -78,6 +78,14 @@ describe('csType aliases slice 1 (spec §1.1)', () => {
  * strings above that slice 1 owned and the kit now overrides (CS_SELECT, CS_INPUT, CS_BTN_TOOL,
  * CS_BTN/CS_BTN2, CS_SEG*, CS_FLABEL, CS_LINK) are pinned here instead, by what the kit requires.
  */
+describe('CS_EMPTY (chrome-8)', () => {
+  it("is the kit's dashed .cf-empty card", () => {
+    expect(cs.CS_EMPTY).toContain('border-dashed')
+    expect(cs.CS_EMPTY).toContain('bg-card')
+    expect(cs.CS_EMPTY).not.toContain('card-lodge')
+  })
+})
+
 describe('csType carries the final design language (design-language.md)', () => {
   const classes = (value: string) => value.split(/\s+/)
 

@@ -303,7 +303,7 @@ export const AppLayout = () => {
     `hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${active ? 'bg-muted/50' : ''}`
 
   return (
-    <div className="bg-background min-h-screen">
+    <div className={`min-h-screen ${activeProgram === 'aid' ? '' : 'bg-background'}`}>
       {/* One sticky block: the admin preview strip (only while previewing) sits
           above the nav and never scrolls away or overlaps it. */}
       <div data-app-chrome className="sticky top-0 z-50">
@@ -609,7 +609,7 @@ export const AppLayout = () => {
       {/* Secondary Navigation Bar */}
       <div data-app-chrome className="bg-muted/20 border-border/30 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-14 items-center justify-between">
+          <div className="flex h-12 items-center justify-between">
             {/* Left side: Year context + sync status (summer only) */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
@@ -796,7 +796,7 @@ export const AppLayout = () => {
       </div>
 
       {/* Main content */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 pt-5 pb-6 sm:px-6 lg:px-8">
         <Outlet />
       </main>
 

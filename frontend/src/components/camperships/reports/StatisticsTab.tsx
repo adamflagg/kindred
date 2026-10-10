@@ -235,7 +235,7 @@ export function StatisticsTab({ view }: { view: AidView }) {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {controls}
       <QueryGuard
         isLoading={stats.isLoading}

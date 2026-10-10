@@ -95,7 +95,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
       : (exporter.failed ?? undefined)
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <AidToolbar
         {...(status === undefined ? {} : { status })}
         {...(refusal === null ? {} : { statusTitle: refusal })}

@@ -6,7 +6,7 @@ import { QueryGuard } from '../../components/QueryGuard'
 import { aidHref } from '../../components/camperships/kit/asOf'
 import type { AidRowNav } from '../../components/camperships/kit/AidTable'
 import { campToday } from '../../components/camperships/kit/dates'
-import { CS_BTN2, CS_LINK_SM } from '../../components/camperships/kit/csType'
+import { CS_BTN2, CS_EMPTY, CS_LINK_SM } from '../../components/camperships/kit/csType'
 import { AidFilterChip, AidToolbar } from '../../components/camperships/kit/Toolbar'
 import type { EditorSave } from '../../components/camperships/kit/RequestEditor'
 import { useEditorWalk } from '../../components/camperships/kit/useEditorWalk'
@@ -63,6 +63,7 @@ import { camperLabel } from '../../components/camperships/requests/cells'
 import { listOutside, OUTSIDE_FOOTNOTE } from '../../components/camperships/requests/outside'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { ProgramWordsNote } from '../../components/camperships/shell/ProgramWordsNote'
+import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
@@ -582,12 +583,16 @@ export default function AidRequestsPage() {
   const statusNode = <StatusSlot status={status} onDismiss={dismissStatus} />
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <AidPageBand
-        icon={ListChecks}
-        title="Requests"
-        subtitle={`Season ${String(year)}`}
-        asOf={asOf}
+    <div className="space-y-2.5">
+      <AidPageHead
+        band={
+          <AidPageBand
+            icon={ListChecks}
+            title="Requests"
+            subtitle={`Season ${String(year)}`}
+            asOf={asOf}
+          />
+        }
       />
       <RequestViewNav
         lens={lens}
@@ -621,7 +626,7 @@ export default function AidRequestsPage() {
       >
         {(data) =>
           !live && view.key !== 'all' ? (
-            <div className="card-lodge text-muted-foreground p-6 text-sm">
+            <div className={CS_EMPTY}>
               {view.label} needs today&apos;s data: which list a row is in isn&apos;t rebuilt for a
               past date. All shows that day&apos;s figures.
             </div>

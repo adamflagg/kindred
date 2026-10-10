@@ -6,6 +6,7 @@ import { QueryGuard } from '../../components/QueryGuard'
 import { AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
 import { type AidAsOf, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
+import { CS_EMPTY } from '../../components/camperships/kit/csType'
 import {
   HouseholdAddCommitment,
   HouseholdPlaceOnCamper,
@@ -231,7 +232,7 @@ export default function AidHouseholdPage() {
         </p>
       )}
       {missing ? (
-        <div className="card-lodge text-muted-foreground p-6 text-sm">
+        <div className={CS_EMPTY}>
           {`No aid activity for household ${householdCmId ?? ''} in ${String(year)}.`}
         </div>
       ) : (
