@@ -5,7 +5,8 @@ Read access follows the data: rules rows (and any session capacity row from befo
 financial_aid.rules. An operation is "rules" only when every row is; a Posted tick that also locks rules sections is
 "offers", and a reader without rules sees it minus those rows (for_reader). A rules-only operation stays hidden from them.
 Intake runs (system:intake) are hidden unless asked. The scenario trail stays in Scenarios, so its collections are
-left out. Amounts are what the rows recorded at the time, never recomputed."""
+left out. Amounts are what the rows recorded at the time, never recomputed; a grant placement's Round is replayed
+from the dates recorded by then (placement_counts_in), never re-priced."""
 
 from __future__ import annotations
 

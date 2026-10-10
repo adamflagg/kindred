@@ -54,7 +54,8 @@ function CompactTable({ group }: { group: CompactGroup }) {
   const [all, setAll] = useState(false)
   const rows = all ? group.rows : group.rows.slice(0, FIRST)
   const round = group.rows.some((r) => r.round !== null)
-  // A placement's Round reads "after offer" and says why in its head (season-history.html, owner 10-10 B).
+  // A placement's Round can read "after offer", so the column is wider, and its head says what the round means
+  // (season-history.html, owner 10-10 B).
   const placements = group.amountLabel === 'Grant placed'
   const foot =
     all || group.rows.length <= FIRST

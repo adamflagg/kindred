@@ -1,12 +1,13 @@
 """The round a grant offsets (campership slice 3, ask 10; clean spec §8.2 "the aid request it offsets"; D43, D88,
 D116, D143).
 
-Each share of a counted grant on an aid request is classified by the calculator's flag-free grant_round, fed the
-share exactly as pricing's bridge feeds it (reaches_calculator, bridge_input), against the request as the season
-priced it. The Register's "R1 $1,420" is `round` 1 with that round's amount now (decided while open, locked once
+Each share of a counted grant on an aid request is classified by the calculator's flag-free grant_round_at (_offset),
+fed the share exactly as pricing's bridge feeds it (reaches_calculator, bridge_input), against the request as the
+season priced it. The Register's "R1 $1,420" is `round` 1 with that round's amount now (decided while open, locked once
 posted). A grant known after Round 1 posted offsets Round 2 only where the rules make an appeal subtract grants
 (D139: round2.cap_subtracts_grants or round2.total_cap.include_grants, both off in 2027); otherwise it is "after the
-offer" (D43). Live only.
+offer" (D43). share_offset reads it live; offset_as_of replays the same rule at a past instant, with no amount,
+for Season › History's Round column.
 
 GET /grants/{year} prices the season once, on the register it shows (OneGrantsLoad), as Today and the household page
 do. Nothing here writes.
