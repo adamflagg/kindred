@@ -385,7 +385,7 @@ describe('the pricing mode (Posted ▾)', () => {
     renderAt('', POSTED)
     expect(pricingCalls.at(-1)?.asIfUnposted).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /^Posted:/ }))
-    await userEvent.click(screen.getByRole('option', { name: 'As if none' }))
+    await userEvent.click(screen.getByRole('option', { name: 'No postings' }))
     expect(location).toContain('unposted=1')
     // both pricings of the render: the draft's and its starting point's
     expect(pricingCalls.slice(-2).map((c) => c.asIfUnposted)).toEqual([true, true])
@@ -416,7 +416,7 @@ describe('the pricing mode (Posted ▾)', () => {
     expect(pricingCalls.at(-1)?.asIfUnposted).toBe(false)
   })
 
-  it('words the heading by the figures on screen: regular figures still held while As if none loads say posted Round 1 stands', () => {
+  it('words the heading by the figures on screen: regular figures still held while No postings loads say posted Round 1 stands', () => {
     // keepPreviousData: the regular answer stays on screen (dimmed) until the as-if one lands, so the heading
     // must follow the figures, not the switch.
     pricing = { ...pricing, isPlaceholderData: true, isFetching: true }

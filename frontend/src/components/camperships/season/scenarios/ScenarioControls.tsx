@@ -75,7 +75,7 @@ export function RenameBox({
  * - Sandbox | Compare;
  * - From ▾, one picker with two groups (Start from; Kept) and ✎ beside it renaming the loaded kept option;
  * - Price ▾;
- * - Posted ▾ once a round is posted (owner, 2026-10-10): Stands (regular), or As if none (as if nothing is posted);
+ * - Posted ▾ once a round is posted (owner, 2026-10-10): Stands (regular), or No postings (as if nothing is posted);
  * - on the right the status slot (change count, "Nothing new since …", a refusal, the "isn't kept" notice), then
  *   Discard Changes, Make ‹B› the Rules Draft… and Keep… (in Compare, Columns, By tier and Print), and Update
  *   Applications last.

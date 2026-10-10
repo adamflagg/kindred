@@ -18,7 +18,7 @@ export const SCENARIO_PAGE_NOTES: readonly DefinitionNote[] = [
   },
   {
     n: PAGE_NOTE.pricing,
-    text: "Pricing: Stands keeps a posted Round 1, so edits move only unposted requests. As if none prices every request fresh: the season's cost under these rules.",
+    text: "Pricing: Stands keeps a posted Round 1, so edits move only unposted requests. No postings prices every request fresh: the season's cost under these rules.",
   },
 ]
 
