@@ -3,6 +3,7 @@
  * named by its label; A3's `groups`). Pure: the card, its editor and its tests read the season through here. Programs
  * stay in the data (ground rule 1); a group is drawn from its sessions.
  */
+import { sessionOrderIds, type SessionOrderInput } from '../../../../utils/sessionOrder'
 import type { CatalogSession } from '../../../../hooks/camperships/useAidSessionCatalog'
 import type { ApiAidGroup, ApiAidValidationIssue } from '../../../../types/api-types'
 import { boxText, parseSetting, type FieldSpec } from './sectionEdit'
@@ -56,6 +57,8 @@ export interface ProgramsCostsDoc {
 }
 export interface CardRow {
   readonly session: CatalogSession
+  /** The session's place in the Camperships order (Q8) among the season's sessions. */
+  readonly rank: number
   readonly program: string | null
   readonly group: string
   readonly kind: PriceKind | null
@@ -117,6 +120,15 @@ export function resolveProgram(
   return resolveProgram(doc, parent.cmId, parent.type)
 }
 
+export const orderInput = (s: CatalogSession): SessionOrderInput => ({
+  cm_id: s.cmId,
+  name: s.name,
+  session_type: s.type,
+  start_date: s.startDate,
+  end_date: s.endDate,
+  parent_cm_id: s.parentId,
+})
+
 export function isAgChild(
   session: CatalogSession,
   byId: ReadonlyMap<number, CatalogSession>
@@ -141,10 +153,8 @@ function tagOf(label: string, groupLabel: string, name: string): string | null {
   return label
 }
 
-const byDate = (a: CardRow, b: CardRow) =>
-  a.session.startDate.localeCompare(b.session.startDate) ||
-  a.session.sortOrder - b.session.sortOrder ||
-  a.session.cmId - b.session.cmId
+/** Rows by their place in the Camperships session order (owner Q8; the rule itself lives in utils/sessionOrder.ts). */
+export const bySessionOrder = (a: CardRow, b: CardRow) => a.rank - b.rank
 
 export function cardView(
   doc: ProgramsCostsDoc,
@@ -153,6 +163,9 @@ export function cardView(
   cancelled: ReadonlySet<number>
 ): CardView {
   const byId = new Map(sessions.map((s) => [s.cmId, s] as const))
+  const rankOf = new Map(
+    sessionOrderIds(sessions.map(orderInput)).map((id, place) => [id, place] as const)
+  )
   const pools = new Set(groups.map((g) => g.pool))
   const notRunningIds = new Set((doc.cost.not_running_session_cm_ids ?? []).map(Number))
   const rowOf = (session: CatalogSession): CardRow => {
@@ -164,6 +177,7 @@ export function cardView(
     const groupLabel = groups.find((g) => g.pool === pool)?.label ?? ''
     return {
       session,
+      rank: rankOf.get(session.cmId) ?? Number.MAX_SAFE_INTEGER,
       program: key,
       group: pool,
       kind: pool === NOT_OPEN ? null : (program?.cost_source ?? null),
@@ -186,20 +200,20 @@ export function cardView(
     const running = mine.filter((r) => !r.notRunning)
     const priced = running
       .filter((r) => r.kind !== 'per_person')
-      .sort((a, b) => SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) || byDate(a, b))
-    const perPerson = running.filter((r) => r.kind === 'per_person').sort(byDate)
+      .sort((a, b) => SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) || bySessionOrder(a, b))
+    const perPerson = running.filter((r) => r.kind === 'per_person').sort(bySessionOrder)
     const parentRunsHere = (ag: CatalogSession) =>
       running.some((r) => r.session.cmId === ag.parentId)
     return {
       pool: g.pool,
       label: g.label,
       running: [...priced, ...perPerson],
-      notRunning: mine.filter((r) => r.notRunning).sort(byDate),
+      notRunning: mine.filter((r) => r.notRunning).sort(bySessionOrder),
       agCount: ags.filter(parentRunsHere).length,
       subLabels: new Set(priced.map((r) => r.sub)).size >= 2,
     }
   })
-  return { groups: view, notOpen: rows.filter((r) => r.group === NOT_OPEN).sort(byDate) }
+  return { groups: view, notOpen: rows.filter((r) => r.group === NOT_OPEN).sort(bySessionOrder) }
 }
 
 export type EditField = 't' | 's' | 'i' | 'g' | 'nr'
@@ -466,7 +480,7 @@ export function changesSince(
       (a, b) =>
         groupIndex(a) - groupIndex(b) ||
         SUB_ORDER.indexOf(a.sub) - SUB_ORDER.indexOf(b.sub) ||
-        byDate(a, b)
+        bySessionOrder(a, b)
     )
   for (const row of flips) {
     lines.push({

@@ -33,8 +33,8 @@ describe('cardView (spec §4.2–§4.4, §5.2)', () => {
       'Starter Session',
       'Session 2',
       'Session 2b',
-      'Winter Retreat',
       'Leader in Training',
+      'Winter Retreat',
     ])
     expect(camp?.subLabels).toBe(true)
     expect(names(weekend?.running ?? [])).toEqual([
@@ -44,6 +44,19 @@ describe('cardView (spec §4.2–§4.4, §5.2)', () => {
     ])
     expect(weekend?.subLabels).toBe(false)
     expect(names(school?.running ?? [])).toEqual(['Coming-of-Age Year 1'])
+  })
+
+  it('orders sessions by the Q8 rule: longer before shorter on a start date, never by CampMinder order', () => {
+    const long = { ...CATALOG[0]!, name: 'Session 2', sortOrder: 9, endDate: '2027-07-18' }
+    const short = {
+      ...CATALOG[3]!,
+      name: 'Session 2a',
+      sortOrder: 1,
+      startDate: '2027-06-20',
+      endDate: '2027-07-04',
+    }
+    const camp = cardView(pcDoc(), GROUPS, [short, long], new Set()).groups[0]
+    expect(names(camp?.running ?? [])).toEqual(['Session 2', 'Session 2a'])
   })
 
   it('files a teen-type session with Teen Programs, the same words as every other screen (ux3 taxonomy)', () => {
@@ -82,7 +95,7 @@ describe('cardView (spec §4.2–§4.4, §5.2)', () => {
   })
 
   it('puts a closed program, a pool-less program and an unclaimed session under Not open to aid', () => {
-    expect(names(view().notOpen)).toEqual(['Staff Week', 'New Session Nobody Placed'])
+    expect(names(view().notOpen)).toEqual(['New Session Nobody Placed', 'Staff Week'])
     expect(view().notOpen.find((r) => r.session.cmId === 1000902)?.program).toBeNull()
   })
 

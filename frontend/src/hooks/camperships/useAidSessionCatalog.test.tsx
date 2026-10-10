@@ -17,6 +17,7 @@ const getFullList = vi.fn(() =>
       cm_id: 1000103,
       name: 'AG Session 2',
       start_date: '2027-06-20 00:00:00.000Z',
+      end_date: '2027-07-04 00:00:00.000Z',
       sort_order: null,
       session_type: 'ag',
       parent_id: 1000101,
@@ -41,13 +42,14 @@ describe('useAidSessionCatalog (spec §5.3)', () => {
     await waitFor(() => expect(result.current).toHaveLength(2))
     expect(getFullList).toHaveBeenCalledWith({
       filter: 'year = 2027',
-      fields: 'cm_id,name,start_date,sort_order,session_type,parent_id',
+      fields: 'cm_id,name,start_date,end_date,sort_order,session_type,parent_id',
       sort: 'start_date,sort_order,cm_id',
     })
     expect(result.current?.[1]).toEqual({
       cmId: 1000103,
       name: 'AG Session 2',
       startDate: '2027-06-20 00:00:00.000Z',
+      endDate: '2027-07-04 00:00:00.000Z',
       sortOrder: 0,
       type: 'ag',
       parentId: 1000101,

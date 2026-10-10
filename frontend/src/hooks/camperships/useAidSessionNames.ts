@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../contexts/AuthContext'
 import { pb } from '../../lib/pocketbase'
 import { queryKeys } from '../../utils/queryKeys'
+import { orderSessions } from '../../utils/sessionOrder'
 
 /**
  * The season's session names, from PocketBase `camp_sessions`, read the way `useAdminSessions` reads
@@ -16,14 +17,29 @@ export function useAidSessionNames(year: number): ReadonlyMap<number, string> | 
   return useQuery({
     queryKey: queryKeys.campSessionNames(year),
     queryFn: async () => {
-      const sessions = await pb
-        .collection('camp_sessions')
-        .getFullList<{ cm_id: number; name: string }>({
-          filter: `year = ${String(year)}`,
-          fields: 'cm_id,name',
-          sort: 'start_date,cm_id',
-        })
-      return new Map(sessions.map((s) => [s.cm_id, s.name] as const))
+      const sessions = await pb.collection('camp_sessions').getFullList<{
+        cm_id: number
+        name: string
+        // Optional: a read that leaves a field out (an older fixture, a trimmed record) still lists, just later.
+        session_type?: string
+        start_date?: string
+        end_date?: string | null
+        parent_id: number | null
+      }>({
+        filter: `year = ${String(year)}`,
+        fields: 'cm_id,name,session_type,start_date,end_date,parent_id',
+        sort: 'start_date,cm_id',
+      })
+      // The map iterates in the Camperships session order (owner Q8), so every picker built from it lists that way.
+      const ordered = orderSessions(sessions, (s) => ({
+        cm_id: s.cm_id,
+        name: s.name,
+        session_type: s.session_type ?? '',
+        start_date: s.start_date ?? '',
+        end_date: s.end_date ?? '',
+        parent_cm_id: s.parent_id ?? 0,
+      }))
+      return new Map(ordered.map((s) => [s.cm_id, s.name] as const))
     },
     enabled: year > 0 && !isLoading,
   }).data

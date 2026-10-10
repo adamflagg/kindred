@@ -159,6 +159,21 @@ async def test_an_unmatched_request_names_its_candidate_sessions() -> None:
 
 
 @pytest.mark.asyncio
+async def test_candidate_sessions_list_in_the_q8_order_not_the_order_intake_found_them() -> None:
+    """Owner Q8: summer by start day, Taste of Camp as session 1, then Quest; an unknown id last."""
+    store = FakeDecisionsStore()
+    request = seed_request(store, EMMA)
+    store.requests[EMMA] = replace(
+        request,
+        status="unmatched_session",
+        session_cm_id=0,
+        flags=({"code": "unmatched_session", "detail": {"candidates": [1000199, 1000106, 1000105, 1000101, 1000104]}},),
+    )
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert [c.session_cm_id for c in row.session_candidates] == [1000104, 1000101, 1000105, 1000106, 1000199]
+
+
+@pytest.mark.asyncio
 async def test_a_settled_request_lists_no_candidates_even_if_its_old_flag_stays() -> None:
     store = FakeDecisionsStore()
     request = seed_request(store, EMMA)

@@ -1427,6 +1427,41 @@ async def test_a_candidate_lists_the_sessions_they_are_actively_enrolled_in_that
 
 
 @pytest.mark.asyncio
+async def test_a_candidates_sessions_list_in_the_q8_order_whatever_the_ids() -> None:
+    """Owner Q8, app-wide: main before its embedded and AG, then Quest, then TLI, then SCIT."""
+
+    def attendee(session: int, name: str, kind: str, start: str, end: str, parent: int = 0) -> SimpleNamespace:
+        rec = SimpleNamespace(
+            cm_id=session, session_type=kind, name=name, start_date=start, end_date=end, parent_id=parent
+        )
+        return SimpleNamespace(person_id=1001, status_id=2, expand={"session": rec})
+
+    repo = _read_repo()
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[
+            attendee(1000101, "Counselor Program", "scit", "2027-06-20", "2027-07-18"),
+            attendee(1000102, "Teen Leadership Institute", "tli", "2027-06-20", "2027-07-18"),
+            attendee(1000103, "Quest: Rivers", "quest", "2027-06-01", "2027-06-05"),
+            attendee(1000104, "AG Session 2", "ag", "2027-06-20", "2027-07-18", parent=1000106),
+            attendee(1000105, "Session 2a", "embedded", "2027-06-20", "2027-07-04"),
+            attendee(1000106, "Session 2", "main", "2027-06-20", "2027-07-18"),
+        ]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (need,) = out.needs_camper
+    emma = {c.name: c for c in need.candidates}["Emma Johnson"]
+    assert [s.name for s in emma.sessions] == [
+        "Session 2",
+        "AG Session 2",
+        "Session 2a",
+        "Quest: Rivers",
+        "Teen Leadership Institute",
+        "Counselor Program",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_a_grant_row_carries_its_sessions_type_for_the_short_name() -> None:
     placed = SimpleNamespace(
         transaction_cm_id=9001,

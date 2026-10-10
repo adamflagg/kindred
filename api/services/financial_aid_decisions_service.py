@@ -253,6 +253,7 @@ from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO, dollars
 from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
+from bunking.session_order import session_order
 
 if TYPE_CHECKING:  # the household page imports this module, so the labeler type is only named for the checker
     from api.services.financial_aid_household_page import HouseholdLabeler
@@ -767,9 +768,12 @@ def _candidates(request: RequestRecord, sessions: Mapping[int, SessionRow]) -> l
         if not isinstance(candidates, list):
             continue
         ids.extend(c for c in candidates if isinstance(c, int) and not isinstance(c, bool))
+    found = list(dict.fromkeys(ids))
+    # The Camperships session order (owner Q8); a session the season lacks sits last.
+    ordered = session_order([sessions[i] for i in found if i in sessions]) + [i for i in found if i not in sessions]
     return [
         SessionCandidateOut(session_cm_id=i, name=sessions[i].name if i in sessions else f"Session {i}")
-        for i in dict.fromkeys(ids)
+        for i in ordered
     ]
 
 

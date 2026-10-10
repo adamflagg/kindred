@@ -17,6 +17,7 @@ from api.schemas.financial_aid_money_ledger import (
     LedgerTotalOut,
     MoneyLedgerOut,
 )
+from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_money_ledger import LedgerFilters, LedgerLevel, LedgerTotal
 from api.services.financial_aid_reconciliation import SplitPart
 from tests.unit.api.services.decisions_fakes import log_seeded, seed_line, seed_override, seed_request, share_row
@@ -258,6 +259,23 @@ async def test_a_filtered_ledger_breaks_ties_only_among_the_rows_it_shows() -> N
 def test_a_family_rows_label_defaults_to_empty() -> None:
     assert LedgerFamilyOut.model_fields["label"].default == ""
     assert LedgerFamilyOut.model_fields["label_tiebreak"].default == ""
+
+
+def test_a_household_lists_its_sessions_in_the_q8_order_not_by_start_day_and_id() -> None:
+    """Owner Q8, app-wide: summer by start date (longer first), Quest, then Family Camp by number, whatever the ids."""
+    from api.services.financial_aid_money_ledger_service import _household_sessions
+
+    rows = [
+        SessionRow(1000900, "Family Camp 10", "family", "2027-05-01", "2027-05-03"),
+        SessionRow(1000901, "Family Camp 2", "family", "2027-08-20", "2027-08-22"),
+        SessionRow(1000902, "Quest: Rivers", "quest", "2027-06-01", "2027-06-05"),
+        SessionRow(1000903, "Session 2a", "embedded", "2027-06-20", "2027-07-04"),
+        SessionRow(1000904, "Session 2", "main", "2027-06-20", "2027-07-18"),
+        SessionRow(1000905, "AG Session 2", "ag", "2027-06-20", "2027-07-18", parent_cm_id=1000904),
+    ]
+    by_id = {r.cm_id: r for r in rows}
+    names = [s.name for s in _household_sessions(by_id, [r.cm_id for r in rows])]
+    assert names == ["Session 2", "AG Session 2", "Session 2a", "Quest: Rivers", "Family Camp 2", "Family Camp 10"]
 
 
 @pytest.mark.asyncio

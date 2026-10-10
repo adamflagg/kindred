@@ -8,8 +8,9 @@ const s = (
   startDate: string,
   type: string,
   sortOrder = 0,
-  parentId = 0
-): CatalogSession => ({ cmId, name, startDate, sortOrder, type, parentId })
+  parentId = 0,
+  endDate = ''
+): CatalogSession => ({ cmId, name, startDate, endDate, sortOrder, type, parentId })
 
 export const CATALOG: readonly CatalogSession[] = [
   s(1000101, 'Session 2', '2027-06-20', 'main', 2),

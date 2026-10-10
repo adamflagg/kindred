@@ -145,9 +145,11 @@ function editContext(
         label: pool.label,
       })
     ),
-    sessions: [...ids]
-      .sort((a, b) => a - b)
-      .map((id) => ({ id, name: sessionNames?.get(id) ?? `Session ${String(id)}` })),
+    // The season's sessions in the Camperships order (the names map iterates that way), then any id only a program claims.
+    sessions: [
+      ...(sessionNames?.keys() ?? []),
+      ...[...ids].filter((id) => !sessionNames?.has(id)).sort((a, b) => a - b),
+    ].map((id) => ({ id, name: sessionNames?.get(id) ?? `Session ${String(id)}` })),
     // Open to aid, with a class (the mock's OFFSETTABLE); a program already offset stays offered so it can be unchecked.
     programs: programs
       .filter(([key, program]) => {
