@@ -1,7 +1,7 @@
 """Reports › Development (Reports back end, Part B; clean spec §5.7, §5.10, §5.11, §9.4; D65, D66, D87–D94, D96,
 D99–D103, D142): development's report, one aggregate read (D21), `financial_aid.view` or `financial_aid.summary`.
 
-Rows are development's lines grouped Money · Counts · Appeals and cancellations; columns are seasons from 2022:
+Rows are development's lines grouped Money · Counts · Appeals and cancellations; columns are the latest five historical seasons (from 2022) plus the live one:
   r   what development reported (typed once into aid_reported_history, view "development"); a 2022–2025 column
       carries `basis_unconfirmed` while D96's premise is contested (O-930-1);
   P   Kindred's figures for a season it priced (from 2027; 2026 once its decisions load, D67): all money, the
@@ -109,6 +109,7 @@ from bunking.financial_aid.rules.schema import SectionName
 
 FIRST_DEVELOPMENT_SEASON: Final = 2022  # §9.4: columns are seasons from 2022
 FIRST_REQUEST_SEASON: Final = 2026
+DEVELOPMENT_LOOKBACK_SEASONS: Final = 5  # owner 10-09 Q5: historical seasons shown as reported, counted by season
 LAST_UNCONFIRMED_SEASON: Final = 2025  # O-930-1: D96's premise (2022–2025's basis) is contested
 SUMMER_TYPES: Final = frozenset({"main", "embedded", "ag", "quest", "scit", "tli", "teen"})
 # The aid families whose camp aid a rebuilt age line counts (item 1): a source implying one of these is summer,
@@ -150,12 +151,22 @@ BUDGET_DEFINITION: Final = (
 )
 REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
-    "rebuild": (
-        "The dashboard's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons "
-        "show as reported, except their age lines, which are the dashboard's by age"
-    ),
     "need_met_history": "% of need met before 2026 is as reported only: no per-round asks exist to rebuild it",
 }
+
+
+def _rebuild_note(year: int) -> str | None:
+    """The rebuild's range is the seasons still shown as reported that the backfill will rebuild (owner 10-09 Q5: the
+    window rolls, so 2022 leaves the report in 2028); None once every one of them has rolled off."""
+    first, last = max(FIRST_DEVELOPMENT_SEASON, year - DEVELOPMENT_LOOKBACK_SEASONS), LAST_UNCONFIRMED_SEASON
+    if first > last:
+        return None
+    return (
+        f"The dashboard's approximate rebuild of {first}–{last} (≈) waits on the 2017–2024 ledger backfill; those "
+        "seasons show as reported, except their age lines, which are the dashboard's by age"
+    )
+
+
 Unit = Literal["dollars", "count", "percent"]
 Section = Literal["money", "counts", "appeals"]
 
@@ -906,11 +917,16 @@ class FinancialAidDevelopmentService:
             if column.season > year:
                 raise ReportsRefusedError(f"{column.season} is not a season of the {year} report")
             _check_dated(column.season, column.as_of, today)
+            if column.season < year - 1:
+                raise ReportsRefusedError(
+                    f"{column.season} is not shown on the {year} report (this season and the last)"
+                )
         sources = await self._development.sources()
         natives: dict[int, DevelopmentColumn] = {}
         dated: dict[tuple[int, date], DevelopmentColumn] = {}
         latest: Grouping | None = None
-        for season_year in range(FIRST_REQUEST_SEASON, year + 1):
+        # Owner 10-09 Q5: the dashboard group is the live season and the last closed one; older ones show as reported.
+        for season_year in range(max(FIRST_REQUEST_SEASON, year - 1), year + 1):
             season = await self._decisions.season(season_year)
             if season_year < FIRST_TICKED_SEASON and not any(
                 view.status == "posted" for priced in season.priced.values() for view in priced.rounds
@@ -941,12 +957,14 @@ class FinancialAidDevelopmentService:
             season = await self._decisions.season(year)
             document = season.rules.document if season.rules is not None else None
             latest = grouping(document, season.sessions.values())
-        columns = _columns(typed, natives, today, dated, budgets)
+        columns = _columns(typed, natives, today, dated, budgets, report_year=year)
         ages = {
             season: await self._rebuilt_ages(season, sources)
-            for season in sorted({f.year for f in typed} - set(natives))
+            for season in sorted({c.season for c, _ in columns if c.basis == "r"} - set(natives))
         }
         not_built = [NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()]
+        if (note := _rebuild_note(year)) is not None:
+            not_built.insert(0, NotBuiltOut(figure="rebuild", reason=note))
         if waiting := sorted(season for season, found in ages.items() if found is None):
             not_built.append(
                 NotBuiltOut(
@@ -988,8 +1006,16 @@ def _columns(
     today: date,
     dated: Mapping[tuple[int, date], DevelopmentColumn] | None = None,
     budgets: Sequence[ReportedFigure] = (),
+    *,
+    report_year: int,
 ) -> list[tuple[DevelopmentColumnOut, ColumnData]]:
-    """Every season from 2022 with anything to show: its typed column (one per as-of date), then its P column."""
+    """The seasons the report shows (owner 10-09 Q5): the DEVELOPMENT_LOOKBACK_SEASONS most recent historical seasons
+    with typed figures, as reported (counted by season: one typed on two dates keeps both columns), the report year's
+    own typed column, and the dashboard's live season plus the last closed one. Each season: its typed column (one
+    per as-of date), then its P column."""
+    kept = sorted({f.year for f in typed if f.year < report_year})[-DEVELOPMENT_LOOKBACK_SEASONS:]
+    typed = [f for f in typed if f.year in kept or f.year >= report_year]
+    natives = {y: c for y, c in natives.items() if y >= report_year - 1}
     out: list[tuple[DevelopmentColumnOut, ColumnData]] = []
     by_season: dict[tuple[int, date], list[ReportedFigure]] = defaultdict(list)
     for figure in typed:

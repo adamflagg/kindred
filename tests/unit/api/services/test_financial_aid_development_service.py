@@ -914,3 +914,92 @@ async def test_the_counts_and_appeals_lines_carry_the_mocks_words() -> None:
     assert appeals["appeals_in_full"] == "approved in full"
     assert appeals["appeals_in_part"] == "approved in part"
     assert appeals["declined_insufficient"] == "Declined enrollment due to insufficient aid"
+
+
+# --- the lookback cap (owner 10-09 Q5): five historical seasons as reported, the dashboard's live and last closed ---
+
+
+def _typed(year: int, day: date | None = None, metric: str = "total_awards") -> ReportedFigure:
+    return ReportedFigure(
+        year, "development", metric, "camp_pool", 0, 0, "season_end", day or date(year, 9, 29), Decimal(1)
+    )
+
+
+def _native_column() -> Any:
+    from bunking.financial_aid.reports.development import DevelopmentColumn, NotInGroup
+
+    zero = Decimal(0)
+    return DevelopmentColumn((), zero, 0, zero, 0, 0, 0, 0, (), NotInGroup(zero, zero, 0, 0))
+
+
+def _shape(columns: Sequence[Any]) -> list[tuple[int, str, date]]:
+    return [(c.season, c.basis, c.as_of) for c, _ in columns]
+
+
+async def test_the_lookback_keeps_the_five_latest_historical_seasons_and_both_dates_of_a_season_typed_twice() -> None:
+    from api.services.financial_aid_development_service import _columns
+
+    typed = [_typed(y) for y in range(2021, 2027)] + [_typed(2024, date(2025, 2, 1))]
+    shown = _columns(typed, {2027: _native_column()}, date(2027, 4, 1), report_year=2027)
+    reported = [(s, d) for s, b, d in _shape(shown) if b == "r"]
+    # six typed seasons before 2027: the oldest (2020 and 2021) roll off; 2024 counts once but keeps both columns
+    assert sorted({s for s, _ in reported}) == [2022, 2023, 2024, 2025, 2026]
+    assert [s for s, _ in reported].count(2024) == 2
+    assert [s for s, b, _ in _shape(shown) if b == "P"] == [2027]
+
+
+async def test_the_lookback_keeps_every_season_when_fewer_than_five_were_typed() -> None:
+    from api.services.financial_aid_development_service import _columns
+
+    shown = _columns([_typed(2025), _typed(2026)], {2027: _native_column()}, date(2027, 4, 1), report_year=2027)
+    assert [(s, b) for s, b, _ in _shape(shown)] == [(2025, "r"), (2026, "r"), (2027, "P")]
+
+
+async def test_the_current_seasons_own_typed_column_is_not_a_historical_season() -> None:
+    from api.services.financial_aid_development_service import _columns
+
+    typed = [_typed(y) for y in range(2021, 2028)]
+    shown = _columns(typed, {}, date(2027, 4, 1), report_year=2027)
+    assert sorted({s for s, b, _ in _shape(shown) if b == "r"}) == [2022, 2023, 2024, 2025, 2026, 2027]
+
+
+async def test_the_dashboard_group_keeps_the_live_season_and_the_last_closed_one() -> None:
+    from api.services.financial_aid_development_service import _columns
+
+    natives = {y: _native_column() for y in (2027, 2028, 2029)}
+    shown = _columns([], natives, date(2029, 4, 1), report_year=2029)
+    assert [(s, b) for s, b, _ in _shape(shown)] == [(2028, "P"), (2029, "P")]
+
+
+async def test_a_report_year_with_older_priced_seasons_prices_only_the_two_the_dashboard_shows() -> None:
+    service = _service(_development())
+    seen: list[int] = []
+    real = service._decisions.season
+
+    async def spy(year: int) -> Any:
+        seen.append(year)
+        return await real(year)
+
+    service._decisions.season = spy  # type: ignore[method-assign]
+    await service.development(2029)
+    assert sorted(set(seen)) == [2028, 2029]
+
+
+async def test_a_dated_column_for_a_season_the_dashboard_no_longer_shows_is_refused() -> None:
+    from api.services.financial_aid_reports_service import ReportsRefusedError
+
+    with pytest.raises(ReportsRefusedError, match="not shown"):
+        await _service(_development()).development(2029, column=DatedColumn(season=2027, as_of=date(2027, 3, 5)))
+
+
+async def test_the_rebuild_note_names_only_the_seasons_still_shown() -> None:
+    out = await _service(_development()).development(YEAR)
+    rebuild = next(n.reason for n in out.not_built if n.figure == "rebuild")
+    assert "2022–2025" in rebuild
+    # the 2029 report shows 2024–2028 as reported: the rebuild window is 2024–2025
+    out = await _service(_development()).development(2029)
+    rebuild = next(n.reason for n in out.not_built if n.figure == "rebuild")
+    assert "2024–2025" in rebuild
+    # by 2031 every unconfirmed season has rolled off, so there is no rebuild to wait on
+    out = await _service(_development()).development(2031)
+    assert not any(n.figure == "rebuild" for n in out.not_built)
