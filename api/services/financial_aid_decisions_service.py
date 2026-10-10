@@ -2236,6 +2236,8 @@ class FinancialAidDecisionsService:
             not_demand=season.cancelled_in_campminder,
             ledger=self._round_ledgers(season) if confirmed else None,
             off_list=season.in_campminder(),  # C2: empty unless the read ran with_unticked (budget() does)
+            # Q12 (2026-10-10): forward demand's asks count at the D91 need cap, as Statistics' do (#3122).
+            costs={rid: cost for rid, p in season.priced.items() if (cost := session_cost(p, document)) is not None},
         )
 
     def budget_of(self, season: Season) -> SeasonBudget:
