@@ -191,13 +191,6 @@ function RowBlock({
           )}
         </span>
       )}
-      {v.camperName === null && v.householdCmId !== null && (
-        <span className={PMETA}>
-          <Link to={householdHref(v.householdCmId, view)} className={CS_LINK_SM}>
-            {`${v.householdName ?? ''} ›`}
-          </Link>
-        </span>
-      )}
       {items.length > 0 && <ChangeList items={items} />}
       {v.hidden > 0 && (
         <span

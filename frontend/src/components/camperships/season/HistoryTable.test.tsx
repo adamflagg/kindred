@@ -466,6 +466,15 @@ describe('the opened row (spec §7.2 D)', () => {
     expect(document.querySelectorAll('[data-history-row]')).toHaveLength(0)
   })
 
+  it('draws no meta line for a row with no camper: the household is in Open', () => {
+    openWith(OP_SHARE, {
+      ...DETAIL_SHARE,
+      rows: DETAIL_SHARE.rows.map((r) => ({ ...r, camper_name: null })),
+    })
+    expect(document.querySelector('[data-history-row] a')).toBeNull()
+    expect(screen.getAllByRole('link', { name: 'The Chen Family ›' })).toHaveLength(1)
+  })
+
   it("gives a camper's row one meta line and no bold head", () => {
     openWith(OP_SHARE, DETAIL_SHARE)
     const rowEl = document.querySelector('[data-history-row]')

@@ -457,6 +457,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   household_cm_id: 'Household',
   grantor_key: 'Grantor',
   implied_program_families: 'Programs',
+  headcount_non_infant: 'Headcount, not infants',
 }
 /** A record id the row's own household or camper link already stands for (#18). */
 const LINKED_IDS: ReadonlySet<string> = new Set(['request', 'grant'])
@@ -526,6 +527,8 @@ interface RowContext {
   readonly sessions: ReadonlyMap<number, string> | undefined
   /** An income correction: its previous value and value are money. */
   readonly correctsMoney: boolean
+  /** A decision's `amount`, worded by what it is: "Locked amount" (Posted), "Round 1 ask" (an ask). */
+  readonly amountLabel: string | null
 }
 
 function fieldValue(entity: string, field: string, value: unknown, context: RowContext): string {
@@ -568,7 +571,8 @@ function fieldView(entity: string, change: ApiAidFieldChange, context: RowContex
   const field = change.path[0] ?? ''
   const show = (value: unknown) => fieldValue(entity, field, value, context)
   return {
-    label: FIELD_LABELS[field] ?? codeText(field),
+    label:
+      (field === 'amount' ? context.amountLabel : null) ?? FIELD_LABELS[field] ?? codeText(field),
     kind: change.kind,
     before: change.kind === 'added' ? null : show(change.before),
     after: change.kind === 'removed' ? null : show(change.after),
@@ -611,6 +615,14 @@ function subjectOf(
 function correctsMoney(row: ApiAidHistoryRow): boolean {
   const field = row.after?.['field'] ?? row.before?.['field']
   return typeof field === 'string' && MONEY_FIGURE.test(field)
+}
+
+/** The mock's words for a decision's `amount`: what the number is, by the row's action. */
+function amountLabel(row: ApiAidHistoryRow): string | null {
+  if (row.entity !== 'aid_decisions') return null
+  if (row.action === 'post') return 'Locked amount'
+  const round = row.after?.['round'] ?? row.before?.['round']
+  return row.action === 'ask' && typeof round === 'number' ? `Round ${String(round)} ask` : null
 }
 
 /** The household the row itself recorded, if it did (a create, or an update of that field). */
@@ -694,7 +706,11 @@ export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, st
       isScalar(change.before) &&
       isScalar(change.after)
   )
-  const context: RowContext = { sessions, correctsMoney: correctsMoney(row) }
+  const context: RowContext = {
+    sessions,
+    correctsMoney: correctsMoney(row),
+    amountLabel: amountLabel(row),
+  }
   return {
     head: joined([rowActionWords(row), subjectOf(row, sessions), row.reason]),
     lines: listed.map((change) => fieldLine(row.entity, change, context)),

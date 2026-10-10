@@ -454,7 +454,7 @@ describe("a row's view in an opened line", () => {
     expect(rowView(first(DETAIL_POSTED.rows))).toEqual({
       head: 'Posted · Round 1 decision',
       lines: [
-        'Amount: $1,420',
+        'Locked amount: $1,420',
         'Effective on: Apr 9, 2027',
         'Locked by: Posted check',
         'Request: req000000000001',
@@ -597,7 +597,7 @@ describe("a row's view in an opened line", () => {
       ],
     })
     expect(view.head).toBe('Ask entered · Round 1 decision')
-    expect(view.lines).toEqual(['Amount: $1,800', 'Request: req000000000011', 'Round: 1'])
+    expect(view.lines).toEqual(['Round 1 ask: $1,800', 'Request: req000000000011', 'Round: 1'])
   })
 
   it('heads a rules row with its version and section', () => {
@@ -1109,5 +1109,23 @@ describe("a row's change list (history-3, 4, 5, 9)", () => {
     expect(rowSession(r, new Map([[5, 'Session 2']]))).toBe('Session 2')
     expect(rowSession(r, undefined)).toBe('Session 5')
     expect(rowSession({ ...r, session_cm_id: null }, undefined)).toBeNull()
+  })
+})
+
+describe("the mock's field words", () => {
+  it('words the headcount fields as the mock does', () => {
+    const r = row({
+      entity: 'aid_requests',
+      entity_id: 'r',
+      action: 'set_headcount',
+      changes: [
+        { path: ['headcount_non_infant'], kind: 'changed', before: 3, after: 4 },
+        { path: ['headcount_source'], kind: 'changed', before: 'billed', after: 'declared' },
+      ],
+    })
+    expect(changeItems(rowView(r)).map((i) => i.label)).toEqual([
+      'Headcount, not infants',
+      'Headcount source',
+    ])
   })
 })
