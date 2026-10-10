@@ -32,22 +32,30 @@ describe('the nav (D7 as amended by D64, D65)', () => {
     expect(labels(AID_SECTIONS)).toEqual(['Today', 'Requests', 'Money', 'Season', 'Reports'])
   })
 
-  // Owner ruling (final audit): Today is parked. It stays a section (its route works by URL) but
-  // the nav does not draw it, until it is built.
-  it('hides Today from the nav and shows the registrar the other four', () => {
-    expect(labels(visibleSections(REGISTRAR))).toEqual(['Requests', 'Money', 'Season', 'Reports'])
+  // Today is a home page for everyone who can open Camperships (view or summary), so it is first in the nav.
+  it('draws Today first for the registrar, then the other four', () => {
+    expect(labels(visibleSections(REGISTRAR))).toEqual([
+      'Today',
+      'Requests',
+      'Money',
+      'Season',
+      'Reports',
+    ])
   })
 
-  it('keeps the parked Today at its real path, so un-parking it links to Today', () => {
-    expect(AID_SECTIONS.find((s) => s.key === 'today')?.path).toBe('/aid/today')
+  it('is not parked, and sits at its real path, open to view or summary', () => {
+    const today = AID_SECTIONS.find((s) => s.key === 'today')
+    expect(today?.path).toBe('/aid/today')
+    expect(today).not.toHaveProperty('parked')
+    expect(today?.access.anyOf).toEqual(['financial_aid.view', 'financial_aid.summary'])
   })
 
-  it('shows a summary-only user Reports alone (D65)', () => {
-    expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Reports'])
+  it('shows a summary-only user Today and Reports (D65)', () => {
+    expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Today', 'Reports'])
   })
 
   it('shows an admin everything', () => {
-    expect(labels(visibleSections(ADMIN))).toHaveLength(4)
+    expect(labels(visibleSections(ADMIN))).toHaveLength(5)
   })
 })
 
@@ -94,9 +102,11 @@ describe('the tabs (URL-held, §3.6)', () => {
 })
 
 describe('aidHomePath', () => {
-  it('is Requests for view holders (Today is parked) and Reports › Development for summary-only (D65)', () => {
-    expect(aidHomePath(REGISTRAR)).toBe('/aid/requests')
-    expect(aidHomePath(DEVELOPMENT)).toBe('/aid/reports/development')
+  it('lands everyone with a Today page on Today', () => {
+    expect(aidHomePath(holding('financial_aid.view'))).toBe('/aid/today')
+    expect(aidHomePath(holding('financial_aid.summary'))).toBe('/aid/today')
+    expect(aidHomePath(REGISTRAR)).toBe('/aid/today')
+    expect(aidHomePath(DEVELOPMENT)).toBe('/aid/today')
   })
 })
 
@@ -132,7 +142,7 @@ describe('Money for development (owner 10-06, rulings:676; folded into Money 10-
   const money = aidSection('money')
 
   it('shows development Money beside Reports, and only its Funders tab', () => {
-    expect(labels(visibleSections(DEVELOPMENT_GRANTORS))).toEqual(['Money', 'Reports'])
+    expect(labels(visibleSections(DEVELOPMENT_GRANTORS))).toEqual(['Today', 'Money', 'Reports'])
     expect(labels(visibleTabs(money, DEVELOPMENT_GRANTORS))).toEqual(['Funders'])
   })
 
@@ -167,9 +177,9 @@ describe('Money for development (owner 10-06, rulings:676; folded into Money 10-
     expect(() => aidSection('grants' as never)).toThrow()
   })
 
-  it('still sends development home to Reports › Development, and a summary-only user sees no Money', () => {
-    expect(aidHomePath(DEVELOPMENT_GRANTORS)).toBe('/aid/reports/development')
-    expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Reports'])
+  it('sends development home to Today, and a summary-only user sees no Money', () => {
+    expect(aidHomePath(DEVELOPMENT_GRANTORS)).toBe('/aid/today')
+    expect(labels(visibleSections(DEVELOPMENT))).toEqual(['Today', 'Reports'])
   })
 })
 

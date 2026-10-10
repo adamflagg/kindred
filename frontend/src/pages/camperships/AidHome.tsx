@@ -6,7 +6,7 @@ import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
 
-/** `/aid`: Requests for view holders (Today is parked); a summary-only user lands on Reports › Development (D65). */
+/** `/aid`: Today, for everyone who can open Camperships; each role gets its own Today page. */
 export default function AidHome() {
   const { hasPermission } = usePermissions()
   const year = useYear()

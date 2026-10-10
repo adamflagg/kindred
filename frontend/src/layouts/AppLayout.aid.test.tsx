@@ -130,11 +130,9 @@ describe('AppLayout on a Camperships page', () => {
     granted = [VIEW]
     renderAt('/aid/requests')
 
-    for (const label of ['Requests', 'Money', 'Season', 'Reports']) {
+    for (const label of ['Today', 'Requests', 'Money', 'Season', 'Reports']) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
     }
-    // Today is parked: not in the nav (the route still answers by URL).
-    expect(screen.queryByRole('link', { name: 'Today' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Campers' })).toBeNull()
     expect(screen.queryByTestId('aid-nav-divider')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Users' })).toBeNull()
@@ -156,12 +154,14 @@ describe('AppLayout on a Camperships page', () => {
     expect(screen.queryByRole('link', { name: 'My Account' })).toBeNull()
   })
 
-  it('shows a summary-only user Reports alone (D65)', () => {
+  it('shows a summary-only user Today and Reports (D65)', () => {
     granted = [SUMMARY]
     renderAt('/aid/reports/development')
 
-    expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument()
-    for (const label of ['Today', 'Requests', 'Money', 'Season']) {
+    for (const label of ['Today', 'Reports']) {
+      expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
+    }
+    for (const label of ['Requests', 'Money', 'Season']) {
       expect(screen.queryByRole('link', { name: label })).toBeNull()
     }
   })

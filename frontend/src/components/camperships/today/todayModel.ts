@@ -71,7 +71,10 @@ export function showRegistrarQueue(finance: readonly ApiAidTodayLine[] | null): 
   )
 }
 
-export const LINE_WORDS: Readonly<Record<TodayKey, string>> = {
+/** Finance's synthetic concern line (a pool over its allocation) is built client-side, so it has a key the server never sends. */
+export type TodayWordKey = TodayKey | 'over_budget'
+export const LINE_WORDS: Readonly<Record<TodayWordKey, string>> = {
+  over_budget: 'Over budget',
   needs_offer: 'Needs an offer',
   holds: 'Holds',
   waiting_on_family: 'Waiting on the family',
@@ -110,8 +113,8 @@ export function countWords(line: ApiAidTodayLine): string {
     : main
 }
 
-const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
-const thousands = (n: number) =>
+export const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+export const thousands = (n: number) =>
   Math.abs(n) < 1000 ? money(n) : `$${String(Math.trunc(n / 1000))}k`
 const awardsWord = (n: number) => `${String(n)} ${n === 1 ? 'award' : 'awards'}`
 
