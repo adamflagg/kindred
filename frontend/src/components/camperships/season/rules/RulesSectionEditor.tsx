@@ -12,7 +12,7 @@ import type {
 } from '../../../../types/api-types'
 import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import { AMBER_NOTE, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_LABEL, CS_SMALL } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import type { CellControl } from './CardTables'
 import { savePrecondition } from './precondition'
 import { RuleControl } from './RuleControl'
@@ -56,6 +56,12 @@ type Refusal =
   | { readonly kind: 'failed'; readonly server: string | null; readonly reason: string }
 
 const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message : String(caught))
+
+/** What saving does to a section a posted round read, or one already in effect (owner 10-09: in the footer line). */
+const inUseWords = (status: string): string =>
+  status === 'locked'
+    ? 'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
+    : 'In effect: saving may start a new version, and the version in effect stays as it is until it is approved.'
 
 /**
  * The section editor's rules home (spec §7.5; D39) and its answer when someone else changed the
@@ -214,15 +220,6 @@ export function RulesSectionEditor({
 
   const banner = (mine: readonly string[][]) => {
     const notes: ReactNode[] = []
-    if (status !== 'draft') {
-      notes.push(
-        <p key="in-use" className="text-muted-foreground text-xs">
-          {status === 'locked'
-            ? 'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
-            : 'In effect: saving may start a new version, and the version in effect stays as it is until it is approved.'}
-        </p>
-      )
-    }
     if (refusal !== null) {
       notes.push(
         <div key="refused" className="space-y-1" data-testid="rules-conflict">
@@ -332,9 +329,6 @@ export function RulesSectionEditor({
       : saveAs.content !== null && sectionChanges(opened.content, saveAs.content).length === 0
   return (
     <div className="mt-1.5 space-y-2" data-testid="section-editor">
-      <div className={CS_LABEL}>
-        {`Editing ${SECTION_TITLES[section]} in the rules draft (v${String(opened.draft.version)})`}
-      </div>
       {banner(mine)}
       {renderBody !== undefined ? (
         renderBody(body)
@@ -360,10 +354,19 @@ export function RulesSectionEditor({
         <button type="button" className={CS_BTN2} disabled={saving} onClick={() => onDone(null)}>
           Cancel
         </button>
+        {/* Owner 10-09 (§24 one-row footer): what is being edited, and the lock sentence, ride the footer line. */}
+        <span
+          className={`${CS_SMALL} shrink-0 font-semibold whitespace-nowrap`}
+        >{`Editing ${SECTION_TITLES[section]} in the rules draft (v${String(opened.draft.version)})`}</span>
         {/* The version the save lands in, as frozenFact says it: a draft that is itself in effect starts the next. */}
         <span
           className={`${CS_SMALL} truncate`}
         >{`Esc cancels · saving puts the change in draft v${String(opened.draft.approved_version === opened.draft.version ? opened.draft.version + 1 : opened.draft.version)}`}</span>
+        {status !== 'draft' && (
+          <span className={`${CS_SMALL} min-w-0 truncate`} title={inUseWords(status)}>
+            {inUseWords(status)}
+          </span>
+        )}
         {blocked && (
           <span className={CS_AMBER_NOTE}>
             {unreadable
