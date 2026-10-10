@@ -349,3 +349,49 @@ def test_the_round_2_fee_percent_follows_the_class_table_for_a_program_by_class(
         legacy, {"programs.summer.table_from_equity_class": True, "programs.summer.equity_class": "teen"}
     )
     assert _tier(statistics(requests, by_class, table="camp", round_=2).rows, 3).fee_pct is not None
+
+
+# --- Rule M on Asked (owner 10-09): a request's asks count at most its priced session cost -------------------------
+
+
+def test_asked_counts_a_request_above_its_session_cost_at_the_cost() -> None:
+    """Rule M, as Development applies it: a typo'd 40,000 ask on a 4,000 session counts 4,000. Average ask follows;
+    the live asks behind % of ask (a different question) are as typed."""
+    table = statistics(
+        [
+            req("reqemma00000001", rnd(1, ask="40000", posted="1500"), cost="4000"),
+            req("reqliam00000001", rnd(1, ask="2000", posted="1000"), household=1000002, cost="4000"),
+        ],
+        RULES,
+        table="camp",
+        round_=1,
+    )
+    two = _tier(table.rows, 2)
+    assert two.asked == Decimal(6000)
+    assert two.average_ask == Decimal("3000.00")
+    assert two.requests_capped == 1
+    assert table.total.requests_capped == 1
+    assert two.live_asked == Decimal(42000)
+
+
+def test_asked_counts_a_request_with_no_priced_cost_as_typed() -> None:
+    table = statistics([req("reqemma00000001", rnd(1, ask="40000", posted="1500"))], RULES, table="camp", round_=1)
+    assert _tier(table.rows, 2).asked == Decimal(40000)
+    assert table.total.requests_capped == 0
+
+
+def test_a_cancelled_request_still_counts_in_asked_at_the_cost() -> None:
+    """D131: cancelled apps stay in Asked; the cap applies to them too."""
+    table = statistics(
+        [req("reqnoah00000001", rnd(1, ask="9000"), standing="cancelled", cost="4000")], RULES, table="camp", round_=1
+    )
+    assert table.total.asked == Decimal(4000)
+
+
+def test_the_cap_is_on_the_whole_request_across_the_chosen_rounds() -> None:
+    """All rounds: 3,000 + a 2,000 appeal on a 3,500 session counts 3,500."""
+    table = statistics(
+        [req("reqemma00000001", rnd(1, ask="3000"), rnd(2, ask="2000"), cost="3500")], RULES, table="camp", round_=None
+    )
+    assert table.total.asked == Decimal(3500)
+    assert table.total.requests_capped == 1

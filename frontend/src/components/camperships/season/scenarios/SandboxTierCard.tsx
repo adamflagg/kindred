@@ -32,6 +32,7 @@ import {
   cellEditable,
   cellKey,
   classLabel,
+  poolHeadLabel,
   fixFirstWords,
   lockNote,
   type SandboxBinding,
@@ -116,8 +117,8 @@ export function SandboxTierCard({
   const capTables = (doc.round2.tables ?? {}) as Tables
   // The server sends no groups here (the document is the one being typed): the pools come from the document itself.
   const classes = gridClasses(doc.programs as Programs, awardTables, documentGroups(doc))
-  const r1 = gridColumns(awardTables, classes, (key) => classLabel(key, doc))
-  const caps = gridColumns(capTables, classes, (key) => classLabel(key, doc))
+  const r1 = gridColumns(awardTables, classes, (key) => poolHeadLabel(key, doc))
+  const caps = gridColumns(capTables, classes, (key) => poolHeadLabel(key, doc))
   const fixFirst = fixFirstWords(cardProblems(binding.problems, 'tiers'), doc)
   return (
     <section data-card="sandbox-tiers" className={`${CS_CARD} ${r1Locked ? LOCKED_CARD : ''}`}>

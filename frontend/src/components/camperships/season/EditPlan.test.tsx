@@ -109,6 +109,16 @@ function Harness({
 }
 
 describe('Edit Plan… as an editor (design-language §24)', () => {
+  it('puts every pool share in the ONE "Program split" field, so no share sits under Total', () => {
+    render(<Harness />)
+    const grid = screen.getByTestId('aid-editor-grid')
+    expect(within(grid).getAllByText(/^Program split/)).toHaveLength(1)
+    const holder = within(grid).getByText(/^Program split/).nextElementSibling as HTMLElement
+    expect(within(holder).getByLabelText('Pool A')).toBeInTheDocument()
+    expect(within(holder).getByLabelText('Pool B')).toBeInTheDocument()
+    expect(within(holder).queryByLabelText('Total')).toBeNull()
+  })
+
   it('lays Total and the pool shares in the two-column field grid, the split words beside them', () => {
     render(<Harness />)
     const grid = screen.getByTestId('aid-editor-grid')

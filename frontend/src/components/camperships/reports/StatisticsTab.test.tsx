@@ -264,8 +264,35 @@ describe('StatisticsTab (spec §9.2; approved final mock reports-statistics.html
   })
 })
 
+describe('StatisticsTab: Asked counts a request at most at its session cost (Rule M, owner 10-09)', () => {
+  it("says how many requests counted at the cost, under the tier table, as Development's footnote does", async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
+    renderTab()
+    expect(
+      await screen.findByText(
+        "Asked and Avg ask: 2 requests above their session's cost counted at the cost."
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('says it in the singular for one, and not at all for none', async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 1 } })
+    const { unmount } = renderTab()
+    expect(
+      await screen.findByText(
+        "Asked and Avg ask: 1 request above its session's cost counted at the cost."
+      )
+    ).toBeInTheDocument()
+    unmount()
+    statistics = () => json(STATISTICS)
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.queryByText(/counted at the cost/)).toBeNull()
+  })
+})
+
 describe('StatisticsTab: Copy and Download CSV of the first table, on the controls row', () => {
-  it('copies the By tier table to paste into a deck, and says so in the row', async () => {
+  it('copies the By tier table to paste into a deck, and says so on the button', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
     const copy = within(toolbar()).getByRole('button', { name: 'Copy' })
@@ -273,7 +300,8 @@ describe('StatisticsTab: Copy and Download CSV of the first table, on the contro
     await userEvent.click(copy)
     expect(writeText.mock.calls[0]?.[0]).toContain('Table A · Round 1')
     expect(writeText.mock.calls[0]?.[0].split('\n')[0]).toBe('By tier')
-    expect(within(toolbar()).getByText('✓ Copied')).toBeInTheDocument()
+    expect(within(toolbar()).getByRole('button', { name: '✓ Copied' })).toBeInTheDocument()
+    expect(within(toolbar()).getAllByText('✓ Copied')).toHaveLength(1)
   })
 
   it("downloads By tier's CSV with this view's link on its last line", async () => {
@@ -284,7 +312,9 @@ describe('StatisticsTab: Copy and Download CSV of the first table, on the contro
     await userEvent.click(csv)
     const [content, name] = downloadCsv.mock.calls[0] ?? ['', '']
     expect(name).toContain('statistics-by-tier')
-    expect(content).toContain('Link,/aid/reports/statistics?table=camp&year=2027')
+    expect(content).toContain(
+      `Link,${window.location.origin}/aid/reports/statistics?table=camp&year=2027`
+    )
   })
 })
 
@@ -572,7 +602,7 @@ describe('StatisticsTab: Rows, Income tier | Session — no control disappears',
     await userEvent.click(within(toolbar()).getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadCsv.mock.calls[0] ?? ['']
     expect(content).toContain(
-      'Link,/aid/reports/statistics?rows=session&through=deadline&year=2027'
+      `Link,${window.location.origin}/aid/reports/statistics?rows=session&through=deadline&year=2027`
     )
   })
 })

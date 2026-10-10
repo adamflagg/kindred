@@ -365,6 +365,8 @@ export interface RulesVocabulary {
   readonly decisionTypes: Readonly<Record<string, string>>
   readonly criteria: Readonly<Record<string, string>>
   readonly sessions?: ReadonlyMap<number, string> | undefined
+  /** How a screen heads a table or equity class (the tier grid's pool names); else `keyLabel`. */
+  readonly classLabel?: ((key: string) => string) | undefined
 }
 
 /** The vocabulary, with the section the paths sit in: a key's meaning depends on its section. */
@@ -528,7 +530,7 @@ function nameOf(kind: KeyKind, key: string, names: RulesVocabulary): string {
       return KEY_WORDS[key] ?? words(key)
     case 'table':
     case 'equity_class':
-      return keyLabel(key, names)
+      return names.classLabel?.(key) ?? keyLabel(key, names)
   }
 }
 

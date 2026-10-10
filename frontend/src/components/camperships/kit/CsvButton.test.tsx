@@ -59,6 +59,16 @@ describe('AidCopyButton', () => {
   })
 })
 
+describe('AidCopyButton once copied', () => {
+  it('reads "✓ Copied" in place at a fixed width, so the row never moves', () => {
+    const { rerender } = render(<AidCopyButton onCopy={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Copy' })).toHaveClass('w-[80px]')
+    rerender(<AidCopyButton onCopy={vi.fn()} copied />)
+    const button = screen.getByRole('button', { name: '✓ Copied' })
+    expect(button).toHaveClass('w-[80px]')
+  })
+})
+
 describe('button titles', () => {
   it('carries a title on Copy and on Download CSV when the page says what each takes', () => {
     render(

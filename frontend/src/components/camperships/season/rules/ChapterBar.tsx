@@ -2,12 +2,22 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type { ApiAidRulesDraft } from '../../../../types/api-types'
-import { CS_BADGE_AMBER, CS_CHIP, CS_CHIP_ON, CS_META, CS_STRIP } from '../../kit/csType'
+import { CS_BADGE_AMBER } from '../../kit/csType'
 import { CHAPTERS, chapterMarks } from './rulesLayout'
 
+// final mock season-rules.html (.cf-chapstrip / .cf-chip): a 26px strip of 20px chips at 12px. Local classes, not the
+// Requests strip's tokens (CS_STRIP is 38px with 28px chips).
+const STRIP =
+  'border-border flex h-[26px] shrink-0 items-center gap-0.5 rounded-[9px] border bg-[color-mix(in_oklab,var(--color-muted)_55%,transparent)] p-0.5 whitespace-nowrap'
+const CHIP =
+  'inline-flex h-5 items-center gap-1 rounded-md px-2 text-xs leading-4 whitespace-nowrap no-underline'
+const CHIP_IDLE = `${CHIP} text-muted-foreground hover:text-foreground font-medium`
+const CHIP_ON = `${CHIP} bg-primary text-primary-foreground font-semibold`
+const GROUP_LABEL = 'text-muted-foreground px-[5px] text-[11.5px] font-bold whitespace-nowrap'
+
 /**
- * The chapter bar (spec §6.2 A; rules-v3 "Fix 1"): sticky, two strips (Awards | Setup) on ONE line, 50px tall at 1440
- * and 1100 in every state. It never wraps: past the width it scrolls sideways with no scrollbar (the mock's `.chapbar`).
+ * The chapter bar (spec §6.2 A; rules-v3 "Fix 1"): sticky, two strips (Awards | Setup) on ONE line, 26px strips of
+ * 20px chips in every state. It never wraps: past the width it scrolls sideways with no scrollbar (the mock's `.chapbar`).
  * A chip's marks: an amber dot for a draft section, a count of its issues. `children` (the draft / in-effect switch and
  * Open All / Close All) sit at the line's right end.
  */
@@ -28,18 +38,18 @@ export function ChapterBar({
   return (
     <nav
       data-testid="chapter-bar"
-      className="bg-background sticky top-0 z-10 flex [scrollbar-width:none] flex-nowrap gap-2.5 overflow-x-auto py-1.5"
+      className="bg-background sticky top-0 z-10 flex [scrollbar-width:none] flex-nowrap gap-2.5 overflow-x-auto py-[5px]"
     >
       {(['Awards', 'Setup'] as const).map((group) => (
-        <div key={group} data-testid="chapter-strip" className={`${CS_STRIP} shrink-0`}>
-          <span className={`${CS_META} px-1 font-bold`}>{group}</span>
+        <div key={group} data-testid="chapter-strip" className={STRIP}>
+          <span className={GROUP_LABEL}>{group}</span>
           {CHAPTERS.filter((c) => c.group === group).map((chapter) => {
             const marks = chapterMarks(chapter, draft)
             return (
               <button
                 key={chapter.n}
                 type="button"
-                className={chapter.n === inView ? CS_CHIP_ON : CS_CHIP}
+                className={chapter.n === inView ? CHIP_ON : CHIP_IDLE}
                 onClick={() => onJump(chapter.n)}
               >
                 {chapter.title}
@@ -50,8 +60,10 @@ export function ChapterBar({
                   />
                 )}
                 {marks.issues > 0 && (
-                  // .chapbar .cs-chip .cs-badge: 0 6px, 11.5/16, so a badged chip is 28px like the rest, not 36px
-                  <span className={`${CS_BADGE_AMBER} !px-1.5 !py-0 !text-[11.5px] !leading-4`}>
+                  // .cf-chip .cf-pill: 0 5px, 10.5/14, so a badged chip stays 20px like the rest
+                  <span
+                    className={`${CS_BADGE_AMBER} !px-[5px] !py-0 !text-[10.5px] !leading-[14px]`}
+                  >
                     {marks.issues}
                   </span>
                 )}
@@ -59,7 +71,7 @@ export function ChapterBar({
             )
           })}
           {group === 'Setup' && (
-            <Link to={budgetHref} className={CS_CHIP}>
+            <Link to={budgetHref} className={CHIP_IDLE}>
               Budget ›
             </Link>
           )}

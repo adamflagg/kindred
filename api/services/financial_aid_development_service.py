@@ -1072,7 +1072,7 @@ def _check_dated(season: int, day: date, today: date) -> None:
             f"A dated column needs dated decisions: {season} has none (only {FIRST_TICKED_SEASON} on)"
         )
     if not season - 1 <= day.year <= season or day >= today:
-        raise ReportsRefusedError(f"{day} is not a past day of the {season} season")
+        raise ReportsRefusedError(f"pick a past day of the {season} season")
 
 
 def _typed_value(figures: Sequence[ReportedFigure], metric: str | None, pool: str) -> Decimal | None:

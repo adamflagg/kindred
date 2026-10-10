@@ -104,7 +104,8 @@ describe('ReportTable', () => {
       'Outside the US\t20\t$0',
       'All · 2 ZIPs\t31\t$1,500',
     ])
-    expect(screen.getByText(/Copied, with its as-of date and basis/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '✓ Copied' })).toBeInTheDocument()
+    expect(screen.queryByText(/Copied, with its as-of date/)).toBeNull()
   })
 
   it('downloads the CSV with plain numbers, its heading and the link (§11)', async () => {
@@ -123,7 +124,8 @@ describe('ReportTable', () => {
       'Outside the US,20,0',
       'All · 2 ZIPs,31,1500',
       '',
-      'Link,/aid/reports/development/zip?year=2027',
+      // absolute: a relative path goes nowhere once the file leaves the app
+      `Link,${window.location.origin}/aid/reports/development/zip?year=2027`,
     ])
   })
 
@@ -404,6 +406,7 @@ describe('ReportTable', () => {
         columns: [{ key: 'zip', header: 'ZIP', mono: true }, COLUMNS[1]!, COLUMNS[2]!],
       })
       expect(screen.getByText('00010').closest('td')?.className).toContain('font-mono')
+      expect(screen.getByText('00010').closest('td')?.className).toContain('text-[12.5px]')
       expect(screen.getByText('9').closest('td')?.className).not.toContain('font-mono')
     })
 
@@ -492,13 +495,12 @@ describe('ReportTable', () => {
       expect(screen.getByText('Money').closest('td')?.className).toContain(CS_BAND)
     })
 
-    it('reports Copy in the heading row, truncated with a title, never as a line that pushes the table down', async () => {
+    it('reports Copy on the Copy button itself, never as words that cut the description or push the table down', async () => {
       renderTable()
       await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
-      const status = screen.getByText(/Copied, with its as-of date and basis/)
-      expect(screen.getByTestId('report-heading-row').contains(status)).toBe(true)
-      expect(status).toHaveClass('truncate')
-      expect(status).toHaveAttribute('title', status.textContent)
+      const button = screen.getByRole('button', { name: '✓ Copied' })
+      expect(screen.getByTestId('report-heading-row').contains(button)).toBe(true)
+      expect(button).toHaveClass('w-[80px]')
     })
   })
 
@@ -695,7 +697,7 @@ describe('ReportTable', () => {
         '00010\t4\t$1,200',
         'Everything\t\t$1,500',
       ])
-      expect(result.current.copied).toMatch(/^Copied/)
+      expect(result.current.copied).toBe(true)
       act(() => result.current.download())
       expect(downloadCsv.mock.calls[0]?.[1]).toBe('x.csv')
       expect(downloadCsv.mock.calls[0]?.[0]).toContain('Everything,,1500')
@@ -710,17 +712,18 @@ describe('ReportTable', () => {
           rows: ROWS,
           csvFilename: 'x.csv',
           link: '/l',
-          copiedWords: '✓ Copied',
         })
       )
       await act(async () => {
         await result.current.copy()
       })
-      expect(result.current.copied).toBe("Couldn't copy here: use Download CSV.")
+      expect(result.current.failed).toBe("Couldn't copy here: use Download CSV.")
+      expect(result.current.copied).toBe(false)
       await act(async () => {
         await result.current.copy()
       })
-      expect(result.current.copied).toBe('✓ Copied')
+      expect(result.current.copied).toBe(true)
+      expect(result.current.failed).toBeNull()
     })
 
     it('clears its status once the table it copied changes (a new choice is a new table)', async () => {
@@ -732,18 +735,17 @@ describe('ReportTable', () => {
             rows,
             csvFilename: 'x.csv',
             link: '/l',
-            copiedWords: '✓ Copied',
           }),
         { initialProps: { rows: ROWS } }
       )
       await act(async () => {
         await result.current.copy()
       })
-      expect(result.current.copied).toBe('✓ Copied')
+      expect(result.current.copied).toBe(true)
       rerender({ rows: [...ROWS] })
-      expect(result.current.copied).toBe('✓ Copied')
+      expect(result.current.copied).toBe(true)
       rerender({ rows: ROWS.slice(1) })
-      expect(result.current.copied).toBeNull()
+      expect(result.current.copied).toBe(false)
     })
   })
 

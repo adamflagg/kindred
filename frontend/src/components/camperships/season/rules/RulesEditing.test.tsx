@@ -165,9 +165,12 @@ describe('editing a section (D39; Decisions 14–16)', () => {
   it('says which draft it edits, and saves the section with the version it opened', async () => {
     renderAt('/aid/season/rules?section=awards')
     await editCard('awards')
-    expect(
-      await screen.findByText('Editing Minimum award and named awards in the rules draft (v4)')
-    ).toBeInTheDocument()
+    // Owner ruling 10-09 (§24 one-row footer): the sentence lives in the footer line with Save and Cancel, never as a
+    // row of its own above the boxes.
+    const words = await screen.findByText(
+      'Editing Minimum award and named awards in the rules draft (v4)'
+    )
+    expect(words.parentElement).toBe(screen.getByRole('button', { name: 'Save' }).parentElement)
     const box = screen.getByRole('textbox', { name: 'Minimum award' })
     await userEvent.clear(box)
     await userEvent.type(box, '150')
@@ -253,11 +256,11 @@ describe('editing a section (D39; Decisions 14–16)', () => {
   it('says a locked section saves into a new version and posted amounts stand', async () => {
     renderAt('/aid/season/rules?section=income')
     await editCard('income')
-    expect(
-      await screen.findByText(
-        'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
-      )
-    ).toBeInTheDocument()
+    // Owner ruling 10-09 (§24 one-row footer): the lock sentence is in the footer line, not a row of its own.
+    const locked = await screen.findByText(
+      'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
+    )
+    expect(locked.parentElement).toBe(screen.getByRole('button', { name: 'Save' }).parentElement)
   })
 
   it('holds the other cards still while editing', async () => {
@@ -378,6 +381,38 @@ describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () =>
     await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
     await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 Section' }))
   }
+
+  it('promises the season is priced only when EVERY section is ticked (owner 10-09)', async () => {
+    const base = rulesDraft()
+    const drafted = base.sections.find((s) => s.section === 'award_tables')
+    // a second section waits for approval, so ticking only the opened one is "some"
+    server = [
+      {
+        ...base,
+        sections: base.sections.map((s) =>
+          s.section === 'awards' && drafted !== undefined ? { ...drafted, section: 'awards' } : s
+        ),
+      },
+    ]
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Round 1 award table' })
+    const boxes = within(form).getAllByRole('checkbox')
+    expect(boxes.length).toBeGreaterThan(1)
+    // some ticked: the partial sentence, never the promise
+    expect(
+      within(form).getByText(
+        'Approving these sections: v4 prices the season once every section is approved.'
+      )
+    ).toBeInTheDocument()
+    expect(within(form).queryByText(/Approving puts them in effect/)).toBeNull()
+    for (const box of boxes) if (!(box as HTMLInputElement).checked) await userEvent.click(box)
+    expect(
+      within(form).getByText('Approving puts them in effect: v4 then prices the season')
+    ).toBeInTheDocument()
+    expect(within(form).queryByText(/once every section is approved/)).toBeNull()
+  })
 
   it('Esc closes the Approve form without approving', async () => {
     renderAt('/aid/season/rules?section=award_tables')
@@ -992,9 +1027,11 @@ describe('editing a card in place (spec §6.2 F; Task 48)', () => {
     renderAt('/aid/season/rules?open=5')
     expect(await screen.findByRole('button', { name: 'Approve…' })).toBeInTheDocument()
     await editCard('programs')
-    expect(
-      await screen.findByText(/^Editing Programs and costs in the rules draft \(v\d+\)$/)
-    ).toBeInTheDocument()
+    // Owner ruling 10-09 (§24 one-row footer): in the footer line with Save and Cancel.
+    const words = await screen.findByText(
+      /^Editing Programs and costs in the rules draft \(v\d+\)$/
+    )
+    expect(words.parentElement).toBe(screen.getByRole('button', { name: 'Save' }).parentElement)
     // Mock hold(): Approve… stays, disabled, saying why (it was hidden before the final mock).
     expect(screen.getByRole('button', { name: 'Approve…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Approve…' })).toHaveAttribute(

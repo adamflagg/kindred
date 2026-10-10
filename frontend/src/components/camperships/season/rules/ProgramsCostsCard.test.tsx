@@ -488,6 +488,10 @@ describe('ProgramsCostsEditor', () => {
     expect(row).toHaveClass('flex-nowrap')
     expect(within(row).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     expect(within(row).getByText('Esc cancels')).toBeInTheDocument()
+    // owner ruling 10-09: what is being edited rides this footer line, never a row above the boxes
+    expect(
+      within(row).getByText(/^Editing Programs and costs in the rules draft/)
+    ).toBeInTheDocument()
   })
 
   it('Esc cancels', async () => {

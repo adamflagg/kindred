@@ -34,6 +34,11 @@ describe('Programs (RPT-11)', () => {
 
   // Approved final mock reports-statistics.html (sessionTable): a pool row reads "<Pool>  <N> sessions" with
   // the count muted, Weekend adding that Family Camp apps count households.
+  it('draws a session row flush, as the mock does: no indent under its pool heading', () => {
+    const rows = programRows(PROGRAMS, ALL, linkOf)
+    expect(rows[1]?.indent).toBeUndefined()
+  })
+
   it('says how many sessions a pool holds, and that Family Camp apps count households', () => {
     const [heading] = programRows(PROGRAMS, ALL, linkOf)
     expect(heading?.meta).toBe('2 sessions')

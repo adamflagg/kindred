@@ -15,7 +15,7 @@ import { useOverlayEscape } from '../../../../hooks/useOverlayEscape'
 import type { ApiAidGroup, ApiAidRulesDraft } from '../../../../types/api-types'
 import { AidPicker } from '../../kit/AidPicker'
 import { EditorActions } from '../../kit/EditorLayout'
-import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_LABEL, CS_SMALL } from '../../kit/csType'
+import { CS_AMBER_NOTE, CS_BTN, CS_BTN2, CS_SMALL } from '../../kit/csType'
 import { MIN_COLUMN } from './programsCostsFlow'
 import { ROW, flowItems, useBoxWidth } from './programsCostsLayout'
 import {
@@ -332,13 +332,6 @@ export function ProgramsCostsEditor({
 
   return (
     <div className="mt-1.5 space-y-2" data-testid="programs-costs-editor" ref={boxRef}>
-      <div className={CS_LABEL}>
-        {`Editing Programs and costs in the rules draft (v${String(draft.version)})`}
-        <span className={`${CS_SMALL} ml-2 font-normal`}>
-          a checked box: not running this season
-        </span>
-      </div>
-      {banner !== null && <p className={CS_SMALL}>{banner}</p>}
       {typed.groups.map((g) => {
         const rows = inPlace([...g.running, ...g.notRunning])
         const perPerson = rows.some((r) => r.kind === 'per_person')
@@ -384,7 +377,17 @@ export function ProgramsCostsEditor({
         <button type="button" className={CS_BTN2} disabled={saving} onClick={() => onDone(null)}>
           Cancel
         </button>
+        {/* Owner 10-09 (§24 one-row footer): what is being edited, and the lock sentence, ride the footer line. */}
+        <span
+          className={`${CS_SMALL} shrink-0 font-semibold whitespace-nowrap`}
+        >{`Editing Programs and costs in the rules draft (v${String(draft.version)})`}</span>
         <span className={CS_SMALL}>Esc cancels</span>
+        <span className={CS_SMALL}>a checked box: not running this season</span>
+        {banner !== null && (
+          <span className={`${CS_SMALL} min-w-0 truncate`} title={banner}>
+            {banner}
+          </span>
+        )}
         {fix !== null && (
           <span className={`${CS_AMBER_NOTE} min-w-0 truncate`} title={fix.words}>
             {fix.words}

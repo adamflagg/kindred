@@ -124,8 +124,8 @@ async def test_a_saved_column_no_longer_reaches_the_read() -> None:
     ("column", "says"),
     [
         (DatedColumn(season=2026, as_of=date(2026, 4, 12)), "needs dated decisions"),
-        (DatedColumn(season=YEAR, as_of=date(2027, 4, 1)), "not a past day"),  # today: not past yet
-        (DatedColumn(season=YEAR, as_of=date(2025, 5, 1)), "not a past day"),
+        (DatedColumn(season=YEAR, as_of=date(2027, 4, 1)), "pick a past day of the 2027 season"),  # today: not past yet
+        (DatedColumn(season=YEAR, as_of=date(2025, 5, 1)), "pick a past day of the 2027 season"),
         (DatedColumn(season=YEAR + 1, as_of=date(2027, 3, 5)), "not a season of"),  # after the report's season
     ],
 )
@@ -151,9 +151,12 @@ async def test_saving_columns_writes_once_and_a_repeat_writes_nothing() -> None:
     ("column", "says"),
     [
         (DatedColumn(season=2026, as_of=date(2026, 4, 12)), "needs dated decisions"),
-        (DatedColumn(season=YEAR, as_of=date(2027, 5, 1)), "not a past day"),
-        (DatedColumn(season=YEAR, as_of=date(2027, 4, 1)), "not a past day"),  # today: not past yet, never shown
-        (DatedColumn(season=YEAR, as_of=date(2025, 5, 1)), "not a past day"),
+        (DatedColumn(season=YEAR, as_of=date(2027, 5, 1)), "pick a past day of the 2027 season"),
+        (
+            DatedColumn(season=YEAR, as_of=date(2027, 4, 1)),
+            "pick a past day of the 2027 season",
+        ),  # today: not past yet, never shown
+        (DatedColumn(season=YEAR, as_of=date(2025, 5, 1)), "pick a past day of the 2027 season"),
     ],
 )
 async def test_a_column_kindred_cannot_date_is_refused(column: DatedColumn, says: str) -> None:
@@ -250,3 +253,10 @@ async def test_a_refused_column_says_why_without_an_internal_id(column: DatedCol
     with pytest.raises(ReportsRefusedError) as refused:
         await _service(_development()).development(YEAR, column=column)
     assert not _INTERNAL_ID.search(str(refused.value))
+
+
+async def test_a_refused_day_is_never_echoed_as_a_raw_date() -> None:
+    """Staff read the refusal in the toolbar: it says what to do, with no ISO date in it."""
+    with pytest.raises(ReportsRefusedError) as refused:
+        await _service(_development()).development(YEAR, column=DatedColumn(season=YEAR, as_of=date(2025, 5, 1)))
+    assert str(refused.value) == "pick a past day of the 2027 season"

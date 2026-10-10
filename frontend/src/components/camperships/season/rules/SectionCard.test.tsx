@@ -164,6 +164,15 @@ describe('a section card (spec §6.2 D)', () => {
     expect(meta).toHaveClass('whitespace-normal')
   })
 
+  it('titles the cut line with all of it, the note included (every cut cell has a title)', () => {
+    const note = 'Board approved the weekend rates at the March meeting after the budget review'
+    card({ status: { pill: 'In effect', tone: 'emerald', meta: 'Mar 9, 2027', note } })
+    expect(screen.getByTestId('card-meta-round3')).toHaveAttribute(
+      'title',
+      `Mar 9, 2027 · Notes: ${note}`
+    )
+  })
+
   it('shows no Edit… when it may not be edited (registrar, past date, another edit open)', () => {
     card({ canEdit: false })
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull()

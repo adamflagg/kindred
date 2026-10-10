@@ -224,7 +224,13 @@ describe('the Sandbox grids follow the rules’ pool order (final mock: "pool or
 
   it('orders the tier grid’s columns by pool', () => {
     render(<SandboxTierCard binding={bound()} fitButton={null} fitAnswer={null} />)
-    expect([...new Set(order(screen.getByTestId('sandbox-grid')))]).toEqual(['Teen', 'General'])
+    // the heads are the pools' names, as Rules' grid words them (not the classes' own keys)
+    const heads = within(screen.getByTestId('sandbox-grid'))
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent)
+      .filter((text) => /Pool [AB]/.test(text))
+      .map((text) => (text.includes('Pool B') ? 'Pool B' : 'Pool A'))
+    expect([...new Set(heads)]).toEqual(['Pool B', 'Pool A'])
   })
 
   it('orders the equity weights’ columns by pool', () => {

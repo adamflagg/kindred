@@ -23,6 +23,7 @@ import {
   developmentCsvName,
   developmentHeading,
   developmentTable,
+  noFiguresWords,
   rebuildReason,
   SHOW_REBUILD_SWITCH,
   type AsOfPick,
@@ -77,13 +78,13 @@ export function DevelopmentReport({ view }: { view: AidView }) {
     [data, asOf, asReportedAt]
   )
   const rows = table?.rows ?? []
+  const emptyWords = data ? noFiguresWords(data) : null
   const exporter = useReportExport({
     heading: data ? developmentHeading(data, TITLE) : EMPTY_HEADING,
     columns,
     rows,
     csvFilename: developmentCsvName(view, 'report'),
     link,
-    copiedWords: '✓ Copied',
   })
   // A refusal (today or later) is the status slot, in warn tone, the server's full words in its title.
   const refusal = asOf !== null && asked.isError ? asked.error.message : null
@@ -91,7 +92,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
   const status =
     refusal !== null && asOf !== null
       ? `⚠ Can't show ${formatShortDate(asOf.day)}: ${asOf.day >= campToday() ? 'pick a day before today' : refusal}`
-      : (exporter.copied ?? undefined)
+      : (exporter.failed ?? undefined)
 
   return (
     <div className="space-y-3">
@@ -120,8 +121,15 @@ export function DevelopmentReport({ view }: { view: AidView }) {
         }
         right={
           <>
-            <AidCopyButton disabled={data === undefined} onCopy={() => void exporter.copy()} />
-            <AidCsvButton disabled={data === undefined} onDownload={exporter.download} />
+            <AidCopyButton
+              copied={exporter.copied}
+              disabled={data === undefined || emptyWords !== null}
+              onCopy={() => void exporter.copy()}
+            />
+            <AidCsvButton
+              disabled={data === undefined || emptyWords !== null}
+              onDownload={exporter.download}
+            />
           </>
         }
       />
@@ -142,6 +150,7 @@ export function DevelopmentReport({ view }: { view: AidView }) {
               rows={rows}
               csvFilename={developmentCsvName(view, 'report')}
               link={link}
+              {...(emptyWords === null ? {} : { emptyBody: emptyWords })}
               footnote={capped === null ? undefined : <p className={REPORT_NOTE}>{capped}</p>}
             />
           )

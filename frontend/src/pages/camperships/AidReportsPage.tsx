@@ -1,6 +1,6 @@
 import { FileBarChart } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, Navigate, useParams } from 'react-router'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { aidHref, type AidView } from '../../components/camperships/kit/asOf'
 import { DevelopmentReport } from '../../components/camperships/reports/DevelopmentReport'
@@ -11,6 +11,8 @@ import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { CS_BAND_WARN, CS_LINK } from '../../components/camperships/kit/csType'
 import { aidSection, resolveAidTab, visibleTabs } from '../../config/aidNav'
+import { useAidStatistics } from '../../hooks/camperships/useAidStatistics'
+import { readStatisticsChoice } from '../../components/camperships/reports/reportParams'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -20,6 +22,20 @@ const REPORTS = aidSection('reports')
 
 /** The tabs a past date can't reach: each reads today only (their reads take no as-of). */
 const LIVE_ONLY = new Set(['year-over-year', 'development', 'zip-codes'])
+
+/** Statistics' subtitle: the basis, then the rules version the figures were counted under. */
+function StatisticsSubtitle({ year }: { year: number }) {
+  const [params] = useSearchParams()
+  const choice = useMemo(() => readStatisticsChoice(params), [params])
+  const rules = useAidStatistics(choice).data?.rules_version
+  const words =
+    rules === undefined
+      ? ''
+      : rules === null
+        ? ' · no approved rules'
+        : ` · rules v${String(rules)}`
+  return `Season ${String(year)} · from the dashboard's Posted amounts and the typed history${words}`
+}
 
 /**
  * Reports (spec §9; D63–D70; statistics-v2.html, development-v2.html, zip-codes.html): Statistics ·
@@ -79,11 +95,15 @@ export default function AidReportsPage() {
         icon={FileBarChart}
         title={at === 'development' || at === 'zip-codes' ? 'Development report' : REPORTS.label}
         subtitle={
-          at === 'zip-codes'
-            ? `Where ${String(year)} campers live, by ZIP: counts and dollars, never a family`
-            : at === 'development'
-              ? 'Aid by season, for grant writing: numbers and quantities, never a family'
-              : `Season ${String(year)} · from the dashboard's Posted amounts and the typed history`
+          at === 'zip-codes' ? (
+            `Where ${String(year)} campers live, by ZIP: counts and dollars, never a family`
+          ) : at === 'development' ? (
+            'Aid by season, for grant writing: numbers and quantities, never a family'
+          ) : at === 'statistics' ? (
+            <StatisticsSubtitle year={year} />
+          ) : (
+            `Season ${String(year)} · from the dashboard's Posted amounts and the typed history`
+          )
         }
         asOf={asOf}
       />

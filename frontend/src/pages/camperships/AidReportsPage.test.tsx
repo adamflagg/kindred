@@ -13,6 +13,10 @@ vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let rulesVersion: number | null = 3
+vi.mock('../../hooks/camperships/useAidStatistics', () => ({
+  useAidStatistics: () => ({ data: { rules_version: rulesVersion } }),
+}))
 vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denied</div> }))
 vi.mock('../../components/camperships/reports/StatisticsTab', () => ({
   StatisticsTab: () => <div>Statistics body</div>,
@@ -123,6 +127,19 @@ describe('AidReportsPage (spec §9.1; D64, D65)', () => {
     }
     expect(screen.queryByRole('link', { name: 'Programs' })).toBeNull()
     expect(screen.getByText('Statistics body')).toBeInTheDocument()
+  })
+
+  it("names the rules version in Statistics' band, or that no rules are approved", () => {
+    rulesVersion = 3
+    const { unmount } = renderAt('/aid/reports/statistics')
+    expect(
+      screen.getByText(/from the dashboard's Posted amounts and the typed history · rules v3/)
+    ).toBeInTheDocument()
+    unmount()
+    rulesVersion = null
+    renderAt('/aid/reports/statistics')
+    expect(screen.getByText(/typed history · no approved rules/)).toBeInTheDocument()
+    rulesVersion = 3
   })
 
   it('has no views bar on any tab', () => {

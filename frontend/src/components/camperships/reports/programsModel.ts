@@ -178,7 +178,6 @@ export function programRows(
         key: `session-${key}-${String(session.session_cm_id)}-${String(index)}`,
         // "Session not matched" sits in the no-pool group: muted italic, as the mock draws it
         kind: pool.pool === null ? 'end' : 'body',
-        indent: 1,
         cells: cells(
           {
             ...textValue(session.session_name),

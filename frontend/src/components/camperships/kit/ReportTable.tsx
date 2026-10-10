@@ -136,7 +136,8 @@ function cellClass(column: ReportColumn | undefined, index: number, kind: string
         : column?.tone === 'decided-ink'
           ? TD_DECIDED_INK
           : TD_NUMBER
-  const mono = column?.mono && kind === 'body' ? `${base} font-mono tabular-nums` : base
+  const mono =
+    column?.mono && kind === 'body' ? `${base} font-mono text-[12.5px] tabular-nums` : base
   return column?.divider === 'before' ? mono.replace(CS_RULE, DIVIDER_BEFORE) : mono
 }
 
@@ -250,7 +251,7 @@ export function ReportTable({
   const drawn = useMemo(() => columns.filter((c) => !c.csvOnly), [columns])
   const grouped = drawn.some((c) => c.group !== undefined)
 
-  const { copy, download, copied } = useReportExport({
+  const { copy, download, copied, failed } = useReportExport({
     heading,
     columns,
     rows: ordered,
@@ -357,9 +358,9 @@ export function ReportTable({
                 {`${String(matching)} of ${String(bodyCount)}`}
               </span>
             )}
-            {tools && copied !== null && (
-              <span className={CS_TOOLBAR_STATUS} title={copied}>
-                {copied}
+            {tools && failed !== null && (
+              <span className={CS_TOOLBAR_STATUS} title={failed}>
+                {failed}
               </span>
             )}
             {tools && find && (
@@ -382,6 +383,7 @@ export function ReportTable({
             {tools && emptyBody === undefined && (
               <>
                 <AidCopyButton
+                  copied={copied}
                   onCopy={() => void copy()}
                   title="Copy the whole table, with its season, as-of date and basis, for a spreadsheet"
                 />

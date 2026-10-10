@@ -165,6 +165,13 @@ class ReportRequest:
         return sum(asks, ZERO) if asks else None
 
 
+def capped_at_cost(amount: Decimal, cost: Decimal | None) -> Decimal:
+    """Rule M (owner 10-08, per request): `amount` counts at most the request's priced session cost. No cost known
+    (a request that isn't live, no rules, a program with no price): as typed. One rule for Development's need and
+    Statistics' Asked."""
+    return amount if cost is None else min(amount, cost)
+
+
 def in_table(requests: Iterable[ReportRequest], table: str | None) -> list[ReportRequest]:
     """The requests whose program uses award table `table` (None: every table, the All chip)."""
     return [r for r in requests if table is None or r.table == table]

@@ -330,7 +330,9 @@ export function TierGridCard({
               )}
               <ChangedSince
                 version={approvedVersion}
-                lines={changes.map((c) => changeWords(c, { ...names, section: part }))}
+                lines={changes.map((c) =>
+                  changeWords(c, { ...names, section: part, classLabel: label })
+                )}
               />
             </div>
           )

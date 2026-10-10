@@ -564,3 +564,16 @@ export function statisticsCsvName(view: AidView, choice: StatisticsChoice, table
     asOf: view.asOf.kind === 'past' ? view.asOf.date : null,
   })
 }
+
+/**
+ * Rule M on Asked (owner 10-09): a request's asks together count at most its priced session's cost, as in
+ * Development. This line says how many requests that moved, under the tier table; null when none did.
+ */
+export function cappedAskWords(total: {
+  readonly requests_capped?: number | undefined
+}): string | null {
+  const n = total.requests_capped ?? 0
+  if (n === 0) return null
+  const noun = n === 1 ? 'request above its' : 'requests above their'
+  return `Asked and Avg ask: ${String(n)} ${noun} session's cost counted at the cost.`
+}

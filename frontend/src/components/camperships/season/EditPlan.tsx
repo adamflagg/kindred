@@ -150,27 +150,27 @@ export function EditPlan({
             )}
           </span>
         </EditorField>
-        {pools.map((pool, i) => (
-          <EditorField
-            key={pool.key}
-            label={
-              i === 0 ? <>Program split{shareNote !== null && <DefRef n={shareNote} />}</> : ''
-            }
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <span className={CS_FGRID_LABEL}>{pool.label}</span>
-              <input
-                aria-label={pool.label}
-                className={`${CS_FIELD} w-16 text-right tabular-nums`}
-                value={typed.shares[pool.key] ?? ''}
-                onChange={(event) =>
-                  onType({ ...typed, shares: { ...typed.shares, [pool.key]: event.target.value } })
-                }
-              />
-              %
-            </span>
-          </EditorField>
-        ))}
+        <EditorField label={<>Program split{shareNote !== null && <DefRef n={shareNote} />}</>}>
+          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+            {pools.map((pool) => (
+              <span key={pool.key} className="inline-flex items-center gap-1.5">
+                <span className={CS_FGRID_LABEL}>{pool.label}</span>
+                <input
+                  aria-label={pool.label}
+                  className={`${CS_FIELD} w-16 text-right tabular-nums`}
+                  value={typed.shares[pool.key] ?? ''}
+                  onChange={(event) =>
+                    onType({
+                      ...typed,
+                      shares: { ...typed.shares, [pool.key]: event.target.value },
+                    })
+                  }
+                />
+                %
+              </span>
+            ))}
+          </span>
+        </EditorField>
       </EditorGrid>
     </EditorForm>
   )
