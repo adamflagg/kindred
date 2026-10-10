@@ -63,3 +63,29 @@ def test_unattributable_buckets_stay_unnamed() -> None:
     labels = program_labels(None)
     assert "ambiguous" not in labels
     assert "unattributed" not in labels
+
+
+def test_the_rules_card_sub_sections_use_the_same_words_and_families_as_the_server() -> None:
+    """Drift guard: the Rules Programs card (programsCostsModel.ts) holds its own session type -> sub-section map and
+    its words (At Camp / Quests / Teen Programs). Each must agree with PROGRAM_FAMILY_BY_SESSION_TYPE and FAMILY_WORDS,
+    or the card names a family differently from Requests, the Ledger and Grants."""
+    import re
+    from pathlib import Path
+
+    ts = (
+        Path(__file__).parents[4] / "frontend/src/components/camperships/season/rules/programsCostsModel.ts"
+    ).read_text()
+
+    def literal(name: str) -> dict[str, str]:
+        body = ts.split(f"export const {name}", 1)[1].split("= {", 1)[1].split("}", 1)[0]
+        pairs = dict(re.findall(r"^\s*(\w+):\s*'([^']*)',?\s*$", body, re.MULTILINE))
+        entries = [ln for ln in body.splitlines() if ln.strip() and not ln.strip().startswith("//")]
+        assert len(pairs) == len(entries), f"an entry of {name} the pattern can't parse would be skipped silently"
+        return pairs
+
+    sub_of_type = literal("SUBSECTION_OF_TYPE")
+    words = literal("SUBSECTION_LABELS")
+    assert {t: PROGRAM_FAMILY_BY_SESSION_TYPE[t] for t in sub_of_type} == sub_of_type
+    assert {sub: FAMILY_WORDS[sub] for sub in words if sub != "other"} == {
+        sub: word for sub, word in words.items() if sub != "other"
+    }
