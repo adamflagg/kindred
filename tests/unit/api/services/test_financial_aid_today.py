@@ -12,7 +12,13 @@ from typing import Any, get_args
 import pytest
 
 from api.schemas.financial_aid import UnclassifiedSource
-from api.schemas.financial_aid_decisions import ConfirmationOut, GridRowOut, RoundOut, ShareConfirmationOut
+from api.schemas.financial_aid_decisions import (
+    ConfirmationOut,
+    GridRowOut,
+    RoundOut,
+    RowStageOut,
+    ShareConfirmationOut,
+)
 from api.schemas.financial_aid_grants import (
     GrantorOut,
     GrantorsResponse,
@@ -39,6 +45,7 @@ from api.services.financial_aid_today import (
     TodayService,
     build_today,
     pending_since,
+    week_start,
 )
 from bunking.financial_aid.decisions.rounds import DecisionEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
@@ -872,3 +879,57 @@ def test_pending_since_keeps_the_latest_keyed_award_in_camp_time() -> None:
     )  # 03:00 UTC is still the 15th in camp time (America/Los_Angeles)
     plain = DecisionEvent(id="d3", request_id="r2", round=1, kind="award", created=datetime(2031, 4, 1, tzinfo=UTC))
     assert pending_since([early, late, plain]) == {("r1", 3): date(2031, 4, 15)}
+
+
+def _staged(request_id: str, household: int, code: str, *rounds: RoundOut) -> GridRowOut:
+    row = _row(request_id, household, *rounds)
+    return row.model_copy(update={"stage": RowStageOut(round=1, code=code, label=code)})
+
+
+def test_week_starts_on_monday() -> None:
+    assert week_start(date(2031, 4, 20)) == date(2031, 4, 14)  # TODAY, 2031-04-20, is a Sunday
+    assert week_start(date(2031, 4, 14)) == date(2031, 4, 14)
+
+
+def test_stages_bucket_every_row_by_its_stage_code() -> None:
+    rows = [
+        _staged("r1", 1000001, "accepted"),
+        _staged("r2", 1000001, "posted"),
+        _staged("r3", 1000002, "pending_approval"),
+        _staged("r4", 1000003, "needs_offer"),
+        _staged("r5", 1000003, "not_decided"),
+        _staged("r6", 1000004, "refused"),
+        _staged("r7", 1000005, "held"),
+        _staged("r8", 1000006, "cancelled"),
+    ]
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    assert (
+        stages.accepted,
+        stages.waiting_on_family,
+        stages.pending_approval,
+        stages.needs_offer,
+        stages.held,
+        stages.cancelled,
+        stages.families,
+    ) == (1, 1, 1, 3, 1, 1, 6)
+
+
+def test_posted_this_week_counts_rows_posted_since_monday() -> None:
+    rows = [
+        _staged(
+            "r1", 1000001, "accepted", _round(1, "posted", posted=900.0, accepted=True, posted_on=date(2031, 4, 14))
+        ),
+        _staged("r2", 1000002, "posted", _round(1, "posted", posted=900.0, posted_on=date(2031, 4, 13))),
+        _staged(
+            "r3", 1000003, "posted", _round(1, "posted", posted=900.0, posted_on=date(2031, 4, 20), clawed_back=True)
+        ),
+    ]
+    stages = build_today(_inputs(rows), casework=True, finance=False).stages
+    assert stages is not None
+    assert stages.posted_this_week == 1
+
+
+def test_stages_are_sent_to_finance_and_registrar_alike() -> None:
+    assert build_today(_inputs([]), casework=False, finance=True).stages is not None
+    assert build_today(_inputs([]), casework=True, finance=False).stages is not None

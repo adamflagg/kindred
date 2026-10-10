@@ -26,6 +26,7 @@ from api.schemas.financial_aid_surfaces import (
     TodayNextUpOut,
     TodayReasonOut,
     TodayResponse,
+    TodayStagesOut,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
@@ -436,11 +437,56 @@ def pending_since(events: Iterable[DecisionEvent]) -> dict[tuple[str, int], date
     return {key: when.astimezone(CAMP_TZ).date() for key, when in out.items()}
 
 
+_STAGE_BUCKET: Final[Mapping[str, str]] = {
+    "accepted": "accepted",
+    "posted": "waiting_on_family",
+    "pending_approval": "pending_approval",
+    "needs_offer": "needs_offer",
+    "not_decided": "needs_offer",
+    "refused": "needs_offer",
+    "held": "held",
+    "cancelled": "cancelled",
+}
+
+
+def week_start(day: date) -> date:
+    """Monday of the camp week `day` falls in (This week and the hero's "+n")."""
+    return date.fromordinal(day.toordinal() - day.weekday())
+
+
+def _stages(inputs: TodayInputs) -> TodayStagesOut:
+    counts: dict[str, int] = defaultdict(int)
+    monday = week_start(inputs.today)
+    posted_now = 0
+    for row in inputs.rows:
+        if row.stage is not None and row.stage.code in _STAGE_BUCKET:
+            counts[_STAGE_BUCKET[row.stage.code]] += 1
+        if any(
+            r.status == "posted"
+            and not r.clawed_back
+            and r.posted_on is not None
+            and monday <= r.posted_on <= inputs.today
+            for r in row.rounds
+        ):
+            posted_now += 1
+    return TodayStagesOut(
+        accepted=counts["accepted"],
+        waiting_on_family=counts["waiting_on_family"],
+        pending_approval=counts["pending_approval"],
+        needs_offer=counts["needs_offer"],
+        held=counts["held"],
+        cancelled=counts["cancelled"],
+        families=_families(inputs.rows),
+        posted_this_week=posted_now,
+    )
+
+
 def build_today(inputs: TodayInputs, *, casework: bool, finance: bool) -> TodayResponse:
     return TodayResponse(
         year=inputs.year,
         casework=_casework(inputs) if casework else None,
         finance=_finance(inputs) if finance else None,
+        stages=_stages(inputs) if casework or finance else None,
     )
 
 

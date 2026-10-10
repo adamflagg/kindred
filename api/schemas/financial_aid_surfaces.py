@@ -137,13 +137,29 @@ class TodayLineOut(BaseModel):
     next_up: list[TodayNextUpOut] = Field(default_factory=list)  # oldest first, at most NEXT_UP_CAP households
 
 
+class TodayStagesOut(BaseModel):
+    """The registrar hero's one bar (spec 2026-10-10 §4.1): every request this season by its Stage column's code
+    (row_stage), in the bar's order. A request with no round yet has no stage and is counted in none."""
+
+    accepted: int
+    waiting_on_family: int
+    pending_approval: int
+    needs_offer: int  # needs_offer, not_decided and refused: an offer still has to be made
+    held: int
+    cancelled: int
+    families: int  # households with any request this season
+    posted_this_week: int  # requests with a round posted since Monday (camp time), the "+n" on Accepted
+
+
 class TodayResponse(BaseModel):
     """Today's sections follow the user's permissions: casework None without financial_aid.casework,
-    finance None without financial_aid.rules."""
+    finance None without financial_aid.rules. stages: casework or finance callers (the hero bar); None for
+    development."""
 
     year: int
     casework: list[TodayLineOut] | None
     finance: list[TodayLineOut] | None
+    stages: TodayStagesOut | None = None
 
 
 class HouseholdMatchOut(BaseModel):
