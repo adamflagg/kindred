@@ -749,6 +749,7 @@ export const queryKeys = {
     ['financial-aid', 'grid', year, asOf ?? 'live', axis ?? 'campminder'] as const,
   aidTodayPrefix: () => ['financial-aid', 'today'] as const,
   aidToday: (year: number) => ['financial-aid', 'today', year] as const,
+  aidTodayWeek: (year: number) => ['financial-aid', 'today', year, 'week'] as const,
   aidHouseholdPagePrefix: () => ['financial-aid', 'household-page'] as const,
   aidHouseholdPage: (year: number, householdCmId: number) =>
     ['financial-aid', 'household-page', year, householdCmId] as const,
