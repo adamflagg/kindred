@@ -1042,6 +1042,59 @@ describe('grant placements as a compact table (history-2)', () => {
     expect(groups).toHaveLength(1)
   })
 
+  it('names the round each grant counts in, as of its placement, in the Register words (owner 10-10, B)', () => {
+    const shares = (...counts: NonNullable<ApiAidHistoryRow['counts_in']>) => ({
+      counts_in: counts,
+    })
+    const rows = [
+      placed(1, shares({ request_id: 'req000000000001', offsets: 'round', round: 1 })),
+      placed(3, shares({ request_id: 'req000000000003', offsets: 'after_offer', round: null })),
+      placed(
+        4,
+        shares({ request_id: 'req000000000004', offsets: 'not_offset_program', round: null })
+      ),
+      placed(
+        5,
+        shares(
+          { request_id: 'req000000000005', offsets: 'round', round: 1 },
+          { request_id: 'req000000000006', offsets: 'after_offer', round: null },
+          { request_id: 'req000000000007', offsets: 'round', round: 1 }
+        )
+      ),
+      placed(6, shares({ request_id: 'req000000000008', offsets: 'round', round: 2 })),
+      placed(7, shares({ request_id: 'req000000000009', offsets: 'incentive', round: null })),
+      placed(8),
+    ]
+    const cells = first(compactGroups(rows, LIVE).groups).rows.map((r) => [
+      r.round,
+      r.roundMuted,
+      r.roundTitle,
+    ])
+    expect(cells).toEqual([
+      ['R1', false, 'Counts in Round 1: known before Round 1 was posted'],
+      [
+        'after offer',
+        true,
+        'Counts in no round: known after Round 1 was posted, so the offer stands',
+      ],
+      ['—', true, "Counts in no round: the program doesn't subtract grants"],
+      [
+        'R1 · after offer',
+        false,
+        'Counts in Round 1: known before Round 1 was posted · Counts in no round: known after Round 1 was posted, so the offer stands',
+      ],
+      [
+        'R2',
+        false,
+        'Counts in Round 2: known after Round 1 was posted, and these rules make an appeal subtract grants',
+      ],
+      ['—', true, 'Counts in no round: an incentive: never subtracted'],
+      ['—', true, 'Counts in no round: on no aid request'],
+    ])
+    // A table with no round to name draws no column: every placement there sits on no request.
+    expect(first(compactGroups([placed(8)], LIVE).groups).rows[0]?.round).toBeNull()
+  })
+
   it('reads the amount of a remove from before.placement when it is the only row', () => {
     const { groups, rest, omitted } = compactGroups([removed], LIVE)
     expect(groups).toEqual([])

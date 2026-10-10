@@ -216,7 +216,7 @@ from api.services.financial_aid_casework_service import (
     DuplicateRequestError,
     FinancialAidCaseworkService,
 )
-from api.services.financial_aid_change_log_reads import EntityLogReads, HistoryLogReads
+from api.services.financial_aid_change_log_reads import EntityLogReads
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import (
@@ -241,6 +241,7 @@ from api.services.financial_aid_grants_service import (
     GrantorStateError,
     GrantsService,
 )
+from api.services.financial_aid_history_reads import SeasonHistoryReads
 from api.services.financial_aid_household_page import (
     HouseholdLabeler,
     HouseholdNotFoundError,
@@ -679,7 +680,7 @@ async def set_aid_request_household_share(
 
 
 def _history() -> SeasonHistoryService:
-    return SeasonHistoryService(HistoryLogReads(pb))
+    return SeasonHistoryService(SeasonHistoryReads(pb))
 
 
 _OperationId = Annotated[str, Path(pattern=r"^[a-z0-9]{15}$")]

@@ -6337,6 +6337,37 @@ export type HistoryCountOut = {
 }
 
 /**
+ * HistoryCountsInOut
+ *
+ * One share of a grant placement row, and the round of its request the grant counts in as of when it was placed
+ * (owner 2026-10-10, option B): the Grants Register's rule (share_offset) replayed at the placement row's own instant,
+ * on the decisions recorded by then and the rules that priced the season then. `offsets` "round" with `round` 1 or 2,
+ * else why no round counts it, in the Register's words (RequestShareOut.offsets). No amount: History never
+ * re-prices.
+ */
+export type HistoryCountsInOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Offsets
+   */
+  offsets:
+    | 'round'
+    | 'after_offer'
+    | 'not_offset_program'
+    | 'not_received'
+    | 'pays_after_camp_aid'
+    | 'incentive'
+    | 'not_priced'
+  /**
+   * Round
+   */
+  round?: number | null
+}
+
+/**
  * HistoryEffectOut
  *
  * A rules approval's effect on the season's pricing, as recorded when it was approved (H3; D49).
@@ -6638,6 +6669,10 @@ export type HistoryRowOut = {
    * Session Cm Id
    */
   session_cm_id?: number | null
+  /**
+   * Counts In
+   */
+  counts_in?: Array<HistoryCountsInOut> | null
 }
 
 /**

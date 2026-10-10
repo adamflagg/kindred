@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from api.schemas.financial_aid_grants import ShareOffsetOut
 from api.schemas.financial_aid_rules import FieldChangeOut
 
 HistoryKind = Literal["rules", "offers", "money", "holds", "grants", "intake"]
@@ -81,6 +82,18 @@ class HistoryParentDiffOut(BaseModel):
     changes: list[FieldChangeOut]  # paths start ["document", <section>, ...] or ["section_status", <section>, ...]
 
 
+class HistoryCountsInOut(BaseModel):
+    """One share of a grant placement row, and the round of its request the grant counts in as of when it was placed
+    (owner 2026-10-10, option B): the Grants Register's rule (share_offset) replayed at the placement row's own instant,
+    on the decisions recorded by then and the rules that priced the season then. `offsets` "round" with `round` 1 or 2,
+    else why no round counts it, in the Register's words (RequestShareOut.offsets). No amount: History never
+    re-prices."""
+
+    request_id: str
+    offsets: ShareOffsetOut
+    round: int | None = None
+
+
 class HistoryRowOut(BaseModel):
     at: datetime
     entity: str
@@ -97,6 +110,9 @@ class HistoryRowOut(BaseModel):
     against_parent: HistoryParentDiffOut | None  # only on a row that created a rules version with a parent (H4)
     request_id: str | None = None  # the request the row is about (the camper link's #request-<id>); None otherwise
     session_cm_id: int | None = None  # that request's session (the compact table's Session); None when unmatched
+    # A grant placement's shares, each with the round it counted in when placed; None on every other row, and on a
+    # placement that sits on no request or can't be read back.
+    counts_in: list[HistoryCountsInOut] | None = None
 
 
 class HistoryOperationDetailOut(BaseModel):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -13,7 +13,10 @@ from typing import Any
 import pytest
 
 import api.constants.collections as collections
-from api.schemas.financial_aid_history import HistoryEffectOut
+from api.schemas.financial_aid_history import HistoryCountsInOut, HistoryEffectOut
+from api.services.financial_aid_grant_placements import placement_json
+from api.services.financial_aid_grants_register import RegisterRow, RequestShare
+from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_rules_effect import RULES_EFFECT_ENTITY
 from api.services.financial_aid_season_history import (
     ENTITY_KINDS,
@@ -35,8 +38,12 @@ from api.services.financial_aid_season_history import (
     summary_words,
     visible,
 )
+from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.decisions.rounds import EventKind
 from bunking.financial_aid.rules.lifecycle import initial_status, status_to_json
-from bunking.financial_aid.rules.schema import SECTION_NAMES
+from bunking.financial_aid.rules.schema import SECTION_NAMES, AidRules
+from tests.unit.api.services.decisions_fakes import grant_row
+from tests.unit.api.services.financial_aid_fakes import SESSIONS, intake_rules
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
 REG, FIN = "registrar@example.com", "finance@example.com"
@@ -196,10 +203,19 @@ class _Reads:
             (),
         ),
         versions: Mapping[tuple[int, int], SimpleNamespace] | None = None,
+        decisions: Sequence[DecisionEvent] = (),
+        sessions: Sequence[SessionRow] = (),
+        pricing: AidRules | None = None,
     ) -> None:
         self.records = records
         self.subjects = subjects
         self.versions = dict(versions or {})
+        self.decisions = list(decisions)
+        self.sessions = list(sessions)
+        self.pricing = pricing
+        self.decision_calls: list[frozenset[str]] = []
+        self.session_calls = 0
+        self.pricing_calls: list[frozenset[datetime]] = []
         self.name_calls: list[tuple[frozenset[int], frozenset[int]]] = []
         self.recorded_calls: list[tuple[list[str], list[str]]] = []
         self.version_calls: list[tuple[int, int]] = []
@@ -238,6 +254,21 @@ class _Reads:
     async def fetch_rules_version(self, year: int, version: int) -> SimpleNamespace | None:
         self.version_calls.append((year, version))
         return self.versions.get((year, version))
+
+    async def fetch_decision_events(self, year: int, request_ids: Collection[str]) -> list[DecisionEvent]:
+        self.years.add(year)
+        self.decision_calls.append(frozenset(request_ids))
+        return [e for e in self.decisions if e.request_id in set(request_ids)]
+
+    async def fetch_sessions(self, year: int) -> list[SessionRow]:
+        self.years.add(year)
+        self.session_calls += 1
+        return list(self.sessions)
+
+    async def fetch_pricing_rules_at(self, year: int, ats: Collection[datetime]) -> dict[datetime, AidRules | None]:
+        self.years.add(year)
+        self.pricing_calls.append(frozenset(ats))
+        return dict.fromkeys(ats, self.pricing)
 
 
 def _rules_save() -> SimpleNamespace:
@@ -1040,3 +1071,153 @@ def test_a_curve_load_stays_out_of_history() -> None:
     from api.services.financial_aid_season_history import NOT_IN_HISTORY
 
     assert "aid_arrival_curves" in NOT_IN_HISTORY
+
+
+# --- The Round a grant placement counts in, as of when it was placed (owner 2026-10-10, option B) -----------------
+
+ROUND_REQUESTS = (
+    SimpleNamespace(id=EMMA, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_EMMA,
+                    session_cm_id=1000101),
+    SimpleNamespace(id=SAMUEL, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_SAMUEL,
+                    session_cm_id=1000103),  # an AG session: summer by its own type
+    SimpleNamespace(id=LIAM, application=APP_GARCIA, household_cm_id=GARCIA, person_cm_id=P_LIAM,
+                    session_cm_id=1000201),  # Family Camp: the rules don't subtract grants there
+)  # fmt: skip
+ROUND_SEASON = (ROUND_REQUESTS, APPLICATION_ROWS, CORRECTION_ROWS, GRANT_ROWS, LINK_ROWS)
+POSTED = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)  # Round 1's Posted tick
+PLACED = "2027-03-21 17:00:00.000Z"  # the placement log row's own instant
+PLACED_AT = datetime(2027, 3, 21, 17, 0, tzinfo=UTC)
+OP_G = "g" * 15
+
+
+def _known(row: RegisterRow, on: datetime, *shares: tuple[str, str]) -> RegisterRow:
+    return replace(
+        row,
+        recorded_at=on,
+        recorded_on=f"{on:%Y-%m-%d}",
+        requests=tuple(RequestShare(r, Decimal(a)) for r, a in shares) or row.requests,
+    )
+
+
+def _placed(rid: str, row: RegisterRow, *, at: str = PLACED, action: str = "place") -> SimpleNamespace:
+    grant = f"ledger:{row.transaction_cm_id}"
+    after = {"grant": grant, "household_cm_id": row.household_cm_id, "event": action, "placement": placement_json(row)}
+    return _row(rid, "aid_grant_placements", grant, OP_G, action=action, at=at, after=after)
+
+
+def _decided(request_id: str, at: datetime = POSTED, n: int = 1, kind: EventKind = "post") -> DecisionEvent:
+    return DecisionEvent(id=f"d{request_id[3:8]}{n}{kind}{at:%d}", request_id=request_id, round=n, kind=kind,
+                         created=at, amount=Decimal(1000) if kind == "post" else None)  # fmt: skip
+
+
+def _round_reads(
+    *rows: SimpleNamespace, decisions: Sequence[DecisionEvent] = (), rules: AidRules | None = None
+) -> _Reads:
+    return _Reads(*rows, subjects=ROUND_SEASON, decisions=decisions, sessions=SESSIONS, pricing=rules or intake_rules())
+
+
+def _counts(row: Any) -> list[tuple[str, str, int | None]]:
+    return [(c.request_id, c.offsets, c.round) for c in row.counts_in or []]
+
+
+EARLY_ON, LATE_ON = datetime(2027, 2, 10, 17, 0, tzinfo=UTC), datetime(2027, 3, 20, 17, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_placement_row_names_the_round_its_grant_counts_in_as_of_when_it_was_placed() -> None:
+    """R1 when the grant was known before Round 1 posted; "after the offer" when known after it (2027: an appeal
+    subtracts no grants); none for a program the rules don't subtract grants from. The Register's rule, replayed."""
+    early = _known(grant_row(EMMA, "500"), EARLY_ON)
+    late = replace(_known(grant_row(EMMA, "300"), LATE_ON), transaction_cm_id=9002)
+    family = replace(_known(grant_row(LIAM, "200"), EARLY_ON, (LIAM, "200")), transaction_cm_id=9003,
+                     household_cm_id=GARCIA, person_cm_id=P_LIAM, session_cm_id=1000201)  # fmt: skip
+    reads = _round_reads(_placed("p1", early), _placed("p2", late), _placed("p3", family), decisions=[_decided(EMMA)])
+    detail = await SeasonHistoryService(reads).operation(2027, OP_G, rules=False)
+    assert [_counts(r) for r in detail.rows] == [
+        [(EMMA, "round", 1)],
+        [(EMMA, "after_offer", None)],
+        [(LIAM, "not_offset_program", None)],
+    ]
+    # One read of each, only for the placement shares' requests and instants.
+    assert (reads.decision_calls, reads.session_calls, reads.pricing_calls) == (
+        [frozenset({EMMA, LIAM})],
+        1,
+        [frozenset({PLACED_AT})],
+    )
+    assert reads.years == {2027}
+
+
+@pytest.mark.asyncio
+async def test_a_later_posted_tick_or_its_undo_never_rewrites_a_placements_round() -> None:
+    late = _known(grant_row(EMMA, "300"), LATE_ON)
+    posted_after = await SeasonHistoryService(
+        _round_reads(_placed("p1", late), decisions=[_decided(EMMA, datetime(2027, 3, 25, tzinfo=UTC))])
+    ).operation(2027, OP_G, rules=False)
+    assert _counts(posted_after.rows[0]) == [(EMMA, "round", 1)]  # Round 1 was open when it was placed
+    undone_after = await SeasonHistoryService(
+        _round_reads(
+            _placed("p1", late),
+            decisions=[_decided(EMMA), _decided(EMMA, datetime(2027, 3, 25, tzinfo=UTC), kind="unpost")],
+        )
+    ).operation(2027, OP_G, rules=False)
+    assert _counts(undone_after.rows[0]) == [(EMMA, "after_offer", None)]
+
+
+@pytest.mark.asyncio
+async def test_a_placement_split_across_requests_names_each_shares_round() -> None:
+    split = _known(grant_row(EMMA, "600"), LATE_ON, (EMMA, "300"), (SAMUEL, "300"))
+    reads = _round_reads(_placed("p1", split), decisions=[_decided(EMMA)])  # Samuel's Round 1 isn't posted
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_G, rules=False)).rows
+    assert _counts(row) == [(EMMA, "after_offer", None), (SAMUEL, "round", 1)]
+
+
+@pytest.mark.asyncio
+async def test_where_the_rules_make_an_appeal_subtract_grants_a_late_grant_counts_in_round_2() -> None:
+    rules = intake_rules().model_copy(
+        update={"round2": intake_rules().round2.model_copy(update={"cap_subtracts_grants": True})}
+    )
+    late = _known(grant_row(EMMA, "300"), LATE_ON)
+    reads = _round_reads(_placed("p1", late), decisions=[_decided(EMMA)], rules=rules)
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_G, rules=False)).rows
+    assert _counts(row) == [(EMMA, "round", 2)]
+
+
+@pytest.mark.asyncio
+async def test_no_rules_then_or_no_program_names_no_round_and_says_so() -> None:
+    early = _known(grant_row(EMMA, "500"), EARLY_ON)
+    reads = _round_reads(_placed("p1", early))
+    reads.pricing = None
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_G, rules=False)).rows
+    assert _counts(row) == [(EMMA, "not_priced", None)]
+    unknown = _known(grant_row("reqnobody000001", "500"), EARLY_ON, ("reqnobody000001", "500"))
+    (row,) = (await SeasonHistoryService(_round_reads(_placed("p1", unknown))).operation(2027, OP_G, rules=False)).rows
+    assert _counts(row) == [("reqnobody000001", "not_priced", None)]  # a request this season no longer holds
+
+
+@pytest.mark.asyncio
+async def test_only_an_opened_operation_with_placements_pays_for_the_round_reads() -> None:
+    """The page list read never changes, and an opened line with no placement (or only a remove, or a placement on no
+    request, or one too malformed to read back) reads nothing more and carries no round."""
+    early = _known(grant_row(EMMA, "500"), EARLY_ON)
+    reads = _round_reads(*_tick(), _placed("p1", early))
+    service = SeasonHistoryService(reads)
+    await service.page(2027, HistoryFilter(), page=1, per_page=50)
+    await service.page(2027, HistoryFilter(text="emma"), page=1, per_page=50)
+    tick = await service.operation(2027, OP_T, rules=False)
+    assert all(r.counts_in is None for r in tick.rows)
+    nowhere = replace(early, requests=())
+    removed = _row("p3", "aid_grant_placements", "ledger:9001", OP_G, action="remove", after={"placement": None})
+    malformed = _row("p4", "aid_grant_placements", "ledger:9004", OP_G, action="place",
+                     after={"placement": {"requests": [{"request_id": EMMA, "amount": "5"}]}})  # fmt: skip
+    quiet = SeasonHistoryService(_round_reads(_placed("p2", nowhere), removed, malformed))
+    assert all(r.counts_in is None for r in (await quiet.operation(2027, OP_G, rules=False)).rows)
+    assert (reads.decision_calls, reads.session_calls, reads.pricing_calls) == ([], 0, [])
+    assert (quiet._reads.decision_calls, quiet._reads.session_calls, quiet._reads.pricing_calls) == ([], 0, [])  # type: ignore[attr-defined]
+
+
+def test_counts_in_out_is_the_registers_share_vocabulary() -> None:
+    assert HistoryCountsInOut(request_id=EMMA, offsets="round", round=1).model_dump() == {
+        "request_id": EMMA,
+        "offsets": "round",
+        "round": 1,
+    }

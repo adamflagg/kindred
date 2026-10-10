@@ -97,14 +97,33 @@ def grant_round(grant: GrantInput, request: RequestInputs, rules: AidRules) -> G
     whatever `late_grant_policy` says: a posted amount stands (D43). Whether an appeal counts an after_round_1 grant is
     the rules' call (D139: it does not, unless `round2.cap_subtracts_grants` or `round2.total_cap.include_grants` is
     on); the Register applies that, not this."""
+    return grant_round_at(
+        grant,
+        program_key=request.program_key,
+        r1_decided_at=request.r1_decided_at,
+        r2_decided_at=request.r2_decided_at,
+        rules=rules,
+    )
+
+
+def grant_round_at(
+    grant: GrantInput,
+    *,
+    program_key: str,
+    r1_decided_at: datetime | None,
+    r2_decided_at: datetime | None,
+    rules: AidRules,
+) -> GrantRound:
+    """grant_round from the three things it reads off a request: the program the rules give it and Round 1's and the
+    appeal's Posted instants. Season › History replays it as of a grant placement, with no priced request to hand."""
     settings = rules.grants
-    if request.program_key not in settings.offset_programs:
+    if program_key not in settings.offset_programs:
         return "not_offset_program"
     if settings.count_when == "received" and grant.state != "received":
         return "not_received"
-    if not _recorded_after(grant, request.r1_decided_at):
+    if not _recorded_after(grant, r1_decided_at):
         return "round_1"
-    if not _recorded_after(grant, request.r2_decided_at):
+    if not _recorded_after(grant, r2_decided_at):
         return "after_round_1"
     return "after_appeal"
 

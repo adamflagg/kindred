@@ -5,7 +5,8 @@ Read access follows the data: rules rows (and any session capacity row from befo
 financial_aid.rules. An operation is "rules" only when every row is; a Posted tick that also locks rules sections is
 "offers", and a reader without rules sees it minus those rows (for_reader). A rules-only operation stays hidden from them.
 Intake runs (system:intake) are hidden unless asked. The scenario trail stays in Scenarios, so its collections are
-left out. Amounts are what the rows recorded at the time, never recomputed."""
+left out. Amounts are what the rows recorded at the time, never recomputed; a grant placement's Round is replayed
+from the dates recorded by then (placement_counts_in), never re-priced."""
 
 from __future__ import annotations
 
@@ -44,6 +45,7 @@ from api.constants.collections import (
 )
 from api.schemas.financial_aid_history import (
     HistoryCountOut,
+    HistoryCountsInOut,
     HistoryEffectOut,
     HistoryFiguresOut,
     HistoryKind,
@@ -55,11 +57,17 @@ from api.schemas.financial_aid_history import (
     HistoryRowOut,
 )
 from api.schemas.financial_aid_rules import field_change_out
+from api.services.financial_aid_calc_inputs import session_program_key
 from api.services.financial_aid_change_log_reads import log_detail
+from api.services.financial_aid_grant_offsets import offset_as_of
+from api.services.financial_aid_grant_placements import register_row
+from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_intake_types import SessionRow
 from api.services.financial_aid_ledger_service import money, parse_pb_datetime
 from api.services.financial_aid_reconciliation import camp_date
 from api.services.financial_aid_rules_effect import RULES_EFFECT_ENTITY
 from bunking.financial_aid.change_diff import field_changes
+from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import dollars
 from bunking.financial_aid.rules import AidRules
@@ -573,6 +581,45 @@ def operation_out(
     )
 
 
+# --- The Round a grant placement counts in, as of when it was placed (owner 2026-10-10, option B) --------------------
+
+
+def logged_placement(entry: LogEntry, after: Mapping[str, Any] | None) -> RegisterRow | None:
+    """The register row a `place` row recorded, when it sits on a request; None for a remove, a placement on no
+    request, or one that no longer reads back as a register row (History shows no round rather than fail)."""
+    if entry.entity != AID_GRANT_PLACEMENTS or entry.action != "place":
+        return None
+    placement = (after or {}).get("placement")
+    if not isinstance(placement, Mapping):
+        return None
+    try:
+        row = register_row(placement)
+    except ValueError:  # pydantic's ValidationError is a ValueError
+        return None
+    return row if row.requests else None
+
+
+def placement_counts_in(
+    row: RegisterRow,
+    at: datetime,
+    subjects: Subjects,
+    events: Sequence[DecisionEvent],
+    sessions: Mapping[int, SessionRow],
+    rules: AidRules | None,
+) -> list[HistoryCountsInOut]:
+    """Each share's round as of `at`: the Register's rule (offset_as_of) on the decisions recorded by then, under the
+    rules that priced the season then and the program they give the request's session. A request this season no
+    longer holds, or one with no session, has no program: "not_priced"."""
+    out = []
+    for share in row.requests:
+        found = subjects.requests.get(share.request_id)
+        session = found[2] if found is not None else 0
+        program = session_program_key(session, sessions, rules) if rules is not None and session > 0 else None
+        offset = offset_as_of(row, share, at, events=events, program_key=program, rules=rules)
+        out.append(HistoryCountsInOut(request_id=share.request_id, offsets=offset.offsets, round=offset.round))
+    return out
+
+
 class HistoryNotFoundError(FinancialAidError):
     """No such operation this season, or none this reader may see (a rules operation without rules)."""
 
@@ -590,6 +637,9 @@ class HistoryReads(Protocol):
         self, year: int, households: Collection[int], persons: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
     async def fetch_rules_version(self, year: int, version: int) -> Any | None: ...
+    async def fetch_decision_events(self, year: int, request_ids: Collection[str]) -> list[DecisionEvent]: ...
+    async def fetch_sessions(self, year: int) -> list[SessionRow]: ...
+    async def fetch_pricing_rules_at(self, year: int, ats: Collection[datetime]) -> dict[datetime, AidRules | None]: ...
 
 
 class SeasonHistoryService:
@@ -685,6 +735,28 @@ class SeasonHistoryService:
             year, {s.household_cm_id for s in found}, {s.person_cm_id for s in found if s.person_cm_id}
         )
 
+    async def _counts_in(
+        self,
+        year: int,
+        details: Sequence[tuple[LogEntry, dict[str, Any] | None, dict[str, Any] | None]],
+        subjects: Subjects,
+    ) -> dict[str, list[HistoryCountsInOut]]:
+        """Each placement row's shares and the round each counted in when placed. Only an opened line with a placement
+        on a request pays for it: one read of its shares' requests' ticks, one of the sessions and one rules replay."""
+        placed = [(e, row) for e, _, after in details if (row := logged_placement(e, after)) is not None]
+        if not placed:
+            return {}
+        events, sessions, rules_at = await asyncio.gather(
+            self._reads.fetch_decision_events(year, {s.request_id for _, row in placed for s in row.requests}),
+            self._reads.fetch_sessions(year),
+            self._reads.fetch_pricing_rules_at(year, {e.created for e, _ in placed}),
+        )
+        by_id = {s.cm_id: s for s in sessions}
+        return {
+            e.id: placement_counts_in(row, e.created, subjects, events, by_id, rules_at.get(e.created))
+            for e, row in placed
+        }
+
     async def operation(self, year: int, operation_id: str, *, rules: bool) -> HistoryOperationDetailOut:
         records, subject_records = await asyncio.gather(
             self._reads.fetch_operation(year, operation_id), self._reads.fetch_subject_records(year)
@@ -703,6 +775,7 @@ class SeasonHistoryService:
         about = {e.id: row_subject(e, subjects, before, after) for e, before, after in details}
         households, persons = await self._names(year, [s for s in about.values() if s is not None])
         parents = await self._parents(details)
+        counts_in = await self._counts_in(year, details, subjects)
         rows = [
             HistoryRowOut(
                 at=e.created,
@@ -720,6 +793,7 @@ class SeasonHistoryService:
                 against_parent=parents.get(e.id),
                 request_id=_request_of(about[e.id]),
                 session_cm_id=_session_of(about[e.id]),
+                counts_in=counts_in.get(e.id),
             )
             for e, before, after in details
         ]
