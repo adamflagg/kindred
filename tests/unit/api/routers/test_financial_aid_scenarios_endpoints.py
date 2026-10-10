@@ -686,8 +686,10 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "pct_of_ask": 60.0,
         "held_asked": 500.0,
     }
-    # Disagreement 3: the season-wide figures ride the wire (COMMITTEE's one All row: 1 request, Round 1 1,500).
-    assert (committee["requests"], committee["average_round1"]) == (1, 1500.0)
+    # Disagreement 3: the season's requests ride the wire (COMMITTEE's one All row: 1 request). Compare divides its
+    # own average Round 1 by Requests priced (owner Q11), so no season-wide average does.
+    assert committee["requests"] == 1
+    assert "average_round1" not in committee
     assert (body["last_season"]["year"], body["last_season"]["label"]) == (2026, LAST_LABEL)
     assert service.compare.await_args.kwargs == {
         "request_set": None,

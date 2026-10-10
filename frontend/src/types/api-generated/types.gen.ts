@@ -2654,10 +2654,6 @@ export type CommitteeOut = {
    * Requests
    */
   requests?: number
-  /**
-   * Average Round1
-   */
-  average_round1?: number | null
 }
 
 /**

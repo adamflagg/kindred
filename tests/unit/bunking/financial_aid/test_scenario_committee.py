@@ -19,7 +19,7 @@ from bunking.financial_aid.scenarios import (
     TableTierRow,
     TierCompareRow,
     TierRow,
-    all_rows_totals,
+    all_rows_requests,
     budget_unset,
     committee_view,
     has_last_seasons_criteria,
@@ -409,9 +409,9 @@ def _compare_row(table: str | None, tier: int, requests: int, round1: str) -> Ti
     )
 
 
-def test_the_seasons_requests_and_average_round1_sum_the_all_rows_and_the_server_divides() -> None:
-    """Disagreement 3: the All rows are per tier; the season-wide average is their Round 1 over their requests, cents
-    half up: (1,500 + 2,101) / 3 = 1,200.333... -> 1,200.33. The per-table rows are not counted twice."""
+def test_the_seasons_requests_sum_the_all_rows() -> None:
+    """Disagreement 3: the All rows are per tier, and last season's Requests priced is their requests summed. The
+    per-table rows are not counted twice. (Compare divides its own average, owner Q11, so no average rides here.)"""
     view = CommitteeView(
         budget_total=Decimal(500000),
         round1=Decimal(3601),
@@ -427,24 +427,9 @@ def test_the_seasons_requests_and_average_round1_sum_the_all_rows_and_the_server
         not_in_tiers=Decimal(0),
         round2_not_in_tiers=Decimal(0),
     )
-    assert all_rows_totals(view) == (3, Decimal("1200.33"))
+    assert all_rows_requests(view) == 3
 
 
-def test_no_request_counted_has_no_average() -> None:
+def test_no_request_counted_is_zero() -> None:
     empty = CommitteeView(Decimal(1), Decimal(0), None, Decimal(0), (), (), Decimal(0), Decimal(0))
-    assert all_rows_totals(empty) == (0, None)
-
-
-def test_the_average_rounds_cents_half_up() -> None:
-    """Regression guard: 1,000.01 / 2 = 500.005 reads 500.01 half up (500.00 half-even or down)."""
-    view = CommitteeView(
-        Decimal(1),
-        Decimal("1000.01"),
-        None,
-        Decimal(0),
-        (_compare_row(None, 1, 2, "1000.01"),),
-        (),
-        Decimal(0),
-        Decimal(0),
-    )
-    assert all_rows_totals(view) == (2, Decimal("500.01"))
+    assert all_rows_requests(empty) == 0

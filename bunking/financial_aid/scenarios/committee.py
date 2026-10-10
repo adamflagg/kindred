@@ -403,11 +403,8 @@ def has_last_seasons_criteria(document: AidRules, last_season: AidRules) -> bool
     return _criteria(document) == _criteria(last_season)
 
 
-def all_rows_totals(view: CommitteeView) -> tuple[int, Decimal | None]:
-    """The season's requests counted and its average Round 1 per request (Compare's "Requests priced" for last
-    season and "Average Round 1 per request"; Scenarios addendum disagreement 3): the All rows (table None, one per
-    tier) summed, Round 1 / requests, cents half up. None when no request is counted."""
-    rows = [row for row in view.round1_by_tier if row.table is None]
-    requests = sum(row.requests for row in rows)
-    round1 = sum((row.round1 for row in rows), ZERO)
-    return requests, (round1 / requests).quantize(_CENT, rounding=ROUND_HALF_UP) if requests else None
+def all_rows_requests(view: CommitteeView) -> int:
+    """The season's requests counted (Compare's "Requests priced" for last season; Scenarios addendum disagreement 3):
+    the All rows (table None, one per tier) summed, so the per-table rows are not counted twice. Compare divides its
+    own "Average Round 1 per request" by Requests priced (owner Q11), so no season-wide average is computed here."""
+    return sum(row.requests for row in view.round1_by_tier if row.table is None)

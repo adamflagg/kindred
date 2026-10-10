@@ -195,6 +195,18 @@ describe('the empty Spend (scenarios-12)', () => {
     expect(screen.getByText(/No applications are held yet\./)).toBeInTheDocument()
     expect(screen.queryByRole('table', { name: 'Spend' })).toBeNull()
   })
+
+  it('shows the pricing error, not "nothing held", when applications are held but nothing priced', () => {
+    show({ draft: null, from: null, error: 'Pricing failed: the rules did not validate' })
+    const note = screen.getByText('Pricing failed: the rules did not validate')
+    expect(note.className).toContain('amber')
+    expect(screen.queryByText(/No applications are held yet\./)).toBeNull()
+  })
+
+  it('keeps the update box with no applications held, even with an error', () => {
+    show({ draft: null, from: null, held: false, error: 'Pricing failed' })
+    expect(screen.getByText(/No applications are held yet\./)).toBeInTheDocument()
+  })
 })
 
 describe('By tier and Below the line folds (scenarios-3)', () => {

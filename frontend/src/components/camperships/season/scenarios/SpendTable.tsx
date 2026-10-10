@@ -293,7 +293,10 @@ export function SpendTable({
           rows={[]}
           csvFilename="spend"
           link=""
-          emptyBody={EMPTY_BOX}
+          emptyBody={
+            // Held but nothing priced: a failed read says why, never "nothing held" (scan of #3124).
+            held && error !== null ? <p className={CS_AMBER_NOTE}>{error}</p> : EMPTY_BOX
+          }
         />
       </div>
     )
