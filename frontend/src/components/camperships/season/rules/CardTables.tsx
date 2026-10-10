@@ -19,7 +19,7 @@ import {
   RG_WRAP_FIT,
 } from './gridStyles'
 import { checkRows, equityClasses, equityRows, namedAwardRows, settingText } from './rulesCards'
-import { keyLabel, type RulesNames } from './rulesModel'
+import { groupWords, type RulesNames } from './rulesModel'
 
 /** In the editor: the box for one editable cell, by its path within the section. */
 export type CellControl = (path: readonly string[]) => ReactNode
@@ -82,6 +82,8 @@ function EquityTable({
   groups,
 }: TablesProps) {
   const classes = equityClasses(content, groups)
+  // owner B34: the weight columns carry the pool's name (as the tier grid's do); the class's own label when no pool pairs with it
+  const headOf = groupWords(groups ?? [], names)
   return (
     <div className={RG_WRAP_FIT}>
       <table data-testid="equity-table" className={RG_TABLE_FIT}>
@@ -103,7 +105,7 @@ function EquityTable({
           <tr>
             {classes.map((cls) => (
               <th key={cls} className={TH_NUM}>
-                {keyLabel(cls, names)}
+                {headOf(cls)}
               </th>
             ))}
           </tr>

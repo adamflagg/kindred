@@ -290,8 +290,9 @@ class CommitteeOut(BaseModel):
     round2_by_tier: list[Round2CompareOut]  # each Round 2 table's tiers, then All
     not_in_tiers: float  # Round 1 no row holds (a withdrawn request's posted round): All's rows + this = round1
     round2_not_in_tiers: float  # the same for Round 2
-    requests: int = 0  # the All rows summed (disagreement 3)
-    average_round1: float | None = None  # their Round 1 over their requests; the server divides
+    # The All rows summed (disagreement 3): last season's Requests priced. Compare divides its own Average Round 1 per
+    # request by Requests priced (owner Q11), so no season-wide average rides here.
+    requests: int = 0
 
 
 class LastSeasonOut(BaseModel):

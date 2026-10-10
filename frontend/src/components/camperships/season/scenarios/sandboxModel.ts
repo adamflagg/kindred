@@ -1,8 +1,8 @@
 /**
- * The sandbox's three cards as data (Scenarios addendum §S5 F). Typed edits, keyed by dotted path, become the
- * document the strip prices and a release records. The bands are PR 9's (tierGrid.ts: start, width, count, the +$1
- * edge); a new count trims or fills both tables, because PUT /draft stores a whole document that must validate and
- * price on every keystroke (it differs on purpose from Rules, where new tiers stay empty). Pure.
+ * The sandbox's three cards as data (Scenarios addendum §S5 F). Typed edits, keyed by dotted path, become the document
+ * the Spend table prices and a release records. The bands are PR 9's (tierGrid.ts: start, width, count, the +$1 edge);
+ * a new count trims or fills both tables, because PUT /draft stores a whole document that must validate and price on
+ * every keystroke (it differs on purpose from Rules, where new tiers stay empty). Pure.
  */
 import type { ApiAidRulesDocument } from '../../../../types/api-types'
 import { formatWholeMoney } from '../../kit/money'
@@ -160,7 +160,7 @@ export interface Applied {
   readonly problems: ReadonlyMap<string, Problem>
 }
 
-/** The typed edits on `document`: what the strip prices and a release records. A bad figure is left out (its box
+/** The typed edits on `document`: what the Spend table prices and a release records. A bad figure is left out (its box
  * shows red), and the edits beside it still apply. */
 export function applyEdits(document: Doc, edits: ReadonlyMap<string, string>): Applied {
   const doc = structuredClone(document) as unknown as Json
@@ -311,6 +311,14 @@ export function lockNote(
 export function keyLocked(key: string, locked: readonly string[]): boolean {
   const section = TIER_KEYS.includes(key) ? 'tiers' : (key.split('.')[0] ?? '')
   return locked.includes(section)
+}
+
+/** A money box's text with thousands separators (scenarios-6: "35,000"): whole dollars only. A fractional, empty or
+ * half-typed figure shows as typed, and so does every box that is not money; typing strips the commas (`readFigure`). */
+export function boxText(key: string, raw: string): string {
+  const kind = kindOf(key)
+  if (kind !== 'money' && kind !== 'money?' && kind !== 'width') return raw
+  return /^\d{4,}$/.test(raw) ? Number(raw).toLocaleString('en-US') : raw
 }
 
 /** The read-only strip's current-year weight, following the typed prior-year weight (§S5 F3). */

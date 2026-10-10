@@ -1,13 +1,9 @@
 /**
- * The spend strip as data (Scenarios addendum §S5 E). The server does every sum (§S2 rule 2); this file picks and
- * words them, decides each change's colour (footnote 11: green leaves more money, amber leaves less) and rounds a
- * projection to $1,000, which is all the client does with it. Pure.
+ * The Spend table as data (Scenarios addendum §S5 E; final mock scenarios-3). The server does every sum (§S2 rule 2);
+ * this file picks and words them, decides each change's colour (footnote 11: green leaves more money, amber leaves
+ * less) and rounds a projection to $1,000, which is all the client does with it. Pure.
  */
-import type {
-  ApiAidScenarioProjection,
-  ApiAidScenarioResults,
-  ApiAidScenarioTooEarly,
-} from '../../../../types/api-types'
+import type { ApiAidScenarioResults, ApiAidScenarioTooEarly } from '../../../../types/api-types'
 import { MINUS, formatWholeMoney, toCents } from '../../kit/money'
 import type { PoolCardModel } from '../budgetCards'
 
@@ -70,112 +66,105 @@ export function ghostPct(card: PoolCardModel, fromCommitted: number | null): num
   return Math.min(100, (100 * fromCommitted) / base)
 }
 
-export interface LegendItem {
-  readonly round: 1 | 2 | 3
-  readonly text: string
-  readonly change: Change | null
-}
-
-export interface StripPool {
-  readonly card: PoolCardModel
-  readonly remainingChange: Change | null
+export interface SpendRow {
+  readonly key: string
+  readonly label: string
+  readonly round1: number
+  readonly round2: number
+  readonly round3: number
+  readonly spend: number
+  readonly remaining: number | null
+  /** A pool below $0 reads amber, the total below $0 red (footnote 2): the view picks the ink. */
+  readonly over: boolean
+  readonly vs: Change | null
+  /** The Remaining projected at the season's end, unrounded; null where the server sent none. */
+  readonly projected: number | null
+  /** The Used meter: a pool's bar and the dotted mark at the starting point; the total has neither. */
+  readonly card: PoolCardModel | null
   readonly ghostPct: number | null
-  readonly projected: string | null
-  readonly legend: readonly LegendItem[]
 }
 
-/** One cell per pool in the rules' order; money on no pool counts in the total, not as a cell. */
-export function stripPools(draft: Results, from: Results | null, locked: boolean): StripPool[] {
+/**
+ * The Spend table's rows (final mock; scenarios-3): one per pool in the rules' order, then the total. Money on no pool
+ * counts in the total, not as a row. The server did every sum; this reads them, and colours each Remaining change
+ * (green leaves more money, amber less).
+ */
+export function spendTable(
+  draft: Results,
+  from: Results | null
+): { pools: SpendRow[]; total: SpendRow } {
   const projected = new Map(
     (draft.projection?.pools ?? []).map((p) => [p.pool, p.remaining ?? null])
   )
-  return draft.pools
+  const pools = draft.pools
     .filter((pool) => pool.pool !== '')
-    .map((pool) => {
+    .map((pool): SpendRow => {
       const before = from?.pools.find((p) => p.pool === pool.pool) ?? null
       const card = poolCard(pool)
-      const legend: LegendItem[] = [
-        // N10: once Round 1 posts, posted Round 1 stands, so its change is left out.
-        {
-          round: 1,
-          text: `R1 ${formatWholeMoney(pool.round1)}`,
-          change: locked ? null : moneyChange(pool.round1, before?.round1, 'spend'),
-        },
-      ]
-      if (locked)
-        legend.push({
-          round: 2,
-          text: `R2 ${formatWholeMoney(pool.round2)}`,
-          change: moneyChange(pool.round2, before?.round2, 'spend'),
-        })
-      if (toCents(pool.round3) > 0)
-        legend.push({
-          round: 3,
-          text: `R3 ${formatWholeMoney(pool.round3)}`,
-          change: moneyChange(pool.round3, before?.round3, 'spend'),
-        })
-      const ahead = projected.get(pool.pool)
       return {
+        key: pool.pool,
+        label: pool.label,
+        round1: pool.round1,
+        round2: pool.round2,
+        round3: pool.round3,
+        spend: spent(pool),
+        remaining: pool.remaining ?? null,
+        over: card.overShare,
+        vs: moneyChange(pool.remaining, before?.remaining, 'remaining'),
+        projected: projected.get(pool.pool) ?? null,
         card,
-        remainingChange: moneyChange(pool.remaining, before?.remaining, 'remaining'),
         ghostPct: ghostPct(card, before === null ? null : spent(before)),
-        projected: ahead === undefined || ahead === null ? null : `projected ${roughly(ahead)}`,
-        legend,
       }
     })
-}
-
-export interface StripLead {
-  readonly remaining: number | null
-  readonly overBudget: boolean
-  readonly change: Change | null
-  readonly ofWords: string
-}
-
-/** The lead column (§S5 E; N1). `postedStands`: after the lock, the sandbox's Round 1 settings differ from the
- * rules in effect (DraftOut.differs_in), so its posted Round 1 stands (N10). */
-export function stripLead(draft: Results, from: Results | null, postedStands: boolean): StripLead {
   const remaining = draft.remaining ?? null
-  const n = draft.requests
-  return {
+  const total: SpendRow = {
+    key: 'total',
+    label: 'Total',
+    round1: draft.round1,
+    round2: draft.round2,
+    round3: draft.round3,
+    spend: spent(draft),
     remaining,
-    overBudget: remaining !== null && toCents(remaining) < 0,
-    change: moneyChange(remaining, from?.remaining, 'remaining'),
-    ofWords: `of ${formatWholeMoney(draft.allocated ?? draft.round1_allocated ?? null)} · ${
-      postedStands ? 'posted Round 1 stands' : `${String(n)} application${n === 1 ? '' : 's'}`
-    }`,
+    over: remaining !== null && toCents(remaining) < 0,
+    vs: moneyChange(remaining, from?.remaining, 'remaining'),
+    projected: draft.projection?.remaining ?? null,
+    card: null,
+    ghostPct: null,
   }
+  return { pools, total }
 }
 
-/** The projection line (§S5 E; N8): muted, never coloured; dimmed after the lock; absent with neither a projection nor
- * `tooEarly`. Under 5% of last year's applications in (owner 10-07) the server sends `tooEarly` instead, and the line
- * says so. */
-export function projectionWords(
-  projection: ApiAidScenarioProjection | null | undefined,
-  locked: boolean,
-  tooEarly?: ApiAidScenarioTooEarly | null
-): { text: string; dimmed: boolean } | null {
-  if (projection === null || projection === undefined) {
-    if (tooEarly === null || tooEarly === undefined) return null
-    // Rounded DOWN, so a share just under the 5% floor never reads "about 5%" on a too-early line.
-    const early = Math.floor(tooEarly.share * 100)
-    const share = early < 1 ? 'under 1%' : `about ${String(early)}%`
-    return {
-      text: `Too early to project: ${share} of last year's applications had arrived by this point`,
-      dimmed: locked,
-    }
+/** "$306k", the mock's `$k`: a projection to the nearest $1,000, shown after a "≈". */
+export function kilo(value: number): string {
+  const thousands = Math.round(Math.abs(value) / 1000)
+  return `${value < 0 && thousands > 0 ? MINUS : ''}$${thousands.toLocaleString('en-US')}k`
+}
+
+/** The heading line's muted words: "Remaining $243,550 of $1,000,000 · 56 applications held". After the lock, with
+ * Round 1 settings that differ from the rules in effect, posted Round 1 stands (N10) in place of the applications. */
+export function spendHeading(draft: Results, postedStands: boolean, pricedOn: string): string {
+  const budget = formatWholeMoney(draft.allocated ?? draft.round1_allocated ?? null)
+  return `Remaining ${formatWholeMoney(draft.remaining ?? null)} of ${budget} · ${
+    postedStands ? 'posted Round 1 stands' : pricedOn
+  }`
+}
+
+/** The Projected cells' title: what the figure is, or why there is none (too early, under 5% of last year's). */
+export function projectedTitle(draft: Results): string {
+  if (draft.projection === null || draft.projection === undefined) {
+    return tooEarlyWords(draft.too_early) ?? 'No projection yet'
   }
-  const pct = String(Math.round(projection.share * 100))
-  const expected = `about ${String(projection.requests)} expected`
-  return locked
-    ? {
-        text: `≈${pct}% of last year's applications had arrived by this point → ${expected} · R1 + R2 ≈ ${roughly(projection.round1_and_2)}`,
-        dimmed: true,
-      }
-    : {
-        text: `Projected: by this point last year ${pct}% had arrived → ${expected} · if the rest arrive like last year: Round 1 ≈ ${roughly(projection.round1)}`,
-        dimmed: false,
-      }
+  return `Projected Remaining: if the rest of the season's applications arrive like last year's (about ${String(Math.round(draft.projection.share * 100))}% are in by this week)`
+}
+
+/** Why there is no projection (§S5 E; N8): under 5% of last year's applications in (owner 10-07) the server sends
+ * `tooEarly` in place of a projection, and the words say so; null when it sent neither. */
+export function tooEarlyWords(tooEarly: ApiAidScenarioTooEarly | null | undefined): string | null {
+  if (tooEarly === null || tooEarly === undefined) return null
+  // Rounded DOWN, so a share just under the 5% floor never reads "about 5%" on a too-early line.
+  const early = Math.floor(tooEarly.share * 100)
+  const share = early < 1 ? 'under 1%' : `about ${String(early)}%`
+  return `Too early to project: ${share} of last year's applications had arrived by this point`
 }
 
 export interface BelowPart {
@@ -207,7 +196,7 @@ const countChange = (now: number, from: number | undefined) => {
   return `${now > from ? '+' : MINUS}${String(Math.abs(now - from))}`
 }
 
-/** The Below the line popover's rows (§S5 E). Counts and asks, so their changes are plain, never coloured. */
+/** The Below the line fold's rows (§S5 E). Counts and asks, so their changes are plain, never coloured. */
 export function belowRows(draft: Results, from: Results | null, locked: boolean): BelowRow[] {
   const money = (now: number, then: number | undefined) => ({
     draft: formatWholeMoney(now),
@@ -248,7 +237,7 @@ export interface TierRow {
   readonly change: Change | null
 }
 
-/** The By tier popover (§S5 E): each tier's Round 1 (and Round 2 after the lock), and its Round 1 + 2 change. */
+/** The By tier fold (§S5 E): each tier's Round 1 (and Round 2 after the lock), and its Round 1 + 2 change. */
 export function byTierRows(draft: Results, from: Results | null, locked: boolean): TierRow[] {
   return draft.by_tier.map((row) => {
     const before = from?.by_tier.find((t) => t.tier === row.tier)

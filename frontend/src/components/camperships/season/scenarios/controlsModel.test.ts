@@ -10,6 +10,8 @@ import {
   nothingNewWords,
   parseView,
   pillWords,
+  leadWords,
+  PRICE_CHOICES,
   pricedOnFigures,
   pricedOnWords,
   requestSetParam,
@@ -39,6 +41,21 @@ describe('the held pile (§S5 A2–A3; N5)', () => {
     )
     expect(pillWords(null)).toBe('No applications held yet')
     expect(nothingNewWords(SNAPSHOT)).toBe('Nothing new since Feb 3, 2:10 pm')
+  })
+})
+
+describe('the toolbar lead (scenarios-2)', () => {
+  it('reads "‹n› held" and the moment apart, so the moment can be muted; the full sentence stays pillWords', () => {
+    expect(leadWords(SNAPSHOT)).toEqual({ held: '180 held', when: 'Feb 3, 2:10 pm' })
+    expect(leadWords(null)).toEqual({ held: 'No applications held yet', when: null })
+  })
+
+  it('words Price in the toolbar’s short labels', () => {
+    expect(PRICE_CHOICES.map((c) => c.label)).toEqual([
+      'All held',
+      'Through the R1 deadline',
+      'Through a date…',
+    ])
   })
 })
 

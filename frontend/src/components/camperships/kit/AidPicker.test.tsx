@@ -134,6 +134,25 @@ describe('AidPickerMulti (rev1: "the funds reporting group picker needs to suppo
 })
 
 // Requests' Program picker (mock PROG_OPTS): a pool is a pickable bold heading, its programs indented.
+describe('AidPickerMulti face words (Scenarios: "Columns · 5")', () => {
+  it('reads the caller’s own words on the button, the picks still in the title', () => {
+    render(
+      <AidPickerMulti
+        label="Columns"
+        values={['cq', 'tbm']}
+        options={GROUPS}
+        noun="columns"
+        none="Columns"
+        faceText="Columns · 2"
+        onChange={vi.fn()}
+      />
+    )
+    const button = screen.getByRole('button', { name: /^Columns/ })
+    expect(button).toHaveTextContent('Columns · 2')
+    expect(button).toHaveAttribute('title', 'Camp & Quest, TBM')
+  })
+})
+
 describe('AidPicker option levels', () => {
   it('draws a heading option bold and an indented one pushed in', async () => {
     render(

@@ -333,7 +333,7 @@ from bunking.financial_aid.scenarios import (
     CommitteeView,
     PoolResult,
     ScenarioResults,
-    all_rows_totals,
+    all_rows_requests,
     appeal_totals,
     round2_by_tier_totals,
 )
@@ -1395,7 +1395,6 @@ def _pct(value: Decimal | None) -> float | None:
 
 
 def _committee_out(view: CommitteeView) -> CommitteeOut:
-    requests, average = all_rows_totals(view)
     return CommitteeOut(
         budget_total=_cents(view.budget_total),
         round1=money(view.round1),
@@ -1437,8 +1436,7 @@ def _committee_out(view: CommitteeView) -> CommitteeOut:
         ],
         not_in_tiers=money(view.not_in_tiers),
         round2_not_in_tiers=money(view.round2_not_in_tiers),
-        requests=requests,
-        average_round1=_cents(average),
+        requests=all_rows_requests(view),
     )
 
 

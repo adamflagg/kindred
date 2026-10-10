@@ -197,7 +197,20 @@ describe('Make it the rules draft (D39; Decision 21)', () => {
       Node.DOCUMENT_POSITION_FOLLOWING
     )
     // Disabled until the replaced edit is ticked: the row says what it waits on.
-    expect(within(row).getByText('Tick each warning to go on')).toBeInTheDocument()
+    expect(within(row).getByText('Check each warning to go on')).toBeInTheDocument()
+  })
+
+  // Design language §24 (owner 10-09): the kit editor, fields in a two-column grid, the buttons last.
+  it('lays each changed section out in the kit editor grid, label · changes, and draws its check 13px in the accent', async () => {
+    await renderDialog('/aid/season/scenarios?compare=A1')
+    const grid = within(screen.getByTestId('promotion-preview')).getByTestId('aid-editor-grid')
+    const section = within(grid).getByText('Round 1 award table')
+    expect(section.closest('[data-testid="aid-editor-grid"]')).toBe(grid)
+    expect(
+      within(grid).getByText('General › Tiers › Tier 2 › Round 1 %: 55% → 58%')
+    ).toBeInTheDocument()
+    const box = within(grid).getByRole('checkbox')
+    expect(box).toHaveClass('accent-primary', 'h-[13px]', 'w-[13px]')
   })
 
   it('forgets a tick when it is closed and opened again', async () => {

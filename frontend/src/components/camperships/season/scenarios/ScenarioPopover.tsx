@@ -13,6 +13,7 @@ export function ScenarioPopover({
   align = 'left',
   width,
   testId,
+  editor = false,
   children,
 }: {
   open: boolean
@@ -21,6 +22,8 @@ export function ScenarioPopover({
   align?: 'left' | 'right'
   width?: number
   testId: string
+  /** The popover holds a kit EditorForm (§24): the editor is the card, so the shell draws only the float. */
+  editor?: boolean
   children: ReactNode
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -40,7 +43,7 @@ export function ScenarioPopover({
     <div
       ref={ref}
       data-testid={testId}
-      className={`bg-card border-border absolute top-full z-30 mt-1 rounded-lg border p-2 shadow-lg ${align === 'right' ? 'right-0' : 'left-0'}`}
+      className={`absolute top-full z-30 mt-1 shadow-lg ${editor ? 'rounded-[10px]' : 'bg-card border-border rounded-lg border p-2'} ${align === 'right' ? 'right-0' : 'left-0'}`}
       style={width === undefined ? undefined : { width: `${String(width)}px` }}
     >
       {children}

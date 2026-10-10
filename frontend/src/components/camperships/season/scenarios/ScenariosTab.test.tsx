@@ -116,8 +116,8 @@ async function pickPrice(label: string) {
   await userEvent.click(screen.getByRole('option', { name: label }))
 }
 
-async function openStart() {
-  await userEvent.click(screen.getByRole('button', { name: /^Start from:/ }))
+async function openFrom() {
+  await userEvent.click(screen.getByRole('button', { name: /^From:/ }))
 }
 
 function Where() {
@@ -168,7 +168,11 @@ beforeEach(() => {
 describe('the control line (§S5 A)', () => {
   it('says the held pile, or that nothing is held yet, and updates it only on the button', async () => {
     renderAt()
-    expect(screen.getByText('420 applications · as of Jan 12, 10:00 am')).toBeInTheDocument()
+    // The lead is "420 held · Jan 12, 10:00 am"; the full sentence is its title (scenarios-2).
+    expect(screen.getByText('420 held').closest('[title]')).toHaveAttribute(
+      'title',
+      '420 applications · as of Jan 12, 10:00 am'
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Update Applications' }))
     expect(work.update).toHaveBeenCalledOnce()
   })
@@ -181,7 +185,7 @@ describe('the control line (§S5 A)', () => {
 
   it('prices both the sandbox and Compare on Price ▾ (N6)', async () => {
     renderAt('?panel=compare')
-    await pickPrice('through the Round 1 deadline')
+    await pickPrice('Through the R1 deadline')
     expect(location).toContain('through=deadline')
     expect(compareCalls.at(-1)?.query.requestSet).toEqual({ kind: 'deadline' })
     await userEvent.click(screen.getByRole('button', { name: 'Sandbox' }))
@@ -190,18 +194,20 @@ describe('the control line (§S5 A)', () => {
 
   it('offers the rules draft in Start from only while it differs (§S15 item 4)', async () => {
     renderAt('', { pricing_version: 4, rules_version: 5, rules_draft_version: 5 })
-    await openStart()
+    await openFrom()
     expect(screen.getByRole('option', { name: 'Rules draft · v5' })).toBeInTheDocument()
   })
 
-  it('says on the Start from line what an option was built on, offers no Make … the Rules Draft, and Compare still opens (F6; A11)', async () => {
+  it('says in the From picker’s title what an option was built on, offers no Make … the Rules Draft, and Compare still opens (F6; A11)', async () => {
     renderAt('', {
       pricing_version: 5,
       draft: scenarioDraft({ built_on_version: 4 }),
       options: OPTIONS.map((o) => (o.code === 'B' ? { ...o, promotable: false } : o)),
     })
-    const strip = screen.getByTestId('start-strip')
-    expect(within(strip).getByText('built on v4, v5 is in effect now')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^From:/ })).toHaveAttribute(
+      'title',
+      expect.stringContaining('built on v4, v5 is in effect now')
+    )
     expect(screen.queryByRole('button', { name: /the Rules Draft…$/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^Compare/ }))
     expect(location).toContain('panel=compare')
@@ -217,14 +223,16 @@ describe('the control line (§S5 A)', () => {
     expect(screen.getByRole('button', { name: 'Make B the Rules Draft…' })).toBeInTheDocument()
   })
 
-  it('loads a chip at once with nothing unkept, and asks first with changes (§S5 C)', async () => {
+  it('loads a kept option at once with nothing unkept, and asks first with changes (§S5 C)', async () => {
     renderAt()
-    await userEvent.click(screen.getByRole('button', { name: /^A rules draft v4 as they were$/ }))
+    await openFrom()
+    await userEvent.click(screen.getByRole('option', { name: /^A · rules draft v4 as they were$/ }))
     expect(work.load).toHaveBeenCalledWith({ option: 'A' })
     work.edits = new Map([['awards.minimum', '125']])
     rerenderWork()
+    await openFrom()
     await userEvent.click(
-      await screen.findByRole('button', { name: /^A rules draft v4 as they were$/ })
+      await screen.findByRole('option', { name: /^A · rules draft v4 as they were$/ })
     )
     await userEvent.click(screen.getByRole('button', { name: 'Drop and Load A' }))
     expect(work.load).toHaveBeenCalledTimes(2)
@@ -265,9 +273,9 @@ describe('the control line (§S5 A)', () => {
       "2026's criteria don't fit 2027's rules in effect (programs.teen.r1_table: no such table): start from the rules and edit instead"
     renderAt()
     expect(screen.getByText(work.error)).toBeInTheDocument()
-    const start = screen.getByRole('button', { name: /^Start from:/ })
+    const start = screen.getByRole('button', { name: /^From:/ })
     expect(start).toBeEnabled()
-    await openStart()
+    await openFrom()
     expect(screen.getByRole('option', { name: 'Rules in effect · v3' })).not.toHaveAttribute(
       'aria-disabled',
       'true'
@@ -276,9 +284,9 @@ describe('the control line (§S5 A)', () => {
 })
 
 describe('the sandbox (§S5 E–G)', () => {
-  it('shows the strip and the three cards', () => {
+  it('shows the Spend table and the three cards', () => {
     renderAt()
-    expect(screen.getByTestId('spend-strip')).toBeInTheDocument()
+    expect(screen.getByTestId('spend-table')).toBeInTheDocument()
     expect(screen.getByText('Tiers & Round 1')).toBeInTheDocument()
     expect(screen.getByText('Equity')).toBeInTheDocument()
     expect(screen.getByText('Income counting')).toBeInTheDocument()
@@ -317,7 +325,7 @@ describe('the sandbox (§S5 E–G)', () => {
       isFetching: false,
     }
     renderAt()
-    const strip = screen.getByTestId('spend-strip')
+    const strip = screen.getByTestId('spend-table')
     expect(within(strip).getByText('$243,550')).toBeInTheDocument()
     expect(within(strip).getByText('$41,496')).toBeInTheDocument()
     expect(strip.textContent).not.toMatch(/\.\d/)
@@ -325,14 +333,20 @@ describe('the sandbox (§S5 E–G)', () => {
 
   it('turns Fit off under Price ▾, with its reason', () => {
     renderAt('?through=deadline')
-    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
-    expect(screen.getByText('Fit uses every application held')).toBeInTheDocument()
+    // why it is off rides in the disabled button's title only (scenarios-13)
+    const fit = screen.getByRole('button', { name: 'Fit to Budget' })
+    expect(fit).toBeDisabled()
+    expect(fit).toHaveAttribute('title', 'Fit uses every application held')
+    expect(screen.queryByText('Fit uses every application held')).toBeNull()
   })
 
   it('turns Fit off after Round 1 posts', () => {
     renderAt('', { locked_sections: ['award_tables'], locked_by_round: 1 })
     expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
-    expect(screen.queryByText('Fit uses every application held')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
+      'title',
+      'Off once Round 1 posts'
+    )
   })
 
   it('greys the locked cards with one note each', () => {
@@ -364,19 +378,18 @@ describe('Compare (§S5 H) and the URL (§S5 L)', () => {
     expect(screen.getByTestId('compare-table')).toBeInTheDocument()
   })
 
-  it('drops a kept code the year doesn’t hold, and says so once', () => {
+  it('drops a kept code the year doesn’t hold, and says so once, in the toolbar’s status, not as a row', () => {
     renderAt('?panel=compare&compare=A,Q')
-    expect(
-      screen.getByText("Q isn't kept in 2027, so it was left out of the compare.")
-    ).toBeInTheDocument()
+    const note = screen.getByText("Q isn't kept in 2027, so it was left out of the compare.")
+    expect(screen.getByTestId('aid-toolbar')).toContainElement(note)
     expect(location).toContain('compare=A')
     expect(location).not.toContain('Q')
   })
 
   it('reads an old trail link as the sandbox and drops its params on the next write', async () => {
     renderAt('?panel=trail&trail_page=2')
-    expect(screen.getByTestId('spend-strip')).toBeInTheDocument()
-    await pickPrice('through the Round 1 deadline')
+    expect(screen.getByTestId('spend-table')).toBeInTheDocument()
+    await pickPrice('Through the R1 deadline')
     expect(location).not.toContain('trail_page')
     expect(location).not.toContain('panel=trail')
   })
@@ -412,6 +425,12 @@ describe('Compare (§S5 H) and the URL (§S5 L)', () => {
     expect(location).toContain('rules=1')
   })
 
+  it('says what to do first when no applications are held, in the kit’s dashed box (scenarios-12)', () => {
+    renderAt('?panel=compare', { snapshot: null })
+    expect(screen.getByText(/No applications are held yet:/)).toHaveClass('border-dashed')
+    expect(screen.queryByTestId('compare-table')).toBeNull()
+  })
+
   it('never fetches the compare without the rules permission', () => {
     granted = false
     renderAt('?panel=compare')
@@ -434,13 +453,18 @@ describe('states (§S5 M)', () => {
     expect(screen.getByText('No aid rules for 2028')).toBeInTheDocument()
   })
 
-  it('says nothing is held yet before the first update, the strip says to update, and Keep… is off', () => {
+  it('says nothing is held yet before the first update, Spend says to update, and Fit and Keep… are off', () => {
     work.edits = new Map([['awards.minimum', '125']])
     renderAt('', { snapshot: null })
     expect(screen.getByText('No applications held yet')).toBeInTheDocument()
-    expect(
-      screen.getByText('Update Applications to price the applications held.')
-    ).toBeInTheDocument()
+    // the Spend heading row stays over the dashed box (scenarios-12), and Fit is off, with its title (scenarios-13)
+    expect(screen.getByText('nothing priced yet')).toBeInTheDocument()
+    expect(screen.getByText(/No applications are held yet\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Fit to Budget' })).toHaveAttribute(
+      'title',
+      'Nothing is held yet'
+    )
     expect(screen.getByRole('button', { name: 'Keep…' })).toBeDisabled() // disagreement 17: nothing can be recorded yet
   })
 })
@@ -458,10 +482,8 @@ describe('a refused Price ▾ read (CodeRabbit on #3047; lead #29 ruling 3)', ()
       isPlaceholderData: false,
       isFetching: false,
     }
-    await pickPrice('through the Round 1 deadline')
-    await userEvent.click(screen.getByRole('button', { name: 'By tier ▸' }))
-    expect(
-      within(screen.getByTestId('tier-popover')).getByText('By tier · 420 applications held')
-    ).toBeInTheDocument()
+    await pickPrice('Through the R1 deadline')
+    // By tier's summary names what the kept figures were priced on, never "received through  (…)"
+    expect(screen.getByText('Round 1 by tier · 420 applications held')).toBeInTheDocument()
   })
 })

@@ -10,7 +10,7 @@ import { useYear } from '../../../../hooks/useCurrentYear'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import { Modal } from '../../../ui/Modal'
 import { aidHref } from '../../kit/asOf'
-import { EditorActions } from '../../kit/EditorLayout'
+import { EditorActions, EditorField, EditorGrid } from '../../kit/EditorLayout'
 import { CS_AMBER_NOTE, CS_BODY, CS_BTN, CS_BTN2, CS_LINK, CS_SMALL } from '../../kit/csType'
 import { PILL } from '../../kit/kitStyles'
 import { SECTION_TITLES, changeWords, type RulesVocabulary } from '../rules/rulesModel'
@@ -100,7 +100,7 @@ export function MakeRulesDraftDialog({
         done === null ? (
           <EditorActions
             {...(data !== undefined && !allConfirmed(data, acks)
-              ? { reason: 'Tick each warning to go on' }
+              ? { reason: 'Check each warning to go on' }
               : {})}
           >
             <button
@@ -149,46 +149,59 @@ export function MakeRulesDraftDialog({
               Nothing to change: what this option changed is already in the rules draft.
             </p>
           )}
-          {data.sections.map((section) => {
-            const warning = warningWords(section)
-            const token = section.warning?.token ?? ''
-            return (
-              <div
-                key={section.section}
-                className="space-y-1"
-                data-promotion-section={section.section}
-              >
-                <div className="flex items-center gap-2 font-medium">
-                  {SECTION_TITLES[section.section]}
-                  <span className={PILL.amber}>becomes Draft</span>
-                </div>
-                <ul className={CS_SMALL}>
-                  {section.changes.map((change) => (
-                    <li key={change.path.join('.')}>
-                      {changeWords(change, { ...labels, section: section.section }, settingWords)}
-                    </li>
-                  ))}
-                </ul>
-                {warning !== null && (
-                  <label className={`${CS_AMBER_NOTE} flex items-center gap-1.5`}>
-                    <input
-                      type="checkbox"
-                      checked={acks.get(section.section) === token}
-                      onChange={(event) =>
-                        setAcks((previous) => {
-                          const next = new Map(previous)
-                          if (event.target.checked) next.set(section.section, token)
-                          else next.delete(section.section)
-                          return next
-                        })
-                      }
-                    />
-                    {`${warning} Replace it.`}
-                  </label>
-                )}
-              </div>
-            )
-          })}
+          {data.sections.length > 0 && (
+            <EditorGrid columns={2}>
+              {data.sections.map((section) => {
+                const warning = warningWords(section)
+                const token = section.warning?.token ?? ''
+                return (
+                  <EditorField
+                    key={section.section}
+                    label={
+                      <span className="flex flex-col items-start gap-1 whitespace-normal">
+                        <span className="text-foreground font-medium">
+                          {SECTION_TITLES[section.section]}
+                        </span>
+                        <span className={PILL.amber}>becomes Draft</span>
+                      </span>
+                    }
+                  >
+                    <div className="space-y-1" data-promotion-section={section.section}>
+                      <ul className={CS_SMALL}>
+                        {section.changes.map((change) => (
+                          <li key={change.path.join('.')}>
+                            {changeWords(
+                              change,
+                              { ...labels, section: section.section },
+                              settingWords
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      {warning !== null && (
+                        <label className={`${CS_AMBER_NOTE} flex items-center gap-1.5`}>
+                          <input
+                            type="checkbox"
+                            className="accent-primary m-0 h-[13px] w-[13px]"
+                            checked={acks.get(section.section) === token}
+                            onChange={(event) =>
+                              setAcks((previous) => {
+                                const next = new Map(previous)
+                                if (event.target.checked) next.set(section.section, token)
+                                else next.delete(section.section)
+                                return next
+                              })
+                            }
+                          />
+                          {`${warning} Replace it.`}
+                        </label>
+                      )}
+                    </div>
+                  </EditorField>
+                )
+              })}
+            </EditorGrid>
+          )}
           {data.unchanged.length > 0 && (
             <p
               className={CS_SMALL}
