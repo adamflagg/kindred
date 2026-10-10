@@ -373,12 +373,20 @@ export function adultWeekendTitle(name: string): string {
  *
  * Only a NUMBERED identity is cut at its colon. An un-numbered name (Ready,
  * Set, Camp; Winter Family Camp; the 2017-2019 names) has no theme to drop and
- * stays whole, as `short` has always printed it.
+ * stays whole, as `short` has always printed it, except that a name ENDING in
+ * "Winter Family Camp" or "Ready, Set, Camp" is that name (the mock's NAMED_WEEKENDS).
  */
 export function familyShortName(name: string): string {
   const identity = shortWeekendName(name)
-  return /\s\d+$/.test(identity) ? identity : name
+  if (/\s\d+$/.test(identity)) return identity
+  // The final mock's NAMED_WEEKENDS rule (cs-final.js sessForm; ux3 statistics-12): a name that ENDS in a named
+  // weekend ("JFAM Winter Family Camp") is that weekend, so it fits a one-line cell instead of cutting.
+  const named = SHORT_NAMED_WEEKENDS.find((weekend) => identity.endsWith(weekend))
+  return named ?? name
 }
+
+/** The unnumbered weekends whose `short` form drops any prefix (owner ruling, the final mocks' NAMED_WEEKENDS). */
+const SHORT_NAMED_WEEKENDS = ['Winter Family Camp', 'Ready, Set, Camp'] as const
 
 /**
  * An adult weekend's `tiny` form. The owner mapped exactly two (2026-10-09,

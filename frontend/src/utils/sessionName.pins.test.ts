@@ -439,7 +439,8 @@ describe('#2763 record-adapter pins', () => {
       ['Family Camp 10: Labor Day Weekend', 'family', 'Family Camp 10'],
       ['Spring Family Camp', 'family', 'Spring Family Camp'],
       ['Fall Family Camp II', 'family', 'Fall Family Camp II'],
-      ['JFAM Winter Family Camp', 'family', 'JFAM Winter Family Camp'],
+      // ux3 statistics-12: the final mock's NAMED_WEEKENDS rule drops the "JFAM" prefix from the short form
+      ['JFAM Winter Family Camp', 'family', 'Winter Family Camp'],
       ['Ready, Set, Camp', 'family', 'Ready, Set, Camp'],
       ['Spring Family Retreat', 'family', 'Spring Family Retreat'],
       ["Women's Weekend (3 nights)", 'adult', "Women's Weekend"],

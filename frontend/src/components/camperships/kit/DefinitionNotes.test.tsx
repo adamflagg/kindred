@@ -177,3 +177,47 @@ describe('DefinitionNotes number', () => {
     expect(number).toHaveClass('flex-none', 'min-w-3')
   })
 })
+
+describe('DefinitionNotes: extra bold terms (ux3 statistics-7)', () => {
+  it('sets each also-bold term in bold wherever it occurs, beside the lead term', () => {
+    render(
+      <DefinitionNotes
+        notes={[
+          {
+            n: 1,
+            term: 'Awarded',
+            text: 'Awarded: Posted, net of clawbacks. Awards counts requests above $0; more Awards follow.',
+            alsoBold: ['Awards'],
+          },
+        ]}
+      />
+    )
+    const bolds = [...document.querySelectorAll('b')].map((b) => b.textContent)
+    expect(bolds).toEqual(['Awarded:', 'Awards', 'Awards'])
+    expect(screen.getByRole('listitem')).toHaveTextContent(
+      '1. Awarded: Posted, net of clawbacks. Awards counts requests above $0; more Awards follow.'
+    )
+  })
+
+  it('bolds a term with symbols in it (R2 max fee %), and leaves a note with none alone', () => {
+    render(
+      <DefinitionNotes
+        notes={[
+          {
+            n: 1,
+            term: 'Appeals',
+            text: 'Appeals: ask again; appeal rate = a ÷ b. R2 max fee % is a rules value.',
+            alsoBold: ['appeal rate', 'R2 max fee %'],
+          },
+          { n: 2, term: 'Apps', text: 'Apps: every request.' },
+        ]}
+      />
+    )
+    expect([...document.querySelectorAll('b')].map((b) => b.textContent)).toEqual([
+      'Appeals:',
+      'appeal rate',
+      'R2 max fee %',
+      'Apps:',
+    ])
+  })
+})

@@ -407,3 +407,43 @@ describe('Requested and Asked (as typed): the raw sums beside the capped ones (o
     expect(programsHeading(PROGRAMS).notes).toBeUndefined()
   })
 })
+
+describe('the session table as the final mock draws it (ux3 statistics)', () => {
+  const CENTS = {
+    ...PROGRAMS,
+    pools: [
+      {
+        ...PROGRAMS.pools[0]!,
+        sessions: [
+          {
+            ...PROGRAMS.pools[0]!.sessions[0]!,
+            round1: { ...PROGRAMS.pools[0]!.sessions[0]!.round1, requested: 4097.2 },
+          },
+        ],
+      },
+    ],
+  }
+
+  it('shows money in whole dollars and keeps the cents in Copy and the CSV (statistics-6)', () => {
+    const rows = programRows(CENTS, ALL, linkOf)
+    const requested = programColumns(() => null).findIndex((c) => c.key === 'Round 1-requested')
+    const cell = rows[1]?.cells[requested]
+    expect(cell).toMatchObject({ kind: 'money', value: 4097.2, whole: true })
+    const columns = programColumns(() => null)
+    const heading = programsHeading(CENTS)
+    expect(copyText(heading, columns, rows)).toContain('$4,097.20')
+    expect(csvLines(heading, columns, rows, '/l').flat()).toContain('4097.20')
+  })
+
+  it("lets a subtotal's long label clamp to two lines (statistics-4)", () => {
+    const rows = programRows(PROGRAMS, ALL, linkOf)
+    expect(rows[3]?.cells[0]).toMatchObject({ twoLines: true })
+    expect(rows[1]?.cells[0]).not.toHaveProperty('twoLines')
+  })
+
+  it('draws the Total awarded column in bold (statistics-m2)', () => {
+    const total = programColumns(() => null).find((c) => c.key === 'total')
+    expect(total?.strong).toBe(true)
+    expect(programColumns(() => null).filter((c) => c.strong)).toHaveLength(1)
+  })
+})

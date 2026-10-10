@@ -410,8 +410,12 @@ describe('#2790 — family short and adult tiny (owner ruling 2026-10-09)', () =
     ['Family Camp 10: Labor Day Weekend', 'Family Camp 10'],
     ['Family Camp 3', 'Family Camp 3'],
     ['Ready, Set, Camp', 'Ready, Set, Camp'],
-    ['JFAM Winter Family Camp', 'JFAM Winter Family Camp'],
     ['Spring Family Camp', 'Spring Family Camp'],
+    // the final mock's NAMED_WEEKENDS rule (ux3 statistics-12): a name ending in a named weekend is that weekend
+    ['JFAM Winter Family Camp', 'Winter Family Camp'],
+    ['Young Families Winter Family Camp', 'Winter Family Camp'],
+    ['Ready, Set, Camp', 'Ready, Set, Camp'],
+    ['Weekend of Ready, Set, Camp', 'Ready, Set, Camp'],
   ])('familyShortName(%j) → %j: the number, never the theme', (name, expected) => {
     expect(familyShortName(name)).toBe(expected)
   })

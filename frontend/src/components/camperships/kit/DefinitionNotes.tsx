@@ -87,15 +87,17 @@ function NoteWords({
   alsoBold: readonly string[]
 }) {
   const { term, text } = note
+  // The page's terms (a mock's second terms) and the note's own (server `also_bold`), each bold at its first use.
+  const more = [...alsoBold, ...(note.alsoBold ?? [])]
   if (term === undefined || !text.startsWith(term)) {
-    return boldTerm ? <TermFirst text={text} /> : <>{text}</>
+    return boldTerm ? <TermFirst text={text} /> : <AlsoBold text={text} terms={more} />
   }
   const next = text.charAt(term.length)
   if (next === ':') {
     return (
       <>
         <b className="text-foreground font-semibold">{`${term}:`}</b>
-        <AlsoBold text={text.slice(term.length + 1)} terms={alsoBold} />
+        <AlsoBold text={text.slice(term.length + 1)} terms={more} />
       </>
     )
   }
@@ -104,11 +106,11 @@ function NoteWords({
     return (
       <>
         <b className="text-foreground font-semibold">{term}</b>
-        <AlsoBold text={text.slice(term.length)} terms={alsoBold} />
+        <AlsoBold text={text.slice(term.length)} terms={more} />
       </>
     )
   }
-  return boldTerm ? <TermFirst text={text} /> : <>{text}</>
+  return boldTerm ? <TermFirst text={text} /> : <AlsoBold text={text} terms={more} />
 }
 
 /** "Term: the words" with the term in bold; a note with no colon stays plain. */

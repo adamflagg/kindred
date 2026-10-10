@@ -298,24 +298,47 @@ describe('StatisticsTab: the cap note, the chips note and Asked (as typed) (owne
   const CHIPS =
     "Round chips don't add up to All rounds: an appeal re-asks part of the earlier shortfall, so All rounds counts it once."
 
-  it('always says the round chips need not add up to All rounds, under the tier table', async () => {
+  // pin changed (ux3 statistics-9, coordinator ruling): "only when R2/R3/All is picked"; it was on every chip, R1 too.
+  it('says the round chips need not add up to All rounds only when R2, R3 or All is picked', async () => {
     renderTab()
     await screen.findByRole('table', { name: 'By tier' })
-    expect(screen.getByText(CHIPS)).toBeInTheDocument()
+    expect(screen.queryByText(CHIPS, { exact: false })).toBeNull()
+  })
+
+  it('says it under the tier table on R2, R3 and All', async () => {
+    for (const round of ['2', '3', 'all']) {
+      const { unmount } = renderTab(`/aid/reports/statistics?round=${round}`)
+      await screen.findByRole('table', { name: 'By tier' })
+      expect(screen.getByText(CHIPS)).toBeInTheDocument()
+      unmount()
+    }
   })
 
   it('puts the chips note and the cap words in one paragraph when requests were capped', async () => {
     statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
-    renderTab()
+    renderTab('/aid/reports/statistics?round=all')
     const note = await screen.findByText(CHIPS, { exact: false })
     expect(note.textContent).toBe(
       `${CHIPS} Asked and Avg ask: 2 requests above their session's cost counted at the cost.`
     )
   })
 
-  it('Copy of By tier carries the cap line, the chips note, and Asked then Asked (as typed)', async () => {
+  it('keeps the cap line and the Cancelled line in ONE block 6px under the table, never 16px apart (statistics-9)', async () => {
     statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
     renderTab()
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    const cap = screen.getByText(/counted at the cost/)
+    const cancelled = screen.getByText(/^Cancelled applicants, counted in Apps too:/)
+    expect(cap.parentElement).toBe(cancelled.parentElement)
+    // the block is the table section's own footnote: the section's 6px gap (space-y-1.5) is its only distance
+    const section = table.closest('section') as HTMLElement
+    expect(section.className).toContain('space-y-1.5')
+    expect(section.contains(cancelled)).toBe(true)
+  })
+
+  it('Copy of By tier carries the cap line, the chips note, and Asked then Asked (as typed)', async () => {
+    statistics = () => json({ ...STATISTICS, total: { ...STATISTICS.total, requests_capped: 2 } })
+    renderTab('/aid/reports/statistics?round=all')
     await screen.findByRole('table', { name: 'By tier' })
     expect(screen.queryByText('Asked (as typed)')).toBeNull()
     await userEvent.click(within(toolbar()).getByRole('button', { name: 'Copy' }))
@@ -328,8 +351,9 @@ describe('StatisticsTab: the cap note, the chips note and Asked (as typed) (owne
     expect(text).toContain('$44,000\t$47,000')
   })
 
+  // pin changed (ux3 statistics-9): the chips note rides the heading only when R2, R3 or All is picked.
   it('the CSV of By tier carries the same lines and the raw column', async () => {
-    renderTab()
+    renderTab('/aid/reports/statistics?round=all')
     await screen.findByRole('table', { name: 'By tier' })
     await userEvent.click(within(toolbar()).getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadCsv.mock.calls[0] ?? ['']
@@ -699,5 +723,53 @@ describe('StatisticsTab: our words carry no internal ids (R4)', () => {
         .getAllByRole('columnheader')
         .map((h) => h.textContent)
     ).not.toContain('Awards (camp aid)')
+  })
+})
+
+describe('StatisticsTab as the final mock draws it (ux3 statistics)', () => {
+  it('leaves the Cancelled line out when nobody cancelled, and says only what a left-out count needs (statistics-m5)', async () => {
+    statistics = () => json({ ...STATISTICS, cancelled_applicants: 0 })
+    const { unmount } = renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.queryByText(/Cancelled applicants, counted in Apps too/)).toBeNull()
+    unmount()
+    statistics = () => json({ ...STATISTICS_THROUGH, cancelled_applicants: 0 })
+    renderTab('/aid/reports/statistics?through=2027-02-01')
+    await screen.findByRole('table', { name: 'By tier' })
+    expect(screen.queryByText(/Cancelled applicants/)).toBeNull()
+    expect(screen.getByText(/4 requests received later are left out/)).toBeInTheDocument()
+  })
+
+  it("draws the enabled Include not yet offered label in the foreground ink, as the kit's checkbox (statistics-11)", async () => {
+    renderTab()
+    await screen.findByRole('table', { name: 'By tier' })
+    const label = screen
+      .getByRole('checkbox', { name: 'Include not yet offered' })
+      .closest('label')!
+    expect(label.className).toContain('text-foreground')
+    expect(label.className).not.toContain('text-muted-foreground')
+  })
+
+  it("gives a count link its title, with the award table's own words (statistics-m1)", async () => {
+    renderTab('/aid/reports/statistics?table=camp')
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    const link = within(table).getAllByRole('link', { name: '12' })[0]!
+    expect(link.getAttribute('title')).toMatch(
+      /^Open these 12 requests in Requests: 1 · Apps · .+$/
+    )
+  })
+
+  it("gives a header's note mark the note's words as its hover title (statistics-8)", async () => {
+    renderTab()
+    const table = await screen.findByRole('table', { name: 'By tier' })
+    const apps = within(table).getByRole('columnheader', { name: /Apps/ })
+    expect(apps.querySelector('sup')).toHaveAttribute('title', 'Apps: every received request.')
+  })
+
+  it('sets the Session table rows in the order the server sent them and the subtotal label over two lines (statistics-4, -14)', async () => {
+    renderTab('/aid/reports/statistics?rows=session')
+    const table = await screen.findByRole('table', { name: 'By session' })
+    const subtotal = within(table).getByText('Pool A subtotal')
+    expect(subtotal.className).toContain('line-clamp-2')
   })
 })

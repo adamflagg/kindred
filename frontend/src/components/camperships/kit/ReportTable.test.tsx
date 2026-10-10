@@ -11,6 +11,7 @@ import {
   countValue,
   moneyValue,
   pctValue,
+  wholeMoneyValue,
   textValue,
   type ReportColumn,
   type ReportRow,
@@ -226,7 +227,9 @@ describe('ReportTable', () => {
     await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
     expect(screen.getByText("Couldn't copy here: use Download CSV.")).toBeInTheDocument()
   })
-  it("draws a count link as the mock's .lnk: primary, semibold, a dotted underline, no wrapping", () => {
+  it("draws a count link as the kit's table link: plain primary at weight 500, underlined on hover only (ux3 statistics-1)", () => {
+    // pin changed: was the older mock's `.lnk` (semibold, dotted underline); the final kit's
+    // `table.cf-grid td a` is weight 500 with no decoration (cs-final.css:204).
     renderTable({
       rows: [
         {
@@ -240,13 +243,15 @@ describe('ReportTable', () => {
     const cls = screen.getByRole('link', { name: '4' }).className
     for (const token of [
       'text-primary',
-      'font-semibold',
-      'border-b',
-      'border-dotted',
-      'border-primary',
+      'font-medium',
       'whitespace-nowrap',
+      'tabular-nums',
+      'hover:underline',
     ]) {
       expect(cls).toContain(token)
+    }
+    for (const token of ['font-semibold', 'border-b', 'border-dotted']) {
+      expect(cls).not.toContain(token)
     }
   })
 
@@ -969,5 +974,165 @@ describe('an empty body in place of the grid (approved final mock reports-yoy.ht
     const body = screen.getByText('Nothing to count at Dec 1, 2026.')
     expect(body.className).toContain('border-dashed')
     expect(body.className).toContain('text-muted-foreground')
+  })
+})
+
+describe('the Statistics kit alignment (ux3 statistics)', () => {
+  const linked = (cells: ReportRow['cells']): ReportRow[] => [
+    { key: 'r', kind: 'body', cells, links: { 1: '/aid/requests?report=x' } },
+  ]
+
+  it("titles a count link 'Open these N requests in Requests: <row> · <column>', plus the table's own words (statistics-m1)", () => {
+    renderTable({
+      rows: linked([textValue('tier 1'), countValue(9), moneyValue(0)]),
+      countWords: 'All award tables',
+    })
+    expect(screen.getByRole('link', { name: '9' })).toHaveAttribute(
+      'title',
+      'Open these 9 requests in Requests: tier 1 · Campers · All award tables'
+    )
+  })
+
+  it('says "this request" for one, and names the column group', () => {
+    renderTable({
+      columns: [
+        { key: 'zip', header: 'ZIP' },
+        { key: 'a', header: 'Apps', group: 'Round 1' },
+      ],
+      rows: linked([textValue('tier 2'), countValue(1)]),
+    })
+    expect(screen.getByRole('link', { name: '1' })).toHaveAttribute(
+      'title',
+      'Open this request in Requests: tier 2 · Round 1 · Apps'
+    )
+  })
+
+  it('sets a pool heading at 13.5px bold, its meta at 6px, and a subtotal bold (statistics-3)', () => {
+    renderTable({
+      rows: [
+        { key: 'h', kind: 'heading', meta: '3 sessions', cells: [textValue('Camp')] },
+        {
+          key: 's',
+          kind: 'subtotal',
+          cells: [textValue('Camp subtotal'), countValue(1), moneyValue(1)],
+        },
+      ],
+    })
+    const heading = screen.getByText('Camp').closest('td') as HTMLElement
+    expect(heading.className).toContain('text-[13.5px]')
+    expect(heading.className).toContain('font-bold')
+    expect(screen.getByText('3 sessions').className).toContain('ml-1.5')
+    expect((screen.getByText('Camp subtotal').closest('tr') as HTMLElement).className).toContain(
+      'font-bold'
+    )
+  })
+
+  it("draws the basis badge as the kit's rounded sky pill, with a title that says what P means (statistics-5)", () => {
+    renderTable({ basisBadge: 'P' })
+    const pill = screen.getByText('P')
+    for (const token of ['rounded-full', 'px-2', 'text-[11.5px]', 'leading-4', 'cursor-help']) {
+      expect(pill.className).toContain(token)
+    }
+    expect(pill).toHaveAttribute(
+      'title',
+      "Every camper: every figure is Posted (P), from the dashboard's Posted amounts."
+    )
+  })
+
+  it("puts the same pill and title on a total row's badge, and says 'as reported' for r", () => {
+    renderTable({
+      rows: [
+        {
+          key: 't',
+          kind: 'total',
+          badge: 'r',
+          cells: [textValue('All'), countValue(1), moneyValue(1)],
+        },
+      ],
+    })
+    const pill = screen.getByText('r')
+    expect(pill.className).toContain('rounded-full')
+    expect(pill.getAttribute('title')).toContain('as reported (r)')
+  })
+
+  it('clamps a label that asks for two lines to two lines, keeping its title (statistics-4)', () => {
+    renderTable({
+      fixed: true,
+      rows: [
+        {
+          key: 's',
+          kind: 'subtotal',
+          cells: [
+            { ...textValue('Weekend Programs subtotal'), twoLines: true },
+            countValue(1),
+            moneyValue(1),
+          ],
+        },
+      ],
+    })
+    const label = screen.getByText('Weekend Programs subtotal')
+    expect(label.className).toContain('line-clamp-2')
+    expect(label.className).not.toContain('truncate')
+    expect(label.closest('td')).toHaveAttribute('title', 'Weekend Programs subtotal')
+  })
+
+  it('shows a whole-dollar figure on screen and keeps the cents in Copy and the CSV (statistics-6)', async () => {
+    renderTable({
+      rows: [
+        {
+          key: 'a',
+          kind: 'body',
+          cells: [textValue('00010'), countValue(4), wholeMoneyValue(1337495.2)],
+        },
+      ],
+    })
+    expect(screen.getByText('$1,337,495')).toBeInTheDocument()
+    expect(screen.queryByText('$1,337,495.20')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Copy/ }))
+    expect(writeText.mock.calls[0]?.[0]).toContain('00010\t4\t$1,337,495.20')
+    await userEvent.click(screen.getByRole('button', { name: /Download CSV/ }))
+    expect(downloadCsv.mock.calls[0]?.[0]).toContain('1337495.2')
+  })
+
+  it("gives a header mark the note's words as its title (statistics-8)", () => {
+    renderTable({ notes: [{ n: 1, text: 'Dollars: what it adds up to.' }] })
+    expect(screen.getByText('1', { selector: 'sup' })).toHaveAttribute(
+      'title',
+      'Dollars: what it adds up to.'
+    )
+  })
+
+  it("draws a flagged column's body cells bold (statistics-m2)", () => {
+    renderTable({
+      columns: [COLUMNS[0]!, COLUMNS[1]!, { key: 'dollars', header: 'Dollars', strong: true }],
+    })
+    expect(screen.getByText('$1,200').closest('td')?.className).toContain('font-bold')
+    expect(screen.getByText('9').closest('td')?.className).not.toContain('font-bold')
+  })
+
+  it("scales a fixed table's declared widths to the card, as the kit's CF.table({fixed}) does (statistics-m4)", () => {
+    const { container } = renderTable({
+      fixed: true,
+      columns: [
+        { key: 'a', header: 'A', width: 100 },
+        { key: 'b', header: 'B', width: 300 },
+      ],
+      rows: [{ key: 'r', kind: 'body', cells: [textValue('x'), countValue(1)] }],
+    })
+    const cols = [...container.querySelectorAll('col')].map((c) => (c as HTMLElement).style.width)
+    expect(cols).toEqual(['25%', '75%'])
+  })
+
+  it('leaves the first column to take the rest when it declares no width', () => {
+    const { container } = renderTable({
+      fixed: true,
+      columns: [
+        { key: 'a', header: 'A' },
+        { key: 'b', header: 'B', width: 300 },
+      ],
+      rows: [{ key: 'r', kind: 'body', cells: [textValue('x'), countValue(1)] }],
+    })
+    const cols = [...container.querySelectorAll('col')].map((c) => (c as HTMLElement).style.width)
+    expect(cols).toEqual(['', '300px'])
   })
 })

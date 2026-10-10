@@ -28,8 +28,12 @@ export function useAidDefinitions(surface: string) {
   })
   const notes = useMemo(
     () =>
-      query.data?.notes.map((note) => ({ n: note.n, term: note.term, text: note.text })) ??
-      NO_NOTES,
+      query.data?.notes.map((note) => ({
+        n: note.n,
+        term: note.term,
+        text: note.text,
+        ...(note.also_bold && note.also_bold.length > 0 ? { alsoBold: note.also_bold } : {}),
+      })) ?? NO_NOTES,
     [query.data]
   )
   // Each note with its key, for a surface that numbers the notes itself (Development's rows).
