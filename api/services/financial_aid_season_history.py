@@ -117,8 +117,9 @@ class Subject:
 @dataclass(frozen=True)
 class Subjects:
     """Who the season's log rows are about, from its requests, applications, casework corrections, grants and
-    household links. A row is matched by its entity and entity id alone, so the list (which reads no JSON) and the
-    opened line agree. A rules-class collection is in none of the branches: a rules row is about no one."""
+    household links. A row is matched by its entity and entity id alone, with no JSON. A grant placement is the one
+    row read past its id: row_subject names its camper from the placement it recorded, for the opened line and for
+    the list's name search alike. A rules-class collection is in none of the branches: a rules row is about no one."""
 
     requests: Mapping[str, tuple[int, int, int]]  # request id -> (household, person, session)
     applications: Mapping[str, int]  # application id -> household
@@ -242,8 +243,10 @@ def _placement_camper(
 def row_subject(
     entry: LogEntry, subjects: Subjects, before: Mapping[str, Any] | None, after: Mapping[str, Any] | None
 ) -> Subject | None:
-    """Who one opened row is about: what its id names, else the household the row itself recorded (a grant
-    placement of a ledger line, `ledger:<txn>`), family-level. A rules row is about no one, whatever it recorded."""
+    """Who one row is about. A grant placement for a camper is about that camper, request and session, as its
+    recorded placement names them. Otherwise what its id names, else the household the row itself recorded (a
+    ledger line's placement, `ledger:<txn>`), family-level. A rules row is about no one, whatever it recorded. The
+    opened line and the list's name search both ask here, so they agree."""
     if ENTITY_KINDS.get(entry.entity) == "rules":
         return None
     found = subjects.of(entry.entity, entry.entity_id)
@@ -291,8 +294,9 @@ def _amount(after: Mapping[str, Any] | None) -> Decimal | None:
 
 def figures(op: Operation, subjects: Subjects, recorded: Mapping[str, Mapping[str, Any] | None]) -> Figures:
     """Counted and summed from the operation's rows as recorded (D49: never recomputed). `recorded` holds the `after`
-    of its money rows by log row id; a row it lacks adds no money. Requests and families come from the rows' ids, so
-    the list and the opened line agree."""
+    of its money rows by log row id; a row it lacks adds no money. Requests and families come from the rows' ids
+    alone, so the list and the opened line count the same. A grant placement's camper and request, which its opened
+    line names from the placement it recorded, are not counted here."""
     about = [s for e in op.entries if (s := subjects.of(e.entity, e.entity_id)) is not None]
     sums: dict[str, Decimal] = {}
     for e in op.entries:
@@ -372,13 +376,24 @@ def figures_out(f: Figures) -> HistoryFiguresOut:
     )
 
 
-def name_text(op: Operation, subjects: Subjects, households: Mapping[int, str], persons: Mapping[int, str]) -> str:
+def name_text(
+    op: Operation,
+    subjects: Subjects,
+    households: Mapping[int, str],
+    persons: Mapping[int, str],
+    recorded: Mapping[str, Mapping[str, Any] | None] | None = None,
+) -> str:
     """The family and camper names an operation's rows are about: what `q` matches besides the log's own text (H2).
-    From `op.entries`, so a row for_reader stripped adds no name."""
-    found = [s for e in op.entries if (s := subjects.of(e.entity, e.entity_id)) is not None]
+    From `op.entries`, so a row for_reader stripped adds no name. `recorded` holds the placement rows' recorded
+    `after` by log row id, so a placement is about whom its opened line names (row_subject)."""
+    found = _found(op, subjects, recorded or {})
     names = {households.get(s.household_cm_id, "") for s in found}
     names |= {persons.get(s.person_cm_id, "") for s in found if s.person_cm_id}
     return " | ".join(sorted(n for n in names if n))
+
+
+def _found(op: Operation, subjects: Subjects, recorded: Mapping[str, Mapping[str, Any] | None]) -> list[Subject]:
+    return [s for e in op.entries if (s := row_subject(e, subjects, None, recorded.get(e.id))) is not None]
 
 
 def _household_of(subject: Subject | None) -> int | None:
@@ -618,18 +633,24 @@ class SeasonHistoryService:
         self, year: int, ops: Sequence[Operation], f: HistoryFilter, subjects: Subjects
     ) -> dict[str, str]:
         """`q` matches family and camper names too (H2). Only when there is a `q`, only for the reader's operations
-        that every other filter keeps (any chip, or the picked ones), and in ONE batched name read."""
+        that every other filter keeps (any chip, or the picked ones), and in ONE batched name read, after at most ONE
+        recorded read for the candidates' grant placements (whose camper is in their recorded placement)."""
         if not f.text.strip():
             return {}
         unfiltered = replace(f, text="")
         candidates = [o for o in ops if visible(o, unfiltered) or visible(o, replace(unfiltered, kinds=frozenset()))]
-        found = [s for o in candidates for e in o.entries if (s := subjects.of(e.entity, e.entity_id)) is not None]
+        placed = [o.operation_id for o in candidates if any(e.entity == AID_GRANT_PLACEMENTS for e in o.entries)]
+        recorded: dict[str, dict[str, Any] | None] = {}
+        if placed:
+            rows = await self._reads.fetch_recorded(year, placed, (AID_GRANT_PLACEMENTS,))
+            recorded = {str(r.id): log_detail(getattr(r, "after", None)) for r in rows}
+        found = [s for o in candidates for s in _found(o, subjects, recorded)]
         if not found:
             return {}
         households, persons = await self._reads.fetch_names(
             year, {s.household_cm_id for s in found}, {s.person_cm_id for s in found if s.person_cm_id}
         )
-        return {o.operation_id: name_text(o, subjects, households, persons) for o in candidates}
+        return {o.operation_id: name_text(o, subjects, households, persons, recorded) for o in candidates}
 
     async def _parents(
         self, details: Sequence[tuple[LogEntry, dict[str, Any] | None, dict[str, Any] | None]]

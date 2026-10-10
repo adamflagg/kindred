@@ -62,12 +62,12 @@ const PAGE_ON =
   'border-primary bg-primary text-primary-foreground inline-flex h-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded-md border px-[7px] text-xs font-semibold'
 
 /**
- * Season › History (spec §7.2; D49, D76; history-v2.html): the season's log in one scrolling box, one
+ * Season › History (spec §7.2; D49, D76; season-history.html): the season's log in one scrolling box, one
  * line per operation, rules and casework on one timeline, newest first. The box loads page after page
  * as it is scrolled (endless); the footer's page numbers and `?page=` follow where it is, and a page
  * number or a link loads and scrolls to its page. Every filter, the page and the opened lines live in
  * the URL (D15), replaced, never per keystroke. Without `rules` the server leaves the rules operations
- * out and the Rules chip is absent. The log is the whole log whatever the link's as-of (PR 1's line
+ * out and the toolbar has no Rules choice. The log is the whole log whatever the link's as-of (PR 1's line
  * above the tab says so); its links keep the as-of. A failed refetch keeps the rows (owner Group 5).
  */
 export function HistoryTab() {
@@ -101,7 +101,7 @@ export function HistoryTab() {
   const ops = useMemo(() => flattenPages(loaded), [loaded])
   const starts = useMemo(() => pageStarts(loaded), [loaded])
   // How far to load: a page number clicked, or a ?page= link. Kept with the filters it was asked under,
-  // so a filter change (from the strip, Back or a pasted link) falls back to the URL's own page.
+  // so a filter change (from the toolbar, Back or a pasted link) falls back to the URL's own page.
   const [goal, setGoal] = useState({ key: filterKey, page: filters.page })
   const target = goal.key === filterKey ? goal.page : filters.page
   // The page the box still has to scroll to once it has loaded (a ?page= link, or a page number not loaded yet).

@@ -589,6 +589,51 @@ async def test_a_search_finds_a_family_or_a_camper_by_name() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_search_finds_a_grant_placement_by_the_camper_its_opened_line_names() -> None:
+    """The opened line names a placement's camper from the placement it recorded, so `q` finds it by that name too;
+    a ledger line's placement is found by the household it recorded. One recorded read per search, for the
+    placement rows only."""
+    placement = {
+        "household_cm_id": GARCIA,
+        "person_cm_id": P_LIAM,
+        "session_cm_id": 1234,
+        "amount": "500",
+        "requests": [{"request_id": LIAM, "amount": "500"}],
+    }
+    camper = _row(
+        "g1",
+        "aid_grant_placements",
+        f"commitment:{GRANT_GARCIA}",
+        OP_A,
+        action="place",
+        after={"grant": f"commitment:{GRANT_GARCIA}", "household_cm_id": GARCIA, "placement": placement},
+    )
+    ledger = _row(
+        "g2",
+        "aid_grant_placements",
+        "ledger:9001",
+        OP_B,
+        action="place",
+        at="2027-03-10 17:00:00.000Z",
+        after={"grant": "ledger:9001", "household_cm_id": JOHNSON, "placement": {**placement, "person_cm_id": 0}},
+    )
+    reads = _Reads(camper, ledger, subjects=SEASON)
+    service = SeasonHistoryService(reads)
+
+    async def found(text: str) -> list[str]:
+        page = await service.page(2027, HistoryFilter(text=text), page=1, per_page=50)
+        return [o.operation_id for o in page.operations]
+
+    assert await found("liam") == [OP_A]  # the camper the opened line names
+    assert await found("johnson family") == [OP_B]  # a ledger line's household, from its own recorded row
+    detail = await service.operation(2027, OP_A, rules=False)
+    assert detail.rows[0].camper_name == "Liam Garcia"  # the list and the opened line agree
+    reads.recorded_calls.clear()
+    await service.page(2027, HistoryFilter(text="liam"), page=1, per_page=50)
+    assert reads.recorded_calls == [([OP_A, OP_B], ["aid_grant_placements"])]  # one read for the search
+
+
+@pytest.mark.asyncio
 async def test_no_search_reads_no_names() -> None:
     reads = _Reads(*_tick(), subjects=SEASON)
     service = SeasonHistoryService(reads)

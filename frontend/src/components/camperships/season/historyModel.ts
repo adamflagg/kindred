@@ -24,7 +24,7 @@ import { changeWords, isRulesSection, type RulesNames, SECTION_TITLES } from './
 /** One page of the log (the router allows up to 200). */
 export const PER_PAGE = 50
 
-/** Each kind's chip and pill words (D49's chips; intake is a tick, not a chip). */
+/** Each kind's switcher and pill words (D49's kinds; intake is a toggle, not a kind choice). */
 export const KIND_LABELS = {
   rules: 'Rules',
   offers: 'Offers & stages',
@@ -36,7 +36,7 @@ export const KIND_LABELS = {
 
 const CHIP_ORDER: readonly ApiAidHistoryKind[] = ['rules', 'offers', 'money', 'holds', 'grants']
 
-/** The kind chips, in the spec's order; Rules only for `rules` (D49, D76). */
+/** The kind switcher's choices, in the spec's order; Rules only for `rules` (D49, D76). */
 export function chipKinds(canSeeRules: boolean): ApiAidHistoryKind[] {
   return CHIP_ORDER.filter((kind) => canSeeRules || kind !== 'rules')
 }
