@@ -9,20 +9,17 @@ import * as styles from './scenarioStyles'
 const PALETTE = /(?<!dark:)\b(bg|text|border)-(amber|forest)-\d{2,3}\b/g
 
 const NAMES = [
-  'KEPT_CHIP',
-  'DRAFT_CHIP',
-  'PLAIN_CHIP',
   'CHANGE_MORE',
   'CHANGE_LESS',
   'BOX_CHANGED',
   'BOX_BAD',
-  'WAS_INK',
   'SETTING_CHANGED',
   'CHECK_CHANGED',
   'UP_INK',
-  'LOCKED_CARD',
-  'POOL_CELL',
-  'FIT_BOX',
+  'FIT_DONE',
+  'FIT_WARN',
+  'CARD_SHELL',
+  'GROUP_HEAD',
 ]
 
 const strings: Array<[string, string]> = Object.entries(styles)
@@ -36,12 +33,6 @@ describe("Scenarios' marks in both themes", () => {
 
   it("is the sandbox's marks (scenarios-v4), and no more", () => {
     expect(Object.keys(styles).sort()).toEqual([...NAMES].sort())
-  })
-
-  it('gives a chip no raw text size: it takes the size of the role it sits in', () => {
-    for (const name of ['KEPT_CHIP', 'DRAFT_CHIP', 'PLAIN_CHIP']) {
-      expect(styles[name as keyof typeof styles]).not.toMatch(/(?<!dark:)\btext-(xs|sm|base|\[)/)
-    }
   })
 
   it.each(strings)('%s gives every palette colour its dark partner', (_name, classes) => {

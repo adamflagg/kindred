@@ -21,6 +21,7 @@ import {
 } from '../rules/rulesModel'
 import { rangeWords } from '../rules/tierGrid'
 import { pricedOnFigures, ROUND1_SECTIONS, type ScenarioView } from './controlsModel'
+import { REGISTRY_NOTE } from './scenarioNotes'
 import { roughly } from './spendModel'
 
 export const MAX_KEPT_COLUMNS = 4
@@ -138,10 +139,13 @@ export function compareSources(
 
 export interface ColumnHead {
   readonly code: string
-  readonly chip: string
-  readonly chipTone: 'kept' | 'draft' | 'plain'
+  /** The option's own name (what Rename edits). */
   readonly name: string
+  /** The bold line: "‹code› · ‹name›" for a kept option, the column's own words otherwise. */
+  readonly headline: string
   readonly meta: string
+  /** The head's native title: its full words, and for a kept option the kept-day sentence. */
+  readonly title: string
   readonly option: ApiAidScenarioOption | null
 }
 
@@ -152,19 +156,32 @@ const day = (iso: string) => formatShortDate(campToday(new Date(iso)))
 export function columnHeads(
   sources: readonly CompareSource[],
   workspace: ApiAidScenarioWorkspace,
-  draftName: string,
-  year: number
+  draftName: string
 ): ColumnHead[] {
+  const head = (
+    code: string,
+    name: string,
+    headline: string,
+    meta: string,
+    option: ApiAidScenarioOption | null,
+    note = ''
+  ): ColumnHead => ({
+    code,
+    name,
+    headline,
+    meta,
+    option,
+    title: `${headline}${meta === '' ? '' : `: ${meta}`}${note}`,
+  })
   return sources.map((source) => {
     if (source.kind === 'season') {
-      return {
-        code: 'last_season',
-        chip: String(year - 1),
-        chipTone: 'plain',
-        name: 'Last season, posted',
-        meta: source.last.label,
-        option: null,
-      }
+      return head(
+        'last_season',
+        'Last season, posted',
+        'Last season, posted',
+        source.last.label,
+        null
+      )
     }
     const column = source.column
     if (column.code === 'rules') {
@@ -172,34 +189,13 @@ export function columnHeads(
       const via = column.via ?? null
       const meta =
         approved === null ? '' : `approved ${day(approved)}${via === null ? '' : ` · from ${via}`}`
-      return {
-        code: 'rules',
-        chip: 'Rules',
-        chipTone: 'plain',
-        name: column.label,
-        meta,
-        option: null,
-      }
+      return head('rules', column.label, column.label, meta, null)
     }
     if (column.code === 'last_rules') {
-      return {
-        code: 'last_rules',
-        chip: String(year - 1),
-        chipTone: 'plain',
-        name: "Last season's rules",
-        meta: column.label,
-        option: null,
-      }
+      return head('last_rules', "Last season's rules", "Last season's rules", column.label, null)
     }
     if (column.code === 'draft') {
-      return {
-        code: 'draft',
-        chip: 'Draft',
-        chipTone: 'draft',
-        name: draftName,
-        meta: 'your draft, not kept',
-        option: null,
-      }
+      return head('draft', 'Your draft, not kept', 'Your draft, not kept', draftName, null)
     }
     const option = workspace.options.find((o) => o.code === column.code) ?? null
     const kept = option?.results
@@ -207,14 +203,15 @@ export function columnHeads(
       option === null || kept === undefined
         ? ''
         : `kept ${day(option.kept_at)} · ${String(kept.requests)} application${kept.requests === 1 ? '' : 's'} · ${formatWholeMoney(kept.round1 + kept.round2)}`
-    return {
-      code: column.code,
-      chip: column.code,
-      chipTone: 'kept',
-      name: option === null ? column.label : optionName(option),
+    const name = option === null ? column.label : optionName(option)
+    return head(
+      column.code,
+      name,
+      `${column.code} · ${name}`,
       meta,
       option,
-    }
+      meta === '' ? '' : '; the kept line is what it priced the day it was kept'
+    )
   })
 }
 
@@ -223,6 +220,8 @@ export interface CompareCell {
   readonly tone?: 'changed' | 'pool-negative' | 'total-negative' | 'muted'
   readonly sub?: string
   readonly note?: string
+  /** A changed cell's native title: what the rules in effect have instead. */
+  readonly title?: string
   readonly upDown?: { readonly up: number; readonly down: number }
 }
 
@@ -232,6 +231,8 @@ export interface CompareRow {
   readonly bold?: boolean
   readonly indent?: boolean
   readonly muted?: boolean
+  /** A definition note's number beside the label (the registry's Projected note). */
+  readonly defNote?: number
   readonly cells: readonly CompareCell[]
 }
 
@@ -331,6 +332,7 @@ export function compareRows(
     { kind: 'section', label: `Settings that differ from ${effectName}`, cells: [] },
   ]
 
+  const rulesColumn = priced.find((column) => column.code === 'rules')
   const paths = new Map<string, readonly string[]>()
   for (const column of priced)
     for (const change of column.changes) paths.set(change.path.join('.'), change.path.map(String))
@@ -350,9 +352,12 @@ export function compareRows(
       cells: sources.map((s) => {
         if (s.kind === 'season') return DASH
         const text = settingWords(valueAt(s.column.document, path), path.slice(1), scoped)
-        return s.column.changes.some((c) => c.path.join('.') === key)
-          ? { text, tone: 'changed' }
-          : { text }
+        if (!s.column.changes.some((c) => c.path.join('.') === key)) return { text }
+        const was =
+          rulesColumn === undefined
+            ? ''
+            : ` (${settingWords(valueAt(rulesColumn.document, path), path.slice(1), scoped)})`
+        return { text, tone: 'changed', title: `Differs from ${effectName}${was}` }
       }),
     })
   }
@@ -422,6 +427,7 @@ export function compareRows(
     kind: 'row',
     label: 'Projected season',
     muted: true,
+    defNote: REGISTRY_NOTE.projected,
     cells: sources.map((s) => {
       if (s.kind === 'season') return { text: '— its whole season' }
       const projection = s.column.results.projection ?? null
@@ -445,9 +451,14 @@ export function compareRows(
   rows.push({
     kind: 'row',
     label: 'Average Round 1 per request',
-    cells: sources.map((s) =>
-      money(s.kind === 'season' ? s.last.view?.average_round1 : s.column.committee?.average_round1)
-    ),
+    // Round 1 over the requests priced, as the mock computes it (owner Q11): not the committee's tier-rows average.
+    cells: sources.map((s) => {
+      const [round1, requests] =
+        s.kind === 'season'
+          ? [s.last.view?.round1, s.last.view?.requests]
+          : [s.column.results.round1, s.column.results.requests]
+      return round1 === undefined || !requests ? DASH : money(round1 / requests)
+    }),
   })
   rows.push({
     kind: 'row',

@@ -1,31 +1,17 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 
 import type { AidRequestSet } from '../../../../services/camperships/aidApi'
-import {
-  CS_AMBER_NOTE,
-  CS_BTN,
-  CS_BTN2,
-  CS_BTN_SM,
-  CS_CHIP,
-  CS_CHIP_ON,
-  CS_INPUT,
-  CS_META,
-  CS_PILL,
-  CS_SEG,
-  CS_SEG_BUTTON,
-  CS_SEG_OFF,
-  CS_SEG_ON,
-  CS_SELECT_CTL,
-  CS_SMALL,
-  CS_STRIP,
-} from '../../kit/csType'
+import { CS_BTN, CS_BTN2, CS_INPUT, CS_SELECT_CTL, CS_SMALL } from '../../kit/csType'
 import type { LoadFrom } from '../../../../hooks/camperships/useAidScenarioDraft'
 import { AidPicker } from '../../kit/AidPicker'
 import { campToday } from '../../kit/dates'
+import { EditorActions, EditorForm } from '../../kit/EditorLayout'
+import type { AidPickerOption } from '../../kit/pickerWords'
+import { AidSegmented } from '../../kit/Segmented'
+import { AidToolbar, ToolbarLabel } from '../../kit/Toolbar'
 import { guardWords, PRICE_CHOICES, type StartEntry } from './controlsModel'
 import { KeepPopover } from './KeepPopover'
 import { ScenarioPopover } from './ScenarioPopover'
-import { WAS_INK } from './scenarioStyles'
 
 export interface KeptChip {
   readonly code: string
@@ -77,20 +63,25 @@ export function RenameBox({
 }
 
 /**
- * The control line under the tab bar (Scenarios addendum §S5 A), left to right:
+ * The control line under the tab bar (scenarios-2; the mock's one toolbar), on the kit AidToolbar, left to right:
+ * - the lead, "56 held · Oct 8, 4:18 am", with the full pile sentence as its title (the pile changes only on
+ *   Update Applications, owner line 683);
  * - Sandbox | Compare;
- * - the held pile's pill and Update Applications (owner line 683: the pile changes only on this button);
+ * - From ▾, one picker with two groups (Start from; Kept) and ✎ beside it renaming the loaded kept option;
  * - Price ▾;
- * - the kept group: Start from ▾, then flat named chips with ✎ on the loaded one;
- * - on the right, the change count, Discard Changes, Make ‹B› the Rules Draft… and Keep… (in Compare, Columns ▾,
- *   By tier and Print);
- * - a refusal as one amber line, never a banner.
+ * - on the right the status slot (change count, "Nothing new since …", a refusal, the "isn't kept" notice), then
+ *   Discard Changes, Make ‹B› the Rules Draft… and Keep… (in Compare, Columns, By tier and Print), and Update
+ *   Applications last.
+ * Nothing here wraps and nothing adds a row: a refusal is the status, never a banner.
  */
 export function ScenarioControls(props: {
   panel: 'sandbox' | 'compare'
   compareCount: number
   onPanel: (panel: 'sandbox' | 'compare') => void
+  /** The full pile sentence: the lead's title. */
   pill: string
+  /** The lead's words: "56 held", and its moment (muted) when a pile is held. */
+  lead: { readonly held: string; readonly when: string | null }
   nothingNew: string | null
   onUpdate: () => void
   price: AidRequestSet
@@ -98,9 +89,9 @@ export function ScenarioControls(props: {
   start: readonly StartEntry[]
   /** The sandbox's source code (a kept code or a built-in start). */
   fromCode: string
-  /** The kept option loaded, if any: the select then shows "‹code›, kept". */
+  /** The kept option loaded, if any. */
   loadedCode: string | null
-  /** "built on v4, v5 is in effect now" for a draft built on older rules (A11), else null. */
+  /** "built on v4, v5 is in effect now" for a draft built on older rules (A11), else null: the picker's title. */
   builtOn: string | null
   chips: readonly KeptChip[]
   /** Unkept changes: a load asks first (§S5 C). */
@@ -120,215 +111,244 @@ export function ScenarioControls(props: {
   promote: string | null
   onPromote: (code: string) => void
   compareTools: ReactNode
+  /** Columns' four-option refusal (Compare only). */
+  refused: string | null
+  /** "D isn't kept in 2027, so it was left out of the compare." */
+  notice: string | null
   error: string | null
 }) {
   const [guard, setGuard] = useState<Guard | null>(null)
   const [keeping, setKeeping] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const groupRef = useRef<HTMLDivElement>(null)
-  const keepRef = useRef<HTMLButtonElement>(null)
+  const groupRef = useRef<HTMLSpanElement>(null)
+  const keepRef = useRef<HTMLSpanElement>(null)
   const closeGuard = useCallback(() => setGuard(null), [])
   const closeKeep = useCallback(() => setKeeping(false), [])
   const ask = (from: LoadFrom, name: string) => {
     if (props.unkept > 0) setGuard({ from, name })
     else props.onLoad(from)
   }
-  const selected = props.loadedCode !== null ? '' : props.fromCode
+  const selected = props.loadedCode ?? props.fromCode
+  const fromOptions: Array<AidPickerOption<string>> = [
+    ...props.start.map((entry) => ({
+      value: entry.value,
+      label: entry.label,
+      disabled: entry.disabled,
+      group: 'Start from',
+      ...(entry.value === selected && props.builtOn !== null ? { title: props.builtOn } : {}),
+    })),
+    ...props.chips.map((chip) => ({
+      value: chip.code,
+      label: `${chip.code} · ${chip.name}`,
+      group: 'Kept',
+      title: `${chip.code} · ${chip.name}, kept${chip.code === selected && props.builtOn !== null ? ` · ${props.builtOn}` : ''}`,
+    })),
+  ]
+  const loadedChip = props.chips.find((chip) => chip.loaded)
+  const status =
+    props.error ??
+    (props.panel === 'compare' ? props.refused : null) ??
+    props.notice ??
+    props.nothingNew ??
+    (props.panel === 'sandbox' ? props.changes : null)
+  const statusWarn =
+    props.error !== null ||
+    (props.panel === 'compare' && props.refused !== null) ||
+    props.notice !== null ||
+    (props.nothingNew === null && props.panel === 'sandbox' && props.changes !== null)
   const priceValue = props.price.kind
+  const keepPop = keeping ? (
+    <KeepPopover
+      anchor={keepRef}
+      prefill={props.keep.prefill}
+      nextCode={props.keep.nextCode}
+      figure={props.keep.figure}
+      onKeep={props.onKeep}
+      onClose={closeKeep}
+    />
+  ) : null
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 print:hidden">
-      <div className={CS_SEG}>
-        <button
-          type="button"
-          className={`${CS_SEG_BUTTON} ${props.panel === 'sandbox' ? CS_SEG_ON : CS_SEG_OFF}`}
-          onClick={() => props.onPanel('sandbox')}
-        >
-          Sandbox
-        </button>
-        <button
-          type="button"
-          className={`${CS_SEG_BUTTON} ${props.panel === 'compare' ? CS_SEG_ON : CS_SEG_OFF}`}
-          onClick={() => props.onPanel('compare')}
-        >
-          {props.compareCount > 0 ? `Compare ${String(props.compareCount)}` : 'Compare'}
-        </button>
-      </div>
-      <span className={CS_PILL.muted}>{props.pill}</span>
-      <button type="button" className={CS_BTN2} onClick={props.onUpdate}>
-        Update Applications
-      </button>
-      {props.nothingNew !== null && <span className={CS_SMALL}>{props.nothingNew}</span>}
-      <label className={`${CS_SMALL} inline-flex items-center gap-1.5`}>
-        Price
-        <AidPicker
-          label="Price"
-          value={priceValue}
-          options={PRICE_CHOICES}
-          onChange={(kind) => {
-            props.onPrice(
-              kind === 'deadline'
-                ? { kind: 'deadline' }
-                : kind === 'date'
-                  ? { kind: 'date', date: campToday() }
-                  : { kind: 'all' }
-            )
-          }}
-        />
-        {props.price.kind === 'date' && (
-          <input
-            type="date"
-            aria-label="Price through"
-            className={CS_SELECT_CTL}
-            value={props.price.date}
-            onChange={(event) => {
-              if (event.target.value !== '')
-                props.onPrice({ kind: 'date', date: event.target.value })
-            }}
+    <AidToolbar
+      className="print:hidden"
+      lead={
+        <span title={props.pill}>
+          {props.lead.held}
+          {props.lead.when !== null && (
+            <span className="text-muted-foreground font-normal">{` · ${props.lead.when}`}</span>
+          )}
+        </span>
+      }
+      left={
+        <>
+          <AidSegmented
+            label="Panel"
+            value={props.panel}
+            options={[
+              { value: 'sandbox', label: 'Sandbox' },
+              {
+                value: 'compare',
+                label: 'Compare',
+                ...(props.compareCount > 0 ? { count: props.compareCount } : {}),
+              },
+            ]}
+            onChange={props.onPanel}
           />
-        )}
-      </label>
-      <div
-        ref={groupRef}
-        data-testid="start-strip"
-        className={`${CS_STRIP} relative flex-wrap whitespace-normal`}
-      >
-        <span className={`${CS_META} font-bold`}>Start from</span>
-        <AidPicker
-          label="Start from"
-          value={selected}
-          disabled={!props.canEdit}
-          options={[
-            ...(props.loadedCode !== null
-              ? [{ value: '', label: `${props.loadedCode}, kept`, disabled: true }]
-              : []),
-            ...props.start,
-          ]}
-          onChange={(value) => {
-            const entry = props.start.find((e) => e.value === value)
-            if (entry !== undefined) ask({ start: entry.value }, 'It')
-          }}
-        />
-        {props.builtOn !== null && <span className={CS_SMALL}>{props.builtOn}</span>}
-        <span className="bg-border h-5 w-px" />
-        {props.chips.length === 0 && <span className={CS_SMALL}>nothing kept yet</span>}
-        {props.chips.map((chip) =>
-          renaming === chip.code ? (
-            <RenameBox
-              key={chip.code}
-              code={chip.code}
-              name={chip.name}
-              onRename={props.onRename}
-              onDone={() => setRenaming(null)}
-            />
-          ) : (
-            <span key={chip.code} className="inline-flex items-center gap-0.5">
-              <button
-                type="button"
-                className={chip.loaded ? CS_CHIP_ON : CS_CHIP}
-                onClick={() => ask({ option: chip.code }, chip.code)}
-              >
-                <b className="tabular-nums">{chip.code}</b> {chip.name}
-              </button>
-              {chip.loaded && props.canEdit && (
+          <ToolbarLabel text="From" plain>
+            <span ref={groupRef} className="relative inline-flex items-center gap-1">
+              {renaming !== null && loadedChip !== undefined ? (
+                <RenameBox
+                  code={loadedChip.code}
+                  name={loadedChip.name}
+                  onRename={props.onRename}
+                  onDone={() => setRenaming(null)}
+                />
+              ) : (
+                <AidPicker
+                  label="From"
+                  value={selected}
+                  disabled={!props.canEdit}
+                  options={fromOptions}
+                  onChange={(value) => {
+                    const entry = props.start.find((e) => e.value === value)
+                    if (entry !== undefined) ask({ start: entry.value }, 'It')
+                    else ask({ option: value }, value)
+                  }}
+                />
+              )}
+              {loadedChip !== undefined && props.canEdit && renaming === null && (
                 <button
                   type="button"
-                  aria-label={`Rename ${chip.code}`}
-                  className={`${CS_SMALL} px-1`}
-                  onClick={() => setRenaming(chip.code)}
+                  aria-label={`Rename ${loadedChip.code}`}
+                  title={`Rename ${loadedChip.code}`}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer px-1 text-xs"
+                  onClick={() => setRenaming(loadedChip.code)}
                 >
                   ✎
                 </button>
               )}
+              <ScenarioPopover
+                open={guard !== null}
+                onClose={closeGuard}
+                anchor={groupRef}
+                width={460}
+                testId="load-guard"
+                editor
+              >
+                {guard !== null && (
+                  <EditorForm
+                    actions={
+                      <EditorActions>
+                        <button
+                          type="button"
+                          className={CS_BTN2}
+                          disabled={!props.keep.enabled}
+                          onClick={() => {
+                            setGuard(null)
+                            setKeeping(true)
+                          }}
+                        >
+                          Keep…
+                        </button>
+                        <button
+                          type="button"
+                          className={CS_BTN}
+                          onClick={() => {
+                            props.onLoad(guard.from)
+                            setGuard(null)
+                          }}
+                        >
+                          {`Drop and Load ${guard.name}`}
+                        </button>
+                        <button type="button" className={CS_BTN2} onClick={closeGuard}>
+                          Cancel
+                        </button>
+                      </EditorActions>
+                    }
+                  >
+                    <p className={CS_SMALL}>
+                      {guardWords(props.unkept, guard.name === 'It' ? 'it' : guard.name)}
+                    </p>
+                  </EditorForm>
+                )}
+              </ScenarioPopover>
             </span>
-          )
-        )}
-        <ScenarioPopover
-          open={guard !== null}
-          onClose={closeGuard}
-          anchor={groupRef}
-          testId="load-guard"
-        >
-          {guard !== null && (
-            <div className="space-y-2">
-              <p className={CS_SMALL}>
-                {guardWords(props.unkept, guard.name === 'It' ? 'it' : guard.name)}
-              </p>
-              <div className="flex gap-2">
+          </ToolbarLabel>
+          <ToolbarLabel text="Price">
+            <AidPicker
+              label="Price"
+              value={priceValue}
+              options={PRICE_CHOICES}
+              onChange={(kind) => {
+                props.onPrice(
+                  kind === 'deadline'
+                    ? { kind: 'deadline' }
+                    : kind === 'date'
+                      ? { kind: 'date', date: campToday() }
+                      : { kind: 'all' }
+                )
+              }}
+            />
+            {props.price.kind === 'date' && (
+              <input
+                type="date"
+                aria-label="Price through"
+                className={CS_SELECT_CTL}
+                value={props.price.date}
+                onChange={(event) => {
+                  if (event.target.value !== '')
+                    props.onPrice({ kind: 'date', date: event.target.value })
+                }}
+              />
+            )}
+          </ToolbarLabel>
+        </>
+      }
+      {...(status === null ? {} : { status })}
+      statusWarn={statusWarn}
+      right={
+        <>
+          {props.panel === 'compare' ? (
+            props.compareTools
+          ) : (
+            <>
+              {props.changes !== null && (
+                <button type="button" className={CS_BTN2} onClick={props.onDiscard}>
+                  Discard Changes
+                </button>
+              )}
+              {props.promote !== null && (
                 <button
                   type="button"
                   className={CS_BTN2}
-                  disabled={!props.keep.enabled}
-                  onClick={() => {
-                    setGuard(null)
-                    setKeeping(true)
-                  }}
+                  onClick={() => props.onPromote(props.promote ?? '')}
                 >
-                  Keep…
+                  {`Make ${props.promote} the Rules Draft…`}
                 </button>
+              )}
+              <span ref={keepRef} className="relative inline-flex">
                 <button
                   type="button"
                   className={CS_BTN}
-                  onClick={() => {
-                    props.onLoad(guard.from)
-                    setGuard(null)
-                  }}
+                  disabled={!props.keep.enabled}
+                  onClick={() => setKeeping(true)}
                 >
-                  {`Drop and Load ${guard.name}`}
+                  Keep…
                 </button>
-                <button type="button" className={CS_BTN2} onClick={closeGuard}>
-                  Cancel
-                </button>
-              </div>
-            </div>
+                {keepPop}
+              </span>
+            </>
           )}
-        </ScenarioPopover>
-      </div>
-      <div className="relative ml-auto flex flex-wrap items-center gap-2">
-        {props.panel === 'compare' ? (
-          props.compareTools
-        ) : (
-          <>
-            {props.changes !== null && (
-              <span className={`${CS_SMALL} ${WAS_INK}`}>{props.changes}</span>
-            )}
-            {props.changes !== null && (
-              <button type="button" className={CS_BTN_SM} onClick={props.onDiscard}>
-                Discard Changes
-              </button>
-            )}
-            {props.promote !== null && (
-              <button
-                type="button"
-                className={CS_BTN2}
-                onClick={() => props.onPromote(props.promote ?? '')}
-              >
-                {`Make ${props.promote} the Rules Draft…`}
-              </button>
-            )}
-            <button
-              ref={keepRef}
-              type="button"
-              className={CS_BTN}
-              disabled={!props.keep.enabled}
-              onClick={() => setKeeping(true)}
-            >
-              Keep…
-            </button>
-          </>
-        )}
-        {/* Outside the panel switch: the guard's Keep… opens it from Compare too, where the chips also load. */}
-        {keeping && (
-          <KeepPopover
-            anchor={keepRef}
-            prefill={props.keep.prefill}
-            nextCode={props.keep.nextCode}
-            figure={props.keep.figure}
-            onKeep={props.onKeep}
-            onClose={closeKeep}
-          />
-        )}
-      </div>
-      {props.error !== null && <p className={`${CS_AMBER_NOTE} w-full`}>{props.error}</p>}
-    </div>
+          {/* The guard's Keep… opens it from Compare too, where the picker also loads. */}
+          {props.panel === 'compare' && keepPop !== null && (
+            <span ref={keepRef} className="relative inline-flex">
+              {keepPop}
+            </span>
+          )}
+          <button type="button" className={CS_BTN2} onClick={props.onUpdate}>
+            Update Applications
+          </button>
+        </>
+      }
+    />
   )
 }

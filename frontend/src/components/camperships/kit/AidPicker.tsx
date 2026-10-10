@@ -138,6 +138,7 @@ export function AidPickerMulti<V extends string | number>({
   options,
   noun,
   none,
+  faceText,
   onChange,
   size,
   disabled,
@@ -148,9 +149,11 @@ export function AidPickerMulti<V extends string | number>({
   readonly noun: string
   /** What nothing picked reads ("Needs a group"). */
   readonly none: string
+  /** The button's own words ("Columns · 5") where the picks' names or count would not read right. */
+  readonly faceText?: string
   readonly onChange: (values: V[]) => void
 }) {
-  const shown = multiPickerWords(values, options, noun, none)
+  const shown = faceText ?? multiPickerWords(values, options, noun, none)
   const title = values.length === 0 ? none : namesOf(values, options)
   return (
     <Listbox value={[...values]} onChange={onChange} disabled={disabled ?? false} multiple>

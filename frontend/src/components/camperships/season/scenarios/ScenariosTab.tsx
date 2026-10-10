@@ -15,7 +15,6 @@ import type { ApiAidScenarioResults, ApiAidScenarioWorkspace } from '../../../..
 import { QueryGuard } from '../../../QueryGuard'
 import { CS_AMBER_NOTE, CS_CARD } from '../../kit/csType'
 import { campToday, formatLongDate } from '../../kit/dates'
-import { DefinitionNotes } from '../../kit/DefinitionNotes'
 import { AidDefinitionNotes } from '../../shell/AidDefinitionNotes'
 import { rulesVocabulary } from '../rules/rulesModel'
 import { CompareTable, CompareTools } from './CompareTable'
@@ -35,6 +34,7 @@ import {
   changeWords,
   fromName,
   isStart,
+  leadWords,
   keepFigureWords,
   nextLetter,
   nothingNewWords,
@@ -53,7 +53,7 @@ import { bindingOf, changeCount } from './sandboxModel'
 import { ScenarioControls } from './ScenarioControls'
 import { builtOnWords } from './scenarioModel'
 import { SCENARIO_PAGE_NOTES } from './scenarioNotes'
-import { SpendStrip } from './SpendStrip'
+import { SpendTable } from './SpendTable'
 
 const SURFACE = 'season-scenarios'
 
@@ -192,6 +192,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         compareCount={view.panel === 'compare' || view.anyColumn ? checked.length : 0}
         onPanel={(panel) => write({ panel: panel === 'compare' ? 'compare' : null })}
         pill={pillWords(snapshot)}
+        lead={leadWords(snapshot)}
         nothingNew={work.nothingNew && snapshot !== null ? nothingNewWords(snapshot) : null}
         onUpdate={() => void work.update()}
         price={view.requestSet}
@@ -238,7 +239,6 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
           <CompareTools
             choices={choices}
             checked={checked}
-            refused={refused}
             onToggle={(key) => {
               const result = toggleColumn(
                 checked,
@@ -252,18 +252,19 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
             onByTier={(on) => write({ tiers: on ? '1' : null })}
           />
         }
+        refused={refused}
+        notice={
+          droppedNote === null
+            ? null
+            : droppedNote.includes(',')
+              ? `${droppedNote} aren't kept in ${String(workspace.year)}, so they were left out of the compare.`
+              : `${droppedNote} isn't kept in ${String(workspace.year)}, so it was left out of the compare.`
+        }
         error={work.error ?? rename.error?.message ?? null}
       />
-      {droppedNote !== null && (
-        <p className={`${CS_AMBER_NOTE} print:hidden`}>
-          {droppedNote.includes(',')
-            ? `${droppedNote} aren't kept in ${String(workspace.year)}, so they were left out of the compare.`
-            : `${droppedNote} isn't kept in ${String(workspace.year)}, so it was left out of the compare.`}
-        </p>
-      )}
       {view.panel === 'sandbox' ? (
         <>
-          <SpendStrip
+          <SpendTable
             draft={figures}
             from={starting.data?.results ?? null}
             stale={pricing.isPlaceholderData || (pricing.isFetching && fresh !== null)}
@@ -279,8 +280,16 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
             fitButton={
               canEdit ? (
                 <FitToBudgetButton
-                  disabled={locked.includes('award_tables') || priceOff}
-                  reason={priceOff ? 'Fit uses every application held' : null}
+                  disabled={locked.includes('award_tables') || priceOff || snapshot === null}
+                  reason={
+                    locked.includes('award_tables')
+                      ? 'Off once Round 1 posts'
+                      : priceOff
+                        ? 'Fit uses every application held'
+                        : snapshot === null
+                          ? 'Nothing is held yet'
+                          : null
+                  }
                   pending={fit.isPending}
                   onFit={() => {
                     setFitAskedOn(draft.trail_id ?? null)
@@ -307,7 +316,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
               ) : null
             }
           />
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid items-start gap-3 lg:grid-cols-2">
             <SandboxEquityCard binding={binding} />
             <SandboxIncomeCard binding={binding} />
           </div>
@@ -315,6 +324,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
       ) : (
         <CompareTable
           compare={compare.data}
+          held={snapshot !== null}
           loading={compare.isLoading}
           error={compare.data === undefined ? (compare.error?.message ?? null) : null}
           stale={compare.isPlaceholderData}
@@ -333,8 +343,12 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         />
       )}
       <div className="print:hidden">
-        <AidDefinitionNotes surface={SURFACE} />
-        <DefinitionNotes notes={SCENARIO_PAGE_NOTES} />
+        {/* ONE list: the registry's four, then the page's Locked and Change colours (final mock: six). */}
+        <AidDefinitionNotes
+          surface={SURFACE}
+          extra={SCENARIO_PAGE_NOTES.map((note) => note.text)}
+          boldTerm
+        />
       </div>
     </div>
   )

@@ -164,17 +164,27 @@ describe('Columns ▾ (§S5 H; N11)', () => {
   })
 })
 
-describe('the heads (§S5 H)', () => {
-  it('names each column and says where it came from', () => {
-    const heads = columnHeads(SOURCES, WS, 'from B · 1 change', 2027)
-    expect(heads.map((h) => [h.chip, h.chipTone, h.name, h.meta])).toEqual([
-      ['Rules', 'plain', 'Rules v4 in effect', 'approved Jan 12 · from B'],
-      ['Draft', 'draft', 'from B · 1 change', 'your draft, not kept'],
+describe('the heads (§S5 H; scenarios-10)', () => {
+  it('names each column "‹code› · ‹name›" and says where it came from, with no chip', () => {
+    const heads = columnHeads(SOURCES, WS, 'from B · 1 change')
+    expect(heads.map((h) => [h.headline, h.meta])).toEqual([
+      ['Rules v4 in effect', 'approved Jan 12 · from B'],
+      ['Your draft, not kept', 'from B · 1 change'],
       // B was kept Jan 14 on 420 applications: Round 1 740,000 + Round 2 20,500.
-      ['B', 'kept', 'bands $5,000 wider', 'kept Jan 14 · 420 applications · $760,500'],
-      ['2026', 'plain', 'Last season, posted', '2026, posted (as of Jan 3, 2027)'],
+      ['B · bands $5,000 wider', 'kept Jan 14 · 420 applications · $760,500'],
+      ['Last season, posted', '2026, posted (as of Jan 3, 2027)'],
     ])
+    expect(heads[2]?.name).toBe('bands $5,000 wider')
     expect(heads[2]?.option?.code).toBe('B')
+    expect(heads[0]).not.toHaveProperty('chip')
+  })
+
+  it('carries the kept-day sentence in a kept column’s title', () => {
+    const heads = columnHeads(SOURCES, WS, 'from B · 1 change')
+    expect(heads[2]?.title).toBe(
+      'B · bands $5,000 wider: kept Jan 14 · 420 applications · $760,500; the kept line is what it priced the day it was kept'
+    )
+    expect(heads[0]?.title).toBe('Rules v4 in effect: approved Jan 12 · from B')
   })
 })
 
@@ -211,6 +221,36 @@ describe('the rows (§S5 H; N3, N4, N10)', () => {
       ['55%', 'changed'],
       ['—', null],
     ])
+  })
+
+  it('titles a changed cell with the rules in effect’s own figure (the mock: "Differs from Rules v3 ($108)")', () => {
+    const minimum = row('Minimum award and named awards › Minimum award')
+    expect(minimum?.cells[1]?.title).toBe('Differs from Rules v4 ($100)')
+    expect(minimum?.cells[0]?.title).toBeUndefined()
+  })
+
+  it('averages Round 1 over the requests priced, as the mock does (owner Q11), never the committee’s tier-rows figure', () => {
+    const cells = row('Average Round 1 per request')?.cells.map((c) => c.text)
+    // Columns: rules, draft (735,000), B (760,000), each on 420 requests priced; last season's fixture view carries
+    // no request count, so there is nothing to divide by.
+    expect(cells).toEqual(['$1,810', '$1,750', '$1,810', '—'])
+  })
+
+  it('shows an em dash for the average when no requests were priced', () => {
+    const none = compareRows(
+      compareSources(
+        compareOut({
+          columns: [{ ...KEPT_B, results: { ...KEPT_B.results, requests: 0 } }],
+        }),
+        false
+      ),
+      { byTier: false, locked: false, effectName: 'Rules v4', names: NAMES }
+    ).find((r) => r.label === 'Average Round 1 per request')
+    expect(none?.cells[0]?.text).toBe('—')
+  })
+
+  it('points the Projected season row at the Projected note (3)', () => {
+    expect(row('Projected season')?.defNote).toBe(3)
   })
 
   it('says none differ when every column has the rules’ settings', () => {

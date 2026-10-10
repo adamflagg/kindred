@@ -1,7 +1,7 @@
 import { useState, type RefObject } from 'react'
 
-import { EditorActions } from '../../kit/EditorLayout'
-import { CS_BTN, CS_BTN2, CS_INPUT, CS_LABEL } from '../../kit/csType'
+import { EditorActions, EditorField, EditorForm, EditorGrid } from '../../kit/EditorLayout'
+import { CS_BTN, CS_BTN2, CS_INPUT } from '../../kit/csType'
 import { KEEP_NAME_MAX, keepName } from './controlsModel'
 import { ScenarioPopover } from './ScenarioPopover'
 
@@ -37,32 +37,37 @@ export function KeepPopover({
       onClose={onClose}
       anchor={anchor}
       align="right"
-      width={340}
+      width={520}
       testId="keep-popover"
+      editor
     >
-      <label className={CS_LABEL}>
-        Name
-        <input
-          aria-label="Name"
-          maxLength={KEEP_NAME_MAX}
-          className={`${CS_INPUT} mt-1 w-full`}
-          value={name}
-          onChange={(event) => setTyped(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') keep()
-          }}
-        />
-      </label>
-      <div className="mt-2">
-        <EditorActions {...(figure !== '' ? { reason: figure } : {})}>
-          <button type="button" className={CS_BTN} onClick={keep}>
-            {`Keep as ${nextCode}`}
-          </button>
-          <button type="button" className={CS_BTN2} onClick={onClose}>
-            Cancel
-          </button>
-        </EditorActions>
-      </div>
+      <EditorForm
+        actions={
+          <EditorActions {...(figure !== '' ? { reason: figure } : {})}>
+            <button type="button" className={CS_BTN} onClick={keep}>
+              {`Keep as ${nextCode}`}
+            </button>
+            <button type="button" className={CS_BTN2} onClick={onClose}>
+              Cancel
+            </button>
+          </EditorActions>
+        }
+      >
+        <EditorGrid columns={2}>
+          <EditorField label="Name">
+            <input
+              aria-label="Name"
+              maxLength={KEEP_NAME_MAX}
+              className={`${CS_INPUT} w-full`}
+              value={name}
+              onChange={(event) => setTyped(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') keep()
+              }}
+            />
+          </EditorField>
+        </EditorGrid>
+      </EditorForm>
     </ScenarioPopover>
   )
 }

@@ -52,6 +52,16 @@ export function pillWords(snapshot: ApiAidScenarioSnapshot | null): string {
     : held
 }
 
+/** The toolbar's lead (scenarios-2): "56 held" with its moment apart, so the moment reads muted. The full sentence
+ * (pillWords, "held until the rules are approved" included) is the lead's title. */
+export function leadWords(snapshot: ApiAidScenarioSnapshot | null): {
+  readonly held: string
+  readonly when: string | null
+} {
+  if (snapshot === null) return { held: 'No applications held yet', when: null }
+  return { held: `${String(snapshot.requests)} held`, when: formatPileMoment(snapshot.taken_at) }
+}
+
 export const nothingNewWords = (snapshot: ApiAidScenarioSnapshot) =>
   `Nothing new since ${formatPileMoment(snapshot.taken_at)}`
 
@@ -192,9 +202,9 @@ export const PRICE_CHOICES: ReadonlyArray<{
   readonly value: 'all' | 'deadline' | 'date'
   readonly label: string
 }> = [
-  { value: 'all', label: 'the applications held' },
-  { value: 'deadline', label: 'through the Round 1 deadline' },
-  { value: 'date', label: 'through a date…' },
+  { value: 'all', label: 'All held' },
+  { value: 'deadline', label: 'Through the R1 deadline' },
+  { value: 'date', label: 'Through a date…' },
 ]
 
 /** The corner cell's and By tier's words for what the figures are priced on (§S5 E, §S5 H). */
