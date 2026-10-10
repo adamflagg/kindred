@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router'
 
 import { useAidHistoryOperation } from '../../../hooks/camperships/useAidHistory'
@@ -7,18 +7,20 @@ import { hasStatus } from '../../../services/camperships/aidApi'
 import type { ApiAidHistoryOperation, ApiAidHistoryRow } from '../../../types/api-types'
 import type { AidView } from '../kit/asOf'
 import {
+  CS_BAND,
+  CS_BAND_EDGE,
   CS_LINK,
-  CS_PANEL,
-  CS_PANEL_HEAD,
+  CS_LINK_SM,
   CS_PANEL_RULE,
   CS_PILL,
-  CS_PMETA,
-  CS_SMALL,
+  CS_RULE,
 } from '../kit/csType'
 import { formatCampDateTime } from '../kit/dates'
 import { formatMoney } from '../kit/money'
 import {
   actorWords,
+  changeItems,
+  type ChangeItem,
   compactGroups,
   householdHref,
   KIND_LABELS,
@@ -26,6 +28,7 @@ import {
   openLinks,
   operationWords,
   requestHref,
+  rowSession,
   rowView,
   runSummary,
   type CompactGroup,
@@ -33,9 +36,16 @@ import {
 
 const FIRST = 8
 const ROWS_SHOWN = 25
-const BUTTON_LINK = `${CS_LINK} cursor-pointer`
-const COMPACT_TH = 'border-b border-amber-200/70 px-1.5 py-1 dark:border-amber-900/50'
-const COMPACT_FOOT = 'border-t border-amber-200/70 px-1.5 py-0.5 dark:border-amber-900/50'
+const BUTTON_LINK = `${CS_LINK_SM} cursor-pointer`
+/** cf-pmeta: 12.5/18 muted (the opened row's meta lines). */
+const PMETA = 'text-muted-foreground text-[12.5px] leading-[18px]'
+/** cf-phead: 11/15 700 uppercase .05em. CS_PANEL_HEAD is the household receipt's sentence-case head, shared by other surfaces. */
+const PHEAD =
+  'text-muted-foreground text-[11px] leading-[15px] font-bold tracking-[.05em] uppercase'
+/** The compact table's cells: the kit's grid at 12.5/18, 3px 8px (hi-open table.cf-grid). */
+const COMPACT_TH = `bg-muted text-muted-foreground border-border border-b px-2 py-[3px] text-left text-xs leading-tight font-semibold whitespace-nowrap ${CS_RULE} first:border-l-0`
+const COMPACT_TD = `border-border overflow-hidden border-b px-2 py-[3px] align-top text-ellipsis whitespace-nowrap ${CS_RULE} first:border-l-0`
+const COMPACT_FOOT = `${CS_BAND} ${CS_BAND_EDGE} px-2 py-[3px] font-bold whitespace-nowrap ${CS_RULE} first:border-l-0`
 
 type SessionNames = ReadonlyMap<number, string> | undefined
 
@@ -48,64 +58,103 @@ function CompactTable({ group }: { group: CompactGroup }) {
       ? 'Total, as recorded'
       : `All ${String(group.rows.length)}, as recorded`
   return (
-    <div className="space-y-1">
-      <div className="font-semibold">{group.head}</div>
-      <table data-testid="compact-table" className={`${CS_PANEL} w-full border-collapse`}>
-        <thead>
-          <tr className={`${CS_PMETA} font-semibold`}>
-            <th className={`${COMPACT_TH} text-left`}>Camper</th>
-            <th className={`${COMPACT_TH} text-left`}>Household</th>
-            <th className={`${COMPACT_TH} text-left`}>Session</th>
-            {round && <th className={`${COMPACT_TH} text-left`}>Round</th>}
-            <th className={`${COMPACT_TH} text-right`}>{group.amountLabel}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key}>
-              <td className="px-1.5 py-0.5">
-                {r.camperHref === null ? (
-                  r.camper
-                ) : (
-                  <Link to={r.camperHref} className={CS_LINK}>
-                    {r.camper}
-                  </Link>
-                )}
-              </td>
-              <td className="px-1.5 py-0.5">
-                {r.householdHref === null ? (
-                  r.household
-                ) : (
-                  <Link to={r.householdHref} className={CS_LINK}>
-                    {r.household}
-                  </Link>
-                )}
-              </td>
-              <td className="px-1.5 py-0.5">{r.session}</td>
-              {round && <td className="px-1.5 py-0.5">{r.round ?? ''}</td>}
-              <td className="px-1.5 py-0.5 text-right tabular-nums">{formatMoney(r.amount)}</td>
+    <div className="flex w-full flex-col items-start gap-0.5">
+      <div className="bg-card border-border w-full overflow-hidden rounded-lg border">
+        <table
+          data-testid="compact-table"
+          className="w-full table-fixed border-separate border-spacing-0 text-[12.5px] leading-[18px]"
+        >
+          <colgroup>
+            <col style={{ width: 128 }} />
+            <col style={{ width: 150 }} />
+            <col />
+            {round && <col style={{ width: 56 }} />}
+            <col style={{ width: 100 }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th className={COMPACT_TH}>Camper</th>
+              <th className={COMPACT_TH}>Household</th>
+              <th className={COMPACT_TH}>Session</th>
+              {round && <th className={COMPACT_TH}>Round</th>}
+              <th className={`${COMPACT_TH} text-right`}>{group.amountLabel}</th>
             </tr>
-          ))}
-        </tbody>
-        {group.total !== null && (
-          <tfoot>
-            <tr className="font-semibold">
-              <td colSpan={round ? 4 : 3} className={COMPACT_FOOT}>
-                {foot}
-              </td>
-              <td className={`${COMPACT_FOOT} text-right tabular-nums`}>
-                {formatMoney(group.total)}
-              </td>
-            </tr>
-          </tfoot>
-        )}
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td className={COMPACT_TD} title={r.camper}>
+                  {r.camperHref === null ? (
+                    <span className={r.householdRequest ? 'text-muted-foreground' : ''}>
+                      {r.camper}
+                    </span>
+                  ) : (
+                    <Link to={r.camperHref} className={CS_LINK_SM}>
+                      {`${r.camper} ›`}
+                    </Link>
+                  )}
+                </td>
+                <td className={COMPACT_TD} title={r.household}>
+                  {r.householdHref === null ? (
+                    r.household
+                  ) : (
+                    <Link to={r.householdHref} className={CS_LINK_SM}>
+                      {`${r.household} ›`}
+                    </Link>
+                  )}
+                </td>
+                <td className={COMPACT_TD} title={r.sessionFull === '' ? undefined : r.sessionFull}>
+                  {r.session}
+                </td>
+                {round && <td className={COMPACT_TD}>{r.round ?? ''}</td>}
+                <td className={`${COMPACT_TD} text-right tabular-nums`}>{formatMoney(r.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+          {group.total !== null && (
+            <tfoot>
+              <tr>
+                <td colSpan={round ? 4 : 3} className={COMPACT_FOOT}>
+                  {foot}
+                </td>
+                <td className={`${COMPACT_FOOT} text-right tabular-nums`}>
+                  {formatMoney(group.total)}
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
       {group.rows.length > FIRST && (
         <button type="button" className={BUTTON_LINK} onClick={() => setAll(!all)}>
           {all ? 'Show the first 8' : `Show all ${String(group.rows.length)}`}
         </button>
       )}
     </div>
+  )
+}
+
+/** The mock's change list (.cf-chgl): muted nowrap keys, the old value struck, the new one bold. */
+function ChangeList({ items }: { items: readonly ChangeItem[] }) {
+  return (
+    <ul className="m-0 grid list-none grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-px p-0 text-[12.5px] leading-[18px]">
+      {items.map((item, i) => (
+        <Fragment key={`${String(i)}:${item.label}`}>
+          {item.label !== '' && (
+            <li className="text-muted-foreground whitespace-nowrap">{item.label}</li>
+          )}
+          <li className={item.label === '' ? 'col-span-2' : undefined}>
+            {item.before !== null && (
+              <>
+                <s className="text-muted-foreground">{item.before}</s>
+                {' → '}
+              </>
+            )}
+            <b className="text-foreground font-bold">{item.after}</b>
+          </li>
+        </Fragment>
+      ))}
+    </ul>
   )
 }
 
@@ -120,69 +169,40 @@ function RowBlock({
 }) {
   const v = rowView(row, sessions)
   const camperHref = requestHref(row, v.householdCmId, view)
+  const session = rowSession(row, sessions)
+  const items = changeItems(v)
   return (
-    <div data-history-row className="space-y-0.5">
-      <div>
-        <span className="font-semibold">{v.head}</span>
-        {(v.camperName !== null || v.householdCmId !== null) && (
-          <span className="text-muted-foreground">
-            {v.camperName !== null && (
-              <>
-                {' · '}
-                {camperHref === null ? (
-                  v.camperName
-                ) : (
-                  <Link to={camperHref} className={CS_LINK}>{`${v.camperName} ›`}</Link>
-                )}
-              </>
-            )}
-            {v.householdCmId !== null && (
-              <>
-                {' · '}
-                <Link to={householdHref(v.householdCmId, view)} className={CS_LINK}>
-                  {`${v.householdName ?? ''} ›`}
-                </Link>
-              </>
-            )}
-          </span>
-        )}
-      </div>
-      {v.fields.length > 0 ? (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3">
-          {v.fields.map((f, i) => (
-            <div key={`${String(i)}:${f.label}`} className="contents">
-              <dt className="text-muted-foreground whitespace-nowrap">{f.label}</dt>
-              <dd className="tabular-nums">
-                {f.kind === 'removed' ? (
-                  `removed (was ${f.before ?? '—'})`
-                ) : f.kind === 'added' ? (
-                  f.after
-                ) : (
-                  <>
-                    <s className="text-muted-foreground">{f.before}</s>{' '}
-                    <span className="text-muted-foreground">→</span> {f.after}
-                  </>
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : (
-        // A rules row has no fields: its words ("Round 3  Draft → Approved") are its lines.
-        v.lines.length > 0 && (
-          <dl className="grid grid-cols-[minmax(0,1fr)]">
-            {v.lines.map((text, i) => (
-              <dd key={`${String(i)}:${text}`} className="text-muted-foreground">
-                {text}
-              </dd>
-            ))}
-          </dl>
-        )
+    <div data-history-row className="flex flex-col items-start gap-0.5">
+      {v.camperName !== null && (
+        <span className={PMETA}>
+          {camperHref === null ? (
+            v.camperName
+          ) : (
+            <Link to={camperHref} className={CS_LINK_SM}>{`${v.camperName} ›`}</Link>
+          )}
+          {session !== null && ` · ${session}`}
+          {v.householdCmId !== null && (
+            <>
+              {' · '}
+              <Link to={householdHref(v.householdCmId, view)} className={CS_LINK_SM}>
+                {`${v.householdName ?? ''} ›`}
+              </Link>
+            </>
+          )}
+        </span>
       )}
+      {v.camperName === null && v.householdCmId !== null && (
+        <span className={PMETA}>
+          <Link to={householdHref(v.householdCmId, view)} className={CS_LINK_SM}>
+            {`${v.householdName ?? ''} ›`}
+          </Link>
+        </span>
+      )}
+      {items.length > 0 && <ChangeList items={items} />}
       {v.hidden > 0 && (
-        <div
-          className={CS_SMALL}
-        >{`and ${String(v.hidden)} recorded ${v.hidden === 1 ? 'detail' : 'details'} not listed`}</div>
+        <span
+          className={PMETA}
+        >{`and ${String(v.hidden)} recorded ${v.hidden === 1 ? 'detail' : 'details'} not listed`}</span>
       )}
     </div>
   )
@@ -248,7 +268,7 @@ function WhatChanged({ operation, view }: { operation: ApiAidHistoryOperation; v
       </p>
     )
   }
-  const { groups, rest } = compactGroups(detail.data.rows, view, sessions)
+  const { groups, rest, omitted } = compactGroups(detail.data.rows, view, sessions)
   const intake = operation.kind === 'intake'
   return (
     <div className="space-y-2">
@@ -257,10 +277,15 @@ function WhatChanged({ operation, view }: { operation: ApiAidHistoryOperation; v
           <CompactTable group={group} />
         </div>
       ))}
+      {omitted > 0 && (
+        <div className={PMETA}>
+          {`and ${String(omitted)} recorded ${omitted === 1 ? 'row' : 'rows'} not listed: removals that cancel a placement`}
+        </div>
+      )}
       {intake && rest.length > 0 ? (
         <div className={`${BLOCK} space-y-1`}>
           <div className="font-semibold">Also in this run</div>
-          <div className={CS_SMALL}>{runSummary(rest)}</div>
+          <div className={PMETA}>{runSummary(rest)}</div>
           {theirs ? (
             <>
               <Blocks rows={rest} view={view} sessions={sessions} />
@@ -302,18 +327,18 @@ function OpenPanel({ operation, view }: { operation: ApiAidHistoryOperation; vie
           {links.fullList.label}
         </Link>
       )}
-      {links.manyFamilies !== null && <span className={CS_SMALL}>{links.manyFamilies}</span>}
+      {links.manyFamilies !== null && <span className={PMETA}>{links.manyFamilies}</span>}
       {links.rules !== null && (
         <Link to={links.rules.href} className={CS_LINK}>
           {links.rules.label}
         </Link>
       )}
-      {links.nothing !== null && <span className={CS_SMALL}>{links.nothing}</span>}
+      {links.nothing !== null && <span className={PMETA}>{links.nothing}</span>}
     </div>
   )
 }
 
-/** The opened row (spec §7.2 D, owner 10-06): why | What changed | Open, split by dashed amber rules, at 14/20. */
+/** The opened row (spec §7.2 D, owner 10-06): why | What changed | Open, split by dashed amber rules, at 13.5/20 (hi-open). */
 export function HistoryPanels({
   operation,
   view,
@@ -322,35 +347,34 @@ export function HistoryPanels({
   view: AidView
 }) {
   const words = operationWords(operation)
+  const PANEL = 'flex min-w-0 flex-col items-start gap-0.5 px-[14px]'
   return (
     <div
       data-testid="history-panels"
-      className={`${CS_PANEL} grid grid-cols-[min(384px,30%)_minmax(0,1fr)_auto]`}
+      className="grid grid-cols-[minmax(0,4fr)_minmax(0,7fr)_minmax(150px,2.6fr)] text-[13.5px] leading-5"
     >
-      <div className="flex flex-col gap-1.5 pr-[18px]">
-        <p>
-          {operation.reason === '' ? (
-            <span className="text-muted-foreground">No reason recorded.</span>
-          ) : (
-            `“${operation.reason}”`
-          )}
-        </p>
-        <p className={CS_PMETA}>
-          <b className="text-foreground font-medium">{actorWords(operation.actor)}</b>
-          {` · ${formatCampDateTime(operation.at)} · `}
+      <div className="flex min-w-0 flex-col items-start gap-0.5 pr-[14px]">
+        {operation.reason === '' ? (
+          <span className={PMETA}>No reason recorded.</span>
+        ) : (
+          <span className="font-semibold">{`“${operation.reason}”`}</span>
+        )}
+        <span className={PMETA}>
+          {`${actorWords(operation.actor)} · ${formatCampDateTime(operation.at)} · `}
           <span className={CS_PILL[KIND_TONE[operation.kind]]}>{KIND_LABELS[operation.kind]}</span>
-        </p>
-        <p>{words.what}</p>
-        <p
-          className={CS_PMETA}
-        >{`${String(operation.rows)} rows · operation ${operation.operation_id}`}</p>
+        </span>
+        <span>{words.what}</span>
+        <span
+          className={PMETA}
+          title={`Operation ${operation.operation_id}: search the log by this id`}
+        >{`${String(operation.rows)} ${operation.rows === 1 ? 'row' : 'rows'} · id ${operation.operation_id}`}</span>
       </div>
-      <div className={`border-l px-[14px] ${CS_PANEL_RULE}`}>
-        <div className={`${CS_PANEL_HEAD} mb-1`}>What changed</div>
+      <div className={`border-l ${PANEL} ${CS_PANEL_RULE}`}>
+        <div className={PHEAD}>What changed</div>
         <WhatChanged operation={operation} view={view} />
       </div>
-      <div className={`max-w-[220px] min-w-[140px] border-l pl-[14px] ${CS_PANEL_RULE}`}>
-        <div className={`${CS_PANEL_HEAD} mb-1`}>Open</div>
+      <div className={`border-l ${PANEL} ${CS_PANEL_RULE}`}>
+        <div className={PHEAD}>Open</div>
         <OpenPanel operation={operation} view={view} />
       </div>
     </div>
