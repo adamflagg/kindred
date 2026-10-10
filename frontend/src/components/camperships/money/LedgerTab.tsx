@@ -313,7 +313,7 @@ export function LedgerTab({ view }: { view: AidView }) {
         )}
       </section>
       <AidDefinitionNotes surface="money-ledger" extra={marks.extra} boldTerm />
-      <ProgramWordsNote which="campminder" />
+      <ProgramWordsNote />
     </div>
   )
 }

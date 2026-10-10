@@ -343,7 +343,7 @@ def _unclassified(postings: Iterable[Any], sources: Mapping[str, Any]) -> list[U
 class FinancialAidLedgerService:
     def __init__(self, repo: FinancialAidRepository, *, program_labels: ProgramLabelLoader | None = None) -> None:
         self.repo = repo
-        self._program_labels = program_labels  # a season's rules labels by program key; None: no labels
+        self._program_labels = program_labels  # family (or rules key) → shared program word, by season; None: no labels
 
     async def _labels(self, year: int) -> Mapping[str, str]:
         return await self._program_labels(year) if self._program_labels is not None else {}

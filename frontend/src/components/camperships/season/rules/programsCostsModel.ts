@@ -8,23 +8,27 @@ import type { ApiAidGroup, ApiAidValidationIssue } from '../../../../types/api-t
 import { boxText, parseSetting, type FieldSpec } from './sectionEdit'
 
 export const NOT_OPEN = 'none'
-export type SubSection = 'summer' | 'quest' | 'scit' | 'other'
-/** CampMinder session types → the card's sub-sections (§4.4). Vocabulary, never a session (ground rule 4). */
+export type SubSection = 'summer' | 'quest' | 'teen' | 'other'
+/**
+ * CampMinder session types → the card's sub-sections (§4.4). Vocabulary, never a session (ground rule 4). The words
+ * are the family words every Camperships screen shares (server `FAMILY_WORDS`); teen-type sessions (Teen Winter
+ * Retreat) sit with Teen Programs, not Quests (ux3 taxonomy).
+ */
 export const SUBSECTION_OF_TYPE: Readonly<Record<string, SubSection>> = {
   main: 'summer',
   embedded: 'summer',
   quest: 'quest',
-  teen: 'quest',
-  scit: 'scit',
-  tli: 'scit',
+  teen: 'teen',
+  scit: 'teen',
+  tli: 'teen',
 }
 export const SUBSECTION_LABELS: Readonly<Record<SubSection, string>> = {
-  summer: 'Summer',
-  quest: 'Quest',
-  scit: 'SCIT',
+  summer: 'At Camp',
+  quest: 'Quests',
+  teen: 'Teen Programs',
   other: 'Other',
 }
-const SUB_ORDER: readonly SubSection[] = ['summer', 'quest', 'scit', 'other']
+const SUB_ORDER: readonly SubSection[] = ['summer', 'quest', 'teen', 'other']
 export type PriceKind = 'catalog' | 'per_person' | 'typed'
 
 export interface ProgramShape {

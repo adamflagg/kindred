@@ -297,13 +297,13 @@ describe('Grants › Register (§8.2)', () => {
     expect(within(actions).getByText(/A grant line is CampMinder’s/)).toBeInTheDocument()
   })
 
-  // Owner ruling (final audit): the two Program vocabularies are both labelled, with one note.
-  it('labels Program as CampMinder’s and says how it differs from Requests', async () => {
+  // Owner ruling (ux3 Q2): the note is cut to one point, the key is CampMinder's posted program.
+  it('says Program (in CM) is the program CampMinder posted, and nothing about Requests', async () => {
     renderTab()
     expect((await screen.findAllByText('Program (in CM)')).length).toBeGreaterThan(0)
-    expect(screen.getByTestId('program-words-note')).toHaveTextContent(
-      'Requests uses the program the rules price under'
-    )
+    const note = screen.getByTestId('program-words-note')
+    expect(note).toHaveTextContent('the program CampMinder posted the money under')
+    expect(note).not.toHaveTextContent(/Requests|rules price/)
   })
 
   it('records a commitment for a camper on a request this season (D55; P-16)', async () => {

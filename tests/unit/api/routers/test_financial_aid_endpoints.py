@@ -347,14 +347,18 @@ async def test_summary_program_labels_come_from_the_approved_programs_never_a_dr
     version = SimpleNamespace(document=fictional_rules())
     rules = SimpleNamespace(latest_approved=AsyncMock(return_value=version), load=AsyncMock())
     with patch.object(router, "_rules", return_value=rules):
-        assert (await router._program_labels(2027))["summer"] == "Summer"
+        assert (await router._program_labels(2027))["summer"] == "At Camp"
     rules.latest_approved.assert_awaited_once_with(2027, ["programs"])
     rules.load.assert_not_awaited()  # load() is the newest version, a draft included
 
     rules = SimpleNamespace(latest_approved=AsyncMock(return_value=None))
     with patch.object(router, "_rules", return_value=rules):
         assert await router._program_labels(2027) == {
-            "quest": "Quest",
-            "teen": "Teen Leadership",
-            "bmitzvah": "B*Mitzvah",
+            "summer": "At Camp",
+            "quest": "Quests",
+            "teen": "Teen Programs",
+            "family_camp": "Family Camp",
+            "adult_weekend": "Adult Weekends",
+            "family_school": "Family School",
+            "bmitzvah": "TBM",
         }

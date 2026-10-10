@@ -41,13 +41,14 @@ function bar(props: { program?: string | null; pool?: string | null; round?: 1 |
   return { onChange, onProgramPool }
 }
 
-// Owner ruling (final audit): Requests' Program is the program the rules price under.
-it('labels the Program filter "as priced"', () => {
+// Owner ruling (ux3 Q2): the label is plain "Program"; the as-priced wording is gone.
+it('labels the Program filter plain "Program"', () => {
   bar({})
-  expect(screen.getByText('Program (as priced)')).toBeInTheDocument()
+  expect(screen.getByText('Program')).toBeInTheDocument()
+  expect(screen.queryByText(/as priced/i)).not.toBeInTheDocument()
 })
 
-const programButton = () => screen.getByRole('button', { name: /^Program \(as priced\):/ })
+const programButton = () => screen.getByRole('button', { name: /^Program:/ })
 const openProgram = async () => {
   await userEvent.click(programButton())
   return screen.findAllByRole('option')

@@ -240,7 +240,7 @@ describe('lensRows and lensCounts (the lens narrows every count)', () => {
   it('counts each lens over the filters, whichever lens is picked', () => {
     const counts = lensCounts(GRID_ROWS, { ...NO_FILTERS, program: 'summer' }, true)
     expect(counts.get('all')?.requests).toBe(
-      GRID_ROWS.filter((r) => r.program_key === 'summer').length
+      GRID_ROWS.filter((r) => r.program_family === 'summer').length
     )
     expect(counts.get('appeals')?.requests).toBe(0)
     expect(lensCounts(GRID_ROWS, NO_FILTERS, true).get('appeals')?.requests).toBe(1)

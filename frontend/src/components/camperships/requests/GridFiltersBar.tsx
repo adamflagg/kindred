@@ -98,9 +98,9 @@ export function GridFiltersBar({
   const current = round === null ? '' : String(round)
   return (
     <>
-      <Labelled text="Program (as priced)">
+      <Labelled text="Program">
         <AidPicker
-          label="Program (as priced)"
+          label="Program"
           value={value}
           options={programOptions(groups, program, pool)}
           onChange={pick}

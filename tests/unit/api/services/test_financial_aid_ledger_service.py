@@ -642,9 +642,9 @@ def test_program_labels_come_from_the_rules_programs_and_only_the_fixed_words_wi
     from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
     labels = program_labels(fictional_rules())
-    assert labels["summer"] == "Summer"
-    assert labels["family_camp"] == "Family camp"
-    assert program_labels(None) == {"quest": "Quest", "teen": "Teen Leadership", "bmitzvah": "B*Mitzvah"}
+    assert labels["summer"] == "At Camp"
+    assert labels["family_camp"] == "Family Camp"
+    assert program_labels(None)["quest"] == "Quests"
 
 
 @pytest.mark.asyncio

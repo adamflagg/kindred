@@ -82,65 +82,65 @@ describe('poolLabels (the rules name their budget pools)', () => {
   })
 })
 
-describe('programGroups (T6: one Program dropdown, pools as headings)', () => {
+describe('programGroups (ux3 taxonomy: pool, then the program family under it)', () => {
+  const row = (family: string, label: string, pool: string | null) => ({ family, label, pool })
   const seen = [
-    { program: 'family_camp', pool: 'pool_b' },
-    { program: 'summer', pool: 'pool_a' },
-    { program: 'quest', pool: 'pool_a' },
-    { program: 'summer', pool: 'pool_a' },
+    row('family_camp', 'Family Camp', 'pool_b'),
+    row('summer', 'At Camp', 'pool_a'),
+    row('teen', 'Teen Programs', 'pool_a'),
+    row('quest', 'Quests', 'pool_a'),
+    row('summer', 'At Camp', 'pool_a'),
+    row('adult_weekend', 'Adult Weekends', 'pool_b'),
   ]
 
-  it("puts each pool's programs under its heading, in the rules' pool order, with the rules' words", () => {
+  it("puts each pool's families under its heading in the rules' pool order, families in the display order, with the server's words", () => {
     expect(programGroups(seen, APPROVED_RULES_2026)).toEqual([
       {
         pool: { value: 'pool_a', label: 'Pool A' },
         programs: [
-          { value: 'quest', label: 'Quest' },
-          { value: 'summer', label: 'Summer' },
+          { value: 'summer', label: 'At Camp' },
+          { value: 'quest', label: 'Quests' },
+          { value: 'teen', label: 'Teen Programs' },
         ],
       },
       {
         pool: { value: 'pool_b', label: 'Pool B' },
-        programs: [{ value: 'family_camp', label: 'Family camp' }],
+        programs: [
+          { value: 'family_camp', label: 'Family Camp' },
+          { value: 'adult_weekend', label: 'Adult Weekends' },
+        ],
       },
     ])
   })
 
-  it("files a program under the rules' budget pool, before the row's own", () => {
-    const moved = [{ program: 'ffp', pool: 'pool_b' }]
-    expect(programGroups(moved, APPROVED_RULES_2026)[0]?.pool?.value).toBe('pool_a')
+  it('has no Family School option unless a row holds one', () => {
+    const values = programGroups(seen, APPROVED_RULES_2026).flatMap((g) =>
+      g.programs.map((p) => p.value)
+    )
+    expect(values).not.toContain('family_school')
+    const withSchool = programGroups(
+      [...seen, row('family_school', 'Family School', 'pool_b')],
+      undefined
+    )
+    expect(withSchool.flatMap((g) => g.programs.map((p) => p.value))).toContain('family_school')
   })
 
   it("groups by the rows' own pools, keys spelled out, while the read has no answer (no blocking)", () => {
-    expect(programGroups(seen, undefined)).toEqual([
-      {
-        pool: { value: 'pool_a', label: 'Pool a' },
-        programs: [
-          { value: 'quest', label: 'Quest' },
-          { value: 'summer', label: 'Summer' },
-        ],
-      },
-      {
-        pool: { value: 'pool_b', label: 'Pool b' },
-        programs: [{ value: 'family_camp', label: 'Family camp' }],
-      },
+    expect(programGroups(seen, undefined).map((g) => g.pool)).toEqual([
+      { value: 'pool_a', label: 'Pool a' },
+      { value: 'pool_b', label: 'Pool b' },
     ])
   })
 
-  it('lists a program in no pool last, under no heading', () => {
-    const groups = programGroups(
-      [...seen, { program: 'not_aided', pool: null }],
-      APPROVED_RULES_2026
-    )
-    expect(groups.at(-1)).toEqual({
-      pool: null,
-      programs: [{ value: 'not_aided', label: 'Not aided' }],
-    })
+  it('spells the family out when the server sent no word for it', () => {
+    expect(programGroups([row('nosuch_family', '', 'pool_a')], undefined)[0]?.programs).toEqual([
+      { value: 'nosuch_family', label: 'Nosuch family' },
+    ])
   })
 
-  it('lists a program in no pool last while the read has no answer too', () => {
-    const groups = programGroups([{ program: 'not_aided', pool: null }, ...seen], undefined)
-    expect(groups.map((g) => g.pool?.value ?? null)).toEqual(['pool_a', 'pool_b', null])
+  it('lists a family in no pool last, under no heading', () => {
+    const groups = programGroups([...seen, row('other', 'Other', null)], APPROVED_RULES_2026)
+    expect(groups.at(-1)).toEqual({ pool: null, programs: [{ value: 'other', label: 'Other' }] })
   })
 })
 

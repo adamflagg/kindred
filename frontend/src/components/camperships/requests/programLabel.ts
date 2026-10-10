@@ -56,26 +56,39 @@ export interface ProgramGroup {
 }
 
 /**
- * The Program dropdown's groups (slice 1 grid layout T6): every program the rows hold, under its
- * budget pool. The rules file a program (`budget_pool`) and name both; a program they do not file
- * keeps the pool its rows carry, so while the read loads, fails or 404s the dropdown still groups,
- * keys spelled out, and never waits on it. Pools run in the rules' order, then by key; programs by
- * label; a program in no pool comes last, under no heading.
+ * The families' display order inside a pool (the summer app's own: At Camp, Quests, Teen Programs; Family Camp
+ * before Adult Weekends). Order only: the families and their words come from the server, never from here.
+ */
+const FAMILY_ORDER = [
+  'summer',
+  'quest',
+  'teen',
+  'bmitzvah',
+  'family_camp',
+  'adult_weekend',
+  'family_school',
+]
+
+/**
+ * The Program dropdown's groups (ux3 taxonomy): every program family the rows hold (`program_family`, with the
+ * server's word for it), under the budget pool its rows carry. Pools run in the rules' order, then by key;
+ * families in `FAMILY_ORDER`, any other by label; a family in no pool comes last, under no heading. A family the
+ * server sent no word for is spelled out, and the groups never wait on the rules read.
  */
 export function programGroups(
-  seen: ReadonlyArray<{ readonly program: string | null; readonly pool: string | null }>,
+  seen: ReadonlyArray<{
+    readonly family: string
+    readonly label: string
+    readonly pool: string | null
+  }>,
   rules: ApiAidApprovedRules | undefined
 ): ProgramGroup[] {
-  const programNames = programLabels(rules)
   const poolNames = poolLabels(rules)
-  const filed = stringField(sectionContent(rules, 'programs'), 'budget_pool')
   const byPool = new Map<string | null, Map<string, ProgramOption>>()
-  for (const { program, pool } of seen) {
-    if (program === null) continue
-    const home = filed[program] ?? pool
-    const programs = byPool.get(home) ?? new Map<string, ProgramOption>()
-    programs.set(program, { value: program, label: programLabel(programNames, program) })
-    byPool.set(home, programs)
+  for (const { family, label, pool } of seen) {
+    const programs = byPool.get(pool) ?? new Map<string, ProgramOption>()
+    programs.set(family, { value: family, label: label !== '' ? label : programLabel({}, family) })
+    byPool.set(pool, programs)
   }
   const order = Object.keys(poolNames)
   const rank = (pool: string | null) => {
@@ -83,17 +96,23 @@ export function programGroups(
     const at = order.indexOf(pool)
     return at === -1 ? order.length : at
   }
+  const familyRank = (value: string) => {
+    const at = FAMILY_ORDER.indexOf(value)
+    return at === -1 ? FAMILY_ORDER.length : at
+  }
   return [...byPool.entries()]
     .sort(([a], [b]) => rank(a) - rank(b) || (a ?? '').localeCompare(b ?? ''))
     .map(([pool, programs]) => ({
       pool: pool === null ? null : { value: pool, label: programLabel(poolNames, pool) },
-      programs: [...programs.values()].sort((x, y) => x.label.localeCompare(y.label)),
+      programs: [...programs.values()].sort(
+        (x, y) => familyRank(x.value) - familyRank(y.value) || x.label.localeCompare(y.label)
+      ),
     }))
 }
 
 /**
  * The ledger families the rules never key by their own name, and the budget pool each belongs to
- * (the server's `RULES_KEY_ALIASES` and fixed families): Quest and Teen Leadership sit in the camp
+ * (the server's `RULES_KEY_ALIASES` and fixed families): Quests and Teen Programs sit in the camp
  * and quest pool, B*Mitzvah is the rules' `tbm`, adult weekends are the weekend pool.
  */
 const FAMILY_POOLS: Readonly<Record<string, string>> = {

@@ -14,18 +14,27 @@ if TYPE_CHECKING:
 ProgramLabelLoader = Callable[[int], Awaitable[Mapping[str, str]]]
 
 
-# The ledger's program families are not all the rules' program keys: the rules key the B*Mitzvah program `tbm` (the
-# family is `bmitzvah`), and never name quest or teen. A family the rules name by its own key takes that label; else,
-# for bmitzvah, its alias's; else the fixed word here. Ambiguous and unattributed buckets stay unnamed.
+# One vocabulary for every Camperships screen (Requests, Ledger, Grants, the Rules Programs card): each program family
+# has one fixed word, the summer app's own (At Camp / Quests / Teen Programs), whatever the rules call their program.
+# The one exception is bmitzvah: the rules key that program `tbm`, so its word is the rules' (TBM without rules).
+# Ambiguous and unattributed buckets stay unnamed.
+FAMILY_WORDS: Final[Mapping[str, str]] = {
+    "summer": "At Camp",
+    "quest": "Quests",
+    "teen": "Teen Programs",
+    "family_camp": "Family Camp",
+    "adult_weekend": "Adult Weekends",
+    "family_school": "Family School",
+}
 RULES_KEY_ALIASES: Final[Mapping[str, str]] = {"bmitzvah": "tbm"}
-FALLBACK_LABELS: Final[Mapping[str, str]] = {"quest": "Quest", "teen": "Teen Leadership", "bmitzvah": "B*Mitzvah"}
+BMITZVAH_FALLBACK: Final = "TBM"
 
 
 def program_labels(document: AidRules | None) -> dict[str, str]:
-    """program key -> label: the rules' label for each program they name, then each ledger family the rules don't
-    name by its own key, from its rules alias or the fixed fallback. With no rules, only the fallbacks."""
+    """family (or rules program key) -> label: the rules' label for each program they name, then every family's
+    shared word over it; bmitzvah reads the rules' own label for it (or its `tbm` alias), else TBM."""
     labels = {key: program.label for key, program in document.programs.items()} if document is not None else {}
-    for family, fallback in FALLBACK_LABELS.items():
-        if family not in labels:
-            labels[family] = labels.get(RULES_KEY_ALIASES.get(family, ""), fallback)
+    labels.update(FAMILY_WORDS)
+    if "bmitzvah" not in labels:
+        labels["bmitzvah"] = labels.get(RULES_KEY_ALIASES["bmitzvah"], BMITZVAH_FALLBACK)
     return labels

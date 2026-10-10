@@ -619,7 +619,9 @@ export function filterRows(
   return rows.filter(
     (row) =>
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
-      (filters.program === null || row.program_key === filters.program) &&
+      // A row the rules do not price is in no Program group (programGroups' input), so no pick holds it.
+      (filters.program === null ||
+        (row.program_key !== null && row.program_family === filters.program)) &&
       (filters.pool === null || row.pool === filters.pool) &&
       (!filters.live || isLiveRow(row)) &&
       matchesRound(row, view, filters.round) &&

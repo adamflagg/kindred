@@ -226,6 +226,24 @@ describe('REQUEST_VIEWS (§6.2)', () => {
 })
 
 describe('filterRows', () => {
+  it("filters ?program= by the row's program family, not the rules' program (ux3 taxonomy)", () => {
+    // Quest is priced under the rules' `summer` program, yet its family is `quest`: At Camp must not hold it.
+    const questPricedAsSummer = { ...ROW_OLIVIA, program_key: 'summer', program_family: 'quest' }
+    const rows = [ROW_EMMA, questPricedAsSummer]
+    expect(filterRows(rows, 'all', { ...NO_FILTERS, program: 'quest' })).toEqual([
+      questPricedAsSummer,
+    ])
+    expect(filterRows(rows, 'all', { ...NO_FILTERS, program: 'summer' })).toEqual([ROW_EMMA])
+  })
+
+  it('keeps a row the rules do not price out of every Program pick: it is only under All', () => {
+    // The picker builds no option from an unpriced row, so the filter must not count one either.
+    const unpriced = { ...ROW_OLIVIA, program_key: null, pool: null }
+    const rows = [ROW_OLIVIA, unpriced]
+    expect(filterRows(rows, 'all', { ...NO_FILTERS, program: 'quest' })).toEqual([ROW_OLIVIA])
+    expect(filterRows(rows, 'all', NO_FILTERS)).toEqual(rows)
+  })
+
   it("keeps a view's rows by the server's queues, and the program, pool and id filters", () => {
     expect(filterRows(GRID_ROWS, 'holds', NO_FILTERS)).toEqual([ROW_LIAM])
     expect(filterRows(GRID_ROWS, 'all', { ...NO_FILTERS, program: 'quest' })).toEqual([ROW_OLIVIA])

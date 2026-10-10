@@ -127,6 +127,7 @@ from api.services.financial_aid_grants_register import (
     counts_as_outside,
     grant_inputs_by_request,
     outside_grants_by_request,
+    program_family_for_session_type,
 )
 from api.services.financial_aid_intake_plan import application_fields, request_fields, share_entity_id
 from api.services.financial_aid_intake_repository import application_record, request_record
@@ -144,6 +145,7 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
+from api.services.financial_aid_program_labels import program_labels
 from api.services.financial_aid_queues import ROUND_STATUS_LABELS, UNTICKED_LABELS, row_queues, row_stage
 from api.services.financial_aid_reconciliation import (
     AWAITING_SYNC_TEXT,
@@ -792,10 +794,12 @@ def grid_row(
     to_reverse: bool = False,
     appeal: str | None = None,
     type_labels: Mapping[str, str] | None = None,
+    family_labels: Mapping[str, str] | None = None,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
     labels = type_labels or {}
+    family = program_family_for_session_type(session.session_type if session is not None else "")
 
     def outside(v: RoundView) -> tuple[float | None, str | None]:
         part = outside_part(v)
@@ -838,6 +842,8 @@ def grid_row(
         session_cm_id=request.session_cm_id,
         session_name=session.name if session is not None else "",
         session_type=session.session_type if session is not None else "",
+        program_family=family,
+        program_family_label=(family_labels or program_labels(None)).get(family, ""),
         program_key=priced.program_key,
         pool=priced.pool,
         request_status=request.status,
@@ -2374,6 +2380,7 @@ class FinancialAidDecisionsService:
                 season.requests[request_id], season.rounds.get(request_id, {}), season.cancellations.get(request_id)
             ),
             type_labels={k: t.label for k, t in rules.awards.decision_types.items()} if rules is not None else None,
+            family_labels=program_labels(rules),
         )
         request = season.requests[request_id]
         program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None

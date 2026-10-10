@@ -62,7 +62,6 @@ import {
 import { camperLabel } from '../../components/camperships/requests/cells'
 import { listOutside, OUTSIDE_FOOTNOTE } from '../../components/camperships/requests/outside'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
-import { ProgramWordsNote } from '../../components/camperships/shell/ProgramWordsNote'
 import { AidPageHead } from '../../components/camperships/shell/AidPageHead'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { Permission } from '../../constants/permissions'
@@ -205,7 +204,14 @@ export default function AidRequestsPage() {
   const groups = useMemo(
     () =>
       programGroups(
-        (rows ?? []).map((r) => ({ program: r.program_key, pool: r.pool })),
+        (rows ?? [])
+          // A row the rules do not price (no program) is in no group: it is only under All.
+          .filter((r) => r.program_key !== null)
+          .map((r) => ({
+            family: r.program_family ?? 'other',
+            label: r.program_family_label ?? '',
+            pool: r.pool,
+          })),
         approvedRules.data
       ),
     [rows, approvedRules.data]
@@ -675,7 +681,6 @@ export default function AidRequestsPage() {
         }
       </QueryGuard>
       <AidDefinitionNotes surface="requests" extra={outsideNotes} boldTerm />
-      <ProgramWordsNote which="priced" />
     </div>
   )
 }

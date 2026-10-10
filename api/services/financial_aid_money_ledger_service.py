@@ -67,7 +67,7 @@ class _Read:
     families: dict[int, str]
     persons: dict[int, str]
     sources: dict[str, SourceRow]
-    program_labels: Mapping[str, str]  # the season's rules label for each program key
+    program_labels: Mapping[str, str]  # family (or rules key) → shared program word
     sessions: Mapping[int, SessionRow]  # the season's sessions, for a household request's session
 
 
