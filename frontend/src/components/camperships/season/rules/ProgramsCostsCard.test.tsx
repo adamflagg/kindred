@@ -71,9 +71,12 @@ describe('ProgramsCostsCard', () => {
     ).toBeInTheDocument()
   })
 
-  it('labels sub-sections only in a mixed group, as SCIT', () => {
+  it('labels sub-sections only in a mixed group, with Teen Programs', () => {
     render(<ProgramsCostsCard {...props()} />)
-    expect(within(screen.getByTestId('pc-group-camp_pool')).getByText('SCIT')).toBeInTheDocument()
+    const camp = within(screen.getByTestId('pc-group-camp_pool'))
+    expect(camp.getAllByText('Teen Programs').length).toBeGreaterThan(0)
+    expect(camp.getByText('At Camp')).toBeInTheDocument()
+    expect(camp.queryByText('SCIT')).toBeNull()
     expect(within(screen.getByTestId('pc-group-weekend_pool')).queryByText('Other')).toBeNull()
   })
 

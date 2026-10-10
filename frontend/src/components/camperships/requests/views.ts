@@ -619,7 +619,7 @@ export function filterRows(
   return rows.filter(
     (row) =>
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
-      (filters.program === null || row.program_key === filters.program) &&
+      (filters.program === null || row.program_family === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
       (!filters.live || isLiveRow(row)) &&
       matchesRound(row, view, filters.round) &&

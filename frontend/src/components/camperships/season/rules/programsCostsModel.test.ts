@@ -17,6 +17,7 @@ import {
   pickTarget,
   pricePins,
   resolveProgram,
+  SUBSECTION_LABELS,
   type EditField,
 } from './programsCostsModel'
 
@@ -43,6 +44,19 @@ describe('cardView (spec §4.2–§4.4, §5.2)', () => {
     ])
     expect(weekend?.subLabels).toBe(false)
     expect(names(school?.running ?? [])).toEqual(['Coming-of-Age Year 1'])
+  })
+
+  it('files a teen-type session with Teen Programs, the same words as every other screen (ux3 taxonomy)', () => {
+    const camp = view().groups[0]
+    const sub = (name: string) => camp?.running.find((r) => r.session.name === name)?.sub
+    expect(sub('Winter Retreat')).toBe('teen')
+    expect(sub('Leader in Training')).toBe('teen')
+    expect(sub('Quest: Rivers')).toBeUndefined() // folded: not running in the fixture
+    expect([SUBSECTION_LABELS.summer, SUBSECTION_LABELS.quest, SUBSECTION_LABELS.teen]).toEqual([
+      'At Camp',
+      'Quests',
+      'Teen Programs',
+    ])
   })
 
   it('hides an AG session and counts it on its group, at its parent price', () => {

@@ -109,13 +109,13 @@ const rowOf = (words: string) => {
 }
 
 describe('Money › Ledger (§8.1; F10 as money-v2 draws it)', () => {
-  // Owner ruling (final audit): the two Program vocabularies are both labelled, with one note.
-  it('says Program is CampMinder’s and how it differs from Requests', async () => {
+  // Owner ruling (ux3 Q2): the note is cut to one point, the key is CampMinder's posted program.
+  it('says Program (in CM) is the program CampMinder posted, and nothing about Requests', async () => {
     renderTab('/aid/money/ledger', { year: 2027, asOf: { kind: 'live' } })
     await screen.findAllByText('Summer Sessions')
-    expect(screen.getByTestId('program-words-note')).toHaveTextContent(
-      'Requests uses the program the rules price under'
-    )
+    const note = screen.getByTestId('program-words-note')
+    expect(note).toHaveTextContent('the program CampMinder posted the money under')
+    expect(note).not.toHaveTextContent(/Requests|rules price/)
   })
 
   it("shows the family rows, then camp aid, outside grants and the total per program, in the rules' words and order", async () => {

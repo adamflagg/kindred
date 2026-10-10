@@ -469,7 +469,7 @@ export function RegisterTab({ view }: { view: AidView }) {
               arrowKeys
               emptyText="No grants match."
             />
-            <ProgramWordsNote which="campminder" />
+            <ProgramWordsNote />
           </div>
         )
       }}

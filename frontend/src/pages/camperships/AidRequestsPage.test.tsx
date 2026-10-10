@@ -178,17 +178,13 @@ function renderAt(path: string) {
 }
 
 // §3: Program is the white AidPicker (a Listbox button named "Program: …"), not a native control.
-// Owner ruling (final audit): Requests' Program is labelled "as priced", with one note on the page.
-it('says Program is the program the rules price under, and how Ledger and Grants differ', async () => {
-  // Rendered by the page tests below; the note is a static line under the grid.
-  const { ProgramWordsNote } = await import('../../components/camperships/shell/ProgramWordsNote')
-  render(<ProgramWordsNote which="priced" />)
-  expect(screen.getByTestId('program-words-note')).toHaveTextContent(
-    'The Ledger and Grants use the program in CampMinder'
-  )
+// Owner ruling (ux3 Q2): Requests' Program is plain "Program"; the "as priced" note is gone.
+it('has no program-words note under the grid', () => {
+  renderAt('/aid/requests')
+  expect(screen.queryByTestId('program-words-note')).toBeNull()
 })
 
-const programButton = () => screen.getByRole('button', { name: /^Program \(as priced\):/ })
+const programButton = () => screen.getByRole('button', { name: /^Program:/ })
 const openProgram = () => userEvent.click(programButton())
 const pickProgram = async (name: string) => {
   await openProgram()
@@ -327,7 +323,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByRole('option', { name: 'Pool B' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'pool_b' })).toBeNull()
     // The list is already open: a second click on the button would close it mid-pick (flaky under load).
-    await userEvent.click(screen.getByRole('option', { name: 'Quest' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Quests' }))
     expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
@@ -340,7 +336,7 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('program=')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
-    await pickProgram('Summer')
+    await pickProgram('At Camp')
     expect(screen.getByTestId('where')).toHaveTextContent('program=summer')
     expect(screen.getByTestId('where')).not.toHaveTextContent('pool=')
   })
@@ -348,32 +344,37 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   it("names the programs with the server's labels, not by their rules keys", async () => {
     renderAt('/aid/requests')
     await openProgram()
-    expect(screen.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'At Camp' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'summer' })).toBeNull()
-    expect(screen.queryByRole('option', { name: 'Summer camp' })).toBeNull()
-    // The rules do not name Quest: its key spelled out.
-    expect(screen.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Summer' })).toBeNull()
+    expect(screen.getByRole('option', { name: 'Quests' })).toBeInTheDocument()
   })
 
-  it("shows a label the key could not spell: the server's Women's weekend, not Womens weekend", async () => {
+  it("shows the family's word, not the rules' men's / women's programs: one Adult Weekends option", async () => {
+    const adult = {
+      ...GRID_ROWS[0]!,
+      program_key: 'womens_weekend',
+      program_family: 'adult_weekend',
+      program_family_label: 'Adult Weekends',
+    }
     grid = {
-      data: { ...LIVE, rows: [...GRID_ROWS, { ...GRID_ROWS[0]!, program_key: 'womens_weekend' }] },
+      data: { ...LIVE, rows: [...GRID_ROWS, adult, { ...adult, program_key: 'mens_weekend' }] },
       isLoading: false,
       error: null,
     }
     renderAt('/aid/requests')
     await openProgram()
-    expect(screen.getByRole('option', { name: "Women's weekend" })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Womens weekend' })).toBeNull()
+    expect(screen.getAllByRole('option', { name: 'Adult Weekends' })).toHaveLength(1)
+    expect(screen.queryByRole('option', { name: /Women/ })).toBeNull()
   })
 
-  it('spells the keys out when the rules read has no answer (404, loading, failed), and still filters', async () => {
+  it('spells the pools out when the rules read has no answer (404, loading, failed), and still filters', async () => {
     approved = { data: undefined }
     renderAt('/aid/requests')
     await openProgram()
-    expect(screen.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'At Camp' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Pool b' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('option', { name: 'Quest' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Quests' }))
     expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
   })
@@ -917,7 +918,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     await userEvent.click(sessionCell('Olivia Chen'))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
-    await pickProgram('Quest')
+    await pickProgram('Quests')
     expect(keyAsk).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('program=quest'))
   })
@@ -927,7 +928,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     await userEvent.click(sessionCell('Olivia Chen'))
     await userEvent.clear(screen.getByLabelText('Round 2 ask'))
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '12,50')
-    await pickProgram('Quest')
+    await pickProgram('Quests')
     expect(screen.getByTestId('where')).not.toHaveTextContent('program=quest')
     expect(screen.getAllByText('Not an amount')).toHaveLength(1)
     expect(keyAsk).not.toHaveBeenCalled()
@@ -1547,7 +1548,7 @@ describe('ticks (§4.10, §5.2)', () => {
     it('counts a tick hidden by the search AND a filter once', async () => {
       renderAt('/aid/requests')
       await selectCampers('Samuel Johnson', 'Olivia Chen')
-      await pickProgram('Quest')
+      await pickProgram('Quests')
       // Samuel is now hidden by the filter; the search below hides him too.
       await userEvent.type(screen.getByLabelText('Search'), 'Olivia')
       expect(screen.getByText('2 checked · 1 hidden')).toBeInTheDocument()
@@ -1556,7 +1557,7 @@ describe('ticks (§4.10, §5.2)', () => {
     it('keeps a tick through a filter change', async () => {
       renderAt('/aid/requests')
       await selectCampers('Samuel Johnson', 'Olivia Chen')
-      await pickProgram('Quest')
+      await pickProgram('Quests')
       expect(screen.getByText('2 checked · 1 hidden')).toBeInTheDocument()
     })
 

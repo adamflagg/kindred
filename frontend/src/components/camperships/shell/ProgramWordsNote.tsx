@@ -1,22 +1,18 @@
 /**
- * One short line saying which "Program" a screen means (owner ruling, final audit): Requests reads
- * the program the rules price a request under (Quest and TLI fall under Summer), while the Ledger
- * and Grants read the program CampMinder posted the money under. Both are labelled; no row moves.
+ * One short line on the Ledger and Grants saying what their "Program (in CM)" means (owner ruling, ux3 Q2): their
+ * key is the program CampMinder posted the money under, which is what "program mismatch" depends on. The words
+ * (At Camp, Quests, Teen Programs, ...) are the ones Requests and the Rules card use too.
  */
-const WORDS = {
-  priced:
-    'Program (as priced): the program the rules price the request under, so Quest and TLI fall under Summer. The Ledger and Grants use the program in CampMinder.',
-  campminder:
-    'Program (in CM): the program the money was posted under, so Quest and Teen Leadership have their own. Requests uses the program the rules price under.',
-} as const
+const WORDS =
+  'Program (in CM): the program CampMinder posted the money under, which is what "program mismatch" compares.'
 
-export function ProgramWordsNote({ which }: { which: keyof typeof WORDS }) {
+export function ProgramWordsNote() {
   return (
     <p
       data-testid="program-words-note"
       className="text-muted-foreground text-[11.5px] leading-snug"
     >
-      {WORDS[which]}
+      {WORDS}
     </p>
   )
 }
