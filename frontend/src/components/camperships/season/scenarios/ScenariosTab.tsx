@@ -176,9 +176,10 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
     workspace.pricing_version === null
       ? `Rules draft v${String(workspace.rules_version)}`
       : `Rules v${String(workspace.pricing_version)}`
+  // Worded by the figures on screen, not the switch: a mode flip keeps the other mode's figures up while it loads.
   const postedStands =
     isLocked &&
-    !asIfUnposted &&
+    figures?.as_if_unposted !== true &&
     (draft.differs_in ?? []).some((section) => ROUND1_SECTIONS.includes(section))
   // The vocabulary only: Compare reads each setting under its own section (Task 72; disagreement 13).
   const names = rulesVocabulary(
@@ -363,7 +364,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
         />
       )}
       <div className="print:hidden">
-        {/* ONE list: the registry's four, then the page's Change colours (final mock's six, less Locked). */}
+        {/* ONE list, the final mock's six: the registry's four, then the page's Change colours and Pricing. */}
         <AidDefinitionNotes
           surface={SURFACE}
           extra={SCENARIO_PAGE_NOTES.map((note) => note.text)}

@@ -114,7 +114,8 @@ function spendRow(
   row: SpendRow,
   kind: 'body' | 'total',
   fromName: string,
-  projected: string
+  projected: string,
+  remainingWord: string
 ): ReportRow {
   const ink = row.over ? (kind === 'total' ? NEGATIVE_INK : POOL_NEGATIVE_INK) : ''
   const overWords = kind === 'total' ? 'Over budget' : 'Over its share'
@@ -133,7 +134,7 @@ function spendRow(
         display: <b className={ink}>{formatWholeMoney(row.remaining)}</b>,
         ...(row.over ? { title: overWords } : {}),
       },
-      shown(<ChangeMark change={row.vs} />, `Remaining against ${fromName}`),
+      shown(<ChangeMark change={row.vs} />, `${remainingWord} against ${fromName}`),
       row.projected === null
         ? { kind: 'money', value: null, display: '—', muted: true, title: projected }
         : {
@@ -324,9 +325,10 @@ export function SpendTable({
   }
 
   const projected = projectedTitle(draft)
+  const remainingWord = fresh ? 'Would remain' : 'Remaining'
   const rows: ReportRow[] = [
-    ...table.pools.map((pool) => spendRow(pool, 'body', fromName, projected)),
-    spendRow(table.total, 'total', fromName, projected),
+    ...table.pools.map((pool) => spendRow(pool, 'body', fromName, projected, remainingWord)),
+    spendRow(table.total, 'total', fromName, projected, remainingWord),
   ]
 
   const tierColumns: ReportColumn[] = [

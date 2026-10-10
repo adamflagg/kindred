@@ -416,6 +416,14 @@ describe('the pricing mode (Posted ▾)', () => {
     expect(pricingCalls.at(-1)?.asIfUnposted).toBe(false)
   })
 
+  it('words the heading by the figures on screen: regular figures still held while As if none loads say posted Round 1 stands', () => {
+    // keepPreviousData: the regular answer stays on screen (dimmed) until the as-if one lands, so the heading
+    // must follow the figures, not the switch.
+    pricing = { ...pricing, isPlaceholderData: true, isFetching: true }
+    renderAt('?unposted=1', { ...POSTED, draft: scenarioDraft({ differs_in: ['tiers'] }) })
+    expect(screen.getByText(/posted Round 1 stands/)).toBeInTheDocument()
+  })
+
   it('never offers Make … the Rules Draft from the switch: the real lock is the same in both modes', () => {
     renderAt('?unposted=1', POSTED)
     expect(screen.queryByRole('button', { name: /the Rules Draft/ })).toBeNull()

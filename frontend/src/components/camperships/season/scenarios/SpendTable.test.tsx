@@ -122,6 +122,9 @@ describe('the Spend table (final mock; scenarios-3)', () => {
       screen.getByRole('columnheader', { name: /^Would remain/ }).querySelector('sup')
     ).toHaveTextContent('6')
     expect(screen.queryByText(/posted Round 1 stands/)).toBeNull()
+    // the vs cells' titles follow their header
+    expect(document.querySelector('[title^="Remaining against"]')).toBeNull()
+    expect(document.querySelector('[title^="Would remain against"]')).not.toBeNull()
   })
 
   it('says Round 2 keyed so far once Round 1 is locked', () => {
