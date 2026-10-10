@@ -79,7 +79,9 @@ const nextUpOf = (line: ApiAidTodayLine): readonly ApiAidTodayNextUp[] => line.n
 const namesOf = (line: ApiAidTodayLine): readonly string[] => line.names ?? []
 
 const reasonsText = (line: ApiAidTodayLine): string =>
-  (line.reasons ?? []).map((r) => `${r.label ?? r.code} ${String(r.items)}`).join(' · ')
+  (line.reasons ?? [])
+    .map((r) => (r.items > 0 ? `${r.label ?? r.code} ${String(r.items)}` : (r.label ?? r.code)))
+    .join(' · ')
 
 const householdHref = (id: number, view: AidView, extra: Record<string, string> = {}) =>
   aidHref(`/aid/households/${String(id)}`, view, extra)
@@ -229,9 +231,12 @@ export function TodayTodos({
   return (
     <div className="flex flex-col gap-3">
       {lines.length === 0 ? (
-        <div className={CS_EMPTY}>
-          <b>Nothing is waiting on you.</b> {empty}
-        </div>
+        // An empty `empty` draws nothing: finance's registrar fold is a rest table with no lines of its own.
+        empty === '' ? null : (
+          <div className={CS_EMPTY}>
+            <b>Nothing is waiting on you.</b> {empty}
+          </div>
+        )
       ) : (
         <div className="bg-card border-border shadow-lodge-sm overflow-x-auto rounded-xl border">
           <table className={TABLE}>

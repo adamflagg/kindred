@@ -560,3 +560,20 @@ export function noFiguresWords(dev: ApiAidDevelopment): string | null {
     ? `No development figures for ${year}: it starts with 2027, the first season decided in the dashboard.`
     : `No development figures for ${year} yet: they start with that season's decisions.`
 }
+
+/** The index of the live column (the dashboard's season, as of the figures day) among `dev.columns`, or -1. */
+export function liveColumnIndex(dev: ApiAidDevelopment): number {
+  return dev.columns.findIndex(
+    (c) => c.season === dev.year && c.basis === 'P' && c.as_of === dev.figures_on
+  )
+}
+
+/**
+ * The season's award count across every source, live: the report's "Grants/Awards" total row (the row keyed
+ * `awards`, no group) in the live column. Null when the read has no live column or the figure is not built.
+ */
+export function liveAwards(dev: ApiAidDevelopment): number | null {
+  const at = liveColumnIndex(dev)
+  if (at < 0) return null
+  return dev.rows.find((r) => r.key === 'awards' && r.group === null)?.values[at] ?? null
+}

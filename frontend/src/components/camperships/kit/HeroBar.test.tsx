@@ -20,6 +20,11 @@ const SEGS: HeroSegment[] = [
 const wrap = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
 describe('AidHeroBar', () => {
+  it('draws a mid bar (the development funder bar) shorter than the full one and taller than compact', () => {
+    const { container } = wrap(<AidHeroBar segments={SEGS} mid />)
+    expect(container.firstElementChild?.className).toContain('h-[26px]')
+    expect(container.firstElementChild?.className).not.toContain('h-[34px]')
+  })
   it('draws one segment per non-zero value, sized by flex-grow, each titled', () => {
     wrap(<AidHeroBar segments={SEGS} />)
     const segs = screen.getAllByTestId('hero-seg')

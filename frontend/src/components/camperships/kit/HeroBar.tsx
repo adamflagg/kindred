@@ -68,6 +68,7 @@ export function AidHeroBar({
   total,
   marker,
   compact = false,
+  mid = false,
   reveal = false,
   labelMinPct = 6,
 }: {
@@ -75,6 +76,8 @@ export function AidHeroBar({
   readonly total?: number
   readonly marker?: { readonly at: number; readonly title: string }
   readonly compact?: boolean
+  /** The 26px bar (the development funder bar), between compact and the full 34px. */
+  readonly mid?: boolean
   readonly reveal?: boolean
   readonly labelMinPct?: number
 }) {
@@ -83,7 +86,7 @@ export function AidHeroBar({
   return (
     <div
       data-reveal={reveal ? 'true' : undefined}
-      className={`bg-muted relative flex overflow-hidden ${compact ? 'h-2.5 rounded-full' : 'mt-2.5 h-[34px] rounded-lg'} ${reveal ? 'motion-safe:animate-[cs-hero-reveal_900ms_cubic-bezier(.2,.7,.2,1)_both]' : ''}`}
+      className={`bg-muted relative flex overflow-hidden ${compact ? 'h-2.5 rounded-full' : mid ? 'mt-1 h-[26px] rounded-lg' : 'mt-2.5 h-[34px] rounded-lg'} ${reveal ? 'motion-safe:animate-[cs-hero-reveal_900ms_cubic-bezier(.2,.7,.2,1)_both]' : ''}`}
     >
       {live.map((s) => {
         const pct = sum > 0 ? (s.value / sum) * 100 : 0

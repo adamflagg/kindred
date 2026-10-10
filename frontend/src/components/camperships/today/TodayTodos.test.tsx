@@ -103,4 +103,22 @@ describe('TodayTodos', () => {
       expect.stringContaining('/aid/money/funders')
     )
   })
+  it("shows a reason that carries no count as its words alone (finance's synthetic Over budget line)", () => {
+    const over = line('intake', 1, {
+      key: 'over_budget' as never,
+      item_kind: 'lines',
+      reasons: [{ code: 'tbm', label: 'TBM $1,300 over', families: null, items: 0 }],
+    })
+    wrap(<TodayTodos lines={[over]} rest={[]} view={VIEW} ranked={false} nextHead="Why" empty="" />)
+    expect(screen.getByText('Over budget')).toBeInTheDocument()
+    expect(screen.getByText('TBM $1,300 over')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Open/ })).toBeNull()
+  })
+  it('draws no empty card when it has no words for one (the registrar fold)', () => {
+    wrap(
+      <TodayTodos lines={[]} rest={top} view={VIEW} empty="" restTitle="The registrar's queue" />
+    )
+    expect(screen.queryByText('Nothing is waiting on you.')).toBeNull()
+    expect(screen.getByText("The registrar's queue")).toBeInTheDocument()
+  })
 })

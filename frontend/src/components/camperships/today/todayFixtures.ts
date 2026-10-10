@@ -1,5 +1,6 @@
 import type {
   ApiAidBudget,
+  ApiAidDevelopmentSource,
   ApiAidBudgetCell,
   ApiAidBudgetPool,
   ApiAidToday,
@@ -160,3 +161,32 @@ export const BUDGET: ApiAidBudget = {
   ],
   total: pool('total', 'All pools', 1111125, 843380, 125795, 14820, 9600),
 }
+
+const source = (
+  name: string,
+  who_paid: ApiAidDevelopmentSource['who_paid'],
+  amount: number,
+  awards: number,
+  group_label = 'Camp & Quest'
+): ApiAidDevelopmentSource => ({
+  source_key: `funder:${name.toLowerCase().replace(/\W+/g, '-')}`,
+  name,
+  who_paid,
+  incentive: false,
+  group: group_label === 'Camp & Quest' ? 'camp_quest' : 'tbm',
+  group_label,
+  amount,
+  awards,
+})
+/** The camp's own aid and eight fictional outside funders (more than seven, so the bar folds the tail into "others"). */
+export const SOURCES: ApiAidDevelopmentSource[] = [
+  source('Camp aid', 'the camp', 761200, 400),
+  source('Riverbend Fund', 'another funder', 52000, 31),
+  source('Lakeside Trust', 'another funder', 41000, 24),
+  source('Pinewood Foundation', 'another funder', 30000, 18, 'TBM'),
+  source('Harbor Giving Circle', 'another funder', 22000, 12),
+  source('Meadow Family Fund', 'another funder', 18000, 9, 'TBM'),
+  source('Granite Community Fund', 'another funder', 12000, 8),
+  source('Cedar Grove Society', 'another funder', 7000, 5),
+  source('Willow Bend Grant', 'another funder', 3000, 2, 'TBM'),
+]
