@@ -225,9 +225,14 @@ def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> Non
 
 
 def test_the_shared_remaining_note_is_untouched_by_the_scenarios_wording() -> None:
-    """Rounds & budget still reads the shared `remaining` entry, with its Posted − Needs an offer formula."""
-    assert "remaining" in SURFACES["season-rounds-budget"]
+    """Neither page's short wording leaks into the other, and the shared `remaining` text keeps its formula.
+
+    Rounds & budget now reads its own `rounds_remaining` (ux3 rounds-4, the mock's six notes), as Scenarios reads
+    `scenario_remaining`; the shared entry is unchanged.
+    """
+    assert "rounds_remaining" in SURFACES["season-rounds-budget"]
     assert "scenario_remaining" not in SURFACES["season-rounds-budget"]
+    assert "rounds_remaining" not in SURFACES["season-scenarios"]
     assert BY_KEY["remaining"].text.startswith("Remaining = Allocated \u2212 Posted \u2212 Needs an offer")
 
 
