@@ -33,38 +33,43 @@ function renderFilters(over: Partial<Parameters<typeof HistoryFilters>[0]> = {})
       canSeeRules
       counting={false}
       onChange={onChange}
+      onClear={vi.fn()}
       {...over}
     />
   )
   return onChange
 }
 
-describe('the History strip (spec §7.2 A)', () => {
-  it('reads All 112, then each kind with its count, in the Requests strip', () => {
+describe('the History toolbar (history-1)', () => {
+  it('is ONE kit toolbar row: a segmented switcher with counts inside, no strip, no dots', () => {
     renderFilters()
-    const strip = screen.getByTestId('history-strip')
-    expect(within(strip).getByRole('button', { name: /^All\s*112$/ })).toHaveClass('bg-primary')
-    expect(within(strip).getByRole('button', { name: /^Rules\s*15$/ })).not.toHaveClass(
-      'bg-primary'
+    const bar = screen.getByTestId('aid-toolbar')
+    expect(screen.queryByTestId('history-strip')).toBeNull()
+    const seg = within(bar).getByRole('group', { name: 'Kind' })
+    expect(within(seg).getByRole('button', { name: /^All\s*112$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
     )
-    expect(within(strip).getByRole('button', { name: /^Grants\s*13$/ })).toBeInTheDocument()
+    expect(within(seg).getByRole('button', { name: /^Rules\s*15$/ })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    expect(within(seg).getByRole('button', { name: /^Grants\s*13$/ })).toBeInTheDocument()
+    expect(seg.querySelector('.rounded-full')).toBeNull()
   })
 
-  it('has no Rules chip without rules (D76)', () => {
+  it('has no Rules choice without rules (D76)', () => {
     renderFilters({ canSeeRules: false, kindCounts: COUNTS.slice(1) })
     expect(screen.queryByRole('button', { name: /^Rules/ })).toBeNull()
   })
 
-  it('says "—" for every count while the first read loads, and dims them while a filter re-reads', () => {
+  it('says "—" for every count while the first read loads, and dims the switcher while a filter re-reads', () => {
     renderFilters({ kindCounts: undefined, total: null })
     expect(screen.getByRole('button', { name: /^All\s*—$/ })).toBeInTheDocument()
-    expect(screen.getAllByTestId('history-count')[0]).not.toHaveClass('opacity-35')
-    // Two renders in one test: unmount the first, or getAll… would find its counts first.
+    expect(screen.getByRole('group', { name: 'Kind' })).not.toHaveClass('opacity-60')
     cleanup()
     renderFilters({ counting: true })
-    const counts = screen.getAllByTestId('history-count')
-    expect(counts).toHaveLength(6) // All + five kinds
-    for (const count of counts) expect(count).toHaveClass('opacity-35')
+    expect(screen.getByRole('group', { name: 'Kind' })).toHaveClass('opacity-60')
   })
 
   it('picks one kind at a time; clicking it again, or All, clears it', async () => {
@@ -73,18 +78,15 @@ describe('the History strip (spec §7.2 A)', () => {
     expect(onChange).toHaveBeenLastCalledWith('kind', null)
     await userEvent.click(screen.getByRole('button', { name: /^Money edits/ }))
     expect(onChange).toHaveBeenLastCalledWith('kind', 'money')
+    await userEvent.click(screen.getByRole('button', { name: /^All/ }))
+    expect(onChange).toHaveBeenLastCalledWith('kind', null)
   })
-})
 
-describe('the filter bar (spec §7.2 B)', () => {
-  it('labels Person, From and Through at 12.5px, offers Anyone then each actor, system runs by name', async () => {
+  it('labels Who and Dates, offers Anyone then each actor, system runs by name', async () => {
     renderFilters()
-    // The words sit in a bare <span>; the label role (CS_FLABEL) is on the <label> around it.
-    // Design language §1: a filter label is the 12.5px muted kit label now (it was 14px ink).
-    expect(screen.getByText('Person').closest('label')).toHaveClass('text-[12.5px]')
-    expect(screen.getByText('From').closest('span.inline-flex')).toHaveClass('text-[12.5px]')
-    // Owner ruling 10-09 ("the stylized WHITE picker for every select"): Person is the kit picker, not a native select.
-    await userEvent.click(screen.getByRole('button', { name: 'Person: Anyone' }))
+    expect(screen.getByText('Who').closest('label')).toHaveClass('text-[12.5px]')
+    expect(screen.getByText('Dates').closest('span.inline-flex')).toHaveClass('text-[12.5px]')
+    await userEvent.click(screen.getByRole('button', { name: 'Who: Anyone' }))
     expect(screen.getAllByRole('option').map((o) => o.textContent.replace(/^✓/, ''))).toEqual([
       'Anyone',
       'finance@example.com',
@@ -92,12 +94,48 @@ describe('the filter bar (spec §7.2 B)', () => {
     ])
   })
 
-  it('searches on Enter, never per keystroke, in the grid search shape with ⌕ at the left', async () => {
+  it('reads "Any date" when empty, and a short range when set', () => {
+    renderFilters()
+    expect(screen.getByRole('button', { name: 'Dates: Any date' })).toBeInTheDocument()
+    cleanup()
+    renderFilters({ filters: { ...NONE, since: '2027-06-01' } })
+    expect(screen.getByRole('button', { name: 'Dates: Jun 1 – today' })).toBeInTheDocument()
+    cleanup()
+    renderFilters({ filters: { ...NONE, until: '2027-07-04' } })
+    expect(screen.getByRole('button', { name: 'Dates: Start – Jul 4' })).toBeInTheDocument()
+  })
+
+  it('keeps From and Through in the Dates popover, and Any date clears both in one call', async () => {
+    const onClear = vi.fn()
+    renderFilters({ filters: { ...NONE, since: '2027-06-01' }, onClear })
+    expect(screen.queryByLabelText('From')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^Dates:/ }))
+    expect(screen.getByLabelText('From')).toHaveValue('2027-06-01')
+    expect(screen.getByLabelText('Through')).toHaveValue('')
+    await userEvent.click(screen.getByRole('button', { name: 'Any date' }))
+    expect(onClear).toHaveBeenCalledWith(['since', 'until'])
+  })
+
+  it('shows the intake runs check in ink with its title, and writes it', async () => {
+    const onChange = renderFilters()
+    const check = screen.getByRole('checkbox', { name: 'Intake runs' })
+    expect(check.closest('label')).toHaveAttribute(
+      'title',
+      'Show the nightly intake runs from CampMinder (hidden by default)'
+    )
+    expect(check.closest('label')).toHaveClass('text-foreground')
+    await userEvent.click(check)
+    expect(onChange).toHaveBeenLastCalledWith('intake', '1')
+  })
+
+  it('searches on Enter, never per keystroke, in a 220px kit search with the SVG icon', async () => {
     const onChange = renderFilters()
     const search = screen.getByPlaceholderText('Reason, person or record id')
-    // §2: the 26px kit search, its glyph 8px in (was pl-9).
     expect(search).toHaveClass('h-[26px]', 'pl-[26px]')
     expect(search).toHaveAttribute('maxLength', '200')
+    expect(search.closest('form')).toHaveStyle({ width: '220px' })
+    expect(search.closest('form')?.querySelector('svg')).not.toBeNull()
+    expect(screen.queryByText('⌕')).toBeNull()
     await userEvent.type(search, 'tier')
     expect(onChange).not.toHaveBeenCalled()
     await userEvent.type(search, '{Enter}')

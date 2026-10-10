@@ -15,6 +15,7 @@ import { formatCampDateTime, formatLongDate, parseIsoDay } from '../kit/dates'
 import { CANCEL_REASON_OPTIONS } from '../kit/editor'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney } from '../kit/money'
+import { aidSessionName } from '../kit/sessionShort'
 import { codeWords } from '../requests/attention'
 import { changeWords, isRulesSection, type RulesNames, SECTION_TITLES } from './rules/rulesModel'
 
@@ -23,7 +24,7 @@ import { changeWords, isRulesSection, type RulesNames, SECTION_TITLES } from './
 /** One page of the log (the router allows up to 200). */
 export const PER_PAGE = 50
 
-/** Each kind's chip and pill words (D49's chips; intake is a tick, not a chip). */
+/** Each kind's switcher and pill words (D49's kinds; intake is a toggle, not a kind choice). */
 export const KIND_LABELS = {
   rules: 'Rules',
   offers: 'Offers & stages',
@@ -35,7 +36,7 @@ export const KIND_LABELS = {
 
 const CHIP_ORDER: readonly ApiAidHistoryKind[] = ['rules', 'offers', 'money', 'holds', 'grants']
 
-/** The kind chips, in the spec's order; Rules only for `rules` (D49, D76). */
+/** The kind switcher's choices, in the spec's order; Rules only for `rules` (D49, D76). */
 export function chipKinds(canSeeRules: boolean): ApiAidHistoryKind[] {
   return CHIP_ORDER.filter((kind) => canSeeRules || kind !== 'rules')
 }
@@ -277,6 +278,7 @@ export function recordWords(entity: string, n: number): string {
 }
 
 const RULES = 'aid_rules'
+const PLACEMENTS = 'aid_grant_placements'
 const sectionTitle = (section: string): string =>
   isRulesSection(section) ? SECTION_TITLES[section] : codeText(section)
 const joined = (parts: readonly string[]) => parts.filter((part) => part !== '').join(' · ')
@@ -454,6 +456,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   session_cm_id: 'Session',
   household_cm_id: 'Household',
   grantor_key: 'Grantor',
+  implied_program_families: 'Programs',
+  headcount_non_infant: 'Headcount, not infants',
 }
 /** A record id the row's own household or camper link already stands for (#18). */
 const LINKED_IDS: ReadonlySet<string> = new Set(['request', 'grant'])
@@ -475,8 +479,15 @@ const UNLISTED: ReadonlySet<string> = new Set([
   'event',
 ])
 
+const isWordList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((w) => typeof w === 'string')
+
+/** A scalar, or a list of words (a source's program families), reads in one line. */
 const isScalar = (value: unknown): boolean =>
-  value === null || value === undefined || ['string', 'number', 'boolean'].includes(typeof value)
+  value === null ||
+  value === undefined ||
+  ['string', 'number', 'boolean'].includes(typeof value) ||
+  isWordList(value)
 
 const DECIMAL_TEXT = /^-?\d+(\.\d+)?$/
 
@@ -516,10 +527,13 @@ interface RowContext {
   readonly sessions: ReadonlyMap<number, string> | undefined
   /** An income correction: its previous value and value are money. */
   readonly correctsMoney: boolean
+  /** A decision's `amount`, worded by what it is: "Locked amount" (Posted), "Round 1 ask" (an ask). */
+  readonly amountLabel: string | null
 }
 
 function fieldValue(entity: string, field: string, value: unknown, context: RowContext): string {
   if (value === null || value === undefined || value === '') return '—'
+  if (isWordList(value)) return value.length === 0 ? '—' : value.map(codeText).join(', ')
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   if (CODE_FIELDS.has(field) && typeof value === 'string') return codeWords(value)
   if (field === 'session_cm_id') return context.sessions?.get(Number(value)) ?? String(value)
@@ -557,7 +571,8 @@ function fieldView(entity: string, change: ApiAidFieldChange, context: RowContex
   const field = change.path[0] ?? ''
   const show = (value: unknown) => fieldValue(entity, field, value, context)
   return {
-    label: FIELD_LABELS[field] ?? codeText(field),
+    label:
+      (field === 'amount' ? context.amountLabel : null) ?? FIELD_LABELS[field] ?? codeText(field),
     kind: change.kind,
     before: change.kind === 'added' ? null : show(change.before),
     after: change.kind === 'removed' ? null : show(change.after),
@@ -578,7 +593,6 @@ function fieldLine(entity: string, change: ApiAidFieldChange, context: RowContex
  */
 function subjectOf(
   row: ApiAidHistoryRow,
-  linked: boolean,
   sessions: ReadonlyMap<number, string> | undefined
 ): string {
   const record = recordWords(row.entity, 1)
@@ -593,13 +607,22 @@ function subjectOf(
     positiveInt(row.after, 'session_cm_id') ?? positiveInt(row.before, 'session_cm_id')
   if (session !== null)
     return `${record} · ${sessions?.get(session) ?? `Session ${String(session)}`}`
-  return linked ? record : `${record} ${row.entity_id}`
+  // Never the record id (owner O4: ids only in the CSV).
+  return record
 }
 
 /** The field an income correction corrected, if it is an income figure. */
 function correctsMoney(row: ApiAidHistoryRow): boolean {
   const field = row.after?.['field'] ?? row.before?.['field']
   return typeof field === 'string' && MONEY_FIGURE.test(field)
+}
+
+/** The mock's words for a decision's `amount`: what the number is, by the row's action. */
+function amountLabel(row: ApiAidHistoryRow): string | null {
+  if (row.entity !== 'aid_decisions') return null
+  if (row.action === 'post') return 'Locked amount'
+  const round = row.after?.['round'] ?? row.before?.['round']
+  return row.action === 'ask' && typeof round === 'number' ? `Round ${String(round)} ask` : null
 }
 
 /** The household the row itself recorded, if it did (a create, or an update of that field). */
@@ -683,9 +706,13 @@ export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, st
       isScalar(change.before) &&
       isScalar(change.after)
   )
-  const context: RowContext = { sessions, correctsMoney: correctsMoney(row) }
+  const context: RowContext = {
+    sessions,
+    correctsMoney: correctsMoney(row),
+    amountLabel: amountLabel(row),
+  }
   return {
-    head: joined([rowActionWords(row), subjectOf(row, linked, sessions), row.reason]),
+    head: joined([rowActionWords(row), subjectOf(row, sessions), row.reason]),
     lines: listed.map((change) => fieldLine(row.entity, change, context)),
     fields: listed.map((change) => fieldView(row.entity, change, context)),
     hidden: row.changes.length - listed.length - unlisted.length,
@@ -694,6 +721,49 @@ export function rowView(row: ApiAidHistoryRow, sessions?: ReadonlyMap<number, st
       householdCmId === null ? null : (row.household_name ?? `Household ${String(householdCmId)}`),
     camperName: row.camper_name,
   }
+}
+
+/** The row's session in the ruled short form (the full name goes in a title); null when the row names none. */
+export function rowSession(
+  row: ApiAidHistoryRow,
+  sessions?: ReadonlyMap<number, string>
+): string | null {
+  const id =
+    row.session_cm_id ??
+    positiveInt(row.after, 'session_cm_id') ??
+    positiveInt(row.before, 'session_cm_id')
+  if (id === null || id === 0) return null
+  return aidSessionName(sessions?.get(id) ?? `Session ${String(id)}`, undefined)
+}
+
+/** One line of the change list: a key, the old value (struck) and the new one (bold). */
+export interface ChangeItem {
+  readonly label: string
+  readonly before: string | null
+  readonly after: string
+}
+
+const CHANGE_LINE = /^([^:]+): (.+) → (.+)$/
+
+/** A rules line "Program split: Draft → Approved" as its key and its old and new words; null for a free sentence. */
+export function changeParts(line: string): { label: string; before: string; after: string } | null {
+  const m = CHANGE_LINE.exec(line)
+  return m === null ? null : { label: m[1] ?? '', before: m[2] ?? '', after: m[3] ?? '' }
+}
+
+/** A row's change list, field or rules line alike; the old value is null when there was none ("— →" is omitted). */
+export function changeItems(view: RowView): ChangeItem[] {
+  if (view.fields.length === 0) {
+    return view.lines.map((line) => {
+      const parts = changeParts(line)
+      return parts ?? { label: '', before: null, after: line }
+    })
+  }
+  return view.fields.map((f) => ({
+    label: f.label,
+    before: f.kind === 'added' || f.before === '—' ? null : f.before,
+    after: f.kind === 'removed' ? 'removed' : (f.after ?? '—'),
+  }))
 }
 
 /**
@@ -822,18 +892,22 @@ export interface CompactRow {
   readonly household: string
   readonly householdHref: string | null
   readonly session: string
+  /** The session's full name, for the cell's title (the cell itself reads the ruled short form). */
+  readonly sessionFull: string
+  /** A family-level row: no camper, so the cell says "household request" in muted words. */
+  readonly householdRequest: boolean
   readonly round: string | null
   readonly amount: number | null
 }
 
 export interface CompactGroup {
   readonly head: string
-  readonly amountLabel: 'Amount' | 'Ask'
+  readonly amountLabel: 'Amount' | 'Ask' | 'Grant placed'
   readonly rows: CompactRow[]
   readonly total: number | null
 }
 
-const COMPACT_ENTITIES: ReadonlySet<string> = new Set(['aid_decisions', 'aid_requests'])
+const COMPACT_ENTITIES: ReadonlySet<string> = new Set(['aid_decisions', 'aid_requests', PLACEMENTS])
 const COMPACT_AT = 3
 
 function compactRow(
@@ -845,18 +919,35 @@ function compactRow(
   const home = household === null ? null : householdHref(household, view)
   const roundText = r.after?.['round'] ?? r.before?.['round']
   const ask = r.entity === 'aid_requests' && r.action === 'create'
+  const sessionFull = r.session_cm_id
+    ? (sessions?.get(r.session_cm_id) ?? `Session ${String(r.session_cm_id)}`)
+    : ''
   return {
     key: `${r.entity}:${r.entity_id}`,
-    camper: r.camper_name ?? '—',
+    camper: r.camper_name ?? (r.entity === PLACEMENTS ? 'household request' : '—'),
+    householdRequest: r.camper_name === null && r.entity === PLACEMENTS,
     camperHref: requestHref(r, household, view),
     household: household === null ? '—' : (r.household_name ?? `Household ${String(household)}`),
     householdHref: home,
-    session: r.session_cm_id
-      ? (sessions?.get(r.session_cm_id) ?? `Session ${String(r.session_cm_id)}`)
-      : '—',
+    session: sessionFull === '' ? '—' : aidSessionName(sessionFull, undefined),
+    sessionFull,
     round: typeof roundText === 'number' ? `R${String(roundText)}` : null,
-    amount: decimalOf(ask ? r.after?.['ask'] : (r.after?.['amount'] ?? r.before?.['amount'])),
+    amount: decimalOf(
+      r.entity === PLACEMENTS
+        ? (placementAmount(r.after) ?? placementAmount(r.before))
+        : ask
+          ? r.after?.['ask']
+          : (r.after?.['amount'] ?? r.before?.['amount'])
+    ),
   }
+}
+
+/** A grant placement's amount, as the log nested it under the register row it recorded. */
+function placementAmount(snapshot: Readonly<Record<string, unknown>> | null): unknown {
+  const placement = snapshot?.['placement']
+  return typeof placement === 'object' && placement !== null
+    ? (placement as Record<string, unknown>)['amount']
+    : undefined
 }
 
 /**
@@ -872,34 +963,53 @@ export function requestHref(
   return `${householdHref(householdCmId, view)}#request-${row.request_id}`
 }
 
-/** Each group of 3+ request rows with one action becomes a compact table; everything else stays a row block. */
+/**
+ * Each group of 3+ request rows with one action becomes a compact table; everything else stays a row
+ * block. Grant placements group at 1+, only the `place` action: the removes that cancel a placement are
+ * not listed, only counted (`omitted`) while a placements table is drawn.
+ */
 export function compactGroups(
   rows: readonly ApiAidHistoryRow[],
   view: AidView,
   sessions?: ReadonlyMap<number, string>
-): { groups: CompactGroup[]; rest: ApiAidHistoryRow[] } {
+): { groups: CompactGroup[]; rest: ApiAidHistoryRow[]; omitted: number } {
   const buckets = new Map<string, ApiAidHistoryRow[]>()
   for (const r of rows) {
     if (!COMPACT_ENTITIES.has(r.entity)) continue
+    if (r.entity === PLACEMENTS && r.action !== 'place') continue
     const key = `${r.entity}|${r.action}`
     buckets.set(key, [...(buckets.get(key) ?? []), r])
   }
   const grouped = new Set<ApiAidHistoryRow>()
   const groups: CompactGroup[] = []
   for (const [key, members] of buckets) {
-    if (members.length < COMPACT_AT) continue
     const [entity = '', action = ''] = key.split('|')
+    if (members.length < (entity === PLACEMENTS ? 1 : COMPACT_AT)) continue
     members.forEach((m) => grouped.add(m))
     const compact = members.map((m) => compactRow(m, view, sessions))
     const amounts = compact.map((c) => c.amount).filter((a): a is number => a !== null)
     groups.push({
-      head: `${actionWords(entity, action)} · ${String(members.length)} requests`,
-      amountLabel: entity === 'aid_requests' && action === 'create' ? 'Ask' : 'Amount',
+      head:
+        entity === PLACEMENTS
+          ? `${actionWords(entity, action)} · ${String(members.length)} grant placements`
+          : `${actionWords(entity, action)} · ${String(members.length)} requests`,
+      amountLabel:
+        entity === PLACEMENTS
+          ? 'Grant placed'
+          : entity === 'aid_requests' && action === 'create'
+            ? 'Ask'
+            : 'Amount',
       rows: compact,
       total: amounts.length === 0 ? null : amounts.reduce((sum, a) => sum + a, 0),
     })
   }
-  return { groups, rest: rows.filter((r) => !grouped.has(r)) }
+  const placed = groups.some((g) => g.amountLabel === 'Grant placed')
+  const dropped = (r: ApiAidHistoryRow) => placed && r.entity === PLACEMENTS && r.action !== 'place'
+  return {
+    groups,
+    rest: rows.filter((r) => !grouped.has(r) && !dropped(r)),
+    omitted: rows.filter(dropped).length,
+  }
 }
 
 /** An intake run's other rows, counted: "55 × created · payer share · 57 × created · application". */

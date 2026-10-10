@@ -32,6 +32,8 @@ import {
   allCount,
   chipKinds,
   codeText,
+  changeItems,
+  changeParts,
   compactGroups,
   flattenPages,
   footerWords,
@@ -47,6 +49,7 @@ import {
   parseOpen,
   recordWords,
   requestHref,
+  rowSession,
   rowView,
   rulesLines,
   rulesLink,
@@ -451,7 +454,7 @@ describe("a row's view in an opened line", () => {
     expect(rowView(first(DETAIL_POSTED.rows))).toEqual({
       head: 'Posted · Round 1 decision',
       lines: [
-        'Amount: $1,420',
+        'Locked amount: $1,420',
         'Effective on: Apr 9, 2027',
         'Locked by: Posted check',
         'Request: req000000000001',
@@ -594,7 +597,7 @@ describe("a row's view in an opened line", () => {
       ],
     })
     expect(view.head).toBe('Ask entered · Round 1 decision')
-    expect(view.lines).toEqual(['Amount: $1,800', 'Request: req000000000011', 'Round: 1'])
+    expect(view.lines).toEqual(['Round 1 ask: $1,800', 'Request: req000000000011', 'Round: 1'])
   })
 
   it('heads a rules row with its version and section', () => {
@@ -748,7 +751,7 @@ describe("an opened row's words: no raw ids or codes where words exist (#18)", (
         entity_id: 'commitment:abcdefghij12345',
       }
     )
-    expect(alone.head).toBe('Placed · grant placement commitment:abcdefghij12345')
+    expect(alone.head).toBe('Placed · grant placement') // never the record id (owner O4)
     expect(alone.lines).toEqual(['Grant: commitment:abcdefghij12345'])
   })
 
@@ -995,6 +998,134 @@ describe('the opened row (spec §7.2 D)', () => {
     })
     expect(rowView(changed).fields).toEqual([
       { label: 'Total gross income', kind: 'changed', before: '$95,000', after: '$60,000' },
+    ])
+  })
+})
+
+describe('grant placements as a compact table (history-2)', () => {
+  const placed = (i: number, extra: Partial<ApiAidHistoryRow> = {}) =>
+    row({
+      entity: 'aid_grant_placements',
+      entity_id: `commitment:grant${String(i)}`,
+      action: 'place',
+      household_cm_id: 1000001 + i,
+      household_name: 'The Johnson Family',
+      camper_name: i === 2 ? null : 'Emma Johnson',
+      request_id: i === 2 ? null : `req${String(i).padStart(12, '0')}`,
+      session_cm_id: i === 2 ? null : 1000102,
+      after: { placement: { person_cm_id: 7, amount: `${String(i * 100)}.00` } },
+      ...extra,
+    })
+  const removed = row({
+    entity: 'aid_grant_placements',
+    entity_id: 'commitment:old',
+    action: 'remove',
+    before: { placement: { amount: '999' } },
+    after: { placement: null },
+  })
+
+  it('groups only the place rows, labels the amount Grant placed, and leaves the removes out, counted', () => {
+    const rows = [placed(1), placed(2), placed(3), placed(4), removed, removed]
+    const { groups, rest, omitted } = compactGroups(rows, LIVE, new Map([[1000102, 'Session 2']]))
+    expect(groups).toHaveLength(1)
+    const [group] = groups
+    expect(group?.amountLabel).toBe('Grant placed')
+    expect(group?.rows.map((r) => r.amount)).toEqual([100, 200, 300, 400])
+    expect(group?.total).toBe(1000)
+    expect(group?.rows[1]).toMatchObject({ camper: 'household request', householdRequest: true })
+    expect(rest).toEqual([])
+    expect(omitted).toBe(2)
+  })
+
+  it('a placement alone is still a table (any count of 1 or more)', () => {
+    const { groups } = compactGroups([placed(1)], LIVE)
+    expect(groups).toHaveLength(1)
+  })
+
+  it('reads the amount of a remove from before.placement when it is the only row', () => {
+    const { groups, rest, omitted } = compactGroups([removed], LIVE)
+    expect(groups).toEqual([])
+    expect(rest).toHaveLength(1)
+    expect(omitted).toBe(0)
+  })
+})
+
+describe("a row's change list (history-3, 4, 5, 9)", () => {
+  it('splits a rules status line into its section and old and new words', () => {
+    expect(changeParts('Program split: Draft → Approved')).toEqual({
+      label: 'Program split',
+      before: 'Draft',
+      after: 'Approved',
+    })
+    expect(changeParts('Round 1 › Tier 2: 60% → 55%')).toEqual({
+      label: 'Round 1 › Tier 2',
+      before: '60%',
+      after: '55%',
+    })
+    expect(changeParts('New version v5, from v4: its settings open in Rules')).toBeNull()
+  })
+
+  it('a rules row lists section, old and new, with no reason in its words', () => {
+    const view = rowView(first(DETAIL_RULES_APPROVE.rows))
+    expect(changeItems(view)[0]).toMatchObject({ before: 'Draft', after: 'Approved' })
+  })
+
+  it('a field is an item: before struck, after bold; an added field has no before', () => {
+    const items = changeItems(rowView(first(DETAIL_SHARE.rows)))
+    expect(items).toContainEqual({ label: 'Share pct', before: '100%', after: '60%' })
+    const added = row({
+      entity: 'aid_applications',
+      entity_id: 'a',
+      action: 'update',
+      changes: [{ path: ['note'], kind: 'added', before: null, after: 'Hello' }],
+    })
+    expect(changeItems(rowView(added))).toEqual([{ label: 'Note', before: null, after: 'Hello' }])
+  })
+
+  it('an array of words reads as a joined list under Programs, and no record id is printed', () => {
+    const source = row({
+      entity: 'aid_sources',
+      entity_id: 'rkh2cdo6y405kpf',
+      action: 'funding_source',
+      changes: [
+        {
+          path: ['implied_program_families'],
+          kind: 'changed',
+          before: [],
+          after: ['quest', 'summer', 'teen'],
+        },
+      ],
+    })
+    const v = rowView(source)
+    expect(v.hidden).toBe(0)
+    expect(changeItems(v)).toEqual([
+      { label: 'Programs', before: null, after: 'Quest, Summer, Teen' },
+    ])
+    expect(v.head).not.toContain('rkh2cdo6y405kpf')
+  })
+
+  it("names a row's session in its short form", () => {
+    const r = row({ entity: 'aid_requests', entity_id: 'r', action: 'create', session_cm_id: 5 })
+    expect(rowSession(r, new Map([[5, 'Session 2']]))).toBe('Session 2')
+    expect(rowSession(r, undefined)).toBe('Session 5')
+    expect(rowSession({ ...r, session_cm_id: null }, undefined)).toBeNull()
+  })
+})
+
+describe("the mock's field words", () => {
+  it('words the headcount fields as the mock does', () => {
+    const r = row({
+      entity: 'aid_requests',
+      entity_id: 'r',
+      action: 'set_headcount',
+      changes: [
+        { path: ['headcount_non_infant'], kind: 'changed', before: 3, after: 4 },
+        { path: ['headcount_source'], kind: 'changed', before: 'billed', after: 'declared' },
+      ],
+    })
+    expect(changeItems(rowView(r)).map((i) => i.label)).toEqual([
+      'Headcount, not infants',
+      'Headcount source',
     ])
   })
 })

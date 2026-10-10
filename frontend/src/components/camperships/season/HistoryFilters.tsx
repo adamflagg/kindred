@@ -1,19 +1,13 @@
-import { useState } from 'react'
+import { ChevronDown, Search } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { AidPicker } from '../kit/AidPicker'
-import type { ApiAidHistoryKind, ApiAidHistoryKindCount } from '../../../types/api-types'
-import {
-  CS_CHIP,
-  CS_CHIP_COUNT,
-  CS_CHIP_INK,
-  CS_CHIP_ON,
-  CS_FLABEL,
-  CS_PANEL,
-  CS_SEARCH,
-  CS_SELECT,
-  CS_STRIP,
-  CS_STRIP_LENSES,
-} from '../kit/csType'
+import { AidSegmented } from '../kit/Segmented'
+import { AidToolbar, ToolbarLabel } from '../kit/Toolbar'
+import { CS_DATE, CS_FLABEL, CS_PICKER } from '../kit/csType'
+import { AID_SEARCH_INPUT } from '../kit/kitStyles'
+import { formatShortDate } from '../kit/dates'
+import type { ApiAidHistoryKindCount } from '../../../types/api-types'
 import {
   actorWords,
   chipKinds,
@@ -22,24 +16,6 @@ import {
   type HistoryFilterKey,
   type HistoryFilters as Filters,
 } from './historyModel'
-
-/** Each kind's dot, in its pill's tone (spec §7.2 A), with dark partners. */
-const DOT: Readonly<Record<ApiAidHistoryKind, string>> = {
-  rules: 'bg-emerald-600 dark:bg-emerald-400',
-  offers: 'bg-sky-600 dark:bg-sky-400',
-  money: 'bg-amber-500 dark:bg-amber-400',
-  holds: 'bg-red-500 dark:bg-red-400',
-  grants: 'bg-purple-400 dark:bg-purple-300',
-  intake: 'bg-muted-foreground',
-}
-
-function Count({ value, dim }: { value: number | null; dim: boolean }) {
-  return (
-    <i data-testid="history-count" className={`${CS_CHIP_COUNT} ${dim ? 'opacity-35' : ''}`}>
-      {value ?? '—'}
-    </i>
-  )
-}
 
 /**
  * A box's text while it is edited, which follows the URL's value when that changes from elsewhere
@@ -65,17 +41,14 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
   }
   return (
     <form
-      className="relative w-64"
+      className="relative flex-none"
+      style={{ width: 220 }}
       onSubmit={(event) => {
         event.preventDefault()
         commit()
       }}
     >
-      <span
-        className={`text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 ${CS_PANEL}`}
-      >
-        ⌕
-      </span>
+      <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
       <input
         type="search"
         aria-label="Search"
@@ -84,7 +57,7 @@ function SearchBox({ initial, onSearch }: { initial: string; onSearch: (text: st
         placeholder="Reason, person or record id"
         onChange={(event) => setText(event.target.value)}
         onBlur={commit}
-        className={CS_SEARCH}
+        className={AID_SEARCH_INPUT}
       />
     </form>
   )
@@ -124,7 +97,7 @@ function DayBox({
     else setText(current)
   }
   return (
-    <span className={`${CS_FLABEL} inline-flex items-center gap-2`}>
+    <label className={`${CS_FLABEL} flex items-center justify-between gap-3 px-2 py-1`}>
       {label}
       <input
         type="date"
@@ -135,16 +108,93 @@ function DayBox({
         onKeyDown={(event) => {
           if (event.key === 'Enter') commit(event.currentTarget)
         }}
-        className={CS_SELECT}
+        className={CS_DATE}
       />
-    </span>
+    </label>
+  )
+}
+
+const POPOVER =
+  'bg-card text-foreground border-border absolute top-[calc(100%+4px)] left-0 z-[70] flex w-max flex-col rounded-[10px] border p-1.5 shadow-lg'
+
+/** The Dates button's words (the mock): "Any date", or "Jun 1 – today", "Start – Jul 4". */
+function datesWords(since: string | null, until: string | null): string {
+  if (since === null && until === null) return 'Any date'
+  return `${since === null ? 'Start' : formatShortDate(since)} – ${until === null ? 'today' : formatShortDate(until)}`
+}
+
+/**
+ * One white picker for the date range (the mock's Dates picker): its popover holds From and Through as real
+ * date fields and an "Any date" clear. Closes on Escape or a click outside (a click, not a press: a typed day
+ * commits on the box's blur, which comes with the press, before the popover unmounts).
+ */
+function DatesPicker({
+  since,
+  until,
+  onDay,
+  onClear,
+}: {
+  since: string | null
+  until: string | null
+  onDay: (key: 'since' | 'until', day: string | null) => void
+  onClear: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    const onClick = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('click', onClick)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('click', onClick)
+    }
+  }, [open])
+  const words = datesWords(since, until)
+  return (
+    <div ref={ref} className="relative inline-flex flex-none">
+      <button
+        type="button"
+        className={CS_PICKER}
+        title={`Dates: ${words}`}
+        aria-label={`Dates: ${words}`}
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+      >
+        <span className="min-w-0 truncate">{words}</span>
+        <ChevronDown className="text-muted-foreground h-3.5 w-3.5 flex-none" />
+      </button>
+      {open && (
+        <div data-testid="history-dates-popover" className={POPOVER}>
+          <DayBox label="From" value={since} onDay={(day) => onDay('since', day)} />
+          <DayBox label="Through" value={until} onDay={(day) => onDay('until', day)} />
+          <button
+            type="button"
+            className="text-muted-foreground hover:bg-muted border-border mt-1 cursor-pointer rounded-md border-t px-2 py-1 text-left text-[12.5px]"
+            onClick={() => {
+              onClear()
+              setOpen(false)
+            }}
+          >
+            Any date
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
 /**
- * History's filters (spec §7.2 A and B; D49; history-v2.html): the Requests strip (All, then one kind at a time,
- * Rules only with `rules`), then the person, From and Through (camp days), the intake runs and the search. Every
- * change goes to the URL through `onChange`; the page is in charge of it.
+ * History's filters (history-1; D49; mock season-history.html): ONE kit toolbar row. The kind switcher (All, then
+ * one kind at a time, Rules only with `rules`, counts inside), Who, the Dates picker, the intake runs check, and
+ * the search at the right. Every change goes to the URL through `onChange` (`onClear` for several keys in one
+ * write); the page is in charge of it.
  */
 export function HistoryFilters({
   filters,
@@ -154,80 +204,87 @@ export function HistoryFilters({
   canSeeRules,
   counting,
   onChange,
+  onClear,
 }: {
   filters: Filters
   actors: readonly string[]
-  /** Each chip's count as the server counts it (H5); undefined while the read loads. */
+  /** Each choice's count as the server counts it (H5); undefined while the read loads. */
   kindCounts: readonly ApiAidHistoryKindCount[] | undefined
   /** All's count; null while the first read loads or after it failed. */
   total: number | null
   canSeeRules: boolean
-  /** A filter change is re-reading: the counts dim. */
+  /** A filter change is re-reading: the switcher dims. */
   counting: boolean
   onChange: (key: HistoryFilterKey, value: string | null) => void
+  onClear: (keys: readonly HistoryFilterKey[]) => void
 }) {
   const people =
     filters.actor !== null && !actors.includes(filters.actor) ? [...actors, filters.actor] : actors
+  const loading = kindCounts === undefined
+  const options = [
+    {
+      value: 'all',
+      label: total === null ? 'All —' : 'All',
+      ...(total === null ? {} : { count: total }),
+    },
+    ...chipKinds(canSeeRules).map((kind) => {
+      const count = kindCounts?.find((c) => c.kind === kind)?.operations
+      return {
+        value: kind,
+        label: loading || count === undefined ? `${KIND_LABELS[kind]} —` : KIND_LABELS[kind],
+        ...(loading || count === undefined ? {} : { count }),
+        title: `Only ${KIND_LABELS[kind].toLowerCase()} operations`,
+      }
+    }),
+  ]
   return (
-    <div className="space-y-2">
-      <div className={CS_STRIP} data-testid="history-strip">
-        <div className={CS_STRIP_LENSES}>
-          <button
-            type="button"
-            className={filters.kind === null ? CS_CHIP_ON : CS_CHIP_INK}
-            onClick={() => onChange('kind', null)}
+    <AidToolbar
+      left={
+        <>
+          <AidSegmented
+            label="Kind"
+            value={filters.kind ?? 'all'}
+            options={options}
+            {...(counting ? { className: 'opacity-60' } : {})}
+            onChange={(value) =>
+              onChange('kind', value === 'all' || value === filters.kind ? null : value)
+            }
+          />
+          <ToolbarLabel text="Who">
+            {/* Owner ruling 10-09: the white kit picker for every select. */}
+            <AidPicker
+              label="Who"
+              value={filters.actor ?? ''}
+              options={[
+                { value: '', label: 'Anyone' },
+                ...people.map((actor) => ({ value: actor, label: actorWords(actor) })),
+              ]}
+              onChange={(actor) => onChange('actor', orNull(actor))}
+              className="max-w-[220px]"
+            />
+          </ToolbarLabel>
+          <ToolbarLabel text="Dates" plain>
+            <DatesPicker
+              since={filters.since}
+              until={filters.until}
+              onDay={onChange}
+              onClear={() => onClear(['since', 'until'])}
+            />
+          </ToolbarLabel>
+          <label
+            className={`${CS_FLABEL.replace('text-muted-foreground', 'text-foreground')} inline-flex items-center gap-1.5`}
+            title="Show the nightly intake runs from CampMinder (hidden by default)"
           >
-            All <Count value={total} dim={counting} />
-          </button>
-        </div>
-        <div className="flex min-w-0 gap-0.5 overflow-x-auto">
-          {chipKinds(canSeeRules).map((kind) => {
-            const on = filters.kind === kind
-            const count = kindCounts?.find((c) => c.kind === kind)?.operations ?? null
-            return (
-              <button
-                key={kind}
-                type="button"
-                className={on ? CS_CHIP_ON : CS_CHIP}
-                onClick={() => onChange('kind', on ? null : kind)}
-              >
-                <span
-                  className={`inline-block size-[7px] rounded-full ${DOT[kind]} ${on ? 'ring-primary-foreground ring-[1.5px]' : ''}`}
-                />
-                {KIND_LABELS[kind]}{' '}
-                <Count value={kindCounts === undefined ? null : count} dim={counting} />
-              </button>
-            )
-          })}
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <label className={`${CS_FLABEL} inline-flex items-center gap-2`}>
-          <span>Person</span>
-          {/* Owner ruling 10-09: the white kit picker for every select. */}
-          <AidPicker
-            label="Person"
-            value={filters.actor ?? ''}
-            options={[
-              { value: '', label: 'Anyone' },
-              ...people.map((actor) => ({ value: actor, label: actorWords(actor) })),
-            ]}
-            onChange={(actor) => onChange('actor', orNull(actor))}
-            className="max-w-[220px]"
-          />
-        </label>
-        <DayBox label="From" value={filters.since} onDay={(day) => onChange('since', day)} />
-        <DayBox label="Through" value={filters.until} onDay={(day) => onChange('until', day)} />
-        <label className={`${CS_FLABEL} inline-flex items-center gap-1.5`}>
-          <input
-            type="checkbox"
-            checked={filters.intake}
-            onChange={(event) => onChange('intake', event.target.checked ? '1' : null)}
-          />
-          Show intake runs
-        </label>
-        <SearchBox initial={filters.q} onSearch={(text) => onChange('q', orNull(text))} />
-      </div>
-    </div>
+            <input
+              type="checkbox"
+              checked={filters.intake}
+              onChange={(event) => onChange('intake', event.target.checked ? '1' : null)}
+            />
+            Intake runs
+          </label>
+        </>
+      }
+      right={<SearchBox initial={filters.q} onSearch={(text) => onChange('q', orNull(text))} />}
+    />
   )
 }

@@ -1,13 +1,15 @@
 import { useEffect, useState, type RefObject } from 'react'
 
-const GAP = 24
-const FLOOR = 320
+/** The box stops this far short of the window's bottom (design-language §23: the first note peeks above the fold). */
+const GAP = 40
+const FLOOR = 420
 
 /**
- * A screen box's size (spec §7.2 C): its max height fills the window below its top, less 24px or the room the page
- * shows under the box if that is more, never under 320px,
- * so the page never scrolls past it; its width sizes the opened row's sticky line. Recomputed on resize, and when the page's own height changes (late
- * content above the box moves its top without the window resizing).
+ * A screen box's size (design-language §23; the same measure as AidTable's scroll box): its max height is the
+ * window below the box's page position, less 40px, never under 420px. What sits under the box (History's notes)
+ * does not shrink it: the page scrolls to reach it. Its width sizes the opened row's sticky line. Recomputed on
+ * resize, and when the page's own height changes (late content above the box moves its top without the window
+ * resizing).
  */
 export function useFitToViewport(ref: RefObject<HTMLElement | null>): {
   maxHeight: number
@@ -18,13 +20,9 @@ export function useFitToViewport(ref: RefObject<HTMLElement | null>): {
     const measure = () => {
       const element = ref.current
       if (element === null) return
-      const { top, bottom } = element.getBoundingClientRect()
-      // What the page shows under the box (History's footnotes, the page's bottom padding) stays in the window too,
-      // or the document scrolls beside the box. The page's <main> ends with its content, unlike the min-h-screen
-      // wrapper, so its bottom edge measures that room.
-      const page = element.closest('main')
-      const below = page === null ? 0 : page.getBoundingClientRect().bottom - bottom
-      const maxHeight = Math.max(FLOOR, Math.round(window.innerHeight - top - Math.max(GAP, below)))
+      // The box's place in the page, not the window: scrolling the page does not change it.
+      const top = element.getBoundingClientRect().top + window.scrollY
+      const maxHeight = Math.max(FLOOR, Math.round(window.innerHeight - top - GAP))
       const width = element.clientWidth
       // Same figures keep the same state, so a caller passing a fresh ref object each render can't loop.
       setSize((previous) =>

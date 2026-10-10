@@ -45,7 +45,7 @@ const PILL_OK = `${PILL_SHAPE} ${CS_OK_BG} ${CS_OK_INK}`
 
 export const PILL: Record<PillTone, string> = {
   red: `${PILL_SHAPE} bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300`,
-  amber: `${PILL_SHAPE} bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300`,
+  amber: `${PILL_SHAPE} bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300`,
   /** The positive pill (§9): the forest ok tone. */
   ok: PILL_OK,
   /** @deprecated Emerald is retired (§9); the old name draws the ok tone until its callers move. */

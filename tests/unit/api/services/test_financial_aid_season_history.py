@@ -552,6 +552,24 @@ async def test_every_opened_row_names_its_family_and_camper_in_one_name_read() -
     assert reads.years == {2027}  # the name and subject reads were for the season asked about
 
 
+def test_a_camper_placement_is_about_the_camper_request_and_session_it_recorded() -> None:
+    entry = entry_of(_row("g2", "aid_grant_placements", "commitment:grantgarcia0001", OP_A, action="place"))
+    assert entry is not None
+    placement = {
+        "household_cm_id": GARCIA,
+        "person_cm_id": P_LIAM,
+        "session_cm_id": 1234,
+        "amount": "500",
+        "requests": [{"request_id": LIAM, "amount": "500"}],
+    }
+    expected = Subject(GARCIA, P_LIAM, LIAM, 1234)
+    assert row_subject(entry, SUBJECTS, None, {"placement": placement}) == expected
+    assert row_subject(entry, SUBJECTS, {"placement": placement}, {"placement": None}) == expected  # a remove
+    # A household-level placement (no camper) stays household-level.
+    household_level = {**placement, "person_cm_id": 0, "requests": []}
+    assert row_subject(entry, SUBJECTS, None, {"placement": household_level}) == Subject(GARCIA, 0, "")
+
+
 @pytest.mark.asyncio
 async def test_a_search_finds_a_family_or_a_camper_by_name() -> None:
     hold = _row("h1", "aid_hold_events", f"{LIAM}:income", OP_B, action="release", at="2027-03-10 17:00:00.000Z")
@@ -568,6 +586,51 @@ async def test_a_search_finds_a_family_or_a_camper_by_name() -> None:
     assert await found("johnson family") == [OP_T]
     assert await found("olivia") == []
     assert len(reads.name_calls) == 4  # one batched read per search: never one per row or operation
+
+
+@pytest.mark.asyncio
+async def test_a_search_finds_a_grant_placement_by_the_camper_its_opened_line_names() -> None:
+    """The opened line names a placement's camper from the placement it recorded, so `q` finds it by that name too;
+    a ledger line's placement is found by the household it recorded. One recorded read per search, for the
+    placement rows only."""
+    placement = {
+        "household_cm_id": GARCIA,
+        "person_cm_id": P_LIAM,
+        "session_cm_id": 1234,
+        "amount": "500",
+        "requests": [{"request_id": LIAM, "amount": "500"}],
+    }
+    camper = _row(
+        "g1",
+        "aid_grant_placements",
+        f"commitment:{GRANT_GARCIA}",
+        OP_A,
+        action="place",
+        after={"grant": f"commitment:{GRANT_GARCIA}", "household_cm_id": GARCIA, "placement": placement},
+    )
+    ledger = _row(
+        "g2",
+        "aid_grant_placements",
+        "ledger:9001",
+        OP_B,
+        action="place",
+        at="2027-03-10 17:00:00.000Z",
+        after={"grant": "ledger:9001", "household_cm_id": JOHNSON, "placement": {**placement, "person_cm_id": 0}},
+    )
+    reads = _Reads(camper, ledger, subjects=SEASON)
+    service = SeasonHistoryService(reads)
+
+    async def found(text: str) -> list[str]:
+        page = await service.page(2027, HistoryFilter(text=text), page=1, per_page=50)
+        return [o.operation_id for o in page.operations]
+
+    assert await found("liam") == [OP_A]  # the camper the opened line names
+    assert await found("johnson family") == [OP_B]  # a ledger line's household, from its own recorded row
+    detail = await service.operation(2027, OP_A, rules=False)
+    assert detail.rows[0].camper_name == "Liam Garcia"  # the list and the opened line agree
+    reads.recorded_calls.clear()
+    await service.page(2027, HistoryFilter(text="liam"), page=1, per_page=50)
+    assert reads.recorded_calls == [([OP_A, OP_B], ["aid_grant_placements"])]  # one read for the search
 
 
 @pytest.mark.asyncio
@@ -836,6 +899,9 @@ async def test_an_approval_that_moved_no_pricing_says_so_and_an_old_one_says_not
     )
     assert await summary({"from_version": 0, "to_version": 0, "repriced": 0, "flagged": 0}) == (
         "no approved rules price the season yet: nothing re-priced"
+    )
+    assert await summary({"from_version": 0, "to_version": 1, "repriced": 0}) == (
+        "v1 now prices the season: nothing re-priced"
     )
     assert await summary({"from_version": 0, "to_version": 1, "repriced": 1}) == (
         "v1 now prices the season · 1 unsent request re-priced"
