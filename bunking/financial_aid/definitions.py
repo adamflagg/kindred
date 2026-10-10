@@ -253,7 +253,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D21", "D74"),
     ),
     # Rounds & budget's own six notes (final design, rounds-4; kit §12: six at most, each a bold term, always shown).
-    # Condensed from the entries above, which Requests, Scenarios and Reports keep sharing unedited.
+    # Condensed from the §5.3 entries above (allocated … committed), which keep the long signed text; no surface
+    # reads those now, as some Reports entries already sit unread.
     Definition(
         key="rounds_allocated",
         term="Allocated",

@@ -194,7 +194,7 @@ def test_no_season_note_cites_another_note_by_number() -> None:
 
 def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> None:
     """Scenarios addendum §S6, §S11.8; owner-approved final mock (ux3, 2026-10-09): one line each, the mock's words.
-    Season-scenarios has its own Remaining entry: Rounds & budget's `remaining` is a different formula and stays."""
+    Season-scenarios has its own Remaining entry: the registry's long `remaining` is a different formula and stays."""
     assert SURFACES["season-scenarios"] == (
         "scenario_spend",
         "scenario_remaining",
@@ -225,10 +225,10 @@ def test_scenarios_numbers_spend_remaining_projected_and_below_the_line() -> Non
 
 
 def test_the_shared_remaining_note_is_untouched_by_the_scenarios_wording() -> None:
-    """Neither page's short wording leaks into the other, and the shared `remaining` text keeps its formula.
+    """Neither page's short wording leaks into the other, and the long `remaining` entry keeps its formula.
 
     Rounds & budget now reads its own `rounds_remaining` (ux3 rounds-4, the mock's six notes), as Scenarios reads
-    `scenario_remaining`; the shared entry is unchanged.
+    `scenario_remaining`; no surface reads the long entry now, and it is unchanged (the §5.3 signed text).
     """
     assert "rounds_remaining" in SURFACES["season-rounds-budget"]
     assert "scenario_remaining" not in SURFACES["season-rounds-budget"]

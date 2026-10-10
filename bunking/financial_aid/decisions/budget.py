@@ -19,7 +19,7 @@ Its request still counts in those figures' request counts, and in Pending approv
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
 total asked, total computed; held appeals' asks included) and Round 1 unmet ask, not yet appealed
-(§5.9). This year only (D46): no pace, no last year. A posted round whose money CampMinder has
+(§5.9), every ask at the D91 need cap (`reports.facts.round_ask_at_cost`, owner Q12). This year only (D46): no pace, no last year. A posted round whose money CampMinder has
 reversed (clawed_back, D54) counts nowhere: its money is back in Remaining.
 
 Money on a program the rules give no pool is counted in the total only, under "No pool": it has no
@@ -532,7 +532,9 @@ def season_budget(
     they are live (owner ruling 2026-10-02: CampMinder cancelled them; `live` itself is not changed). `ledger` is each
     request's posted rounds against CampMinder's live net (`round_ledger`); None: no ledger read. `off_list` are the
     (request, round)s needing an offer that the Requests grid's Needs an offer list leaves out (D162 C2: CampMinder
-    already holds money for them): their money stays in Needs an offer, and they leave its counts."""
+    already holds money for them): their money stays in Needs an offer, and they leave its counts. `costs` is each
+    request's session cost, which caps its forward-demand asks at the D91 need (owner Q12); a request missing from it,
+    or None, counts its asks as typed."""
     allocated = allocations(rules) if rules is not None else {}
     shares = {key: pool.share_pct for key, pool in rules.budget.pools.items()} if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}

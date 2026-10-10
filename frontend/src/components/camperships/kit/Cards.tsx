@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 import { CS_BAND } from './csType'
 
 /**
- * The kit's figure card (design-language §10; mock `CF.card`): live's Rounds & budget pool card in the kit's language.
+ * The kit's figure card (design-language §10; mock `CF.card`), for any Camperships page; Rounds & budget is its first user.
  * ONE header row (§5): a caret + title (13.5/700) that folds the card, a muted one-line meta, pills, the figures on the
  * right (muted label + footnote mark, then a tabular value). Under it a 10px bar and a 12px legend; opened, a kit table
- * flush under a rule. A card that opens nothing has no caret. Shapes: the default (live's card), `compact` (a strip
+ * flush under a rule. A card that opens nothing has no caret. Shapes: the default (a full-width card), `compact` (a strip
  * card: figures stacked label over value, for AidCards) and `row` (one line, figures in fixed columns).
  * `band` puts a total card in THE green (§9, §10).
  */
