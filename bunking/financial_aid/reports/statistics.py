@@ -8,10 +8,13 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
                   Round 2 and Round 3: those with that round's ask (or its lock).
   tier            the round's tier (at its lock, else the request's now; All rounds: Round 1's).
   apps            the population; `cancelled` counts the cancelled ones among them, the line beside apps (D131).
-  asked           the population's asks on the chip's round(s), as keyed (D80); `asks` counts the requests with
-                  one, and the average ask divides by it. Rule M (owner 10-09): each request counts at most its
-                  priced session cost (no cost known: as typed), and `requests_capped` counts those above it.
-                  `live_asked` and `live_full_asked` (the % of ask denominators) stay as typed.
+  asked           the population's capped asks on the chip's round(s) (owner A1/A2, 2026-10-09; facts.capped_ask):
+                  All rounds is Development's need at most the priced session cost; a round chip is that round's
+                  ask at most the cost less the awards posted before it, so the chips need not add up to All
+                  rounds. No cost known: as typed. `asks` counts the requests with one, and the average ask divides
+                  by it; `requests_capped` counts those whose need is above the cost (is_capped, every chip);
+                  `asked_as_typed` is the asks as keyed, for the CSV and Copy (A3). `live_asked` and
+                  `live_full_asked` (the % of ask denominators) are on the same capped basis (A5).
   amount          awarded (D80, Posted net of clawback, the camp's own money) on live requests; on the
                   "posted_and_decided" basis (D130) plus decided and not yet offered, broken out as `decided`.
   awarded         Posted alone (D80), on either basis: on "posted" it is `amount`; on "posted_and_decided" it is
@@ -53,9 +56,10 @@ from bunking.financial_aid.reports.facts import (
     REPORT_ROUNDS,
     ReportRequest,
     average,
-    capped_at_cost,
+    capped_ask,
     in_round,
     in_table,
+    is_capped,
 )
 from bunking.financial_aid.rules import AidRules, round1_table, round2_table
 from bunking.financial_aid.rules.lookup import Round2TableNotListedError
@@ -157,9 +161,8 @@ class StatisticsRow:
     pct_of_ask: Decimal | None
     grants: Decimal | None
     pct_of_ask_with_grants: Decimal | None
-    requests_capped: int = (
-        0  # Rule M: requests whose asks add up to more than their session's cost, counted at the cost
-    )
+    requests_capped: int = 0  # Rule M: requests whose need is above their session's cost (the All-rounds basis)
+    asked_as_typed: Decimal = ZERO  # A3: the asks as keyed, summed, uncapped (the CSV and Copy's raw column)
 
 
 @dataclass(frozen=True)
@@ -260,7 +263,7 @@ def _row(
 ) -> StatisticsRow:
     rounds = _rounds(round_)
     with_decided = basis == "posted_and_decided"
-    asked = live_asked = live_full_asked = amount = decided = awarded = ZERO
+    asked = asked_as_typed = live_asked = live_full_asked = amount = decided = awarded = ZERO
     asks = awarded_count = decided_count = cancelled = capped = 0
     grants = ZERO
     for request in requests:
@@ -269,15 +272,19 @@ def _row(
         cancelled += "cancelled" in found
         awarded_count += "awarded" in found
         decided_count += "decided" in found
-        ask = request.asked(rounds)  # bound every pass: the live branch below reads it too
+        # Owner A1/A2 (2026-10-09): every Asked figure is the capped ask (All rounds: Development's need; a round
+        # chip: its ask, at most the cost less the awards posted before it), cancelled requests too (A4).
+        ask = capped_ask(request, round_)  # bound every pass: the live branch below reads it too
         if request.counts_as_received and ask is not None:
-            asked += capped_at_cost(ask, request.cost)  # Rule M (owner 10-09): at most the session's cost
-            capped += request.cost is not None and ask > request.cost
+            asked += ask
+            asked_as_typed += request.asked(rounds) or ZERO  # A3: the CSV and Copy's "Asked (as typed)"
+            capped += is_capped(request)  # the footnote's count, on the All-rounds basis whatever the chip (A1)
         if not request.live:
             continue
+        # A5 (owner-approved number-meaning change): % of ask's denominators are on the same capped basis.
         if ask is not None:
             live_full_asked += ask
-        if (in_budget := request.asked_in_budget(rounds)) is not None:
+        if (in_budget := capped_ask(request, round_, in_budget=True)) is not None:
             live_asked += in_budget
         money = request.awarded(rounds, decided=with_decided)
         posted = request.awarded(rounds)
@@ -300,6 +307,7 @@ def _row(
         apps=sum(1 for r in requests if r.counts_as_received),
         cancelled=cancelled,
         asked=asked,
+        asked_as_typed=asked_as_typed,
         asks=asks,
         average_ask=average(asked, asks),
         amount=amount,
@@ -431,13 +439,13 @@ def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
         accepted_amount = appealed_asked = ZERO
         for request in members:
             found = outcome_kinds(request)
-            first, second = request.round(1), request.round(2)
+            first = request.round(1)
             if "accepted" in found and first is not None and first.posted is not None:
                 accepted += 1
                 accepted_amount += first.posted
-            if "appealed" in found and second is not None and second.ask is not None:
+            if "appealed" in found and (ask := capped_ask(request, 2)) is not None:
                 appealed += 1
-                appealed_asked += second.ask
+                appealed_asked += ask  # A1: the Round 2 chip's capped ask
             waiting += "waiting" in found
         return OutcomeRow(pool, accepted, accepted_amount, appealed, appealed_asked, waiting, kind)
 

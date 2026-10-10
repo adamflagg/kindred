@@ -39,7 +39,7 @@ from decimal import Decimal
 from typing import Final
 
 from api.services.financial_aid_calc_inputs import effective_ask, rules_program_key
-from api.services.financial_aid_decisions_service import Season
+from api.services.financial_aid_decisions_service import Season, session_cost
 from api.services.financial_aid_grants_register import outside_grants_by_request
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
@@ -49,7 +49,6 @@ from api.services.financial_aid_intake_types import (
     CorrectionRecord,
     RequestRecord,
 )
-from bunking.financial_aid.calculator import resolve_cost
 from bunking.financial_aid.decisions import PricedRequest, RoundState, RoundView, round_exists
 from bunking.financial_aid.decisions.budget import counted_part
 from bunking.financial_aid.money import ZERO
@@ -161,19 +160,11 @@ def _round(
     )
 
 
-def session_cost(priced: PricedRequest | None, document: AidRules | None) -> Decimal | None:
-    """The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override), for
-    Rule M (a request whose asks add up to more counts at the cost). The calculator's own when it reached its cost
-    step; else the cost resolver's, since a session's price doesn't depend on the family's income (the calculator
-    stops before cost when no income is reported). None when nothing could price it: a request that isn't live, or no
-    rules."""
-    if priced is None:
-        return None
-    if priced.result is not None and priced.result.cost is not None:
-        return priced.result.cost
-    if priced.inputs is not None and document is not None:
-        return resolve_cost(priced.inputs, document).amount
-    return None
+def _cost(request_id: str, priced: PricedRequest | None, season: Season, document: AidRules | None) -> Decimal | None:
+    """The request's session cost (Rule M). A request priced as not live (cancelled, withdrawn, a duplicate) has none
+    from pricing, so it comes from the cost-only path (owner A4, 2026-10-09), which Development reads too."""
+    cost = session_cost(priced, document)
+    return cost if cost is not None else season.cost_only.get(request_id)
 
 
 def report_requests(
@@ -251,7 +242,7 @@ def report_requests(
                 rounds=tuple(rounds),
                 grants=grants.get(request_id, ZERO),
                 counts_as_received=not is_duplicate,
-                cost=session_cost(priced, document),
+                cost=_cost(request_id, priced, season, document),
             )
         )
     return tuple(out)

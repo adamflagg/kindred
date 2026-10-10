@@ -611,3 +611,12 @@ def test_a_request_with_two_asks_above_its_cost_counts_once() -> None:
     )
     assert _camp(column).total_requests == Decimal(4000)
     assert column.requests_capped == 1
+
+
+def test_development_shares_the_one_need_function_statistics_caps_asked_with() -> None:
+    """Owner A2 (2026-10-09): Statistics' All-rounds Asked is Development's need, one function in facts, never a
+    copy, so the two can't drift. Development's figures don't move."""
+    from bunking.financial_aid.reports import development, facts
+
+    assert development.need is facts.need
+    assert development.is_capped is facts.is_capped

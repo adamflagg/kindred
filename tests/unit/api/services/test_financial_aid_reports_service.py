@@ -86,8 +86,9 @@ async def test_statistics_counts_received_requests_and_awards_only_what_posted()
         2000.0,
         1500.0,
         1,
-        37.5,
-    )  # Asked: the 4,000 ask counts at the 2,000 session cost (Rule M, owner 10-09)
+        75.0,
+    )  # Asked: the 4,000 ask counts at the 2,000 session cost (Rule M); % of ask divides by the same 2,000 (owner A5)
+    assert two.asked_as_typed == 4000.0  # A3: the raw ask, for the CSV and Copy
     assert (three.apps, three.asked, three.amount, three.awarded_count) == (1, 2000.0, 0.0, 0)
     assert (out.total.apps, out.total.amount) == (2, 1500.0)
     # the rules' pool order, not award_tables key order (camp, family, teen)
@@ -168,6 +169,30 @@ async def test_a_cancelled_request_with_no_posted_round_keeps_its_income_tier_on
     three = _tier(out.rows, 3)
     assert (three.apps, three.cancelled, three.amount, three.awarded_count) == (1, 1, 0.0, 0)
     assert all(row.tier is not None for row in out.rows)
+
+
+def _emma_cancelled() -> FakeDecisionsStore:
+    store = report_season()
+    store.cancel_events.append(
+        CancelEvent(
+            "can000000000003", EMMA, "cancel", NOW - timedelta(days=1), reason="medical", in_kindred=True, actor=ACTOR
+        )
+    )
+    return store
+
+
+async def test_a_cancelled_requests_ask_is_capped_at_its_session_cost() -> None:
+    """Owner A4 (2026-10-09): a cancelled request prices as not live, so a cost-only path prices its session: Emma's
+    4,000 ask counts at Session 2's 2,000, as it did while she was live."""
+    out = await _service(_emma_cancelled()).statistics(YEAR, table="camp", round_=1)
+    two = _tier(out.rows, 2)
+    assert (two.cancelled, two.asked, two.asked_as_typed, two.requests_capped) == (1, 2000.0, 4000.0, 1)
+
+
+async def test_a_cancelled_requests_ask_is_capped_at_its_session_cost_on_a_past_date() -> None:
+    out = await _service(_emma_cancelled()).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
+    two = _tier(out.rows, 2)
+    assert (two.cancelled, two.asked, two.requests_capped) == (1, 2000.0, 1)
 
 
 async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_replayed_and_leaves_it_out() -> None:
@@ -274,7 +299,8 @@ async def test_an_outside_funders_full_cost_round_keeps_its_ask_but_leaves_the_p
     assert (two.live_asked, two.pct_of_ask) == (0.0, None)
     assert out.total.live_asked == 2000.0  # Liam's alone
     block = (await service.programs(YEAR)).total.round1
-    assert (block.requested, block.pct_awarded) == (6000.0, 0.0)  # asked kept; Liam's 2,000 alone is the denominator
+    # asked kept, each capped at Session 2's 2,000 (owner A1); Liam's 2,000 alone is the denominator
+    assert (block.requested, block.requested_as_typed, block.pct_awarded) == (4000.0, 6000.0, 0.0)
 
 
 async def test_an_unposted_outside_funders_round_is_never_decided_money_and_leaves_the_denominator() -> None:
@@ -398,7 +424,8 @@ async def test_an_edited_answer_is_one_application_and_a_refused_duplicate_is_no
 async def test_grants_on_the_request_feed_percent_of_ask_with_grants() -> None:
     out = await _service(report_season(), register=[grant_row(EMMA, "500")]).statistics(YEAR, table="camp", round_=1)
     two = _tier(out.rows, 2)
-    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 50.0)
+    # (1,500 + 500) ÷ Emma's 4,000 ask capped at Session 2's 2,000 (owner A5, 2026-10-09: the capped basis)
+    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 100.0)
 
 
 async def test_the_round_1_deadline_switch_leaves_out_requests_received_after_it() -> None:
@@ -473,7 +500,8 @@ async def test_a_past_date_reads_grants_where_the_placement_log_had_them() -> No
     _placed(store, row, datetime(2027, 3, 1, 18, 0, tzinfo=UTC))
     out = await _service(store, register=[row]).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 10))
     two = _tier(out.rows, 2)
-    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 50.0)
+    # (1,500 + 500) ÷ Emma's 4,000 ask capped at Session 2's 2,000 (owner A5, 2026-10-09: the capped basis)
+    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 100.0)
     assert "grants" not in {g.figure for g in out.not_rebuilt}
 
 

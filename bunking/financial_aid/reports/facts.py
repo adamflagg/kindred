@@ -97,10 +97,10 @@ class ReportRequest:
     # False only for a CONFIRMED duplicate holding a posted award (owner ruling, queue 4): it is not an application
     # (D72), so it stays out of Apps, Asked, "# asks", r1_apps and every received count; only its money counts.
     counts_as_received: bool = True
-    # The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override; None
-    # when nothing could price it: a request that isn't live, no rules, or a program with no price). Development counts
-    # a request whose asks add up to more at the cost (Rule M). The service fills it
-    # (financial_aid_reports_facts.session_cost).
+    # The request's session cost as priced (the rules' price, an AG session's parent's, or a staff cost override; a
+    # cancelled request's from pricing it live, cost only, owner A4; None when nothing could price it: no rules, or a
+    # program with no price). Every Asked figure and Development's need count at most it (Rule M). The service fills it
+    # (financial_aid_decisions_service.session_cost).
     cost: Decimal | None = None
 
     @property
@@ -167,9 +167,58 @@ class ReportRequest:
 
 def capped_at_cost(amount: Decimal, cost: Decimal | None) -> Decimal:
     """Rule M (owner 10-08, per request): `amount` counts at most the request's priced session cost. No cost known
-    (a request that isn't live, no rules, a program with no price): as typed. One rule for Development's need and
-    Statistics' Asked."""
+    (no rules, a program with no price): as typed. One rule for Development's need and Statistics' Asked."""
     return amount if cost is None else min(amount, cost)
+
+
+def _uncapped_need(request: ReportRequest, *, in_budget: bool = False) -> Decimal | None:
+    """§5.10 (D91): the camp's awards posted in the rounds before an ask + that ask, at its highest over the asked
+    rounds, so a smaller later ask never lowers it (a Round 2 ask is an increment on the Round 1 offer; Round 3 funds
+    what Round 2 left unfunded). `in_budget` leaves out a round an outside funder pays in full (owner (c)). None when
+    no counted round has an ask."""
+    best: Decimal | None = None
+    awarded_before = ZERO
+    for n in REPORT_ROUNDS:
+        facts = request.round(n)
+        if facts is None:
+            continue
+        if facts.ask is not None and not (in_budget and facts.outside_budget):
+            best = max(best or ZERO, awarded_before + facts.ask)
+        awarded_before += facts.posted or ZERO  # the POSTED award, accepted or not (D47)
+    return best
+
+
+def is_capped(request: ReportRequest) -> bool:
+    """Rule M (owner 10-08, per request): the request's need is above its priced session cost. A request with no cost
+    known is never capped (counted as typed). Development's and Statistics' footnotes count these: "N requests above
+    their session's cost counted at the cost" (owner A1, 2026-10-09: on the All-rounds basis, whatever the chip)."""
+    uncapped = _uncapped_need(request)
+    return request.cost is not None and uncapped is not None and uncapped > request.cost
+
+
+def need(request: ReportRequest) -> Decimal:
+    """§5.10's need, at most the request's session cost (Rule M, owner 10-08: "cap it at the session cost", per
+    request: its asks together count at most the cost). No cost known: as typed. Development's Total Requests and
+    Statistics' All-rounds Asked (owner A2, 2026-10-09) share it."""
+    return capped_at_cost(_uncapped_need(request) or ZERO, request.cost)
+
+
+def capped_ask(request: ReportRequest, round_: int | None, *, in_budget: bool = False) -> Decimal | None:
+    """Every Statistics Asked figure (owner rulings A1, A2, A5, 2026-10-09). All rounds (`round_` None): need, at most
+    the cost. Round n: that round's ask, at most the cost less the awards posted before round n (never below 0), so
+    the round chips need not add up to All rounds (an appeal re-asks part of the earlier shortfall). No cost known:
+    as typed. `in_budget` leaves out a round an outside funder pays in full (owner (c): % of ask's denominator).
+    None when the round(s) have no counted ask."""
+    if round_ is None:
+        uncapped = _uncapped_need(request, in_budget=in_budget)
+        return None if uncapped is None else capped_at_cost(uncapped, request.cost)
+    facts = request.round(round_)
+    if facts is None or facts.ask is None or (in_budget and facts.outside_budget):
+        return None
+    if request.cost is None:
+        return facts.ask
+    before = sum((f.posted or ZERO for f in request.rounds if f.round < round_), ZERO)
+    return min(facts.ask, max(ZERO, request.cost - before))
 
 
 def in_table(requests: Iterable[ReportRequest], table: str | None) -> list[ReportRequest]:

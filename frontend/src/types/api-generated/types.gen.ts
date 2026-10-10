@@ -12304,6 +12304,10 @@ export type ProgramsResponse = {
    */
   pools: Array<PoolGroupOut>
   total: ProgramRowOut
+  /**
+   * Requests Capped
+   */
+  requests_capped?: number
   request_set: RequestSetNote | null
   /**
    * Not Rebuilt
@@ -14851,6 +14855,10 @@ export type RoundBlockOut = {
    */
   requested: number
   /**
+   * Requested As Typed
+   */
+  requested_as_typed?: number
+  /**
    * Asks
    */
   asks: number
@@ -16919,6 +16927,10 @@ export type StatisticsRowOut = {
    * Asked
    */
   asked: number
+  /**
+   * Asked As Typed
+   */
+  asked_as_typed?: number
   /**
    * Asks
    */

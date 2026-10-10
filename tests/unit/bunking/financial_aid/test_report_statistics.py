@@ -5,9 +5,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from bunking.financial_aid.reports.facts import ReportRequest
 from bunking.financial_aid.reports.statistics import (
     NO_REASON,
     CancelledRow,
+    RoundChip,
     StatisticsRow,
     outcomes,
     recipients_cancelled,
@@ -113,7 +115,10 @@ def test_percent_of_ask_with_grants_adds_the_live_requests_grants_on_round_1_onl
     round2 = _tier(statistics(requests, RULES, table="camp", round_=2).rows, 2)
     assert (round2.grants, round2.pct_of_ask_with_grants) == (None, None)
     every = statistics(requests, RULES, table="camp", round_=None).total
-    assert (every.asked, every.amount, every.pct_of_ask) == (Decimal(4800), Decimal(1800), Decimal("37.5"))
+    # Owner A2/A5 (2026-10-09): All rounds is Development's need, max(4,000, 1,500 + 800) = 4,000, not the 4,800 sum
+    # (no cost known, so nothing is capped: need as typed); % of ask divides by the same 4,000.
+    assert (every.asked, every.amount, every.pct_of_ask) == (Decimal(4000), Decimal(1800), Decimal("45.0"))
+    assert every.asked_as_typed == Decimal(4800)
 
 
 def test_the_round_2_chip_counts_appeals_by_their_round_2_tier_with_the_round_2_max() -> None:
@@ -371,7 +376,9 @@ def test_asked_counts_a_request_above_its_session_cost_at_the_cost() -> None:
     assert two.average_ask == Decimal("3000.00")
     assert two.requests_capped == 1
     assert table.total.requests_capped == 1
-    assert two.live_asked == Decimal(42000)
+    # A5 (owner 2026-10-09): % of ask's denominator is on the same capped basis, so the cap and % of ask agree.
+    assert two.live_asked == Decimal(6000)
+    assert two.asked_as_typed == Decimal(42000)  # A3: the raw sum, for the CSV and Copy's "Asked (as typed)"
 
 
 def test_asked_counts_a_request_with_no_priced_cost_as_typed() -> None:
@@ -389,9 +396,116 @@ def test_a_cancelled_request_still_counts_in_asked_at_the_cost() -> None:
 
 
 def test_the_cap_is_on_the_whole_request_across_the_chosen_rounds() -> None:
-    """All rounds: 3,000 + a 2,000 appeal on a 3,500 session counts 3,500."""
+    """All rounds is Development's need (A2): an unawarded 3,000 Round 1 and a 2,000 appeal re-ask the same shortfall,
+    so it counts 3,000 (the higher of 3,000 and 0 + 2,000), not 5,000 capped at 3,500. Under the cost: not capped."""
     table = statistics(
         [req("reqemma00000001", rnd(1, ask="3000"), rnd(2, ask="2000"), cost="3500")], RULES, table="camp", round_=None
     )
-    assert table.total.asked == Decimal(3500)
-    assert table.total.requests_capped == 1
+    assert table.total.asked == Decimal(3000)
+    assert table.total.asked_as_typed == Decimal(5000)
+    assert table.total.requests_capped == 0
+
+
+# --- Owner rulings A1–A5 (2026-10-09): Asked is capped like Development's need, on every figure ----------------------
+# The 2026 sheet: a Round 2 ask is an INCREMENT on the Round 1 offer, and Round 3 funds what Round 2 left unfunded.
+# All rounds = min(cost, need); a round chip n = min(ask n, max(0, cost - the awards posted before round n)).
+
+COST = "4000"
+
+
+def _asked(request: ReportRequest, round_: RoundChip) -> Decimal:
+    return statistics([request], RULES, table="camp", round_=round_).total.asked
+
+
+def test_a1_round_1_alone_above_the_cost_counts_at_the_cost() -> None:
+    """Worked example: Round 1 ask 4,500, award 2,000, cost 4,000 → All rounds 4,000."""
+    request = req("reqemma00000001", rnd(1, ask="4500", posted="2000"), cost=COST)
+    assert _asked(request, None) == Decimal(4000)
+    assert _asked(request, 1) == Decimal(4000)
+    assert statistics([request], RULES, table="camp", round_=None).total.requests_capped == 1
+
+
+def test_a2_an_appeal_on_the_round_1_offer_is_not_counted_twice() -> None:
+    """Worked example: Round 1 3,000 / award 1,200, Round 2 1,800 → All rounds 3,000; chips 3,000 and 1,800 (they
+    don't add up to All rounds: the appeal re-asks part of Round 1's shortfall)."""
+    request = req("reqemma00000001", rnd(1, ask="3000", posted="1200"), rnd(2, ask="1800"), cost=COST)
+    assert (_asked(request, None), _asked(request, 1), _asked(request, 2)) == (
+        Decimal(3000),
+        Decimal(3000),
+        Decimal(1800),
+    )
+    assert statistics([request], RULES, table="camp", round_=None).total.requests_capped == 0
+
+
+def test_a2_round_3_counts_at_most_what_the_cost_leaves_after_the_earlier_awards() -> None:
+    """Worked example: Round 1 3,000 / 1,200, Round 2 1,500 / 1,000, Round 3 2,000 → All rounds 4,000 (need 4,200,
+    capped); chips 3,000, 1,500 and 1,800 (4,000 less the 2,200 posted before Round 3)."""
+    request = req(
+        "reqemma00000001",
+        rnd(1, ask="3000", posted="1200"),
+        rnd(2, ask="1500", posted="1000"),
+        rnd(3, ask="2000"),
+        cost=COST,
+    )
+    chips = tuple(_asked(request, n) for n in (None, 1, 2, 3))
+    assert chips == (Decimal(4000), Decimal(3000), Decimal(1500), Decimal(1800))
+    every = statistics([request], RULES, table="camp", round_=None).total
+    assert (every.asked_as_typed, every.requests_capped) == (Decimal(6500), 1)
+    # A5: % of ask divides the 2,200 posted by the same capped 4,000, not the 6,500 typed.
+    assert (every.live_asked, every.pct_of_ask) == (Decimal(4000), Decimal("55.0"))
+
+
+def test_a2_the_award_before_a_round_is_the_posted_one_not_the_accepted_tick() -> None:
+    """D47: the Round 1 award a Round 2 chip subtracts is Posted, accepted or not; a clawed-back one is no award."""
+    accepted = req("reqemma00000001", rnd(1, ask="3000", posted="3000", accepted=True), rnd(2, ask="2000"), cost=COST)
+    unaccepted = req("reqemma00000001", rnd(1, ask="3000", posted="3000"), rnd(2, ask="2000"), cost=COST)
+    clawed = req("reqemma00000001", rnd(1, ask="3000", posted="3000", clawed_back=True), rnd(2, ask="2000"), cost=COST)
+    assert _asked(accepted, 2) == _asked(unaccepted, 2) == Decimal(1000)
+    assert _asked(clawed, 2) == Decimal(2000)
+
+
+def test_a2_a_round_chip_with_no_priced_cost_counts_its_ask_as_typed() -> None:
+    request = req("reqemma00000001", rnd(1, ask="3000", posted="3000"), rnd(2, ask="9000"))
+    assert _asked(request, 2) == Decimal(9000)
+
+
+def test_a1_the_footnote_counts_on_the_all_rounds_basis_on_every_chip() -> None:
+    """The "N requests above their session's cost" count is Development's is_capped (the All-rounds basis), so a
+    Round 2 chip names the same requests as All rounds."""
+    request = req("reqemma00000001", rnd(1, ask="3000", posted="1200"), rnd(2, ask="3000"), cost=COST)
+    assert statistics([request], RULES, table="camp", round_=2).total.requests_capped == 1
+    assert statistics([request], RULES, table="camp", round_=None).total.requests_capped == 1
+
+
+def test_a4_a_cancelled_request_is_capped_too_but_stays_out_of_percent_of_ask() -> None:
+    """A4: a cancelled request's ask is capped at its priced cost; it never was in % of ask's denominator."""
+    cancelled = req("reqnoah00000001", rnd(1, ask="9000"), rnd(2, ask="500"), standing="cancelled", cost=COST)
+    total = statistics([cancelled], RULES, table="camp", round_=None).total
+    assert (total.asked, total.asked_as_typed, total.requests_capped, total.live_asked) == (
+        Decimal(4000),
+        Decimal(9500),
+        1,
+        Decimal(0),
+    )
+
+
+def test_a5_the_in_budget_ask_leaves_an_outside_funded_round_and_is_capped() -> None:
+    """A5 with owner (c): the in-budget denominator is need over the in-budget rounds, capped; % incl. grants divides
+    by the capped need over every round."""
+    request = req(
+        "reqemma00000001",
+        rnd(1, ask="4500", posted="1500"),
+        rnd(2, ask="3000", outside_budget=True),
+        cost=COST,
+    )
+    total = statistics([request], RULES, table="camp", round_=None).total
+    assert (total.asked, total.live_asked) == (Decimal(4000), Decimal(4000))
+    assert total.pct_of_ask_with_grants == Decimal("37.5")  # 1,500 ÷ the capped 4,000, not 7,500
+
+
+def test_a1_the_march_committees_round_2_asked_is_capped() -> None:
+    """A1: the committee table's "Round 2 asked" is the Round 2 chip's capped ask (cost 4,000 less the 3,000
+    posted in Round 1)."""
+    request = req("reqemma00000001", rnd(1, ask="3000", posted="3000"), rnd(2, ask="2500"), cost=COST)
+    *_, every = outcomes([request])
+    assert (every.appealed, every.appealed_asked) == (1, Decimal(1000))

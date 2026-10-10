@@ -102,3 +102,18 @@ def test_a_round_outside_the_budget_leaves_the_programs_percent_denominator_but_
     )
     block = table.total.round1
     assert (block.requested, block.asks, block.pct_awarded) == (Decimal(7000), 2, Decimal("37.5"))
+
+
+def test_a1_requested_and_the_appeals_asked_are_capped_like_statistics_round_chips() -> None:
+    """Owner A1/A2 (2026-10-09): By session's Round 1 "Requested" and Round 2 "Asked" are Statistics' round chips: a
+    round's ask counts at most the cost less the awards posted before it (cost 4,000: Round 1 4,500 counts 4,000; the
+    Round 2 3,000 after a 1,200 award counts 2,800). The as-typed sums ride along for the CSV and Copy (A3), and
+    % awarded divides by the same capped asks (A5)."""
+    table = programs(
+        [req("reqemma00000001", rnd(1, ask="4500", posted="1200"), rnd(2, ask="3000", posted="1400"), cost="4000")],
+        SESSIONS,
+    )
+    one, two = table.total.round1, table.total.round2
+    assert (one.requested, one.requested_as_typed, one.pct_awarded) == (Decimal(4000), Decimal(4500), Decimal("30.0"))
+    assert (two.requested, two.requested_as_typed, two.pct_awarded) == (Decimal(2800), Decimal(3000), Decimal("50.0"))
+    assert table.requests_capped == 1  # need 4,500 > 4,000: the All-rounds basis, as Statistics' footnote

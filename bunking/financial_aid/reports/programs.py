@@ -12,11 +12,14 @@ the screen): the pool grouping and subtotals, the Round 3 columns and total awar
   a request         counts once, in its own session (a request is one camper × one session, or one household ×
                     one Family Camp session; a camper at two sessions is two requests), under that session's pool;
                     a request with no rules session counts in its home pool's "session not matched" row.
-  apps, requested   as Statistics (D72): received requests, cancelled included; their asks as keyed.
+  apps, requested   as Statistics (D72): received requests, cancelled included; their asks capped as Statistics'
+                    round chips (owner A1/A2, 2026-10-09: at most the cost less the awards posted before the
+                    round), with the asks as keyed beside them for the CSV and Copy (A3).
   awarded           as Statistics (D80, D129): Posted on live requests, net of clawback.
   average request   requested ÷ requests with an ask; average award: awarded ÷ requests with an award (D80, labelled,
                     O-930-16; the sheet divided by every app).
-  % awarded         awarded ÷ the live requests' asks (the sheet's avg award ÷ avg request is awarded ÷ requested).
+  % awarded         awarded ÷ the live requests' capped asks (A5; the sheet's avg award ÷ avg request is awarded ÷
+                    requested).
   subtotals/total   POOLED ratios over the rows' requests, never averages of the rows' ratios (the sheet summed its
                     averages and averaged its percentages).
 """
@@ -30,7 +33,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.reports.facts import ReportRequest, average, in_round
+from bunking.financial_aid.reports.facts import ReportRequest, average, capped_ask, in_round, is_capped
 from bunking.financial_aid.scenarios.committee import pct
 
 UNMATCHED_SESSION: Final = 0
@@ -88,7 +91,8 @@ def program_members(
 @dataclass(frozen=True)
 class RoundBlock:
     apps: int
-    requested: Decimal
+    requested: Decimal  # capped (owner A1/A2, 2026-10-09)
+    requested_as_typed: Decimal  # the asks as keyed (A3: the CSV and Copy)
     asks: int
     awarded: Decimal
     awarded_count: int
@@ -117,24 +121,28 @@ class PoolGroup:
 class ProgramsTable:
     pools: tuple[PoolGroup, ...]
     total: ProgramRow
+    requests_capped: int = 0  # received requests whose need is above their session's cost (the All-rounds basis)
 
 
 def _block(requests: Sequence[ReportRequest], n: int) -> RoundBlock:
     members = [r for r in requests if in_round(r, n)]
-    requested = live_asked = awarded = ZERO
+    requested = requested_as_typed = live_asked = awarded = ZERO
     asks = awarded_count = 0
     for request in members:
         found = block_counts_in(request, n)
         asks += "asks" in found
         awarded_count += "awarded" in found
-        if (ask := request.asked((n,))) is not None:
+        # Owner A1/A2 (2026-10-09): Statistics' round chip, the round's ask at most the cost less the awards before
+        if (ask := capped_ask(request, n)) is not None:
             requested += ask
-        if request.live and (in_budget := request.asked_in_budget((n,))) is not None:
-            live_asked += in_budget
+            requested_as_typed += request.asked((n,)) or ZERO  # A3
+        if request.live and (in_budget := capped_ask(request, n, in_budget=True)) is not None:
+            live_asked += in_budget  # A5: % awarded divides by the same capped asks
         awarded += request.awarded((n,))
     return RoundBlock(
         apps=len(members),
         requested=requested,
+        requested_as_typed=requested_as_typed,
         asks=asks,
         awarded=awarded,
         awarded_count=awarded_count,
@@ -171,4 +179,5 @@ def programs(requests: Iterable[ReportRequest], sessions: Mapping[int, str | Non
         rows = tuple(_row(session, by_session.get((pool, session), [])) for session in ordered)
         members = [r for session in ordered for r in by_session.get((pool, session), [])]
         groups.append(PoolGroup(pool, rows, _row(UNMATCHED_SESSION, members)))
-    return ProgramsTable(tuple(groups), _row(UNMATCHED_SESSION, every))
+    capped = sum(1 for r in every if r.asked() is not None and is_capped(r))
+    return ProgramsTable(tuple(groups), _row(UNMATCHED_SESSION, every), capped)
