@@ -24,8 +24,9 @@ the screen): the pool grouping and subtotals, the Round 3 columns and total awar
                     averages and averaged its percentages).
   one row           the season's SCIT sessions (Counselor and Specialist In-Training: two CampMinder sessions of type
                     scit, the same dates) are ONE row in a pool, summing both (owner 2026-10-10: "approved to combine
-                    SCIT"). By session type within the season, never by id; the row is named by its first session in
-                    the reader's order, and its counts open every session in it.
+                    SCIT"). By session type within the season, never by id; the row takes its first session's id and
+                    place in the reader's order, carries every session in it (`session_cm_ids`, which the API names
+                    "A + B"), and its counts open every session in it.
 """
 
 from __future__ import annotations
